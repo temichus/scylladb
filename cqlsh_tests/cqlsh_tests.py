@@ -1861,11 +1861,18 @@ class CqlLoginTest(Tester):
         self.create_cf(self.session, 'ks1table')
         self.session.execute("CREATE USER user1 WITH PASSWORD 'changeme';")
 
-        query = '''
-                LOGIN user1 'changeme';
-                CREATE USER user2 WITH PASSWORD 'fail' SUPERUSER;
-                '''
-        expected_error = 'Only superusers are allowed to perform CREATE USER queries'
+        if self.cluster.version() >= '3.0':
+            query = '''
+                    LOGIN user1 'changeme';
+                    CREATE USER user2 WITH PASSWORD 'fail' SUPERUSER;
+                    '''
+            expected_error = "Only superusers can create a role with superuser status"
+        else:
+            query = '''
+                    LOGIN user1 'changeme';
+                    CREATE USER user2 WITH PASSWORD 'fail';
+                    '''
+            expected_error = 'Only superusers are allowed to perform CREATE USER queries'
 
         cqlsh_stdout, cqlsh_stderr = self.node1.run_cqlsh(
             query,
