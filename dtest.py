@@ -2,8 +2,10 @@ from __future__ import with_statement
 import os, tempfile, sys, shutil, subprocess, types, time, threading, traceback, ConfigParser, logging, re, copy
 
 from ccmlib.cluster import Cluster
+from ccmlib.urchin_cluster import UrchinCluster
 from ccmlib.cluster_factory import ClusterFactory
 from ccmlib.common import is_win
+from ccmlib.common import isUrchin
 from nose.exc import SkipTest
 from unittest import TestCase
 from cassandra.cluster import NoHostAvailable
@@ -127,7 +129,12 @@ class Tester(TestCase):
     def _get_cluster(self, name='test'):
         if self._preserve_cluster and hasattr(self, 'cluster'):
             return self.cluster
-        self.test_path = tempfile.mkdtemp(prefix='dtest-')
+        # we can not work /tmp
+        dtest_root = os.path.join(os.path.expanduser("~"),'.dtest')
+        if not os.path.exists(dtest_root):
+           os.makedirs(dtest_root)
+        self.test_path = tempfile.mkdtemp(dir=dtest_root,prefix='dtest-')
+
         # ccm on cygwin needs absolute path to directory - it crosses from cygwin space into
         # regular Windows space on wmic calls which will otherwise break pathing
         if sys.platform == "cygwin":
@@ -139,7 +146,10 @@ class Tester(TestCase):
         if version:
             cluster = Cluster(self.test_path, name, cassandra_version=version)
         else:
-            cluster = Cluster(self.test_path, name, cassandra_dir=cdir)
+            if isUrchin(cdir):
+               cluster = UrchinCluster(self.test_path, name, cassandra_dir=cdir,install_dir=cdir)
+            else:
+               cluster = Cluster(self.test_path, name, cassandra_dir=cdir)
 
         if DISABLE_VNODES:
             cluster.set_configuration_options(values={'num_tokens': None})
