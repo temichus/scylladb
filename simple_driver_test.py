@@ -10,7 +10,7 @@ class TestSimple(Tester):
 
     def prepare(self):
         """
-        Sets up cluster to test against. Currently 3 CCM Nodes
+        Sets up cluster to test against.
         """
         cluster = self.cluster
         cluster.populate(1).start()
