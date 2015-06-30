@@ -6,34 +6,38 @@ import time
 @since('3.0')
 class TestSimple(Tester):
 
-#    __test__= False
+    __test__= False
+    __jvm_args__=[]
+
+    def __init__(self, *args, **kwargs):
+        Tester.__init__(self, *args, **kwargs)
 
     def prepare(self):
         """
         Sets up cluster to test against.
         """
         cluster = self.cluster
-        cluster.populate(1).start()
-        node1 = cluster.nodelist()[0]
-        session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'ks', 1)
-        return session
+        return cluster
 
 
     def simple_create_insert_select_test(self):
-        cursor = self.prepare()
+        cluster = self.prepare()
+        cluster.populate(1).start(jvm_args=self.__jvm_args__)
+        node1 = cluster.nodelist()[0]
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 1)
 
-        cursor.execute("""
+        session.execute("""
             CREATE TABLE test1 (
                 k int PRIMARY KEY,
                 c int
             )
         """)
 
-        cursor.execute("insert into test1  (k,c) values (1,2);")
+        session.execute("insert into test1  (k,c) values (1,2);")
 
         # Select
-        res = cursor.execute("""
+        res = session.execute("""
                 SELECT * FROM test1
                 WHERE k=1
         """)
@@ -41,9 +45,17 @@ class TestSimple(Tester):
         assert len(res) == 1, res
 
         # Select
-        res = cursor.execute("""
+        res = session.execute("""
                 SELECT * FROM test1
                 WHERE k=2
         """)
 
         assert len(res) == 0, res
+        time.sleep(10)
+
+
+options = {'Single' : ['--smp','1'], 'SMP' : ['--smp','2']}
+
+for option in options.keys():
+    cls_name = ('SimpleDriverTest_with_' + option)
+    vars()[cls_name] = type(cls_name, (TestSimple,), {'__jvm_args__': options[option], '__test__':True})
