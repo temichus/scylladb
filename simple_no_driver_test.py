@@ -6,15 +6,18 @@ import time
 @since('3.0')
 class TestSimple(Tester):
 
-#    __test__= False
+    __test__= False
+    __jvm_args__=[]
+
+
+    def __init__(self, *args, **kwargs):
+        Tester.__init__(self, *args, **kwargs)
 
     def prepare(self):
         """
         Sets up cluster to test against. Currently 3 CCM Nodes
         """
         cluster = self.cluster
-
-
         return cluster
 
     def stress_write(self, node):
@@ -66,8 +69,16 @@ class TestSimple(Tester):
         Tests to ensure no data is lost or errors thrown.
         """
         cluster = self.prepare()
-        cluster.populate(1).start()
+        cluster.populate(1).start(jvm_args=self.__jvm_args__)
         node1 = cluster.nodelist()[0]
         self.stress_write(node1)
         out = self.stress_read(node1)
         self.validate_stress_output(out)
+
+
+options = {'Single' : ['--smp','1'], 'SMP' : ['--smp','2']}
+
+for option in options.keys():
+    cls_name = ('SimpleNoDriverTest_with_' + option)
+    vars()[cls_name] = type(cls_name, (TestSimple,), {'__jvm_args__': options[option], '__test__':True})
+
