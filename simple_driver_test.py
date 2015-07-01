@@ -2,12 +2,13 @@ from dtest import Tester, debug
 from tools import since
 import subprocess, tempfile, os, shutil
 import time
+from ccmlib.urchin_cluster import UrchinCluster
 
 @since('3.0')
 class TestSimple(Tester):
 
     __test__= False
-    __jvm_args__=[]
+    __urchin_args__=[]
 
     def __init__(self, *args, **kwargs):
         Tester.__init__(self, *args, **kwargs)
@@ -22,7 +23,10 @@ class TestSimple(Tester):
 
     def simple_create_insert_select_test(self):
         cluster = self.prepare()
-        cluster.populate(1).start(jvm_args=self.__jvm_args__)
+        jvm_args=[]
+        if type(cluster) is UrchinCluster:
+           jvm_args=self.__urchin_args__
+        cluster.populate(1).start(jvm_args=jvm_args)
         node1 = cluster.nodelist()[0]
         session = self.patient_cql_connection(node1)
         self.create_ks(session, 'ks', 1)
@@ -58,4 +62,4 @@ options = {'Single' : ['--smp','1'], 'SMP' : ['--smp','2']}
 
 for option in options.keys():
     cls_name = ('SimpleDriverTest_with_' + option)
-    vars()[cls_name] = type(cls_name, (TestSimple,), {'__jvm_args__': options[option], '__test__':True})
+    vars()[cls_name] = type(cls_name, (TestSimple,), {'__urchin_args__': options[option], '__test__':True})
