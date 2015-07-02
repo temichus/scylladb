@@ -4,9 +4,7 @@ import subprocess, tempfile, os, shutil
 import time
 
 @since('3.0')
-class TestSimple(Tester):
-
-#    __test__= False
+class TestSimpleBootShutdown(Tester):
 
     def prepare(self):
         """
@@ -16,7 +14,7 @@ class TestSimple(Tester):
         return cluster
 
 
-    def simple_create_insert_select_test(self):
+    def boot_create_keyspace_table_shutdown_boot_insert_select_test(self):
         cluster = self.prepare()
         cluster.populate(1).start()
         node1 = cluster.nodelist()[0]
@@ -32,13 +30,15 @@ class TestSimple(Tester):
         """)
 
         node1.stop()
-        node1.start(update_pid=False)       
 
-        cursor.execute("insert into test1  (k,c) values (1,2);")
+        node1.start(update_pid=True)       
+        cursor = self.patient_cql_connection(node1,'ks')
+
+        cursor.execute("insert into ks.test1  (k,c) values (1,2);")
 
         # Select
         res = cursor.execute("""
-                SELECT * FROM test1
+                SELECT * FROM ks.test1
                 WHERE k=1
         """)
 
@@ -46,7 +46,7 @@ class TestSimple(Tester):
 
         # Select
         res = cursor.execute("""
-                SELECT * FROM test1
+                SELECT * FROM ks.test1
                 WHERE k=2
         """)
 
