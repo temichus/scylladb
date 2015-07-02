@@ -25,7 +25,7 @@ class TestSimple(Tester):
         """
         Writes data via stress. Should write exact data expected by stress_read()
         """
-        node.stress(['write', 'n=100000', '-mode', 'cql3', 'simplenative', '-rate', 'threads=10', '-pop','seq=1..100000'])
+        node.stress(['write', 'n=100000', '-mode', 'cql3', 'simplenative', '-rate', 'threads=1', '-pop','seq=1..100000'])
 
     def stress_read(self, node):
         """
@@ -35,7 +35,7 @@ class TestSimple(Tester):
         # Verify the data
         tmpfile = tempfile.mktemp()
         with open(tmpfile, 'w+') as tmp:
-            node.stress(['read', 'n=100000', '-mode', 'cql3', 'simplenative', '-rate', 'threads=10', '-pop','seq=1..100000'],
+            node.stress(['read', 'n=100000', '-mode', 'cql3', 'simplenative', '-rate', 'threads=1', '-pop','seq=1..100000'],
                 stdout=tmp, stderr=subprocess.STDOUT)
         return tmpfile
 
