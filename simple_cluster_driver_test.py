@@ -9,7 +9,7 @@ from cassandra import ConsistencyLevel
 @since('3.0')
 class TestSimpleCluster(Tester):
 
-    __urchin_args__=['--vnodes']
+    __urchin_args__=[]
 
     def __init__(self, *args, **kwargs):
         Tester.__init__(self, *args, **kwargs)
@@ -33,6 +33,7 @@ class TestSimpleCluster(Tester):
         session2 = self.patient_cql_connection(node2)
         session3 = self.patient_cql_connection(node3)
         self.create_ks(session1, 'ks', 3)
+        time.sleep(1)
 
         session2.execute("""
             CREATE TABLE ks.test1 (
@@ -40,9 +41,11 @@ class TestSimpleCluster(Tester):
                 c int
             )
         """)
+        time.sleep(1)
 
         insert = SimpleStatement("insert into ks.test1  (k,c) values (1,2);", consistency_level=ConsistencyLevel.QUORUM)
         session3.execute(insert)
+        time.sleep(1)
 
         # Select
         query1 = SimpleStatement("SELECT * FROM ks.test1 WHERE k=1",consistency_level=ConsistencyLevel.QUORUM)
