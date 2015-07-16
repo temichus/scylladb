@@ -1,10 +1,10 @@
-from dtest import Tester, debug
+from dtest import Tester, debug,freshCluster
 from tools import since
 import subprocess, tempfile, os, shutil
 import time
 from ccmlib.urchin_cluster import UrchinCluster
 from cassandra.query import SimpleStatement
-from cassandra import ConsistencyLevel
+from cassandra import Unavailable,ConsistencyLevel
 
 @since('3.0')
 class TestSimpleCluster(Tester):
@@ -22,12 +22,14 @@ class TestSimpleCluster(Tester):
         return cluster
 
 
+    @freshCluster()
     def simple_create_insert_select_test(self):
         cluster = self.prepare()
         jvm_args=[]
         if type(cluster) is UrchinCluster:
            jvm_args=self.__urchin_args__
         cluster.populate(3).start(jvm_args=jvm_args)
+        time.sleep(3)
         node1,node2,node3 = cluster.nodelist()
         session1 = self.patient_cql_connection(node1)
         session2 = self.patient_cql_connection(node2)
@@ -66,3 +68,173 @@ class TestSimpleCluster(Tester):
         assert len(res) == 0, res
 
         time.sleep(10)
+
+    def clname(self,cl):
+        map = {
+            ConsistencyLevel.ANY : 'ANY',
+            ConsistencyLevel.ONE : 'ONE',
+            ConsistencyLevel.TWO : 'TWO',
+            ConsistencyLevel.THREE : 'THREE',
+            ConsistencyLevel.QUORUM : 'QUORUM',
+            ConsistencyLevel.ALL : 'ALL'
+        }
+        return map[cl]
+
+
+    def simple_consistency_level_validate(self,session,node,read_keys,read_cls_pass,read_cls_fail,read_cls_pass_all,write_keys,write_cls_pass,write_cls_fail,write_cls_pass_all):
+        for cl in read_cls_pass:
+            debug("read %s cl %s" % (node,self.clname(cl)))
+            read_pass=0
+            read_fail=0
+            for key in read_keys:
+                try:
+                   query1 = SimpleStatement("SELECT * FROM ks.test1 WHERE k=%s" % key,consistency_level=cl)
+                   res = session.execute(query1)
+                   assert len(res) == 1, res
+                   read_pass=read_pass+1
+                except Exception as ex:
+                   read_fail=read_fail+1
+            assert (read_fail == 0 or read_cls_pass_all == False), "Expected all reads to pass, pass %s, fail %s" % (read_pass,read_fail)
+            assert (read_fail > 0 or read_cls_pass_all == True), "Expected some reads to fail, pass %s, fail %s" % (read_pass,read_fail)
+
+        for cl in read_cls_fail:
+            query1 = SimpleStatement("SELECT * FROM ks.test1 WHERE k=1",consistency_level=cl)
+            try:
+                res = sessionexecute(query1)
+                assert("Consistency level %s is not possible" % self.clname(cl))
+            except Unavailable as ex:
+                assert(True)
+            except Exception as ex:
+                assert("Expected cassandra.Unavilable exception received %s" %ex)
+
+        for cl in write_cls_pass:
+            debug("write %s cl %s" % (node,self.clname(cl)))
+            write_pass=0
+            write_fail=0
+            for key in write_keys:
+                try:
+                   insert = SimpleStatement("insert into ks.test1  (k,c) values (%s,%s)" % (key,key),consistency_level=cl)
+                   res = session.execute(insert)
+                   write_pass=write_pass+1
+                except Exception as ex:
+                   write_fail=write_fail+1
+            assert (write_fail == 0 or write_cls_pass_all == False), "Expected all writes to pass, pass %s, fail %s" % (write_pass,write_fail)
+            assert (write_fail > 0 or write_cls_pass_all == True), "Expected some writes to fail, pass %s, fail %s" % (write_pass,write_fail)
+
+        for cl in write_cls_fail:
+            insert = SimpleStatement("insert into ks.test1 (k,c) values (101,101)",consistency_level=cl)
+            try:
+                res = sessionexecute(insert)
+                assert("Consistency level %s is not possible" % self.clname(cl))
+            except Unavailable as ex:
+                assert(True)
+            except Exception as ex:
+                assert("Expected cassandra.Unavilable exception received %s" %ex)
+
+    @freshCluster()
+    def simple_rf_3_consistency_level_tests(self):
+        cluster = self.prepare()
+        jvm_args=[]
+        if type(cluster) is UrchinCluster:
+           jvm_args=self.__urchin_args__
+        cluster.populate(3).start(jvm_args=jvm_args)
+        time.sleep(3)
+        node1,node2,node3 = cluster.nodelist()
+        session1 = self.patient_cql_connection(node1)
+        session2 = self.patient_cql_connection(node2)
+        session3 = self.patient_cql_connection(node3)
+
+        self.create_ks(session1, 'ks', 3)
+        session1.execute("""
+            CREATE TABLE ks.test1 (
+                k int PRIMARY KEY,
+                c int
+            )
+        """)
+        keys = range(1,100)
+        for val in keys:
+            insert = SimpleStatement("insert into ks.test1  (k,c) values (%s,%s)" % (val,val), consistency_level=ConsistencyLevel.ALL)
+            session1.execute(insert)
+
+        time.sleep(1)
+
+        debug("3 nodes, node1,node2,node3 are running")
+        read_cls_pass = [ConsistencyLevel.ONE, ConsistencyLevel.TWO, ConsistencyLevel.THREE, ConsistencyLevel.QUORUM, ConsistencyLevel.ALL]
+        write_cls_pass = [ConsistencyLevel.ANY, ConsistencyLevel.ONE, ConsistencyLevel.TWO, ConsistencyLevel.THREE, ConsistencyLevel.QUORUM, ConsistencyLevel.ALL]
+        self.simple_consistency_level_validate(session1,"node 1",keys,read_cls_pass,[],True,range(101,200),write_cls_pass,[],True)
+        self.simple_consistency_level_validate(session2,"node 2",keys,read_cls_pass,[],True,range(201,300),write_cls_pass,[],True)
+        self.simple_consistency_level_validate(session3,"node 3",keys,read_cls_pass,[],True,range(301,400),write_cls_pass,[],True)
+
+        node1.stop()
+        debug("node 1 stopped, node2,node3 are running")
+        read_cls_pass = [ConsistencyLevel.ONE, ConsistencyLevel.TWO, ConsistencyLevel.QUORUM]
+        read_cls_fail = [ConsistencyLevel.THREE, ConsistencyLevel.ALL]
+        write_cls_pass = [ConsistencyLevel.ANY, ConsistencyLevel.ONE, ConsistencyLevel.TWO, ConsistencyLevel.QUORUM]
+        write_cls_fail = [ConsistencyLevel.THREE, ConsistencyLevel.ALL]
+        self.simple_consistency_level_validate(session2,"node 2",keys,read_cls_pass,read_cls_fail,True,range(401,500),write_cls_pass,write_cls_fail,True)
+        self.simple_consistency_level_validate(session3,"node 3",keys,read_cls_pass,read_cls_fail,True,range(501,600),write_cls_pass,write_cls_fail,True)
+
+        node2.stop()
+        debug("node 2 stopped, node3 is running")
+        read_cls_pass = [ConsistencyLevel.ONE]
+        read_cls_fail = [ConsistencyLevel.TWO, ConsistencyLevel.THREE, ConsistencyLevel.QUORUM, ConsistencyLevel.ALL]
+        write_cls_pass = [ConsistencyLevel.ANY,ConsistencyLevel.ONE]
+        write_cls_fail = [ConsistencyLevel.TWO, ConsistencyLevel.THREE, ConsistencyLevel.QUORUM, ConsistencyLevel.ALL]
+        self.simple_consistency_level_validate(session3,"node 3",keys,read_cls_pass,read_cls_fail,True,range(601,700),write_cls_pass,write_cls_fail,True)
+
+        # should add additional tests once a node can be entered back into a cluster
+
+    @freshCluster()
+    def simple_rf_1_consistency_level_tests(self):
+        cluster = self.prepare()
+        jvm_args=[]
+        if type(cluster) is UrchinCluster:
+           jvm_args=self.__urchin_args__
+        cluster.populate(3).start(jvm_args=jvm_args)
+        time.sleep(3)
+        node1,node2,node3 = cluster.nodelist()
+        session1 = self.patient_cql_connection(node1)
+        session2 = self.patient_cql_connection(node2)
+        session3 = self.patient_cql_connection(node3)
+
+        self.create_ks(session1, 'ks', 1)
+        session1.execute("""
+            CREATE TABLE ks.test1 (
+                k int PRIMARY KEY,
+                c int
+            )
+        """)
+        keys = range(1,100)
+        for val in keys:
+            insert = SimpleStatement("insert into ks.test1  (k,c) values (%s,%s)" % (val,val), consistency_level=ConsistencyLevel.ALL)
+            session1.execute(insert)
+
+        time.sleep(1)
+
+        debug("3 nodes, node1,node2,node3 are running")
+        read_cls_pass = [ConsistencyLevel.ONE, ConsistencyLevel.QUORUM, ConsistencyLevel.ALL]
+        read_cls_fail = [ConsistencyLevel.TWO, ConsistencyLevel.THREE]
+        write_cls_pass = [ConsistencyLevel.ANY, ConsistencyLevel.ONE, ConsistencyLevel.QUORUM, ConsistencyLevel.ALL]
+        write_cls_fail = [ConsistencyLevel.TWO, ConsistencyLevel.THREE]
+        self.simple_consistency_level_validate(session1,"node 1",keys,read_cls_pass,read_cls_fail,True,range(101,200),write_cls_pass,write_cls_fail,True)
+        self.simple_consistency_level_validate(session2,"node 2",keys,read_cls_pass,read_cls_fail,True,range(201,300),write_cls_pass,write_cls_fail,True)
+        self.simple_consistency_level_validate(session3,"node 3",keys,read_cls_pass,read_cls_fail,True,range(301,400),write_cls_pass,write_cls_fail,True)
+
+        node1.stop()
+        debug("node 1 stopped, node2,node3 are running")
+        read_cls_pass = [ConsistencyLevel.ONE, ConsistencyLevel.QUORUM,ConsistencyLevel.ALL]
+        read_cls_fail = [ConsistencyLevel.TWO,ConsistencyLevel.THREE]
+        write_cls_pass = [ConsistencyLevel.ONE, ConsistencyLevel.QUORUM,ConsistencyLevel.ALL]
+        write_cls_fail = [ConsistencyLevel.TWO,ConsistencyLevel.THREE]
+        self.simple_consistency_level_validate(session2,"node 2",keys,read_cls_pass,read_cls_fail,False,range(401,500),write_cls_pass,write_cls_fail,False)
+        self.simple_consistency_level_validate(session3,"node 3",keys,read_cls_pass,read_cls_fail,False,range(501,600),write_cls_pass,write_cls_fail,False)
+
+        node2.stop()
+        debug("node 2 stopped, node3 is running")
+        read_cls_pass = [ConsistencyLevel.ONE, ConsistencyLevel.QUORUM,ConsistencyLevel.ALL]
+        read_cls_fail = [ConsistencyLevel.TWO,ConsistencyLevel.THREE]
+        write_cls_pass = [ConsistencyLevel.ONE, ConsistencyLevel.QUORUM,ConsistencyLevel.ALL]
+        write_cls_fail = [ConsistencyLevel.TWO,ConsistencyLevel.THREE]
+        self.simple_consistency_level_validate(session3,"node 3",keys,read_cls_pass,read_cls_fail,False,range(601,700),write_cls_pass,write_cls_fail,False)
+
+        # should add additional tests once a node can be entered back into a cluster
