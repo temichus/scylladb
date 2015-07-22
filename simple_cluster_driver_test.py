@@ -166,6 +166,8 @@ class TestSimpleCluster(Tester):
         self.simple_consistency_level_validate(session3,"node 3",keys,read_cls_pass,[],True,range(301,400),write_cls_pass,[],True)
 
         node1.stop()
+        # FIXME - currently used to make sure that the gossiper has concluded the node is dead - on origin it works without this
+        time.sleep(60);
         debug("node 1 stopped, node2,node3 are running")
         read_cls_pass = [ConsistencyLevel.ONE, ConsistencyLevel.TWO, ConsistencyLevel.QUORUM]
         read_cls_fail = [ConsistencyLevel.THREE, ConsistencyLevel.ALL]
@@ -175,6 +177,8 @@ class TestSimpleCluster(Tester):
         self.simple_consistency_level_validate(session3,"node 3",keys,read_cls_pass,read_cls_fail,True,range(501,600),write_cls_pass,write_cls_fail,True)
 
         node2.stop()
+        # FIXME - currently used to make sure that the gossiper has concluded the node is dead - on origin it works without this
+        time.sleep(60);
         debug("node 2 stopped, node3 is running")
         read_cls_pass = [ConsistencyLevel.ONE]
         read_cls_fail = [ConsistencyLevel.TWO, ConsistencyLevel.THREE, ConsistencyLevel.QUORUM, ConsistencyLevel.ALL]
