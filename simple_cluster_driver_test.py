@@ -131,8 +131,7 @@ class TestSimpleCluster(Tester):
             except Exception as ex:
                 assert("Expected cassandra.Unavilable exception received %s" %ex)
 
-    @freshCluster()
-    def simple_rf_3_consistency_level_tests(self):
+    def prepare_cluster(self,ks_rf):
         cluster = self.prepare()
         jvm_args=[]
         if type(cluster) is UrchinCluster:
@@ -144,13 +143,24 @@ class TestSimpleCluster(Tester):
         session2 = self.patient_cql_connection(node2)
         session3 = self.patient_cql_connection(node3)
 
-        self.create_ks(session1, 'ks', 3)
+        self.create_ks(session1, 'ks', ks_rf)
         session1.execute("""
             CREATE TABLE ks.test1 (
                 k int PRIMARY KEY,
                 c int
             )
         """)
+        time.sleep(1)
+        return cluster;
+
+    @freshCluster()
+    def simple_rf_3_consistency_level_tests(self):
+        cluster = self.prepare_cluster(3)
+        node1,node2,node3 = cluster.nodelist()
+        session1 = self.patient_cql_connection(node1)
+        session2 = self.patient_cql_connection(node2)
+        session3 = self.patient_cql_connection(node3)
+
         keys = range(1,100)
         for val in keys:
             insert = SimpleStatement("insert into ks.test1  (k,c) values (%s,%s)" % (val,val), consistency_level=ConsistencyLevel.ALL)
@@ -190,24 +200,12 @@ class TestSimpleCluster(Tester):
 
     @freshCluster()
     def simple_rf_1_consistency_level_tests(self):
-        cluster = self.prepare()
-        jvm_args=[]
-        if type(cluster) is UrchinCluster:
-           jvm_args=self.__urchin_args__
-        cluster.populate(3).start(jvm_args=jvm_args)
-        time.sleep(3)
+        cluster = self.prepare_cluster(1)
         node1,node2,node3 = cluster.nodelist()
         session1 = self.patient_cql_connection(node1)
         session2 = self.patient_cql_connection(node2)
         session3 = self.patient_cql_connection(node3)
 
-        self.create_ks(session1, 'ks', 1)
-        session1.execute("""
-            CREATE TABLE ks.test1 (
-                k int PRIMARY KEY,
-                c int
-            )
-        """)
         keys = range(1,100)
         for val in keys:
             insert = SimpleStatement("insert into ks.test1  (k,c) values (%s,%s)" % (val,val), consistency_level=ConsistencyLevel.ALL)
@@ -242,3 +240,83 @@ class TestSimpleCluster(Tester):
         self.simple_consistency_level_validate(session3,"node 3",keys,read_cls_pass,read_cls_fail,False,range(601,700),write_cls_pass,write_cls_fail,False)
 
         # should add additional tests once a node can be entered back into a cluster
+
+
+    def simple_query_validate(self,session,node,read_keys,query,read_cls_pass,read_cls_fail,read_cls_pass_all):
+        for cl in read_cls_pass:
+            debug("read %s cl %s" % (node,self.clname(cl)))
+            read_pass=0
+            read_fail=0
+            errors=[]
+            try:
+                query1 = SimpleStatement(query,consistency_level=cl)
+                res = session.execute(query1)
+                assert len(res) == read_keys, "got %s expected %s " % (len(res),read_keys) + " : " + str(res)
+                read_pass=read_pass+1
+            except Exception as ex:
+                read_fail=read_fail+1
+                errors = errors + [ex]
+            assert (read_fail == 0 or read_cls_pass_all == False), "Expected all reads to pass, pass %s, fail %s" % (read_pass,read_fail) + str(errors)
+            assert (read_fail > 0 or read_cls_pass_all == True), "Expected some reads to fail, pass %s, fail %s" % (read_pass,read_fail)
+
+        for cl in read_cls_fail:
+            query1 = SimpleStatement(query,consistency_level=cl)
+            try:
+                res = sessionexecute(query1)
+                assert("Consistency level %s is not possible" % self.clname(cl))
+            except Unavailable as ex:
+                assert(True)
+            except Exception as ex:
+                assert("Expected cassandra.Unavilable exception received %s" %ex)
+
+
+    @freshCluster()
+    def simple_rf_1_query_tests(self):
+        cluster = self.prepare_cluster(1)
+
+        node1,node2,node3 = cluster.nodelist()
+        session1 = self.patient_cql_connection(node1)
+        session2 = self.patient_cql_connection(node2)
+        session3 = self.patient_cql_connection(node3)
+
+        keys = range(1,100)
+        for val in keys:
+            insert = SimpleStatement("insert into ks.test1  (k,c) values (%s,%s)" % (val,val), consistency_level=ConsistencyLevel.ALL)
+            session1.execute(insert)
+
+        time.sleep(1)
+         
+        debug("3 nodes, node1,node2,node3 are running")
+        read_cls_pass = [ConsistencyLevel.ONE, ConsistencyLevel.QUORUM, ConsistencyLevel.ALL]
+        read_cls_fail = [ConsistencyLevel.TWO, ConsistencyLevel.THREE]
+        self.simple_query_validate(session1,"node 1",len(keys),"SELECT * FROM ks.test1",read_cls_pass,read_cls_fail,True)
+        self.simple_query_validate(session1,"node 1",10,"SELECT * FROM ks.test1 where k in (1,10,20,30,40,50,60,70,80,90) ",read_cls_pass,read_cls_fail,True)
+        self.simple_query_validate(session2,"node 2",len(keys),"SELECT * FROM ks.test1",read_cls_pass,read_cls_fail,True)
+        self.simple_query_validate(session2,"node 2",10,"SELECT * FROM ks.test1 where k in (1,10,20,30,40,50,60,70,80,90) ",read_cls_pass,read_cls_fail,True)
+        self.simple_query_validate(session3,"node 3",len(keys),"SELECT * FROM ks.test1",read_cls_pass,read_cls_fail,True)
+        self.simple_query_validate(session3,"node 3",10,"SELECT * FROM ks.test1 where k in (1,10,20,30,40,50,60,70,80,90) ",read_cls_pass,read_cls_fail,True)
+
+    @freshCluster()
+    def simple_rf_3_query_tests(self):
+        cluster = self.prepare_cluster(3)
+
+        node1,node2,node3 = cluster.nodelist()
+        session1 = self.patient_cql_connection(node1)
+        session2 = self.patient_cql_connection(node2)
+        session3 = self.patient_cql_connection(node3)
+
+        keys = range(1,100)
+        for val in keys:
+            insert = SimpleStatement("insert into ks.test1  (k,c) values (%s,%s)" % (val,val), consistency_level=ConsistencyLevel.ALL)
+            session1.execute(insert)
+
+        time.sleep(1)
+         
+        debug("3 nodes, node1,node2,node3 are running")
+        read_cls_pass = [ConsistencyLevel.ONE, ConsistencyLevel.TWO, ConsistencyLevel.THREE, ConsistencyLevel.QUORUM, ConsistencyLevel.ALL]
+        self.simple_query_validate(session1,"node 1",len(keys),"SELECT * FROM ks.test1",read_cls_pass,[],True)
+        self.simple_query_validate(session1,"node 1",10,"SELECT * FROM ks.test1 where k in (1,10,20,30,40,50,60,70,80,90) ",read_cls_pass,[],True)
+        self.simple_query_validate(session2,"node 2",len(keys),"SELECT * FROM ks.test1",read_cls_pass,[],True)
+        self.simple_query_validate(session2,"node 2",10,"SELECT * FROM ks.test1 where k in (1,10,20,30,40,50,60,70,80,90) ",read_cls_pass,[],True)
+        self.simple_query_validate(session3,"node 3",len(keys),"SELECT * FROM ks.test1",read_cls_pass,[],True)
+        self.simple_query_validate(session3,"node 3",10,"SELECT * FROM ks.test1 where k in (1,10,20,30,40,50,60,70,80,90) ",read_cls_pass,[],True)
