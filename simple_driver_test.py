@@ -57,6 +57,106 @@ class TestSimple(Tester):
         assert len(res) == 0, res
         time.sleep(10)
 
+    def simple_composite_partition_key_create_insert_select_test(self):
+        cluster = self.prepare()
+        jvm_args=[]
+        if type(cluster) is UrchinCluster:
+           jvm_args=self.__urchin_args__
+        cluster.populate(1).start(jvm_args=jvm_args)
+        node1 = cluster.nodelist()[0]
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 1)
+
+        session.execute("""
+            CREATE TABLE test1 (
+                k1 int,
+                k2 int,
+                c int,
+                PRIMARY KEY ((k1,k2))
+            )
+        """)
+
+        session.execute("insert into test1 (k1,k2,c) values (1,1,3);")
+        session.execute("insert into test1 (k1,k2,c) values (1,2,4);")
+
+        # Select
+        res = session.execute("""
+                SELECT * FROM test1
+                WHERE k1=1 and k2=1
+        """)
+        assert len(res) == 1, res
+
+        res = session.execute("""
+                SELECT * FROM test1
+                WHERE k1=1 and k2=2 
+        """)
+        assert len(res) == 1, res
+
+        # Select
+        res = session.execute("""
+                SELECT * FROM test1
+                WHERE k1=2 and k2=1
+        """)
+        assert len(res) == 0, res
+
+        res = session.execute("""
+                SELECT * FROM test1
+                WHERE k1=1 and k2=3
+        """)
+        assert len(res) == 0, res
+
+        time.sleep(1)
+
+    def simple_compound_primary_key_create_insert_select_test(self):
+        cluster = self.prepare()
+        jvm_args=[]
+        if type(cluster) is UrchinCluster:
+           jvm_args=self.__urchin_args__
+        cluster.populate(1).start(jvm_args=jvm_args)
+        node1 = cluster.nodelist()[0]
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 1)
+
+        session.execute("""
+            CREATE TABLE test1 (
+                k1 int,
+                c1 int,
+                c2 int,
+                c3 int,
+                PRIMARY KEY (k1,c1,c2)
+            )
+        """)
+
+        session.execute("insert into test1 (k1,c1,c2,c3) values (1,1,1,1);")
+        session.execute("insert into test1 (k1,c1,c2,c3) values (1,1,2,2);")
+
+        # Select
+        res = session.execute("""
+                SELECT * FROM test1
+                WHERE k1=1
+        """)
+        assert len(res) == 2, res
+
+        res = session.execute("""
+                SELECT * FROM test1
+                WHERE k1=1 and c1=1 and c2=1 
+        """)
+        assert len(res) == 1, res
+
+        # Select
+        res = session.execute("""
+                SELECT * FROM test1
+                WHERE k1=1 and c1=2
+        """)
+
+        res = session.execute("""
+                SELECT * FROM test1
+                WHERE k1=1 and c1=1 and c2=3
+        """)
+        assert len(res) == 0, res
+
+        time.sleep(1)
+
 
 options = {'Single' : ['--smp','1'], 'SMP' : ['--smp','2']}
 
