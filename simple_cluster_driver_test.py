@@ -6,7 +6,6 @@ from ccmlib.urchin_cluster import UrchinCluster
 from cassandra.query import SimpleStatement
 from cassandra import Unavailable,ConsistencyLevel
 
-@since('3.0')
 class TestSimpleCluster(Tester):
 
     __urchin_args__=[]
@@ -35,7 +34,6 @@ class TestSimpleCluster(Tester):
         session2 = self.patient_cql_connection(node2)
         session3 = self.patient_cql_connection(node3)
         self.create_ks(session1, 'ks', 3)
-        time.sleep(1)
 
         session2.execute("""
             CREATE TABLE ks.test1 (
@@ -43,11 +41,9 @@ class TestSimpleCluster(Tester):
                 c int
             )
         """)
-        time.sleep(1)
 
         insert = SimpleStatement("insert into ks.test1  (k,c) values (1,2);", consistency_level=ConsistencyLevel.QUORUM)
         session3.execute(insert)
-        time.sleep(1)
 
         # Select
         query1 = SimpleStatement("SELECT * FROM ks.test1 WHERE k=1",consistency_level=ConsistencyLevel.QUORUM)
@@ -150,7 +146,6 @@ class TestSimpleCluster(Tester):
                 c int
             )
         """)
-        time.sleep(1)
         return cluster;
 
     @freshCluster()
@@ -166,7 +161,6 @@ class TestSimpleCluster(Tester):
             insert = SimpleStatement("insert into ks.test1  (k,c) values (%s,%s)" % (val,val), consistency_level=ConsistencyLevel.ALL)
             session1.execute(insert)
 
-        time.sleep(1)
 
         debug("3 nodes, node1,node2,node3 are running")
         read_cls_pass = [ConsistencyLevel.ONE, ConsistencyLevel.TWO, ConsistencyLevel.THREE, ConsistencyLevel.QUORUM, ConsistencyLevel.ALL]
@@ -210,8 +204,6 @@ class TestSimpleCluster(Tester):
         for val in keys:
             insert = SimpleStatement("insert into ks.test1  (k,c) values (%s,%s)" % (val,val), consistency_level=ConsistencyLevel.ALL)
             session1.execute(insert)
-
-        time.sleep(1)
 
         debug("3 nodes, node1,node2,node3 are running")
         read_cls_pass = [ConsistencyLevel.ONE, ConsistencyLevel.QUORUM, ConsistencyLevel.ALL]
@@ -284,8 +276,6 @@ class TestSimpleCluster(Tester):
             insert = SimpleStatement("insert into ks.test1  (k,c) values (%s,%s)" % (val,val), consistency_level=ConsistencyLevel.ALL)
             session1.execute(insert)
 
-        time.sleep(1)
-         
         debug("3 nodes, node1,node2,node3 are running")
         read_cls_pass = [ConsistencyLevel.ONE, ConsistencyLevel.QUORUM, ConsistencyLevel.ALL]
         read_cls_fail = [ConsistencyLevel.TWO, ConsistencyLevel.THREE]
@@ -310,8 +300,6 @@ class TestSimpleCluster(Tester):
             insert = SimpleStatement("insert into ks.test1  (k,c) values (%s,%s)" % (val,val), consistency_level=ConsistencyLevel.ALL)
             session1.execute(insert)
 
-        time.sleep(1)
-         
         debug("3 nodes, node1,node2,node3 are running")
         read_cls_pass = [ConsistencyLevel.ONE, ConsistencyLevel.TWO, ConsistencyLevel.THREE, ConsistencyLevel.QUORUM, ConsistencyLevel.ALL]
         self.simple_query_validate(session1,"node 1",len(keys),"SELECT * FROM ks.test1",read_cls_pass,[],True)
