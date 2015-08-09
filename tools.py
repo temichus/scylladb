@@ -44,10 +44,14 @@ def new_node(cluster, bootstrap=True, token=None, remote_debug_port='2000', data
     return node
 
 def insert_columns(tester, session, key, columns_count, consistency=ConsistencyLevel.QUORUM, offset=0):
-    upds = [ "UPDATE cf SET v=\'value%d\' WHERE key=\'k%s\' AND c=\'c%06d\'" % (i, key, i) for i in xrange(offset*columns_count, columns_count*(offset+1))]
-    query = 'BEGIN BATCH %s; APPLY BATCH' % '; '.join(upds)
-    simple_query = SimpleStatement(query, consistency_level=consistency)
-    session.execute(simple_query)
+#    upds = [ "UPDATE cf SET v=\'value%d\' WHERE key=\'k%s\' AND c=\'c%06d\'" % (i, key, i) for i in xrange(offset*columns_count, columns_count*(offset+1))]
+#    query = 'BEGIN BATCH %s; APPLY BATCH' % '; '.join(upds)
+#    simple_query = SimpleStatement(query, consistency_level=consistency)
+#    session.execute(simple_query)
+     for i in xrange(offset*columns_count, columns_count*(offset+1)):
+         upd = "UPDATE cf SET v=\'value%d\' WHERE key=\'k%s\' AND c=\'c%06d\'" % (i, key, i)
+         simple_query = SimpleStatement(upd,consistency_level=consistency)
+         session.execute(simple_query)
 
 def query_columns(tester, cursor, key, columns_count, consistency=ConsistencyLevel.QUORUM, offset=0):
     query = SimpleStatement('SELECT c, v FROM cf WHERE key=\'k%s\' AND c >= \'c%06d\' AND c <= \'c%06d\'' % (key, offset, columns_count+offset-1), consistency_level=consistency)
