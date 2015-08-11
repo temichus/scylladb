@@ -29,9 +29,9 @@ class TestSimpleBootShutdown(Tester):
             )
         """)
 
+        # FIXME adding a delay after create to verify we are flushing complete information
+        time.sleep(2)
         node1.stop()
-        # FIXME remove sleep and add a check to veirfy node has stopped
-        time.sleep(30)
 
         node1.start(update_pid=True)       
         cursor = self.patient_cql_connection(node1,'ks')
@@ -74,8 +74,6 @@ class TestSimpleBootShutdown(Tester):
 
         node1.flush()
         node1.stop()
-        # FIXME remove sleep and add a check to veirfy node has stopped
-        time.sleep(30)
 
         node1.start(update_pid=True)       
         cursor = self.patient_cql_connection(node1,'ks')
