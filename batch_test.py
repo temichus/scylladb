@@ -4,9 +4,11 @@ from assertions import assert_invalid, assert_unavailable
 from dtest import Tester
 from cassandra import ConsistencyLevel, Timeout
 from cassandra.query import SimpleStatement
+from tools import require
 
 class TestBatch(Tester):
 
+    @require('counters')
     def counter_batch_accepts_counter_mutations_test(self):
         """ Test that counter batch accepts counter mutations """
         session = self.prepare()
@@ -20,6 +22,7 @@ class TestBatch(Tester):
         rows = session.execute("SELECT total FROM clicks")
         assert [list(rows[0]), list(rows[1]), list(rows[2])] == [[1], [1], [1]], rows
 
+    @require('counters')
     def counter_batch_rejects_regular_mutations_test(self):
         """ Test that counter batch rejects non-counter mutations """
         session = self.prepare()
@@ -50,6 +53,7 @@ class TestBatch(Tester):
         res = sorted(rows)
         assert [list(res[0]), list(res[1])] == [[0, u'Jack', u'Sparrow'], [1, u'Will', u'Turner']], res
 
+    @require('counters')
     def logged_batch_rejects_counter_mutations_test(self):
         """ Test that logged batch rejects counter mutations """
         session = self.prepare()
@@ -79,6 +83,7 @@ class TestBatch(Tester):
         res = sorted(rows)
         assert [list(res[0]), list(res[1])] == [[0, u'Jack', u'Sparrow'], [2, u'Elizabeth', u'Swann']], res
 
+    @require('counters')
     def unlogged_batch_rejects_counter_mutations_test(self):
         """ Test that unlogged batch rejects counter mutations """
         session = self.prepare()
@@ -202,14 +207,14 @@ class TestBatch(Tester):
         node1 = self.cluster.nodelist()[0]
         session = self.patient_cql_connection(node1)
         self.create_ks(session, 'ks', nodes)
-        session.execute("""
-            CREATE TABLE clicks (
-                userid int,
-                url text,
-                total counter,
-                PRIMARY KEY (userid, url)
-             );
-         """)
+#        session.execute("""
+#            CREATE TABLE clicks (
+#                userid int,
+#                url text,
+#                total counter,
+#                PRIMARY KEY (userid, url)
+#             );
+#         """)
         session.execute("""
             CREATE TABLE users (
                 id int,
