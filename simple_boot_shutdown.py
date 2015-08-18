@@ -1,9 +1,7 @@
 from dtest import Tester, debug
-from tools import since
 import subprocess, tempfile, os, shutil
 import time
 
-@since('3.0')
 class TestSimpleBootShutdown(Tester):
 
     def prepare(self):

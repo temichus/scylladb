@@ -1,10 +1,8 @@
 from dtest import Tester, debug
-from tools import since
 import subprocess, tempfile, os, shutil
 import time
 from ccmlib.urchin_cluster import UrchinCluster
 
-@since('3.0')
 class TestSimple(Tester):
 
     __test__= False

@@ -1,5 +1,4 @@
 from dtest import Tester, debug,freshCluster
-from tools import since
 import subprocess, tempfile, os, shutil
 import time
 from ccmlib.urchin_cluster import UrchinCluster
