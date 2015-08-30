@@ -3,7 +3,7 @@ from collections import OrderedDict
 from cassandra.util import sortedset
 from cassandra.query import SimpleStatement
 from cassandra import ConsistencyLevel
-from dtest import Tester
+from dtest import Tester,canReuseCluster,freshCluster
 from tools import since
 from assertions import (
     assert_all,
@@ -15,6 +15,7 @@ from assertions import (
 
 
 @since('2.0')
+@canReuseCluster
 class TestTTL(Tester):
     """ Test Time To Live Feature """
 
@@ -25,16 +26,19 @@ class TestTTL(Tester):
         self.cursor1 = self.patient_cql_connection(node1)
         self.create_ks(self.cursor1, 'ks', 1)
 
-    def prepare(self, default_time_to_live=None):
-        self.cursor1.execute("DROP TABLE IF EXISTS ttl_table;")
-        query = """
-            CREATE TABLE ttl_table (
-                key int primary key,
-                col1 int,
-                col2 int,
-                col3 int,
-            )
-        """
+    def prepare(self, default_time_to_live=None,create_table_statement=None):
+        if self._preserve_cluster:
+            self.cursor1.execute("DROP TABLE IF EXISTS ttl_table;")
+        query = create_table_statement
+        if not query:
+            query = """
+                CREATE TABLE ttl_table (
+                    key int primary key,
+                    col1 int,
+                    col2 int,
+                    col3 int,
+                )
+            """
         if default_time_to_live:
             query += " WITH default_time_to_live = {};".format(default_time_to_live)
 
@@ -235,9 +239,18 @@ class TestTTL(Tester):
         Test that ttl has a granularity of elements using a list collection.
         """
 
-        self.prepare(default_time_to_live=10)
+        cts = """
+            CREATE TABLE ttl_table (
+                key int primary key,
+                col1 int,
+                col2 int,
+                col3 int,
+                mylist list<int>
+            )
+        """
 
-        self.cursor1.execute("ALTER TABLE ttl_table ADD mylist list<int>;""")
+        self.prepare(default_time_to_live=10,create_table_statement=cts)
+
         start = time.time()
         self.cursor1.execute("""
             INSERT INTO ttl_table (key, col1, mylist) VALUES (%d, %d, %s);
@@ -256,9 +269,18 @@ class TestTTL(Tester):
         Test that ttl has a granularity of elements using a set collection.
         """
 
-        self.prepare(default_time_to_live=10)
+        cts = """
+            CREATE TABLE ttl_table (
+                key int primary key,
+                col1 int,
+                col2 int,
+                col3 int,
+                myset set<int>
+            )
+        """
 
-        self.cursor1.execute("ALTER TABLE ttl_table ADD myset set<int>;""")
+        self.prepare(default_time_to_live=10,create_table_statement=cts)
+
         start = time.time()
         self.cursor1.execute("""
             INSERT INTO ttl_table (key, col1, myset) VALUES (%d, %d, %s);
@@ -285,9 +307,18 @@ class TestTTL(Tester):
         Test that ttl has a granularity of elements using a map collection.
         """
 
-        self.prepare(default_time_to_live=6)
+        cts = """
+            CREATE TABLE ttl_table (
+                key int primary key,
+                col1 int,
+                col2 int,
+                col3 int,
+                mymap map<int, int>
+            )
+        """
 
-        self.cursor1.execute("ALTER TABLE ttl_table ADD mymap map<int, int>;""")
+        self.prepare(default_time_to_live=6,create_table_statement=cts)
+
         start = time.time()
         self.cursor1.execute("""
             INSERT INTO ttl_table (key, col1, mymap) VALUES (%d, %d, %s);
@@ -313,17 +344,22 @@ class TestTTL(Tester):
         """
         Updating a row with a ttl does not prevent deletion, test for CASSANDRA-6363
         """
-        self.cursor1.execute("DROP TABLE IF EXISTS session")
+
+        self.prepare()
+
+        if self._preserve_cluster:
+            self.cursor1.execute("DROP TABLE IF EXISTS session")
         self.cursor1.execute("CREATE TABLE session (id text, usr text, valid int, PRIMARY KEY (id))")
 
         self.cursor1.execute("insert into session (id, usr) values ('abc', 'abc')")
         self.cursor1.execute("update session using ttl 1 set valid = 1 where id = 'abc'")
         self.smart_sleep(time.time(), 2)
 
-        self.cursor1.execute("delete from session where id = 'abc' if usr ='abc'")
+        self.cursor1.execute("delete from session where id = 'abc'")
         assert_row_count(self.cursor1, 'session', 0)
 
 
+@canReuseCluster
 class TestDistributedTTL(Tester):
     """ Test Time To Live Feature in a distributed environment """
 
@@ -335,7 +371,8 @@ class TestDistributedTTL(Tester):
         self.create_ks(self.cursor1, 'ks', 2)
 
     def prepare(self, default_time_to_live=None):
-        self.cursor1.execute("DROP TABLE IF EXISTS ttl_table;")
+        if self._preserve_cluster:
+            self.cursor1.execute("DROP TABLE IF EXISTS ttl_table;")
         query = """
             CREATE TABLE ttl_table (
                 key int primary key,
