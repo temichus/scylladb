@@ -3,7 +3,7 @@ from collections import OrderedDict
 from cassandra.util import sortedset
 from cassandra.query import SimpleStatement
 from cassandra import ConsistencyLevel
-from dtest import Tester
+from dtest import Tester,canReuseCluster,freshCluster
 from tools import since
 from assertions import (
     assert_all,
@@ -15,6 +15,7 @@ from assertions import (
 
 
 @since('2.0')
+@canReuseCluster
 class TestTTL(Tester):
     """ Test Time To Live Feature """
 
@@ -26,7 +27,8 @@ class TestTTL(Tester):
         self.create_ks(self.cursor1, 'ks', 1)
 
     def prepare(self, default_time_to_live=None):
-        self.cursor1.execute("DROP TABLE IF EXISTS ttl_table;")
+        if self._preserve_cluster:
+            self.cursor1.execute("DROP TABLE IF EXISTS ttl_table;")
         query = """
             CREATE TABLE ttl_table (
                 key int primary key,
@@ -324,6 +326,7 @@ class TestTTL(Tester):
         assert_row_count(self.cursor1, 'session', 0)
 
 
+@canReuseCluster
 class TestDistributedTTL(Tester):
     """ Test Time To Live Feature in a distributed environment """
 
@@ -335,7 +338,8 @@ class TestDistributedTTL(Tester):
         self.create_ks(self.cursor1, 'ks', 2)
 
     def prepare(self, default_time_to_live=None):
-        self.cursor1.execute("DROP TABLE IF EXISTS ttl_table;")
+        if self._preserve_cluster:
+            self.cursor1.execute("DROP TABLE IF EXISTS ttl_table;")
         query = """
             CREATE TABLE ttl_table (
                 key int primary key,
