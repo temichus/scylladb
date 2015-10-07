@@ -30,5 +30,5 @@ class CQLAdditionalTests(Tester):
         res = session.execute("""
                 SELECT * FROM foobar
         """)
-        assert len(res) == 4, res
+        assert len(res) == 3, res
  
