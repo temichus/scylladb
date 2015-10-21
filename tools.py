@@ -31,8 +31,8 @@ def query_c1c2(session, key, consistency=ConsistencyLevel.QUORUM, tolerate_missi
 # work for cluster started by populate
 def new_node(cluster, bootstrap=True, token=None, remote_debug_port='2000', data_center=None):
     i = len(cluster.nodes) + 1
-    node = Node('node%s' % i,
-                cluster,
+    # Changed from from creating ccmlib.Node to using the cluster create_node method to support creation of node based on cluster type
+    node = cluster.create_node('node%s' % i,
                 bootstrap,
                 ('127.0.0.%s' % i, 9160),
                 ('127.0.0.%s' % i, 7000),
