@@ -1,5 +1,6 @@
 from __future__ import with_statement
 import os, tempfile, sys, shutil, subprocess, types, time, threading, traceback, ConfigParser, logging, re, copy
+import psutil
 
 from ccmlib.cluster import Cluster
 from ccmlib.urchin_cluster import UrchinCluster
@@ -201,6 +202,9 @@ class Tester(TestCase):
         if os.path.exists(LAST_TEST_DIR):
             os.remove(LAST_TEST_DIR)
 
+        if not self._preserve_cluster:
+           self._check_clean();
+
     def set_node_to_current_version(self, node):
         version = os.environ.get('CASSANDRA_VERSION')
         cdir = CASSANDRA_DIR
@@ -209,6 +213,15 @@ class Tester(TestCase):
             node.set_install_dir(version=version)
         else:
             node.set_install_dir(install_dir=cdir)
+
+    def _check_clean(self):
+        version = os.environ.get('CASSANDRA_VERSION')
+        cdir = CASSANDRA_DIR
+
+        if isUrchin(cdir):
+           for proc in psutil.process_iter():
+               if 'scylla' in proc.name():
+                   raise Exception("check_clean failed proc.name() exists")
 
     def setUp(self):
         global CURRENT_TEST
@@ -246,6 +259,9 @@ class Tester(TestCase):
             except IOError:
                 # after a restart, /tmp will be emptied so we'll get an IOError when loading the old cluster here
                 pass
+
+        if not self._preserve_cluster:
+           self._check_clean()
 
         self.cluster = self._get_cluster()
         if RECORD_COVERAGE:
