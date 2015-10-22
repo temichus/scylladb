@@ -203,7 +203,8 @@ class Tester(TestCase):
             os.remove(LAST_TEST_DIR)
 
         if not self._preserve_cluster:
-           self._check_clean();
+           if not self._check_clean():
+              self._force_clean()
 
     def set_node_to_current_version(self, node):
         version = os.environ.get('CASSANDRA_VERSION')
@@ -221,7 +222,18 @@ class Tester(TestCase):
         if isUrchin(cdir):
            for proc in psutil.process_iter():
                if 'scylla' in proc.name():
-                   raise Exception("check_clean failed proc.name() exists")
+                  return False
+        return True
+
+    def _force_clean(self):
+        debug("force_clean called")
+        version = os.environ.get('CASSANDRA_VERSION')
+        cdir = CASSANDRA_DIR
+
+        if isUrchin(cdir):
+           for proc in psutil.process_iter():
+               if 'scylla' in proc.name():
+                  proc.kill()
 
     def setUp(self):
         global CURRENT_TEST
@@ -261,7 +273,8 @@ class Tester(TestCase):
                 pass
 
         if not self._preserve_cluster:
-           self._check_clean()
+            if not self._check_clean():
+                self._force_clean()
 
         self.cluster = self._get_cluster()
         if RECORD_COVERAGE:
