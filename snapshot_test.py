@@ -45,7 +45,7 @@ class SnapshotTester(Tester):
 
         return tmpdir
 
-    def restore_snapshot(self, snapshot_dir, node, ks, cf):
+    def restore_snapshot_with_sstableloader(self, snapshot_dir, node, ks, cf):
         debug("Restoring snapshot....")
         snapshot_dir = os.path.join(snapshot_dir, ks, cf)
         ip = node.address()
@@ -60,12 +60,30 @@ class SnapshotTester(Tester):
                             (" ".join(args), exit_status, stdout, stderr))
 
 
+    def restore_snapshot_with_refresh(self, snapshot_dir, node, ks, cf):
+        debug("Restoring snapshot....")
+        node_dir = node.get_path()
+        restore_dir = "{node_dir}/data/{ks}/{cf}/".format(**locals())
+        if not os.path.isdir(restore_dir):
+            restore_dir = glob.glob("{node_dir}/data/{ks}/{cf}-*/".format(**locals()))[0]
+        snapshot_dir = os.path.join(snapshot_dir, ks, cf)
+        debug("Copying from %s to %s" % (str(snapshot_dir),str(restore_dir)))
+        distutils.dir_util.copy_tree(snapshot_dir, restore_dir)
+        node.nodetool("refresh %s %s" % (ks,cf))
+
+
 class TestSnapshot(SnapshotTester):
 
     def __init__(self, *args, **kwargs):
         SnapshotTester.__init__(self, *args, **kwargs)
 
-    def test_basic_snapshot_and_restore(self):
+    def test_basic_snapshot_and_restore_with_sstableloader(self):
+        self.basic_snapshot_and_restore(use_sstableloader=True)
+
+    def test_basic_snapshot_and_restore_with_refresh(self):
+        self.basic_snapshot_and_restore(use_sstableloader=False)
+
+    def basic_snapshot_and_restore(self,use_sstableloader):
         cluster = self.cluster
         cluster.populate(1).start()
         (node1,) = cluster.nodelist()
@@ -84,13 +102,17 @@ class TestSnapshot(SnapshotTester):
 
         # Drop the keyspace, make sure we have no data:
         cursor.execute('DROP KEYSPACE ks')
+        shutil.rmtree(os.path.join(node1.get_path(),'data','ks'))
         self.create_ks(cursor, 'ks', 1)
         cursor.execute('CREATE TABLE ks.cf ( key int PRIMARY KEY, val text);')
         rows = cursor.execute('SELECT count(*) from ks.cf')
         self.assertEqual(rows[0][0], 0)
 
         # Restore data from snapshot:
-        self.restore_snapshot(snapshot_dir, node1, 'ks', 'cf')
+        if use_sstableloader:
+            self.restore_snapshot_with_sstableloader(snapshot_dir, node1, 'ks', 'cf')
+        else:
+            self.restore_snapshot_with_refresh(snapshot_dir, node1, 'ks', 'cf')
         node1.nodetool('refresh ks cf')
         rows = cursor.execute('SELECT count(*) from ks.cf')
 
