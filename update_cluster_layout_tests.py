@@ -58,6 +58,12 @@ class TestUpdateClusterLayout(Tester):
                         node.watch_log_for_alive(other_node)
 
     def simple_add_node_1_test(self):
+        """
+        Test bootstrapped node streams all data
+        1. Create a cluster with a single node with rf=2, insert data
+        2. Add a new node 
+        3. Check that each node has all the data
+        """
         cluster = self.cluster
 
         # Disable hinted handoff and set batch commit log so this doesn't
@@ -90,6 +96,19 @@ class TestUpdateClusterLayout(Tester):
 
 
     def simple_add_node_2_test(self):
+        """
+        We are using the row_cache to rvalue the number of entries in each node
+        We do not yet support the nodetool cleanup operation that removes old data - yet the cache sould be cleared
+        If the cache is not cleared then if a range is returned the data will be wroung
+
+        Test bootstrapped node streams part of its data
+        1. Create a cluster with a single node with rf=1,insert data
+        2. Check the row cahe can be used as an estimator
+        3. Add a new node 
+        4. Check that all data can be read
+        5. Check that the sum of cache entires on both nodes is logical
+        """
+
         cluster = self.cluster
 
         # Disable hinted handoff and set batch commit log so this doesn't
@@ -98,45 +117,43 @@ class TestUpdateClusterLayout(Tester):
         cluster.populate(1).start()
         node1 = cluster.nodelist()[0]
 
-        cursor = self.patient_cql_connection(node1)
-        self.create_ks(cursor, 'ks', 1)
-        self.create_cf(cursor, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        cursor_node1 = self.patient_cql_connection(node1)
+        self.create_ks(cursor_node1, 'ks', 1)
+        cursor_node1.execute("""
+            CREATE TABLE ks.cf (
+                key varchar,
+                c1 text,
+                c2 text,
+                PRIMARY KEY(key)
+            ) WITH read_repair_chance = 0.0
+            AND caching = { 'keys' : 'NONE', 'rows_per_partition' : '2000' };
+        """)
 
+        node1.flush()
+        pre_insert = node1.row_cache_entries()
         # Insert 1000 keys, kill node 3, insert 1 key, restart node 3, insert 1000 more keys
         for i in xrange(0, 1000):
-            insert_c1c2(cursor, i, ConsistencyLevel.ONE)
+            insert_c1c2(cursor_node1, i, ConsistencyLevel.ONE)
 
+        node1.flush()
+        node1_cache_entries = node1.row_cache_entries() - pre_insert
+        self.assertEqual(node1_cache_entries,1000,"node1 cache %d expected 1000" % node1_cache_entries)
+ 
+        # We booted the new node and it got part of the items
         node2 = new_node(cluster)
         node2.start(wait_for_binary_proto=True)
 
-        session = self.patient_exclusive_cql_connection(node2)
+        cursor_node2 = self.patient_exclusive_cql_connection(node2)
         node1.watch_log_for_alive(node2)
         node2.watch_log_for_alive(node1)
 
-        node1.stop();
-        node2.watch_log_for_death(node1)
-        cursor_node2 = self.patient_cql_connection(node2, 'ks')
-        result_node2 = cursor_node2.execute("SELECT * FROM cf LIMIT %d" % 4000)
-        
-        self.start_all_nodes()
- 
-        node2.stop();
-        node1.watch_log_for_death(node2)
-        cursor_node1 = self.patient_cql_connection(node1, 'ks')
-        result_node1 = cursor_node1.execute("SELECT * FROM cf LIMIT %d" % 4000)
+        result = cursor_node1.execute("SELECT * FROM ks.cf")
+        self.assertEqual(len(result),1000,"expected 1000 lines got %d" % len(result))
 
-        merged_result = []
-        merged_result.update(result_node1)
-        merged_result.update(result_node2)
-        assert(len(merged_result) == 1000)
- 
-        tmp1 = []
-        tmp1.update(result_node1).intersection_update(result_node2)
-        assert(len(tmp1) == 0)
- 
-        tmp2 = []
-        tmp2.update(result_node2).intersection_update(result_node1)
-        assert(len(tmp2) == 0)
+        # We are flushing on all nodes - to update the cache (we know all fits into the cache)
+        self.cluster.flush()
 
-        
-
+        # We are checking the number of elemnts in the cache - we know some should have been removed as we moved some elements
+        node1_cache_entries = node1.row_cache_entries() - pre_insert
+        node2_cache_entries = node2.row_cache_entries()
+        self.assertEqual(node1_cache_entries + node2_cache_entries,1000, "node1 cache %d node2 cache %d expected total of 1000" % (node1_cache_entries,node2_cache_entries))
