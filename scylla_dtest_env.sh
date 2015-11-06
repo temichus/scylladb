@@ -1,4 +1,4 @@
-CCM_DIR=../urchin-ccm;
+CCM_DIR=../scylla-ccm;
 export PATH=$CCM_DIR:$PATH
 export PERL5LIB=$CCM_DIR
 export PYTHONPATH=$CCM_DIR
