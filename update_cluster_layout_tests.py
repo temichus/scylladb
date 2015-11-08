@@ -217,3 +217,46 @@ class TestUpdateClusterLayout(Tester):
         self.check_rows_on_node(node1, 2000)
         # check that node3 existed with the correct message
         node3.watch_log_for("Other bootstrapping/leaving/moving nodes detected, cannot bootstrap while cassandra.consistent.rangemovement is true")
+
+    def simple_kill_new_node_while_bootstrapping(self):
+        """
+        Test bootstrapped node streams all data
+        1. Create a cluster with a three nodes with rf=1, insert data
+        2. Add node, wait for each to start bootstrapping and kill it
+        3. Add node, wait for each to start bootstrapping and kill it
+        4. Check that the cluster returns all 
+        """
+        cluster = self.cluster
+        self.allow_log_errors = True
+
+        # Disable hinted handoff and set batch commit log so this doesn't
+        # interfer with the test (this must be after the populate)
+        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.populate(3).start()
+        node1 = cluster.nodelist()[0]
+
+        cursor = self.patient_cql_connection(node1)
+        self.create_ks(cursor, 'ks', 1)
+        self.create_cf(cursor, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+
+        # Insert 1000 keys, kill node 3, insert 1 key, restart node 3, insert 1000 more keys
+        for i in xrange(0, 1000):
+            insert_c1c2(cursor, i, ConsistencyLevel.ONE)
+
+        for i in xrange(4,6):
+            # creating an additional node without actually adding it to the cluster
+            new_node = cluster.create_node('node%s' % i,
+                    True,
+                    ('127.0.0.%s' % i, 9160),
+                    ('127.0.0.%s' % i, 7000),
+                    str(7000 + i * 100),
+                    None,
+                    None,
+                    binary_interface=('127.0.0.%s' % i, 9042))
+            new_node.start()
+            new_node.watch_log_for("Beginning stream session")
+            new_node.stop(gently=False)
+            time.sleep(10)
+
+        result = cursor.execute("SELECT * FROM cf")
+        self.assertEqual(len(result), 1000, len(result))
