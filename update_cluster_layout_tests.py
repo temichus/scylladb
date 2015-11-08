@@ -6,6 +6,8 @@ from cassandra.query import SimpleStatement
 
 from dtest import Tester
 from tools import insert_c1c2, query_c1c2, new_node
+from ccmlib.node import NodeError
+
 
 
 class TestUpdateClusterLayout(Tester):
@@ -47,7 +49,7 @@ class TestUpdateClusterLayout(Tester):
 
         for node in self.cluster.nodes.values():
             if not node.is_running():
-                node.start(wait_other_notice=True)
+                node.start(wait_other_notice=True,wait_for_binary_proto=True)
 
         for node,mark in nodes_marks:
             for other_node, _ in nodes_marks:
@@ -157,3 +159,61 @@ class TestUpdateClusterLayout(Tester):
         node1_cache_entries = node1.row_cache_entries() - pre_insert
         node2_cache_entries = node2.row_cache_entries()
         self.assertEqual(node1_cache_entries + node2_cache_entries,1000, "node1 cache %d node2 cache %d expected total of 1000" % (node1_cache_entries,node2_cache_entries))
+
+    def simple_add_two_nodes_in_parallel_test(self):
+        """
+        Test bootstrapped node streams all data
+        1. Create a cluster with a single node with rf=3, insert data
+        2. Add two nodes
+        3. Check that first added node succeeds to join the cluster and completes bootstrap
+        4. Check that the second fails with correct cause
+        """
+        cluster = self.cluster
+        self.allow_log_errors = True
+
+        # Disable hinted handoff and set batch commit log so this doesn't
+        # interfer with the test (this must be after the populate)
+        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.populate(1).start()
+        node1 = cluster.nodelist()[0]
+
+        cursor = self.patient_cql_connection(node1)
+        self.create_ks(cursor, 'ks', 3)
+        self.create_cf(cursor, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+
+        # Insert 1000 keys, kill node 3, insert 1 key, restart node 3, insert 1000 more keys
+        for i in xrange(0, 1000):
+            insert_c1c2(cursor, i, ConsistencyLevel.ONE)
+
+        node2 = new_node(cluster)
+        # creating an additional node without actually adding it to the cluster
+        i = len(cluster.nodes) + 1
+        node3 = cluster.create_node('node%s' % i,
+                True,
+                ('127.0.0.%s' % i, 9160),
+                ('127.0.0.%s' % i, 7000),
+                str(7000 + i * 100),
+                None,
+                None,
+                binary_interface=('127.0.0.%s' % i, 9042))
+
+        node2.start()
+        time.sleep(0.1)
+        try:
+            node3.start()
+        except NodeError:
+            pass
+
+        node2.watch_log_for("Starting listening for CQL clients")
+        session = self.patient_exclusive_cql_connection(node2)
+        node1.watch_log_for_alive(node2)
+        node2.watch_log_for_alive(node1)
+
+        for i in xrange(1000, 2000):
+            insert_c1c2(cursor, i, ConsistencyLevel.TWO)
+
+        # check nodes have all the data
+        self.check_rows_on_node(node2, 2000)
+        self.check_rows_on_node(node1, 2000)
+        # check that node3 existed with the correct message
+        node3.watch_log_for("Other bootstrapping/leaving/moving nodes detected, cannot bootstrap while cassandra.consistent.rangemovement is true")
