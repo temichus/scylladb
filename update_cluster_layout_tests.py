@@ -314,3 +314,31 @@ class TestUpdateClusterLayout(Tester):
 
     def simple_add_new_node_while_adding_info_2(self):
         self.simple_add_new_node_while_adding_info(2)
+
+    def simple_decomission_node_1_test(self):
+        """
+        Test bootstrapped node streams all data
+        1. Create a cluster with a single node with rf=1, insert data
+        2. Decomission one node
+        3. Check that the last node has all the data
+        """
+        cluster = self.cluster
+
+        # Disable hinted handoff and set batch commit log so this doesn't
+        # interfer with the test (this must be after the populate)
+        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.populate(2).start(wait_for_binary_proto=True,wait_other_notice=True)
+        node1,node2 = cluster.nodelist()
+
+        cursor = self.patient_cql_connection(node1)
+        self.create_ks(cursor, 'ks', 1)
+        self.create_cf(cursor, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+
+        # Insert 1000 keys, kill node 3, insert 1 key, restart node 3, insert 1000 more keys
+        for i in xrange(0, 1000):
+            insert_c1c2(cursor, i, ConsistencyLevel.ONE)
+
+        node2.decommission()
+        node2.stop()
+        # check nodes have all the data
+        self.check_rows_on_node(node1, 1000)
