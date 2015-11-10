@@ -336,3 +336,48 @@ class TestUpdateClusterLayout(Tester):
         node2.stop()
 
         self.check_rows_on_node(node1, 1000, restart=False)
+
+    def simple_kill_new_node_while_decommissioning(self):
+        """
+        Test a cedecomissioning node killed is able to rejoin the cluster with data
+        1. Create a cluster with a three nodes with rf=1, insert data
+        2. Decomission a node 
+        3. While node is decomissioning kill it
+        4. Boot the node back up
+        5. Check that the node rejoins the cluster and works correctly
+        """
+        cluster = self.cluster
+        self.allow_log_errors = True
+
+        # Disable hinted handoff and set batch commit log so this doesn't
+        # interfer with the test (this must be after the populate)
+        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.populate(3).start(wait_for_binary_proto=True,wait_other_notice=True)
+        node1,node2,node3 = cluster.nodelist()
+
+        cursor = self.patient_cql_connection(node1)
+        self.create_ks(cursor, 'ks', 1)
+        self.create_cf(cursor, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+
+        for i in xrange(0, 1000):
+            insert_c1c2(cursor, i, ConsistencyLevel.ONE)
+
+        def run():
+             try:
+                node2.decommission()
+             except Exception:
+                pass
+
+        t = threading.Thread(target=run)
+        t.setDaemon(True)
+        t.start()
+   
+        # check node2 has started decomission
+        node2.watch_log_for("Beginning stream session")
+        node2.stop(gently=False)
+
+        # starting node2 - it should reconnect and run as is
+        node2.start(wait_other_notice=True,wait_for_binary_proto=True)
+        result = cursor.execute("SELECT * FROM cf")
+        self.assertEqual(len(result), 1000, len(result))
+
