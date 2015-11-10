@@ -341,4 +341,4 @@ class TestUpdateClusterLayout(Tester):
         node2.decommission()
         node2.stop()
         # check nodes have all the data
-        self.check_rows_on_node(node1, 1000)
+        self.check_rows_on_node(node1, 1000, restart=False)
