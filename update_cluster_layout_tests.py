@@ -79,7 +79,6 @@ class TestUpdateClusterLayout(Tester):
         self.create_ks(cursor, 'ks', 2)
         self.create_cf(cursor, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
-        # Insert 1000 keys, kill node 3, insert 1 key, restart node 3, insert 1000 more keys
         for i in xrange(0, 1000):
             insert_c1c2(cursor, i, ConsistencyLevel.ONE)
 
@@ -93,7 +92,6 @@ class TestUpdateClusterLayout(Tester):
         for i in xrange(1000, 2000):
             insert_c1c2(cursor, i, ConsistencyLevel.TWO)
 
-        # check nodes have all the data
         self.check_rows_on_node(node2, 2000)
         self.check_rows_on_node(node1, 2000)
 
@@ -134,7 +132,7 @@ class TestUpdateClusterLayout(Tester):
 
         node1.flush()
         pre_insert = node1.row_cache_entries()
-        # Insert 1000 keys, kill node 3, insert 1 key, restart node 3, insert 1000 more keys
+
         for i in xrange(0, 1000):
             insert_c1c2(cursor_node1, i, ConsistencyLevel.ONE)
 
@@ -182,7 +180,6 @@ class TestUpdateClusterLayout(Tester):
         self.create_ks(cursor, 'ks', 3)
         self.create_cf(cursor, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
-        # Insert 1000 keys, kill node 3, insert 1 key, restart node 3, insert 1000 more keys
         for i in xrange(0, 1000):
             insert_c1c2(cursor, i, ConsistencyLevel.ONE)
 
@@ -213,7 +210,6 @@ class TestUpdateClusterLayout(Tester):
         for i in xrange(1000, 2000):
             insert_c1c2(cursor, i, ConsistencyLevel.TWO)
 
-        # check nodes have all the data
         self.check_rows_on_node(node2, 2000)
         self.check_rows_on_node(node1, 2000)
         # check that node3 existed with the correct message
@@ -240,7 +236,6 @@ class TestUpdateClusterLayout(Tester):
         self.create_ks(cursor, 'ks', 1)
         self.create_cf(cursor, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
-        # Insert 1000 keys, kill node 3, insert 1 key, restart node 3, insert 1000 more keys
         for i in xrange(0, 1000):
             insert_c1c2(cursor, i, ConsistencyLevel.ONE)
 
@@ -334,11 +329,10 @@ class TestUpdateClusterLayout(Tester):
         self.create_ks(cursor, 'ks', 1)
         self.create_cf(cursor, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
-        # Insert 1000 keys, kill node 3, insert 1 key, restart node 3, insert 1000 more keys
         for i in xrange(0, 1000):
             insert_c1c2(cursor, i, ConsistencyLevel.ONE)
 
         node2.decommission()
         node2.stop()
-        # check nodes have all the data
+
         self.check_rows_on_node(node1, 1000, restart=False)
