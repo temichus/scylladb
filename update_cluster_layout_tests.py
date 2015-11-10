@@ -381,3 +381,58 @@ class TestUpdateClusterLayout(Tester):
         result = cursor.execute("SELECT * FROM cf")
         self.assertEqual(len(result), 1000, len(result))
 
+    def simple_decommission_node_while_adding_info(self,rf):
+        """
+        Test bootstrapped node streams all data
+        1. Create a cluster with a three nodes with rf, insert data
+        2. Decomission node, while node is decomissioning insert data
+        3. Check that the cluster returns all
+        """
+        cluster = self.cluster
+        self.allow_log_errors = True
+        consistency = {1 : ConsistencyLevel.ONE, 2: ConsistencyLevel.TWO}[rf]
+
+        # Disable hinted handoff and set batch commit log so this doesn't
+        # interfer with the test (this must be after the populate)
+        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.populate(3).start()
+        node1,node2,node3 = cluster.nodelist()
+
+        cursor = self.patient_cql_connection(node1)
+        self.create_ks(cursor, 'ks', rf)
+        self.create_cf(cursor, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+
+        for i in xrange(0, 2000):
+            insert_c1c2(cursor, i, consistency)
+
+        event = threading.Event()
+        def run():
+             for i in xrange(2000, 4000):
+                 insert_c1c2(cursor, i, consistency)
+
+             query = SimpleStatement("SELECT * FROM cf", consistency_level=consistency)
+             result = cursor.execute(query)
+             self.assertEqual(len(result), 4000, len(result))
+
+             event.set()
+             pass
+
+        t = threading.Thread(target=run)
+        t.setDaemon(True)
+        t.start()
+
+        node2.decommission()
+
+        event.wait()
+        node2.stop()
+        query = SimpleStatement("SELECT * FROM cf", consistency_level=consistency)
+        result = cursor.execute(query)
+        self.assertEqual(len(result), 4000, len(result))
+        for k in xrange(0,4000):
+            query_c1c2(cursor, k, consistency)
+
+    def simple_decommission_node_while_adding_info_1(self):
+        self.simple_decommission_node_while_adding_info(1)
+
+    def simple_decommission_node_while_adding_info_2(self):
+        self.simple_decommission_node_while_adding_info(2)
