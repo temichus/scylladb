@@ -310,6 +310,61 @@ class TestUpdateClusterLayout(Tester):
     def simple_add_new_node_while_adding_info_2(self):
         self.simple_add_new_node_while_adding_info(2)
 
+    def simple_add_new_node_while_schema_changes(self):
+        """
+        Test bootstrapped node streams all data
+        1. Create a cluster with a three nodes with rf=1, insert data
+        2. Add node, while node is bootstrapping remove keyspace
+        3. Still while bootstrapping add a keyspace and insert data
+        4. Check that node was connected and the cluster returns all
+        """
+        cluster = self.cluster
+        self.allow_log_errors = True
+        rf = 1
+        consistency = {1 : ConsistencyLevel.ONE, 2: ConsistencyLevel.TWO}[rf]
+
+        # Disable hinted handoff and set batch commit log so this doesn't
+        # interfer with the test (this must be after the populate)
+        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.populate(3).start()
+        node1 = cluster.nodelist()[0]
+
+        cursor = self.patient_cql_connection(node1)
+        self.create_ks(cursor, 'ks', rf)
+        self.create_cf(cursor, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+
+        for i in xrange(0, 4000):
+            insert_c1c2(cursor, i, consistency)
+
+        event = threading.Event()
+        def run():
+             query = SimpleStatement("DROP KEYSPACE ks")
+             result = cursor.execute(query)
+
+             self.create_ks(cursor, 'ks1', rf)
+             self.create_cf(cursor, 'cf1', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+             for i in xrange(0, 100):
+                 insert = SimpleStatement("insert into ks1.cf1 (key,c1,c2) values ('%d','%d','%d')" % (i,i,i), consistency_level=consistency)
+                 cursor.execute(insert)
+             event.set()
+             pass
+
+        t = threading.Thread(target=run)
+        t.setDaemon(True)
+
+        node4 = new_node(cluster)
+        node4.start()
+        node4.watch_log_for("Beginning stream session")
+        t.start()
+
+        node4.watch_log_for("Starting listening for CQL clients")
+        cursor = self.patient_cql_connection(node4)
+
+        event.wait()
+        query = SimpleStatement("SELECT * FROM ks1.cf1", consistency_level=consistency)
+        result = cursor.execute(query)
+        self.assertEqual(len(result), 100, len(result))
+
     def simple_add_new_node_while_query_info(self,rf):
         """
         Test bootstrapped node streams all data
