@@ -257,7 +257,7 @@ class TestUpdateClusterLayout(Tester):
         result = cursor.execute("SELECT * FROM cf")
         self.assertEqual(len(result), 1000, len(result))
 
-    def simple_add_new_node_while_adding_info(self,rf):
+    def _simple_add_new_node_while_adding_info(self,rf):
         """
         Test bootstrapped node streams all data
         1. Create a cluster with a three nodes with rf, insert data
@@ -305,10 +305,10 @@ class TestUpdateClusterLayout(Tester):
             query_c1c2(cursor, k, consistency)
 
     def simple_add_new_node_while_adding_info_1_test(self):
-        self.simple_add_new_node_while_adding_info(1)
+        self._simple_add_new_node_while_adding_info(1)
 
     def simple_add_new_node_while_adding_info_2_test(self):
-        self.simple_add_new_node_while_adding_info(2)
+        self._simple_add_new_node_while_adding_info(2)
 
     def simple_add_new_node_while_schema_changes_test(self):
         """
@@ -365,7 +365,7 @@ class TestUpdateClusterLayout(Tester):
         result = cursor.execute(query)
         self.assertEqual(len(result), 100, len(result))
 
-    def simple_add_new_node_while_query_info(self,rf):
+    def _simple_add_new_node_while_query_info(self,rf):
         """
         Test bootstrapped node streams all data
         1. Create a cluster with a three nodes with rf, insert data
@@ -419,16 +419,16 @@ class TestUpdateClusterLayout(Tester):
         event.wait()
 
     def simple_add_new_node_while_query_info_1_test(self):
-        self.simple_add_new_node_while_query_info(1)
+        self._simple_add_new_node_while_query_info(1)
 
     def simple_add_new_node_while_query_info_2_test(self):
-        self.simple_add_new_node_while_query_info(2)
+        self._simple_add_new_node_while_query_info(2)
 
-    def simple_decomission_node_1_test(self):
+    def simple_decommission_node_1_test(self):
         """
-        Test bootstrapped node streams all data
+        Test decommissioned node streams all data
         1. Create a cluster with a single node with rf=1, insert data
-        2. Decomission one node
+        2. Decommission one node
         3. Check that the last node has all the data
         """
         cluster = self.cluster
@@ -451,12 +451,12 @@ class TestUpdateClusterLayout(Tester):
 
         self.check_rows_on_node(node1, 1000, restart=False)
 
-    def simple_kill_new_node_while_decommissioning_test(self):
+    def simple_kill_node_while_decommissioning_test(self):
         """
-        Test a cedecomissioning node killed is able to rejoin the cluster with data
+        Test a decommissioning node killed is able to rejoin the cluster with data
         1. Create a cluster with a three nodes with rf=1, insert data
-        2. Decomission a node 
-        3. While node is decomissioning kill it
+        2. Decommission a node
+        3. While node is decommissioning kill it
         4. Boot the node back up
         5. Check that the node rejoins the cluster and works correctly
         """
@@ -486,7 +486,7 @@ class TestUpdateClusterLayout(Tester):
         t.setDaemon(True)
         t.start()
    
-        # check node2 has started decomission
+        # check node2 has started decommission
         node2.watch_log_for("Beginning stream session")
         node2.stop(gently=False)
 
@@ -495,11 +495,11 @@ class TestUpdateClusterLayout(Tester):
         result = cursor.execute("SELECT * FROM cf")
         self.assertEqual(len(result), 1000, len(result))
 
-    def simple_decommission_node_while_adding_info(self,rf):
+    def _simple_decommission_node_while_adding_info(self,rf):
         """
         Test bootstrapped node streams all data
         1. Create a cluster with a three nodes with rf, insert data
-        2. Decomission node, while node is decomissioning insert data
+        2. Decommission node, while node is decommissioning insert data
         3. Check that the cluster returns all
         """
         cluster = self.cluster
@@ -546,16 +546,16 @@ class TestUpdateClusterLayout(Tester):
             query_c1c2(cursor, k, consistency)
 
     def simple_decommission_node_while_adding_info_1_test(self):
-        self.simple_decommission_node_while_adding_info(1)
+        self._simple_decommission_node_while_adding_info(1)
 
     def simple_decommission_node_while_adding_info_2_test(self):
-        self.simple_decommission_node_while_adding_info(2)
+        self._simple_decommission_node_while_adding_info(2)
 
-    def simple_decommission_node_while_query_info(self,rf):
+    def _simple_decommission_node_while_query_info(self,rf):
         """
-        Test bootstrapped node streams all data
+        Test decommissioning node streams all data
         1. Create a cluster with a three nodes with rf, insert data
-        2. Decomission node, while node is decomissioning query data
+        2. Decommission node, while node is decommissioning query data
         3. Check that the cluster returns all
         """
         cluster = self.cluster
@@ -606,7 +606,7 @@ class TestUpdateClusterLayout(Tester):
         event.wait()
 
     def simple_decommission_node_while_query_info_1_test(self):
-        self.simple_decommission_node_while_query_info(1)
+        self._simple_decommission_node_while_query_info(1)
 
     def simple_decommission_node_while_query_info_2_test(self):
-        self.simple_decommission_node_while_query_info(2)
+        self._simple_decommission_node_while_query_info(2)
