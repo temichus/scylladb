@@ -215,7 +215,7 @@ class TestUpdateClusterLayout(Tester):
         # check that node3 existed with the correct message
         node3.watch_log_for("Other bootstrapping/leaving/moving nodes detected, cannot bootstrap while cassandra.consistent.rangemovement is true")
 
-    def simple_kill_new_node_while_bootstrapping(self):
+    def simple_kill_new_node_while_bootstrapping_test(self):
         """
         Test bootstrapped node streams all data
         1. Create a cluster with a three nodes with rf=1, insert data
@@ -304,13 +304,13 @@ class TestUpdateClusterLayout(Tester):
         for k in xrange(0,4000):
             query_c1c2(cursor, k, consistency)
 
-    def simple_add_new_node_while_adding_info_1(self):
+    def simple_add_new_node_while_adding_info_1_test(self):
         self.simple_add_new_node_while_adding_info(1)
 
-    def simple_add_new_node_while_adding_info_2(self):
+    def simple_add_new_node_while_adding_info_2_test(self):
         self.simple_add_new_node_while_adding_info(2)
 
-    def simple_add_new_node_while_schema_changes(self):
+    def simple_add_new_node_while_schema_changes_test(self):
         """
         Test bootstrapped node streams all data
         1. Create a cluster with a three nodes with rf=1, insert data
@@ -418,10 +418,10 @@ class TestUpdateClusterLayout(Tester):
 
         event.wait()
 
-    def simple_add_new_node_while_query_info_1(self):
+    def simple_add_new_node_while_query_info_1_test(self):
         self.simple_add_new_node_while_query_info(1)
 
-    def simple_add_new_node_while_query_info_2(self):
+    def simple_add_new_node_while_query_info_2_test(self):
         self.simple_add_new_node_while_query_info(2)
 
     def simple_decomission_node_1_test(self):
@@ -451,7 +451,7 @@ class TestUpdateClusterLayout(Tester):
 
         self.check_rows_on_node(node1, 1000, restart=False)
 
-    def simple_kill_new_node_while_decommissioning(self):
+    def simple_kill_new_node_while_decommissioning_test(self):
         """
         Test a cedecomissioning node killed is able to rejoin the cluster with data
         1. Create a cluster with a three nodes with rf=1, insert data
@@ -545,10 +545,10 @@ class TestUpdateClusterLayout(Tester):
         for k in xrange(0,4000):
             query_c1c2(cursor, k, consistency)
 
-    def simple_decommission_node_while_adding_info_1(self):
+    def simple_decommission_node_while_adding_info_1_test(self):
         self.simple_decommission_node_while_adding_info(1)
 
-    def simple_decommission_node_while_adding_info_2(self):
+    def simple_decommission_node_while_adding_info_2_test(self):
         self.simple_decommission_node_while_adding_info(2)
 
     def simple_decommission_node_while_query_info(self,rf):
@@ -605,8 +605,8 @@ class TestUpdateClusterLayout(Tester):
 
         event.wait()
 
-    def simple_decommission_node_while_query_info_1(self):
+    def simple_decommission_node_while_query_info_1_test(self):
         self.simple_decommission_node_while_query_info(1)
 
-    def simple_decommission_node_while_query_info_2(self):
+    def simple_decommission_node_while_query_info_2_test(self):
         self.simple_decommission_node_while_query_info(2)
