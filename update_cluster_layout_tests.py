@@ -215,6 +215,41 @@ class TestUpdateClusterLayout(Tester):
         # check that node3 existed with the correct message
         node3.watch_log_for("Other bootstrapping/leaving/moving nodes detected, cannot bootstrap while cassandra.consistent.rangemovement is true")
 
+    def simple_kill_streaming_node_while_bootstrapping_test(self):
+        """
+        Test bootstrapped node streams all data
+        1. Create a cluster with a three nodes with rf=3, insert data
+        2. Add node, wait for node to start bootstrappig
+        3. Kill original cluster node while it is streaming info to the new node
+        4. Check that the new node has all data
+        """
+        cluster = self.cluster
+        self.allow_log_errors = True
+
+        # Disable hinted handoff and set batch commit log so this doesn't
+        # interfer with the test (this must be after the populate)
+        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.populate(3).start()
+        node1,node2,node3 = cluster.nodelist()
+
+        cursor = self.patient_cql_connection(node1)
+        self.create_ks(cursor, 'ks', 4)
+        self.create_cf(cursor, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+
+        for i in xrange(0, 1000):
+            insert_c1c2(cursor, i, ConsistencyLevel.THREE)
+        self.cluster.flush()
+
+        node4 = new_node(cluster)
+        node4.start()
+        node4.watch_log_for("Beginning stream session")
+
+        node2.stop()
+        time.sleep(1000)
+
+        node4.watch_log_for("Starting listening for CQL clients",timeout=60)
+        self.check_rows_on_node(node4, 1000)
+
     def simple_kill_new_node_while_bootstrapping_test(self):
         """
         Test bootstrapped node streams all data
