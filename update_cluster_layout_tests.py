@@ -245,7 +245,6 @@ class TestUpdateClusterLayout(Tester):
         node4.watch_log_for("Beginning stream session")
 
         node2.stop()
-        time.sleep(1000)
 
         node4.watch_log_for("Starting listening for CQL clients",timeout=60)
         self.check_rows_on_node(node4, 1000)
