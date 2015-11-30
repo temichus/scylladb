@@ -247,7 +247,7 @@ class CqlshCopyTest(Tester):
             if len(processed_csv) != len(processed_results):
                 warning("Different # of entries. CSV: " + str(len(processed_csv)) +
                         " vs results: " + str(len(processed_results)))
-            elif(processed_csv[0] != None):
+            elif processed_csv[0] is not None:
                 for x in range(0, len(processed_csv[0])):
                     if processed_csv[0][x] != processed_results[0][x]:
                         warning("Mismatch at index: " + str(x))

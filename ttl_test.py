@@ -1,10 +1,10 @@
 import time
 from collections import OrderedDict
-from cassandra.util import sortedset
-from cassandra.query import SimpleStatement
+
 from cassandra import ConsistencyLevel
-from dtest import Tester,canReuseCluster,freshCluster
-from tools import since
+from cassandra.query import SimpleStatement
+from cassandra.util import sortedset
+
 from assertions import (
     assert_all,
     assert_none,
@@ -12,6 +12,8 @@ from assertions import (
     assert_almost_equal,
     assert_unavailable
 )
+from dtest import Tester, canReuseCluster
+from tools import since
 
 
 @since('2.0')
@@ -246,7 +248,7 @@ class TestTTL(Tester):
             )
         """
 
-        self.prepare(default_time_to_live=10,create_table_statement=cts)
+        self.prepare(default_time_to_live=10, create_table_statement=cts)
 
         start = time.time()
         self.session1.execute("""
@@ -276,7 +278,7 @@ class TestTTL(Tester):
             )
         """
 
-        self.prepare(default_time_to_live=10,create_table_statement=cts)
+        self.prepare(default_time_to_live=10, create_table_statement=cts)
 
         start = time.time()
         self.session1.execute("""
@@ -314,7 +316,7 @@ class TestTTL(Tester):
             )
         """
 
-        self.prepare(default_time_to_live=6,create_table_statement=cts)
+        self.prepare(default_time_to_live=6, create_table_statement=cts)
 
         start = time.time()
         self.session1.execute("""
@@ -354,6 +356,7 @@ class TestTTL(Tester):
 
 @canReuseCluster
 class TestDistributedTTL(Tester):
+
     """ Test Time To Live Feature in a distributed environment """
 
     def setUp(self):

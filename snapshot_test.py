@@ -58,7 +58,6 @@ class SnapshotTester(Tester):
             raise Exception("sstableloader command '%s' failed; exit status: %d'; stdout: %s; stderr: %s" %
                             (" ".join(args), exit_status, stdout, stderr))
 
-
     def restore_snapshot_with_refresh(self, snapshot_dir, node, ks, cf):
         debug("Restoring snapshot....")
         node_dir = node.get_path()
@@ -66,9 +65,9 @@ class SnapshotTester(Tester):
         if not os.path.isdir(restore_dir):
             restore_dir = glob.glob("{node_dir}/data/{ks}/{cf}-*/".format(**locals()))[0]
         snapshot_dir = os.path.join(snapshot_dir, ks, cf)
-        debug("Copying from %s to %s" % (str(snapshot_dir),str(restore_dir)))
+        debug("Copying from %s to %s" % (str(snapshot_dir), str(restore_dir)))
         distutils.dir_util.copy_tree(snapshot_dir, restore_dir)
-        node.nodetool("refresh %s %s" % (ks,cf))
+        node.nodetool("refresh %s %s" % (ks, cf))
 
 
 class TestSnapshot(SnapshotTester):
@@ -82,7 +81,7 @@ class TestSnapshot(SnapshotTester):
     def test_basic_snapshot_and_restore_with_refresh(self):
         self.basic_snapshot_and_restore(use_sstableloader=False)
 
-    def basic_snapshot_and_restore(self,use_sstableloader):
+    def basic_snapshot_and_restore(self, use_sstableloader):
         cluster = self.cluster
         cluster.populate(1).start()
         (node1,) = cluster.nodelist()

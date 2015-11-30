@@ -44,7 +44,8 @@ class TestBatch(Tester):
             APPLY BATCH
         """)
         rows = session.execute("SELECT total FROM clicks")
-        assert [list(rows[0]), list(rows[1]), list(rows[2])] == [[1], [1], [1]], rows
+        assert [list(rows[0]), list(rows[1]), list(rows[2])] == [
+            [1], [1], [1]], rows
 
     @require('counters')
     def counter_batch_rejects_regular_mutations_test(self):
@@ -72,8 +73,8 @@ class TestBatch(Tester):
         """)
         rows = session.execute("SELECT * FROM users")
         res = sorted(rows)
-        assert [list(res[0]), list(res[1])] == [[0, u'Jack', u'Sparrow'], [1, u'Will', u'Turner']], res
-
+        assert [list(res[0]), list(res[1])] == [
+            [0, u'Jack', u'Sparrow'], [1, u'Will', u'Turner']], res
 
     @since('3.0')
     def logged_batch_gcgs_below_threshold_single_table_test(self):
@@ -95,7 +96,8 @@ class TestBatch(Tester):
                                  "involved in an atomic batch might cause batchlog entries to expire "
                                  "before being replayed.")
         debug(warning)
-        self.assertEquals(1, len(warning), "Cannot find the gc_grace_seconds warning message.")
+        self.assertEquals(
+            1, len(warning), "Cannot find the gc_grace_seconds warning message.")
 
     @since('3.0')
     def logged_batch_gcgs_below_threshold_multi_table_test(self):
@@ -122,7 +124,8 @@ class TestBatch(Tester):
                                  "involved in an atomic batch might cause batchlog entries to expire "
                                  "before being replayed.")
         debug(warning)
-        self.assertEquals(1, len(warning), "Cannot find the gc_grace_seconds warning message.")
+        self.assertEquals(
+            1, len(warning), "Cannot find the gc_grace_seconds warning message.")
 
     @since('3.0')
     def unlogged_batch_gcgs_below_threshold_should_not_print_warning_test(self):
@@ -136,9 +139,11 @@ class TestBatch(Tester):
             APPLY BATCH
         """)
         node1 = self.cluster.nodelist()[0]
-        warning = node1.grep_log("setting a too low gc_grace_seconds on tables involved in an atomic batch")
+        warning = node1.grep_log(
+            "setting a too low gc_grace_seconds on tables involved in an atomic batch")
         debug(warning)
-        self.assertEquals(0, len(warning), "Cannot find the gc_grace_seconds warning message.")
+        self.assertEquals(
+            0, len(warning), "Cannot find the gc_grace_seconds warning message.")
 
     def logged_batch_rejects_counter_mutations_test(self):
         """ Test that logged batch rejects counter mutations """
@@ -164,7 +169,8 @@ class TestBatch(Tester):
         """)
         rows = session.execute("SELECT * FROM users")
         res = sorted(rows)
-        assert [list(res[0]), list(res[1])] == [[0, u'Jack', u'Sparrow'], [2, u'Elizabeth', u'Swann']], res
+        assert [list(res[0]), list(res[1])] == [
+            [0, u'Jack', u'Sparrow'], [2, u'Elizabeth', u'Swann']], res
 
     @require('counters')
     def unlogged_batch_rejects_counter_mutations_test(self):
@@ -183,7 +189,8 @@ class TestBatch(Tester):
     def logged_batch_throws_uae_test(self):
         """ Test that logged batch throws UAE if there aren't enough live nodes """
         session = self.prepare(nodes=3)
-        [node.stop(wait_other_notice=True) for node in self.cluster.nodelist()[1:]]
+        [node.stop(wait_other_notice=True)
+         for node in self.cluster.nodelist()[1:]]
         session.consistency_level = 'ONE'
         assert_unavailable(session.execute, """
             BEGIN BATCH
@@ -220,7 +227,8 @@ class TestBatch(Tester):
     def acknowledged_by_batchlog_set_when_batchlog_write_succeeds_test(self):
         """ Test that acknowledged_by_batchlog is True if batchlog can be written """
         session = self.prepare(nodes=3, compression=False)
-        # kill one of the nodes so that batchlog will be written, but the write will fail.
+        # kill one of the nodes so that batchlog will be written, but the write
+        # will fail.
         self.cluster.nodelist()[-1].stop(gently=False)
         self.assert_timedout(session, """
             BEGIN BATCH
@@ -238,9 +246,11 @@ class TestBatch(Tester):
             INSERT INTO users (id, firstname, lastname) VALUES (1, 'Will', 'Turner')
             APPLY BATCH
         """)
-        rows = session.execute("SELECT id, writetime(firstname), writetime(lastname) FROM users")
+        rows = session.execute(
+            "SELECT id, writetime(firstname), writetime(lastname) FROM users")
         res = sorted(rows)
-        assert [list(res[0]), list(res[1])] == [[0, 1111111111111111, 1111111111111111], [1, 1111111111111111, 1111111111111111]], res
+        assert [list(res[0]), list(res[1])] == [[0, 1111111111111111, 1111111111111111], [
+            1, 1111111111111111, 1111111111111111]], res
 
     def only_one_timestamp_is_valid_test(self):
         """ Test that TIMESTAMP must not be used in the statements within the batch. """
@@ -261,16 +271,19 @@ class TestBatch(Tester):
             INSERT INTO users (id, firstname, lastname) VALUES (1, 'Will', 'Turner') USING TIMESTAMP 1111111111111112
             APPLY BATCH
         """)
-        rows = session.execute("SELECT id, writetime(firstname), writetime(lastname) FROM users")
+        rows = session.execute(
+            "SELECT id, writetime(firstname), writetime(lastname) FROM users")
         res = sorted(rows)
-        assert [list(res[0]), list(res[1])] == [[0, 1111111111111111, 1111111111111111], [1, 1111111111111112, 1111111111111112]], res
+        assert [list(res[0]), list(res[1])] == [[0, 1111111111111111, 1111111111111111], [
+            1, 1111111111111112, 1111111111111112]], res
 
     def multi_table_batch_for_10554_test(self):
         """ Test a batch on 2 tables having different columns, restarting the node afterwards, to reproduce CASSANDRA-10554 """
 
         session = self.prepare()
 
-        # prepare() adds users and clicks but clicks is a counter table, so adding a random other table for this test.
+        # prepare() adds users and clicks but clicks is a counter table, so
+        # adding a random other table for this test.
         session.execute("""
             CREATE TABLE dogs (
                 dogid int PRIMARY KEY,
@@ -348,7 +361,8 @@ class TestBatch(Tester):
         self._logged_batch_compatibility_test(2, 2, 'git:cassandra-2.1', 1)
 
     def _logged_batch_compatibility_test(self, coordinator_idx, current_nodes, previous_version, previous_nodes):
-        session = self.prepare_mixed(coordinator_idx, current_nodes, previous_version, previous_nodes)
+        session = self.prepare_mixed(
+            coordinator_idx, current_nodes, previous_version, previous_nodes)
         query = SimpleStatement("""
             BEGIN BATCH
             INSERT INTO users (id, firstname, lastname) VALUES (0, 'Jack', 'Sparrow')
@@ -358,7 +372,8 @@ class TestBatch(Tester):
         session.execute(query)
         rows = session.execute("SELECT id, firstname, lastname FROM users")
         res = sorted(rows)
-        self.assertEquals([[0, 'Jack', 'Sparrow'], [1, 'Will', 'Turner']], [list(res[0]), list(res[1])])
+        self.assertEquals(
+            [[0, 'Jack', 'Sparrow'], [1, 'Will', 'Turner']], [list(res[0]), list(res[1])])
 
     def assert_timedout(self, session, query, cl, acknowledged_by=None,
                         received_responses=None):
@@ -386,7 +401,8 @@ class TestBatch(Tester):
             if version:
                 for node in self.cluster.nodelist():
                     node.set_install_dir(version=version)
-                    debug("Set cassandra dir for {} to {}".format(node.name, node.get_install_dir()))
+                    debug("Set cassandra dir for {} to {}".format(
+                        node.name, node.get_install_dir()))
 
             self.cluster.start(wait_other_notice=True)
 
@@ -426,14 +442,17 @@ class TestBatch(Tester):
               .format(previous_nodes, previous_version, current_nodes))
 
         # start a cluster using the previous version
-        self.prepare(previous_nodes + current_nodes, compression, previous_version)
+        self.prepare(
+            previous_nodes + current_nodes, compression, previous_version)
 
-        # then upgrade the current nodes to the current version but not hte previous nodes
+        # then upgrade the current nodes to the current version but not hte
+        # previous nodes
         for i in xrange(current_nodes):
             node = self.cluster.nodelist()[i]
             self.upgrade_node(node)
 
-        session = self.patient_exclusive_cql_connection(self.cluster.nodelist()[coordinator_idx])
+        session = self.patient_exclusive_cql_connection(
+            self.cluster.nodelist()[coordinator_idx])
         session.execute('USE ks')
         return session
 
@@ -449,10 +468,12 @@ class TestBatch(Tester):
         node.stop(wait_other_notice=False)
 
         node.set_install_dir(install_dir=CASSANDRA_DIR)
-        debug("Set new cassandra dir for {}: {}".format(node.name, node.get_install_dir()))
+        debug("Set new cassandra dir for {}: {}".format(
+            node.name, node.get_install_dir()))
 
         # Restart nodes on new version
-        debug('Starting {} on new version ({})'.format(node.name, node.get_cassandra_version()))
+        debug('Starting {} on new version ({})'.format(
+            node.name, node.get_cassandra_version()))
         node.start(wait_other_notice=True, wait_for_binary_proto=True)
         debug('Upgrading sstables')
         node.nodetool('upgradesstables -a')

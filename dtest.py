@@ -184,10 +184,10 @@ class Tester(TestCase):
         if self._preserve_cluster and hasattr(self, 'cluster'):
             return self.cluster
         # we can not work /tmp
-        dtest_root = os.path.join(os.path.expanduser("~"),'.dtest')
+        dtest_root = os.path.join(os.path.expanduser("~"), '.dtest')
         if not os.path.exists(dtest_root):
-           os.makedirs(dtest_root)
-        self.test_path = tempfile.mkdtemp(dir=dtest_root,prefix='dtest-')
+            os.makedirs(dtest_root)
+        self.test_path = tempfile.mkdtemp(dir=dtest_root, prefix='dtest-')
 
         # ccm on cygwin needs absolute path to directory - it crosses from cygwin space into
         # regular Windows space on wmic calls which will otherwise break pathing
@@ -201,9 +201,9 @@ class Tester(TestCase):
             cluster = Cluster(self.test_path, name, cassandra_version=version)
         else:
             if isUrchin(cdir):
-               cluster = UrchinCluster(self.test_path, name, cassandra_dir=cdir,install_dir=cdir)
+                cluster = UrchinCluster(self.test_path, name, cassandra_dir=cdir, install_dir=cdir)
             else:
-               cluster = Cluster(self.test_path, name, cassandra_dir=cdir)
+                cluster = Cluster(self.test_path, name, cassandra_dir=cdir)
 
         if DISABLE_VNODES:
             cluster.set_configuration_options(values={'num_tokens': None})
@@ -266,8 +266,8 @@ class Tester(TestCase):
             os.remove(LAST_TEST_DIR)
 
         if not self._preserve_cluster:
-           if not self._check_clean():
-              self._force_clean()
+            if not self._check_clean():
+                self._force_clean()
 
     def set_node_to_current_version(self, node):
         version = os.environ.get('CASSANDRA_VERSION')
@@ -283,9 +283,9 @@ class Tester(TestCase):
         cdir = CASSANDRA_DIR
 
         if isUrchin(cdir):
-           for proc in psutil.process_iter():
-               if 'scylla' in proc.name():
-                  return False
+            for proc in psutil.process_iter():
+                if 'scylla' in proc.name():
+                    return False
         return True
 
     def _force_clean(self):
@@ -294,9 +294,9 @@ class Tester(TestCase):
         cdir = CASSANDRA_DIR
 
         if isUrchin(cdir):
-           for proc in psutil.process_iter():
-               if 'scylla' in proc.name():
-                  proc.kill()
+            for proc in psutil.process_iter():
+                if 'scylla' in proc.name():
+                    proc.kill()
 
     def setUp(self):
         global CURRENT_TEST
