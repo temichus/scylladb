@@ -16,6 +16,13 @@ These are instructions for setting up dtests on a fresh install of Ubuntu Linux 
 
         sudo apt-get install git
 
+* windows
+
+        python: https://www.python.org/downloads/
+        git:https://msysgit.github.io/
+        gnuwin32: http://gnuwin32.sourceforge.net/
+        apache ant: https://ant.apache.org/bindownload.cgi
+
 ## Install Oracle Java 7:
 * java and misc tools:
 
@@ -23,6 +30,8 @@ These are instructions for setting up dtests on a fresh install of Ubuntu Linux 
         sudo add-apt-repository ppa:webupd8team/java
         sudo apt-get update
         sudo apt-get install oracle-java7-installer
+
+        Windows: http://www.oracle.com/technetwork/java/javase/downloads/index.html
 
 * Ensure that java is a HotSpot 1.7.x version:
 
@@ -54,7 +63,11 @@ will often need to modify them in some fashion at some later point:
 * python-driver
 
         cd ~/git/cstar
+        Cassandra 2.x:
         sudo pip install cassandra-driver
+        Cassandra 3.x (requires latest python-driver):
+        sudo pip install git+git://github.com/datastax/python-driver@cassandra-test  # install dedicated test branch for new Cassandra features
+        sudo pip install --pre cassandra-driver  # fallback driver for new features
         For more instructions on how to install the python-driver,
         see http://datastax.github.io/python-driver/installation.html
 
@@ -73,6 +86,10 @@ will often need to modify them in some fashion at some later point:
 * nose
 
         sudo apt-get install python-nose
+
+* flaky
+
+		sudo pip install flaky
 
 * cassandra
 
@@ -104,6 +121,11 @@ will often need to modify them in some fashion at some later point:
 
          cd ~/git/cstar/cassandra-dtest
          nosetests
+
+* Run the full dtest suite, retrying tests decorated with `flaky` (see [the `flaky` plugin](https://github.com/box/flaky) for more documentation):
+
+         cd ~/git/cstar/cassandra-dtest
+         nosetests --with-flaky
 
 * Run a single dtest, printing debug info, stopping at the first error encountered (if any):
 

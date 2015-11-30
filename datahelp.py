@@ -65,14 +65,31 @@ def parse_row_into_dict(row, headers, format_funcs=None):
     return row_map
 
 
+def row_describes_data(row):
+    """
+    Returns True if this appears to be a row describing data, otherwise False.
+
+    Meant to be used in conjunction with filter to prune out those rows
+    that don't actually describe data, such as empty strings or decorations
+    that delimit headers from actual data (i.e. '+----|----|-----+')
+    """
+    if row:
+        if row.startswith('+') and row.endswith('+'):
+            return False
+
+        return True
+
+    return False
+
+
 def parse_data_into_dicts(data, format_funcs=None):
     # throw out leading/trailing space and pipes
     # so we can split on the data without getting
     # extra empty fields
     rows = map(strip, data.split('\n'))
 
-    # remove any remaining empty lines (i.e. '') from data
-    rows = filter(None, rows)
+    # remove any remaining empty/decoration lines (i.e. '') from data
+    rows = filter(row_describes_data, rows)
 
     # remove headers
     headers = parse_headers_into_list(rows.pop(0))
@@ -88,12 +105,13 @@ def parse_data_into_dicts(data, format_funcs=None):
     return values
 
 
-def create_rows(data, cursor, table_name, cl=None, format_funcs=None, prefix='', postfix=''):
+def create_rows(data, session, table_name, cl=None, format_funcs=None, prefix='', postfix=''):
     """
-    Creates db rows using given cursor, with table name provided,
+    Creates db rows using given session, with table name provided,
     using data formatted like:
 
     |colname1|colname2|
+    +--------+--------+
     |value2  |value2  |
 
     format_funcs should be a dictionary of {columnname: function} if data needs to be formatted
@@ -105,7 +123,7 @@ def create_rows(data, cursor, table_name, cl=None, format_funcs=None, prefix='',
     dicts = parse_data_into_dicts(data, format_funcs=format_funcs)
 
     # use the first dictionary to build a prepared statement for all
-    prepared = cursor.prepare(
+    prepared = session.prepare(
         "{prefix} INSERT INTO {table} ({cols}) values ({vals}) {postfix}".format(
             prefix=prefix, table=table_name, cols=', '.join(dicts[0].keys()),
             vals=', '.join('?' for k in dicts[0].keys()), postfix=postfix)
@@ -113,7 +131,7 @@ def create_rows(data, cursor, table_name, cl=None, format_funcs=None, prefix='',
     if cl is not None:
         prepared.consistency_level = cl
 
-    query_results = execute_concurrent_with_args(cursor, prepared, [d.values() for d in dicts])
+    query_results = execute_concurrent_with_args(session, prepared, [d.values() for d in dicts])
 
     for i, (status, result_or_exc) in enumerate(query_results):
         # should maybe check status here before appening to expected values

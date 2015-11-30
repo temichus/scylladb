@@ -1,15 +1,14 @@
 import csv
 import datetime
-from datetime import tzinfo, timedelta
 import random
 import time
 
-from nose.tools import assert_items_equal
-
 import cassandra
+from nose.tools import assert_items_equal
 
 
 class DummyColorMap(object):
+
     def __getitem__(self, *args):
         return ''
 
@@ -21,18 +20,18 @@ def csv_rows(filename, delimiter=None):
     reader_opts = {}
     if delimiter is not None:
         reader_opts['delimiter'] = delimiter
-    with open(filename, 'r') as csvfile:
+    with open(filename, 'rb') as csvfile:
         for row in csv.reader(csvfile, **reader_opts):
             yield row
 
 
 def strip_timezone_if_time_string(s):
     try:
-        time_string_no_tz = s[:-5]
+        time_string_no_tz = s[:19]
         time_struct = time.strptime(time_string_no_tz, '%Y-%m-%d %H:%M:%S')
         dt_no_timezone = datetime.datetime(*time_struct[:6])
         return dt_no_timezone.strftime('%Y-%m-%d %H:%M:%S')
-    except:
+    except (TypeError, ValueError):
         return s
 
 
@@ -56,10 +55,11 @@ def random_list(gen=None, n=None):
 
 
 def write_rows_to_csv(filename, data):
-    with open(filename, 'w') as csvfile:
+    with open(filename, 'wb') as csvfile:
         writer = csv.writer(csvfile)
         for row in data:
             writer.writerow(row)
+        csvfile.close
 
 
 def monkeypatch_driver():

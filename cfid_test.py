@@ -1,8 +1,7 @@
 from dtest import Tester
-from tools import since
 import os
 
-@since('2.1')
+
 class TestCFID(Tester):
 
     def cfid_test(self):
@@ -12,25 +11,25 @@ class TestCFID(Tester):
         cluster.populate(1).start(wait_other_notice=True)
         [node1] = cluster.nodelist()
 
-        cursor = self.patient_cql_connection(node1)
-        self.create_ks(cursor, 'ks', 1)
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 1)
 
         for x in range(0, 5):
-            self.create_cf(cursor, 'cf', gc_grace=0, key_type='int', columns={'c1': 'int'})
-            cursor.execute('insert into cf (key, c1) values (1,1)')
-            cursor.execute('insert into cf (key, c1) values (2,1)')
+            self.create_cf(session, 'cf', gc_grace=0, key_type='int', columns={'c1': 'int'})
+            session.execute('insert into cf (key, c1) values (1,1)')
+            session.execute('insert into cf (key, c1) values (2,1)')
             node1.flush()
-            cursor.execute('drop table ks.cf;')
+            session.execute('drop table ks.cf;')
 
-        #get a list of cf directories
+        # get a list of cf directories
         try:
             cfs = os.listdir(node1.get_path() + "/data/ks")
         except OSError:
             self.fail("Path to sstables not valid.")
 
-        #check that there are 5 unique directories
+        # check that there are 5 unique directories
         self.assertEqual(len(cfs), 5)
 
-        #check that these are in fact column family directories
+        # check that these are in fact column family directories
         for dire in cfs:
             self.assertTrue(dire[0:2] == 'cf')

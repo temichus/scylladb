@@ -1,15 +1,18 @@
 import os
 import random
-import time
+import re
+import shutil
 import subprocess
 import tempfile
-import re
-from dtest import Tester, debug
-from tools import new_node, query_c1c2, since, InterruptBootstrap
-from assertions import assert_almost_equal
-from ccmlib.node import NodeError
+import time
+
+from assertions import assert_almost_equal, assert_one
 from cassandra import ConsistencyLevel
 from cassandra.concurrent import execute_concurrent_with_args
+from ccmlib.node import NodeError
+from dtest import Tester, debug
+from tools import (InterruptBootstrap, KillOnBootstrap, new_node, query_c1c2,
+                   since)
 
 
 class TestBootstrap(Tester):
@@ -60,11 +63,11 @@ class TestBootstrap(Tester):
         initial_size = node1.data_size()
         debug("node1 size before bootstrapping node2: %s" % float(initial_size))
 
-        # Reads inserted data all during the boostrap process. We shouldn't
+        # Reads inserted data all during the bootstrap process. We shouldn't
         # get any error
         reader = self.go(lambda _: query_c1c2(session, random.randint(0, keys - 1), ConsistencyLevel.ONE))
 
-        # Boostraping a new node
+        # Bootstraping a new node
         node2 = new_node(cluster)
         node2.set_configuration_options(values={'initial_token': tokens[1]})
         node2.start(wait_for_binary_proto=True)
@@ -89,17 +92,13 @@ class TestBootstrap(Tester):
         """Test bootstrapped node sees existing data, eg. CASSANDRA-6648"""
         cluster = self.cluster
         cluster.populate(3)
-        version = cluster.version()
         cluster.start()
 
         node1 = cluster.nodes['node1']
-        if version < "2.1":
-            node1.stress(['-n', '10000'])
-        else:
-            node1.stress(['write', 'n=10000', '-rate', 'threads=8'])
+        node1.stress(['write', 'n=10000', '-rate', 'threads=8'])
 
         session = self.patient_cql_connection(node1)
-        stress_table = 'keyspace1.standard1' if self.cluster.version() >= '2.1' else '"Keyspace1"."Standard1"'
+        stress_table = 'keyspace1.standard1'
         original_rows = list(session.execute("SELECT * FROM %s" % (stress_table,)))
 
         node4 = new_node(cluster)
@@ -127,6 +126,8 @@ class TestBootstrap(Tester):
         # start bootstrapping node3 and wait for streaming
         node3 = new_node(cluster)
         node3.set_configuration_options(values={'stream_throughput_outbound_megabits_per_sec': 1})
+        # keep timeout low so that test won't hang
+        node3.set_configuration_options(values={'streaming_socket_timeout_in_ms': 1000})
         try:
             node3.start()
         except NodeError:
@@ -137,8 +138,8 @@ class TestBootstrap(Tester):
         node3.watch_log_for("Starting listening for CQL clients")
         mark = node3.mark_log()
         # check if node3 is still in bootstrap mode
-        cursor = self.exclusive_cql_connection(node3)
-        rows = cursor.execute("SELECT bootstrapped FROM system.local WHERE key='local'")
+        session = self.exclusive_cql_connection(node3)
+        rows = list(session.execute("SELECT bootstrapped FROM system.local WHERE key='local'"))
         assert len(rows) == 1
         assert rows[0][0] == 'IN_PROGRESS', rows[0][0]
         # bring back node1 and invoke nodetool bootstrap to resume bootstrapping
@@ -147,7 +148,7 @@ class TestBootstrap(Tester):
         # check if we skipped already retrieved ranges
         node3.watch_log_for("already available. Skipping streaming.")
         node3.watch_log_for("Resume complete", from_mark=mark)
-        rows = cursor.execute("SELECT bootstrapped FROM system.local WHERE key='local'")
+        rows = list(session.execute("SELECT bootstrapped FROM system.local WHERE key='local'"))
         assert rows[0][0] == 'COMPLETED', rows[0][0]
 
     @since('2.2')
@@ -155,6 +156,7 @@ class TestBootstrap(Tester):
         """Test bootstrap with resetting bootstrap progress"""
 
         cluster = self.cluster
+        cluster.set_configuration_options(values={'stream_throughput_outbound_megabits_per_sec': 1})
         cluster.populate(2).start(wait_other_notice=True)
 
         node1 = cluster.nodes['node1']
@@ -167,7 +169,6 @@ class TestBootstrap(Tester):
 
         # start bootstrapping node3 and wait for streaming
         node3 = new_node(cluster)
-        node3.set_configuration_options(values={'stream_throughput_outbound_megabits_per_sec': 1})
         try:
             node3.start()
         except NodeError:
@@ -185,8 +186,8 @@ class TestBootstrap(Tester):
         node3.watch_log_for("Listening for thrift clients...", from_mark=mark)
 
         # check if 2nd bootstrap succeeded
-        cursor = self.exclusive_cql_connection(node3)
-        rows = cursor.execute("SELECT bootstrapped FROM system.local WHERE key='local'")
+        session = self.exclusive_cql_connection(node3)
+        rows = list(session.execute("SELECT bootstrapped FROM system.local WHERE key='local'"))
         assert len(rows) == 1
         assert rows[0][0] == 'COMPLETED', rows[0][0]
 
@@ -199,17 +200,11 @@ class TestBootstrap(Tester):
         cluster.populate(2).start(wait_other_notice=True)
         (node1, node2) = cluster.nodelist()
 
-        if cluster.version() < "2.1":
-            node1.stress(['-o', 'insert', '-n', '1000', '-l', '2', '-t', '1'])
-        else:
-            node1.stress(['write', 'n=1000', '-schema', 'replication(factor=2)',
-                          '-rate', 'threads=1', '-pop', 'dist=UNIFORM(1..1000)'])
+        node1.stress(['write', 'n=1000', '-schema', 'replication(factor=2)',
+                      '-rate', 'threads=1', '-pop', 'dist=UNIFORM(1..1000)'])
 
         session = self.patient_exclusive_cql_connection(node2)
-        if cluster.version() < "2.1":
-            stress_table = '"Keyspace1"."Standard1"'
-        else:
-            stress_table = 'keyspace1.standard1'
+        stress_table = 'keyspace1.standard1'
 
         original_rows = list(session.execute("SELECT * FROM %s" % stress_table))
 
@@ -227,58 +222,48 @@ class TestBootstrap(Tester):
 
         cluster = self.cluster
         cluster.populate([1, 1])
-        version = cluster.version()
         cluster.start()
 
         node1 = cluster.nodes['node1']
-        if version < "2.1":
-            node1.stress(['-n', '2000000', '-t', '50', '-S', '100',
-                          '--replication-strategy', 'NetworkTopologyStrategy',
-                          '--strategy-properties', 'dc1:1,dc2:1'])
-        else:
-            yaml_config = """
-            # Create the keyspace and table
-            keyspace: keyspace1
-            keyspace_definition: |
-              CREATE KEYSPACE keyspace1 WITH replication = {'class': 'NetworkTopologyStrategy', 'dc1': 1, 'dc2': 1};
-            table: users
-            table_definition:
-              CREATE TABLE users (
-                username text,
-                first_name text,
-                last_name text,
-                email text,
-                PRIMARY KEY(username)
-              ) WITH compaction = {'class':'SizeTieredCompactionStrategy'};
-            insert:
-              partitions: fixed(1)
-              batchtype: UNLOGGED
-            queries:
-              read:
-                cql: select * from users where username = ?
-                fields: samerow
-            """
-            stress_config = tempfile.NamedTemporaryFile(mode='w+', delete=False)
-            stress_config.write(yaml_config)
-            stress_config.close()
-            node1.stress(['user', 'profile=' + stress_config.name, 'n=2000000',
-                          'ops(insert=1)', '-rate', 'threads=50'])
+        yaml_config = """
+        # Create the keyspace and table
+        keyspace: keyspace1
+        keyspace_definition: |
+          CREATE KEYSPACE keyspace1 WITH replication = {'class': 'NetworkTopologyStrategy', 'dc1': 1, 'dc2': 1};
+        table: users
+        table_definition:
+          CREATE TABLE users (
+            username text,
+            first_name text,
+            last_name text,
+            email text,
+            PRIMARY KEY(username)
+          ) WITH compaction = {'class':'SizeTieredCompactionStrategy'};
+        insert:
+          partitions: fixed(1)
+          batchtype: UNLOGGED
+        queries:
+          read:
+            cql: select * from users where username = ?
+            fields: samerow
+        """
+        stress_config = tempfile.NamedTemporaryFile(mode='w+', delete=False)
+        stress_config.write(yaml_config)
+        stress_config.close()
+        node1.stress(['user', 'profile=' + stress_config.name, 'n=2000000',
+                      'ops(insert=1)', '-rate', 'threads=50'])
 
         node3 = new_node(cluster, data_center='dc2')
         node3.start(no_wait=True)
         time.sleep(3)
 
         with tempfile.TemporaryFile(mode='w+') as tmpfile:
-            if version < "2.1":
-                node1.stress(['-o', 'insert', '-n', '500000', '-t', '5', '-e', 'LOCAL_QUORUM', '-K', '2'],
-                             stdout=tmpfile, stderr=subprocess.STDOUT)
-            else:
-                node1.stress(['user', 'profile=' + stress_config.name, 'ops(insert=1)',
-                              'n=500000', 'cl=LOCAL_QUORUM',
-                              '-rate', 'threads=5',
-                              '-errors', 'retries=2'],
-                             stdout=tmpfile, stderr=subprocess.STDOUT)
-                os.unlink(stress_config.name)
+            node1.stress(['user', 'profile=' + stress_config.name, 'ops(insert=1)',
+                          'n=500000', 'cl=LOCAL_QUORUM',
+                          '-rate', 'threads=5',
+                          '-errors', 'retries=2'],
+                         stdout=tmpfile, stderr=subprocess.STDOUT)
+            os.unlink(stress_config.name)
 
             tmpfile.seek(0)
             output = tmpfile.read()
@@ -287,3 +272,178 @@ class TestBootstrap(Tester):
         regex = re.compile("Operation.+error inserting key.+Exception")
         failure = regex.search(output)
         self.assertIsNone(failure, "Error during stress while bootstrapping")
+
+    def shutdown_wiped_node_cannot_join_test(self):
+        self._wiped_node_cannot_join_test(gently=True)
+
+    def killed_wiped_node_cannot_join_test(self):
+        self._wiped_node_cannot_join_test(gently=False)
+
+    def _wiped_node_cannot_join_test(self, gently):
+        """
+        @jira_ticket CASSANDRA-9765
+        Test that if we stop a node and wipe its data then the node cannot join
+        when it is not a seed. Test both a nice shutdown or a forced shutdown, via
+        the gently parameter.
+        """
+        cluster = self.cluster
+        cluster.populate(3)
+        cluster.start(wait_for_binary_proto=True)
+
+        stress_table = 'keyspace1.standard1'
+
+        # write some data
+        node1 = cluster.nodelist()[0]
+        node1.stress(['write', 'n=10000', '-rate', 'threads=8'])
+
+        session = self.patient_cql_connection(node1)
+        original_rows = list(session.execute("SELECT * FROM {}".format(stress_table,)))
+
+        # Add a new node, bootstrap=True ensures that it is not a seed
+        node2 = new_node(cluster, bootstrap=True)
+        node2.start(wait_for_binary_proto=True)
+
+        session = self.patient_cql_connection(node2)
+        self.assertEquals(original_rows, list(session.execute("SELECT * FROM {}".format(stress_table,))))
+
+        # Stop the new node and wipe its data
+        node2.stop(gently=gently)
+        data_dir = os.path.join(node2.get_path(), 'data')
+        commitlog_dir = os.path.join(node2.get_path(), 'commitlogs')
+        debug("Deleting {}".format(data_dir))
+        shutil.rmtree(data_dir)
+        shutil.rmtree(commitlog_dir)
+
+        # Now start it, it should not be allowed to join.
+        mark = node2.mark_log()
+        node2.start(no_wait=True)
+        node2.watch_log_for("A node with address /127.0.0.4 already exists, cancelling join", from_mark=mark)
+
+    def decommissioned_wiped_node_can_join_test(self):
+        """
+        @jira_ticket CASSANDRA-9765
+        Test that if we decommission a node and then wipe its data, it can join the cluster.
+        """
+        cluster = self.cluster
+        cluster.populate(3)
+        cluster.start(wait_for_binary_proto=True)
+
+        stress_table = 'keyspace1.standard1'
+
+        # write some data
+        node1 = cluster.nodelist()[0]
+        node1.stress(['write', 'n=10K', '-rate', 'threads=8'])
+
+        session = self.patient_cql_connection(node1)
+        original_rows = list(session.execute("SELECT * FROM {}".format(stress_table,)))
+
+        # Add a new node, bootstrap=True ensures that it is not a seed
+        node2 = new_node(cluster, bootstrap=True)
+        node2.start(wait_for_binary_proto=True, wait_other_notice=True)
+
+        session = self.patient_cql_connection(node2)
+        self.assertEquals(original_rows, list(session.execute("SELECT * FROM {}".format(stress_table,))))
+
+        # Decommision the new node and wipe its data
+        node2.decommission()
+        node2.stop(wait_other_notice=True)
+        data_dir = os.path.join(node2.get_path(), 'data')
+        commitlog_dir = os.path.join(node2.get_path(), 'commitlogs')
+        debug("Deleting {}".format(data_dir))
+        shutil.rmtree(data_dir)
+        shutil.rmtree(commitlog_dir)
+
+        # Now start it, it should be allowed to join
+        mark = node2.mark_log()
+        node2.start(wait_other_notice=True)
+        node2.watch_log_for("JOINING:", from_mark=mark)
+
+    def failed_bootstap_wiped_node_can_join_test(self):
+        """
+        @jira_ticket CASSANDRA-9765
+        Test that if a node fails to bootstrap, it can join the cluster even if the data is wiped.
+        """
+        cluster = self.cluster
+        cluster.populate(1)
+        cluster.start(wait_for_binary_proto=True)
+
+        stress_table = 'keyspace1.standard1'
+
+        # write some data, enough for the bootstrap to fail later on
+        node1 = cluster.nodelist()[0]
+        node1.stress(['write', 'n=100000', '-rate', 'threads=8'])
+        node1.flush()
+
+        session = self.patient_cql_connection(node1)
+        original_rows = list(session.execute("SELECT * FROM {}".format(stress_table,)))
+
+        # Add a new node, bootstrap=True ensures that it is not a seed
+        node2 = new_node(cluster, bootstrap=True)
+        node2.set_configuration_options(values={'stream_throughput_outbound_megabits_per_sec': 1})
+
+        # kill node2 in the middle of bootstrap
+        t = KillOnBootstrap(node2)
+        t.start()
+
+        node2.start()
+        t.join()
+        self.assertFalse(node2.is_running())
+
+        # wipe any data for node2
+        data_dir = os.path.join(node2.get_path(), 'data')
+        commitlog_dir = os.path.join(node2.get_path(), 'commitlogs')
+        debug("Deleting {}".format(data_dir))
+        shutil.rmtree(data_dir)
+        shutil.rmtree(commitlog_dir)
+
+        # Now start it again, it should be allowed to join
+        mark = node2.mark_log()
+        node2.start(wait_other_notice=True)
+        node2.watch_log_for("JOINING:", from_mark=mark)
+
+    @since('2.1.1')
+    def simultaneous_bootstrap_test(self):
+        """
+        Attempt to bootstrap two nodes at once, to assert the second bootstrapped node fails, and does not interfere.
+
+        Start a one node cluster and run a stress write workload.
+        Start up a second node, and wait for the first node to detect it has joined the cluster.
+        While the second node is bootstrapping, start a third node. This should fail.
+
+        @jira_ticket CASSANDRA-7069
+        @jira_ticket CASSANDRA-9484
+        """
+
+        bootstrap_error = ("Other bootstrapping/leaving/moving nodes detected,"
+                           " cannot bootstrap while cassandra.consistent.rangemovement is true")
+
+        self.ignore_log_patterns.append(bootstrap_error)
+
+        cluster = self.cluster
+        cluster.populate(1)
+        cluster.start(wait_for_binary_proto=True)
+
+        node1, = cluster.nodelist()
+
+        node1.stress(['write', 'n=500K', '-schema', 'replication(factor=1)',
+                      '-rate', 'threads=10'])
+
+        node2 = new_node(cluster)
+        node2.start(wait_other_notice=True)
+
+        node3 = new_node(cluster, remote_debug_port='2003')
+        process = node3.start()
+        stdout, stderr = process.communicate()
+        self.assertIn(bootstrap_error, stderr, msg=stderr)
+        time.sleep(.5)
+        self.assertFalse(node3.is_running(), msg="Two nodes bootstrapped simultaneously")
+
+        node2.watch_log_for("Starting listening for CQL clients")
+
+        session = self.patient_exclusive_cql_connection(node2)
+
+        # Repeat the select count(*) query, to help catch
+        # bugs like 9484, where count(*) fails at higher
+        # data loads.
+        for _ in xrange(5):
+            assert_one(session, "SELECT count(*) from keyspace1.standard1", [500000], cl=ConsistencyLevel.ONE)

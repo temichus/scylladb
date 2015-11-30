@@ -9,6 +9,7 @@ from dtest import Tester, debug
 from tools import rows_to_list
 from cassandra.util import sortedset
 
+
 class TokenGenerator(Tester):
     """
     Basic tools/bin/token-generator test.
@@ -58,7 +59,7 @@ class TokenGenerator(Tester):
     def prepare(self, randomPart=None, nodes=1):
         cluster = self.cluster
 
-        install_dir = cluster.get_install_dir();
+        install_dir = cluster.get_install_dir()
 
         generated_tokens = self.call_token_generator(install_dir, randomPart, [nodes])
 
@@ -84,16 +85,16 @@ class TokenGenerator(Tester):
         return generated_tokens, session
 
     def _token_gen_test(self, nodes, randomPart=None):
-        generated_tokens, cursor = self.prepare(randomPart, nodes=nodes)
+        generated_tokens, session = self.prepare(randomPart, nodes=nodes)
         dc_tokens = generated_tokens[0]
 
         tokens = []
-        local_tokens = rows_to_list(cursor.execute("SELECT tokens FROM system.local"))[0];
+        local_tokens = rows_to_list(session.execute("SELECT tokens FROM system.local"))[0]
         self.assertEqual(local_tokens.__len__(), 1, "too many tokens for peer")
         for tok in local_tokens:
             tokens += tok
 
-        rows = rows_to_list(cursor.execute("SELECT tokens FROM system.peers"))
+        rows = rows_to_list(session.execute("SELECT tokens FROM system.peers"))
         self.assertEqual(rows.__len__(), nodes - 1)
         for row in rows:
             peer_tokens = row[0]
@@ -134,10 +135,10 @@ class TokenGenerator(Tester):
 
     def _multi_dc_tokens(self, random=None):
         t_min = 0
-        t_max = 1<<127
+        t_max = 1 << 127
         if random is None or not random:
-            t_min = -1<<63
-            t_max = 1<<63
+            t_min = -1 << 63
+            t_max = 1 << 63
         for dc_nodes in self.dc_nodes_combinations:
             all_tokens = sortedset()
             node_count = 0
@@ -149,7 +150,7 @@ class TokenGenerator(Tester):
                 tokens = generated_tokens[n]
                 self.assertEqual(nodes, tokens.__len__())
                 for tok in tokens:
-                    self.assertTrue(t_min <= tok < t_max, "Generated token %r out of Murmur3Partitioner range %r..%r" % (tok, t_min, t_max-1))
+                    self.assertTrue(t_min <= tok < t_max, "Generated token %r out of Murmur3Partitioner range %r..%r" % (tok, t_min, t_max - 1))
                     self.assertTrue(not all_tokens.__contains__(tok), "Duplicate token %r for nodes-counts %r" % (tok, dc_nodes))
                     all_tokens.add(tok)
             self.assertEqual(all_tokens.__len__(), node_count, "Number of tokens %r and number of nodes %r does not match for %r" % (all_tokens.__len__(), node_count, dc_nodes))

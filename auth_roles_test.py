@@ -1,5 +1,8 @@
-import time, re
+import os
+import re
+import time
 
+from ccmlib.common import get_version_from_build
 from cassandra import AuthenticationFailed, Unauthorized, InvalidRequest
 from cassandra.cluster import NoHostAvailable
 from cassandra.protocol import SyntaxException
@@ -8,8 +11,8 @@ from dtest import Tester
 from assertions import assert_one, assert_all, assert_invalid
 from tools import since
 
-#Second value is superuser status
-#Third value is login status, See #7653 for explanation.
+# Second value is superuser status
+# Third value is login status, See #7653 for explanation.
 mike_role = ['mike', False, True, {}]
 role1_role = ['role1', False, False, {}]
 role2_role = ['role2', False, False, {}]
@@ -20,7 +23,12 @@ cassandra_role = ['cassandra', True, True, {}]
 class TestAuthRoles(Tester):
 
     def __init__(self, *args, **kwargs):
-        kwargs['cluster_options'] = {'enable_user_defined_functions': 'true'}
+        CASSANDRA_DIR = os.environ.get('CASSANDRA_DIR')
+        if get_version_from_build(CASSANDRA_DIR) >= '3.0':
+            kwargs['cluster_options'] = {'enable_user_defined_functions': 'true',
+                                         'enable_scripted_user_defined_functions': 'true'}
+        else:
+            kwargs['cluster_options'] = {'enable_user_defined_functions': 'true'}
         Tester.__init__(self, *args, **kwargs)
 
     def create_drop_role_test(self):
@@ -199,7 +207,6 @@ class TestAuthRoles(Tester):
         mike.execute("DROP ROLE non_superuser")
         mike.execute("DROP ROLE role1")
 
-
     def drop_role_removes_memberships_test(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -238,7 +245,7 @@ class TestAuthRoles(Tester):
 
         cassandra.execute("DROP ROLE role1")
         cassandra.execute("DROP ROLE role2")
-        assert cassandra.execute("LIST ALL PERMISSIONS OF mike") is None
+        assert len(list(cassandra.execute("LIST ALL PERMISSIONS OF mike"))) == 0
 
     def grant_revoke_roles_test(self):
         self.prepare()
@@ -325,7 +332,6 @@ class TestAuthRoles(Tester):
         assert_all(mike, "LIST ROLES", [mike_role, role1_role, role2_role])
         cassandra.execute("GRANT DESCRIBE ON ALL ROLES TO mike")
         assert_all(mike, "LIST ROLES", [cassandra_role, mike_role, role1_role, role2_role])
-
 
     def grant_revoke_permissions_test(self):
         self.prepare()
@@ -522,7 +528,7 @@ class TestAuthRoles(Tester):
                                        "LIST ALTER PERMISSION ON ROLE role1 OF role2")
         # make sure ALTER on role2 is excluded properly when OF is for another role
         cassandra.execute("CREATE ROLE role3 WITH SUPERUSER = false AND LOGIN = false")
-        assert cassandra.execute("LIST ALTER PERMISSION ON ROLE role1 OF role3") is None
+        assert len(list(cassandra.execute("LIST ALTER PERMISSION ON ROLE role1 OF role3"))) == 0
 
         # now check users can list their own permissions
         mike = self.get_session(user='mike', password='12345')
@@ -645,6 +651,40 @@ class TestAuthRoles(Tester):
 
         cassandra.execute("CREATE USER super_user WITH PASSWORD '12345' SUPERUSER")
         assert_one(cassandra, "LIST ROLES OF super_user", ["super_user", True, True, {}])
+
+    def role_name_test(self):
+        """ Simple test to verify the behaviour of quoting when creating roles & users
+        @jira_ticket CASSANDRA-10394
+        """
+        self.prepare()
+        cassandra = self.get_session(user='cassandra', password='cassandra')
+        # unquoted identifiers and unreserved keyword do not preserve case
+        # count
+        cassandra.execute("CREATE ROLE ROLE1 WITH PASSWORD = '12345' AND LOGIN = true")
+        self.assert_unauthenticated("Username and/or password are incorrect", 'ROLE1', '12345')
+        self.get_session(user='role1', password='12345')
+
+        cassandra.execute("CREATE ROLE COUNT WITH PASSWORD = '12345' AND LOGIN = true")
+        self.assert_unauthenticated("Username and/or password are incorrect", 'COUNT', '12345')
+        self.get_session(user='count', password='12345')
+
+        # string literals and quoted names do preserve case
+        cassandra.execute("CREATE ROLE 'ROLE2' WITH PASSWORD = '12345' AND LOGIN = true")
+        self.get_session(user='ROLE2', password='12345')
+        self.assert_unauthenticated("Username and/or password are incorrect", 'Role2', '12345')
+
+        cassandra.execute("""CREATE ROLE "ROLE3" WITH PASSWORD = '12345' AND LOGIN = true""")
+        self.get_session(user='ROLE3', password='12345')
+        self.assert_unauthenticated("Username and/or password are incorrect", 'Role3', '12345')
+
+        # when using legacy USER syntax, both unquoted identifiers and string literals preserve case
+        cassandra.execute("CREATE USER USER1 WITH PASSWORD '12345'")
+        self.get_session(user='USER1', password='12345')
+        self.assert_unauthenticated("Username and/or password are incorrect", 'User1', '12345')
+
+        cassandra.execute("CREATE USER 'USER2' WITH PASSWORD '12345'")
+        self.get_session(user='USER2', password='12345')
+        self.assert_unauthenticated("Username and/or password are incorrect", 'User2', '12345')
 
     def role_requires_login_privilege_to_authenticate_test(self):
         self.prepare()
@@ -1162,7 +1202,7 @@ class TestAuthRoles(Tester):
             self.cql_connection(node, user=user, password=password)
         host, error = response.exception.errors.popitem()
         pattern = 'Failed to authenticate to %s: code=0100 \[Bad credentials\] message="%s"' % (host, message)
-        assert type(error) == AuthenticationFailed, "Expected AuthenticationFailed, got %s" % type(error)
+        assert isinstance(error, AuthenticationFailed), "Expected AuthenticationFailed, got %s" % error
         assert re.search(pattern, error.message), "Expected: %s" % pattern
 
     def prepare(self, nodes=1, roles_expiry=0):
@@ -1187,10 +1227,10 @@ class TestAuthRoles(Tester):
         conn = self.patient_cql_connection(node, user=user, password=password)
         return conn
 
-    def assert_permissions_listed(self, expected, cursor, query):
-        rows = cursor.execute(query)
+    def assert_permissions_listed(self, expected, session, query):
+        rows = session.execute(query)
         perms = [(str(r.role), str(r.resource), str(r.permission)) for r in rows]
         self.assertEqual(sorted(expected), sorted(perms))
 
-    def assert_no_permissions(self, cursor, query):
-        assert cursor.execute(query) is None
+    def assert_no_permissions(self, session, query):
+        assert len(list(session.execute(query))) == 0

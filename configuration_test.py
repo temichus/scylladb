@@ -1,10 +1,9 @@
-import ast
+import re
 
 from cassandra.concurrent import execute_concurrent_with_args
 
-from dtest import Tester
+from dtest import Tester, debug
 from jmxutils import JolokiaAgent, make_mbean, remove_perf_disable_shared_mem
-from tools import debug, require
 
 
 class TestConfiguration(Tester):
@@ -15,21 +14,20 @@ class TestConfiguration(Tester):
 
         cluster.populate(1).start()
         node = cluster.nodelist()[0]
-        cursor = self.patient_cql_connection(node)
-        self.create_ks(cursor, 'ks', 1)
+        session = self.patient_cql_connection(node)
+        self.create_ks(session, 'ks', 1)
 
         create_table_query = "CREATE TABLE test_table (row varchar, name varchar, value int, PRIMARY KEY (row, name));"
         alter_chunk_len_query = "ALTER TABLE test_table WITH compression = {{'sstable_compression' : 'SnappyCompressor', 'chunk_length_kb' : {chunk_length}}};"
 
-        cursor.execute(create_table_query)
+        session.execute(create_table_query)
 
-        cursor.execute(alter_chunk_len_query.format(chunk_length=32))
-        self._check_chunk_length(cursor, 32)
+        session.execute(alter_chunk_len_query.format(chunk_length=32))
+        self._check_chunk_length(session, 32)
 
-        cursor.execute(alter_chunk_len_query.format(chunk_length=64))
-        self._check_chunk_length(cursor, 64)
+        session.execute(alter_chunk_len_query.format(chunk_length=64))
+        self._check_chunk_length(session, 64)
 
-    @require(9560)
     def change_durable_writes_test(self):
         """
         @jira_ticket CASSANDRA-9560
@@ -89,23 +87,26 @@ class TestConfiguration(Tester):
                         "AND DURABLE_WRITES = false")
         session.execute('CREATE TABLE ks.tab (key int PRIMARY KEY, a int, b int, c int)')
         session.execute('ALTER KEYSPACE ks WITH DURABLE_WRITES=true')
+        write_to_trigger_fsync(session, 'ks', 'tab')
         self.assertGreater(commitlog_size(node), init_size,
                            msg='ALTER KEYSPACE was not respected')
 
-    def _check_chunk_length(self, cursor, value):
-        describe_table_query = "SELECT * FROM system.schema_columnfamilies WHERE keyspace_name='ks' AND columnfamily_name='test_table';"
-        rows = cursor.execute(describe_table_query)
-        results = rows[0]
+    def _check_chunk_length(self, session, value):
+        result = session.cluster.metadata.keyspaces['ks'].tables['test_table'].as_cql_query()
         # Now extract the param list
         params = ''
-        for result in results:
-            if 'sstable_compression' in str(result):
+
+        if self.cluster.version() < '3.0':
+            if 'sstable_compression' in result:
+                params = result
+        else:
+            if 'compression' in result:
                 params = result
 
-        assert params is not '', "Looking for a row with the string 'sstable_compression' in system.schema_columnfamilies, but could not find it."
+        assert params is not '', "Looking for the string 'sstable_compression', but could not find it in {str}".format(str=result)
 
-        params = ast.literal_eval(params)
-        chunk_length = int(params['chunk_length_kb'])
+        chunk_string = "chunk_length_kb" if self.cluster.version() < '3.0' else "chunk_length_in_kb"
+        chunk_length = int(re.search("{chunk}.*?:.*?'(\d*?)'".format(chunk=chunk_string), result).groups()[0])
 
         assert chunk_length == value, "Expected chunk_length: %s.  We got: %s" % (value, chunk_length)
 
@@ -119,7 +120,7 @@ def write_to_trigger_fsync(session, ks, table):
     """
     execute_concurrent_with_args(session,
                                  session.prepare('INSERT INTO "{ks}"."{table}" (key, a, b, c) VALUES (?, ?, ?, ?)'.format(ks=ks, table=table)),
-                                 ((x, x+1, x+2, x+3) for x in range(50000)))
+                                 ((x, x + 1, x + 2, x + 3) for x in range(50000)))
 
 
 def commitlog_size(node):

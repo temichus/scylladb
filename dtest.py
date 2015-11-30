@@ -1,20 +1,37 @@
 from __future__ import with_statement
-import os, tempfile, sys, shutil, subprocess, types, time, threading, traceback, ConfigParser, logging, re, copy
-import psutil
 
-from ccmlib.cluster import Cluster
-from ccmlib.urchin_cluster import UrchinCluster
-from ccmlib.cluster_factory import ClusterFactory
-from ccmlib.common import is_win
-from ccmlib.common import isUrchin
-from nose.exc import SkipTest
+import ConfigParser
+import copy
+import errno
+import logging
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+import traceback
+import types
 from unittest import TestCase
-from cassandra.cluster import NoHostAvailable
-from cassandra.cluster import Cluster as PyCluster
-from cassandra.auth import PlainTextAuthProvider
-from cassandra.policies import WhiteListRoundRobinPolicy
 
-LOG_SAVED_DIR="logs"
+import psutil
+from cassandra import ConsistencyLevel
+from cassandra.auth import PlainTextAuthProvider
+from cassandra.cluster import Cluster as PyCluster
+from cassandra.cluster import NoHostAvailable
+from cassandra.policies import RetryPolicy
+from cassandra.policies import WhiteListRoundRobinPolicy
+from ccmlib.cluster import Cluster
+from ccmlib.cluster_factory import ClusterFactory
+from ccmlib.common import isUrchin
+from ccmlib.common import is_win
+from ccmlib.node import TimeoutError
+from ccmlib.urchin_cluster import UrchinCluster
+from nose.exc import SkipTest
+
+LOG_SAVED_DIR = "logs"
 try:
     os.mkdir(LOG_SAVED_DIR)
 except OSError:
@@ -22,13 +39,13 @@ except OSError:
 
 LAST_LOG = os.path.join(LOG_SAVED_DIR, "last")
 
-LAST_TEST_DIR='last_test_dir'
+LAST_TEST_DIR = 'last_test_dir'
 
-DEFAULT_DIR='./'
+DEFAULT_DIR = './'
 config = ConfigParser.RawConfigParser()
 if len(config.read(os.path.expanduser('~/.cassandra-dtest'))) > 0:
     if config.has_option('main', 'default_dir'):
-        DEFAULT_DIR=os.path.expanduser(config.get('main', 'default_dir'))
+        DEFAULT_DIR = os.path.expanduser(config.get('main', 'default_dir'))
 CASSANDRA_DIR = os.environ.get('CASSANDRA_DIR', DEFAULT_DIR)
 
 NO_SKIP = os.environ.get('SKIP', '').lower() in ('no', 'false')
@@ -43,11 +60,11 @@ NUM_TOKENS = os.environ.get('NUM_TOKENS', '256')
 RECORD_COVERAGE = os.environ.get('RECORD_COVERAGE', '').lower() in ('yes', 'true')
 REUSE_CLUSTER = os.environ.get('REUSE_CLUSTER', '').lower() in ('yes', 'true')
 SILENCE_DRIVER_ON_SHUTDOWN = os.environ.get('SILENCE_DRIVER_ON_SHUTDOWN', 'true').lower() in ('yes', 'true')
-
+IGNORE_REQUIRE = os.environ.get('IGNORE_REQUIRE', '').lower() in ('yes', 'true')
 
 CURRENT_TEST = ""
 
-logging.basicConfig(filename=os.path.join(LOG_SAVED_DIR,"dtest.log"),
+logging.basicConfig(filename=os.path.join(LOG_SAVED_DIR, "dtest.log"),
                     filemode='w',
                     format='%(asctime)s,%(msecs)d %(name)s %(current_test)s %(levelname)s %(message)s',
                     datefmt='%H:%M:%S',
@@ -59,14 +76,24 @@ logging.getLogger('cassandra').setLevel(logging.WARNING)
 
 # copy the initial environment variables so we can reset them later:
 initial_environment = copy.deepcopy(os.environ)
+
+
 def reset_environment_vars():
     os.environ.clear()
     os.environ.update(initial_environment)
 
+
+def warning(msg):
+    LOG.warning(msg, extra={"current_test": CURRENT_TEST})
+    if PRINT_DEBUG:
+        print "WARN: " + msg
+
+
 def debug(msg):
-    LOG.debug(msg, extra={"current_test":CURRENT_TEST})
+    LOG.debug(msg, extra={"current_test": CURRENT_TEST})
     if PRINT_DEBUG:
         print msg
+
 
 def retry_till_success(fun, *args, **kwargs):
     timeout = kwargs.pop('timeout', 60)
@@ -83,10 +110,36 @@ def retry_till_success(fun, *args, **kwargs):
                 # brief pause before next attempt
                 time.sleep(0.25)
 
-def is_win():
-    return True if sys.platform == "cygwin" or sys.platform == "win32" else False
+
+class FlakyRetryPolicy(RetryPolicy):
+    """
+    A retry policy that retries 5 times
+    """
+
+    def on_read_timeout(self, *args, **kwargs):
+        if kwargs['retry_num'] < 5:
+            debug("Retrying read after timeout. Attempt #" + str(kwargs['retry_num']))
+            return (self.RETRY, None)
+        else:
+            return (self.RETHROW, None)
+
+    def on_write_timeout(self, *args, **kwargs):
+        if kwargs['retry_num'] < 5:
+            debug("Retrying write after timeout. Attempt #" + str(kwargs['retry_num']))
+            return (self.RETRY, None)
+        else:
+            return (self.RETHROW, None)
+
+    def on_unavailable(self, *args, **kwargs):
+        if kwargs['retry_num'] < 5:
+            debug("Retrying request after UE. Attempt #" + str(kwargs['retry_num']))
+            return (self.RETRY, None)
+        else:
+            return (self.RETHROW, None)
+
 
 class Runner(threading.Thread):
+
     def __init__(self, func):
         threading.Thread.__init__(self)
         self.__func = func
@@ -139,8 +192,8 @@ class Tester(TestCase):
         # ccm on cygwin needs absolute path to directory - it crosses from cygwin space into
         # regular Windows space on wmic calls which will otherwise break pathing
         if sys.platform == "cygwin":
-            self.test_path = subprocess.Popen(["cygpath", "-m", self.test_path], stdout = subprocess.PIPE, stderr = subprocess.STDOUT).communicate()[0].rstrip()
-        debug("cluster ccm directory: "+self.test_path)
+            self.test_path = subprocess.Popen(["cygpath", "-m", self.test_path], stdout=subprocess.PIPE, stderr=subprocess.STDOUT).communicate()[0].rstrip()
+        debug("cluster ccm directory: " + self.test_path)
         version = os.environ.get('CASSANDRA_VERSION')
         cdir = CASSANDRA_DIR
 
@@ -157,9 +210,8 @@ class Tester(TestCase):
         else:
             cluster.set_configuration_options(values={'initial_token': None, 'num_tokens': NUM_TOKENS})
 
-        if cluster.version() >= "2.1":
-            if OFFHEAP_MEMTABLES:
-                cluster.set_configuration_options(values={'memtable_allocation_type': 'offheap_objects'})
+        if OFFHEAP_MEMTABLES:
+            cluster.set_configuration_options(values={'memtable_allocation_type': 'offheap_objects'})
 
         return cluster
 
@@ -198,6 +250,17 @@ class Tester(TestCase):
             # Cleanup everything:
             debug("removing ccm cluster " + self.cluster.name + " at: " + self.test_path)
             self.cluster.remove()
+
+            debug("clearing ssl stores from [{0}] directory".format(self.test_path))
+            for filename in ('keystore.jks', 'truststore.jks', 'ccm_node.cer'):
+                try:
+                    os.remove(os.path.join(self.test_path, filename))
+                except OSError as e:
+                    # once we port to py3, which has better reporting for exceptions raised while
+                    # handling other excpetions, we should just assert e.errno == errno.ENOENT
+                    if e.errno != errno.ENOENT:  # ENOENT = no such file or directory
+                        raise
+
             os.rmdir(self.test_path)
         if os.path.exists(LAST_TEST_DIR):
             os.remove(LAST_TEST_DIR)
@@ -287,11 +350,11 @@ class Tester(TestCase):
             self.cluster.set_configuration_options(values=self.cluster_options)
         else:
             self.cluster.set_configuration_options(values={
-                'read_request_timeout_in_ms' : timeout,
-                'range_request_timeout_in_ms' : timeout,
-                'write_request_timeout_in_ms' : timeout,
-                'truncate_request_timeout_in_ms' : timeout,
-                'request_timeout_in_ms' : timeout
+                'read_request_timeout_in_ms': timeout,
+                'range_request_timeout_in_ms': timeout,
+                'write_request_timeout_in_ms': timeout,
+                'truncate_request_timeout_in_ms': timeout,
+                'request_timeout_in_ms': timeout
             })
 
         with open(LAST_TEST_DIR, 'w') as f:
@@ -312,43 +375,59 @@ class Tester(TestCase):
             name = os.path.join(directory, name)
         if not os.path.exists(directory):
             os.mkdir(directory)
-        logs = [ (node.name, node.logfilename()) for node in self.cluster.nodes.values() ]
+        logs = [(node.name, node.logfilename(), node.debuglogfilename()) for node in self.cluster.nodes.values()]
         if len(logs) is not 0:
             basedir = str(int(time.time() * 1000)) + '_' + self.id()
             logdir = os.path.join(directory, basedir)
             os.mkdir(logdir)
-            for n, log in logs:
-                shutil.copyfile(log, os.path.join(logdir, n + ".log"))
+            for n, log, debuglog in logs:
+                if os.path.exists(log):
+                    shutil.copyfile(log, os.path.join(logdir, n + ".log"))
+                if os.path.exists(debuglog):
+                    shutil.copyfile(debuglog, os.path.join(logdir, n + "_debug.log"))
             if os.path.exists(name):
                 os.unlink(name)
             if not is_win():
                 os.symlink(basedir, name)
 
+    def get_eager_protocol_version(self, cassandra_version):
+        """
+        Returns the highest protocol version accepted
+        by the given C* version
+        """
+        if cassandra_version >= '2.2':
+            protocol_version = 4
+        elif cassandra_version >= '2.1':
+            protocol_version = 3
+        elif cassandra_version >= '2.0':
+            protocol_version = 2
+        else:
+            protocol_version = 1
+        return protocol_version
+
     def cql_connection(self, node, keyspace=None, user=None,
-                       password=None, compression=True, protocol_version=None):
+                       password=None, compression=True, protocol_version=None, port=None, ssl_opts=None):
 
         return self._create_session(node, keyspace, user, password, compression,
-                                    protocol_version)
+                                    protocol_version, port=port, ssl_opts=ssl_opts)
 
     def exclusive_cql_connection(self, node, keyspace=None, user=None,
-                                 password=None, compression=True, protocol_version=None):
+                                 password=None, compression=True, protocol_version=None, port=None, ssl_opts=None):
 
         node_ip = self.get_ip_from_node(node)
         wlrr = WhiteListRoundRobinPolicy([node_ip])
 
         return self._create_session(node, keyspace, user, password, compression,
-                                    protocol_version, wlrr)
+                                    protocol_version, wlrr, port=port, ssl_opts=ssl_opts)
 
-    def _create_session(self, node, keyspace, user, password, compression, protocol_version, load_balancing_policy=None):
+    def _create_session(self, node, keyspace, user, password, compression, protocol_version, load_balancing_policy=None,
+                        port=None, ssl_opts=None):
         node_ip = self.get_ip_from_node(node)
+        if not port:
+            port = self.get_port_from_node(node)
 
         if protocol_version is None:
-            if self.cluster.version() >= '2.1':
-                protocol_version = 3
-            elif self.cluster.version() >= '2.0':
-                protocol_version = 2
-            else:
-                protocol_version = 1
+            protocol_version = self.get_eager_protocol_version(self.cluster.version())
 
         if user is not None:
             auth_provider = self.get_auth_provider(user=user, password=password)
@@ -356,7 +435,8 @@ class Tester(TestCase):
             auth_provider = None
 
         cluster = PyCluster([node_ip], auth_provider=auth_provider, compression=compression,
-                            protocol_version=protocol_version, load_balancing_policy=load_balancing_policy)
+                            protocol_version=protocol_version, load_balancing_policy=load_balancing_policy, default_retry_policy=FlakyRetryPolicy(),
+                            port=port, ssl_options=ssl_opts, connect_timeout=10)
         session = cluster.connect()
 
         # temporarily increase client-side timeout to 1m to determine
@@ -366,19 +446,22 @@ class Tester(TestCase):
         if keyspace is not None:
             session.set_keyspace(keyspace)
 
+        # override driver default consistency level of LOCAL_QUORUM
+        session.default_consistency_level = ConsistencyLevel.ONE
+
         self.connections.append(session)
         return session
 
     def patient_cql_connection(self, node, keyspace=None,
-        user=None, password=None, timeout=10, compression=True,
-        protocol_version=None):
+                               user=None, password=None, timeout=30, compression=True,
+                               protocol_version=None, port=None, ssl_opts=None):
         """
         Returns a connection after it stops throwing NoHostAvailables due to not being ready.
 
         If the timeout is exceeded, the exception is raised.
         """
         if is_win():
-            timeout = timeout * 5
+            timeout *= 2
 
         return retry_till_success(
             self.cql_connection,
@@ -389,19 +472,21 @@ class Tester(TestCase):
             timeout=timeout,
             compression=compression,
             protocol_version=protocol_version,
+            port=port,
+            ssl_opts=ssl_opts,
             bypassed_exception=NoHostAvailable
         )
 
     def patient_exclusive_cql_connection(self, node, keyspace=None,
-        user=None, password=None, timeout=10, compression=True,
-        protocol_version=None):
+                                         user=None, password=None, timeout=30, compression=True,
+                                         protocol_version=None, port=None, ssl_opts=None):
         """
         Returns a connection after it stops throwing NoHostAvailables due to not being ready.
 
         If the timeout is exceeded, the exception is raised.
         """
         if is_win():
-            timeout = timeout * 5
+            timeout *= 2
 
         return retry_till_success(
             self.exclusive_cql_connection,
@@ -412,6 +497,8 @@ class Tester(TestCase):
             timeout=timeout,
             compression=compression,
             protocol_version=protocol_version,
+            port=port,
+            ssl_opts=ssl_opts,
             bypassed_exception=NoHostAvailable
         )
 
@@ -423,7 +510,7 @@ class Tester(TestCase):
         else:
             assert len(rf) != 0, "At least one datacenter/rf pair is needed"
             # we assume networkTopolyStrategy
-            options = (', ').join([ '\'%s\':%d' % (d, r) for d, r in rf.iteritems() ])
+            options = (', ').join(['\'%s\':%d' % (d, r) for d, r in rf.iteritems()])
             session.execute(query % (name, "'class':'NetworkTopologyStrategy', %s" % options))
         session.execute('USE %s' % name)
 
@@ -451,16 +538,14 @@ class Tester(TestCase):
             query = '%s AND read_repair_chance=%f' % (query, read_repair)
         if gc_grace is not None:
             query = '%s AND gc_grace_seconds=%d' % (query, gc_grace)
-        if self.cluster.version() >= "2.0":
-            if speculative_retry is not None:
-                query = '%s AND speculative_retry=\'%s\'' % (query, speculative_retry)
+        if speculative_retry is not None:
+            query = '%s AND speculative_retry=\'%s\'' % (query, speculative_retry)
 
         if compact_storage:
             query += ' AND COMPACT STORAGE'
 
         session.execute(query)
         time.sleep(0.2)
-
 
     @classmethod
     def tearDownClass(cls):
@@ -501,9 +586,9 @@ class Tester(TestCase):
         failed = sys.exc_info() != (None, None, None)
         try:
             for node in self.cluster.nodelist():
-                if self.allow_log_errors == False:
+                if not self.allow_log_errors:
                     errors = list(self.__filter_errors(
-                        [' '.join(msg) for msg in node.grep_log_for_errors()]))
+                        ['\n'.join(msg) for msg in node.grep_log_for_errors()]))
                     if len(errors) is not 0:
                         failed = True
                         raise AssertionError('Unexpected error in %s node log: %s' % (node.name, errors))
@@ -513,7 +598,7 @@ class Tester(TestCase):
                     # means the test failed. Save the logs for inspection.
                     self.copy_logs()
             except Exception as e:
-                    print "Error saving log:", str(e)
+                print "Error saving log:", str(e)
             finally:
                 if not self._preserve_cluster:
                     self._cleanup_cluster()
@@ -542,10 +627,10 @@ class Tester(TestCase):
         if os.path.isfile(agent_location):
             debug("Jacoco agent found at {}".format(agent_location))
             with open(os.path.join(
-                    self.test_path, cluster_name, 'cassandra.in.sh'),'w') as f:
+                    self.test_path, cluster_name, 'cassandra.in.sh'), 'w') as f:
 
-                f.write('JVM_OPTS="$JVM_OPTS -javaagent:{jar_path}=destfile={exec_file}"'\
-                    .format(jar_path=agent_location, exec_file=jacoco_execfile))
+                f.write('JVM_OPTS="$JVM_OPTS -javaagent:{jar_path}=destfile={exec_file}"'
+                        .format(jar_path=agent_location, exec_file=jacoco_execfile))
 
                 if os.path.isfile(jacoco_execfile):
                     debug("Jacoco execfile found at {}, execution data will be appended".format(jacoco_execfile))
@@ -572,20 +657,52 @@ class Tester(TestCase):
             node_ip = node.network_interfaces['thrift'][0]
         return node_ip
 
+    def get_port_from_node(self, node):
+        """
+        Return the port that this node is listening on.
+        We only use this to connect the native driver,
+        so we only care about the binary port.
+        """
+        try:
+            return node.network_interfaces['binary'][1]
+        except Exception:
+            raise RuntimeError("No network interface defined on this node object. {}".format(node.network_interfaces))
+
     def get_auth_provider(self, user, password):
-        if self.cluster.version() >= '2.0':
-            return PlainTextAuthProvider(username=user, password=password)
-        else:
-            return self.make_auth(user, password)
+        return PlainTextAuthProvider(username=user, password=password)
 
     def make_auth(self, user, password):
         def private_auth(node_ip):
-            return {'username': user, 'password' : password}
+            return {'username': user, 'password': password}
         return private_auth
 
     # Disable docstrings printing in nosetest output
     def shortDescription(self):
         return None
+
+    def wait_for_any_log(self, nodes, pattern, timeout):
+        """
+        Look for a pattern in the system.log of any in a given list
+        of nodes.
+        :param nodes: The list of nodes whose logs to scan
+        :param pattern: The target pattern
+        :param timeout: How long to wait for the pattern. Note that
+                        strictly speaking, timeout is not really a timeout,
+                        but a maximum number of attempts. This implies that
+                        the all the grepping takes no time at all, so it is
+                        somewhat inaccurate, but probably close enough.
+        :return: The first node in whose log the pattern was found
+        """
+        for _ in range(timeout):
+            for node in nodes:
+                found = node.grep_log(pattern)
+                if found:
+                    return node
+            time.sleep(1)
+
+        raise TimeoutError(time.strftime("%d %b %Y %H:%M:%S", time.gmtime()) +
+                           " Unable to find :" + pattern + " in any node log within " + str(timeout) + "s")
+
 
 def canReuseCluster(Tester):
     orig_init = Tester.__init__
@@ -593,9 +710,9 @@ def canReuseCluster(Tester):
 
     def __init__(self, *args, **kwargs):
         self._preserve_cluster = REUSE_CLUSTER
-        orig_init(self, *args, **kwargs) # call the original __init__
+        orig_init(self, *args, **kwargs)  # call the original __init__
 
-    Tester.__init__ = __init__ # set the class' __init__ to the new one
+    Tester.__init__ = __init__  # set the class' __init__ to the new one
     return Tester
 
 
@@ -615,6 +732,7 @@ class MultiError(Exception):
     """
     Extends Exception to provide reporting multiple exceptions at once.
     """
+
     def __init__(self, exceptions, tracebacks):
         # an exception and the corresponding traceback should be found at the same
         # position in their respective lists, otherwise __str__ will be incorrect

@@ -100,7 +100,7 @@ def build_doc_context(tester, test_name, prepare=True, connection=None, nodes=No
         # unless the stream is opened in binary mode. It's cleaner just to
         # patch that up here so subsequent doctest comparisons to <BLANKLINE>
         # pass, as they'll fail on Windows w/whitespace + ^M (CRLF)
-        if is_win():
+        if is_win() and output:
             output = re.sub(os.linesep, '\n', output)
 
         if output:
@@ -111,6 +111,13 @@ def build_doc_context(tester, test_name, prepare=True, connection=None, nodes=No
         Run cqlsh commands expecting error.
         """
         output, err = _cqlsh(cmds)
+
+        # python coerces LF to OS-specific line-endings on print or write calls
+        # unless the stream is opened in binary mode. It's cleaner just to
+        # patch that up here so subsequent doctest comparisons to <BLANKLINE>
+        # pass, as they'll fail on Windows w/whitespace + ^M (CRLF)
+        if is_win() and output:
+            err = re.sub(os.linesep, '\n', err)
 
         if not err:
             raise RuntimeError("Expected cqlsh error but none occurred!")
@@ -141,7 +148,7 @@ def build_doc_context(tester, test_name, prepare=True, connection=None, nodes=No
     }
 
 
-def run_func_docstring(tester, test_func, globs=None, verbose=False, compileflags=None, optionflags=doctest.ELLIPSIS):
+def run_func_docstring(tester, test_func, globs=None, verbose=False, compileflags=None, optionflags=doctest.ELLIPSIS | doctest.NORMALIZE_WHITESPACE):
     """
     Similar to doctest.run_docstring_examples, but takes a single function/bound method,
     extracts it's singular docstring (no looking for subobjects with tests),
@@ -182,6 +189,7 @@ class ToJsonSelectTests(Tester):
     """
     Tests using toJson with a SELECT statement
     """
+
     def basic_data_types_test(self):
         """
         Create our schema:
@@ -441,6 +449,7 @@ class FromJsonUpdateTests(Tester):
     """
     Tests using fromJson within UPDATE statements.
     """
+
     def basic_data_types_test(self):
         """
         Create a table with the primitive types:
@@ -741,6 +750,7 @@ class FromJsonSelectTests(Tester):
     """
     Tests using fromJson in conjunction with a SELECT statement
     """
+
     def selecting_pkey_as_json_test(self):
         """
         Schema setup:
@@ -822,6 +832,7 @@ class FromJsonInsertTests(Tester):
     """
     Tests using fromJson within INSERT statements.
     """
+
     def basic_data_types_test(self):
         """
         Create a table with the primitive types:
@@ -1044,6 +1055,7 @@ class FromJsonDeleteTests(Tester):
     """
     Tests using fromJson within DELETE statements.
     """
+
     def delete_using_pkey_json_test(self):
         """
         Schema setup:
@@ -1094,6 +1106,10 @@ class FromJsonDeleteTests(Tester):
             <BLANKLINE>
             (1 rows)
             <BLANKLINE>
+            Warnings :
+            Aggregation query used without partition key
+            <BLANKLINE>
+            <BLANKLINE>
         """
         run_func_docstring(tester=self, test_func=self.delete_using_pkey_json_test)
 
@@ -1103,6 +1119,7 @@ class JsonFullRowInsertSelect(Tester):
     """
     Tests for creating full rows from json documents, selecting full rows back as json documents, and related functionality.
     """
+
     def simple_schema_test(self):
         """
         Create schema:

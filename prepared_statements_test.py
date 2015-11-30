@@ -1,6 +1,5 @@
 from dtest import Tester
 from cassandra import InvalidRequest
-from tools import since
 
 KEYSPACE = "foo"
 
@@ -10,7 +9,6 @@ class TestPreparedStatements(Tester):
     Tests for pushed native protocol notification from Cassandra.
     """
 
-    @since('2.1')
     def dropped_index_test(self):
         """
         Prepared statements using dropped indexes should be handled correctly
@@ -34,7 +32,7 @@ class TestPreparedStatements(Tester):
             session.execute(insert_statement, (i, 0))
 
         query_statement = session.prepare("SELECT * FROM mytable WHERE b=?")
-        print "Number of matching rows:", len(session.execute(query_statement, (0,)))
+        print "Number of matching rows:", len(list(session.execute(query_statement, (0,))))
 
         session.execute("DROP INDEX bindex")
 

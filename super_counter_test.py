@@ -1,11 +1,10 @@
 import time
 
 from dtest import Tester, debug
-
 from thrift_tests import get_thrift_client
 
 from cql.cassandra.ttypes import CfDef, ColumnParent, CounterColumn, \
-        ConsistencyLevel, ColumnPath
+    ConsistencyLevel, ColumnPath
 
 
 class TestSuperCounterClusterRestart(Tester):
@@ -13,6 +12,7 @@ class TestSuperCounterClusterRestart(Tester):
     This test is part of this issue:
     https://issues.apache.org/jira/browse/CASSANDRA-3821
     """
+
     def __init__(self, *args, **kwargs):
         kwargs['cluster_options'] = {'start_rpc': 'true'}
         Tester.__init__(self, *args, **kwargs)
@@ -26,8 +26,8 @@ class TestSuperCounterClusterRestart(Tester):
         node1 = cluster.nodelist()[0]
 
         time.sleep(.5)
-        cursor = self.patient_cql_connection(node1)
-        self.create_ks(cursor, 'ks', 3)
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 3)
         time.sleep(1)  # wait for propagation
 
         # create the columnfamily using thrift
@@ -36,7 +36,7 @@ class TestSuperCounterClusterRestart(Tester):
         thrift_conn.transport.open()
         thrift_conn.set_keyspace('ks')
         cf_def = CfDef(keyspace='ks', name='cf', column_type='Super',
-                default_validation_class='CounterColumnType')
+                       default_validation_class='CounterColumnType')
         thrift_conn.system_add_column_family(cf_def)
 
         # let the sediment settle to to the bottom before drinking...
@@ -45,11 +45,12 @@ class TestSuperCounterClusterRestart(Tester):
         for subcol in xrange(NUM_SUBCOLS):
             for add in xrange(NUM_ADDS):
                 column_parent = ColumnParent(column_family='cf',
-                        super_column='subcol_%d' % subcol)
+                                             super_column='subcol_%d' % subcol)
                 counter_column = CounterColumn('col_0', 1)
                 thrift_conn.add('row_0', column_parent, counter_column,
-                        ConsistencyLevel.QUORUM)
+                                ConsistencyLevel.QUORUM)
         time.sleep(1)
+        cluster.flush()
 
         debug("Stopping cluster")
         cluster.stop()
@@ -66,9 +67,9 @@ class TestSuperCounterClusterRestart(Tester):
 
         for i in xrange(NUM_SUBCOLS):
             column_path = ColumnPath(column_family='cf', column='col_0',
-                    super_column='subcol_%d' % i)
+                                     super_column='subcol_%d' % i)
             column_or_super_column = thrift_conn.get('row_0', column_path,
-                    ConsistencyLevel.QUORUM)
+                                                     ConsistencyLevel.QUORUM)
             val = column_or_super_column.counter_column.value
             debug(str(val)),
             from_db.append(val)
