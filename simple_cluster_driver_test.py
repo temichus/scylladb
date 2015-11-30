@@ -2,14 +2,14 @@ import time
 
 from cassandra import Unavailable, ConsistencyLevel
 from cassandra.query import SimpleStatement
-from ccmlib.urchin_cluster import UrchinCluster
+from ccmlib.scylla_cluster import ScyllaCluster
 
 from dtest import Tester, debug, freshCluster
 
 
 class TestSimpleCluster(Tester):
 
-    __urchin_args__ = []
+    __scylla_args__ = []
 
     def __init__(self, *args, **kwargs):
         Tester.__init__(self, *args, **kwargs)
@@ -25,8 +25,8 @@ class TestSimpleCluster(Tester):
     def simple_create_insert_select_test(self):
         cluster = self.prepare()
         jvm_args = []
-        if type(cluster) is UrchinCluster:
-            jvm_args = self.__urchin_args__
+        if type(cluster) is ScyllaCluster:
+            jvm_args = self.__scylla_args__
         cluster.populate(3).start(jvm_args=jvm_args)
         time.sleep(3)
         node1, node2, node3 = cluster.nodelist()
@@ -129,8 +129,8 @@ class TestSimpleCluster(Tester):
     def prepare_cluster(self, ks_rf):
         cluster = self.prepare()
         jvm_args = []
-        if type(cluster) is UrchinCluster:
-            jvm_args = self.__urchin_args__
+        if type(cluster) is ScyllaCluster:
+            jvm_args = self.__scylla_args__
         cluster.populate(3).start(jvm_args=jvm_args)
         time.sleep(3)
         node1, node2, node3 = cluster.nodelist()

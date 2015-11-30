@@ -1,7 +1,7 @@
 import subprocess
 import tempfile
 
-from ccmlib.urchin_cluster import UrchinCluster
+from ccmlib.scylla_cluster import ScyllaCluster
 
 from dtest import Tester, debug
 
@@ -9,7 +9,7 @@ from dtest import Tester, debug
 class TestSimple(Tester):
 
     __test__ = False
-    __urchin_args__ = []
+    __scylla_args__ = []
 
     def __init__(self, *args, **kwargs):
         Tester.__init__(self, *args, **kwargs)
@@ -71,8 +71,8 @@ class TestSimple(Tester):
         """
         cluster = self.prepare()
         jvm_args = []
-        if type(cluster) is UrchinCluster:
-            jvm_args = self.__urchin_args__
+        if type(cluster) is ScyllaCluster:
+            jvm_args = self.__scylla_args__
         cluster.populate(1).start(jvm_args=jvm_args)
         node1 = cluster.nodelist()[0]
         self.stress_write(node1)
@@ -84,4 +84,4 @@ options = {'Single': ['--smp', '1'], 'SMP': ['--smp', '2']}
 
 for option in options.keys():
     cls_name = ('SimpleNoDriverTest_with_' + option)
-    vars()[cls_name] = type(cls_name, (TestSimple,), {'__urchin_args__': options[option], '__test__': True})
+    vars()[cls_name] = type(cls_name, (TestSimple,), {'__scylla_args__': options[option], '__test__': True})

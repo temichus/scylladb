@@ -25,10 +25,10 @@ from cassandra.policies import RetryPolicy
 from cassandra.policies import WhiteListRoundRobinPolicy
 from ccmlib.cluster import Cluster
 from ccmlib.cluster_factory import ClusterFactory
-from ccmlib.common import isUrchin
+from ccmlib.common import isScylla
 from ccmlib.common import is_win
 from ccmlib.node import TimeoutError
-from ccmlib.urchin_cluster import UrchinCluster
+from ccmlib.scylla_cluster import ScyllaCluster
 from nose.exc import SkipTest
 
 LOG_SAVED_DIR = "logs"
@@ -200,8 +200,8 @@ class Tester(TestCase):
         if version:
             cluster = Cluster(self.test_path, name, cassandra_version=version)
         else:
-            if isUrchin(cdir):
-                cluster = UrchinCluster(self.test_path, name, cassandra_dir=cdir, install_dir=cdir)
+            if isScylla(cdir):
+                cluster = ScyllaCluster(self.test_path, name, cassandra_dir=cdir, install_dir=cdir)
             else:
                 cluster = Cluster(self.test_path, name, cassandra_dir=cdir)
 
@@ -282,7 +282,7 @@ class Tester(TestCase):
         version = os.environ.get('CASSANDRA_VERSION')
         cdir = CASSANDRA_DIR
 
-        if isUrchin(cdir):
+        if isScylla(cdir):
             for proc in psutil.process_iter():
                 if 'scylla' in proc.name():
                     return False
@@ -293,7 +293,7 @@ class Tester(TestCase):
         version = os.environ.get('CASSANDRA_VERSION')
         cdir = CASSANDRA_DIR
 
-        if isUrchin(cdir):
+        if isScylla(cdir):
             for proc in psutil.process_iter():
                 if 'scylla' in proc.name():
                     proc.kill()
