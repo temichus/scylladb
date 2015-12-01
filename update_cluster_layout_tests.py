@@ -23,16 +23,16 @@ class TestUpdateClusterLayout(Tester):
                 stopped_nodes.append(node)
                 node.stop(wait_other_notice=True)
 
-        cursor = self.patient_cql_connection(node_to_check, 'ks')
-        result = cursor.execute("SELECT * FROM cf LIMIT %d" % (rows * 2))
+        session = self.patient_cql_connection(node_to_check, 'ks')
+        result = session.execute("SELECT * FROM cf LIMIT %d" % (rows * 2))
         self.assertEqual(len(result), rows, len(result))
 
         for k in found:
-            query_c1c2(cursor, k, ConsistencyLevel.ONE)
+            query_c1c2(session, k, ConsistencyLevel.ONE)
 
         for k in missings:
             query = SimpleStatement("SELECT c1, c2 FROM cf WHERE key='k%d'" % k, consistency_level=ConsistencyLevel.ONE)
-            res = cursor.execute(query)
+            res = session.execute(query)
             self.assertEqual(len(filter(lambda x: len(x) != 0, res)), 0, res)
 
         if restart:
@@ -73,11 +73,11 @@ class TestUpdateClusterLayout(Tester):
         cluster.populate(1).start()
         node1 = cluster.nodelist()[0]
 
-        cursor = self.patient_cql_connection(node1)
-        self.create_ks(cursor, 'ks', 2)
-        self.create_cf(cursor, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 2)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
-        insert_c1c2(cursor, keys=range(1000), consistency=ConsistencyLevel.ONE)
+        insert_c1c2(session, keys=range(1000), consistency=ConsistencyLevel.ONE)
 
         node2 = new_node(cluster)
         node2.start(wait_for_binary_proto=True)
@@ -86,7 +86,7 @@ class TestUpdateClusterLayout(Tester):
         node1.watch_log_for_alive(node2)
         node2.watch_log_for_alive(node1)
 
-        insert_c1c2(cursor, keys=range(1000, 2000), consistency=ConsistencyLevel.TWO)
+        insert_c1c2(session, keys=range(1000, 2000), consistency=ConsistencyLevel.TWO)
 
         self.check_rows_on_node(node2, 2000)
         self.check_rows_on_node(node1, 2000)
@@ -113,9 +113,9 @@ class TestUpdateClusterLayout(Tester):
         cluster.populate(1).start()
         node1 = cluster.nodelist()[0]
 
-        cursor_node1 = self.patient_cql_connection(node1)
-        self.create_ks(cursor_node1, 'ks', 1)
-        cursor_node1.execute("""
+        session_node1 = self.patient_cql_connection(node1)
+        self.create_ks(session_node1, 'ks', 1)
+        session_node1.execute("""
             CREATE TABLE ks.cf (
                 key varchar,
                 c1 text,
@@ -128,7 +128,7 @@ class TestUpdateClusterLayout(Tester):
         node1.flush()
         pre_insert = node1.row_cache_entries()
 
-        insert_c1c2(cursor_node1, keys=range(1000), consistency=ConsistencyLevel.ONE)
+        insert_c1c2(session_node1, keys=range(1000), consistency=ConsistencyLevel.ONE)
 
         node1.flush()
         node1_cache_entries = node1.row_cache_entries() - pre_insert
@@ -138,11 +138,11 @@ class TestUpdateClusterLayout(Tester):
         node2 = new_node(cluster)
         node2.start(wait_for_binary_proto=True)
 
-        cursor_node2 = self.patient_exclusive_cql_connection(node2)
+        session_node2 = self.patient_exclusive_cql_connection(node2)
         node1.watch_log_for_alive(node2)
         node2.watch_log_for_alive(node1)
 
-        result = cursor_node1.execute("SELECT * FROM ks.cf")
+        result = session_node1.execute("SELECT * FROM ks.cf")
         self.assertEqual(len(result), 1000, "expected 1000 lines got %d" % len(result))
 
         # We are flushing on all nodes - to update the cache (we know all fits into the cache)
@@ -170,11 +170,11 @@ class TestUpdateClusterLayout(Tester):
         cluster.populate(1).start()
         node1 = cluster.nodelist()[0]
 
-        cursor = self.patient_cql_connection(node1)
-        self.create_ks(cursor, 'ks', 3)
-        self.create_cf(cursor, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 3)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
-        insert_c1c2(cursor, keys=range(1000), consistency=ConsistencyLevel.ONE)
+        insert_c1c2(session, keys=range(1000), consistency=ConsistencyLevel.ONE)
 
         node2 = new_node(cluster)
         # creating an additional node without actually adding it to the cluster
@@ -200,7 +200,7 @@ class TestUpdateClusterLayout(Tester):
         node1.watch_log_for_alive(node2)
         node2.watch_log_for_alive(node1)
 
-        insert_c1c2(cursor, keys=range(1000, 2000), consistency=ConsistencyLevel.TWO)
+        insert_c1c2(session, keys=range(1000, 2000), consistency=ConsistencyLevel.TWO)
 
         self.check_rows_on_node(node2, 2000)
         self.check_rows_on_node(node1, 2000)
@@ -224,11 +224,11 @@ class TestUpdateClusterLayout(Tester):
         cluster.populate(3).start()
         node1, node2, node3 = cluster.nodelist()
 
-        cursor = self.patient_cql_connection(node1)
-        self.create_ks(cursor, 'ks', 4)
-        self.create_cf(cursor, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 4)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
-        insert_c1c2(cursor, keys=range(1000), consistency=ConsistencyLevel.THREE)
+        insert_c1c2(session, keys=range(1000), consistency=ConsistencyLevel.THREE)
         self.cluster.flush()
 
         node4 = new_node(cluster)
@@ -257,11 +257,11 @@ class TestUpdateClusterLayout(Tester):
         cluster.populate(3).start()
         node1 = cluster.nodelist()[0]
 
-        cursor = self.patient_cql_connection(node1)
-        self.create_ks(cursor, 'ks', 1)
-        self.create_cf(cursor, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 1)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
-        insert_c1c2(cursor, keys=range(1000), consistency=ConsistencyLevel.ONE)
+        insert_c1c2(session, keys=range(1000), consistency=ConsistencyLevel.ONE)
 
         for i in xrange(4, 6):
             # creating an additional node without actually adding it to the cluster
@@ -278,7 +278,7 @@ class TestUpdateClusterLayout(Tester):
             new_node.stop(gently=False)
             time.sleep(10)
 
-        result = cursor.execute("SELECT * FROM cf")
+        result = session.execute("SELECT * FROM cf")
         self.assertEqual(len(result), 1000, len(result))
 
     def _simple_add_new_node_while_adding_info(self, rf):
@@ -298,16 +298,16 @@ class TestUpdateClusterLayout(Tester):
         cluster.populate(3).start()
         node1 = cluster.nodelist()[0]
 
-        cursor = self.patient_cql_connection(node1)
-        self.create_ks(cursor, 'ks', rf)
-        self.create_cf(cursor, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', rf)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
-        insert_c1c2(cursor, keys=range(2000), consistency=consistency)
+        insert_c1c2(session, keys=range(2000), consistency=consistency)
 
         event = threading.Event()
 
         def run():
-            insert_c1c2(cursor, keys=range(2000, 4000), consistency=consistency)
+            insert_c1c2(session, keys=range(2000, 4000), consistency=consistency)
             event.set()
             pass
 
@@ -321,11 +321,11 @@ class TestUpdateClusterLayout(Tester):
 
         event.wait()
         query = SimpleStatement("SELECT * FROM cf", consistency_level=consistency)
-        result = cursor.execute(query)
+        result = session.execute(query)
         self.assertEqual(len(result), 4000, len(result))
 
         for k in xrange(0, 4000):
-            query_c1c2(cursor, k, consistency)
+            query_c1c2(session, k, consistency)
 
     def simple_add_new_node_while_adding_info_1_test(self):
         self._simple_add_new_node_while_adding_info(1)
@@ -352,23 +352,23 @@ class TestUpdateClusterLayout(Tester):
         cluster.populate(3).start()
         node1 = cluster.nodelist()[0]
 
-        cursor = self.patient_cql_connection(node1)
-        self.create_ks(cursor, 'ks', rf)
-        self.create_cf(cursor, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', rf)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
-        insert_c1c2(cursor, keys=range(4000), consistency=consistency)
+        insert_c1c2(session, keys=range(4000), consistency=consistency)
 
         event = threading.Event()
 
         def run():
             query = SimpleStatement("DROP KEYSPACE ks")
-            result = cursor.execute(query)
+            result = session.execute(query)
 
-            self.create_ks(cursor, 'ks1', rf)
-            self.create_cf(cursor, 'cf1', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+            self.create_ks(session, 'ks1', rf)
+            self.create_cf(session, 'cf1', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
             for i in xrange(0, 100):
                 insert = SimpleStatement("insert into ks1.cf1 (key,c1,c2) values ('%d','%d','%d')" % (i, i, i), consistency_level=consistency)
-                cursor.execute(insert)
+                session.execute(insert)
             event.set()
             pass
 
@@ -381,11 +381,11 @@ class TestUpdateClusterLayout(Tester):
         t.start()
 
         node4.watch_log_for("Starting listening for CQL clients")
-        cursor = self.patient_cql_connection(node4)
+        session = self.patient_cql_connection(node4)
 
         event.wait()
         query = SimpleStatement("SELECT * FROM ks1.cf1", consistency_level=consistency)
-        result = cursor.execute(query)
+        result = session.execute(query)
         self.assertEqual(len(result), 100, len(result))
 
     def _simple_add_new_node_while_query_info(self, rf):
@@ -405,18 +405,18 @@ class TestUpdateClusterLayout(Tester):
         cluster.populate(3).start()
         node1 = cluster.nodelist()[0]
 
-        cursor = self.patient_cql_connection(node1)
-        self.create_ks(cursor, 'ks', rf)
-        self.create_cf(cursor, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', rf)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
-        insert_c1c2(cursor, keys=range(2000), consistency=consistency)
+        insert_c1c2(session, keys=range(2000), consistency=consistency)
 
         event = threading.Event()
 
         def run():
             for i in xrange(1, 100):
                 query = SimpleStatement("SELECT * FROM cf", consistency_level=consistency)
-                result = cursor.execute(query)
+                result = session.execute(query)
                 self.assertEqual(len(result), 2000, len(result))
                 time.sleep(0.01)
             event.set()
@@ -434,10 +434,10 @@ class TestUpdateClusterLayout(Tester):
 
         query = SimpleStatement("SELECT * FROM cf", consistency_level=consistency)
 
-        result = cursor.execute(query)
+        result = session.execute(query)
         self.assertEqual(len(result), 2000, len(result))
         for k in xrange(0, 2000):
-            query_c1c2(cursor, k, consistency)
+            query_c1c2(session, k, consistency)
 
         event.wait()
 
@@ -462,11 +462,11 @@ class TestUpdateClusterLayout(Tester):
         cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2 = cluster.nodelist()
 
-        cursor = self.patient_cql_connection(node1)
-        self.create_ks(cursor, 'ks', 1)
-        self.create_cf(cursor, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 1)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
-        insert_c1c2(cursor, keys=range(1000), consistency=ConsistencyLevel.ONE)
+        insert_c1c2(session, keys=range(1000), consistency=ConsistencyLevel.ONE)
 
         node2.decommission()
         node2.stop()
@@ -491,11 +491,11 @@ class TestUpdateClusterLayout(Tester):
         cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2, node3 = cluster.nodelist()
 
-        cursor = self.patient_cql_connection(node1)
-        self.create_ks(cursor, 'ks', 1)
-        self.create_cf(cursor, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 1)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
-        insert_c1c2(cursor, keys=range(1000), consistency=ConsistencyLevel.ONE)
+        insert_c1c2(session, keys=range(1000), consistency=ConsistencyLevel.ONE)
 
         def run():
             try:
@@ -513,7 +513,7 @@ class TestUpdateClusterLayout(Tester):
 
         # starting node2 - it should reconnect and run as is
         node2.start(wait_other_notice=True, wait_for_binary_proto=True)
-        result = cursor.execute("SELECT * FROM cf")
+        result = session.execute("SELECT * FROM cf")
         self.assertEqual(len(result), 1000, len(result))
 
     def _simple_decommission_node_while_adding_info(self, rf):
@@ -533,19 +533,19 @@ class TestUpdateClusterLayout(Tester):
         cluster.populate(3).start()
         node1, node2, node3 = cluster.nodelist()
 
-        cursor = self.patient_cql_connection(node1)
-        self.create_ks(cursor, 'ks', rf)
-        self.create_cf(cursor, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', rf)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
-        insert_c1c2(cursor, keys=range(2000), consistency=consistency)
+        insert_c1c2(session, keys=range(2000), consistency=consistency)
 
         event = threading.Event()
 
         def run():
-            insert_c1c2(cursor, keys=range(2000, 4000), consistency=consistency)
+            insert_c1c2(session, keys=range(2000, 4000), consistency=consistency)
 
             query = SimpleStatement("SELECT * FROM cf", consistency_level=consistency)
-            result = cursor.execute(query)
+            result = session.execute(query)
             self.assertEqual(len(result), 4000, len(result))
 
             event.set()
@@ -560,10 +560,10 @@ class TestUpdateClusterLayout(Tester):
         event.wait()
         node2.stop()
         query = SimpleStatement("SELECT * FROM cf", consistency_level=consistency)
-        result = cursor.execute(query)
+        result = session.execute(query)
         self.assertEqual(len(result), 4000, len(result))
         for k in xrange(0, 4000):
-            query_c1c2(cursor, k, consistency)
+            query_c1c2(session, k, consistency)
 
     def simple_decommission_node_while_adding_info_1_test(self):
         self._simple_decommission_node_while_adding_info(1)
@@ -588,18 +588,18 @@ class TestUpdateClusterLayout(Tester):
         cluster.populate(3).start()
         node1, node2, node3 = cluster.nodelist()
 
-        cursor = self.patient_cql_connection(node1)
-        self.create_ks(cursor, 'ks', rf)
-        self.create_cf(cursor, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', rf)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
-        insert_c1c2(cursor, keys=range(2000), consistency=consistency)
+        insert_c1c2(session, keys=range(2000), consistency=consistency)
 
         event = threading.Event()
 
         def run():
             for i in xrange(1, 100):
                 query = SimpleStatement("SELECT * FROM cf", consistency_level=consistency)
-                result = cursor.execute(query)
+                result = session.execute(query)
                 self.assertEqual(len(result), 2000, len(result))
                 time.sleep(0.01)
             event.set()
@@ -612,16 +612,16 @@ class TestUpdateClusterLayout(Tester):
         node2.decommission()
 
         query = SimpleStatement("SELECT * FROM cf", consistency_level=consistency)
-        result = cursor.execute(query)
+        result = session.execute(query)
         self.assertEqual(len(result), 2000, len(result))
 
         node2.stop()
 
         query = SimpleStatement("SELECT * FROM cf", consistency_level=consistency)
-        result = cursor.execute(query)
+        result = session.execute(query)
         self.assertEqual(len(result), 2000, len(result))
         for k in xrange(0, 2000):
-            query_c1c2(cursor, k, consistency)
+            query_c1c2(session, k, consistency)
 
         event.wait()
 
