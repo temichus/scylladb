@@ -77,8 +77,7 @@ class TestUpdateClusterLayout(Tester):
         self.create_ks(cursor, 'ks', 2)
         self.create_cf(cursor, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
-        for i in xrange(0, 1000):
-            insert_c1c2(cursor, i, ConsistencyLevel.ONE)
+        insert_c1c2(cursor, keys=range(1000), consistency=ConsistencyLevel.ONE)
 
         node2 = new_node(cluster)
         node2.start(wait_for_binary_proto=True)
@@ -87,8 +86,7 @@ class TestUpdateClusterLayout(Tester):
         node1.watch_log_for_alive(node2)
         node2.watch_log_for_alive(node1)
 
-        for i in xrange(1000, 2000):
-            insert_c1c2(cursor, i, ConsistencyLevel.TWO)
+        insert_c1c2(cursor, keys=range(1000, 2000), consistency=ConsistencyLevel.TWO)
 
         self.check_rows_on_node(node2, 2000)
         self.check_rows_on_node(node1, 2000)
@@ -130,8 +128,7 @@ class TestUpdateClusterLayout(Tester):
         node1.flush()
         pre_insert = node1.row_cache_entries()
 
-        for i in xrange(0, 1000):
-            insert_c1c2(cursor_node1, i, ConsistencyLevel.ONE)
+        insert_c1c2(cursor_node1, keys=range(1000), consistency=ConsistencyLevel.ONE)
 
         node1.flush()
         node1_cache_entries = node1.row_cache_entries() - pre_insert
@@ -177,8 +174,7 @@ class TestUpdateClusterLayout(Tester):
         self.create_ks(cursor, 'ks', 3)
         self.create_cf(cursor, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
-        for i in xrange(0, 1000):
-            insert_c1c2(cursor, i, ConsistencyLevel.ONE)
+        insert_c1c2(cursor, keys=range(1000), consistency=ConsistencyLevel.ONE)
 
         node2 = new_node(cluster)
         # creating an additional node without actually adding it to the cluster
@@ -204,8 +200,7 @@ class TestUpdateClusterLayout(Tester):
         node1.watch_log_for_alive(node2)
         node2.watch_log_for_alive(node1)
 
-        for i in xrange(1000, 2000):
-            insert_c1c2(cursor, i, ConsistencyLevel.TWO)
+        insert_c1c2(cursor, keys=range(1000, 2000), consistency=ConsistencyLevel.TWO)
 
         self.check_rows_on_node(node2, 2000)
         self.check_rows_on_node(node1, 2000)
@@ -233,8 +228,7 @@ class TestUpdateClusterLayout(Tester):
         self.create_ks(cursor, 'ks', 4)
         self.create_cf(cursor, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
-        for i in xrange(0, 1000):
-            insert_c1c2(cursor, i, ConsistencyLevel.THREE)
+        insert_c1c2(cursor, keys=range(1000), consistency=ConsistencyLevel.THREE)
         self.cluster.flush()
 
         node4 = new_node(cluster)
@@ -267,8 +261,7 @@ class TestUpdateClusterLayout(Tester):
         self.create_ks(cursor, 'ks', 1)
         self.create_cf(cursor, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
-        for i in xrange(0, 1000):
-            insert_c1c2(cursor, i, ConsistencyLevel.ONE)
+        insert_c1c2(cursor, keys=range(1000), consistency=ConsistencyLevel.ONE)
 
         for i in xrange(4, 6):
             # creating an additional node without actually adding it to the cluster
@@ -309,14 +302,12 @@ class TestUpdateClusterLayout(Tester):
         self.create_ks(cursor, 'ks', rf)
         self.create_cf(cursor, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
-        for i in xrange(0, 2000):
-            insert_c1c2(cursor, i, consistency)
+        insert_c1c2(cursor, keys=range(2000), consistency=consistency)
 
         event = threading.Event()
 
         def run():
-            for i in xrange(2000, 4000):
-                insert_c1c2(cursor, i, consistency)
+            insert_c1c2(cursor, keys=range(2000, 4000), consistency=consistency)
             event.set()
             pass
 
@@ -365,8 +356,7 @@ class TestUpdateClusterLayout(Tester):
         self.create_ks(cursor, 'ks', rf)
         self.create_cf(cursor, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
-        for i in xrange(0, 4000):
-            insert_c1c2(cursor, i, consistency)
+        insert_c1c2(cursor, keys=range(4000), consistency=consistency)
 
         event = threading.Event()
 
@@ -419,8 +409,7 @@ class TestUpdateClusterLayout(Tester):
         self.create_ks(cursor, 'ks', rf)
         self.create_cf(cursor, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
-        for i in xrange(0, 2000):
-            insert_c1c2(cursor, i, consistency)
+        insert_c1c2(cursor, keys=range(2000), consistency=consistency)
 
         event = threading.Event()
 
@@ -477,8 +466,7 @@ class TestUpdateClusterLayout(Tester):
         self.create_ks(cursor, 'ks', 1)
         self.create_cf(cursor, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
-        for i in xrange(0, 1000):
-            insert_c1c2(cursor, i, ConsistencyLevel.ONE)
+        insert_c1c2(cursor, keys=range(1000), consistency=ConsistencyLevel.ONE)
 
         node2.decommission()
         node2.stop()
@@ -507,8 +495,7 @@ class TestUpdateClusterLayout(Tester):
         self.create_ks(cursor, 'ks', 1)
         self.create_cf(cursor, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
-        for i in xrange(0, 1000):
-            insert_c1c2(cursor, i, ConsistencyLevel.ONE)
+        insert_c1c2(cursor, keys=range(1000), consistency=ConsistencyLevel.ONE)
 
         def run():
             try:
@@ -550,14 +537,12 @@ class TestUpdateClusterLayout(Tester):
         self.create_ks(cursor, 'ks', rf)
         self.create_cf(cursor, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
-        for i in xrange(0, 2000):
-            insert_c1c2(cursor, i, consistency)
+        insert_c1c2(cursor, keys=range(2000), consistency=consistency)
 
         event = threading.Event()
 
         def run():
-            for i in xrange(2000, 4000):
-                insert_c1c2(cursor, i, consistency)
+            insert_c1c2(cursor, keys=range(2000, 4000), consistency=consistency)
 
             query = SimpleStatement("SELECT * FROM cf", consistency_level=consistency)
             result = cursor.execute(query)
@@ -607,8 +592,7 @@ class TestUpdateClusterLayout(Tester):
         self.create_ks(cursor, 'ks', rf)
         self.create_cf(cursor, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
-        for i in xrange(0, 2000):
-            insert_c1c2(cursor, i, consistency)
+        insert_c1c2(cursor, keys=range(2000), consistency=consistency)
 
         event = threading.Event()
 
