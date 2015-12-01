@@ -2,6 +2,7 @@
 
 import struct
 import time
+from unittest import skip
 
 from cassandra import ConsistencyLevel, InvalidRequest
 from cassandra.policies import FallthroughRetryPolicy
@@ -60,6 +61,7 @@ class StorageProxyCQLTester(CQLTester):
     see CASSANDRA-9160.
     """
 
+    @skip('Scylla does not support ALTER KEYSPACE / DROP KEYSPACE')
     def keyspace_test(self):
         """
         CREATE KEYSPACE, USE KEYSPACE, ALTER KEYSPACE, DROP KEYSPACE statements
@@ -75,6 +77,7 @@ class StorageProxyCQLTester(CQLTester):
         session.execute("DROP KEYSPACE ks")
         assert_invalid(session, "USE ks", expected=InvalidRequest)
 
+    @skip('Scylla does not support ALTER TABLE')
     def table_test(self):
         """
         CREATE TABLE, ALTER TABLE, TRUNCATE TABLE, DROP TABLE statements
@@ -111,6 +114,7 @@ class StorageProxyCQLTester(CQLTester):
         assert_invalid(session, "SELECT * FROM test1", expected=InvalidRequest)
         assert_invalid(session, "SELECT * FROM test2", expected=InvalidRequest)
 
+    @skip('Scylla does not support CREATE INDEX')
     def index_test(self):
         """
         CREATE INDEX, DROP INDEX statements
@@ -130,6 +134,7 @@ class StorageProxyCQLTester(CQLTester):
 
         assert_invalid(session, "SELECT * FROM test3 where v1 = 0", expected=InvalidRequest)
 
+    @skip('Scylla does not support ALTER TYPE')
     def type_test(self):
         """
         CREATE TYPE, ALTER TYPE, DROP TYPE statements
@@ -147,6 +152,7 @@ class StorageProxyCQLTester(CQLTester):
         session.execute("DROP TYPE address_t")
         assert_invalid(session, "CREATE TABLE test6 (id int PRIMARY KEY, address frozen<address_t>)", expected=InvalidRequest)
 
+    @skip('Scylla does not support ALTER USER')
     def user_test(self):
         """
         CREATE USER, ALTER USER, DROP USER statements
@@ -263,6 +269,7 @@ class MiscellaneousCQLTester(CQLTester):
                             "first 65535 elements will be returned to the "
                             "client. Please see http://cassandra.apache.org/doc/cql3/CQL.html#collections for more details.")
 
+    @skip('Scylla does not support inserting from thrift into a CQL3 table')
     def cql3_insert_thrift_test(self):
         """ Check that we can insert from thrift into a CQL3 table (#4377) """
         session = self.prepare(start_rpc=True)
@@ -293,6 +300,7 @@ class MiscellaneousCQLTester(CQLTester):
         res = session.execute("SELECT * FROM test")
         assert rows_to_list(res) == [[2, 4, 8]], res
 
+    @skip('Scylla does not support ALTER TABLE')
     def rename_test(self):
         session = self.prepare(start_rpc=True)
 
@@ -335,6 +343,7 @@ class MiscellaneousCQLTester(CQLTester):
         except ProtocolException as e:
             self.assertTrue("Cannot decode string as UTF8" in str(e))
 
+    @skip('Scylla does not support ALTER TABLE')
     def prepared_statement_invalidation_test(self):
         """
         @jira_ticket CASSANDRA-7910
