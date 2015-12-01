@@ -1,5 +1,6 @@
 import time
 import uuid
+from unittest import skip
 
 from cassandra import ConsistencyLevel as CL
 from cassandra import InvalidRequest, ReadTimeout, ReadFailure
@@ -629,6 +630,7 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
 
         self.assertEqualIgnoreOrder(pf.all_data(), expected_data)
 
+    @skip('Scylla does not support secondary indexes')
     def test_paging_using_secondary_indexes(self):
         session = self.prepare()
         self.create_ks(session, 'test_paging_size', 2)
@@ -869,6 +871,7 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
                     self.assertEqual([42] * 10, [r.s2 for r in results])
 
     @since('2.0.6')
+    @skip('Scylla does not support secondary indexes')
     def test_paging_using_secondary_indexes_with_static_cols(self):
         session = self.prepare()
         self.create_ks(session, 'test_paging_size', 2)
