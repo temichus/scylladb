@@ -414,7 +414,7 @@ class TestUpdateClusterLayout(Tester):
         event = threading.Event()
 
         def run():
-            while i in xrange(1, 100):
+            for i in xrange(1, 100):
                 query = SimpleStatement("SELECT * FROM cf", consistency_level=consistency)
                 result = cursor.execute(query)
                 self.assertEqual(len(result), 2000, len(result))
@@ -597,7 +597,7 @@ class TestUpdateClusterLayout(Tester):
         event = threading.Event()
 
         def run():
-            while i in xrange(1, 100):
+            for i in xrange(1, 100):
                 query = SimpleStatement("SELECT * FROM cf", consistency_level=consistency)
                 result = cursor.execute(query)
                 self.assertEqual(len(result), 2000, len(result))
