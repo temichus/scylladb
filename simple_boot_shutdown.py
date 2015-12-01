@@ -17,10 +17,10 @@ class TestSimpleBootShutdown(Tester):
         cluster.populate(1).start()
         node1 = cluster.nodelist()[0]
 
-        cursor = self.patient_cql_connection(node1)
-        self.create_ks(cursor, 'ks', 1)
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 1)
 
-        cursor.execute("""
+        session.execute("""
             CREATE TABLE test1 (
                 k int PRIMARY KEY,
                 c int
@@ -32,12 +32,12 @@ class TestSimpleBootShutdown(Tester):
         node1.stop()
 
         node1.start(update_pid=True)
-        cursor = self.patient_cql_connection(node1, 'ks')
+        session = self.patient_cql_connection(node1, 'ks')
 
-        cursor.execute("insert into ks.test1  (k,c) values (1,2);")
+        session.execute("insert into ks.test1  (k,c) values (1,2);")
 
         # Select
-        res = cursor.execute("""
+        res = session.execute("""
                 SELECT * FROM ks.test1
                 WHERE k=1
         """)
@@ -45,7 +45,7 @@ class TestSimpleBootShutdown(Tester):
         assert len(res) == 1, res
 
         # Select
-        res = cursor.execute("""
+        res = session.execute("""
                 SELECT * FROM ks.test1
                 WHERE k=2
         """)
@@ -57,25 +57,25 @@ class TestSimpleBootShutdown(Tester):
         cluster.populate(1).start()
         node1 = cluster.nodelist()[0]
 
-        cursor = self.patient_cql_connection(node1)
-        self.create_ks(cursor, 'ks', 1)
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 1)
 
-        cursor.execute("""
+        session.execute("""
             CREATE TABLE test1 (
                 k int PRIMARY KEY,
                 c int
             )
         """)
 
-        cursor.execute("insert into ks.test1  (k,c) values (1,2);")
+        session.execute("insert into ks.test1  (k,c) values (1,2);")
 
         node1.flush()
         node1.stop()
 
         node1.start(update_pid=True)
-        cursor = self.patient_cql_connection(node1, 'ks')
+        session = self.patient_cql_connection(node1, 'ks')
         # Select
-        res = cursor.execute("""
+        res = session.execute("""
                 SELECT * FROM ks.test1
                 WHERE k=1
         """)
@@ -83,7 +83,7 @@ class TestSimpleBootShutdown(Tester):
         assert len(res) == 1, res
 
         # Select
-        res = cursor.execute("""
+        res = session.execute("""
                 SELECT * FROM ks.test1
                 WHERE k=2
         """)
@@ -95,26 +95,26 @@ class TestSimpleBootShutdown(Tester):
         cluster.populate(1).start()
         node1 = cluster.nodelist()[0]
 
-        cursor = self.patient_cql_connection(node1)
-        self.create_ks(cursor, 'ks', 1)
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 1)
 
-        cursor.execute("""
+        session.execute("""
             CREATE TABLE test1 (
                 k int PRIMARY KEY,
                 c int
             )
         """)
 
-        cursor.execute("insert into ks.test1  (k,c) values (1,2);")
+        session.execute("insert into ks.test1  (k,c) values (1,2);")
 
         # wait for the commitlog to be fsynched
         time.sleep(10)
         node1.stop(gently=False)
 
         node1.start(update_pid=True)
-        cursor = self.patient_cql_connection(node1, 'ks')
+        session = self.patient_cql_connection(node1, 'ks')
         # Select
-        res = cursor.execute("""
+        res = session.execute("""
                 SELECT * FROM ks.test1
                 WHERE k=1
         """)
@@ -122,7 +122,7 @@ class TestSimpleBootShutdown(Tester):
         assert len(res) == 1, res
 
         # Select
-        res = cursor.execute("""
+        res = session.execute("""
                 SELECT * FROM ks.test1
                 WHERE k=2
         """)
