@@ -156,3 +156,4 @@ paging_test.py:TestPagingWithModifiers.test_with_allow_filtering
 paging_test.py:TestPagingWithModifiers.test_with_limit
 paging_test.py:TestPagingWithModifiers.test_with_order_by
 paging_test.py:TestPagingWithModifiers.test_with_order_by_reversed
+pushed_notifications_test.py
