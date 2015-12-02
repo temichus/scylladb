@@ -1,15 +1,14 @@
+import distutils.dir_util
 import glob
 import os
 import shutil
 import subprocess
-import tempfile
 import time
 
 from cassandra.concurrent import execute_concurrent_with_args
 
 from dtest import Tester, debug
-from tools import replace_in_file, since
-import distutils.dir_util
+from tools import safe_mkdtemp, replace_in_file
 
 
 class SnapshotTester(Tester):
@@ -17,10 +16,10 @@ class SnapshotTester(Tester):
     def __init__(self, *args, **kwargs):
         Tester.__init__(self, *args, **kwargs)
 
-    def insert_rows(self, cursor, start, end):
-        insert_statement = cursor.prepare("INSERT INTO ks.cf (key, val) VALUES (?, 'asdf')")
+    def insert_rows(self, session, start, end):
+        insert_statement = session.prepare("INSERT INTO ks.cf (key, val) VALUES (?, 'asdf')")
         args = [(r,) for r in range(start, end)]
-        execute_concurrent_with_args(cursor, insert_statement, args, concurrency=20)
+        execute_concurrent_with_args(session, insert_statement, args, concurrency=20)
 
     def make_snapshot(self, node, ks, cf, name):
         debug("Making snapshot....")
@@ -28,9 +27,9 @@ class SnapshotTester(Tester):
         snapshot_cmd = 'snapshot {ks} -cf {cf} -t {name}'.format(**locals())
         debug("Running snapshot cmd: {snapshot_cmd}".format(snapshot_cmd=snapshot_cmd))
         node.nodetool(snapshot_cmd)
-        tmpdir = tempfile.mkdtemp()
-        os.mkdir(os.path.join(tmpdir,ks))
-        os.mkdir(os.path.join(tmpdir,ks,cf))
+        tmpdir = safe_mkdtemp()
+        os.mkdir(os.path.join(tmpdir, ks))
+        os.mkdir(os.path.join(tmpdir, ks, cf))
         node_dir = node.get_path()
 
         # Find the snapshot dir, it's different in various C* versions:
@@ -59,7 +58,6 @@ class SnapshotTester(Tester):
             raise Exception("sstableloader command '%s' failed; exit status: %d'; stdout: %s; stderr: %s" %
                             (" ".join(args), exit_status, stdout, stderr))
 
-
     def restore_snapshot_with_refresh(self, snapshot_dir, node, ks, cf):
         debug("Restoring snapshot....")
         node_dir = node.get_path()
@@ -67,9 +65,9 @@ class SnapshotTester(Tester):
         if not os.path.isdir(restore_dir):
             restore_dir = glob.glob("{node_dir}/data/{ks}/{cf}-*/".format(**locals()))[0]
         snapshot_dir = os.path.join(snapshot_dir, ks, cf)
-        debug("Copying from %s to %s" % (str(snapshot_dir),str(restore_dir)))
+        debug("Copying from %s to %s" % (str(snapshot_dir), str(restore_dir)))
         distutils.dir_util.copy_tree(snapshot_dir, restore_dir)
-        node.nodetool("refresh %s %s" % (ks,cf))
+        node.nodetool("refresh %s %s" % (ks, cf))
 
 
 class TestSnapshot(SnapshotTester):
@@ -83,29 +81,29 @@ class TestSnapshot(SnapshotTester):
     def test_basic_snapshot_and_restore_with_refresh(self):
         self.basic_snapshot_and_restore(use_sstableloader=False)
 
-    def basic_snapshot_and_restore(self,use_sstableloader):
+    def basic_snapshot_and_restore(self, use_sstableloader):
         cluster = self.cluster
         cluster.populate(1).start()
         (node1,) = cluster.nodelist()
-        cursor = self.patient_cql_connection(node1)
-        self.create_ks(cursor, 'ks', 1)
-        cursor.execute('CREATE TABLE ks.cf ( key int PRIMARY KEY, val text);')
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 1)
+        session.execute('CREATE TABLE ks.cf ( key int PRIMARY KEY, val text);')
 
-        self.insert_rows(cursor, 0, 100)
+        self.insert_rows(session, 0, 100)
         snapshot_dir = self.make_snapshot(node1, 'ks', 'cf', 'basic')
 
         # Write more data after the snapshot, this will get thrown
         # away when we restore:
-        self.insert_rows(cursor, 100, 200)
-        rows = cursor.execute('SELECT count(*) from ks.cf')
+        self.insert_rows(session, 100, 200)
+        rows = session.execute('SELECT count(*) from ks.cf')
         self.assertEqual(rows[0][0], 200)
 
         # Drop the keyspace, make sure we have no data:
-        cursor.execute('DROP KEYSPACE ks')
-        shutil.rmtree(os.path.join(node1.get_path(),'data','ks'))
-        self.create_ks(cursor, 'ks', 1)
-        cursor.execute('CREATE TABLE ks.cf ( key int PRIMARY KEY, val text);')
-        rows = cursor.execute('SELECT count(*) from ks.cf')
+        session.execute('DROP KEYSPACE ks')
+        shutil.rmtree(os.path.join(node1.get_path(), 'data', 'ks'))
+        self.create_ks(session, 'ks', 1)
+        session.execute('CREATE TABLE ks.cf ( key int PRIMARY KEY, val text);')
+        rows = session.execute('SELECT count(*) from ks.cf')
         self.assertEqual(rows[0][0], 0)
 
         # Restore data from snapshot:
@@ -114,7 +112,7 @@ class TestSnapshot(SnapshotTester):
         else:
             self.restore_snapshot_with_refresh(snapshot_dir, node1, 'ks', 'cf')
         node1.nodetool('refresh ks cf')
-        rows = cursor.execute('SELECT count(*) from ks.cf')
+        rows = session.execute('SELECT count(*) from ks.cf')
 
         # clean up
         debug("removing snapshot_dir: " + snapshot_dir)
@@ -122,9 +120,11 @@ class TestSnapshot(SnapshotTester):
 
         self.assertEqual(rows[0][0], 100)
 
+
 class TestArchiveCommitlog(SnapshotTester):
+
     def __init__(self, *args, **kwargs):
-        kwargs['cluster_options'] = {'commitlog_segment_size_in_mb':1}
+        kwargs['cluster_options'] = {'commitlog_segment_size_in_mb': 1}
         SnapshotTester.__init__(self, *args, **kwargs)
 
     def make_snapshot(self, node, ks, cf, name):
@@ -133,18 +133,18 @@ class TestArchiveCommitlog(SnapshotTester):
         snapshot_cmd = 'snapshot {ks} -cf {cf} -t {name}'.format(**locals())
         debug("Running snapshot cmd: {snapshot_cmd}".format(snapshot_cmd=snapshot_cmd))
         node.nodetool(snapshot_cmd)
-        tmpdir = tempfile.mkdtemp()
+        tmpdir = safe_mkdtemp()
         node_dir = node.get_path()
 
         # Copy files from the snapshot dir to existing temp dir
-        distutils.dir_util.copy_tree(os.path.join(node.get_path(),'data', ks), tmpdir)
+        distutils.dir_util.copy_tree(os.path.join(node.get_path(), 'data', ks), tmpdir)
 
         return tmpdir
 
     def restore_snapshot(self, snapshot_dir, node, ks, cf, name):
         debug("Restoring snapshot for cf ....")
         data_dir = os.path.join(node.get_path(), 'data')
-        cf_id = [s for s in os.listdir(snapshot_dir) if cf in s][0]
+        cf_id = [s for s in os.listdir(snapshot_dir) if s.startswith(cf + "-")][0]
         snapshot_dir = glob.glob("{snapshot_dir}/{cf_id}/snapshots/{name}".format(**locals()))[0]
         if not os.path.exists(os.path.join(data_dir, ks)):
             os.mkdir(os.path.join(data_dir, ks))
@@ -153,25 +153,24 @@ class TestArchiveCommitlog(SnapshotTester):
         debug("snapshot_dir is : " + snapshot_dir)
         distutils.dir_util.copy_tree(snapshot_dir, os.path.join(data_dir, ks, cf_id))
 
-    @since('2.1')
     def test_archive_commitlog(self):
-        self.run_archive_commitlog(restore_point_in_time = False)
+        self.run_archive_commitlog(restore_point_in_time=False)
 
     def test_archive_commitlog_with_active_commitlog(self):
         """Copy the active commitlogs to the archive directory before restoration"""
-        self.run_archive_commitlog(restore_point_in_time = False, archive_active_commitlogs=True)
+        self.run_archive_commitlog(restore_point_in_time=False, archive_active_commitlogs=True)
 
     def dont_test_archive_commitlog(self):
         """Run the archive commitlog test, but forget to add the restore commands:"""
-        self.run_archive_commitlog(restore_point_in_time = False, restore_archived_commitlog=False)
+        self.run_archive_commitlog(restore_point_in_time=False, restore_archived_commitlog=False)
 
     def test_archive_commitlog_point_in_time(self):
         """Test archive commit log with restore_point_in_time setting"""
-        self.run_archive_commitlog(restore_point_in_time = True)
+        self.run_archive_commitlog(restore_point_in_time=True)
 
     def test_archive_commitlog_point_in_time_with_active_commitlog(self):
         """Test archive commit log with restore_point_in_time setting"""
-        self.run_archive_commitlog(restore_point_in_time = True, archive_active_commitlogs=True)
+        self.run_archive_commitlog(restore_point_in_time=True, archive_active_commitlogs=True)
 
     def run_archive_commitlog(self, restore_point_in_time=False, restore_archived_commitlog=True, archive_active_commitlogs=False):
         """Run archive commit log restoration test"""
@@ -181,51 +180,66 @@ class TestArchiveCommitlog(SnapshotTester):
         (node1,) = cluster.nodelist()
 
         # Create a temp directory for storing commitlog archives:
-        tmp_commitlog = tempfile.mkdtemp()
+        tmp_commitlog = safe_mkdtemp()
         debug("tmp_commitlog: " + tmp_commitlog)
 
         # Edit commitlog_archiving.properties and set an archive
         # command:
-        replace_in_file(os.path.join(node1.get_path(),'conf','commitlog_archiving.properties'),
+        replace_in_file(os.path.join(node1.get_path(), 'conf', 'commitlog_archiving.properties'),
                         [(r'^archive_command=.*$', 'archive_command=cp %path {tmp_commitlog}/%name'.format(
                             tmp_commitlog=tmp_commitlog))])
 
         cluster.start()
 
-        cursor = self.patient_cql_connection(node1)
-        self.create_ks(cursor, 'ks', 1)
-        cursor.execute('CREATE TABLE ks.cf ( key bigint PRIMARY KEY, val text);')
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 1)
+        session.execute('CREATE TABLE ks.cf ( key bigint PRIMARY KEY, val text);')
         debug("Writing first 30,000 rows...")
-        self.insert_rows(cursor, 0, 30000)
+        self.insert_rows(session, 0, 30000)
         # Record when this first set of inserts finished:
         insert_cutoff_times = [time.gmtime()]
 
         # Delete all commitlog backups so far:
-        for f in glob.glob(tmp_commitlog+"/*"):
+        for f in glob.glob(tmp_commitlog + "/*"):
             os.remove(f)
 
         snapshot_dir = self.make_snapshot(node1, 'ks', 'cf', 'basic')
-        system_ks_snapshot_dir = self.make_snapshot(node1, 'system', 'schema_keyspaces', 'keyspaces')
-        system_col_snapshot_dir = self.make_snapshot(node1, 'system', 'schema_columns', 'columns')
-        if self.cluster.version() >= '2.1':
+
+        if self.cluster.version() >= '3.0':
+            system_ks_snapshot_dir = self.make_snapshot(node1, 'system_schema', 'keyspaces', 'keyspaces')
+        else:
+            system_ks_snapshot_dir = self.make_snapshot(node1, 'system', 'schema_keyspaces', 'keyspaces')
+
+        if self.cluster.version() >= '3.0':
+            system_col_snapshot_dir = self.make_snapshot(node1, 'system_schema', 'columns', 'columns')
+        else:
+            system_col_snapshot_dir = self.make_snapshot(node1, 'system', 'schema_columns', 'columns')
+
+        if self.cluster.version() >= '3.0':
+            system_ut_snapshot_dir = self.make_snapshot(node1, 'system_schema', 'types', 'usertypes')
+        else:
             system_ut_snapshot_dir = self.make_snapshot(node1, 'system', 'schema_usertypes', 'usertypes')
-        system_cfs_snapshot_dir = self.make_snapshot(node1, 'system', 'schema_columnfamilies', 'cfs')
+
+        if self.cluster.version() >= '3.0':
+            system_cfs_snapshot_dir = self.make_snapshot(node1, 'system_schema', 'tables', 'cfs')
+        else:
+            system_cfs_snapshot_dir = self.make_snapshot(node1, 'system', 'schema_columnfamilies', 'cfs')
 
         try:
             # Write more data:
             debug("Writing second 30,000 rows...")
-            self.insert_rows(cursor, 30000, 60000)
+            self.insert_rows(session, 30000, 60000)
             node1.flush()
             time.sleep(10)
             # Record when this second set of inserts finished:
             insert_cutoff_times.append(time.gmtime())
 
             debug("Writing final 5,000 rows...")
-            self.insert_rows(cursor,60000, 65000)
+            self.insert_rows(session, 60000, 65000)
             # Record when the third set of inserts finished:
             insert_cutoff_times.append(time.gmtime())
 
-            rows = cursor.execute('SELECT count(*) from ks.cf')
+            rows = session.execute('SELECT count(*) from ks.cf')
             # Make sure we have the same amount of rows as when we snapshotted:
             self.assertEqual(rows[0][0], 65000)
 
@@ -246,33 +260,48 @@ class TestArchiveCommitlog(SnapshotTester):
 
             # Destroy the cluster
             cluster.stop()
-            self.copy_logs(name=self.id().split(".")[0]+"_pre-restore")
+            self.copy_logs(name=self.id().split(".")[0] + "_pre-restore")
             self._cleanup_cluster()
             cluster = self.cluster = self._get_cluster()
             cluster.populate(1)
             node1, = cluster.nodelist()
 
             # Restore schema from snapshots:
-            self.restore_snapshot(system_ks_snapshot_dir, node1, 'system', 'schema_keyspaces', 'keyspaces')
-            self.restore_snapshot(system_col_snapshot_dir, node1, 'system', 'schema_columns', 'columns')
-            if self.cluster.version() >= '2.1':
+            if self.cluster.version() >= '3.0':
+                self.restore_snapshot(system_ks_snapshot_dir, node1, 'system_schema', 'keyspaces', 'keyspaces')
+            else:
+                self.restore_snapshot(system_ks_snapshot_dir, node1, 'system', 'schema_keyspaces', 'keyspaces')
+
+            if self.cluster.version() >= '3.0':
+                self.restore_snapshot(system_col_snapshot_dir, node1, 'system_schema', 'columns', 'columns')
+            else:
+                self.restore_snapshot(system_col_snapshot_dir, node1, 'system', 'schema_columns', 'columns')
+
+            if self.cluster.version() >= '3.0':
+                self.restore_snapshot(system_ut_snapshot_dir, node1, 'system_schema', 'types', 'usertypes')
+            else:
                 self.restore_snapshot(system_ut_snapshot_dir, node1, 'system', 'schema_usertypes', 'usertypes')
-            self.restore_snapshot(system_cfs_snapshot_dir, node1, 'system', 'schema_columnfamilies', 'cfs')
+
+            if self.cluster.version() >= '3.0':
+                self.restore_snapshot(system_cfs_snapshot_dir, node1, 'system_schema', 'tables', 'cfs')
+            else:
+                self.restore_snapshot(system_cfs_snapshot_dir, node1, 'system', 'schema_columnfamilies', 'cfs')
+
             self.restore_snapshot(snapshot_dir, node1, 'ks', 'cf', 'basic')
 
             cluster.start(wait_for_binary_proto=True)
 
-            cursor = self.patient_cql_connection(node1)
+            session = self.patient_cql_connection(node1)
             node1.nodetool('refresh ks cf')
 
-            rows = cursor.execute('SELECT count(*) from ks.cf')
+            rows = session.execute('SELECT count(*) from ks.cf')
             # Make sure we have the same amount of rows as when we snapshotted:
             self.assertEqual(rows[0][0], 30000)
 
             # Edit commitlog_archiving.properties. Remove the archive
             # command  and set a restore command and restore_directories:
             if restore_archived_commitlog:
-                replace_in_file(os.path.join(node1.get_path(),'conf','commitlog_archiving.properties'),
+                replace_in_file(os.path.join(node1.get_path(), 'conf', 'commitlog_archiving.properties'),
                                 [(r'^archive_command=.*$', 'archive_command='),
                                  (r'^restore_command=.*$', 'restore_command=cp -f %from %to'),
                                  (r'^restore_directories=.*$', 'restore_directories={tmp_commitlog}'.format(
@@ -280,7 +309,7 @@ class TestArchiveCommitlog(SnapshotTester):
 
                 if restore_point_in_time:
                     restore_time = time.strftime("%Y:%m:%d %H:%M:%S", insert_cutoff_times[1])
-                    replace_in_file(os.path.join(node1.get_path(),'conf','commitlog_archiving.properties'),
+                    replace_in_file(os.path.join(node1.get_path(), 'conf', 'commitlog_archiving.properties'),
                                     [(r'^restore_point_in_time=.*$', 'restore_point_in_time={restore_time}'.format(**locals()))])
 
             debug("Restarting node1..")
@@ -290,8 +319,8 @@ class TestArchiveCommitlog(SnapshotTester):
             node1.nodetool('flush')
             node1.nodetool('compact')
 
-            cursor = self.patient_cql_connection(node1)
-            rows = cursor.execute('SELECT count(*) from ks.cf')
+            session = self.patient_cql_connection(node1)
+            rows = session.execute('SELECT count(*) from ks.cf')
             # Now we should have 30000 rows from the snapshot + 30000 rows
             # from the commitlog backups:
             if not restore_archived_commitlog:
@@ -309,9 +338,8 @@ class TestArchiveCommitlog(SnapshotTester):
             shutil.rmtree(system_ks_snapshot_dir)
             debug("removing snapshot_dir: " + system_cfs_snapshot_dir)
             shutil.rmtree(system_cfs_snapshot_dir)
-            if self.cluster.version() >= '2.1':
-                debug("removing snapshot_dir: " + system_ut_snapshot_dir)
-                shutil.rmtree(system_ut_snapshot_dir)
+            debug("removing snapshot_dir: " + system_ut_snapshot_dir)
+            shutil.rmtree(system_ut_snapshot_dir)
             debug("removing snapshot_dir: " + system_col_snapshot_dir)
             shutil.rmtree(system_col_snapshot_dir)
             debug("removing tmp_commitlog: " + tmp_commitlog)

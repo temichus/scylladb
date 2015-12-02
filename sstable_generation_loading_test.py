@@ -1,9 +1,11 @@
-import time, os
 from distutils import dir_util
+import os
 import subprocess
+import time
 
 from dtest import Tester, debug
 from ccmlib import common as ccmcommon
+
 
 class TestSSTableGenerationAndLoading(Tester):
 
@@ -26,24 +28,22 @@ class TestSSTableGenerationAndLoading(Tester):
         node1 = cluster.nodelist()[0]
         time.sleep(.5)
 
-        cursor = self.patient_cql_connection(node1)
-        self.create_ks(cursor, 'ks', 1)
-        self.create_cf(cursor, 'cf', compression="Deflate")
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 1)
+        self.create_cf(session, 'cf', compression="Deflate")
 
         # make unique column names, and values that are incompressible
-        rnd = open('/dev/urandom', 'rb')
         for col in xrange(10):
             col_name = str(col)
-            col_val = rnd.read(5000)
+            col_val = os.urandom(5000)
             col_val = col_val.encode('hex')
             cql = "UPDATE cf SET v='%s' WHERE KEY='0' AND c='%s'" % (col_val, col_name)
             # print cql
-            cursor.execute(cql)
-        rnd.close()
+            session.execute(cql)
 
         node1.flush()
         time.sleep(2)
-        rows = cursor.execute("SELECT * FROM cf WHERE KEY = '0' AND c < '8'")
+        rows = list(session.execute("SELECT * FROM cf WHERE KEY = '0' AND c < '8'"))
         assert len(rows) > 0
 
     def remove_index_file_test(self):
@@ -57,23 +57,16 @@ class TestSSTableGenerationAndLoading(Tester):
 
         # Makinge sure the cluster is ready to accept the subsequent
         # stress connection. This was an issue on Windows.
-        version = cluster.version()
-        if version < "2.1":
-            node1.stress(['--num-keys=10000'])
-        else:
-            node1.stress(['write', 'n=10000', '-rate', 'threads=8'])
+        node1.stress(['write', 'n=10000', '-rate', 'threads=8'])
         node1.flush()
         node1.compact()
         node1.stop()
         time.sleep(1)
         path = ""
-        if version < "2.1":
-            path = os.path.join(node1.get_path(), 'data', 'Keyspace1', 'Standard1')
-        else:
-            basepath = os.path.join(node1.get_path(), 'data', 'keyspace1')
-            for x in os.listdir(basepath):
-                if x.startswith("standard1"):
-                    path = os.path.join(basepath, x)
+        basepath = os.path.join(node1.get_path(), 'data', 'keyspace1')
+        for x in os.listdir(basepath):
+            if x.startswith("standard1"):
+                path = os.path.join(basepath, x)
 
         os.system('rm %s/*Index.db' % path)
         os.system('rm %s/*Filter.db' % path)
@@ -138,18 +131,18 @@ class TestSSTableGenerationAndLoading(Tester):
         node1, node2 = cluster.nodelist()
         time.sleep(.5)
 
-        def create_schema(cursor, compression):
-            self.create_ks(cursor, "ks", rf=2)
-            self.create_cf(cursor, "standard1", compression=compression)
-            self.create_cf(cursor, "counter1", compression=compression, columns={'v': 'counter'})
+        def create_schema(session, compression):
+            self.create_ks(session, "ks", rf=2)
+            self.create_cf(session, "standard1", compression=compression)
+            self.create_cf(session, "counter1", compression=compression, columns={'v': 'counter'})
 
         debug("creating keyspace and inserting")
-        cursor = self.cql_connection(node1)
-        create_schema(cursor, pre_compression)
+        session = self.cql_connection(node1)
+        create_schema(session, pre_compression)
 
         for i in range(NUM_KEYS):
-            cursor.execute("UPDATE standard1 SET v='%d' WHERE KEY='%d' AND c='col'" % (i, i))
-            cursor.execute("UPDATE counter1 SET v=v+1 WHERE KEY='%d'" % i)
+            session.execute("UPDATE standard1 SET v='%d' WHERE KEY='%d' AND c='col'" % (i, i))
+            session.execute("UPDATE counter1 SET v=v+1 WHERE KEY='%d'" % i)
 
         node1.nodetool('drain')
         node1.stop()
@@ -170,11 +163,11 @@ class TestSSTableGenerationAndLoading(Tester):
         # wipe out the node data.
         cluster.clear()
         cluster.start()
-        time.sleep(5) # let gossip figure out what is going on
+        time.sleep(5)  # let gossip figure out what is going on
 
         debug("re-creating the keyspace and column families.")
-        cursor = self.cql_connection(node1)
-        create_schema(cursor, post_compression)
+        session = self.cql_connection(node1)
+        create_schema(session, post_compression)
         time.sleep(2)
 
         debug("Calling sstableloader")
@@ -191,19 +184,19 @@ class TestSSTableGenerationAndLoading(Tester):
                 p = subprocess.Popen(cmd_args, env=env)
                 exit_status = p.wait()
                 self.assertEqual(0, exit_status,
-                        "sstableloader exited with a non-zero status: %d" % exit_status)
+                                 "sstableloader exited with a non-zero status: %d" % exit_status)
 
-        def read_and_validate_data(cursor):
+        def read_and_validate_data(session):
             for i in range(NUM_KEYS):
-                rows = cursor.execute("SELECT * FROM standard1 WHERE KEY='%d'" % i)
+                rows = list(session.execute("SELECT * FROM standard1 WHERE KEY='%d'" % i))
                 self.assertEquals([str(i), 'col', str(i)], list(rows[0]))
-                rows = cursor.execute("SELECT * FROM counter1 WHERE KEY='%d'" % i)
+                rows = list(session.execute("SELECT * FROM counter1 WHERE KEY='%d'" % i))
                 self.assertEquals([str(i), 1], list(rows[0]))
 
         debug("Reading data back")
         # Now we should have sstables with the loaded data, and the existing
         # data. Lets read it all to make sure it is all there.
-        read_and_validate_data(cursor)
+        read_and_validate_data(session)
 
         debug("scrubbing, compacting, and repairing")
         # do some operations and try reading the data again.
@@ -212,4 +205,4 @@ class TestSSTableGenerationAndLoading(Tester):
         node1.nodetool('repair')
 
         debug("Reading data back one more time")
-        read_and_validate_data(cursor)
+        read_and_validate_data(session)

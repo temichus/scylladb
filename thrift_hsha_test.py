@@ -1,5 +1,13 @@
+import glob
+import os
+import pycassa
+import shlex
+import subprocess
+import sys
+import time
+import unittest
+
 from dtest import Tester, debug, DEFAULT_DIR
-import unittest, time, os, subprocess, shlex, pycassa, glob, sys
 
 JNA_PATH = '/usr/share/java/jna.jar'
 ATTACK_JAR = 'lib/cassandra-attack.jar'
@@ -16,6 +24,7 @@ except KeyError:
         JNA_IN_LIB = glob.glob('%s/lib/jna-*.jar' % DEFAULT_DIR)
         JNA_PATH = JNA_IN_LIB[0]
 
+
 class ThriftHSHATest(Tester):
 
     def __init__(self, *args, **kwargs):
@@ -31,17 +40,18 @@ class ThriftHSHATest(Tester):
         cluster = self.cluster
         cluster.set_configuration_options(values={
             'start_rpc': 'true',
-            'rpc_server_type' : 'hsha',
-            'rpc_max_threads' : 20
+            'rpc_server_type': 'hsha',
+            'rpc_max_threads': 20
         })
 
         cluster.populate(1)
         cluster.start(wait_for_binary_proto=True)
         (node1,) = cluster.nodelist()
 
-        cursor = self.patient_cql_connection(node1)
-        self.create_ks(cursor, 'test', 1)
-        cursor.execute("CREATE TABLE \"CF\" (key text PRIMARY KEY, val text) WITH COMPACT STORAGE;")
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'test', 1)
+        session.execute("CREATE TABLE \"CF\" (key text PRIMARY KEY, val text) WITH COMPACT STORAGE;")
+
         def make_connection():
             pool = pycassa.ConnectionPool('test', timeout=None)
             cf = pycassa.ColumnFamily(pool, 'CF')
@@ -58,8 +68,12 @@ class ThriftHSHATest(Tester):
             debug("Closing connections from the client side..")
             for pool in pools:
                 pool.dispose()
-            stdout = subprocess.Popen(["lsof -a -p %s -iTCP -sTCP:CLOSE_WAIT" % node1.pid], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True).communicate()[0]
-            lines = stdout.splitlines()
+            for i in range(0, 3):
+                stdout = subprocess.Popen(["lsof -a -p %s -iTCP -sTCP:CLOSE_WAIT" % node1.pid], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True).communicate()[0]
+                lines = stdout.splitlines()
+                if len(lines) == 0:
+                    break
+                time.sleep(1)
             self.assertEqual(len(lines), 0, "There are non-closed connections: %s" % stdout)
 
     @unittest.skipIf(not os.path.exists(ATTACK_JAR), "No attack jar found")
@@ -77,12 +91,12 @@ class ThriftHSHATest(Tester):
         cluster = self.cluster
         cluster.set_configuration_options(values={
             'start_rpc': 'true',
-            'rpc_server_type' : 'hsha',
-            'rpc_max_threads' : 20
+            'rpc_server_type': 'hsha',
+            'rpc_max_threads': 20
         })
 
         # Enable JNA:
-        with open(os.path.join(self.test_path, 'test', 'cassandra.in.sh'),'w') as f:
+        with open(os.path.join(self.test_path, 'test', 'cassandra.in.sh'), 'w') as f:
             f.write('CLASSPATH={jna_path}:$CLASSPATH\n'.format(
                 jna_path=JNA_PATH))
 
@@ -91,17 +105,16 @@ class ThriftHSHATest(Tester):
         [n.start(use_jna=True) for n in nodes]
         debug("Cluster started.")
 
-        cursor = self.patient_cql_connection(node1)
-        self.create_ks(cursor, 'tmp', 2)
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'tmp', 2)
 
-        cursor.execute("""CREATE TABLE "CF" (
+        session.execute("""CREATE TABLE "CF" (
   key blob,
   column1 timeuuid,
   value blob,
   PRIMARY KEY (key, column1)
 ) WITH COMPACT STORAGE;
 """)
-
 
         debug("running attack jar...")
         p = subprocess.Popen(shlex.split("java -jar {attack_jar}".format(attack_jar=ATTACK_JAR)))
@@ -113,4 +126,3 @@ class ThriftHSHATest(Tester):
         cluster.start(no_wait=True)
         debug("Waiting 10 seconds before we're done..")
         time.sleep(10)
-

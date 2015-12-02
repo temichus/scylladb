@@ -1,15 +1,18 @@
-from dtest import Tester, debug
-from tools import insert_c1c2, since
-from cassandra import ConsistencyLevel
-from ccmlib.node import Node
-from re import findall
-import time
 import os
-from assertions import assert_one, assert_almost_equal
+import time
+from re import findall
+from unittest import skip
+
+from cassandra import ConsistencyLevel
 from nose.plugins.attrib import attr
 
+from assertions import assert_almost_equal, assert_one
+from ccmlib.node import Node
+from ccmlib.common import is_win
+from dtest import Tester, debug
+from tools import insert_c1c2
 
-@since('2.1')
+
 class TestIncRepair(Tester):
 
     def __init__(self, *args, **kwargs):
@@ -22,6 +25,8 @@ class TestIncRepair(Tester):
 
     def sstable_marking_test(self):
         cluster = self.cluster
+        # hinted handoff can create SSTable that we don't need after node3 restarted
+        cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
         cluster.populate(3).start()
         node1, node2, node3 = cluster.nodelist()
 
@@ -48,7 +53,7 @@ class TestIncRepair(Tester):
         with open("sstables.txt", 'r') as r:
             output = r.read().replace('\n', '')
 
-        self.assertNotIn('repairedAt: 0', output)
+        self.assertNotIn('Repaired at: 0', output)
 
         os.remove('sstables.txt')
 
@@ -57,14 +62,13 @@ class TestIncRepair(Tester):
         cluster.populate(3).start()
         node1, node2, node3 = cluster.nodelist()
 
-        cursor = self.patient_cql_connection(node1)
-        self.create_ks(cursor, 'ks', 3)
-        self.create_cf(cursor, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 3)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
         debug("insert data")
 
-        for x in range(1, 50):
-            insert_c1c2(cursor, x, ConsistencyLevel.ALL)
+        insert_c1c2(session, keys=range(1, 50), consistency=ConsistencyLevel.ALL)
         node1.flush()
 
         debug("bringing down node 3")
@@ -72,8 +76,7 @@ class TestIncRepair(Tester):
         node3.stop(gently=False)
 
         debug("inserting additional data into node 1 and 2")
-        for y in range(50, 100):
-            insert_c1c2(cursor, y, ConsistencyLevel.TWO)
+        insert_c1c2(session, keys=range(50, 100), consistency=ConsistencyLevel.TWO)
         node1.flush()
         node2.flush()
 
@@ -85,12 +88,16 @@ class TestIncRepair(Tester):
         else:
             node3.nodetool("repair -par -inc")
 
+        # wait stream handlers to be closed on windows
+        # after session is finished (See CASSANDRA-10644)
+        if is_win:
+            time.sleep(2)
+
         debug("stopping node 2")
         node2.stop(gently=False)
 
         debug("inserting data in nodes 1 and 3")
-        for z in range(100, 150):
-            insert_c1c2(cursor, z, ConsistencyLevel.TWO)
+        insert_c1c2(session, keys=range(100, 150), consistency=ConsistencyLevel.TWO)
         node1.flush()
         node3.flush()
 
@@ -108,7 +115,7 @@ class TestIncRepair(Tester):
         cluster.add(node5, False)
         node5.start(replace_address='127.0.0.3', wait_other_notice=True)
 
-        assert_one(cursor, "SELECT COUNT(*) FROM ks.cf LIMIT 200", [149])
+        assert_one(session, "SELECT COUNT(*) FROM ks.cf LIMIT 200", [149])
 
     def sstable_repairedset_test(self):
         cluster = self.cluster
@@ -168,20 +175,19 @@ class TestIncRepair(Tester):
         os.remove('initial.txt')
         os.remove('final.txt')
 
-    @since('2.1')
     def compaction_test(self):
         cluster = self.cluster
         cluster.populate(3).start()
         node1, node2, node3 = cluster.nodelist()
 
-        cursor = self.patient_cql_connection(node1)
-        self.create_ks(cursor, 'ks', 3)
-        cursor.execute("create table tab(key int PRIMARY KEY, val int);")
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 3)
+        session.execute("create table tab(key int PRIMARY KEY, val int);")
 
         node3.stop()
 
         for x in range(0, 100):
-            cursor.execute("insert into tab(key,val) values(" + str(x) + ",0)")
+            session.execute("insert into tab(key,val) values(" + str(x) + ",0)")
         node1.flush()
 
         node3.start(wait_for_binary_proto=True)
@@ -191,7 +197,7 @@ class TestIncRepair(Tester):
         else:
             node3.nodetool("repair -par -inc")
         for x in range(0, 150):
-            cursor.execute("insert into tab(key,val) values(" + str(x) + ",1)")
+            session.execute("insert into tab(key,val) values(" + str(x) + ",1)")
         node1.flush()
         node2.flush()
         node3.flush()
@@ -199,10 +205,10 @@ class TestIncRepair(Tester):
         node3.nodetool('compact')
 
         for x in range(0, 150):
-            assert_one(cursor, "select val from tab where key =" + str(x), [1])
+            assert_one(session, "select val from tab where key =" + str(x), [1])
 
-    @since('2.1')
     @attr('long')
+    @skip('hangs CI')
     def multiple_subsequent_repair_test(self):
         """
         Covers CASSANDRA-8366
@@ -210,20 +216,17 @@ class TestIncRepair(Tester):
         There is an issue with subsequent inc repairs.
         """
         cluster = self.cluster
-        cluster.set_configuration_options(values={
-            'compaction_throughput_mb_per_sec': 0
-        })
         cluster.populate(3).start()
         [node1, node2, node3] = cluster.nodelist()
 
         debug("Inserting data with stress")
-        expected_load_size = 4.5  # In GB
-        node1.stress(['write', 'n=5M', '-rate', 'threads=50', '-schema', 'replication(factor=3)'])
+        node1.stress(['write', 'n=5M', '-rate', 'threads=10', '-schema', 'replication(factor=3)'])
 
         debug("Flushing nodes")
-        node1.flush()
-        node2.flush()
-        node3.flush()
+        cluster.flush()
+
+        debug("Waiting compactions to finish")
+        cluster.wait_for_compactions()
 
         if self.cluster.version() >= '2.2':
             debug("Repairing node1")
@@ -260,4 +263,52 @@ class TestIncRepair(Tester):
         debug("Total Load size: {}GB".format(load_size))
 
         # There is still some overhead, but it's lot better. We tolerate 25%.
+        expected_load_size = 4.5  # In GB
         assert_almost_equal(load_size, expected_load_size, error=0.25)
+
+    def sstable_marking_test_not_intersecting_all_ranges(self):
+        """
+        @jira_ticket CASSANDRA-10299
+        """
+        cluster = self.cluster
+        cluster.populate(4, use_vnodes=True).start()
+        [node1, node2, node3, node4] = cluster.nodelist()
+
+        debug("Inserting data with stress")
+        node1.stress(['write', 'n=3', '-rate', 'threads=1', '-schema', 'replication(factor=3)'])
+
+        debug("Flushing nodes")
+        cluster.flush()
+
+        if self.cluster.version() >= '2.2':
+            debug("Repairing node 1")
+            node1.nodetool("repair")
+            debug("Repairing node 2")
+            node2.nodetool("repair")
+            debug("Repairing node 3")
+            node3.nodetool("repair")
+            debug("Repairing node 4")
+            node4.nodetool("repair")
+
+        else:
+            debug("Repairing node 1")
+            node1.nodetool("repair -inc -par")
+            debug("Repairing node 2")
+            node2.nodetool("repair -inc -par")
+            debug("Repairing node 3")
+            node3.nodetool("repair -inc -par")
+            debug("Repairing node 4")
+            node4.nodetool("repair -inc -par")
+
+        with open("final.txt", "w") as h:
+            node1.run_sstablemetadata(output_file=h, keyspace='keyspace1')
+            node2.run_sstablemetadata(output_file=h, keyspace='keyspace1')
+            node3.run_sstablemetadata(output_file=h, keyspace='keyspace1')
+            node4.run_sstablemetadata(output_file=h, keyspace='keyspace1')
+
+        with open("final.txt", "r") as r:
+            output = r.read()
+
+        self.assertNotIn('Repaired at: 0', output)
+
+        os.remove('final.txt')

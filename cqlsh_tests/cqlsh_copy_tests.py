@@ -1,39 +1,63 @@
 # coding: utf-8
-import codecs
-from contextlib import contextmanager
 import csv
 import datetime
-from decimal import Decimal
-import locale
+import json
 import os
-import random
 import sys
-from tempfile import NamedTemporaryFile
 import time
-import unittest
+from collections import namedtuple
+from contextlib import contextmanager
+from decimal import Decimal
+from dtest import warning
+from tempfile import NamedTemporaryFile
 from uuid import uuid1, uuid4
 
-import cassandra
 from cassandra.concurrent import execute_concurrent_with_args
+from cassandra.util import SortedSet
+from ccmlib.common import is_win
 
-from dtest import debug, Tester, canReuseCluster
-from tools import rows_to_list, since
-from cqlsh_tools import (csv_rows, random_list, DummyColorMap,
-                         assert_csvs_items_equal, write_rows_to_csv,
-                         strip_timezone_if_time_string, monkeypatch_driver,
-                         unmonkeypatch_driver)
+from cqlsh_tools import (DummyColorMap, assert_csvs_items_equal, csv_rows,
+                         monkeypatch_driver, random_list,
+                         strip_timezone_if_time_string, unmonkeypatch_driver,
+                         write_rows_to_csv)
+from dtest import Tester, canReuseCluster, freshCluster, debug
+from tools import rows_to_list, require
 
 DEFAULT_FLOAT_PRECISION = 5  # magic number copied from cqlsh script
-DEFAULT_TIME_FORMAT = '%Y-%m-%d %H:%M:%S'  # based on cqlsh script; timezone stripped
+DEFAULT_TIME_FORMAT = '%Y-%m-%d %H:%M:%S%z'  # based on cqlsh script
+
+PARTITIONERS = {
+    "murmur3": "org.apache.cassandra.dht.Murmur3Partitioner",
+    "random": "org.apache.cassandra.dht.RandomPartitioner",
+    "byte": "org.apache.cassandra.dht.ByteOrderedPartitioner",
+    "order": "org.apache.cassandra.dht.OrderPreservingPartitioner"
+}
+
+
+class UTC(datetime.tzinfo):
+    """
+    A utility class to specify a UTC timezone.
+    """
+    def utcoffset(self, dt):
+        return datetime.timedelta(0)
+
+    def tzname(self, dt):
+        return "UTC"
+
+    def dst(self, dt):
+        return datetime.timedelta(0)
 
 
 @canReuseCluster
-@since('2.1')  # version differences break formatting code on 2.0.x
 class CqlshCopyTest(Tester):
     """
     Tests the COPY TO and COPY FROM features in cqlsh.
     @jira_ticket CASSANDRA-3906
     """
+
+    def __init__(self, *args, **kwargs):
+        Tester.__init__(self, *args, **kwargs)
+
     @classmethod
     def setUpClass(cls):
         cls._cached_driver_methods = monkeypatch_driver()
@@ -42,10 +66,30 @@ class CqlshCopyTest(Tester):
     def tearDownClass(cls):
         unmonkeypatch_driver(cls._cached_driver_methods)
 
-    def prepare(self):
+    def tearDown(self):
+        try:
+            if self.tempfile:
+                if is_win():
+                    self.tempfile.close()
+                os.unlink(self.tempfile.name)
+        except AttributeError:
+            pass
+
+        super(CqlshCopyTest, self).tearDown()
+
+    def prepare(self, nodes=1, partitioner="murmur3", configuration_options=None):
         if not self.cluster.nodelist():
-            self.cluster.populate(1).start(wait_for_binary_proto=True)
-        self.node1, = self.cluster.nodelist()
+            p = PARTITIONERS[partitioner]
+            self.cluster.set_partitioner(p)
+            if configuration_options:
+                self.cluster.set_configuration_options(values=configuration_options)
+            self.cluster.populate(nodes).start(wait_for_binary_proto=True)
+        else:
+            self.assertEqual(self.cluster.partitioner, partitioner, "Cannot reuse cluster: different partitioner")
+            self.assertEqual(len(self.cluster.nodelist()), nodes, "Cannot reuse cluster: different number of nodes")
+            self.assertIsNone(configuration_options)
+
+        self.node1 = self.cluster.nodelist()[0]
         self.session = self.patient_cql_connection(self.node1)
 
         self.session.execute('DROP KEYSPACE IF EXISTS ks')
@@ -53,6 +97,12 @@ class CqlshCopyTest(Tester):
 
     def all_datatypes_prepare(self):
         self.prepare()
+
+        self.session.execute('CREATE TYPE name_type (firstname text, lastname text)')
+        self.session.execute('''
+            CREATE TYPE address_type (name frozen<name_type>, number int, street text, phones set<text>)
+            ''')
+
         self.session.execute('''
             CREATE TABLE testdatatype (
                 a ascii PRIMARY KEY,
@@ -69,12 +119,72 @@ class CqlshCopyTest(Tester):
                 l timeuuid,
                 m uuid,
                 n varchar,
-                o varint
+                o varint,
+                p list<int>,
+                q set<text>,
+                r map<timestamp, text>,
+                s tuple<int, text, boolean>,
+                t frozen<address_type>,
+                u frozen<list<list<address_type>>>,
+                v frozen<map<map<int,int>,set<text>>>,
+                w frozen<set<set<inet>>>,
             )''')
+
+        class Datetime(datetime.datetime):
+            def __str__(self):
+                return self.strftime(DEFAULT_TIME_FORMAT)
+
+            def __repr__(self):
+                return self.strftime(DEFAULT_TIME_FORMAT)
+
+        def maybe_quote(s):
+            """
+            Return a quoted string representation for strings, unicode and date time parameters,
+            otherwise return a string representation of the parameter.
+            """
+            return "'{}'".format(s) if isinstance(s, (str, unicode, Datetime)) else str(s)
+
+        class ImmutableDict(frozenset):
+            iteritems = frozenset.__iter__
+
+            def __repr__(self):
+                return '{{{}}}'.format(', '.join(['{}: {}'.format(maybe_quote(t[0]), maybe_quote(t[1]))
+                                                  for t in sorted(self)]))
+
+        class ImmutableSet(SortedSet):
+            def __repr__(self):
+                return '{{{}}}'.format(', '.join([maybe_quote(t) for t in sorted(self._items)]))
+
+        class Name(namedtuple('Name', ('firstname', 'lastname'))):
+            __slots__ = ()
+
+            def __repr__(self):
+                return "{{firstname: '{}', lastname: '{}'}}".format(self.firstname, self.lastname)
+
+        class Address(namedtuple('Address', ('name', 'number', 'street', 'phones'))):
+            __slots__ = ()
+
+            def __repr__(self):
+                phones_str = "{{{}}}".format(', '.join(maybe_quote(p) for p in sorted(self.phones)))
+                return "{{name: {}, number: {}, street: '{}', phones: {}}}".format(self.name,
+                                                                                   self.number,
+                                                                                   self.street,
+                                                                                   phones_str)
+
+        self.session.cluster.register_user_type('ks', 'name_type', Name)
+        self.session.cluster.register_user_type('ks', 'address_type', Address)
+
+        date1 = Datetime(2005, 7, 14, 12, 30, 0, 0, UTC())
+        date2 = Datetime(2005, 7, 14, 13, 30, 0, 0, UTC())
+
+        addr1 = Address(Name('name1', 'last1'), 1, 'street 1', ImmutableSet(['1111 2222', '3333 4444']))
+        addr2 = Address(Name('name2', 'last2'), 2, 'street 2', ImmutableSet(['5555 6666', '7777 8888']))
+        addr3 = Address(Name('name3', 'last3'), 3, 'street 3', ImmutableSet(['1111 2222', '3333 4444']))
+        addr4 = Address(Name('name4', 'last4'), 4, 'street 4', ImmutableSet(['5555 6666', '7777 8888']))
 
         self.data = ('ascii',  # a ascii
                      2 ** 40,  # b bigint
-                     '0xbeef',  # c blob
+                     bytearray.fromhex('beef'),  # c blob
                      True,  # d boolean
                      Decimal(3.14),  # e decimal
                      2.444,  # f double
@@ -82,11 +192,24 @@ class CqlshCopyTest(Tester):
                      '127.0.0.1',  # h inet
                      25,  # i int
                      'ヽ(´ー｀)ノ',  # j text
-                     datetime.datetime(2005, 7, 14, 12, 30),  # k timestamp
+                     date1,  # k timestamp
                      uuid1(),  # l timeuuid
                      uuid4(),  # m uuid
                      'asdf',  # n varchar
-                     2 ** 65  # o varint
+                     2 ** 65,  # o varint
+                     [1, 2, 3],  # p list<int>,
+                     ImmutableSet(['3', '2', '1']),  # q set<text>,
+                     ImmutableDict([(date1, '1'), (date2, '2')]),  # r map<timestamp, text>,
+                     (1, '1', True),  # s tuple<int, text, boolean>,
+                     addr1,  # t frozen<address_type>,
+                     [[addr1, addr2], [addr3, addr4]],  # u frozen<list<list<address_type>>>,
+                     # v frozen<map<map<int,int>,set<text>>>
+                     ImmutableDict([(ImmutableDict([(1, 1), (2, 2)]), ImmutableSet(['1', '2', '3']))]),
+                     # w frozen<set<set<inet>>>, because of the SortedSet.__lt__() implementation, make sure the
+                     # first set is contained in the second set or else they will not sort consistently
+                     # and this will cause comparison problems when comparing with csv strings therefore failing
+                     # some tests
+                     ImmutableSet([ImmutableSet(['127.0.0.1']), ImmutableSet(['127.0.0.1', '127.0.0.2'])])
                      )
 
     @contextmanager
@@ -117,8 +240,20 @@ class CqlshCopyTest(Tester):
         processed_csv = [[strip_timezone_if_time_string(v) for v in row]
                          for row in csv_file]
 
-        self.assertItemsEqual(processed_csv,
-                              processed_results)
+        self.maxDiff = None
+        try:
+            self.assertItemsEqual(processed_csv, processed_results)
+        except Exception as e:
+            if len(processed_csv) != len(processed_results):
+                warning("Different # of entries. CSV: " + str(len(processed_csv)) +
+                        " vs results: " + str(len(processed_results)))
+            elif processed_csv[0] is not None:
+                for x in range(0, len(processed_csv[0])):
+                    if processed_csv[0][x] != processed_results[0][x]:
+                        warning("Mismatch at index: " + str(x))
+                        warning("Value in csv: " + str(processed_csv[0][x]))
+                        warning("Value in result: " + str(processed_results[0][x]))
+            raise e
 
     def format_for_csv(self, val):
         with self._cqlshlib() as cqlshlib:
@@ -128,14 +263,23 @@ class CqlshCopyTest(Tester):
                 date_time_format = DateTimeFormat()
             except ImportError:
                 date_time_format = None
-            # try:
+
+            #  try:
             #     from cqlshlib.formatting
-        encoding_name = codecs.lookup(locale.getpreferredencoding()).name
+        encoding_name = 'utf-8'  # codecs.lookup(locale.getpreferredencoding()).name
+
+        # this seems gross but if the blob isn't set to type:bytearray is won't compare correctly
+        if isinstance(val, str) and hasattr(self, 'data') and self.data[2] == val:
+            var_type = bytearray
+            val = bytearray(val)
+        else:
+            var_type = type(val)
 
         # different versions use time_format or date_time_format
         # but all versions reject spurious values, so we just use both
         # here
-        return format_value(type(val), val,
+        return format_value(var_type,
+                            val,
                             encoding=encoding_name,
                             date_time_format=date_time_format,
                             time_format=DEFAULT_TIME_FORMAT,
@@ -174,11 +318,11 @@ class CqlshCopyTest(Tester):
 
         results = list(self.session.execute("SELECT * FROM testlist"))
 
-        tempfile = NamedTemporaryFile()
-        debug('Exporting to csv file: {name}'.format(name=tempfile.name))
-        self.node1.run_cqlsh(cmds="COPY ks.testlist TO '{name}'".format(name=tempfile.name))
+        self.tempfile = NamedTemporaryFile(delete=False)
+        debug('Exporting to csv file: {name}'.format(name=self.tempfile.name))
+        self.node1.run_cqlsh(cmds="COPY ks.testlist TO '{name}'".format(name=self.tempfile.name))
 
-        self.assertCsvResultEqual(tempfile.name, results)
+        self.assertCsvResultEqual(self.tempfile.name, results)
 
     def test_tuple_data(self):
         """
@@ -201,11 +345,11 @@ class CqlshCopyTest(Tester):
 
         results = list(self.session.execute("SELECT * FROM testtuple"))
 
-        tempfile = NamedTemporaryFile()
-        debug('Exporting to csv file: {name}'.format(name=tempfile.name))
-        self.node1.run_cqlsh(cmds="COPY ks.testtuple TO '{name}'".format(name=tempfile.name))
+        self.tempfile = NamedTemporaryFile(delete=False)
+        debug('Exporting to csv file: {name}'.format(name=self.tempfile.name))
+        self.node1.run_cqlsh(cmds="COPY ks.testtuple TO '{name}'".format(name=self.tempfile.name))
 
-        self.assertCsvResultEqual(tempfile.name, results)
+        self.assertCsvResultEqual(self.tempfile.name, results)
 
     def non_default_delimiter_template(self, delimiter):
         """
@@ -224,18 +368,18 @@ class CqlshCopyTest(Tester):
                 a int primary key
             )""")
         insert_statement = self.session.prepare("INSERT INTO testdelimiter (a) VALUES (?)")
-        args = [(i,) for i in range(1000)]
+        args = [(i,) for i in range(10000)]
         execute_concurrent_with_args(self.session, insert_statement, args)
 
         results = list(self.session.execute("SELECT * FROM testdelimiter"))
 
-        tempfile = NamedTemporaryFile()
-        debug('Exporting to csv file: {name}'.format(name=tempfile.name))
-        cmds = "COPY ks.testdelimiter TO '{name}'".format(name=tempfile.name)
+        self.tempfile = NamedTemporaryFile(delete=False)
+        debug('Exporting to csv file: {name}'.format(name=self.tempfile.name))
+        cmds = "COPY ks.testdelimiter TO '{name}'".format(name=self.tempfile.name)
         cmds += " WITH DELIMITER = '{d}'".format(d=delimiter)
         self.node1.run_cqlsh(cmds=cmds)
 
-        self.assertCsvResultEqual(tempfile.name, results)
+        self.assertCsvResultEqual(self.tempfile.name, results)
 
     def test_colon_delimiter(self):
         """
@@ -261,7 +405,7 @@ class CqlshCopyTest(Tester):
 
         A parametrized test that tests COPY with a given null indicator.
         """
-        self.prepare()
+        self.all_datatypes_prepare()
         self.session.execute("""
             CREATE TABLE testnullindicator (
                 a int primary key,
@@ -273,9 +417,9 @@ class CqlshCopyTest(Tester):
         insert_null = self.session.prepare("INSERT INTO testnullindicator (a) VALUES (?)")
         execute_concurrent_with_args(self.session, insert_null, [(2,), (200,)])
 
-        tempfile = NamedTemporaryFile()
-        debug('Exporting to csv file: {name}'.format(name=tempfile.name))
-        cmds = "COPY ks.testnullindicator TO '{name}'".format(name=tempfile.name)
+        self.tempfile = NamedTemporaryFile(delete=False)
+        debug('Exporting to csv file: {name}'.format(name=self.tempfile.name))
+        cmds = "COPY ks.testnullindicator TO '{name}'".format(name=self.tempfile.name)
         cmds += " WITH NULL = '{d}'".format(d=indicator)
         self.node1.run_cqlsh(cmds=cmds)
 
@@ -283,7 +427,7 @@ class CqlshCopyTest(Tester):
         results = [[indicator if value is None else value for value in row]
                    for row in results]
 
-        self.assertCsvResultEqual(tempfile.name, results)
+        self.assertCsvResultEqual(self.tempfile.name, results)
 
     def test_undefined_as_null_indicator(self):
         """
@@ -317,17 +461,52 @@ class CqlshCopyTest(Tester):
         args = [(1, 10), (2, 20), (3, 30)]
         execute_concurrent_with_args(self.session, insert_statement, args)
 
-        tempfile = NamedTemporaryFile()
-        debug('Exporting to csv file: {name}'.format(name=tempfile.name))
-        cmds = "COPY ks.testheader TO '{name}'".format(name=tempfile.name)
+        self.tempfile = NamedTemporaryFile(delete=False)
+        debug('Exporting to csv file: {name}'.format(name=self.tempfile.name))
+        cmds = "COPY ks.testheader TO '{name}'".format(name=self.tempfile.name)
         cmds += " WITH HEADER = true"
         self.node1.run_cqlsh(cmds=cmds)
 
-        with open(tempfile.name, 'r') as csvfile:
+        with open(self.tempfile.name, 'r') as csvfile:
             csv_values = list(csv.reader(csvfile))
 
-        self.assertSequenceEqual(csv_values,
-                                 [['a', 'b'], ['1', '10'], ['2', '20'], ['3', '30']])
+        self.assertItemsEqual(csv_values,
+                              [['a', 'b'], ['1', '10'], ['2', '20'], ['3', '30']])
+
+    def test_reading_counter(self):
+        """
+        Test that COPY can read a CSV of COUNTER by:
+
+        - creating a table,
+        - writing a CSV with COUNTER data with header,
+        - importing the contents of the CSV file using COPY with header,
+        - checking that the contents of the table are the written values.
+        @jira_ticket CASSANDRA-9043
+        """
+        self.prepare()
+        self.session.execute("""
+            CREATE TABLE testcounter (
+                a int primary key,
+                b counter
+            )""")
+
+        self.tempfile = NamedTemporaryFile(delete=False)
+
+        data = [[1, 20], [2, 40], [3, 60], [4, 80]]
+
+        with open(self.tempfile.name, 'w') as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=['a', 'b'])
+            writer.writeheader()
+            for a, b in data:
+                writer.writerow({'a': a, 'b': b})
+            csvfile.close
+
+        cmds = "COPY ks.testcounter FROM '{name}'".format(name=self.tempfile.name)
+        cmds += " WITH HEADER = true"
+        self.node1.run_cqlsh(cmds=cmds)
+
+        result = self.session.execute("SELECT * FROM testcounter")
+        self.assertItemsEqual(data, rows_to_list(result))
 
     def test_reading_use_header(self):
         """
@@ -345,23 +524,98 @@ class CqlshCopyTest(Tester):
                 b int
             )""")
 
-        tempfile = NamedTemporaryFile()
+        self.tempfile = NamedTemporaryFile(delete=False)
 
         data = [[1, 20], [2, 40], [3, 60], [4, 80]]
 
-        with open(tempfile.name, 'w') as csvfile:
+        with open(self.tempfile.name, 'w') as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=['a', 'b'])
             writer.writeheader()
             for a, b in data:
                 writer.writerow({'a': a, 'b': b})
+            csvfile.close
 
-        cmds = "COPY ks.testheader FROM '{name}'".format(name=tempfile.name)
+        cmds = "COPY ks.testheader FROM '{name}'".format(name=self.tempfile.name)
         cmds += " WITH HEADER = true"
         self.node1.run_cqlsh(cmds=cmds)
 
         result = self.session.execute("SELECT * FROM testheader")
         self.assertItemsEqual([tuple(d) for d in data],
                               [tuple(r) for r in rows_to_list(result)])
+
+    def test_writing_with_timeformat(self):
+        """
+        @jira_ticket CASSANDRA-10633
+        Test COPY TO with the time format specified in the WITH option by:
+
+        - creating and populating a table,
+        - exporting the contents of the table to a CSV file using COPY TO WITH TIMEFORMAT,
+        - checking the time format written to csv.
+        """
+        self.prepare()
+        self.session.execute("""
+            CREATE TABLE testtimeformat (
+                a int primary key,
+                b timestamp
+            )""")
+        insert_statement = self.session.prepare("INSERT INTO testtimeformat (a, b) VALUES (?, ?)")
+        args = [(1, datetime.datetime(2015, 1, 1, 07, 00, 0, 0, UTC())),
+                (2, datetime.datetime(2015, 6, 10, 12, 30, 30, 500, UTC())),
+                (3, datetime.datetime(2015, 12, 31, 23, 59, 59, 999, UTC()))]
+        execute_concurrent_with_args(self.session, insert_statement, args)
+
+        self.tempfile = NamedTemporaryFile(delete=False)
+        debug('Exporting to csv file: {name}'.format(name=self.tempfile.name))
+        cmds = "COPY ks.testtimeformat TO '{name}'".format(name=self.tempfile.name)
+        cmds += " WITH TIMEFORMAT = '%Y/%m/%d %H:%M'"
+        self.node1.run_cqlsh(cmds=cmds)
+
+        with open(self.tempfile.name, 'r') as csvfile:
+            csv_values = list(csv.reader(csvfile))
+
+        self.assertItemsEqual(csv_values,
+                              [['1', '2015/01/01 07:00'],
+                               ['2', '2015/06/10 12:30'],
+                               ['3', '2015/12/31 23:59']])
+
+    @require('9494')
+    def test_reading_with_ttl(self):
+        """
+        @jira_ticket CASSANDRA-9494
+        Test COPY FROM with TTL specified in the WITH option by:
+
+        - creating a table,
+        - writing a csv,
+        - importing the contents of the CSV file using COPY TO WITH TTL,
+        - checking the data has been imported,
+        - checking again after TTL * 2 seconds that the data has expired.
+        """
+        self.prepare()
+        self.session.execute("""
+            CREATE TABLE testttl (
+                a int primary key,
+                b int
+            )""")
+
+        self.tempfile = NamedTemporaryFile(delete=False)
+
+        data = [[1, 20], [2, 40], [3, 60], [4, 80]]
+
+        with open(self.tempfile.name, 'w') as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=['a', 'b'])
+            for a, b in data:
+                writer.writerow({'a': a, 'b': b})
+            csvfile.close
+
+        self.node1.run_cqlsh(cmds="COPY ks.testttl FROM '{name}' WITH TTL = '5'".format(name=self.tempfile.name))
+
+        result = rows_to_list(self.session.execute("SELECT * FROM testttl"))
+        self.assertItemsEqual(data, result)
+
+        time.sleep(10)
+
+        result = rows_to_list(self.session.execute("SELECT * FROM testttl"))
+        self.assertItemsEqual([], result)
 
     def test_explicit_column_order_writing(self):
         """
@@ -387,18 +641,19 @@ class CqlshCopyTest(Tester):
         insert_statement = self.session.prepare("INSERT INTO testorder (a, b, c) VALUES (?, ?, ?)")
         execute_concurrent_with_args(self.session, insert_statement, data)
 
-        tempfile = NamedTemporaryFile()
+        self.tempfile = NamedTemporaryFile(delete=False)
 
         self.node1.run_cqlsh(
-            "COPY ks.testorder (a, c, b) TO '{name}'".format(name=tempfile.name))
+            "COPY ks.testorder (a, c, b) TO '{name}'".format(name=self.tempfile.name))
 
-        reference_file = NamedTemporaryFile()
-        with open(reference_file.name, 'w') as csvfile:
+        reference_file = NamedTemporaryFile(delete=False)
+        with open(reference_file.name, 'wb') as csvfile:
             writer = csv.writer(csvfile)
             for a, b, c in data:
                 writer.writerow([a, c, b])
+            csvfile.close
 
-        assert_csvs_items_equal(tempfile.name, reference_file.name)
+        assert_csvs_items_equal(self.tempfile.name, reference_file.name)
 
     def test_explicit_column_order_reading(self):
         """
@@ -423,18 +678,19 @@ class CqlshCopyTest(Tester):
         data = [[1, 20, 'ham'], [2, 40, 'eggs'],
                 [3, 60, 'beans'], [4, 80, 'toast']]
 
-        tempfile = NamedTemporaryFile()
-        write_rows_to_csv(tempfile.name, data)
+        self.tempfile = NamedTemporaryFile(delete=False)
+        write_rows_to_csv(self.tempfile.name, data)
 
         self.node1.run_cqlsh(
-            "COPY ks.testorder (a, c, b) FROM '{name}'".format(name=tempfile.name))
+            "COPY ks.testorder (a, c, b) FROM '{name}'".format(name=self.tempfile.name))
 
         results = list(self.session.execute("SELECT * FROM testorder"))
-        reference_file = NamedTemporaryFile()
-        with open(reference_file.name, 'w') as csvfile:
+        reference_file = NamedTemporaryFile(delete=False)
+        with open(reference_file.name, 'wb') as csvfile:
             writer = csv.writer(csvfile)
             for a, b, c in data:
                 writer.writerow([a, c, b])
+        csvfile.close
 
         self.assertCsvResultEqual(reference_file.name, results)
 
@@ -462,17 +718,17 @@ class CqlshCopyTest(Tester):
         data = [[1, 'no'], [2, 'Yes'],
                 [3, 'True'], [4, 'false']]
 
-        tempfile = NamedTemporaryFile()
-        write_rows_to_csv(tempfile.name, data)
+        self.tempfile = NamedTemporaryFile(delete=False)
+        write_rows_to_csv(self.tempfile.name, data)
 
         stmt = ("""COPY ks.testquoted ("IdNumber", "select") FROM '{name}'"""
                 if specify_column_names else
-                """COPY ks.testquoted FROM '{name}'""").format(name=tempfile.name)
+                """COPY ks.testquoted FROM '{name}'""").format(name=self.tempfile.name)
 
         self.node1.run_cqlsh(stmt)
 
         results = list(self.session.execute("SELECT * FROM testquoted"))
-        self.assertCsvResultEqual(tempfile.name, results)
+        self.assertCsvResultEqual(self.tempfile.name, results)
 
     def test_quoted_column_names_reading_specify_names(self):
         """
@@ -517,16 +773,16 @@ class CqlshCopyTest(Tester):
         insert_statement = self.session.prepare("""INSERT INTO testquoted ("IdNumber", "select") VALUES (?, ?)""")
         execute_concurrent_with_args(self.session, insert_statement, data)
 
-        tempfile = NamedTemporaryFile()
+        self.tempfile = NamedTemporaryFile(delete=False)
         stmt = ("""COPY ks.testquoted ("IdNumber", "select") TO '{name}'"""
                 if specify_column_names else
-                """COPY ks.testquoted TO '{name}'""").format(name=tempfile.name)
+                """COPY ks.testquoted TO '{name}'""").format(name=self.tempfile.name)
         self.node1.run_cqlsh(stmt)
 
-        reference_file = NamedTemporaryFile()
+        reference_file = NamedTemporaryFile(delete=False)
         write_rows_to_csv(reference_file.name, data)
 
-        assert_csvs_items_equal(tempfile.name, reference_file.name)
+        assert_csvs_items_equal(self.tempfile.name, reference_file.name)
 
     def test_quoted_column_names_writing_specify_names(self):
         self.quoted_column_names_writing_template(specify_column_names=True)
@@ -546,10 +802,11 @@ class CqlshCopyTest(Tester):
         - writing a CSV file containing the value passed in as load_as_int, then
         - COPYing that csv file into the table, loading load_as_int as an int.
 
-        If expect_invalid, this test will succeed when the COPY command fails
-        with a "Bad request" error message. If not expect_invalid, this test
-        will succeed when the COPY command prints no errors and the table
-        matches the loaded CSV file.
+        If expect_invalid, this test will succeed when the COPY command fails.
+        If not expect_invalid, this test will succeed when the COPY command prints
+        no errors and the table matches the loaded CSV file.
+
+        @jira_ticket CASSANDRA-9302
         """
         self.prepare()
         self.session.execute("""
@@ -560,19 +817,19 @@ class CqlshCopyTest(Tester):
 
         data = [[1, load_as_int]]
 
-        tempfile = NamedTemporaryFile()
-        write_rows_to_csv(tempfile.name, data)
+        self.tempfile = NamedTemporaryFile(delete=False)
+        write_rows_to_csv(self.tempfile.name, data)
 
-        cmd = """COPY ks.testvalidate (a, b) FROM '{name}'""".format(name=tempfile.name)
+        cmd = """COPY ks.testvalidate (a, b) FROM '{name}'""".format(name=self.tempfile.name)
         out, err = self.node1.run_cqlsh(cmd, return_output=True)
         results = list(self.session.execute("SELECT * FROM testvalidate"))
 
         if expect_invalid:
-            self.assertRegexpMatches('Bad [Rr]equest', err)
+            self.assertIn('Failed to import', err)
             self.assertFalse(results)
         else:
             self.assertFalse(err)
-            self.assertCsvResultEqual(tempfile.name, results)
+            self.assertCsvResultEqual(self.tempfile.name, results)
 
     def test_read_valid_data(self):
         """
@@ -583,6 +840,7 @@ class CqlshCopyTest(Tester):
         # make sure the template works properly
         self.data_validation_on_read_template(2, expect_invalid=False)
 
+    @require('9302')
     def test_read_invalid_float(self):
         """
         Use data_validation_on_read_template to test COPYing a float value from a
@@ -590,6 +848,7 @@ class CqlshCopyTest(Tester):
         """
         self.data_validation_on_read_template(2.14, expect_invalid=True)
 
+    @require('9302')
     def test_read_invalid_uuid(self):
         """
         Use data_validation_on_read_template to test COPYing a uuid value from a
@@ -597,6 +856,7 @@ class CqlshCopyTest(Tester):
         """
         self.data_validation_on_read_template(uuid4(), expect_invalid=True)
 
+    @require('9302')
     def test_read_invalid_text(self):
         """
         Use data_validation_on_read_template to test COPYing a text value from a
@@ -612,21 +872,23 @@ class CqlshCopyTest(Tester):
         - creating and populating a table containing all datatypes,
         - COPYing the contents of that table to a CSV file, and
         - asserting that the CSV file contains the same data as the table.
+
+        @jira_ticket CASSANDRA-9302
         """
         self.all_datatypes_prepare()
 
         insert_statement = self.session.prepare(
-            """INSERT INTO testdatatype (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""")
+            """INSERT INTO testdatatype (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v, w)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""")
         self.session.execute(insert_statement, self.data)
 
-        tempfile = NamedTemporaryFile()
-        debug('Exporting to csv file: {name}'.format(name=tempfile.name))
-        self.node1.run_cqlsh(cmds="COPY ks.testdatatype TO '{name}'".format(name=tempfile.name))
+        self.tempfile = NamedTemporaryFile(delete=False)
+        debug('Exporting to csv file: {name}'.format(name=self.tempfile.name))
+        self.node1.run_cqlsh(cmds="COPY ks.testdatatype TO '{name}'".format(name=self.tempfile.name))
 
         results = list(self.session.execute("SELECT * FROM testdatatype"))
 
-        self.assertCsvResultEqual(tempfile.name, results)
+        self.assertCsvResultEqual(self.tempfile.name, results)
 
     def test_all_datatypes_read(self):
         """
@@ -637,20 +899,27 @@ class CqlshCopyTest(Tester):
         - writing a corresponding CSV file containing each datatype,
         - COPYing the CSV file into the table, and
         - asserting that the CSV file contains the same data as the table.
+
+        @jira_ticket CASSANDRA-9302
         """
         self.all_datatypes_prepare()
 
-        tempfile = NamedTemporaryFile()
-        with open(tempfile.name, 'w') as csvfile:
-            writer = csv.writer(csvfile)
-            writer.writerow(self.data)
+        self.tempfile = NamedTemporaryFile(delete=False)
 
-        debug('Importing from csv file: {name}'.format(name=tempfile.name))
-        self.node1.run_cqlsh(cmds="COPY ks.testdatatype FROM '{name}'".format(name=tempfile.name))
+        with open(self.tempfile.name, 'w') as csvfile:
+            writer = csv.writer(csvfile)
+            # serializing blob bytearray in friendly format
+            data_set = list(self.data)
+            data_set[2] = '0x{}'.format(''.join('%02x' % c for c in self.data[2]))
+            writer.writerow(data_set)
+            csvfile.close()
+
+        debug('Importing from csv file: {name}'.format(name=self.tempfile.name))
+        self.node1.run_cqlsh(cmds="COPY ks.testdatatype FROM '{name}'".format(name=self.tempfile.name))
 
         results = list(self.session.execute("SELECT * FROM testdatatype"))
 
-        self.assertCsvResultEqual(tempfile.name, results)
+        self.assertCsvResultEqual(self.tempfile.name, results)
 
     def test_all_datatypes_round_trip(self):
         """
@@ -664,27 +933,33 @@ class CqlshCopyTest(Tester):
         - COPYing the written CSV file back into the table, and
         - asserting that the previously-SELECTed contents of the table match the
         current contents of the table.
+
+        @jira_ticket CASSANDRA-9302
         """
         self.all_datatypes_prepare()
 
         insert_statement = self.session.prepare(
-            """INSERT INTO testdatatype (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""")
+            """INSERT INTO testdatatype (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v, w)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""")
         self.session.execute(insert_statement, self.data)
 
-        tempfile = NamedTemporaryFile()
-        debug('Exporting to csv file: {name}'.format(name=tempfile.name))
-        self.node1.run_cqlsh(cmds="COPY ks.testdatatype TO '{name}'".format(name=tempfile.name))
+        self.tempfile = NamedTemporaryFile(delete=False)
+        debug('Exporting to csv file: {name}'.format(name=self.tempfile.name))
+        self.node1.run_cqlsh(cmds="COPY ks.testdatatype TO '{name}'".format(name=self.tempfile.name))
 
         exported_results = list(self.session.execute("SELECT * FROM testdatatype"))
 
         self.session.execute('TRUNCATE ks.testdatatype')
-        self.node1.run_cqlsh(cmds="COPY ks.testdatatype FROM '{name}'".format(name=tempfile.name))
+
+        self.node1.run_cqlsh(cmds="COPY ks.testdatatype FROM '{name}'".format(name=self.tempfile.name))
 
         imported_results = list(self.session.execute("SELECT * FROM testdatatype"))
 
+        assert len(imported_results) == 1
+
         self.assertEqual(exported_results, imported_results)
 
+    @require('9302')
     def test_wrong_number_of_columns(self):
         """
         Test that a COPY statement will fail when trying to import from a CSV
@@ -694,6 +969,8 @@ class CqlshCopyTest(Tester):
         - writing a CSV file with two columns,
         - attempting to COPY the CSV file into the table, and
         - asserting that the COPY operation failed.
+
+        @jira_ticket CASSANDRA-9302
         """
         self.prepare()
         self.session.execute("""
@@ -703,17 +980,17 @@ class CqlshCopyTest(Tester):
             )""")
 
         data = [[1, 2, 3]]
-        tempfile = NamedTemporaryFile()
-        write_rows_to_csv(tempfile.name, data)
+        self.tempfile = NamedTemporaryFile(delete=False)
+        write_rows_to_csv(self.tempfile.name, data)
 
-        debug('Importing from csv file: {name}'.format(name=tempfile.name))
-        out, err = self.node1.run_cqlsh("COPY ks.testcolumns FROM '{name}'".format(name=tempfile.name),
+        debug('Importing from csv file: {name}'.format(name=self.tempfile.name))
+        out, err = self.node1.run_cqlsh("COPY ks.testcolumns FROM '{name}'".format(name=self.tempfile.name),
                                         return_output=True)
 
         self.assertFalse(self.session.execute("SELECT * FROM testcolumns"))
-        self.assertIn('Aborting import', err)
+        self.assertIn('Failed to import', err)
 
-    def test_round_trip(self):
+    def _test_round_trip(self, nodes, partitioner, num_records=10000):
         """
         Test a simple round trip of a small CQL table to and from a CSV file via
         COPY.
@@ -725,6 +1002,61 @@ class CqlshCopyTest(Tester):
         - COPYing the written CSV file back into the table, and
         - asserting that the previously-SELECTed contents of the table match the
         current contents of the table.
+        """
+        self.prepare(nodes=nodes, partitioner=partitioner)
+        self.session.execute("""
+            CREATE TABLE testcopyto (
+                a text PRIMARY KEY,
+                b int,
+                c float,
+                d uuid
+            )""")
+
+        insert_statement = self.session.prepare("INSERT INTO testcopyto (a, b, c, d) VALUES (?, ?, ?, ?)")
+        args = [(str(i), i, float(i) + 0.5, uuid4()) for i in range(num_records)]
+        execute_concurrent_with_args(self.session, insert_statement, args)
+
+        results = list(self.session.execute("SELECT * FROM testcopyto"))
+
+        self.tempfile = NamedTemporaryFile(delete=False)
+        debug('Exporting to csv file: {}'.format(self.tempfile.name))
+        out = self.node1.run_cqlsh(cmds="COPY ks.testcopyto TO '{}'".format(self.tempfile.name), return_output=True)
+        debug(out)
+
+        # check all records were exported
+        self.assertEqual(num_records, sum(1 for line in open(self.tempfile.name)))
+
+        # import the CSV file with COPY FROM
+        self.session.execute("TRUNCATE ks.testcopyto")
+        debug('Importing from csv file: {}'.format(self.tempfile.name))
+        out = self.node1.run_cqlsh(cmds="COPY ks.testcopyto FROM '{}'".format(self.tempfile.name), return_output=True)
+        debug(out)
+
+        new_results = list(self.session.execute("SELECT * FROM testcopyto"))
+        self.assertEqual(results, new_results)
+
+    @freshCluster()
+    def test_round_trip_murmur3(self):
+        self._test_round_trip(nodes=3, partitioner="murmur3")
+
+    @freshCluster()
+    def test_round_trip_random(self):
+        self._test_round_trip(nodes=3, partitioner="random")
+
+    @freshCluster()
+    def test_round_trip_order_preserving(self):
+        self._test_round_trip(nodes=3, partitioner="order")
+
+    @freshCluster()
+    def test_round_trip_byte_ordered(self):
+        self._test_round_trip(nodes=3, partitioner="byte")
+
+    @freshCluster()
+    def test_source_copy_round_trip(self):
+        """
+        Like test_round_trip, but uses the SOURCE command to execute the
+        COPY command.  This checks that we don't have unicode-related
+        problems when sourcing COPY commands (CASSANDRA-9083).
         """
         self.prepare()
         self.session.execute("""
@@ -742,13 +1074,313 @@ class CqlshCopyTest(Tester):
 
         results = list(self.session.execute("SELECT * FROM testcopyto"))
 
-        tempfile = NamedTemporaryFile()
-        debug('Exporting to csv file: {name}'.format(name=tempfile.name))
-        self.node1.run_cqlsh(cmds="COPY ks.testcopyto TO '{name}'".format(name=tempfile.name))
+        self.tempfile = NamedTemporaryFile(delete=False)
+        debug('Exporting to csv file: {name}'.format(name=self.tempfile.name))
+
+        commandfile = NamedTemporaryFile(delete=False)
+        commandfile.file.write('USE ks;\n')
+        commandfile.file.write("COPY ks.testcopyto TO '{name}' WITH HEADER=false;".format(name=self.tempfile.name))
+        commandfile.close()
+
+        self.node1.run_cqlsh(cmds="SOURCE '{name}'".format(name=commandfile.name))
+        os.unlink(commandfile.name)
 
         # import the CSV file with COPY FROM
         self.session.execute("TRUNCATE ks.testcopyto")
-        debug('Importing from csv file: {name}'.format(name=tempfile.name))
-        self.node1.run_cqlsh(cmds="COPY ks.testcopyto FROM '{name}'".format(name=tempfile.name))
+        debug('Importing from csv file: {name}'.format(name=self.tempfile.name))
+
+        commandfile = NamedTemporaryFile(delete=False)
+        commandfile.file.write('USE ks;\n')
+        commandfile.file.write("COPY ks.testcopyto FROM '{name}' WITH HEADER=false;".format(name=self.tempfile.name))
+        commandfile.close()
+
+        self.node1.run_cqlsh(cmds="SOURCE '{name}'".format(name=commandfile.name))
         new_results = list(self.session.execute("SELECT * FROM testcopyto"))
         self.assertEqual(results, new_results)
+
+        os.unlink(commandfile.name)
+
+    def _test_bulk_round_trip(self, nodes, partitioner,
+                              num_operations, profile=None, stress_table='keyspace1.standard1',
+                              page_size=1000, page_timeout=10, configuration_options=None):
+        """
+        Test exporting a large number of rows into a csv file.
+        """
+        self.prepare(nodes=nodes, partitioner=partitioner, configuration_options=configuration_options)
+
+        if not profile:
+            debug('Running stress without any user profile')
+            self.node1.stress(['write', 'n={}'.format(num_operations), '-rate', 'threads=50'])
+        else:
+            debug('Running stress with user profile {}'.format(profile))
+            self.node1.stress(['user', 'profile={}'.format(profile), 'ops(insert=1)',
+                               'n={}'.format(num_operations), '-rate', 'threads=50'])
+
+        num_records = rows_to_list(self.session.execute("SELECT COUNT(*) FROM {}".format(stress_table)))[0][0]
+        debug('Generated {} records'.format(num_records))
+
+        self.assertTrue(num_records >= num_operations, 'cassandra-stress did not import enough records')
+
+        self.tempfile = NamedTemporaryFile(delete=False)
+
+        debug('Exporting to csv file: {}'.format(self.tempfile.name))
+        start = datetime.datetime.now()
+        self.node1.run_cqlsh(cmds="COPY {} TO '{}' WITH PAGETIMEOUT='{}' AND PAGESIZE='{}'"
+                             .format(stress_table, self.tempfile.name, page_timeout, page_size))
+        debug("COPY TO took {} to export {} records".format(datetime.datetime.now() - start, num_records))
+
+        # check all records were exported
+        self.assertEqual(num_records, sum(1 for line in open(self.tempfile.name)))
+
+        self.session.execute("TRUNCATE {}".format(stress_table))
+
+        debug('Importing from csv file: {}'.format(self.tempfile.name))
+        start = datetime.datetime.now()
+        self.node1.run_cqlsh(cmds="COPY {} FROM '{}'".format(stress_table, self.tempfile.name))
+        debug("COPY FROM took {} to import {} records".format(datetime.datetime.now() - start, num_records))
+
+        self.assertEqual([[num_records]], rows_to_list(self.session.execute("SELECT COUNT(*) FROM {}"
+                                                                            .format(stress_table))))
+
+    @require('9302')
+    @freshCluster()
+    def test_bulk_round_trip_default(self):
+        """
+        Test bulk import with default stress import (one row per operation)
+
+        @jira_ticket CASSANDRA-9302
+        """
+        self._test_bulk_round_trip(nodes=3, partitioner="murmur3", num_operations=100000)
+
+    @require('9302')
+    @freshCluster()
+    def test_bulk_round_trip_blogposts(self):
+        """
+        Test bulk import with a user profile that inserts 10 rows per operation
+
+        @jira_ticket CASSANDRA-9302
+        """
+        self._test_bulk_round_trip(nodes=3, partitioner="murmur3", num_operations=10000,
+                                   profile=os.path.join(os.path.dirname(os.path.realpath(__file__)), 'blogposts.yaml'),
+                                   stress_table='stresscql.blogposts', page_timeout=60)
+
+    @require('9302')
+    @freshCluster()
+    def test_bulk_round_trip_with_timeouts(self):
+        """
+        Test bulk import with very short read and write timeout values, this should exercise the
+        retry and back-off policies
+
+        @jira_ticket CASSANDRA-9302
+        """
+        self._test_bulk_round_trip(nodes=1, partitioner="murmur3", num_operations=100000,
+                                   configuration_options={'range_request_timeout_in_ms': '300',
+                                                          'write_request_timeout_in_ms': '200'})
+
+    @freshCluster()
+    def test_copy_to_with_more_failures_than_max_attempts(self):
+        """
+        Test exporting rows with failure injection by setting the environment variable CQLSH_COPY_TEST_FAILURES,
+        which is used by ExportProcess in pylib/copy.py to deviate its behavior from performing normal queries.
+        Here we set a token range that will fail more times than the maximum number of attempts, therefore
+        we expect this COPY TO job to fail.
+
+        @jira_ticket CASSANDRA-9304
+        """
+        num_records = 100000
+        self.prepare(nodes=1)
+
+        debug('Running stress')
+        stress_table = 'keyspace1.standard1'
+        self.node1.stress(['write', 'n={}'.format(num_records), '-rate', 'threads=50'])
+
+        self.tempfile = NamedTemporaryFile(delete=False)
+        failures = {'failing_range': {'start': 0, 'end': 5000000000000000000, 'num_failures': 5}}
+        os.environ['CQLSH_COPY_TEST_FAILURES'] = json.dumps(failures)
+
+        debug('Exporting to csv file: {} with {} and 3 max attempts'
+              .format(self.tempfile.name, os.environ['CQLSH_COPY_TEST_FAILURES']))
+        out, err = self.node1.run_cqlsh(cmds="COPY {} TO '{}' WITH MAXATTEMPTS='3'"
+                                        .format(stress_table, self.tempfile.name),
+                                        return_output=True)
+        debug(out)
+        debug(err)
+
+        self.assertIn('some records might be missing', err)
+        self.assertTrue(len(open(self.tempfile.name).readlines()) < num_records)
+
+    @freshCluster()
+    def test_copy_to_with_fewer_failures_than_max_attempts(self):
+        """
+        Test exporting rows with failure injection by setting the environment variable CQLSH_COPY_TEST_FAILURES,
+        which is used by ExportProcess in pylib/copy.py to deviate its behavior from performing normal queries.
+        Here we set a token range that will fail fewer times than the maximum number of attempts, therefore
+        we expect this COPY TO job to succeed.
+
+        @jira_ticket CASSANDRA-9304
+        """
+        num_records = 100000
+        self.prepare(nodes=1)
+
+        debug('Running stress')
+        stress_table = 'keyspace1.standard1'
+        self.node1.stress(['write', 'n={}'.format(num_records), '-rate', 'threads=50'])
+
+        self.tempfile = NamedTemporaryFile(delete=False)
+        failures = {'failing_range': {'start': 0, 'end': 5000000000000000000, 'num_failures': 3}}
+        os.environ['CQLSH_COPY_TEST_FAILURES'] = json.dumps(failures)
+        debug('Exporting to csv file: {} with {} and 5 max attemps'
+              .format(self.tempfile.name, os.environ['CQLSH_COPY_TEST_FAILURES']))
+        out, err = self.node1.run_cqlsh(cmds="COPY {} TO '{}' WITH MAXATTEMPTS='5'"
+                                        .format(stress_table, self.tempfile.name),
+                                        return_output=True)
+        debug(out)
+        debug(err)
+
+        self.assertNotIn('some records might be missing', err)
+        self.assertEqual(num_records, len(open(self.tempfile.name).readlines()))
+
+    @freshCluster()
+    def test_copy_to_with_child_process_crashing(self):
+        """
+        Test exporting rows with failure injection by setting the environment variable CQLSH_COPY_TEST_FAILURES,
+        which is used by ExportProcess in pylib/copy.py to deviate its behavior from performing normal queries.
+        Here we set a token range that will cause a child process processing this range to exit, therefore
+        we expect this COPY TO job to fail.
+
+        @jira_ticket CASSANDRA-9304
+        """
+        num_records = 100000
+        self.prepare(nodes=1)
+
+        debug('Running stress')
+        stress_table = 'keyspace1.standard1'
+        self.node1.stress(['write', 'n={}'.format(num_records), '-rate', 'threads=50'])
+
+        self.tempfile = NamedTemporaryFile(delete=False)
+        failures = {'exit_range': {'start': 0, 'end': 5000000000000000000}}
+        os.environ['CQLSH_COPY_TEST_FAILURES'] = json.dumps(failures)
+
+        debug('Exporting to csv file: {} with {}'
+              .format(self.tempfile.name, os.environ['CQLSH_COPY_TEST_FAILURES']))
+        out, err = self.node1.run_cqlsh(cmds="COPY {} TO '{}'"
+                                        .format(stress_table, self.tempfile.name),
+                                        return_output=True)
+        debug(out)
+        debug(err)
+
+        self.assertIn('some records might be missing', err)
+        self.assertTrue(len(open(self.tempfile.name).readlines()) < num_records)
+
+    @require('9302')
+    @freshCluster()
+    def test_copy_from_with_more_failures_than_max_attempts(self):
+        """
+        Test importing rows with failure injection by setting the environment variable CQLSH_COPY_TEST_FAILURES,
+        which is used by ImportProcess in pylib/copy.py to deviate its behavior from performing normal queries.
+        To ensure unique batch ids we must also set the chunk size to one.
+
+        We set a batch id that will cause a batch to fail more times than the maximum number of attempts,
+        therefore we expect this COPY TO job to fail.
+
+        @jira_ticket CASSANDRA-9302
+        """
+        num_records = 1000
+        self.prepare(nodes=1)
+
+        debug('Running stress')
+        stress_table = 'keyspace1.standard1'
+        self.node1.stress(['write', 'n={}'.format(num_records), '-rate', 'threads=50'])
+
+        self.tempfile = NamedTemporaryFile(delete=False)
+        debug('Exporting to csv file {} to generate a file'.format(self.tempfile.name))
+        self.node1.run_cqlsh(cmds="COPY {} TO '{}'".format(stress_table, self.tempfile.name))
+
+        self.session.execute("TRUNCATE {}".format(stress_table))
+
+        failures = {'failing_batch': {'id': 30, 'failures': 5}}
+        os.environ['CQLSH_COPY_TEST_FAILURES'] = json.dumps(failures)
+        debug('Importing from csv file {} with {}'.format(self.tempfile.name, os.environ['CQLSH_COPY_TEST_FAILURES']))
+        out, err = self.node1.run_cqlsh(cmds="COPY {} FROM '{}' WITH CHUNKSIZE='1' AND MAXATTEMPTS='3'"
+                                        .format(stress_table, self.tempfile.name), return_output=True)
+        debug(out)
+        debug(err)
+
+        self.assertIn('Failed to process', err)
+        num_records_imported = rows_to_list(self.session.execute("SELECT COUNT(*) FROM {}".format(stress_table)))[0][0]
+        self.assertTrue(num_records_imported < num_records)
+
+    @require('9302')
+    @freshCluster()
+    def test_copy_from_with_fewer_failures_than_max_attempts(self):
+        """
+        Test importing rows with failure injection by setting the environment variable CQLSH_COPY_TEST_FAILURES,
+        which is used by ImportProcess in pylib/copy.py to deviate its behavior from performing normal queries.
+        To ensure unique batch ids we must also set the chunk size to one.
+
+        We set a batch id that will cause a batch to fail fewer times than the maximum number of attempts,
+        therefore we expect this COPY TO job to succeed.
+
+        @jira_ticket CASSANDRA-9302
+        """
+        num_records = 1000
+        self.prepare(nodes=1)
+
+        debug('Running stress')
+        stress_table = 'keyspace1.standard1'
+        self.node1.stress(['write', 'n={}'.format(num_records), '-rate', 'threads=50'])
+
+        self.tempfile = NamedTemporaryFile(delete=False)
+        debug('Exporting to csv file {} to generate a file'.format(self.tempfile.name))
+        self.node1.run_cqlsh(cmds="COPY {} TO '{}'".format(stress_table, self.tempfile.name))
+
+        self.session.execute("TRUNCATE {}".format(stress_table))
+
+        failures = {'failing_batch': {'id': 30, 'failures': 3}}
+        os.environ['CQLSH_COPY_TEST_FAILURES'] = json.dumps(failures)
+        debug('Importing from csv file {} with {}'.format(self.tempfile.name, os.environ['CQLSH_COPY_TEST_FAILURES']))
+        out, err = self.node1.run_cqlsh(cmds="COPY {} FROM '{}' WITH CHUNKSIZE='1' AND MAXATTEMPTS='5'"
+                                        .format(stress_table, self.tempfile.name), return_output=True)
+        debug(out)
+        debug(err)
+
+        self.assertNotIn('Failed to process', err)
+        num_records_imported = rows_to_list(self.session.execute("SELECT COUNT(*) FROM {}".format(stress_table)))[0][0]
+        self.assertEquals(num_records, num_records_imported)
+
+    @require('9302')
+    @freshCluster()
+    def test_copy_from_with_child_process_crashing(self):
+        """
+        Test importing rows with failure injection by setting the environment variable CQLSH_COPY_TEST_FAILURES,
+        which is used by ImportProcess in pylib/copy.py to deviate its behavior from performing normal queries.
+        To ensure unique batch ids we must also set the chunk size to one.
+
+        We set a batch id that will cause a child process to exit, therefore we expect this COPY TO job to fail.
+
+        @jira_ticket CASSANDRA-9302
+        """
+        num_records = 1000
+        self.prepare(nodes=1)
+
+        debug('Running stress')
+        stress_table = 'keyspace1.standard1'
+        self.node1.stress(['write', 'n={}'.format(num_records), '-rate', 'threads=50'])
+
+        self.tempfile = NamedTemporaryFile(delete=False)
+        debug('Exporting to csv file {} to generate a file'.format(self.tempfile.name))
+        self.node1.run_cqlsh(cmds="COPY {} TO '{}'".format(stress_table, self.tempfile.name))
+
+        self.session.execute("TRUNCATE {}".format(stress_table))
+
+        failures = {'exit_batch': {'id': 30}}
+        os.environ['CQLSH_COPY_TEST_FAILURES'] = json.dumps(failures)
+        debug('Importing from csv file {} with {}'.format(self.tempfile.name, os.environ['CQLSH_COPY_TEST_FAILURES']))
+        out, err = self.node1.run_cqlsh(cmds="COPY {} FROM '{}' WITH CHUNKSIZE='1'"
+                                        .format(stress_table, self.tempfile.name), return_output=True)
+        debug(out)
+        debug(err)
+
+        self.assertIn('Failed to process', err)
+        num_records_imported = rows_to_list(self.session.execute("SELECT COUNT(*) FROM {}".format(stress_table)))[0][0]
+        self.assertTrue(num_records_imported < num_records)

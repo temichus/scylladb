@@ -2,9 +2,12 @@ from dtest import Tester
 from cassandra import ConsistencyLevel
 from cassandra.query import SimpleStatement
 
-import random, time, uuid
+import random
+import time
+import uuid
 from assertions import assert_invalid, assert_one
 from tools import rows_to_list, since
+
 
 class TestCounters(Tester):
 
@@ -15,25 +18,24 @@ class TestCounters(Tester):
         cluster.populate(3).start()
         nodes = cluster.nodelist()
 
-        cursor = self.patient_cql_connection(nodes[0])
-        self.create_ks(cursor, 'ks', 3)
-        self.create_cf(cursor, 'cf', validation="CounterColumnType", columns={'c': 'counter'})
+        session = self.patient_cql_connection(nodes[0])
+        self.create_ks(session, 'ks', 3)
+        self.create_cf(session, 'cf', validation="CounterColumnType", columns={'c': 'counter'})
 
-
-        cursors = [ self.patient_cql_connection(node, 'ks') for node in nodes ]
-        nb_increment=50
-        nb_counter=10
+        sessions = [self.patient_cql_connection(node, 'ks') for node in nodes]
+        nb_increment = 50
+        nb_counter = 10
 
         for i in xrange(0, nb_increment):
             for c in xrange(0, nb_counter):
-                cursor = cursors[(i + c) % len(nodes)]
+                session = sessions[(i + c) % len(nodes)]
                 query = SimpleStatement("UPDATE cf SET c = c + 1 WHERE key = 'counter%i'" % c, consistency_level=ConsistencyLevel.QUORUM)
-                cursor.execute(query)
+                session.execute(query)
 
-            cursor = cursors[i % len(nodes)]
+            session = sessions[i % len(nodes)]
             keys = ",".join(["'counter%i'" % c for c in xrange(0, nb_counter)])
             query = SimpleStatement("SELECT key, c FROM cf WHERE key IN (%s)" % keys, consistency_level=ConsistencyLevel.QUORUM)
-            res = cursor.execute(query)
+            res = list(session.execute(query))
 
             assert len(res) == nb_counter
             for c in xrange(0, nb_counter):
@@ -48,8 +50,8 @@ class TestCounters(Tester):
         cluster.populate(2).start()
         nodes = cluster.nodelist()
 
-        cursor = self.patient_cql_connection(nodes[0])
-        self.create_ks(cursor, 'ks', 2)
+        session = self.patient_cql_connection(nodes[0])
+        self.create_ks(session, 'ks', 2)
 
         query = """
             CREATE TABLE counterTable (
@@ -57,28 +59,28 @@ class TestCounters(Tester):
                 c counter
             )
         """
-        query = query +  "WITH compression = { 'sstable_compression' : 'SnappyCompressor' }"
+        query = query + "WITH compression = { 'sstable_compression' : 'SnappyCompressor' }"
 
-        cursor.execute(query)
+        session.execute(query)
         time.sleep(2)
 
         keys = range(0, 4)
         updates = 50
 
         def make_updates():
-            cursor = self.patient_cql_connection(nodes[0], keyspace='ks')
+            session = self.patient_cql_connection(nodes[0], keyspace='ks')
             upd = "UPDATE counterTable SET c = c + 1 WHERE k = %d;"
             batch = " ".join(["BEGIN COUNTER BATCH"] + [upd % x for x in keys] + ["APPLY BATCH;"])
 
-            kmap = { "k%d" % i : i for i in keys }
+            kmap = {"k%d" % i: i for i in keys}
             for i in range(0, updates):
                 query = SimpleStatement(batch, consistency_level=ConsistencyLevel.QUORUM)
-                cursor.execute(query)
+                session.execute(query)
 
         def check(i):
-            cursor = self.patient_cql_connection(nodes[0], keyspace='ks')
+            session = self.patient_cql_connection(nodes[0], keyspace='ks')
             query = SimpleStatement("SELECT * FROM counterTable", consistency_level=ConsistencyLevel.QUORUM)
-            rows = cursor.execute(query)
+            rows = list(session.execute(query))
 
             assert len(rows) == len(keys), "Expected %d rows, got %d: %s" % (len(keys), len(rows), str(rows))
             for row in rows:
@@ -114,8 +116,8 @@ class TestCounters(Tester):
         cluster = self.cluster
         cluster.populate(3).start()
         node1, node2, node3 = cluster.nodelist()
-        cursor = self.patient_cql_connection(node1)
-        self.create_ks(cursor, 'counter_tests', 3)
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'counter_tests', 3)
 
         stmt = """
               CREATE TABLE counter_table (
@@ -124,50 +126,50 @@ class TestCounters(Tester):
               counter_two COUNTER,
               )
            """
-        cursor.execute(stmt)
+        session.execute(stmt)
 
         counters = []
         # establish 50 counters (2x25 rows)
         for i in xrange(25):
             _id = str(uuid.uuid4())
             counters.append(
-                {_id: {'counter_one':1, 'counter_two':1}}
+                {_id: {'counter_one': 1, 'counter_two': 1}}
             )
 
             query = SimpleStatement("""
                 UPDATE counter_table
                 SET counter_one = counter_one + 1, counter_two = counter_two + 1
                 where id = {uuid}""".format(uuid=_id), consistency_level=ConsistencyLevel.ONE)
-            cursor.execute(query)
+            session.execute(query)
 
         # increment a bunch of counters with CL.ONE
         for i in xrange(10000):
-            counter = counters[random.randint(0, len(counters)-1)]
+            counter = counters[random.randint(0, len(counters) - 1)]
             counter_id = counter.keys()[0]
 
             query = SimpleStatement("""
                 UPDATE counter_table
                 SET counter_one = counter_one + 2
                 where id = {uuid}""".format(uuid=counter_id), consistency_level=ConsistencyLevel.ONE)
-            cursor.execute(query)
+            session.execute(query)
 
             query = SimpleStatement("""
                 UPDATE counter_table
                 SET counter_two = counter_two + 10
                 where id = {uuid}""".format(uuid=counter_id), consistency_level=ConsistencyLevel.ONE)
-            cursor.execute(query)
+            session.execute(query)
 
             query = SimpleStatement("""
                 UPDATE counter_table
                 SET counter_one = counter_one - 1
                 where id = {uuid}""".format(uuid=counter_id), consistency_level=ConsistencyLevel.ONE)
-            cursor.execute(query)
+            session.execute(query)
 
             query = SimpleStatement("""
                 UPDATE counter_table
                 SET counter_two = counter_two - 5
                 where id = {uuid}""".format(uuid=counter_id), consistency_level=ConsistencyLevel.ONE)
-            cursor.execute(query)
+            session.execute(query)
 
             # update expectations to match (assumed) db state
             counter[counter_id]['counter_one'] += 1
@@ -181,7 +183,7 @@ class TestCounters(Tester):
                 SELECT counter_one, counter_two
                 FROM counter_table WHERE id = {uuid}
                 """.format(uuid=counter_id), consistency_level=ConsistencyLevel.ALL)
-            rows = cursor.execute(query)
+            rows = list(session.execute(query))
 
             counter_one_actual, counter_two_actual = rows[0]
 
@@ -195,10 +197,10 @@ class TestCounters(Tester):
         cluster = self.cluster
         cluster.populate(3).start()
         node1, node2, node3 = cluster.nodelist()
-        cursor = self.patient_cql_connection(node1)
-        self.create_ks(cursor, 'counter_tests', 3)
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'counter_tests', 3)
 
-        cursor.execute("""
+        session.execute("""
             CREATE TABLE counter_table (
             id text,
             myuuid uuid,
@@ -209,22 +211,22 @@ class TestCounters(Tester):
         expected_counts = {}
 
         # set up expectations
-        for i in range(1,6):
+        for i in range(1, 6):
             _id = uuid.uuid4()
 
             expected_counts[_id] = i
 
         for k, v in expected_counts.items():
-            cursor.execute("""
+            session.execute("""
                 UPDATE counter_table set counter_one = counter_one + {v}
                 WHERE id='foo' and myuuid = {k}
                 """.format(k=k, v=v))
 
         for k, v in expected_counts.items():
-            count = cursor.execute("""
+            count = list(session.execute("""
                 SELECT counter_one FROM counter_table
                 WHERE id = 'foo' and myuuid = {k}
-                """.format(k=k))
+                """.format(k=k)))
 
             self.assertEqual(v, count[0][0])
 
@@ -232,10 +234,10 @@ class TestCounters(Tester):
         cluster = self.cluster
         cluster.populate(1).start()
         node1 = cluster.nodelist()[0]
-        cursor = self.patient_cql_connection(node1)
-        self.create_ks(cursor, 'counter_tests', 1)
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'counter_tests', 1)
 
-        cursor.execute("""
+        session.execute("""
             CREATE TABLE compact_counter_table (
                 pk int,
                 ck text,
@@ -244,13 +246,13 @@ class TestCounters(Tester):
             WITH COMPACT STORAGE
             """)
 
-        assert_invalid(cursor, "UPDATE compact_counter_table SET value = value + 1 WHERE pk = 0 AND ck = ''")
-        assert_invalid(cursor, "UPDATE compact_counter_table SET value = value - 1 WHERE pk = 0 AND ck = ''")
+        assert_invalid(session, "UPDATE compact_counter_table SET value = value + 1 WHERE pk = 0 AND ck = ''")
+        assert_invalid(session, "UPDATE compact_counter_table SET value = value - 1 WHERE pk = 0 AND ck = ''")
 
-        cursor.execute("UPDATE compact_counter_table SET value = value + 5 WHERE pk = 0 AND ck = 'ck'")
-        cursor.execute("UPDATE compact_counter_table SET value = value - 2 WHERE pk = 0 AND ck = 'ck'")
+        session.execute("UPDATE compact_counter_table SET value = value + 5 WHERE pk = 0 AND ck = 'ck'")
+        session.execute("UPDATE compact_counter_table SET value = value - 2 WHERE pk = 0 AND ck = 'ck'")
 
-        assert_one(cursor, "SELECT pk, ck, value FROM compact_counter_table", [0, 'ck', 3])
+        assert_one(session, "SELECT pk, ck, value FROM compact_counter_table", [0, 'ck', 3])
 
     @since('2.0')
     def drop_counter_column_test(self):
@@ -264,7 +266,7 @@ class TestCounters(Tester):
         session.execute("CREATE TABLE counter_bug (t int, c counter, primary key(t))")
 
         session.execute("UPDATE counter_bug SET c = c + 1 where t = 1")
-        row = session.execute("SELECT * from counter_bug")
+        row = list(session.execute("SELECT * from counter_bug"))
 
         self.assertEqual(rows_to_list(row)[0], [1, 1])
         self.assertEqual(len(row), 1)

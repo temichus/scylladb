@@ -3,10 +3,16 @@
 We plan to move to Python 3 in the near future. Where possible, new code should be Python 3-compatible. In particular:
 
 - favor `format` over `%` for formatting strings.
+- use the `/` on numbers in a Python 3-compatible way. In particular, if you want floor division (which is the behavior of `/` in Python 2), use `//` instead. If you want the result of integer division to be a `float` (e.g. `1 / 2 == 0.5`), add `from __future__ import division` to the top of the imports and use `/`. For more infomration, see [the official Python 3 porting docs](https://docs.python.org/3/howto/pyporting.html#division).
+- use `absolute_imports` and `unicode_literals` in new test files.
 
-Contributions will be evaluated by PEP8, though we do not enforce compliance strictly. We do not enforce limits on line length, but please keep lines readable.
+Contributions will be evaluated by PEP8. We now strictly enforce compliance, via a linter run with Travis CI against all new pull requests. We do not enforce the default limits on line length, but have established a maximum length of 200 chars as a sanity check. You can conform to PEP8 by running `autopep8` which can be installed via `pip`. 
+`pip install autopep8 && autopep8 --in-place -a --ignore E501`
 
 We do not enforce import sorting, but if you choose to organize imports by some convention, use the `isort` tool (`pip install isort`).
+
+Please use `session`, and not `cursor` when naming your connection variables, to match the style preferred by the DataStax Python Driver, which is how these tests
+connect to C*.
 
 ## Doxygen Docstrings
 
@@ -52,3 +58,7 @@ To run doxygen to generate HTML from these test plans, you will need to do the f
         doxygen doxygen/Doxyfile_python
 
 Feel free to submit test plans without the implemented tests. If you are submitting a new test, we would appreciate if it were annotated in this manner. If that is not possible, we will add the markup to your pull request.
+
+## Modules
+
+In some cases, we organize our test files by putting them in directories. If you do so, please export a module from that direcory py placing an `__init__.py file in the directory with the test files. This makes the modules visible to our test infrastructure scripts that divide tests into buckets for CI.

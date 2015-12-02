@@ -6,14 +6,13 @@ import uuid
 
 from ccmlib import common
 from dtest import Tester, debug
-from tools import since, require
+from tools import since
 import time
 
 KEYSPACE = 'ks'
 
 
 class TestHelper(Tester):
-
     def get_table_path(self, table):
         """
         Return the path where the table sstables are located
@@ -48,12 +47,13 @@ class TestHelper(Tester):
                 ret.append(bname)
         return ret
 
-    def delete_non_data_sstable_files(self, table):
+    def delete_non_essential_sstable_files(self, table):
         """
-        Delete all sstable files except for the -Data.db file
+        Delete all sstable files except for the -Data.db file and the
+        -Statistics.db file (only available in >= 3.0)
         """
         for fname in self.get_sstable_files(self.get_table_path(table)):
-            if not fname.endswith("-Data.db"):
+            if not fname.endswith("-Data.db") and not fname.endswith("-Statistics.db"):
                 fullname = os.path.join(self.get_table_path(table), fname)
                 debug('Deleting {}'.format(fullname))
                 os.remove(fullname)
@@ -80,7 +80,8 @@ class TestHelper(Tester):
         """
         node1 = self.cluster.nodelist()[0]
         response = node1.nodetool(cmd, capture_output=True)[0]
-        assert len(response) == 0  # nodetool does not print anything unless there is an error
+        if not common.is_win():  # nodetool always prints out on windows
+            assert len(response) == 0, response  # nodetool does not print anything unless there is an error
 
     def launch_standalone_scrub(self, ks, cf):
         """
@@ -95,7 +96,8 @@ class TestHelper(Tester):
         p = subprocess.Popen(args, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         out, err = p.communicate()
         debug(out)
-        if err:
+        # if we have less than 64G free space, we get this warning - ignore it
+        if err and "Consider adding more capacity" not in err:
             debug(err)
             assert False, 'sstablescrub failed'
 
@@ -150,39 +152,40 @@ class TestHelper(Tester):
 
         debug('sstables after increment %s' % (str(sstables)))
 
+
 @since('2.2')
 class TestScrubIndexes(TestHelper):
     """
     Test that we scrub indexes as well as their parent tables
     """
 
-    def create_users(self, cursor):
+    def create_users(self, session):
         columns = {"password": "varchar", "gender": "varchar", "session_token": "varchar", "state": "varchar", "birth_year": "bigint"}
-        self.create_cf(cursor, 'users', columns=columns)
+        self.create_cf(session, 'users', columns=columns)
 
-        cursor.execute("CREATE INDEX gender_idx ON users (gender)")
-        cursor.execute("CREATE INDEX state_idx ON users (state)")
-        cursor.execute("CREATE INDEX birth_year_idx ON users (birth_year)")
+        session.execute("CREATE INDEX gender_idx ON users (gender)")
+        session.execute("CREATE INDEX state_idx ON users (state)")
+        session.execute("CREATE INDEX birth_year_idx ON users (birth_year)")
 
-    def update_users(self, cursor):
-        cursor.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user1', 'ch@ngem3a', 'f', 'TX', 1978)")
-        cursor.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user2', 'ch@ngem3b', 'm', 'CA', 1982)")
-        cursor.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user3', 'ch@ngem3c', 'f', 'TX', 1978)")
-        cursor.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user4', 'ch@ngem3d', 'm', 'CA', 1982)")
-        cursor.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user5', 'ch@ngem3e', 'f', 'TX', 1978)")
-        cursor.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user6', 'ch@ngem3f', 'm', 'CA', 1982)")
-        cursor.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user7', 'ch@ngem3g', 'f', 'TX', 1978)")
-        cursor.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user8', 'ch@ngem3h', 'm', 'CA', 1982)")
+    def update_users(self, session):
+        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user1', 'ch@ngem3a', 'f', 'TX', 1978)")
+        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user2', 'ch@ngem3b', 'm', 'CA', 1982)")
+        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user3', 'ch@ngem3c', 'f', 'TX', 1978)")
+        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user4', 'ch@ngem3d', 'm', 'CA', 1982)")
+        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user5', 'ch@ngem3e', 'f', 'TX', 1978)")
+        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user6', 'ch@ngem3f', 'm', 'CA', 1982)")
+        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user7', 'ch@ngem3g', 'f', 'TX', 1978)")
+        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user8', 'ch@ngem3h', 'm', 'CA', 1982)")
 
-        cursor.execute("DELETE FROM users where KEY = 'user1'")
-        cursor.execute("DELETE FROM users where KEY = 'user5'")
-        cursor.execute("DELETE FROM users where KEY = 'user7'")
+        session.execute("DELETE FROM users where KEY = 'user1'")
+        session.execute("DELETE FROM users where KEY = 'user5'")
+        session.execute("DELETE FROM users where KEY = 'user7'")
 
-    def query_users(self, cursor):
-        ret = cursor.execute("SELECT * FROM users")
-        ret.extend(cursor.execute("SELECT * FROM users WHERE state='TX'"))
-        ret.extend(cursor.execute("SELECT * FROM users WHERE gender='f'"))
-        ret.extend(cursor.execute("SELECT * FROM users WHERE birth_year=1978"))
+    def query_users(self, session):
+        ret = list(session.execute("SELECT * FROM users"))
+        ret.extend(list(session.execute("SELECT * FROM users WHERE state='TX'")))
+        ret.extend(list(session.execute("SELECT * FROM users WHERE gender='f'")))
+        ret.extend(list(session.execute("SELECT * FROM users WHERE birth_year=1978")))
         assert len(ret) == 8
         return ret
 
@@ -191,20 +194,20 @@ class TestScrubIndexes(TestHelper):
         cluster.populate(1).start()
         node1 = cluster.nodelist()[0]
 
-        cursor = self.patient_cql_connection(node1)
-        self.create_ks(cursor, KEYSPACE, 1)
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, KEYSPACE, 1)
 
-        self.create_users(cursor)
-        self.update_users(cursor)
+        self.create_users(session)
+        self.update_users(session)
 
-        initial_users = self.query_users(cursor)
+        initial_users = self.query_users(session)
         initial_sstables = self.flush('users', 'gender_idx', 'state_idx', 'birth_year_idx')
         scrubbed_sstables = self.scrub('users', 'gender_idx', 'state_idx', 'birth_year_idx')
 
         self.increase_sstable_generations(initial_sstables)
         self.assertEqual(initial_sstables, scrubbed_sstables)
 
-        users = self.query_users(cursor)
+        users = self.query_users(session)
         self.assertEqual(initial_users, users)
 
         # Scrub and check sstables and data again
@@ -212,17 +215,17 @@ class TestScrubIndexes(TestHelper):
         self.increase_sstable_generations(initial_sstables)
         self.assertEqual(initial_sstables, scrubbed_sstables)
 
-        users = self.query_users(cursor)
+        users = self.query_users(session)
         self.assertEqual(initial_users, users)
 
         # Restart and check data again
         cluster.stop()
         cluster.start()
 
-        cursor = self.patient_cql_connection(node1)
-        cursor.execute('USE %s' % (KEYSPACE))
+        session = self.patient_cql_connection(node1)
+        session.execute('USE %s' % (KEYSPACE))
 
-        users = self.query_users(cursor)
+        users = self.query_users(session)
         self.assertEqual(initial_users, users)
 
     def test_standalone_scrub(self):
@@ -230,13 +233,13 @@ class TestScrubIndexes(TestHelper):
         cluster.populate(1).start()
         node1 = cluster.nodelist()[0]
 
-        cursor = self.patient_cql_connection(node1)
-        self.create_ks(cursor, KEYSPACE, 1)
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, KEYSPACE, 1)
 
-        self.create_users(cursor)
-        self.update_users(cursor)
+        self.create_users(session)
+        self.update_users(session)
 
-        initial_users = self.query_users(cursor)
+        initial_users = self.query_users(session)
         initial_sstables = self.flush('users', 'gender_idx', 'state_idx', 'birth_year_idx')
 
         cluster.stop()
@@ -246,10 +249,10 @@ class TestScrubIndexes(TestHelper):
         self.assertEqual(initial_sstables, scrubbed_sstables)
 
         cluster.start()
-        cursor = self.patient_cql_connection(node1)
-        cursor.execute('USE %s' % (KEYSPACE))
+        session = self.patient_cql_connection(node1)
+        session.execute('USE %s' % (KEYSPACE))
 
-        users = self.query_users(cursor)
+        users = self.query_users(session)
         self.assertEqual(initial_users, users)
 
     def test_scrub_collections_table(self):
@@ -257,20 +260,20 @@ class TestScrubIndexes(TestHelper):
         cluster.populate(1).start()
         node1 = cluster.nodelist()[0]
 
-        cursor = self.patient_cql_connection(node1)
-        self.create_ks(cursor, KEYSPACE, 1)
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, KEYSPACE, 1)
 
-        cursor.execute("CREATE TABLE users (user_id uuid PRIMARY KEY, email text, uuids list<uuid>)")
-        cursor.execute("CREATE INDEX user_uuids_idx on users (uuids)")
+        session.execute("CREATE TABLE users (user_id uuid PRIMARY KEY, email text, uuids list<uuid>)")
+        session.execute("CREATE INDEX user_uuids_idx on users (uuids)")
 
         _id = uuid.uuid4()
         num_users = 100
         for i in range(0, num_users):
             user_uuid = uuid.uuid4()
-            cursor.execute(("INSERT INTO users (user_id, email) values ({user_id}, 'test@example.com')").format(user_id=user_uuid))
-            cursor.execute(("UPDATE users set uuids = [{id}] where user_id = {user_id}").format(id=_id, user_id=user_uuid))
+            session.execute(("INSERT INTO users (user_id, email) values ({user_id}, 'test@example.com')").format(user_id=user_uuid))
+            session.execute(("UPDATE users set uuids = [{id}] where user_id = {user_id}").format(id=_id, user_id=user_uuid))
 
-        initial_users = cursor.execute(("SELECT * from users where uuids contains {some_uuid}").format(some_uuid=_id))
+        initial_users = list(session.execute(("SELECT * from users where uuids contains {some_uuid}").format(some_uuid=_id)))
         self.assertEqual(num_users, len(initial_users))
 
         initial_sstables = self.flush('users', 'user_uuids_idx')
@@ -279,7 +282,7 @@ class TestScrubIndexes(TestHelper):
         self.increase_sstable_generations(initial_sstables)
         self.assertEqual(initial_sstables, scrubbed_sstables)
 
-        users = cursor.execute(("SELECT * from users where uuids contains {some_uuid}").format(some_uuid=_id))
+        users = list(session.execute(("SELECT * from users where uuids contains {some_uuid}").format(some_uuid=_id)))
         self.assertEqual(initial_users, users)
 
         scrubbed_sstables = self.scrub('users', 'user_uuids_idx')
@@ -287,34 +290,36 @@ class TestScrubIndexes(TestHelper):
         self.increase_sstable_generations(initial_sstables)
         self.assertEqual(initial_sstables, scrubbed_sstables)
 
-        users = cursor.execute(("SELECT * from users where uuids contains {some_uuid}").format(some_uuid=_id))
+        users = list(session.execute(("SELECT * from users where uuids contains {some_uuid}").format(some_uuid=_id)))
 
         self.assertListEqual(initial_users, users)
+
 
 class TestScrub(TestHelper):
     """
     Generic tests for scrubbing
     """
-    def create_users(self, cursor):
+
+    def create_users(self, session):
         columns = {"password": "varchar", "gender": "varchar", "session_token": "varchar", "state": "varchar", "birth_year": "bigint"}
-        self.create_cf(cursor, 'users', columns=columns)
+        self.create_cf(session, 'users', columns=columns)
 
-    def update_users(self, cursor):
-        cursor.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user1', 'ch@ngem3a', 'f', 'TX', 1978)")
-        cursor.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user2', 'ch@ngem3b', 'm', 'CA', 1982)")
-        cursor.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user3', 'ch@ngem3c', 'f', 'TX', 1978)")
-        cursor.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user4', 'ch@ngem3d', 'm', 'CA', 1982)")
-        cursor.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user5', 'ch@ngem3e', 'f', 'TX', 1978)")
-        cursor.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user6', 'ch@ngem3f', 'm', 'CA', 1982)")
-        cursor.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user7', 'ch@ngem3g', 'f', 'TX', 1978)")
-        cursor.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user8', 'ch@ngem3h', 'm', 'CA', 1982)")
+    def update_users(self, session):
+        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user1', 'ch@ngem3a', 'f', 'TX', 1978)")
+        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user2', 'ch@ngem3b', 'm', 'CA', 1982)")
+        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user3', 'ch@ngem3c', 'f', 'TX', 1978)")
+        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user4', 'ch@ngem3d', 'm', 'CA', 1982)")
+        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user5', 'ch@ngem3e', 'f', 'TX', 1978)")
+        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user6', 'ch@ngem3f', 'm', 'CA', 1982)")
+        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user7', 'ch@ngem3g', 'f', 'TX', 1978)")
+        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user8', 'ch@ngem3h', 'm', 'CA', 1982)")
 
-        cursor.execute("DELETE FROM users where KEY = 'user1'")
-        cursor.execute("DELETE FROM users where KEY = 'user5'")
-        cursor.execute("DELETE FROM users where KEY = 'user7'")
+        session.execute("DELETE FROM users where KEY = 'user1'")
+        session.execute("DELETE FROM users where KEY = 'user5'")
+        session.execute("DELETE FROM users where KEY = 'user7'")
 
-    def query_users(self, cursor):
-        ret = cursor.execute("SELECT * FROM users")
+    def query_users(self, session):
+        ret = list(session.execute("SELECT * FROM users"))
         assert len(ret) == 5
         return ret
 
@@ -323,20 +328,20 @@ class TestScrub(TestHelper):
         cluster.populate(1).start()
         node1 = cluster.nodelist()[0]
 
-        cursor = self.patient_cql_connection(node1)
-        self.create_ks(cursor, KEYSPACE, 1)
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, KEYSPACE, 1)
 
-        self.create_users(cursor)
-        self.update_users(cursor)
+        self.create_users(session)
+        self.update_users(session)
 
-        initial_users = self.query_users(cursor)
+        initial_users = self.query_users(session)
         initial_sstables = self.flush('users')
         scrubbed_sstables = self.scrub('users')
 
         self.increase_sstable_generations(initial_sstables)
         self.assertEqual(initial_sstables, scrubbed_sstables)
 
-        users = self.query_users(cursor)
+        users = self.query_users(session)
         self.assertEqual(initial_users, users)
 
         # Scrub and check sstables and data again
@@ -344,17 +349,17 @@ class TestScrub(TestHelper):
         self.increase_sstable_generations(initial_sstables)
         self.assertEqual(initial_sstables, scrubbed_sstables)
 
-        users = self.query_users(cursor)
+        users = self.query_users(session)
         self.assertEqual(initial_users, users)
 
         # Restart and check data again
         cluster.stop()
         cluster.start()
 
-        cursor = self.patient_cql_connection(node1)
-        cursor.execute('USE %s' % (KEYSPACE))
+        session = self.patient_cql_connection(node1)
+        session.execute('USE %s' % (KEYSPACE))
 
-        users = self.query_users(cursor)
+        users = self.query_users(session)
         self.assertEqual(initial_users, users)
 
     def test_standalone_scrub(self):
@@ -362,13 +367,13 @@ class TestScrub(TestHelper):
         cluster.populate(1).start()
         node1 = cluster.nodelist()[0]
 
-        cursor = self.patient_cql_connection(node1)
-        self.create_ks(cursor, KEYSPACE, 1)
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, KEYSPACE, 1)
 
-        self.create_users(cursor)
-        self.update_users(cursor)
+        self.create_users(session)
+        self.update_users(session)
 
-        initial_users = self.query_users(cursor)
+        initial_users = self.query_users(session)
         initial_sstables = self.flush('users')
 
         cluster.stop()
@@ -378,43 +383,41 @@ class TestScrub(TestHelper):
         self.assertEqual(initial_sstables, scrubbed_sstables)
 
         cluster.start()
-        cursor = self.patient_cql_connection(node1)
-        cursor.execute('USE %s' % (KEYSPACE))
+        session = self.patient_cql_connection(node1)
+        session.execute('USE %s' % (KEYSPACE))
 
-        users = self.query_users(cursor)
+        users = self.query_users(session)
         self.assertEqual(initial_users, users)
 
-    @require('9591*')
-    def test_standalone_scrub_data_file_only(self):
+    def test_standalone_scrub_essential_files_only(self):
         cluster = self.cluster
         cluster.populate(1).start()
         node1 = cluster.nodelist()[0]
 
-        cursor = self.patient_cql_connection(node1)
-        self.create_ks(cursor, KEYSPACE, 1)
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, KEYSPACE, 1)
 
-        self.create_users(cursor)
-        self.update_users(cursor)
+        self.create_users(session)
+        self.update_users(session)
 
-        initial_users = self.query_users(cursor)
+        initial_users = self.query_users(session)
         initial_sstables = self.flush('users')
 
         cluster.stop()
 
-        self.delete_non_data_sstable_files('users')
+        self.delete_non_essential_sstable_files('users')
 
         scrubbed_sstables = self.standalonescrub('users')
         self.increase_sstable_generations(initial_sstables)
         self.assertEqual(initial_sstables, scrubbed_sstables)
 
         cluster.start()
-        cursor = self.patient_cql_connection(node1)
-        cursor.execute('USE %s' % (KEYSPACE))
+        session = self.patient_cql_connection(node1)
+        session.execute('USE %s' % (KEYSPACE))
 
-        users = self.query_users(cursor)
+        users = self.query_users(session)
         self.assertEqual(initial_users, users)
 
-    @since('2.1')
     def test_scrub_with_UDT(self):
         """
         @jira_ticket CASSANDRA-7665
@@ -423,10 +426,10 @@ class TestScrub(TestHelper):
         cluster.populate(1).start()
         node1 = cluster.nodelist()[0]
 
-        cursor = self.patient_cql_connection(node1)
-        cursor.execute("CREATE KEYSPACE test WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1 };")
-        cursor.execute("use test;")
-        cursor.execute("CREATE TYPE point_t (x double, y double);")
+        session = self.patient_cql_connection(node1)
+        session.execute("CREATE KEYSPACE test WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1 };")
+        session.execute("use test;")
+        session.execute("CREATE TYPE point_t (x double, y double);")
 
         node1.nodetool("scrub")
         time.sleep(2)

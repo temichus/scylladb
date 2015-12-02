@@ -1,13 +1,15 @@
+import subprocess
+import tempfile
+
+from ccmlib.scylla_cluster import ScyllaCluster
+
 from dtest import Tester, debug
-import subprocess, tempfile, os, shutil
-import time
-from ccmlib.urchin_cluster import UrchinCluster
+
 
 class TestSimple(Tester):
 
-    __test__= False
-    __urchin_args__=[]
-
+    __test__ = False
+    __scylla_args__ = []
 
     def __init__(self, *args, **kwargs):
         Tester.__init__(self, *args, **kwargs)
@@ -23,7 +25,7 @@ class TestSimple(Tester):
         """
         Writes data via stress. Should write exact data expected by stress_read()
         """
-        node.stress(['write', 'n=100000', '-mode', 'cql3', 'simplenative', '-rate', 'threads=1', '-pop','seq=1..100000'])
+        node.stress(['write', 'n=100000', '-mode', 'cql3', 'simplenative', '-rate', 'threads=1', '-pop', 'seq=1..100000'])
 
     def stress_read(self, node):
         """
@@ -33,8 +35,8 @@ class TestSimple(Tester):
         # Verify the data
         tmpfile = tempfile.mktemp()
         with open(tmpfile, 'w+') as tmp:
-            node.stress(['read', 'n=100000', '-mode', 'cql3', 'simplenative', '-rate', 'threads=1', '-pop','seq=1..100000'],
-                stdout=tmp, stderr=subprocess.STDOUT)
+            node.stress(['read', 'n=100000', '-mode', 'cql3', 'simplenative', '-rate', 'threads=1', '-pop', 'seq=1..100000'],
+                        stdout=tmp, stderr=subprocess.STDOUT)
         return tmpfile
 
     def validate_stress_output(self, outfile, expect_failure=False, expect_errors=False):
@@ -68,9 +70,9 @@ class TestSimple(Tester):
         Tests to ensure no data is lost or errors thrown.
         """
         cluster = self.prepare()
-        jvm_args=[]
-        if type(cluster) is UrchinCluster:
-           jvm_args=self.__urchin_args__
+        jvm_args = []
+        if type(cluster) is ScyllaCluster:
+            jvm_args = self.__scylla_args__
         cluster.populate(1).start(jvm_args=jvm_args)
         node1 = cluster.nodelist()[0]
         self.stress_write(node1)
@@ -78,9 +80,8 @@ class TestSimple(Tester):
         self.validate_stress_output(out)
 
 
-options = {'Single' : ['--smp','1'], 'SMP' : ['--smp','2']}
+options = {'Single': ['--smp', '1'], 'SMP': ['--smp', '2']}
 
 for option in options.keys():
     cls_name = ('SimpleNoDriverTest_with_' + option)
-    vars()[cls_name] = type(cls_name, (TestSimple,), {'__urchin_args__': options[option], '__test__':True})
-
+    vars()[cls_name] = type(cls_name, (TestSimple,), {'__scylla_args__': options[option], '__test__': True})

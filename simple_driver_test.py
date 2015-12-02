@@ -1,12 +1,14 @@
-from dtest import Tester, debug
-import subprocess, tempfile, os, shutil
 import time
-from ccmlib.urchin_cluster import UrchinCluster
+
+from ccmlib.scylla_cluster import ScyllaCluster
+
+from dtest import Tester
+
 
 class TestSimple(Tester):
 
-    __test__= False
-    __urchin_args__=[]
+    __test__ = False
+    __scylla_args__ = []
 
     def __init__(self, *args, **kwargs):
         Tester.__init__(self, *args, **kwargs)
@@ -18,12 +20,11 @@ class TestSimple(Tester):
         cluster = self.cluster
         return cluster
 
-
     def simple_create_insert_select_test(self):
         cluster = self.prepare()
-        jvm_args=[]
-        if type(cluster) is UrchinCluster:
-           jvm_args=self.__urchin_args__
+        jvm_args = []
+        if type(cluster) is ScyllaCluster:
+            jvm_args = self.__scylla_args__
         cluster.populate(1).start(jvm_args=jvm_args)
         node1 = cluster.nodelist()[0]
         session = self.patient_cql_connection(node1)
@@ -57,9 +58,9 @@ class TestSimple(Tester):
 
     def simple_composite_partition_key_create_insert_select_test(self):
         cluster = self.prepare()
-        jvm_args=[]
-        if type(cluster) is UrchinCluster:
-           jvm_args=self.__urchin_args__
+        jvm_args = []
+        if type(cluster) is ScyllaCluster:
+            jvm_args = self.__scylla_args__
         cluster.populate(1).start(jvm_args=jvm_args)
         node1 = cluster.nodelist()[0]
         session = self.patient_cql_connection(node1)
@@ -86,7 +87,7 @@ class TestSimple(Tester):
 
         res = session.execute("""
                 SELECT * FROM test1
-                WHERE k1=1 and k2=2 
+                WHERE k1=1 and k2=2
         """)
         assert len(res) == 1, res
 
@@ -107,9 +108,9 @@ class TestSimple(Tester):
 
     def simple_compound_primary_key_create_insert_select_test(self):
         cluster = self.prepare()
-        jvm_args=[]
-        if type(cluster) is UrchinCluster:
-           jvm_args=self.__urchin_args__
+        jvm_args = []
+        if type(cluster) is ScyllaCluster:
+            jvm_args = self.__scylla_args__
         cluster.populate(1).start(jvm_args=jvm_args)
         node1 = cluster.nodelist()[0]
         session = self.patient_cql_connection(node1)
@@ -137,7 +138,7 @@ class TestSimple(Tester):
 
         res = session.execute("""
                 SELECT * FROM test1
-                WHERE k1=1 and c1=1 and c2=1 
+                WHERE k1=1 and c1=1 and c2=1
         """)
         assert len(res) == 1, res
 
@@ -156,8 +157,8 @@ class TestSimple(Tester):
         time.sleep(1)
 
 
-options = {'Single' : ['--smp','1'], 'SMP' : ['--smp','2']}
+options = {'Single': ['--smp', '1'], 'SMP': ['--smp', '2']}
 
 for option in options.keys():
     cls_name = ('SimpleDriverTest_with_' + option)
-    vars()[cls_name] = type(cls_name, (TestSimple,), {'__urchin_args__': options[option], '__test__':True})
+    vars()[cls_name] = type(cls_name, (TestSimple,), {'__scylla_args__': options[option], '__test__': True})
