@@ -356,7 +356,10 @@ class TestTTL(Tester):
         self.session1.execute("update session using ttl 1 set valid = 1 where id = 'abc'")
         self.smart_sleep(time.time(), 2)
 
-        self.session1.execute("delete from session where id = 'abc' if usr ='abc'")
+        # Scylla does not support lightweight transactions, let's adapt
+        # the statement
+        # self.session1.execute("delete from session where id = 'abc' if usr ='abc'")
+        self.session1.execute("delete from session where id = 'abc'")
         assert_row_count(self.session1, 'session', 0)
 
 
