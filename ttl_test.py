@@ -28,16 +28,19 @@ class TestTTL(Tester):
         self.session1 = self.patient_cql_connection(node1)
         self.create_ks(self.session1, 'ks', 1)
 
-    def prepare(self, default_time_to_live=None):
+    def prepare(self, default_time_to_live=None, create_table_statement=None):
         self.session1.execute("DROP TABLE IF EXISTS ttl_table;")
-        query = """
-            CREATE TABLE ttl_table (
-                key int primary key,
-                col1 int,
-                col2 int,
-                col3 int,
-            )
-        """
+        if create_table_statement is None:
+            query = """
+                CREATE TABLE ttl_table (
+                    key int primary key,
+                    col1 int,
+                    col2 int,
+                    col3 int,
+                )
+            """
+        else:
+            query = create_table_statement
         if default_time_to_live:
             query += " WITH default_time_to_live = {};".format(default_time_to_live)
 
