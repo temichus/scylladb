@@ -346,7 +346,10 @@ class TestTTL(Tester):
         """
         Updating a row with a ttl does not prevent deletion, test for CASSANDRA-6363
         """
-        self.session1.execute("DROP TABLE IF EXISTS session")
+        self.prepare()
+
+        if self._preserve_cluster:
+            self.session1.execute("DROP TABLE IF EXISTS session")
         self.session1.execute("CREATE TABLE session (id text, usr text, valid int, PRIMARY KEY (id))")
 
         self.session1.execute("insert into session (id, usr) values ('abc', 'abc')")
