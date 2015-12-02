@@ -145,6 +145,7 @@ class TestBatch(Tester):
         self.assertEquals(
             0, len(warning), "Cannot find the gc_grace_seconds warning message.")
 
+    @require('counters')
     def logged_batch_rejects_counter_mutations_test(self):
         """ Test that logged batch rejects counter mutations """
         session = self.prepare()
@@ -408,7 +409,8 @@ class TestBatch(Tester):
 
         node1 = self.cluster.nodelist()[0]
         session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'ks', nodes)
+        # The method create_schema already creates a keyspace
+        # self.create_ks(session, 'ks', nodes)
         self.create_schema(session, nodes)
         return session
 
@@ -416,14 +418,16 @@ class TestBatch(Tester):
         debug('Creating schema...')
         self.create_ks(session, 'ks', rf)
 
-        session.execute("""
-            CREATE TABLE clicks (
-                userid int,
-                url text,
-                total counter,
-                PRIMARY KEY (userid, url)
-             );
-         """)
+        # Scylla does not support counters, so let's skip
+        # creating the table 'clicks'.
+        # session.execute("""
+        #    CREATE TABLE clicks (
+        #        userid int,
+        #        url text,
+        #        total counter,
+        #        PRIMARY KEY (userid, url)
+        #     );
+        # """)
 
         session.execute("""
             CREATE TABLE users (
