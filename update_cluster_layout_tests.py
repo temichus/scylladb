@@ -1,8 +1,9 @@
 import threading
 import time
 
-from cassandra import ConsistencyLevel
+from cassandra import Unavailable,ConsistencyLevel
 from cassandra.query import SimpleStatement
+from cassandra.cluster import NoHostAvailable
 from ccmlib.node import NodeError
 
 from dtest import Tester
@@ -469,6 +470,12 @@ class TestUpdateClusterLayout(Tester):
         insert_c1c2(session, keys=range(1000), consistency=ConsistencyLevel.ONE)
 
         node2.decommission()
+        # lets verify new connection can not be openned to a decomissioned node
+        try:
+            session2 = self.patient_cql_connection(node2)
+            fail
+        except NoHostAvailable:
+            pass
         node2.stop()
 
         self.check_rows_on_node(node1, 1000, restart=False)
@@ -630,3 +637,73 @@ class TestUpdateClusterLayout(Tester):
 
     def simple_decommission_node_while_query_info_2_test(self):
         self._simple_decommission_node_while_query_info(2)
+
+    def simple_removenode_1_test(self):
+        """
+        Test removenode with rf>1 (no data should be lost)
+        1. Create a cluster with a two node with rf=2, insert data
+        2. stop and remove a node
+        3. Check that the data is accesible
+        """
+        cluster = self.cluster
+
+        # Disable hinted handoff and set batch commit log so this doesn't
+        # interfer with the test (this must be after the populate)
+        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.populate(3).start()
+        node1,node2,node3 = cluster.nodelist()
+
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 2)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+
+        insert_c1c2(session, keys=range(100), consistency=ConsistencyLevel.ALL)
+
+        node2_hostid = node2.hostid()
+        node2.stop(wait_other_notice=True)
+        query = SimpleStatement("SELECT * FROM cf", consistency_level=ConsistencyLevel.ONE)
+        result = session.execute(query)
+        self.assertEqual(len(result), 100, len(result))
+
+        node1.nodetool("removenode %s" % node2_hostid)
+        time.sleep(2)
+        query = SimpleStatement("SELECT * FROM cf", consistency_level=ConsistencyLevel.TWO)
+        result = session.execute(query)
+        self.assertEqual(len(result), 100, len(result))
+        insert_c1c2(session, keys=range(120), consistency=ConsistencyLevel.TWO)
+
+    def simple_removenode_2_test(self):
+        """
+        Test removenode when rf=1 (data will be lost)
+        1. Create a cluster with a two node with rf=1, insert data
+        2. stop and remove a node
+        3. Check that the data is accesible
+        """
+        cluster = self.cluster
+
+        # Disable hinted handoff and set batch commit log so this doesn't
+        # interfer with the test (this must be after the populate)
+        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.populate(2).start()
+        node1,node2 = cluster.nodelist()
+
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 1)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+
+        insert_c1c2(session, keys=range(10), consistency=ConsistencyLevel.ALL)
+
+        node2_hostid = node2.hostid()
+        node2.stop(wait_other_notice=True)
+        try:
+            query = SimpleStatement("SELECT * FROM cf", consistency_level=ConsistencyLevel.ONE)
+            result = session.execute(query)
+            fail
+        except Unavailable:
+            pass
+
+        node1.nodetool("removenode %s" % node2_hostid)
+        insert_c1c2(session, keys=range(10), consistency=ConsistencyLevel.ALL)
+        query = SimpleStatement("SELECT * FROM cf", consistency_level=ConsistencyLevel.ONE)
+        result = session.execute(query)
+        self.assertEqual(len(result), 10, len(result))
