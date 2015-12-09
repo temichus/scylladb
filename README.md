@@ -1,7 +1,7 @@
-Cassandra Distributed Tests
-===========================
+Scylla Distributed Tests - Introduction
+=======================================
 
-Tests for [Apache Cassandra](http://apache.cassandra.org) clusters.
+Tests for [Scylla](http://www.scylladb.com/) clusters.
 
 Prerequisites
 ------------

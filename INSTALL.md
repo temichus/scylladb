@@ -1,5 +1,5 @@
-Setup instructions for cassandra-dtest
-======================================
+Scylla Distributed Tests - Setup Instructions
+=============================================
 
 These are instructions for setting up dtests on a fresh install of Ubuntu Linux 12.04 LTS. If you use something else, you'll need to adapt these for your particular situation (or better yet, append to this file with your platform's requirements and send a pull request.)
 

@@ -1,0 +1,13 @@
+body, table, div, p, dl {
+    font-size: medium;
+}
+
+#projectname {
+    font-family: Helvetica, Arimo, Arial, sans-serif;
+    font-size: 200%
+}
+
+/* Ensure that <CODE> and <TT> text is as big as the <BODY> text and use a nicer font */
+code, tt {
+    font-size: medium;
+}
