@@ -233,6 +233,9 @@ class TestUpdateClusterLayout(Tester):
         self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
         insert_c1c2(session, keys=range(1000), consistency=ConsistencyLevel.THREE)
+        node1.stress(['write', 'n=5000', '-schema', 'replication(factor=3)'])
+        node2.stress(['write', 'n=5000', '-schema', 'replication(factor=3)'])
+        node3.stress(['write', 'n=5000', '-schema', 'replication(factor=3)'])
         self.cluster.flush()
 
         node4 = new_node(cluster)
@@ -241,8 +244,7 @@ class TestUpdateClusterLayout(Tester):
 
         node2.stop()
 
-        node4.watch_log_for("Starting listening for CQL clients", timeout=60)
-        self.check_rows_on_node(node4, 1000)
+        node4.watch_log_for("Stream failed", timeout=360)
 
     def simple_kill_new_node_while_bootstrapping_test(self):
         """
