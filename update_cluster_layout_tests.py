@@ -192,12 +192,17 @@ class TestUpdateClusterLayout(Tester):
         node2.start()
         time.sleep(0.1)
         try:
-            node3.start()
+            node3.start(wait_other_notice=True,wait_for_binary_proto=True)
+            # lets check that it detected there was another bootstrapping in progress
+            node3.watch_log_for(".* sleep 1 second and check again .* \(check_for_endpoint_collision\)")
         except NodeError:
+            # if the node was not allowed to boot check reason
+            node3.watch_log_for("(Other bootstrapping/leaving/moving nodes detected, cannot bootstrap while cassandra.consistent.rangemovement is true)|(Checking bootstrapping/leaving/moving nodes: ok \(check_for_endpoint_collision\))")
             pass
 
         node2.watch_log_for("Starting listening for CQL clients")
         session = self.patient_exclusive_cql_connection(node2)
+        session.execute("use ks;")
         node1.watch_log_for_alive(node2)
         node2.watch_log_for_alive(node1)
 
@@ -205,8 +210,6 @@ class TestUpdateClusterLayout(Tester):
 
         self.check_rows_on_node(node2, 2000)
         self.check_rows_on_node(node1, 2000)
-        # check that node3 existed with the correct message
-        node3.watch_log_for("Other bootstrapping/leaving/moving nodes detected, cannot bootstrap while cassandra.consistent.rangemovement is true")
 
     def simple_kill_streaming_node_while_bootstrapping_test(self):
         """
