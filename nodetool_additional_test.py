@@ -1,5 +1,6 @@
 from dtest import Tester
 import re
+import os
 
 
 class TestNodetool(Tester):
@@ -156,8 +157,66 @@ class TestNodetool(Tester):
         self.assertMapEqual(table, "Maximum tombstones per slice (last five minutes)", 0)
         self.assertMapLessEqual(table, "Memtable data size", float(table["Memtable off heap memory used"]))
 
-    def stress_write(self, node):
-        return node.stress_object(['write', 'n=100000'])
+    def verify_snapshot(self, node1, ks, snapshot, exists=True):
+        out = node1.nodetool("listsnapshots", True)[0]
+        m = re.findall(snapshot + "\s+" + ks, out, re.MULTILINE)
+        if exists:
+            self.assertTrue(m, "snapshot " + snapshot + " is missing in keyspace " + ks)
+        else:
+            self.assertFalse(m, "unexpected snapshot " + snapshot + " found in keyspace " + ks)
+
+    def global_snapshot_test(self):
+        """ Test a global snapshot, by loading a system
+        creating a snapshot, checking that it exists
+        remove it and checking that it does not exists
+        """
+        cluster = self.cluster
+        cluster.populate(1).start(wait_for_binary_proto=True)
+        [node1] = cluster.nodelist()
+        cursor = self.patient_cql_connection(node1)
+        strs = self.stress_write(node1, 1000)
+        out = node1.nodetool("snapshot", True)[0]
+        m = re.findall(r"Snapshot directory:\s+(\d+)", out, re.MULTILINE)
+        snapshot = m[0]
+        self.assertTrue(m, "No directory found in node snapshot command: '" + out + "'")
+
+        data_dir = os.path.join(node1.get_path(), "data")
+        keyspaces = [f for f in os.listdir(data_dir) if os.path.isdir(os.path.join(data_dir, f))]
+        self.assertEqual(2, len(keyspaces), "wrong number of directories in the data dir")
+        for ks in keyspaces:
+            keyspace_dir = os.path.join(data_dir, ks)
+            column_families = [os.path.join(keyspace_dir, f) for f in os.listdir(keyspace_dir) if os.path.isdir(os.path.join(keyspace_dir, f))]
+            for cf in column_families:
+                self.assertTrue(os.path.isdir(os.path.join(cf, "snapshots", snapshot)), "Missing snapshot dir under ks=" + ks + " cf " + cf)
+                self.assertIn("manifest.json", os.listdir(os.path.join(cf, "snapshots", snapshot)), "Missing manifest.json in " + os.path.join(cf, "snapshots", snapshot))
+        self.verify_snapshot(node1, "keyspace1", snapshot)
+        self.verify_snapshot(node1, "system", snapshot)
+        node1.nodetool("clearsnapshot")
+        self.verify_snapshot(node1, "keyspace1", snapshot, exists=False)
+
+    def global_create_after_clean(self):
+        """ Test that after a clean
+        it is possible to create an additional snapshot
+        """
+        cluster = self.cluster
+        cluster.populate(1).start(wait_for_binary_proto=True)
+        [node1] = cluster.nodelist()
+        cursor = self.patient_cql_connection(node1)
+        strs = self.stress_write(node1, 1000)
+        out = node1.nodetool("snapshot", True)[0]
+        m = re.findall(r"Snapshot directory:\s+(\d+)", out, re.MULTILINE)
+        snapshot = m[0]
+        self.assertTrue(m, "No directory found in node snapshot command: '" + out + "'")
+        self.verify_snapshot(node1, "keyspace1", snapshot)
+        node1.nodetool("clearsnapshot")
+        self.verify_snapshot(node1, "keyspace1", snapshot, exists=False)
+        out = node1.nodetool("snapshot", True)[0]
+        m = re.findall(r"Snapshot directory:\s+(\d+)", out, re.MULTILINE)
+        snapshot = m[0]
+        self.verify_snapshot(node1, "keyspace1", snapshot)
+
+    def stress_write(self, node, times=100000):
+        return node.stress_object(['write', 'n=' + str(times)])
 
     def stress_mixed(self, node):
         return node.stress_object(['mixed', 'n=100000'])
