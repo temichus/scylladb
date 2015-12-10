@@ -195,10 +195,11 @@ class TestUpdateClusterLayout(Tester):
         try:
             node3.start(wait_other_notice=True,wait_for_binary_proto=True)
             # lets check that it detected there was another bootstrapping in progress
-            node3.watch_log_for(".* sleep 1 second and check again .* \(check_for_endpoint_collision\)")
+	    node3.watch_log_for("Checking bootstrapping/leaving/moving nodes: .* sleep 1 second and check again .*")
+	    node3.watch_log_for("Checking bootstrapping/leaving/moving nodes: ok");
         except NodeError:
             # if the node was not allowed to boot check reason
-            node3.watch_log_for("(Other bootstrapping/leaving/moving nodes detected, cannot bootstrap while cassandra.consistent.rangemovement is true)|(Checking bootstrapping/leaving/moving nodes: ok \(check_for_endpoint_collision\))")
+            node3.watch_log_for("Other bootstrapping/leaving/moving nodes detected, cannot bootstrap while cassandra.consistent.rangemovement is true")
             pass
 
         node2.watch_log_for("Starting listening for CQL clients")
