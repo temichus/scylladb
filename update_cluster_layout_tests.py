@@ -6,7 +6,7 @@ from cassandra.query import SimpleStatement
 from cassandra.cluster import NoHostAvailable
 from ccmlib.node import NodeError
 
-from dtest import Tester
+from dtest import Tester, debug
 from tools import insert_c1c2, query_c1c2, new_node
 
 
@@ -234,17 +234,25 @@ class TestUpdateClusterLayout(Tester):
         self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
         insert_c1c2(session, keys=range(1000), consistency=ConsistencyLevel.THREE)
-        node1.stress(['write', 'n=5000', '-schema', 'replication(factor=3)'])
-        node2.stress(['write', 'n=5000', '-schema', 'replication(factor=3)'])
-        node3.stress(['write', 'n=5000', '-schema', 'replication(factor=3)'])
+
+        debug("Inserting more data to make streaming process longer...")
+        node1.stress(['write', 'n=5000', 'no-warmup', '-schema', 'replication(factor=3) keyspace=ks1'])
+        node2.stress(['write', 'n=5000', 'no-warmup', '-schema', 'replication(factor=3) keyspace=ks2'])
+        node3.stress(['write', 'n=5000', 'no-warmup', '-schema', 'replication(factor=3) keyspace=ks3'])
+
+        debug("Flush cluster...")
         self.cluster.flush()
 
+        debug("Start node 4...")
         node4 = new_node(cluster)
         node4.start()
         node4.watch_log_for("Beginning stream session")
 
+        debug("Stop node 2...")
         node2.stop()
 
+        debug("Look for Stream failed in node 4...")
+        # Wait 6 minutes at most for streaming to give up retrying
         node4.watch_log_for("Stream failed", timeout=360)
 
     def simple_kill_new_node_while_bootstrapping_test(self):
@@ -256,6 +264,7 @@ class TestUpdateClusterLayout(Tester):
         4. Check that the cluster returns all
         """
         cluster = self.cluster
+        cluster.set_log_level("DEBUG")
         self.allow_log_errors = True
 
         # Disable hinted handoff and set batch commit log so this doesn't
@@ -263,6 +272,8 @@ class TestUpdateClusterLayout(Tester):
         cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
         cluster.populate(3).start()
         node1 = cluster.nodelist()[0]
+        node2 = cluster.nodelist()[1]
+        node3 = cluster.nodelist()[2]
 
         session = self.patient_cql_connection(node1)
         self.create_ks(session, 'ks', 1)
@@ -270,7 +281,12 @@ class TestUpdateClusterLayout(Tester):
 
         insert_c1c2(session, keys=range(1000), consistency=ConsistencyLevel.ONE)
 
-        for i in xrange(4, 6):
+        debug("Inserting more data to make streaming process longer...")
+        node1.stress(['write', 'n=5000', 'no-warmup', '-schema', 'replication(factor=3) keyspace=ks1'])
+        node2.stress(['write', 'n=5000', 'no-warmup', '-schema', 'replication(factor=3) keyspace=ks2'])
+        node3.stress(['write', 'n=5000', 'no-warmup', '-schema', 'replication(factor=3) keyspace=ks3'])
+
+        for i in xrange(4, 5):
             # creating an additional node without actually adding it to the cluster
             new_node = cluster.create_node('node%s' % i,
                                            True,
@@ -280,10 +296,42 @@ class TestUpdateClusterLayout(Tester):
                                            None,
                                            None,
                                            binary_interface=('127.0.0.%s' % i, 9042))
+            new_node.set_log_level("DEBUG")
+            debug("Start Node %d" % i);
             new_node.start()
+            new_node.watch_log_for("JOINING: Starting to bootstrap")
             new_node.watch_log_for("Beginning stream session")
+            debug("Stop Node %d" % i);
             new_node.stop(gently=False)
-            time.sleep(10)
+
+            # Sleep 1 second to make sure other nodes knows this node is joining through gossip
+            time.sleep(1)
+
+            # Check the status:
+            # We expect the new node will not be added to the cluster
+            # status looks like below, new_node should not be in UN state but in UJ state.
+            # UN  127.0.0.1  99823      256     ?       a7498138-1878-421d-8f11-cc98b204090a  rack1
+            # UN  127.0.0.2  37278      256     ?       f118383c-c569-49d1-9aa6-223d3b224caa  rack1
+            # UN  127.0.0.3  24834      256     ?       78b7e6ba-3039-4fc6-a875-a71661f8cd04  rack1
+            # UJ  127.0.0.4  ?          256     ?       637edd3f-8888-48ab-b0ea-3ea81f8e9865  rack1
+            status, err = node1.nodetool('status')
+            debug(status)
+            # TODO: check new_node in status UJ
+
+            # Slep 30 seconds to make sure other nodes removed the new node
+            time.sleep(30)
+            node1.watch_log_for("FatClient .* has been silent for 30000ms, removing from gossip")
+            node2.watch_log_for("FatClient .* has been silent for 30000ms, removing from gossip")
+            node3.watch_log_for("FatClient .* has been silent for 30000ms, removing from gossip")
+
+            # Check status again:
+            # status looks like below, new_node should not be in UN state
+            # UN  127.0.0.1  99823      256     ?       a7498138-1878-421d-8f11-cc98b204090a  rack1
+            # UN  127.0.0.2  37278      256     ?       f118383c-c569-49d1-9aa6-223d3b224caa  rack1
+            # UN  127.0.0.3  24834      256     ?       78b7e6ba-3039-4fc6-a875-a71661f8cd04  rack1
+            status, err = node1.nodetool('status')
+            debug(status)
+            # TODO: check new_node does not show up in status
 
         result = session.execute("SELECT * FROM cf")
         self.assertEqual(len(result), 1000, len(result))
