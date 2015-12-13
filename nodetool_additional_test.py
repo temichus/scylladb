@@ -94,6 +94,40 @@ class TestNodetool(Tester):
             return v
         return float(out)
 
+    @staticmethod
+    def _list2status(lst):
+        heads = ["status", "address", "load", "tokens", "owns", "host id", "rack"]
+        res = {}
+        for i in range(len(heads)):
+            res[heads[i]] = lst[i]
+        return res
+
+    def nodetool_status(self, node):
+        res = {}
+        out = node.nodetool("status", True)[0]
+        m = re.findall('Datacenter: ([^\s+])', out, re.MULTILINE)
+        if m:
+            res['Datacenter'] = m[0]
+        m = re.findall('^([UDNLJM]+)\s+([\d\.]+)\s+([^\s]+)\s+([^\s]+)\s+([^\s]+)\s+([^\s]+)\s+([^\s]+)\s*$', out, re.MULTILINE)
+        res["nodes"] = [self._list2status(s) for s in m]
+        return res
+
+    def decommission_test(self):
+        """Ensure that nodetool decomission works
+        starting two node cluster
+        verify that nodetool status return two nodes
+        run nodetool decomission and verify that that only
+        one node remains
+        """
+        cluster = self.cluster
+        cluster.populate(2).start(wait_for_binary_proto=True)
+        [node1, node2] = cluster.nodelist()
+        status = self.nodetool_status(node1)
+        self.assertEqual(2, len(status["nodes"]), "wrong number of nodes")
+        node2.nodetool("decommission")
+        status = self.nodetool_status(node1)
+        self.assertEqual(1, len(status["nodes"]), "wrong number of nodes")
+
     def cfstats_test(self):
         """Ensure that cfstats action works successfully.
         it runs a load with write, check some of the parameters
