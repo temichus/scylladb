@@ -84,6 +84,7 @@ class TestUpdateClusterLayout(Tester):
         node2.start(wait_for_binary_proto=True)
 
         session = self.patient_exclusive_cql_connection(node2)
+        session.execute("use ks;");
         node1.watch_log_for_alive(node2)
         node2.watch_log_for_alive(node1)
 
