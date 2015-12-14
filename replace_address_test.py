@@ -4,9 +4,9 @@ from unittest import skip
 from cassandra import ConsistencyLevel, ReadTimeout, Unavailable
 from cassandra.query import SimpleStatement
 
-from ccmlib.node import Node, NodeError
+from ccmlib.node import NodeError
 from dtest import DISABLE_VNODES, Tester, debug
-from tools import InterruptBootstrap, since
+from tools import InterruptBootstrap, since, new_node
 
 
 class NodeUnavailable(Exception):
@@ -89,8 +89,7 @@ class TestReplaceAddress(Tester):
         # replace node 3 with node 4
         debug("Starting node 4 to replace node 3")
 
-        node4 = Node('node4', cluster, True, ('127.0.0.4', 9160), ('127.0.0.4', 7000), '7400', '0', None, binary_interface=('127.0.0.4', 9042))
-        cluster.add(node4, False)
+        node4 = new_node(cluster, bootstrap=True, token=None, remote_debug_port='0', data_center=None)
         node4.start(replace_address='127.0.0.3', wait_for_binary_proto=True)
 
         # query should work again
@@ -120,8 +119,7 @@ class TestReplaceAddress(Tester):
 
         # replace active node 3 with node 4
         debug("Starting node 4 to replace active node 3")
-        node4 = Node('node4', cluster, True, ('127.0.0.4', 9160), ('127.0.0.4', 7000), '7400', '0', None, binary_interface=('127.0.0.4', 9042))
-        cluster.add(node4, False)
+        node4 = new_node(cluster, bootstrap=True, token=None, remote_debug_port='0', data_center=None)
 
         mark = node4.mark_log()
         node4.start(replace_address='127.0.0.3')
@@ -135,8 +133,7 @@ class TestReplaceAddress(Tester):
         node1, node2, node3 = cluster.nodelist()
 
         debug('Start node 4 and replace an address with no node')
-        node4 = Node('node4', cluster, True, ('127.0.0.4', 9160), ('127.0.0.4', 7000), '7400', '0', None, binary_interface=('127.0.0.4', 9042))
-        cluster.add(node4, False)
+        node4 = new_node(cluster, bootstrap=True, token=None, remote_debug_port='0', data_center=None)
 
         # try to replace an unassigned ip address
         mark = node4.mark_log()
@@ -187,8 +184,7 @@ class TestReplaceAddress(Tester):
 
         # replace node 3 with node 4
         debug("Starting node 4 to replace node 3")
-        node4 = Node('node4', cluster, True, ('127.0.0.4', 9160), ('127.0.0.4', 7000), '7400', '0', None, binary_interface=('127.0.0.4', 9042))
-        cluster.add(node4, False)
+        node4 = new_node(cluster, bootstrap=True, token=None, remote_debug_port='0', data_center=None)
         node4.start(jvm_args=["-Dcassandra.replace_address_first_boot=127.0.0.3"], wait_for_binary_proto=True)
 
         # query should work again
@@ -245,8 +241,7 @@ class TestReplaceAddress(Tester):
         t.start()
         # replace node 3 with node 4
         debug("Starting node 4 to replace node 3")
-        node4 = Node('node4', cluster, True, ('127.0.0.4', 9160), ('127.0.0.4', 7000), '7400', '0', None, binary_interface=('127.0.0.4', 9042))
-        cluster.add(node4, False)
+        node4 = new_node(cluster, bootstrap=True, token=None, remote_debug_port='0', data_center=None)
         try:
             node4.start(jvm_args=["-Dcassandra.replace_address_first_boot=127.0.0.3"])
         except NodeError:
@@ -294,8 +289,7 @@ class TestReplaceAddress(Tester):
         t.start()
         # replace node 3 with node 4
         debug("Starting node 4 to replace node 3")
-        node4 = Node('node4', cluster, True, ('127.0.0.4', 9160), ('127.0.0.4', 7000), '7400', '0', None, binary_interface=('127.0.0.4', 9042))
-        cluster.add(node4, False)
+        node4 = new_node(cluster, bootstrap=True, token=None, remote_debug_port='0', data_center=None)
         try:
             node4.start(jvm_args=["-Dcassandra.replace_address_first_boot=127.0.0.3"])
         except NodeError:
