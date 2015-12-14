@@ -126,7 +126,8 @@ paging_test.py:TestPagingWithModifiers.test_with_allow_filtering
 paging_test.py:TestPagingWithModifiers.test_with_limit
 paging_test.py:TestPagingWithModifiers.test_with_order_by
 paging_test.py:TestPagingWithModifiers.test_with_order_by_reversed
-pushed_notifications_test.py
+pushed_notifications_test.py:TestPushedNotifications.restart_node_test
+pushed_notifications_test.py:TestPushedNotifications.move_single_node
 simple_boot_shutdown.py
 simple_cluster_driver_test.py
 simple_driver_test.py
