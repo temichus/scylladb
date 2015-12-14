@@ -99,14 +99,14 @@ class TestReplaceAddress(Tester):
         self.assertListEqual(initialData, finalData)
 
         debug("Verifying tokens migrated sucessfully")
-        movedTokensList = node4.grep_log("Token .* changing ownership from /127.0.0.3 to /127.0.0.4")
+        movedTokensList = node4.grep_log("Token .* changing ownership from .127.0.0.3 to .127.0.0.4")
         debug(movedTokensList[0])
         self.assertEqual(len(movedTokensList), numNodes)
 
         # check that restarting node 3 doesn't work
         debug("Try to restart node 3 (should fail)")
         node3.start()
-        checkCollision = node1.grep_log("between /127.0.0.3 and /127.0.0.4; /127.0.0.4 is the new owner")
+        checkCollision = node1.grep_log("between .127.0.0.3 and .127.0.0.4; .127.0.0.4 is the new owner")
         debug(checkCollision)
         self.assertEqual(len(checkCollision), 1)
 
@@ -123,7 +123,7 @@ class TestReplaceAddress(Tester):
 
         mark = node4.mark_log()
         node4.start(replace_address='127.0.0.3')
-        node4.watch_log_for("java.lang.UnsupportedOperationException: Cannot replace a live node...", from_mark=mark)
+        node4.watch_log_for(".Cannot replace a live node...", from_mark=mark)
         self.check_not_running(node4)
 
     def replace_nonexistent_node_test(self):
@@ -138,7 +138,7 @@ class TestReplaceAddress(Tester):
         # try to replace an unassigned ip address
         mark = node4.mark_log()
         node4.start(replace_address='127.0.0.5')
-        node4.watch_log_for("java.lang.RuntimeException: Cannot replace_address /127.0.0.5 because it doesn't exist in gossip", from_mark=mark)
+        node4.watch_log_for(".Cannot replace_address .127.0.0.5 because it doesn't exist in gossip", from_mark=mark)
         self.check_not_running(node4)
 
     def check_not_running(self, node):
@@ -193,14 +193,14 @@ class TestReplaceAddress(Tester):
         self.assertListEqual(initialData, finalData)
 
         debug("Verifying tokens migrated sucessfully")
-        movedTokensList = node4.grep_log("Token .* changing ownership from /127.0.0.3 to /127.0.0.4")
+        movedTokensList = node4.grep_log("Token .* changing ownership from .127.0.0.3 to .127.0.0.4")
         debug(movedTokensList[0])
         self.assertEqual(len(movedTokensList), numNodes)
 
         # check that restarting node 3 doesn't work
         debug("Try to restart node 3 (should fail)")
         node3.start()
-        checkCollision = node1.grep_log("between /127.0.0.3 and /127.0.0.4; /127.0.0.4 is the new owner")
+        checkCollision = node1.grep_log("between .127.0.0.3 and .127.0.0.4; .127.0.0.4 is the new owner")
         debug(checkCollision)
         self.assertEqual(len(checkCollision), 1)
 
@@ -214,7 +214,7 @@ class TestReplaceAddress(Tester):
 
         # we redo this check because restarting node should not result in tokens being moved again, ie number should be same
         debug("Verifying tokens migrated sucessfully")
-        movedTokensList = node4.grep_log("Token .* changing ownership from /127.0.0.3 to /127.0.0.4")
+        movedTokensList = node4.grep_log("Token .* changing ownership from .127.0.0.3 to .127.0.0.4")
         debug(movedTokensList[0])
         self.assertEqual(len(movedTokensList), numNodes)
 
