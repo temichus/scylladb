@@ -51,6 +51,15 @@ class TestNodetool(Tester):
         self.assertIn(key, container, m)
         self.assertGreaterEqual(float(container[key]), val, m)
 
+    def assertMapLess(self, container, key, val, msg=None):
+        if msg is None:
+            m = ""
+        else:
+            m = msg + " "
+        m = m + key + " is " + container[key] + " not >=" + str(val)
+        self.assertIn(key, container, m)
+        self.assertLess(float(container[key]), val, m)
+
     def assertMapLessEqual(self, container, key, val, msg=None):
         if msg is None:
             m = ""
@@ -248,6 +257,46 @@ class TestNodetool(Tester):
         m = re.findall(r"Snapshot directory:\s+(\d+)", out, re.MULTILINE)
         snapshot = m[0]
         self.verify_snapshot(node1, "keyspace1", snapshot)
+
+    def _compact(self, keyspace):
+        cluster = self.cluster
+        cluster.populate(1).start(wait_for_binary_proto=True)
+        [node1] = cluster.nodelist()
+        cursor = self.patient_cql_connection(node1)
+
+        self.stress_write(node1)
+        output = self._to_cfstats(node1.nodetool('cfstats keyspace1.standard1', True)[0])
+        self.assertIn("keyspace1", output, "Keyspace is missing")
+        self.assertIn("tables", output["keyspace1"], "Keyspace has no tables")
+        self.assertIn("standard1", output["keyspace1"]["tables"], "Column family standard1 is missing")
+        table = output["keyspace1"]["tables"]["standard1"]
+        self.assertMapGreatEqual(table, "SSTable count", 1)
+        sstable = int(table["SSTable count"])
+        node1.nodetool("compact" + keyspace)
+        output = self._to_cfstats(node1.nodetool('cfstats keyspace1.standard1', True)[0])
+        table = output["keyspace1"]["tables"]["standard1"]
+        self.assertMapLess(table, "SSTable count", sstable)
+
+    def general_compact_test(self):
+        """ Test that the nodetool compact works by:
+        starting a cluster.
+        running a load.
+        check the number of sstable
+        run compact
+        check that the number of sstable decrease
+        """
+        self._compact("")
+
+    def specific_compact_test(self):
+        """ Test that the nodetool compact for
+        a keyspace works, by:
+        starting a cluster.
+        running a load.
+        check the number of sstable
+        run compact
+        check that the number of sstable decrease
+        """
+        self._compact(" keyspace1 standard1")
 
     def stress_write(self, node, times=100000):
         return node.stress_object(['write', 'n=' + str(times)])
