@@ -264,7 +264,6 @@ class TestUpdateClusterLayout(Tester):
         4. Check that the cluster returns all
         """
         cluster = self.cluster
-        cluster.set_log_level("DEBUG")
         self.allow_log_errors = True
 
         # Disable hinted handoff and set batch commit log so this doesn't
@@ -296,7 +295,6 @@ class TestUpdateClusterLayout(Tester):
                                            None,
                                            None,
                                            binary_interface=('127.0.0.%s' % i, 9042))
-            new_node.set_log_level("DEBUG")
             debug("Start Node %d" % i);
             new_node.start()
             new_node.watch_log_for("JOINING: Starting to bootstrap")
@@ -315,8 +313,7 @@ class TestUpdateClusterLayout(Tester):
             # UN  127.0.0.3  24834      256     ?       78b7e6ba-3039-4fc6-a875-a71661f8cd04  rack1
             # UJ  127.0.0.4  ?          256     ?       637edd3f-8888-48ab-b0ea-3ea81f8e9865  rack1
             status, err = node1.nodetool('status')
-            debug(status)
-            # TODO: check new_node in status UJ
+            assert status.find("UJ  127.0.0.4 ") > -1, status
 
             # Slep 30 seconds to make sure other nodes removed the new node
             time.sleep(30)
@@ -330,8 +327,7 @@ class TestUpdateClusterLayout(Tester):
             # UN  127.0.0.2  37278      256     ?       f118383c-c569-49d1-9aa6-223d3b224caa  rack1
             # UN  127.0.0.3  24834      256     ?       78b7e6ba-3039-4fc6-a875-a71661f8cd04  rack1
             status, err = node1.nodetool('status')
-            debug(status)
-            # TODO: check new_node does not show up in status
+            assert status.find("127.0.0.4") == -1, status
 
         result = session.execute("SELECT * FROM cf")
         self.assertEqual(len(result), 1000, len(result))
