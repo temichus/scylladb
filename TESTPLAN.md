@@ -35,6 +35,7 @@ CQL tests are implemented as dtests, and java unittests. See:
 * cql_tests.py
 * cql_prepared_test.py
 * cql_additional_tests.py
+* scylla_unsupported_test.py
 
   [1]: https://cassandra.apache.org/doc/cql3/CQL.html
   [2]: https://en.wikipedia.org/wiki/SQL
@@ -383,6 +384,13 @@ verify its reliability under a number of adverse circumstances.
 
   [3]: https://en.wikipedia.org/wiki/Distributed_computing
 
+#### Schema Management ####
+
+Distributed schema management 
+
+  * pushed_notifications_test - tests for server to client side notifications
+  * schema_management_test - tests for schema management under cluster topology 
+changes and failures
 
 #### Transparent proxy ####
 
@@ -421,6 +429,8 @@ scylla cluster nodes.
 
 Test how scylla behaves when adverse conditions disturb nodes in terms of data
 consistency.
+
+* consistency_test - functional tests for distributed related features (concurrency, consistency level, read_repair, etc.)
 
 #### Read Repair ####
 
