@@ -1,6 +1,7 @@
 from dtest import Tester
 import re
 import os
+from tools import no_vnodes
 
 
 class TestNodetool(Tester):
@@ -237,6 +238,19 @@ class TestNodetool(Tester):
         node1.nodetool("clearsnapshot")
         self.verify_snapshot(node1, "keyspace1", snapshot, exists=False)
 
+    @staticmethod
+    def _list2ring(lst):
+        heads = ["address", "rack", "status", "state", "load", "unit", "owns", "token"]
+        res = {}
+        for index, attribute in enumerate(heads):
+            res[attribute] = lst[index].strip()
+        return res
+
+    def get_ring(self, node):
+        out = node.nodetool("ring", True)[0]
+        m = re.findall("^\s*([\d\.]+)\s+([^\s]+)\s+([^\s]+)\s+([^\s]+)\s+([\d\.]+)\s+([^\s]+)\s+([^\s]+)\s+([^\s].*)\s*$", out, re.MULTILINE)
+        return [self._list2ring(r) for r in m]
+
     def global_create_after_clean(self):
         """ Test that after a clean
         it is possible to create an additional snapshot
@@ -297,6 +311,27 @@ class TestNodetool(Tester):
         check that the number of sstable decrease
         """
         self._compact(" keyspace1 standard1")
+
+    def _get_current_token(self, node):
+        r = self.get_ring(node)
+        return next(obj for obj in r if obj['address'] == node.network_interfaces['binary'][0])['token']
+
+    @no_vnodes()
+    def move_test(self):
+        """ Test that nodetool move works by:
+        start a cluster with a single token per node
+        check the token of one node
+        call move with a new token
+        check that the token was changed to the new value
+        """
+        cluster = self.cluster
+        cluster.populate(2).start(wait_for_binary_proto=True)
+        node1 = cluster.nodelist()[0]
+        token = self._get_current_token(node1)
+        node1.nodetool("move 1000000", True)
+        token1 = self._get_current_token(node1)
+        self.assertNotEqual(token, token1, "nodetool move 1000000 did not change the token")
+        self.assertEqual("1000000", token1, "nodetool move 1000000 change token to wrong value")
 
     def stress_write(self, node, times=100000):
         return node.stress_object(['write', 'n=' + str(times)])
