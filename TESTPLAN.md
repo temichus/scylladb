@@ -289,7 +289,16 @@ Test taking incremental backups from a cluster.
 
 Test restoring a backup from a cluster.
 
-### Deleting snapshot files ###
+Tests that need to be moved to test files
+  - restore files from old backups under a different schema
+  - restore files prior to token ownership change
+  - restore files from different smp setting
+  - restore files from cassandra snapshot
+  - failures during restore - no corrupt data
+  - replay a restore - no duplicate data
+  - failures during backup - no corrupt backup data
+
+e## Deleting snapshot files ###
 ### Deleting snapshot files {#delete_snapshot} ###
 
 Test deleting snapshot files.
@@ -308,6 +317,17 @@ Test a full repair on a new node.
 #### Repair on 2 relatively similar nodes {#label_full_repair_similar_nodes} ####
 
 Test repair on 2 nodes that are relatively similar (Merkle tree).
+
+Tests that need to be moved to test files
+  - repair when some nodes are down
+  - fail nodes while repair is running
+  - fail repairing node while repair is running
+  - run repair while data is updated
+  - run repair while token ownership is updated (Add node, Decomission node), do we detect that 
+  - repair when all data is in synch
+  - repair when all the data is out of synch
+  - parallel repair
+
 
 ### Compaction strategy ###
 ### Compaction strategy {#label_compaction_strategy} ###
@@ -377,6 +397,19 @@ same sstable directory. Verify results.
 
 Populate a Cassandra database, take a snapshot, then restore it using scylla.
 
+
+Tests that need to be moved to test files
+
+- Check migration of all format of sstables (compressed and non compressed with and without compact storage)
+- Check migration of all format of compaction strategies - do we adhere to the strategy after migration (e.g. Leveled will we be able to use the level info from cassandra, date tiered can we use the files from origin)
+- Check migration of wide row tables
+- Check migration of all data types (collections, frozen, static etc).
+- Check migration of all data metadata (ttl, cell tombstone, row tombstone, range_tombstone)
+- Clock skew at migration (migration of data with future timestamps)
+- Check migration of schemas with items we do not support (e.g. counters, secondary indexes)
+
+- Do we want to check backport from Scylla to Cassandra as well ?
+
 Distributed
 -----------
 Distributed {#label_distributed}
@@ -419,6 +452,62 @@ consistency.
 
 #### Read Repair ####
 
+
+### Upgrade ###
+
+Upgrade of scylla between minor / major versions in case of different cases
+
+- Upgrade without a change in protocols / data serialization (bug fix)
+- Upgrade with a change (mutations, query_result, schema, gossip info, streaming, repair protocol, sstable format, commitlog format, conf file, sharding, cql binary, cql protocol, messaging service additional method, rpc protocol)
+- Rollback for any change case
+
+
+Stability
+---------
+
+Abillity to handle different error cases and failures and continue to function
+
+Single node tests
+
+Tests that need to moved to test files
+
+- Operation Errors (Network Errors, Disk Errors)
+   - Disk error are critical, we need to validate there is no data corruptions for the following operations:
+     - write commit log (we already seen that)
+     - sstable flush
+     - repair
+     - compaction
+     - restore/backup
+     - write hinted hand off (once we have it)
+     - log file
+   - Disk error can be:
+     - out of space
+     - out of bandwidth
+     - disk IO report (write fail)
+     - gracfull shutdown
+     - process kill from exception
+     - process kill (with kill -9)
+     - hard shutdown (power off)
+
+Cluster tests
+
+Tests that need to moved to test files
+
+- Cluster bandwidth - Write workload
+  - Under failed node when CL can be met and cannot be met - are we able to reach normal performance under error case
+  - Large batch statement processing
+- Cluster bandwidth - Read workload
+  - Under failed node when CL can be met and cannot be met - are we able to reach normal peroformance under error case
+  - Very large results set performance impact (very large wide row / multiple rows) - case of pulling a lot of info for additional processing
+- Burst testing on different load setting (including idle) / admin operations (add / decomission / repair etc.)
+- Non stable network (disconnects)
+- Slow Node
+- Clock Skew, multi-dc cross timezone
+- handling of daylight saving time update
+- Network bandwidth issues , cross dc network bandiwdth/latency issues (regular workload, management operations)
+- Resource leak issues on errors (network error - failed/killed remote node, failed/killed client)
+
+
 Performance
 -----------
 Performance {#label_performance}
@@ -426,6 +515,27 @@ Performance {#label_performance}
 
 Scylla aims to be a high perorming database system, so it's imperative that
 it can serve requests at certain levels of throughput.
+
+### Single node tests ###
+
+- Disk Bandwidth (with compression/without compression)- Write workload (Write+Read)
+   - Large batch statement processing
+   - Under changed disk performance (e.g. when the disk is stressed by other users irregulalrly)
+- Disk Bandwidth (with compression/without compression)- Read workload
+   - working set not in memory
+   - working set partially in memory
+   - items that have been updated in multiple sstables files
+   - Under changed disk performance (e.g. when the disk is stressed by other users irregulalrly)
+- Wide rows handling (common for many users / time series etc).
+- Very large results set performance impact (very large wide row / multiple rows)
+- Compaction Bandwidth (large disk size, is compaction limitted), compaction falling behind for multiple cases
+- Multiple compactions from nodetool
+- Burst testing on different load setting (including idle)
+- Repair bandwidth check while nodes/cluster is stressed
+- New node streaming while cluster is stressed
+- Alter Table while cluster is stressed
+- Memory pressure (huge, large and small objects)
+
 
 ### Read throughput ###
 ### Read throughput {#label_read_througput} ###
