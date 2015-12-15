@@ -55,6 +55,9 @@ Tests the scylla companion tools.
 #### nodetool ####
 #### nodetool {#label_nodetool} ####
 
+nodetool should accept only supported commands and supported params
+nodetool should provide help only to supported commands and supported params
+
 Nodetool is a tool to control and manage scylla nodes. The subcommands to test
 are:
 
@@ -391,24 +394,6 @@ Distributed schema management
   * pushed_notifications_test - tests for server to client side notifications
   * schema_management_test - tests for schema management under cluster topology 
 changes and failures
-
-#### Transparent proxy ####
-
-In order to help users migrate from Cassandra to Scylla, a transparent CQL
-proxy tool was developed. This item is for testing the process of deploying
-and running such a transparent proxy.
-
-Test it using Multi data center,Can be either sync or async.
-
-### Jepsen ###
-### Jepsen {#label_jepsen} ###
-
-Jepsen [4] is a test suite written in Clojure [5], that aims to verify the
-correctness of distributed systems. This item consists on using Jepsen to
-find bugs in Scylla.
-
-  [4]: https://aphyr.com/tags/jepsen
-  [5]: http://clojure.org/
 
 ### Snitches ###
 ### Snitches {#label_snitches} ###
