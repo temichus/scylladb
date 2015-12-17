@@ -277,6 +277,11 @@ Test cluster migration/transitioning.
 ### Snapshot (backup) ###
 ### Snapshot (backup) {#label_snapshot_backup} ###
 
+Test cases
+
+  * Base test cases ./snapshot_test.py
+  * Advanced tests cases (covering schema updates, failures etc.) ./snapshot_restore_additional_test.py
+
 Test taking a cluster snapshot or backup.
 
 ### Incremental Backups ###
@@ -289,16 +294,8 @@ Test taking incremental backups from a cluster.
 
 Test restoring a backup from a cluster.
 
-Tests that need to be moved to test files
-  - restore files from old backups under a different schema
-  - restore files prior to token ownership change
-  - restore files from different smp setting
-  - restore files from cassandra snapshot
-  - failures during restore - no corrupt data
-  - replay a restore - no duplicate data
-  - failures during backup - no corrupt backup data
 
-e## Deleting snapshot files ###
+### Deleting snapshot files ###
 ### Deleting snapshot files {#delete_snapshot} ###
 
 Test deleting snapshot files.
@@ -424,9 +421,8 @@ verify its reliability under a number of adverse circumstances.
 
 Distributed schema management 
 
-  * pushed_notifications_test - tests for server to client side notifications
-  * schema_management_test - tests for schema management under cluster topology 
-changes and failures
+  * Server to client side notification tests - pushed_notifications_test.py 
+  * Schema management under cluster topology changes and failure tests - schema_management_test.py 
 
 ### Snitches ###
 ### Snitches {#label_snitches} ###
@@ -461,7 +457,6 @@ Upgrade of scylla between minor / major versions in case of different cases
 - Upgrade with a change (mutations, query_result, schema, gossip info, streaming, repair protocol, sstable format, commitlog format, conf file, sharding, cql binary, cql protocol, messaging service additional method, rpc protocol)
 - Rollback for any change case
 
-
 Stability
 ---------
 
@@ -489,6 +484,24 @@ Tests that need to moved to test files
      - process kill (with kill -9)
      - hard shutdown (power off)
 
+- Disk Bandwidth (with compression/without compression)- Write workload (Write+Read)
+   - Large batch statement processing
+   - Under changed disk performance (e.g. when the disk is stressed by other users irregulalrly)
+- Disk Bandwidth (with compression/without compression)- Read workload
+   - working set not in memory
+   - working set partially in memory
+   - items that have been updated in multiple sstables files
+   - Under changed disk performance (e.g. when the disk is stressed by other users irregulalrly)
+- Wide rows handling (common for many users / time series etc).
+- Very large results set performance impact (very large wide row / multiple rows)
+- Compaction Bandwidth (large disk size, is compaction limitted), compaction falling behind for multiple cases
+- Multiple compactions from nodetool
+- Burst testing on different load setting (including idle)
+- Repair bandwidth check while nodes/cluster is stressed
+- New node streaming while cluster is stressed
+- Alter Table while cluster is stressed
+- Memory pressure (huge, large and small objects)
+
 Cluster tests
 
 Tests that need to moved to test files
@@ -515,27 +528,6 @@ Performance {#label_performance}
 
 Scylla aims to be a high perorming database system, so it's imperative that
 it can serve requests at certain levels of throughput.
-
-### Single node tests ###
-
-- Disk Bandwidth (with compression/without compression)- Write workload (Write+Read)
-   - Large batch statement processing
-   - Under changed disk performance (e.g. when the disk is stressed by other users irregulalrly)
-- Disk Bandwidth (with compression/without compression)- Read workload
-   - working set not in memory
-   - working set partially in memory
-   - items that have been updated in multiple sstables files
-   - Under changed disk performance (e.g. when the disk is stressed by other users irregulalrly)
-- Wide rows handling (common for many users / time series etc).
-- Very large results set performance impact (very large wide row / multiple rows)
-- Compaction Bandwidth (large disk size, is compaction limitted), compaction falling behind for multiple cases
-- Multiple compactions from nodetool
-- Burst testing on different load setting (including idle)
-- Repair bandwidth check while nodes/cluster is stressed
-- New node streaming while cluster is stressed
-- Alter Table while cluster is stressed
-- Memory pressure (huge, large and small objects)
-
 
 ### Read throughput ###
 ### Read throughput {#label_read_througput} ###
