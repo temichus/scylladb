@@ -122,6 +122,29 @@ class TestNodetool(Tester):
         res["nodes"] = [self._list2status(s) for s in m]
         return res
 
+    def nodetool_info(self, node):
+        res = {}
+        out = node.nodetool("info", True)[0]
+        m = re.findall('^\s*([^\s][^:]*[^:\s])\s*:\s+(.*)\s*$', out,
+                       re.MULTILINE)
+        for k in m:
+            sp = k[1].split(',')
+            if len(sp) == 1:
+                res[k[0]] = k[1]
+            else:
+                res[k[0]] = {}
+                for v in sp:
+                    mt = re.match("^\s*([\d\.]+)\s+(.*)\s*$", v)
+                    if mt:
+                        res[k[0]][mt.group(2).strip()] = float(
+                            mt.group(1).strip())
+                    else:
+                        mt = re.match("^\s*([^\d]+)\s+([\d\.]+)\s*$", v)
+                        if mt:
+                            res[k[0]][mt.group(1).strip()] = float(
+                                mt.group(2).strip())
+        return res
+
     def decommission_test(self):
         """Ensure that nodetool decomission works
         starting two node cluster
@@ -332,6 +355,28 @@ class TestNodetool(Tester):
         token1 = self._get_current_token(node1)
         self.assertNotEqual(token, token1, "nodetool move 1000000 did not change the token")
         self.assertEqual("1000000", token1, "nodetool move 1000000 change token to wrong value")
+
+    def gossip_control_test(self):
+        """
+        Test the `nodetool disablegossip` and `nodetool enablegossip`.
+
+        1) Start a cluster and check the gossip via nodetool info
+        2) Disable gossip
+        3) Check with nodetool info
+        4) Enable gossip
+        5) Check with nodetool info
+        """
+        cluster = self.cluster
+        cluster.populate(1).start(wait_for_binary_proto=True)
+        [node1] = cluster.nodelist()
+        gossip = self.nodetool_info(node1)['Gossip active']
+        self.assertEqual("true", gossip, "Gossip is not active")
+        node1.nodetool("disablegossip")
+        gossip = self.nodetool_info(node1)['Gossip active']
+        self.assertEqual("false", gossip, "Failed to disable gossip")
+        node1.nodetool("enablegossip")
+        gossip = self.nodetool_info(node1)['Gossip active']
+        self.assertEqual("true", gossip, "Failed to re-enable gossip")
 
     def stress_write(self, node, times=100000):
         return node.stress_object(['write', 'n=' + str(times)])
