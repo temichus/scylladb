@@ -32,10 +32,14 @@ serving the CQL requests.
 
 CQL tests are implemented as dtests, and java unittests. See:
 
-* cql_tests.py
-* cql_prepared_test.py
-* cql_additional_tests.py
-* scylla_unsupported_test.py
+* cql_tests.AbortedQueriesTester
+* cql_tests.CQLTester
+* cql_tests.MiscellaneousCQLTester
+* cql_tests.StorageProxyCQLTester
+* cql_prepared_test.TestCQL
+* cql_additional_tests.CQLAdditionalTests
+* cql_additional_tests.TestCQL
+* scylla_unsupported_test.ScyllaUnsupportedTest
 
   [1]: https://cassandra.apache.org/doc/cql3/CQL.html
   [2]: https://en.wikipedia.org/wiki/SQL
