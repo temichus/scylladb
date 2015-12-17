@@ -5,9 +5,20 @@ from jmxutils import make_mbean, JolokiaAgent, remove_perf_disable_shared_mem
 
 
 class TestDeletion(Tester):
+    """
+    Test deleting operations and associated tombstone operations.
+    """
 
     def gc_test(self):
-        """ Test that tombstone are fully purge after gc_grace """
+        """
+        Test that tombstones are fully purged after gc_grace.
+
+        1. Create keyspace
+        2. Create table cf with column c1 (int)
+        3. Insert values on the table
+        4. Remove values from the table
+        5. Verify that tombstones are purged after flush/compact
+        """
         cluster = self.cluster
 
         cluster.populate(1).start()
@@ -37,6 +48,14 @@ class TestDeletion(Tester):
         assert len(result) == 1 and len(result[0]) == 2, result
 
     def tombstone_size_test(self):
+        """
+        Verify that deletions in a table generate tombstone registers.
+
+        1. Create an empty table.
+        2. Delete 100 records from this table (should create 100 operations).
+        3. Verify that there are the 100 operations on the table.
+        4. Verify that the table size is effectively 0 (empty table).
+        """
         self.cluster.populate(1)
         node1 = self.cluster.nodelist()[0]
 
