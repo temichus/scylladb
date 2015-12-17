@@ -489,6 +489,24 @@ Tests that need to moved to test files
      - process kill (with kill -9)
      - hard shutdown (power off)
 
+- Disk Bandwidth (with compression/without compression)- Write workload (Write+Read)
+   - Large batch statement processing
+   - Under changed disk performance (e.g. when the disk is stressed by other users irregulalrly)
+- Disk Bandwidth (with compression/without compression)- Read workload
+   - working set not in memory
+   - working set partially in memory
+   - items that have been updated in multiple sstables files
+   - Under changed disk performance (e.g. when the disk is stressed by other users irregulalrly)
+- Wide rows handling (common for many users / time series etc).
+- Very large results set performance impact (very large wide row / multiple rows)
+- Compaction Bandwidth (large disk size, is compaction limitted), compaction falling behind for multiple cases
+- Multiple compactions from nodetool
+- Burst testing on different load setting (including idle)
+- Repair bandwidth check while nodes/cluster is stressed
+- New node streaming while cluster is stressed
+- Alter Table while cluster is stressed
+- Memory pressure (huge, large and small objects)
+
 Cluster tests
 
 Tests that need to moved to test files
@@ -515,27 +533,6 @@ Performance {#label_performance}
 
 Scylla aims to be a high perorming database system, so it's imperative that
 it can serve requests at certain levels of throughput.
-
-### Single node tests ###
-
-- Disk Bandwidth (with compression/without compression)- Write workload (Write+Read)
-   - Large batch statement processing
-   - Under changed disk performance (e.g. when the disk is stressed by other users irregulalrly)
-- Disk Bandwidth (with compression/without compression)- Read workload
-   - working set not in memory
-   - working set partially in memory
-   - items that have been updated in multiple sstables files
-   - Under changed disk performance (e.g. when the disk is stressed by other users irregulalrly)
-- Wide rows handling (common for many users / time series etc).
-- Very large results set performance impact (very large wide row / multiple rows)
-- Compaction Bandwidth (large disk size, is compaction limitted), compaction falling behind for multiple cases
-- Multiple compactions from nodetool
-- Burst testing on different load setting (including idle)
-- Repair bandwidth check while nodes/cluster is stressed
-- New node streaming while cluster is stressed
-- Alter Table while cluster is stressed
-- Memory pressure (huge, large and small objects)
-
 
 ### Read throughput ###
 ### Read throughput {#label_read_througput} ###
