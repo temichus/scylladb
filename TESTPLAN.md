@@ -261,8 +261,8 @@ Test cluster migration/transitioning.
 Test cases
 
   * Base test cases ./snapshot_test.py
-  * Advanced tests cases (covering schema updates, failures etc.) ./snapshot_restore_additional_test.py
-  * Testing of nodetool snapshot / clearsnapshot commands ./nodetool_additional_test.py
+  * Advanced tests cases (covering schema updates, failures etc.) snapshot_restore_additional_test.SnapshotRestoreAdditionalTest
+  * Testing of nodetool snapshot / clearsnapshot commands nodetool_additional_test.TestNodeTool.global_create_after_clean, nodetool_additional_test.TestNodeTool.global_snapshot_test
 
 ### Repair {#label_other_repair_functions} ###
 
@@ -367,8 +367,8 @@ verify its reliability under a number of adverse circumstances.
 
 Distributed schema management 
 
-  * Server to client side notification tests - pushed_notifications_test.py 
-  * Schema management under cluster topology changes and failure tests - schema_management_test.py 
+  * Server to client side notification tests - pushed_notifications_test.TestPushedNotifications
+  * Schema management under cluster topology changes and failure tests - schema_management_test.SchemaManagementTest
 
 ### Snitches {#label_snitches} ###
 
