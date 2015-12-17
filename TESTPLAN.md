@@ -552,4 +552,16 @@ Ensure that the Scylla database and associated tools can function over long peri
 
 ### Scylla Longevity ###
 ### Scylla Longevity {#label_scylla_longevity} ###
+Run scylla for 24h / 7d / 1 month
 
+* on EC2 /  bare metal
+* With EC2 zones / regions
+* With chaos monkey: kill a server every 30 min*
+* With chaos kong: kill DC every  hour *
+* With hourly repairs
+
+### scylla-jmx longevity ###
+### scylla-jmx longevity {#label_scylla-jmx-longevity} ###
+
+Longevity test to scylla-jmx validating it does not have memory leak
+Test should include stressing the JMX.
