@@ -7,6 +7,19 @@ from unittest import skip
 class SnapshotRestoreAdditionalTest(Tester):
 
     @skip ('unimplemented')
+    def incremental_backup(self):
+        """
+        Check that incremetal backup works as expected
+        1. Use a single node
+        2. Enable incremental_backup
+        3. Create a keyspace + table
+        4. Insert data
+        5. Check that while sstables are flushed - incremental backups are created
+        6. Run compact -forcing all ssstables to be merged
+        7. Check that backups holds all the old files and the new compacted file
+        """
+
+    @skip ('unimplemented')
     def restore_snapshot_using_old_schema(self):
         """
         Check that we can restore snapshot files that use old schema
@@ -107,3 +120,4 @@ class SnapshotRestoreAdditionalTest(Tester):
         8. Restore data
         9. Check that all data exists
         """
+

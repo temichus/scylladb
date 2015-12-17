@@ -274,31 +274,14 @@ Test switching the snitches.
 
 Test cluster migration/transitioning.
 
-### Snapshot (backup) ###
-### Snapshot (backup) {#label_snapshot_backup} ###
+### Snapshot (backup) / Restore ###
+### Snapshot (backup) {#label_snapshot_backup} / Restore {#label_restore} ###
 
 Test cases
 
   * Base test cases ./snapshot_test.py
   * Advanced tests cases (covering schema updates, failures etc.) ./snapshot_restore_additional_test.py
-
-Test taking a cluster snapshot or backup.
-
-### Incremental Backups ###
-### Incremental Backups {#label_incremental_backups} ###
-
-Test taking incremental backups from a cluster.
-
-### Restore ###
-### Restore {#label_restore} ###
-
-Test restoring a backup from a cluster.
-
-
-### Deleting snapshot files ###
-### Deleting snapshot files {#delete_snapshot} ###
-
-Test deleting snapshot files.
+  * Testing of nodetool snapshot / clearsnapshot commands ./nodetool_additional_test.py
 
 ### Repair ###
 ### Repair {#label_other_repair_functions} ###
