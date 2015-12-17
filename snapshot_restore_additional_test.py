@@ -18,6 +18,7 @@ class SnapshotRestoreAdditionalTest(Tester):
         6. Run compact -forcing all ssstables to be merged
         7. Check that backups holds all the old files and the new compacted file
         """
+        fail
 
     @skip ('unimplemented')
     def restore_snapshot_using_old_schema(self):
