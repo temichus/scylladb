@@ -262,7 +262,7 @@ Test cases
 
   * Base test cases ./snapshot_test.py
   * Advanced tests cases (covering schema updates, failures etc.) snapshot_restore_additional_test.SnapshotRestoreAdditionalTest
-  * Testing of nodetool snapshot / clearsnapshot commands nodetool_additional_test.TestNodeTool.global_create_after_clean, nodetool_additional_test.TestNodeTool.global_snapshot_test
+  * Testing of nodetool snapshot / clearsnapshot commands nodetool_additional_test.TestNodetool.global_create_after_clean nodetool_additional_test.TestNodetool.global_snapshot_test
 
 ### Repair {#label_other_repair_functions} ###
 
