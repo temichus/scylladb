@@ -378,6 +378,56 @@ class TestNodetool(Tester):
         gossip = self.nodetool_info(node1)['Gossip active']
         self.assertEqual("true", gossip, "Failed to re-enable gossip")
 
+    def _flush(self, flush_cmd):
+        cluster = self.cluster
+        cluster.populate(1).start(wait_for_binary_proto=True)
+        [node1] = cluster.nodelist()
+        self.stress_write(node1, 1)
+        output = self._to_cfstats(node1.nodetool('cfstats keyspace1.standard1',
+                                                 True)[0])
+        ks = output["keyspace1"]
+        table = ks["tables"]["standard1"]
+        self.assertEqual("0", table["SSTable count"],
+                         "SStable count should be 0")
+        node1.nodetool("flush" + flush_cmd)
+        table = self._to_cfstats(node1.nodetool('cfstats keyspace1.standard1',
+                                                True)[0])["keyspace1"]["tables"]["standard1"]
+        self.assertEqual("1", table["SSTable count"],
+                         "SStable count should be 1")
+
+    def general_flush_test(self):
+        """
+        Test the `nodetool flush` command.
+
+        1) Start a cluster, enter a single entry
+        2) check the number of sstables is 0
+        3) run flush
+        4) check the number of sstable is 1
+        """
+        self._flush("")
+
+    def keyspace_flush_test(self):
+        """
+        Test the `nodetool flush` command to flush keyspace1.
+
+        1) Start a cluster, enter a single entry
+        2) check the number of sstables is 0
+        3) run flush
+        4) check the number of sstable is 1
+        """
+        self._flush(" keyspace1")
+
+    def keyspace_column_family_flush_test(self):
+        """
+        Test the `nodetool flush` command to flush keyspace1.standard1.
+
+        1) Start a cluster, enter a single entry
+        2) check the number of sstables is 0
+        3) run flush
+        4) check the number of sstable is 1
+        """
+        self._flush(" keyspace1 standard1")
+
     def stress_write(self, node, times=100000):
         return node.stress_object(['write', 'n=' + str(times)])
 
