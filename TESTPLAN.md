@@ -568,6 +568,36 @@ Test the maximum number of partitions a scylla cluster can support.
 
 Test the maximum number of rows a scylla table can hold.
 
+### Maximum number of columns ###
+### Maximum number of columns {#label_max_columns} ###
+
+Test the maximum number of columns a scylla table can hold.
+In Cassandra, maximum number of cells (rows x columns) in a single partition is (2 billion)[https://wiki.apache.org/cassandra/CassandraLimitations]
+A 10K is a huge number in practice.
+
+### Maximum number of fields in a tuple ###
+### Maximum number of  fields in a tuple {#label_max_fields_in_tuple} ###
+Test fields in a tuple can get to [32768](http://docs.datastax.com/en/cql/3.1/cql/cql_reference/refLimits.html)
+
+### Maximum key length  ###
+### Maximum key length {#label_max_key_length} ###
+Test key length can reach 65535
+
+### Maximum query parameters in a query  ###
+### Maximum Query parameters in a query  {#label_query_parameters_in_query} ###
+Test query parameters can reach 65535
+
+### Maximum statements in a batch  ###
+### Maximum statements in a batch  {#label_statements_in_batch} ###
+Test statements in a batch can reach 65535
+
+Single column, value of: 2GB, xMB are recommended
+
+### Maximum blob size ###
+### Maximum blob size {#label_max_blob_size} ###
+
+Test max size of a blob (in MB) which allow scylla to run smoothly
+
 ### Maximum number of nodes ###
 ### Maximum number of nodes {#label_max_nodes} ###
 
@@ -576,7 +606,9 @@ Test the maximum number of nodes a scylla cluster can support.
 ### Largest data volume ###
 ### Largest data volume {#label_max_data_volume} ###
 
-Test the largest data volume a scylla DB can hold.
+Test the largest data volume a scylla DB can hold, in term of TB per node.
+10TB per node should normal, 100TB per node possible.
+Testing should cover compaction, repair and backups, all are affected by volume.
 
 Stress tests
 ------------
@@ -616,3 +648,25 @@ Test disk random access and local access.
 Scan resistence is a cache property of caches to not drop frequently accessed
 objects in face of large sequential data reads. This will be tested when scylla
 implements a scan resistant cache.
+
+Longevity test
+------------
+Longevity tests {#label_Longevity}
+----------------------------
+Ensure that the Scylla database and associated tools can function over long period of times.
+
+### Scylla Longevity ###
+### Scylla Longevity {#label_scylla_longevity} ###
+Run scylla for 24h / 7d / 1 month
+
+* on EC2 /  bare metal
+* With EC2 zones / regions
+* With chaos monkey: kill a server every 30 min*
+* With chaos kong: kill DC every  hour *
+* With hourly repairs
+
+### scylla-jmx longevity ###
+### scylla-jmx longevity {#label_scylla-jmx-longevity} ###
+
+Longevity test to scylla-jmx validating it does not have memory leak
+Test should include stressing the JMX.
