@@ -266,26 +266,10 @@ Test cases
 
 ### Repair {#label_other_repair_functions} ###
 
-Test other repair functions.
-
-#### Full repair (new node) {#label_full_repair_new_node} ####
-
-Test a full repair on a new node.
-
-#### Repair on 2 relatively similar nodes {#label_full_repair_similar_nodes} ####
-
-Test repair on 2 nodes that are relatively similar (Merkle tree).
-
-Tests that need to be moved to test files
-  - repair when some nodes are down
-  - fail nodes while repair is running
-  - fail repairing node while repair is running
-  - run repair while data is updated
-  - run repair while token ownership is updated (Add node, Decomission node), do we detect that 
-  - repair when all data is in synch
-  - repair when all the data is out of synch
-  - parallel repair
-
+Test cases
+  * Base test cases repair_tesy.py
+  * Advanced test cases : repair_additional_test.RepairAdditionalTest
+  * Test nodetool options : FIXME
 
 ### Compaction strategy {#label_compaction_strategy} ###
 
