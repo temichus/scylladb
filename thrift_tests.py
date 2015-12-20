@@ -2378,6 +2378,10 @@ class TestCQLAccesses(ThriftTester):
 
 class TestCompactStorageThriftAccesses(ThriftTester):
 
+    """
+    Test thrift access to compact storage column families.
+    """
+
     def test_get(self):
         node1, = self.cluster.nodelist()
         session = self.patient_cql_connection(node1)

@@ -13,6 +13,10 @@ from tools import safe_mkdtemp, replace_in_file
 
 class SnapshotTester(Tester):
 
+    """
+    Object with utility functions to perform snapshot operations.
+    """
+
     def __init__(self, *args, **kwargs):
         Tester.__init__(self, *args, **kwargs)
 
@@ -72,16 +76,41 @@ class SnapshotTester(Tester):
 
 class TestSnapshot(SnapshotTester):
 
+    """
+    Test snapshot operations.
+    """
+
     def __init__(self, *args, **kwargs):
         SnapshotTester.__init__(self, *args, **kwargs)
 
     def test_basic_snapshot_and_restore_with_sstableloader(self):
+        """
+        Test basic snapshot and restore using an sstable loader.
+        """
         self.basic_snapshot_and_restore(use_sstableloader=True)
 
     def test_basic_snapshot_and_restore_with_refresh(self):
+        """
+        Test basic snapshot and restore without an sstable loader.
+        """
         self.basic_snapshot_and_restore(use_sstableloader=False)
 
     def basic_snapshot_and_restore(self, use_sstableloader):
+        """
+        Base testing method:
+
+        1. Create a keyspace
+        2. Create a column family
+        3. Insert 100 rows into the column family
+        4. Take a snapshot
+        5. Insert more rows after the snapshot
+        6. Drop the keyspace, assure we have no data after the deletion
+        7. Restore the snapshot
+        8. Verify we have the same num of rows inserted prior to the snapshot.
+
+        @param use_sstableloader: Whether to use sstable loader to
+            restore the snapshot.
+        """
         cluster = self.cluster
         cluster.populate(1).start()
         (node1,) = cluster.nodelist()
@@ -123,6 +152,10 @@ class TestSnapshot(SnapshotTester):
 
 class TestArchiveCommitlog(SnapshotTester):
 
+    """
+    Test operations with the archive commit log.
+    """
+
     def __init__(self, *args, **kwargs):
         kwargs['cluster_options'] = {'commitlog_segment_size_in_mb': 1}
         SnapshotTester.__init__(self, *args, **kwargs)
@@ -157,23 +190,33 @@ class TestArchiveCommitlog(SnapshotTester):
         self.run_archive_commitlog(restore_point_in_time=False)
 
     def test_archive_commitlog_with_active_commitlog(self):
-        """Copy the active commitlogs to the archive directory before restoration"""
+        """
+        Copy the active commitlogs to the archive directory before restoration
+        """
         self.run_archive_commitlog(restore_point_in_time=False, archive_active_commitlogs=True)
 
     def dont_test_archive_commitlog(self):
-        """Run the archive commitlog test, but forget to add the restore commands:"""
+        """
+        Run the archive commitlog test, but forget to add the restore commands
+        """
         self.run_archive_commitlog(restore_point_in_time=False, restore_archived_commitlog=False)
 
     def test_archive_commitlog_point_in_time(self):
-        """Test archive commit log with restore_point_in_time setting"""
+        """
+        Test archive commit log with restore_point_in_time setting
+        """
         self.run_archive_commitlog(restore_point_in_time=True)
 
     def test_archive_commitlog_point_in_time_with_active_commitlog(self):
-        """Test archive commit log with restore_point_in_time setting"""
+        """
+        Test archive commit log with restore_point_in_time setting
+        """
         self.run_archive_commitlog(restore_point_in_time=True, archive_active_commitlogs=True)
 
     def run_archive_commitlog(self, restore_point_in_time=False, restore_archived_commitlog=True, archive_active_commitlogs=False):
-        """Run archive commit log restoration test"""
+        """
+        Run archive commit log restoration test
+        """
 
         cluster = self.cluster
         cluster.populate(1)

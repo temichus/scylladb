@@ -9,6 +9,9 @@ from tools import since
 
 
 class TestOfflineTools(Tester):
+    """
+    Test cassandra offline tools.
+    """
 
     # In 2.0, we will get this error log message due to jamm not being
     # in the classpath
