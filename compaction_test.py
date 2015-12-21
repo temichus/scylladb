@@ -22,12 +22,7 @@ class TestCompaction(Tester):
         # compaction test for version 2.2.2 and above relies on DEBUG log in debug.log
         self.cluster.set_log_level("DEBUG")
 
-    @since('0', '2.2.X')
-    def compaction_delete_test(self):
-        """
-        Test that executing a delete properly tombstones a row.
-        Insert data, delete a partition of data and check that the requesite rows are tombstoned.
-        """
+    def _compaction_delete_test(self):
         cluster = self.cluster
         cluster.populate(1).start(wait_for_binary_proto=True)
         [node1] = cluster.nodelist()
@@ -59,6 +54,64 @@ class TestCompaction(Tester):
         numfound = jsoninfo.count("markedForDeleteAt")
 
         self.assertEqual(numfound, 10)
+ 
+    @since('0', '2.2.X')
+    def compaction_delete_test(self):
+        """
+        Test that executing a delete properly tombstones a row.
+        Insert data, delete a partition of data and check that the requesite rows are tombstoned.
+        """
+        self._compaction_delete_test()
+
+    @since('0', '2.2.X')
+    def compaction_delete_2_test(self):
+        """
+        Test that executing a delete properly tombstones a row.
+        Insert data, delete a partition of data, compact and test
+        Wait past gc_period, compact and test.
+        """
+ 
+        self._compaction_delete_test()
+        [node1] = self.cluster.nodelist()
+        session = self.patient_cql_connection(node1)
+
+        # check that after compaction the tombstones remain
+        # force an update so that compact will have something todo
+        session.execute('insert into ks.cf (key, val) values (99,1);')
+        node1.flush()
+        node1.compact()
+
+        json_path = tempfile.mkstemp(suffix='.json')
+        jname = json_path[1]
+        with open(jname, 'w') as f:
+            node1.run_sstable2json(f)
+
+        with open(jname, 'r') as g:
+            jsoninfo = g.read()
+
+        numfound = jsoninfo.count("markedForDeleteAt")
+
+        self.assertEqual(numfound, 10)
+
+        time.sleep(31)
+
+        # check that after gc_period compaction removes tombstones
+        # force an update so that compact will have something todo
+        session.execute('insert into ks.cf (key, val) values (99,1);')
+        node1.flush()
+        node1.compact()
+
+        json_path = tempfile.mkstemp(suffix='.json')
+        jname = json_path[1]
+        with open(jname, 'w') as f:
+            node1.run_sstable2json(f)
+
+        with open(jname, 'r') as g:
+            jsoninfo = g.read()
+
+        numfound = jsoninfo.count("markedForDeleteAt")
+
+        self.assertEqual(numfound, 0)
 
     def data_size_test(self):
         """
