@@ -57,7 +57,7 @@ class TestNodetool(Tester):
             m = ""
         else:
             m = msg + " "
-        m = m + key + " is " + container[key] + " not >=" + str(val)
+        m = m + key + " is " + str(container[key]) + " not <" + str(val)
         self.assertIn(key, container, m)
         self.assertLess(float(container[key]), val, m)
 
@@ -78,7 +78,7 @@ class TestNodetool(Tester):
         self.assertIn(key, container, m)
         try:
             self.assertEqual(val, float(container[key]), m)
-        except TypeError:
+        except (TypeError, ValueError):
             self.assertEqual(val, container[key], m)
 
     def assertMapBetween(self, container, key, a, b, msg=None):
@@ -428,8 +428,56 @@ class TestNodetool(Tester):
         """
         self._flush(" keyspace1 standard1")
 
+    def _get_cfhistogram(self, node, ks, cf):
+        out = node.nodetool("cfhistograms " + ks + " " + cf, True)[0]
+        m = re.findall(r"^([^\/]+)\/(.*)\s+histograms\s*$", out, re.MULTILINE)
+        res = {}
+        if m:
+            res["ks"] = m[0][0]
+            res["cf"] = m[0][1]
+        m = re.findall(r"^([^\s]+)\s+([\d\.]+)\s+([\d\.]+)\s+([\d\.]+)\s+([\d\.]+)\s+([\d\.]+)\s*$", out, re.MULTILINE)
+        heads = ['Percentile', 'SSTables', 'Write Latency', 'Read Latency', 'Partition Size', 'Cell Count']
+        res["vals"] = {}
+        for val in m:
+            if val:
+                res["vals"][val[0]] = {}
+                for index, attribute in enumerate(heads):
+                    try:
+                        res["vals"][val[0]][attribute] = float(val[index])
+                    except:
+                        res["vals"][val[0]][attribute] = val[index]
+        return res
+
+    def cfhistograms_test(self):
+        """Test the nodetool cfhistograms
+        run a write load
+        test that the write values make sense and that
+        the read value are zero.
+        write mix load check that the read value make sense
+        """
+        cluster = self.cluster
+        cluster.populate(2).start(wait_for_binary_proto=True)
+        node = cluster.nodelist()[0]
+        strs = self.stress_write(node, 10000)
+        res = self._get_cfhistogram(node, "keyspace1", "standard1")
+        self.assertMapEqual(res, "ks", "keyspace1", "wrong keysyapce")
+        self.assertMapEqual(res, "cf", "standard1", "wrong column family")
+        ltnc = strs['latency 99.9th percentile:write']
+        for v in res["vals"]:
+            self.assertMapEqual(res["vals"][v], "Read Latency", 0, "unexpected read latency")
+            self.assertMapLess(res["vals"][v], "Write Latency", ltnc * 1000, "unexpected write latency")
+        res = self._get_cfhistogram(node, "keyspace1", "standard1")
+        for v in res["vals"]:
+            self.assertMapEqual(res["vals"][v], "Read Latency", 0, "unexpected read latency")
+            self.assertMapEqual(res["vals"][v], "Write Latency", 0, "unexpected write latency")
+        strs = self.stress_mixed(node, 10000)
+        res = self._get_cfhistogram(node, "keyspace1", "standard1")
+        ltnc = strs['latency 99.9th percentile:read']
+        for v in res["vals"]:
+            self.assertMapLess(res["vals"][v], "Read Latency", ltnc * 1000, "unexpected read latency")
+
     def stress_write(self, node, times=100000):
         return node.stress_object(['write', 'n=' + str(times)])
 
-    def stress_mixed(self, node):
-        return node.stress_object(['mixed', 'n=100000'])
+    def stress_mixed(self, node, times=100000):
+        return node.stress_object(['mixed', 'n=' + str(times)])
