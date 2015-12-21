@@ -2,7 +2,7 @@ from dtest import Tester
 import re
 import os
 from tools import no_vnodes
-
+import yaml
 
 class TestNodetool(Tester):
     def __init__(self, *args, **kwargs):
@@ -475,6 +475,29 @@ class TestNodetool(Tester):
         ltnc = strs['latency 99.9th percentile:read']
         for v in res["vals"]:
             self.assertMapLess(res["vals"][v], "Read Latency", ltnc * 1000, "unexpected read latency")
+
+    def describecluster(self, node):
+        out = node.nodetool('describecluster', True)[0]
+        return yaml.load(out.replace('\t', "  "))
+
+    def describecluster_test(self):
+        """Test the nodetool describecluster command
+        """
+        cluster = self.cluster
+        cluster.populate(3).start(wait_for_binary_proto=True)
+        node = cluster.nodelist()[0]
+        res = self.describecluster(node)
+        self.assertIn("Cluster Information", res)
+        cluster = res["Cluster Information"]
+        self.assertMapEqual(cluster, "Name", "test")
+        self.assertMapEqual(cluster, "Partitioner", "org.apache.cassandra.dht.Murmur3Partitioner")
+        self.assertIn("Snitch", cluster)
+        self.assertTrue(cluster["Snitch"].startswith("org.apache.cassandra.locator."), "invalid snitch name:" + cluster["Snitch"])
+        self.assertIn("Schema versions", cluster)
+        schema = cluster["Schema versions"]
+        for k in schema:
+            self.assertEqual(3, len(schema[k]), "wrong schema version for " + k + " " + str(schema[k])) 
+        self.assertMapEqual(cluster, "Name", "test")
 
     def stress_write(self, node, times=100000):
         return node.stress_object(['write', 'n=' + str(times)])
