@@ -507,6 +507,11 @@ Test max size of a blob (in MB) which allow scylla to run smoothly
 
 Test the maximum number of nodes a scylla cluster can support.
 
+### Maximum number of connections {#label_max_connections} ###
+
+Test the maximum number of concurrent connections
+[#674](https://github.com/scylladb/scylla/issues/674) is an issue this test should expose.
+
 ### Largest data volume {#label_max_data_volume} ###
 
 Test the largest data volume a scylla DB can hold, in term of TB per node.
