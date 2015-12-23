@@ -93,6 +93,89 @@ class TestUpdateClusterLayout(Tester):
         self.check_rows_on_node(node2, 2000)
         self.check_rows_on_node(node1, 2000)
 
+    def _iterative_add_decommission(self,iterations=2,node_count=2,rf=1):
+        """
+        Test gorwing and shrinking a cluster
+        1. Create a cluster with a single node with rf=2, insert data
+        2. In a loop add new nodes
+        3. Check that all data exists
+        4. In a loop remove all nodes but the last added one
+        5. Check that all data exists
+        """
+        cluster = self.cluster
+
+        self.allow_log_errors = True
+
+        # Disable hinted handoff and set batch commit log so this doesn't
+        # interfer with the test (this must be after the populate)
+        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.populate(1).start()
+        node1 = cluster.nodelist()[0]
+
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', rf)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+
+        consistency=ConsistencyLevel.ALL
+        insert_c1c2(session, keys=range(1000), consistency=ConsistencyLevel.ONE)
+
+        query = SimpleStatement("SELECT key FROM ks.cf limit 3000", consistency_level=consistency)
+        for iteration in range(1,iterations+1):
+            for i in range(1,node_count+1):
+                node_i = new_node(cluster)
+                node_i.start(wait_for_binary_proto=True,wait_other_notice=True)
+                session_i = self.patient_exclusive_cql_connection(node_i)
+                session_i.execute("use ks;");
+                insert_c1c2(session_i, keys=range(iteration*100000+i*2000,iteration*100000+i*2000+100), consistency=consistency)
+                debug("added %s" % node_i.name)
+
+
+            result = session.execute(query)
+            self.assertEqual(len(result), iteration*node_count*100+1000, "data loss after increasing size to %d expecting %d rows %d" % (len(cluster.nodelist()),iteration*node_count*100+1000,len(result)))
+
+            for node_i in cluster.nodelist()[0:-1]:
+                if node1.name != node_i.name and node_i.is_live():
+                    node_i.decommission()
+                    node_i.stop()
+                    debug("decommissioned %s" % node_i.name)
+
+            last_node = cluster.nodelist()[-1]
+            session = self.patient_cql_connection(last_node)
+            result = session.execute("SELECT key FROM ks.cf limit 3000")
+            self.assertEqual(len(result), iteration*node_count*100+1000, "data loss after shrinking to 2 node execpeting %d rows %d" % (iteration*node_count*100+1000,len(result)))
+
+        node1.decommission()
+        node1.stop()
+        debug("decommissioned %s" % node1.name)
+        last_node = cluster.nodelist()[-1]
+        session = self.patient_cql_connection(last_node)
+        result = session.execute("SELECT key FROM ks.cf limit 3000")
+        self.assertEqual(len(result), iterations*node_count*100+1000, "data loss after shrinking to 1 node %s expecting %d rows %d" % (last_node.name,iterations*node_count*100+1000,len(result)))
+
+    def iterative_add_1_node_decommission_1_node_rf_1_test(self):
+        """
+        Test gorwing and shrinking a cluster 1 node in each iteration with rf=1
+        """
+        self._iterative_add_decommission(node_count=1,iterations=3,rf=1)
+
+    def iterative_add_3_node_decommission_3_node_rf_1_test(self):
+        """
+        Test gorwing and shrinking a cluster 3 node in each iteration with rf=1
+        """
+        self._iterative_add_decommission(node_count=3,iterations=2,rf=1)
+
+    def iterative_add_1_node_decommission_1_node_rf_2_test(self):
+        """
+        Test gorwing and shrinking a cluster 1 node in each iteration with rf=2
+        """
+        self._iterative_add_decommission(node_count=1,iterations=3,rf=2)
+
+    def iterative_add_3_node_decommission_3_node_rf_2_test(self):
+        """
+        Test gorwing and shrinking a cluster 3 node in each iteration with rf=2
+        """
+        self._iterative_add_decommission(node_count=3,iterations=2,rf=2)
+
     def simple_add_two_nodes_in_parallel_test(self):
         """
         Test bootstrapped node streams all data
