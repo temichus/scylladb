@@ -262,12 +262,15 @@ class TestNodetool(Tester):
         self.verify_snapshot(node1, "keyspace1", snapshot, exists=False)
 
     @staticmethod
-    def _list2ring(lst):
-        heads = ["address", "rack", "status", "state", "load", "unit", "owns", "token"]
+    def _list2dic(lst, heads):
         res = {}
         for index, attribute in enumerate(heads):
             res[attribute] = lst[index].strip()
         return res
+
+    @staticmethod
+    def _list2ring(lst):
+        return TestNodetool._list2dic(lst, ["address", "rack", "status", "state", "load", "unit", "owns", "token"])
 
     def get_ring(self, node):
         out = node.nodetool("ring", True)[0]
@@ -395,6 +398,36 @@ class TestNodetool(Tester):
         self.assertEqual("1", table["SSTable count"],
                          "SStable count should be 1")
 
+    def _describering_val(self, v):
+        vals = re.findall('^\s*start_token:(-?\d+), end_token:(-?\d+), endpoints:\[([\d\.,]+)\], rpc_endpoints:\[([\d\.,]+)\], endpoint_details:\[(.*)\]\s*$', v, re.MULTILINE)
+        heads = ['start_token', 'end_token', 'endpoints', 'rpc_endpoints']
+        res = {}
+        self.assertTrue(vals, "wrong format of token range: " + v)
+        for index, attribute in enumerate(heads):
+            res[attribute] = vals[0][index].strip()
+            res["details"] = [self._list2dic(d, ['host', 'datacenter', 'rack']) for d in
+                              re.findall('EndpointDetails\(host:([\d\.,]+), datacenter:([^,]+), rack:([^\)]+)\),?', vals[0][4])]
+        return res
+
+    def describering(self, node, ks):
+        out = node.nodetool('describering ' + ks, True)[0]
+        m = re.findall('^\s*TokenRange\((.*)\)\s*$', out, re.MULTILINE)
+        self.assertTrue(m, "no TokenRange() found in describering")
+        return [self._describering_val(v) for v in m]
+
+    def describering_test(self):
+        """
+        Test the `nodetool describering` command
+        Starts a cluster run a load
+        Check that the correct parameters in the keyspace
+        """
+        cluster = self.cluster
+        cluster.populate(3, use_vnodes=True).start(wait_for_binary_proto=True)
+        node = cluster.nodelist()[0]
+        self.stress_write(node, 1000)
+        res = self.describering(node, 'keyspace1')
+        self.assertGreater(len(res), 100, "no describe ring data found")
+
     def general_flush_test(self):
         """
         Test the `nodetool flush` command.
@@ -496,7 +529,7 @@ class TestNodetool(Tester):
         self.assertIn("Schema versions", cluster)
         schema = cluster["Schema versions"]
         for k in schema:
-            self.assertEqual(3, len(schema[k]), "wrong schema version for " + k + " " + str(schema[k])) 
+            self.assertEqual(3, len(schema[k]), "wrong schema version for " + k + " " + str(schema[k]))
         self.assertMapEqual(cluster, "Name", "test")
 
     def stress_write(self, node, times=100000):
