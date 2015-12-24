@@ -532,6 +532,62 @@ class TestNodetool(Tester):
             self.assertEqual(3, len(schema[k]), "wrong schema version for " + k + " " + str(schema[k]))
         self.assertMapEqual(cluster, "Name", "test")
 
+    def create_table(self, session, obj):
+        """A helper function that creates a keyspace and tables
+        """
+        for ks in obj:
+            cls = obj[ks]["class"] if "class" in obj[ks] else 'SimpleStrategy'
+            rf = obj[ks]["rf"] if "rf" in obj[ks] else 1
+            session.execute("CREATE KEYSPACE " + ks + " WITH replication = { 'class':'" + cls + "', 'replication_factor':" + str(rf) + "}")
+            session.execute("USE " + ks)
+            for table in obj[ks]["tables"]:
+                t = obj[ks]["tables"][table]
+                keys = reduce(lambda a, b: a + "," + b, [k + " " + t[k] for k in t.keys() if k != "key"])
+                pk = t["key"]
+                create_table = "CREATE TABLE " + table + " (" + keys + " ,PRIMARY KEY (" + pk + "))"
+                session.execute(create_table)
+
+    @staticmethod
+    def _sql_val(val):
+        try:
+            return "'" + val + "'"
+        except:
+            return str(val)
+
+    def populate_data(self, session, obj):
+        """A helper function that populate data
+        To an existing table
+        """
+        for ks in obj:
+            session.execute("USE " + ks)
+            for table in obj[ks]:
+                t = obj[ks][table]
+                for val in t:
+                    ins = "INSERT INTO " + table + " ("
+                    ins = ins + reduce(lambda a, b: a + "," + b, val.keys()) + ") VALUES ("
+                    ins = ins + reduce(lambda a, b: a + "," + b, [self._sql_val(val[a]) for a in val.keys()]) + ")"
+                    session.execute(ins)
+
+    def getendpoints(self, node, ks, cf, value):
+        return node.nodetool('getendpoints ' + ks + ' ' + cf + ' value', True)[0]
+
+    def getendpoints_test(self):
+        """Test the nodetool getendpoints command
+        start a cluster
+        Create a table with a value
+        Use the nodetool to find the endpoint
+        """
+        cluster = self.cluster
+        cluster.populate(3).start(wait_for_binary_proto=True)
+        node = cluster.nodelist()[0]
+        session = self.patient_cql_connection(node)
+        self.create_table(session, {"ks1" : {"tables": {"tbl1" : {"col1": "int", "col2": "text", "key": "col1"}}
+                                          }})
+        self.populate_data(session, {"ks1": {"tbl1" : [{"col1":4, "col2": "abc"}
+                                                       ]}})
+        endpoint = self.getendpoints(node, "ks1", "tbl1", "4")
+        self.assertTrue(endpoint.startswith("127.0.0"), "Invalid endpoint returned '" + endpoint + "'")
+
     def stress_write(self, node, times=100000):
         return node.stress_object(['write', 'n=' + str(times)])
 
