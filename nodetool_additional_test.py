@@ -588,6 +588,36 @@ class TestNodetool(Tester):
         endpoint = self.getendpoints(node, "ks1", "tbl1", "4")
         self.assertTrue(endpoint.startswith("127.0.0"), "Invalid endpoint returned '" + endpoint + "'")
 
+    def gossipinfo(self, node):
+        """A helper function that return the
+        gossipinfo as an object
+        """
+        out = node.nodetool('gossipinfo', True)[0]
+        print out
+        yml = re.sub(':([^\s])', r': \1', re.sub('  ', '    ', re.sub(r'/([\d\.]+)', r'\1:', out)))
+        return yaml.load(yml)
+
+    def gossipinfo_test(self):
+        cluster = self.cluster
+        cluster.populate(2).start(wait_for_binary_proto=True)
+        node = cluster.nodelist()[0]
+        gi = self.gossipinfo(node)
+        self.assertEqual(2, len(gi), "wrong number of nodes")
+        for k in gi:
+            info = gi[k]
+            self.assertIn("generation", info)
+            self.assertIn("heartbeat", info)
+            self.assertIn("STATUS", info)
+            self.assertIn("HOST_ID", info)
+            self.assertIn("RELEASE_VERSION", info)
+            self.assertIn("SCHEMA", info)
+            self.assertIn("NET_VERSION", info)
+            self.assertIn("LOAD", info)
+            self.assertIn("RACK", info)
+            self.assertIn("RPC_ADDRESS", info)
+            self.assertIn("DC", info)
+            self.assertIn("SEVERITY", info)
+
     def stress_write(self, node, times=100000):
         return node.stress_object(['write', 'n=' + str(times)])
 
