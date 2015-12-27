@@ -7,7 +7,7 @@ from unittest import skip
 class RepairAdditionalTest(Tester):
 
     @skip ('unimplemented')
-    def full_repair_of_node(self):
+    def full_repair_of_node_initiated_on_node_missing_data(self):
         """ 
         Check that repair transfers all the data in case non exists
         1. Create a cluster of 2 nodes with rf=2, disable read_repair, hintted_handoff
@@ -15,7 +15,20 @@ class RepairAdditionalTest(Tester):
         3. Insert data
         4. Start node 2
         5. Run repair on node 2
-        6. Shutdown node 1 - check that all data exists
+        6. Shutdown node 1 - check that all data exists on node 2
+        """
+        fail
+
+    @skip ('unimplemented')
+    def full_repair_of_node_initiated_on_node_with_latest_data(self):
+        """ 
+        Check that repair transfers all the data in case non exists
+        1. Create a cluster of 2 nodes with rf=2, disable read_repair, hintted_handoff
+        2. Shutdown node 2
+        3. Insert data
+        4. Start node 2
+        5. Run repair on node 1
+        6. Shutdown node 1 - check that all data exists on node 2
         """
         fail
 
@@ -29,7 +42,7 @@ class RepairAdditionalTest(Tester):
         4. Update some cells
         5. Start node 2
         6. Run repair on node 2
-        7. Shutdown node 1 - check that all data exists
+        7. Shutdown node 1 - check that all data exists on node 2
         """
         fail
 
@@ -43,7 +56,7 @@ class RepairAdditionalTest(Tester):
         4. Remove some keys
         5. Start node 2
         6. Run repair on node 2
-        7. Shutdown node 1 - check that all data exists
+        7. Shutdown node 1 - check that all data exists on node 2
         """
         fail
 
@@ -57,7 +70,7 @@ class RepairAdditionalTest(Tester):
         4. Remove a range of some keys
         5. Start node 2
         6. Run repair on node 2
-        7. Shutdown node 1 - check that all data exists
+        7. Shutdown node 1 - check that all data exists on node 2
         """
         fail
 
@@ -71,7 +84,7 @@ class RepairAdditionalTest(Tester):
         4. Delete some cells
         5. Start node 2
         6. Run repair on node 2
-        7. Shutdown node 1 - check that all data exists
+        7. Shutdown node 1 - check that all data exists on node 2
         """
         fail
 
@@ -85,7 +98,7 @@ class RepairAdditionalTest(Tester):
         4. Delete a range of some cells
         5. Start node 2
         6. Run repair on node 2
-        7. Shutdown node 1 - check that all data exists
+        7. Shutdown node 1 - check that all data exists on node 2
         """
         fail
 
@@ -93,27 +106,29 @@ class RepairAdditionalTest(Tester):
     def repair_fixes_update_of_ttl(self):
         """ 
         Check that repair fixes updates to ttl
+        CQL: UPDATE table USING TTL <ttl value> where key=X
         1. Create a cluster of 2 nodes with rf=2, disable read_repair, hinttef_handoff
         2. Insert data
         3. Shutdown node 2
         4. Update ttl of some cells
         5. Start node 2
         6. Run repair on node 2
-        7. Shutdown node 1 - check that all data exists
+        7. Shutdown node 1 - check that all data exists on node 2
         """
         fail
 
     @skip ('unimplemented')
     def fail_node_initiating_repair(self):
         """ 
-        Check that killing a repaired node does not cause additional failures
+        Check that killing a repaired node does not cause additional failures 
         1. Create a cluster of 2 nodes with rf=2
         2. Stop node 2
         3. Insert data 
-        4. Start node 2 
-        5. Start repair
-        6. Kill node 2
-        7. Check that cluster is avilable (read/writes)
+        4. In a loop
+           a. Start node 2 
+           b. Start repair
+           c. Kill node 2
+           d. Check that cluster is avilable (read/writes)
         """
         fail
 
@@ -125,16 +140,18 @@ class RepairAdditionalTest(Tester):
         2. Stop node 2
         3. Insert data 
         4. Start node 2 
-        5. Start repair
-        6. Kill node 1
-        7. Check that cluster is avilable (read/writes)
+        5. In a loop
+           a. Start node 1 if its down
+           b. Start repair
+           c. Kill node 1
+           d. Check that cluster is avilable (read/writes)
         """
         fail
 
     @skip ('unimplemented')
     def repair_while_data_is_updated(self):
         """ 
-        Check that killing a repaired node does not cause additional failures
+        Check that data can be updated while repair is running
         1. Create a cluster of 2 nodes with rf=2
         2. Stop node 2
         3. Insert data 
@@ -142,7 +159,7 @@ class RepairAdditionalTest(Tester):
         5. In a loop update part of data with CL=2 
         6. Start repair
         7. Stop node 1
-        8. Check that all the data is p to date
+        8. Check that all the data is up to date
         """
         fail
 
