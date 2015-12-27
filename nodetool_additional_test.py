@@ -593,7 +593,6 @@ class TestNodetool(Tester):
         gossipinfo as an object
         """
         out = node.nodetool('gossipinfo', True)[0]
-        print out
         yml = re.sub(':([^\s])', r': \1', re.sub('  ', '    ', re.sub(r'/([\d\.]+)', r'\1:', out)))
         return yaml.load(yml)
 
