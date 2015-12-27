@@ -326,7 +326,6 @@ same sstable directory. Verify results.
 
 Populate a Cassandra database, take a snapshot, then restore it using scylla.
 
-
 Tests that need to be moved to test files
 
 - Check migration of all format of sstables (compressed and non compressed with and without compact storage)
@@ -562,6 +561,20 @@ Run scylla for 24h / 7d / 1 month
 * With chaos monkey: kill a server every 30 min*
 * With chaos kong: kill DC every  hour *
 * With hourly repairs
+* With the following operations been done in the background some in parallel depdening on RF/Cluster size:
+    * A server is killed and started
+    * A server is drained stopped and started
+    * A server is added - wait till it finished
+    * A server is added and is being killed in the process
+    * A server is being decomissioned - wait till it finished
+    * A server is being decomissioned and is being killed in the process, restart node and repair
+    * A server is killed - part of the data is removed and started (repair is run - wait till it ends)
+    * A server is killed - part of the data is removed and started - rebuilt is run
+cassandra-stress read / cassandra-stress write is run in parallel with CL=Quorum
+A single thread in a loop that writes and reads known data allways growing is executed with CL=Quorum
+ With RF=5 2 operations in parallel
+ With RF=3 1 operation in parallel
+(need to think on how we handle cassandra-stress, write/read issues that can happen because of a failing node processing request).
 
 ### scylla-jmx longevity {#label_scylla-jmx-longevity} ###
 
