@@ -316,8 +316,12 @@ class TestBootstrap(Tester):
 
         # Now start it, it should not be allowed to join.
         mark = node2.mark_log()
-        node2.start(no_wait=True)
-        node2.watch_log_for("A node with address /127.0.0.4 already exists, cancelling join", from_mark=mark)
+        try:
+            node2.start(no_wait=True)
+        except NodeError:
+            # It is expected that the node will not boot
+            pass
+        node2.watch_log_for("A node with address .*127.0.0.4 already exists, cancelling join", from_mark=mark)
 
     def decommissioned_wiped_node_can_join_test(self):
         """
