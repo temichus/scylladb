@@ -3,6 +3,7 @@ import re
 import os
 from tools import no_vnodes
 import yaml
+import time
 
 class TestNodetool(Tester):
     def __init__(self, *args, **kwargs):
@@ -83,9 +84,9 @@ class TestNodetool(Tester):
 
     def assertMapBetween(self, container, key, a, b, msg=None):
         if msg is None:
-            m = key
+            m = key + "=" + str(container[key]) + " not between " + str(a) + " and " + str(b)
         else:
-            m = msg + " " + key
+            m = msg + " " + key + "=" + str(container[key]) + " not between " + str(a) + " and " + str(b)
         self.assertIn(key, container, m)
         v = float(container[key])
         self.assertLessEqual(a, v, m)
@@ -593,7 +594,6 @@ class TestNodetool(Tester):
         gossipinfo as an object
         """
         out = node.nodetool('gossipinfo', True)[0]
-        print out
         yml = re.sub(':([^\s])', r': \1', re.sub('  ', '    ', re.sub(r'/([\d\.]+)', r'\1:', out)))
         return yaml.load(yml)
 
@@ -617,6 +617,37 @@ class TestNodetool(Tester):
             self.assertIn("RPC_ADDRESS", info)
             self.assertIn("DC", info)
             self.assertIn("SEVERITY", info)
+
+    def info_test(self):
+        """Test the `nodetool info` command
+        Starts a cluster and call nodetool info
+        verify that the output is as expected
+        it sleeps for 10 seconds and test again
+        to see that the the uptime is correct
+        """
+        cluster = self.cluster
+        cluster.populate(2).start(wait_for_binary_proto=True)
+        node = cluster.nodelist()[0]
+        ni = self.nodetool_info(node)
+        self.assertIn("ID", ni, "ID is missing")
+        self.assertMapEqual(ni, "Gossip active", "true")
+        self.assertMapEqual(ni, "Thrift active", "true")
+        self.assertMapEqual(ni, "Native Transport active", "true")
+        uptime = int(ni["Uptime (seconds)"])
+        self.assertIn("Load", ni, "Load is missing")
+        self.assertIn("Generation No", ni, "Generation No is missing")
+        self.assertIn("Heap Memory (MB)", ni, "Heap Memory")
+        self.assertIn("Off Heap Memory (MB)", ni, "Off Heap Memory is missing")
+        self.assertMapEqual(ni, "Data Center", "datacenter1")
+        self.assertMapEqual(ni, "Rack", "rack1")
+        self.assertMapEqual(ni, "Exceptions", 0)
+        self.assertIn("Key Cache", ni)
+        self.assertIn("Row Cache", ni)
+        self.assertIn("Counter Cache", ni)
+        self.assertIn("Token", ni)
+        time.sleep(10)
+        ni = self.nodetool_info(node)
+        self.assertMapBetween(ni, "Uptime (seconds)", uptime + 10, uptime + 20)
 
     def stress_write(self, node, times=100000):
         return node.stress_object(['write', 'n=' + str(times)])
