@@ -10,7 +10,7 @@ class RepairAdditionalTest(Tester):
     def repair_of_cluster_all_nodes_are_out_of_sync(self):
         """
         Check that repair fixes all inconsistencies in data
-        1. Create a cluster of 3 nodes with rf=3, disable read_repair, hintted_handoff
+        1. Create a cluster of 3 nodes with rf=3, disable read_repair, hinted_handoff
         2. Shutdown node 2,3
         3. Insert data set A
         4. Start node 2 Shutdown node 1
@@ -29,7 +29,7 @@ class RepairAdditionalTest(Tester):
     def full_repair_of_node_initiated_on_node_with_latest_data_test(self):
         """
         Check that repair transfers all the data in case non exists
-        1. Create a cluster of 2 nodes with rf=2, disable read_repair, hintted_handoff
+        1. Create a cluster of 2 nodes with rf=2, disable read_repair, hinted_handoff
         2. Shutdown node 2 (prior to schema creation)
         3. Insert data
         4. Start node 2
@@ -42,7 +42,7 @@ class RepairAdditionalTest(Tester):
     def full_repair_of_node_initiated_on_node_without_data(self):
         """
         Check that repair transfers all the data in case non exists
-        1. Create a cluster of 2 nodes with rf=2, disable read_repair, hintted_handoff
+        1. Create a cluster of 2 nodes with rf=2, disable read_repair, hinted_handoff
         2. Shutdown node 2 (prior to schema creation)
         3. Insert data
         4. Start node 2
@@ -55,7 +55,7 @@ class RepairAdditionalTest(Tester):
     def repair_fixes_updates_to_cells_test(self):
         """
         Check that repair fixes a few update to cells contents
-        1. Create a cluster of 2 nodes with rf=2, disable read_repair, hinttef_handoff
+        1. Create a cluster of 2 nodes with rf=2, disable read_repair, hinted_handoff
         2. Insert data
         3. Shutdown node 2
         4. Update some cells
@@ -69,7 +69,7 @@ class RepairAdditionalTest(Tester):
     def repair_fixes_remove_of_keys_test(self):
         """
         Check that repair fixes a few removed keys
-        1. Create a cluster of 2 nodes with rf=2, disable read_repair, hinttef_handoff
+        1. Create a cluster of 2 nodes with rf=2, disable read_repair, hinted_handoff
         2. Insert data
         3. Shutdown node 2
         4. Remove some keys
@@ -80,24 +80,10 @@ class RepairAdditionalTest(Tester):
         fail
 
     @skip ('unimplemented')
-    def repair_fixes_remove_of_range_of_keys_test(self):
-        """
-        Check that repair fixes a delete of a range key
-        1. Create a cluster of 2 nodes with rf=2, disable read_repair, hinttef_handoff
-        2. Insert data
-        3. Shutdown node 2
-        4. Remove a range of some keys
-        5. Start node 2
-        6. Run repair on node 2
-        7. Shutdown node 1 - check that all data exists on node 2
-        """
-        fail
-
-    @skip ('unimplemented')
     def repair_fixes_deletion_of_cells_test(self):
         """
         Check that repair fixes a deleteion of cells
-        1. Create a cluster of 2 nodes with rf=2, disable read_repair, hinttef_handoff
+        1. Create a cluster of 2 nodes with rf=2, disable read_repair, hinted_handoff
         2. Insert data
         3. Shutdown node 2
         4. Delete some cells
@@ -111,7 +97,7 @@ class RepairAdditionalTest(Tester):
     def repair_fixes_deletion_of_range_of_cells_test(self):
         """
         Check that repair fixes a deletion of cell range
-        1. Create a cluster of 2 nodes with rf=2, disable read_repair, hinttef_handoff
+        1. Create a cluster of 2 nodes with rf=2, disable read_repair, hinted_handoff
         2. Insert data
         3. Shutdown node 2
         4. Delete a range of some cells
@@ -126,7 +112,7 @@ class RepairAdditionalTest(Tester):
         """
         Check that repair fixes updates to ttl
         CQL: UPDATE table USING TTL <ttl value> where key=X
-        1. Create a cluster of 2 nodes with rf=2, disable read_repair, hinttef_handoff
+        1. Create a cluster of 2 nodes with rf=2, disable read_repair, hinted_handoff
         2. Insert data
         3. Shutdown node 2
         4. Update ttl of some cells
@@ -226,7 +212,7 @@ class RepairAdditionalTest(Tester):
     @skip ('unimplemented')
     def repair_while_node_is_decomissioned_test(self):
         """
-        Check that repair is accompileshed while node is removed
+        Check that repair is accompileshed while node is decomissioned
         1. Create a cluster of 3 nodes with rf=2
         2. Stop node 2
         3. Insert data
@@ -240,17 +226,17 @@ class RepairAdditionalTest(Tester):
     @skip ('unimplemented')
     def test_multiple_repair_test(self):
         """
-        Check that repair is accompileshed while node is removed
+        Check that repair is accompilshed when multiple repairs are initiated in parallel
         1. Create a cluster of 3 nodes with rf=3
-        1. Insert data
-        2. Stop node 2
-        3. Insert data
-        2. Stop node 3
-        3. Insert data
-        4. Start node 2, Start node 3
-        6. Start repair on node 2, node 3
-        8. Stop node 1,node 3 - does node 2 hold all the data
-        8. Stop node 1,node 2 - does node 3 hold all the data
+        2. Insert data
+        3. Stop node 2
+        4. Insert data
+        5. Stop node 3
+        6. Insert data
+        7. Start node 2, Start node 3
+        8. Start repair on node 2, node 3
+        9. Stop node 1,node 3 - does node 2 hold all the data
+        10. Stop node 1,node 2 - does node 3 hold all the data
         """
         fail
 
