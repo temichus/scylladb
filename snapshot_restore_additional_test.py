@@ -78,7 +78,7 @@ class SnapshotRestoreAdditionalTest(Tester):
     @skip ('unimplemented')
     def failure_durring_snapshot_no_corrupt_data(self):
         """
-        Check that we can restore snapshot files that use old schema
+        Check that we can recover from a failure durring snapshot
         1. Use a single node and create a keyspace + table
         2. Insert data
         3. Start create snapshot
@@ -91,7 +91,7 @@ class SnapshotRestoreAdditionalTest(Tester):
     @skip ('unimplemented')
     def failure_durring_restore_no_corrupt_data(self):
         """
-        Check that we can restore snapshot files that use old schema
+        Check that we can recover from a failure durring restore
         1. Use a single node and create a keyspace + table
         2. Insert data
         3. Create snapshot and save files
