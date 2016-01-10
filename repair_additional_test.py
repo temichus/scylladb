@@ -1,10 +1,103 @@
 # coding: utf-8
 
-from dtest import Tester
+from dtest import Tester, debug
 from unittest import skip
+
+from tools import insert_c1c2, query_c1c2
+from cassandra import ConsistencyLevel
+from cassandra.query import SimpleStatement
+import time
 
 
 class RepairAdditionalTest(Tester):
+
+    def check_rows_on_node(self, node_to_check, rows, found=None, missings=None, restart=True):
+        if found is None:
+            found = []
+        if missings is None:
+            missings = []
+        stopped_nodes = []
+
+        for node in self.cluster.nodes.values():
+            if node.is_running() and node is not node_to_check:
+                stopped_nodes.append(node)
+                node.stop(wait_other_notice=True)
+
+        session = self.patient_cql_connection(node_to_check, 'ks')
+        result = list(session.execute("SELECT * FROM cf LIMIT %d" % (rows * 2)))
+        self.assertEqual(len(result), rows, len(result))
+
+        for k in found:
+            query_c1c2(session, k, ConsistencyLevel.ONE)
+
+        for k in missings:
+            query = SimpleStatement("SELECT c1, c2 FROM cf WHERE key='k%d'" % k, consistency_level=ConsistencyLevel.ONE)
+            res = list(session.execute(query))
+            self.assertEqual(len(filter(lambda x: len(x) != 0, res)), 0, res)
+
+        if restart:
+            for node in stopped_nodes:
+                node.start(wait_other_notice=True)
+
+    def repair_disjoint_data_test(self):
+        """
+        On each of three replicas, insert completely different data.
+        Confirm that repairing a single of these nodes brings all the data 
+        to all three replicas.
+        """
+        debug("Starting cluster...");
+        # Disable hinted handoff so it doesn't do what we expect repair to do
+        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        # Create a cluster of 3 nodes, and a keyspace with RF=3 on all nodes
+        # (disable read repair, as we want to test the full repair).
+        self.cluster.populate(3).start()
+        node1, node2, node3 = self.cluster.nodelist()
+        session = self.patient_cql_connection(node1);
+        self.create_ks(session, 'ks', 3);
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'});
+
+        # Insert 1000 keys *only* on node 1, another 1000 keys *only* on node 2,
+        # another 1000 *only on node 3:
+        debug("Adding data only on node 1...");
+        node2.flush()
+        node2.stop(wait_other_notice=True)
+        node3.flush()
+        node3.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node1)
+        session.set_keyspace('ks')
+        insert_c1c2(session, keys=range(1000, 2000), consistency=ConsistencyLevel.ONE)
+        self.cluster.flush()
+        debug("Adding data only on node 2...")
+        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+        node1.flush()
+        node1.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node2)
+        session.set_keyspace('ks')
+        insert_c1c2(session, keys=range(2000, 3000), consistency=ConsistencyLevel.ONE)
+        debug("Adding data only on node 3...")
+        node3.start(wait_other_notice=True, wait_for_binary_proto=True)
+        node2.flush()
+        node2.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node3)
+        session.set_keyspace('ks')
+        insert_c1c2(session, keys=range(3000, 4000), consistency=ConsistencyLevel.ONE)
+
+        # Bring up all 3 nodes, each should have different data
+        node1.start(wait_other_notice=True, wait_for_binary_proto=True)
+        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+
+        # Run repair on (arbitrarily), node 3
+        time.sleep(10) # see CASSANDRA-4373
+        debug("starting repair...")
+        info=node3.repair(['ks'])
+        debug(info[0])
+        debug(info[1])
+
+        # Check that all nodes have all data
+        self.check_rows_on_node(node1, 3000)
+        self.check_rows_on_node(node2, 3000)
+        self.check_rows_on_node(node3, 3000)
+
 
     @skip ('unimplemented')
     def repair_of_cluster_all_nodes_are_out_of_sync(self):
