@@ -238,6 +238,67 @@ class RepairAdditionalTest(Tester):
         self.assertEqual(result[0].c1, 'new', result[0].c1)
         self.assertEqual(result[0].c2, 'yo', result[0].c2)
 
+    def repair_partition_delete_test(self):
+        """
+        With data replicated on two nodes, delete partition on only one of these
+        nodes (with the other node down). Then confirm that repair can fix this on
+        the second node as well.
+        """
+        debug("Starting cluster and inserting data...");
+        # Start a cluster of two nodes, and create a keyspace with RF=2, and
+        # a table with three partitions. Hinted handoff and read repair are disabled
+        # so they don't fix the problems which repair is supposed to fix
+        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        self.cluster.populate(2).start()
+        node1, node2 = self.cluster.nodelist()
+        session = self.patient_cql_connection(node1);
+        self.create_ks(session, 'ks', 2);
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'});
+        query = SimpleStatement("INSERT INTO cf (key, c1, c2) VALUES ('k1', 'v11', 'v12')", consistency_level=ConsistencyLevel.ALL)
+        session.execute(query)
+        query = SimpleStatement("INSERT INTO cf (key, c1, c2) VALUES ('k2', 'v21', 'v22')", consistency_level=ConsistencyLevel.ALL)
+        session.execute(query)
+        query = SimpleStatement("INSERT INTO cf (key, c1, c2) VALUES ('k3', 'v31', 'v32')", consistency_level=ConsistencyLevel.ALL)
+        session.execute(query)
+
+        # Bring down node2, and change the existing data on node 1
+        debug("Bringing down node2 and updating data on node 1...");
+        node2.flush()
+        node2.stop(wait_other_notice=True)
+        query = SimpleStatement("DELETE FROM cf WHERE key = 'k1';", consistency_level=ConsistencyLevel.ONE)
+        session.execute(query)
+        query = SimpleStatement("DELETE FROM cf WHERE key = 'k3';", consistency_level=ConsistencyLevel.ONE)
+        session.execute(query)
+
+        # Confirm that node1 has new data, and (by bringing only node 2 up) that
+        # node2 still has old data
+        result = session.execute("SELECT * from cf")
+        self.assertEqual(len(result), 1, len(result))
+        self.assertEqual(result[0].key, 'k2', result[0].key)
+        self.assertEqual(result[0].c1, 'v21', result[0].c1)
+        self.assertEqual(result[0].c2, 'v22', result[0].c2)
+        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+        node1.flush()
+        node1.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node2, 'ks')
+        result = session.execute("SELECT * from cf")
+        self.assertEqual(len(result), 3, len(result))
+
+        # Finally bring both nodes up, repair, and confirm (by bringing up only
+        # node 2) that the data on node2 is now up to date.
+        node1.start(wait_other_notice=True, wait_for_binary_proto=True)
+        info=node2.repair(['ks'])
+        debug(info[0])
+        debug(info[1])
+        node1.flush()
+        node1.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node2, 'ks')
+        result = session.execute("SELECT * from cf")
+        self.assertEqual(len(result), 1, len(result))
+        self.assertEqual(result[0].key, 'k2', result[0].key)
+        self.assertEqual(result[0].c1, 'v21', result[0].c1)
+        self.assertEqual(result[0].c2, 'v22', result[0].c2)
+
     @skip ('unimplemented')
     def repair_of_cluster_all_nodes_are_out_of_sync(self):
         """
