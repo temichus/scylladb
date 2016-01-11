@@ -98,6 +98,88 @@ class RepairAdditionalTest(Tester):
         self.check_rows_on_node(node2, 3000)
         self.check_rows_on_node(node3, 3000)
 
+    def repair_schema_test(self):
+        """
+        In a keyspace with two replicas, insert a new column family on one
+        replica only (while the other node is down), and initiate repair from
+        the node with the data. Verify that the data (and its schema) have been
+        correctly replicated to the second node.
+        """
+        debug("Starting cluster...");
+        # Start a cluster of two nodes, and create a keyspace with RF=2.
+        # Do *not* create a table yet - we'll do that with one node down
+        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        self.cluster.populate(2).start()
+        node1, node2 = self.cluster.nodelist()
+        session = self.patient_cql_connection(node1);
+        self.create_ks(session, 'ks', 2);
+
+        # Take node2 down, and create a new table and data on node1 only.
+        debug("Creating table and data only on node 1...");
+        node2.flush()
+        node2.stop(wait_other_notice=True)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'});
+        insert_c1c2(session, keys=range(1000, 2000), consistency=ConsistencyLevel.ONE)
+
+        # At this point node2 is not only missing some data, it is actually
+        # missing an entire table. Let's bring node2 back up, start repair on
+        # node1, and see if node2 gets the new table, and all its data.
+        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+        time.sleep(10) # see CASSANDRA-4373
+        debug("starting repair on node1...")
+        info=node1.repair(['ks'])
+        debug(info[0])
+        debug(info[1])
+
+        # Check that all nodes have all data
+        debug("checking data on node1...")
+        self.check_rows_on_node(node1, 1000)
+        debug("checking data on node2...")
+        self.check_rows_on_node(node2, 1000)
+
+    def repair_schema_2_test(self):
+        """
+        In a keyspace with two replicas, insert a new column family on one
+        replica only (while the other node is down), and initiate repair from
+        the node *without* the data. Verify that the data (and its schema) have been
+        correctly replicated to this node.
+        The difference between this test and repair_schema_test is that this one
+        starts the repair from the node *without* the table. This is a slightly
+        harder test, because there is a risk our code will not try to repair the
+        cf it doesn't know about.
+        """
+        debug("Starting cluster...");
+        # Start a cluster of two nodes, and create a keyspace with RF=2.
+        # Do *not* create a table yet - we'll do that with one node down
+        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        self.cluster.populate(2).start()
+        node1, node2 = self.cluster.nodelist()
+        session = self.patient_cql_connection(node1);
+        self.create_ks(session, 'ks', 2);
+
+        # Take node2 down, and create a new table and data on node1 only.
+        debug("Creating table and data only on node 1...");
+        node2.flush()
+        node2.stop(wait_other_notice=True)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'});
+        insert_c1c2(session, keys=range(1000, 2000), consistency=ConsistencyLevel.ONE)
+
+        # At this point node2 is not only missing some data, it is actually
+        # missing an entire table. Let's bring node2 back up, start repair on
+        # node2, and see if node2 gets the new table, and all its data.
+        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+        time.sleep(10) # see CASSANDRA-4373
+        debug("starting repair on node1...")
+        info=node2.repair(['ks'])
+        debug(info[0])
+        debug(info[1])
+
+        # Check that all nodes have all data
+        debug("checking data on node1...")
+        self.check_rows_on_node(node1, 1000)
+        debug("checking data on node2...")
+        self.check_rows_on_node(node2, 1000)
+
 
     @skip ('unimplemented')
     def repair_of_cluster_all_nodes_are_out_of_sync(self):
