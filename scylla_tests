@@ -165,4 +165,5 @@ update_cluster_layout_tests.py:TestUpdateClusterLayout.simple_removenode_1_test
 update_cluster_layout_tests.py:TestUpdateClusterLayout.simple_removenode_2_test
 topology_test.py:TestTopology.move_single_node_test
 repair_test.py
+repair_additional_test.py
 replace_adrress_test.py
