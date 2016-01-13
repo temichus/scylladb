@@ -524,6 +524,77 @@ class RepairAdditionalTest(Tester):
                     save_line = None
         self.assertTrue(save_line == None, "expected c1 value and timeout in sstable")
 
+    def repair_option_pr_test(self):
+        """
+        Test the "partitioner range" (-pr) option. We start two nodes and a
+        keyspace with RF=2, and put 1000 different rows on each of the nodes
+        (as in repair_disjoint_data_set). Each node has in "partioner ranges"
+        only half the key space, so that starting a repair with "-pr" on one
+        node will bring in around 500 missing partitions, but the other 500
+        will continue to be missing until we start a repair with "-pr" on the
+        second node as well.
+        """
+        # Start a cluster of two nodes, and create a keyspace ks with RF=2,
+        # and a table cf. Hinted handoff and read repair are disabled so
+        # they don't fix the problems which repair is supposed to fix.
+        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        self.cluster.populate(2).start()
+        node1, node2 = self.cluster.nodelist()
+        session = self.patient_cql_connection(node1);
+        self.create_ks(session, 'ks', 2);
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'});
+
+        # Insert 1000 keys *only* on node 1, another 1000 keys *only* on node 2:
+        debug("Adding data only on node 1...");
+        node2.flush()
+        node2.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node1, 'ks')
+        insert_c1c2(session, keys=range(1000, 2000), consistency=ConsistencyLevel.ONE)
+        self.cluster.flush()
+        debug("Adding data only on node 2...")
+        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+        node1.flush()
+        node1.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node2, 'ks')
+        insert_c1c2(session, keys=range(2000, 3000), consistency=ConsistencyLevel.ONE)
+
+        # Bring up both nodes, each should have different data
+        node1.start(wait_other_notice=True, wait_for_binary_proto=True)
+
+        # Run partioner-range repair on node 1
+        info=node1.repair(['-pr', 'ks'])
+        debug(info[0])
+        debug(info[1])
+
+        # We expect "-pr" repair to have repared only half of the ranges
+        # (those for which node 1 is their primary replica), so both nodes
+        # should now have around 1500 partitions. We don't know the exact
+        # number, but given the assumed random distribution of tokens and keys,
+        # it is unlikely to be far from 1500 - let's assert it is between
+        # 1200 and 1800
+        node1.flush()
+        node1.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node2, 'ks')
+        count = len(session.execute("SELECT * FROM cf LIMIT 2000"))
+        self.assertTrue(count > 1200 and count < 1800, "expected pr repair to repair part, but not everything")
+        node1.start(wait_other_notice=True, wait_for_binary_proto=True)
+        node2.flush()
+        node2.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node1, 'ks')
+        count = len(session.execute("SELECT * FROM cf LIMIT 2000"))
+        self.assertTrue(count > 1200 and count < 1800, "expected pr repair to repair part, but not everything")
+        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+
+        # Run a second "-pr" repair, this time on node 2. This should repair
+        # all the ranges not previously repared (i.e., this times the ranges
+        # whose primary is node 2), and at the end, all data, 2000 partitions,
+        # should be on both nodes.
+        info=node2.repair(['-pr', 'ks'])
+        debug(info[0])
+        debug(info[1])
+        self.check_rows_on_node(node1, 2000)
+        self.check_rows_on_node(node2, 2000)
+
     @skip ('unimplemented')
     def repair_of_cluster_all_nodes_are_out_of_sync(self):
         """
