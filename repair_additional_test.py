@@ -7,6 +7,8 @@ from tools import insert_c1c2, query_c1c2
 from cassandra import ConsistencyLevel
 from cassandra.query import SimpleStatement
 import time
+import tempfile
+import os
 
 
 class RepairAdditionalTest(Tester):
@@ -415,6 +417,112 @@ class RepairAdditionalTest(Tester):
         self.assertEqual(result[0].key, 'k2', result[0].key)
         self.assertEqual(result[0].c1, 'v21', result[0].c1)
         self.assertEqual(result[0].c2, 'v22', result[0].c2)
+
+    def read_sstable(self, node):
+        json_path = tempfile.mkstemp(suffix='.json')
+        jname = json_path[1]
+        with open(jname, 'w') as f:
+            node.run_sstable2json(f)
+        with open(jname, 'r') as f:
+            return f.read()
+
+    def repair_ttl_update_test(self):
+        """
+        With data replicated on two nodes, update an existing partition on only
+        one of these nodes (with the other node down). Then confirm that repair can
+        fix this on the second node as well.
+        This test is identical to repair_cell_update_test, except the update also
+        involves setting a TTL (and we confirm the repaired value also gets this ttl)
+        """
+        # Start a cluster of two nodes, and create a keyspace with RF=2, and
+        # a table with one partition. Hinted handoff and read repair are disabled
+        # so they don't fix the problems which repair is supposed to fix
+        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        self.cluster.populate(2).start()
+        node1, node2 = self.cluster.nodelist()
+        session = self.patient_cql_connection(node1);
+        self.create_ks(session, 'ks', 2);
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'});
+        query = SimpleStatement("INSERT INTO cf (key, c1, c2) VALUES ('key', 'hello', 'hi')", consistency_level=ConsistencyLevel.ALL)
+        session.execute(query)
+
+        # Bring down node2, and change the existing data on node 1
+        node2.flush()
+        node2.stop(wait_other_notice=True)
+        query = SimpleStatement("UPDATE cf using TTL 1234 SET c1='new' WHERE key = 'key'", consistency_level=ConsistencyLevel.ONE)
+        session.execute(query)
+
+        # Confirm that node1 has the new data, with the TTL. Unfortunately, to
+        # verify the TTL we cannot simply use "SELECT TTL(c1) from cf",
+        # because the TTL we get from that is not the original TTL we had set,
+        # but rather the *remaining* TTL at this time. To verify the original
+        # TTL set, we need to resort to reading the sstable.
+        result = session.execute("SELECT * from cf")
+        self.assertEqual(len(result), 1, len(result))
+        self.assertEqual(result[0].key, 'key', result[0].key)
+        self.assertEqual(result[0].c1, 'new', result[0].c1)
+        self.assertEqual(result[0].c2, 'hi', result[0].c2)
+        node1.flush()
+        sstable = self.read_sstable(node1)
+        # The "c1" cell should have an expiration time and will look something
+        # like this:   ["c1","6e6577",1452615051661760,"e",1234,1452616285],
+        # We need to verify the number "1234" is the same as we set, and save
+        # the entire line to verify it is identical on the repaired machine.
+        save_line = None
+        for line in sstable.split('\n'):
+            if '["c1",' in line:
+                self.assertTrue('"e",1234,' in line, "TTL set to 1234")
+                save_line = line
+        self.assertTrue(save_line != None, "TTL set in sstable")
+
+        # Confirm (by bringing only node 2 up) that node2 still has old data
+        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+        node1.flush()
+        node1.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node2, 'ks')
+        result = session.execute("SELECT * from cf")
+        self.assertEqual(len(result), 1, len(result))
+        self.assertEqual(result[0].key, 'key', result[0].key)
+        self.assertEqual(result[0].c1, 'hello', result[0].c1)
+        self.assertEqual(result[0].c2, 'hi', result[0].c2)
+        sstable = self.read_sstable(node2)
+        for line in sstable.split('\n'):
+            if '["c1",' in line:
+                self.assertFalse('"e",' in line, "TTL should not be set")
+
+        # sstable2json has a bug (see CASSANDRA-8616) where it writes commit
+        # log files. Since Scylla can't read those (they are in Cassandra
+        # format) we need to remove them before we can restart node 1.
+        # This may also end up deleting Scylla commit logs, but those should
+        # not exist anyway (as we used node1.flush()).
+        commitlog_dir = node1.get_path() + "/commitlogs/"
+        for f in os.listdir(commitlog_dir):
+            os.remove(commitlog_dir + f)
+
+        # Finally bring both nodes up, repair, and confirm (by bringing up only
+        # node 2) that the data on node2 is now up to date.
+        node1.start(wait_other_notice=True, wait_for_binary_proto=True)
+        info=node2.repair(['ks'])
+        debug(info[0])
+        debug(info[1])
+        node1.flush()
+        node1.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node2, 'ks')
+        result = session.execute("SELECT * from cf")
+        self.assertEqual(len(result), 1, len(result))
+        self.assertEqual(result[0].key, 'key', result[0].key)
+        self.assertEqual(result[0].c1, 'new', result[0].c1)
+        self.assertEqual(result[0].c2, 'hi', result[0].c2)
+        node2.flush()
+        sstable = self.read_sstable(node2)
+        # Confirm that one of the sstables contains the expected value and
+        # expiration time (because we didn't do compaction, we'll see both
+        # the old and new values in different sstables)
+        for line in sstable.split('\n'):
+            if '["c1",' in line:
+                if save_line == line:
+                    save_line = None
+        self.assertTrue(save_line == None, "expected c1 value and timeout in sstable")
 
     @skip ('unimplemented')
     def repair_of_cluster_all_nodes_are_out_of_sync(self):
