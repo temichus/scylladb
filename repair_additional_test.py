@@ -595,6 +595,71 @@ class RepairAdditionalTest(Tester):
         self.check_rows_on_node(node1, 2000)
         self.check_rows_on_node(node2, 2000)
 
+    def repair_option_cf_test(self):
+        """
+        Test that we can specify the list of column families to repair. We
+        create 3 column families in need of repair, and ask to repair only 2
+        of them, and confirm that 2 were repaired (so a list of cfs is
+        supported correctly) and the third was not.
+        """
+        # Start a cluster of two nodes, and create a keyspace ks with RF=2,
+        # and 3 tables. Hinted handoff and read repair are disabled so
+        # they don't fix the problems which repair is supposed to fix.
+        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        self.cluster.populate(2).start()
+        node1, node2 = self.cluster.nodelist()
+        session = self.patient_cql_connection(node1);
+        self.create_ks(session, 'ks', 2);
+        self.create_cf(session, 'cf1', read_repair=0.0, columns={'c1': 'text'});
+        self.create_cf(session, 'cf2', read_repair=0.0, columns={'c1': 'text'});
+        self.create_cf(session, 'cf3', read_repair=0.0, columns={'c1': 'text'});
+
+        # Insert one key in each cf *only* on node 1, another key *only* on node 2:
+        node2.flush()
+        node2.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node1, 'ks')
+        query = SimpleStatement("INSERT INTO cf1 (key, c1) VALUES ('k11', 'v11')", consistency_level=ConsistencyLevel.ONE)
+        session.execute(query)
+        query = SimpleStatement("INSERT INTO cf2 (key, c1) VALUES ('k21', 'v21')", consistency_level=ConsistencyLevel.ONE)
+        session.execute(query)
+        query = SimpleStatement("INSERT INTO cf3 (key, c1) VALUES ('k31', 'v31')", consistency_level=ConsistencyLevel.ONE)
+        session.execute(query)
+        self.cluster.flush()
+        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+        node1.flush()
+        node1.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node2, 'ks')
+        query = SimpleStatement("INSERT INTO cf1 (key, c1) VALUES ('k11a', 'v11a')", consistency_level=ConsistencyLevel.ONE)
+        session.execute(query)
+        query = SimpleStatement("INSERT INTO cf2 (key, c1) VALUES ('k21a', 'v21a')", consistency_level=ConsistencyLevel.ONE)
+        session.execute(query)
+        query = SimpleStatement("INSERT INTO cf3 (key, c1) VALUES ('k31a', 'v31a')", consistency_level=ConsistencyLevel.ONE)
+        session.execute(query)
+
+        # Bring up both nodes, each should have different data
+        node1.start(wait_other_notice=True, wait_for_binary_proto=True)
+
+        # Run partioner-range repair on node 1
+        info=node1.repair(['ks', 'cf1', 'cf3'])
+        debug(info[0])
+        debug(info[1])
+
+        # We expect each node to now have 2 partitions in each of cf1 and cf3
+        # because those have been repaired - but only 1 in cf2.
+        node1.flush()
+        node1.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node2, 'ks')
+        self.assertEqual(len(session.execute("SELECT * from cf1")), 2, "cf1 on node2")
+        self.assertEqual(len(session.execute("SELECT * from cf2")), 1, "cf2 on node2")
+        self.assertEqual(len(session.execute("SELECT * from cf3")), 2, "cf2 on node2")
+        node1.start(wait_other_notice=True, wait_for_binary_proto=True)
+        node2.flush()
+        node2.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node1, 'ks')
+        self.assertEqual(len(session.execute("SELECT * from cf1")), 2, "cf1 on node1")
+        self.assertEqual(len(session.execute("SELECT * from cf2")), 1, "cf2 on node1")
+        self.assertEqual(len(session.execute("SELECT * from cf3")), 2, "cf2 on node1")
+
     @skip ('unimplemented')
     def repair_of_cluster_all_nodes_are_out_of_sync(self):
         """
