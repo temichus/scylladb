@@ -420,12 +420,10 @@ class RepairAdditionalTest(Tester):
         self.assertEqual(result[0].c2, 'v22', result[0].c2)
 
     def read_sstable(self, node):
-        json_path = tempfile.mkstemp(suffix='.json')
-        jname = json_path[1]
-        with open(jname, 'w') as f:
-            node.run_sstable2json(f)
-        with open(jname, 'r') as f:
-            return f.read()
+        tmp = tempfile.TemporaryFile()
+        node.run_sstable2json(tmp)
+        tmp.seek(0)
+        return tmp.read()
 
     def repair_ttl_update_test(self):
         """
