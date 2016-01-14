@@ -6,6 +6,7 @@ from unittest import skip
 from tools import insert_c1c2, query_c1c2
 from cassandra import ConsistencyLevel
 from cassandra.query import SimpleStatement
+from ccmlib.node import NodetoolError
 import time
 import tempfile
 import os
@@ -659,6 +660,30 @@ class RepairAdditionalTest(Tester):
         self.assertEqual(len(session.execute("SELECT * from cf1")), 2, "cf1 on node1")
         self.assertEqual(len(session.execute("SELECT * from cf2")), 1, "cf2 on node1")
         self.assertEqual(len(session.execute("SELECT * from cf3")), 2, "cf2 on node1")
+
+    def repair_option_invalid_ks_cf_test(self):
+        """
+        Test that specifying a non-existant keyspace or column family to
+        repair results in failure.
+        """
+        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        self.cluster.populate(2).start()
+        node1, node2 = self.cluster.nodelist()
+        session = self.patient_cql_connection(node1);
+        self.create_ks(session, 'ks', 2);
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text'});
+
+        # Repairing an invalid column family in a valid keyspace
+        with self.assertRaises(NodetoolError):
+            node1.repair(['ks', 'badcf'])
+        # Repairing an invalid keyspace
+        with self.assertRaises(NodetoolError):
+            node1.repair(['badks'])
+        # Repair with one of the cfs being invalid
+        with self.assertRaises(NodetoolError):
+            node1.repair(['badks', 'cf', 'badcf'])
+        # Finally, sanity check that a valid repair succeeds:
+        node1.repair(['ks', 'cf'])
 
     @skip ('unimplemented')
     def repair_of_cluster_all_nodes_are_out_of_sync(self):
