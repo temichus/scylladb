@@ -32,9 +32,7 @@ class TestUpdateClusterLayout(Tester):
             query_c1c2(session, k, ConsistencyLevel.ONE)
 
         for k in missings:
-            query = SimpleStatement("SELECT c1, c2 FROM cf WHERE key='k%d'" % k, consistency_level=ConsistencyLevel.ONE)
-            res = session.execute(query)
-            self.assertEqual(len(filter(lambda x: len(x) != 0, res)), 0, res)
+            query_c1c2(session, k, ConsistencyLevel.ONE, must_be_missing=True)
 
         if restart:
             self.start_all_nodes()
