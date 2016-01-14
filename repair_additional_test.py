@@ -601,7 +601,8 @@ class RepairAdditionalTest(Tester):
         Test that we can specify the list of column families to repair. We
         create 3 column families in need of repair, and ask to repair only 2
         of them, and confirm that 2 were repaired (so a list of cfs is
-        supported correctly) and the third was not.
+        supported correctly) and the third was not. Finally, confirm that a
+        repair without a column family list repairs all of them.
         """
         # Start a cluster of two nodes, and create a keyspace ks with RF=2,
         # and 3 tables. Hinted handoff and read repair are disabled so
@@ -660,6 +661,17 @@ class RepairAdditionalTest(Tester):
         self.assertEqual(len(session.execute("SELECT * from cf1")), 2, "cf1 on node1")
         self.assertEqual(len(session.execute("SELECT * from cf2")), 1, "cf2 on node1")
         self.assertEqual(len(session.execute("SELECT * from cf3")), 2, "cf2 on node1")
+
+        # repair again without a cf option, and see that all cfs, and in
+        # particular cf2 (which we haven't repaired so far), get repaired.
+        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+        info=node1.repair(['ks'])
+        debug(info[0])
+        debug(info[1])
+        node1.flush()
+        node1.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node2, 'ks')
+        self.assertEqual(len(session.execute("SELECT * from cf2")), 2, "cf2 on node2")
 
     def repair_option_invalid_ks_cf_test(self):
         """
