@@ -59,8 +59,8 @@ class TestLimits(Tester):
 
         # What is origin single column value size
         # https://wiki.apache.org/cassandra/CassandraLimitations
-        blob_a = ("a" * (1024*1024*1024*2))
-        blob_b = ("b" * (1024*1024*1024*2))
+        blob_a = ("a" * (1024*1024*1024*1-1))
+        blob_b = ("b" * (1024*1024*1024*1-1))
 
         session.execute("""
             CREATE TABLE test1 (
@@ -87,3 +87,28 @@ class TestLimits(Tester):
         """)
 
         self.assertEqual(len(res), 1)
+
+    def max_columns_test(self):
+        cluster = self.prepare()
+        cluster.populate(1).start()
+        node1 = cluster.nodelist()[0]
+
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 1)
+
+        # scylla beat cassandra on this one
+        count = 32768
+
+        keys = ""
+        keys_create = ""
+        for i in range(count):
+            keys += "key" + str(i) + ", "
+            keys_create += "key" + str(i) + " int, "
+        values = "1, " * count
+        keys = keys
+
+        c = """CREATE TABLE test1 (%s blub int PRIMARY KEY,)""" % (keys_create)
+        session.execute(c)
+
+        c= "insert into ks.test1  (%s blub) values (%s 1);" % (keys, values)
+        session.execute(c)
