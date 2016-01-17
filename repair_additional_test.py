@@ -42,7 +42,7 @@ class RepairAdditionalTest(Tester):
             for node in stopped_nodes:
                 node.start(wait_other_notice=True)
 
-    def repair_disjoint_data_test(self):
+    def repair_disjoint_data_test(self, more_options=[]):
         """
         On each of three replicas, insert completely different data.
         Confirm that repairing a single of these nodes brings all the data 
@@ -92,7 +92,7 @@ class RepairAdditionalTest(Tester):
         # Run repair on (arbitrarily), node 3
         time.sleep(10) # see CASSANDRA-4373
         debug("starting repair...")
-        info=node3.repair(['ks'])
+        info=node3.repair(more_options + ['ks'])
         debug(info[0])
         debug(info[1])
 
@@ -819,6 +819,14 @@ class RepairAdditionalTest(Tester):
         node3.stop(wait_other_notice=True)
         session = self.patient_cql_connection(node4, 'ks')
         self.assertEqual(len(session.execute("SELECT * from cf")), 1, "cf on node4")
+
+    def repair_option_par_test(self):
+        """
+        Test that the "-par" repair options works. In Scylla, it doesn't
+        actually change anything, but we need to test it doesn't do anything
+        bad.
+        """
+        self.repair_disjoint_data_test(['-par'])
 
     @skip ('unimplemented')
     def repair_of_cluster_all_nodes_are_out_of_sync(self):
