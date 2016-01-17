@@ -695,6 +695,131 @@ class RepairAdditionalTest(Tester):
         # Finally, sanity check that a valid repair succeeds:
         node1.repair(['ks', 'cf'])
 
+    def repair_option_dc_test(self):
+        """
+        Test the "-dc" and "-local" repair options: Create 3 data centers, the
+        first with 2 nodes, second with 1 node, and third with 1 node. We then
+        update data on one of the nodes in the first data center, and check
+        that repairing with "-dc" and "-local" repairs the nodes of the
+        requested datacenters, and not more.
+        Finally, check that error conditions (like non-existant data center name,
+        or not listing the current data center) are caught.
+        """
+        # Create 3 data centers, dc1 with 2 nodes, dc2 with 1 node, and dc3
+        # with 1 node. Then create a keyspace ks replicated on all nodes,
+        # and one cf. Hinted handoff and read repair are disabled so they
+        # don't fix the problems which repair is supposed to fix.
+        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        self.cluster.populate([2, 1, 1]).start()
+        node1, node2, node3, node4 = self.cluster.nodelist()
+        session = self.patient_cql_connection(node1);
+        session.execute("CREATE KEYSPACE ks WITH replication = {'class': 'NetworkTopologyStrategy', 'dc1': 2, 'dc2' : 1, 'dc3': 1};")
+        session.set_keyspace('ks')
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text'});
+
+        # Insert one key *only* on node 1 (of dc1). All the other nodes will
+        # be missing this data.
+        # Insert one key in each cf *only* on node 1, another key *only* on node 2:
+        node2.flush()
+        node2.stop(wait_other_notice=True)
+        node3.flush()
+        node3.stop(wait_other_notice=True)
+        node4.flush()
+        node4.stop(wait_other_notice=True)
+        query = SimpleStatement("INSERT INTO cf (key, c1) VALUES ('k11', 'v11')", consistency_level=ConsistencyLevel.ONE)
+        session.execute(query)
+
+        # Start all nodes, do a repair limited to dc1 and dc3, and confirm the
+        # data was correctly copied to node2 (in dc1) and node4 (in dc3) but
+        # not to node3 (in dc2):
+        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+        node3.start(wait_other_notice=True, wait_for_binary_proto=True)
+        node4.start(wait_other_notice=True, wait_for_binary_proto=True)
+        info=node1.repair(['-dc', 'dc1,dc3', 'ks'])
+        debug(info[0])
+        debug(info[1])
+        node1.flush()
+        node1.stop(wait_other_notice=True)
+        node3.flush()
+        node3.stop(wait_other_notice=True)
+        node4.flush()
+        node4.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node2, 'ks')
+        self.assertEqual(len(session.execute("SELECT * from cf")), 1, "cf on node2")
+        node3.start(wait_other_notice=True, wait_for_binary_proto=True)
+        node2.flush()
+        node2.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node3, 'ks')
+        self.assertEqual(len(session.execute("SELECT * from cf")), 0, "cf on node3")
+        node4.start(wait_other_notice=True, wait_for_binary_proto=True)
+        node3.flush()
+        node3.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node4, 'ks')
+        self.assertEqual(len(session.execute("SELECT * from cf")), 1, "cf on node4")
+
+        node1.start(wait_other_notice=True, wait_for_binary_proto=True)
+        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+        node3.start(wait_other_notice=True, wait_for_binary_proto=True)
+
+        # Repair with one of the data centers specified being invalid should
+        # cause a failure
+        with self.assertRaises(NodetoolError):
+            node1.repair(['-dc', 'dc1,baddc', 'ks'])
+
+        # Repair with data centers specified *without* the current data center
+        # is an error too.
+        with self.assertRaises(NodetoolError):
+            node1.repair(['-dc', 'dc2,dc3', 'ks'])
+
+        # Repair again without a "-dc" option - should repair all nodes in all
+        # data centers, and in particular node3 (in dc2) .
+        info=node1.repair(['ks'])
+        debug(info[0])
+        debug(info[1])
+        node1.flush()
+        node1.stop(wait_other_notice=True)
+        node2.flush()
+        node2.stop(wait_other_notice=True)
+        node4.flush()
+        node4.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node3, 'ks')
+        self.assertEqual(len(session.execute("SELECT * from cf")), 1, "cf on node3")
+
+        # Similiarly test the "-local" option: Add one more partition to node1
+        # (in dc1), repair node1 with "-local" and confirm that only node2 (the
+        # other node in dc1) gets another partition, but node3 (dc2) and node4
+        # (dc3) don't.
+        node1.start(wait_other_notice=True, wait_for_binary_proto=True)
+        node3.flush()
+        node3.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node1, 'ks')
+        query = SimpleStatement("INSERT INTO cf (key, c1) VALUES ('k12', 'v12')", consistency_level=ConsistencyLevel.ONE)
+        session.execute(query)
+        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+        node3.start(wait_other_notice=True, wait_for_binary_proto=True)
+        node4.start(wait_other_notice=True, wait_for_binary_proto=True)
+        info=node1.repair(['-local', 'ks'])
+        debug(info[0])
+        debug(info[1])
+        node1.flush()
+        node1.stop(wait_other_notice=True)
+        node3.flush()
+        node3.stop(wait_other_notice=True)
+        node4.flush()
+        node4.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node2, 'ks')
+        self.assertEqual(len(session.execute("SELECT * from cf")), 2, "cf on node2")
+        node3.start(wait_other_notice=True, wait_for_binary_proto=True)
+        node2.flush()
+        node2.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node3, 'ks')
+        self.assertEqual(len(session.execute("SELECT * from cf")), 1, "cf on node3")
+        node4.start(wait_other_notice=True, wait_for_binary_proto=True)
+        node3.flush()
+        node3.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node4, 'ks')
+        self.assertEqual(len(session.execute("SELECT * from cf")), 1, "cf on node4")
+
     @skip ('unimplemented')
     def repair_of_cluster_all_nodes_are_out_of_sync(self):
         """
