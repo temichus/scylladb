@@ -48,3 +48,42 @@ class TestLimits(Tester):
         """ % (key_name))
 
         self.assertEqual(len(res), 1)
+
+    def max_column_value_size_test(self):
+        cluster = self.prepare()
+        cluster.populate(1).start()
+        node1 = cluster.nodelist()[0]
+
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 1)
+
+        # What is origin single column value size
+        # https://wiki.apache.org/cassandra/CassandraLimitations
+        blob_a = ("a" * (1024*1024*1024*2))
+        blob_b = ("b" * (1024*1024*1024*2))
+
+        session.execute("""
+            CREATE TABLE test1 (
+                user ascii PRIMARY KEY,
+                payload blob,
+            )
+        """)
+
+        session.execute("insert into ks.test1  (user, payload) values ('tintin', textAsBlob('%s'));" % (blob_a))
+        session.execute("insert into ks.test1  (user, payload) values ('milou', textAsBlob('%s'));" % (blob_b))
+
+        node1.flush()
+        # Select
+        res = session.execute("""
+                SELECT * FROM ks.test1
+                WHERE user='tintin'
+        """)
+
+        self.assertEqual(len(res), 1)
+
+        res = session.execute("""
+                SELECT * FROM ks.test1
+                WHERE user='milou'
+        """)
+
+        self.assertEqual(len(res), 1)
