@@ -467,6 +467,36 @@ Test the performance of reading to a scylla node.
 Test the latency (round trip time required to complete a request) for a scylla
 node.
 
+SSL Performance {#label_ssl_performance}
+------------------------------------
+Running with client node and node to node encryption (SSL) will affect throughput and performance. Each of the performance tests should be repeated with SSL to test its effect.
+
+### Read throughput with client to node SSL {#label_c2n_ssl_read_througput} ###
+
+Test the performance of reading from a scylla node with client to node encryption
+
+### Write throughput {#label_c2n_ssl_write_througput} ###
+
+Test the performance of reading to a scylla node with client to node encryption
+
+### Latency {#label_c2n_ssl_latency} ###
+
+Test the latency (round trip time required to complete a request) for a scylla
+node with client to node encryption
+
+### Read throughput with client to node SSL {#label_n2n_ssl_read_througput} ###
+
+Test the performance of reading from a scylla node with node to node encryption
+
+### Write throughput {#label_n2n_ssl_write_througput} ###
+
+Test the performance of reading to a scylla node with node to node encryption
+
+### Latency {#label_n2n_ssl_latency} ###
+
+Test the latency (round trip time required to complete a request) for a scylla
+node with node to node encryption
+
 Scalability tests {#label_scalability}
 --------------------------------------
 
