@@ -139,10 +139,7 @@ class TestBackupRestore(Tester):
         debug("Column family directory is {}".format(cf_dir))
 
         debug("Removing sstables...")
-        for f in os.listdir(cf_dir):
-            full_name = os.path.join(cf_dir, f)
-            if os.path.isfile(full_name):
-                os.remove(full_name)
+        self.delete_cf_sstables(cf_dir)
 
         debug("Copy sstables from the snapshot...")
         for f in os.listdir(snapshot_dir):
@@ -226,10 +223,7 @@ class TestBackupRestore(Tester):
         debug("Column family directory is {}".format(cf_dir))
 
         debug("Removing sstables...")
-        for f in os.listdir(cf_dir):
-            full_name = os.path.join(cf_dir, f)
-            if os.path.isfile(full_name):
-                os.remove(full_name)
+        self.delete_cf_sstables(cf_dir)
 
         debug("Copy sstables from the snapshot...")
         for f in os.listdir(snapshot_dir):
@@ -246,6 +240,12 @@ class TestBackupRestore(Tester):
 
         debug("Checking rows on node1...")
         self.check_rows_on_node(node1, num_keys, found=keys, c1_values=c1_values, c2_values=c2_values)
+
+    def delete_cf_sstables(self, cf_dir):
+        for f in os.listdir(cf_dir):
+            full_name = os.path.join(cf_dir, f)
+            if os.path.isfile(full_name):
+                os.remove(full_name)
 
     def get_snapshot_dir(self, snapshotname):
         for root, dirs, files in os.walk(self.test_path):
