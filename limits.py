@@ -1,5 +1,24 @@
 from dtest import Tester
 
+# Those are ideal values according to c* specifications
+# MAX_KEY_SIZE = 65506
+# MAX_BLOB_SIZE = (1024*1024*1024*1-1)
+# MAX_COLUMNS = 32768
+# MAX_TUPLES = 32768
+# MAX_BATCH_SIZE = 65535
+# MAX_CELLS_COLUMNS = 32768
+# MAX_CELLS_BATCH_SIZE = 1000
+# MAX_CELLS = (2*1024*1024*1024-1)
+
+# Those are value use to validate the tests code
+MAX_KEY_SIZE = 1000
+MAX_BLOB_SIZE = 1000
+MAX_COLUMNS = 1000
+MAX_TUPLES = 1000
+MAX_BATCH_SIZE = 1000
+MAX_CELLS_COLUMNS = 100
+MAX_CELLS_BATCH_SIZE = 100
+MAX_CELLS = 1000
 
 class TestLimits(Tester):
 
@@ -22,7 +41,7 @@ class TestLimits(Tester):
         #key_name = "k" * 32766
 
         # origin max key size
-        key_name = "k" * 65506
+        key_name = "k" * MAX_KEY_SIZE
 
         session.execute("""
             CREATE TABLE test1 (
@@ -57,10 +76,8 @@ class TestLimits(Tester):
         session = self.patient_cql_connection(node1)
         self.create_ks(session, 'ks', 1)
 
-        # What is origin single column value size
-        # https://wiki.apache.org/cassandra/CassandraLimitations
-        blob_a = ("a" * (1024*1024*1024*1-1))
-        blob_b = ("b" * (1024*1024*1024*1-1))
+        blob_a = ("a" * MAX_BLOB_SIZE)
+        blob_b = ("b" * MAX_BLOB_SIZE)
 
         session.execute("""
             CREATE TABLE test1 (
@@ -97,7 +114,7 @@ class TestLimits(Tester):
         self.create_ks(session, 'ks', 1)
 
         # scylla beat cassandra on this one
-        count = 32768
+        count = MAX_COLUMNS
 
         keys = ""
         keys_create = ""
@@ -121,7 +138,7 @@ class TestLimits(Tester):
         session = self.patient_cql_connection(node1)
         self.create_ks(session, 'ks', 1)
 
-        count = 32768
+        count = MAX_TUPLES
 
         t = ""
         v = ""
@@ -163,7 +180,7 @@ class TestLimits(Tester):
             """
         session.execute(c)
 
-        count = 65535
+        count = MAX_BATCH_SIZE
 
         c = "BEGIN UNLOGGED  BATCH\n"
         for i in range(count):
@@ -184,7 +201,7 @@ class TestLimits(Tester):
         session = self.patient_cql_connection(node1)
         self.create_ks(session, 'ks', 1)
 
-        columns = 32768
+        columns = MAX_CELLS_COLUMNS
 
         keys = ""
         keys_create = ""
@@ -196,8 +213,8 @@ class TestLimits(Tester):
         c = """CREATE TABLE test1 (%s blub int PRIMARY KEY,)""" % (keys_create)
         session.execute(c)
 
-        batch_size = 1000
-        rows = (2*1024*1024*1024-1)/columns
+        batch_size = MAX_CELLS_BATCH_SIZE
+        rows = MAX_CELLS / columns
         c = "BEGIN UNLOGGED  BATCH\n"
         for i in range(rows):
             c += "insert into ks.test1  (%s blub) values (%s %i);\n" % (keys, values, i)
