@@ -960,6 +960,15 @@ class RepairAdditionalTest(Tester):
             else:
                 node2.start(wait_other_notice=True, wait_for_binary_proto=True)
 
+    def repair_kill_2_test(self):
+        """
+        Killing a participant (non-master) of a repair stops the repair with
+        an error. Note that this doesn't work on Cassandra - see
+        https://support.datastax.com/hc/en-us/articles/204226119-Troubleshooting-hanging-repairs
+        Moreover, the other nodes continue to work correctly.
+        """
+        self.repair_kill_1_test(False)
+
     @skip ('unimplemented')
     def repair_of_cluster_all_nodes_are_out_of_sync(self):
         """
