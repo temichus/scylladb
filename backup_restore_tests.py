@@ -132,6 +132,7 @@ class TestBackupRestore(Tester):
         debug("Snapshot dir is {}".format(snapshot_dir))
 
         ks_dir = os.path.join(self.test_path, 'test', 'node1', 'data', 'ks')
+
         #
         # As a result of 'DROP KEYSPACE' and the following 'CF CREATE' there
         # will be two directories for the 'cf' CF: one with the old UUID and one
@@ -140,19 +141,7 @@ class TestBackupRestore(Tester):
         # Since we can't get a UUID of the cf we will just look for the
         # directory with sstables.
         #
-        def get_cf_dir(ks_dir):
-            p = re.compile('ks-cf-*')
-            for root, dirs, files in os.walk(ks_dir):
-                for d in dirs:
-                    cur_dir = os.path.join(root, d)
-                    for f in os.listdir(cur_dir):
-                        if p.match(f):
-                            return cur_dir
-                break
-
-            return None
-
-        cf_dir = get_cf_dir(ks_dir)
+        cf_dir = self.get_cf_dir(ks_dir)
 
         debug("Column family directory is {}".format(cf_dir))
 
@@ -180,6 +169,17 @@ class TestBackupRestore(Tester):
         debug("Checking rows on node1...")
         self.check_rows_on_node(node1, num_keys, found=keys, c1_values=c1_values, c2_values=c2_values)
 
+    def get_cf_dir(self, ks_dir):
+        p = re.compile('ks-cf-*')
+        for root, dirs, files in os.walk(ks_dir):
+            for d in dirs:
+                cur_dir = os.path.join(root, d)
+                for f in os.listdir(cur_dir):
+                    if p.match(f):
+                        return cur_dir
+            break
+
+        return None
 
     def start_nodetool_and_kill_node(self, node, cmd):
         def run(name, q):
