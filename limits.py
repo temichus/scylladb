@@ -175,3 +175,33 @@ class TestLimits(Tester):
         c= "SELECT * FROM STUFF;"
         res = session.execute(c)
         self.assertEqual(len(res), count)
+
+    def max_cells_test(self):
+        cluster = self.prepare()
+        cluster.populate(1).start()
+        node1 = cluster.nodelist()[0]
+
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 1)
+
+        columns = 32768
+
+        keys = ""
+        keys_create = ""
+        for i in range(columns):
+            keys += "key" + str(i) + ", "
+            keys_create += "key" + str(i) + " int, "
+        values = "1, " * columns
+
+        c = """CREATE TABLE test1 (%s blub int PRIMARY KEY,)""" % (keys_create)
+        session.execute(c)
+
+        batch_size = 1000
+        rows = (2*1024*1024*1024-1)/columns
+        c = "BEGIN UNLOGGED  BATCH\n"
+        for i in range(rows):
+            c += "insert into ks.test1  (%s blub) values (%s %i);\n" % (keys, values, i)
+            if i % batch_size == 0:
+                c += "APPLY BATCH;\n"
+                session.execute(c)
+                c = "BEGIN UNLOGGED  BATCH\n"
