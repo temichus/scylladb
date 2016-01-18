@@ -121,14 +121,8 @@ class TestBackupRestore(Tester):
         debug("Draining the cluster...")
         node1.nodetool('drain')
 
-        snapshot_dir = None
-        for root, dirs, files in os.walk(self.test_path):
-            for name in dirs:
-                if name == snapshot_name:
-                    snapshot_dir = os.path.join(root, name)
-
+        snapshot_dir = self.get_snapshot_dir(snapshot_name)
         self.assertTrue(snapshot_dir is not None, "Can't find a snapshot directory for {}".format(snapshot_name))
-
         debug("Snapshot dir is {}".format(snapshot_dir))
 
         ks_dir = os.path.join(self.test_path, 'test', 'node1', 'data', 'ks')
@@ -168,6 +162,14 @@ class TestBackupRestore(Tester):
 
         debug("Checking rows on node1...")
         self.check_rows_on_node(node1, num_keys, found=keys, c1_values=c1_values, c2_values=c2_values)
+
+    def get_snapshot_dir(self, snapshotname):
+        for root, dirs, files in os.walk(self.test_path):
+            for name in dirs:
+                if name == snapshotname:
+                    return os.path.join(root, name)
+
+        return None
 
     def get_cf_dir(self, ks_dir):
         p = re.compile('ks-cf-*')
