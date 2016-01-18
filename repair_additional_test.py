@@ -969,6 +969,54 @@ class RepairAdditionalTest(Tester):
         """
         self.repair_kill_1_test(False)
 
+    def repair_kill_3_test(self):
+        """
+        When a node busy in being a repair master is killed, check that it
+        shuts down normally and doesn't crash because of shut down bugs.
+        Scylla issue #699 caused this test to fail - the repair continues
+        through the shutdown, and then crashes (with an assertion failure)
+        when it suddenly noticed the data structures it uses are gone.
+        """
+        # Start a cluster of two nodes, and create a keyspace with RF=2, and
+        # a table with one partition. Hinted handoff and read repair are disabled
+        # so they don't fix the problems which repair is supposed to fix.
+        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        self.cluster.populate(2).start()
+        node1, node2 = self.cluster.nodelist()
+        session = self.patient_cql_connection(node1);
+        self.create_ks(session, 'ks', 2);
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'});
+        # Insert 1000 keys *only* on node 1, another 1000 keys *only* on node 2
+        node2.flush()
+        node2.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node1, 'ks')
+        insert_c1c2(session, keys=range(1000, 2000), consistency=ConsistencyLevel.ONE)
+        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+        node1.flush()
+        node1.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node2, 'ks')
+        insert_c1c2(session, keys=range(2000, 3000), consistency=ConsistencyLevel.ONE)
+        node1.start(wait_other_notice=True, wait_for_binary_proto=True)
+
+        # Run repair on node 1, and kill this node as soon as repair started
+        def do_repair():
+            try:
+                info = node1.repair(['ks'])
+                debug(info[0])
+                debug(info[1])
+            except (NodetoolError):
+                pass
+        thread1 = threading.Thread(target=do_repair)
+        thread1.start()
+        node1.watch_log_for("starting user-requested repair")
+        node1.stop(wait_other_notice=True)
+        thread1.join()
+
+        # We don't want to see any assertion failures like in isue #699 :-(
+        match = node1.grep_log("Assertion .* failed.")
+        debug(match)
+        self.assertEqual(len(match), 0)
+
     @skip ('unimplemented')
     def repair_of_cluster_all_nodes_are_out_of_sync(self):
         """
