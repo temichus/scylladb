@@ -145,3 +145,33 @@ class TestLimits(Tester):
         c= "SELECT * FROM STUFF;"
         res = session.execute(c)
         self.assertEqual(len(res), 1)
+
+    def max_batch_size_test(self):
+        cluster = self.prepare()
+        cluster.populate(1).start()
+        node1 = cluster.nodelist()[0]
+
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 1)
+
+        # in the future embed a blob in this
+        # so the batch will be 2GB
+        c = """
+            CREATE TABLE stuff (
+              k int PRIMARY KEY,
+            );
+            """
+        session.execute(c)
+
+        count = 65535
+
+        c = "BEGIN UNLOGGED  BATCH\n"
+        for i in range(count):
+            c += "INSERT INTO stuff (k) VALUES(%i)\n" % (i)
+        c += "APPLY BATCH;\n"
+
+        session.execute(c)
+
+        c= "SELECT * FROM STUFF;"
+        res = session.execute(c)
+        self.assertEqual(len(res), count)
