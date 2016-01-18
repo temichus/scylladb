@@ -52,32 +52,8 @@ class TestBackupRestore(Tester):
         insert_c1c2(session, keys=keys, consistency=ConsistencyLevel.ONE,
                     c1_values=c1_values, c2_values=c2_values)
 
-        def run(name, q):
-            global snapshot_failed
-
-            debug("Starting a snapshot...")
-            try:
-                q.put(True)
-                node1.nodetool('snapshot -t testsnapshot')
-                debug("Snapshot done")
-            except:
-                debug("Snapshot has failed")
-
-        queue = Queue()
-        snapshot_thread = threading.Thread(target=run, args=("Thread-1", queue))
-        snapshot_thread.start()
-        random.seed()
-        wait_time = random.random()
-
-        queue.get(block=True)
-
-        debug("Wait for {} seconds".format(wait_time))
-        time.sleep(wait_time)
-
-        debug("Killing node1...")
-        node1.stop(gently=False)
-
-        snapshot_thread.join()
+        debug("Taking a snapshot...")
+        self.start_nodetool_and_kill_node(node1, "snapshot -t testsnapshot")
 
         debug("Restarting node1...")
         node1.start(wait_for_binary_proto=True)
