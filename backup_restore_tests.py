@@ -133,10 +133,9 @@ class TestBackupRestore(Tester):
         # with the new one.
         #
         # Since we can't get a UUID of the cf we will just look for the
-        # directory with sstables.
+        # CF directory without a snapshot we've created.
         #
-        cf_dir = self.get_cf_dir(ks_dir)
-
+        cf_dir = self.get_non_snapshot_cf_dir(ks_dir, snapshot_name)
         debug("Column family directory is {}".format(cf_dir))
 
         debug("Removing sstables...")
@@ -171,14 +170,12 @@ class TestBackupRestore(Tester):
 
         return None
 
-    def get_cf_dir(self, ks_dir):
-        p = re.compile('ks-cf-*')
+    # Return the first CF directory that doesn't have a snapshot with a given tag
+    def get_non_snapshot_cf_dir(self, ks_dir, snapshotname):
         for root, dirs, files in os.walk(ks_dir):
             for d in dirs:
-                cur_dir = os.path.join(root, d)
-                for f in os.listdir(cur_dir):
-                    if p.match(f):
-                        return cur_dir
+                if not os.path.isdir(os.path.join(root, d, 'snapshots', snapshotname)):
+                    return os.path.join(root, d)
             break
 
         return None
