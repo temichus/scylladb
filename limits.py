@@ -112,3 +112,36 @@ class TestLimits(Tester):
 
         c= "insert into ks.test1  (%s blub) values (%s 1);" % (keys, values)
         session.execute(c)
+
+    def max_tuple_test(self):
+        cluster = self.prepare()
+        cluster.populate(1).start()
+        node1 = cluster.nodelist()[0]
+
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 1)
+
+        count = 32768
+
+        t = ""
+        v = ""
+        for i in range(count):
+            t += "int, "
+            v += "1, "
+        t = t[:-2]
+        v = v[:-2]
+
+        c = """
+            CREATE TABLE stuff (
+              k int PRIMARY KEY,
+              v frozen<tuple<%s>>
+            );
+            """ % (t)
+        session.execute(c)
+
+        c= "INSERT INTO stuff (k, v) VALUES(0, (%s));" % (v)
+        session.execute(c)
+
+        c= "SELECT * FROM STUFF;"
+        res = session.execute(c)
+        self.assertEqual(len(res), 1)
