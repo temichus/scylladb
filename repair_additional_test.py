@@ -10,6 +10,7 @@ from ccmlib.node import NodetoolError
 import time
 import tempfile
 import os
+import threading
 
 
 class RepairAdditionalTest(Tester):
@@ -820,6 +821,74 @@ class RepairAdditionalTest(Tester):
         session = self.patient_cql_connection(node4, 'ks')
         self.assertEqual(len(session.execute("SELECT * from cf")), 1, "cf on node4")
 
+    def repair_multiple_test(self, more_options=[]):
+        """
+        Starting multiple repairs in parallel from multiple nodes (without
+        "-pr") is a waste, but besides being wasteful, should not cause any
+        harm, and should produce correct results.
+        """
+        # Disable hinted handoff so it doesn't do what we expect repair to do
+        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        # Create a cluster of 3 nodes, and a keyspace with RF=3 on all nodes
+        # (disable read repair, as we want to test the full repair).
+        self.cluster.populate(3).start()
+        node1, node2, node3 = self.cluster.nodelist()
+        session = self.patient_cql_connection(node1);
+        self.create_ks(session, 'ks', 3);
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'});
+
+        # Insert 1000 keys *only* on node 1, another 1000 keys *only* on node 2,
+        # another 1000 *only on node 3:
+        debug("Adding data only on node 1...");
+        node2.flush()
+        node2.stop(wait_other_notice=True)
+        node3.flush()
+        node3.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node1, 'ks')
+        insert_c1c2(session, keys=range(1000, 2000), consistency=ConsistencyLevel.ONE)
+        self.cluster.flush()
+        debug("Adding data only on node 2...")
+        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+        node1.flush()
+        node1.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node2, 'ks')
+        insert_c1c2(session, keys=range(2000, 3000), consistency=ConsistencyLevel.ONE)
+        debug("Adding data only on node 3...")
+        node3.start(wait_other_notice=True, wait_for_binary_proto=True)
+        node2.flush()
+        node2.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node3, 'ks')
+        insert_c1c2(session, keys=range(3000, 4000), consistency=ConsistencyLevel.ONE)
+
+        # Bring up all 3 nodes, each should have different data
+        node1.start(wait_other_notice=True, wait_for_binary_proto=True)
+        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+
+        # Run repair on all three nods in parallel
+        thread1 = threading.Thread(target=lambda: node1.repair(more_options + ['ks']))
+        thread2 = threading.Thread(target=lambda: node2.repair(more_options + ['ks']))
+        thread3 = threading.Thread(target=lambda: node3.repair(more_options + ['ks']))
+        thread1.start()
+        thread2.start()
+        thread3.start()
+        thread1.join()
+        thread2.join()
+        thread3.join()
+
+        # Check that all nodes have all data
+        self.check_rows_on_node(node1, 3000)
+        self.check_rows_on_node(node2, 3000)
+        self.check_rows_on_node(node3, 3000)
+
+    def repair_multiple_pr_test(self):
+        """
+        If a user plans to start repair from multiple nodes in parallel, he
+        should at least use the "-pr" (partitioner range) option to avoid
+        the waste of repairing the same data multiple times. Let's check that
+        this actually works.
+        """
+        self.repair_multiple_test(['-pr'])
+
     def repair_option_par_test(self):
         """
         Test that the "-par" repair options works. In Scylla, it doesn't
@@ -1042,23 +1111,6 @@ class RepairAdditionalTest(Tester):
         6. Start repair
         7. Decomission node 3
         8. Stop node 1 - does node 2 hold all the data
-        """
-        fail
-
-    @skip ('unimplemented')
-    def test_multiple_repair_test(self):
-        """
-        Check that repair is accompilshed when multiple repairs are initiated in parallel
-        1. Create a cluster of 3 nodes with rf=3
-        2. Insert data
-        3. Stop node 2
-        4. Insert data
-        5. Stop node 3
-        6. Insert data
-        7. Start node 2, Start node 3
-        8. Start repair on node 2, node 3
-        9. Stop node 1,node 3 - does node 2 hold all the data
-        10. Stop node 1,node 2 - does node 3 hold all the data
         """
         fail
 
