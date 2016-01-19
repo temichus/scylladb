@@ -201,6 +201,92 @@ class TestCommitLog(Tester):
         self.assertItemsEqual(rows_to_list(res),
                               [[u'gandalf', 1955, u'male', u'p@$$', u'WA']])
 
+    def test_commitlog_replay_with_alter_table(self):
+        """
+        Test commit log replay with alter table
+        The goal of the test is to verify that commitlog replay works correctly even if the commitlog contains
+        mutations written using old versions of the schema.
+        Based on test_commitlog_replay_on_startup
+        """
+
+        node1 = self.node1
+        node1.set_configuration_options(batch_commitlog=True, values={'experimental': True})
+        node1.start()
+
+        debug("Create table")
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'Test', 1)
+        session.execute("""
+            CREATE TABLE cf (
+                pk1 int,
+                ck1 int,
+                r2 int,
+                r3 text,
+                r5 set<int>,
+                PRIMARY KEY(pk1, ck1)
+            );
+        """)
+
+        debug("Insert some data")
+        session.execute("INSERT INTO Test.cf (pk1, ck1, r2, r3, r5) VALUES(0, 9, 8, 'seven', {6, 5});")
+        session.execute("INSERT INTO Test.cf (pk1, ck1, r3) VALUES(0, 8, 'eight');")
+
+        debug("Flush")
+        self.cluster.flush()
+
+        debug("Insert more data and alter table")
+        session.execute("INSERT INTO Test.cf (pk1, ck1, r2, r3, r5) VALUES(0, 0, 1, 'two', {3, 4});")
+        session.execute("ALTER TABLE Test.cf ADD r1 int;")
+        session.execute("INSERT INTO Test.cf (pk1, ck1, r1, r2, r3, r5) VALUES(0, 1, 2, 3, 'four', {5, 6, 7});")
+        session.execute("ALTER TABLE Test.cf DROP r2;")
+        session.execute("INSERT INTO Test.cf (pk1, ck1, r1, r3) VALUES(0, 2, 3, 'four');")
+        session.execute("ALTER TABLE Test.cf DROP r5;")
+        session.execute("ALTER TABLE Test.cf ADD r2 varint;")
+        session.execute("ALTER TABLE Test.cf ADD r4 int;")
+        session.execute("INSERT INTO Test.cf (pk1, ck1, r2, r4) VALUES(0, 0, 99, 999);")
+
+        debug("Verify data is present")
+        session = self.patient_cql_connection(node1)
+        res = session.execute("SELECT * FROM Test.cf")
+        self.assertItemsEqual(rows_to_list(res),
+                              [
+                               [0, 0, None, 99, u'two', 999],
+                               [0, 1, 2, None, u'four', None],
+                               [0, 2, 3, None, u'four', None],
+                               [0, 8, None, None, u'eight', None],
+                               [0, 9, None, None, u'seven', None],
+                              ])
+
+        debug("Stop node abruptly")
+        node1.stop(gently=False)
+
+        debug("Verify commitlog was written before abrupt stop")
+        commitlog_dir = os.path.join(node1.get_path(), 'commitlogs')
+        commitlog_files = os.listdir(commitlog_dir)
+        self.assertTrue(len(commitlog_files) > 0)
+
+        debug("Verify commitlog was replayed on startup")
+        node1.start()
+        node1.watch_log_for("Starting listening for CQL clients")
+        replays = node1.grep_log(" (\d+) replayed mutations")
+        self.assertGreater(len(replays), 0)
+        replayed_mutations = 0
+        for line, m in replays:
+            replayed_mutations += int(m.group(1))
+        self.assertGreaterEqual(replayed_mutations, 4)
+
+        debug("Make query and ensure data is present")
+        session = self.patient_cql_connection(node1)
+        res = session.execute("SELECT * FROM Test.cf")
+        self.assertItemsEqual(rows_to_list(res),
+                              [
+                               [0, 0, None, 99, u'two', 999],
+                               [0, 1, 2, None, u'four', None],
+                               [0, 2, 3, None, u'four', None],
+                               [0, 8, None, None, u'eight', None],
+                               [0, 9, None, None, u'seven', None],
+                              ])
+
     def default_segment_size_test(self):
         """ Test default commitlog_segment_size_in_mb (32MB) """
 
