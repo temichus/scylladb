@@ -1,19 +1,15 @@
-import threading
-import time
-import random
 import os
+import random
 import re
 import shutil
+import threading
+import time
 from Queue import Queue
 
-from cassandra import Unavailable,ConsistencyLevel
+from cassandra import ConsistencyLevel
 from cassandra.query import SimpleStatement
-from cassandra.cluster import NoHostAvailable
-from ccmlib.node import NodeError
-from cassandra.concurrent import execute_concurrent_with_args
 
 from dtest import Tester, debug
-from tools import new_node
 from scylla_tools import insert_c1c2, query_c1c2_concurrent
 
 class TestBackupRestore(Tester):

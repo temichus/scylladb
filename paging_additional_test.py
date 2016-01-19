@@ -1,15 +1,9 @@
-import time
 import uuid
-from unittest import skip
 
 from cassandra import ConsistencyLevel as CL
-from cassandra import InvalidRequest, ReadTimeout, ReadFailure
-from cassandra.query import SimpleStatement, dict_factory, named_tuple_factory
+from cassandra.query import SimpleStatement
 
-from assertions import assert_invalid
-from datahelp import create_rows, flatten_into_set, parse_data_into_dicts
-from tools import require, since
-
+from datahelp import create_rows
 from paging_test import PageFetcher, BasePagingTester, PageAssertionMixin
 
 class TestAggregatePaging(BasePagingTester, PageAssertionMixin):
