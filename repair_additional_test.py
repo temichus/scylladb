@@ -960,6 +960,12 @@ class RepairAdditionalTest(Tester):
             else:
                 node2.start(wait_other_notice=True, wait_for_binary_proto=True)
 
+        # dtest.py, when the test is over, checks if there have been any
+        # "ERROR" messages in the log, and if there have, it fails the test.
+        # But in this test, "ERROR" messages are expected (e.g., errors about
+        # failing parts of the repair), and we just want to ignore them.
+        self.allow_log_errors = True
+
     def repair_kill_2_test(self):
         """
         Killing a participant (non-master) of a repair stops the repair with
