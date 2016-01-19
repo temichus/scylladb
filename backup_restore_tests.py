@@ -4,6 +4,7 @@ import shutil
 import threading
 import time
 from Queue import Queue
+from tools import new_node
 
 from cassandra import ConsistencyLevel
 from cassandra.query import SimpleStatement
@@ -322,6 +323,84 @@ class TestBackupRestore(Tester):
 
         debug("Checking rows on node1...")
         self.check_rows_on_node(node1, num_keys, found=keys, c1_values=c1_values, c2_values=c2_values)
+
+    def restore_snapshot_using_old_token_ownership(self):
+        """
+        Check that we can restore snapshot files that use a non updated token ownership
+
+        1. Use a single node and create a keyspace + table
+        2. Insert data
+        3. Create snapshot and save files
+        4. Add an additional node
+        5. Drop keyspace
+        6. Create keyspace + table
+        7. Restore data
+        8. Check that all data exists
+        """
+        cluster       = self.cluster
+        snapshot_name = 'testsnapshot'
+        num_keys      = 1000
+        c1_values     = map(lambda x: '{}'.format(x), range(num_keys))
+        c2_values     = map(lambda x: '{}'.format(x), range(num_keys, 2 * num_keys))
+        keys          = range(num_keys)
+
+        # Disable hinted handoff and set batch commit log so this doesn't
+        # interfere with the test (this must be after the populate)
+        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        debug("Starting a cluster of one node...")
+        cluster.populate(1).start()
+        node1 = cluster.nodelist()[0]
+
+        debug("Creating a CQL connection...")
+        session = self.patient_cql_connection(node1)
+
+        debug("Creating a keyspace 'ks'...")
+        self.create_ks(session, 'ks', 1)
+
+        debug("Creating a column family 'cf'...")
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+
+        debug("Inserting concurrently {} keys...".format(num_keys))
+        insert_c1c2(session, keys=keys, consistency=ConsistencyLevel.ONE,
+                    c1_values=c1_values, c2_values=c2_values)
+
+        debug("Creating a snapshot...")
+        node1.nodetool('snapshot -t {} -cf cf -- ks'.format(snapshot_name))
+
+        snapshot_dir = self.get_snapshot_dir(snapshot_name)
+        self.assertTrue(snapshot_dir is not None, "Can't find a snapshot directory for {}".format(snapshot_name))
+        debug("Snapshot dir is {}".format(snapshot_dir))
+
+        debug("Staring a new node (node2)...")
+        node2 = new_node(cluster)
+        node2.start(wait_for_binary_proto=True, wait_other_notice=True)
+
+        debug("Dropping a keyspace...")
+        session.execute(SimpleStatement("DROP KEYSPACE ks"))
+
+        debug("Creating the same keyspace.table...")
+        self.create_ks(session, 'ks', 1)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+
+        debug("Flushing a keyspace...")
+        node1.nodetool("flush -- ks")
+
+        ks_dir = os.path.join(self.test_path, 'test', 'node1', 'data', 'ks')
+        cf_dir = self.get_non_snapshot_cf_dir(ks_dir, snapshot_name)
+        debug("Column family directory is {}".format(cf_dir))
+
+        debug("Removing sstables...")
+        self.delete_cf_sstables(cf_dir)
+
+        debug("Copy sstables from the snapshot...")
+        for f in os.listdir(snapshot_dir):
+            shutil.copy2(os.path.join(snapshot_dir, f), os.path.join(cf_dir, f))
+
+        debug("Running 'nodetool refresh -- ks cf'")
+        node1.nodetool("refresh -- ks cf")
+
+        debug("Check that we may query ks.cf on node1...")
+        session.execute(SimpleStatement("SELECT COUNT(*) FROM ks.cf"))
 
 ########################## Helper functions ####################################
 
