@@ -167,3 +167,4 @@ topology_test.py:TestTopology.move_single_node_test
 repair_test.py
 repair_additional_test.py
 replace_address_test.py
+schema_test.py

@@ -21,7 +21,7 @@ from tools import debug, require, rows_to_list, since
 
 class CQLTester(Tester):
 
-    def prepare(self, ordered=False, create_keyspace=True, use_cache=False, nodes=1, rf=1, protocol_version=None, user=None, password=None, **kwargs):
+    def prepare(self, ordered=False, create_keyspace=True, use_cache=False, nodes=1, rf=1, protocol_version=None, user=None, password=None, experimental=False, **kwargs):
         cluster = self.cluster
 
         if (ordered):
@@ -33,6 +33,9 @@ class CQLTester(Tester):
         start_rpc = kwargs.pop('start_rpc', False)
         if start_rpc:
             cluster.set_configuration_options(values={'start_rpc': True})
+
+        if experimental:
+            cluster.set_configuration_options(values={'experimental': True})
 
         if user:
             config = {'authenticator': 'org.apache.cassandra.auth.PasswordAuthenticator',
@@ -77,12 +80,11 @@ class StorageProxyCQLTester(CQLTester):
         session.execute("DROP KEYSPACE ks")
         assert_invalid(session, "USE ks", expected=InvalidRequest)
 
-    @skip('Scylla does not support ALTER TABLE')
     def table_test(self):
         """
         CREATE TABLE, ALTER TABLE, TRUNCATE TABLE, DROP TABLE statements
         """
-        session = self.prepare()
+        session = self.prepare(experimental=True)
 
         session.execute("CREATE TABLE test1 (k int PRIMARY KEY, v1 int)")
         session.execute("CREATE TABLE test2 (k int, c1 int, v1 int, PRIMARY KEY (k, c1)) WITH COMPACT STORAGE")
@@ -300,7 +302,7 @@ class MiscellaneousCQLTester(CQLTester):
         res = session.execute("SELECT * FROM test")
         assert rows_to_list(res) == [[2, 4, 8]], res
 
-    @skip('Scylla does not support ALTER TABLE')
+    @skip('system_add_column_family() fails with: TApplicationException: sorry, not implemented')
     def rename_test(self):
         session = self.prepare(start_rpc=True)
 
@@ -343,12 +345,11 @@ class MiscellaneousCQLTester(CQLTester):
         except ProtocolException as e:
             self.assertTrue("Cannot decode string as UTF8" in str(e))
 
-    @skip('Scylla does not support ALTER TABLE')
     def prepared_statement_invalidation_test(self):
         """
         @jira_ticket CASSANDRA-7910
         """
-        session = self.prepare()
+        session = self.prepare(experimental=True)
 
         session.execute("CREATE TABLE test (k int PRIMARY KEY, a int, b int, c int)")
         session.execute("INSERT INTO test (k, a, b, c) VALUES (0, 0, 0, 0)")
