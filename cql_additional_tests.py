@@ -37,7 +37,7 @@ from tools import since
 @canReuseCluster
 class TestCQL(Tester):
 
-    def prepare(self, ordered=False, create_keyspace=True, use_cache=False, nodes=1, rf=1, protocol_version=None, **kwargs):
+    def prepare(self, ordered=False, create_keyspace=True, use_cache=False, nodes=1, rf=1, protocol_version=None, experimental=False, **kwargs):
         cluster = self.cluster
 
         if (ordered):
@@ -45,6 +45,9 @@ class TestCQL(Tester):
 
         if (use_cache):
             cluster.set_configuration_options(values={'row_cache_size_in_mb': 100})
+
+        if experimental:
+            cluster.set_configuration_options(values={'experimental': True})
 
         start_rpc = kwargs.pop('start_rpc', False)
         if start_rpc:
@@ -961,7 +964,7 @@ class TestCQL(Tester):
 
     def invalid_old_property_test(self):
         """ Check obsolete properties from CQL2 are rejected """
-        session = self.prepare()
+        session = self.prepare(experimental=True)
 
         assert_invalid(session, "CREATE TABLE test (foo text PRIMARY KEY, c int) WITH default_validation=timestamp", expected=SyntaxException)
 
@@ -1255,7 +1258,7 @@ class TestCQL(Tester):
         assert rows_to_list(res) == [[inOrder[x]] for x in range(32, 65)], "%s [all: %s]" % (str(res), str(inOrder))
 
     def table_options_test(self):
-        session = self.prepare()
+        session = self.prepare(experimental=True)
 
         session.execute("""
             CREATE TABLE test (
@@ -1729,7 +1732,7 @@ class TestCQL(Tester):
 
     def update_type_test(self):
         """ Test altering the type of a column, including the one in the primary key (#4041) """
-        session = self.prepare()
+        session = self.prepare(experimental=True)
 
         session.execute("""
             CREATE TABLE test (
@@ -2686,7 +2689,7 @@ class TestCQL(Tester):
         Test you can add columns in a table with collections. Regression test
         for CASSANDRA-4982.
         """
-        session = self.prepare()
+        session = self.prepare(experimental=True)
 
         session.execute("CREATE TABLE collections (key int PRIMARY KEY, aset set<text>)")
         session.execute("ALTER TABLE collections ADD c text")
@@ -3031,7 +3034,7 @@ class TestCQL(Tester):
         """
         @jira_ticket CASSANDRA-5232
         """
-        session = self.prepare()
+        session = self.prepare(experimental=True)
 
         session.execute("CREATE TABLE t1 (id int PRIMARY KEY, t text);")
 
@@ -3616,7 +3619,7 @@ class TestCQL(Tester):
 
     @since('2.0')
     def static_columns_test(self):
-        session = self.prepare()
+        session = self.prepare(experimental=True)
 
         session.execute("""
             CREATE TABLE test (
@@ -4443,7 +4446,7 @@ class TestCQL(Tester):
         assert_invalid(session, "INSERT INTO test(k, v) VALUES (0, blobAsInt(0x01))")
 
     def alter_clustering_and_static_test(self):
-        session = self.prepare()
+        session = self.prepare(experimental=True)
 
         session.execute("CREATE TABLE foo (bar int, PRIMARY KEY (bar))")
 
@@ -4454,7 +4457,7 @@ class TestCQL(Tester):
         """
         @jira_ticket CASSANDRA-6276
         """
-        session = self.prepare()
+        session = self.prepare(experimental=True)
 
         session.execute("create table test (k int primary key, v set<text>, x int)")
         session.execute("insert into test (k, v) VALUES (0, {'fffffffff'})")
@@ -4466,7 +4469,7 @@ class TestCQL(Tester):
         """
         @jira_ticket CASSANDRA-7744
         """
-        session = self.prepare()
+        session = self.prepare(experimental=True)
 
         session.execute("create table test (k int primary key, v set<text>)")
         session.execute("insert into test (k, v) VALUES (0, {'f'})")
