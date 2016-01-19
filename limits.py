@@ -1,24 +1,30 @@
 from dtest import Tester
 
 # Those are ideal values according to c* specifications
-# MAX_KEY_SIZE = 65506
-# MAX_BLOB_SIZE = (1024*1024*1024*1-1)
-# MAX_COLUMNS = 65535
-# MAX_TUPLES = 32768
-# MAX_BATCH_SIZE = 65535
-# MAX_CELLS_COLUMNS = 32768
-# MAX_CELLS_BATCH_SIZE = 1000
-# MAX_CELLS = (2*1024*1024*1024-1)
+# they should pass
+
+LIMIT_64_K = 64 * 1024 - 1
+LIMIT_32K = 32 * 1024 - 1
+LIMIT_2GB = 2 * 1024 * 1024 * 1024 -1
+
+MAX_KEY_SIZE = LIMIT_64_K
+MAX_BLOB_SIZE = LIMIT_2GB
+MAX_COLUMNS = LIMIT_64_K
+MAX_TUPLES = LIMIT_32K
+MAX_BATCH_SIZE = LIMIT_64_K
+MAX_CELLS_COLUMNS = LIMIT_32K
+MAX_CELLS_BATCH_SIZE = LIMIT_64_K
+MAX_CELLS = LIMIT_2GB
 
 # Those are value use to validate the tests code
-MAX_KEY_SIZE = 1000
-MAX_BLOB_SIZE = 1000
-MAX_COLUMNS = 1000
-MAX_TUPLES = 1000
-MAX_BATCH_SIZE = 1000
-MAX_CELLS_COLUMNS = 100
-MAX_CELLS_BATCH_SIZE = 100
-MAX_CELLS = 1000
+#MAX_KEY_SIZE = 1000
+#MAX_BLOB_SIZE = 1000
+#MAX_COLUMNS = 1000
+#MAX_TUPLES = 1000
+#MAX_BATCH_SIZE = 1000
+#MAX_CELLS_COLUMNS = 100
+#MAX_CELLS_BATCH_SIZE = 100
+#MAX_CELLS = 1000
 
 class TestLimits(Tester):
 
@@ -174,7 +180,7 @@ class TestLimits(Tester):
         self.create_ks(session, 'ks', 1)
 
         # in the future embed a blob in this
-        # so the batch will be 2GB
+        # so the batch will be 64K
         c = """
             CREATE TABLE stuff (
               k int PRIMARY KEY,
