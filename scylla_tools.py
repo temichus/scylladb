@@ -1,7 +1,6 @@
 from cassandra import ConsistencyLevel
 from cassandra.concurrent import execute_concurrent_with_args
 from cassandra.query import SimpleStatement
-from dtest import debug
 
 def insert_c1c2(session, keys=None, n=None, consistency=ConsistencyLevel.QUORUM, c1_values=None, c2_values=None):
     if (keys is None and n is None) or (keys is not None and n is not None):
