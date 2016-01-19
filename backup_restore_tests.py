@@ -240,6 +240,91 @@ class TestBackupRestore(Tester):
         debug("Checking rows on node1...")
         self.check_rows_on_node(node1, num_keys, found=keys, c1_values=c1_values, c2_values=c2_values)
 
+    def restore_snapshot_using_different_smp_setting(self):
+        """
+        Check that we can restore snapshot files that used a different smp setting
+
+        1. Use a single node with smp=1 and create a keyspace + table
+        2. Insert data
+        3. Create snapshot and save files
+        4. Drop keyspace
+        5. Stop node, start it with smp=2
+        6. Create keyspace + table
+        7. Restore data
+        8. Check that all data exists
+        """
+        cluster       = self.cluster
+        snapshot_name = 'testsnapshot'
+        num_keys      = 1000
+        c1_values     = map(lambda x: '{}'.format(x), range(num_keys))
+        c2_values     = map(lambda x: '{}'.format(x), range(num_keys, 2 * num_keys))
+        keys          = range(num_keys)
+
+        # Disable hinted handoff and set batch commit log so this doesn't
+        # interfere with the test (this must be after the populate)
+        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        debug("Starting a cluster of one node on a single core...")
+        cluster.populate(1).start(jvm_args=['--smp', '1'])
+        node1 = cluster.nodelist()[0]
+
+        debug("Creating a CQL connection...")
+        session = self.patient_cql_connection(node1)
+
+        debug("Creating a keyspace 'ks'...")
+        self.create_ks(session, 'ks', 1)
+
+        debug("Creating a column family 'cf'...")
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+
+        debug("Inserting concurrently {} keys...".format(num_keys))
+        insert_c1c2(session, keys=keys, consistency=ConsistencyLevel.ONE,
+                    c1_values=c1_values, c2_values=c2_values)
+
+        debug("Creating a snapshot...")
+        node1.nodetool('snapshot -t {} -cf cf -- ks'.format(snapshot_name))
+
+        snapshot_dir = self.get_snapshot_dir(snapshot_name)
+        self.assertTrue(snapshot_dir is not None, "Can't find a snapshot directory for {}".format(snapshot_name))
+        debug("Snapshot dir is {}".format(snapshot_dir))
+
+        debug("Dropping a keyspace...")
+        session.execute(SimpleStatement("DROP KEYSPACE ks"))
+
+        debug("Stopping the node...")
+        node1.stop(gently=True)
+
+        debug("Starting a node on two cores...")
+        node1.start(wait_for_binary_proto=True, jvm_args=['--smp', '2'])
+
+        debug("Creating a CQL connection...")
+        session = self.patient_cql_connection(node1)
+
+        debug("Creating the same keyspace.table...")
+        self.create_ks(session, 'ks', 1)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+
+        debug("Flushing a keyspace...")
+        node1.nodetool("flush -- ks")
+
+        ks_dir = os.path.join(self.test_path, 'test', 'node1', 'data', 'ks')
+        cf_dir = self.get_non_snapshot_cf_dir(ks_dir, snapshot_name)
+        debug("Column family directory is {}".format(cf_dir))
+
+        debug("Removing sstables...")
+        self.delete_cf_sstables(cf_dir)
+
+        debug("Copy sstables from the snapshot...")
+        for f in os.listdir(snapshot_dir):
+            shutil.copy2(os.path.join(snapshot_dir, f), os.path.join(cf_dir, f))
+
+        debug("Running 'nodetool refresh -- ks cf'")
+        node1.nodetool("refresh -- ks cf")
+
+        debug("Checking rows on node1...")
+        self.check_rows_on_node(node1, num_keys, found=keys, c1_values=c1_values, c2_values=c2_values)
+
+########################## Helper functions ####################################
+
     def delete_cf_sstables(self, cf_dir):
         for f in os.listdir(cf_dir):
             full_name = os.path.join(cf_dir, f)
