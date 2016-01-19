@@ -168,3 +168,7 @@ repair_test.py
 repair_additional_test.py
 replace_address_test.py
 schema_test.py
+backup_restore_tests.py
+limits.py
+commitlog_test.py:TestCommitLog.test_commitlog_replay_with_alter_table
+paging_additional_test.py
