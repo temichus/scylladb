@@ -3,7 +3,7 @@ from dtest import Tester
 # Those are ideal values according to c* specifications
 # MAX_KEY_SIZE = 65506
 # MAX_BLOB_SIZE = (1024*1024*1024*1-1)
-# MAX_COLUMNS = 32768
+# MAX_COLUMNS = 65535
 # MAX_TUPLES = 32768
 # MAX_BATCH_SIZE = 65535
 # MAX_CELLS_COLUMNS = 32768
@@ -105,7 +105,9 @@ class TestLimits(Tester):
 
         self.assertEqual(len(res), 1)
 
-    def max_columns_test(self):
+    # this test colude issue #173 and issue #176
+    # since we do an insert statement
+    def max_columns_and_query_parameters_test(self):
         cluster = self.prepare()
         cluster.populate(1).start()
         node1 = cluster.nodelist()[0]
