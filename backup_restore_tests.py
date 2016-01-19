@@ -1,5 +1,6 @@
 import os
 import random
+import re
 import shutil
 import threading
 import time
@@ -402,7 +403,92 @@ class TestBackupRestore(Tester):
         debug("Check that we may query ks.cf on node1...")
         session.execute(SimpleStatement("SELECT COUNT(*) FROM ks.cf"))
 
+    def incremental_backup(self):
+        """
+        Check that incremetal backup works as expected
+
+        1. Use a single node
+        2. Enable incremental_backup
+        3. Create a keyspace + table
+        4. Insert data
+        5. Check that while sstables are flushed - incremental backups are created
+        6. Run compact - forcing all sstables to be merged
+        7. Check that backups holds all the old files and the new compacted file
+
+        """
+        cluster       = self.cluster
+        num_keys      = 1000
+        c1_values     = map(lambda x: '{}'.format(x), range(num_keys))
+        c2_values     = map(lambda x: '{}'.format(x), range(num_keys, 2 * num_keys))
+        keys          = range(num_keys)
+
+        # Disable hinted handoff and set batch commit log so this doesn't
+        # interfere with the test (this must be after the populate)
+        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        debug("Starting a cluster of one node...")
+        cluster.populate(1).start(jvm_args=['--incremental-backups', '1'])
+        node1 = cluster.nodelist()[0]
+
+        #
+        # 'nodetool enablebackup' doesn't work yet - we'll use command line parameters
+        # for a while.
+        #
+        # debug("Enabling incremental backups...")
+        # node1.nodetool("enablebackup")
+
+        debug("Creating a CQL connection...")
+        session = self.patient_cql_connection(node1)
+
+        debug("Creating a keyspace 'ks'...")
+        self.create_ks(session, 'ks', 1)
+
+        debug("Creating a column family 'cf'...")
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+
+        debug("Inserting concurrently {} keys...".format(num_keys))
+        insert_c1c2(session, keys=keys, consistency=ConsistencyLevel.ONE,
+                    c1_values=c1_values, c2_values=c2_values)
+
+        debug("Flushing...")
+        node1.nodetool("flush -- ks cf")
+
+        ks_dir = os.path.join(self.test_path, 'test', 'node1', 'data', 'ks')
+        cf_dir = self.get_cf_dir(ks_dir, 'cf')
+        debug("'cf' directory is {}".format(cf_dir))
+
+        # Save the names of the current sstable files
+        sstables_files1 = self.get_sstables_files(cf_dir, 'ks', 'cf')
+        debug("sstables before compaction: {}".format(sstables_files1))
+
+        # get the names of files in the 'backups' subdir
+        backups1_files = self.get_sstables_files("{}/backups".format(cf_dir), 'ks', 'cf')
+        debug("backups before compaction: {}".format(backups1_files))
+
+        self.assertEqual(sstables_files1, backups1_files, "backup doesn't contain all sstable files")
+
+        debug("Run a compaction...")
+        node1.compact()
+
+        sstables_files2 = self.get_sstables_files(cf_dir, 'ks', 'cf')
+        debug("sstables after compaction: {}".format(sstables_files2))
+
+        backups2_files = self.get_sstables_files("{}/backups".format(cf_dir), 'ks', 'cf')
+        debug("backups after compaction: {}".format(backups2_files))
+
+        self.assertEqual(sstables_files1 | sstables_files2, backups2_files, "backup after compaction doesn't contain all sstable files")
+
 ########################## Helper functions ####################################
+    def get_sstables_files(self, cf_dir, ks_name, cf_name):
+        """
+        Returns a set of sstable(s) files for a given KS and CF
+        """
+        sstable_pattern = re.compile("{}-{}-".format(ks_name, cf_name))
+        sstables_files = set()
+        for f in os.listdir(cf_dir):
+            if sstable_pattern.match(f):
+                sstables_files.add(f)
+
+        return sstables_files
 
     def delete_cf_sstables(self, cf_dir):
         for f in os.listdir(cf_dir):
@@ -417,6 +503,16 @@ class TestBackupRestore(Tester):
                     return os.path.join(root, name)
 
         return None
+
+    def get_cf_dir(self, ks_dir, cf_name):
+        """
+        Return the first CF directory for a CF with a given name
+        """
+        cf_pattern = re.compile("{}-".format(cf_name))
+        for root, dirs, files in os.walk(ks_dir):
+            for d in dirs:
+                if cf_pattern.match(d):
+                    return os.path.join(root, d)
 
     # Return the first CF directory that doesn't have a snapshot with a given tag
     def get_non_snapshot_cf_dir(self, ks_dir, snapshotname):
