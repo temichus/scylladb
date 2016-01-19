@@ -62,6 +62,73 @@ class TestBatch(Tester):
             APPLY BATCH
             """, matching=err)
 
+    def replay_after_schema_change_test(self):
+        """ Test that logged batch is replayed after schema was changed on the node """
+        ring_delay_sec = 5
+        self.cluster.set_configuration_options(values={
+            'ring_delay_ms': ring_delay_sec * 1000,
+            'experimental': True})
+        self.cluster.populate(3)
+        self.cluster.start(wait_other_notice=True)
+        [node1, node2, node3] = self.cluster.nodelist()
+        session = self.patient_cql_connection(node1)
+
+        debug('Creating schema...')
+        self.create_ks(session, 'ks', 1) # RF=1 so that we're sensitive for node2 missing updates
+        session.execute("""
+            CREATE TABLE users (
+                id int,
+                firstname text,
+                lastname text,
+                PRIMARY KEY (id)
+             );
+         """)
+
+        names = ['k%d' % (i) for i in range(100)]
+
+        st = SimpleStatement(
+           """
+            BEGIN BATCH
+            %s
+            APPLY BATCH
+            """ % ('\n'.join("INSERT INTO users (id, firstname, lastname) VALUES (%s, '%s', '%s')" % (i, name, name) for i, name in enumerate(names))),
+            consistency_level=ConsistencyLevel.ALL)
+
+        debug("Killing node2 so that batch fails")
+        node2.stop(gently=False)
+
+        try:
+            debug("Executing the batch")
+            session.execute(st, timeout=4)
+            raise Exception("Should have failed")
+        except:
+            debug("Execute failed") # expected
+
+        debug("Altering schema")
+        session.execute("ALTER TABLE users add aa int;")
+
+        debug("Killing all other nodes so that they won't remember old schema during replay")
+        node1.flush()
+        node1.stop(gently=False)
+        node3.flush()
+        node3.stop(gently=False)
+
+        debug("Starting all nodes")
+        node1.start(wait_for_binary_proto=True)
+        node2.start(wait_for_binary_proto=True)
+        node3.start(wait_for_binary_proto=True)
+
+        debug("Waiting for batch replay")
+        time.sleep(4) # batchlog replay timeout
+        time.sleep(60) # batchlog_manager::replay_interval
+
+        rows = session.execute("SELECT * FROM users")
+        res = sorted(rows)
+        assert len(res) == len(names), res
+        for i, name in enumerate(names):
+            expected = [i, None, name, name]
+            assert list(res[i]) == expected, "Expected %s, got %s" % (expected, res[i])
+
     def logged_batch_accepts_regular_mutations_test(self):
         """ Test that logged batch accepts regular mutations """
         session = self.prepare()
