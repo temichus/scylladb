@@ -1100,6 +1100,28 @@ class RepairAdditionalTest(Tester):
         with self.assertRaises(NodetoolError):
             node2.repair(['ks'])
 
+    def repair_with_down_nodes_2_test(self, more_options=[]):
+        """
+        Test that a repair fails when one of the replicas of one of the ranges
+        being repaired is missing. The fact that another replica does exist is
+        not enough.
+        """
+        # Start a cluster of 4 nodes, and create a keyspace with RF=3, and
+        # an empty table. We don't need any data in the table to check whether
+        # repair complains about the missing neighbors.
+        self.cluster.populate(4).start()
+        node1, node2, node3, node4 = self.cluster.nodelist()
+        session = self.patient_cql_connection(node1);
+        self.create_ks(session, 'ks', 3);
+        self.create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'});
+
+        # Bring down node 3, and start repair on node 2. Note that because we
+        # have 4 nodes and RF=3, 2/3rds of the vnodes in node 2 will have the
+        # dead node 3 as one of their replicas.
+        node3.stop(wait_other_notice=True)
+        with self.assertRaises(NodetoolError):
+            node2.repair(['ks'])
+
     @skip ('unimplemented')
     def repair_of_cluster_all_nodes_are_out_of_sync(self):
         """
