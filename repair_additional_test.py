@@ -1023,6 +1023,62 @@ class RepairAdditionalTest(Tester):
         debug(match)
         self.assertEqual(len(match), 0)
 
+    def repair_during_update_test(self, more_options=[]):
+        """
+        Test that a repair works correctly in parallel with data being
+        updated: We set up a cluster of two replicas with different data,
+        and run a repair on it in parallel with adding more data to both
+        nodes - and verify that at the end both nodes have all the data.
+        """
+        # Start a cluster of two nodes, and create a keyspace with RF=2, and
+        # a table with one partition. Hinted handoff and read repair are disabled
+        # so they don't fix the problems which repair is supposed to fix.
+        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        self.cluster.populate(2).start()
+        node1, node2 = self.cluster.nodelist()
+        session = self.patient_cql_connection(node1);
+        self.create_ks(session, 'ks', 2);
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'});
+
+        # Insert 10000 keys *only* on node 1, another 10000 keys *only* on node 2:
+        node2.flush()
+        node2.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node1, 'ks')
+        insert_c1c2(session, keys=range(0, 10000), consistency=ConsistencyLevel.ONE)
+        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+        node1.flush()
+        node1.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node2, 'ks')
+        insert_c1c2(session, keys=range(10000, 20000), consistency=ConsistencyLevel.ONE)
+        node1.start(wait_other_notice=True, wait_for_binary_proto=True)
+
+        # Run repair on node 1 in the background
+        def do_repair():
+            try:
+                info = node1.repair(['ks'])
+                debug(info[0])
+                debug(info[1])
+            except (NodetoolError):
+                pass
+        thread1 = threading.Thread(target=do_repair)
+        thread1.start()
+
+        # In parallel with the repair, for as long as it doesn't finish,
+        # we write more data to both nodes
+        original_count = 20000
+        count = original_count
+        session = self.patient_cql_connection(node1, 'ks')
+        while thread1.is_alive():
+            prev_count = count
+            count = count + 1000
+            insert_c1c2(session, keys=range(prev_count, count), consistency=ConsistencyLevel.TWO)
+        debug("wrote %d partitions in parallel with repair" % (count - original_count))
+        thread1.join()
+
+        # Check that all nodes have all data
+        self.check_rows_on_node(node1, count)
+        self.check_rows_on_node(node2, count)
+
     @skip ('unimplemented')
     def repair_of_cluster_all_nodes_are_out_of_sync(self):
         """
