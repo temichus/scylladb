@@ -1100,6 +1100,100 @@ class RepairAdditionalTest(Tester):
         with self.assertRaises(NodetoolError):
             node2.repair(['ks'])
 
+    def repair_with_down_nodes_1a_test(self, more_options=[]):
+        """
+        When we have 3 nodes with RF=2, bring down one of the nodes and
+        start repair on another. This repair will fail because for some of
+        the vnodes, its second replica is the dead node. However, the
+        purpose of this test is to verify that beyond the repair failing,
+        it actually repairs what we could repair - i.e., data in vnodes
+        replicated only in the live nodes. When the dead node later is
+        brought back up, and repair is started on it, the entire cluster
+        will become repaired and have all the partitions.
+        Note that had the first repair done nothing, the second repair would
+        not have been enough, because the second repair only repairs the
+        token ranges held by one node - and these are not all the ranges.
+        """
+        # Start a cluster of 3 nodes, and a keyspace with RF=2, and a table.
+        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        self.cluster.populate(3).start()
+        node1, node2, node3 = self.cluster.nodelist()
+        session = self.patient_cql_connection(node1);
+        self.create_ks(session, 'ks', 2);
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'});
+        # We want to put different data on node 1 and on node 2 so repair
+        # of these nodes has something to do. We can't write specific
+        # partitions specifically to node 1 directly because on 3 nodes with
+        # RF=2, node 1 only carries part of the token ranges! So we need to
+        # write to pairs of nodes - the pair 1&3 and the pair 2&3.
+        node2.flush()
+        node2.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node1, 'ks')
+        insert_c1c2(session, keys=range(0, 1000), consistency=ConsistencyLevel.ONE)
+        # let ConsistencyLevel.ONE delayed replication succeed (to node 3) or
+        # timeout (to node 2)
+        time.sleep(10)
+
+        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+        node1.flush()
+        node1.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node2, 'ks')
+        insert_c1c2(session, keys=range(1000, 2000), consistency=ConsistencyLevel.ONE)
+        time.sleep(10)
+
+        node1.start(wait_other_notice=True, wait_for_binary_proto=True)
+
+        # Shut down node 3, and start repair on node 2. Note that because we
+        # have 3 nodes and RF=2, half of the vnodes in node 2 will have as
+        # their only other replica the dead node 3, so the repair is supposed
+        # to fail (this was also tested by the previous test function).
+        # But the other half of the vnodes to have their other replica alive
+        # (node 1), and may be repaired by the repair command.
+        node3.flush()
+        node3.stop(wait_other_notice=True)
+
+        # Before the repair, doing SELECT * will return *around* (but not
+        # exactly!) 1000 partitions. We can't check it because it's not
+        # exactly 1000.
+        session = self.patient_cql_connection(node2, 'ks')
+        result = session.execute("SELECT * from cf")
+        debug(len(result))
+
+        with self.assertRaises(NodetoolError):
+            node2.repair(['ks'])
+
+        # Check whether despite node 3 being down and the repair failing,
+        # the vnodes whose replicas are node 1 and 2 (these are one half of
+        # the data on node 2) could have been repaired. Unfortunately, we
+        # cannot do a "SELECT *" on just node 2 because it is missing some
+        # of the ranges. So we need to run the query with both node 1 and 2
+        # alive (we can't be sure which of these will be queried, but we
+        # assume that after a repair they will have the same data for
+        # ranges they both own).
+        # Despite the above repair failing, it did something. We will now
+        # see about 1300 partitions in the following query. But we can't
+        # check this number because it is not exact.
+        session = self.patient_cql_connection(node2, 'ks')
+        result = session.execute("SELECT * from cf")
+        debug(len(result))
+
+        # Bring up also node 3. Trying "SELECT *" again will still not show
+        # all 2000 partitions, because we still have different data in node 3
+        # and node 2 because node 3 was down during the above repair.
+        node3.start(wait_other_notice=True, wait_for_binary_proto=True)
+        session = self.patient_cql_connection(node2, 'ks')
+        result = session.execute("SELECT * from cf")
+        debug(len(result))
+
+        # Repair node 3's ranges. This will not repair the ranges held only
+        # by node 1 and 2, but we were hoping that the failed repair above
+        # already did this. So after this additional repair, so should finally
+        # have the full 2000 partitions.
+        node3.repair(['ks'])
+        session = self.patient_cql_connection(node2, 'ks')
+        result = session.execute("SELECT * from cf")
+        self.assertEqual(len(result), 2000)
+
     def repair_with_down_nodes_2_test(self, more_options=[]):
         """
         Test that a repair fails when one of the replicas of one of the ranges
