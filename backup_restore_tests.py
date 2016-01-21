@@ -477,6 +477,62 @@ class TestBackupRestore(Tester):
 
         self.assertEqual(sstables_files1 | sstables_files2, backups2_files, "backup after compaction doesn't contain all sstable files")
 
+    def restore_snapshot_from_cassandra(self):
+        """
+        Check that we can restore snapshot files that have been created by cassandra
+
+        1. Use a single node and create a keyspace + table
+        2. Restore data from a cassandra snapshot
+        3. Check that all data exists
+
+        """
+        cluster       = self.cluster
+        num_keys      = 1000
+        c1_values     = map(lambda x: '{}'.format(x), range(num_keys))
+        c2_values     = map(lambda x: '{}'.format(x), range(num_keys, 2 * num_keys))
+        keys          = range(num_keys)
+
+        # Disable hinted handoff and set batch commit log so this doesn't
+        # interfere with the test (this must be after the populate)
+        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        debug("Starting a cluster of one node...")
+        cluster.populate(1).start()
+        node1 = cluster.nodelist()[0]
+
+        debug("Creating a CQL connection...")
+        session = self.patient_cql_connection(node1)
+
+        debug("Creating a keyspace 'ks'...")
+        self.create_ks(session, 'ks', 1)
+
+        debug("Creating a column family 'cf'...")
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+
+        debug("Flushing a keyspace...")
+        node1.nodetool("flush -- ks")
+
+        cassandra_snapshot_dir = "{}/cassandra-sstables/restore-snapshot-from-cassandra".format(os.path.dirname(os.path.realpath(__file__)))
+        debug("cassandra snapshot dir is {}".format(cassandra_snapshot_dir))
+
+        ks_dir = os.path.join(self.test_path, 'test', 'node1', 'data', 'ks')
+        cf_dir = self.get_cf_dir(ks_dir, 'cf')
+        debug("Column family directory is {}".format(cf_dir))
+
+        debug("Removing sstables...")
+        self.delete_cf_sstables(cf_dir)
+
+        debug("Copy sstables from the snapshot...")
+        for f in os.listdir(cassandra_snapshot_dir):
+            shutil.copy2(os.path.join(cassandra_snapshot_dir, f), os.path.join(cf_dir, f))
+
+        debug("Running 'nodetool refresh -- ks cf'")
+        node1.nodetool("refresh -- ks cf")
+
+        debug("Checking rows on node1...")
+        self.check_rows_on_node(node1, num_keys, found=keys, c1_values=c1_values, c2_values=c2_values)
+
+
+
 ########################## Helper functions ####################################
     def get_sstables_files(self, cf_dir, ks_name, cf_name):
         """
