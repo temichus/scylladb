@@ -172,7 +172,7 @@ class TestNodetool(Tester):
         [node1] = cluster.nodelist()
         cursor = self.patient_cql_connection(node1)
 
-        strs = self.stress_write(node1)
+        strs = self.stress_write(node1, times=1000)
         node1.flush()
 
         table_name = 'standard1'
@@ -186,15 +186,15 @@ class TestNodetool(Tester):
         output = TestNodetool._to_cfstats(node1.nodetool('cfstats keyspace1', True)[0])
         self.assertEqual(1, len(output), "wrong number of keyspaces found " + str(output.keys()))
         ks = output["keyspace1"]
-        self.assertMapEqual(ks, "Write Count", 150000)
+        self.assertMapEqual(ks, "Write Count", 1000)
         self.assertMapEqual(ks, "Read Count", 0)
-        self.assertEqual(150000, int(ks["Write Count"]) + int(ks["Read Count"]))
+        self.assertEqual(1000, int(ks["Write Count"]) + int(ks["Read Count"]))
         table = ks["tables"][table_name]
-        self.assertMapBetween(table, "SSTable count", 3, 8)
-        self.assertMapEqual(table, "Number of keys (estimate)", 100000)
+        self.assertMapEqual(table, "SSTable count", 1)
+        self.assertMapEqual(table, "Number of keys (estimate)", 1000)
         self.assertMapGreatEqual(table, "Memtable cell count", 0)
 
-        strs = self.stress_mixed(node1)
+        strs = self.stress_mixed(node1, times=1000)
         output = self._to_cfstats(node1.nodetool('cfstats keyspace1', True)[0])
         ks = output["keyspace1"]
         table = ks["tables"][table_name]
@@ -214,7 +214,7 @@ class TestNodetool(Tester):
         self.assertMapGreatEqual(table, "Bloom filter false ratio", 0)
         self.assertMapGreatEqual(table, "Bloom filter space used", 0)
         self.assertMapGreatEqual(table, "Bloom filter off heap memory used", 100000)
-        self.assertMapGreatEqual(table, "Index summary off heap memory used", 1000)
+        self.assertMapGreatEqual(table, "Index summary off heap memory used", 500)
         self.assertMapEqual(table, "Compression metadata off heap memory used", 0)
         self.assertMapEqual(table, "Compacted partition minimum bytes", 259)
         self.assertMapEqual(table, "Compacted partition maximum bytes", 310)
@@ -305,13 +305,16 @@ class TestNodetool(Tester):
         [node1] = cluster.nodelist()
         cursor = self.patient_cql_connection(node1)
 
-        self.stress_write(node1)
+        self.stress_write(node1, times=1000, opt=["-pop seq=1..1000"])
+        node1.nodetool('flush')
+        self.stress_write(node1, times=1000, opt=["-pop seq=1..1000"])
+        node1.nodetool('flush')
         output = self._to_cfstats(node1.nodetool('cfstats keyspace1.standard1', True)[0])
         self.assertIn("keyspace1", output, "Keyspace is missing")
         self.assertIn("tables", output["keyspace1"], "Keyspace has no tables")
         self.assertIn("standard1", output["keyspace1"]["tables"], "Column family standard1 is missing")
         table = output["keyspace1"]["tables"]["standard1"]
-        self.assertMapGreatEqual(table, "SSTable count", 1)
+        self.assertMapGreatEqual(table, "SSTable count", 2)
         sstable = int(table["SSTable count"])
         node1.nodetool("compact" + keyspace)
         output = self._to_cfstats(node1.nodetool('cfstats keyspace1.standard1', True)[0])
@@ -649,8 +652,8 @@ class TestNodetool(Tester):
         ni = self.nodetool_info(node)
         self.assertMapBetween(ni, "Uptime (seconds)", uptime + 10, uptime + 20)
 
-    def stress_write(self, node, times=100000):
-        return node.stress_object(['write', 'n=' + str(times)])
+    def stress_write(self, node, times=100000, opt=[]):
+        return node.stress_object(['write', 'n=' + str(times)] + opt)
 
-    def stress_mixed(self, node, times=100000):
-        return node.stress_object(['mixed', 'n=' + str(times)])
+    def stress_mixed(self, node, times=100000, opt=[]):
+        return node.stress_object(['mixed', 'n=' + str(times)] + opt)
