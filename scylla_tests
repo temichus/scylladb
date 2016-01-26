@@ -175,3 +175,4 @@ limits.py
 commitlog_test.py:TestCommitLog.test_commitlog_replay_with_alter_table
 commitlog_test.py:TestCommitLog.test_commitlog_replay_on_startup
 paging_additional_test.py
+nodetool_additional_test.py
