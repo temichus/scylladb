@@ -4,6 +4,8 @@ import os
 from tools import no_vnodes
 import yaml
 import time
+from unittest import skip
+
 
 class TestNodetool(Tester):
     def __init__(self, *args, **kwargs):
@@ -119,7 +121,7 @@ class TestNodetool(Tester):
         m = re.findall('Datacenter: ([^\s+])', out, re.MULTILINE)
         if m:
             res['Datacenter'] = m[0]
-        m = re.findall('^([UDNLJM]+)\s+([\d\.]+)\s+([^\s]+)\s+([^\s]+)\s+([^\s]+)\s+([^\s]+)\s+([^\s]+)\s*$', out, re.MULTILINE)
+        m = re.findall('^([UDNLJM]+)\s+([\d\.]+)\s+([^\s]+)\s+([^\s]+)\s+([^\s]+)\s+([^\s]+)\s+([^\s]+)\s+([^\s]+)\s*$', out, re.MULTILINE)
         res["nodes"] = [self._list2status(s) for s in m]
         return res
 
@@ -517,6 +519,7 @@ class TestNodetool(Tester):
         out = node.nodetool('describecluster', True)[0]
         return yaml.load(out.replace('\t', "  "))
 
+    @skip ('#677 #472')
     def describecluster_test(self):
         """Test the nodetool describecluster command
         """
@@ -600,6 +603,7 @@ class TestNodetool(Tester):
         yml = re.sub(':([^\s])', r': \1', re.sub('  ', '    ', re.sub(r'/([\d\.]+)', r'\1:', out)))
         return yaml.load(yml)
 
+    @skip ('#687 #842')
     def gossipinfo_test(self):
         cluster = self.cluster
         cluster.populate(2).start(wait_for_binary_proto=True)
