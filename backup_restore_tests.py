@@ -44,10 +44,10 @@ class TestBackupRestore(Tester):
         debug("Creating a column family 'cf'...")
         self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
-        num_keys  = 1000
+        num_keys = 1000
         c1_values = map(lambda x: '{}'.format(x), range(num_keys))
         c2_values = map(lambda x: '{}'.format(x), range(num_keys, 2 * num_keys))
-        keys      = range(num_keys)
+        keys = range(num_keys)
 
         debug("Inserting concurrently {} keys...".format(num_keys))
         insert_c1c2(session, keys=keys, consistency=ConsistencyLevel.ONE,
@@ -95,10 +95,10 @@ class TestBackupRestore(Tester):
         debug("Creating a column family 'cf'...")
         self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
-        num_keys  = 1000
+        num_keys = 1000
         c1_values = map(lambda x: '{}'.format(x), range(num_keys))
         c2_values = map(lambda x: '{}'.format(x), range(num_keys, 2 * num_keys))
-        keys      = range(num_keys)
+        keys = range(num_keys)
 
         debug("Inserting concurrently {} keys...".format(num_keys))
         insert_c1c2(session, keys=keys, consistency=ConsistencyLevel.ONE,
@@ -193,10 +193,10 @@ class TestBackupRestore(Tester):
         debug("Creating a column family 'cf'...")
         self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
-        num_keys  = 1000
+        num_keys = 1000
         c1_values = map(lambda x: '{}'.format(x), range(num_keys))
         c2_values = map(lambda x: '{}'.format(x), range(num_keys, 2 * num_keys))
-        keys      = range(num_keys)
+        keys = range(num_keys)
 
         debug("Inserting concurrently {} keys...".format(num_keys))
         insert_c1c2(session, keys=keys, consistency=ConsistencyLevel.ONE,
@@ -255,12 +255,12 @@ class TestBackupRestore(Tester):
         7. Restore data
         8. Check that all data exists
         """
-        cluster       = self.cluster
+        cluster = self.cluster
         snapshot_name = 'testsnapshot'
-        num_keys      = 1000
-        c1_values     = map(lambda x: '{}'.format(x), range(num_keys))
-        c2_values     = map(lambda x: '{}'.format(x), range(num_keys, 2 * num_keys))
-        keys          = range(num_keys)
+        num_keys = 1000
+        c1_values = map(lambda x: '{}'.format(x), range(num_keys))
+        c2_values = map(lambda x: '{}'.format(x), range(num_keys, 2 * num_keys))
+        keys = range(num_keys)
 
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfere with the test (this must be after the populate)
@@ -338,12 +338,12 @@ class TestBackupRestore(Tester):
         7. Restore data
         8. Check that all data exists
         """
-        cluster       = self.cluster
+        cluster = self.cluster
         snapshot_name = 'testsnapshot'
-        num_keys      = 1000
-        c1_values     = map(lambda x: '{}'.format(x), range(num_keys))
-        c2_values     = map(lambda x: '{}'.format(x), range(num_keys, 2 * num_keys))
-        keys          = range(num_keys)
+        num_keys = 1000
+        c1_values = map(lambda x: '{}'.format(x), range(num_keys))
+        c2_values = map(lambda x: '{}'.format(x), range(num_keys, 2 * num_keys))
+        keys = range(num_keys)
 
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfere with the test (this must be after the populate)
@@ -416,11 +416,11 @@ class TestBackupRestore(Tester):
         7. Check that backups holds all the old files and the new compacted file
 
         """
-        cluster       = self.cluster
-        num_keys      = 1000
-        c1_values     = map(lambda x: '{}'.format(x), range(num_keys))
-        c2_values     = map(lambda x: '{}'.format(x), range(num_keys, 2 * num_keys))
-        keys          = range(num_keys)
+        cluster = self.cluster
+        num_keys = 1000
+        c1_values = map(lambda x: '{}'.format(x), range(num_keys))
+        c2_values = map(lambda x: '{}'.format(x), range(num_keys, 2 * num_keys))
+        keys = range(num_keys)
 
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfere with the test (this must be after the populate)
@@ -486,11 +486,11 @@ class TestBackupRestore(Tester):
         3. Check that all data exists
 
         """
-        cluster       = self.cluster
-        num_keys      = 1000
-        c1_values     = map(lambda x: '{}'.format(x), range(num_keys))
-        c2_values     = map(lambda x: '{}'.format(x), range(num_keys, 2 * num_keys))
-        keys          = range(num_keys)
+        cluster = self.cluster
+        num_keys = 1000
+        c1_values = map(lambda x: '{}'.format(x), range(num_keys))
+        c2_values = map(lambda x: '{}'.format(x), range(num_keys, 2 * num_keys))
+        keys = range(num_keys)
 
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfere with the test (this must be after the populate)
