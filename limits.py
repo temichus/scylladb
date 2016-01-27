@@ -68,6 +68,7 @@ class TestLimits(Tester):
         self.assertEqual(len(res), 1)
         res = session.execute("""DROP TABLE test1""")
 
+    @skip('scylladb/scylla#807')
     def max_key_length_test(self):
         cluster = self.prepare()
         cluster.populate(1).start()
@@ -119,6 +120,7 @@ class TestLimits(Tester):
         self.assertEqual(len(res), 1)
         session.execute("""DROP TABLE test1""")
 
+    @skip('scylladb/scylla#808')
     def max_column_value_size_test(self):
         cluster = self.prepare()
         cluster.populate(1).start()
@@ -152,6 +154,7 @@ class TestLimits(Tester):
 
     # this test colude issue #173 and issue #176
     # since we do an insert statement
+    @skip('scylladb/scylla#809')
     def max_columns_and_query_parameters_test(self):
         cluster = self.prepare()
         cluster.populate(1).start()
@@ -192,6 +195,7 @@ class TestLimits(Tester):
 
         session.execute("""DROP TABLE stuff""")
 
+    @skip('scylladb/scylla#')
     def max_tuple_test(self):
         cluster = self.prepare()
         cluster.populate(1).start()
@@ -230,6 +234,7 @@ class TestLimits(Tester):
 
         session.execute("""DROP TABLE STUFF""")
 
+    @skip('scylladb/scylla#816')
     def max_batch_size_test(self):
         cluster = self.prepare()
         cluster.populate(1).start()
@@ -268,6 +273,7 @@ class TestLimits(Tester):
 
         session.execute("""DROP TABLE test1""")
 
+    @skip('scylladb/scylla#822')
     def max_cells_test(self):
         cluster = self.prepare()
         cluster.populate(1).start()
