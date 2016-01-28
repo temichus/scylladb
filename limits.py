@@ -230,11 +230,10 @@ class TestLimits(Tester):
 
         c= "SELECT * FROM STUFF;"
         res = session.execute(c)
-        self.assertEqual(len(res), count)
+        self.assertEqual(len(list(res)), count)
 
         session.execute("""DROP TABLE STUFF""")
 
-    @skip('scylladb/scylla#816')
     def max_batch_size_test(self):
         cluster = self.prepare()
         cluster.populate(1).start()
