@@ -504,7 +504,8 @@ class TestNodetool(Tester):
         ltnc = strs['latency 99.9th percentile:write']
         for v in res["vals"]:
             self.assertMapEqual(res["vals"][v], "Read Latency", 0, "unexpected read latency")
-            self.assertMapLess(res["vals"][v], "Write Latency", ltnc * 1000, "unexpected write latency")
+            if float(ltnc) != 0.0:
+                self.assertMapLess(res["vals"][v], "Write Latency", ltnc * 1000, "unexpected write latency")
         res = self._get_cfhistogram(node, "keyspace1", "standard1")
         for v in res["vals"]:
             self.assertMapEqual(res["vals"][v], "Read Latency", 0, "unexpected read latency")
@@ -512,6 +513,8 @@ class TestNodetool(Tester):
         strs = self.stress_mixed(node, 10000)
         res = self._get_cfhistogram(node, "keyspace1", "standard1")
         ltnc = strs['latency 99.9th percentile:read']
+        if float(ltnc) == 0.0:
+            return
         for v in res["vals"]:
             self.assertMapLess(res["vals"][v], "Read Latency", ltnc * 1000, "unexpected read latency")
 
@@ -657,7 +660,17 @@ class TestNodetool(Tester):
         self.assertMapBetween(ni, "Uptime (seconds)", uptime + 10, uptime + 20)
 
     def stress_write(self, node, times=100000, opt=[]):
-        return node.stress_object(['write', 'n=' + str(times)] + opt)
+        res = node.stress_object(['write', 'n=' + str(times)] + opt)
+
+        if not isinstance(res, dict):
+            self.assertTrue(isinstance(res, dict), "Write stress failed:" + res)
+
+        return res
 
     def stress_mixed(self, node, times=100000, opt=[]):
-        return node.stress_object(['mixed', 'n=' + str(times)] + opt)
+        res = node.stress_object(['mixed', 'n=' + str(times)] + opt)
+
+        if not isinstance(res, dict):
+            self.assertTrue(isinstance(res, dict), "Mixed stress failed:" + res)
+
+        return res

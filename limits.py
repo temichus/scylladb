@@ -3,6 +3,8 @@ from dtest import Tester
 
 import math
 
+from unittest import skip
+
 # Those are ideal values according to c* specifications
 # they should pass
 
