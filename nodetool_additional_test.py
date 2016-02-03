@@ -657,7 +657,17 @@ class TestNodetool(Tester):
         self.assertMapBetween(ni, "Uptime (seconds)", uptime + 10, uptime + 20)
 
     def stress_write(self, node, times=100000, opt=[]):
-        return node.stress_object(['write', 'n=' + str(times)] + opt)
+        res = node.stress_object(['write', 'n=' + str(times)] + opt)
+
+        if not isinstance(res, dict):
+            self.assertTrue(isinstance(res, dict), "Write stress failed:" + res)
+
+        return res
 
     def stress_mixed(self, node, times=100000, opt=[]):
-        return node.stress_object(['mixed', 'n=' + str(times)] + opt)
+        res = node.stress_object(['mixed', 'n=' + str(times)] + opt)
+
+        if not isinstance(res, dict):
+            self.assertTrue(isinstance(res, dict), "Mixed stress failed:" + res)
+
+        return res
