@@ -136,6 +136,12 @@ class TestLimits(Tester):
 
     def _do_test_max_columns(self, session, node, count):
         print("Testing maximum numbers of columns with count %i" % count)
+
+        # we must count the primary key
+        count = count - 1
+        if count < 0:
+            count = 0
+
         keys = ""
         keys_create = ""
         for i in range(count):
@@ -166,7 +172,7 @@ class TestLimits(Tester):
         count = 1
         for i in range(int(math.log(MAX_COLUMNS, 2))):
             count = count << 1
-            self._do_test_max_columns(session, node, i - 1)
+            self._do_test_max_columns(session, node, count - 1)
 
     def _do_test_max_tuples(self, session, node, count):
         print("Testing max tuples for %i" % count)
