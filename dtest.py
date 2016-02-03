@@ -31,6 +31,8 @@ from ccmlib.node import TimeoutError
 from ccmlib.scylla_cluster import ScyllaCluster
 from nose.exc import SkipTest
 
+os.environ['LOCALE'] = 'C'
+
 LOG_SAVED_DIR = "logs"
 try:
     os.mkdir(LOG_SAVED_DIR)
