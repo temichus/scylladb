@@ -294,3 +294,21 @@ class TestLimits(Tester):
         for i in range(int(math.log(MAX_CELLS, 2))):
             cells = cells << 1
             self._do_test_max_cell_count(session, node, cells - 1)
+
+    @skip('scylladb/scylla#809')
+    def test_overflow_key_length(self):
+        cluster = self.prepare()
+        cluster.populate(1).start()
+        node = cluster.nodelist()[0]
+
+        session = self.patient_cql_connection(node)
+        self.create_ks(session, 'ks', 1)
+
+        # Here we overflow the max key length by 1
+        key_name = "k" * MAX_KEY_SIZE
+
+        session.execute("""
+            CREATE TABLE test1 (
+                %s int PRIMARY KEY,
+            )
+        """ % (key_name))
