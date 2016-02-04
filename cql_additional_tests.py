@@ -33,6 +33,7 @@ from tools import require
 from tools import rows_to_list
 from tools import since
 
+from unittest import skip
 
 @canReuseCluster
 class TestCQL(Tester):
@@ -4604,3 +4605,176 @@ class CQLAdditionalTests(Tester):
                 SELECT * FROM foobar
         """)
         assert len(res) == 3, res
+
+    def test_create_secondary_indexes(self):
+        cluster = self.prepare()
+        node = cluster.nodelist()[0]
+
+        session = self.patient_cql_connection(node)
+        self.create_ks(session, 'racing', 1)
+
+
+        c = """CREATE TABLE racing.rank_by_year_and_name (
+              race_year int,
+              race_name text,
+              racer_name text,
+              rank int,
+              PRIMARY KEY ((race_year, race_name), rank)
+            )"""
+        session.execute(c)
+
+        c = """CREATE INDEX ryear ON racing.rank_by_year_and_name (race_year)"""
+        try:
+            session.execute(c)
+        except Exception, e:
+            assert(e.message == "Indexes are not supported yet")
+            assert(e.code == 0000);
+
+    def test_drop_secondary_indexes(self):
+        # cannot test drop secondary index because their are not created
+        # in the first place
+        pass
+
+    def test_counters(self):
+        cluster = self.prepare()
+        node = cluster.nodelist()[0]
+
+        session = self.patient_cql_connection(node)
+        self.create_ks(session, 'racing', 1)
+
+
+        c = """CREATE TABLE racing.page_view_counts
+              (counter_value counter,
+              url_name varchar,
+              page_name varchar,
+              PRIMARY KEY (url_name, page_name))"""
+        try:
+            session.execute(c)
+        except Exception, e:
+            assert(e.message == "Not implemented: COUNTERS")
+            assert(e.code == 0000);
+
+    @skip('scylladb/scylla#875')
+    def test_create_user_types(self):
+        cluster = self.prepare()
+        node = cluster.nodelist()[0]
+
+        session = self.patient_cql_connection(node)
+        self.create_ks(session, 'racing', 1)
+
+
+        c = """CREATE TYPE address (
+               street text,
+               city text,
+               zip_code int,
+               phones set<text>)"""
+        try:
+            session.execute(c)
+        except Exception, e:
+            assert(e.message == "Not implemented: user types")
+            assert(e.code == 0000);
+
+    @skip('scylladb/scylla#875')
+    def test_alter_user_types(self):
+        cluster = self.prepare()
+        node = cluster.nodelist()[0]
+
+        session = self.patient_cql_connection(node)
+        self.create_ks(session, 'racing', 1)
+
+
+        c = """ALTER TYPE version ALTER model TYPE text"""
+        try:
+            session.execute(c)
+        except Exception, e:
+            assert(e.message == "Not implemented: user types")
+            assert(e.code == 0000);
+
+    @skip('scylladb/scylla#875')
+    def test_delete_user_types(self):
+        cluster = self.prepare()
+        node = cluster.nodelist()[0]
+
+        session = self.patient_cql_connection(node)
+        self.create_ks(session, 'racing', 1)
+
+
+        c = """DROP TYPE IF EXISTS fooo"""
+        try:
+            session.execute(c)
+        except Exception, e:
+            assert(e.message == "Not implemented: user types")
+            assert(e.code == 0000);
+
+    def test_lightweight_transaction(self):
+        cluster = self.prepare()
+        node = cluster.nodelist()[0]
+
+        session = self.patient_cql_connection(node)
+        self.create_ks(session, 'ks', 1)
+
+
+        c = """CREATE TABLE ks.users (
+              login text,
+              email text,
+              name text,
+              PRIMARY KEY (login)
+            )"""
+        session.execute(c)
+
+        c = """INSERT INTO USERS (login, email, name)
+            values ('bcanet', 'benoit@scylladb.com', 'Benoit Canet')
+            IF NOT EXISTS"""
+        try:
+            session.execute(c)
+        except Exception, e:
+            assert(e.message == "Not implemented: LWT")
+            assert(e.code == 0000);
+
+    @skip('scylladb/scylla#876')
+    def test_grant(self):
+        cluster = self.prepare()
+        node = cluster.nodelist()[0]
+
+        session = self.patient_cql_connection(node)
+        self.create_ks(session, 'ks', 1)
+
+
+        c = """GRANT SELECT ON ALL KEYSPACES TO benoit"""
+        try:
+            session.execute(c)
+        except Exception, e:
+            assert(e.message == "Not implemented: GRANT")
+            assert(e.code == 0000);
+
+    @skip('scylladb/scylla#876')
+    def test_revoke(self):
+        cluster = self.prepare()
+        node = cluster.nodelist()[0]
+
+        session = self.patient_cql_connection(node)
+        self.create_ks(session, 'ks', 1)
+
+
+        c = """REVOKE SELECT ON ks.user FROM blob"""
+        try:
+            session.execute(c)
+        except Exception, e:
+            assert(e.message == "Not implemented: REVOKE")
+            assert(e.code == 0000);
+
+    @skip('scylladb/scylla#876')
+    def test_list(self):
+        cluster = self.prepare()
+        node = cluster.nodelist()[0]
+
+        session = self.patient_cql_connection(node)
+        self.create_ks(session, 'ks', 1)
+
+
+        c = """LIST ALL PERMISSIONS ON ks.boo"""
+        try:
+            session.execute(c)
+        except Exception, e:
+            assert(e.message == "Not implemented: LIST")
+            assert(e.code == 0000);
