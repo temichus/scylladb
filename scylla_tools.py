@@ -2,7 +2,8 @@ from cassandra import ConsistencyLevel
 from cassandra.concurrent import execute_concurrent_with_args
 from cassandra.query import SimpleStatement
 
-def insert_c1c2(session, keys=None, n=None, consistency=ConsistencyLevel.QUORUM, c1_values=None, c2_values=None):
+
+def insert_c1c2(session, keys=None, n=None, consistency=ConsistencyLevel.QUORUM, c1_values=None, c2_values=None, ks='ks', cf='cf'):
     if (keys is None and n is None) or (keys is not None and n is not None):
         raise ValueError("Expected exactly one of 'keys' or 'n' arguments to not be None; "
                          "got keys={keys}, n={n}".format(keys=keys, n=n))
@@ -19,7 +20,7 @@ def insert_c1c2(session, keys=None, n=None, consistency=ConsistencyLevel.QUORUM,
     if len(c1_values) != len(c2_values) or len(c1_values) != len(keys):
         raise ValueError("Inconsistent 'c1/c2_values' contents. 'c1/c2_values' should be either a 'None' value or a list of the same length as a requested number of keys.")
 
-    statement = session.prepare("INSERT INTO cf (key, c1, c2) VALUES (?, ?, ?)")
+    statement = session.prepare("INSERT INTO {}.{} (key, c1, c2) VALUES (?, ?, ?)".format(ks, cf))
     statement.consistency_level = consistency
 
     execute_concurrent_with_args(session, statement,
