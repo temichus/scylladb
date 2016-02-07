@@ -531,9 +531,132 @@ class TestBackupRestore(Tester):
         debug("Checking rows on node1...")
         self.check_rows_on_node(node1, num_keys, found=keys, c1_values=c1_values, c2_values=c2_values)
 
+    def clearsnapshot_options(self):
+        """
+        Check different 'nodetool clearsnapshot' options
 
+        1. Use a single node and create a keyspace ks0 + table cf.
+        2. Create a keyspace ks1 + table cf.
+        3. Insert data into both tables above.
+        4. Create a snapshot snapshot0.
+        5. Add more data to both keyspaces and create a snapshot snapshot1.
+        6. Add more data to both keyspaces and create a snapshot snapshot2.
+        7. Call 'nodetool clearsnapshot -t snapshot0'.
+        8. Check that
+            1. snapshot0 has been deleted in both keyspaces.
+            2. snapshot1 and snapshot2 are still present and haven't been touched.
+        9. Call 'nodetool clearsnapshot -t snapshot1 -- ks1' and check that
+            1. snapshot1 has been removed from ks1 and not from ks0.
+            2. snapshot2 is still present and hasn't been touched.
+        10. Call 'nodetool clearsnapshot' and check that all snapshots have been removed.
+        """
+        cluster = self.cluster
 
-########################## Helper functions ####################################
+        # Disable hinted handoff and set batch commit log so this doesn't
+        # interfere with the test (this must be after the populate)
+        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        debug("Starting a cluster of one node...")
+        cluster.populate(1).start()
+        node1 = cluster.nodelist()[0]
+
+        debug("Creating a CQL connection...")
+        session = self.patient_cql_connection(node1)
+
+        for i in range(2):
+            keyspace_name = 'ks{}'.format(i)
+            debug("Creating a keyspace '{}'...".format(keyspace_name))
+            self.create_ks(session, keyspace_name, 1)
+
+            debug("Creating a column family 'cf'...")
+            self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+
+        num_keys = 1000
+        start_key = 0
+
+        for i in range(3):
+            snapshot_name = 'snapshot{}'.format(i)
+            c1_values = map(lambda x: '{}'.format(x), range(start_key, start_key + num_keys))
+            c2_values = map(lambda x: '{}'.format(x), range(start_key + num_keys, start_key + 2 * num_keys))
+            keys = range(start_key, start_key + num_keys)
+
+            debug("Inserting concurrently {} keys into 'ks0.cf' and 'ks1.cf'...".format(num_keys))
+            insert_c1c2(session, ks='ks0', keys=keys, consistency=ConsistencyLevel.ONE,
+                        c1_values=c1_values, c2_values=c2_values)
+            insert_c1c2(session, ks='ks1', keys=keys, consistency=ConsistencyLevel.ONE,
+                        c1_values=c1_values, c2_values=c2_values)
+
+            debug("Creating a snapshot for 'ks0' and 'ks1'...")
+            node1.nodetool('snapshot -t {} ks0 ks1'.format(snapshot_name))
+
+            start_key = start_key + num_keys
+
+        ks_dir = [None, None]
+        for i in range(2):
+            ks_dir[i] = os.path.join(self.test_path, 'test', 'node1', 'data', 'ks{}'.format(i))
+
+        ks_snapshot_dir = [[None, None, None], [None, None, None]]
+
+        for i in range(2):
+            for j in [1, 2]:
+                ks_snapshot_dir[i][j] = self.get_snapshot_dir('snapshot{}'.format(j), ks_dir=ks_dir[i])
+                self.assertTrue(ks_snapshot_dir[i][j] is not None, "Can't find a snapshot directory for 'ks{}.snapshot{}'".format(i, j))
+
+        ks_snapshot_files = [[None, None, None], [None, None, None]]
+        for i in range(2):
+            for j in [1, 2]:
+                ks_snapshot_files[i][j] = self.get_all_files_in_dir(ks_snapshot_dir[i][j])
+
+        debug("Call 'nodetool clearsnapshot -t snapshot0'...")
+        node1.nodetool('clearsnapshot -t snapshot0')
+
+        # First check that 'snapshot1' has been deleted...
+        for i in range(2):
+            debug("Check that snapshot0 for ks{} was deleted...".format(i))
+            test_dir = self.get_snapshot_dir('snapshot0', ks_dir=ks_dir[i])
+            self.assertTrue(test_dir is None, "'ks{}' snapshot 'snapshot0' has not been deleted!".format(i))
+
+        # ...then check that other snapshots are untouched
+        for i in range(2):
+            for j in [1, 2]:
+                debug("Check that snapshot{} for ks{} was not deleted...".format(j, i))
+                test_dir = self.get_snapshot_dir('snapshot{}'.format(j), ks_dir=ks_dir[i])
+                self.assertTrue(test_dir is not None, "'ks{}' snapshot 'snapshot{}' has not been deleted!".format(i, j))
+                test_files = self.get_all_files_in_dir(ks_snapshot_dir[i][j])
+                self.assertEqual(test_files, ks_snapshot_files[i][j], "'ks{}' snapshot 'snapshot{}' direcotry contents has changed!".format(i, j))
+
+        # Call 'nodetool clearsnapshot -t snapshot1 -- ks1'
+        debug("Call 'nodetool clearsnapshot -t snapshot1 -- ks1'")
+        node1.nodetool('clearsnapshot -t snapshot1 -- ks1')
+
+        # Check that snapshot1 for ks1 has been deleted...
+        debug("Check that snapshot1 for ks1 was deleted...")
+        test_dir = self.get_snapshot_dir('snapshot1', ks_dir=ks_dir[1])
+        self.assertTrue(test_dir is None, "'ks1' snapshot 'snapshot1' has not been deleted!")
+
+        # ...but not for ks0!
+        debug("Check that snapshot1 for ks0 was not deleted...")
+        test_dir = self.get_snapshot_dir('snapshot1', ks_dir=ks_dir[0])
+        self.assertTrue(test_dir is not None, "'ks0' snapshot 'snapshot1' has been deleted!")
+        test_files = self.get_all_files_in_dir(ks_snapshot_dir[0][1])
+        self.assertEqual(test_files, ks_snapshot_files[0][1], "'ks0' snapshot 'snapshot1' direcotry contents has changed!")
+
+        # ...then check that snapshot2 is intact
+        for i in range(2):
+            debug("Check that snapshot2 for ks{} was not deleted...".format(i))
+            test_dir = self.get_snapshot_dir('snapshot2', ks_dir=ks_dir[i])
+            self.assertTrue(test_dir is not None, "'ks{}' snapshot 'snapshot2' has not been deleted!".format(i))
+            test_files = self.get_all_files_in_dir(ks_snapshot_dir[i][2])
+            self.assertEqual(test_files, ks_snapshot_files[i][2], "'ks{}' snapshot 'snapshot2' direcotry contents has changed!".format(i))
+
+        # Call 'nodetool clearsnapshot' and check that all snapshots has been cleared
+        debug("Call 'nodetool clearsnapshot'")
+        node1.nodetool('clearsnapshot')
+        for i in range(3):
+            debug("Check that snapshot{} doesn't exist any more...".format(i))
+            test_dir = self.get_snapshot_dir('snapshot{}'.format(i))
+            self.assertTrue(test_dir is None, "'snapshot{}' has not been deleted!".format(i))
+
+# ######################## Helper functions ####################################
     def get_sstables_files(self, cf_dir, ks_name, cf_name):
         """
         Returns a set of sstable(s) files for a given KS and CF
@@ -546,14 +669,32 @@ class TestBackupRestore(Tester):
 
         return sstables_files
 
+    def get_all_files_in_dir(self, dir_path):
+        """
+        Returs a set of all files in the given directory
+        """
+        dir_files = set()
+        for f in os.listdir(dir_path):
+            full_name = os.path.join(dir_path, f)
+            if os.path.isfile(full_name):
+                dir_files.add(f)
+
+        return dir_files
+
     def delete_cf_sstables(self, cf_dir):
         for f in os.listdir(cf_dir):
             full_name = os.path.join(cf_dir, f)
             if os.path.isfile(full_name):
                 os.remove(full_name)
 
-    def get_snapshot_dir(self, snapshotname):
-        for root, dirs, files in os.walk(self.test_path):
+    def get_snapshot_dir(self, snapshotname, ks_dir=None):
+        search_base_dir = None
+        if ks_dir is None:
+            search_base_dir = self.test_path
+        else:
+            search_base_dir = ks_dir
+
+        for root, dirs, files in os.walk(search_base_dir):
             for name in dirs:
                 if name == snapshotname:
                     return os.path.join(root, name)
