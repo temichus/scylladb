@@ -4574,6 +4574,62 @@ class TestCQL(Tester):
                 self.assertIsInstance(e, SyntaxException)
                 self.assertNotIn('NullPointerException', str(e))
 
+    def cql_versions_collections_test(self):
+        for p in range(1, 3):
+            session = self.prepare(protocol_version=p)
+
+            session.execute("""
+            CREATE TABLE cql2ct ( a int PRIMARY KEY, b list<int>, c map<int, int>, d set<int> );
+            """)
+            # Note: would use bind, but having issues with it and sets/maps...
+            for i in range(0, 4):
+                session.execute("""
+                INSERT INTO cql2ct (a, b, c, d) values ({0}, [{0},{1}], {{{0}:{1}}}, {{{0},{1}}});
+                """.format(i, i + 1))
+        
+            unsorted_res = session.execute("""
+            SELECT * FROM cql2ct
+            """)
+            res = sorted(unsorted_res)
+            assert len(res) == 4, res
+            sres = rows_to_list(res)
+            for i in range(0, 4):
+                assert sres[i][0] == i, sres[i]
+                assert sres[i][1] == [i, i+1], sres[i]
+                assert sres[i][2] == { i : i + 1 }
+                assert sres[i][3] == { i, i + 1 }
+
+            session.execute("DROP KEYSPACE IF EXISTS ks")
+
+    def cql_versions_batch_test(self):
+        for p in range(2, 3):
+            session = self.prepare(protocol_version=p)
+            session.execute("""
+            CREATE TABLE dogs (
+            dogid int PRIMARY KEY,
+            dogname text,
+            );
+            """)
+            session.execute("""
+            CREATE TABLE users (
+            id int,
+            firstname text,
+            lastname text,
+            PRIMARY KEY (id)
+            );
+            """)
+
+            session.execute("""
+            BEGIN BATCH
+            INSERT INTO users (id, firstname, lastname) VALUES (0, 'Jack', 'Sparrow')
+            INSERT INTO dogs (dogid, dogname) VALUES (0, 'Pluto')
+            APPLY BATCH
+            """)
+
+            assert_one(session, "SELECT * FROM users", [0, 'Jack', 'Sparrow'])
+            assert_one(session, "SELECT * FROM dogs", [0, 'Pluto'])
+            session.execute("DROP KEYSPACE IF EXISTS ks")
+
 
 class CQLAdditionalTests(Tester):
 
