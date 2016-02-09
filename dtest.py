@@ -645,7 +645,7 @@ class Tester(TestCase):
         """Filter errors, removing those that match self.ignore_log_patterns"""
         if not hasattr(self, 'ignore_log_patterns'):
             self.ignore_log_patterns = []
-        self.ignore_log_patterns.append(r'.*Compaction for system/compaction_history was deliberately stopped.*')
+        self.ignore_log_patterns.append(r'.*Compaction for .* deliberately stopped.*')
         for e in errors:
             for pattern in self.ignore_log_patterns:
                 if re.search(pattern, e):
