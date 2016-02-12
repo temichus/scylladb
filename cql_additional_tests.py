@@ -1690,6 +1690,40 @@ class TestCQL(Tester):
         res = session.execute("SELECT tags FROM user WHERE fn='Bilbo' AND ln='Baggins'")
         self.assertItemsEqual(rows_to_list(res), [[['m', 'n', 'c', 'c']]])
 
+
+    def list_prefetch_with_static_column_test(self):
+        # Explits https://github.com/scylladb/scylla/issues/903
+        session = self.prepare()
+
+        session.execute("""
+            CREATE TABLE user (
+                fn text,
+                ln text,
+                static_tags list<text> static,
+                tags list<text>,
+                PRIMARY KEY (fn, ln)
+            )
+        """)
+
+        update_q = "UPDATE user SET %s WHERE fn='Tom' AND ln='Bombadil'"
+        select_q = "SELECT %s FROM user WHERE fn='Tom' AND ln='Bombadil'"
+        session.execute(update_q % "tags = tags + [ 'a', 'b', 'c', 'b' ]")
+        session.execute("update user set static_tags = static_tags + [ 'a', 'b', 'c', 'b' ] where fn='Tom'")
+
+        session.execute(update_q % "tags = tags - [ 'b' ]")
+        res = session.execute(select_q % 'tags')
+        self.assertItemsEqual(rows_to_list(res), [[['a', 'c']]])
+        res = session.execute("select static_tags from user where fn='Tom'")
+        self.assertItemsEqual(rows_to_list(res), [[['a', 'b', 'c', 'b']]])
+
+        session.execute("update user set static_tags = static_tags - [ 'b' ] where fn='Tom'")
+        res = session.execute("select static_tags from user where fn='Tom'")
+        self.assertItemsEqual(rows_to_list(res), [[['a', 'c']]])
+
+        session.execute("update user set static_tags[1] = 'b' where fn='Tom'")
+        res = session.execute("select static_tags from user where fn='Tom'")
+        self.assertItemsEqual(rows_to_list(res), [[['a', 'b']]])
+
     def multi_collection_test(self):
         session = self.prepare()
 

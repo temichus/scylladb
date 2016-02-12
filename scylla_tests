@@ -66,6 +66,7 @@ cql_additional_tests.py:TestCQL.limit_multiget_test
 cql_additional_tests.py:TestCQL.limit_ranges_test
 cql_additional_tests.py:TestCQL.limit_sparse_test
 cql_additional_tests.py:TestCQL.list_test
+cql_additional_tests.py:TestCQL.list_prefetch_with_static_column_test
 cql_additional_tests.py:TestCQL.map_test
 cql_additional_tests.py:TestCQL.more_order_by_test
 cql_additional_tests.py:TestCQL.multi_collection_test
