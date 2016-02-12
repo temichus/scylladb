@@ -1724,6 +1724,24 @@ class TestCQL(Tester):
         res = session.execute("select static_tags from user where fn='Tom'")
         self.assertItemsEqual(rows_to_list(res), [[['a', 'b']]])
 
+    def collection_serialization_with_protocol_v2_test(self):
+        session = self.prepare(protocol_version=2)
+
+        session.execute("""
+            CREATE TABLE user (
+                fn text,
+                ln text,
+                tags list<text>,
+                PRIMARY KEY (fn, ln)
+            )
+        """)
+
+        update_q = "UPDATE user SET %s WHERE fn='Tom' AND ln='Bombadil'"
+        select_q = "SELECT %s FROM user WHERE fn='Tom' AND ln='Bombadil'"
+        session.execute(update_q % "tags = tags + [ 'a', 'b', 'c' ]")
+        res = session.execute(select_q % 'tags')
+        self.assertItemsEqual(rows_to_list(res), [[['a', 'b', 'c']]])
+
     def multi_collection_test(self):
         session = self.prepare()
 
