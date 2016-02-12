@@ -4516,7 +4516,7 @@ class TestCQL(Tester):
         assert_none(session, "select * from space1.table1 where a=1 and b=1")
 
     def bug_5732_test(self):
-        session = self.prepare(use_cache=True)
+        session = self.prepare(use_cache=True, experimental=True)
 
         session.execute("""
             CREATE TABLE test (

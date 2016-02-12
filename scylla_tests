@@ -16,6 +16,8 @@ consistency_test.py:TestConsistency.short_read_delete_test
 consistency_test.py:TestConsistency.short_read_quorum_delete_test
 consistency_test.py:TestConsistency.short_read_reversed_test
 consistency_test.py:TestConsistency.short_read_test
+cql_additional_tests.py:TestCQL.alter_bug_test
+cql_additional_tests.py:TestCQL.alter_with_collections_test
 cql_additional_tests.py:TestCQL.batch_and_list_test
 cql_additional_tests.py:TestCQL.batch_test
 cql_additional_tests.py:TestCQL.blobAs_functions_test
@@ -41,6 +43,8 @@ cql_additional_tests.py:TestCQL.date_test
 cql_additional_tests.py:TestCQL.delete_row_test
 cql_additional_tests.py:TestCQL.deletion_test
 cql_additional_tests.py:TestCQL.dense_cf_test
+cql_additional_tests.py:TestCQL.downgrade_to_compact_bug_test
+cql_additional_tests.py:TestCQL.drop_and_readd_collection_test
 cql_additional_tests.py:TestCQL.empty_blob_test
 cql_additional_tests.py:TestCQL.empty_in_test
 cql_additional_tests.py:TestCQL.exclusive_slice_test
@@ -96,6 +100,7 @@ cql_additional_tests.py:TestCQL.sparse_cf_test
 cql_additional_tests.py:TestCQL.static_cf_test
 cql_additional_tests.py:TestCQL.static_with_empty_clustering_test
 cql_additional_tests.py:TestCQL.static_with_limit_test
+cql_additional_tests.py:TestCQL.table_options_test
 cql_additional_tests.py:TestCQL.table_test
 cql_additional_tests.py:TestCQL.ticket_5230_test
 cql_additional_tests.py:TestCQL.timestamp_and_ttl_test
@@ -104,6 +109,7 @@ cql_additional_tests.py:TestCQL.token_range_test
 cql_additional_tests.py:TestCQL.tuple_notation_test
 cql_additional_tests.py:TestCQL.undefined_column_handling_test
 cql_additional_tests.py:TestCQL.unescaped_string_test
+cql_additional_tests.py:TestCQL.update_type_test
 cql_tests.py
 multidc_putget_test.py
 paging_test.py:TestPagingDatasetChanges.test_cell_TTL_expiry_during_paging
