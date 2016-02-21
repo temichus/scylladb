@@ -14,7 +14,7 @@ from dtest import Tester, debug
 from scylla_tools import insert_c1c2, query_c1c2_concurrent
 
 class TestBackupRestore(Tester):
-    def failure_durring_snapshot_no_corrupt_data(self):
+    def failure_durring_snapshot_no_corrupt_data_test(self):
         """
         Check that we can recover from a failure durring snapshot:
 
@@ -62,7 +62,7 @@ class TestBackupRestore(Tester):
         debug("Checking rows on node1...")
         self.check_rows_on_node(node1, num_keys, found=keys, c1_values=c1_values, c2_values=c2_values)
 
-    def failure_durring_restore_no_corrupt_data(self):
+    def failure_durring_restore_no_corrupt_data_test(self):
         """
         Check that we can recover from a failure during restore
 
@@ -160,7 +160,7 @@ class TestBackupRestore(Tester):
         debug("Checking rows on node1...")
         self.check_rows_on_node(node1, num_keys, found=keys, c1_values=c1_values, c2_values=c2_values)
 
-    def replay_restore_no_additional_data(self):
+    def replay_restore_no_additional_data_test(self):
         """
         Check that we can restore snapshot files that use old schema
 
@@ -242,7 +242,7 @@ class TestBackupRestore(Tester):
         debug("Checking rows on node1...")
         self.check_rows_on_node(node1, num_keys, found=keys, c1_values=c1_values, c2_values=c2_values)
 
-    def restore_snapshot_using_different_smp_setting(self):
+    def restore_snapshot_using_different_smp_setting_test(self):
         """
         Check that we can restore snapshot files that used a different smp setting
 
@@ -325,7 +325,7 @@ class TestBackupRestore(Tester):
         debug("Checking rows on node1...")
         self.check_rows_on_node(node1, num_keys, found=keys, c1_values=c1_values, c2_values=c2_values)
 
-    def restore_snapshot_using_old_token_ownership(self):
+    def restore_snapshot_using_old_token_ownership_test(self):
         """
         Check that we can restore snapshot files that use a non updated token ownership
 
@@ -403,7 +403,7 @@ class TestBackupRestore(Tester):
         debug("Check that we may query ks.cf on node1...")
         session.execute(SimpleStatement("SELECT COUNT(*) FROM ks.cf"))
 
-    def incremental_backup(self):
+    def incremental_backup_test(self):
         """
         Check that incremetal backup works as expected
 
@@ -477,7 +477,7 @@ class TestBackupRestore(Tester):
 
         self.assertEqual(sstables_files1 | sstables_files2, backups2_files, "backup after compaction doesn't contain all sstable files")
 
-    def restore_snapshot_from_cassandra(self):
+    def restore_snapshot_from_cassandra_test(self):
         """
         Check that we can restore snapshot files that have been created by cassandra
 
@@ -531,7 +531,7 @@ class TestBackupRestore(Tester):
         debug("Checking rows on node1...")
         self.check_rows_on_node(node1, num_keys, found=keys, c1_values=c1_values, c2_values=c2_values)
 
-    def clearsnapshot_options(self):
+    def clearsnapshot_options_test(self):
         """
         Check different 'nodetool clearsnapshot' options
 
