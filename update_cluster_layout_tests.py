@@ -256,9 +256,9 @@ class TestUpdateClusterLayout(Tester):
         insert_c1c2(session, keys=range(1000), consistency=ConsistencyLevel.THREE)
 
         debug("Inserting more data to make streaming process longer...")
-        node1.stress(['write', 'n=5000', 'no-warmup', '-schema', 'replication(factor=3) keyspace=ks1'])
-        node2.stress(['write', 'n=5000', 'no-warmup', '-schema', 'replication(factor=3) keyspace=ks2'])
-        node3.stress(['write', 'n=5000', 'no-warmup', '-schema', 'replication(factor=3) keyspace=ks3'])
+        node1.stress(['write', 'n=20000', 'no-warmup', '-schema', 'replication(factor=3) keyspace=ks1'])
+        node2.stress(['write', 'n=20000', 'no-warmup', '-schema', 'replication(factor=3) keyspace=ks2'])
+        node3.stress(['write', 'n=20000', 'no-warmup', '-schema', 'replication(factor=3) keyspace=ks3'])
 
         debug("Flush cluster...")
         self.cluster.flush()
@@ -272,8 +272,9 @@ class TestUpdateClusterLayout(Tester):
         node2.stop()
 
         debug("Look for Stream failed in node 4...")
-        # Wait 6 minutes at most for streaming to give up retrying
-        node4.watch_log_for("Stream failed", timeout=360)
+	# The keep alive timer expires in 10 minutes.
+	# Wait 2 minutes more in the test to wait for the stream to fail
+        node4.watch_log_for("Stream failed", timeout=720)
 
     def simple_kill_new_node_while_bootstrapping_test(self):
         """
