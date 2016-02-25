@@ -20,6 +20,11 @@ class TestMigration(Tester):
     def migrate_sstable_with_compact_storage_test(self):
         self.run_basic_migration_test('with_compact_storage', {'key':'a','c1':'abc','c2':'cde'}, compact_storage=True)
 
+    def migrate_sstable_with_expired_ttl_test(self):
+        # Data inserted in c* with the following query: INSERT INTO ks.cf (key, c1, c2) VALUES ('a', 'abc', 'cde') USING TTL 1;
+        # Expect no keys because the only one inserted is expired.
+        self.run_basic_migration_test('with_expired_ttl', None)
+
     def migrate_sstable_with_wide_row_test(self):
         node1 = self.start_cluster_and_get_node1()
 
@@ -104,12 +109,16 @@ class TestMigration(Tester):
         self.create_ks_and_cf(node1, columns={'c1': 'text', 'c2': 'text'}, compression=compression, compact_storage=compact_storage)
         self.load_migrated_tables(node1, migrated_files_dir)
 
-        self.check_number_of_rows(node1, 1)
+        expected_keys = 1
+        if row_content is None:
+            expected_keys = 0
+        self.check_number_of_rows(node1, expected_keys)
 
-        result = self.get_all_rows_for_check(node1)
-        self.assertEqual(result[0].key, row_content['key'], "check partition key")
-        self.assertEqual(result[0].c1, row_content['c1'], "check column c1")
-        self.assertEqual(result[0].c2, row_content['c2'], "check column c2")
+        if row_content is not None:
+            result = self.get_all_rows_for_check(node1)
+            self.assertEqual(result[0].key, row_content['key'], "check partition key")
+            self.assertEqual(result[0].c1, row_content['c1'], "check column c1")
+            self.assertEqual(result[0].c2, row_content['c2'], "check column c2")
 
     def run_migration_test_for_collection(self, migration_dir_name, collection_type, collection_content):
         node1 = self.start_cluster_and_get_node1()
