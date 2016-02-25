@@ -54,6 +54,27 @@ class TestMigration(Tester):
         # INSERT INTO ks.cf (key, messages) VALUES ( 'a', { 'a':'value1', 'b':'value2' });
         self.run_migration_test_for_collection("with_collection_map", "map<varchar, text>", {'a': 'value1', 'b': 'value2'})
 
+    def migrate_sstable_with_static_cell_test(self):
+        node1 = self.start_cluster_and_get_node1()
+
+        query = 'CREATE COLUMNFAMILY ks.cf (key varchar, s text STATIC, i int, PRIMARY KEY (key, i)) WITH comment=\'test cf\' AND read_repair_chance=0.000000'
+        self.create_ks_and_cf(node1, None, None, False, query=query)
+
+        self.load_migrated_tables(node1, 'with_static_cell')
+
+        self.check_number_of_rows(node1, 2)
+
+        result = self.get_all_rows_for_check(node1)
+        # contents generated with:
+        # INSERT INTO ks.cf (key, s, i) VALUES ('k', 'old', 0);
+        # INSERT INTO ks.cf (key, s, i) VALUES ('k', 'new', 1);
+        self.assertEqual(result[0].key, 'k', "check partition key")
+        self.assertEqual(result[0].i, 0, "check clustering key")
+        self.assertEqual(result[0].s, 'new', "check static cell")
+        self.assertEqual(result[1].key, 'k', "check partition key")
+        self.assertEqual(result[1].i, 1, "check clustering key")
+        self.assertEqual(result[1].s, 'new', "check static cell")
+
 # ######################## Helper functions ####################################
     def check_number_of_rows(self, node, expected_number_of_rows):
         debug("Checking rows on node1...")
@@ -95,7 +116,7 @@ class TestMigration(Tester):
         self.assertEqual(result[0].key, 'a', "check partition key")
         self.assertEqual(result[0].messages, collection_content, "check messages")
 
-    def create_ks_and_cf(self, node, columns, compression, compact_storage):
+    def create_ks_and_cf(self, node, columns, compression, compact_storage, query=None):
         debug("Creating a CQL connection...")
         session = self.patient_cql_connection(node)
 
@@ -103,7 +124,11 @@ class TestMigration(Tester):
         self.create_ks(session, 'ks', 1)
 
         debug("Creating a column family 'cf'...")
-        self.create_cf(session, 'cf', read_repair=0.0, columns=columns, compression=compression, compact_storage=compact_storage)
+        if query is not None:
+            session.execute(query)
+            time.sleep(0.2)
+        else:
+            self.create_cf(session, 'cf', read_repair=0.0, columns=columns, compression=compression, compact_storage=compact_storage)
 
         debug("Flushing a keyspace...")
         node.nodetool("flush -- ks")
