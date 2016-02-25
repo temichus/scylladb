@@ -44,15 +44,15 @@ class TestMigration(Tester):
         self.assertEqual(result[2].v, 'b', "check column c1")
 
     def migrate_sstable_with_collection_set_test(self):
-        self.run_migration_test_for_collection("with_collection_set", "set<text>", {'hello world', 'scylla', 'scylladb', 'test'})
+        self.run_migration_test_for_collection("with_collection_set", "set<text>", {'a': {'hello world', 'scylla', 'scylladb', 'test'}})
 
     def migrate_sstable_with_collection_list_test(self):
-        self.run_migration_test_for_collection("with_collection_list", "list<text>", ['scylladb', 'scylla', 'hello world', 'test'])
+        self.run_migration_test_for_collection("with_collection_list", "list<text>", {'a': ['scylladb', 'scylla', 'hello world', 'test']})
 
     def migrate_sstable_with_collection_map_test(self):
         # CREATE COLUMNFAMILY ks.cf (key varchar PRIMARY KEY, messages map<varchar, text>)
         # INSERT INTO ks.cf (key, messages) VALUES ( 'a', { 'a':'value1', 'b':'value2' });
-        self.run_migration_test_for_collection("with_collection_map", "map<varchar, text>", {'a': 'value1', 'b': 'value2'})
+        self.run_migration_test_for_collection("with_collection_map", "map<varchar, text>", {'a': {'a': 'value1', 'b': 'value2'}})
 
     def migrate_sstable_with_static_cell_test(self):
         node1 = self.start_cluster_and_get_node1()
@@ -110,11 +110,15 @@ class TestMigration(Tester):
         self.create_ks_and_cf(node1, {'messages': '{}'.format(collection_type)}, None, False)
         self.load_migrated_tables(node1, migration_dir_name)
 
-        self.check_number_of_rows(node1, 1)
+        self.check_number_of_rows(node1, len(collection_content))
 
         result = self.get_all_rows_for_check(node1)
-        self.assertEqual(result[0].key, 'a', "check partition key")
-        self.assertEqual(result[0].messages, collection_content, "check messages")
+        idx = 0
+        for key, value in collection_content.iteritems():
+            self.assertEqual(result[idx].key, key, "check partition key")
+            # INSERT INTO ks.cf (key, messages) VALUES('a', {'scylladb', 'scylla', 'hello world', 'test'});
+            self.assertEqual(result[idx].messages, value, "check messages")
+            idx += 1
 
     def create_ks_and_cf(self, node, columns, compression, compact_storage, query=None):
         debug("Creating a CQL connection...")
