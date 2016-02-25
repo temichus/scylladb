@@ -54,6 +54,14 @@ class TestMigration(Tester):
         # INSERT INTO ks.cf (key, messages) VALUES ( 'a', { 'a':'value1', 'b':'value2' });
         self.run_migration_test_for_collection("with_collection_map", "map<varchar, text>", {'a': {'a': 'value1', 'b': 'value2'}})
 
+    def migrate_sstable_with_frozen_collection_map_test(self):
+        # CREATE COLUMNFAMILY ks.cf (key varchar PRIMARY KEY, messages frozen<map<varchar, text>>) ...
+        # C* returns [Row(key=u'a', messages=OrderedMapSerializedKey([(u'a', u'value1'), (u'b', u'value2')])),
+        # Row(key=u'b', messages=OrderedMapSerializedKey([(u'a', u'value1'), (u'b', u'value2')]))] when
+        # querying the whole content of sstable with frozen collection map
+        self.run_migration_test_for_collection("with_frozen_collection_map", "frozen<map<varchar, text>>",
+            {'a': {'a': 'value1', 'b': 'value2'}, 'b': {'a': 'value1', 'b': 'value2'}})
+
     def migrate_sstable_with_static_cell_test(self):
         node1 = self.start_cluster_and_get_node1()
 
