@@ -12,14 +12,21 @@ from dtest import Tester, debug
 #
 class TestMigration(Tester):
     def migrate_sstable_without_compression_test(self):
+        self.run_basic_migration_test("without_compression")
+
+    def migrate_sstable_with_lz4_compression_test(self):
+        self.run_basic_migration_test('with_lz4_compression', compression='LZ4')
+
+# ######################## Helper functions ####################################\
+    def run_basic_migration_test(self, migrated_files_dir, compression=None):
         cluster = self.cluster
 
         self.populate_cluster(cluster)
         self.start_cluster(cluster)
         node1 = self.get_node(cluster, 0)
 
-        self.create_ks_and_cf(node1, columns={'c1': 'text', 'c2': 'text'})
-        self.load_migrated_tables(node1, "without_compression")
+        self.create_ks_and_cf(node1, columns={'c1': 'text', 'c2': 'text'}, compression=compression)
+        self.load_migrated_tables(node1, migrated_files_dir)
 
         debug("Checking rows on node1...")
         query="SELECT COUNT(*) FROM cf"
@@ -28,8 +35,7 @@ class TestMigration(Tester):
         result = list(s.execute(statement))
         self.assertEqual(result[0].count, 1, len(result))
 
-# ######################## Helper functions ####################################
-    def create_ks_and_cf(self, node, columns):
+    def create_ks_and_cf(self, node, columns, compression):
         debug("Creating a CQL connection...")
         session = self.patient_cql_connection(node)
 
@@ -37,7 +43,7 @@ class TestMigration(Tester):
         self.create_ks(session, 'ks', 1)
 
         debug("Creating a column family 'cf'...")
-        self.create_cf(session, 'cf', read_repair=0.0, columns=columns)
+        self.create_cf(session, 'cf', read_repair=0.0, columns=columns, compression=compression)
 
         debug("Flushing a keyspace...")
         node.nodetool("flush -- ks")
