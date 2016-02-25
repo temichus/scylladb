@@ -12,13 +12,13 @@ from dtest import Tester, debug
 #
 class TestMigration(Tester):
     def migrate_sstable_without_compression_test(self):
-        self.run_basic_migration_test("without_compression")
+        self.run_basic_migration_test("without_compression", {'key':'abc','c1':None,'c2':'cde'})
 
     def migrate_sstable_with_lz4_compression_test(self):
-        self.run_basic_migration_test('with_lz4_compression', compression='LZ4')
+        self.run_basic_migration_test('with_lz4_compression', {'key':'a','c1':'abc','c2':'cde'}, compression='LZ4')
 
 # ######################## Helper functions ####################################\
-    def run_basic_migration_test(self, migrated_files_dir, compression=None):
+    def run_basic_migration_test(self, migrated_files_dir, row_content, compression=None):
         cluster = self.cluster
 
         self.populate_cluster(cluster)
@@ -34,6 +34,15 @@ class TestMigration(Tester):
         s = self.patient_cql_connection(node1, 'ks')
         result = list(s.execute(statement))
         self.assertEqual(result[0].count, 1, len(result))
+
+        debug("Checking rows content on node1...")
+        query="SELECT * FROM ks.cf"
+        statement = SimpleStatement(query)
+        s = self.patient_cql_connection(node1, 'ks')
+        result = list(s.execute(statement))
+        self.assertEqual(result[0].key, row_content['key'], "check partition key")
+        self.assertEqual(result[0].c1, row_content['c1'], "check column c1")
+        self.assertEqual(result[0].c2, row_content['c2'], "check column c2")
 
     def create_ks_and_cf(self, node, columns, compression):
         debug("Creating a CQL connection...")
