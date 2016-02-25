@@ -44,10 +44,15 @@ class TestMigration(Tester):
         self.assertEqual(result[2].v, 'b', "check column c1")
 
     def migrate_sstable_with_collection_set_test(self):
-        self.run_migration_test_for_collection("with_collection_set", "set", {'hello world', 'scylla', 'scylladb', 'test'})
+        self.run_migration_test_for_collection("with_collection_set", "set<text>", {'hello world', 'scylla', 'scylladb', 'test'})
 
     def migrate_sstable_with_collection_list_test(self):
-        self.run_migration_test_for_collection("with_collection_list", "list", ['scylladb', 'scylla', 'hello world', 'test'])
+        self.run_migration_test_for_collection("with_collection_list", "list<text>", ['scylladb', 'scylla', 'hello world', 'test'])
+
+    def migrate_sstable_with_collection_map_test(self):
+        # CREATE COLUMNFAMILY ks.cf (key varchar PRIMARY KEY, messages map<varchar, text>)
+        # INSERT INTO ks.cf (key, messages) VALUES ( 'a', { 'a':'value1', 'b':'value2' });
+        self.run_migration_test_for_collection("with_collection_map", "map<varchar, text>", {'a': 'value1', 'b': 'value2'})
 
 # ######################## Helper functions ####################################
     def check_number_of_rows(self, node, expected_number_of_rows):
@@ -81,7 +86,7 @@ class TestMigration(Tester):
         node1 = self.start_cluster_and_get_node1()
 
         # CREATE COLUMNFAMILY ks.cf (key varchar PRIMARY KEY, messages collection_type<text>)
-        self.create_ks_and_cf(node1, {'messages': '{}<text>'.format(collection_type)}, None, False)
+        self.create_ks_and_cf(node1, {'messages': '{}'.format(collection_type)}, None, False)
         self.load_migrated_tables(node1, migration_dir_name)
 
         self.check_number_of_rows(node1, 1)
