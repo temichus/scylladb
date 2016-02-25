@@ -17,15 +17,18 @@ class TestMigration(Tester):
     def migrate_sstable_with_lz4_compression_test(self):
         self.run_basic_migration_test('with_lz4_compression', {'key':'a','c1':'abc','c2':'cde'}, compression='LZ4')
 
+    def migrate_sstable_with_compact_storage_test(self):
+        self.run_basic_migration_test('with_compact_storage', {'key':'a','c1':'abc','c2':'cde'}, compact_storage=True)
+
 # ######################## Helper functions ####################################\
-    def run_basic_migration_test(self, migrated_files_dir, row_content, compression=None):
+    def run_basic_migration_test(self, migrated_files_dir, row_content, compression=None, compact_storage=False):
         cluster = self.cluster
 
         self.populate_cluster(cluster)
         self.start_cluster(cluster)
         node1 = self.get_node(cluster, 0)
 
-        self.create_ks_and_cf(node1, columns={'c1': 'text', 'c2': 'text'}, compression=compression)
+        self.create_ks_and_cf(node1, columns={'c1': 'text', 'c2': 'text'}, compression=compression, compact_storage=compact_storage)
         self.load_migrated_tables(node1, migrated_files_dir)
 
         debug("Checking rows on node1...")
@@ -44,7 +47,7 @@ class TestMigration(Tester):
         self.assertEqual(result[0].c1, row_content['c1'], "check column c1")
         self.assertEqual(result[0].c2, row_content['c2'], "check column c2")
 
-    def create_ks_and_cf(self, node, columns, compression):
+    def create_ks_and_cf(self, node, columns, compression, compact_storage):
         debug("Creating a CQL connection...")
         session = self.patient_cql_connection(node)
 
@@ -52,7 +55,7 @@ class TestMigration(Tester):
         self.create_ks(session, 'ks', 1)
 
         debug("Creating a column family 'cf'...")
-        self.create_cf(session, 'cf', read_repair=0.0, columns=columns, compression=compression)
+        self.create_cf(session, 'cf', read_repair=0.0, columns=columns, compression=compression, compact_storage=compact_storage)
 
         debug("Flushing a keyspace...")
         node.nodetool("flush -- ks")
