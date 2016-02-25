@@ -29,11 +29,7 @@ class TestMigration(Tester):
 
         self.check_number_of_rows(node1, 3)
 
-        debug("Checking rows content on node1...")
-        query="SELECT * FROM ks.cf"
-        statement = SimpleStatement(query)
-        s = self.patient_cql_connection(node1, 'ks')
-        result = list(s.execute(statement))
+        result = self.get_all_rows_for_check(node1)
         # INSERT INTO ks.cf (key, c, v) VALUES ('a', 'a', 'b');
         self.assertEqual(result[0].key, 'a', "check partition key")
         self.assertEqual(result[0].c, 'a', "check column c1")
@@ -47,6 +43,20 @@ class TestMigration(Tester):
         self.assertEqual(result[2].c, 'b', "check column c1")
         self.assertEqual(result[2].v, 'b', "check column c1")
 
+    def migrate_sstable_with_collection_set_test(self):
+        node1 = self.start_cluster_and_get_node1()
+
+        # CREATE COLUMNFAMILY ks.cf (key varchar PRIMARY KEY, messages set<text>)
+        self.create_ks_and_cf(node1, {'messages': 'set<text>'}, None, False)
+        self.load_migrated_tables(node1, 'with_collection_set')
+
+        self.check_number_of_rows(node1, 1)
+
+        result = self.get_all_rows_for_check(node1)
+        self.assertEqual(result[0].key, 'a', "check partition key")
+        # INSERT INTO ks.cf (key, messages) VALUES('a', {'scylladb', 'scylla', 'hello world', 'test'});
+        self.assertEqual(result[0].messages, {'hello world', 'scylla', 'scylladb', 'test'}, "check messages")
+
 # ######################## Helper functions ####################################
     def check_number_of_rows(self, node, expected_number_of_rows):
         debug("Checking rows on node1...")
@@ -56,6 +66,13 @@ class TestMigration(Tester):
         result = list(s.execute(statement))
         self.assertEqual(result[0].count, expected_number_of_rows, len(result))
 
+    def get_all_rows_for_check(self, node1):
+        debug("Checking rows content on node1...")
+        query="SELECT * FROM ks.cf"
+        statement = SimpleStatement(query)
+        s = self.patient_cql_connection(node1, 'ks')
+        return list(s.execute(statement))
+
     def run_basic_migration_test(self, migrated_files_dir, row_content, compression=None, compact_storage=False):
         node1 = self.start_cluster_and_get_node1()
         self.create_ks_and_cf(node1, columns={'c1': 'text', 'c2': 'text'}, compression=compression, compact_storage=compact_storage)
@@ -63,11 +80,7 @@ class TestMigration(Tester):
 
         self.check_number_of_rows(node1, 1)
 
-        debug("Checking rows content on node1...")
-        query="SELECT * FROM ks.cf"
-        statement = SimpleStatement(query)
-        s = self.patient_cql_connection(node1, 'ks')
-        result = list(s.execute(statement))
+        result = self.get_all_rows_for_check(node1)
         self.assertEqual(result[0].key, row_content['key'], "check partition key")
         self.assertEqual(result[0].c1, row_content['c1'], "check column c1")
         self.assertEqual(result[0].c2, row_content['c2'], "check column c2")
