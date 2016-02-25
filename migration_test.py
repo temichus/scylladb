@@ -25,6 +25,20 @@ class TestMigration(Tester):
         # Expect no keys because the only one inserted is expired.
         self.run_basic_migration_test('with_expired_ttl', None)
 
+    def migrate_sstable_with_cell_tombstone_test(self):
+        # Content generated with:
+        # INSERT INTO ks.cf (key, c1, c2) VALUES ('a', 'abc', 'cde');
+        # nodetool flush
+        # DELETE c2 FROM ks.cf where key = 'a';
+        self.run_basic_migration_test('with_cell_tombstone', {'key':'a','c1':'abc','c2':None})
+
+    def migrate_sstable_with_row_tombstone_test(self):
+        # Content generated with:
+        # INSERT INTO ks.cf (key, c1, c2) VALUES ('a', 'abc', 'cde');
+        # nodetool flush
+        # DELETE FROM ks.cf where key = 'a';
+        self.run_basic_migration_test('with_row_tombstone', None)
+
     def migrate_sstable_with_wide_row_test(self):
         node1 = self.start_cluster_and_get_node1()
 
