@@ -44,18 +44,10 @@ class TestMigration(Tester):
         self.assertEqual(result[2].v, 'b', "check column c1")
 
     def migrate_sstable_with_collection_set_test(self):
-        node1 = self.start_cluster_and_get_node1()
+        self.run_migration_test_for_collection("with_collection_set", "set", {'hello world', 'scylla', 'scylladb', 'test'})
 
-        # CREATE COLUMNFAMILY ks.cf (key varchar PRIMARY KEY, messages set<text>)
-        self.create_ks_and_cf(node1, {'messages': 'set<text>'}, None, False)
-        self.load_migrated_tables(node1, 'with_collection_set')
-
-        self.check_number_of_rows(node1, 1)
-
-        result = self.get_all_rows_for_check(node1)
-        self.assertEqual(result[0].key, 'a', "check partition key")
-        # INSERT INTO ks.cf (key, messages) VALUES('a', {'scylladb', 'scylla', 'hello world', 'test'});
-        self.assertEqual(result[0].messages, {'hello world', 'scylla', 'scylladb', 'test'}, "check messages")
+    def migrate_sstable_with_collection_list_test(self):
+        self.run_migration_test_for_collection("with_collection_list", "list", ['scylladb', 'scylla', 'hello world', 'test'])
 
 # ######################## Helper functions ####################################
     def check_number_of_rows(self, node, expected_number_of_rows):
@@ -84,6 +76,19 @@ class TestMigration(Tester):
         self.assertEqual(result[0].key, row_content['key'], "check partition key")
         self.assertEqual(result[0].c1, row_content['c1'], "check column c1")
         self.assertEqual(result[0].c2, row_content['c2'], "check column c2")
+
+    def run_migration_test_for_collection(self, migration_dir_name, collection_type, collection_content):
+        node1 = self.start_cluster_and_get_node1()
+
+        # CREATE COLUMNFAMILY ks.cf (key varchar PRIMARY KEY, messages collection_type<text>)
+        self.create_ks_and_cf(node1, {'messages': '{}<text>'.format(collection_type)}, None, False)
+        self.load_migrated_tables(node1, migration_dir_name)
+
+        self.check_number_of_rows(node1, 1)
+
+        result = self.get_all_rows_for_check(node1)
+        self.assertEqual(result[0].key, 'a', "check partition key")
+        self.assertEqual(result[0].messages, collection_content, "check messages")
 
     def create_ks_and_cf(self, node, columns, compression, compact_storage):
         debug("Creating a CQL connection...")
