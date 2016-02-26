@@ -111,6 +111,15 @@ class TestMigration(Tester):
         self.assertEqual(result[1].i, 1, "check clustering key")
         self.assertEqual(result[1].s, 'new', "check static cell")
 
+    def migrate_sstable_with_counter_test(self):
+        cluster = self.cluster
+
+        self.populate_cluster(cluster)
+        self.copy_migrated_data_dir('with_counter')
+        self.start_cluster(cluster)
+
+        # FIXME: Check row content when counter gets supported.
+
 # ######################## Helper functions ####################################
     def check_number_of_rows(self, node, expected_number_of_rows):
         debug("Checking rows on node1...")
@@ -191,6 +200,20 @@ class TestMigration(Tester):
         debug("Running 'nodetool refresh -- ks cf' to load migrated sstables")
         node.nodetool("refresh -- ks cf")
 
+    def copy_migrated_data_dir(self, migrated_data_dir):
+        cassandra_dir = "{}/cassandra-sstables/migration/{}/data".format(os.path.dirname(os.path.realpath(__file__)), migrated_data_dir)
+        debug("cassandra data dir for counter is {}".format(cassandra_dir))
+
+        scylla_dir = os.path.join(self.test_path, 'test', 'node1', 'data')
+        debug("Node data directory is {}".format(scylla_dir))
+
+        debug("Copying data/ks created by Cassandra...")
+        self.recursive_copy_to(os.path.join(cassandra_dir, 'ks'), os.path.join(scylla_dir, 'ks'))
+        debug("Copying data/system created by Cassandra...")
+        self.recursive_copy_to(os.path.join(cassandra_dir, 'system'), os.path.join(scylla_dir, 'system'))
+        debug("Copying data/system_traces created by Cassandra...")
+        self.recursive_copy_to(os.path.join(cassandra_dir, 'system_traces'), os.path.join(scylla_dir, 'system_traces'))
+
     def populate_cluster(self, cluster):
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfere with the test (this must be after the populate)
@@ -226,4 +249,5 @@ class TestMigration(Tester):
         for f in os.listdir(from_dir):
             shutil.copy2(os.path.join(from_dir, f), os.path.join(to_dir, f))
 
-
+    def recursive_copy_to(self, from_dir, to_dir):
+        shutil.copytree(from_dir, to_dir)
