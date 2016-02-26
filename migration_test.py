@@ -120,6 +120,45 @@ class TestMigration(Tester):
 
         # FIXME: Check row content when counter gets supported.
 
+    def migrate_sstable_with_schema_change_test(self):
+        # Content of Cassandra dir generated with following cql commands:
+        # CREATE TABLE ks.cf (user_name varchar PRIMARY KEY, bio ascii);
+        # INSERT INTO ks.cf (user_name, bio) VALUES ('a', 'test');
+        # ALTER TABLE ks.cf ADD age int;
+        # INSERT INTO ks.cf (user_name, bio, age) VALUES ('b', 'test', 0);
+
+        cluster = self.cluster
+
+        self.populate_cluster(cluster)
+        self.copy_migrated_data_dir('with_schema_change')
+        self.start_cluster(cluster)
+        node1 = self.get_node(cluster, 0)
+
+        self.check_number_of_rows(node1, 2)
+
+        result = self.get_all_rows_for_check(node1)
+        self.assertEqual(result[0].user_name, 'a', "check partition key")
+        self.assertEqual(result[0].age, None, "check added cell")
+        self.assertEqual(result[0].bio, 'test', "check static cell")
+        self.assertEqual(result[1].user_name, 'b', "check partition key")
+        self.assertEqual(result[1].age, 0, "check added cell")
+        self.assertEqual(result[1].bio, 'test', "check static cell")
+
+        debug("Adding a new row...")
+        query="INSERT INTO ks.cf (user_name, bio, age) VALUES ('c', 'test', 0)"
+        s = self.patient_cql_connection(node1, 'ks')
+        statement = SimpleStatement(query)
+        s.execute(statement)
+        node1.nodetool("flush -- ks")
+
+        debug("Checking rows content after adding row...")
+        self.check_number_of_rows(node1, 3)
+        result = self.get_all_rows_for_check(node1)
+        # new row is in index 1
+        self.assertEqual(result[1].user_name, 'c', "check partition key")
+        self.assertEqual(result[1].age, 0, "check added cell")
+        self.assertEqual(result[1].bio, 'test', "check static cell")
+
 # ######################## Helper functions ####################################
     def check_number_of_rows(self, node, expected_number_of_rows):
         debug("Checking rows on node1...")
