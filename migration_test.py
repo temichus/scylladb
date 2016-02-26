@@ -39,6 +39,15 @@ class TestMigration(Tester):
         # DELETE FROM ks.cf where key = 'a';
         self.run_basic_migration_test('with_row_tombstone', None)
 
+    def migrate_sstable_with_range_tombstone_test(self):
+        # Content generated with:
+        # INSERT INTO ks.cf (key, c1, c2) VALUES ('a', 'abc', 'cde');
+        # INSERT INTO ks.cf (key, c1, c2) VALUES ('b', 'abc', 'cde');
+        # INSERT INTO ks.cf (key, c1, c2) VALUES ('c', 'abc', 'cde');
+        # nodetool flush
+        # DELETE FROM ks.cf WHERE key IN ('a', 'b');
+        self.run_basic_migration_test('with_range_tombstone', {'key':'c','c1':'abc','c2':'cde'})
+
     def migrate_sstable_with_wide_row_test(self):
         node1 = self.start_cluster_and_get_node1()
 
