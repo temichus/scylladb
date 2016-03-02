@@ -2,6 +2,7 @@ from dtest import Tester
 import re
 import os
 from tools import no_vnodes
+from tools import new_node
 import yaml
 import time
 from unittest import skip
@@ -114,6 +115,15 @@ class TestNodetool(Tester):
         for i in range(len(heads)):
             res[heads[i]] = lst[i]
         return res
+
+    @staticmethod
+    def _tonum(val):
+        """ translate a string to a num if possible
+        """
+        try:
+            return float(val)
+        except:
+            return val
 
     def nodetool_status(self, node):
         res = {}
@@ -659,18 +669,103 @@ class TestNodetool(Tester):
         ni = self.nodetool_info(node)
         self.assertMapBetween(ni, "Uptime (seconds)", uptime + 10, uptime + 20)
 
-    def stress_write(self, node, times=100000, opt=[]):
-        res = node.stress_object(['write', 'n=' + str(times)] + opt)
-
-        if not isinstance(res, dict):
-            self.assertTrue(isinstance(res, dict), "Write stress failed:" + res)
-
+    def netstats(self, node):
+        out = node.nodetool('netstats', True)[0]
+        lines = out.splitlines()
+        res = {}
+        m = re.match("Mode:\s+(.*)$", lines.pop(0))
+        self.assertTrue(m, "Mode is missing in netstats")
+        res["mode"] = m.group(1)
+        bootstrap = lines.pop(0)
+        if bootstrap != "Not sending any streams.":
+            res["streams"] = []
+        read_repair = False
+        stream = None
+        for l in lines:
+            ip = re.match("^\s+/([\d\.]+)\s*$", l)
+            strm = re.match("^\s+(\S+) (\d+) files, (\d+) bytes total. Already \S+ (\d+) files, (\d+) bytes total", l)
+            command = re.match("Commands\s+([^\s]+)\s+(\d+)\s+(\d+)", l)
+            responses = re.match("Responses\s+([^\s]+)\s+(\d+)\s+(\d+)", l)
+            rxfile = re.match("\s+(\S+)\s+(\d+)/(\d+) bytes\((\d+)%\)\s+\S+\s+from idx:0/([\d\.]+)", l)
+            if l == "Read Repair Statistics:":
+                read_repair = True
+                if stream is not None:
+                    res["streams"].append(stream)
+                    stream = None
+            elif l.startswith("Pool Name"):
+                read_repair = False
+            elif ip:
+                if stream is not None:
+                    res["streams"].append(stream)
+                stream = {}
+                stream["ip"] = ip.group(1)
+            elif strm:
+                stream["direction"] = strm.group(1)
+                stream["files"] = strm.group(2)
+                stream["total_bytes"] = strm.group(3)
+                stream["progres"] = strm.group(4)
+                stream["progres_bytes"] = strm.group(5)
+            elif rxfile:
+                file_info = {}
+                file_info["name"] = rxfile.group(1)
+                file_info["rx_file"] = rxfile.group(2)
+                file_info["rx_out_of"] = rxfile.group(3)
+                file_info["rx_percent"] = rxfile.group(4)
+                file_info["rx_ip"] = rxfile.group(5)
+                if "rx_files" not in stream:
+                    stream["rx_files"] = {}
+                stream["rx_files"][file_info["name"]] = file_info
+            elif command:
+                res["commands"] = {}
+                res["commands"]["Active"] = self._tonum(command.group(1))
+                res["commands"]["Pending"] = self._tonum(command.group(2))
+                res["commands"]["Completed"] = self._tonum(command.group(3))
+            elif responses:
+                res["responses"] = {}
+                res["responses"]["Active"] = self._tonum(responses.group(1))
+                res["responses"]["Pending"] = self._tonum(responses.group(2))
+                res["responses"]["Completed"] = self._tonum(responses.group(3))
+            elif read_repair:
+                rr = re.match("^(.*):\s*(\d+)\s*$", l)
+                self.assertTrue(rr, "unexpected line in read repair")
+                res[rr.group(1)] = self._tonum(rr.group(2))
+            else:
+                self.assertTrue(False, "unknown line in netstats" + l)
+        if stream is not None:
+            res["streams"].append(stream)
         return res
 
-    def stress_mixed(self, node, times=100000, opt=[]):
-        res = node.stress_object(['mixed', 'n=' + str(times)] + opt)
+    def netstats_test(self):
+        """Testwing the `nodetool netstats` command
+        It starts a 2 node cluster load it.
+        add a node and check the results.
+        """
+        cluster = self.cluster
+        cluster.populate(2).start(wait_for_binary_proto=True)
+        node = cluster.nodelist()[0]
+        self.stress_write(node, times=1000000,  pop='seq=1..3000000000', opt=["-rate threads=10"])
+        node2 = new_node(cluster)
+        node2.start(wait_for_binary_proto=False)
+        node2.watch_log_for('streaming')
+        stats = self.netstats(node2)
+        self.assertEquals(len(stats["streams"]), 2)
 
-        if not isinstance(res, dict):
-            self.assertTrue(isinstance(res, dict), "Mixed stress failed:" + res)
+    def stress(self, node, opr, times=10000, duration=None, col=None, pop=None, opt=[]):
+        cmd = [opr, 'cl=ALL']
+        if duration:
+            cmd += ['duration=' + duration]
+        else:
+            cmd += ['n=' + str(times)]
+        if col:
+            cmd += ["-col", "'" + col + "'"]
+        if pop:
+            cmd += ["-pop", pop]
+        if opt:
+            cmd += opt
+        return node.stress_object(cmd)
 
-        return res
+    def stress_write(self, node, times=10000, duration=None, col=None, pop=None, opt=[]):
+        return self.stress(node, 'write', times=times, duration=duration, col=col, pop=pop, opt=opt)
+
+    def stress_mixed(self, node, times=10000, duration=None, col=None, pop=None, opt=[]):
+        return self.stress(node, 'mixed', times=times, duration=duration, col=col, pop=pop, opt=opt)
