@@ -522,7 +522,6 @@ class TestNodetool(Tester):
         out = node.nodetool('describecluster', True)[0]
         return yaml.load(out.replace('\t', "  "))
 
-    @skip ('#677 #472')
     def describecluster_test(self):
         """Test the nodetool describecluster command
         """
