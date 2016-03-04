@@ -841,3 +841,74 @@ class TestUpdateClusterLayout(Tester):
         query = SimpleStatement("SELECT * FROM cf", consistency_level=ConsistencyLevel.ONE)
         result = session.execute(query)
         self.assertEqual(len(result), 10, len(result))
+
+    def _add_new_node_while_add_new_table(self, when):
+        """
+        Test bootstrapped node get data in the new table
+        1. Create a cluster with a three nodes with rf=1, insert data
+        2. Add node, while node is bootstrapping add new table and insert data
+        4. Check that node was connected and the cluster returns all data inserted
+        """
+        cluster = self.cluster
+        self.allow_log_errors = True
+        rf = 1
+        consistency = {1: ConsistencyLevel.ONE, 2: ConsistencyLevel.TWO}[rf]
+
+        # Disable hinted handoff and set batch commit log so this doesn't
+        # interfer with the test (this must be after the populate)
+        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.populate(3).start()
+        node1 = cluster.nodelist()[0]
+
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', rf)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+
+        insert_c1c2(session, keys=range(4000), consistency=consistency)
+
+        event = threading.Event()
+
+        def run():
+            self.create_ks(session, 'ks1', rf)
+            self.create_cf(session, 'cf1', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+            for i in xrange(0, 1000):
+                insert = SimpleStatement("insert into ks1.cf1 (key,c1,c2) values ('%d','%d','%d')" % (i, i, i), consistency_level=consistency)
+                session.execute(insert)
+
+            event.set()
+            pass
+
+        t = threading.Thread(target=run)
+        t.setDaemon(True)
+
+	# Create table and insert data before bootstrapping of the new node
+	if when == "before":
+            t.start()
+
+        node4 = new_node(cluster)
+        node4.start()
+        node4.watch_log_for("Beginning stream session")
+	# Create table and insert data during bootstrapping of the new node
+	if when == "during":
+            t.start()
+
+        node4.watch_log_for("Starting listening for CQL clients")
+        session = self.patient_cql_connection(node4)
+
+	# Create table and insert data after bootstrapping of the new node
+	if when == "after":
+            t.start()
+
+        event.wait()
+        query = SimpleStatement("SELECT * FROM ks1.cf1", consistency_level=consistency)
+        result = session.execute(query)
+        self.assertEqual(len(result), 1000, len(result))
+
+    def add_new_node_while_add_new_table_before_bootstrapping_test(self):
+        self._add_new_node_while_add_new_table("before");
+
+    def add_new_node_while_add_new_table_during_bootstrapping_test(self):
+        self._add_new_node_while_add_new_table("during");
+
+    def add_new_node_while_add_new_table_after_bootstrapping_test(self):
+        self._add_new_node_while_add_new_table("after");
