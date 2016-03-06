@@ -416,6 +416,59 @@ class TestUpdateClusterLayout(Tester):
         result = session.execute("SELECT * FROM cf")
         self.assertEqual(len(result), 3000, len(result))
 
+    def simple_kill_new_node_while_bootstrapping_with_parallel_writes_in_multidc_test(self):
+        """
+        Test bootstrapped node streams all data
+        1. Create a cluster with two nodes in multidc with rf=1, insert data
+        2. Add node, wait for each to start bootstrapping and write additional data
+        3. kill it
+        4. Check that the cluster returns all
+        """
+        cluster = self.cluster
+        self.allow_log_errors = True
+
+        # Disable hinted handoff and set batch commit log so this doesn't
+        # interfer with the test (this must be after the populate)
+        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.populate([1,1]).start()
+        node1 = cluster.nodelist()[0]
+        node2 = cluster.nodelist()[1]
+
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', {'dc1': 1, 'dc2': 1})
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+
+        insert_c1c2(session, keys=range(1000), consistency=ConsistencyLevel.ONE)
+
+        debug("Inserting more data to make streaming process longer...")
+        node1.stress(['write', 'n=5000', 'no-warmup', '-schema', 'replication(factor=3) keyspace=ks1'])
+        node2.stress(['write', 'n=5000', 'no-warmup', '-schema', 'replication(factor=3) keyspace=ks2'])
+
+        # create a new node and adding it - we cannot do this more then once
+        a_new_node = new_node(cluster,data_center='dc1')
+        event = threading.Event()
+        def run():
+            insert_c1c2(session, keys=range(2000, 4000), consistency=ConsistencyLevel.EACH_QUORUM)
+            event.set()
+            pass
+        t = threading.Thread(target=run)
+        t.setDaemon(True)
+
+        debug("Start new node");
+        a_new_node.start()
+        a_new_node.watch_log_for("JOINING: Starting to bootstrap")
+        t.start()
+        a_new_node.watch_log_for("Beginning stream session")
+        debug("Stop new node");
+        a_new_node.stop(gently=False)
+        event.wait()
+
+        # Sleep 1 second to make sure other nodes knows this node is joining through gossip
+        time.sleep(1)
+
+        result = session.execute("SELECT * FROM cf")
+        self.assertEqual(len(result), 3000, len(result))
+
     def _simple_add_new_node_while_adding_info(self, rf):
         """
         Test bootstrapped node streams all data
