@@ -426,15 +426,11 @@ class TestBackupRestore(Tester):
         # interfere with the test (this must be after the populate)
         cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
         debug("Starting a cluster of one node...")
-        cluster.populate(1).start(jvm_args=['--incremental-backups', '1'])
+        cluster.populate(1).start()
         node1 = cluster.nodelist()[0]
 
-        #
-        # 'nodetool enablebackup' doesn't work yet - we'll use command line parameters
-        # for a while.
-        #
-        # debug("Enabling incremental backups...")
-        # node1.nodetool("enablebackup")
+        debug("Enabling incremental backups...")
+        node1.nodetool("enablebackup")
 
         debug("Creating a CQL connection...")
         session = self.patient_cql_connection(node1)
