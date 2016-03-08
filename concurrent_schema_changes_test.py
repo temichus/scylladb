@@ -11,9 +11,8 @@ from tools import new_node
 
 from cassandra.concurrent import execute_concurrent
 
-from ccmlib.node import Node
 from dtest import Tester, debug
-from tools import require, since
+from tools import since
 
 
 def wait(delay=2):
