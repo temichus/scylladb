@@ -1015,3 +1015,37 @@ class TestConsistency(Tester):
         session.execute(simple_query)
 
         to_stop.start(wait_other_notice=True)
+
+    def data_query_digest_test(self):
+        debug('Create cluster')
+        cluster = self.cluster
+        cluster.populate(2).start()
+        node1, node2 = cluster.nodelist()
+
+        debug('Prepare column family')
+        session1 = self.patient_cql_connection(node1)
+        self.create_ks(session1, 'ks', 2);
+        session1.execute('create table ks.cf1 (p int, c int, r int, primary key (p, c))')
+
+        session1.execute(SimpleStatement('insert into ks.cf1 (p, c, r) values (0, 1, 1)', consistency_level=ConsistencyLevel.ALL))
+        session1.execute(SimpleStatement('insert into ks.cf1 (p, c, r) values (0, 2, 1)', consistency_level=ConsistencyLevel.ALL))
+
+        debug('Updating node1')
+        node2.stop()
+        session1.execute(SimpleStatement('delete from ks.cf1 where p = 0 and c = 1', consistency_level=ConsistencyLevel.ONE))
+        node1.stop()
+
+        debug('Updating node2')
+        node2.start()
+        session2 = self.patient_cql_connection(node2)
+        session2.execute(SimpleStatement('insert into ks.cf1 (p, c, r) values (0, 2, 2)', consistency_level=ConsistencyLevel.ONE))
+
+        debug('Querying whole cluster')
+        node1.start(wait_other_notice=True)
+        query = SimpleStatement('select r from ks.cf1 where p = 0 limit 1', consistency_level=ConsistencyLevel.ALL)
+        res = list(session2.execute(query))
+
+        assert len(res) == 1, 'Expecting 1 row, got %d (%s)' % (len(res), str(res))
+        assert len(res[0]) == 1, 'Expecting 1 cell, got %d (%s)' % (len(res[0]), str(res[0]))
+        assert res[0][0] == 2, 'Expecting value 2, got %s' % str(res[0][0])
+
