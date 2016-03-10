@@ -1028,3 +1028,87 @@ class TestUpdateClusterLayout(Tester):
 
     def add_new_node_while_add_new_table_after_bootstrapping_test(self):
         self._add_new_node_while_add_new_table("after");
+
+    def _get_gossipinfo(self, output):
+        """
+        Parse gossipinfo output and put it into a python dict.
+
+        Trailing slash on node ips is removed.
+
+        :param output: 'nodetool gossip' stdout
+        :returns: Dict with nodetool info. Example follows.
+        {'127.0.0.1': {'DC': 'datacenter1',
+                       'HOST_ID': 'bb821819-9049-4929-b7cc-7b2edf1eec10',
+                       'LOAD': '128982',
+                       'NET_VERSION': '0',
+                       'RACK': 'rack1',
+                       'RELEASE_VERSION': '2.1.8',
+                       'RPC_ADDRESS': '127.0.0.1',
+                       'SCHEMA': '2576e940-0936-3ff6-a12c-9c4ed9571175',
+                       'STATUS': 'NORMAL,996695790724469087',
+                       'generation': '1457611493',
+                       'heartbeat': '118'}}
+        """
+        gossipinfo = {}
+        current_node = None
+        for line in output.splitlines():
+            line = line.strip()
+            try:
+                if current_node and current_node not in gossipinfo:
+                    gossipinfo[current_node] = {}
+                key, value = line.split(':')
+                gossipinfo[current_node].update({key: value})
+            except:
+                current_node = line[1:]
+        return gossipinfo
+
+
+    def remove_node_from_gossip_test(self):
+        """
+        Test a node can be removed from gossip
+        1. Create a cluster with 3 nodes
+        2. Add node, wait for node to start bootstrappig
+        3. Kill the new node
+        4. Check that the new node will be removed from
+        4. Check gossip on_remove callback in storage_service will not cause deadlock
+        """
+        cluster = self.cluster
+        self.allow_log_errors = True
+
+        # Disable hinted handoff and set batch commit log so this doesn't
+        # interfere with the test (this must be after the populate)
+        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.populate(3).start()
+        node1, node2, node3 = cluster.nodelist()
+
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 2)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+
+        insert_c1c2(session, keys=range(2000), consistency=ConsistencyLevel.TWO)
+
+        debug("Start node 4...")
+        node4 = new_node(cluster)
+        node4.start()
+        node4.watch_log_for("Beginning stream session")
+
+        debug("Stop node 4 ...")
+        node4.stop()
+
+        debug("Check node 1 removed node4  ...")
+        node1.watch_log_for("FatClient .* has been silent for .*ms, removing from gossip")
+
+        debug("Check the hearbeat of node 1 ...")
+        status1, err1 = node1.nodetool('gossipinfo')
+        gossipinfo_1 = self._get_gossipinfo(status1)
+        heartbeat_1 = int(gossipinfo_1['127.0.0.1']['heartbeat'])
+
+        time.sleep(3)
+
+        debug("Check the hearbeat of node 1 updated ...")
+        status2, err2 = node1.nodetool('gossipinfo')
+        gossipinfo_2 = self._get_gossipinfo(status2)
+        heartbeat_2 = int(gossipinfo_2['127.0.0.1']['heartbeat'])
+        e_msg = ("Heartbeat for status 2 '%s' is not greater than for status 1 '%s', something is wrong" % (heartbeat_2, heartbeat_1))
+        debug("heartbeat_2 = %d, heartbeat_1 = %d" % (heartbeat_2, heartbeat_1))
+        self.assertGreater(heartbeat_2, heartbeat_1, e_msg)
