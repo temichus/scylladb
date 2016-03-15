@@ -2,10 +2,15 @@ from dtest import Tester
 import re
 import os
 from tools import no_vnodes
-from tools import new_node
+from tools import new_node, debug
 import yaml
 import time
 from unittest import skip
+from threading import Thread
+
+
+def wait(delay=2):
+    time.sleep(delay)
 
 
 class TestNodetool(Tester):
@@ -637,21 +642,14 @@ class TestNodetool(Tester):
             self.assertIn("DC", info)
             self.assertIn("SEVERITY", info)
 
-    def info_test(self):
-        """Test the `nodetool info` command
-        Starts a cluster and call nodetool info
-        verify that the output is as expected
-        it sleeps for 10 seconds and test again
-        to see that the the uptime is correct
-        """
-        cluster = self.cluster
-        cluster.populate(2).start(wait_for_binary_proto=True)
-        node = cluster.nodelist()[0]
+    def verify_info(self, node=None):
+        if not node:
+            node = self.cluster.nodelist()[0]
         ni = self.nodetool_info(node)
         self.assertIn("ID", ni, "ID is missing")
         self.assertMapEqual(ni, "Gossip active", "true")
-        self.assertMapEqual(ni, "Thrift active", "true")
-        self.assertMapEqual(ni, "Native Transport active", "true")
+        self.assertIn("Thrift active", ni)
+        self.assertIn("Native Transport active", ni)
         uptime = int(ni["Uptime (seconds)"])
         self.assertIn("Load", ni, "Load is missing")
         self.assertIn("Generation No", ni, "Generation No is missing")
@@ -666,7 +664,29 @@ class TestNodetool(Tester):
         self.assertIn("Token", ni)
         time.sleep(10)
         ni = self.nodetool_info(node)
-        self.assertMapBetween(ni, "Uptime (seconds)", uptime + 10, uptime + 20)
+        self.assertMapBetween(ni, "Uptime (seconds)", uptime + 10, uptime + 30)
+
+    def verify_status(self, node=None):
+        if node is None:
+            node = self.cluster.nodelist()[0]
+        self.nodetool_status(node)
+
+    def verify_netstats(self, node=None):
+        if node is None:
+            node = self.cluster.nodelist()[0]
+        self.netstats(node)
+
+    def info_test(self):
+        """Test the `nodetool info` command
+        Starts a cluster and call nodetool info
+        verify that the output is as expected
+        it sleeps for 10 seconds and test again
+        to see that the the uptime is correct
+        """
+        cluster = self.cluster
+        cluster.populate(2).start(wait_for_binary_proto=True)
+        node = cluster.nodelist()[0]
+        self.verify_info(node)
 
     def netstats(self, node):
         out = node.nodetool('netstats', True)[0]
@@ -685,7 +705,7 @@ class TestNodetool(Tester):
             strm = re.match("^\s+(\S+) (\d+) files, (\d+) bytes total. Already \S+ (\d+) files, (\d+) bytes total", l)
             command = re.match("Commands\s+([^\s]+)\s+(\d+)\s+(\d+)", l)
             responses = re.match("Responses\s+([^\s]+)\s+(\d+)\s+(\d+)", l)
-            rxfile = re.match("\s+(\S+)\s+(\d+)/(\d+) bytes\((\d+)%\)\s+\S+\s+from idx:0/([\d\.]+)", l)
+            rxfile = re.match("\s+(\S+)\s+(\d+)/(\d+) bytes\((\d+)%\)\s+\S+\s+\S+\s+idx:0/([\d\.]+)", l)
             if l == "Read Repair Statistics:":
                 read_repair = True
                 if stream is not None:
@@ -729,7 +749,7 @@ class TestNodetool(Tester):
                 self.assertTrue(rr, "unexpected line in read repair")
                 res[rr.group(1)] = self._tonum(rr.group(2))
             else:
-                self.assertTrue(False, "unknown line in netstats" + l)
+                self.assertTrue(False, "unknown line in netstats" + l+ "\n" + out)
         if stream is not None:
             res["streams"].append(stream)
         return res
@@ -748,6 +768,123 @@ class TestNodetool(Tester):
         node2.watch_log_for('streaming')
         stats = self.netstats(node2)
         self.assertEquals(len(stats["streams"]), 2)
+
+    def run_cluster(self):
+        cluster = self.cluster
+        cluster.populate(2).start(wait_for_binary_proto=True)
+
+    def add_node(self):
+        cluster = self.cluster
+        node2 = new_node(cluster)
+        node2.start(wait_for_binary_proto=True)
+
+    def time_func(self, func_info, paralel=True):
+        """takes a function and a time limit
+        it runs the function, verify when it's done
+        that it didn't took too long
+        if paralel is true will run on a thread
+        func_info can include a delay, in that case it would wait before
+        calling the function
+        """
+        if paralel:
+            if "delay" in func_info:
+                wait(func_info["delay"])
+            else:
+                wait(0.2)
+            tr = Thread(target=self.time_func, args=[func_info, False])
+            tr.start()
+            return tr
+        else:
+            before = int(time.time())
+            debug("starting " + func_info["func"].__name__)
+            func_info["func"]()
+            if "time" in func_info:
+                self.assertLessEqual(int(time.time()) - before, func_info["time"])
+            debug(func_info["func"].__name__ + " completed in " + str(int(time.time()) - before) + " seconds")
+            return None
+
+    def concurent_stress(self, node=None):
+        if node is None:
+            node = self.cluster.nodelist()[0]
+        self.stress_write(node, times=1000000,  pop='seq=1..3000000000', opt=["-rate threads=10"])
+
+    def repair(self, node=None):
+        if node is None:
+            node = self.cluster.nodelist()[0]
+        node.nodetool('repair')
+
+    def do_recurent(self, start, waits):
+        if "recurent" not in start:
+            return
+        for rec in start["recurent"]:
+            r = self.time_func(rec)
+        if "block" in rec:
+            r.join()
+        else:
+            waits.append(r)
+
+    def concurnet_part(self, start):
+        if "operations" not in start:
+            return
+
+        waits = []
+        operations = []
+        for ops in start["operations"]:
+            tr = self.time_func(ops)
+            if "block" in ops:
+                if "recurent" in start:
+                    while tr.is_alive():
+                        self.do_recurent(start, waits)
+                else:
+                    tr.join()
+            else:
+                operations.append(tr)
+        while len(filter(lambda a: a.is_alive(), operations)) > 0:
+            self.do_recurent(start, waits)
+            wait(20)
+        for w in waits:
+            if w is not None:
+                w.join()
+
+    def general_concurent(self, tst):
+        """tst is an object of the form
+        tst = [{
+            "operations":[{"func": self.run_cluster}, {"func": self.concurent_stress, "delay":5}, {"func": self.repair, "time":300, "delay":1}],
+            "recurent":[{"func": self.verify_info, "time":20, "delay":5} ]
+        },
+        {
+            "operations":[{"func": self.concurent_stress, "delay":5}]
+        },
+        {
+            "operations": [{"func": self.add_node, "time":300}, {"func": self.repair, "time":300}],
+            "recurent":[ {"func": self.verify_info, "time":40, "delay": 5}, {"func": self.verify_status, "time":25}, {"func": self.verify_netstats, "time":26} ],
+        }
+        ]
+
+        operation and recurent are list of objects 
+        {"func" the function name, "time": when present check the operation time,
+        "delay": add a delay before running, "block" when present the operation block}
+
+        each test can have multiple sections.
+        Each section would start after all the operations in the previous section completed.
+        """
+        for op in tst:
+            self.concurnet_part(op)
+
+    def concurent_repair_test(self):
+        tst = [{
+            "operations":[{"func": self.run_cluster}, {"func": self.concurent_stress, "delay":5}, {"func": self.repair, "time":300, "delay":1}],
+            "recurent":[{"func": self.verify_info, "time":20, "delay":5} ]
+        },
+        {
+            "operations":[{"func": self.concurent_stress, "delay":5}]
+        },
+        {
+            "operations": [{"func": self.add_node, "time":300}, {"func": self.repair, "time":300}],
+            "recurent":[ {"func": self.verify_info, "time":40}, {"func": self.verify_status, "time":25}, {"func": self.verify_netstats, "time":26} ],
+        }
+        ]
+        self.general_concurent(tst)
 
     def stress(self, node, opr, times=10000, duration=None, col=None, pop=None, opt=[]):
         cmd = [opr, 'cl=ALL']
