@@ -1,14 +1,16 @@
 import threading
 import time
+import logging
+from datetime import datetime
 
-from cassandra import Unavailable,ConsistencyLevel
+from cassandra import Unavailable,ConsistencyLevel,WriteTimeout,OperationTimedOut
+from cassandra.policies import FallthroughRetryPolicy
 from cassandra.query import SimpleStatement
 from cassandra.cluster import NoHostAvailable
 from ccmlib.node import NodeError
 
 from dtest import Tester, debug
 from tools import insert_c1c2, query_c1c2, new_node
-
 
 class TestUpdateClusterLayout(Tester):
 
@@ -358,23 +360,27 @@ class TestUpdateClusterLayout(Tester):
         Test bootstrapped node streams all data
         1. Create a cluster with a three nodes with rf=1, insert data
         2. Add node, wait for each to start bootstrapping and write additional data
-        3. kill it
-        4. Check that the cluster returns all
+        3. kill it while writting data
+        4. Check that the operation exists with an expected exception
         """
+
         cluster = self.cluster
         self.allow_log_errors = True
 
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfer with the test (this must be after the populate)
         cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
-        cluster.populate(3).start()
+        cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1 = cluster.nodelist()[0]
         node2 = cluster.nodelist()[1]
         node3 = cluster.nodelist()[2]
 
-        session = self.patient_cql_connection(node1)
+        session = self.cql_connection(node1)
+        session.default_timeout = 60.0
         self.create_ks(session, 'ks', 1)
         self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        statement = session.prepare("INSERT INTO cf (key, c1, c2) VALUES (?, 'value1', 'value2')")
+        session.execute(statement,('k1',))
 
         insert_c1c2(session, keys=range(1000), consistency=ConsistencyLevel.ONE)
 
@@ -395,9 +401,24 @@ class TestUpdateClusterLayout(Tester):
                                            binary_interface=('127.0.0.%s' % i, 9042))
             event = threading.Event()
             def run():
-                insert_c1c2(session, keys=range(2000, 4000), consistency=ConsistencyLevel.ONE)
+                try:
+                   debug("start write")
+                   for key in range(2000,4000):
+                       # working around the default retry_policy that attempts 5 times
+                       statement = SimpleStatement("INSERT INTO cf (key, c1, c2) VALUES ('k%d', 'value1', 'value2')" % key ,consistency_level=ConsistencyLevel.ONE, retry_policy=FallthroughRetryPolicy())
+                       before=str(datetime.now())
+                       session.execute(statement)
+                   debug("end write")
+                   self.fail('insert should have failed')
+                except (Unavailable) as e:
+                   failed=str(datetime.now())
+                   debug("exception thrown Unavailable %s" % e);
+                   pass
+                except (WriteTimeout) as e:
+                   failed=str(datetime.now())
+                   debug("exception thrown WriteTimeout %s" % e);
+                   pass
                 event.set()
-                pass
             t = threading.Thread(target=run)
             t.setDaemon(True)
 
@@ -413,8 +434,7 @@ class TestUpdateClusterLayout(Tester):
             # Sleep 1 second to make sure other nodes knows this node is joining through gossip
             time.sleep(1)
 
-        result = session.execute("SELECT * FROM cf")
-        self.assertEqual(len(result), 3000, len(result))
+        session.execute("SELECT * FROM cf")
 
     def simple_kill_new_node_while_bootstrapping_with_parallel_writes_in_multidc_test(self):
         """
@@ -430,15 +450,16 @@ class TestUpdateClusterLayout(Tester):
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfer with the test (this must be after the populate)
         cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
-        cluster.populate([1,1]).start()
+        cluster.populate([1,1]).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1 = cluster.nodelist()[0]
         node2 = cluster.nodelist()[1]
 
-        session = self.patient_cql_connection(node1)
+        session = self.cql_connection(node1)
+        session.default_timeout = 60.0
         self.create_ks(session, 'ks', {'dc1': 1, 'dc2': 1})
         self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
-        insert_c1c2(session, keys=range(1000), consistency=ConsistencyLevel.ONE)
+        insert_c1c2(session, keys=range(1000), consistency=ConsistencyLevel.EACH_QUORUM)
 
         debug("Inserting more data to make streaming process longer...")
         node1.stress(['write', 'n=5000', 'no-warmup', '-schema', 'replication(factor=3) keyspace=ks1'])
@@ -448,26 +469,47 @@ class TestUpdateClusterLayout(Tester):
         a_new_node = new_node(cluster,data_center='dc1')
         event = threading.Event()
         def run():
-            insert_c1c2(session, keys=range(2000, 4000), consistency=ConsistencyLevel.EACH_QUORUM)
+            try:
+               debug("start write")
+               for key in range(2000,4000):
+                   # working around the default retry_policy that attempts 5 times
+                   statement = SimpleStatement("INSERT INTO cf (key, c1, c2) VALUES ('k%d', 'value1', 'value2')" % key ,consistency_level=ConsistencyLevel.EACH_QUORUM, retry_policy=FallthroughRetryPolicy())
+                   before=str(datetime.now())
+                   session.execute(statement)
+               debug("end write")
+               self.fail('insert should have failed')
+            except (Unavailable) as e:
+               failed=str(datetime.now())
+               debug("exception thrown Unavailable %s" % e);
+               pass
+            except (WriteTimeout) as e:
+               failed=str(datetime.now())
+               debug("exception thrown WriteTimeout %s" % e);
+               pass
+            except (OperationTimedOut) as e:
+               failed=str(datetime.now())
+               debug("exception thrown OperationTimeout %s %s %s" % (e,before,failed));
+               pass
             event.set()
-            pass
+
         t = threading.Thread(target=run)
         t.setDaemon(True)
 
-        debug("Start new node");
+        debug("Start Node");
         a_new_node.start()
         a_new_node.watch_log_for("JOINING: Starting to bootstrap")
+        time.sleep(1)
         t.start()
+        time.sleep(1)
         a_new_node.watch_log_for("Beginning stream session")
-        debug("Stop new node");
+        debug("Stop Node");
         a_new_node.stop(gently=False)
         event.wait()
 
         # Sleep 1 second to make sure other nodes knows this node is joining through gossip
         time.sleep(1)
 
-        result = session.execute("SELECT * FROM cf")
-        self.assertEqual(len(result), 3000, len(result))
+        session.execute("SELECT * FROM cf")
 
     def _simple_add_new_node_while_adding_info(self, rf):
         """
