@@ -1,6 +1,9 @@
+import os
+import unittest
 from cassandra import ConsistencyLevel
 from cassandra.concurrent import execute_concurrent_with_args
 from cassandra.query import SimpleStatement
+from ccmlib import common
 
 
 def insert_c1c2(session, keys=None, n=None, consistency=ConsistencyLevel.QUORUM, c1_values=None, c2_values=None, ks='ks', cf='cf'):
@@ -64,5 +67,13 @@ def query_c1c2_concurrent(session, keys, consistency=ConsistencyLevel.QUORUM, to
             check_c1c2_result_one(success, result, tolerate_missing, must_be_missing, c1, c2),
         results, c1_values, c2_values)
 
-
-
+def scylla_mode(modes):
+    """
+        Run the decorated tests if they are executed on correct mode
+        @scylla_mode('release') - will run tests only if mode is release
+        @scylla_mode('debug') - will run tests only if mode is debug
+   ."""
+    NO_SKIP = os.environ.get('SKIP', '').lower() in ('no', 'false')
+    cdir=os.environ.get('CASSANDRA_DIR')
+    idir, mode = common.scylla_extract_install_dir_and_mode(cdir)
+    return unittest.skipIf(common.isScylla(cdir) and not NO_SKIP and modes.find(mode)==-1, 'Test disabled for scylla %s' % mode)
