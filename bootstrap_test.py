@@ -71,6 +71,7 @@ class TestBootstrap(Tester):
         node2 = new_node(cluster)
         node2.set_configuration_options(values={'initial_token': tokens[1]})
         node2.start(wait_for_binary_proto=True)
+        node2.flush()
         node2.compact()
 
         reader.check()
