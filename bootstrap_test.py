@@ -13,6 +13,7 @@ from ccmlib.node import NodeError
 from dtest import Tester, debug
 from tools import (InterruptBootstrap, KillOnBootstrap, new_node, query_c1c2,
                    since)
+from scylla_tools import scylla_mode
 
 
 class TestBootstrap(Tester):
@@ -217,6 +218,7 @@ class TestBootstrap(Tester):
         current_rows = list(session.execute("SELECT * FROM %s" % stress_table))
         self.assertEquals(original_rows, current_rows)
 
+    @scylla_mode('release')
     def local_quorum_bootstrap_test(self):
         """Test that CL local_quorum works while a node is bootstrapping. CASSANDRA-8058"""
 
