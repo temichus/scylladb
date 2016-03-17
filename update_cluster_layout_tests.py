@@ -400,24 +400,28 @@ class TestUpdateClusterLayout(Tester):
                                            None,
                                            binary_interface=('127.0.0.%s' % i, 9042))
             event = threading.Event()
+            failed = None
             def run():
                 try:
                    debug("start write")
                    for key in range(2000,4000):
                        # working around the default retry_policy that attempts 5 times
                        statement = SimpleStatement("INSERT INTO cf (key, c1, c2) VALUES ('k%d', 'value1', 'value2')" % key ,consistency_level=ConsistencyLevel.ONE, retry_policy=FallthroughRetryPolicy())
-                       before=str(datetime.now())
+                       tbefore=str(datetime.now())
                        session.execute(statement)
                    debug("end write")
-                   self.fail('insert should have failed')
+                   failed='insert should have failed'
                 except (Unavailable) as e:
-                   failed=str(datetime.now())
+                   tfailed=str(datetime.now())
                    debug("exception thrown Unavailable %s" % e);
                    pass
                 except (WriteTimeout) as e:
-                   failed=str(datetime.now())
+                   tfailed=str(datetime.now())
                    debug("exception thrown WriteTimeout %s" % e);
                    pass
+                except (OperationTimedOut) as e:
+                   tfailed=str(datetime.now())
+                   failed="Server side escrption not thrown  driver side exception thrown OperationTimeout %s %s %s" % (e,tbefore,tfailed)
                 event.set()
             t = threading.Thread(target=run)
             t.setDaemon(True)
@@ -430,6 +434,7 @@ class TestUpdateClusterLayout(Tester):
             debug("Stop Node %d" % i);
             new_node.stop(gently=False)
             event.wait()
+            self.assertTrue(failed==None,failed)
 
             # Sleep 1 second to make sure other nodes knows this node is joining through gossip
             time.sleep(1)
@@ -468,28 +473,28 @@ class TestUpdateClusterLayout(Tester):
         # create a new node and adding it - we cannot do this more then once
         a_new_node = new_node(cluster,data_center='dc1')
         event = threading.Event()
+        failed = None
         def run():
             try:
                debug("start write")
                for key in range(2000,4000):
                    # working around the default retry_policy that attempts 5 times
                    statement = SimpleStatement("INSERT INTO cf (key, c1, c2) VALUES ('k%d', 'value1', 'value2')" % key ,consistency_level=ConsistencyLevel.EACH_QUORUM, retry_policy=FallthroughRetryPolicy())
-                   before=str(datetime.now())
+                   tbefore=str(datetime.now())
                    session.execute(statement)
                debug("end write")
-               self.fail('insert should have failed')
+               failed='insert should have failed'
             except (Unavailable) as e:
-               failed=str(datetime.now())
+               tfailed=str(datetime.now())
                debug("exception thrown Unavailable %s" % e);
                pass
             except (WriteTimeout) as e:
-               failed=str(datetime.now())
+               tfailed=str(datetime.now())
                debug("exception thrown WriteTimeout %s" % e);
                pass
             except (OperationTimedOut) as e:
-               failed=str(datetime.now())
-               debug("exception thrown OperationTimeout %s %s %s" % (e,before,failed));
-               pass
+               tfailed=str(datetime.now())
+               failed="Server side escrption not thrown  driver side exception thrown OperationTimeout %s %s %s" % (e,before,failed)
             event.set()
 
         t = threading.Thread(target=run)
@@ -505,6 +510,7 @@ class TestUpdateClusterLayout(Tester):
         debug("Stop Node");
         a_new_node.stop(gently=False)
         event.wait()
+        self.assertTrue(failed==None,failed)
 
         # Sleep 1 second to make sure other nodes knows this node is joining through gossip
         time.sleep(1)
