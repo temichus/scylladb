@@ -13,13 +13,13 @@ LIMIT_32K = (32 * 1024)
 LIMIT_2GB = (2 * 1024 * 1024 * 1024)
 
 MAX_KEY_SIZE = LIMIT_64_K
-MAX_BLOB_SIZE = LIMIT_2GB
+MAX_BLOB_SIZE = 8388608 # therical limit LIMIT_2GB
 MAX_COLUMNS = LIMIT_64_K
 MAX_TUPLES = LIMIT_32K
 MAX_BATCH_SIZE = LIMIT_64_K
 MAX_CELLS_COLUMNS = LIMIT_32K
 MAX_CELLS_BATCH_SIZE = 1000
-MAX_CELLS = LIMIT_2GB
+MAX_CELLS = 16777216
 
 # Those are value use to validate the tests code
 #MAX_KEY_SIZE = 1000
@@ -113,17 +113,17 @@ class TestLimits(Tester):
                 WHERE user='tintin'
         """)
 
-        self.assertEqual(len(res), 1)
+        self.assertEqual(len(list(res)), 1)
 
         res = session.execute("""
                 SELECT * FROM ks.test1
                 WHERE user='milou'
         """)
 
-        self.assertEqual(len(res), 1)
+        self.assertEqual(len(list(res)), 1)
         session.execute("""DROP TABLE test1""")
 
-    @skip('scylladb/scylla#808')
+    #@skip('scylladb/scylla#808')
     def max_column_value_size_test(self):
         cluster = self.prepare()
         cluster.populate(1).start()
@@ -281,7 +281,6 @@ class TestLimits(Tester):
 
         session.execute("""DROP TABLE test1""")
 
-    @skip('scylladb/scylla#822')
     def max_cells_test(self):
         cluster = self.prepare()
         cluster.populate(1).start()
