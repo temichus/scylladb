@@ -1,4 +1,5 @@
 batch_test.py
+bootstrap_test.py:TestBootstrap.simple_bootstrap_test
 bootstrap_test.py:TestBootstrap.read_from_bootstrapped_node_test
 bootstrap_test.py:TestBootstrap.manual_bootstrap_test
 bootstrap_test.py:TestBootstrap.local_quorum_bootstrap_test
