@@ -1,6 +1,5 @@
 import threading
 import time
-import logging
 from datetime import datetime
 
 from cassandra import Unavailable,ConsistencyLevel,WriteTimeout,OperationTimedOut
