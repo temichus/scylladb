@@ -339,9 +339,9 @@ class TestUpdateClusterLayout(Tester):
 
             # Slep 30 seconds to make sure other nodes removed the new node
             time.sleep(30)
-            node1.watch_log_for("FatClient .* has been silent for 30000ms, removing from gossip")
-            node2.watch_log_for("FatClient .* has been silent for 30000ms, removing from gossip")
-            node3.watch_log_for("FatClient .* has been silent for 30000ms, removing from gossip")
+            node1.watch_log_for("FatClient .* has been silent for .*ms, removing from gossip")
+            node2.watch_log_for("FatClient .* has been silent for .*ms, removing from gossip")
+            node3.watch_log_for("FatClient .* has been silent for .*ms, removing from gossip")
 
             # Check status again:
             # status looks like below, new_node should not be in UN state
