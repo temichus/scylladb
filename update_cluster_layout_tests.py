@@ -274,8 +274,8 @@ class TestUpdateClusterLayout(Tester):
 
         debug("Look for Stream failed in node 4...")
 	# The keep alive timer expires in 10 minutes.
-	# Wait 2 minutes more in the test to wait for the stream to fail
-        node4.watch_log_for("Stream failed", timeout=720)
+	# Wait 5 minutes more in the test to wait for the stream to fail
+        node4.watch_log_for("Stream failed", timeout=900)
 
     def simple_kill_new_node_while_bootstrapping_test(self):
         """
