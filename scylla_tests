@@ -19,6 +19,7 @@ consistency_test.py:TestConsistency.short_read_delete_test
 consistency_test.py:TestConsistency.short_read_quorum_delete_test
 consistency_test.py:TestConsistency.short_read_reversed_test
 consistency_test.py:TestConsistency.short_read_test
+consistency_test.py:TestConsistency.data_query_digest_test
 cql_additional_tests.py:TestCQL.alter_bug_test
 cql_additional_tests.py:TestCQL.alter_with_collections_test
 cql_additional_tests.py:TestCQL.batch_and_list_test
