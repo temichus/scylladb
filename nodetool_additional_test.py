@@ -90,6 +90,11 @@ class TestNodetool(Tester):
         except (TypeError, ValueError):
             self.assertEqual(val, container[key], m)
 
+    def assertIP(self, addr, msg=None):
+        if msg is None:
+            msg = ""
+        self.assertRegexpMatches(addr, "\d+\.\d+\.\d+\.\d+", msg + ": bad ip format")
+
     def assertMapBetween(self, container, key, a, b, msg=None):
         if msg is None:
             m = key + "=" + str(container[key]) + " not between " + str(a) + " and " + str(b)
@@ -130,13 +135,13 @@ class TestNodetool(Tester):
         except:
             return val
 
-    def nodetool_status(self, node):
+    def nodetool_status(self, node, keyspace=""):
         res = {}
-        out = node.nodetool("status", True)[0]
-        m = re.findall('Datacenter: ([^\s+])', out, re.MULTILINE)
+        out = node.nodetool("status " + keyspace, True)[0]
+        m = re.findall('Datacenter: ([^\s]+)', out, re.MULTILINE)
         if m:
             res['Datacenter'] = m[0]
-        m = re.findall('^([UDNLJM]+)\s+([\d\.]+)\s+([^\s]+)\s+([^\s]+)\s+([^\s]+)\s+([^\s]+)\s+([^\s]+)\s+([^\s]+)\s*$', out, re.MULTILINE)
+        m = re.findall('^([UDNLJM]+)\s+([\d\.]+)\s+([^\s]+\s+[^\s]+)\s+([^\s]+)\s+([^\s]+)(?:\s[^\s]{2})?\s+([^\s]+)\s+([^\s]+)\s*$', out, re.MULTILINE)
         res["nodes"] = [self._list2status(s) for s in m]
         return res
 
@@ -670,6 +675,42 @@ class TestNodetool(Tester):
         if node is None:
             node = self.cluster.nodelist()[0]
         self.nodetool_status(node)
+
+    def _verify_status_node(self, n):
+        for h in ["status", "address", "load", "tokens", "owns", "host id", "rack"]:
+            self.assertIn(h, n, "node status missing " + h)
+        self.assertRegexpMatches(n["status"], "[UD][NLJM]?", "Node status has wrong format")
+        self.assertIP(n["address"], "Node ip address")
+        self.assertRegexpMatches(n["load"], "\d+\.?\d*\s+[KM]B", "Node load has wrong format")
+        if n["owns"] != "?":
+            self.assertRegexpMatches(n["owns"], "\d+\.?\d*\s+[KM]B", "Node owns has wrong format")
+        self.assertRegexpMatches(n["tokens"], "\d+", "Node token has wrong format")
+        self.assertRegexpMatches(n["host id"], "[0-9abcdef\-]+", "Node host id has wrong tokens format")
+        self.assertRegexpMatches(n["rack"], "[a-z0-9]+", "Node rack has wrong tokens format")
+
+    @skip ('#1057')
+    def status_test(self):
+        """ Test the nodetool status command
+        Starts two node cluster
+        Run a small load
+        Run nodetool status without parameters check the result
+        Run nodetool status with keyspace and verify that result
+        """
+        self.run_cluster()
+        node = self.cluster.nodelist()[0]
+        self.stress_write(node)
+        status = self.nodetool_status(node)
+        self.assertEqual(2, len(status["nodes"]), "expecting 2 nodes got " + str(len(status["nodes"])))
+        self.assertMapEqual(status, "Datacenter", "datacenter1")
+        for n in status["nodes"]:
+            self._verify_status_node(n)
+            self.assertMapEqual(n, "owns", "?")
+        status = self.nodetool_status(node, "keyspace1")
+        self.assertEqual(2, len(status["nodes"]), "expecting 2 nodes got " + str(len(status["nodes"])))
+        self.assertMapEqual(status, "Datacenter", "datacenter1")
+        for n in status["nodes"]:
+            self._verify_status_node(n)
+            self.assertNotEqual(n['owns'], '?', 'owns size is missing')
 
     def verify_netstats(self, node=None):
         if node is None:
