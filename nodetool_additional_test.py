@@ -385,6 +385,30 @@ class TestNodetool(Tester):
         self.assertNotEqual(token, token1, "nodetool move 1000000 did not change the token")
         self.assertEqual("1000000", token1, "nodetool move 1000000 change token to wrong value")
 
+    def statusgossip(self, node=None):
+        if node is None:
+            node = self.cluster.nodelist()[0]
+        return node.nodetool("statusgossip", True)[0]
+
+    def _get_ring_entry(self, lst):
+        heads = ["Address", "Rack", "Status", "State", "Load", "Owns", "Token"]
+        res = {}
+        for i in range(len(heads)):
+            res[heads[i]] = lst[i]
+        return res
+
+    def nodetool_ring(self, node=None, keyspace=""):
+        if node is None:
+            node = self.cluster.nodelist()[0]
+        out = node.nodetool("ring " + keyspace, True)[0]
+        res = {}
+        dc = re.findall("^\s*Datacenter: ([^\s]+)\s*$", out, re.MULTILINE)
+        self.assertEqual(1, len(dc), "Failed searching for datacenter")
+        res["datacenter"] = dc[0]
+        tokens = re.findall("^\s*([\d\.]+)\s+([^\s]+)\s+([^\s]+)\s+([^\s]+)\s+([^\s]+)(?:\s[^\s]{2})?\s+([^\s]+)(?:\s[^\s]{2})?\s+(\-?[\d]+)\s*$", out, re.MULTILINE)
+        res["tokens"] = [self._get_ring_entry(m) for m in tokens]
+        return res
+
     def gossip_control_test(self):
         """
         Test the `nodetool disablegossip` and `nodetool enablegossip`.
@@ -400,12 +424,15 @@ class TestNodetool(Tester):
         [node1] = cluster.nodelist()
         gossip = self.nodetool_info(node1)['Gossip active']
         self.assertEqual("true", gossip, "Gossip is not active")
+        self.assertRegexpMatches(self.statusgossip(node1), "\s*running\s*", "wrong gossip status")
         node1.nodetool("disablegossip")
         gossip = self.nodetool_info(node1)['Gossip active']
         self.assertEqual("false", gossip, "Failed to disable gossip")
+        self.assertRegexpMatches(self.statusgossip(node1), "\s*not running\s*", "wrong gossip status")
         node1.nodetool("enablegossip")
         gossip = self.nodetool_info(node1)['Gossip active']
         self.assertEqual("true", gossip, "Failed to re-enable gossip")
+        self.assertRegexpMatches(self.statusgossip(node1), "\s*running\s*", "wrong gossip status")
 
     def _flush(self, flush_cmd):
         cluster = self.cluster
@@ -453,6 +480,36 @@ class TestNodetool(Tester):
         self.stress_write(node, 1000)
         res = self.describering(node, 'keyspace1')
         self.assertGreater(len(res), 100, "no describe ring data found")
+
+    def _verify_ring_token(self, entry, msg):
+        self.assertIP(entry["Address"], msg)
+        self.assertRegexpMatches(entry["Rack"], "[a-z0-9]+", msg)
+        self.assertIn(entry["Status"], ["Up", "Down"], msg)
+        self.assertEqual("Normal", entry["State"], msg)
+        if entry["Owns"] != "?":
+            self.assertRegexpMatches(entry["Owns"], "[0-9\.]+", msg)
+        self.assertRegexpMatches(entry["Token"], "\-?[0-9]+", msg)
+
+    def check_ring(self, keyspace=""):
+        self.run_cluster()
+        node = self.cluster.nodelist()[0]
+        self.stress_write(node, times=1000)
+        ring = self.nodetool_ring(node, keyspace)
+        self.assertMapEqual(ring, "datacenter", "datacenter1", "Wrong datacenter")
+        self.assertEqual(512, len(ring["tokens"]), "wrong number of tokens found")
+        for idx, val in enumerate(ring["tokens"]):
+            self._verify_ring_token(val, "Formatting error in entry " + str(idx))
+            if keyspace == "":
+                self.assertEqual("?", val["Owns"], "unexpected own found")
+            else:
+                self.assertNotEqual("?", val["Owns"], "missing own information")
+
+    def general_ring_test(self):
+        self.check_ring()
+
+    @skip ('#1057')
+    def keyspace_ring_test(self):
+        self.check_ring("keyspace1")
 
     def general_flush_test(self):
         """
@@ -810,9 +867,18 @@ class TestNodetool(Tester):
         stats = self.netstats(node2)
         self.assertEquals(len(stats["streams"]), 2)
 
-    def run_cluster(self):
+    def nodetool_version(self, node=None):
+        if node is None:
+            node = self.cluster.nodelist()[0]
+        return node.nodetool('version', True)[0]
+
+    def version_test(self):
+        self.run_cluster(nodes=1)
+        self.assertRegexpMatches(self.nodetool_version(), "ReleaseVersion: 2\.\d+\.\d+", "Wrong version")
+
+    def run_cluster(self, nodes=2):
         cluster = self.cluster
-        cluster.populate(2).start(wait_for_binary_proto=True)
+        cluster.populate(nodes).start(wait_for_binary_proto=True)
 
     def add_node(self):
         cluster = self.cluster
