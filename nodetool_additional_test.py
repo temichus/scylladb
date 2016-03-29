@@ -247,6 +247,14 @@ class TestNodetool(Tester):
         self.assertMapEqual(table, "Maximum tombstones per slice (last five minutes)", 0)
         self.assertMapLessEqual(table, "Memtable data size", float(table["Memtable off heap memory used"]))
 
+    def _snapshot_entry(self, lst):
+        return self._list2dic(lst, ["name", "keyspace", "Column family", "True size", "Size on disk"])
+
+    def listsnapshots(self, node):
+        out = node.nodetool("listsnapshots", True)[0]
+        m = re.findall("^\s*([^\s]+)\s+([^\s]+)\s+([^\s]+)\s+([\d]+\s[^\s]+)\s+([\d]+\s[^\s]+)\s*$", out, re.MULTILINE)
+        return [self._snapshot_entry(lst) for lst in m]
+
     def verify_snapshot(self, node1, ks, snapshot, exists=True):
         out = node1.nodetool("listsnapshots", True)[0]
         m = re.findall(snapshot + "\s+" + ks, out, re.MULTILINE)
@@ -281,7 +289,7 @@ class TestNodetool(Tester):
         node1.nodetool("clearsnapshot")
         self.verify_snapshot(node1, "keyspace1", snapshot, exists=False)
 
-    def test_snapshot(self, tag, keyspace=None, kc=None, column_family=None):
+    def tst_snapshot(self, tag, keyspace=None, kc=None, column_family=None):
         """ Test a global snapshot, by loading a system
         creating a snapshot, checking that it exists
         remove it and checking that it does not exists
@@ -328,17 +336,17 @@ class TestNodetool(Tester):
         self.verify_snapshot(node1, "keyspace1", snapshot, exists=False)
 
     def snapshot_tag_test(self):
-        self.test_snapshot("snaptag")
+        self.tst_snapshot("snaptag")
 
     def snapshot_tag_keyspace_test(self):
-        self.test_snapshot("snaptag", keyspace="keyspace1")
+        self.tst_snapshot("snaptag", keyspace="keyspace1")
+
+    def snapshot_tag_keyspace_cf_test(self):
+        self.tst_snapshot("snaptag", keyspace="system", column_family="schema_columnfamilies")
 
     @skip("#1133")
-    def snapshot_tag_keyspace_cf_test(self):
-        self.test_snapshot("snaptag", keyspace="system", column_family="schema_columnfamilies")
-
     def snapshot_tag_kc_test(self):
-        self.test_snapshot("snaptag", kc="system.schema_columnfamilies")
+        self.tst_snapshot("snaptag", kc="system.schema_columnfamilies")
 
     @staticmethod
     def _list2dic(lst, heads):
@@ -523,7 +531,7 @@ class TestNodetool(Tester):
             return False
         self.assertTrue(False, cmd + " return wrong value: " + out)
 
-    def test_mgmt(self, cmd, mode=True):
+    def tst_mgmt(self, cmd, mode=True):
         [node] = self.run_cluster(nodes=1)
         if mode:
             self.assertTrue(self.isrunning("status" + cmd, node), cmd + " is not working")
@@ -546,7 +554,7 @@ class TestNodetool(Tester):
         check
         enable and check
         """
-        self.test_mgmt("binary")
+        self.tst_mgmt("binary")
 
     def backup_test(self):
         """
@@ -556,7 +564,7 @@ class TestNodetool(Tester):
         check
         disable and check
         """
-        self.test_mgmt("backup", mode=False)
+        self.tst_mgmt("backup", mode=False)
 
     def _flush(self, flush_cmd):
         cluster = self.cluster
