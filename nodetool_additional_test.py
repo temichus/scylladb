@@ -260,16 +260,13 @@ class TestNodetool(Tester):
         creating a snapshot, checking that it exists
         remove it and checking that it does not exists
         """
-        cluster = self.cluster
-        cluster.populate(1).start(wait_for_binary_proto=True)
-        [node1] = cluster.nodelist()
-        cursor = self.patient_cql_connection(node1)
-        strs = self.stress_write(node1, 1000)
+        [node1] = self.run_cluster(nodes=1)
+        self.stress_write(node1, 1000)
+        self.assertEqual(0, len(self.listsnapshots(node1)), "unexpected snapshot found")
         out = node1.nodetool("snapshot", True)[0]
         m = re.findall(r"Snapshot directory:\s+(\d+)", out, re.MULTILINE)
-        snapshot = m[0]
         self.assertTrue(m, "No directory found in node snapshot command: '" + out + "'")
-
+        snapshot = m[0]
         data_dir = os.path.join(node1.get_path(), "data")
         keyspaces = [f for f in os.listdir(data_dir) if os.path.isdir(os.path.join(data_dir, f))]
         self.assertEqual(2, len(keyspaces), "wrong number of directories in the data dir")
@@ -283,6 +280,65 @@ class TestNodetool(Tester):
         self.verify_snapshot(node1, "system", snapshot)
         node1.nodetool("clearsnapshot")
         self.verify_snapshot(node1, "keyspace1", snapshot, exists=False)
+
+    def test_snapshot(self, tag, keyspace=None, kc=None, column_family=None):
+        """ Test a global snapshot, by loading a system
+        creating a snapshot, checking that it exists
+        remove it and checking that it does not exists
+        """
+        [node1] = self.run_cluster(nodes=1)
+        self.stress_write(node1, 1000)
+        self.assertEqual(0, len(self.listsnapshots(node1)), "unexpected snapshot found")
+        cmd = "snapshot -t " + tag
+        if kc:
+            cmd = cmd + " -kc " + kc
+        if column_family:
+            cmd = cmd + " -cf " + column_family
+        if keyspace:
+            cmd = cmd + " " + keyspace
+        out = node1.nodetool(cmd, True)[0]
+        m = re.findall(r"Snapshot directory:\s+([^\s]+)", out, re.MULTILINE)
+        self.assertTrue(m, "No directory found in node snapshot command: '" + out + "'")
+        snapshot = m[0]
+        self.assertEqual(tag, snapshot, "wrong directory found in node snapshot command: '" + out + "'")
+        data_dir = os.path.join(node1.get_path(), "data")
+        keyspaces = [f for f in os.listdir(data_dir) if os.path.isdir(os.path.join(data_dir, f))]
+        self.assertEqual(2, len(keyspaces), "wrong number of directories in the data dir")
+        if kc:
+            brk = kc.split('.')
+            keyspace = brk[0]
+            column_family = brk[1]
+        for ks in keyspaces:
+            keyspace_dir = os.path.join(data_dir, ks)
+            column_families = [f for f in os.listdir(keyspace_dir) if os.path.isdir(os.path.join(keyspace_dir, f))]
+            for c in column_families:
+                cf = os.path.join(keyspace_dir, c)
+                if not keyspace or (keyspace == ks and (not column_family or c.startswith(column_family))):
+                    self.assertTrue(os.path.isdir(os.path.join(cf, "snapshots", snapshot)), "Missing snapshot dir under ks=" + ks + " cf " + cf)
+                    self.assertIn("manifest.json", os.listdir(os.path.join(cf, "snapshots", snapshot)), "Missing manifest.json in " + os.path.join(cf, "snapshots", snapshot))
+                else:
+                    self.assertFalse(os.path.isdir(os.path.join(cf, "snapshots", snapshot)), "Snapshot dir found under wrong ks=" + ks + " cf " + cf)
+
+        if keyspace:
+            self.verify_snapshot(node1, keyspace, snapshot)
+        else:
+            self.verify_snapshot(node1, "keyspace1", snapshot)
+            self.verify_snapshot(node1, "system", snapshot)
+        node1.nodetool("clearsnapshot -t" + tag)
+        self.verify_snapshot(node1, "keyspace1", snapshot, exists=False)
+
+    def snapshot_tag_test(self):
+        self.test_snapshot("snaptag")
+
+    def snapshot_tag_keyspace_test(self):
+        self.test_snapshot("snaptag", keyspace="keyspace1")
+
+    @skip("#1133")
+    def snapshot_tag_keyspace_cf_test(self):
+        self.test_snapshot("snaptag", keyspace="system", column_family="schema_columnfamilies")
+
+    def snapshot_tag_kc_test(self):
+        self.test_snapshot("snaptag", kc="system.schema_columnfamilies")
 
     @staticmethod
     def _list2dic(lst, heads):
@@ -901,6 +957,7 @@ class TestNodetool(Tester):
     def run_cluster(self, nodes=2):
         cluster = self.cluster
         cluster.populate(nodes).start(wait_for_binary_proto=True)
+        return cluster.nodelist()
 
     def add_node(self):
         cluster = self.cluster
@@ -990,7 +1047,7 @@ class TestNodetool(Tester):
         }
         ]
 
-        operation and recurent are list of objects 
+        operation and recurent are list of objects
         {"func" the function name, "time": when present check the operation time,
         "delay": add a delay before running, "block" when present the operation block}
 
