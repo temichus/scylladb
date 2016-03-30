@@ -990,6 +990,31 @@ class TestNodetool(Tester):
         stats = self.netstats(node2)
         self.assertEquals(len(stats["streams"]), 2)
 
+    def proxyhistograms(self, node=None):
+        if node is None:
+            node = self.cluster.nodelist()[0]
+        out = node.nodetool("proxyhistograms", True)[0]
+        histogram = re.findall("^\s*([^\s]+)\s+(\d+\.\d+)\s+(\d+\.\d+)\s+([^\s]+)\s*$", out, re.MULTILINE)
+        return [self._list2dic(m, ["Percentile", "Read Latency", "Write Latency", "Range Latency"]) for m in histogram]
+
+    def _verify_proxyhistogram(self, lst):
+        self.assertRegexpMatches(lst["Read Latency"], "\d+\.\d+", "Bad formatted Read latency")
+        self.assertRegexpMatches(lst["Write Latency"], "\d+\.\d+", "Bad formatted Write latency")
+        self.assertEqual("NaN", lst["Range Latency"], "Bad Range Latency format")
+
+    def proxyhistograms_test(self):
+        """
+        This test the `nodetool proxyhistograms` command
+        it starts a cluster,
+        runs a load
+        call proxyhistograms and validate its output
+        """
+        node = self.run_cluster()[0]
+        self.stress_write(node)
+        res = self.proxyhistograms(node)
+        for l in res:
+            self._verify_proxyhistogram(l)
+
     def nodetool_version(self, node=None):
         if node is None:
             node = self.cluster.nodelist()[0]
