@@ -513,6 +513,51 @@ class TestNodetool(Tester):
         self.assertEqual("true", gossip, "Failed to re-enable gossip")
         self.assertRegexpMatches(self.statusgossip(node1), "\s*running\s*", "wrong gossip status")
 
+    def isrunning(self, cmd, node=None):
+        if not node:
+            node = self.cluster.nodelist()[0]
+        out = node.nodetool(cmd, True)[0]
+        if re.search("^\s*running\s*$", out):
+            return True
+        if re.search("^\s*not running\s*$", out):
+            return False
+        self.assertTrue(False, cmd + " return wrong value: " + out)
+
+    def test_mgmt(self, cmd, mode=True):
+        [node] = self.run_cluster(nodes=1)
+        if mode:
+            self.assertTrue(self.isrunning("status" + cmd, node), cmd + " is not working")
+            node.nodetool("disable" + cmd)
+            self.assertFalse(self.isrunning("status" + cmd, node), "Fail to disable " + cmd)
+            node.nodetool("enable" + cmd)
+            self.assertTrue(self.isrunning("status" + cmd, node), "Fail to enable " + cmd)
+        else:
+            self.assertFalse(self.isrunning("status" + cmd, node), cmd + " is working")
+            node.nodetool("enable" + cmd)
+            self.assertTrue(self.isrunning("status" + cmd, node), "Fail to enable " + cmd)
+            node.nodetool("disable" + cmd)
+            self.assertFalse(self.isrunning("status" + cmd, node), "Fail to disable " + cmd)
+
+    def binary_test(self):
+        """
+        Test the nodetool binary commands
+        it check that binary is enable
+        disable
+        check
+        enable and check
+        """
+        self.test_mgmt("binary")
+
+    def backup_test(self):
+        """
+        Test the nodetool backup commands
+        it check that backup is disable
+        enable
+        check
+        disable and check
+        """
+        self.test_mgmt("backup", mode=False)
+
     def _flush(self, flush_cmd):
         cluster = self.cluster
         cluster.populate(1).start(wait_for_binary_proto=True)
