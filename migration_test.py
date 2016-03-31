@@ -122,7 +122,6 @@ class TestMigration(Tester):
 
         # FIXME: Check row content when counter gets supported.
 
-    @skip('failing')
     def migrate_sstable_with_schema_change_test(self):
         # Content of Cassandra dir generated with following cql commands:
         # CREATE TABLE ks.cf (user_name varchar PRIMARY KEY, bio ascii);
@@ -133,7 +132,7 @@ class TestMigration(Tester):
         cluster = self.cluster
 
         self.populate_cluster(cluster)
-        self.copy_migrated_data_dir('with_schema_change')
+        self.copy_migrated_data_dir('with_schema_change', skip_system_traces=True)
         self.start_cluster(cluster)
         node1 = self.get_node(cluster, 0)
 
@@ -242,7 +241,7 @@ class TestMigration(Tester):
         debug("Running 'nodetool refresh -- ks cf' to load migrated sstables")
         node.nodetool("refresh -- ks cf")
 
-    def copy_migrated_data_dir(self, migrated_data_dir):
+    def copy_migrated_data_dir(self, migrated_data_dir, skip_system_traces = False):
         cassandra_dir = "{}/cassandra-sstables/migration/{}/data".format(os.path.dirname(os.path.realpath(__file__)), migrated_data_dir)
         debug("cassandra data dir for counter is {}".format(cassandra_dir))
 
@@ -253,8 +252,9 @@ class TestMigration(Tester):
         self.recursive_copy_to(os.path.join(cassandra_dir, 'ks'), os.path.join(scylla_dir, 'ks'))
         debug("Copying data/system created by Cassandra...")
         self.recursive_copy_to(os.path.join(cassandra_dir, 'system'), os.path.join(scylla_dir, 'system'))
-        debug("Copying data/system_traces created by Cassandra...")
-        self.recursive_copy_to(os.path.join(cassandra_dir, 'system_traces'), os.path.join(scylla_dir, 'system_traces'))
+        if skip_system_traces is False:
+            debug("Copying data/system_traces created by Cassandra...")
+            self.recursive_copy_to(os.path.join(cassandra_dir, 'system_traces'), os.path.join(scylla_dir, 'system_traces'))
 
     def populate_cluster(self, cluster):
         # Disable hinted handoff and set batch commit log so this doesn't
