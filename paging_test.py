@@ -4,12 +4,12 @@ from unittest import skip
 
 from cassandra import ConsistencyLevel as CL
 from cassandra import InvalidRequest, ReadTimeout, ReadFailure
-from cassandra.query import SimpleStatement, dict_factory, named_tuple_factory
+from cassandra.query import SimpleStatement, dict_factory, named_tuple_factory, tuple_factory
 
 from assertions import assert_invalid
 from datahelp import create_rows, flatten_into_set, parse_data_into_dicts
 from dtest import Tester, run_scenarios
-from tools import require, since
+from tools import require, since, rows_to_list
 
 
 class Page(object):
@@ -930,6 +930,31 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
         results = list(session.execute("SELECT * FROM test WHERE a IN (0, 1, 2, 3, 4)"))
         self.assertEqual([0, 1, 2, 3, 4], sorted([r.s for r in results]))
 
+    def test_paging_on_compact_table_with_tombstone_on_first_column(self):
+
+        """
+        test paging, on  COMPACT tables without clustering columns, when the first column has a tombstone
+        @jira_ticket CASSANDRA-11467
+        """
+
+        session = self.prepare()
+        self.create_ks(session, 'test_paging_on_compact_table_with_tombstone', 2)
+        session.execute("CREATE TABLE test (a int primary key, b int, c int) WITH COMPACT STORAGE")
+        session.row_factory = tuple_factory
+
+        for i in xrange(5):
+            session.execute("INSERT INTO test (a, b, c) VALUES ({}, {}, {})".format(i, 1, 1))
+            session.execute("DELETE b FROM test WHERE a = {}".format(i))
+
+        for page_size in (2, 3, 4, 5, 7, 10):
+            session.default_fetch_size = page_size
+
+            res = rows_to_list(session.execute("SELECT * FROM test"))
+            self.assertEqual(res, [[1, None, 1],
+                                   [0, None, 1],
+                                   [2, None, 1],
+                                   [4, None, 1],
+                                   [3, None, 1]])
 
 @since('2.0')
 class TestPagingDatasetChanges(BasePagingTester, PageAssertionMixin):
