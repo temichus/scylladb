@@ -212,7 +212,7 @@ class TestNodetool(Tester):
         self.assertMapEqual(ks, "Read Count", 0)
         self.assertEqual(1000, int(ks["Write Count"]) + int(ks["Read Count"]))
         table = ks["tables"][table_name]
-        self.assertMapEqual(table, "SSTable count", 1)
+        self.assertMapGreatEqual(table, "SSTable count", 1)
         self.assertMapEqual(table, "Number of keys (estimate)", 1000)
         self.assertMapGreatEqual(table, "Memtable cell count", 0)
 
@@ -226,7 +226,7 @@ class TestNodetool(Tester):
         self.assertMapEqual(table, "SSTable Compression Ratio", 0)
         self.assertGreaterEqual(strs["latency mean:read"], TestNodetool._parse_time(ks["Read Latency"]))
         self.assertGreaterEqual(strs["latency mean:write"], TestNodetool._parse_time(ks["Write Latency"]))
-        self.assertMapEqual(table, "Memtable switch count", 1)
+        self.assertMapGreatEqual(table, "Memtable switch count", 1)
         self.assertMapEqual(table, "Local read count", int(ks["Read Count"]))
         self.assertGreaterEqual(TestNodetool._parse_time(ks["Read Latency"]), TestNodetool._parse_time(table["Local read latency"]))
         self.assertMapEqual(table, "Local write count", int(ks["Write Count"]))
