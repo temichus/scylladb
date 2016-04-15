@@ -1159,3 +1159,16 @@ class TestUpdateClusterLayout(Tester):
         e_msg = ("Heartbeat for status 2 '%s' is not greater than for status 1 '%s', something is wrong" % (heartbeat_2, heartbeat_1))
         debug("heartbeat_2 = %d, heartbeat_1 = %d" % (heartbeat_2, heartbeat_1))
         self.assertGreater(heartbeat_2, heartbeat_1, e_msg)
+
+    def add_node_when_cluster_is_filled_test(self):
+        cluster = self.cluster
+        cluster.populate(3).start(wait_for_binary_proto=True)
+        node1 = cluster.nodelist()[0]
+        debug("Cluster is up, start stressing...")
+
+        node1.stress(['write', 'cl=QUORUM', 'n=1000000', 'no-warmup', '-rate threads=700'])
+
+        debug("Adding new node...")
+        node4 = new_node(cluster)
+        node4.start(wait_for_binary_proto=True)
+        debug("New node added...")
