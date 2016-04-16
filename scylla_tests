@@ -197,3 +197,4 @@ concurrent_schema_changes_test.py
 range_ghost_test.py
 wide_rows_test.py
 compaction_additional_test.py
+user_types_test.py

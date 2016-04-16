@@ -6,7 +6,7 @@ from tools import since, require
 from assertions import assert_invalid
 from cassandra import Unauthorized, ConsistencyLevel
 from cassandra.query import SimpleStatement
-
+from nose.tools import nottest
 
 def listify(item):
     """
@@ -47,6 +47,9 @@ class TestUserTypes(Tester):
         """
         Tests that a type cannot be dropped when in use, and otherwise can be dropped.
         """
+        self.ignore_log_patterns = [
+            r'Cannot drop user type .* as it is still used by .*',
+        ]
         cluster = self.cluster
         cluster.populate(3).start()
         node1, node2, node3 = cluster.nodelist()
@@ -109,6 +112,9 @@ class TestUserTypes(Tester):
         """
         Confirm a user type can't be dropped when being used by another user type.
         """
+        self.ignore_log_patterns = [
+            r'Cannot drop user type .* as it is still used by .*',
+        ]
         cluster = self.cluster
         cluster.populate(3).start()
         node1, node2, node3 = cluster.nodelist()
@@ -355,10 +361,7 @@ class TestUserTypes(Tester):
               SELECT id, name.first from person_likes where id={id};
            """.format(id=_id)
 
-        if self.cluster.version() >= '2.2':
-            assert_invalid(session, stmt, 'Partition key parts: name must be restricted as other parts are')
-        else:
-            assert_invalid(session, stmt, 'Partition key part name must be restricted since preceding part is')
+        assert_invalid(session, stmt, 'Partition key parts: name must be restricted as other parts are')
 
         stmt = """
               SELECT id, name.first, like from person_likes where id={id} and name = {{first:'Nero', middle: 'Claudius Caesar Augustus', last: 'Germanicus'}};
@@ -369,6 +372,7 @@ class TestUserTypes(Tester):
         self.assertEqual(first_name, u'Nero')
         self.assertEqual(like, u'arson')
 
+    @nottest
     def test_type_secondary_indexing(self):
         """
         Confirm that user types are secondary-indexable
@@ -497,6 +501,7 @@ class TestUserTypes(Tester):
         self.assertEqual(first_name, u'Abraham')
         self.assertEqual(like, u'preserving unions')
 
+    @nottest
     def test_type_keyspace_permission_isolation(self):
         """
         Confirm permissions are respected for types in different keyspaces
@@ -608,6 +613,7 @@ class TestUserTypes(Tester):
         rows = list(session.execute("SELECT my_item FROM bucket WHERE id=1"))
         self.assertEqual(listify(rows[0]), [[u'test', None]])
 
+    @nottest
     def test_no_counters_in_user_types(self):
         # CASSANDRA-7672
         cluster = self.cluster
@@ -745,7 +751,6 @@ class TestUserTypes(Tester):
         rows = list(session.execute("SELECT * from tc WHERE id=0"))
         self.assertEqual(listify(rows[0]), [0, [0, [1, 2, 3, 4, 5]]])
 
-    @since('2.2')
     def test_user_type_isolation(self):
         """
         Ensure UDT cannot be used from another keyspace
