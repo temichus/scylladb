@@ -7,7 +7,7 @@ import yaml
 import time
 from unittest import skip
 from threading import Thread
-
+import sys
 
 def wait(delay=2):
     time.sleep(delay)
@@ -17,6 +17,10 @@ class TestNodetool(Tester):
     def __init__(self, *args, **kwargs):
         kwargs['cluster_options'] = {'start_rpc': 'true'}
         super(TestNodetool, self).__init__(*args, **kwargs)
+        self.queries_method_list = [ {"func": self.verify_info, "time":40, "args": [None, 'dc1', 'RAC1']},
+                                    {"func": self.verify_status, "time":25}, {"func": self.verify_netstats, "time":26},
+                                    {"func": self.verify_cfhistograms, "time":25}, {"func": self.verify_cfstats, "time":25, "args":[None, "keyspace1"]},
+                                    {"func": self.verify_describering, "time":25}, {"func": self.verify_decribecluster, "time":25}]
 
     @staticmethod
     def _to_cfstats(out):
@@ -57,7 +61,7 @@ class TestNodetool(Tester):
             m = ""
         else:
             m = msg + " "
-        m = m + key + " is " + container[key] + " not >=" + str(val)
+        m = m + key + " is " + str(container[key]) + " not >=" + str(val)
         self.assertIn(key, container, m)
         self.assertGreaterEqual(float(container[key]), val, m)
 
@@ -184,6 +188,55 @@ class TestNodetool(Tester):
         status = self.nodetool_status(node1)
         self.assertEqual(1, len(status["nodes"]), "wrong number of nodes")
 
+    def cfstats(self, node=None, ks=""):
+        node = self.get_node(node)
+        o = node.nodetool('cfstats ' + ks, True)[0]
+        return TestNodetool._to_cfstats(o)
+
+    def _verify_cfstats_cf(self, cf):
+        self.assertIn("Table", cf, "Table is missing in column family")
+        self.assertIn("SSTable count", cf, "SSTable count is missing in column family")
+        self.assertIn("Space used (live)", cf, "Space used (live) is missing in column family")
+        self.assertIn("Space used (total)", cf, "Space used (total) is missing in column family")
+        self.assertIn("Space used by snapshots (total)", cf, "Space used by snapshots (total) is missing in column family")
+        self.assertIn("Off heap memory used (total)", cf, "Off heap memory used (total) is missing in column family")
+        self.assertIn("SSTable Compression Ratio", cf, "SSTable Compression Ratio is missing in column family")
+        self.assertIn("Number of keys (estimate)", cf, "Number of keys (estimate) is missing in column family")
+        self.assertIn("Memtable cell count", cf, "Memtable cell count is missing in column family")
+        self.assertIn("Memtable data size", cf, "Memtable data size is missing in column family")
+        self.assertIn("Memtable off heap memory used", cf, "Memtable off heap memory used is missing in column family")
+        self.assertIn("Memtable switch count", cf, "Memtable switch count is missing in column family")
+        self.assertIn("Local read count", cf, "Local read count is missing in column family")
+        self.assertIn("Local read latency", cf, "Local read latency is missing in column family")
+        self.assertIn("Local write count", cf, "Local write count is missing in column family")
+        self.assertIn("Local write latency", cf, "Local write latency is missing in column family")
+        self.assertIn("Pending flushes", cf, "Pending flushes is missing in column family")
+        self.assertIn("Bloom filter false positives", cf, "Bloom filter false positives is missing in column family")
+        self.assertIn("Bloom filter false ratio", cf, "Bloom filter false ratio is missing in column family")
+        self.assertIn("Bloom filter space used", cf, "Bloom filter space used is missing in column family")
+        self.assertIn("Bloom filter off heap memory used", cf, "Bloom filter off heap memory used is missing in column family")
+        self.assertIn("Index summary off heap memory used", cf, "Index summary off heap memory used is missing in column family")
+        self.assertIn("Compression metadata off heap memory used", cf, "Compression metadata off heap memory used is missing in column family")
+        self.assertIn("Compacted partition minimum bytes", cf, "Compacted partition minimum bytes is missing in column family")
+        self.assertIn("Compacted partition maximum bytes", cf, "Compacted partition maximum bytes is missing in column family")
+        self.assertIn("Compacted partition mean bytes", cf, "Compacted partition mean bytes is missing in column family")
+        self.assertIn("Average live cells per slice (last five minutes)", cf, "Average live cells per slice (last five minutes) is missing in column family")
+        self.assertIn("Maximum live cells per slice (last five minutes)", cf, "Maximum live cells per slice (last five minutes) is missing in column family")
+        self.assertIn("Average tombstones per slice (last five minutes)", cf, "Average tombstones per slice (last five minutes) is missing in column family")
+        self.assertIn("Maximum tombstones per slice (last five minutes)", cf, "Maximum tombstones per slice (last five minutes) is missing in column family")
+
+    def verify_cfstats(self, node=None, ks=""):
+        res = self.cfstats(node, ks)
+        if ks == "":
+            for k in res:
+                for cf in res[k]["tables"]:
+                    self._verify_cfstats_cf(res[k]["tables"][cf])
+        else:
+            self.assertEqual(1, len(res), "wrong number of keyspaces found " + str(res.keys()))
+            self.assertIn(ks, res, "keyspace " + ks + " not found")
+            for cf in res[ks]["tables"]:
+                self._verify_cfstats_cf(res[ks]["tables"][cf])
+
     def cfstats_test(self):
         """Ensure that cfstats action works successfully.
         it runs a load with write, check some of the parameters
@@ -204,7 +257,8 @@ class TestNodetool(Tester):
         self.assertIn("system", output, "System keyspace is missing")
         self.assertIn("keyspace1", output, "keyspace1 keyspace is missing")
         self.assertIn(table_name, output["keyspace1"]["tables"], table_name + "table is missing")
-
+        self.verify_cfstats()
+        self.verify_cfstats(ks="keyspace1")
         output = TestNodetool._to_cfstats(node1.nodetool('cfstats keyspace1', True)[0])
         self.assertEqual(1, len(output), "wrong number of keyspaces found " + str(output.keys()))
         ks = output["keyspace1"]
@@ -600,6 +654,10 @@ class TestNodetool(Tester):
         self.assertTrue(m, "no TokenRange() found in describering")
         return [self._describering_val(v) for v in m]
 
+    def verify_describering(self, node=None, ks='keyspace1'):
+        node = self.get_node(node)
+        res = self.describering(node, ks)
+
     def describering_test(self):
         """
         Test the `nodetool describering` command
@@ -612,6 +670,7 @@ class TestNodetool(Tester):
         self.stress_write(node, 1000)
         res = self.describering(node, 'keyspace1')
         self.assertGreater(len(res), 100, "no describe ring data found")
+        self.verify_describering()
 
     def _verify_ring_token(self, entry, msg):
         self.assertIP(entry["Address"], msg)
@@ -719,6 +778,7 @@ class TestNodetool(Tester):
         for v in res["vals"]:
             self.assertMapEqual(res["vals"][v], "Read Latency", 0, "unexpected read latency")
             self.assertMapEqual(res["vals"][v], "Write Latency", 0, "unexpected write latency")
+        self.verify_cfhistograms()
         strs = self.stress_mixed(node, 10000)
         res = self._get_cfhistogram(node, "keyspace1", "standard1")
         ltnc = strs['latency 99.9th percentile:read']
@@ -727,9 +787,23 @@ class TestNodetool(Tester):
         for v in res["vals"]:
             self.assertMapLess(res["vals"][v], "Read Latency", ltnc * 1000, "unexpected read latency")
 
+    def verify_cfhistograms(self, node=None, ks="keyspace1", cf="standard1"):
+        node = self.get_node(node)
+        res = self._get_cfhistogram(node, ks, cf)
+        cur = -1
+        mn = res["vals"]["Min"]["Write Latency"]
+        self.assertLessEqual(mn, res["vals"]["50%"], "Min write latency should be smaller then 50%")
+        for v in ["50%", "75%", "95%", "98%", "99%", "Max"]:
+            self.assertMapGreatEqual(res["vals"][v], "Write Latency", cur, "write latency is not monotonic ")
+            cur = res["vals"][v]["Write Latency"]
+
     def describecluster(self, node):
         out = node.nodetool('describecluster', True)[0]
         return yaml.load(out.replace('\t', "  "))
+
+    def verify_decribecluster(self, node=None):
+        node = self.get_node(node)
+        self.describecluster(node)
 
     def describecluster_test(self):
         """Test the nodetool describecluster command
@@ -835,7 +909,7 @@ class TestNodetool(Tester):
             self.assertIn("DC", info)
 #            self.assertIn("SEVERITY", info)
 
-    def verify_info(self, node=None):
+    def verify_info(self, node=None, dc="datacenter1", rac="rack1"):
         if not node:
             node = self.cluster.nodelist()[0]
         ni = self.nodetool_info(node)
@@ -848,8 +922,8 @@ class TestNodetool(Tester):
         self.assertIn("Generation No", ni, "Generation No is missing")
         self.assertIn("Heap Memory (MB)", ni, "Heap Memory")
         self.assertIn("Off Heap Memory (MB)", ni, "Off Heap Memory is missing")
-        self.assertMapEqual(ni, "Data Center", "datacenter1")
-        self.assertMapEqual(ni, "Rack", "rack1")
+        self.assertMapEqual(ni, "Data Center", dc)
+        self.assertMapEqual(ni, "Rack", rac)
         self.assertMapEqual(ni, "Exceptions", 0)
         self.assertIn("Key Cache", ni)
         self.assertIn("Row Cache", ni)
@@ -1037,12 +1111,38 @@ class TestNodetool(Tester):
         cluster.populate(nodes).start(wait_for_binary_proto=True)
         return cluster.nodelist()
 
+    def create_datacenter(self, nodes=[2, 2], run_dc1=True, run_dc2=False):
+        cluster = self.cluster
+        cluster.populate(nodes)
+        nl = cluster.nodelist()
+        if run_dc1:
+            for i in range(0, nodes[0]):
+                nl[i].start(wait_for_binary_proto=True)
+        return nl
+
     def add_node(self):
         cluster = self.cluster
         node2 = new_node(cluster)
         node2.start(wait_for_binary_proto=True)
 
-    def time_func(self, func_info, paralel=True):
+    def stop(self, nodes, args=[]):
+        if isinstance(nodes, int):
+            self.cluster.nodelist()[nodes].stop(*args)
+        else:
+            for i in nodes:
+                self.cluster.nodelist()[i].stop(*args)
+
+    def start(self, nodes, args={}):
+        if isinstance(nodes, int):
+            self.cluster.nodelist()[nodes].start(**args)
+        else:
+            for i in nodes:
+                self.cluster.nodelist()[i].start(**args)
+
+
+    concurent_test_fail = False
+
+    def time_func(self, func_info, ops, paralel=True):
         """takes a function and a time limit
         it runs the function, verify when it's done
         that it didn't took too long
@@ -1055,60 +1155,136 @@ class TestNodetool(Tester):
                 wait(func_info["delay"])
             else:
                 wait(0.2)
-            tr = Thread(target=self.time_func, args=[func_info, False])
+            tr = Thread(target=self.time_func, args=[func_info, ops, False])
             tr.start()
             return tr
         else:
             before = int(time.time())
+            ops["start"] = before
             debug("starting " + func_info["func"].__name__)
-            func_info["func"]()
+            try:
+                if "args" in func_info:
+                    func_info["func"](*func_info["args"])
+                else:
+                    func_info["func"]()
+            except:
+                print("Failed " + func_info["func"].__name__, " with ", sys.exc_info()[1])
+                ops["exception"] = str(sys.exc_info()[1])
+                self.concurent_test_fail = True
+#                raise
+            msg = func_info["func"].__name__ + " completed in " + str(int(time.time()) - before) + " seconds"
             if "time" in func_info:
-                self.assertLessEqual(int(time.time()) - before, func_info["time"])
-            debug(func_info["func"].__name__ + " completed in " + str(int(time.time()) - before) + " seconds")
+#                self.assertLessEqual(int(time.time()) - before, func_info["time"], msg)
+                if int(time.time()) - before > func_info["time"] and not self.concurent_test_fail:
+                    ops["exception"] = "Timeout:" + msg
+                    self.concurent_test_fail = True
+            debug(msg)
+            ops["end"] = int(time.time())
             return None
 
-    def concurent_stress(self, node=None):
+    def print_fun_name(self, name, ln, end="]"):
+        res = "["
+        if ln > 2:
+            if len(name) + 2 <= ln:
+                res = res + name.ljust(ln - 2) + end
+            else:
+                res = res + name[:ln - 2] + end
+        else:
+            res = res + end
+        return res
+
+    def print_ops(self, ops, start, ratio):
+        ln = int((ops["end"] - ops["start"])/ratio) if "end" in ops else len(ops["name"]) + 2
+        strt = int((ops["start"] - start)/ratio)
+        end = "]" if "end" in ops and not "exception" in ops else "x"
+        res = "".rjust(strt) + self.print_fun_name(ops["name"], ln, end)
+        if "exception" in ops:
+            res = res + ops["exception"]
+        if len(ops["name"]) > ln:
+            res = res + "\n" + "".rjust(strt) + ops["name"]
+        return res
+
+    def print_time(self, lst):
+        lst.sort(lambda a, b: a["start"] < b["start"])
+        start = lst[0]["start"]
+        end = max(map(lambda a: a["end"] if "end" in a else a["start"], lst))
+        strts = list(set(map(lambda a: a["start"], lst)))
+        strts.sort()
+        ratio = (end - start)/160.0
+        res = str(end - start)
+        left = ""
+        for s in strts:
+            st = s - start
+            n = str(st)
+            l = int(st/ratio) - len(left)
+            if l < 0:
+                l = 0
+            left = left + "|".rjust(l) + n
+        res = left + res.rjust(159 - len(left)) + "|\n" +"".ljust(160, '-')+"\n"
+        for l in lst:
+            res = res + self.print_ops(l, start, ratio) + "\n"
+        return res
+
+    def concurent_stress(self, node=None, times=1000000):
         if node is None:
             node = self.cluster.nodelist()[0]
-        self.stress_write(node, times=1000000,  pop='seq=1..3000000000', opt=["-rate threads=10"])
+        self.stress_write(node, times=times,  pop='seq=1..3000000000', opt=["-rate threads=10"])
 
     def repair(self, node=None):
         if node is None:
             node = self.cluster.nodelist()[0]
         node.nodetool('repair')
 
-    def do_recurent(self, start, waits):
+    def do_recurent(self, start, waits, res):
         if "recurent" not in start:
             return
         for rec in start["recurent"]:
-            r = self.time_func(rec)
-        if "block" in rec:
-            r.join()
-        else:
-            waits.append(r)
+            operation = self.create_op(rec)
+            res.append(operation)
+            r = self.time_func(rec, operation)
+            if "block" in rec:
+                r.join()
+            else:
+                waits.append(r)
+
+    def create_op(self, ops):
+        res = {}
+        res["start"] = int(time.time())
+        res["name"] = ops["func"].__name__
+        return res
 
     def concurnet_part(self, start):
         if "operations" not in start:
             return
-
+        res = []
         waits = []
         operations = []
         for ops in start["operations"]:
-            tr = self.time_func(ops)
+            operation = self.create_op(ops)
+            res.append(operation)
+            tr = self.time_func(ops, operation)
             if "block" in ops:
                 if "recurent" in start:
                     while tr.is_alive():
-                        self.do_recurent(start, waits)
+                        if self.concurent_test_fail:
+                            break
+                        self.do_recurent(start, waits, res)
                 else:
                     tr.join()
             else:
                 operations.append(tr)
+            if self.concurent_test_fail:
+                break
         while len(filter(lambda a: a.is_alive(), operations)) > 0:
-            self.do_recurent(start, waits)
+            if not self.concurent_test_fail:
+                self.do_recurent(start, waits, res)
             wait(20)
         for w in waits:
             if w is not None:
                 w.join()
+        self.assertFalse(self.concurent_test_fail, "Concurent test failed\n" + self.print_time(res))
+        debug("done concurent_part")
+        return res
 
     def general_concurent(self, tst):
         """tst is an object of the form
@@ -1132,8 +1308,10 @@ class TestNodetool(Tester):
         each test can have multiple sections.
         Each section would start after all the operations in the previous section completed.
         """
+        self.concurent_test_fail = False
         for op in tst:
-            self.concurnet_part(op)
+            if not self.concurent_test_fail:
+                debug(self.print_time(self.concurnet_part(op)))
 
     def concurent_repair_test(self):
         tst = [{
@@ -1146,6 +1324,45 @@ class TestNodetool(Tester):
         {
             "operations": [{"func": self.add_node, "time":300}, {"func": self.repair, "time":300}],
             "recurent":[ {"func": self.verify_info, "time":40}, {"func": self.verify_status, "time":25}, {"func": self.verify_netstats, "time":26} ],
+        }
+        ]
+        self.general_concurent(tst)
+
+    def rebuild(self, node=None, dc=""):
+        node = self.get_node(node)
+        node.nodetool('rebuild '+ dc)
+
+    def get_node(self, node):
+        if node is None:
+            return self.cluster.nodelist()[0]
+        if isinstance(node, int):
+            return self.cluster.nodelist()[node]
+        return node
+
+    def concurent_rebuild_test(self):
+        """
+        Start a cluster with 2 dc
+        stop 2 nodes
+        load data
+        start 2 nodes
+        call rebuild
+        """
+        self.ignore_log_patterns = ["migration_task - Can't send migration request: node"]
+        tst = [{
+            "operations":[{"func": self.run_cluster, "args": [[2, 2]], "block": True}, {"func": self.stop, "delay":5, "args":[[2, 3]]}],
+            "recurent":[{"func": self.verify_info, "time":20, "delay":10, "args": [None, 'dc1', 'RAC1']} ]
+        },
+        {
+            "operations":[{"func": self.concurent_stress, "delay":5, "args":[None, 10000000]}],
+            "recurent":[{"func": self.verify_info, "time":20, "delay":10, "args": [None, 'dc1', 'RAC1']} ]
+        },
+        {
+            "operations":[{"func": self.start, "delay":5, "args":[[2, 3], {"wait_for_binary_proto": True}]}],
+            "recurent":[{"func": self.verify_info, "time":20, "delay":10, "args": [None, 'dc1', 'RAC1']} ]
+        },
+        {
+            "operations": [{"func": self.rebuild, "time":300, "args": [2, "dc1"]}],
+            "recurent":self.queries_method_list,
         }
         ]
         self.general_concurent(tst)
