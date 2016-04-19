@@ -1,0 +1,112 @@
+import os
+import re
+import tempfile
+import time
+import random
+
+from assertions import assert_none, assert_one
+from dtest import Tester, debug
+from tools import since
+
+
+class CompactionAdditionalTest(Tester):
+
+    def compaction_delete_with_smp_change_test(self):
+        """
+        Test that data is not resurected when shared sstables
+        are used
+        1. smp=1 create sstable A with 100 keys
+        2. shutdown 
+        3. boot with smp=2 (forcing step 1 sstables to be shared) delete all keys 
+        4. wait past gc_preiod
+        5. insert a key forcing flush multiple times till a compaction is triggered
+        6. stop and start the node
+        7. check that no data was not resurected and that the deletion markers still exist
+        8. insert additional 100 keys forcing a flush multiple times till multiple compactions are trigerred
+        9. check that no deletion marker is left and files have been removed
+        """
+        cluster = self.cluster
+        cluster.populate(1)
+        [node1] = cluster.nodelist()
+        node1.start(wait_for_binary_proto=True, jvm_args=['--smp', '1'])
+
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 1)
+
+        session.execute("create table ks.cf (key int PRIMARY KEY, val int) with compaction = {'class':'SizeTieredCompactionStrategy'} and gc_grace_seconds = 30;")
+
+        for x in range(0, 100):
+            session.execute('insert into cf (key, val) values (' + str(x) + ',1)')
+
+        node1.flush()
+        node1.compact()
+        node1.stop()
+        node1.start(wait_for_binary_proto=True, jvm_args=['--smp', '2'])
+
+        session = self.patient_cql_connection(node1,'ks')
+        for x in range(0, 100):
+            session.execute('delete from cf where key = ' + str(x))
+        node1.flush()
+
+        time.sleep(31)
+
+        # we passed gc_period and force an update so that compaction will
+        # be triggered on a single shard (removing data and tombstone)
+        rows = session.execute("select count(*) from system.compaction_history")
+        compactions_1 = rows[0][0]
+        compactions_2 = compactions_1
+
+        while compactions_1 == compactions_2:
+            session.execute('insert into ks.cf (key, val) values (199,1);')
+            node1.flush()
+            rows = session.execute("select count(*) from system.compaction_history")
+            compactions_2 = rows[0][0]
+        node1.wait_for_compactions()
+
+        # reboot and verify that data  is not resurected
+        node1.stop()
+        node1.start(wait_for_binary_proto=True, jvm_args=['--smp', '2'])
+
+        session = self.patient_cql_connection(node1,'ks')
+        for x in range(0, 100):
+            assert_none(session, 'select * from cf where key = ' + str(x))
+
+        # validate that all deletion markers are kept (although gc period passed)
+        json_path = tempfile.mkstemp(suffix='.json')
+        jname = json_path[1]
+        with open(jname, 'w') as f:
+            node1.run_sstable2json(f)
+
+        with open(jname, 'r') as g:
+            jsoninfo = g.read()
+
+        numfound = jsoninfo.count("markedForDeleteAt")
+
+        self.assertEqual(numfound, 100)
+
+        # trigger compaction on both shards
+        node1.wait_for_compactions()
+        rows = session.execute("select count(*) from system.compaction_history")
+        compactions_1 = rows[0][0]
+        compactions_2 = compactions_1
+
+        while compactions_1+2 > compactions_2:
+            for x in range(200, 300):
+                session.execute('insert into ks.cf (key, val) values (' + str(x) + ',1);')
+            node1.flush()
+            rows = session.execute("select count(*) from system.compaction_history")
+            compactions_2 = rows[0][0]
+        node1.wait_for_compactions()
+
+        # validate that all deletion markers have been removed
+        json_path = tempfile.mkstemp(suffix='.json')
+        jname = json_path[1]
+        with open(jname, 'w') as f:
+            node1.run_sstable2json(f)
+
+        with open(jname, 'r') as g:
+            jsoninfo = g.read()
+
+        numfound = jsoninfo.count("markedForDeleteAt")
+
+        self.assertEqual(numfound, 0)
