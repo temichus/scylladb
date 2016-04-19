@@ -924,41 +924,39 @@ class RepairAdditionalTest(Tester):
         insert_c1c2(session, keys=range(2000, 3000), consistency=ConsistencyLevel.ONE)
         node1.start(wait_other_notice=True, wait_for_binary_proto=True)
 
-        # Do the following shtick 5 times
-        for _ in range(5): 
-            # Run repair on node 1, and kill this node quickly after repair started
-            def do_repair():
-                try:
-                    info = node1.repair(['ks'])
-                    debug(info[0])
-                    debug(info[1])
-                except (NodetoolError):
-                    pass
-            thread1 = threading.Thread(target=do_repair)
-            thread1.start()
-            node1.watch_log_for("starting user-requested repair")
-            time.sleep(random.uniform(0.0, 0.5))
-            if kill_master:
-                node1.stop(wait_other_notice=True)
-            else:
-                node2.stop(wait_other_notice=True)
-            thread1.join()
+        # Run repair on node 1, and kill this node quickly after repair started
+        def do_repair():
+            try:
+                info = node1.repair(['ks'])
+                debug(info[0])
+                debug(info[1])
+            except (NodetoolError):
+                pass
+        thread1 = threading.Thread(target=do_repair)
+        thread1.start()
+        node1.watch_log_for("starting user-requested repair")
+        time.sleep(random.uniform(0.0, 0.5))
+        if kill_master:
+            node1.stop(wait_other_notice=True)
+        else:
+            node2.stop(wait_other_notice=True)
+        thread1.join()
 
-            # Check that we can still read from the unkilled node normally.
-            # We expect to see at least 1000 partitions - potentially up to
-            # 2000 depending on how far the repair progressed.
-            if kill_master:
-                session = self.patient_cql_connection(node2, 'ks')
-            else:
-                session = self.patient_cql_connection(node1, 'ks')
-            count = len(session.execute("SELECT * FROM cf LIMIT 3000"))
-            debug("count is %d" % count)
-            self.assertTrue(count >= 1000 and count <= 2000)
+        # Check that we can still read from the unkilled node normally.
+        # We expect to see at least 1000 partitions - potentially up to
+        # 2000 depending on how far the repair progressed.
+        if kill_master:
+            session = self.patient_cql_connection(node2, 'ks')
+        else:
+            session = self.patient_cql_connection(node1, 'ks')
+        count = len(session.execute("SELECT * FROM cf LIMIT 3000"))
+        debug("count is %d" % count)
+        self.assertTrue(count >= 1000 and count <= 2000)
 
-            if kill_master:
-                node1.start(wait_other_notice=True, wait_for_binary_proto=True)
-            else:
-                node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+        if kill_master:
+            node1.start(wait_other_notice=True, wait_for_binary_proto=True)
+        else:
+            node2.start(wait_other_notice=True, wait_for_binary_proto=True)
 
         # dtest.py, when the test is over, checks if there have been any
         # "ERROR" messages in the log, and if there have, it fails the test.
