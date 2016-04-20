@@ -1123,6 +1123,10 @@ class TestNodetool(Tester):
     def add_node(self):
         cluster = self.cluster
         node2 = new_node(cluster)
+        # This is a workaround to support copying of the
+        # excutable between file systems (as oppose to static link)
+        # it solve an issue of doing the copy in the context of a thread
+        time.sleep(3)
         node2.start(wait_for_binary_proto=True)
 
     def stop(self, nodes, args=[]):
@@ -1315,8 +1319,8 @@ class TestNodetool(Tester):
 
     def concurent_repair_test(self):
         tst = [{
-            "operations":[{"func": self.run_cluster}, {"func": self.concurent_stress, "delay":5}, {"func": self.repair, "time":300, "delay":1}],
-            "recurent":[{"func": self.verify_info, "time":20, "delay":5} ]
+            "operations":[{"func": self.run_cluster}, {"func": self.concurent_stress, "delay":5}, {"func": self.repair, "time":300, "delay":10}],
+            "recurent":[{"func": self.verify_info, "time":20, "delay":10} ]
         },
         {
             "operations":[{"func": self.concurent_stress, "delay":5}]
