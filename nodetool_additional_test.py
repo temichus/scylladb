@@ -8,6 +8,7 @@ import time
 from unittest import skip
 from threading import Thread
 import sys
+import urllib2
 
 def wait(delay=2):
     time.sleep(delay)
@@ -1336,6 +1337,21 @@ class TestNodetool(Tester):
         node = self.get_node(node)
         node.nodetool('rebuild '+ dc)
 
+    def verify_all_api(self, giveup=30):
+        """ The snitch API starts at the very last part
+        of the startup process. So when it's up all API is up
+        """
+        while giveup > 0:
+            req = urllib2.Request("http://localhost:10000/snitch/name")
+            try:
+                urllib2.urlopen(req)
+                return
+            except (urllib2.HTTPError, urllib2.URLError) as e:
+                pass
+            wait(1)
+            giveup = giveup - 1
+        raise Exception("API is not available")
+
     def get_node(self, node):
         if node is None:
             return self.cluster.nodelist()[0]
@@ -1354,7 +1370,7 @@ class TestNodetool(Tester):
         self.ignore_log_patterns = ["migration_task - Can't send migration request: node"]
         tst = [{
             "operations":[{"func": self.run_cluster, "args": [[2, 2]], "block": True}, {"func": self.stop, "delay":5, "args":[[2, 3]]}],
-            "recurent":[{"func": self.verify_info, "time":20, "delay":10, "args": [None, 'dc1', 'RAC1']} ]
+            "recurent":[{"func": self.verify_all_api, "block": True}, {"func": self.verify_info, "time":20, "delay":10, "args": [None, 'dc1', 'RAC1']} ]
         },
         {
             "operations":[{"func": self.concurent_stress, "delay":5, "args":[None, 10000000]}],
