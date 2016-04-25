@@ -1,12 +1,8 @@
-import os
-import re
 import tempfile
 import time
-import random
 
-from assertions import assert_none, assert_one
-from dtest import Tester, debug
-from tools import since
+from assertions import assert_none
+from dtest import Tester
 
 
 class CompactionAdditionalTest(Tester):
