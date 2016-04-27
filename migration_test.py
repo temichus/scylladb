@@ -112,6 +112,40 @@ class MigrationTestBase(Tester):
         self.assertEqual(result[1].i, 1, "check clustering key")
         self.assertEqual(result[1].s, 'new', "check static cell")
 
+    def migrate_sstable_with_overlapping_tombstones_test(self):
+        node1 = self.start_cluster_and_get_node1()
+
+        query = 'create COLUMNFAMILY  ks.cf (pk text, ck1 text, ck2 text, data text, primary key(pk, ck1, ck2))'
+        self.create_ks_and_cf(node1, None, None, False, query=query)
+
+        self.load_migrated_tables(node1, 'with_overlapping_tombstones')
+
+        self.check_number_of_rows(node1, 1)
+
+        result = self.get_all_rows_for_check(node1)
+        # contents generated with:
+        # insert into ks.cf (pk, ck1, ck2, data) values('pk', 'aaa', 'bbb', 'ccc');
+        # insert into ks.cf (pk, ck1, ck2, data) values('pk', 'aaa', 'ccc', 'ddd');
+        # insert into ks.cf (pk, ck1, ck2, data) values('pk', 'aaa', 'ddd', 'eee');
+        # insert into ks.cf (pk, ck1, ck2, data) values('pk', 'bbb', 'aaa', 'fff');
+        # delete from ks.cf where pk='pk' and ck1='aaa';
+        # delete from ks.cf where pk='pk' and ck1='aaa' and ck2='bbb';
+        #
+        # ->
+        # [
+        #     {"key": "pk",
+        #      "cells": [["aaa:_","aaa:bbb:_",1459842756489757,"t",1459842756],
+        #                ["aaa:bbb:_","aaa:bbb:!",1459842776570351,"t",1459842776],
+        #                ["aaa:bbb:!","aaa:!",1459842756489757,"t",1459842756],
+        #                ["bbb:aaa:","",1459842718297591],
+        #                ["bbb:aaa:data","fff",1459842718297591]]}
+        # ]
+
+        self.assertEqual(result[0].pk, 'pk', "check partition key")
+        self.assertEqual(result[0].ck1, 'bbb', "check clustering key")
+        self.assertEqual(result[0].ck2, 'aaa',"check partition key")
+        self.assertEqual(result[0].data, 'fff', "check data") 
+
 # ######################## Helper functions ####################################
     def check_number_of_rows(self, node, expected_number_of_rows):
         debug("Checking rows on node1...")
