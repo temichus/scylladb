@@ -11,10 +11,6 @@ import sys
 import urllib2
 
 
-def wait(delay=2):
-    time.sleep(delay)
-
-
 class TestNodetool(Tester):
 
     def __init__(self, *args, **kwargs):
@@ -1167,9 +1163,9 @@ class TestNodetool(Tester):
         """
         if paralel:
             if "delay" in func_info:
-                wait(func_info["delay"])
+                time.sleep(func_info["delay"])
             else:
-                wait(0.2)
+                time.sleep(0.2)
             tr = Thread(target=self.time_func, args=[func_info, ops, False])
             tr.start()
             return tr
@@ -1301,7 +1297,7 @@ class TestNodetool(Tester):
         while len(filter(lambda a: a.is_alive(), operations)) > 0:
             if not self.concurrent_test_fail:
                 self.do_recurrent(start, waits, res)
-            wait(20)
+            time.sleep(20)
         for w in waits:
             if w is not None:
                 w.join()
@@ -1354,7 +1350,7 @@ class TestNodetool(Tester):
                 return
             except (urllib2.HTTPError, urllib2.URLError) as e:
                 pass
-            wait(1)
+            time.sleep(1)
             giveup = giveup - 1
         raise Exception("API is not available")
 
