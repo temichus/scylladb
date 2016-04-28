@@ -1149,7 +1149,7 @@ class TestNodetool(Tester):
             for i in nodes:
                 self.cluster.nodelist()[i].start(**args)
 
-    concurent_test_fail = False
+    concurrent_test_fail = False
 
     def time_func(self, func_info, ops, paralel=True):
         """takes a function and a time limit
@@ -1179,14 +1179,14 @@ class TestNodetool(Tester):
             except:
                 print("Failed " + func_info["func"].__name__, " with ", sys.exc_info()[1])
                 ops["exception"] = str(sys.exc_info()[1])
-                self.concurent_test_fail = True
+                self.concurrent_test_fail = True
 #                raise
             msg = func_info["func"].__name__ + " completed in " + str(int(time.time()) - before) + " seconds"
             if "time" in func_info:
                 #                self.assertLessEqual(int(time.time()) - before, func_info["time"], msg)
-                if int(time.time()) - before > func_info["time"] and not self.concurent_test_fail:
+                if int(time.time()) - before > func_info["time"] and not self.concurrent_test_fail:
                     ops["exception"] = "Timeout:" + msg
-                    self.concurent_test_fail = True
+                    self.concurrent_test_fail = True
             debug(msg)
             ops["end"] = int(time.time())
             return None
@@ -1234,7 +1234,7 @@ class TestNodetool(Tester):
             res = res + self.print_ops(l, start, ratio) + "\n"
         return res
 
-    def concurent_stress(self, node=None, arg=None):
+    def concurrent_stress(self, node=None, arg=None):
         if arg is None:
             arg = {}
         if node is None:
@@ -1252,10 +1252,10 @@ class TestNodetool(Tester):
             node = self.cluster.nodelist()[0]
         node.nodetool('repair')
 
-    def do_recurent(self, start, waits, res):
-        if "recurent" not in start:
+    def do_recurrent(self, start, waits, res):
+        if "recurrent" not in start:
             return
-        for rec in start["recurent"]:
+        for rec in start["recurrent"]:
             operation = self.create_op(rec)
             res.append(operation)
             r = self.time_func(rec, operation)
@@ -1270,7 +1270,8 @@ class TestNodetool(Tester):
         res["name"] = ops["func"].__name__
         return res
 
-    def concurnet_part(self, start):
+
+    def concurrent_part(self, start):
         if "operations" not in start:
             return
         res = []
@@ -1281,57 +1282,57 @@ class TestNodetool(Tester):
             res.append(operation)
             tr = self.time_func(ops, operation)
             if "block" in ops:
-                if "recurent" in start:
+                if "recurrent" in start:
                     while tr.is_alive():
-                        if self.concurent_test_fail:
+                        if self.concurrent_test_fail:
                             break
-                        self.do_recurent(start, waits, res)
+                        self.do_recurrent(start, waits, res)
                 else:
                     tr.join()
             else:
                 operations.append(tr)
-            if self.concurent_test_fail:
+            if self.concurrent_test_fail:
                 break
         while len(filter(lambda a: a.is_alive(), operations)) > 0:
-            if not self.concurent_test_fail:
-                self.do_recurent(start, waits, res)
+            if not self.concurrent_test_fail:
+                self.do_recurrent(start, waits, res)
             wait(20)
         for w in waits:
             if w is not None:
                 w.join()
-        self.assertFalse(self.concurent_test_fail, "Concurent test failed\n" + self.print_time(res))
-        debug("done concurent_part")
+        self.assertFalse(self.concurrent_test_fail, "Concurrent test failed\n" + self.print_time(res))
+        debug("done concurrent_part")
         return res
 
-    def general_concurent(self, tst):
+    def general_concurrent(self, tst):
         """
         tst is an object of the form
 
-        tst = [{"operations": [{"func": self.run_cluster}, {"func": self.concurent_stress, "delay": 5}, {"func": self.repair, "time": 300, "delay": 10}],
-                "recurent": [{"func": self.verify_info, "time": 20, "delay": 10}]},
-               {"operations": [{"func": self.concurent_stress, "delay": 5}]},
+        tst = [{"operations": [{"func": self.run_cluster}, {"func": self.concurrent_stress, "delay": 5}, {"func": self.repair, "time": 300, "delay": 10}],
+                "recurrent": [{"func": self.verify_info, "time": 20, "delay": 10}]},
+               {"operations": [{"func": self.concurrent_stress, "delay": 5}]},
                {"operations": [{"func": self.add_node, "time": 300}, {"func": self.repair, "time": 300}],
-                "recurent": [{"func": self.verify_info, "time": 40}, {"func": self.verify_status, "time": 25}, {"func": self.verify_netstats, "time": 26}]}]
+                "recurrent": [{"func": self.verify_info, "time": 40}, {"func": self.verify_status, "time": 25}, {"func": self.verify_netstats, "time": 26}]}]
 
-        operation and recurent are list of objects
+        operation and recurrent are list of objects
         {"func" the function name, "time": when present check the operation time,
         "delay": add a delay before running, "block" when present the operation block}
 
         each test can have multiple sections.
         Each section would start after all the operations in the previous section completed.
         """
-        self.concurent_test_fail = False
+        self.concurrent_test_fail = False
         for op in tst:
-            if not self.concurent_test_fail:
-                debug("Test call flow:\n" + self.print_time(self.concurnet_part(op)))
+            if not self.concurrent_test_fail:
+                debug("Test call flow:\n" + self.print_time(self.concurrent_part(op)))
 
-    def concurent_repair_test(self):
-        tst = [{"operations": [{"func": self.run_cluster}, {"func": self.concurent_stress, "delay": 5}, {"func": self.repair, "time": 300, "delay": 10}],
-                "recurent": [{"func": self.verify_info, "time": 20, "delay": 10}]},
-               {"operations": [{"func": self.concurent_stress, "delay": 5}]},
+    def concurrent_repair_test(self):
+        tst = [{"operations": [{"func": self.run_cluster}, {"func": self.concurrent_stress, "delay": 5}, {"func": self.repair, "time": 300, "delay": 10}],
+                "recurrent": [{"func": self.verify_info, "time": 20, "delay": 10}]},
+               {"operations": [{"func": self.concurrent_stress, "delay": 5}]},
                {"operations": [{"func": self.add_node, "time": 300}, {"func": self.repair, "time": 300}],
-                "recurent": [{"func": self.verify_info, "time": 40}, {"func": self.verify_status, "time": 25}, {"func": self.verify_netstats, "time": 26}]}]
-        self.general_concurent(tst)
+                "recurrent": [{"func": self.verify_info, "time": 40}, {"func": self.verify_status, "time": 25}, {"func": self.verify_netstats, "time": 26}]}]
+        self.general_concurrent(tst)
 
     def rebuild(self, node=None, dc=""):
         node = self.get_node(node)
@@ -1359,7 +1360,7 @@ class TestNodetool(Tester):
             return self.cluster.nodelist()[node]
         return node
 
-    def concurent_rebuild_test(self):
+    def concurrent_rebuild_test(self):
         """
         Start a cluster with 2 dc
         stop 2 nodes
@@ -1369,20 +1370,20 @@ class TestNodetool(Tester):
         """
         self.ignore_log_patterns = ["migration_task - Can't send migration request: node"]
         tst = [{"operations": [{"func": self.run_cluster, "args": [[2, 2]], "block": True}, {"func": self.stop, "delay": 5, "args": [[2, 3]]}],
-                "recurent":[{"func": self.verify_all_api, "block": True}, {"func": self.verify_info, "time": 20, "delay": 10, "args": [None, 'dc1', 'RAC1']}]},
-               {"operations": [{"func": self.concurent_stress, "delay": 5, "args": [None, {"duration": "1m"}]}],
-                "recurent": [{"func": self.verify_info, "time": 20, "delay": 10, "args": [None, 'dc1', 'RAC1']}]},
+                "recurrent":[{"func": self.verify_all_api, "block": True}, {"func": self.verify_info, "time": 20, "delay": 10, "args": [None, 'dc1', 'RAC1']}]},
+               {"operations": [{"func": self.concurrent_stress, "delay": 5, "args": [None, {"duration": "1m"}]}],
+                "recurrent": [{"func": self.verify_info, "time": 20, "delay": 10, "args": [None, 'dc1', 'RAC1']}]},
                {"operations": [{"func": self.start, "delay": 5, "args": [[2, 3], {"wait_for_binary_proto": True}]}],
-                "recurent": [{"func": self.verify_info, "time": 20, "delay": 10, "args": [None, 'dc1', 'RAC1']}]},
+                "recurrent": [{"func": self.verify_info, "time": 20, "delay": 10, "args": [None, 'dc1', 'RAC1']}]},
                {"operations": [{"func": self.rebuild, "time": 300, "args": [2, "dc1"]}],
-                "recurent":self.multi_dc_queries_method_list}]
-        self.general_concurent(tst)
+                "recurrent":self.multi_dc_queries_method_list}]
+        self.general_concurrent(tst)
 
     def drain(self, node):
         node = self.get_node(node)
         node.nodetool("drain")
 
-    def concurent_drain_test(self):
+    def concurrent_drain_test(self):
         """
         Start a cluster with 2 nodes
         run load
@@ -1390,12 +1391,12 @@ class TestNodetool(Tester):
         """
         self.ignore_log_patterns = ["migration_task - Can't send migration request: node"]
         tst = [{"operations": [{"func": self.run_cluster}],
-                "recurent": [{"func": self.verify_info, "time": 20, "delay": 10}]},
-               {"operations": [{"func": self.concurent_stress, "delay": 5, "args": [None, {"duration": "1m"}]}],
-                "recurent": [{"func": self.verify_info, "time": 20, "delay": 10}]},
-               {"operations": [{"func": self.concurent_stress, "delay": 5, "args": [None, {"duration": "1m"}]}, {"func": self.drain, "delay": 5, "args": [1]}],
-                "recurent": self. queries_method_list}]
-        self.general_concurent(tst)
+                "recurrent": [{"func": self.verify_info, "time": 20, "delay": 10}]},
+               {"operations": [{"func": self.concurrent_stress, "delay": 5, "args": [None, {"duration": "1m"}]}],
+                "recurrent": [{"func": self.verify_info, "time": 20, "delay": 10}]},
+               {"operations": [{"func": self.concurrent_stress, "delay": 5, "args": [None, {"duration": "1m"}]}, {"func": self.drain, "delay": 5, "args": [1]}],
+                "recurrent": self. queries_method_list}]
+        self.general_concurrent(tst)
 
     def stress(self, node, opr, times=10000, duration=None, col=None, pop=None, opt=[]):
         cmd = [opr, 'cl=ALL']
