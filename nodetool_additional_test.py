@@ -535,7 +535,8 @@ class TestNodetool(Tester):
             node = self.cluster.nodelist()[0]
         return node.nodetool("statusgossip", True)[0]
 
-    def _get_ring_entry(self, lst):
+    @staticmethod
+    def _get_ring_entry(lst):
         heads = ["Address", "Rack", "Status", "State", "Load", "Owns", "Token"]
         res = {}
         for i in range(len(heads)):
@@ -739,7 +740,8 @@ class TestNodetool(Tester):
         """
         self._flush(" keyspace1 standard1")
 
-    def _get_cfhistogram(self, node, ks, cf):
+    @staticmethod
+    def _get_cfhistogram(node, ks, cf):
         out = node.nodetool("cfhistograms " + ks + " " + cf, True)[0]
         m = re.findall(r"^([^\/]+)\/(.*)\s+histograms\s*$", out, re.MULTILINE)
         res = {}
@@ -801,6 +803,7 @@ class TestNodetool(Tester):
             self.assertMapGreatEqual(res["vals"][v], "Write Latency", cur, "write latency is not monotonic ")
             cur = res["vals"][v]["Write Latency"]
 
+    @staticmethod
     def describecluster(self, node):
         out = node.nodetool('describecluster', True)[0]
         return yaml.load(out.replace('\t', "  "))
@@ -828,7 +831,8 @@ class TestNodetool(Tester):
             self.assertEqual(3, len(schema[k]), "wrong schema version for " + k + " " + str(schema[k]))
         self.assertMapEqual(cluster, "Name", "test")
 
-    def create_table(self, session, obj):
+    @staticmethod
+    def create_table(session, obj):
         """A helper function that creates a keyspace and tables
         """
         for ks in obj:
@@ -864,7 +868,8 @@ class TestNodetool(Tester):
                     ins = ins + reduce(lambda a, b: a + "," + b, [self._sql_val(val[a]) for a in val.keys()]) + ")"
                     session.execute(ins)
 
-    def getendpoints(self, node, ks, cf, value):
+    @staticmethod
+    def getendpoints(node, ks, cf, value):
         return node.nodetool('getendpoints ' + ks + ' ' + cf + ' value', True)[0]
 
     def getendpoints_test(self):
@@ -882,7 +887,8 @@ class TestNodetool(Tester):
         endpoint = self.getendpoints(node, "ks1", "tbl1", "4")
         self.assertTrue(endpoint.startswith("127.0.0"), "Invalid endpoint returned '" + endpoint + "'")
 
-    def gossipinfo(self, node):
+    @staticmethod
+    def gossipinfo(node):
         """A helper function that return the
         gossipinfo as an object
         """
@@ -1193,7 +1199,8 @@ class TestNodetool(Tester):
             ops["end"] = int(time.time())
             return None
 
-    def print_fun_name(self, name, ln, end="]"):
+    @staticmethod
+    def print_fun_name(name, ln, end="]"):
         res = "["
         if ln > 2:
             if len(name) + 2 <= ln:
@@ -1266,7 +1273,8 @@ class TestNodetool(Tester):
             else:
                 waits.append(r)
 
-    def create_op(self, ops):
+    @staticmethod
+    def create_op(ops):
         res = {}
         res["start"] = int(time.time())
         res["name"] = ops["func"].__name__
@@ -1339,7 +1347,8 @@ class TestNodetool(Tester):
         node = self.get_node(node)
         node.nodetool('rebuild ' + dc)
 
-    def verify_all_api(self, giveup=30):
+    @staticmethod
+    def verify_all_api(giveup=30):
         """ The snitch API starts at the very last part
         of the startup process. So when it's up all API is up
         """
@@ -1399,7 +1408,8 @@ class TestNodetool(Tester):
                 "recurrent": self. queries_method_list}]
         self.general_concurrent(tst)
 
-    def stress(self, node, opr, times=10000, duration=None, col=None, pop=None, opt=None):
+    @staticmethod
+    def stress(node, opr, times=10000, duration=None, col=None, pop=None, opt=None):
         cmd = [opr, 'cl=ALL']
         if opt is None:
             opt = []
