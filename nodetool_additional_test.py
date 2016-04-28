@@ -1,14 +1,17 @@
-from dtest import Tester
-import re
 import os
-from tools import no_vnodes
-from tools import new_node, debug
-import yaml
-import time
-from unittest import skip
-from threading import Thread
+import re
 import sys
+import time
 import urllib2
+from threading import Thread
+from unittest import skip
+
+import yaml
+
+from dtest import Tester
+from tools import debug
+from tools import new_node
+from tools import no_vnodes
 
 
 class TestNodetool(Tester):
