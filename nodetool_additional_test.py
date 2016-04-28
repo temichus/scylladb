@@ -1117,7 +1117,9 @@ class TestNodetool(Tester):
         cluster.populate(nodes).start(wait_for_binary_proto=True)
         return cluster.nodelist()
 
-    def create_datacenter(self, nodes=[2, 2], run_dc1=True, run_dc2=False):
+    def create_datacenter(self, nodes=None, run_dc1=True, run_dc2=False):
+        if nodes is None:
+            nodes = [2, 2]
         cluster = self.cluster
         cluster.populate(nodes)
         nl = cluster.nodelist()
@@ -1135,14 +1137,18 @@ class TestNodetool(Tester):
         time.sleep(3)
         node2.start(wait_for_binary_proto=True)
 
-    def stop(self, nodes, args=[]):
+    def stop(self, nodes, args=None):
+        if args is None:
+            args = []
         if isinstance(nodes, int):
             self.cluster.nodelist()[nodes].stop(*args)
         else:
             for i in nodes:
                 self.cluster.nodelist()[i].stop(*args)
 
-    def start(self, nodes, args={}):
+    def start(self, nodes, args=None):
+        if args is None:
+            args = {}
         if isinstance(nodes, int):
             self.cluster.nodelist()[nodes].start(**args)
         else:
@@ -1269,7 +1275,6 @@ class TestNodetool(Tester):
         res["start"] = int(time.time())
         res["name"] = ops["func"].__name__
         return res
-
 
     def concurrent_part(self, start):
         if "operations" not in start:
@@ -1398,8 +1403,10 @@ class TestNodetool(Tester):
                 "recurrent": self. queries_method_list}]
         self.general_concurrent(tst)
 
-    def stress(self, node, opr, times=10000, duration=None, col=None, pop=None, opt=[]):
+    def stress(self, node, opr, times=10000, duration=None, col=None, pop=None, opt=None):
         cmd = [opr, 'cl=ALL']
+        if opt is None:
+            opt = []
         if duration:
             cmd += ['duration=' + duration]
         else:
@@ -1412,8 +1419,12 @@ class TestNodetool(Tester):
             cmd += opt
         return node.stress_object(cmd)
 
-    def stress_write(self, node, times=10000, duration=None, col=None, pop=None, opt=[]):
+    def stress_write(self, node, times=10000, duration=None, col=None, pop=None, opt=None):
+        if opt is None:
+            opt = []
         return self.stress(node, 'write', times=times, duration=duration, col=col, pop=pop, opt=opt)
 
-    def stress_mixed(self, node, times=10000, duration=None, col=None, pop=None, opt=[]):
+    def stress_mixed(self, node, times=10000, duration=None, col=None, pop=None, opt=None):
+        if opt is None:
+            opt = []
         return self.stress(node, 'mixed', times=times, duration=duration, col=col, pop=pop, opt=opt)
