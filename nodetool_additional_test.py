@@ -909,7 +909,7 @@ class TestNodetool(Tester):
             self.assertIn("RACK", info)
             self.assertIn("RPC_ADDRESS", info)
             self.assertIn("DC", info)
-#            self.assertIn("SEVERITY", info)
+            # self.assertIn("SEVERITY", info)
 
     def verify_info(self, node=None, dc="datacenter1", rac="rack1"):
         if not node:
@@ -1128,7 +1128,7 @@ class TestNodetool(Tester):
         cluster = self.cluster
         node2 = new_node(cluster)
         # This is a workaround to support copying of the
-        # excutable between file systems (as oppose to static link)
+        # executable between file systems (as oppose to static link)
         # it solve an issue of doing the copy in the context of a thread
         time.sleep(3)
         node2.start(wait_for_binary_proto=True)
@@ -1182,10 +1182,10 @@ class TestNodetool(Tester):
                 print("Failed " + func_info["func"].__name__, " with ", sys.exc_info()[1])
                 ops["exception"] = str(sys.exc_info()[1])
                 self.concurrent_test_fail = True
-#                raise
+                # raise
             msg = func_info["func"].__name__ + " completed in " + str(int(time.time()) - before) + " seconds"
             if "time" in func_info:
-                #                self.assertLessEqual(int(time.time()) - before, func_info["time"], msg)
+                # self.assertLessEqual(int(time.time()) - before, func_info["time"], msg)
                 if int(time.time()) - before > func_info["time"] and not self.concurrent_test_fail:
                     ops["exception"] = "Timeout:" + msg
                     self.concurrent_test_fail = True
