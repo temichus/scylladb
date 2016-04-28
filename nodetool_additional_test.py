@@ -1201,7 +1201,7 @@ class TestNodetool(Tester):
             else:
                 res = res + name[:ln - 2] + end
         else:
-            res = res + end
+            res += end
         return res
 
     def print_ops(self, ops, start, ratio):
@@ -1351,7 +1351,7 @@ class TestNodetool(Tester):
             except (urllib2.HTTPError, urllib2.URLError) as e:
                 pass
             time.sleep(1)
-            giveup = giveup - 1
+            giveup -= 1
         raise Exception("API is not available")
 
     def get_node(self, node):
