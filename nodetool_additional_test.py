@@ -1,32 +1,33 @@
-from dtest import Tester
-import re
 import os
-from tools import no_vnodes
-from tools import new_node, debug
-import yaml
-import time
-from unittest import skip
-from threading import Thread
+import re
 import sys
+import time
 import urllib2
+from threading import Thread
+from unittest import skip
 
-def wait(delay=2):
-    time.sleep(delay)
+import yaml
+
+from dtest import Tester
+from tools import debug
+from tools import new_node
+from tools import no_vnodes
 
 
 class TestNodetool(Tester):
+
     def __init__(self, *args, **kwargs):
         kwargs['cluster_options'] = {'start_rpc': 'true'}
         super(TestNodetool, self).__init__(*args, **kwargs)
         self.width = 160
-        self.multi_dc_queries_method_list = [ {"func": self.verify_info, "time":40, "args": [None, 'dc1', 'RAC1']},
-                                    {"func": self.verify_status, "time":25}, {"func": self.verify_netstats, "time":26},
-                                    {"func": self.verify_cfhistograms, "time":25}, {"func": self.verify_cfstats, "time":25, "args":[None, "keyspace1"]},
-                                    {"func": self.verify_describering, "time":25}, {"func": self.verify_decribecluster, "time":25}]
-        self.queries_method_list = [ {"func": self.verify_info, "time":40},
-                                    {"func": self.verify_status, "time":25}, {"func": self.verify_netstats, "time":26},
-                                    {"func": self.verify_cfhistograms, "time":25}, {"func": self.verify_cfstats, "time":25, "args":[None, "keyspace1"]},
-                                    {"func": self.verify_describering, "time":25}, {"func": self.verify_decribecluster, "time":25}]
+        self.multi_dc_queries_method_list = [{"func": self.verify_info, "time": 40, "args": [None, 'dc1', 'RAC1']},
+                                             {"func": self.verify_status, "time": 25}, {"func": self.verify_netstats, "time": 26},
+                                             {"func": self.verify_cfhistograms, "time": 25}, {"func": self.verify_cfstats, "time": 25, "args": [None, "keyspace1"]},
+                                             {"func": self.verify_describering, "time": 25}, {"func": self.verify_decribecluster, "time": 25}]
+        self.queries_method_list = [{"func": self.verify_info, "time": 40},
+                                    {"func": self.verify_status, "time": 25}, {"func": self.verify_netstats, "time": 26},
+                                    {"func": self.verify_cfhistograms, "time": 25}, {"func": self.verify_cfstats, "time": 25, "args": [None, "keyspace1"]},
+                                    {"func": self.verify_describering, "time": 25}, {"func": self.verify_decribecluster, "time": 25}]
 
     @staticmethod
     def _to_cfstats(out):
@@ -448,7 +449,7 @@ class TestNodetool(Tester):
     def _compactionhistory_entry(self, lst):
         res = TestNodetool._list2dic(lst, ["id", "keyspace_name", "columnfamily_name", "compacted_at", "bytes_in", "bytes_out", "rows_merged"])
         self._verify_compaction_history(res)
-        return res;
+        return res
 
     def compactionhistory(self, node):
         out = node.nodetool('compactionhistory', True)[0]
@@ -463,9 +464,9 @@ class TestNodetool(Tester):
         self.assertRegexpMatches(cpc["compacted_at"], "\d+")
         self.assertRegexpMatches(cpc["bytes_in"], "\d+")
         self.assertRegexpMatches(cpc["bytes_out"], "\d+")
-# Fail testing awaits #1097
-#        self.assertNotEqual(cpc["rows_merged"], "", "row merged information is missing")
-#        self.assertRegexpMatches(cpc["rows_merged"], "\{\d+,\d+\}")
+        # Fail testing awaits #1097
+        # self.assertNotEqual(cpc["rows_merged"], "", "row merged information is missing")
+        # self.assertRegexpMatches(cpc["rows_merged"], "\{\d+,\d+\}")
 
     def _compact(self, keyspace):
         cluster = self.cluster
@@ -537,7 +538,8 @@ class TestNodetool(Tester):
             node = self.cluster.nodelist()[0]
         return node.nodetool("statusgossip", True)[0]
 
-    def _get_ring_entry(self, lst):
+    @staticmethod
+    def _get_ring_entry(lst):
         heads = ["Address", "Rack", "Status", "State", "Load", "Owns", "Token"]
         res = {}
         for i in range(len(heads)):
@@ -704,7 +706,7 @@ class TestNodetool(Tester):
     def general_ring_test(self):
         self.check_ring()
 
-    @skip ('#1057')
+    @skip('#1057')
     def keyspace_ring_test(self):
         self.check_ring("keyspace1")
 
@@ -741,7 +743,8 @@ class TestNodetool(Tester):
         """
         self._flush(" keyspace1 standard1")
 
-    def _get_cfhistogram(self, node, ks, cf):
+    @staticmethod
+    def _get_cfhistogram(node, ks, cf):
         out = node.nodetool("cfhistograms " + ks + " " + cf, True)[0]
         m = re.findall(r"^([^\/]+)\/(.*)\s+histograms\s*$", out, re.MULTILINE)
         res = {}
@@ -803,6 +806,7 @@ class TestNodetool(Tester):
             self.assertMapGreatEqual(res["vals"][v], "Write Latency", cur, "write latency is not monotonic ")
             cur = res["vals"][v]["Write Latency"]
 
+    @staticmethod
     def describecluster(self, node):
         out = node.nodetool('describecluster', True)[0]
         return yaml.load(out.replace('\t', "  "))
@@ -830,7 +834,8 @@ class TestNodetool(Tester):
             self.assertEqual(3, len(schema[k]), "wrong schema version for " + k + " " + str(schema[k]))
         self.assertMapEqual(cluster, "Name", "test")
 
-    def create_table(self, session, obj):
+    @staticmethod
+    def create_table(session, obj):
         """A helper function that creates a keyspace and tables
         """
         for ks in obj:
@@ -866,7 +871,8 @@ class TestNodetool(Tester):
                     ins = ins + reduce(lambda a, b: a + "," + b, [self._sql_val(val[a]) for a in val.keys()]) + ")"
                     session.execute(ins)
 
-    def getendpoints(self, node, ks, cf, value):
+    @staticmethod
+    def getendpoints(node, ks, cf, value):
         return node.nodetool('getendpoints ' + ks + ' ' + cf + ' value', True)[0]
 
     def getendpoints_test(self):
@@ -879,14 +885,13 @@ class TestNodetool(Tester):
         cluster.populate(3).start(wait_for_binary_proto=True)
         node = cluster.nodelist()[0]
         session = self.patient_cql_connection(node)
-        self.create_table(session, {"ks1" : {"tables": {"tbl1" : {"col1": "int", "col2": "text", "key": "col1"}}
-                                          }})
-        self.populate_data(session, {"ks1": {"tbl1" : [{"col1":4, "col2": "abc"}
-                                                       ]}})
+        self.create_table(session, {"ks1": {"tables": {"tbl1": {"col1": "int", "col2": "text", "key": "col1"}}}})
+        self.populate_data(session, {"ks1": {"tbl1": [{"col1": 4, "col2": "abc"}]}})
         endpoint = self.getendpoints(node, "ks1", "tbl1", "4")
         self.assertTrue(endpoint.startswith("127.0.0"), "Invalid endpoint returned '" + endpoint + "'")
 
-    def gossipinfo(self, node):
+    @staticmethod
+    def gossipinfo(node):
         """A helper function that return the
         gossipinfo as an object
         """
@@ -913,7 +918,7 @@ class TestNodetool(Tester):
             self.assertIn("RACK", info)
             self.assertIn("RPC_ADDRESS", info)
             self.assertIn("DC", info)
-#            self.assertIn("SEVERITY", info)
+            # self.assertIn("SEVERITY", info)
 
     def verify_info(self, node=None, dc="datacenter1", rac="rack1"):
         if not node:
@@ -956,7 +961,7 @@ class TestNodetool(Tester):
         self.assertRegexpMatches(n["host id"], "[0-9abcdef\-]+", "Node host id has wrong tokens format")
         self.assertRegexpMatches(n["rack"], "[a-z0-9]+", "Node rack has wrong tokens format")
 
-    @skip ('#1057')
+    @skip('#1057')
     def status_test(self):
         """ Test the nodetool status command
         Starts two node cluster
@@ -1058,7 +1063,7 @@ class TestNodetool(Tester):
                 self.assertTrue(rr, "unexpected line in read repair")
                 res[rr.group(1)] = self._tonum(rr.group(2))
             else:
-                self.assertTrue(False, "unknown line in netstats" + l+ "\n" + out)
+                self.assertTrue(False, "unknown line in netstats" + l + "\n" + out)
         if stream is not None:
             res["streams"].append(stream)
         return res
@@ -1071,7 +1076,7 @@ class TestNodetool(Tester):
         cluster = self.cluster
         cluster.populate(2).start(wait_for_binary_proto=True)
         node = cluster.nodelist()[0]
-        self.stress_write(node, times=1000000,  pop='seq=1..3000000000', opt=["-rate threads=10"])
+        self.stress_write(node, times=1000000, pop='seq=1..3000000000', opt=["-rate threads=10"])
         node2 = new_node(cluster)
         node2.start(wait_for_binary_proto=False)
         node2.watch_log_for('streaming')
@@ -1117,7 +1122,9 @@ class TestNodetool(Tester):
         cluster.populate(nodes).start(wait_for_binary_proto=True)
         return cluster.nodelist()
 
-    def create_datacenter(self, nodes=[2, 2], run_dc1=True, run_dc2=False):
+    def create_datacenter(self, nodes=None, run_dc1=True, run_dc2=False):
+        if nodes is None:
+            nodes = [2, 2]
         cluster = self.cluster
         cluster.populate(nodes)
         nl = cluster.nodelist()
@@ -1130,27 +1137,30 @@ class TestNodetool(Tester):
         cluster = self.cluster
         node2 = new_node(cluster)
         # This is a workaround to support copying of the
-        # excutable between file systems (as oppose to static link)
+        # executable between file systems (as oppose to static link)
         # it solve an issue of doing the copy in the context of a thread
         time.sleep(3)
         node2.start(wait_for_binary_proto=True)
 
-    def stop(self, nodes, args=[]):
+    def stop(self, nodes, args=None):
+        if args is None:
+            args = []
         if isinstance(nodes, int):
             self.cluster.nodelist()[nodes].stop(*args)
         else:
             for i in nodes:
                 self.cluster.nodelist()[i].stop(*args)
 
-    def start(self, nodes, args={}):
+    def start(self, nodes, args=None):
+        if args is None:
+            args = {}
         if isinstance(nodes, int):
             self.cluster.nodelist()[nodes].start(**args)
         else:
             for i in nodes:
                 self.cluster.nodelist()[i].start(**args)
 
-
-    concurent_test_fail = False
+    concurrent_test_fail = False
 
     def time_func(self, func_info, ops, paralel=True):
         """takes a function and a time limit
@@ -1162,9 +1172,9 @@ class TestNodetool(Tester):
         """
         if paralel:
             if "delay" in func_info:
-                wait(func_info["delay"])
+                time.sleep(func_info["delay"])
             else:
-                wait(0.2)
+                time.sleep(0.2)
             tr = Thread(target=self.time_func, args=[func_info, ops, False])
             tr.start()
             return tr
@@ -1180,19 +1190,20 @@ class TestNodetool(Tester):
             except:
                 print("Failed " + func_info["func"].__name__, " with ", sys.exc_info()[1])
                 ops["exception"] = str(sys.exc_info()[1])
-                self.concurent_test_fail = True
-#                raise
+                self.concurrent_test_fail = True
+                # raise
             msg = func_info["func"].__name__ + " completed in " + str(int(time.time()) - before) + " seconds"
             if "time" in func_info:
-#                self.assertLessEqual(int(time.time()) - before, func_info["time"], msg)
-                if int(time.time()) - before > func_info["time"] and not self.concurent_test_fail:
+                # self.assertLessEqual(int(time.time()) - before, func_info["time"], msg)
+                if int(time.time()) - before > func_info["time"] and not self.concurrent_test_fail:
                     ops["exception"] = "Timeout:" + msg
-                    self.concurent_test_fail = True
+                    self.concurrent_test_fail = True
             debug(msg)
             ops["end"] = int(time.time())
             return None
 
-    def print_fun_name(self, name, ln, end="]"):
+    @staticmethod
+    def print_fun_name(name, ln, end="]"):
         res = "["
         if ln > 2:
             if len(name) + 2 <= ln:
@@ -1200,13 +1211,13 @@ class TestNodetool(Tester):
             else:
                 res = res + name[:ln - 2] + end
         else:
-            res = res + end
+            res += end
         return res
 
     def print_ops(self, ops, start, ratio):
-        ln = int((ops["end"] - ops["start"])/ratio) if "end" in ops else len(ops["name"]) + 2
-        strt = int((ops["start"] - start)/ratio)
-        end = "]" if "end" in ops and not "exception" in ops else "X"
+        ln = int((ops["end"] - ops["start"]) / ratio) if "end" in ops else len(ops["name"]) + 2
+        strt = int((ops["start"] - start) / ratio)
+        end = "]" if "end" in ops and "exception" not in ops else "X"
         res = "".rjust(strt) + self.print_fun_name(ops["name"], ln, end)
         if len(ops["name"]) > ln:
             res = res + "\n" + ops["name"].rjust(strt + ln)
@@ -1220,22 +1231,22 @@ class TestNodetool(Tester):
         end = max(map(lambda a: a["end"] if "end" in a else a["start"], lst))
         strts = list(set(map(lambda a: a["start"], lst)))
         strts.sort()
-        ratio = 1.0 * (end - start)/self.width
+        ratio = 1.0 * (end - start) / self.width
         res = str(end - start)
         left = ""
         for s in strts:
             st = s - start
             n = str(st)
-            l = int(st/ratio) - len(left)
+            l = int(st / ratio) - len(left)
             if l < 0:
                 l = 0
             left = left + "|".rjust(l) + n
-        res = left + res.rjust(self.width - 1 - len(left)) + "|\n" +"".ljust(self.width, '-')+"\n"
+        res = left + res.rjust(self.width - 1 - len(left)) + "|\n" + "".ljust(self.width, '-') + "\n"
         for l in lst:
             res = res + self.print_ops(l, start, ratio) + "\n"
         return res
 
-    def concurent_stress(self, node=None, arg=None):
+    def concurrent_stress(self, node=None, arg=None):
         if arg is None:
             arg = {}
         if node is None:
@@ -1253,10 +1264,10 @@ class TestNodetool(Tester):
             node = self.cluster.nodelist()[0]
         node.nodetool('repair')
 
-    def do_recurent(self, start, waits, res):
-        if "recurent" not in start:
+    def do_recurrent(self, start, waits, res):
+        if "recurrent" not in start:
             return
-        for rec in start["recurent"]:
+        for rec in start["recurrent"]:
             operation = self.create_op(rec)
             res.append(operation)
             r = self.time_func(rec, operation)
@@ -1265,13 +1276,14 @@ class TestNodetool(Tester):
             else:
                 waits.append(r)
 
-    def create_op(self, ops):
+    @staticmethod
+    def create_op(ops):
         res = {}
         res["start"] = int(time.time())
         res["name"] = ops["func"].__name__
         return res
 
-    def concurnet_part(self, start):
+    def concurrent_part(self, start):
         if "operations" not in start:
             return
         res = []
@@ -1282,75 +1294,64 @@ class TestNodetool(Tester):
             res.append(operation)
             tr = self.time_func(ops, operation)
             if "block" in ops:
-                if "recurent" in start:
+                if "recurrent" in start:
                     while tr.is_alive():
-                        if self.concurent_test_fail:
+                        if self.concurrent_test_fail:
                             break
-                        self.do_recurent(start, waits, res)
+                        self.do_recurrent(start, waits, res)
                 else:
                     tr.join()
             else:
                 operations.append(tr)
-            if self.concurent_test_fail:
+            if self.concurrent_test_fail:
                 break
         while len(filter(lambda a: a.is_alive(), operations)) > 0:
-            if not self.concurent_test_fail:
-                self.do_recurent(start, waits, res)
-            wait(20)
+            if not self.concurrent_test_fail:
+                self.do_recurrent(start, waits, res)
+            time.sleep(20)
         for w in waits:
             if w is not None:
                 w.join()
-        self.assertFalse(self.concurent_test_fail, "Concurent test failed\n" + self.print_time(res))
-        debug("done concurent_part")
+        self.assertFalse(self.concurrent_test_fail, "Concurrent test failed\n" + self.print_time(res))
+        debug("done concurrent_part")
         return res
 
-    def general_concurent(self, tst):
-        """tst is an object of the form
-        tst = [{
-            "operations":[{"func": self.run_cluster}, {"func": self.concurent_stress, "delay":5}, {"func": self.repair, "time":300, "delay":1}],
-            "recurent":[{"func": self.verify_info, "time":20, "delay":5} ]
-        },
-        {
-            "operations":[{"func": self.concurent_stress, "delay":5}]
-        },
-        {
-            "operations": [{"func": self.add_node, "time":300}, {"func": self.repair, "time":300}],
-            "recurent":[ {"func": self.verify_info, "time":40, "delay": 5}, {"func": self.verify_status, "time":25}, {"func": self.verify_netstats, "time":26} ],
-        }
-        ]
+    def general_concurrent(self, tst):
+        """
+        tst is an object of the form
 
-        operation and recurent are list of objects
+        tst = [{"operations": [{"func": self.run_cluster}, {"func": self.concurrent_stress, "delay": 5}, {"func": self.repair, "time": 300, "delay": 10}],
+                "recurrent": [{"func": self.verify_info, "time": 20, "delay": 10}]},
+               {"operations": [{"func": self.concurrent_stress, "delay": 5}]},
+               {"operations": [{"func": self.add_node, "time": 300}, {"func": self.repair, "time": 300}],
+                "recurrent": [{"func": self.verify_info, "time": 40}, {"func": self.verify_status, "time": 25}, {"func": self.verify_netstats, "time": 26}]}]
+
+        operation and recurrent are list of objects
         {"func" the function name, "time": when present check the operation time,
         "delay": add a delay before running, "block" when present the operation block}
 
         each test can have multiple sections.
         Each section would start after all the operations in the previous section completed.
         """
-        self.concurent_test_fail = False
+        self.concurrent_test_fail = False
         for op in tst:
-            if not self.concurent_test_fail:
-                debug("Test call flow:\n" + self.print_time(self.concurnet_part(op)))
+            if not self.concurrent_test_fail:
+                debug("Test call flow:\n" + self.print_time(self.concurrent_part(op)))
 
-    def concurent_repair_test(self):
-        tst = [{
-            "operations":[{"func": self.run_cluster}, {"func": self.concurent_stress, "delay":5}, {"func": self.repair, "time":300, "delay":10}],
-            "recurent":[{"func": self.verify_info, "time":20, "delay":10} ]
-        },
-        {
-            "operations":[{"func": self.concurent_stress, "delay":5}]
-        },
-        {
-            "operations": [{"func": self.add_node, "time":300}, {"func": self.repair, "time":300}],
-            "recurent":[ {"func": self.verify_info, "time":40}, {"func": self.verify_status, "time":25}, {"func": self.verify_netstats, "time":26} ],
-        }
-        ]
-        self.general_concurent(tst)
+    def concurrent_repair_test(self):
+        tst = [{"operations": [{"func": self.run_cluster}, {"func": self.concurrent_stress, "delay": 5}, {"func": self.repair, "time": 300, "delay": 10}],
+                "recurrent": [{"func": self.verify_info, "time": 20, "delay": 10}]},
+               {"operations": [{"func": self.concurrent_stress, "delay": 5}]},
+               {"operations": [{"func": self.add_node, "time": 300}, {"func": self.repair, "time": 300}],
+                "recurrent": [{"func": self.verify_info, "time": 40}, {"func": self.verify_status, "time": 25}, {"func": self.verify_netstats, "time": 26}]}]
+        self.general_concurrent(tst)
 
     def rebuild(self, node=None, dc=""):
         node = self.get_node(node)
-        node.nodetool('rebuild '+ dc)
+        node.nodetool('rebuild ' + dc)
 
-    def verify_all_api(self, giveup=30):
+    @staticmethod
+    def verify_all_api(giveup=30):
         """ The snitch API starts at the very last part
         of the startup process. So when it's up all API is up
         """
@@ -1361,8 +1362,8 @@ class TestNodetool(Tester):
                 return
             except (urllib2.HTTPError, urllib2.URLError) as e:
                 pass
-            wait(1)
-            giveup = giveup - 1
+            time.sleep(1)
+            giveup -= 1
         raise Exception("API is not available")
 
     def get_node(self, node):
@@ -1372,7 +1373,7 @@ class TestNodetool(Tester):
             return self.cluster.nodelist()[node]
         return node
 
-    def concurent_rebuild_test(self):
+    def concurrent_rebuild_test(self):
         """
         Start a cluster with 2 dc
         stop 2 nodes
@@ -1381,54 +1382,40 @@ class TestNodetool(Tester):
         call rebuild
         """
         self.ignore_log_patterns = ["migration_task - Can't send migration request: node"]
-        tst = [{
-            "operations":[{"func": self.run_cluster, "args": [[2, 2]], "block": True}, {"func": self.stop, "delay":5, "args":[[2, 3]]}],
-            "recurent":[{"func": self.verify_all_api, "block": True}, {"func": self.verify_info, "time":20, "delay":10, "args": [None, 'dc1', 'RAC1']} ]
-        },
-        {
-            "operations":[{"func": self.concurent_stress, "delay":5, "args":[None, {"duration" : "1m"}]}],
-            "recurent":[{"func": self.verify_info, "time":20, "delay":10, "args": [None, 'dc1', 'RAC1']} ]
-        },
-        {
-            "operations":[{"func": self.start, "delay":5, "args":[[2, 3], {"wait_for_binary_proto": True}]}],
-            "recurent":[{"func": self.verify_info, "time":20, "delay":10, "args": [None, 'dc1', 'RAC1']} ]
-        },
-        {
-            "operations": [{"func": self.rebuild, "time":300, "args": [2, "dc1"]}],
-            "recurent":self.multi_dc_queries_method_list,
-        }
-        ]
-        self.general_concurent(tst)
+        tst = [{"operations": [{"func": self.run_cluster, "args": [[2, 2]], "block": True}, {"func": self.stop, "delay": 5, "args": [[2, 3]]}],
+                "recurrent":[{"func": self.verify_all_api, "block": True}, {"func": self.verify_info, "time": 20, "delay": 10, "args": [None, 'dc1', 'RAC1']}]},
+               {"operations": [{"func": self.concurrent_stress, "delay": 5, "args": [None, {"duration": "1m"}]}],
+                "recurrent": [{"func": self.verify_info, "time": 20, "delay": 10, "args": [None, 'dc1', 'RAC1']}]},
+               {"operations": [{"func": self.start, "delay": 5, "args": [[2, 3], {"wait_for_binary_proto": True}]}],
+                "recurrent": [{"func": self.verify_info, "time": 20, "delay": 10, "args": [None, 'dc1', 'RAC1']}]},
+               {"operations": [{"func": self.rebuild, "time": 300, "args": [2, "dc1"]}],
+                "recurrent":self.multi_dc_queries_method_list}]
+        self.general_concurrent(tst)
 
     def drain(self, node):
         node = self.get_node(node)
         node.nodetool("drain")
 
-    def concurent_drain_test(self):
+    def concurrent_drain_test(self):
         """
         Start a cluster with 2 nodes
         run load
         call drain
         """
         self.ignore_log_patterns = ["migration_task - Can't send migration request: node"]
-        tst = [{
-            "operations":[{"func": self.run_cluster}],
-            "recurent":[{"func": self.verify_info, "time":20, "delay":10} ]
-        },
-        {
-            "operations":[{"func": self.concurent_stress, "delay":5, "args":[None, {"duration" : "1m"}]}],
-            "recurent":[{"func": self.verify_info, "time":20, "delay":10} ]
-        },
-        {
-            "operations":[{"func": self.concurent_stress, "delay":5, "args":[None, {"duration" : "1m"}]}, {"func": self.drain, "delay":5, "args":[1]}],
-            "recurent":self. queries_method_list,
-        },
-        ]
-        self.general_concurent(tst)
+        tst = [{"operations": [{"func": self.run_cluster}],
+                "recurrent": [{"func": self.verify_info, "time": 20, "delay": 10}]},
+               {"operations": [{"func": self.concurrent_stress, "delay": 5, "args": [None, {"duration": "1m"}]}],
+                "recurrent": [{"func": self.verify_info, "time": 20, "delay": 10}]},
+               {"operations": [{"func": self.concurrent_stress, "delay": 5, "args": [None, {"duration": "1m"}]}, {"func": self.drain, "delay": 5, "args": [1]}],
+                "recurrent": self. queries_method_list}]
+        self.general_concurrent(tst)
 
-
-    def stress(self, node, opr, times=10000, duration=None, col=None, pop=None, opt=[]):
+    @staticmethod
+    def stress(node, opr, times=10000, duration=None, col=None, pop=None, opt=None):
         cmd = [opr, 'cl=ALL']
+        if opt is None:
+            opt = []
         if duration:
             cmd += ['duration=' + duration]
         else:
@@ -1441,8 +1428,12 @@ class TestNodetool(Tester):
             cmd += opt
         return node.stress_object(cmd)
 
-    def stress_write(self, node, times=10000, duration=None, col=None, pop=None, opt=[]):
+    def stress_write(self, node, times=10000, duration=None, col=None, pop=None, opt=None):
+        if opt is None:
+            opt = []
         return self.stress(node, 'write', times=times, duration=duration, col=col, pop=pop, opt=opt)
 
-    def stress_mixed(self, node, times=10000, duration=None, col=None, pop=None, opt=[]):
+    def stress_mixed(self, node, times=10000, duration=None, col=None, pop=None, opt=None):
+        if opt is None:
+            opt = []
         return self.stress(node, 'mixed', times=times, duration=duration, col=col, pop=pop, opt=opt)
