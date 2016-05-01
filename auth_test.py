@@ -7,6 +7,7 @@ from cassandra.cluster import NoHostAvailable
 from assertions import assert_invalid
 from dtest import Tester, debug
 from tools import since
+from unittest import skip
 
 
 class TestAuth(Tester):
@@ -244,6 +245,7 @@ class TestAuth(Tester):
         cassandra.execute("GRANT ALTER ON KEYSPACE ks TO cathy")
         cathy.execute("ALTER KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':2}")
 
+    @skip('index')
     def alter_cf_auth_test(self):
         self.prepare()
 
