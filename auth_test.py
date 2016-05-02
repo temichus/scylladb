@@ -21,6 +21,7 @@ class TestAuth(Tester):
         ]
         Tester.__init__(self, *args, **kwargs)
 
+    @skip('alter')
     def system_auth_ks_is_alterable_test(self):
         self.prepare(nodes=3)
         debug("nodes started")
@@ -230,6 +231,7 @@ class TestAuth(Tester):
         cassandra.execute("GRANT CREATE ON KEYSPACE ks TO cathy")
         cathy.execute("CREATE TABLE ks.cf (id int primary key)")
 
+    @skip('alter')
     def alter_ks_auth_test(self):
         self.prepare()
 
