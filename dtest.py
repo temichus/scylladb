@@ -254,7 +254,7 @@ class Tester(TestCase):
             self.cluster.remove()
 
             debug("clearing ssl stores from [{0}] directory".format(self.test_path))
-            for filename in ('keystore.jks', 'truststore.jks', 'ccm_node.cer'):
+            for filename in ('keystore.jks', 'truststore.jks', 'ccm_node.cer', 'ccm_node.pem', 'ccm_node.key', 'trust.pem'):
                 try:
                     os.remove(os.path.join(self.test_path, filename))
                 except OSError as e:

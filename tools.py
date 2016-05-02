@@ -212,7 +212,39 @@ def generate_ssl_stores(base_dir, passphrase='cassandra'):
     subprocess.check_call(['keytool', '-import', '-file', os.path.join(base_dir, 'ccm_node.cer'),
                            '-alias', 'ccm_node', '-keystore', os.path.join(base_dir, 'truststore.jks'),
                            '-storepass', passphrase, '-noprompt'])
-
+    # Added for scylla: Generate pem format cert/key
+    debug("exporting cert to pks12 from keystore.jks in [{0}]".format(base_dir))
+    subprocess.check_call(['keytool', '-importkeystore', '-srckeystore', os.path.join(base_dir, 'keystore.jks'),
+                           '-srcstorepass', passphrase, '-srckeypass', passphrase, '-destkeystore',
+                           os.path.join(base_dir, 'ccm_node.p12'), '-deststoretype', 'PKCS12',
+                           '-srcalias', 'ccm_node', '-deststorepass', passphrase, '-destkeypass', passphrase])
+    debug("Using openssl to split pks12 in [{0}] to pem format".format(base_dir))
+    subprocess.check_call(['openssl', 'pkcs12', '-in', os.path.join(base_dir, 'ccm_node.p12'),
+                           '-passin', 'pass:{0}'.format(passphrase), '-nokeys',
+                           '-out', os.path.join(base_dir, 'ccm_node.pem')])
+    # Key with password. We want without...
+    subprocess.check_call(['openssl', 'pkcs12', '-in', os.path.join(base_dir, 'ccm_node.p12'),
+                           '-passin', 'pass:{0}'.format(passphrase),
+                           '-passout', 'pass:{0}'.format(passphrase), '-nocerts',
+                           '-out', os.path.join(base_dir, 'ccm_node.tmp')])
+    subprocess.check_call(['openssl', 'rsa', '-in', os.path.join(base_dir, 'ccm_node.tmp'),
+                           '-passin', 'pass:{0}'.format(passphrase),
+                           '-out', os.path.join(base_dir, 'ccm_node.key')])
+    # And create the trust chain
+    debug("exporting cert to pks12 from truststore.jks in [{0}]".format(base_dir))
+    subprocess.check_call(['keytool', '-importkeystore', '-srckeystore', os.path.join(base_dir, 'truststore.jks'),
+                           '-srcstorepass', passphrase, '-destkeystore', os.path.join(base_dir, 'trust.p12'),
+                           '-deststoretype', 'PKCS12', '-srcalias', 'ccm_node', '-deststorepass', passphrase])
+    subprocess.check_call(['openssl', 'pkcs12', '-in', os.path.join(base_dir, 'trust.p12'),
+                           '-passin', 'pass:{0}'.format(passphrase),
+                           '-out', os.path.join(base_dir, 'trust.pem')])
+    debug("removing temporary certificates in [{0}]".format(base_dir))
+    for filename in ('ccm_node.p12', 'ccm_node.tmp', 'trust.p12'):
+        try:
+            os.remove(os.path.join(base_dir, filename))
+        except OSError as e:
+            if e.errno != errno.ENOENT:  # ENOENT = no such file or directory
+                raise
 
 class since(object):
 
