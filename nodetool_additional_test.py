@@ -807,7 +807,7 @@ class TestNodetool(Tester):
             cur = res["vals"][v]["Write Latency"]
 
     @staticmethod
-    def describecluster(self, node):
+    def describecluster(node):
         out = node.nodetool('describecluster', True)[0]
         return yaml.load(out.replace('\t', "  "))
 
