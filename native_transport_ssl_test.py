@@ -5,6 +5,7 @@ from cassandra.cluster import NoHostAvailable
 
 from dtest import Tester
 from tools import generate_ssl_stores, putget, since
+from unittest import skip
 
 
 class NativeTransportSSL(Tester):
@@ -28,13 +29,14 @@ class NativeTransportSSL(Tester):
         except NoHostAvailable:
             pass
 
-        assert len(node1.grep_log("^io.netty.handler.ssl.NotSslRecordException.*")) > 0, \
+        assert len(node1.grep_log("(^io.netty.handler.ssl.NotSslRecordException.*|^.*An unexpected TLS packet was received.*)")) > 0, \
             "Missing SSL handshake exception while connecting with non-SSL enabled client"
 
         # enabled ssl on the client and try again (this should work)
         session = self.patient_cql_connection(node1, ssl_opts={'ca_certs': os.path.join(self.test_path, 'ccm_node.cer')})
         self._putget(cluster, session)
 
+    @skip('optional_ssl')
     def connect_to_ssl_optional_test(self):
         """
         Connecting to SSL optional native transport port must be possible with SSL and non-SSL native clients
@@ -96,13 +98,16 @@ class NativeTransportSSL(Tester):
             generate_ssl_stores(self.test_path)
             # C* versions before 3.0 (CASSANDRA-10559) do not know about
             # 'client_encryption_options.optional' - so we must not add that parameter
+            # Note: does of course not work with scylla, we dont support "optional" (3.x feature)
             if sslOptional:
                 cluster.set_configuration_options({
                     'client_encryption_options': {
                         'enabled': True,
                         'optional': sslOptional,
                         'keystore': os.path.join(self.test_path, 'keystore.jks'),
-                        'keystore_password': 'cassandra'
+                        'keystore_password': 'cassandra',
+                        'certificate': os.path.join(self.test_path, 'ccm_node.pem'),
+                        'keyfile': os.path.join(self.test_path, 'ccm_node.key'),
                     }
                 })
             else:
@@ -110,7 +115,9 @@ class NativeTransportSSL(Tester):
                     'client_encryption_options': {
                         'enabled': True,
                         'keystore': os.path.join(self.test_path, 'keystore.jks'),
-                        'keystore_password': 'cassandra'
+                        'keystore_password': 'cassandra',
+                        'certificate': os.path.join(self.test_path, 'ccm_node.pem'),
+                        'keyfile': os.path.join(self.test_path, 'ccm_node.key'),
                     }
                 })
 
