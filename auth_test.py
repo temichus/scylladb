@@ -384,7 +384,9 @@ class TestAuth(Tester):
         rows = list(cathy.execute("SELECT * FROM ks.cf"))
         self.assertEquals(1, len(rows))
 
-        rows = list(cathy.execute("TRUNCATE ks.cf"))
+        cathy.execute("TRUNCATE ks.cf")
+        rows = list(cathy.execute("SELECT * FROM ks.cf"))
+
         assert len(rows) == 0
 
     def grant_revoke_auth_test(self):
