@@ -64,7 +64,6 @@ class StorageProxyCQLTester(CQLTester):
     see CASSANDRA-9160.
     """
 
-    @skip('Scylla does not support ALTER KEYSPACE / DROP KEYSPACE')
     def keyspace_test(self):
         """
         CREATE KEYSPACE, USE KEYSPACE, ALTER KEYSPACE, DROP KEYSPACE statements
@@ -154,7 +153,6 @@ class StorageProxyCQLTester(CQLTester):
         session.execute("DROP TYPE address_t")
         assert_invalid(session, "CREATE TABLE test6 (id int PRIMARY KEY, address frozen<address_t>)", expected=InvalidRequest)
 
-    @skip('Scylla does not support ALTER USER')
     def user_test(self):
         """
         CREATE USER, ALTER USER, DROP USER statements
