@@ -2,6 +2,7 @@ import os
 import re
 import shutil
 import time
+import uuid
 
 from unittest import skip
 
@@ -146,6 +147,28 @@ class MigrationTestBase(Tester):
         self.assertEqual(result[0].ck2, 'aaa',"check partition key")
         self.assertEqual(result[0].data, 'fff', "check data") 
 
+    def migrate_sstable_with_user_defined_types_tests(self):
+        node1 = self.start_cluster_and_get_node1()
+
+        query = [
+            'create type ks.ut1 (f1 text, f2 text)',
+            'create type ks.ut2 (f1 text, f2 frozen<ut1>)',
+            'create table ks.cf (id uuid primary key, c frozen<ut2>)'
+        ]
+        self.create_ks_and_cf(node1, None, None, False, query=query)
+
+        self.load_migrated_tables(node1, 'with_user_types')
+
+        self.check_number_of_rows(node1, 2)
+
+        result = self.get_all_rows_for_check(node1)
+
+        self.assertEqual(result[0].id, uuid.UUID('62c36092-82a1-3a00-93d1-46196ee77202'), "check id row 0")
+        self.assertEqual(result[0].c, ('a', ('b', 'c')), "check c row 0")
+        self.assertEqual(result[1].id, uuid.UUID('62c36092-82a1-3a00-93d1-46196ee77242'), "check id row 1")
+        self.assertEqual(result[1].c, ('x', ('y', 'z')), "check c row 1")
+
+
 # ######################## Helper functions ####################################
     def check_number_of_rows(self, node, expected_number_of_rows):
         debug("Checking rows on node1...")
@@ -203,9 +226,13 @@ class MigrationTestBase(Tester):
         self.create_ks(session, 'ks', 1)
 
         debug("Creating a column family 'cf'...")
-        if query is not None:
+        if isinstance(query, basestring):
             session.execute(query)
             time.sleep(0.2)
+        elif query is not None:
+            for q in query:
+                session.execute(q)
+                time.sleep(0.2)
         else:
             self.create_cf(session, 'cf', read_repair=0.0, columns=columns, compression=compression, compact_storage=compact_storage)
 
