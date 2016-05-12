@@ -4762,58 +4762,6 @@ class CQLAdditionalTests(Tester):
             assert(e.message == "Not implemented: COUNTERS")
             assert(e.code == 0000);
 
-    @skip('scylladb/scylla#875')
-    def test_create_user_types(self):
-        cluster = self.prepare()
-        node = cluster.nodelist()[0]
-
-        session = self.patient_cql_connection(node)
-        self.create_ks(session, 'racing', 1)
-
-
-        c = """CREATE TYPE address (
-               street text,
-               city text,
-               zip_code int,
-               phones set<text>)"""
-        try:
-            session.execute(c)
-        except Exception, e:
-            assert(e.message == "Not implemented: user types")
-            assert(e.code == 0000);
-
-    @skip('scylladb/scylla#875')
-    def test_alter_user_types(self):
-        cluster = self.prepare()
-        node = cluster.nodelist()[0]
-
-        session = self.patient_cql_connection(node)
-        self.create_ks(session, 'racing', 1)
-
-
-        c = """ALTER TYPE version ALTER model TYPE text"""
-        try:
-            session.execute(c)
-        except Exception, e:
-            assert(e.message == "Not implemented: user types")
-            assert(e.code == 0000);
-
-    @skip('scylladb/scylla#875')
-    def test_delete_user_types(self):
-        cluster = self.prepare()
-        node = cluster.nodelist()[0]
-
-        session = self.patient_cql_connection(node)
-        self.create_ks(session, 'racing', 1)
-
-
-        c = """DROP TYPE IF EXISTS fooo"""
-        try:
-            session.execute(c)
-        except Exception, e:
-            assert(e.message == "Not implemented: user types")
-            assert(e.code == 0000);
-
     def test_lightweight_transaction(self):
         cluster = self.prepare()
         node = cluster.nodelist()[0]
