@@ -2,9 +2,58 @@
 
 from dtest import Tester
 from unittest import skip
-
+from tools import debug
+from cassandra import ConsistencyLevel
 
 class SchemaManagementTest(Tester):
+    def test_prepared_statements_work_after_node_restart_after_altering_schema_without_changing_columns(self):
+        ring_delay_sec = 5
+        self.cluster.set_configuration_options(values={
+            'ring_delay_ms': ring_delay_sec * 1000,
+            'experimental': True})
+        self.cluster.populate(3)
+        self.cluster.start(wait_other_notice=True)
+
+        [node1, node2, node3] = self.cluster.nodelist()
+
+        session = self.patient_cql_connection(node1)
+
+        debug('Creating schema...')
+        self.create_ks(session, 'ks', 3)
+        session.execute("""
+            CREATE TABLE users (
+                id int,
+                firstname text,
+                lastname text,
+                PRIMARY KEY (id)
+             );
+         """)
+
+        insert_statement = session.prepare("INSERT INTO users (id, firstname, lastname) VALUES (?, 'A', 'B')")
+        insert_statement.consistency_level = ConsistencyLevel.ALL
+        session.execute(insert_statement, [0])
+
+        debug("Altering schema")
+        session.execute("ALTER TABLE users WITH comment = 'updated'")
+
+        debug("Restarting node2")
+        node2.stop(gently=True)
+        node2.start()
+
+        debug("Restarting node3")
+        node3.stop(gently=True)
+        node3.start()
+
+        n_partitions = 20
+        for i in range(n_partitions):
+            session.execute(insert_statement, [i], timeout=1)
+
+        rows = session.execute("SELECT * FROM users")
+        res = sorted(rows)
+        assert len(res) == n_partitions
+        for i in range(n_partitions):
+            expected = [i, 'A', 'B']
+            assert list(res[i]) == expected, "Expected %s, got %s" % (expected, res[i])
 
     @skip ('unimplemented')
     def multiple_create_table_in_parallel(self):
