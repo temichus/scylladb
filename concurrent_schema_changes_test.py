@@ -157,7 +157,6 @@ class TestConcurrentSchemaChanges(Tester):
         self.validate_schema_consistent(node2)
         self.validate_schema_consistent(node3)
 
-    @skip('alter')
     def create_lots_of_alters_concurrently_test(self):
         """
         create alters across multiple threads concurrently
