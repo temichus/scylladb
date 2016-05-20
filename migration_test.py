@@ -309,7 +309,6 @@ class TestMigration(MigrationTestBase):
 
         # FIXME: Check row content when counter gets supported.
 
-    @skip('failing')
     def migrate_sstable_with_schema_change_test(self):
         # Content of Cassandra dir generated with following cql commands:
         # CREATE TABLE ks.cf (user_name varchar PRIMARY KEY, bio ascii);
@@ -320,7 +319,7 @@ class TestMigration(MigrationTestBase):
         cluster = self.cluster
 
         self.populate_cluster(cluster)
-        self.copy_migrated_data_dir('with_schema_change')
+        self.copy_migrated_data_dir('with_schema_change', skip_system_traces=True)
         self.start_cluster(cluster)
         node1 = self.get_node(cluster, 0)
 
@@ -350,8 +349,8 @@ class TestMigration(MigrationTestBase):
         self.assertEqual(result[1].bio, 'test', "check static cell")
 
     ## Helpers
-    def copy_migrated_data_dir(self, migrated_data_dir):
-        cassandra_dir = "{}/data".format(self.get_cassandra_sstable_dir(migrated_files_dir))
+    def copy_migrated_data_dir(self, migrated_data_dir, skip_system_traces = False):
+        cassandra_dir = "{}/data".format(self.get_cassandra_sstable_dir(migrated_data_dir))
         debug("cassandra data dir for counter is {}".format(cassandra_dir))
 
         scylla_dir = os.path.join(self.test_path, 'test', 'node1', 'data')
@@ -361,5 +360,6 @@ class TestMigration(MigrationTestBase):
         self.recursive_copy_to(os.path.join(cassandra_dir, 'ks'), os.path.join(scylla_dir, 'ks'))
         debug("Copying data/system created by Cassandra...")
         self.recursive_copy_to(os.path.join(cassandra_dir, 'system'), os.path.join(scylla_dir, 'system'))
-        debug("Copying data/system_traces created by Cassandra...")
-        self.recursive_copy_to(os.path.join(cassandra_dir, 'system_traces'), os.path.join(scylla_dir, 'system_traces'))
+        if not skip_system_traces:
+            debug("Copying data/system_traces created by Cassandra...")
+            self.recursive_copy_to(os.path.join(cassandra_dir, 'system_traces'), os.path.join(scylla_dir, 'system_traces'))
