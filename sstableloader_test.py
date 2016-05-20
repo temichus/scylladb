@@ -11,7 +11,7 @@ from nose import tools
 @tools.istest
 class TestSSTableLoader(MigrationTestBase):
     def load_migrated_tables(self, node, migrated_files_dir):
-        cassandra_sstable_dir = self.get_cassandra_sstable_dir(node, migrated_files_dir)
+        cassandra_sstable_dir = self.get_cassandra_sstable_dir(migrated_files_dir)
         debug("cassandra sstable dir is {}".format(cassandra_sstable_dir))
 
         ks = "ks"

@@ -239,11 +239,11 @@ class MigrationTestBase(Tester):
         debug("Flushing a keyspace...")
         node.nodetool("flush -- ks")
 
-    def get_cassandra_sstable_dir(self, node, migrated_files_dir):
+    def get_cassandra_sstable_dir(self, migrated_files_dir):
         return "{}/cassandra-sstables/migration/{}".format(os.path.dirname(os.path.realpath(__file__)), migrated_files_dir)
 
     def load_migrated_tables(self, node, migrated_files_dir):
-        cassandra_sstable_dir = self.get_cassandra_sstable_dir(node, migrated_files_dir)
+        cassandra_sstable_dir = self.get_cassandra_sstable_dir(migrated_files_dir)
         debug("cassandra sstable dir is {}".format(cassandra_sstable_dir))
 
         ks_dir = os.path.join(self.test_path, 'test', 'node1', 'data', 'ks')
@@ -351,7 +351,7 @@ class TestMigration(MigrationTestBase):
 
     ## Helpers
     def copy_migrated_data_dir(self, migrated_data_dir):
-        cassandra_dir = "{}/data".format(self.get_cassandra_sstable_dir(node, migrated_files_dir))
+        cassandra_dir = "{}/data".format(self.get_cassandra_sstable_dir(migrated_files_dir))
         debug("cassandra data dir for counter is {}".format(cassandra_dir))
 
         scylla_dir = os.path.join(self.test_path, 'test', 'node1', 'data')
