@@ -168,6 +168,31 @@ class MigrationTestBase(Tester):
         self.assertEqual(result[1].id, uuid.UUID('62c36092-82a1-3a00-93d1-46196ee77242'), "check id row 1")
         self.assertEqual(result[1].c, ('x', ('y', 'z')), "check c row 1")
 
+    # Test that scylla's issue 1212 is fixed, look: https://github.com/scylladb/scylla/issues/1212
+    # Refresh procedure should ask row cache to evict some rows covered by new sstables.
+    def migrate_sstable_to_check_consistency_test(self):
+        node1 = self.start_cluster_and_get_node1()
+
+        query = 'CREATE COLUMNFAMILY ks.cf (p1 text, r1 int, PRIMARY KEY (p1)) WITH read_repair_chance=0.000000'
+        self.create_ks_and_cf(node1, None, None, False, query=query)
+
+        # load row key1 with value 1
+        self.load_migrated_tables(node1, 'to_check_consistency/1')
+        self.check_number_of_rows(node1, 1)
+
+        # read key1 content for it to be cached
+        result = self.get_all_rows_for_check(node1)
+        self.assertEqual(result[0].p1, 'key1', "check partition key")
+        self.assertEqual(result[0].r1, 1, "check value")
+
+        # load row key1 with value 2
+        self.load_migrated_tables(node1, 'to_check_consistency/2')
+        self.check_number_of_rows(node1, 1)
+
+        # read key1 content and expect that it's correct because refresh invalidated cache.
+        result = self.get_all_rows_for_check(node1)
+        self.assertEqual(result[0].p1, 'key1', "check partition key")
+        self.assertEqual(result[0].r1, 2, "check value")
 
 # ######################## Helper functions ####################################
     def check_number_of_rows(self, node, expected_number_of_rows):
