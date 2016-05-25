@@ -186,6 +186,8 @@ class TestCommitLog(Tester):
         cf_data_dir_files = os.listdir(cf_data_dir)
         if "backups" in cf_data_dir_files:
             cf_data_dir_files.remove("backups")
+        if "upload" in cf_data_dir_files:
+            cf_data_dir_files.remove("upload")
         self.assertEqual(0, len(cf_data_dir_files))
 
         debug("Verify commit log was replayed on startup")
