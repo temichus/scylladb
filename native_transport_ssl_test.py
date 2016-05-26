@@ -6,7 +6,7 @@ from cassandra.cluster import NoHostAvailable
 from dtest import Tester
 from tools import generate_ssl_stores, putget, since
 from unittest import skip
-
+from ccmlib import common
 
 class NativeTransportSSL(Tester):
     """
@@ -96,30 +96,25 @@ class NativeTransportSSL(Tester):
 
         if enableSSL:
             generate_ssl_stores(self.test_path)
+            is_scylla = common.isScylla(cluster.get_install_dir())
             # C* versions before 3.0 (CASSANDRA-10559) do not know about
             # 'client_encryption_options.optional' - so we must not add that parameter
             # Note: does of course not work with scylla, we dont support "optional" (3.x feature)
+            options = { 'enabled': True }
             if sslOptional:
-                cluster.set_configuration_options({
-                    'client_encryption_options': {
-                        'enabled': True,
-                        'optional': sslOptional,
-                        'keystore': os.path.join(self.test_path, 'keystore.jks'),
-                        'keystore_password': 'cassandra',
-                        'certificate': os.path.join(self.test_path, 'ccm_node.pem'),
-                        'keyfile': os.path.join(self.test_path, 'ccm_node.key'),
-                    }
+                options['optional'] = sslOptional
+            if is_scylla:
+                options.update({
+                    'certificate': os.path.join(self.test_path, 'ccm_node.pem'),
+                    'keyfile': os.path.join(self.test_path, 'ccm_node.key'),
                 })
             else:
-                cluster.set_configuration_options({
-                    'client_encryption_options': {
-                        'enabled': True,
-                        'keystore': os.path.join(self.test_path, 'keystore.jks'),
-                        'keystore_password': 'cassandra',
-                        'certificate': os.path.join(self.test_path, 'ccm_node.pem'),
-                        'keyfile': os.path.join(self.test_path, 'ccm_node.key'),
-                    }
+                options.update({
+                    'keystore': os.path.join(self.test_path, 'keystore.jks'),
+                    'keystore_password': 'cassandra',
                 })
+
+            cluster.set_configuration_options({ 'client_encryption_options': options })
 
         if nativePort:
             cluster.set_configuration_options({
