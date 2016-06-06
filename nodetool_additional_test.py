@@ -372,7 +372,7 @@ class TestNodetool(Tester):
         self.assertEqual(tag, snapshot, "wrong directory found in node snapshot command: '" + out + "'")
         data_dir = os.path.join(node1.get_path(), "data")
         keyspaces = [f for f in os.listdir(data_dir) if os.path.isdir(os.path.join(data_dir, f))]
-        self.assertEqual(2, len(keyspaces), "wrong number of directories in the data dir")
+        self.assertEqual(3, len(keyspaces), "wrong number of directories in the data dir")
         if kc:
             brk = kc.split('.')
             keyspace = brk[0]
