@@ -17,7 +17,7 @@ class CompactionAdditionalTest(Tester):
         4. wait past gc_preiod
         5. insert a key forcing flush multiple times till a compaction is triggered
         6. stop and start the node
-        7. check that no data was not resurected and that the deletion markers still exist
+        7. check that no data was resurected and that some of the deletion markers still exist
         8. insert additional 100 keys forcing a flush multiple times till multiple compactions are trigerred
         9. check that no deletion marker is left and files have been removed
         """
@@ -67,7 +67,8 @@ class CompactionAdditionalTest(Tester):
         for x in range(0, 100):
             assert_none(session, 'select * from cf where key = ' + str(x))
 
-        # validate that all deletion markers are kept (although gc period passed)
+        # verify that only some deletion markers will be kept since we reshard the files
+        # and gc_preiod passed so some tombstones have been removed by compaction
         json_path = tempfile.mkstemp(suffix='.json')
         jname = json_path[1]
         with open(jname, 'w') as f:
@@ -78,7 +79,8 @@ class CompactionAdditionalTest(Tester):
 
         numfound = jsoninfo.count("markedForDeleteAt")
 
-        self.assertEqual(numfound, 100)
+        self.assertLess(numfound, 100)
+        self.assertGreater(numfound, 0)
 
         # trigger compaction on both shards
         node1.wait_for_compactions()
