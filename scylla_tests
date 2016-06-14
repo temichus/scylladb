@@ -189,3 +189,4 @@ compaction_additional_test.py
 user_types_test.py
 auth_test.py
 internode_ssl_test.py
+cql_tracing_test.py
