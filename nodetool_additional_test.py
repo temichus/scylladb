@@ -1080,8 +1080,8 @@ class TestNodetool(Tester):
         node2 = new_node(cluster)
         node2.start(wait_for_binary_proto=False)
         node2.watch_log_for('streaming')
-        stats = self.netstats(node2)
-        self.assertEquals(len(stats["streams"]), 2)
+        stats = self.netstats(node)
+        self.assertEquals(len(stats["streams"]), 1)
 
     def proxyhistograms(self, node=None):
         if node is None:
