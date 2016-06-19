@@ -3,6 +3,15 @@
 # This test is based on a Cassandra's test with the same name.
 #
 from dtest import Tester, debug
+from scylla_tools import insert_c1c2_no_prepared
+from cassandra.query import SimpleStatement
+from cassandra import ConsistencyLevel
+import functools
+from Queue import Queue
+import random
+import threading
+import time
+import re
 
 class TestCqlTracing(Tester):
     """
@@ -86,7 +95,96 @@ class TestCqlTracing(Tester):
         session = self.prepare()
         self.trace(session)
 
-#----------------------------------------------------------------------------------------------------------------------
+    def tracing_shutdown_test(self):
+        """
+        Check tracing functionality when Node is being shut down:
+           - Check that CQL handling is stopped prior to tracing being stopped
+             (otherwise there will be an assert coming from a
+             cql_server::connection::process_request().
+           - Check that nothing bad is going on when node is being shut done
+             while a remote node requests tracing via RPC.
+           - Check that tracing for all CQL requests complete prior to Node's
+             shutdown are being pushed to the backend.
+        """
+        # Start a cluster of two nodes, and create a keyspace with RF=2.
+        self.cluster.populate(2).start()
+        node1, node2 = self.cluster.nodelist()
+
+        debug("Enable tracing for all CQL requests on node1 and node2...")
+        node1.nodetool('settraceprobability 1.0')
+        node2.nodetool('settraceprobability 1.0')
+
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 2)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+
+        num_keys = 500
+        debug("Populating a table with {} keys...".format(num_keys))
+        insert_c1c2_no_prepared(session, keys=range(num_keys), consistency=ConsistencyLevel.ONE)
+
+        debug("Stopping node1...")
+        node1.stop(wait_other_notice=True)
+
+        debug("Checking log of node1 for assertions...")
+        match = node1.grep_log("Assertion .* failed.")
+        self.assertEqual(len(match), 0)
+
+        debug("Check that all tracing session have been flushed...")
+        pattern = re.compile("^INSERT")
+        all_tracing_sessions_query = SimpleStatement('SELECT request FROM system_traces.sessions')
+        rows = list(session.execute(all_tracing_sessions_query))
+        count = functools.reduce(lambda x, y: x + y, map(lambda row: self.grep_one_line(row[0], pattern), rows))
+        self.assertEqual(count, num_keys)
+
+        debug("Start node1...")
+        node1.start(wait_for_binary_proto=True)
+
+        debug("Enable tracing for all CQL requests on node1...")
+        node1.nodetool('settraceprobability 1.0')
+
+        session = self.patient_cql_connection(node1)
+
+        def run(name, q):
+            try:
+                q.put(True)
+                debug("Populating a table with {} more keys...".format(30 * num_keys))
+                insert_c1c2_no_prepared(session, keys=range(num_keys, num_keys + 30 * num_keys), consistency=ConsistencyLevel.ONE)
+                debug("insertion of {} keys is done".format(30 * num_keys))
+            except:
+                debug("insertions was killed")
+
+        queue = Queue()
+        insert_thread = threading.Thread(target=run, args=("insert-thread", queue))
+        insert_thread.start()
+        queue.get(block=True)
+
+        random.seed()
+        wait_time = random.random()
+        debug("Wait for {} seconds".format(wait_time))
+        time.sleep(wait_time)
+
+        debug("Stopping node2...")
+        node2.stop(wait_other_notice=True)
+
+        insert_thread.join()
+
+        debug("Checking log of node2 for assertions...")
+        match = node2.grep_log("Assertion .* failed.")
+        self.assertEqual(len(match), 0)
+
+# ----------------------------------------------------------------------------------------------------------------------
+    def grep_one_line(self, line, pattern):
+        """
+        A helper function that returns 1 if a pattern is found in a given string
+        and 0 otherwise. 'pattern' is expected to be a compiled re(gular expression)
+        object.
+        """
+        line = line.strip()
+        if pattern.search(line):
+            return 1
+        return 0
+
+# ----------------------------------------------------------------------------------------------------------------------
 #    @known_failure(failure_source='test',
 #                   jira_url='https://issues.apache.org/jira/browse/CASSANDRA-11465',
 #                   flaky=True)

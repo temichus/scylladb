@@ -1,33 +1,62 @@
 import os
 import unittest
 from cassandra import ConsistencyLevel
-from cassandra.concurrent import execute_concurrent_with_args
+from cassandra.concurrent import execute_concurrent_with_args, execute_concurrent
 from cassandra.query import SimpleStatement
 from ccmlib import common
 
 
-def insert_c1c2(session, keys=None, n=None, consistency=ConsistencyLevel.QUORUM, c1_values=None, c2_values=None, ks='ks', cf='cf'):
-    if (keys is None and n is None) or (keys is not None and n is not None):
+def build_insert_params(keys, n, c1_values, c2_values):
+    if (len(keys) == 0 and n is None) or (len(keys) != 0 and n is not None):
         raise ValueError("Expected exactly one of 'keys' or 'n' arguments to not be None; "
                          "got keys={keys}, n={n}".format(keys=keys, n=n))
 
     if n:
-        keys = list(range(n))
+        keys.extend(list(range(n)))
 
-    if c1_values is None:
-        c1_values = ['value1'] * len(keys)
+    if len(c1_values) == 0:
+        c1_values.extend(['value1'] * len(keys))
 
-    if c2_values is None:
-        c2_values = ['value2'] * len(keys)
+    if len(c2_values) == 0:
+        c2_values.extend(['value2'] * len(keys))
 
     if len(c1_values) != len(c2_values) or len(c1_values) != len(keys):
-        raise ValueError("Inconsistent 'c1/c2_values' contents. 'c1/c2_values' should be either a 'None' value or a list of the same length as a requested number of keys.")
+        raise ValueError("Inconsistent 'c1/c2_values' contents. 'c1/c2_values' should be either a '[]' value or a list of the same length as a requested number of keys.")
+
+
+def insert_c1c2(session, keys=None, n=None, consistency=ConsistencyLevel.QUORUM, c1_values=None, c2_values=None, ks='ks', cf='cf'):
+    if keys is None:
+        keys = []
+
+    if c1_values is None:
+        c1_values = []
+
+    if c2_values is None:
+        c2_values = []
+
+    build_insert_params(keys, n, c1_values, c2_values)
 
     statement = session.prepare("INSERT INTO {}.{} (key, c1, c2) VALUES (?, ?, ?)".format(ks, cf))
     statement.consistency_level = consistency
 
     execute_concurrent_with_args(session, statement,
         map(lambda x,y,z: ['k{}'.format(x),y,z], keys, c1_values, c2_values))
+
+
+def insert_c1c2_no_prepared(session, keys=None, n=None, consistency=ConsistencyLevel.QUORUM, c1_values=None, c2_values=None, ks='ks', cf='cf'):
+    if keys is None:
+        keys = []
+
+    if c1_values is None:
+        c1_values = []
+
+    if c2_values is None:
+        c2_values = []
+
+    build_insert_params(keys, n, c1_values, c2_values)
+
+    execute_concurrent(session, map(lambda x, y, z: (SimpleStatement('INSERT INTO {}.{} (key, c1, c2) VALUES (\'{}\', \'{}\', \'{}\')'.format(ks, cf, 'k{}'.format(x), y, z),
+                                                                     consistency_level=consistency), None), keys, c1_values, c2_values))
 
 def check_c1c2_result_one(success, rows, tolerate_missing, must_be_missing, c1_value, c2_value):
     if not success:
