@@ -413,7 +413,7 @@ class TestBackupRestore(Tester):
         4. Insert data
         5. Check that while sstables are flushed - incremental backups are created
         6. Run compact - forcing all sstables to be merged
-        7. Check that backups holds all the old files and the new compacted file
+        7. Check that a backup contains only the original sstables and only them
 
         """
         cluster = self.cluster
@@ -471,7 +471,9 @@ class TestBackupRestore(Tester):
         backups2_files = self.get_sstables_files("{}/backups".format(cf_dir), 'ks', 'cf')
         debug("backups after compaction: {}".format(backups2_files))
 
-        self.assertEqual(sstables_files1 | sstables_files2, backups2_files, "backup after compaction doesn't contain all sstable files")
+        # backup should not contain compacted sstables therefore its contents
+        # should not change after a compaction
+        self.assertEqual(backups1_files, backups2_files, "backup contents changed after a compaction")
 
     def restore_snapshot_from_cassandra_test(self):
         """
