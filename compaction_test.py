@@ -261,7 +261,7 @@ class TestCompaction(Tester):
         Insert data, switch strategies, then check against data loss.
         """
         # FIXME: Add DateTieredCompactionStrategy to list below once it gets supported.
-        strategies = ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy' ]
+        strategies = ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy' ]
 
         if self.strategy in strategies:
             strategies.remove(self.strategy)
