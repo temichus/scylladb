@@ -120,6 +120,8 @@ cql_additional_tests.py:TestCQL.tuple_notation_test
 cql_additional_tests.py:TestCQL.undefined_column_handling_test
 cql_additional_tests.py:TestCQL.unescaped_string_test
 cql_additional_tests.py:TestCQL.update_type_test
+cql_additional_tests.py:TestCQL.bop_order_test
+cql_additional_tests.py:TestCQL.truncate_clean_cache_test
 cql_tests.py
 multidc_putget_test.py
 native_transport_ssl_test.py
