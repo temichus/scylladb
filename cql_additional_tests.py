@@ -4682,6 +4682,27 @@ class TestCQL(Tester):
             assert_one(session, "SELECT * FROM dogs", [0, 'Pluto'])
             session.execute("DROP KEYSPACE IF EXISTS ks")
 
+    def bop_order_test(self):
+        session = self.prepare(ordered=True)
+
+        session.execute("""
+            CREATE TABLE test (
+                k text PRIMARY KEY,
+                v int,
+            )
+        """)
+
+        session.execute("INSERT INTO test (k, v) VALUES ('c1', 0)")
+        session.execute("INSERT INTO test (k, v) VALUES ('a1', 1)")
+        session.execute("INSERT INTO test (k, v) VALUES ('b1', 2)")
+        session.execute("INSERT INTO test (k, v) VALUES ('z', 3)")
+        session.execute("INSERT INTO test (k, v) VALUES ('g1', 4)")
+        session.execute("INSERT INTO test (k, v) VALUES ('1', 5)")
+        session.execute("INSERT INTO test (k, v) VALUES ('1000', 6)")
+        session.execute("INSERT INTO test (k, v) VALUES ('2', 7)")
+
+        res = session.execute("SELECT v FROM test")
+        assert rows_to_list(res) == [[5], [6], [7], [1], [2], [0], [4], [3]], res
 
 class CQLAdditionalTests(Tester):
 
