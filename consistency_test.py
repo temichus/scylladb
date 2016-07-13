@@ -1020,6 +1020,7 @@ class TestConsistency(Tester):
         debug('Create cluster')
         cluster = self.cluster
         cluster.populate(2).start()
+        cluster.set_configuration_options(values={'hinted_handoff_enabled': False});
         node1, node2 = cluster.nodelist()
 
         debug('Prepare column family')
@@ -1033,15 +1034,18 @@ class TestConsistency(Tester):
         debug('Updating node1')
         node2.stop()
         session1.execute(SimpleStatement('delete from ks.cf1 where p = 0 and c = 1', consistency_level=ConsistencyLevel.ONE))
-        node1.stop()
 
         debug('Updating node2')
         node2.start()
+        node1.stop()
+
         session2 = self.patient_cql_connection(node2)
         session2.execute(SimpleStatement('insert into ks.cf1 (p, c, r) values (0, 2, 2)', consistency_level=ConsistencyLevel.ONE))
 
         debug('Querying whole cluster')
         node1.start(wait_other_notice=True)
+        debug('Node 1 started')
+
         query = SimpleStatement('select r from ks.cf1 where p = 0 limit 1', consistency_level=ConsistencyLevel.ALL)
         res = list(session2.execute(query))
 
