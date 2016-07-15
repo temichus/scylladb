@@ -195,3 +195,4 @@ auth_test.py
 internode_ssl_test.py
 cql_tracing_test.py
 sstableloader_test.py
+thrift_tests.py
