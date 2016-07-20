@@ -1,5 +1,8 @@
 import tempfile
 import time
+import os
+import shutil
+import glob
 
 from assertions import assert_none
 from dtest import Tester
@@ -108,3 +111,68 @@ class CompactionAdditionalTest(Tester):
         numfound = jsoninfo.count("markedForDeleteAt")
 
         self.assertEqual(numfound, 0)
+
+
+class CompactionAdditionalStrategyTests(Tester):
+    __test__ = False
+
+    def __init__(self, *args, **kwargs):
+        kwargs['cluster_options'] = {'start_rpc': 'true'}
+        Tester.__init__(self, *args, **kwargs)
+
+
+    def compaction_is_started_on_boot_test(self):
+        cluster = self.cluster
+        cluster.populate(1).start()
+        [node1] = cluster.nodelist()
+
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 1)
+        session.execute("create table ks.cf (key int PRIMARY KEY, val int) with compaction = {'class':'" + self.strategy + "'};")
+
+        for x in range(0, 100):
+            session.execute('insert into cf (key, val) values (' + str(x) + ',1)')
+
+        node1.flush()
+        node1.compact()
+        node1.stop()
+        files = glob.glob(os.path.join(node1.get_path(),'commitlogs','*'))
+        for f in files:
+            os.remove(f)
+
+        sstablefiles = self._get_sstable_files(node1,'ks','cf')
+        for f in sstablefiles:
+            for generation_suffix in xrange(10,40):
+                self._copy_sstable_file(f,"9999%d" % generation_suffix)
+
+        before_start_count = len(glob.glob(os.path.join('ks', 'cf' + '-*','TOC.txt')))
+
+        node1.start()
+        time.sleep(30)
+
+        after_start_count = len(glob.glob(os.path.join('ks', 'cf' + '-*','TOC.txt')))
+
+        self.assertEqual(before_start_count,after_start_count)
+
+    def _copy_sstable_file(self, file, generation):
+        sstable_split_parts = os.path.basename(file).split('-')
+        sstable_split_parts[-2] = generation
+        shutil.copy(file,os.path.join(os.path.dirname(file), '-'.join(sstable_split_parts)))
+
+
+    def _get_sstable_files(self, node, ks, table):
+        """
+        Read sstable files directly from disk
+        """
+        keyspace_dir = os.path.join(node.get_path(), 'data', ks)
+
+        ret = []
+        for ext in ('*.db', '*.txt', '*.adler32', '*.crc32', '*.sha1'):
+            ret.extend(glob.glob(os.path.join(keyspace_dir, table + '-*', ext)))
+        return ret
+
+
+strategies = ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy']
+for strategy in strategies:
+    cls_name = ('CompactionAdditionalStrategyTests_with_' + strategy)
+    vars()[cls_name] = type(cls_name, (CompactionAdditionalStrategyTests,), {'strategy': strategy, '__test__': True})
