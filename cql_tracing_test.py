@@ -72,7 +72,6 @@ class TestCqlTracing(Tester):
             return_output=True)
         debug(out)
         self.assertIn('Tracing session: ', out)
-        self.assertIn('INSERT INTO ks.users ', out)
         self.assertIn('Request complete ', out)
 
         # Queries
@@ -130,10 +129,10 @@ class TestCqlTracing(Tester):
         self.assertEqual(len(match), 0)
 
         debug("Check that all tracing session have been flushed...")
-        pattern = re.compile("^INSERT")
-        all_tracing_sessions_query = SimpleStatement('SELECT request FROM system_traces.sessions')
+        pattern = re.compile("INSERT INTO")
+        all_tracing_sessions_query = SimpleStatement('SELECT parameters FROM system_traces.sessions')
         rows = list(session.execute(all_tracing_sessions_query))
-        count = functools.reduce(lambda x, y: x + y, map(lambda row: self.grep_one_line(row[0], pattern), rows))
+        count = functools.reduce(lambda x, y: x + y, map(lambda row: self.grep_one_line(row[0]['query'], pattern), rows))
         self.assertEqual(count, num_keys)
 
         debug("Start node1...")
