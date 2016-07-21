@@ -55,6 +55,26 @@ class SchemaManagementTest(Tester):
             expected = [i, 'A', 'B']
             assert list(res[i]) == expected, "Expected %s, got %s" % (expected, res[i])
 
+    def test_dropping_keyspace_with_many_columns(self):
+        """
+        Exploits https://github.com/scylladb/scylla/issues/1484
+        """
+        self.cluster.populate(3)
+        self.cluster.start(wait_other_notice=True)
+
+        node1 = self.cluster.nodelist()[0]
+        session = self.patient_cql_connection(node1)
+
+        session.execute("CREATE KEYSPACE testxyz WITH replication = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 }")
+        for i in range(8):
+            session.execute("CREATE TABLE testxyz.test_%d (k int, c int, PRIMARY KEY (k),)" % i)
+        session.execute("drop keyspace testxyz")
+
+        for node in self.cluster.nodelist():
+            s = self.patient_cql_connection(node)
+            s.execute("CREATE KEYSPACE testxyz WITH replication = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 }")
+            s.execute("drop keyspace testxyz")
+
     @skip ('unimplemented')
     def multiple_create_table_in_parallel(self):
         """ 
