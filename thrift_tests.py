@@ -1286,7 +1286,6 @@ class TestMutations(ThriftTester):
              '77', '78', '79', '8', '80', '81', '82', '83', '84', '85', '86',
              '87', '88', '89', '9', '90', '91', '92', '93', '94', '95', '96',
              '97', '98', '99', 'a', 'b']
-        print(slices)
         assert len(slices) == len(L)
         for key, ks in zip(L, slices):
             assert key == ks.key
