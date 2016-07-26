@@ -1753,11 +1753,12 @@ class TestMutations(ThriftTester):
         client.insert('key0', dcp, col0, ConsistencyLevel.ONE)
         # inserting a UTF8type into column 'col' fails at the columndef level
         e = _expect_exception(lambda: client.insert('key1', dcp, col1, ConsistencyLevel.ONE), InvalidRequestException)
-       # assert e.why.find("failed validation") >= 0
+        #assert e.why.find("failed validation") >= 0
 
+        # FIXME: Mixed column-families are not supported
         # insert a longtype into column 'fcol' should fail at the cfdef level
-        col2 = Column('fcol', _i64(4224), 0)
-        e = _expect_exception(lambda: client.insert('key1', dcp, col2, ConsistencyLevel.ONE), InvalidRequestException)
+        #col2 = Column('fcol', _i64(4224), 0)
+        #e = _expect_exception(lambda: client.insert('key1', dcp, col2, ConsistencyLevel.ONE), InvalidRequestException)
         #assert e.why.find("failed validation") >= 0
         # insert a UTF8type into column 'fcol' is valid at the cfdef level
         #!!Disabled because of unsupported mixed CFs.
