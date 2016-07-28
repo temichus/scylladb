@@ -8,6 +8,7 @@ from tools import generate_ssl_stores, putget, since
 from unittest import skip
 from ccmlib import common
 
+
 class NativeTransportSSL(Tester):
     """
     Native transport integration tests, specifically for ssl and port configurations.
@@ -100,7 +101,7 @@ class NativeTransportSSL(Tester):
             # C* versions before 3.0 (CASSANDRA-10559) do not know about
             # 'client_encryption_options.optional' - so we must not add that parameter
             # Note: does of course not work with scylla, we dont support "optional" (3.x feature)
-            options = { 'enabled': True }
+            options = {'enabled': True}
             if sslOptional:
                 options['optional'] = sslOptional
             if is_scylla:
@@ -114,7 +115,7 @@ class NativeTransportSSL(Tester):
                     'keystore_password': 'cassandra',
                 })
 
-            cluster.set_configuration_options({ 'client_encryption_options': options })
+            cluster.set_configuration_options({'client_encryption_options': options})
 
         if nativePort:
             cluster.set_configuration_options({

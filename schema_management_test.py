@@ -5,7 +5,9 @@ from unittest import skip
 from tools import debug
 from cassandra import ConsistencyLevel
 
+
 class SchemaManagementTest(Tester):
+
     def test_prepared_statements_work_after_node_restart_after_altering_schema_without_changing_columns(self):
         ring_delay_sec = 5
         self.cluster.set_configuration_options(values={
@@ -75,9 +77,9 @@ class SchemaManagementTest(Tester):
             s.execute("CREATE KEYSPACE testxyz WITH replication = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 }")
             s.execute("drop keyspace testxyz")
 
-    @skip ('unimplemented')
+    @skip('unimplemented')
     def multiple_create_table_in_parallel(self):
-        """ 
+        """
         Run multiple create table statements via different nodes
         1. Create a cluster of 3 nodes
         2. Run create table with different table names in parallel - check all complete
@@ -85,9 +87,9 @@ class SchemaManagementTest(Tester):
         """
         fail
 
-    @skip ('unimplemented')
+    @skip('unimplemented')
     def multiple_alter_table_in_parallel(self):
-        """ 
+        """
         Run multiple alter table statements via different nodes
         1. Create a cluster of 3 nodes
         2. Run alter table with different table names in parallel - check all complete
@@ -95,9 +97,9 @@ class SchemaManagementTest(Tester):
         """
         fail
 
-    @skip ('unimplemented')
+    @skip('unimplemented')
     def alter_and_drop_table_in_parallel(self):
-        """ 
+        """
         Run alter and drop table statements via different nodes
         1. Create a cluster of 3 nodes
         2. Run alter and drop table with different table names in parallel - check all complete
@@ -105,9 +107,9 @@ class SchemaManagementTest(Tester):
         """
         fail
 
-    @skip ('unimplemented')
+    @skip('unimplemented')
     def create_table_after_drop_table(self):
-        """ 
+        """
         Run create table after drop table statements via different nodes
         1. Create a cluster of 3 nodes
         2. Run drop table
@@ -115,9 +117,9 @@ class SchemaManagementTest(Tester):
         """
         fail
 
-    @skip ('unimplemented')
+    @skip('unimplemented')
     def alter_table_in_parallel_to_write(self):
-        """ 
+        """
         Create a table and write into while altering the table
         1. Create a cluster of 3 nodes
         2. Run insert statements in a loop
@@ -125,9 +127,9 @@ class SchemaManagementTest(Tester):
         """
         fail
 
-    @skip ('unimplemented')
+    @skip('unimplemented')
     def alter_table_in_parallel_to_read(self):
-        """ 
+        """
         Create a table and populate it and read from it while altering the table
         1. Create a cluster of 3 nodes and populate a table
         2. Run query statements in a loop
@@ -135,9 +137,9 @@ class SchemaManagementTest(Tester):
         """
         fail
 
-    @skip ('unimplemented')
+    @skip('unimplemented')
     def alter_table_in_parallel_to_read_and_write(self):
-        """ 
+        """
         Create a table and populate it and read from it while altering the table
         1. Create a cluster of 3 nodes and populate a table
         2. Run query statements in a loop
@@ -146,7 +148,7 @@ class SchemaManagementTest(Tester):
         """
         fail
 
-    @skip ('unimplemented')
+    @skip('unimplemented')
     def commitlog_replays_after_schema_change(self):
         """
         Commitlog can be replayed even though schema has been changed
@@ -157,28 +159,28 @@ class SchemaManagementTest(Tester):
         """
         fail
 
-    @skip ('unimplemented')
+    @skip('unimplemented')
     def create_table_while_node_is_killed(self):
-        """ 
+        """
         Check that a node that is killed durring a table creation is able to rejoin and to synch on schema
         """
         fail
 
-    @skip ('unimplemented')
+    @skip('unimplemented')
     def alter_table_while_node_is_killed(self):
-        """ 
+        """
         Check that a node that is killed durring a table alter is able to rejoin and to synch on schema
         """
         fail
 
-    @skip ('unimplemented')
+    @skip('unimplemented')
     def drop_table_while_node_is_killed(self):
-        """ 
+        """
         Check that a node that is killed durring a table drop is able to rejoin and to synch on schema
         """
         fail
 
-    @skip ('unimplemented')
+    @skip('unimplemented')
     def nodes_rejoining_a_cluster_synch_on_schema(self):
         """
         Nodes rejoining the cluster synch on schema changes
@@ -187,7 +189,6 @@ class SchemaManagementTest(Tester):
         3. Alter table
         4. Insert additional data
         5. Start the stopped node
-        6. Verify the stopped node synchs on the updated schema 
+        6. Verify the stopped node synchs on the updated schema
         """
         fail
-

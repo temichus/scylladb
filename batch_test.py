@@ -74,7 +74,7 @@ class TestBatch(Tester):
         session = self.patient_cql_connection(node1)
 
         debug('Creating schema...')
-        self.create_ks(session, 'ks', 1) # RF=1 so that we're sensitive for node2 missing updates
+        self.create_ks(session, 'ks', 1)  # RF=1 so that we're sensitive for node2 missing updates
         session.execute("""
             CREATE TABLE users (
                 id int,
@@ -87,7 +87,7 @@ class TestBatch(Tester):
         names = ['k%d' % (i) for i in range(100)]
 
         st = SimpleStatement(
-           """
+            """
             BEGIN BATCH
             %s
             APPLY BATCH
@@ -102,7 +102,7 @@ class TestBatch(Tester):
             session.execute(st, timeout=4)
             raise Exception("Should have failed")
         except:
-            debug("Execute failed") # expected
+            debug("Execute failed")  # expected
 
         debug("Altering schema")
         session.execute("ALTER TABLE users add aa int;")
@@ -119,8 +119,8 @@ class TestBatch(Tester):
         node3.start(wait_for_binary_proto=True)
 
         debug("Waiting for batch replay")
-        time.sleep(4) # batchlog replay timeout
-        time.sleep(60) # batchlog_manager::replay_interval
+        time.sleep(4)  # batchlog replay timeout
+        time.sleep(60)  # batchlog_manager::replay_interval
 
         rows = session.execute("SELECT * FROM users")
         res = sorted(rows)

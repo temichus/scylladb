@@ -47,7 +47,6 @@ class TestSSTableGenerationAndLoading(Tester):
         # assert(len(rows) == 1)
         # self.assertEquals([0, 'ck_45', 7, 45], list(rows[0]))
 
-
     def incompressible_data_in_compressed_table_test(self):
         """
         tests for the bug that caused #3370:

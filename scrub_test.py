@@ -13,6 +13,7 @@ KEYSPACE = 'ks'
 
 
 class TestHelper(Tester):
+
     def get_table_path(self, table):
         """
         Return the path where the table sstables are located

@@ -8,6 +8,7 @@ from cassandra import Unauthorized, ConsistencyLevel
 from cassandra.query import SimpleStatement
 from nose.tools import nottest
 
+
 def listify(item):
     """
     listify a query result consisting of user types

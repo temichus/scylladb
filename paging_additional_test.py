@@ -7,6 +7,7 @@ from datahelp import create_rows
 from paging_test import PageFetcher, BasePagingTester, PageAssertionMixin
 from scylla_tools import scylla_mode
 
+
 class TestAggregatePaging(BasePagingTester, PageAssertionMixin):
     """
     Basic aggregation tests using paging
@@ -29,10 +30,10 @@ class TestAggregatePaging(BasePagingTester, PageAssertionMixin):
 
         # Note that both page size and limit is less than actual num of rows.
         # Thus we should always get a count == limit
-        # They main thing we are testing is that page size > limit does not break the 
+        # They main thing we are testing is that page size > limit does not break the
         # count result. (#650)
         for page_size in sizes:
-            for limit in sizes:                
+            for limit in sizes:
                 future = session.execute_async(
                     SimpleStatement("select count(*) from paging_test limit {}".format(limit), fetch_size=page_size, consistency_level=CL.ALL)
                 )
@@ -47,4 +48,3 @@ class TestAggregatePaging(BasePagingTester, PageAssertionMixin):
     @scylla_mode('debug')
     def test_paged_count_with_limit_debug(self):
         self._test_paged_count_with_limit([10, 100, 250])
-

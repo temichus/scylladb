@@ -13,6 +13,7 @@ import threading
 import time
 import re
 
+
 class TestCqlTracing(Tester):
     """
     Test that the default implementation for tracing works.
@@ -251,4 +252,3 @@ class TestCqlTracing(Tester):
 #                      "'org.apache.cassandra.tracing.TracingImpl' is inaccessible.",
 #                      err)
 #----------------------------------------------------------------------------------------------------------------------
-

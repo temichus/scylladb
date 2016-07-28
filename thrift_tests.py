@@ -24,6 +24,7 @@ from tools import since
 from assertions import assert_one, assert_none
 from nose.tools import nottest
 
+
 def get_thrift_client(host='127.0.0.1', port=9160):
     socket = TSocket.TSocket(host, port)
     transport = TTransport.TFramedTransport(socket)
@@ -114,7 +115,7 @@ class ThriftTester(BaseTester):
                                         Cassandra.CfDef('Keyspace2', 'Standard3'),
                                         #Cassandra.CfDef('Keyspace2', 'Super3', column_type='Super', subcomparator_type='BytesType'),
                                         #Cassandra.CfDef('Keyspace2', 'Super4', column_type='Super', subcomparator_type='TimeUUIDType'),
-                                    ])
+        ])
 
         for ks in [keyspace1, keyspace2]:
             self.client.system_add_keyspace(ks)
@@ -1670,7 +1671,7 @@ class TestMutations(ThriftTester):
         # modify valid
         modified_keyspace = KsDef('CreateKeyspace',
                                   'org.apache.cassandra.locator.NetworkTopologyStrategy',
-                                  { },
+                                  {},
                                   cf_defs=[])
         client.system_update_keyspace(modified_keyspace)
         modks = client.describe_keyspace('CreateKeyspace')
@@ -2429,6 +2430,7 @@ class TestCQLAccesses(ThriftTester):
 
         # And check everything is gone
         assert_none(session, "SELECT * FROM t")
+
 
 class TestCompactStorageThriftAccesses(ThriftTester):
 

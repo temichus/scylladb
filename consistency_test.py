@@ -1020,12 +1020,12 @@ class TestConsistency(Tester):
         debug('Create cluster')
         cluster = self.cluster
         cluster.populate(2).start()
-        cluster.set_configuration_options(values={'hinted_handoff_enabled': False});
+        cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
         node1, node2 = cluster.nodelist()
 
         debug('Prepare column family')
         session1 = self.patient_cql_connection(node1)
-        self.create_ks(session1, 'ks', 2);
+        self.create_ks(session1, 'ks', 2)
         session1.execute('create table ks.cf1 (p int, c int, r int, primary key (p, c))')
 
         session1.execute(SimpleStatement('insert into ks.cf1 (p, c, r) values (0, 1, 1)', consistency_level=ConsistencyLevel.ALL))
@@ -1052,4 +1052,3 @@ class TestConsistency(Tester):
         assert len(res) == 1, 'Expecting 1 row, got %d (%s)' % (len(res), str(res))
         assert len(res[0]) == 1, 'Expecting 1 cell, got %d (%s)' % (len(res[0]), str(res[0]))
         assert res[0][0] == 2, 'Expecting value 2, got %s' % str(res[0][0])
-

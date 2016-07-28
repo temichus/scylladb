@@ -10,6 +10,7 @@ from tools import insert_c1c2, no_vnodes, query_c1c2, since
 
 from ccmlib.scylla_cluster import ScyllaCluster
 
+
 class TestRepair(Tester):
 
     def check_repair_logs(self):

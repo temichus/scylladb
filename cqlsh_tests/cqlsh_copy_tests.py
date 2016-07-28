@@ -38,6 +38,7 @@ class UTC(datetime.tzinfo):
     """
     A utility class to specify a UTC timezone.
     """
+
     def utcoffset(self, dt):
         return datetime.timedelta(0)
 
@@ -131,6 +132,7 @@ class CqlshCopyTest(Tester):
             )''')
 
         class Datetime(datetime.datetime):
+
             def __str__(self):
                 return self.strftime(DEFAULT_TIME_FORMAT)
 
@@ -152,6 +154,7 @@ class CqlshCopyTest(Tester):
                                                   for t in sorted(self)]))
 
         class ImmutableSet(SortedSet):
+
             def __repr__(self):
                 return '{{{}}}'.format(', '.join([maybe_quote(t) for t in sorted(self._items)]))
 

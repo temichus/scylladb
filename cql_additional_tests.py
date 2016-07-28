@@ -35,6 +35,7 @@ from tools import since
 
 from unittest import skip
 
+
 @canReuseCluster
 class TestCQL(Tester):
 
@@ -1689,7 +1690,6 @@ class TestCQL(Tester):
         session.execute(q % "tags = tags - [ 'bar' ]")
         res = session.execute("SELECT tags FROM user WHERE fn='Bilbo' AND ln='Baggins'")
         self.assertItemsEqual(rows_to_list(res), [[['m', 'n', 'c', 'c']]])
-
 
     def list_prefetch_with_static_column_test(self):
         # Explits https://github.com/scylladb/scylla/issues/903
@@ -4638,7 +4638,7 @@ class TestCQL(Tester):
                 session.execute("""
                 INSERT INTO cql2ct (a, b, c, d) values ({0}, [{0},{1}], {{{0}:{1}}}, {{{0},{1}}});
                 """.format(i, i + 1))
-        
+
             unsorted_res = session.execute("""
             SELECT * FROM cql2ct
             """)
@@ -4647,9 +4647,9 @@ class TestCQL(Tester):
             sres = rows_to_list(res)
             for i in range(0, 4):
                 assert sres[i][0] == i, sres[i]
-                assert sres[i][1] == [i, i+1], sres[i]
-                assert sres[i][2] == { i : i + 1 }
-                assert sres[i][3] == { i, i + 1 }
+                assert sres[i][1] == [i, i + 1], sres[i]
+                assert sres[i][2] == {i: i + 1}
+                assert sres[i][3] == {i, i + 1}
 
             session.execute("DROP KEYSPACE IF EXISTS ks")
 
@@ -4704,6 +4704,7 @@ class TestCQL(Tester):
         res = session.execute("SELECT v FROM test")
         assert rows_to_list(res) == [[5], [6], [7], [1], [2], [0], [4], [3]], res
 
+
 class CQLAdditionalTests(Tester):
 
     def prepare(self):
@@ -4742,7 +4743,6 @@ class CQLAdditionalTests(Tester):
         session = self.patient_cql_connection(node)
         self.create_ks(session, 'racing', 1)
 
-
         c = """CREATE TABLE racing.rank_by_year_and_name (
               race_year int,
               race_name text,
@@ -4757,7 +4757,7 @@ class CQLAdditionalTests(Tester):
             session.execute(c)
         except Exception, e:
             assert(e.message == "Indexes are not supported yet")
-            assert(e.code == 0000);
+            assert(e.code == 0000)
 
     def test_drop_secondary_indexes(self):
         # cannot test drop secondary index because their are not created
@@ -4771,7 +4771,6 @@ class CQLAdditionalTests(Tester):
         session = self.patient_cql_connection(node)
         self.create_ks(session, 'racing', 1)
 
-
         c = """CREATE TABLE racing.page_view_counts
               (counter_value counter,
               url_name varchar,
@@ -4781,7 +4780,7 @@ class CQLAdditionalTests(Tester):
             session.execute(c)
         except Exception, e:
             assert(e.message == "Not implemented: COUNTERS")
-            assert(e.code == 0000);
+            assert(e.code == 0000)
 
     def test_lightweight_transaction(self):
         cluster = self.prepare()
@@ -4789,7 +4788,6 @@ class CQLAdditionalTests(Tester):
 
         session = self.patient_cql_connection(node)
         self.create_ks(session, 'ks', 1)
-
 
         c = """CREATE TABLE ks.users (
               login text,
@@ -4806,7 +4804,7 @@ class CQLAdditionalTests(Tester):
             session.execute(c)
         except Exception, e:
             assert(e.message == "Not implemented: LWT")
-            assert(e.code == 0000);
+            assert(e.code == 0000)
 
     @skip('scylladb/scylla#876')
     def test_grant(self):
@@ -4816,13 +4814,12 @@ class CQLAdditionalTests(Tester):
         session = self.patient_cql_connection(node)
         self.create_ks(session, 'ks', 1)
 
-
         c = """GRANT SELECT ON ALL KEYSPACES TO benoit"""
         try:
             session.execute(c)
         except Exception, e:
             assert(e.message == "Not implemented: GRANT")
-            assert(e.code == 0000);
+            assert(e.code == 0000)
 
     @skip('scylladb/scylla#876')
     def test_revoke(self):
@@ -4832,13 +4829,12 @@ class CQLAdditionalTests(Tester):
         session = self.patient_cql_connection(node)
         self.create_ks(session, 'ks', 1)
 
-
         c = """REVOKE SELECT ON ks.user FROM blob"""
         try:
             session.execute(c)
         except Exception, e:
             assert(e.message == "Not implemented: REVOKE")
-            assert(e.code == 0000);
+            assert(e.code == 0000)
 
     @skip('scylladb/scylla#876')
     def test_list(self):
@@ -4848,10 +4844,9 @@ class CQLAdditionalTests(Tester):
         session = self.patient_cql_connection(node)
         self.create_ks(session, 'ks', 1)
 
-
         c = """LIST ALL PERMISSIONS ON ks.boo"""
         try:
             session.execute(c)
         except Exception, e:
             assert(e.message == "Not implemented: LIST")
-            assert(e.code == 0000);
+            assert(e.code == 0000)
