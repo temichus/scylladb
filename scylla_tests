@@ -201,3 +201,4 @@ sstableloader_test.py
 thrift_tests.py
 schema_management_test.py
 partitioner_tests.py
+json_tools_test.py
