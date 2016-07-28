@@ -1255,3 +1255,49 @@ class TestUpdateClusterLayout(Tester):
         self.check_rows_on_node(node2, nr_rows)
         debug("Check rows on node1")
         self.check_rows_on_node(node1, nr_rows)
+
+    def add_node_with_large_partition3_test(self):
+        """
+        Test bootstrapped node streams all data
+        1. Create a cluster with a single node with rf=2, insert data with mixed large partition and small partion
+        2. Add a new node
+        3. Check that each node has all the data
+        """
+        cluster = self.cluster
+
+        # Disable hinted handoff and set batch commit log so this doesn't
+        # interfer with the test (this must be after the populate)
+        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.populate(1).start()
+        node1 = cluster.nodelist()[0]
+
+        debug("Node 1 started")
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 2)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+
+        nr_rows = 100
+        v1 = 'a' * 1024 * 10  # 10KB
+        v2 = 'b' * 1024 * 300 # 300KB
+        v3 = 'c' * 1024 * 1   # 1KB
+        v4 = 'd' * 1024 * 3   # 3KB
+        c1s = []
+        c2s = []
+        for n in xrange(nr_rows):
+            if n % 2 == 0:
+                c1s.append(v1)
+                c2s.append(v2)
+            else:
+                c1s.append(v3)
+                c2s.append(v4)
+        debug("Insert data")
+        scylla_tools.insert_c1c2(session, keys=xrange(nr_rows), consistency=ConsistencyLevel.ONE, c1_values=c1s, c2_values=c2s)
+
+        node2 = new_node(cluster)
+        node2.start(wait_for_binary_proto=True)
+        debug("Node 2 started")
+
+        debug("Check rows on node2")
+        self.check_rows_on_node(node2, nr_rows)
+        debug("Check rows on node1")
+        self.check_rows_on_node(node1, nr_rows)
