@@ -11,6 +11,7 @@ from ccmlib.node import NodeError
 from dtest import Tester, debug
 from tools import insert_c1c2, query_c1c2, new_node
 import scylla_tools
+import collections
 
 class TestUpdateClusterLayout(Tester):
 
@@ -1201,6 +1202,50 @@ class TestUpdateClusterLayout(Tester):
         c2s = [c2] * nr_rows
         debug("Insert data")
         scylla_tools.insert_c1c2(session, keys=range(nr_rows), consistency=ConsistencyLevel.ONE, c1_values=c1s, c2_values=c2s)
+
+        node2 = new_node(cluster)
+        node2.start(wait_for_binary_proto=True)
+        debug("Node 2 started")
+
+        debug("Check rows on node2")
+        self.check_rows_on_node(node2, nr_rows)
+        debug("Check rows on node1")
+        self.check_rows_on_node(node1, nr_rows)
+
+    def add_node_with_large_partition2_test(self):
+        """
+        Test bootstrapped node streams all data
+        1. Create a cluster with a single node with rf=2, insert data with large partition
+        2. Add a new node
+        3. Check that each node has all the data
+        """
+        nr_columns = 250
+        nr_rows = 100
+        column_size = 1 * 1024 # 1KB
+
+        cluster = self.cluster
+
+        # Disable hinted handoff and set batch commit log so this doesn't
+        # interfer with the test (this must be after the populate)
+        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.populate(1).start()
+        node1 = cluster.nodelist()[0]
+
+        debug("Node 1 started")
+        session = self.patient_cql_connection(node1)
+
+        # create ks
+        self.create_ks(session, 'ks', 2)
+
+        # Create cf
+        columns = collections.OrderedDict()
+        for i in range(1, nr_columns + 1):
+            columns['c%s' % i] = 'text'
+        self.create_cf(session, 'cf', read_repair=0.0, columns=columns)
+
+        # Insert data
+        debug("Insert data")
+        scylla_tools.insert_c1cn(session, keys=range(nr_rows), consistency=ConsistencyLevel.ONE, nr_columns=nr_columns, column_size=column_size)
 
         node2 = new_node(cluster)
         node2.start(wait_for_binary_proto=True)
