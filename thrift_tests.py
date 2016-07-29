@@ -1567,6 +1567,7 @@ class TestMutations(ThriftTester):
 
     def test_describe_ring(self):
         assert list(client.describe_ring('Keyspace1'))[0].endpoints == ['127.0.0.1']
+        assert list(client.describe_local_ring('Keyspace1'))[0].endpoints == ['127.0.0.1']
 
     def test_describe_token_map(self):
         # test/conf/cassandra.yaml specifies org.apache.cassandra.dht.ByteOrderedPartitioner
