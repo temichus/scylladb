@@ -25,7 +25,7 @@ class TestSSTableSplit(Tester):
         version = cluster.version()
 
         debug("Run stress to insert data")
-        node.stress(['write', 'n=1000000', '-rate', 'threads=10'])
+        node.stress(['write', 'n=10000', '-rate', 'threads=10'])
 
         self._do_compaction(node)
         self._do_split(node, version)
@@ -33,7 +33,7 @@ class TestSSTableSplit(Tester):
         self._do_split(node, version)
 
         debug("Run stress to ensure data is readable")
-        node.stress(['read', 'n=1000000', '-rate', 'threads=25'])
+        node.stress(['read', 'n=10000', '-rate', 'threads=25'])
 
     def _do_compaction(self, node):
         debug("Compact sstables.")
@@ -95,7 +95,7 @@ class TestSSTableSplit(Tester):
         node = cluster.nodelist()[0]
 
         debug("Run stress to insert data")
-        node.stress(['write', 'n=2000000', '-rate', 'threads=10',
+        node.stress(['write', 'n=20000', '-rate', 'threads=10',
                      '-schema', 'compaction(strategy=LeveledCompactionStrategy, sstable_size_in_mb=10)'])
         self._do_compaction(node)
         node.stop()

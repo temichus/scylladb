@@ -6,6 +6,7 @@ import subprocess
 from ccmlib import common
 from dtest import Tester, debug
 from tools import since
+from nose.tools import nottest
 
 
 class TestOfflineTools(Tester):
@@ -250,6 +251,7 @@ class TestOfflineTools(Tester):
         self.assertIn("Corrupted: " + sstable1, error)
         self.assertEqual(rc, 1, msg=str(rc))
 
+    @nottest
     def sstableexpiredblockers_test(self):
         cluster = self.cluster
         cluster.populate(1).start(wait_for_binary_proto=True)
