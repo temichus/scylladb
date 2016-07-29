@@ -203,3 +203,4 @@ schema_management_test.py
 partitioner_tests.py
 json_tools_test.py
 offline_tools_test.py
+sstablesplit_test.py
