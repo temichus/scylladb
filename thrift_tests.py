@@ -2449,3 +2449,27 @@ class TestCompactStorageThriftAccesses(ThriftTester):
         i = 1
         client.insert(_i32(i), ColumnParent('cs1'), Column('v', _i32(i), 0), CL)
         _assert_column('cs1', _i32(i), 'v', _i32(i), 0)
+
+
+class TestResultKeyOrder(ThriftTester):
+
+    def __init__(self, *args, **kwargs):
+        kwargs['cluster_options'] = {'partitioner': 'org.apache.cassandra.dht.Murmur3Partitioner',
+                                     'start_rpc': 'true'}
+        Tester.__init__(self, *args, **kwargs)
+
+    def test_get_range_slices_token_order(self):
+        _set_keyspace('Keyspace2')
+        for key in ['key1', 'key2', 'key3', 'key4', 'key5']:
+            for cname in ['col1', 'col2', 'col3', 'col4', 'col5']:
+                client.insert(key, ColumnParent('Standard1'), Column(cname, 'v-' + cname, 0), ConsistencyLevel.ONE)
+        cp = ColumnParent('Standard1')
+        predicate = SlicePredicate(column_names=['col1', 'col3'])
+        range = KeyRange(start_token='55', end_token='55', count=100)
+        result = client.get_range_slices(cp, predicate, range, ConsistencyLevel.ONE)
+        assert len(result) == 5
+        assert result[0].key == 'key5'
+        assert result[1].key == 'key1'
+        assert result[2].key == 'key4'
+        assert result[3].key == 'key3'
+        assert result[4].key == 'key2'
