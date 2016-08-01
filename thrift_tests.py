@@ -1328,13 +1328,12 @@ class TestMutations(ThriftTester):
         _insert_super_range()
         _verify_super_range()
 
-    @nottest
     def test_get_range_slices_tokens(self):
         _set_keyspace('Keyspace2')
         for key in ['key1', 'key2', 'key3', 'key4', 'key5']:
             for cname in ['col1', 'col2', 'col3', 'col4', 'col5']:
-                client.insert(key, ColumnParent('Super3', 'sc1'), Column(cname, 'v-' + cname, 0), ConsistencyLevel.ONE)
-        cp = ColumnParent('Super3', 'sc1')
+                client.insert(key, ColumnParent('Standard1'), Column(cname, 'v-' + cname, 0), ConsistencyLevel.ONE)
+        cp = ColumnParent('Standard1')
         predicate = SlicePredicate(column_names=['col1', 'col3'])
         range = KeyRange(start_token='55', end_token='55', count=100)
         result = client.get_range_slices(cp, predicate, range, ConsistencyLevel.ONE)
