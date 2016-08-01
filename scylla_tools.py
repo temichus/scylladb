@@ -58,6 +58,43 @@ def insert_c1c2_no_prepared(session, keys=None, n=None, consistency=ConsistencyL
     execute_concurrent(session, map(lambda x, y, z: (SimpleStatement('INSERT INTO {}.{} (key, c1, c2) VALUES (\'{}\', \'{}\', \'{}\')'.format(ks, cf, 'k{}'.format(x), y, z),
                                                                      consistency_level=consistency), None), keys, c1_values, c2_values))
 
+def insert_c1cn(session, keys=None, consistency=ConsistencyLevel.QUORUM, nr_columns=5, column_size=None, ks='ks', cf='cf'):
+    if keys is None:
+        keys = []
+
+    cql_str = "INSERT INTO {}.{} (key, ".format(ks,cf)
+    for nr in xrange(1, nr_columns + 1):
+        if nr != nr_columns:
+            cql_str += 'c{}, '.format(nr)
+        else:
+            cql_str += 'c{}) VALUES (?, '.format(nr)
+    for nr in xrange(1, nr_columns + 1):
+        if nr != nr_columns:
+            cql_str += '?, '
+        else:
+            cql_str += '?) '
+
+    statement = session.prepare(cql_str)
+    statement.consistency_level = consistency
+
+    # build column values for c1 to cn
+    col_data = []
+    for nr in xrange(1, nr_columns + 1):
+        'x' * column_size
+        if column_size:
+            col_data.append('x' * column_size)
+        else:
+            col_data.append('column_data_{}'.format(nr))
+
+   # build data for each row, including key and columns
+    kv = []
+    for key in keys:
+        data = ['k{}'.format(key)]
+        data.extend(col_data)
+        kv.append(data)
+
+    execute_concurrent_with_args(session, statement, kv)
+
 def check_c1c2_result_one(success, rows, tolerate_missing, must_be_missing, c1_value, c2_value):
     if not success:
         assert False, "Query failed {}".format(rows)
