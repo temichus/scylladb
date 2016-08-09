@@ -208,3 +208,5 @@ partitioner_tests.py
 json_tools_test.py
 offline_tools_test.py
 sstablesplit_test.py
+cql_additional_tests.py:TestCQL.cql3_insert_thrift_test
+cql_additional_tests.py:TestCQL.rename_test
