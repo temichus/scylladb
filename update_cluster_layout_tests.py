@@ -30,7 +30,7 @@ class TestUpdateClusterLayout(Tester):
 
         session = self.patient_cql_connection(node_to_check, ks)
         if rows > 1000 and counter_column:
-            result = session.execute("select count(%s) from %s.%s limit %d;" % (counter_column, ks, cf, rows * 2))
+            result = session.execute("select count(%s) from %s.%s limit %d;" % (counter_column, ks, cf, rows * 2),timeout=300)
             count = result[0][0]
             self.assertEqual(count, rows, count)
         else:
@@ -1336,7 +1336,7 @@ class TestUpdateClusterLayout(Tester):
         c_s_profile = os.path.abspath(c_s_profile)
         debug("Inject data with cassandra-stress starts")
         debug(c_s_profile)
-        node1.stress(['user', 'n=%s' % nr_partitions, 'cl=ONE', 'profile=%s' % c_s_profile, 'ops(insert=1)', '-rate threads=10'])
+        node1.stress(['user', 'n=%s' % nr_partitions, 'cl=ONE', 'profile=%s' % c_s_profile, 'ops(insert=1)', '-rate threads=1'])
         debug("Inject data with cassandra-stress completes")
 
         node2 = new_node(cluster)
