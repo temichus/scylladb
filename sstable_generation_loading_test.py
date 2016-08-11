@@ -14,6 +14,40 @@ class TestSSTableGenerationAndLoading(Tester):
         super(TestSSTableGenerationAndLoading, self).__init__(*argv, **kwargs)
         self.allow_log_errors = True
 
+    def promoted_index_generation_with_small_partition_followed_by_a_large_partition_test(self):
+        """
+        Tests for https://github.com/scylladb/scylla/issues/1567
+        """
+        cluster = self.cluster
+        cluster.set_configuration_options(values={'enable_cache': False})
+        cluster.populate(1).start()
+        node1 = cluster.nodelist()[0]
+
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 1)
+
+        session.execute('CREATE TABLE ks.test (pk int, ck text, s1 int static, v int, PRIMARY KEY (pk, ck))')
+        session.execute('insert into ks.test (pk, s1) values (1, 7)')
+        session.execute('insert into ks.test (pk, s1) values (0, 7)')
+
+        for i in range(2000):
+            session.execute("insert into ks.test  (pk, ck, v) values (0, 'ck_%d', %d)" % (i, i))
+
+        node1.stop()
+        node1.start()
+
+        session = self.patient_cql_connection(node1)
+
+        rows = list(session.execute('select * from ks.test where pk = 0 and ck = \'ck_0\''))
+        assert(len(rows) == 1)
+        self.assertEquals([0, 'ck_0', 7, 0], list(rows[0]))
+
+        # Fails due to https://github.com/scylladb/scylla/issues/1568
+        # rows = list(session.execute('select * from ks.test where pk = 0 and ck = \'ck_45\''))
+        # assert(len(rows) == 1)
+        # self.assertEquals([0, 'ck_45', 7, 45], list(rows[0]))
+
+
     def incompressible_data_in_compressed_table_test(self):
         """
         tests for the bug that caused #3370:
