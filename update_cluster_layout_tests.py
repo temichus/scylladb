@@ -1,5 +1,6 @@
 import threading
 import time
+import os
 from datetime import datetime
 
 from cassandra import Unavailable,ConsistencyLevel,WriteTimeout,OperationTimedOut
@@ -15,7 +16,7 @@ import collections
 
 class TestUpdateClusterLayout(Tester):
 
-    def check_rows_on_node(self, node_to_check, rows, found=None, missings=None, restart=True):
+    def check_rows_on_node(self, node_to_check, rows, found=None, missings=None, restart=True, ks='ks', cf='cf', counter_column=None):
         if found is None:
             found = []
         if missings is None:
@@ -27,9 +28,15 @@ class TestUpdateClusterLayout(Tester):
                 stopped_nodes.append(node)
                 node.stop(wait_other_notice=True)
 
-        session = self.patient_cql_connection(node_to_check, 'ks')
-        result = session.execute("SELECT * FROM cf LIMIT %d" % (rows * 2))
-        self.assertEqual(len(result), rows, len(result))
+        session = self.patient_cql_connection(node_to_check, ks)
+        if rows > 1000 and counter_column:
+            result = session.execute("select count(%s) from %s.%s limit %d;" % (counter_column, ks, cf, rows * 2))
+            count = result[0][0]
+            self.assertEqual(count, rows, count)
+        else:
+            result = session.execute("SELECT * FROM %s LIMIT %d" % (cf, rows * 2))
+            self.assertEqual(len(result), rows, len(result))
+
 
         for k in found:
             query_c1c2(session, k, ConsistencyLevel.ONE)
@@ -1301,3 +1308,42 @@ class TestUpdateClusterLayout(Tester):
         self.check_rows_on_node(node2, nr_rows)
         debug("Check rows on node1")
         self.check_rows_on_node(node1, nr_rows)
+
+    def add_node_with_large_partition4_test(self):
+        """
+        Test bootstrapped node streams all data
+        1. Create a cluster with a single node with rf=2, insert data with large partitions
+        2. Add a new node
+        3. Check that each node has all the data
+        """
+        cluster = self.cluster
+
+        nr_partitions = 100 # 100 fails 10 works
+        # In cassandra-stress-custom-large-partition-1.yaml
+        # name: key2
+        # cluster: uniform(3000..3000)
+        # each partition has 3000 cql rows, so there will be nr_partitions * 3000 cql rows
+        nr_rows = nr_partitions * 3000
+
+        # Disable hinted handoff and set batch commit log so this doesn't
+        # interfer with the test (this must be after the populate)
+        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.populate(1).start()
+        node1 = cluster.nodelist()[0]
+
+        debug("Node 1 started")
+        c_s_profile = os.path.join("test_data", "c-s-profiles", "cassandra-stress-custom-large-partition-1.yaml")
+        c_s_profile = os.path.abspath(c_s_profile)
+        debug("Inject data with cassandra-stress starts")
+        debug(c_s_profile)
+        node1.stress(['user', 'n=%s' % nr_partitions, 'cl=ONE', 'profile=%s' % c_s_profile, 'ops(insert=1)', '-rate threads=10'])
+        debug("Inject data with cassandra-stress completes")
+
+        node2 = new_node(cluster)
+        node2.start(wait_for_binary_proto=True)
+        debug("Node 2 started")
+
+        debug("Check rows on node2")
+        self.check_rows_on_node(node2, nr_rows, ks='keyspace1', cf='standard1', counter_column='cn')
+        debug("Check rows on node1")
+        self.check_rows_on_node(node1, nr_rows, ks='keyspace1', cf='standard1', counter_column='cn')
