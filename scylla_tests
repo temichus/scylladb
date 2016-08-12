@@ -211,3 +211,4 @@ sstablesplit_test.py
 cql_additional_tests.py:TestCQL.cql3_insert_thrift_test
 cql_additional_tests.py:TestCQL.rename_test
 sstable_generation_loading_test.py:TestSSTableGenerationAndLoading.promoted_index_generation_with_small_partition_followed_by_a_large_partition_test
+largecolumn_test.py

@@ -2,7 +2,6 @@ from dtest import Tester, debug
 from tools import since
 
 
-@since('2.2')
 class TestLargeColumn(Tester):
     """
     Check that inserting and reading large columns to the database doesn't cause off heap memory usage
@@ -24,6 +23,7 @@ class TestLargeColumn(Tester):
             assert field.strip().isdigit() or field == 'NaN', "Expected numeric from fields from nodetool gcstats"
         return fields[6]
 
+    @since('2.2')
     def cleanup_test(self):
         """
         See CASSANDRA-8670
@@ -56,3 +56,13 @@ class TestLargeColumn(Tester):
         # since Netty was instructed to use a heap allocator
         diff = int(afterStress) - int(beforeStress)
         assert diff < LARGE_COLUMN_SIZE, diff
+
+    def large_columns_mixed_workload_stress_test(self):
+        """
+        See https://github.com/scylladb/scylla/issues/1574
+        """
+        cluster = self.cluster
+        cluster.populate(1).start()
+        node1 = cluster.nodelist()[0]
+        node1.stress(['write', 'n=10000', "no-warmup", "-col", "n=fixed(1)", "size=fixed(40000)", "-rate", "threads=2"])
+        node1.stress(['mixed', "no-warmup", 'duration=15s', '-pop', 'seq=1..10000', "-col", "n=fixed(1)", "size=fixed(40000)", "-rate", "threads=8"])
