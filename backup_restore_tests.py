@@ -13,7 +13,9 @@ from cassandra.query import SimpleStatement
 from dtest import Tester, debug
 from scylla_tools import insert_c1c2, query_c1c2_concurrent
 
+
 class TestBackupRestore(Tester):
+
     def failure_durring_snapshot_no_corrupt_data_test(self):
         """
         Check that we can recover from a failure durring snapshot:
@@ -749,7 +751,7 @@ class TestBackupRestore(Tester):
 
     def check_rows_on_node(self, node_to_check, rows, found=None, missings=None, c1_values=None, c2_values=None):
         s = self.patient_cql_connection(node_to_check, 'ks')
-        query="SELECT COUNT(*) FROM cf"
+        query = "SELECT COUNT(*) FROM cf"
         statement = SimpleStatement(query)
         result = list(s.execute(statement))
         self.assertEqual(result[0].count, rows, len(result))
@@ -772,7 +774,3 @@ class TestBackupRestore(Tester):
                                   keys=missings,
                                   consistency=ConsistencyLevel.ONE,
                                   must_be_missing=True)
-
-
-
-

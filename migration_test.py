@@ -11,16 +11,18 @@ from cassandra.query import SimpleStatement
 from dtest import Tester, debug
 from nose import tools
 
+
 @tools.nottest
 class MigrationTestBase(Tester):
+
     def migrate_sstable_without_compression_test(self):
-        self._run_basic_migration_test("without_compression", {'key':'abc','c1':None,'c2':'cde'})
+        self._run_basic_migration_test("without_compression", {'key': 'abc', 'c1': None, 'c2': 'cde'})
 
     def migrate_sstable_with_lz4_compression_test(self):
-        self._run_basic_migration_test('with_lz4_compression', {'key':'a','c1':'abc','c2':'cde'}, compression='LZ4')
+        self._run_basic_migration_test('with_lz4_compression', {'key': 'a', 'c1': 'abc', 'c2': 'cde'}, compression='LZ4')
 
     def migrate_sstable_with_compact_storage_test(self):
-        self._run_basic_migration_test('with_compact_storage', {'key':'a','c1':'abc','c2':'cde'}, compact_storage=True)
+        self._run_basic_migration_test('with_compact_storage', {'key': 'a', 'c1': 'abc', 'c2': 'cde'}, compact_storage=True)
 
     def migrate_sstable_with_expired_ttl_test(self):
         # Data inserted in c* with the following query: INSERT INTO ks.cf (key, c1, c2) VALUES ('a', 'abc', 'cde') USING TTL 1;
@@ -32,7 +34,7 @@ class MigrationTestBase(Tester):
         # INSERT INTO ks.cf (key, c1, c2) VALUES ('a', 'abc', 'cde');
         # nodetool flush
         # DELETE c2 FROM ks.cf where key = 'a';
-        self._run_basic_migration_test('with_cell_tombstone', {'key':'a','c1':'abc','c2':None})
+        self._run_basic_migration_test('with_cell_tombstone', {'key': 'a', 'c1': 'abc', 'c2': None})
 
     def migrate_sstable_with_row_tombstone_test(self):
         # Content generated with:
@@ -48,7 +50,7 @@ class MigrationTestBase(Tester):
         # INSERT INTO ks.cf (key, c1, c2) VALUES ('c', 'abc', 'cde');
         # nodetool flush
         # DELETE FROM ks.cf WHERE key IN ('a', 'b');
-        self._run_basic_migration_test('with_range_tombstone', {'key':'c','c1':'abc','c2':'cde'})
+        self._run_basic_migration_test('with_range_tombstone', {'key': 'c', 'c1': 'abc', 'c2': 'cde'})
 
     def migrate_sstable_with_wide_row_test(self):
         node1 = self.start_cluster_and_get_node1()
@@ -90,7 +92,7 @@ class MigrationTestBase(Tester):
         # Row(key=u'b', messages=OrderedMapSerializedKey([(u'a', u'value1'), (u'b', u'value2')]))] when
         # querying the whole content of sstable with frozen collection map
         self._run_migration_test_for_collection("with_frozen_collection_map", "frozen<map<varchar, text>>",
-            {'a': {'a': 'value1', 'b': 'value2'}, 'b': {'a': 'value1', 'b': 'value2'}})
+                                                {'a': {'a': 'value1', 'b': 'value2'}, 'b': {'a': 'value1', 'b': 'value2'}})
 
     def migrate_sstable_with_static_cell_test(self):
         node1 = self.start_cluster_and_get_node1()
@@ -144,8 +146,8 @@ class MigrationTestBase(Tester):
 
         self.assertEqual(result[0].pk, 'pk', "check partition key")
         self.assertEqual(result[0].ck1, 'bbb', "check clustering key")
-        self.assertEqual(result[0].ck2, 'aaa',"check partition key")
-        self.assertEqual(result[0].data, 'fff', "check data") 
+        self.assertEqual(result[0].ck2, 'aaa', "check partition key")
+        self.assertEqual(result[0].data, 'fff', "check data")
 
     def migrate_sstable_with_user_defined_types_tests(self):
         node1 = self.start_cluster_and_get_node1()
@@ -197,7 +199,7 @@ class MigrationTestBase(Tester):
 # ######################## Helper functions ####################################
     def check_number_of_rows(self, node, expected_number_of_rows):
         debug("Checking rows on node1...")
-        query="SELECT COUNT(*) FROM cf"
+        query = "SELECT COUNT(*) FROM cf"
         statement = SimpleStatement(query)
         s = self.patient_cql_connection(node, 'ks')
         result = list(s.execute(statement))
@@ -205,7 +207,7 @@ class MigrationTestBase(Tester):
 
     def get_all_rows_for_check(self, node1):
         debug("Checking rows content on node1...")
-        query="SELECT * FROM ks.cf"
+        query = "SELECT * FROM ks.cf"
         statement = SimpleStatement(query)
         s = self.patient_cql_connection(node1, 'ks')
         return list(s.execute(statement))
@@ -322,8 +324,11 @@ class MigrationTestBase(Tester):
 #
 # Dtest created to test migration of data from C* to Scylla
 #
+
+
 @tools.istest
 class TestMigration(MigrationTestBase):
+
     @skip('not impled')
     def migrate_sstable_with_counter_test(self):
         cluster = self.cluster
@@ -359,7 +364,7 @@ class TestMigration(MigrationTestBase):
         self.assertEqual(result[1].bio, 'test', "check static cell")
 
         debug("Adding a new row...")
-        query="INSERT INTO ks.cf (user_name, bio, age) VALUES ('c', 'test', 0)"
+        query = "INSERT INTO ks.cf (user_name, bio, age) VALUES ('c', 'test', 0)"
         s = self.patient_cql_connection(node1, 'ks')
         statement = SimpleStatement(query)
         s.execute(statement)
@@ -373,8 +378,8 @@ class TestMigration(MigrationTestBase):
         self.assertEqual(result[1].age, 0, "check added cell")
         self.assertEqual(result[1].bio, 'test', "check static cell")
 
-    ## Helpers
-    def copy_migrated_data_dir(self, migrated_data_dir, skip_system_traces = False):
+    # Helpers
+    def copy_migrated_data_dir(self, migrated_data_dir, skip_system_traces=False):
         cassandra_dir = "{}/data".format(self.get_cassandra_sstable_dir(migrated_data_dir))
         debug("cassandra data dir for counter is {}".format(cassandra_dir))
 

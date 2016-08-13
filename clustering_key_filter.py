@@ -1,18 +1,16 @@
-import os
 import time
-
-from unittest import skip
 
 from cassandra.query import SimpleStatement
 
 from dtest import Tester, debug
-from nose import tools
 
 # All tests here should run with row cache disabled to make sure that the filtering capability is indeed working properly.
 # start_cluster_and_get_node1() starts Scylla with --enable-cache set to 0.
 
+
 class ClusteringKeyFilterTest(Tester):
     # Check that a row tombstone is not discarded when its sstable doesn't contain clustering range specified in the query.
+
     def check_consistence_after_row_tombstone(self):
         node1 = self.start_cluster_and_get_node1()
 
@@ -36,7 +34,7 @@ class ClusteringKeyFilterTest(Tester):
         # check that row tombstone from sstable above was consired and only key1 was returned.
         query = 'SELECT * FROM ks.cf WHERE p1 IN (\'key1\', \'key2\') AND c1 >= \'a\' AND c1 <= \'b\';'
         result = self.select(node1, query)
-        self.check_result(result, 'key1', [ 'a' ])
+        self.check_result(result, 'key1', ['a'])
 
     def check_non_composite(self):
         node1 = self.start_cluster_and_get_node1()
@@ -62,15 +60,15 @@ class ClusteringKeyFilterTest(Tester):
 
         query = 'SELECT * FROM ks.cf WHERE p1 = \'key1\' AND c1 >= \'a\' AND c1 <= \'b\';'
         result = self.select(node1, query)
-        self.check_result(result, 'key1', [ 'a', 'b' ])
+        self.check_result(result, 'key1', ['a', 'b'])
 
         query = 'SELECT * FROM ks.cf WHERE p1 = \'key1\' AND c1 > \'a\' AND c1 <= \'b\';'
         result = self.select(node1, query)
-        self.check_result(result, 'key1', [ 'b' ])
+        self.check_result(result, 'key1', ['b'])
 
         query = 'SELECT * FROM ks.cf WHERE p1 = \'key1\' AND c1 >= \'a\' AND c1 < \'b\';'
         result = self.select(node1, query)
-        self.check_result(result, 'key1', [ 'a' ])
+        self.check_result(result, 'key1', ['a'])
 
         query = 'SELECT * FROM ks.cf WHERE p1 = \'key1\' AND c1 > \'a\' AND c1 < \'b\';'
         result = self.select(node1, query)
@@ -78,11 +76,11 @@ class ClusteringKeyFilterTest(Tester):
 
         query = 'SELECT * FROM ks.cf WHERE p1 = \'key1\' AND c1 > \'a\';'
         result = self.select(node1, query)
-        self.check_result(result, 'key1', [ 'b' ])
+        self.check_result(result, 'key1', ['b'])
 
         query = 'SELECT * FROM ks.cf WHERE p1 = \'key1\' AND c1 < \'b\';'
         result = self.select(node1, query)
-        self.check_result(result, 'key1', [ 'a' ])
+        self.check_result(result, 'key1', ['a'])
 
     def check_composite(self):
         node1 = self.start_cluster_and_get_node1()
@@ -108,15 +106,15 @@ class ClusteringKeyFilterTest(Tester):
 
         query = 'SELECT * FROM ks.cf WHERE p1 = \'key1\' AND c1 >= \'a\' AND c1 <= \'b\';'
         result = self.select(node1, query)
-        self.check_result_composite(result, 'key1', [ [ 'a', '1' ], [ 'a', '2' ], [ 'b', '1' ], [ 'b', '2' ] ])
+        self.check_result_composite(result, 'key1', [['a', '1'], ['a', '2'], ['b', '1'], ['b', '2']])
 
         query = 'SELECT * FROM ks.cf WHERE p1 = \'key1\' AND c1 > \'a\' AND c1 <= \'b\';'
         result = self.select(node1, query)
-        self.check_result_composite(result, 'key1', [ [ 'b', '1' ], [ 'b', '2' ] ])
+        self.check_result_composite(result, 'key1', [['b', '1'], ['b', '2']])
 
         query = 'SELECT * FROM ks.cf WHERE p1 = \'key1\' AND c1 >= \'a\' AND c1 < \'b\';'
         result = self.select(node1, query)
-        self.check_result_composite(result, 'key1', [ [ 'a', '1' ], [ 'a', '2' ] ])
+        self.check_result_composite(result, 'key1', [['a', '1'], ['a', '2']])
 
         query = 'SELECT * FROM ks.cf WHERE p1 = \'key1\' AND c1 > \'a\' AND c1 < \'b\';'
         result = self.select(node1, query)
@@ -124,11 +122,11 @@ class ClusteringKeyFilterTest(Tester):
 
         query = 'SELECT * FROM ks.cf WHERE p1 = \'key1\' AND c1 > \'a\';'
         result = self.select(node1, query)
-        self.check_result_composite(result, 'key1', [ [ 'b', '1' ], [ 'b', '2' ] ])
+        self.check_result_composite(result, 'key1', [['b', '1'], ['b', '2']])
 
         query = 'SELECT * FROM ks.cf WHERE p1 = \'key1\' AND c1 < \'b\';'
         result = self.select(node1, query)
-        self.check_result_composite(result, 'key1', [ [ 'a', '1' ], [ 'a', '2' ] ])
+        self.check_result_composite(result, 'key1', [['a', '1'], ['a', '2']])
 
         query = 'SELECT * FROM ks.cf WHERE p1 = \'key1\' AND c1 = \'a\' AND c2 > \'1\' AND c2 < \'2\';'
         result = self.select(node1, query)
@@ -136,17 +134,17 @@ class ClusteringKeyFilterTest(Tester):
 
         query = 'SELECT * FROM ks.cf WHERE p1 = \'key1\' AND c1 = \'a\' AND c2 >= \'1\' AND c2 < \'2\';'
         result = self.select(node1, query)
-        self.check_result_composite(result, 'key1', [ [ 'a', '1' ] ])
+        self.check_result_composite(result, 'key1', [['a', '1']])
 
         query = 'SELECT * FROM ks.cf WHERE p1 = \'key1\' AND c1 = \'a\' AND c2 > \'1\' AND c2 <= \'2\';'
         result = self.select(node1, query)
-        self.check_result_composite(result, 'key1', [ [ 'a', '2' ] ])
+        self.check_result_composite(result, 'key1', [['a', '2']])
 
         query = 'SELECT * FROM ks.cf WHERE p1 = \'key1\' AND c1 = \'a\' AND c2 >= \'1\' AND c2 <= \'2\';'
         result = self.select(node1, query)
-        self.check_result_composite(result, 'key1', [ [ 'a', '1' ], [ 'a', '2' ] ])
+        self.check_result_composite(result, 'key1', [['a', '1'], ['a', '2']])
 
-### HELPER FUNCTIONS
+# HELPER FUNCTIONS
     def check_result(self, result, pkey, ckeys):
         self.assertEqual(len(result), len(ckeys), "check number of clustering rows")
         for i in range(len(result)):
@@ -190,7 +188,7 @@ class ClusteringKeyFilterTest(Tester):
 
     def check_number_of_rows(self, node, expected_number_of_rows):
         debug("Checking number of rows on node1...")
-        query="SELECT COUNT(*) FROM cf"
+        query = "SELECT COUNT(*) FROM cf"
         statement = SimpleStatement(query)
         s = self.patient_cql_connection(node, 'ks')
         result = list(s.execute(statement))
@@ -202,7 +200,7 @@ class ClusteringKeyFilterTest(Tester):
         return list(s.execute(statement))
 
     def remove_row(self, node1, row):
-        query="DELETE FROM cf WHERE p1=\'{}\';".format(row)
+        query = "DELETE FROM cf WHERE p1=\'{}\';".format(row)
         statement = SimpleStatement(query)
         s = self.patient_cql_connection(node1, 'ks')
         s.execute(statement)

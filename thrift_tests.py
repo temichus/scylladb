@@ -4,7 +4,6 @@ import time
 import uuid
 
 from thrift.protocol import TBinaryProtocol
-from thrift.Thrift import TApplicationException
 from thrift.transport import TSocket, TTransport
 
 from dtest import DISABLE_VNODES, NUM_TOKENS, Tester, debug
@@ -16,13 +15,14 @@ from thrift_bindings.v22.Cassandra import (CfDef, Column, ColumnDef,
                                            Deletion, IndexExpression,
                                            IndexOperator, IndexType,
                                            InvalidRequestException, KeyRange,
-                                           KeySlice, KsDef, MultiSliceRequest,
+                                           KsDef, MultiSliceRequest,
                                            Mutation, NotFoundException,
                                            SlicePredicate, SliceRange,
-                                           SuperColumn, Compression)
+                                           SuperColumn)
 from tools import since
 from assertions import assert_one, assert_none
 from nose.tools import nottest
+
 
 def get_thrift_client(host='127.0.0.1', port=9160):
     socket = TSocket.TSocket(host, port)
@@ -114,7 +114,7 @@ class ThriftTester(BaseTester):
                                         Cassandra.CfDef('Keyspace2', 'Standard3'),
                                         #Cassandra.CfDef('Keyspace2', 'Super3', column_type='Super', subcomparator_type='BytesType'),
                                         #Cassandra.CfDef('Keyspace2', 'Super4', column_type='Super', subcomparator_type='TimeUUIDType'),
-                                    ])
+        ])
 
         for ks in [keyspace1, keyspace2]:
             self.client.system_add_keyspace(ks)
@@ -1670,7 +1670,7 @@ class TestMutations(ThriftTester):
         # modify valid
         modified_keyspace = KsDef('CreateKeyspace',
                                   'org.apache.cassandra.locator.NetworkTopologyStrategy',
-                                  { },
+                                  {},
                                   cf_defs=[])
         client.system_update_keyspace(modified_keyspace)
         modks = client.describe_keyspace('CreateKeyspace')
@@ -2429,6 +2429,7 @@ class TestCQLAccesses(ThriftTester):
 
         # And check everything is gone
         assert_none(session, "SELECT * FROM t")
+
 
 class TestCompactStorageThriftAccesses(ThriftTester):
 

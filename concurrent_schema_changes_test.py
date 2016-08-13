@@ -22,7 +22,7 @@ def wait(delay=2):
     time.sleep(delay)
 
 
-#@require(10699)
+# @require(10699)
 class TestConcurrentSchemaChanges(Tester):
 
     def __init__(self, *argv, **kwargs):
@@ -500,7 +500,7 @@ class TestConcurrentSchemaChanges(Tester):
 
         cluster.stop()
 
-        ### restore the snapshots ##
+        # restore the snapshots
         # clear the commitlogs and data
         dirs = ('%s/commitlogs' % node1.get_path(),
                 '%s/commitlogs' % node2.get_path(),

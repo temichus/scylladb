@@ -6,7 +6,7 @@ from unittest import skip
 
 class SnapshotRestoreAdditionalTest(Tester):
 
-    @skip ('unimplemented')
+    @skip('unimplemented')
     def incremental_backup(self):
         """
         Check that incremetal backup works as expected
@@ -20,7 +20,7 @@ class SnapshotRestoreAdditionalTest(Tester):
         """
         fail
 
-    @skip ('unimplemented')
+    @skip('unimplemented')
     def restore_snapshot_using_old_schema(self):
         """
         Check that we can restore snapshot files that use old schema
@@ -34,8 +34,8 @@ class SnapshotRestoreAdditionalTest(Tester):
         8. Check that all data exists
         """
         fail
-   
-    @skip ('unimplemented')
+
+    @skip('unimplemented')
     def restore_snapshot_using_old_token_ownership(self):
         """
         Check that we can restore snapshot files that use a non updated token ownership
@@ -50,7 +50,7 @@ class SnapshotRestoreAdditionalTest(Tester):
         """
         fail
 
-    @skip ('unimplemented')
+    @skip('unimplemented')
     def restore_snapshot_using_different_smp_setting(self):
         """
         Check that we can restore snapshot files that used a different smp setting
@@ -65,7 +65,7 @@ class SnapshotRestoreAdditionalTest(Tester):
         """
         fail
 
-    @skip ('unimplemented')
+    @skip('unimplemented')
     def restore_snapshot_from_cassandra(self):
         """
         Check that we can restore snapshot files that have been created by cassandra
@@ -75,7 +75,7 @@ class SnapshotRestoreAdditionalTest(Tester):
         """
         fail
 
-    @skip ('unimplemented')
+    @skip('unimplemented')
     def failure_durring_snapshot_no_corrupt_data(self):
         """
         Check that we can recover from a failure durring snapshot
@@ -83,12 +83,12 @@ class SnapshotRestoreAdditionalTest(Tester):
         2. Insert data
         3. Start create snapshot
         4. Kill node
-        5. Start node 
+        5. Start node
         6. Check that all data exists
         """
         fail
 
-    @skip ('unimplemented')
+    @skip('unimplemented')
     def failure_durring_restore_no_corrupt_data(self):
         """
         Check that we can recover from a failure durring restore
@@ -99,7 +99,7 @@ class SnapshotRestoreAdditionalTest(Tester):
         5. Create keyspace + table + populate different data
         6. Start restore data
         7. Kill node
-        8. Start node 
+        8. Start node
         9. Check if non restored data exists
         10. Check if any restored data exists
         11. Restore data
@@ -107,7 +107,7 @@ class SnapshotRestoreAdditionalTest(Tester):
         """
         fail
 
-    @skip ('unimplemented')
+    @skip('unimplemented')
     def replay_restore_no_additional_data(self):
         """
         Check that we can restore snapshot files that use old schema
@@ -121,4 +121,3 @@ class SnapshotRestoreAdditionalTest(Tester):
         8. Restore data
         9. Check that all data exists
         """
-

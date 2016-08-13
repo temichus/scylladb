@@ -15,8 +15,8 @@ class CompactionAdditionalTest(Tester):
         Test that data is not resurected when shared sstables
         are used
         1. smp=1 create sstable A with 100 keys
-        2. shutdown 
-        3. boot with smp=2 (forcing step 1 sstables to be shared) delete all keys 
+        2. shutdown
+        3. boot with smp=2 (forcing step 1 sstables to be shared) delete all keys
         4. wait past gc_preiod
         5. insert a key forcing flush multiple times till a compaction is triggered
         6. stop and start the node
@@ -42,7 +42,7 @@ class CompactionAdditionalTest(Tester):
         node1.stop()
         node1.start(wait_for_binary_proto=True, jvm_args=['--smp', '2'])
 
-        session = self.patient_cql_connection(node1,'ks')
+        session = self.patient_cql_connection(node1, 'ks')
         for x in range(0, 100):
             session.execute('delete from cf where key = ' + str(x))
         node1.flush()
@@ -66,7 +66,7 @@ class CompactionAdditionalTest(Tester):
         node1.stop()
         node1.start(wait_for_binary_proto=True, jvm_args=['--smp', '2'])
 
-        session = self.patient_cql_connection(node1,'ks')
+        session = self.patient_cql_connection(node1, 'ks')
         for x in range(0, 100):
             assert_none(session, 'select * from cf where key = ' + str(x))
 
@@ -91,7 +91,7 @@ class CompactionAdditionalTest(Tester):
         compactions_1 = rows[0][0]
         compactions_2 = compactions_1
 
-        while compactions_1+2 > compactions_2:
+        while compactions_1 + 2 > compactions_2:
             for x in range(200, 300):
                 session.execute('insert into ks.cf (key, val) values (' + str(x) + ',1);')
             node1.flush()
@@ -120,7 +120,6 @@ class CompactionAdditionalStrategyTests(Tester):
         kwargs['cluster_options'] = {'start_rpc': 'true'}
         Tester.__init__(self, *args, **kwargs)
 
-
     def compaction_is_started_on_boot_test(self):
         cluster = self.cluster
         cluster.populate(1).start()
@@ -136,29 +135,28 @@ class CompactionAdditionalStrategyTests(Tester):
         node1.flush()
         node1.compact()
         node1.stop()
-        files = glob.glob(os.path.join(node1.get_path(),'commitlogs','*'))
+        files = glob.glob(os.path.join(node1.get_path(), 'commitlogs', '*'))
         for f in files:
             os.remove(f)
 
-        sstablefiles = self._get_sstable_files(node1,'ks','cf')
+        sstablefiles = self._get_sstable_files(node1, 'ks', 'cf')
         for f in sstablefiles:
-            for generation_suffix in xrange(10,40):
-                self._copy_sstable_file(f,"9999%d" % generation_suffix)
+            for generation_suffix in xrange(10, 40):
+                self._copy_sstable_file(f, "9999%d" % generation_suffix)
 
-        before_start_count = len(glob.glob(os.path.join('ks', 'cf' + '-*','TOC.txt')))
+        before_start_count = len(glob.glob(os.path.join('ks', 'cf' + '-*', 'TOC.txt')))
 
         node1.start()
         time.sleep(30)
 
-        after_start_count = len(glob.glob(os.path.join('ks', 'cf' + '-*','TOC.txt')))
+        after_start_count = len(glob.glob(os.path.join('ks', 'cf' + '-*', 'TOC.txt')))
 
-        self.assertEqual(before_start_count,after_start_count)
+        self.assertEqual(before_start_count, after_start_count)
 
     def _copy_sstable_file(self, file, generation):
         sstable_split_parts = os.path.basename(file).split('-')
         sstable_split_parts[-2] = generation
-        shutil.copy(file,os.path.join(os.path.dirname(file), '-'.join(sstable_split_parts)))
-
+        shutil.copy(file, os.path.join(os.path.dirname(file), '-'.join(sstable_split_parts)))
 
     def _get_sstable_files(self, node, ks, table):
         """

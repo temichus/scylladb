@@ -47,23 +47,23 @@ class RepairAdditionalTest(Tester):
     def repair_disjoint_data_test(self, more_options=[]):
         """
         On each of three replicas, insert completely different data.
-        Confirm that repairing a single of these nodes brings all the data 
+        Confirm that repairing a single of these nodes brings all the data
         to all three replicas.
         """
-        debug("Starting cluster...");
+        debug("Starting cluster...")
         # Disable hinted handoff so it doesn't do what we expect repair to do
         self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
         # Create a cluster of 3 nodes, and a keyspace with RF=3 on all nodes
         # (disable read repair, as we want to test the full repair).
         self.cluster.populate(3).start()
         node1, node2, node3 = self.cluster.nodelist()
-        session = self.patient_cql_connection(node1);
-        self.create_ks(session, 'ks', 3);
-        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'});
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 3)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
         # Insert 1000 keys *only* on node 1, another 1000 keys *only* on node 2,
         # another 1000 *only on node 3:
-        debug("Adding data only on node 1...");
+        debug("Adding data only on node 1...")
         node2.flush()
         node2.stop(wait_other_notice=True)
         node3.flush()
@@ -92,9 +92,9 @@ class RepairAdditionalTest(Tester):
         node2.start(wait_other_notice=True, wait_for_binary_proto=True)
 
         # Run repair on (arbitrarily), node 3
-        time.sleep(10) # see CASSANDRA-4373
+        time.sleep(10)  # see CASSANDRA-4373
         debug("starting repair...")
-        info=node3.repair(more_options + ['ks'])
+        info = node3.repair(more_options + ['ks'])
         debug(info[0])
         debug(info[1])
 
@@ -110,29 +110,29 @@ class RepairAdditionalTest(Tester):
         the node with the data. Verify that the data (and its schema) have been
         correctly replicated to the second node.
         """
-        debug("Starting cluster...");
+        debug("Starting cluster...")
         # Start a cluster of two nodes, and create a keyspace with RF=2.
         # Do *not* create a table yet - we'll do that with one node down
         self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
         self.cluster.populate(2).start()
         node1, node2 = self.cluster.nodelist()
-        session = self.patient_cql_connection(node1);
-        self.create_ks(session, 'ks', 2);
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 2)
 
         # Take node2 down, and create a new table and data on node1 only.
-        debug("Creating table and data only on node 1...");
+        debug("Creating table and data only on node 1...")
         node2.flush()
         node2.stop(wait_other_notice=True)
-        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'});
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
         insert_c1c2(session, keys=range(1000, 2000), consistency=ConsistencyLevel.ONE)
 
         # At this point node2 is not only missing some data, it is actually
         # missing an entire table. Let's bring node2 back up, start repair on
         # node1, and see if node2 gets the new table, and all its data.
         node2.start(wait_other_notice=True, wait_for_binary_proto=True)
-        time.sleep(10) # see CASSANDRA-4373
+        time.sleep(10)  # see CASSANDRA-4373
         debug("starting repair on node1...")
-        info=node1.repair(['ks'])
+        info = node1.repair(['ks'])
         debug(info[0])
         debug(info[1])
 
@@ -153,29 +153,29 @@ class RepairAdditionalTest(Tester):
         harder test, because there is a risk our code will not try to repair the
         cf it doesn't know about.
         """
-        debug("Starting cluster...");
+        debug("Starting cluster...")
         # Start a cluster of two nodes, and create a keyspace with RF=2.
         # Do *not* create a table yet - we'll do that with one node down
         self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
         self.cluster.populate(2).start()
         node1, node2 = self.cluster.nodelist()
-        session = self.patient_cql_connection(node1);
-        self.create_ks(session, 'ks', 2);
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 2)
 
         # Take node2 down, and create a new table and data on node1 only.
-        debug("Creating table and data only on node 1...");
+        debug("Creating table and data only on node 1...")
         node2.flush()
         node2.stop(wait_other_notice=True)
-        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'});
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
         insert_c1c2(session, keys=range(1000, 2000), consistency=ConsistencyLevel.ONE)
 
         # At this point node2 is not only missing some data, it is actually
         # missing an entire table. Let's bring node2 back up, start repair on
         # node2, and see if node2 gets the new table, and all its data.
         node2.start(wait_other_notice=True, wait_for_binary_proto=True)
-        time.sleep(10) # see CASSANDRA-4373
+        time.sleep(10)  # see CASSANDRA-4373
         debug("starting repair on node1...")
-        info=node2.repair(['ks'])
+        info = node2.repair(['ks'])
         debug(info[0])
         debug(info[1])
 
@@ -191,21 +191,21 @@ class RepairAdditionalTest(Tester):
         one of these nodes (with the other node down). Then confirm that repair can
         fix this on the second node as well.
         """
-        debug("Starting cluster and inserting data...");
+        debug("Starting cluster and inserting data...")
         # Start a cluster of two nodes, and create a keyspace with RF=2, and
         # a table with one partition. Hinted handoff and read repair are disabled
         # so they don't fix the problems which repair is supposed to fix
         self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
         self.cluster.populate(2).start()
         node1, node2 = self.cluster.nodelist()
-        session = self.patient_cql_connection(node1);
-        self.create_ks(session, 'ks', 2);
-        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'});
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 2)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
         query = SimpleStatement("INSERT INTO cf (key, c1, c2) VALUES ('key', 'hello', 'hi')", consistency_level=ConsistencyLevel.ALL)
         session.execute(query)
 
         # Bring down node2, and change the existing data on node 1
-        debug("Bringing down node2 and updating data on node 1...");
+        debug("Bringing down node2 and updating data on node 1...")
         node2.flush()
         node2.stop(wait_other_notice=True)
         query = SimpleStatement("INSERT INTO cf (key, c1, c2) VALUES ('key', 'new', 'yo')", consistency_level=ConsistencyLevel.ONE)
@@ -231,7 +231,7 @@ class RepairAdditionalTest(Tester):
         # Finally bring both nodes up, repair, and confirm (by bringing up only
         # node 2) that the data on node2 is now up to date.
         node1.start(wait_other_notice=True, wait_for_binary_proto=True)
-        info=node2.repair(['ks'])
+        info = node2.repair(['ks'])
         debug(info[0])
         debug(info[1])
         node1.flush()
@@ -249,21 +249,21 @@ class RepairAdditionalTest(Tester):
         one of these nodes (with the other node down) to delete an existing cell.
         Then confirm that repair can fix this on the second node as well.
         """
-        debug("Starting cluster and inserting data...");
+        debug("Starting cluster and inserting data...")
         # Start a cluster of two nodes, and create a keyspace with RF=2, and
         # a table with one partition. Hinted handoff and read repair are disabled
         # so they don't fix the problems which repair is supposed to fix
         self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
         self.cluster.populate(2).start()
         node1, node2 = self.cluster.nodelist()
-        session = self.patient_cql_connection(node1);
-        self.create_ks(session, 'ks', 2);
-        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'});
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 2)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
         query = SimpleStatement("INSERT INTO cf (key, c1, c2) VALUES ('key', 'hello', 'hi')", consistency_level=ConsistencyLevel.ALL)
         session.execute(query)
 
         # Bring down node2, and change the existing data on node 1
-        debug("Bringing down node2 and updating data on node 1...");
+        debug("Bringing down node2 and updating data on node 1...")
         node2.flush()
         node2.stop(wait_other_notice=True)
         query = SimpleStatement("DELETE c1 FROM cf WHERE key ='key'", consistency_level=ConsistencyLevel.ONE)
@@ -289,7 +289,7 @@ class RepairAdditionalTest(Tester):
         # Finally bring both nodes up, repair, and confirm (by bringing up only
         # node 2) that the data on node2 is now up to date.
         node1.start(wait_other_notice=True, wait_for_binary_proto=True)
-        info=node2.repair(['ks'])
+        info = node2.repair(['ks'])
         debug(info[0])
         debug(info[1])
         node1.flush()
@@ -308,16 +308,16 @@ class RepairAdditionalTest(Tester):
         Such a delete will result in a range tombstone.
         Then confirm that repair can fix this on the second node as well.
         """
-        debug("Starting cluster and inserting data...");
+        debug("Starting cluster and inserting data...")
         # Start a cluster of two nodes, and create a keyspace with RF=2, and
         # a table with one partition. Hinted handoff and read repair are disabled
         # so they don't fix the problems which repair is supposed to fix
         self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
         self.cluster.populate(2).start()
         node1, node2 = self.cluster.nodelist()
-        session = self.patient_cql_connection(node1);
-        self.create_ks(session, 'ks', 2);
-        session.execute("CREATE TABLE cf (name text, pet text, age int, PRIMARY KEY ((name), pet)) WITH compression = {} AND read_repair_chance = 0.0;");
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 2)
+        session.execute("CREATE TABLE cf (name text, pet text, age int, PRIMARY KEY ((name), pet)) WITH compression = {} AND read_repair_chance = 0.0;")
 
         query = SimpleStatement("INSERT INTO cf (name, pet, age) VALUES ('nadav', 'kitty', 5)", consistency_level=ConsistencyLevel.ALL)
         session.execute(query)
@@ -325,7 +325,7 @@ class RepairAdditionalTest(Tester):
         session.execute(query)
 
         # Bring down node2, and change the existing data on node 1
-        debug("Bringing down node2 and updating data on node 1...");
+        debug("Bringing down node2 and updating data on node 1...")
         node2.flush()
         node2.stop(wait_other_notice=True)
         query = SimpleStatement("DELETE FROM cf WHERE name = 'nadav' AND pet = 'kitty'", consistency_level=ConsistencyLevel.ONE)
@@ -348,7 +348,7 @@ class RepairAdditionalTest(Tester):
         # Finally bring both nodes up, repair, and confirm (by bringing up only
         # node 2) that the data on node2 is now up to date.
         node1.start(wait_other_notice=True, wait_for_binary_proto=True)
-        info=node2.repair(['ks'])
+        info = node2.repair(['ks'])
         debug(info[0])
         debug(info[1])
         node1.flush()
@@ -366,16 +366,16 @@ class RepairAdditionalTest(Tester):
         nodes (with the other node down). Then confirm that repair can fix this on
         the second node as well.
         """
-        debug("Starting cluster and inserting data...");
+        debug("Starting cluster and inserting data...")
         # Start a cluster of two nodes, and create a keyspace with RF=2, and
         # a table with three partitions. Hinted handoff and read repair are disabled
         # so they don't fix the problems which repair is supposed to fix
         self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
         self.cluster.populate(2).start()
         node1, node2 = self.cluster.nodelist()
-        session = self.patient_cql_connection(node1);
-        self.create_ks(session, 'ks', 2);
-        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'});
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 2)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
         query = SimpleStatement("INSERT INTO cf (key, c1, c2) VALUES ('k1', 'v11', 'v12')", consistency_level=ConsistencyLevel.ALL)
         session.execute(query)
         query = SimpleStatement("INSERT INTO cf (key, c1, c2) VALUES ('k2', 'v21', 'v22')", consistency_level=ConsistencyLevel.ALL)
@@ -384,7 +384,7 @@ class RepairAdditionalTest(Tester):
         session.execute(query)
 
         # Bring down node2, and change the existing data on node 1
-        debug("Bringing down node2 and updating data on node 1...");
+        debug("Bringing down node2 and updating data on node 1...")
         node2.flush()
         node2.stop(wait_other_notice=True)
         query = SimpleStatement("DELETE FROM cf WHERE key = 'k1';", consistency_level=ConsistencyLevel.ONE)
@@ -409,7 +409,7 @@ class RepairAdditionalTest(Tester):
         # Finally bring both nodes up, repair, and confirm (by bringing up only
         # node 2) that the data on node2 is now up to date.
         node1.start(wait_other_notice=True, wait_for_binary_proto=True)
-        info=node2.repair(['ks'])
+        info = node2.repair(['ks'])
         debug(info[0])
         debug(info[1])
         node1.flush()
@@ -441,9 +441,9 @@ class RepairAdditionalTest(Tester):
         self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
         self.cluster.populate(2).start()
         node1, node2 = self.cluster.nodelist()
-        session = self.patient_cql_connection(node1);
-        self.create_ks(session, 'ks', 2);
-        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'});
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 2)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
         query = SimpleStatement("INSERT INTO cf (key, c1, c2) VALUES ('key', 'hello', 'hi')", consistency_level=ConsistencyLevel.ALL)
         session.execute(query)
 
@@ -474,7 +474,7 @@ class RepairAdditionalTest(Tester):
             if '["c1",' in line:
                 self.assertTrue('"e",1234,' in line, "TTL set to 1234")
                 save_line = line
-        self.assertTrue(save_line != None, "TTL set in sstable")
+        self.assertTrue(save_line is not None, "TTL set in sstable")
 
         # Confirm (by bringing only node 2 up) that node2 still has old data
         node2.start(wait_other_notice=True, wait_for_binary_proto=True)
@@ -503,7 +503,7 @@ class RepairAdditionalTest(Tester):
         # Finally bring both nodes up, repair, and confirm (by bringing up only
         # node 2) that the data on node2 is now up to date.
         node1.start(wait_other_notice=True, wait_for_binary_proto=True)
-        info=node2.repair(['ks'])
+        info = node2.repair(['ks'])
         debug(info[0])
         debug(info[1])
         node1.flush()
@@ -523,7 +523,7 @@ class RepairAdditionalTest(Tester):
             if '["c1",' in line:
                 if save_line == line:
                     save_line = None
-        self.assertTrue(save_line == None, "expected c1 value and timeout in sstable")
+        self.assertTrue(save_line is None, "expected c1 value and timeout in sstable")
 
     def repair_option_pr_test(self):
         """
@@ -541,12 +541,12 @@ class RepairAdditionalTest(Tester):
         self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
         self.cluster.populate(2).start()
         node1, node2 = self.cluster.nodelist()
-        session = self.patient_cql_connection(node1);
-        self.create_ks(session, 'ks', 2);
-        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'});
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 2)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
         # Insert 1000 keys *only* on node 1, another 1000 keys *only* on node 2:
-        debug("Adding data only on node 1...");
+        debug("Adding data only on node 1...")
         node2.flush()
         node2.stop(wait_other_notice=True)
         session = self.patient_cql_connection(node1, 'ks')
@@ -563,7 +563,7 @@ class RepairAdditionalTest(Tester):
         node1.start(wait_other_notice=True, wait_for_binary_proto=True)
 
         # Run partioner-range repair on node 1
-        info=node1.repair(['-pr', 'ks'])
+        info = node1.repair(['-pr', 'ks'])
         debug(info[0])
         debug(info[1])
 
@@ -590,7 +590,7 @@ class RepairAdditionalTest(Tester):
         # all the ranges not previously repared (i.e., this times the ranges
         # whose primary is node 2), and at the end, all data, 2000 partitions,
         # should be on both nodes.
-        info=node2.repair(['-pr', 'ks'])
+        info = node2.repair(['-pr', 'ks'])
         debug(info[0])
         debug(info[1])
         self.check_rows_on_node(node1, 2000)
@@ -610,11 +610,11 @@ class RepairAdditionalTest(Tester):
         self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
         self.cluster.populate(2).start()
         node1, node2 = self.cluster.nodelist()
-        session = self.patient_cql_connection(node1);
-        self.create_ks(session, 'ks', 2);
-        self.create_cf(session, 'cf1', read_repair=0.0, columns={'c1': 'text'});
-        self.create_cf(session, 'cf2', read_repair=0.0, columns={'c1': 'text'});
-        self.create_cf(session, 'cf3', read_repair=0.0, columns={'c1': 'text'});
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 2)
+        self.create_cf(session, 'cf1', read_repair=0.0, columns={'c1': 'text'})
+        self.create_cf(session, 'cf2', read_repair=0.0, columns={'c1': 'text'})
+        self.create_cf(session, 'cf3', read_repair=0.0, columns={'c1': 'text'})
 
         # Insert one key in each cf *only* on node 1, another key *only* on node 2:
         node2.flush()
@@ -642,7 +642,7 @@ class RepairAdditionalTest(Tester):
         node1.start(wait_other_notice=True, wait_for_binary_proto=True)
 
         # Run partioner-range repair on node 1
-        info=node1.repair(['ks', 'cf1', 'cf3'])
+        info = node1.repair(['ks', 'cf1', 'cf3'])
         debug(info[0])
         debug(info[1])
 
@@ -665,7 +665,7 @@ class RepairAdditionalTest(Tester):
         # repair again without a cf option, and see that all cfs, and in
         # particular cf2 (which we haven't repaired so far), get repaired.
         node2.start(wait_other_notice=True, wait_for_binary_proto=True)
-        info=node1.repair(['ks'])
+        info = node1.repair(['ks'])
         debug(info[0])
         debug(info[1])
         node1.flush()
@@ -681,9 +681,9 @@ class RepairAdditionalTest(Tester):
         self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
         self.cluster.populate(2).start()
         node1, node2 = self.cluster.nodelist()
-        session = self.patient_cql_connection(node1);
-        self.create_ks(session, 'ks', 2);
-        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text'});
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 2)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text'})
 
         # Repairing an invalid column family in a valid keyspace
         with self.assertRaises(NodetoolError):
@@ -714,10 +714,10 @@ class RepairAdditionalTest(Tester):
         self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
         self.cluster.populate([2, 1, 1]).start()
         node1, node2, node3, node4 = self.cluster.nodelist()
-        session = self.patient_cql_connection(node1);
+        session = self.patient_cql_connection(node1)
         session.execute("CREATE KEYSPACE ks WITH replication = {'class': 'NetworkTopologyStrategy', 'dc1': 2, 'dc2' : 1, 'dc3': 1};")
         session.set_keyspace('ks')
-        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text'});
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text'})
 
         # Insert one key *only* on node 1 (of dc1). All the other nodes will
         # be missing this data.
@@ -737,7 +737,7 @@ class RepairAdditionalTest(Tester):
         node2.start(wait_other_notice=True, wait_for_binary_proto=True)
         node3.start(wait_other_notice=True, wait_for_binary_proto=True)
         node4.start(wait_other_notice=True, wait_for_binary_proto=True)
-        info=node1.repair(['-dc', 'dc1,dc3', 'ks'])
+        info = node1.repair(['-dc', 'dc1,dc3', 'ks'])
         debug(info[0])
         debug(info[1])
         node1.flush()
@@ -775,7 +775,7 @@ class RepairAdditionalTest(Tester):
 
         # Repair again without a "-dc" option - should repair all nodes in all
         # data centers, and in particular node3 (in dc2) .
-        info=node1.repair(['ks'])
+        info = node1.repair(['ks'])
         debug(info[0])
         debug(info[1])
         node1.flush()
@@ -800,7 +800,7 @@ class RepairAdditionalTest(Tester):
         node2.start(wait_other_notice=True, wait_for_binary_proto=True)
         node3.start(wait_other_notice=True, wait_for_binary_proto=True)
         node4.start(wait_other_notice=True, wait_for_binary_proto=True)
-        info=node1.repair(['-local', 'ks'])
+        info = node1.repair(['-local', 'ks'])
         debug(info[0])
         debug(info[1])
         node1.flush()
@@ -834,13 +834,13 @@ class RepairAdditionalTest(Tester):
         # (disable read repair, as we want to test the full repair).
         self.cluster.populate(3).start()
         node1, node2, node3 = self.cluster.nodelist()
-        session = self.patient_cql_connection(node1);
-        self.create_ks(session, 'ks', 3);
-        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'});
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 3)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
         # Insert 1000 keys *only* on node 1, another 1000 keys *only* on node 2,
         # another 1000 *only on node 3:
-        debug("Adding data only on node 1...");
+        debug("Adding data only on node 1...")
         node2.flush()
         node2.stop(wait_other_notice=True)
         node3.flush()
@@ -909,9 +909,9 @@ class RepairAdditionalTest(Tester):
         self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
         self.cluster.populate(2).start()
         node1, node2 = self.cluster.nodelist()
-        session = self.patient_cql_connection(node1);
-        self.create_ks(session, 'ks', 2);
-        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'});
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 2)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
         # Insert 1000 keys *only* on node 1, another 1000 keys *only* on node 2
         node2.flush()
         node2.stop(wait_other_notice=True)
@@ -987,9 +987,9 @@ class RepairAdditionalTest(Tester):
         self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
         self.cluster.populate(2).start()
         node1, node2 = self.cluster.nodelist()
-        session = self.patient_cql_connection(node1);
-        self.create_ks(session, 'ks', 2);
-        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'});
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 2)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
         # Insert 1000 keys *only* on node 1, another 1000 keys *only* on node 2
         node2.flush()
         node2.stop(wait_other_notice=True)
@@ -1034,9 +1034,9 @@ class RepairAdditionalTest(Tester):
         self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
         self.cluster.populate(2).start()
         node1, node2 = self.cluster.nodelist()
-        session = self.patient_cql_connection(node1);
-        self.create_ks(session, 'ks', 2);
-        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'});
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 2)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
         # Insert 10000 keys *only* on node 1, another 10000 keys *only* on node 2:
         node2.flush()
@@ -1087,9 +1087,9 @@ class RepairAdditionalTest(Tester):
         # repair complains about the missing neighbors.
         self.cluster.populate(3).start()
         node1, node2, node3 = self.cluster.nodelist()
-        session = self.patient_cql_connection(node1);
-        self.create_ks(session, 'ks', 2);
-        self.create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'});
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 2)
+        self.create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'})
 
         # Bring down node 3, and start repair on node 2. Note that because we
         # have 3 nodes and RF=2, half of the vnodes in node 2 will have as
@@ -1116,9 +1116,9 @@ class RepairAdditionalTest(Tester):
         self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
         self.cluster.populate(3).start()
         node1, node2, node3 = self.cluster.nodelist()
-        session = self.patient_cql_connection(node1);
-        self.create_ks(session, 'ks', 2);
-        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'});
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 2)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
         # We want to put different data on node 1 and on node 2 so repair
         # of these nodes has something to do. We can't write specific
         # partitions specifically to node 1 directly because on 3 nodes with
@@ -1203,9 +1203,9 @@ class RepairAdditionalTest(Tester):
         # repair complains about the missing neighbors.
         self.cluster.populate(4).start()
         node1, node2, node3, node4 = self.cluster.nodelist()
-        session = self.patient_cql_connection(node1);
-        self.create_ks(session, 'ks', 3);
-        self.create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'});
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 3)
+        self.create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'})
 
         # Bring down node 3, and start repair on node 2. Note that because we
         # have 4 nodes and RF=3, 2/3rds of the vnodes in node 2 will have the
@@ -1237,9 +1237,9 @@ class RepairAdditionalTest(Tester):
         self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
         self.cluster.populate(4).start()
         node1, node2, node3, node4 = self.cluster.nodelist()
-        session = self.patient_cql_connection(node1);
-        self.create_ks(session, 'ks', 3);
-        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'});
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 3)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
         # We want to put different data on node 1 and on node 2 so repair
         # of these nodes has something to do. We can't write specific
         # partitions specifically to node 1 directly because on 4 nodes with
@@ -1314,9 +1314,9 @@ class RepairAdditionalTest(Tester):
         self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
         self.cluster.populate(4).start()
         node1, node2, node3, node4 = self.cluster.nodelist()
-        session = self.patient_cql_connection(node1);
-        self.create_ks(session, 'ks', 3);
-        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'});
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 3)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
         # We want to put different data on node 1 and on node 2 so repair
         # of these nodes has something to do. We can't write specific
         # partitions specifically to node 1 directly because on 4 nodes with
@@ -1368,7 +1368,7 @@ class RepairAdditionalTest(Tester):
         debug(len(result))
         self.assertEqual(len(result), 2000)
 
-    @skip ('unimplemented')
+    @skip('unimplemented')
     def repair_of_cluster_all_nodes_are_out_of_sync(self):
         """
         Check that repair fixes all inconsistencies in data
@@ -1387,7 +1387,7 @@ class RepairAdditionalTest(Tester):
         """
         fail
 
-    @skip ('unimplemented')
+    @skip('unimplemented')
     def full_repair_of_node_initiated_on_node_with_latest_data_test(self):
         """
         Check that repair transfers all the data in case non exists
@@ -1400,7 +1400,7 @@ class RepairAdditionalTest(Tester):
         """
         fail
 
-    @skip ('unimplemented')
+    @skip('unimplemented')
     def full_repair_of_node_initiated_on_node_without_data(self):
         """
         Check that repair transfers all the data in case non exists
@@ -1413,7 +1413,7 @@ class RepairAdditionalTest(Tester):
         """
         fail
 
-    @skip ('unimplemented')
+    @skip('unimplemented')
     def repair_fixes_updates_to_cells_test(self):
         """
         Check that repair fixes a few update to cells contents
@@ -1427,7 +1427,7 @@ class RepairAdditionalTest(Tester):
         """
         fail
 
-    @skip ('unimplemented')
+    @skip('unimplemented')
     def repair_fixes_remove_of_keys_test(self):
         """
         Check that repair fixes a few removed keys
@@ -1441,7 +1441,7 @@ class RepairAdditionalTest(Tester):
         """
         fail
 
-    @skip ('unimplemented')
+    @skip('unimplemented')
     def repair_fixes_deletion_of_cells_test(self):
         """
         Check that repair fixes a deleteion of cells
@@ -1455,7 +1455,7 @@ class RepairAdditionalTest(Tester):
         """
         fail
 
-    @skip ('unimplemented')
+    @skip('unimplemented')
     def repair_fixes_deletion_of_range_of_cells_test(self):
         """
         Check that repair fixes a deletion of cell range
@@ -1469,7 +1469,7 @@ class RepairAdditionalTest(Tester):
         """
         fail
 
-    @skip ('unimplemented')
+    @skip('unimplemented')
     def repair_fixes_update_of_ttl_test(self):
         """
         Check that repair fixes updates to ttl
@@ -1484,7 +1484,7 @@ class RepairAdditionalTest(Tester):
         """
         fail
 
-    @skip ('unimplemented')
+    @skip('unimplemented')
     def fail_node_initiating_repair_test(self):
         """
         Check that killing a repaired node does not cause additional failures
@@ -1499,7 +1499,7 @@ class RepairAdditionalTest(Tester):
         """
         fail
 
-    @skip ('unimplemented')
+    @skip('unimplemented')
     def fail_node_responding_to_repair_test(self):
         """
         Check that killing a repairing node does not cause additional failures
@@ -1515,7 +1515,7 @@ class RepairAdditionalTest(Tester):
         """
         fail
 
-    @skip ('unimplemented')
+    @skip('unimplemented')
     def repair_while_data_is_updated_test(self):
         """
         Check that data can be updated while repair is running
@@ -1530,7 +1530,7 @@ class RepairAdditionalTest(Tester):
         """
         fail
 
-    @skip ('unimplemented')
+    @skip('unimplemented')
     def repair_while_nodes_are_down_1_test(self):
         """
         Check that repair is not able to complete if no replicas for data exist
@@ -1544,7 +1544,7 @@ class RepairAdditionalTest(Tester):
         """
         fail
 
-    @skip ('unimplemented')
+    @skip('unimplemented')
     def repair_while_nodes_are_down_2_test(self):
         """
         Check that repair is able to complete if one replica of data exists
@@ -1558,7 +1558,7 @@ class RepairAdditionalTest(Tester):
         """
         fail
 
-    @skip ('unimplemented')
+    @skip('unimplemented')
     def repair_while_new_node_is_added_test(self):
         """
         Check that repair is accompileshed while new node is added
@@ -1571,7 +1571,7 @@ class RepairAdditionalTest(Tester):
         """
         fail
 
-    @skip ('unimplemented')
+    @skip('unimplemented')
     def repair_while_node_is_decomissioned_test(self):
         """
         Check that repair is accompileshed while node is decomissioned
@@ -1584,4 +1584,3 @@ class RepairAdditionalTest(Tester):
         8. Stop node 1 - does node 2 hold all the data
         """
         fail
-

@@ -54,7 +54,7 @@ class TestCompaction(Tester):
         numfound = jsoninfo.count("markedForDeleteAt")
 
         self.assertEqual(numfound, 10)
- 
+
     @since('0', '2.2.X')
     def compaction_delete_test(self):
         """
@@ -70,7 +70,7 @@ class TestCompaction(Tester):
         Insert data, delete a partition of data, compact and test
         Wait past gc_period, compact and test.
         """
- 
+
         self._compaction_delete_test()
         [node1] = self.cluster.nodelist()
         session = self.patient_cql_connection(node1)
@@ -261,7 +261,7 @@ class TestCompaction(Tester):
         Insert data, switch strategies, then check against data loss.
         """
         # FIXME: Add DateTieredCompactionStrategy to list below once it gets supported.
-        strategies = ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy' ]
+        strategies = ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy']
 
         if self.strategy in strategies:
             strategies.remove(self.strategy)

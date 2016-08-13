@@ -246,6 +246,7 @@ def generate_ssl_stores(base_dir, passphrase='cassandra'):
             if e.errno != errno.ENOENT:  # ENOENT = no such file or directory
                 raise
 
+
 class since(object):
 
     def __init__(self, cass_version, max_version=None):
@@ -402,6 +403,7 @@ class InterruptCompaction(Thread):
     available in a file called "debug.log" unless a
     different name is passed in as a paramter.
     """
+
     def __init__(self, node, tablename, filename='debug.log'):
         Thread.__init__(self)
         self.node = node
