@@ -1,12 +1,8 @@
-import os
 import time
-
-from unittest import skip
 
 from cassandra.query import SimpleStatement
 
 from dtest import Tester, debug
-from nose import tools
 
 # All tests here should run with row cache disabled to make sure that the filtering capability is indeed working properly.
 # start_cluster_and_get_node1() starts Scylla with --enable-cache set to 0.

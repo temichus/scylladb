@@ -4,7 +4,6 @@ import time
 import uuid
 
 from thrift.protocol import TBinaryProtocol
-from thrift.Thrift import TApplicationException
 from thrift.transport import TSocket, TTransport
 
 from dtest import DISABLE_VNODES, NUM_TOKENS, Tester, debug
@@ -16,10 +15,10 @@ from thrift_bindings.v22.Cassandra import (CfDef, Column, ColumnDef,
                                            Deletion, IndexExpression,
                                            IndexOperator, IndexType,
                                            InvalidRequestException, KeyRange,
-                                           KeySlice, KsDef, MultiSliceRequest,
+                                           KsDef, MultiSliceRequest,
                                            Mutation, NotFoundException,
                                            SlicePredicate, SliceRange,
-                                           SuperColumn, Compression)
+                                           SuperColumn)
 from tools import since
 from assertions import assert_one, assert_none
 from nose.tools import nottest

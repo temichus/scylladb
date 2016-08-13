@@ -1,17 +1,7 @@
-import threading
-import time
-from datetime import datetime
 import os
 import distutils.dir_util
 
-from cassandra import Unavailable, ConsistencyLevel, WriteTimeout, OperationTimedOut
-from cassandra.policies import FallthroughRetryPolicy
-from cassandra.query import SimpleStatement
-from cassandra.cluster import NoHostAvailable
-from ccmlib.node import NodeError
-
 from dtest import Tester, debug
-from tools import insert_c1c2, query_c1c2, new_node
 
 
 class TestPartitioner(Tester):
