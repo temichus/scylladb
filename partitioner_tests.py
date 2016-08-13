@@ -40,7 +40,7 @@ class TestPartitioner(Tester):
 
         session = self.patient_cql_connection(node1)
 
-        result = session.execute("SELECT * FROM ks2.tb")
+        result = list(session.execute("SELECT * FROM ks2.tb"))
 
         self.assertEqual(len(result), 30, len(result))
 

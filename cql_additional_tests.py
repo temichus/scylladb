@@ -89,16 +89,16 @@ class TestCQL(Tester):
 
         # Queries
         res = session.execute("SELECT firstname, lastname FROM users WHERE userid = 550e8400-e29b-41d4-a716-446655440000")
-        assert rows_to_list(res) == [['Frodo', 'Baggins']], res
+        assert rows_to_list(res) == [['Frodo', 'Baggins']], list(res)
 
         res = session.execute("SELECT * FROM users WHERE userid = 550e8400-e29b-41d4-a716-446655440000")
-        assert rows_to_list(res) == [[UUID('550e8400-e29b-41d4-a716-446655440000'), 32, 'Frodo', 'Baggins']], res
+        assert rows_to_list(res) == [[UUID('550e8400-e29b-41d4-a716-446655440000'), 32, 'Frodo', 'Baggins']], list(res)
 
         res = session.execute("SELECT * FROM users")
         assert rows_to_list(res) == [
             [UUID('f47ac10b-58cc-4372-a567-0e02b2c3d479'), 33, 'Samwise', 'Gamgee'],
             [UUID('550e8400-e29b-41d4-a716-446655440000'), 32, 'Frodo', 'Baggins'],
-        ], res
+        ], list(res)
 
         # Test batch inserts
         session.execute("""
@@ -114,7 +114,7 @@ class TestCQL(Tester):
         assert rows_to_list(res) == [
             [UUID('f47ac10b-58cc-4372-a567-0e02b2c3d479'), 37, None, None],
             [UUID('550e8400-e29b-41d4-a716-446655440000'), 36, None, None],
-        ], res
+        ], list(res)
 
     def large_collection_errors(self):
         """
@@ -168,16 +168,16 @@ class TestCQL(Tester):
 
         # Queries
         res = session.execute("SELECT firstname, lastname FROM users WHERE userid = 550e8400-e29b-41d4-a716-446655440000")
-        assert rows_to_list(res) == [['Frodo', 'Baggins']], res
+        assert rows_to_list(res) == [['Frodo', 'Baggins']], list(res)
 
         res = session.execute("SELECT * FROM users WHERE userid = 550e8400-e29b-41d4-a716-446655440000")
-        assert rows_to_list(res) == [[UUID('550e8400-e29b-41d4-a716-446655440000'), 32, 'Frodo', 'Baggins']], res
+        assert rows_to_list(res) == [[UUID('550e8400-e29b-41d4-a716-446655440000'), 32, 'Frodo', 'Baggins']], list(res)
 
         res = session.execute("SELECT * FROM users")
         assert rows_to_list(res) == [
             [UUID('f47ac10b-58cc-4372-a567-0e02b2c3d479'), 33, 'Samwise', 'Gamgee'],
             [UUID('550e8400-e29b-41d4-a716-446655440000'), 32, 'Frodo', 'Baggins'],
-        ], res
+        ], list(res)
 
         # Test batch inserts
         session.execute("""
@@ -193,7 +193,7 @@ class TestCQL(Tester):
         assert rows_to_list(res) == [
             [UUID('f47ac10b-58cc-4372-a567-0e02b2c3d479'), 37, None, None],
             [UUID('550e8400-e29b-41d4-a716-446655440000'), 36, None, None],
-        ], res
+        ], list(res)
 
     def dynamic_cf_test(self):
         """
@@ -219,17 +219,17 @@ class TestCQL(Tester):
 
         # Queries
         res = session.execute("SELECT url, time FROM clicks WHERE userid = 550e8400-e29b-41d4-a716-446655440000")
-        assert rows_to_list(res) == [['http://bar.bar', 128], ['http://foo-2.bar', 24], ['http://foo-3', 12], ['http://foo.bar', 42]], res
+        assert rows_to_list(res) == [['http://bar.bar', 128], ['http://foo-2.bar', 24], ['http://foo-3', 12], ['http://foo.bar', 42]], list(res)
 
         res = session.execute("SELECT * FROM clicks WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479")
         assert rows_to_list(res) == [
             [UUID('f47ac10b-58cc-4372-a567-0e02b2c3d479'), 'http://bar.foo', 24],
             [UUID('f47ac10b-58cc-4372-a567-0e02b2c3d479'), 'http://foo-3', 12]
-        ], res
+        ], list(res)
 
         res = session.execute("SELECT time FROM clicks")
         # Result from 'f47ac10b-58cc-4372-a567-0e02b2c3d479' are first
-        assert rows_to_list(res) == [[24], [12], [128], [24], [12], [42]], res
+        assert rows_to_list(res) == [[24], [12], [128], [24], [12], [42]], list(res)
 
         # Check we don't allow empty values for url since this is the full underlying cell name (#6152)
         assert_invalid(session, "INSERT INTO clicks (userid, url, time) VALUES (810e8500-e29b-41d4-a716-446655440000, '', 42)")
@@ -262,16 +262,16 @@ class TestCQL(Tester):
 
         # Queries
         res = session.execute("SELECT ip, port, time FROM connections WHERE userid = 550e8400-e29b-41d4-a716-446655440000")
-        assert rows_to_list(res) == [['192.168.0.1', 80, 42], ['192.168.0.2', 80, 24], ['192.168.0.2', 90, 42]], res
+        assert rows_to_list(res) == [['192.168.0.1', 80, 42], ['192.168.0.2', 80, 24], ['192.168.0.2', 90, 42]], list(res)
 
         res = session.execute("SELECT ip, port, time FROM connections WHERE userid = 550e8400-e29b-41d4-a716-446655440000 and ip >= '192.168.0.2'")
-        assert rows_to_list(res) == [['192.168.0.2', 80, 24], ['192.168.0.2', 90, 42]], res
+        assert rows_to_list(res) == [['192.168.0.2', 80, 24], ['192.168.0.2', 90, 42]], list(res)
 
         res = session.execute("SELECT ip, port, time FROM connections WHERE userid = 550e8400-e29b-41d4-a716-446655440000 and ip = '192.168.0.2'")
-        assert rows_to_list(res) == [['192.168.0.2', 80, 24], ['192.168.0.2', 90, 42]], res
+        assert rows_to_list(res) == [['192.168.0.2', 80, 24], ['192.168.0.2', 90, 42]], list(res)
 
         res = session.execute("SELECT ip, port, time FROM connections WHERE userid = 550e8400-e29b-41d4-a716-446655440000 and ip > '192.168.0.2'")
-        assert rows_to_list(res) == [], res
+        assert rows_to_list(res) == [], list(res)
 
         res = session.execute("SELECT ip, port, time FROM connections WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479 AND ip = '192.168.0.3'")
         self.assertEqual([['192.168.0.3', None, 42]], rows_to_list(res))
@@ -281,15 +281,15 @@ class TestCQL(Tester):
 
         # Deletion
         session.execute("DELETE time FROM connections WHERE userid = 550e8400-e29b-41d4-a716-446655440000 AND ip = '192.168.0.2' AND port = 80")
-        res = session.execute("SELECT * FROM connections WHERE userid = 550e8400-e29b-41d4-a716-446655440000")
+        res = list(session.execute("SELECT * FROM connections WHERE userid = 550e8400-e29b-41d4-a716-446655440000"))
         assert len(res) == 2, res
 
         session.execute("DELETE FROM connections WHERE userid = 550e8400-e29b-41d4-a716-446655440000")
-        res = session.execute("SELECT * FROM connections WHERE userid = 550e8400-e29b-41d4-a716-446655440000")
+        res = list(session.execute("SELECT * FROM connections WHERE userid = 550e8400-e29b-41d4-a716-446655440000"))
         assert len(res) == 0, res
 
         session.execute("DELETE FROM connections WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479 AND ip = '192.168.0.3'")
-        res = session.execute("SELECT * FROM connections WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479 AND ip = '192.168.0.3'")
+        res = list(session.execute("SELECT * FROM connections WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479 AND ip = '192.168.0.3'"))
         self.assertEqual([], res)
 
     def sparse_cf_test(self):
@@ -317,20 +317,20 @@ class TestCQL(Tester):
 
         # Queries
         res = session.execute("SELECT body, posted_by FROM timeline WHERE userid = 550e8400-e29b-41d4-a716-446655440000 AND posted_month = 1 AND posted_day = 24")
-        assert rows_to_list(res) == [['Something something', 'Frodo Baggins']], res
+        assert rows_to_list(res) == [['Something something', 'Frodo Baggins']], list(res)
 
         res = session.execute("SELECT posted_day, body, posted_by FROM timeline WHERE userid = 550e8400-e29b-41d4-a716-446655440000 AND posted_month = 1 AND posted_day > 12")
         assert rows_to_list(res) == [
             [24, 'Something something', 'Frodo Baggins'],
             [30, 'Yet one more message', None]
-        ], res
+        ], list(res)
 
         res = session.execute("SELECT posted_day, body, posted_by FROM timeline WHERE userid = 550e8400-e29b-41d4-a716-446655440000 AND posted_month = 1")
         assert rows_to_list(res) == [
             [12, 'Something else', 'Frodo Baggins'],
             [24, 'Something something', 'Frodo Baggins'],
             [30, 'Yet one more message', None]
-        ], res
+        ], list(res)
 
     def create_invalid_test(self):
         """
@@ -375,10 +375,10 @@ class TestCQL(Tester):
 
         # Queries
         res = session.execute("SELECT * FROM clicks WHERE token(userid) >= token(2) LIMIT 1")
-        assert rows_to_list(res) == [[2, 'http://foo.com', 42]], res
+        assert rows_to_list(res) == [[2, 'http://foo.com', 42]], list(res)
 
         res = session.execute("SELECT * FROM clicks WHERE token(userid) > token(2) LIMIT 1")
-        assert rows_to_list(res) == [[3, 'http://foo.com', 42]], res
+        assert rows_to_list(res) == [[3, 'http://foo.com', 42]], list(res)
 
     def limit_multiget_test(self):
         """
@@ -404,9 +404,9 @@ class TestCQL(Tester):
         # order of keys (even though 48 is after 2)
         res = session.execute("SELECT * FROM clicks WHERE userid IN (48, 2) LIMIT 1")
         if self.cluster.version() >= '2.2':
-            assert rows_to_list(res) == [[2, 'http://foo.com', 42]], res
+            assert rows_to_list(res) == [[2, 'http://foo.com', 42]], list(res)
         else:
-            assert rows_to_list(res) == [[48, 'http://foo.com', 42]], res
+            assert rows_to_list(res) == [[48, 'http://foo.com', 42]], list(res)
 
     def tuple_query_mixed_order_columns_prepare(self, session, *col_order):
         session.execute("""
@@ -439,7 +439,7 @@ class TestCQL(Tester):
         self.tuple_query_mixed_order_columns_prepare(session, 'DESC', 'ASC', 'DESC', 'ASC')
         res = session.execute("SELECT * FROM foo WHERE a=0 AND (b, c, d, e) > (0, 1, 1, 0);")
         assert rows_to_list(res) == [[0, 2, 0, 0, 0], [0, 1, 0, 0, 0], [0, 0, 1, 2, -1],
-                                     [0, 0, 1, 1, 1], [0, 0, 2, 1, -3], [0, 0, 2, 0, 3]], res
+                                     [0, 0, 1, 1, 1], [0, 0, 2, 1, -3], [0, 0, 2, 0, 3]], list(res)
 
     @require("7281")
     def tuple_query_mixed_order_columns_test2(self):
@@ -454,7 +454,7 @@ class TestCQL(Tester):
         self.tuple_query_mixed_order_columns_prepare(session, 'DESC', 'DESC', 'DESC', 'ASC')
         res = session.execute("SELECT * FROM foo WHERE a=0 AND (b, c, d, e) > (0, 1, 1, 0);")
         assert rows_to_list(res) == [[0, 2, 0, 0, 0], [0, 1, 0, 0, 0], [0, 0, 2, 1, -3],
-                                     [0, 0, 2, 0, 3], [0, 0, 1, 2, -1], [0, 0, 1, 1, 1]], res
+                                     [0, 0, 2, 0, 3], [0, 0, 1, 2, -1], [0, 0, 1, 1, 1]], list(res)
 
     @require("7281")
     def tuple_query_mixed_order_columns_test3(self):
@@ -469,7 +469,7 @@ class TestCQL(Tester):
         self.tuple_query_mixed_order_columns_prepare(session, 'ASC', 'DESC', 'DESC', 'ASC')
         res = session.execute("SELECT * FROM foo WHERE a=0 AND (b, c, d, e) > (0, 1, 1, 0);")
         assert rows_to_list(res) == [[0, 0, 2, 1, -3], [0, 0, 2, 0, 3], [0, 0, 1, 2, -1],
-                                     [0, 0, 1, 1, 1], [0, 1, 0, 0, 0], [0, 2, 0, 0, 0]], res
+                                     [0, 0, 1, 1, 1], [0, 1, 0, 0, 0], [0, 2, 0, 0, 0]], list(res)
 
     @require("7281")
     def tuple_query_mixed_order_columns_test4(self):
@@ -484,7 +484,7 @@ class TestCQL(Tester):
         self.tuple_query_mixed_order_columns_prepare(session, 'DESC', 'ASC', 'ASC', 'DESC')
         res = session.execute("SELECT * FROM foo WHERE a=0 AND (b, c, d, e) > (0, 1, 1, 0);")
         assert rows_to_list(res) == [[0, 2, 0, 0, 0], [0, 1, 0, 0, 0], [0, 0, 1, 1, 1],
-                                     [0, 0, 1, 2, -1], [0, 0, 2, 0, 3], [0, 0, 2, 1, -3]], res
+                                     [0, 0, 1, 2, -1], [0, 0, 2, 0, 3], [0, 0, 2, 1, -3]], list(res)
 
     @require("7281")
     def tuple_query_mixed_order_columns_test5(self):
@@ -498,7 +498,7 @@ class TestCQL(Tester):
         self.tuple_query_mixed_order_columns_prepare(session, 'DESC', 'DESC', 'DESC', 'DESC')
         res = session.execute("SELECT * FROM foo WHERE a=0 AND (b, c, d, e) > (0, 1, 1, 0);")
         assert rows_to_list(res) == [[0, 2, 0, 0, 0], [0, 1, 0, 0, 0], [0, 0, 2, 1, -3],
-                                     [0, 0, 2, 0, 3], [0, 0, 1, 2, -1], [0, 0, 1, 1, 1]], res
+                                     [0, 0, 2, 0, 3], [0, 0, 1, 2, -1], [0, 0, 1, 1, 1]], list(res)
 
     @require("7281")
     def tuple_query_mixed_order_columns_test6(self):
@@ -510,7 +510,7 @@ class TestCQL(Tester):
         self.tuple_query_mixed_order_columns_prepare(session, 'ASC', 'ASC', 'ASC', 'ASC')
         res = session.execute("SELECT * FROM foo WHERE a=0 AND (b, c, d, e) > (0, 1, 1, 0);")
         assert rows_to_list(res) == [[0, 0, 1, 1, 1], [0, 0, 1, 2, -1], [0, 0, 2, 0, 3],
-                                     [0, 0, 2, 1, -3], [0, 1, 0, 0, 0], [0, 2, 0, 0, 0]], res
+                                     [0, 0, 2, 1, -3], [0, 1, 0, 0, 0], [0, 2, 0, 0, 0]], list(res)
 
     @require("7281")
     def tuple_query_mixed_order_columns_test7(self):
@@ -524,7 +524,7 @@ class TestCQL(Tester):
         self.tuple_query_mixed_order_columns_prepare(session, 'DESC', 'ASC', 'DESC', 'ASC')
         res = session.execute("SELECT * FROM foo WHERE a=0 AND (b, c, d, e) <= (0, 1, 1, 0);")
         assert rows_to_list(res) == [[0, 0, 0, 0, 0], [0, 0, 1, 1, -1], [0, 0, 1, 1, 0],
-                                     [0, 0, 1, 0, 2], [0, -1, 2, 2, 2]], res
+                                     [0, 0, 1, 0, 2], [0, -1, 2, 2, 2]], list(res)
 
     @require("7281")
     def tuple_query_mixed_order_columns_test8(self):
@@ -538,7 +538,7 @@ class TestCQL(Tester):
         self.tuple_query_mixed_order_columns_prepare(session, 'ASC', 'DESC', 'DESC', 'ASC')
         res = session.execute("SELECT * FROM foo WHERE a=0 AND (b, c, d, e) <= (0, 1, 1, 0);")
         assert rows_to_list(res) == [[0, -1, 2, 2, 2], [0, 0, 1, 1, -1], [0, 0, 1, 1, 0],
-                                     [0, 0, 1, 0, 2], [0, 0, 0, 0, 0]], res
+                                     [0, 0, 1, 0, 2], [0, 0, 0, 0, 0]], list(res)
 
     @require("7281")
     def tuple_query_mixed_order_columns_test9(self):
@@ -552,7 +552,7 @@ class TestCQL(Tester):
         self.tuple_query_mixed_order_columns_prepare(session, 'DESC', 'ASC', 'DESC', 'DESC')
         res = session.execute("SELECT * FROM foo WHERE a=0 AND (b, c, d, e) <= (0, 1, 1, 0);")
         assert rows_to_list(res) == [[0, 0, 0, 0, 0], [0, 0, 1, 1, 0], [0, 0, 1, 1, -1],
-                                     [0, 0, 1, 0, 2], [0, -1, 2, 2, 2]], res
+                                     [0, 0, 1, 0, 2], [0, -1, 2, 2, 2]], list(res)
 
     def simple_tuple_query_test(self):
         """
@@ -597,8 +597,8 @@ class TestCQL(Tester):
 
         # Queries
         # Check we do get as many rows as requested
-        res = session.execute("SELECT * FROM clicks LIMIT 4")
-        assert len(res) == 4, res
+        res = list(session.execute("SELECT * FROM clicks LIMIT 4"))
+        assert len(res) == 4, list(res)
 
     def counters_test(self):
         """
@@ -617,19 +617,19 @@ class TestCQL(Tester):
 
         session.execute("UPDATE clicks SET total = total + 1 WHERE userid = 1 AND url = 'http://foo.com'")
         res = session.execute("SELECT total FROM clicks WHERE userid = 1 AND url = 'http://foo.com'")
-        assert rows_to_list(res) == [[1]], res
+        assert rows_to_list(res) == [[1]], list(res)
 
         session.execute("UPDATE clicks SET total = total - 4 WHERE userid = 1 AND url = 'http://foo.com'")
         res = session.execute("SELECT total FROM clicks WHERE userid = 1 AND url = 'http://foo.com'")
-        assert rows_to_list(res) == [[-3]], res
+        assert rows_to_list(res) == [[-3]], list(res)
 
         session.execute("UPDATE clicks SET total = total+1 WHERE userid = 1 AND url = 'http://foo.com'")
         res = session.execute("SELECT total FROM clicks WHERE userid = 1 AND url = 'http://foo.com'")
-        assert rows_to_list(res) == [[-2]], res
+        assert rows_to_list(res) == [[-2]], list(res)
 
         session.execute("UPDATE clicks SET total = total -2 WHERE userid = 1 AND url = 'http://foo.com'")
         res = session.execute("SELECT total FROM clicks WHERE userid = 1 AND url = 'http://foo.com'")
-        assert rows_to_list(res) == [[-4]], res
+        assert rows_to_list(res) == [[-4]], list(res)
 
     def indexed_with_eq_test(self):
         """ Check that you can query for an indexed column even with a key EQ clause """
@@ -653,10 +653,10 @@ class TestCQL(Tester):
 
         # Queries
         res = session.execute("SELECT firstname FROM users WHERE userid = 550e8400-e29b-41d4-a716-446655440000 AND age = 33")
-        assert rows_to_list(res) == [], res
+        assert rows_to_list(res) == [], list(res)
 
         res = session.execute("SELECT firstname FROM users WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479 AND age = 33")
-        assert rows_to_list(res) == [['Samwise']], res
+        assert rows_to_list(res) == [['Samwise']], list(res)
 
     def select_key_in_test(self):
         """
@@ -685,10 +685,10 @@ class TestCQL(Tester):
         """)
 
         # Select
-        res = session.execute("""
+        res = list(session.execute("""
                 SELECT firstname, lastname FROM users
                 WHERE userid IN (550e8400-e29b-41d4-a716-446655440000, f47ac10b-58cc-4372-a567-0e02b2c3d479)
-        """)
+        """))
 
         assert len(res) == 2, res
 
@@ -712,27 +712,27 @@ class TestCQL(Tester):
             session.execute("INSERT INTO test (k, c, v) VALUES (0, %i, %i)" % (x, x))
 
         # Queries
-        res = session.execute("SELECT v FROM test WHERE k = 0")
-        assert len(res) == 10, res
+        res = list(session.execute("SELECT v FROM test WHERE k = 0"))
+        assert len(res) == 10, list(res)
 
-        res = session.execute("SELECT v FROM test WHERE k = 0 AND c >= 2 AND c <= 6")
-        assert len(res) == 5 and res[0][0] == 2 and res[len(res) - 1][0] == 6, res
+        res = list(session.execute("SELECT v FROM test WHERE k = 0 AND c >= 2 AND c <= 6"))
+        assert len(res) == 5 and res[0][0] == 2 and res[len(res) - 1][0] == 6, list(res)
 
-        res = session.execute("SELECT v FROM test WHERE k = 0 AND c > 2 AND c <= 6")
-        assert len(res) == 4 and res[0][0] == 3 and res[len(res) - 1][0] == 6, res
+        res = list(session.execute("SELECT v FROM test WHERE k = 0 AND c > 2 AND c <= 6"))
+        assert len(res) == 4 and res[0][0] == 3 and res[len(res) - 1][0] == 6, list(res)
 
-        res = session.execute("SELECT v FROM test WHERE k = 0 AND c >= 2 AND c < 6")
-        assert len(res) == 4 and res[0][0] == 2 and res[len(res) - 1][0] == 5, res
+        res = list(session.execute("SELECT v FROM test WHERE k = 0 AND c >= 2 AND c < 6"))
+        assert len(res) == 4 and res[0][0] == 2 and res[len(res) - 1][0] == 5, list(res)
 
-        res = session.execute("SELECT v FROM test WHERE k = 0 AND c > 2 AND c < 6")
-        assert len(res) == 3 and res[0][0] == 3 and res[len(res) - 1][0] == 5, res
+        res = list(session.execute("SELECT v FROM test WHERE k = 0 AND c > 2 AND c < 6"))
+        assert len(res) == 3 and res[0][0] == 3 and res[len(res) - 1][0] == 5, list(res)
 
         # With LIMIT
-        res = session.execute("SELECT v FROM test WHERE k = 0 AND c > 2 AND c <= 6 LIMIT 2")
-        assert len(res) == 2 and res[0][0] == 3 and res[len(res) - 1][0] == 4, res
+        res = list(session.execute("SELECT v FROM test WHERE k = 0 AND c > 2 AND c <= 6 LIMIT 2"))
+        assert len(res) == 2 and res[0][0] == 3 and res[len(res) - 1][0] == 4, list(res)
 
-        res = session.execute("SELECT v FROM test WHERE k = 0 AND c >= 2 AND c < 6 ORDER BY c DESC LIMIT 2")
-        assert len(res) == 2 and res[0][0] == 5 and res[len(res) - 1][0] == 4, res
+        res = list(session.execute("SELECT v FROM test WHERE k = 0 AND c >= 2 AND c < 6 ORDER BY c DESC LIMIT 2"))
+        assert len(res) == 2 and res[0][0] == 5 and res[len(res) - 1][0] == 4, list(res)
 
     def in_clause_wide_rows_test(self):
         """ Check IN support for 'wide rows' in SELECT statement """
@@ -753,9 +753,9 @@ class TestCQL(Tester):
 
         res = session.execute("SELECT v FROM test1 WHERE k = 0 AND c IN (5, 2, 8)")
         if self.cluster.version() <= "1.2":
-            assert rows_to_list(res) == [[5], [2], [8]], res
+            assert rows_to_list(res) == [[5], [2], [8]], list(res)
         else:
-            assert rows_to_list(res) == [[2], [5], [8]], res
+            assert rows_to_list(res) == [[2], [5], [8]], list(res)
 
         # composites
         session.execute("""
@@ -779,7 +779,7 @@ class TestCQL(Tester):
             assert_invalid(session, "SELECT v FROM test2 WHERE k = 0 AND c1 IN (5, 2, 8) AND c2 = 3")
 
         res = session.execute("SELECT v FROM test2 WHERE k = 0 AND c1 = 0 AND c2 IN (5, 2, 8)")
-        assert rows_to_list(res) == [[2], [5], [8]], res
+        assert rows_to_list(res) == [[2], [5], [8]], list(res)
 
     def order_by_test(self):
         """ Check ORDER BY support in SELECT statement """
@@ -799,7 +799,7 @@ class TestCQL(Tester):
             session.execute("INSERT INTO test1 (k, c, v) VALUES (0, %i, %i)" % (x, x))
 
         res = session.execute("SELECT v FROM test1 WHERE k = 0 ORDER BY c DESC")
-        assert rows_to_list(res) == [[x] for x in range(9, -1, -1)], res
+        assert rows_to_list(res) == [[x] for x in range(9, -1, -1)], list(res)
 
         # composites
         session.execute("""
@@ -823,10 +823,10 @@ class TestCQL(Tester):
         assert_invalid(session, "SELECT v FROM test2 WHERE k = 0 ORDER BY k DESC")
 
         res = session.execute("SELECT v FROM test2 WHERE k = 0 ORDER BY c1 DESC")
-        assert rows_to_list(res) == [[x] for x in range(7, -1, -1)], res
+        assert rows_to_list(res) == [[x] for x in range(7, -1, -1)], list(res)
 
         res = session.execute("SELECT v FROM test2 WHERE k = 0 ORDER BY c1")
-        assert rows_to_list(res) == [[x] for x in range(0, 8)], res
+        assert rows_to_list(res) == [[x] for x in range(0, 8)], list(res)
 
     def more_order_by_test(self):
         """ More ORDER BY checks (#4160) """
@@ -847,22 +847,22 @@ class TestCQL(Tester):
         session.execute("INSERT INTO Test (row, number, string) VALUES ('row', 4, 'four');")
 
         res = session.execute("SELECT number FROM Test WHERE row='row' AND number < 3 ORDER BY number ASC;")
-        assert rows_to_list(res) == [[1], [2]], res
+        assert rows_to_list(res) == [[1], [2]], list(res)
 
         res = session.execute("SELECT number FROM Test WHERE row='row' AND number >= 3 ORDER BY number ASC;")
-        assert rows_to_list(res) == [[3], [4]], res
+        assert rows_to_list(res) == [[3], [4]], list(res)
 
         res = session.execute("SELECT number FROM Test WHERE row='row' AND number < 3 ORDER BY number DESC;")
-        assert rows_to_list(res) == [[2], [1]], res
+        assert rows_to_list(res) == [[2], [1]], list(res)
 
         res = session.execute("SELECT number FROM Test WHERE row='row' AND number >= 3 ORDER BY number DESC;")
-        assert rows_to_list(res) == [[4], [3]], res
+        assert rows_to_list(res) == [[4], [3]], list(res)
 
         res = session.execute("SELECT number FROM Test WHERE row='row' AND number > 3 ORDER BY number DESC;")
-        assert rows_to_list(res) == [[4]], res
+        assert rows_to_list(res) == [[4]], list(res)
 
         res = session.execute("SELECT number FROM Test WHERE row='row' AND number <= 3 ORDER BY number DESC;")
-        assert rows_to_list(res) == [[3], [2], [1]], res
+        assert rows_to_list(res) == [[3], [2], [1]], list(res)
 
     def order_by_validation_test(self):
         """ Check we don't allow order by on row key (#4246) """
@@ -903,15 +903,15 @@ class TestCQL(Tester):
 
         query = SimpleStatement("SELECT col1 FROM test WHERE my_id in('key1', 'key2', 'key3') ORDER BY col1")
         res = session.execute(query)
-        assert rows_to_list(res) == [[1], [2], [3]], res
+        assert rows_to_list(res) == [[1], [2], [3]], list(res)
 
         query = SimpleStatement("SELECT col1, my_id FROM test WHERE my_id in('key1', 'key2', 'key3') ORDER BY col1")
         res = session.execute(query)
-        assert rows_to_list(res) == [[1, 'key1'], [2, 'key3'], [3, 'key2']], res
+        assert rows_to_list(res) == [[1, 'key1'], [2, 'key3'], [3, 'key2']], list(res)
 
         query = SimpleStatement("SELECT my_id, col1 FROM test WHERE my_id in('key1', 'key2', 'key3') ORDER BY col1")
         res = session.execute(query)
-        assert rows_to_list(res) == [['key1', 1], ['key3', 2], ['key2', 3]], res
+        assert rows_to_list(res) == [['key1', 1], ['key3', 2], ['key2', 3]], list(res)
 
     def reversed_comparator_test(self):
         session = self.prepare()
@@ -930,10 +930,10 @@ class TestCQL(Tester):
             session.execute("INSERT INTO test (k, c, v) VALUES (0, %i, %i)" % (x, x))
 
         res = session.execute("SELECT c, v FROM test WHERE k = 0 ORDER BY c ASC")
-        assert rows_to_list(res) == [[x, x] for x in range(0, 10)], res
+        assert rows_to_list(res) == [[x, x] for x in range(0, 10)], list(res)
 
         res = session.execute("SELECT c, v FROM test WHERE k = 0 ORDER BY c DESC")
-        assert rows_to_list(res) == [[x, x] for x in range(9, -1, -1)], res
+        assert rows_to_list(res) == [[x, x] for x in range(9, -1, -1)], list(res)
 
         session.execute("""
             CREATE TABLE test2 (
@@ -954,13 +954,13 @@ class TestCQL(Tester):
         assert_invalid(session, "SELECT c1, c2, v FROM test2 WHERE k = 0 ORDER BY c1 DESC, c2 DESC")
 
         res = session.execute("SELECT c1, c2, v FROM test2 WHERE k = 0 ORDER BY c1 ASC")
-        assert rows_to_list(res) == [[x, y, '%i%i' % (x, y)] for x in range(0, 10) for y in range(9, -1, -1)], res
+        assert rows_to_list(res) == [[x, y, '%i%i' % (x, y)] for x in range(0, 10) for y in range(9, -1, -1)], list(res)
 
         res = session.execute("SELECT c1, c2, v FROM test2 WHERE k = 0 ORDER BY c1 ASC, c2 DESC")
-        assert rows_to_list(res) == [[x, y, '%i%i' % (x, y)] for x in range(0, 10) for y in range(9, -1, -1)], res
+        assert rows_to_list(res) == [[x, y, '%i%i' % (x, y)] for x in range(0, 10) for y in range(9, -1, -1)], list(res)
 
         res = session.execute("SELECT c1, c2, v FROM test2 WHERE k = 0 ORDER BY c1 DESC, c2 ASC")
-        assert rows_to_list(res) == [[x, y, '%i%i' % (x, y)] for x in range(9, -1, -1) for y in range(0, 10)], res
+        assert rows_to_list(res) == [[x, y, '%i%i' % (x, y)] for x in range(9, -1, -1) for y in range(0, 10)], list(res)
 
         assert_invalid(session, "SELECT c1, c2, v FROM test2 WHERE k = 0 ORDER BY c2 DESC, c1 ASC")
 
@@ -992,13 +992,13 @@ class TestCQL(Tester):
         session.execute("INSERT INTO test (k, c, v1) VALUES (0, 1, 1)")
 
         res = session.execute("SELECT * FROM test")
-        assert rows_to_list(res) == [[0, 0, None, set(['1', '2'])], [0, 1, 1, None]], res
+        assert rows_to_list(res) == [[0, 0, None, set(['1', '2'])], [0, 1, 1, None]], list(res)
 
         session.execute("INSERT INTO test (k, c, v1) VALUES (0, 1, null)")
         session.execute("INSERT INTO test (k, c, v2) VALUES (0, 0, null)")
 
         res = session.execute("SELECT * FROM test")
-        assert rows_to_list(res) == [[0, 0, None, None], [0, 1, None, None]], res
+        assert rows_to_list(res) == [[0, 0, None, None], [0, 1, None, None]], list(res)
 
         assert_invalid(session, "INSERT INTO test (k, c, v2) VALUES (0, 2, {1, null})")
         assert_invalid(session, "SELECT * FROM test WHERE k = null")
@@ -1050,12 +1050,12 @@ class TestCQL(Tester):
         session.execute(q % row2)
 
         res = session.execute("SELECT * FROM testcf")
-        assert rows_to_list(res) == [list(row1), list(row2)], res
+        assert rows_to_list(res) == [list(row1), list(row2)], list(res)
 
         session.execute("DELETE FROM testcf WHERE username='abc' AND id=2")
 
         res = session.execute("SELECT * FROM testcf")
-        assert rows_to_list(res) == [list(row2)], res
+        assert rows_to_list(res) == [list(row2)], list(res)
 
         # Compact case
         session.execute("""
@@ -1075,7 +1075,7 @@ class TestCQL(Tester):
         session.execute(q % row2)
 
         res = session.execute("SELECT * FROM testcf2")
-        assert rows_to_list(res) == [list(row1), list(row2)], res
+        assert rows_to_list(res) == [list(row1), list(row2)], list(res)
 
         # Won't be allowed until #3708 is in
         if self.cluster.version() < "1.2":
@@ -1105,10 +1105,10 @@ class TestCQL(Tester):
         session.execute("INSERT INTO events (kind, time, value1, value2) VALUES ('ev2', 0, 0, 0)")
 
         res = session.execute("SELECT COUNT(*) FROM events WHERE kind = 'ev1'")
-        assert rows_to_list(res) == [[5]], res
+        assert rows_to_list(res) == [[5]], list(res)
 
         res = session.execute("SELECT COUNT(1) FROM events WHERE kind IN ('ev1', 'ev2') AND time=0")
-        assert rows_to_list(res) == [[2]], res
+        assert rows_to_list(res) == [[2]], list(res)
 
     def reserved_keyword_test(self):
         session = self.prepare()
@@ -1250,7 +1250,7 @@ class TestCQL(Tester):
             session.execute("SELECT k FROM test WHERE token(k) >= 0")
         else:
             min_token = -2 ** 63
-        res = session.execute("SELECT k FROM test WHERE token(k) >= %d" % min_token)
+        res = list(session.execute("SELECT k FROM test WHERE token(k) >= %d" % min_token))
         assert len(res) == c, "%s [all: %s]" % (str(res), str(inOrder))
 
         # make sure comparing tokens to int literals doesn't fall down
@@ -1304,7 +1304,7 @@ class TestCQL(Tester):
         session.execute("INSERT INTO test (k, c) VALUES (1, 'test')")
         session.execute("INSERT INTO test (k, c) VALUES (2, 'test') USING TTL 400")
 
-        res = session.execute("SELECT k, c, writetime(c), ttl(c) FROM test")
+        res = list(session.execute("SELECT k, c, writetime(c), ttl(c) FROM test"))
         assert len(res) == 2, res
         for r in res:
             assert isinstance(r[2], (int, long))
@@ -1314,7 +1314,7 @@ class TestCQL(Tester):
                 assert isinstance(r[3], (int, long)), res
 
         # wrap writetime(), ttl() in other functions (test for CASSANDRA-8451)
-        res = session.execute("SELECT k, c, blobAsBigint(bigintAsBlob(writetime(c))), ttl(c) FROM test")
+        res = list(session.execute("SELECT k, c, blobAsBigint(bigintAsBlob(writetime(c))), ttl(c) FROM test"))
         assert len(res) == 2, res
         for r in res:
             assert isinstance(r[2], (int, long))
@@ -1323,7 +1323,7 @@ class TestCQL(Tester):
             else:
                 assert isinstance(r[3], (int, long)), res
 
-        res = session.execute("SELECT k, c, writetime(c), blobAsInt(intAsBlob(ttl(c))) FROM test")
+        res = list(session.execute("SELECT k, c, writetime(c), blobAsInt(intAsBlob(ttl(c))) FROM test"))
         assert len(res) == 2, res
         for r in res:
             assert isinstance(r[2], (int, long))
@@ -1334,7 +1334,7 @@ class TestCQL(Tester):
 
         assert_invalid(session, "SELECT k, c, writetime(k) FROM test")
 
-        res = session.execute("SELECT k, d, writetime(d) FROM test WHERE k = 1")
+        res = list(session.execute("SELECT k, d, writetime(d) FROM test WHERE k = 1"))
         assert rows_to_list(res) == [[1, None, None]]
 
     def no_range_ghost_test(self):
@@ -1350,15 +1350,15 @@ class TestCQL(Tester):
         for k in range(0, 5):
             session.execute("INSERT INTO test (k, v) VALUES (%d, 0)" % k)
 
-        unsorted_res = session.execute("SELECT k FROM test")
+        unsorted_res = list(session.execute("SELECT k FROM test"))
         res = sorted(unsorted_res)
         assert rows_to_list(res) == [[k] for k in range(0, 5)], res
 
         session.execute("DELETE FROM test WHERE k=2")
 
-        unsorted_res = session.execute("SELECT k FROM test")
+        unsorted_res = list(session.execute("SELECT k FROM test"))
         res = sorted(unsorted_res)
-        assert rows_to_list(res) == [[k] for k in range(0, 5) if k is not 2], res
+        assert rows_to_list(res) == [[k] for k in range(0, 5) if k is not 2], list(res)
 
         # Example from #3505
         session.execute("CREATE KEYSPACE ks1 with replication = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 };")
@@ -1374,15 +1374,15 @@ class TestCQL(Tester):
         session.execute("INSERT INTO users (KEY, password) VALUES ('user1', 'ch@ngem3a')")
         session.execute("UPDATE users SET gender = 'm', birth_year = 1980 WHERE KEY = 'user1'")
         res = session.execute("SELECT * FROM users WHERE KEY='user1'")
-        assert rows_to_list(res) == [['user1', 1980, 'm', 'ch@ngem3a']], res
+        assert rows_to_list(res) == [['user1', 1980, 'm', 'ch@ngem3a']], list(res)
 
         session.execute("TRUNCATE users")
 
         res = session.execute("SELECT * FROM users")
-        assert rows_to_list(res) == [], res
+        assert rows_to_list(res) == [], list(res)
 
         res = session.execute("SELECT * FROM users WHERE KEY='user1'")
-        assert rows_to_list(res) == [], res
+        assert rows_to_list(res) == [], list(res)
 
     @freshCluster()
     def undefined_column_handling_test(self):
@@ -1401,10 +1401,10 @@ class TestCQL(Tester):
         session.execute("INSERT INTO test (k, v1, v2) VALUES (2, 2, 2)")
 
         res = session.execute("SELECT v2 FROM test")
-        assert rows_to_list(res) == [[0], [None], [2]], res
+        assert rows_to_list(res) == [[0], [None], [2]], list(res)
 
         res = session.execute("SELECT v2 FROM test WHERE k = 1")
-        assert rows_to_list(res) == [[None]], res
+        assert rows_to_list(res) == [[None]], list(res)
 
     @freshCluster()
     def range_tombstones_test(self):
@@ -1443,21 +1443,21 @@ class TestCQL(Tester):
 
         for i in xrange(0, rows):
             res = session.execute("SELECT v1, v2 FROM test1 where k = %d" % i)
-            assert rows_to_list(res) == [[x, x] for x in xrange(i * cpr, (i + 1) * cpr)], res
+            assert rows_to_list(res) == [[x, x] for x in xrange(i * cpr, (i + 1) * cpr)], list(res)
 
         for i in xrange(0, rows):
             session.execute("DELETE FROM test1 WHERE k = %d AND c1 = 0" % i)
 
         for i in xrange(0, rows):
             res = session.execute("SELECT v1, v2 FROM test1 WHERE k = %d" % i)
-            assert rows_to_list(res) == [[x, x] for x in xrange(i * cpr + col1, (i + 1) * cpr)], res
+            assert rows_to_list(res) == [[x, x] for x in xrange(i * cpr + col1, (i + 1) * cpr)], list(res)
 
         cluster.flush()
         time.sleep(0.2)
 
         for i in xrange(0, rows):
             res = session.execute("SELECT v1, v2 FROM test1 WHERE k = %d" % i)
-            assert rows_to_list(res) == [[x, x] for x in xrange(i * cpr + col1, (i + 1) * cpr)], res
+            assert rows_to_list(res) == [[x, x] for x in xrange(i * cpr + col1, (i + 1) * cpr)], list(res)
 
     def range_tombstones_compaction_test(self):
         """ Test deletion by 'composite prefix' (range tombstones) with compaction """
@@ -1485,7 +1485,7 @@ class TestCQL(Tester):
         self.cluster.compact()
 
         res = session.execute("SELECT v1 FROM test1 WHERE k = 0")
-        assert rows_to_list(res) == [['%i%i' % (c1, c2)] for c1 in xrange(0, 4) for c2 in xrange(0, 2) if c1 != 1], res
+        assert rows_to_list(res) == [['%i%i' % (c1, c2)] for c1 in xrange(0, 4) for c2 in xrange(0, 2) if c1 != 1], list(res)
 
     def delete_row_test(self):
         """ Test deletion of rows """
@@ -1509,7 +1509,7 @@ class TestCQL(Tester):
         session.execute(q % (0, 1, 0, 3, 3))
 
         session.execute("DELETE FROM test WHERE k = 0 AND c1 = 0 AND c2 = 0")
-        res = session.execute("SELECT * FROM test")
+        res = list(session.execute("SELECT * FROM test"))
         assert len(res) == 3, res
 
     def range_query_2ndary_test(self):
@@ -1527,7 +1527,7 @@ class TestCQL(Tester):
 
         assert_invalid(session, "SELECT * FROM indextest WHERE setid = 0 AND row < 1;")
         res = session.execute("SELECT * FROM indextest WHERE setid = 0 AND row < 1 ALLOW FILTERING;")
-        assert rows_to_list(res) == [[0, 0, 0]], res
+        assert rows_to_list(res) == [[0, 0, 0]], list(res)
 
     def compression_option_validation_test(self):
         """ Check for unknown compression parameters options (#4266) """
@@ -1584,29 +1584,29 @@ class TestCQL(Tester):
         session.execute(q % "tags = tags - { 'bar' }")
 
         res = session.execute("SELECT tags FROM user")
-        assert rows_to_list(res) == [[set(['foo', 'foobar'])]], res
+        assert rows_to_list(res) == [[set(['foo', 'foobar'])]], list(res)
 
         q = "UPDATE user SET %s WHERE fn='Bilbo' AND ln='Baggins'"
         session.execute(q % "tags = { 'a', 'c', 'b' }")
         res = session.execute("SELECT tags FROM user WHERE fn='Bilbo' AND ln='Baggins'")
-        assert rows_to_list(res) == [[set(['a', 'b', 'c'])]], res
+        assert rows_to_list(res) == [[set(['a', 'b', 'c'])]], list(res)
 
         time.sleep(.01)
 
         session.execute(q % "tags = { 'm', 'n' }")
         res = session.execute("SELECT tags FROM user WHERE fn='Bilbo' AND ln='Baggins'")
-        assert rows_to_list(res) == [[set(['m', 'n'])]], res
+        assert rows_to_list(res) == [[set(['m', 'n'])]], list(res)
 
         session.execute("DELETE tags['m'] FROM user WHERE fn='Bilbo' AND ln='Baggins'")
         res = session.execute("SELECT tags FROM user WHERE fn='Bilbo' AND ln='Baggins'")
-        assert rows_to_list(res) == [[set(['n'])]], res
+        assert rows_to_list(res) == [[set(['n'])]], list(res)
 
         session.execute("DELETE tags FROM user WHERE fn='Bilbo' AND ln='Baggins'")
         res = session.execute("SELECT tags FROM user WHERE fn='Bilbo' AND ln='Baggins'")
         if self.cluster.version() <= "1.2":
-            assert rows_to_list(res) == [None], res
+            assert rows_to_list(res) == [None], list(res)
         else:
-            assert rows_to_list(res) == [], res
+            assert rows_to_list(res) == [], list(res)
 
     def map_test(self):
         session = self.prepare()
@@ -1628,26 +1628,26 @@ class TestCQL(Tester):
         session.execute("DELETE m['foo'] FROM user WHERE fn='Tom' AND ln='Bombadil'")
 
         res = session.execute("SELECT m FROM user")
-        assert rows_to_list(res) == [[{'woot': 5, 'bar': 6}]], res
+        assert rows_to_list(res) == [[{'woot': 5, 'bar': 6}]], list(res)
 
         q = "UPDATE user SET %s WHERE fn='Bilbo' AND ln='Baggins'"
         session.execute(q % "m = { 'a' : 4 , 'c' : 3, 'b' : 2 }")
         res = session.execute("SELECT m FROM user WHERE fn='Bilbo' AND ln='Baggins'")
-        assert rows_to_list(res) == [[{'a': 4, 'b': 2, 'c': 3}]], res
+        assert rows_to_list(res) == [[{'a': 4, 'b': 2, 'c': 3}]], list(res)
 
         time.sleep(.01)
 
         # Check we correctly overwrite
         session.execute(q % "m = { 'm' : 4 , 'n' : 1, 'o' : 2 }")
         res = session.execute("SELECT m FROM user WHERE fn='Bilbo' AND ln='Baggins'")
-        assert rows_to_list(res) == [[{'m': 4, 'n': 1, 'o': 2}]], res
+        assert rows_to_list(res) == [[{'m': 4, 'n': 1, 'o': 2}]], list(res)
 
         session.execute(q % "m = {}")
         res = session.execute("SELECT m FROM user WHERE fn='Bilbo' AND ln='Baggins'")
         if self.cluster.version() <= "1.2":
-            assert rows_to_list(res) == [None], res
+            assert rows_to_list(res) == [None], list(res)
         else:
-            assert rows_to_list(res) == [], res
+            assert rows_to_list(res) == [], list(res)
 
     def list_test(self):
         session = self.prepare()
@@ -1781,7 +1781,7 @@ class TestCQL(Tester):
         session.execute("INSERT INTO test (a, b, c, d, e, f) VALUES (1, 1, 1, 1, 5, '5');")
 
         res = session.execute("SELECT a, b, c, d, e, f FROM test WHERE a = 1 AND b = 1 AND c = 1 AND d = 1 AND e >= 2;")
-        assert rows_to_list(res) == [[1, 1, 1, 1, 2, u'2'], [1, 1, 1, 1, 3, u'3'], [1, 1, 1, 1, 5, u'5']], res
+        assert rows_to_list(res) == [[1, 1, 1, 1, 2, u'2'], [1, 1, 1, 1, 3, u'3'], [1, 1, 1, 1, 5, u'5']], list(res)
 
     def update_type_test(self):
         """ Test altering the type of a column, including the one in the primary key (#4041) """
@@ -1803,27 +1803,27 @@ class TestCQL(Tester):
 
         session.execute("SELECT * FROM test")
         res = session.execute("SELECT * FROM test")
-        assert rows_to_list(res) == [[u'ɸ', u'ɸ', set([u'ɸ']), u'ɸ']], res
+        assert rows_to_list(res) == [[u'ɸ', u'ɸ', set([u'ɸ']), u'ɸ']], list(res)
 
         session.execute("ALTER TABLE test ALTER v TYPE blob")
         res = session.execute("SELECT * FROM test")
         # the last should not be utf8 but a raw string
-        assert rows_to_list(res) == [[u'ɸ', u'ɸ', set([u'ɸ']), 'ɸ']], res
+        assert rows_to_list(res) == [[u'ɸ', u'ɸ', set([u'ɸ']), 'ɸ']], list(res)
 
         session.execute("ALTER TABLE test ALTER k TYPE blob")
         res = session.execute("SELECT * FROM test")
-        assert rows_to_list(res) == [['ɸ', u'ɸ', set([u'ɸ']), 'ɸ']], res
+        assert rows_to_list(res) == [['ɸ', u'ɸ', set([u'ɸ']), 'ɸ']], list(res)
 
         session.execute("ALTER TABLE test ALTER c TYPE blob")
         res = session.execute("SELECT * FROM test")
-        assert rows_to_list(res) == [['ɸ', 'ɸ', set([u'ɸ']), 'ɸ']], res
+        assert rows_to_list(res) == [['ɸ', 'ɸ', set([u'ɸ']), 'ɸ']], list(res)
 
         if self.cluster.version() < "2.1":
             assert_invalid(session, "ALTER TABLE test ALTER s TYPE set<blob>", expected=ConfigurationException)
         else:
             session.execute("ALTER TABLE test ALTER s TYPE set<blob>")
             res = session.execute("SELECT * FROM test")
-            assert rows_to_list(res) == [['ɸ', 'ɸ', set(['ɸ']), 'ɸ']], res
+            assert rows_to_list(res) == [['ɸ', 'ɸ', set(['ɸ']), 'ɸ']], list(res)
 
     def composite_row_key_test(self):
         session = self.prepare()
@@ -1843,10 +1843,10 @@ class TestCQL(Tester):
             session.execute(req % (0, i, i, i))
 
         res = session.execute("SELECT * FROM test")
-        assert rows_to_list(res) == [[0, 2, 2, 2], [0, 3, 3, 3], [0, 0, 0, 0], [0, 1, 1, 1]], res
+        assert rows_to_list(res) == [[0, 2, 2, 2], [0, 3, 3, 3], [0, 0, 0, 0], [0, 1, 1, 1]], list(res)
 
         res = session.execute("SELECT * FROM test WHERE k1 = 0 and k2 IN (1, 3)")
-        assert rows_to_list(res) == [[0, 1, 1, 1], [0, 3, 3, 3]], res
+        assert rows_to_list(res) == [[0, 1, 1, 1], [0, 3, 3, 3]], list(res)
 
         assert_invalid(session, "SELECT * FROM test WHERE k2 = 3")
 
@@ -1855,10 +1855,10 @@ class TestCQL(Tester):
             assert_invalid(session, "SELECT * FROM test WHERE k1 IN (0, 1) and k2 = 3")
 
         res = session.execute("SELECT * FROM test WHERE token(k1, k2) = token(0, 1)")
-        assert rows_to_list(res) == [[0, 1, 1, 1]], res
+        assert rows_to_list(res) == [[0, 1, 1, 1]], list(res)
 
         res = session.execute("SELECT * FROM test WHERE token(k1, k2) > " + str(-((2 ** 63) - 1)))
-        assert rows_to_list(res) == [[0, 2, 2, 2], [0, 3, 3, 3], [0, 0, 0, 0], [0, 1, 1, 1]], res
+        assert rows_to_list(res) == [[0, 2, 2, 2], [0, 3, 3, 3], [0, 0, 0, 0], [0, 1, 1, 1]], list(res)
 
     def cql3_insert_thrift_test(self):
         """ Check that we can insert from thrift into a CQL3 table (#4377) """
@@ -1888,7 +1888,7 @@ class TestCQL(Tester):
             ThriftConsistencyLevel.ONE)
 
         res = session.execute("SELECT * FROM test")
-        assert rows_to_list(res) == [[2, 4, 8]], res
+        assert rows_to_list(res) == [[2, 4, 8]], list(res)
 
     def row_existence_test(self):
         """ Check the semantic of CQL row existence (part of #4361) """
@@ -1907,25 +1907,25 @@ class TestCQL(Tester):
         session.execute("INSERT INTO test (k, c, v1, v2) VALUES (1, 1, 1, 1)")
 
         res = session.execute("SELECT * FROM test")
-        assert rows_to_list(res) == [[1, 1, 1, 1]], res
+        assert rows_to_list(res) == [[1, 1, 1, 1]], list(res)
 
         assert_invalid(session, "DELETE c FROM test WHERE k = 1 AND c = 1")
 
         session.execute("DELETE v2 FROM test WHERE k = 1 AND c = 1")
         res = session.execute("SELECT * FROM test")
-        assert rows_to_list(res) == [[1, 1, 1, None]], res
+        assert rows_to_list(res) == [[1, 1, 1, None]], list(res)
 
         session.execute("DELETE v1 FROM test WHERE k = 1 AND c = 1")
         res = session.execute("SELECT * FROM test")
-        assert rows_to_list(res) == [[1, 1, None, None]], res
+        assert rows_to_list(res) == [[1, 1, None, None]], list(res)
 
         session.execute("DELETE FROM test WHERE k = 1 AND c = 1")
         res = session.execute("SELECT * FROM test")
-        assert rows_to_list(res) == [], res
+        assert rows_to_list(res) == [], list(res)
 
         session.execute("INSERT INTO test (k, c) VALUES (2, 2)")
         res = session.execute("SELECT * FROM test")
-        assert rows_to_list(res) == [[2, 2, None, None]], res
+        assert rows_to_list(res) == [[2, 2, None, None]], list(res)
 
     @freshCluster()
     def only_pk_test(self):
@@ -1946,7 +1946,7 @@ class TestCQL(Tester):
                 session.execute(q % (k, c))
 
         res = session.execute("SELECT * FROM test")
-        assert rows_to_list(res) == [[x, y] for x in range(0, 2) for y in range(0, 2)], res
+        assert rows_to_list(res) == [[x, y] for x in range(0, 2) for y in range(0, 2)], list(res)
 
         # Check for dense tables too
         session.execute("""
@@ -1963,7 +1963,7 @@ class TestCQL(Tester):
                 session.execute(q % (k, c))
 
         res = session.execute("SELECT * FROM test2")
-        assert rows_to_list(res) == [[x, y] for x in range(0, 2) for y in range(0, 2)], res
+        assert rows_to_list(res) == [[x, y] for x in range(0, 2) for y in range(0, 2)], list(res)
 
     def date_test(self):
         """ Check dates are correctly recognized and validated """
@@ -2003,7 +2003,7 @@ class TestCQL(Tester):
         session.execute("INSERT INTO test (k, v) VALUES ('foo', 0)")
         session.execute("INSERT INTO test (k, v) VALUES ('bar', 1)")
 
-        res = session.execute("SELECT * FROM test")
+        res = list(session.execute("SELECT * FROM test"))
         assert len(res) == 2, res
 
     @freshCluster()
@@ -2030,22 +2030,22 @@ class TestCQL(Tester):
         session.execute(req % (3, 0, 1, 'gux', 'qux'))
 
         res = session.execute("SELECT blog_id, content FROM blogs WHERE author='foo'")
-        assert rows_to_list(res) == [[1, 'bar1'], [1, 'bar2'], [2, 'baz']], res
+        assert rows_to_list(res) == [[1, 'bar1'], [1, 'bar2'], [2, 'baz']], list(res)
 
         res = session.execute("SELECT blog_id, content FROM blogs WHERE time1 > 0 AND author='foo' ALLOW FILTERING")
-        assert rows_to_list(res) == [[2, 'baz']], res
+        assert rows_to_list(res) == [[2, 'baz']], list(res)
 
         res = session.execute("SELECT blog_id, content FROM blogs WHERE time1 = 1 AND author='foo' ALLOW FILTERING")
-        assert rows_to_list(res) == [[2, 'baz']], res
+        assert rows_to_list(res) == [[2, 'baz']], list(res)
 
         res = session.execute("SELECT blog_id, content FROM blogs WHERE time1 = 1 AND time2 = 0 AND author='foo' ALLOW FILTERING")
-        assert rows_to_list(res) == [[2, 'baz']], res
+        assert rows_to_list(res) == [[2, 'baz']], list(res)
 
         res = session.execute("SELECT content FROM blogs WHERE time1 = 1 AND time2 = 1 AND author='foo' ALLOW FILTERING")
-        assert rows_to_list(res) == [], res
+        assert rows_to_list(res) == [], list(res)
 
         res = session.execute("SELECT content FROM blogs WHERE time1 = 1 AND time2 > 0 AND author='foo' ALLOW FILTERING")
-        assert rows_to_list(res) == [], res
+        assert rows_to_list(res) == [], list(res)
 
         assert_invalid(session, "SELECT content FROM blogs WHERE time2 >= 0 AND author='foo'")
 
@@ -2087,13 +2087,13 @@ class TestCQL(Tester):
         session.execute("INSERT INTO testcf (a, b, c, d, e) VALUES (4, 4, 4, 4, 4);")
 
         res = session.execute("SELECT * FROM testcf;")
-        assert rows_to_list(res) == [[1, 1, 1, 1, 1], [2, 2, 2, 2, 2], [3, 3, 3, 3, 3], [4, 4, 4, 4, 4]], res
+        assert rows_to_list(res) == [[1, 1, 1, 1, 1], [2, 2, 2, 2, 2], [3, 3, 3, 3, 3], [4, 4, 4, 4, 4]], list(res)
 
         res = session.execute("SELECT * FROM testcf LIMIT 1;")  # columns d and e in result row are null
-        assert rows_to_list(res) == [[1, 1, 1, 1, 1]], res
+        assert rows_to_list(res) == [[1, 1, 1, 1, 1]], list(res)
 
         res = session.execute("SELECT * FROM testcf LIMIT 2;")  # columns d and e in last result row are null
-        assert rows_to_list(res) == [[1, 1, 1, 1, 1], [2, 2, 2, 2, 2]], res
+        assert rows_to_list(res) == [[1, 1, 1, 1, 1], [2, 2, 2, 2, 2]], list(res)
 
         session.execute("""
             CREATE TABLE testcf2 (
@@ -2109,22 +2109,22 @@ class TestCQL(Tester):
         session.execute("INSERT INTO testcf2 (a, b, c) VALUES (4, 4, 4);")
 
         res = session.execute("SELECT * FROM testcf2;")
-        assert rows_to_list(res) == [[1, 1, 1], [2, 2, 2], [3, 3, 3], [4, 4, 4]], res
+        assert rows_to_list(res) == [[1, 1, 1], [2, 2, 2], [3, 3, 3], [4, 4, 4]], list(res)
 
         res = session.execute("SELECT * FROM testcf2 LIMIT 1;")  # gives 1 row
-        assert rows_to_list(res) == [[1, 1, 1]], res
+        assert rows_to_list(res) == [[1, 1, 1]], list(res)
 
         res = session.execute("SELECT * FROM testcf2 LIMIT 2;")  # gives 1 row
-        assert rows_to_list(res) == [[1, 1, 1], [2, 2, 2]], res
+        assert rows_to_list(res) == [[1, 1, 1], [2, 2, 2]], list(res)
 
         res = session.execute("SELECT * FROM testcf2 LIMIT 3;")  # gives 2 rows
-        assert rows_to_list(res) == [[1, 1, 1], [2, 2, 2], [3, 3, 3]], res
+        assert rows_to_list(res) == [[1, 1, 1], [2, 2, 2], [3, 3, 3]], list(res)
 
         res = session.execute("SELECT * FROM testcf2 LIMIT 4;")  # gives 2 rows
-        assert rows_to_list(res) == [[1, 1, 1], [2, 2, 2], [3, 3, 3], [4, 4, 4]], res
+        assert rows_to_list(res) == [[1, 1, 1], [2, 2, 2], [3, 3, 3], [4, 4, 4]], list(res)
 
         res = session.execute("SELECT * FROM testcf2 LIMIT 5;")  # gives 3 rows
-        assert rows_to_list(res) == [[1, 1, 1], [2, 2, 2], [3, 3, 3], [4, 4, 4]], res
+        assert rows_to_list(res) == [[1, 1, 1], [2, 2, 2], [3, 3, 3], [4, 4, 4]], list(res)
 
     def bug_4532_test(self):
 
@@ -2171,10 +2171,10 @@ class TestCQL(Tester):
         session.execute("INSERT INTO test(my_id, col1, col2, value) VALUES ( 'key4', 2, 1, 'b');")
 
         res = session.execute("SELECT col1 FROM test WHERE my_id in('key1', 'key2', 'key3') ORDER BY col1;")
-        assert rows_to_list(res) == [[1], [2], [3]], res
+        assert rows_to_list(res) == [[1], [2], [3]], list(res)
 
         res = session.execute("SELECT col1, value, my_id, col2 FROM test WHERE my_id in('key3', 'key4') ORDER BY col1, col2;")
-        assert rows_to_list(res) == [[2, 'b', 'key4', 1], [2, 'b', 'key3', 2]], res
+        assert rows_to_list(res) == [[2, 'b', 'key4', 1], [2, 'b', 'key3', 2]], list(res)
 
         assert_invalid(session, "SELECT col1 FROM test ORDER BY col1;")
         assert_invalid(session, "SELECT col1 FROM test WHERE my_id > 'key1' ORDER BY col1;")
@@ -2235,7 +2235,7 @@ class TestCQL(Tester):
 
         session.execute("DELETE FROM test WHERE k = 1")
         res = session.execute("SELECT * FROM test")
-        assert rows_to_list(res) == [[0, 0], [2, 2]], res
+        assert rows_to_list(res) == [[0, 0], [2, 2]], list(res)
 
     def indexes_composite_test(self):
         session = self.prepare()
@@ -2261,19 +2261,19 @@ class TestCQL(Tester):
         time.sleep(1)
 
         res = session.execute("SELECT blog_id, timestamp FROM test WHERE author = 'bob'")
-        assert rows_to_list(res) == [[1, 0], [0, 0], [0, 2]], res
+        assert rows_to_list(res) == [[1, 0], [0, 0], [0, 2]], list(res)
 
         session.execute(req % (1, 1, "tom", "6th post"))
         session.execute(req % (1, 2, "tom", "7th post"))
         session.execute(req % (1, 3, "bob", "8th post"))
 
         res = session.execute("SELECT blog_id, timestamp FROM test WHERE author = 'bob'")
-        assert rows_to_list(res) == [[1, 0], [1, 3], [0, 0], [0, 2]], res
+        assert rows_to_list(res) == [[1, 0], [1, 3], [0, 0], [0, 2]], list(res)
 
         session.execute("DELETE FROM test WHERE blog_id = 0 AND timestamp = 2")
 
         res = session.execute("SELECT blog_id, timestamp FROM test WHERE author = 'bob'")
-        assert rows_to_list(res) == [[1, 0], [1, 3], [0, 0]], res
+        assert rows_to_list(res) == [[1, 0], [1, 3], [0, 0]], list(res)
 
     def refuse_in_with_indexes_test(self):
         """ Test for the validation bug of #4709 """
@@ -2323,22 +2323,22 @@ class TestCQL(Tester):
             session.execute("INSERT INTO test1(k, c, v) VALUES ('foo', %i, %i)" % (i, i))
 
         res = session.execute("SELECT c FROM test1 WHERE c > 2 AND c < 6 AND k = 'foo'")
-        assert rows_to_list(res) == [[5], [4], [3]], res
+        assert rows_to_list(res) == [[5], [4], [3]], list(res)
 
         res = session.execute("SELECT c FROM test1 WHERE c >= 2 AND c <= 6 AND k = 'foo'")
-        assert rows_to_list(res) == [[6], [5], [4], [3], [2]], res
+        assert rows_to_list(res) == [[6], [5], [4], [3], [2]], list(res)
 
         res = session.execute("SELECT c FROM test1 WHERE c > 2 AND c < 6 AND k = 'foo' ORDER BY c ASC")
-        assert rows_to_list(res) == [[3], [4], [5]], res
+        assert rows_to_list(res) == [[3], [4], [5]], list(res)
 
         res = session.execute("SELECT c FROM test1 WHERE c >= 2 AND c <= 6 AND k = 'foo' ORDER BY c ASC")
-        assert rows_to_list(res) == [[2], [3], [4], [5], [6]], res
+        assert rows_to_list(res) == [[2], [3], [4], [5], [6]], list(res)
 
         res = session.execute("SELECT c FROM test1 WHERE c > 2 AND c < 6 AND k = 'foo' ORDER BY c DESC")
-        assert rows_to_list(res) == [[5], [4], [3]], res
+        assert rows_to_list(res) == [[5], [4], [3]], list(res)
 
         res = session.execute("SELECT c FROM test1 WHERE c >= 2 AND c <= 6 AND k = 'foo' ORDER BY c DESC")
-        assert rows_to_list(res) == [[6], [5], [4], [3], [2]], res
+        assert rows_to_list(res) == [[6], [5], [4], [3], [2]], list(res)
 
         session.execute("""
             CREATE TABLE test2 (
@@ -2353,22 +2353,22 @@ class TestCQL(Tester):
             session.execute("INSERT INTO test2(k, c, v) VALUES ('foo', %i, %i)" % (i, i))
 
         res = session.execute("SELECT c FROM test2 WHERE c > 2 AND c < 6 AND k = 'foo'")
-        assert rows_to_list(res) == [[3], [4], [5]], res
+        assert rows_to_list(res) == [[3], [4], [5]], list(res)
 
         res = session.execute("SELECT c FROM test2 WHERE c >= 2 AND c <= 6 AND k = 'foo'")
-        assert rows_to_list(res) == [[2], [3], [4], [5], [6]], res
+        assert rows_to_list(res) == [[2], [3], [4], [5], [6]], list(res)
 
         res = session.execute("SELECT c FROM test2 WHERE c > 2 AND c < 6 AND k = 'foo' ORDER BY c ASC")
-        assert rows_to_list(res) == [[3], [4], [5]], res
+        assert rows_to_list(res) == [[3], [4], [5]], list(res)
 
         res = session.execute("SELECT c FROM test2 WHERE c >= 2 AND c <= 6 AND k = 'foo' ORDER BY c ASC")
-        assert rows_to_list(res) == [[2], [3], [4], [5], [6]], res
+        assert rows_to_list(res) == [[2], [3], [4], [5], [6]], list(res)
 
         res = session.execute("SELECT c FROM test2 WHERE c > 2 AND c < 6 AND k = 'foo' ORDER BY c DESC")
-        assert rows_to_list(res) == [[5], [4], [3]], res
+        assert rows_to_list(res) == [[5], [4], [3]], list(res)
 
         res = session.execute("SELECT c FROM test2 WHERE c >= 2 AND c <= 6 AND k = 'foo' ORDER BY c DESC")
-        assert rows_to_list(res) == [[6], [5], [4], [3], [2]], res
+        assert rows_to_list(res) == [[6], [5], [4], [3], [2]], list(res)
 
     def unescaped_string_test(self):
         """
@@ -2415,59 +2415,59 @@ class TestCQL(Tester):
         # Equalities
 
         res = session.execute("SELECT c1, c2 FROM test WHERE key='foo' AND c1 = 1")
-        assert rows_to_list(res) == [[1, 2], [1, 1], [1, 0]], res
+        assert rows_to_list(res) == [[1, 2], [1, 1], [1, 0]], list(res)
 
         res = session.execute("SELECT c1, c2 FROM test WHERE key='foo' AND c1 = 1 ORDER BY c1 ASC, c2 ASC")
-        assert rows_to_list(res) == [[1, 0], [1, 1], [1, 2]], res
+        assert rows_to_list(res) == [[1, 0], [1, 1], [1, 2]], list(res)
 
         res = session.execute("SELECT c1, c2 FROM test WHERE key='foo' AND c1 = 1 ORDER BY c1 DESC, c2 DESC")
-        assert rows_to_list(res) == [[1, 2], [1, 1], [1, 0]], res
+        assert rows_to_list(res) == [[1, 2], [1, 1], [1, 0]], list(res)
 
         # GT
 
         res = session.execute("SELECT c1, c2 FROM test WHERE key='foo' AND c1 > 1")
-        assert rows_to_list(res) == [[2, 2], [2, 1], [2, 0]], res
+        assert rows_to_list(res) == [[2, 2], [2, 1], [2, 0]], list(res)
 
         res = session.execute("SELECT c1, c2 FROM test WHERE key='foo' AND c1 > 1 ORDER BY c1 ASC, c2 ASC")
-        assert rows_to_list(res) == [[2, 0], [2, 1], [2, 2]], res
+        assert rows_to_list(res) == [[2, 0], [2, 1], [2, 2]], list(res)
 
         res = session.execute("SELECT c1, c2 FROM test WHERE key='foo' AND c1 > 1 ORDER BY c1 DESC, c2 DESC")
-        assert rows_to_list(res) == [[2, 2], [2, 1], [2, 0]], res
+        assert rows_to_list(res) == [[2, 2], [2, 1], [2, 0]], list(res)
 
         res = session.execute("SELECT c1, c2 FROM test WHERE key='foo' AND c1 >= 1")
-        assert rows_to_list(res) == [[2, 2], [2, 1], [2, 0], [1, 2], [1, 1], [1, 0]], res
+        assert rows_to_list(res) == [[2, 2], [2, 1], [2, 0], [1, 2], [1, 1], [1, 0]], list(res)
 
         res = session.execute("SELECT c1, c2 FROM test WHERE key='foo' AND c1 >= 1 ORDER BY c1 ASC, c2 ASC")
-        assert rows_to_list(res) == [[1, 0], [1, 1], [1, 2], [2, 0], [2, 1], [2, 2]], res
+        assert rows_to_list(res) == [[1, 0], [1, 1], [1, 2], [2, 0], [2, 1], [2, 2]], list(res)
 
         res = session.execute("SELECT c1, c2 FROM test WHERE key='foo' AND c1 >= 1 ORDER BY c1 ASC")
-        assert rows_to_list(res) == [[1, 0], [1, 1], [1, 2], [2, 0], [2, 1], [2, 2]], res
+        assert rows_to_list(res) == [[1, 0], [1, 1], [1, 2], [2, 0], [2, 1], [2, 2]], list(res)
 
         res = session.execute("SELECT c1, c2 FROM test WHERE key='foo' AND c1 >= 1 ORDER BY c1 DESC, c2 DESC")
-        assert rows_to_list(res) == [[2, 2], [2, 1], [2, 0], [1, 2], [1, 1], [1, 0]], res
+        assert rows_to_list(res) == [[2, 2], [2, 1], [2, 0], [1, 2], [1, 1], [1, 0]], list(res)
 
         # LT
 
         res = session.execute("SELECT c1, c2 FROM test WHERE key='foo' AND c1 < 1")
-        assert rows_to_list(res) == [[0, 2], [0, 1], [0, 0]], res
+        assert rows_to_list(res) == [[0, 2], [0, 1], [0, 0]], list(res)
 
         res = session.execute("SELECT c1, c2 FROM test WHERE key='foo' AND c1 < 1 ORDER BY c1 ASC, c2 ASC")
-        assert rows_to_list(res) == [[0, 0], [0, 1], [0, 2]], res
+        assert rows_to_list(res) == [[0, 0], [0, 1], [0, 2]], list(res)
 
         res = session.execute("SELECT c1, c2 FROM test WHERE key='foo' AND c1 < 1 ORDER BY c1 DESC, c2 DESC")
-        assert rows_to_list(res) == [[0, 2], [0, 1], [0, 0]], res
+        assert rows_to_list(res) == [[0, 2], [0, 1], [0, 0]], list(res)
 
         res = session.execute("SELECT c1, c2 FROM test WHERE key='foo' AND c1 <= 1")
-        assert rows_to_list(res) == [[1, 2], [1, 1], [1, 0], [0, 2], [0, 1], [0, 0]], res
+        assert rows_to_list(res) == [[1, 2], [1, 1], [1, 0], [0, 2], [0, 1], [0, 0]], list(res)
 
         res = session.execute("SELECT c1, c2 FROM test WHERE key='foo' AND c1 <= 1 ORDER BY c1 ASC, c2 ASC")
-        assert rows_to_list(res) == [[0, 0], [0, 1], [0, 2], [1, 0], [1, 1], [1, 2]], res
+        assert rows_to_list(res) == [[0, 0], [0, 1], [0, 2], [1, 0], [1, 1], [1, 2]], list(res)
 
         res = session.execute("SELECT c1, c2 FROM test WHERE key='foo' AND c1 <= 1 ORDER BY c1 ASC")
-        assert rows_to_list(res) == [[0, 0], [0, 1], [0, 2], [1, 0], [1, 1], [1, 2]], res
+        assert rows_to_list(res) == [[0, 0], [0, 1], [0, 2], [1, 0], [1, 1], [1, 2]], list(res)
 
         res = session.execute("SELECT c1, c2 FROM test WHERE key='foo' AND c1 <= 1 ORDER BY c1 DESC, c2 DESC")
-        assert rows_to_list(res) == [[1, 2], [1, 1], [1, 0], [0, 2], [0, 1], [0, 0]], res
+        assert rows_to_list(res) == [[1, 2], [1, 1], [1, 0], [0, 2], [0, 1], [0, 0]], list(res)
 
     def collection_and_regular_test(self):
 
@@ -2530,7 +2530,7 @@ class TestCQL(Tester):
 
         session.execute("INSERT INTO test (k, b) VALUES (true, false)")
         res = session.execute("SELECT * FROM test WHERE k = true")
-        assert rows_to_list(res) == [[True, False]], res
+        assert rows_to_list(res) == [[True, False]], list(res)
 
     def multiordering_test(self):
         session = self.prepare()
@@ -2548,13 +2548,13 @@ class TestCQL(Tester):
                 session.execute("INSERT INTO test(k, c1, c2) VALUES ('foo', %i, %i)" % (i, j))
 
         res = session.execute("SELECT c1, c2 FROM test WHERE k = 'foo'")
-        assert rows_to_list(res) == [[0, 1], [0, 0], [1, 1], [1, 0]], res
+        assert rows_to_list(res) == [[0, 1], [0, 0], [1, 1], [1, 0]], list(res)
 
         res = session.execute("SELECT c1, c2 FROM test WHERE k = 'foo' ORDER BY c1 ASC, c2 DESC")
-        assert rows_to_list(res) == [[0, 1], [0, 0], [1, 1], [1, 0]], res
+        assert rows_to_list(res) == [[0, 1], [0, 0], [1, 1], [1, 0]], list(res)
 
         res = session.execute("SELECT c1, c2 FROM test WHERE k = 'foo' ORDER BY c1 DESC, c2 ASC")
-        assert rows_to_list(res) == [[1, 0], [1, 1], [0, 0], [0, 1]], res
+        assert rows_to_list(res) == [[1, 0], [1, 1], [0, 0], [0, 1]], list(res)
 
         assert_invalid(session, "SELECT c1, c2 FROM test WHERE k = 'foo' ORDER BY c2 DESC")
         assert_invalid(session, "SELECT c1, c2 FROM test WHERE k = 'foo' ORDER BY c2 ASC")
@@ -2589,7 +2589,7 @@ class TestCQL(Tester):
         session.execute("INSERT INTO test (k, c1, c2, v) VALUES (0, 1, 3, 3);")
 
         res = session.execute("select * from test where k = 0 limit 1;")
-        assert rows_to_list(res) == [[0, 0, 2, 2]], res
+        assert rows_to_list(res) == [[0, 0, 2, 2]], list(res)
 
     def multi_list_set_test(self):
         session = self.prepare()
@@ -2631,7 +2631,7 @@ class TestCQL(Tester):
         session.execute(req % (3, 0, 1, 'gux', "{ 'qux' }"))
 
         res = session.execute("SELECT blog_id, content FROM blogs WHERE author='foo'")
-        assert rows_to_list(res) == [[1, set(['bar1', 'bar2'])], [1, set(['bar2', 'bar3'])], [2, set(['baz'])]], res
+        assert rows_to_list(res) == [[1, set(['bar1', 'bar2'])], [1, set(['bar2', 'bar3'])], [2, set(['baz'])]], list(res)
 
     @freshCluster()
     def truncate_clean_cache_test(self):
@@ -2649,12 +2649,12 @@ class TestCQL(Tester):
             session.execute("INSERT INTO test(k, v1, v2) VALUES (%d, %d, %d)" % (i, i, i * 2))
 
         res = session.execute("SELECT v1, v2 FROM test WHERE k IN (0, 1, 2)")
-        assert rows_to_list(res) == [[0, 0], [1, 2], [2, 4]], res
+        assert rows_to_list(res) == [[0, 0], [1, 2], [2, 4]], list(res)
 
         session.execute("TRUNCATE test")
 
         res = session.execute("SELECT v1, v2 FROM test WHERE k IN (0, 1, 2)")
-        assert rows_to_list(res) == [], res
+        assert rows_to_list(res) == [], list(res)
 
     def allow_filtering_test(self):
         session = self.prepare()
@@ -2732,7 +2732,7 @@ class TestCQL(Tester):
         for i in random.sample(xrange(nb_keys), nb_deletes):
             session.execute("DELETE FROM test WHERE k = %d" % i)
 
-        res = session.execute("SELECT * FROM test LIMIT %d" % (nb_keys / 2))
+        res = list(session.execute("SELECT * FROM test LIMIT %d" % (nb_keys / 2)))
         assert len(res) == nb_keys / 2, "Expected %d but got %d" % (nb_keys / 2, len(res))
 
     def alter_with_collections_test(self):
@@ -2809,7 +2809,7 @@ class TestCQL(Tester):
         session.execute("INSERT INTO foo (a, b , c ) VALUES (  1 , 'ert', 693f5800-8acb-11e3-82e0-3f484de45426)")
         session.execute("INSERT INTO foo (a, b , c ) VALUES (  1 , 'opl', d4815800-2d8d-11e0-82e0-3f484de45426)")
 
-        res = session.execute("SELECT * FROM foo")
+        res = list(session.execute("SELECT * FROM foo"))
         assert len(res) == 3, res
 
         assert_invalid(session, "SELECT * FROM foo WHERE a=1")
@@ -2836,7 +2836,7 @@ class TestCQL(Tester):
         in_values = list(range(10000))
 
         # try to fetch one existing row and 9999 non-existing rows
-        rows = session.execute(select_statement, [0, in_values])
+        rows = list(session.execute(select_statement, [0, in_values]))
         self.assertEqual(1, len(rows))
         self.assertEqual((0, 0, 0), rows[0])
 
@@ -2846,7 +2846,7 @@ class TestCQL(Tester):
         args = [(0, i, i) for i in clustering_values]
         execute_concurrent_with_args(session, insert_statement, args)
 
-        rows = session.execute(select_statement, [0, in_values])
+        rows = list(session.execute(select_statement, [0, in_values]))
         self.assertEqual(len(clustering_values), len(rows))
 
     @since('1.2.1')
@@ -2867,20 +2867,20 @@ class TestCQL(Tester):
             session.execute("INSERT INTO test (k, t) VALUES (0, now())")
             time.sleep(1)
 
-        res = session.execute("SELECT * FROM test")
+        res = list(session.execute("SELECT * FROM test"))
         assert len(res) == 4, res
         dates = [d[1] for d in res]
 
-        res = session.execute("SELECT * FROM test WHERE k = 0 AND t >= %s" % dates[0])
+        res = list(session.execute("SELECT * FROM test WHERE k = 0 AND t >= %s" % dates[0]))
         assert len(res) == 4, res
 
-        res = session.execute("SELECT * FROM test WHERE k = 0 AND t < %s" % dates[0])
+        res = list(session.execute("SELECT * FROM test WHERE k = 0 AND t < %s" % dates[0]))
         assert len(res) == 0, res
 
-        res = session.execute("SELECT * FROM test WHERE k = 0 AND t > %s AND t <= %s" % (dates[0], dates[2]))
+        res = list(session.execute("SELECT * FROM test WHERE k = 0 AND t > %s AND t <= %s" % (dates[0], dates[2])))
         assert len(res) == 2, res
 
-        res = session.execute("SELECT * FROM test WHERE k = 0 AND t = %s" % dates[0])
+        res = list(session.execute("SELECT * FROM test WHERE k = 0 AND t = %s" % dates[0]))
         assert len(res) == 1, res
 
         assert_invalid(session, "SELECT dateOf(k) FROM test WHERE k = 0 AND t = %s" % dates[0])
@@ -2921,7 +2921,7 @@ class TestCQL(Tester):
 
         session.execute("INSERT INTO bar (id, i) VALUES (1, 2);")
         res = session.execute("SELECT * FROM bar")
-        assert rows_to_list(res) == [[1, 2]], res
+        assert rows_to_list(res) == [[1, 2]], list(res)
 
     @since('2.0')
     def clustering_indexing_test(self):
@@ -2949,22 +2949,22 @@ class TestCQL(Tester):
         session.execute("INSERT INTO posts(id1, id2, author, time, v1, v2) VALUES(0, 1, 'tom', 1, 'E', 'E')")
 
         res = session.execute("SELECT v1 FROM posts WHERE time = 1")
-        assert rows_to_list(res) == [['B'], ['E']], res
+        assert rows_to_list(res) == [['B'], ['E']], list(res)
 
         res = session.execute("SELECT v1 FROM posts WHERE id2 = 1")
-        assert rows_to_list(res) == [['C'], ['E']], res
+        assert rows_to_list(res) == [['C'], ['E']], list(res)
 
         res = session.execute("SELECT v1 FROM posts WHERE id1 = 0 AND id2 = 0 AND author = 'bob' AND time = 0")
-        assert rows_to_list(res) == [['A']], res
+        assert rows_to_list(res) == [['A']], list(res)
 
         # Test for CASSANDRA-8206
         session.execute("UPDATE posts SET v2 = null WHERE id1 = 0 AND id2 = 0 AND author = 'bob' AND time = 1")
 
         res = session.execute("SELECT v1 FROM posts WHERE id2 = 0")
-        assert rows_to_list(res) == [['A'], ['B'], ['D']], res
+        assert rows_to_list(res) == [['A'], ['B'], ['D']], list(res)
 
         res = session.execute("SELECT v1 FROM posts WHERE time = 1")
-        assert rows_to_list(res) == [['B'], ['E']], res
+        assert rows_to_list(res) == [['B'], ['E']], list(res)
 
     @since('2.0')
     def invalid_clustering_indexing_test(self):
@@ -3047,7 +3047,7 @@ class TestCQL(Tester):
         session.execute("insert into test(interval, seq, id , severity) values('t',2, 4, 2);")
 
         res = session.execute("select * from test where severity = 3 and interval = 't' and seq =1;")
-        assert rows_to_list(res) == [['t', 1, 4, 3]], res
+        assert rows_to_list(res) == [['t', 1, 4, 3]], list(res)
 
     def ticket_5230_test(self):
         session = self.prepare()
@@ -3066,7 +3066,7 @@ class TestCQL(Tester):
         session.execute("INSERT INTO foo(key, c, v) VALUES ('foo', '3', '3')")
 
         res = session.execute("SELECT c FROM foo WHERE key = 'foo' AND c IN ('1', '2');")
-        assert rows_to_list(res) == [['1'], ['2']], res
+        assert rows_to_list(res) == [['1'], ['2']], list(res)
 
     def conversion_functions_test(self):
         session = self.prepare()
@@ -3081,7 +3081,7 @@ class TestCQL(Tester):
 
         session.execute("INSERT INTO test(k, i, b) VALUES (0, blobAsVarint(bigintAsBlob(3)), textAsBlob('foobar'))")
         res = session.execute("SELECT i, blobAsText(b) FROM test WHERE k = 0")
-        assert rows_to_list(res) == [[3, 'foobar']], res
+        assert rows_to_list(res) == [[3, 'foobar']], list(res)
 
     def alter_bug_test(self):
         """
@@ -3097,12 +3097,12 @@ class TestCQL(Tester):
         time.sleep(.5)
 
         res = session.execute("SELECT * FROM t1;")
-        assert rows_to_list(res) == [[1, None, '111']], res
+        assert rows_to_list(res) == [[1, None, '111']], list(res)
 
         session.execute("ALTER TABLE t1 ADD m map<int, text>;")
         time.sleep(.5)
         res = session.execute("SELECT * FROM t1;")
-        assert rows_to_list(res) == [[1, None, None, '111']], res
+        assert rows_to_list(res) == [[1, None, None, '111']], list(res)
 
     def bug_5376(self):
         session = self.prepare()
@@ -3149,7 +3149,7 @@ class TestCQL(Tester):
         session.execute("CREATE TABLE test (k int PRIMARY KEY, b blob)")
         session.execute("INSERT INTO test (k, b) VALUES (0, 0x)")
         res = session.execute("SELECT * FROM test")
-        assert rows_to_list(res) == [[0, '']], res
+        assert rows_to_list(res) == [[0, '']], list(res)
 
     @since('2.0')
     def rename_test(self):
@@ -3346,27 +3346,27 @@ class TestCQL(Tester):
             session.execute("INSERT INTO users (id, name) VALUES (%d, 'name%d') USING TTL 10 AND TIMESTAMP 0" % (id, id))
 
         # test aliasing count(*)
-        res = session.execute('SELECT count(*) AS user_count FROM users')
+        res = list(session.execute('SELECT count(*) AS user_count FROM users'))
         self.assertEqual('user_count', res[0]._fields[0])
         self.assertEqual(5, res[0].user_count)
 
         # test aliasing regular value
-        res = session.execute('SELECT name AS user_name FROM users WHERE id = 0')
+        res = list(session.execute('SELECT name AS user_name FROM users WHERE id = 0'))
         self.assertEqual('user_name', res[0]._fields[0])
         self.assertEqual('name0', res[0].user_name)
 
         # test aliasing writetime
-        res = session.execute('SELECT writeTime(name) AS name_writetime FROM users WHERE id = 0')
+        res = list(session.execute('SELECT writeTime(name) AS name_writetime FROM users WHERE id = 0'))
         self.assertEqual('name_writetime', res[0]._fields[0])
         self.assertEqual(0, res[0].name_writetime)
 
         # test aliasing ttl
-        res = session.execute('SELECT ttl(name) AS name_ttl FROM users WHERE id = 0')
+        res = list(session.execute('SELECT ttl(name) AS name_ttl FROM users WHERE id = 0'))
         self.assertEqual('name_ttl', res[0]._fields[0])
         assert res[0].name_ttl in (9, 10)
 
         # test aliasing a regular function
-        res = session.execute('SELECT intAsBlob(id) AS id_blob FROM users WHERE id = 0')
+        res = list(session.execute('SELECT intAsBlob(id) AS id_blob FROM users WHERE id = 0'))
         self.assertEqual('id_blob', res[0]._fields[0])
         self.assertEqual('\x00\x00\x00\x00', res[0].id_blob)
 
@@ -3472,7 +3472,7 @@ class TestCQL(Tester):
         res = session.execute('SELECT DISTINCT pk0, pk1 FROM compact LIMIT 1')
         self.assertEqual([[0, 0]], rows_to_list(res))
 
-        res = session.execute('SELECT DISTINCT pk0, pk1 FROM compact LIMIT 3')
+        res = list(session.execute('SELECT DISTINCT pk0, pk1 FROM compact LIMIT 3'))
         self.assertEqual([[0, 0], [1, 1], [2, 2]], rows_to_list(sorted(res)))
 
         # Test a 'wide row' thrift table.
@@ -3485,7 +3485,7 @@ class TestCQL(Tester):
         res = session.execute('SELECT DISTINCT pk FROM wide LIMIT 1')
         self.assertEqual([[1]], rows_to_list(res))
 
-        res = session.execute('SELECT DISTINCT pk FROM wide LIMIT 3')
+        res = list(session.execute('SELECT DISTINCT pk FROM wide LIMIT 3'))
         self.assertEqual([[0], [1], [2]], rows_to_list(sorted(res)))
 
         # Test selection validation.
@@ -3498,7 +3498,7 @@ class TestCQL(Tester):
         for i in range(10):
             session.execute('INSERT INTO t1 (k, c, v) VALUES (%d, %d, %d)' % (i, i, i))
 
-        rows = session.execute('SELECT DISTINCT k FROM t1')
+        rows = list(session.execute('SELECT DISTINCT k FROM t1'))
         self.assertEqual(10, len(rows))
         key_to_delete = rows[3].k
 
@@ -4050,7 +4050,7 @@ class TestCQL(Tester):
         assert_all(cursor, "SELECT v FROM test WHERE k IN (1, 0) ORDER BY c1 ASC", [[0], [1], [2], [3], [4], [5]])
 
         # we should also be able to use functions in the select clause (additional test for CASSANDRA-8286)
-        results = cursor.execute("SELECT writetime(v) FROM test WHERE k IN (1, 0) ORDER BY c1 ASC")
+        results = list(cursor.execute("SELECT writetime(v) FROM test WHERE k IN (1, 0) ORDER BY c1 ASC"))
         # since we don't know the write times, just assert that the order matches the order we expect
         self.assertEqual(results, list(sorted(results)))
 
@@ -4703,9 +4703,9 @@ class TestCQL(Tester):
                 INSERT INTO cql2ct (a, b, c, d) values ({0}, [{0},{1}], {{{0}:{1}}}, {{{0},{1}}});
                 """.format(i, i + 1))
 
-            unsorted_res = session.execute("""
+            unsorted_res = list(session.execute("""
             SELECT * FROM cql2ct
-            """)
+            """))
             res = sorted(unsorted_res)
             assert len(res) == 4, res
             sres = rows_to_list(res)
@@ -4766,7 +4766,7 @@ class TestCQL(Tester):
         session.execute("INSERT INTO test (k, v) VALUES ('2', 7)")
 
         res = session.execute("SELECT v FROM test")
-        assert rows_to_list(res) == [[5], [6], [7], [1], [2], [0], [4], [3]], res
+        assert rows_to_list(res) == [[5], [6], [7], [1], [2], [0], [4], [3]], list(res)
 
 
 class CQLAdditionalTests(Tester):
@@ -4795,9 +4795,9 @@ class CQLAdditionalTests(Tester):
         session.execute(update.bind((None, None, "java3")))
         session.execute(update.bind(("ddd", None, "java4")))
 
-        res = session.execute("""
+        res = list(session.execute("""
                 SELECT * FROM foobar
-        """)
+        """))
         assert len(res) == 3, res
 
     def test_create_secondary_indexes(self):

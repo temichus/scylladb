@@ -354,11 +354,11 @@ class MiscellaneousCQLTester(CQLTester):
 
         wildcard_prepared = session.prepare("SELECT * FROM test")
         explicit_prepared = session.prepare("SELECT k, a, b, c FROM test")
-        result = session.execute(wildcard_prepared.bind(None))
+        result = list(session.execute(wildcard_prepared.bind(None)))
         self.assertEqual(result, [(0, 0, 0, 0)])
 
         session.execute("ALTER TABLE test DROP c")
-        result = session.execute(wildcard_prepared.bind(None))
+        result = list(session.execute(wildcard_prepared.bind(None)))
         # wildcard select can be automatically re-prepared by the driver
         self.assertEqual(result, [(0, 0, 0)])
         # but re-preparing the statement with explicit columns should fail
@@ -366,7 +366,7 @@ class MiscellaneousCQLTester(CQLTester):
         assert_invalid(session, explicit_prepared.bind(None), expected=InvalidRequest)
 
         session.execute("ALTER TABLE test ADD d int")
-        result = session.execute(wildcard_prepared.bind(None))
+        result = list(session.execute(wildcard_prepared.bind(None)))
         self.assertEqual(result, [(0, 0, 0, None)])
 
         explicit_prepared = session.prepare("SELECT k, a, b, d FROM test")
@@ -374,10 +374,10 @@ class MiscellaneousCQLTester(CQLTester):
         # when the type is altered, both statements will need to be re-prepared
         # by the driver, but the re-preparation should succeed
         session.execute("ALTER TABLE test ALTER d TYPE blob")
-        result = session.execute(wildcard_prepared.bind(None))
+        result = list(session.execute(wildcard_prepared.bind(None)))
         self.assertEqual(result, [(0, 0, 0, None)])
 
-        result = session.execute(explicit_prepared.bind(None))
+        result = list(session.execute(explicit_prepared.bind(None)))
         self.assertEqual(result, [(0, 0, 0, None)])
 
     @freshCluster()

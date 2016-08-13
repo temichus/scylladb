@@ -69,7 +69,7 @@ def assert_row_count(session, table_name, expected):
     """ Function to validate the row count expected in table_name """
 
     query = "SELECT count(*) FROM {};".format(table_name)
-    res = session.execute(query)
+    res = list(session.execute(query))
     count = res[0][0]
     assert count == expected, "Expected a row count of {} in table '{}', but got {}".format(
         expected, table_name, count

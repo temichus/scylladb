@@ -31,11 +31,11 @@ class TestUpdateClusterLayout(Tester):
 
         session = self.patient_cql_connection(node_to_check, ks)
         if rows > 1000 and counter_column:
-            result = session.execute("select count(%s) from %s.%s limit %d;" % (counter_column, ks, cf, rows * 2), timeout=300)
+            result = list(session.execute("select count(%s) from %s.%s limit %d;" % (counter_column, ks, cf, rows * 2), timeout=300))
             count = result[0][0]
             self.assertEqual(count, rows, count)
         else:
-            result = session.execute("SELECT * FROM %s LIMIT %d" % (cf, rows * 2))
+            result = list(session.execute("SELECT * FROM %s LIMIT %d" % (cf, rows * 2)))
             self.assertEqual(len(result), rows, len(result))
 
         for k in found:
@@ -137,7 +137,7 @@ class TestUpdateClusterLayout(Tester):
                 insert_c1c2(session_i, keys=range(iteration * 100000 + i * 2000, iteration * 100000 + i * 2000 + 100), consistency=consistency)
                 debug("added %s" % node_i.name)
 
-            result = session.execute(query)
+            result = list(session.execute(query))
             self.assertEqual(len(result), iteration * node_count * 100 + 1000, "data loss after increasing size to %d expecting %d rows %d" %
                              (len(cluster.nodelist()), iteration * node_count * 100 + 1000, len(result)))
 
@@ -149,7 +149,7 @@ class TestUpdateClusterLayout(Tester):
 
             last_node = cluster.nodelist()[-1]
             session = self.patient_cql_connection(last_node)
-            result = session.execute("SELECT key FROM ks.cf limit 3000")
+            result = list(session.execute("SELECT key FROM ks.cf limit 3000"))
             self.assertEqual(len(result), iteration * node_count * 100 + 1000, "data loss after shrinking to 2 node execpeting %d rows %d" % (iteration * node_count * 100 + 1000, len(result)))
 
         node1.decommission()
@@ -157,7 +157,7 @@ class TestUpdateClusterLayout(Tester):
         debug("decommissioned %s" % node1.name)
         last_node = cluster.nodelist()[-1]
         session = self.patient_cql_connection(last_node)
-        result = session.execute("SELECT key FROM ks.cf limit 3000")
+        result = list(session.execute("SELECT key FROM ks.cf limit 3000"))
         self.assertEqual(len(result), iterations * node_count * 100 + 1000, "data loss after shrinking to 1 node %s expecting %d rows %d" %
                          (last_node.name, iterations * node_count * 100 + 1000, len(result)))
 
@@ -361,7 +361,7 @@ class TestUpdateClusterLayout(Tester):
             status, err = node1.nodetool('status')
             assert status.find("127.0.0.4") == -1, status
 
-        result = session.execute("SELECT * FROM cf")
+        result = list(session.execute("SELECT * FROM cf"))
         self.assertEqual(len(result), 1000, len(result))
 
     def simple_kill_new_node_while_bootstrapping_with_parallel_writes_test(self):
@@ -570,7 +570,7 @@ class TestUpdateClusterLayout(Tester):
 
         event.wait()
         query = SimpleStatement("SELECT * FROM cf", consistency_level=consistency)
-        result = session.execute(query)
+        result = list(session.execute(query))
         self.assertEqual(len(result), 4000, len(result))
 
         for k in xrange(0, 4000):
@@ -611,7 +611,7 @@ class TestUpdateClusterLayout(Tester):
 
         def run():
             query = SimpleStatement("DROP KEYSPACE ks")
-            result = session.execute(query)
+            result = list(session.execute(query))
 
             self.create_ks(session, 'ks1', rf)
             self.create_cf(session, 'cf1', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
@@ -634,7 +634,7 @@ class TestUpdateClusterLayout(Tester):
 
         event.wait()
         query = SimpleStatement("SELECT * FROM ks1.cf1", consistency_level=consistency)
-        result = session.execute(query)
+        result = list(session.execute(query))
         self.assertEqual(len(result), 100, len(result))
 
     def _simple_add_new_node_while_query_info(self, rf):
@@ -665,7 +665,7 @@ class TestUpdateClusterLayout(Tester):
         def run():
             for i in xrange(1, 100):
                 query = SimpleStatement("SELECT * FROM cf", consistency_level=consistency)
-                result = session.execute(query)
+                result = list(session.execute(query))
                 self.assertEqual(len(result), 2000, len(result))
                 time.sleep(0.01)
             event.set()
@@ -683,7 +683,7 @@ class TestUpdateClusterLayout(Tester):
 
         query = SimpleStatement("SELECT * FROM cf", consistency_level=consistency)
 
-        result = session.execute(query)
+        result = list(session.execute(query))
         self.assertEqual(len(result), 2000, len(result))
         for k in xrange(0, 2000):
             query_c1c2(session, k, consistency)
@@ -770,12 +770,12 @@ class TestUpdateClusterLayout(Tester):
         node1.watch_log_for_alive(node2)
         node2.watch_log_for_alive(node1)
 
-        result = session_node1.execute("SELECT * FROM ks.cf limit 2000;")
+        result = list(session_node1.execute("SELECT * FROM ks.cf limit 2000;"))
         self.assertEqual(len(result), 1000, "expected 1000 lines got %d" % len(result))
 
         session_node1.execute("DELETE from ks.cf where key in (\'k%s\');" % "\',\'k".join(str(x) for x in range(1000)))
 
-        result = session_node1.execute("SELECT * FROM ks.cf limit 2000;")
+        result = list(session_node1.execute("SELECT * FROM ks.cf limit 2000;"))
         self.assertEqual(len(result), 0, "expected 0 lines got %d %s" % (len(result), result))
 
         cluster.flush()
@@ -788,7 +788,7 @@ class TestUpdateClusterLayout(Tester):
         node2.decommission()
         node1.flush()
 
-        result = session_node1.execute("SELECT * FROM ks.cf")
+        result = list(session_node1.execute("SELECT * FROM ks.cf"))
         self.assertEqual(len(result), 0, "expected 0 lines got %d" % len(result))
 
     def simple_kill_node_while_decommissioning_test(self):
@@ -831,7 +831,7 @@ class TestUpdateClusterLayout(Tester):
 
         # starting node2 - it should reconnect and run as is
         node2.start(wait_other_notice=True, wait_for_binary_proto=True)
-        result = session.execute("SELECT * FROM cf")
+        result = list(session.execute("SELECT * FROM cf"))
         self.assertEqual(len(result), 1000, len(result))
 
     def _simple_decommission_node_while_adding_info(self, rf):
@@ -863,7 +863,7 @@ class TestUpdateClusterLayout(Tester):
             insert_c1c2(session, keys=range(2000, 4000), consistency=consistency)
 
             query = SimpleStatement("SELECT * FROM cf", consistency_level=consistency)
-            result = session.execute(query)
+            result = list(session.execute(query))
             self.assertEqual(len(result), 4000, len(result))
 
             event.set()
@@ -878,7 +878,7 @@ class TestUpdateClusterLayout(Tester):
         event.wait()
         node2.stop()
         query = SimpleStatement("SELECT * FROM cf", consistency_level=consistency)
-        result = session.execute(query)
+        result = list(session.execute(query))
         self.assertEqual(len(result), 4000, len(result))
         for k in xrange(0, 4000):
             query_c1c2(session, k, consistency)
@@ -917,7 +917,7 @@ class TestUpdateClusterLayout(Tester):
         def run():
             for i in xrange(1, 100):
                 query = SimpleStatement("SELECT * FROM cf", consistency_level=consistency)
-                result = session.execute(query)
+                result = list(session.execute(query))
                 self.assertEqual(len(result), 2000, len(result))
                 time.sleep(0.01)
             event.set()
@@ -930,13 +930,13 @@ class TestUpdateClusterLayout(Tester):
         node2.decommission()
 
         query = SimpleStatement("SELECT * FROM cf", consistency_level=consistency)
-        result = session.execute(query)
+        result = list(session.execute(query))
         self.assertEqual(len(result), 2000, len(result))
 
         node2.stop()
 
         query = SimpleStatement("SELECT * FROM cf", consistency_level=consistency)
-        result = session.execute(query)
+        result = list(session.execute(query))
         self.assertEqual(len(result), 2000, len(result))
         for k in xrange(0, 2000):
             query_c1c2(session, k, consistency)
@@ -973,13 +973,13 @@ class TestUpdateClusterLayout(Tester):
         node2_hostid = node2.hostid()
         node2.stop(wait_other_notice=True)
         query = SimpleStatement("SELECT * FROM cf", consistency_level=ConsistencyLevel.ONE)
-        result = session.execute(query)
+        result = list(session.execute(query))
         self.assertEqual(len(result), 100, len(result))
 
         node1.nodetool("removenode %s" % node2_hostid)
         time.sleep(2)
         query = SimpleStatement("SELECT * FROM cf", consistency_level=ConsistencyLevel.TWO)
-        result = session.execute(query)
+        result = list(session.execute(query))
         self.assertEqual(len(result), 100, len(result))
         insert_c1c2(session, keys=range(120), consistency=ConsistencyLevel.TWO)
 
@@ -1008,15 +1008,14 @@ class TestUpdateClusterLayout(Tester):
         node2.stop(wait_other_notice=True)
         try:
             query = SimpleStatement("SELECT * FROM cf", consistency_level=ConsistencyLevel.ONE)
-            result = session.execute(query)
-            fail
+            result = list(session.execute(query))
         except Unavailable:
             pass
 
         node1.nodetool("removenode %s" % node2_hostid)
         insert_c1c2(session, keys=range(10), consistency=ConsistencyLevel.ALL)
         query = SimpleStatement("SELECT * FROM cf", consistency_level=ConsistencyLevel.ONE)
-        result = session.execute(query)
+        result = list(session.execute(query))
         self.assertEqual(len(result), 10, len(result))
 
     def _add_new_node_while_add_new_table(self, when):
@@ -1078,7 +1077,7 @@ class TestUpdateClusterLayout(Tester):
 
         event.wait()
         query = SimpleStatement("SELECT * FROM ks1.cf1", consistency_level=consistency)
-        result = session.execute(query)
+        result = list(session.execute(query))
         self.assertEqual(len(result), 1000, len(result))
 
     def add_new_node_while_add_new_table_before_bootstrapping_test(self):
