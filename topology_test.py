@@ -6,6 +6,7 @@ import re
 import time
 from ccmlib.node import NodetoolError
 from ccmlib.node import TimeoutError
+from ccmlib.node import NodeError
 from cassandra import ConsistencyLevel
 from threading import Thread
 
@@ -146,7 +147,8 @@ class TestTopology(Tester):
         for n in xrange(0, 10000):
             query_c1c2(session, n, ConsistencyLevel.ONE)
 
-    @since('3.0')
+    # Scylla suports this feature
+    # @since('3.0')
     @no_vnodes()
     def decommissioned_node_cant_rejoin_test(self):
         '''
@@ -175,7 +177,11 @@ class TestTopology(Tester):
         debug('stopping...')
         node3.stop()
         debug('attempting restart...')
-        node3.start()
+        try:
+            node3.start()
+        except NodeError:
+            debug('It is expected node3 will not be started succesfully')
+
         try:
             # usually takes 3 seconds, so give it a generous 15
             node3.watch_log_for(rejoin_err, timeout=15)
