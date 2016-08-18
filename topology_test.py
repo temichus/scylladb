@@ -1,5 +1,5 @@
 from dtest import Tester
-from tools import insert_c1c2, query_c1c2, no_vnodes, debug, since
+from tools import insert_c1c2, query_c1c2, no_vnodes, debug
 from assertions import assert_almost_equal
 
 import re
