@@ -202,7 +202,8 @@ class TestTopology(Tester):
                                  for err_list in node3.grep_log_for_errors()]))
         self.assertFalse(node3.is_running())
 
-    @since('3.0')
+    # Scylla suports this
+    #@since('3.0')
     def crash_during_decommission_test(self):
         """
         If a node crashes whilst another node is being decommissioned,
