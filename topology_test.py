@@ -125,6 +125,7 @@ class TestTopology(Tester):
         """ Test moving a node in a single-node cluster (#4200) """
         cluster = self.cluster
 
+        debug('Start node1')
         # Create an unbalanced ring
         cluster.populate(1, tokens=[0]).start()
         node1 = cluster.nodelist()[0]
@@ -134,18 +135,24 @@ class TestTopology(Tester):
         self.create_ks(session, 'ks', 1)
         self.create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'})
 
+        debug('Insert data into node1')
         insert_c1c2(session, n=10000, consistency=ConsistencyLevel.ONE)
 
+        debug('Flush node1')
         cluster.flush()
 
+        debug('Move node1')
         node1.move(2**25)
         time.sleep(1)
 
+        debug('Cleanup node1')
         cluster.cleanup()
 
+        debug('Query node1')
         # Check we can get all the keys
         for n in xrange(0, 10000):
             query_c1c2(session, n, ConsistencyLevel.ONE)
+        debug('Query node1 done')
 
     # Scylla suports this feature
     # @since('3.0')
