@@ -1,11 +1,12 @@
 from dtest import Tester
-from tools import insert_c1c2, query_c1c2, no_vnodes, debug, since
+from tools import insert_c1c2, query_c1c2, no_vnodes, debug
 from assertions import assert_almost_equal
 
 import re
 import time
 from ccmlib.node import NodetoolError
 from ccmlib.node import TimeoutError
+from ccmlib.node import NodeError
 from cassandra import ConsistencyLevel
 from threading import Thread
 
@@ -124,6 +125,7 @@ class TestTopology(Tester):
         """ Test moving a node in a single-node cluster (#4200) """
         cluster = self.cluster
 
+        debug('Start node1')
         # Create an unbalanced ring
         cluster.populate(1, tokens=[0]).start()
         node1 = cluster.nodelist()[0]
@@ -133,20 +135,27 @@ class TestTopology(Tester):
         self.create_ks(session, 'ks', 1)
         self.create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'})
 
+        debug('Insert data into node1')
         insert_c1c2(session, n=10000, consistency=ConsistencyLevel.ONE)
 
+        debug('Flush node1')
         cluster.flush()
 
+        debug('Move node1')
         node1.move(2**25)
         time.sleep(1)
 
+        debug('Cleanup node1')
         cluster.cleanup()
 
+        debug('Query node1')
         # Check we can get all the keys
         for n in xrange(0, 10000):
             query_c1c2(session, n, ConsistencyLevel.ONE)
+        debug('Query node1 done')
 
-    @since('3.0')
+    # Scylla suports this feature
+    # @since('3.0')
     @no_vnodes()
     def decommissioned_node_cant_rejoin_test(self):
         '''
@@ -175,7 +184,11 @@ class TestTopology(Tester):
         debug('stopping...')
         node3.stop()
         debug('attempting restart...')
-        node3.start()
+        try:
+            node3.start()
+        except NodeError:
+            debug('It is expected node3 will not be started succesfully')
+
         try:
             # usually takes 3 seconds, so give it a generous 15
             node3.watch_log_for(rejoin_err, timeout=15)
@@ -189,7 +202,8 @@ class TestTopology(Tester):
                                  for err_list in node3.grep_log_for_errors()]))
         self.assertFalse(node3.is_running())
 
-    @since('3.0')
+    # Scylla suports this
+    #@since('3.0')
     def crash_during_decommission_test(self):
         """
         If a node crashes whilst another node is being decommissioned,
