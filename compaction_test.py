@@ -260,7 +260,6 @@ class TestCompaction(Tester):
         """Ensure that switching strategies does not result in problems.
         Insert data, switch strategies, then check against data loss.
         """
-        # FIXME: Add DateTieredCompactionStrategy to list below once it gets supported.
         strategies = ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy']
 
         if self.strategy in strategies:
