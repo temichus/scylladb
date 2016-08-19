@@ -1,5 +1,3 @@
-import time
-
 from dtest import Tester
 
 
@@ -27,8 +25,7 @@ class TestSimpleBootShutdown(Tester):
             )
         """)
 
-        # FIXME adding a delay after create to verify we are flushing complete information
-        time.sleep(2)
+        node1.flush()
         node1.stop()
 
         node1.start(update_pid=True)
@@ -108,7 +105,7 @@ class TestSimpleBootShutdown(Tester):
         session.execute("insert into ks.test1  (k,c) values (1,2);")
 
         # wait for the commitlog to be fsynched
-        time.sleep(10)
+        node1.flush()
         node1.stop(gently=False)
 
         node1.start(update_pid=True)
