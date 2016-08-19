@@ -52,11 +52,9 @@ class ClusteringKeyFilterTest(Tester):
 
         self.check_number_of_rows(node1, 2)
 
-        # FIXME: enable this check after https://github.com/scylladb/scylla/issues/1544 gets fixed.
-        #query = 'SELECT * FROM ks.cf WHERE p1 = \'key1\' AND c1 <= \'a\' AND c1 >= \'b\';'
-        #print query
-        #result = self.select(node1, query)
-        #self.check_result(result, 'key1', [])
+        query = 'SELECT * FROM ks.cf WHERE p1 = \'key1\' AND c1 <= \'a\' AND c1 >= \'b\';'
+        result = self.select(node1, query)
+        self.check_result(result, 'key1', [])
 
         query = 'SELECT * FROM ks.cf WHERE p1 = \'key1\' AND c1 >= \'a\' AND c1 <= \'b\';'
         result = self.select(node1, query)
