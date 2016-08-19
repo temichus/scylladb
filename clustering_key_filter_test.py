@@ -11,7 +11,7 @@ from dtest import Tester, debug
 class ClusteringKeyFilterTest(Tester):
     # Check that a row tombstone is not discarded when its sstable doesn't contain clustering range specified in the query.
 
-    def check_consistence_after_row_tombstone(self):
+    def check_consistence_after_row_tombstone_test(self):
         node1 = self.start_cluster_and_get_node1()
 
         query = 'CREATE COLUMNFAMILY ks.cf (p1 text, c1 text, r1 int, PRIMARY KEY (p1, c1)) WITH compaction= {\'class\': \'NullCompactionStrategy\'};'
@@ -36,7 +36,7 @@ class ClusteringKeyFilterTest(Tester):
         result = self.select(node1, query)
         self.check_result(result, 'key1', ['a'])
 
-    def check_non_composite(self):
+    def check_non_composite_test(self):
         node1 = self.start_cluster_and_get_node1()
 
         query = 'CREATE COLUMNFAMILY ks.cf (p1 text, c1 text, r1 int, PRIMARY KEY (p1, c1)) WITH compaction= {\'class\': \'NullCompactionStrategy\'};'
@@ -82,7 +82,7 @@ class ClusteringKeyFilterTest(Tester):
         result = self.select(node1, query)
         self.check_result(result, 'key1', ['a'])
 
-    def check_composite(self):
+    def check_composite_test(self):
         node1 = self.start_cluster_and_get_node1()
 
         query = 'CREATE COLUMNFAMILY ks.cf (p1 text, c1 text, c2 text, r1 int, PRIMARY KEY (p1, c1, c2)) WITH compaction= {\'class\': \'NullCompactionStrategy\'};'
