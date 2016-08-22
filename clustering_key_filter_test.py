@@ -141,6 +141,14 @@ class ClusteringKeyFilterTest(Tester):
         result = self.select(node1, query)
         self.check_result_composite(result, 'key1', [['a', '1'], ['a', '2']])
 
+        query = 'SELECT * FROM ks.cf WHERE p1 = \'key1\' AND c1 = \'a\' AND c2 > \'1\';'
+        result = self.select(node1, query)
+        self.check_result_composite(result, 'key1', [['a', '2']])
+
+        query = 'SELECT * FROM ks.cf WHERE p1 = \'key1\' AND c1 = \'a\' AND c2 >= \'1\';'
+        result = self.select(node1, query)
+        self.check_result_composite(result, 'key1', [['a', '1'], ['a', '2']])
+
 # HELPER FUNCTIONS
     def check_result(self, result, pkey, ckeys):
         self.assertEqual(len(result), len(ckeys), "check number of clustering rows")
