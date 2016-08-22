@@ -97,10 +97,9 @@ class ClusteringKeyFilterTest(Tester):
 
         self.check_number_of_rows(node1, 4)
 
-        # FIXME: enable this check after https://github.com/scylladb/scylla/issues/1544 gets fixed.
-        #query = 'SELECT * FROM ks.cf WHERE p1 = \'key1\' AND c1 <= \'a\' AND c1 >= \'b\';'
-        #result = self.select(node1, query)
-        #self.check_result_composite(result, 'key1', [])
+        query = 'SELECT * FROM ks.cf WHERE p1 = \'key1\' AND c1 <= \'a\' AND c1 >= \'b\';'
+        result = self.select(node1, query)
+        self.check_result_composite(result, 'key1', [])
 
         query = 'SELECT * FROM ks.cf WHERE p1 = \'key1\' AND c1 >= \'a\' AND c1 <= \'b\';'
         result = self.select(node1, query)
@@ -139,6 +138,14 @@ class ClusteringKeyFilterTest(Tester):
         self.check_result_composite(result, 'key1', [['a', '2']])
 
         query = 'SELECT * FROM ks.cf WHERE p1 = \'key1\' AND c1 = \'a\' AND c2 >= \'1\' AND c2 <= \'2\';'
+        result = self.select(node1, query)
+        self.check_result_composite(result, 'key1', [['a', '1'], ['a', '2']])
+
+        query = 'SELECT * FROM ks.cf WHERE p1 = \'key1\' AND c1 = \'a\' AND c2 > \'1\';'
+        result = self.select(node1, query)
+        self.check_result_composite(result, 'key1', [['a', '2']])
+
+        query = 'SELECT * FROM ks.cf WHERE p1 = \'key1\' AND c1 = \'a\' AND c2 >= \'1\';'
         result = self.select(node1, query)
         self.check_result_composite(result, 'key1', [['a', '1'], ['a', '2']])
 
