@@ -2466,7 +2466,7 @@ class TestResultKeyOrder(ThriftTester):
                 client.insert(key, ColumnParent('Standard1'), Column(cname, 'v-' + cname, 0), ConsistencyLevel.ONE)
         cp = ColumnParent('Standard1')
         predicate = SlicePredicate(column_names=['col1', 'col3'])
-        range = KeyRange(start_token='55', end_token='55', count=100)
+        range = KeyRange(start_token=str(-(1 << 63)), end_token=str(-(1 << 63)), count=100)
         result = client.get_range_slices(cp, predicate, range, ConsistencyLevel.ONE)
         assert len(result) == 5
         assert result[0].key == 'key5'
