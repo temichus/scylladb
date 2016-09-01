@@ -149,6 +149,24 @@ class ClusteringKeyFilterTest(Tester):
         result = self.select(node1, query)
         self.check_result_composite(result, 'key1', [['a', '1'], ['a', '2']])
 
+    def check_composite_2_test(self):
+        node1 = self.start_cluster_and_get_node1()
+
+        query = 'CREATE COLUMNFAMILY ks.cf (p1 text, c1 text, c2 text, r1 int, PRIMARY KEY (p1, c1, c2)) WITH compaction= {\'class\': \'NullCompactionStrategy\'};'
+        self.create_ks_and_cf(node1, query)
+
+        # This will create a sstable with min max ranges [a, a] and [c, c].
+        query = 'INSERT INTO ks.cf (p1, c1, c2, r1) VALUES (\'key1\', \'a\', \'c\', 1);'
+        self.insert(node1, query)
+
+        # Check that this query will properly generate a clustering range filter
+        # [a, a] for first component, and (b, d) for the second.
+        query = 'SELECT * FROM ks.cf WHERE p1 = \'key1\' AND c1 = \'a\' AND c2 > \'b\' AND c2 < \'d\''
+        result = self.select(node1, query)
+        self.check_result_composite(result, 'key1', [['a', 'c']])
+
+        self.check_number_of_rows(node1, 1)
+
 # HELPER FUNCTIONS
     def check_result(self, result, pkey, ckeys):
         self.assertEqual(len(result), len(ckeys), "check number of clustering rows")
