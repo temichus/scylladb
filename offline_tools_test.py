@@ -16,7 +16,34 @@ class TestOfflineTools(Tester):
 
     # In 2.0, we will get this error log message due to jamm not being
     # in the classpath
-    ignore_log_patterns = ["Unable to initialize MemoryMeter"]
+    ignore_log_patterns = ["Unable to initialize MemoryMeter",
+                           "Max sstable size of",
+                           "Picked up JAVA_TOOL_OPTIONS"]
+
+    def _nodetool_stderr_has_error(self, stderr):
+        """
+        Verify if stderr contains an actual error message.
+
+        Check contents and ignore certain patterns.
+
+        :param stderr: Standard error contents.
+        :return: Whether stderr contains an actual error message.
+        """
+        if not stderr:
+            return False
+        error_lines = stderr.splitlines()
+        results = dict()
+        for line in error_lines:
+            line_ok = False
+            for ignore_pattern in self.ignore_log_patterns:
+                if line.startswith(ignore_pattern):
+                    line_ok = True
+            results[line] = line_ok
+        return not all(results.values())
+
+    def verify_nodetool_stderr(self, error):
+        self.assertTrue(not self._nodetool_stderr_has_error(error),
+                        "Unexpected nodetool stderr: %s" % error)
 
     def sstablelevelreset_test(self):
         """
@@ -43,7 +70,7 @@ class TestOfflineTools(Tester):
         cluster.stop(gently=False)
 
         (output, error, rc) = node1.run_sstablelevelreset("keyspace1", "standard1", output=True)
-        self.assertTrue(len(error) == 0 or "Max sstable size of" in error, error)
+        self.verify_nodetool_stderr(error)
         self.assertIn("Found no sstables, did you give the correct keyspace", output)
         self.assertEqual(rc, 0, msg=str(rc))
 
@@ -56,7 +83,7 @@ class TestOfflineTools(Tester):
         cluster.stop(gently=False)
 
         (output, error, rc) = node1.run_sstablelevelreset("keyspace1", "standard1", output=True)
-        self.assertTrue(len(error) == 0 or "Max sstable size of" in error, error)
+        self.verify_nodetool_stderr(error)
         self.assertIn("since it is already on level 0", output)
         self.assertEqual(rc, 0, msg=str(rc))
 
@@ -70,8 +97,7 @@ class TestOfflineTools(Tester):
         initial_levels = self.get_levels(node1.run_sstablemetadata(keyspace="keyspace1", column_families=["standard1"]))
         (output, error, rc) = node1.run_sstablelevelreset("keyspace1", "standard1", output=True)
         final_levels = self.get_levels(node1.run_sstablemetadata(keyspace="keyspace1", column_families=["standard1"]))
-
-        self.assertTrue(len(error) == 0 or "Max sstable size of" in error, error)
+        self.verify_nodetool_stderr(error)
         self.assertEqual(rc, 0, msg=str(rc))
 
         debug(initial_levels)
