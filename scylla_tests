@@ -119,6 +119,7 @@ cql_additional_tests.py:TestCQL.select_distinct_with_deletions_test
 cql_additional_tests.py:TestCQL.select_key_in_test
 cql_additional_tests.py:TestCQL.select_with_alias_test
 cql_additional_tests.py:TestCQL.set_test
+cql_additional_tests.py:TestCQL.slicing_test
 cql_additional_tests.py:TestCQL.sparse_cf_test
 cql_additional_tests.py:TestCQL.static_cf_test
 cql_additional_tests.py:TestCQL.static_with_empty_clustering_test

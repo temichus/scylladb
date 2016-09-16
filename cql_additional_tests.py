@@ -4084,6 +4084,70 @@ class TestCQL(Tester):
 
         assert_invalid(session, "SELECT v1, v2, v3 FROM test WHERE k = 0 AND (v1, v3) > (1, 0)")
 
+    def slicing_test(self):
+        session = self.prepare()
+
+        session.execute("CREATE TABLE test (k int, c1 int, c2 int, v int, PRIMARY KEY (k, c1, c2)) with compact storage")
+
+        for i in range(0, 3):
+            session.execute("INSERT INTO test(k, c1, v) VALUES (0, %d, 1)" % (i))
+            for j in range(0, 3):
+                session.execute("INSERT INTO test(k, c1, c2, v) VALUES (0, %d, %d, 0)" % (i, j))
+
+        assert_all(session, "SELECT c1, c2, v FROM test WHERE k = 0", [[0, None, 1],
+                                                                       [0, 0, 0],
+                                                                        [0, 1, 0],
+                                                                        [0, 2, 0],
+                                                                        [1, None, 1],
+                                                                        [1, 0, 0],
+                                                                        [1, 1, 0],
+                                                                        [1, 2, 0],
+                                                                        [2, None, 1],
+                                                                        [2, 0, 0],
+                                                                        [2, 1, 0],
+                                                                        [2, 2, 0]
+                                                                        ])
+
+        assert_all(session, "SELECT c1, c2, v FROM test WHERE k = 0 AND c1 = 0 and c2 >= 1 and c2 < 2", [[0, 1, 0]])
+        assert_all(session, "SELECT c1, c2, v FROM test WHERE k = 0 AND c1 = 0 and c2 > 1", [[0, 2, 0]])
+        assert_all(session, "SELECT c1, c2, v FROM test WHERE k = 0 AND c1 = 0 and c2 >= 1", [[0, 1, 0], [0, 2, 0]])
+        assert_all(session, "SELECT c1, c2, v FROM test WHERE k = 0 AND c1 = 0 and c2 < 2", [[0, None, 1], [0, 0, 0], [0, 1, 0]])
+        assert_all(session, "SELECT c1, c2, v FROM test WHERE k = 0 AND c1 = 0 and c2 <= 2", [[0, None, 1], [0, 0, 0], [0, 1, 0], [0, 2, 0]])
+
+        assert_all(session, "SELECT c1, c2, v FROM test WHERE k = 0 AND c1 = 0 and c2 < 1 and c2 > 2", [])
+        assert_all(session, "SELECT c1, c2, v FROM test WHERE k = 0 AND c1 = 0 and c2 < 1 and c2 >= 2", [])
+        assert_all(session, "SELECT c1, c2, v FROM test WHERE k = 0 AND c1 = 0 and c2 < 2 and c2 > 1", [])
+        assert_all(session, "SELECT c1, c2, v FROM test WHERE k = 0 AND c1 = 0 and c2 < 3 and c2 > 1", [[0, 2, 0]])
+
+        assert_all(session, "SELECT c1, c2, v FROM test WHERE k = 0 AND (c1, c2) < (0, 1) and (c1, c2) > (0, 2)", [])
+        assert_all(session, "SELECT c1, c2, v FROM test WHERE k = 0 AND (c1, c2) >= (0, 1) and (c1) < (0)", [])
+        assert_all(session, "SELECT c1, c2, v FROM test WHERE k = 0 AND (c1, c2) >= (0, 1) and (c1) <= (0)", [[0, 1, 0], [0, 2, 0]])
+        assert_all(session, "SELECT c1, c2, v FROM test WHERE k = 0 AND (c1, c2) < (0, 1) and (c1, c2) >= (0, 2)", [])
+        assert_all(session, "SELECT c1, c2, v FROM test WHERE k = 0 AND (c1, c2) < (0, 2) and (c1, c2) > (0, 1)", [])
+        assert_all(session, "SELECT c1, c2, v FROM test WHERE k = 0 AND (c1, c2) < (0, 3) and (c1, c2) > (0, 1)", [[0, 2, 0]])
+
+        assert_all(session, "SELECT c1, c2, v FROM test WHERE k = 0 AND c1 >= 0", [[0, None, 1],
+                                                                       [0, 0, 0],
+                                                                        [0, 1, 0],
+                                                                        [0, 2, 0],
+                                                                        [1, None, 1],
+                                                                        [1, 0, 0],
+                                                                        [1, 1, 0],
+                                                                        [1, 2, 0],
+                                                                        [2, None, 1],
+                                                                        [2, 0, 0],
+                                                                        [2, 1, 0],
+                                                                        [2, 2, 0]
+                                                                        ])
+
+        assert_all(session, "SELECT c1, c2, v FROM test WHERE k = 0 AND c1 < 1", [[0, None, 1],
+                                                                       [0, 0, 0],
+                                                                        [0, 1, 0],
+                                                                        [0, 2, 0],
+                                                                        ])
+
+        assert_all(session, "SELECT c1, c2, v FROM test WHERE k = 0 AND c1 < 1 and c1 > 1", [])
+
     def in_with_desc_order_test(self):
         session = self.prepare()
 
