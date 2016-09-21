@@ -139,36 +139,25 @@ class CompactionAdditionalStrategyTests(Tester):
         for f in files:
             os.remove(f)
 
-        sstablefiles = self._get_sstable_files(node1, 'ks', 'cf')
+        keyspace_dir = os.path.join(node1.get_path(), 'data', 'ks')
+        sstablefiles = glob.glob(glob.glob(os.path.join(keyspace_dir, 'cf' + '-*', '*-TOC.txt'))[0].replace('TOC.txt', '') + '*')
         for f in sstablefiles:
             for generation_suffix in xrange(10, 40):
                 self._copy_sstable_file(f, "9999%d" % generation_suffix)
 
-        before_start_count = len(glob.glob(os.path.join('ks', 'cf' + '-*', 'TOC.txt')))
+        before_start_count = len(glob.glob(os.path.join(keyspace_dir, 'cf' + '-*', '*-Data.db')))
 
         node1.start()
         time.sleep(30)
 
-        after_start_count = len(glob.glob(os.path.join('ks', 'cf' + '-*', 'TOC.txt')))
+        after_start_count = len(glob.glob(os.path.join(keyspace_dir, 'cf' + '-*', '*-Data.db')))
 
-        self.assertEqual(before_start_count, after_start_count)
+        self.assertNotEqual(before_start_count, after_start_count)
 
     def _copy_sstable_file(self, file, generation):
         sstable_split_parts = os.path.basename(file).split('-')
         sstable_split_parts[-2] = generation
         shutil.copy(file, os.path.join(os.path.dirname(file), '-'.join(sstable_split_parts)))
-
-    def _get_sstable_files(self, node, ks, table):
-        """
-        Read sstable files directly from disk
-        """
-        keyspace_dir = os.path.join(node.get_path(), 'data', ks)
-
-        ret = []
-        for ext in ('*.db', '*.txt', '*.adler32', '*.crc32', '*.sha1'):
-            ret.extend(glob.glob(os.path.join(keyspace_dir, table + '-*', ext)))
-        return ret
-
 
 strategies = ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy']
 for strategy in strategies:
