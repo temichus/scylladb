@@ -4096,17 +4096,17 @@ class TestCQL(Tester):
 
         assert_all(session, "SELECT c1, c2, v FROM test WHERE k = 0", [[0, None, 1],
                                                                        [0, 0, 0],
-                                                                        [0, 1, 0],
-                                                                        [0, 2, 0],
-                                                                        [1, None, 1],
-                                                                        [1, 0, 0],
-                                                                        [1, 1, 0],
-                                                                        [1, 2, 0],
-                                                                        [2, None, 1],
-                                                                        [2, 0, 0],
-                                                                        [2, 1, 0],
-                                                                        [2, 2, 0]
-                                                                        ])
+                                                                       [0, 1, 0],
+                                                                       [0, 2, 0],
+                                                                       [1, None, 1],
+                                                                       [1, 0, 0],
+                                                                       [1, 1, 0],
+                                                                       [1, 2, 0],
+                                                                       [2, None, 1],
+                                                                       [2, 0, 0],
+                                                                       [2, 1, 0],
+                                                                       [2, 2, 0]
+                                                                       ])
 
         assert_all(session, "SELECT c1, c2, v FROM test WHERE k = 0 AND c1 = 0 and c2 >= 1 and c2 < 2", [[0, 1, 0]])
         assert_all(session, "SELECT c1, c2, v FROM test WHERE k = 0 AND c1 = 0 and c2 > 1", [[0, 2, 0]])
@@ -4127,24 +4127,24 @@ class TestCQL(Tester):
         assert_all(session, "SELECT c1, c2, v FROM test WHERE k = 0 AND (c1, c2) < (0, 3) and (c1, c2) > (0, 1)", [[0, 2, 0]])
 
         assert_all(session, "SELECT c1, c2, v FROM test WHERE k = 0 AND c1 >= 0", [[0, None, 1],
-                                                                       [0, 0, 0],
-                                                                        [0, 1, 0],
-                                                                        [0, 2, 0],
-                                                                        [1, None, 1],
-                                                                        [1, 0, 0],
-                                                                        [1, 1, 0],
-                                                                        [1, 2, 0],
-                                                                        [2, None, 1],
-                                                                        [2, 0, 0],
-                                                                        [2, 1, 0],
-                                                                        [2, 2, 0]
-                                                                        ])
+                                                                                   [0, 0, 0],
+                                                                                   [0, 1, 0],
+                                                                                   [0, 2, 0],
+                                                                                   [1, None, 1],
+                                                                                   [1, 0, 0],
+                                                                                   [1, 1, 0],
+                                                                                   [1, 2, 0],
+                                                                                   [2, None, 1],
+                                                                                   [2, 0, 0],
+                                                                                   [2, 1, 0],
+                                                                                   [2, 2, 0]
+                                                                                   ])
 
         assert_all(session, "SELECT c1, c2, v FROM test WHERE k = 0 AND c1 < 1", [[0, None, 1],
-                                                                       [0, 0, 0],
-                                                                        [0, 1, 0],
-                                                                        [0, 2, 0],
-                                                                        ])
+                                                                                  [0, 0, 0],
+                                                                                  [0, 1, 0],
+                                                                                  [0, 2, 0],
+                                                                                  ])
 
         assert_all(session, "SELECT c1, c2, v FROM test WHERE k = 0 AND c1 < 1 and c1 > 1", [])
 
