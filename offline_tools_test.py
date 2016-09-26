@@ -124,6 +124,7 @@ class TestOfflineTools(Tester):
             if pattern.search(output):
                 break
 
+    @nottest
     def sstableofflinerelevel_test(self):
         """
         Generate sstables of varying levels.
