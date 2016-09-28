@@ -135,7 +135,7 @@ def query_c1c2_concurrent(session, keys, consistency=ConsistencyLevel.QUORUM, to
     results = execute_concurrent_with_args(session, pquery, map(lambda x: ['k{}'.format(x)], keys))
 
     map(lambda (success, result), c1, c2:
-        check_c1c2_result_one(success, result, tolerate_missing, must_be_missing, c1, c2),
+        check_c1c2_result_one(success, list(result), tolerate_missing, must_be_missing, c1, c2),
         results, c1_values, c2_values)
 
 
