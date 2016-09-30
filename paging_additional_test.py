@@ -48,3 +48,32 @@ class TestAggregatePaging(BasePagingTester, PageAssertionMixin):
     @scylla_mode('debug')
     def test_paged_count_with_limit_debug(self):
         self._test_paged_count_with_limit([10, 100, 250])
+
+    def _test_paged_count_with_clustering_key(self, order):
+        session = self.prepare()
+        self.create_ks(session, 'test_aggregate_paging', 2)
+        session.execute("CREATE TABLE paging_test (pk int, ck1 int, ck2 text, v int, PRIMARY KEY(pk, ck1, ck2))")
+
+        def random_txt(text):
+            return unicode(uuid.uuid4())
+
+        data = """
+               | pk | ck1 | ck2          | v |
+               +----+-----+--------------+---+
+          *1234| 0  | 1   | [random_txt] | 0 |
+               """
+
+        create_rows(data, session, 'paging_test', cl=CL.ALL, format_funcs={'pk': int, 'ck1': int, 'ck2': random_txt, 'v': int})
+
+        future = session.execute_async(
+            SimpleStatement("select count(*) from paging_test where pk = 0 and ck1 = 1 order by ck1 {}, ck2 {}".format(order, order), fetch_size=100, consistency_level=CL.ALL)
+        )
+        pf = PageFetcher(future).request_all()
+        self.assertEqual(pf.num_results_all(), [1])
+        self.assertEqual(pf.all_data(), [{u'count': 1234}])
+
+    def test_paged_count_with_clustering_key(self):
+        self._test_paged_count_with_clustering_key('asc')
+
+    def test_paged_count_with_clustering_key_reversed(self):
+        self._test_paged_count_with_clustering_key('desc')
