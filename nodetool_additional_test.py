@@ -256,7 +256,7 @@ class TestNodetool(Tester):
         [node1] = cluster.nodelist()
         cursor = self.patient_cql_connection(node1)
 
-        strs = self.stress_write(node1, times=1000)
+        strs = self.stress_write(node1, times=1000, opt=['no-warmup'])
         node1.flush()
 
         table_name = 'standard1'
@@ -1021,6 +1021,8 @@ class TestNodetool(Tester):
             strm = re.match("^\s+(\S+) (\d+) files, (\d+) bytes total. Already \S+ (\d+) files, (\d+) bytes total", line)
             command = re.match("Commands\s+([^\s]+)\s+(\d+)\s+(\d+)", line)
             responses = re.match("Responses\s+([^\s]+)\s+(\d+)\s+(\d+)", line)
+            messages = re.match("(Large|Small|Gossip) messages\s+([^\s]+)\s+(\d+)\s+(\d+)\s+(\d)", line)
+
             rxfile = re.match("\s+(\S+)\s+(\d+)/(\d+) bytes\((\d+)%\)\s+\S+\s+\S+\s+idx:0/([\d\.]+)", line)
             if line == "Read Repair Statistics:":
                 read_repair = True
@@ -1060,6 +1062,13 @@ class TestNodetool(Tester):
                 res["responses"]["Active"] = self._tonum(responses.group(1))
                 res["responses"]["Pending"] = self._tonum(responses.group(2))
                 res["responses"]["Completed"] = self._tonum(responses.group(3))
+            elif messages:
+                type = messages.group(1)
+                res[type] = {}
+                res[type]["Active"] = self._tonum(messages.group(1))
+                res[type]["Pending"] = self._tonum(messages.group(2))
+                res[type]["Completed"] = self._tonum(messages.group(3))
+                res[type]["Dropped"] = self._tonum(messages.group(4))
             elif read_repair:
                 rr = re.match("^(.*):\s*(\d+)\s*$", line)
                 self.assertTrue(rr, "unexpected line in read repair")
@@ -1095,7 +1104,7 @@ class TestNodetool(Tester):
     def _verify_proxyhistogram(self, lst):
         self.assertRegexpMatches(lst["Read Latency"], "\d+\.\d+", "Bad formatted Read latency")
         self.assertRegexpMatches(lst["Write Latency"], "\d+\.\d+", "Bad formatted Write latency")
-        self.assertEqual("NaN", lst["Range Latency"], "Bad Range Latency format")
+        self.assertRegexpMatches(lst["Range Latency"], "\d+\.\d+", "Bad formatted Range latency")
 
     def proxyhistograms_test(self):
         """
