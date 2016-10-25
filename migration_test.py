@@ -27,7 +27,7 @@ class MigrationTestBase(Tester):
     def migrate_sstable_with_expired_ttl_test(self):
         # Data inserted in c* with the following query: INSERT INTO ks.cf (key, c1, c2) VALUES ('a', 'abc', 'cde') USING TTL 1;
         # Expect no keys because the only one inserted is expired.
-        self._run_basic_migration_test('with_expired_ttl', None)
+        self._run_basic_migration_test('with_expired_ttl', None, sleep=10)
 
     def migrate_sstable_with_cell_tombstone_test(self):
         # Content generated with:
@@ -212,10 +212,12 @@ class MigrationTestBase(Tester):
         s = self.patient_cql_connection(node1, 'ks')
         return list(s.execute(statement))
 
-    def _run_basic_migration_test(self, migrated_files_dir, row_content, compression=None, compact_storage=False):
+    def _run_basic_migration_test(self, migrated_files_dir, row_content, compression=None, compact_storage=False, sleep=0):
         node1 = self.start_cluster_and_get_node1()
         self.create_ks_and_cf(node1, columns={'c1': 'text', 'c2': 'text'}, compression=compression, compact_storage=compact_storage)
         self.load_migrated_tables(node1, migrated_files_dir)
+
+        time.sleep(sleep)
 
         expected_keys = 1
         if row_content is None:
