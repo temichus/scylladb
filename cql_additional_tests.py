@@ -195,6 +195,30 @@ class TestCQL(Tester):
             [UUID('550e8400-e29b-41d4-a716-446655440000'), 36, None, None],
         ], res
 
+    def select_duplicate_column(self):
+        """
+        Regression test for https://github.com/scylladb/scylla/issues/1367
+
+        Verify that we can select an arbitrary amount of a single column, as in
+        SELECT [identifier], [identifier] FROM [table]
+        """
+        session = self.prepare()
+        session.execute("""
+            CREATE TABLE clicks (
+                userid uuid,
+                url text,
+                time bigint,
+                PRIMARY KEY (userid, url)
+            );
+        """)
+        session.execute("INSERT INTO clicks (userid, url, time) VALUES (550e8400-e29b-41d4-a716-446655440000, 'http://foo.bar', 42)")
+        session.execute("INSERT INTO clicks (userid, url, time) VALUES (550e8400-e29b-41d4-a716-446655440000, 'http://foo-2.bar', 24)")
+        # In case #1367 reproduces, we'll get
+        # NoHostAvailable: ('Unable to complete the operation against any hosts', {})
+        # And in the scylla log, we'll get the assertion failure
+        # scylla: cql3/result_set.cc:145: void cql3::result_set::add_row(std::vector<std::experimental::fundamentals_v1::optional<basic_sstring<signed char, unsigned int, 31u> > >): Assertion `row.size() == _metadata->value_count()' failed.
+        session.execute("SELECT userid, userid FROM clicks")
+
     def dynamic_cf_test(self):
         """
         Test non-composite dynamic CF syntax.
