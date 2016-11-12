@@ -98,6 +98,7 @@ def insert_c1cn(session, keys=None, consistency=ConsistencyLevel.QUORUM, nr_colu
 
 
 def check_c1c2_result_one(success, rows, tolerate_missing, must_be_missing, c1_value, c2_value):
+    rows = list(rows)
     if not success:
         assert False, "Query failed {}".format(rows)
 

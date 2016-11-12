@@ -1,5 +1,3 @@
-import time
-
 from dtest import Tester
 
 
@@ -27,8 +25,7 @@ class TestSimpleBootShutdown(Tester):
             )
         """)
 
-        # FIXME adding a delay after create to verify we are flushing complete information
-        time.sleep(2)
+        node1.flush()
         node1.stop()
 
         node1.start(update_pid=True)
@@ -37,18 +34,18 @@ class TestSimpleBootShutdown(Tester):
         session.execute("insert into ks.test1  (k,c) values (1,2);")
 
         # Select
-        res = session.execute("""
+        res = list(session.execute("""
                 SELECT * FROM ks.test1
                 WHERE k=1
-        """)
+        """))
 
         assert len(res) == 1, res
 
         # Select
-        res = session.execute("""
+        res = list(session.execute("""
                 SELECT * FROM ks.test1
                 WHERE k=2
-        """)
+        """))
 
         assert len(res) == 0, res
 
@@ -75,18 +72,18 @@ class TestSimpleBootShutdown(Tester):
         node1.start(update_pid=True)
         session = self.patient_cql_connection(node1, 'ks')
         # Select
-        res = session.execute("""
+        res = list(session.execute("""
                 SELECT * FROM ks.test1
                 WHERE k=1
-        """)
+        """))
 
         assert len(res) == 1, res
 
         # Select
-        res = session.execute("""
+        res = list(session.execute("""
                 SELECT * FROM ks.test1
                 WHERE k=2
-        """)
+        """))
 
         assert len(res) == 0, res
 
@@ -108,23 +105,23 @@ class TestSimpleBootShutdown(Tester):
         session.execute("insert into ks.test1  (k,c) values (1,2);")
 
         # wait for the commitlog to be fsynched
-        time.sleep(10)
+        node1.flush()
         node1.stop(gently=False)
 
         node1.start(update_pid=True)
         session = self.patient_cql_connection(node1, 'ks')
         # Select
-        res = session.execute("""
+        res = list(session.execute("""
                 SELECT * FROM ks.test1
                 WHERE k=1
-        """)
+        """))
 
         assert len(res) == 1, res
 
         # Select
-        res = session.execute("""
+        res = list(session.execute("""
                 SELECT * FROM ks.test1
                 WHERE k=2
-        """)
+        """))
 
         assert len(res) == 0, res

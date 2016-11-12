@@ -45,7 +45,7 @@ class TestSimple(Tester):
                 WHERE k=1
         """)
 
-        assert len(res) == 1, res
+        assert len(list(res)) == 1, list(res)
 
         # Select
         res = session.execute("""
@@ -53,7 +53,7 @@ class TestSimple(Tester):
                 WHERE k=2
         """)
 
-        assert len(res) == 0, res
+        assert len(list(res)) == 0, list(res)
         time.sleep(10)
 
     def simple_composite_partition_key_create_insert_select_test(self):
@@ -83,26 +83,26 @@ class TestSimple(Tester):
                 SELECT * FROM test1
                 WHERE k1=1 and k2=1
         """)
-        assert len(res) == 1, res
+        assert len(list(res)) == 1, list(res)
 
         res = session.execute("""
                 SELECT * FROM test1
                 WHERE k1=1 and k2=2
         """)
-        assert len(res) == 1, res
+        assert len(list(res)) == 1, list(res)
 
         # Select
         res = session.execute("""
                 SELECT * FROM test1
                 WHERE k1=2 and k2=1
         """)
-        assert len(res) == 0, res
+        assert len(list(res)) == 0, list(res)
 
         res = session.execute("""
                 SELECT * FROM test1
                 WHERE k1=1 and k2=3
         """)
-        assert len(res) == 0, res
+        assert len(list(res)) == 0, list(res)
 
         time.sleep(1)
 
@@ -134,13 +134,13 @@ class TestSimple(Tester):
                 SELECT * FROM test1
                 WHERE k1=1
         """)
-        assert len(res) == 2, res
+        assert len(list(res)) == 2, list(res)
 
         res = session.execute("""
                 SELECT * FROM test1
                 WHERE k1=1 and c1=1 and c2=1
         """)
-        assert len(res) == 1, res
+        assert len(list(res)) == 1, list(res)
 
         # Select
         res = session.execute("""
@@ -152,7 +152,7 @@ class TestSimple(Tester):
                 SELECT * FROM test1
                 WHERE k1=1 and c1=1 and c2=3
         """)
-        assert len(res) == 0, res
+        assert len(list(res)) == 0, list(res)
 
         time.sleep(1)
 

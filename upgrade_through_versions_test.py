@@ -697,7 +697,7 @@ class TestUpgradeThroughVersions(Tester):
             session.execute("use upgrade")
             for x in self.row_values:
                 query = SimpleStatement("SELECT k,v FROM cf WHERE k=%d" % x, consistency_level=consistency_level)
-                result = session.execute(query)
+                result = list(session.execute(query))
                 k, v = result[0]
                 self.assertEqual(x, k)
                 self.assertEqual(str(x), v)
@@ -849,7 +849,7 @@ class TestUpgradeThroughVersions(Tester):
         expected_num_rows = len(self.row_values)
 
         countquery = SimpleStatement("SELECT COUNT(*) FROM cf;", consistency_level=consistency_level)
-        result = session.execute(countquery)
+        result = list(session.execute(countquery))
 
         if result is not None:
             actual_num_rows = result[0][0]

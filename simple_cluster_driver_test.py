@@ -47,20 +47,20 @@ class TestSimpleCluster(Tester):
 
         # Select
         query1 = SimpleStatement("SELECT * FROM ks.test1 WHERE k=1", consistency_level=ConsistencyLevel.QUORUM)
-        res = session1.execute(query1)
+        res = list(session1.execute(query1))
         assert len(res) == 1, res
-        res = session2.execute(query1)
+        res = list(session2.execute(query1))
         assert len(res) == 1, res
-        res = session3.execute(query1)
+        res = list(session3.execute(query1))
         assert len(res) == 1, res
 
         # Select
         query2 = SimpleStatement("SELECT * FROM ks.test1 WHERE k=2", consistency_level=ConsistencyLevel.QUORUM)
-        res = session1.execute(query2)
+        res = list(session1.execute(query2))
         assert len(res) == 0, res
-        res = session2.execute(query2)
+        res = list(session2.execute(query2))
         assert len(res) == 0, res
-        res = session3.execute(query2)
+        res = list(session3.execute(query2))
         assert len(res) == 0, res
 
         time.sleep(10)
@@ -84,7 +84,7 @@ class TestSimpleCluster(Tester):
             for key in read_keys:
                 try:
                     query1 = SimpleStatement("SELECT * FROM ks.test1 WHERE k=%s" % key, consistency_level=cl)
-                    res = session.execute(query1)
+                    res = list(session.execute(query1))
                     assert len(res) == 1, res
                     read_pass = read_pass + 1
                 except Exception as ex:
@@ -95,7 +95,7 @@ class TestSimpleCluster(Tester):
         for cl in read_cls_fail:
             query1 = SimpleStatement("SELECT * FROM ks.test1 WHERE k=1", consistency_level=cl)
             try:
-                res = sessionexecute(query1)
+                res = list(session.execute(query1))
                 assert("Consistency level %s is not possible" % self.clname(cl))
             except Unavailable as ex:
                 assert(True)
@@ -109,7 +109,7 @@ class TestSimpleCluster(Tester):
             for key in write_keys:
                 try:
                     insert = SimpleStatement("insert into ks.test1  (k,c) values (%s,%s)" % (key, key), consistency_level=cl)
-                    res = session.execute(insert)
+                    res = list(session.execute(insert))
                     write_pass = write_pass + 1
                 except Exception as ex:
                     write_fail = write_fail + 1
@@ -119,7 +119,7 @@ class TestSimpleCluster(Tester):
         for cl in write_cls_fail:
             insert = SimpleStatement("insert into ks.test1 (k,c) values (101,101)", consistency_level=cl)
             try:
-                res = sessionexecute(insert)
+                res = list(session.execute(insert))
                 assert("Consistency level %s is not possible" % self.clname(cl))
             except Unavailable as ex:
                 assert(True)
@@ -239,7 +239,7 @@ class TestSimpleCluster(Tester):
             errors = []
             try:
                 query1 = SimpleStatement(query, consistency_level=cl)
-                res = session.execute(query1)
+                res = list(session.execute(query1))
                 assert len(res) == read_keys, "got %s expected %s " % (len(res), read_keys) + " : " + str(res)
                 read_pass = read_pass + 1
             except Exception as ex:
@@ -251,7 +251,7 @@ class TestSimpleCluster(Tester):
         for cl in read_cls_fail:
             query1 = SimpleStatement(query, consistency_level=cl)
             try:
-                res = sessionexecute(query1)
+                res = list(session.execute(query1))
                 assert("Consistency level %s is not possible" % self.clname(cl))
             except Unavailable as ex:
                 assert(True)

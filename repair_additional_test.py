@@ -213,7 +213,7 @@ class RepairAdditionalTest(Tester):
 
         # Confirm that node1 has new data, and (by bringing only node 2 up) that
         # node2 still has old data
-        result = session.execute("SELECT * from cf")
+        result = list(session.execute("SELECT * from cf"))
         self.assertEqual(len(result), 1, len(result))
         self.assertEqual(result[0].key, 'key', result[0].key)
         self.assertEqual(result[0].c1, 'new', result[0].c1)
@@ -222,7 +222,7 @@ class RepairAdditionalTest(Tester):
         node1.flush()
         node1.stop(wait_other_notice=True)
         session = self.patient_cql_connection(node2, 'ks')
-        result = session.execute("SELECT * from cf")
+        result = list(session.execute("SELECT * from cf"))
         self.assertEqual(len(result), 1, len(result))
         self.assertEqual(result[0].key, 'key', result[0].key)
         self.assertEqual(result[0].c1, 'hello', result[0].c1)
@@ -237,7 +237,7 @@ class RepairAdditionalTest(Tester):
         node1.flush()
         node1.stop(wait_other_notice=True)
         session = self.patient_cql_connection(node2, 'ks')
-        result = session.execute("SELECT * from cf")
+        result = list(session.execute("SELECT * from cf"))
         self.assertEqual(len(result), 1, len(result))
         self.assertEqual(result[0].key, 'key', result[0].key)
         self.assertEqual(result[0].c1, 'new', result[0].c1)
@@ -271,7 +271,7 @@ class RepairAdditionalTest(Tester):
 
         # Confirm that node1 has new data, and (by bringing only node 2 up) that
         # node2 still has old data
-        result = session.execute("SELECT * from cf")
+        result = list(session.execute("SELECT * from cf"))
         self.assertEqual(len(result), 1, len(result))
         self.assertEqual(result[0].key, 'key', result[0].key)
         self.assertEqual(result[0].c1, None, result[0].c1)
@@ -280,7 +280,7 @@ class RepairAdditionalTest(Tester):
         node1.flush()
         node1.stop(wait_other_notice=True)
         session = self.patient_cql_connection(node2, 'ks')
-        result = session.execute("SELECT * from cf")
+        result = list(session.execute("SELECT * from cf"))
         self.assertEqual(len(result), 1, len(result))
         self.assertEqual(result[0].key, 'key', result[0].key)
         self.assertEqual(result[0].c1, 'hello', result[0].c1)
@@ -295,7 +295,7 @@ class RepairAdditionalTest(Tester):
         node1.flush()
         node1.stop(wait_other_notice=True)
         session = self.patient_cql_connection(node2, 'ks')
-        result = session.execute("SELECT * from cf")
+        result = list(session.execute("SELECT * from cf"))
         self.assertEqual(len(result), 1, len(result))
         self.assertEqual(result[0].key, 'key', result[0].key)
         self.assertEqual(result[0].c1, None, result[0].c1)
@@ -333,7 +333,7 @@ class RepairAdditionalTest(Tester):
 
         # Confirm that node1 has new data, and (by bringing only node 2 up) that
         # node2 still has old data
-        result = session.execute("SELECT * from cf")
+        result = list(session.execute("SELECT * from cf"))
         self.assertEqual(len(result), 1, len(result))
         self.assertEqual(result[0].name, 'nadav', result[0].name)
         self.assertEqual(result[0].pet, 'adamdami', result[0].pet)
@@ -342,7 +342,7 @@ class RepairAdditionalTest(Tester):
         node1.flush()
         node1.stop(wait_other_notice=True)
         session = self.patient_cql_connection(node2, 'ks')
-        result = session.execute("SELECT * from cf")
+        result = list(session.execute("SELECT * from cf"))
         self.assertEqual(len(result), 2, len(result))
 
         # Finally bring both nodes up, repair, and confirm (by bringing up only
@@ -354,7 +354,7 @@ class RepairAdditionalTest(Tester):
         node1.flush()
         node1.stop(wait_other_notice=True)
         session = self.patient_cql_connection(node2, 'ks')
-        result = session.execute("SELECT * from cf")
+        result = list(session.execute("SELECT * from cf"))
         self.assertEqual(len(result), 1, len(result))
         self.assertEqual(result[0].name, 'nadav', result[0].name)
         self.assertEqual(result[0].pet, 'adamdami', result[0].pet)
@@ -394,7 +394,7 @@ class RepairAdditionalTest(Tester):
 
         # Confirm that node1 has new data, and (by bringing only node 2 up) that
         # node2 still has old data
-        result = session.execute("SELECT * from cf")
+        result = list(session.execute("SELECT * from cf"))
         self.assertEqual(len(result), 1, len(result))
         self.assertEqual(result[0].key, 'k2', result[0].key)
         self.assertEqual(result[0].c1, 'v21', result[0].c1)
@@ -403,7 +403,7 @@ class RepairAdditionalTest(Tester):
         node1.flush()
         node1.stop(wait_other_notice=True)
         session = self.patient_cql_connection(node2, 'ks')
-        result = session.execute("SELECT * from cf")
+        result = list(session.execute("SELECT * from cf"))
         self.assertEqual(len(result), 3, len(result))
 
         # Finally bring both nodes up, repair, and confirm (by bringing up only
@@ -415,7 +415,7 @@ class RepairAdditionalTest(Tester):
         node1.flush()
         node1.stop(wait_other_notice=True)
         session = self.patient_cql_connection(node2, 'ks')
-        result = session.execute("SELECT * from cf")
+        result = list(session.execute("SELECT * from cf"))
         self.assertEqual(len(result), 1, len(result))
         self.assertEqual(result[0].key, 'k2', result[0].key)
         self.assertEqual(result[0].c1, 'v21', result[0].c1)
@@ -458,7 +458,7 @@ class RepairAdditionalTest(Tester):
         # because the TTL we get from that is not the original TTL we had set,
         # but rather the *remaining* TTL at this time. To verify the original
         # TTL set, we need to resort to reading the sstable.
-        result = session.execute("SELECT * from cf")
+        result = list(session.execute("SELECT * from cf"))
         self.assertEqual(len(result), 1, len(result))
         self.assertEqual(result[0].key, 'key', result[0].key)
         self.assertEqual(result[0].c1, 'new', result[0].c1)
@@ -481,7 +481,7 @@ class RepairAdditionalTest(Tester):
         node1.flush()
         node1.stop(wait_other_notice=True)
         session = self.patient_cql_connection(node2, 'ks')
-        result = session.execute("SELECT * from cf")
+        result = list(session.execute("SELECT * from cf"))
         self.assertEqual(len(result), 1, len(result))
         self.assertEqual(result[0].key, 'key', result[0].key)
         self.assertEqual(result[0].c1, 'hello', result[0].c1)
@@ -509,7 +509,7 @@ class RepairAdditionalTest(Tester):
         node1.flush()
         node1.stop(wait_other_notice=True)
         session = self.patient_cql_connection(node2, 'ks')
-        result = session.execute("SELECT * from cf")
+        result = list(session.execute("SELECT * from cf"))
         self.assertEqual(len(result), 1, len(result))
         self.assertEqual(result[0].key, 'key', result[0].key)
         self.assertEqual(result[0].c1, 'new', result[0].c1)
@@ -576,13 +576,13 @@ class RepairAdditionalTest(Tester):
         node1.flush()
         node1.stop(wait_other_notice=True)
         session = self.patient_cql_connection(node2, 'ks')
-        count = len(session.execute("SELECT * FROM cf LIMIT 2000"))
+        count = len(list(session.execute("SELECT * FROM cf LIMIT 2000")))
         self.assertTrue(count > 1200 and count < 1800, "expected pr repair to repair part, but not everything")
         node1.start(wait_other_notice=True, wait_for_binary_proto=True)
         node2.flush()
         node2.stop(wait_other_notice=True)
         session = self.patient_cql_connection(node1, 'ks')
-        count = len(session.execute("SELECT * FROM cf LIMIT 2000"))
+        count = len(list(session.execute("SELECT * FROM cf LIMIT 2000")))
         self.assertTrue(count > 1200 and count < 1800, "expected pr repair to repair part, but not everything")
         node2.start(wait_other_notice=True, wait_for_binary_proto=True)
 
@@ -651,16 +651,16 @@ class RepairAdditionalTest(Tester):
         node1.flush()
         node1.stop(wait_other_notice=True)
         session = self.patient_cql_connection(node2, 'ks')
-        self.assertEqual(len(session.execute("SELECT * from cf1")), 2, "cf1 on node2")
-        self.assertEqual(len(session.execute("SELECT * from cf2")), 1, "cf2 on node2")
-        self.assertEqual(len(session.execute("SELECT * from cf3")), 2, "cf2 on node2")
+        self.assertEqual(len(list(session.execute("SELECT * from cf1"))), 2, "cf1 on node2")
+        self.assertEqual(len(list(session.execute("SELECT * from cf2"))), 1, "cf2 on node2")
+        self.assertEqual(len(list(session.execute("SELECT * from cf3"))), 2, "cf2 on node2")
         node1.start(wait_other_notice=True, wait_for_binary_proto=True)
         node2.flush()
         node2.stop(wait_other_notice=True)
         session = self.patient_cql_connection(node1, 'ks')
-        self.assertEqual(len(session.execute("SELECT * from cf1")), 2, "cf1 on node1")
-        self.assertEqual(len(session.execute("SELECT * from cf2")), 1, "cf2 on node1")
-        self.assertEqual(len(session.execute("SELECT * from cf3")), 2, "cf2 on node1")
+        self.assertEqual(len(list(session.execute("SELECT * from cf1"))), 2, "cf1 on node1")
+        self.assertEqual(len(list(session.execute("SELECT * from cf2"))), 1, "cf2 on node1")
+        self.assertEqual(len(list(session.execute("SELECT * from cf3"))), 2, "cf2 on node1")
 
         # repair again without a cf option, and see that all cfs, and in
         # particular cf2 (which we haven't repaired so far), get repaired.
@@ -747,17 +747,17 @@ class RepairAdditionalTest(Tester):
         node4.flush()
         node4.stop(wait_other_notice=True)
         session = self.patient_cql_connection(node2, 'ks')
-        self.assertEqual(len(session.execute("SELECT * from cf")), 1, "cf on node2")
+        self.assertEqual(len(list(session.execute("SELECT * from cf"))), 1, "cf on node2")
         node3.start(wait_other_notice=True, wait_for_binary_proto=True)
         node2.flush()
         node2.stop(wait_other_notice=True)
         session = self.patient_cql_connection(node3, 'ks')
-        self.assertEqual(len(session.execute("SELECT * from cf")), 0, "cf on node3")
+        self.assertEqual(len(list(session.execute("SELECT * from cf"))), 0, "cf on node3")
         node4.start(wait_other_notice=True, wait_for_binary_proto=True)
         node3.flush()
         node3.stop(wait_other_notice=True)
         session = self.patient_cql_connection(node4, 'ks')
-        self.assertEqual(len(session.execute("SELECT * from cf")), 1, "cf on node4")
+        self.assertEqual(len(list(session.execute("SELECT * from cf"))), 1, "cf on node4")
 
         node1.start(wait_other_notice=True, wait_for_binary_proto=True)
         node2.start(wait_other_notice=True, wait_for_binary_proto=True)
@@ -949,7 +949,7 @@ class RepairAdditionalTest(Tester):
             session = self.patient_cql_connection(node2, 'ks')
         else:
             session = self.patient_cql_connection(node1, 'ks')
-        count = len(session.execute("SELECT * FROM cf LIMIT 3000"))
+        count = len(list(session.execute("SELECT * FROM cf LIMIT 3000")))
         debug("count is %d" % count)
         self.assertTrue(count >= 1000 and count <= 2000)
 
@@ -1154,7 +1154,7 @@ class RepairAdditionalTest(Tester):
         # exactly!) 1000 partitions. We can't check it because it's not
         # exactly 1000.
         session = self.patient_cql_connection(node2, 'ks')
-        result = session.execute("SELECT * from cf")
+        result = list(session.execute("SELECT * from cf"))
         debug(len(result))
 
         with self.assertRaises(NodetoolError):
@@ -1172,7 +1172,7 @@ class RepairAdditionalTest(Tester):
         # see about 1300 partitions in the following query. But we can't
         # check this number because it is not exact.
         session = self.patient_cql_connection(node2, 'ks')
-        result = session.execute("SELECT * from cf")
+        result = list(session.execute("SELECT * from cf"))
         debug(len(result))
 
         # Bring up also node 3. Trying "SELECT *" again will still not show
@@ -1180,7 +1180,7 @@ class RepairAdditionalTest(Tester):
         # and node 2 because node 3 was down during the above repair.
         node3.start(wait_other_notice=True, wait_for_binary_proto=True)
         session = self.patient_cql_connection(node2, 'ks')
-        result = session.execute("SELECT * from cf")
+        result = list(session.execute("SELECT * from cf"))
         debug(len(result))
 
         # Repair node 3's ranges. This will not repair the ranges held only
@@ -1189,7 +1189,7 @@ class RepairAdditionalTest(Tester):
         # have the full 2000 partitions.
         node3.repair(['ks'])
         session = self.patient_cql_connection(node2, 'ks')
-        result = session.execute("SELECT * from cf")
+        result = list(session.execute("SELECT * from cf"))
         self.assertEqual(len(result), 2000)
 
     def repair_with_down_nodes_2_test(self, more_options=[]):
@@ -1267,7 +1267,7 @@ class RepairAdditionalTest(Tester):
         node4.stop(wait_other_notice=True)
 
         session = self.patient_cql_connection(node2, 'ks')
-        result = session.execute("SELECT * from cf")
+        result = list(session.execute("SELECT * from cf"))
         debug(len(result))
 
         with self.assertRaises(NodetoolError):
@@ -1282,12 +1282,12 @@ class RepairAdditionalTest(Tester):
         # in test 1a, another repair of the revived node will make all the
         # data available.
         session = self.patient_cql_connection(node2, 'ks')
-        result = session.execute("SELECT * from cf")
+        result = list(session.execute("SELECT * from cf"))
         debug(len(result))
 
         node4.start(wait_other_notice=True, wait_for_binary_proto=True)
         session = self.patient_cql_connection(node2, 'ks')
-        result = session.execute("SELECT * from cf")
+        result = list(session.execute("SELECT * from cf"))
         debug(len(result))
 
         # Repair node 4's ranges. This will not repair the ranges held only
@@ -1296,7 +1296,7 @@ class RepairAdditionalTest(Tester):
         # have the full 2000 partitions.
         node4.repair(['ks'])
         session = self.patient_cql_connection(node2, 'ks')
-        result = session.execute("SELECT * from cf")
+        result = list(session.execute("SELECT * from cf"))
         debug(len(result))
         self.assertEqual(len(result), 2000)
 
@@ -1350,7 +1350,7 @@ class RepairAdditionalTest(Tester):
         node4.flush()
         node4.stop(wait_other_notice=True)
         session = self.patient_cql_connection(node2, 'ks')
-        result = session.execute("SELECT * from cf")
+        result = list(session.execute("SELECT * from cf"))
         debug(len(result))
 
         with self.assertRaises(NodetoolError):
@@ -1364,7 +1364,7 @@ class RepairAdditionalTest(Tester):
         # on node 4, and if repair was diligent enough, it could repair the
         # 3 living nodes.
         session = self.patient_cql_connection(node2, 'ks')
-        result = session.execute("SELECT * from cf")
+        result = list(session.execute("SELECT * from cf"))
         debug(len(result))
         self.assertEqual(len(result), 2000)
 

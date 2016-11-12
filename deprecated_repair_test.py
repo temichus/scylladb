@@ -28,7 +28,7 @@ class TestDeprecatedRepairAPI(Tester):
                 node.stop(wait_other_notice=True)
 
         session = self.patient_cql_connection(node_to_check, 'ks')
-        result = session.execute("SELECT * FROM cf LIMIT %d" % (rows * 2))
+        result = list(session.execute("SELECT * FROM cf LIMIT %d" % (rows * 2)))
         assert len(result) == rows, len(result)
 
         for k in found:
