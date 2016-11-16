@@ -671,7 +671,7 @@ class RepairAdditionalTest(Tester):
         node1.flush()
         node1.stop(wait_other_notice=True)
         session = self.patient_cql_connection(node2, 'ks')
-        self.assertEqual(len(session.execute("SELECT * from cf2")), 2, "cf2 on node2")
+        self.assertEqual(len(list(session.execute("SELECT * from cf2"))), 2, "cf2 on node2")
 
     def repair_option_invalid_ks_cf_test(self):
         """
@@ -785,7 +785,7 @@ class RepairAdditionalTest(Tester):
         node4.flush()
         node4.stop(wait_other_notice=True)
         session = self.patient_cql_connection(node3, 'ks')
-        self.assertEqual(len(session.execute("SELECT * from cf")), 1, "cf on node3")
+        self.assertEqual(len(list(session.execute("SELECT * from cf"))), 1, "cf on node3")
 
         # Similiarly test the "-local" option: Add one more partition to node1
         # (in dc1), repair node1 with "-local" and confirm that only node2 (the
