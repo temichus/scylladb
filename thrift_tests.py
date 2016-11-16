@@ -31,6 +31,8 @@ def get_thrift_client(host='127.0.0.1', port=9160):
     client = Cassandra.Client(protocol)
     client.transport = transport
     return client
+
+
 thrift_client = client = get_thrift_client()
 
 pid_fname = "system_test.pid"
@@ -130,6 +132,7 @@ def _i32(n):
 
 def _i16(n):
     return struct.pack('>h', n)  # big endian = network order
+
 
 _SIMPLE_COLUMNS = [Column('c1', 'value1', 0),
                    Column('c2', 'value2', 0)]
@@ -369,6 +372,7 @@ def _big_multi_slice(key='abc'):
     m.count = 10
     m.consistency_level = ConsistencyLevel.ONE
     return client.get_multi_slice(m)
+
 
 _MULTI_SLICE_COLUMNS = [Column('a', '1', 0), Column('b', '2', 0), Column('c', '3', 0), Column('e', '5', 0), Column('f', '6', 0)]
 

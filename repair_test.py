@@ -386,6 +386,7 @@ class TestRepair(Tester):
             self.check_rows_on_node(node, 2001, found=[1000])
         return cluster
 
+
 RepairTableContents = namedtuple('RepairTableContents',
                                  ['parent_repair_history', 'repair_history'])
 

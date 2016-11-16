@@ -159,6 +159,7 @@ class CompactionAdditionalStrategyTests(Tester):
         sstable_split_parts[-2] = generation
         shutil.copy(file, os.path.join(os.path.dirname(file), '-'.join(sstable_split_parts)))
 
+
 strategies = ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy']
 for strategy in strategies:
     cls_name = ('CompactionAdditionalStrategyTests_with_' + strategy)
