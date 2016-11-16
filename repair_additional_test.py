@@ -810,17 +810,17 @@ class RepairAdditionalTest(Tester):
         node4.flush()
         node4.stop(wait_other_notice=True)
         session = self.patient_cql_connection(node2, 'ks')
-        self.assertEqual(len(session.execute("SELECT * from cf")), 2, "cf on node2")
+        self.assertEqual(len(list(session.execute("SELECT * from cf"))), 2, "cf on node2")
         node3.start(wait_other_notice=True, wait_for_binary_proto=True)
         node2.flush()
         node2.stop(wait_other_notice=True)
         session = self.patient_cql_connection(node3, 'ks')
-        self.assertEqual(len(session.execute("SELECT * from cf")), 1, "cf on node3")
+        self.assertEqual(len(list(session.execute("SELECT * from cf"))), 1, "cf on node3")
         node4.start(wait_other_notice=True, wait_for_binary_proto=True)
         node3.flush()
         node3.stop(wait_other_notice=True)
         session = self.patient_cql_connection(node4, 'ks')
-        self.assertEqual(len(session.execute("SELECT * from cf")), 1, "cf on node4")
+        self.assertEqual(len(list(session.execute("SELECT * from cf"))), 1, "cf on node4")
 
     def repair_multiple_test(self, more_options=[]):
         """
