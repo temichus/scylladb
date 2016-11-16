@@ -118,6 +118,8 @@ class TestNodetool(Tester):
 
     @staticmethod
     def _parse_time(out):
+        # Remove time units from output, ex '1.1242845461978741E-4 ms'
+        out = out.split()[0]
         p = re.compile('^\s*([\d\.]+)\s*(\S+)\s*$')
         m = p.match(out)
         if m:
