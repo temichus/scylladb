@@ -1016,18 +1016,18 @@ class TestNodetool(Tester):
             res["streams"] = []
         read_repair = False
         stream = None
-        for l in lines:
-            ip = re.match("^\s+/([\d\.]+)\s*$", l)
-            strm = re.match("^\s+(\S+) (\d+) files, (\d+) bytes total. Already \S+ (\d+) files, (\d+) bytes total", l)
-            command = re.match("Commands\s+([^\s]+)\s+(\d+)\s+(\d+)", l)
-            responses = re.match("Responses\s+([^\s]+)\s+(\d+)\s+(\d+)", l)
-            rxfile = re.match("\s+(\S+)\s+(\d+)/(\d+) bytes\((\d+)%\)\s+\S+\s+\S+\s+idx:0/([\d\.]+)", l)
-            if l == "Read Repair Statistics:":
+        for line in lines:
+            ip = re.match("^\s+/([\d\.]+)\s*$", line)
+            strm = re.match("^\s+(\S+) (\d+) files, (\d+) bytes total. Already \S+ (\d+) files, (\d+) bytes total", line)
+            command = re.match("Commands\s+([^\s]+)\s+(\d+)\s+(\d+)", line)
+            responses = re.match("Responses\s+([^\s]+)\s+(\d+)\s+(\d+)", line)
+            rxfile = re.match("\s+(\S+)\s+(\d+)/(\d+) bytes\((\d+)%\)\s+\S+\s+\S+\s+idx:0/([\d\.]+)", line)
+            if line == "Read Repair Statistics:":
                 read_repair = True
                 if stream is not None:
                     res["streams"].append(stream)
                     stream = None
-            elif l.startswith("Pool Name"):
+            elif line.startswith("Pool Name"):
                 read_repair = False
             elif ip:
                 if stream is not None:
@@ -1061,11 +1061,11 @@ class TestNodetool(Tester):
                 res["responses"]["Pending"] = self._tonum(responses.group(2))
                 res["responses"]["Completed"] = self._tonum(responses.group(3))
             elif read_repair:
-                rr = re.match("^(.*):\s*(\d+)\s*$", l)
+                rr = re.match("^(.*):\s*(\d+)\s*$", line)
                 self.assertTrue(rr, "unexpected line in read repair")
                 res[rr.group(1)] = self._tonum(rr.group(2))
             else:
-                self.assertTrue(False, "unknown line in netstats" + l + "\n" + out)
+                self.assertTrue(False, "unknown line in netstats" + line + "\n" + out)
         if stream is not None:
             res["streams"].append(stream)
         return res
@@ -1239,13 +1239,13 @@ class TestNodetool(Tester):
         for s in strts:
             st = s - start
             n = str(st)
-            l = int(st / ratio) - len(left)
-            if l < 0:
-                l = 0
-            left = left + "|".rjust(l) + n
+            padding = int(st / ratio) - len(left)
+            if padding < 0:
+                padding = 0
+            left = left + "|".rjust(padding) + n
         res = left + res.rjust(self.width - 1 - len(left)) + "|\n" + "".ljust(self.width, '-') + "\n"
-        for l in lst:
-            res = res + self.print_ops(l, start, ratio) + "\n"
+        for element in lst:
+            res = res + self.print_ops(element, start, ratio) + "\n"
         return res
 
     def concurrent_stress(self, node=None, arg=None):
