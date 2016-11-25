@@ -2,14 +2,14 @@
 #
 # Usage:
 #
-# scripts/setup-virtualenv --virtualenv-root=PATH
+# scripts/setup-virtualenv --virtualenv-root=PATH --python=PATH
 
 CASSANDRA_DRIVER_VERSION='3.7.1'
 
 PROGRAM=$(basename $0)
 
 usage() {
-    echo "usage: $PROGRAM --virtualenv-root=PATH"
+    echo "usage: $PROGRAM --virtualenv-root=PATH --python=PATH"
 }
 
 set -e
@@ -19,6 +19,10 @@ do
 case $i in
     -v=*|--virtualenv-root*)
     VIRTUALENV_ROOT="${i#*=}"
+    shift
+    ;;
+    -p=*|--python*)
+    PYTHON="${i#*=}"
     shift
     ;;
     *)
@@ -37,12 +41,17 @@ fi
 
 echo "VIRTUALENV_ROOT = $VIRTUALENV_ROOT"
 echo "CASSANDRA_DRIVER_VERSION = $CASSANDRA_DRIVER_VERSION"
+echo "PYTHON = $PYTHON"
 
 #
 # Setup virtualenv:
 #
+if [ -n "$PYTHON" ]; then
+    VIRTUALENV_OPTS="-p $PYTHON"
+fi
+
 rm -rf $VIRTUALENV_ROOT
-virtualenv $VIRTUALENV_ROOT
+virtualenv $VIRTUALENV_OPTS $VIRTUALENV_ROOT
 source $VIRTUALENV_ROOT/bin/activate
 easy_install -U setuptools
 pip install cassandra-driver==$CASSANDRA_DRIVER_VERSION
