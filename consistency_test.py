@@ -14,6 +14,30 @@ from dtest import DISABLE_VNODES, Tester, debug
 from tools import (create_c1c2_table, insert_c1c2, insert_columns, query_c1c2,
                    rows_to_list, since)
 
+from thrift.protocol import TBinaryProtocol
+from thrift.transport import TSocket, TTransport
+from thrift_bindings.v22 import Cassandra
+from thrift_bindings.v22.Cassandra import (CfDef, Column, ColumnDef,
+                                           ColumnOrSuperColumn, ColumnParent,
+                                           ColumnPath, ColumnSlice,
+                                           ConsistencyLevel, CounterColumn,
+                                           Deletion, IndexExpression,
+                                           IndexOperator, IndexType,
+                                           InvalidRequestException, KeyRange,
+                                           KsDef, MultiSliceRequest,
+                                           Mutation, NotFoundException,
+                                           SlicePredicate, SliceRange,
+                                           SuperColumn)
+
+
+def get_thrift_client(host, port):
+    socket = TSocket.TSocket(host, port)
+    transport = TTransport.TFramedTransport(socket)
+    protocol = TBinaryProtocol.TBinaryProtocol(transport)
+    client = Cassandra.Client(protocol)
+    client.transport = transport
+    return client
+
 
 class TestHelper(Tester):
 
@@ -1052,3 +1076,91 @@ class TestConsistency(Tester):
         assert len(res) == 1, 'Expecting 1 row, got %d (%s)' % (len(res), str(res))
         assert len(res[0]) == 1, 'Expecting 1 cell, got %d (%s)' % (len(res[0]), str(res[0]))
         assert res[0][0] == 2, 'Expecting value 2, got %s' % str(res[0][0])
+
+    def incomplete_result_test_partition_limit(self):
+        debug('Create cluster')
+        cluster = self.cluster
+        cluster.set_partitioner("org.apache.cassandra.dht.ByteOrderedPartitioner")
+        cluster.set_configuration_options(values={'start_rpc': True})
+        cluster.populate(2).start()
+        cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        node1, node2 = cluster.nodelist()
+
+        debug('Prepare column family')
+        session1 = self.patient_cql_connection(node1)
+        self.create_ks(session1, 'ks', 2)
+        session1.execute('create table ks.cf1 (p int, c text, r text, primary key (p, c)) with compact storage')
+
+        session1.execute(SimpleStatement("insert into ks.cf1 (p, c, r) values (1, '1', '0')", consistency_level=ConsistencyLevel.ALL))
+        session1.execute(SimpleStatement("insert into ks.cf1 (p, c, r) values (2, '1', '1')", consistency_level=ConsistencyLevel.ALL))
+
+        debug('Updating node1')
+        node2.stop()
+        session1.execute(SimpleStatement("delete from ks.cf1 where p = 1 and c = '1'", consistency_level=ConsistencyLevel.ONE))
+
+        debug('Updating node2')
+        node2.start()
+        node1.stop()
+
+        session2 = self.patient_cql_connection(node2)
+        session2.execute(SimpleStatement("insert into ks.cf1 (p, c, r) values (2, '1', '2')", consistency_level=ConsistencyLevel.ONE))
+
+        debug('Querying whole cluster')
+        node1.start(wait_other_notice=True)
+        debug('Node 1 started')
+
+        host, port = node2.network_interfaces['thrift']
+        client = get_thrift_client(host, port)
+        client.transport.open()
+        client.set_keyspace('ks')
+
+        cp = ColumnParent('cf1')
+        res = client.get_range_slices(cp, SlicePredicate(column_names=['1']), KeyRange(start_token='00000000', end_token='00000005', count=1), ConsistencyLevel.ALL)
+
+        assert len(res) == 1, 'Expecting 1 row, got %d (%s)' % (len(res), str(res))
+        assert len(res[0].columns) == 1, 'Expecting 1 cell, got %d (%s)' % (len(res[0].columns), str(res[0].columns))
+        assert res[0].columns[0].column.value == '2', 'Expecting value 2, got %s' % str(res[0].columns[0].column.value)
+
+    def incomplete_result_test_per_partition_row_limit(self):
+        debug('Create cluster')
+        cluster = self.cluster
+        cluster.set_partitioner("org.apache.cassandra.dht.ByteOrderedPartitioner")
+        cluster.set_configuration_options(values={'start_rpc': True})
+        cluster.populate(2).start()
+        cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        node1, node2 = cluster.nodelist()
+
+        debug('Prepare column family')
+        session1 = self.patient_cql_connection(node1)
+        self.create_ks(session1, 'ks', 2)
+        session1.execute('create table ks.cf1 (p int, c text, r text, primary key (p, c)) with compact storage')
+
+        session1.execute(SimpleStatement("insert into ks.cf1 (p, c, r) values (1, '1', '0')", consistency_level=ConsistencyLevel.ALL))
+        session1.execute(SimpleStatement("insert into ks.cf1 (p, c, r) values (1, '2', '1')", consistency_level=ConsistencyLevel.ALL))
+
+        debug('Updating node1')
+        node2.stop()
+        session1.execute(SimpleStatement("delete from ks.cf1 where p = 1 and c = '1'", consistency_level=ConsistencyLevel.ONE))
+
+        debug('Updating node2')
+        node2.start()
+        node1.stop()
+
+        session2 = self.patient_cql_connection(node2)
+        session2.execute(SimpleStatement("insert into ks.cf1 (p, c, r) values (1, '2', '2')", consistency_level=ConsistencyLevel.ONE))
+
+        debug('Querying whole cluster')
+        node1.start(wait_other_notice=True)
+        debug('Node 1 started')
+
+        host, port = node2.network_interfaces['thrift']
+        client = get_thrift_client(host, port)
+        client.transport.open()
+        client.set_keyspace('ks')
+
+        cp = ColumnParent('cf1')
+        res = client.get_range_slices(cp, SlicePredicate(slice_range=SliceRange(start='', finish='', count=1)), KeyRange(start_token='00000000', end_token='00000005'), ConsistencyLevel.ALL)
+
+        assert len(res) == 1, 'Expecting 1 row, got %d (%s)' % (len(res), str(res))
+        assert len(res[0].columns) == 1, 'Expecting 1 cell, got %d (%s)' % (len(res[0].columns), str(res[0].columns))
+        assert res[0].columns[0].column.value == '2', 'Expecting value 2, got %s' % str(res[0].columns[0].column.value)
