@@ -1245,3 +1245,53 @@ class TestConsistency(Tester):
 
         self.assertEqual(sum(all_pages), 2)
         self.assertEqual(len(all_pages), 2)
+
+    def short_read_partitions(self):
+        debug('Create cluster')
+        cluster = self.cluster
+        cluster.set_partitioner("org.apache.cassandra.dht.ByteOrderedPartitioner")
+        cluster.set_configuration_options(values={'start_rpc': True})
+        cluster.populate(2).start()
+        cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        node1, node2 = cluster.nodelist()
+
+        debug('Prepare column family')
+        session1 = self.patient_cql_connection(node1)
+        self.create_ks(session1, 'ks', 2)
+        session1.execute('create table ks.cf1 (p int, c text, r text, primary key (p, c)) with compact storage')
+
+        session1.execute(SimpleStatement("insert into ks.cf1 (p, c, r) values (1, '1', '1')", consistency_level=ConsistencyLevel.ALL))
+        session1.execute(SimpleStatement("insert into ks.cf1 (p, c, r) values (2, '1', '2')", consistency_level=ConsistencyLevel.ALL))
+        session1.execute(SimpleStatement("insert into ks.cf1 (p, c, r) values (3, '1', '3')", consistency_level=ConsistencyLevel.ALL))
+        session1.execute(SimpleStatement("insert into ks.cf1 (p, c, r) values (4, '1', '4')", consistency_level=ConsistencyLevel.ALL))
+
+        debug('Updating node1')
+        node2.stop()
+        session1.execute(SimpleStatement("delete from ks.cf1 where p = 1", consistency_level=ConsistencyLevel.ONE))
+
+        debug('Updating node2')
+        node2.start()
+        node1.stop()
+
+        session2 = self.patient_cql_connection(node2)
+        session2.execute(SimpleStatement("delete from ks.cf1 where p = 2", consistency_level=ConsistencyLevel.ONE))
+
+        debug('Querying whole cluster')
+        node1.start(wait_other_notice=True)
+        debug('Node 1 started')
+
+        host, port = node2.network_interfaces['thrift']
+        client = get_thrift_client(host, port)
+        client.transport.open()
+        client.set_keyspace('ks')
+
+        cp = ColumnParent('cf1')
+        res = client.get_range_slices(cp, SlicePredicate(column_names=['1']), KeyRange(start_token='00000000', end_token='00000005', count=2), ConsistencyLevel.ALL)
+
+        assert len(res) == 2, 'Expecting 2 rows, got %d (%s)' % (len(res), str(res))
+
+        assert len(res[0].columns) == 1, 'Expecting 1 cell, got %d (%s)' % (len(res[0].columns), str(res[0].columns))
+        assert res[0].columns[0].column.value == '3', 'Expecting value 3, got %s' % str(res[0].columns[0].column.value)
+
+        assert len(res[1].columns) == 1, 'Expecting 1 cell, got %d (%s)' % (len(res[0].columns), str(res[0].columns))
+        assert res[1].columns[0].column.value == '4', 'Expecting value 4, got %s' % str(res[0].columns[0].column.value)
