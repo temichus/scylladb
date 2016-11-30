@@ -29,6 +29,8 @@ from thrift_bindings.v22.Cassandra import (CfDef, Column, ColumnDef,
                                            SlicePredicate, SliceRange,
                                            SuperColumn)
 
+from paging_test import PageFetcher
+
 
 def get_thrift_client(host, port):
     socket = TSocket.TSocket(host, port)
@@ -1164,3 +1166,82 @@ class TestConsistency(Tester):
         assert len(res) == 1, 'Expecting 1 row, got %d (%s)' % (len(res), str(res))
         assert len(res[0].columns) == 1, 'Expecting 1 cell, got %d (%s)' % (len(res[0].columns), str(res[0].columns))
         assert res[0].columns[0].column.value == '2', 'Expecting value 2, got %s' % str(res[0].columns[0].column.value)
+
+    def empty_reconciled_result(self):
+        debug('Create cluster')
+        cluster = self.cluster
+        cluster.populate(2).start()
+        cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        node1, node2 = cluster.nodelist()
+
+        debug('Prepare column family')
+        session1 = self.patient_cql_connection(node1)
+        self.create_ks(session1, 'ks', 2)
+        session1.execute('create table ks.cf1 (p int, r int, primary key (p))')
+
+        session1.execute(SimpleStatement("insert into ks.cf1 (p, r) values (1, 1)", consistency_level=ConsistencyLevel.ALL))
+        session1.execute(SimpleStatement("insert into ks.cf1 (p, r) values (2, 2)", consistency_level=ConsistencyLevel.ALL))
+        session1.execute(SimpleStatement("insert into ks.cf1 (p, r) values (3, 3)", consistency_level=ConsistencyLevel.ALL))
+
+        debug('Updating node1')
+        node2.stop()
+        session1.execute(SimpleStatement("delete from ks.cf1 where p = 1", consistency_level=ConsistencyLevel.ONE))
+
+        debug('Updating node2')
+        node2.start()
+        node1.stop()
+
+        session2 = self.patient_cql_connection(node2)
+        session2.execute(SimpleStatement("delete from ks.cf1 where p = 2", consistency_level=ConsistencyLevel.ONE))
+
+        debug('Querying whole cluster')
+        node1.start(wait_other_notice=True)
+        debug('Node 1 started')
+
+        query = SimpleStatement('select r from ks.cf1 limit 1', consistency_level=ConsistencyLevel.ALL, fetch_size=0)
+        res = list(session2.execute(query))
+
+        assert len(res) == 1, 'Expecting 1 row, got %d (%s)' % (len(res), str(res))
+        assert len(res[0]) == 1, 'Expecting 1 cell, got %d (%s)' % (len(res[0]), str(res[0]))
+        assert res[0][0] == 3, 'Expecting value 3, got %s' % str(res[0][0])
+
+    def empty_reconciled_result_with_paging(self):
+        debug('Create cluster')
+        cluster = self.cluster
+        cluster.populate(2).start()
+        cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        node1, node2 = cluster.nodelist()
+
+        debug('Prepare column family')
+        session1 = self.patient_cql_connection(node1)
+        self.create_ks(session1, 'ks', 2)
+        session1.execute('create table ks.cf1 (p int, r int, primary key (p))')
+
+        session1.execute(SimpleStatement("insert into ks.cf1 (p, r) values (1, 1)", consistency_level=ConsistencyLevel.ALL))
+        session1.execute(SimpleStatement("insert into ks.cf1 (p, r) values (2, 2)", consistency_level=ConsistencyLevel.ALL))
+        session1.execute(SimpleStatement("insert into ks.cf1 (p, r) values (3, 3)", consistency_level=ConsistencyLevel.ALL))
+        session1.execute(SimpleStatement("insert into ks.cf1 (p, r) values (4, 4)", consistency_level=ConsistencyLevel.ALL))
+
+        debug('Updating node1')
+        node2.stop()
+        session1.execute(SimpleStatement("delete from ks.cf1 where p = 1", consistency_level=ConsistencyLevel.ONE))
+
+        debug('Updating node2')
+        node2.start()
+        node1.stop()
+
+        session2 = self.patient_cql_connection(node2)
+        session2.execute(SimpleStatement("delete from ks.cf1 where p = 2", consistency_level=ConsistencyLevel.ONE))
+
+        debug('Querying whole cluster')
+        node1.start(wait_other_notice=True)
+        debug('Node 1 started')
+
+        future = session2.execute_async(
+            SimpleStatement('select r from ks.cf1 limit 2', consistency_level=ConsistencyLevel.ALL, fetch_size=1)
+        )
+        pf = PageFetcher(future).request_all()
+        all_pages = pf.num_results_all()
+
+        self.assertEqual(sum(all_pages), 2)
+        self.assertEqual(len(all_pages), 2)
