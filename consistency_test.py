@@ -17,17 +17,7 @@ from tools import (create_c1c2_table, insert_c1c2, insert_columns, query_c1c2,
 from thrift.protocol import TBinaryProtocol
 from thrift.transport import TSocket, TTransport
 from thrift_bindings.v22 import Cassandra
-from thrift_bindings.v22.Cassandra import (CfDef, Column, ColumnDef,
-                                           ColumnOrSuperColumn, ColumnParent,
-                                           ColumnPath, ColumnSlice,
-                                           ConsistencyLevel, CounterColumn,
-                                           Deletion, IndexExpression,
-                                           IndexOperator, IndexType,
-                                           InvalidRequestException, KeyRange,
-                                           KsDef, MultiSliceRequest,
-                                           Mutation, NotFoundException,
-                                           SlicePredicate, SliceRange,
-                                           SuperColumn)
+from thrift_bindings.v22.Cassandra import ColumnParent, ConsistencyLevel, KeyRange, SlicePredicate, SliceRange
 
 from paging_test import PageFetcher
 
@@ -1295,3 +1285,44 @@ class TestConsistency(Tester):
 
         assert len(res[1].columns) == 1, 'Expecting 1 cell, got %d (%s)' % (len(res[0].columns), str(res[0].columns))
         assert res[1].columns[0].column.value == '4', 'Expecting value 4, got %s' % str(res[0].columns[0].column.value)
+
+    def reaching_end_after_retry_test(self):
+        debug('Create cluster')
+        cluster = self.cluster
+        cluster.set_partitioner("org.apache.cassandra.dht.ByteOrderedPartitioner")
+        cluster.populate(2).start()
+        cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        node1, node2 = cluster.nodelist()
+
+        debug('Prepare column family')
+        session1 = self.patient_cql_connection(node1)
+        self.create_ks(session1, 'ks', 2)
+        session1.execute('create table ks.cf1 (p int, r int, primary key (p))')
+
+        session1.execute(SimpleStatement('insert into ks.cf1 (p, r) values (0, 0)', consistency_level=ConsistencyLevel.ALL))
+        session1.execute(SimpleStatement('insert into ks.cf1 (p, r) values (1, 1)', consistency_level=ConsistencyLevel.ALL))
+        session1.execute(SimpleStatement('insert into ks.cf1 (p, r) values (2, 2)', consistency_level=ConsistencyLevel.ALL))
+        session1.execute(SimpleStatement('insert into ks.cf1 (p, r) values (3, 3)', consistency_level=ConsistencyLevel.ALL))
+
+        debug('Updating node2')
+        node1.stop()
+
+        session2 = self.patient_cql_connection(node2)
+        session2.execute(SimpleStatement('delete from ks.cf1 where p = 0', consistency_level=ConsistencyLevel.ONE))
+        session2.execute(SimpleStatement('delete from ks.cf1 where p = 1', consistency_level=ConsistencyLevel.ONE))
+        session2.execute(SimpleStatement('delete from ks.cf1 where p = 2', consistency_level=ConsistencyLevel.ONE))
+        session2.execute(SimpleStatement('insert into ks.cf1 (p, r) values (4, 4)', consistency_level=ConsistencyLevel.ONE))
+        session2.execute(SimpleStatement('insert into ks.cf1 (p, r) values (5, 5)', consistency_level=ConsistencyLevel.ONE))
+
+        debug('Querying whole cluster')
+        node1.start(wait_other_notice=True)
+        debug('Node 1 started')
+
+        query = SimpleStatement('select r from ks.cf1 limit 3', consistency_level=ConsistencyLevel.ALL)
+        res = list(session2.execute(query))
+
+        assert len(res) == 3, 'Expecting 3 rows, got %d (%s)' % (len(res), str(res))
+
+        assert res[0][0] == 3, 'Expecting value 3, got %s' % str(res[0][0])
+        assert res[1][0] == 4, 'Expecting value 4, got %s' % str(res[0][0])
+        assert res[2][0] == 5, 'Expecting value 5, got %s' % str(res[0][0])
