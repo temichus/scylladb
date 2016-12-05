@@ -55,7 +55,7 @@ fi
 rm -rf $VIRTUALENV_ROOT
 virtualenv $VIRTUALENV_OPTS $VIRTUALENV_ROOT
 source $VIRTUALENV_ROOT/bin/activate
-easy_install -U setuptools
+easy_install -U setuptools==28.8.0
 pip install cassandra-driver==$CASSANDRA_DRIVER_VERSION
 pip install thrift==$THRIFT_VERSION
 pip install nose
