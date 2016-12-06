@@ -190,8 +190,8 @@ def _big_slice(key, column_parent):
     return client.get_slice(key, column_parent, p, ConsistencyLevel.ONE)
 
 
-def _big_multislice(keys, column_parent):
-    p = SlicePredicate(slice_range=SliceRange('', '', False, 1000))
+def _big_multislice(keys, column_parent, count=1000):
+    p = SlicePredicate(slice_range=SliceRange('', '', False, count))
     return client.multiget_slice(keys, column_parent, p, ConsistencyLevel.ONE)
 
 
@@ -1494,6 +1494,25 @@ class TestMutations(ThriftTester):
         rows = _big_multislice(keys, ColumnParent('Standard1'))
 
         columns = [ColumnOrSuperColumn(c) for c in _SIMPLE_COLUMNS]
+        # Validate if the returned rows have the keys requested and if the ColumnOrSuperColumn is what was inserted
+        for key in keys:
+            assert key in rows
+            assert columns == rows[key]
+
+    def test_multiget_slice_with_count(self):
+        """Insert multiple keys and retrieve them using the multiget_slice interface with a cell limit"""
+
+        _set_keyspace('Keyspace1')
+        # Generate a list of 10 keys and insert them
+        num_keys = 10
+        keys = ['key' + str(i) for i in range(1, num_keys + 1)]
+        _insert_multi(keys)
+
+        # Retrieve all 10 key slices
+        rows = _big_multislice(keys, ColumnParent('Standard1'), 1)
+        print(rows)
+
+        columns = [ColumnOrSuperColumn(_SIMPLE_COLUMNS[0])]
         # Validate if the returned rows have the keys requested and if the ColumnOrSuperColumn is what was inserted
         for key in keys:
             assert key in rows
