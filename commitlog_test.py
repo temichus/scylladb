@@ -230,33 +230,40 @@ class TestCommitLog(Tester):
         """)
 
         debug("Insert some data")
-        session.execute("INSERT INTO Test.cf (pk1, ck1, r2, r3, r5) VALUES(0, 9, 8, 'seven', {6, 5});")
-        session.execute("INSERT INTO Test.cf (pk1, ck1, r3) VALUES(0, 8, 'eight');")
+        n_partitions = 5
+        for key in range(n_partitions):
+            session.execute("INSERT INTO Test.cf (pk1, ck1, r2, r3, r5) VALUES(%d, 9, 8, 'seven', {6, 5});" % (key))
+            session.execute("INSERT INTO Test.cf (pk1, ck1, r3) VALUES(%d, 8, 'eight');" % (key))
 
         debug("Flush")
         self.cluster.flush()
 
         debug("Insert more data and alter table")
-        session.execute("INSERT INTO Test.cf (pk1, ck1, r2, r3, r5) VALUES(0, 0, 1, 'two', {3, 4});")
+        for key in range(n_partitions):
+            session.execute("INSERT INTO Test.cf (pk1, ck1, r2, r3, r5) VALUES(%d, 0, 1, 'two', {3, 4});" % (key))
         session.execute("ALTER TABLE Test.cf ADD r1 int;")
-        session.execute("INSERT INTO Test.cf (pk1, ck1, r1, r2, r3, r5) VALUES(0, 1, 2, 3, 'four', {5, 6, 7});")
+        for key in range(n_partitions):
+            session.execute("INSERT INTO Test.cf (pk1, ck1, r1, r2, r3, r5) VALUES(%d, 1, 2, 3, 'four', {5, 6, 7});" % (key))
         session.execute("ALTER TABLE Test.cf DROP r2;")
-        session.execute("INSERT INTO Test.cf (pk1, ck1, r1, r3) VALUES(0, 2, 3, 'four');")
+        for key in range(n_partitions):
+            session.execute("INSERT INTO Test.cf (pk1, ck1, r1, r3) VALUES(%d, 2, 3, 'four');" % (key))
         session.execute("ALTER TABLE Test.cf DROP r5;")
         session.execute("ALTER TABLE Test.cf ADD r2 varint;")
         session.execute("ALTER TABLE Test.cf ADD r4 int;")
-        session.execute("INSERT INTO Test.cf (pk1, ck1, r2, r4) VALUES(0, 0, 99, 999);")
+        for key in range(n_partitions):
+            session.execute("INSERT INTO Test.cf (pk1, ck1, r2, r4) VALUES(%d, 0, 99, 999);" % (key))
 
         debug("Verify data is present")
         session = self.patient_cql_connection(node1)
-        res = session.execute("SELECT * FROM Test.cf")
-        self.assertItemsEqual(rows_to_list(res),
+        for key in range(n_partitions):
+            res = session.execute("SELECT * FROM Test.cf where pk1 = %d" % (key))
+            self.assertItemsEqual(rows_to_list(res),
                               [
-                               [0, 0, None, 99, u'two', 999],
-                               [0, 1, 2, None, u'four', None],
-                               [0, 2, 3, None, u'four', None],
-                               [0, 8, None, None, u'eight', None],
-                               [0, 9, None, None, u'seven', None],
+                               [key, 0, None, 99, u'two', 999],
+                               [key, 1, 2, None, u'four', None],
+                               [key, 2, 3, None, u'four', None],
+                               [key, 8, None, None, u'eight', None],
+                               [key, 9, None, None, u'seven', None],
                               ])
 
         debug("Stop node abruptly")
@@ -279,14 +286,15 @@ class TestCommitLog(Tester):
 
         debug("Make query and ensure data is present")
         session = self.patient_cql_connection(node1)
-        res = session.execute("SELECT * FROM Test.cf")
-        self.assertItemsEqual(rows_to_list(res),
+        for key in range(n_partitions):
+            res = session.execute("SELECT * FROM Test.cf where pk1 = %d" % (key))
+            self.assertItemsEqual(rows_to_list(res),
                               [
-                               [0, 0, None, 99, u'two', 999],
-                               [0, 1, 2, None, u'four', None],
-                               [0, 2, 3, None, u'four', None],
-                               [0, 8, None, None, u'eight', None],
-                               [0, 9, None, None, u'seven', None],
+                               [key, 0, None, 99, u'two', 999],
+                               [key, 1, 2, None, u'four', None],
+                               [key, 2, 3, None, u'four', None],
+                               [key, 8, None, None, u'eight', None],
+                               [key, 9, None, None, u'seven', None],
                               ])
 
     def default_segment_size_test(self):
