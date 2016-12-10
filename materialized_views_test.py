@@ -5,7 +5,6 @@ import traceback
 import re
 
 from functools import partial
-# TODO add in requirements.txt
 from enum import Enum  # Remove when switching to py3
 from multiprocessing import Process, Queue
 from unittest import skipIf
