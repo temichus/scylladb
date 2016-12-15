@@ -2957,6 +2957,30 @@ class TestCQL(Tester):
         self.assertEqual(-32768, res[0].t)
         self.assertEqual(32767,  res[1].t)
 
+    def cql_date_type_test(self):
+        session = self.prepare()
+
+        session.execute("""
+            CREATE TABLE test (
+                t date,
+                PRIMARY KEY (t)
+            )
+        """)
+
+        assert_invalid(session, "INSERT INTO test (t) VALUES ('-5877641-06-22')", expected=InvalidRequest)
+        assert_invalid(session, "INSERT INTO test (t) VALUES ('5881580-07-12')", expected=InvalidRequest)
+
+        session.execute("INSERT INTO test (t) VALUES ('-5877641-06-23')")
+        session.execute("INSERT INTO test (t) VALUES ('1970-01-01')")
+        session.execute("INSERT INTO test (t) VALUES ('5881580-07-11')")
+
+        res = list(session.execute("SELECT * FROM test"))
+        assert len(res) == 3, res
+
+        self.assertEqual("-2147483648", str(res[0].t))
+        self.assertEqual("1970-01-01",  str(res[1].t))
+        self.assertEqual("2147483647",  str(res[2].t))
+
     def float_with_exponent_test(self):
         session = self.prepare()
 
