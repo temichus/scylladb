@@ -2981,6 +2981,30 @@ class TestCQL(Tester):
         self.assertEqual("1970-01-01",  str(res[1].t))
         self.assertEqual("2147483647",  str(res[2].t))
 
+    def cql_time_type_test(self):
+        session = self.prepare()
+
+        session.execute("""
+            CREATE TABLE test (
+                t time,
+                PRIMARY KEY (t)
+            )
+        """)
+
+        assert_invalid(session, "INSERT INTO test (t) VALUES ('14:53')", expected=InvalidRequest)
+        assert_invalid(session, "INSERT INTO test (t) VALUES ('14:53:12.1234567890')", expected=InvalidRequest)
+
+        session.execute("INSERT INTO test (t) VALUES ('14:53:12')")
+        session.execute("INSERT INTO test (t) VALUES ('14:53:12.1234')")
+        session.execute("INSERT INTO test (t) VALUES ('14:53:12.123456789')")
+
+        res = list(session.execute("SELECT * FROM test"))
+        assert len(res) == 3, res
+
+        self.assertEqual("14:53:12.123400000", str(res[0].t))
+        self.assertEqual("14:53:12.000000000", str(res[1].t))
+        self.assertEqual("14:53:12.123456789", str(res[2].t))
+
     def float_with_exponent_test(self):
         session = self.prepare()
 
