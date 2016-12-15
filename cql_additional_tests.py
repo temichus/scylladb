@@ -2913,6 +2913,28 @@ class TestCQL(Tester):
         session.execute("SELECT t FROM test WHERE k = 0 AND t > maxTimeuuid(1234567) AND t < minTimeuuid('2012-11-07 18:18:22-0800')")
         # not sure what to check exactly so just checking the query returns
 
+    def cql_tinyint_type_test(self):
+        session = self.prepare()
+
+        session.execute("""
+            CREATE TABLE test (
+                t tinyint,
+                PRIMARY KEY (t)
+            )
+        """)
+
+        assert_invalid(session, "INSERT INTO test (t) VALUES (-129)", expected=InvalidRequest)
+        assert_invalid(session, "INSERT INTO test (t) VALUES (128)", expected=InvalidRequest)
+
+        session.execute("INSERT INTO test (t) VALUES (-128);")
+        session.execute("INSERT INTO test (t) VALUES (127);")
+
+        res = list(session.execute("SELECT * FROM test"))
+        assert len(res) == 2, res
+
+        self.assertEqual(-128, res[0].t)
+        self.assertEqual(127,  res[1].t)
+
     def float_with_exponent_test(self):
         session = self.prepare()
 
