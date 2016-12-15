@@ -2935,6 +2935,28 @@ class TestCQL(Tester):
         self.assertEqual(-128, res[0].t)
         self.assertEqual(127,  res[1].t)
 
+    def cql_smallint_type_test(self):
+        session = self.prepare()
+
+        session.execute("""
+            CREATE TABLE test (
+                t smallint,
+                PRIMARY KEY (t)
+            )
+        """)
+
+        assert_invalid(session, "INSERT INTO test (t) VALUES (-32769)", expected=InvalidRequest)
+        assert_invalid(session, "INSERT INTO test (t) VALUES (32768)", expected=InvalidRequest)
+
+        session.execute("INSERT INTO test (t) VALUES (-32768);")
+        session.execute("INSERT INTO test (t) VALUES (32767);")
+
+        res = list(session.execute("SELECT * FROM test"))
+        assert len(res) == 2, res
+
+        self.assertEqual(-32768, res[0].t)
+        self.assertEqual(32767,  res[1].t)
+
     def float_with_exponent_test(self):
         session = self.prepare()
 
