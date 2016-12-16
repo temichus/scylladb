@@ -77,3 +77,96 @@ class TestAggregatePaging(BasePagingTester, PageAssertionMixin):
 
     def test_paged_count_with_clustering_key_reversed(self):
         self._test_paged_count_with_clustering_key('desc')
+
+
+class TestLargePaging(BasePagingTester, PageAssertionMixin):
+    """
+    Tests for queries attempting to fetch large pages
+    """
+
+    def test_large_page_range_queries(self):
+        session = self.prepare()
+        self.create_ks(session, 'test_large_paging', 2)
+        session.execute("CREATE TABLE paging_test (pk text, ck text, v text, PRIMARY KEY(pk, ck))")
+
+        def get_key(text):
+            return unicode(uuid.uuid4())
+
+        def get_data(text):
+            return ' ' * 64 * 1024
+
+        data = """
+               | pk        | ck        | v          |
+               +-----------+-----------+------------+
+          *1000| [get_key] | [get_key] | [get_data] |
+               """
+
+        create_rows(data, session, 'paging_test', cl=CL.ALL, format_funcs={'pk': get_key, 'ck': get_key, 'v': get_data})
+
+        future = session.execute_async(
+            SimpleStatement("select * from paging_test", fetch_size=1000, consistency_level=CL.ALL)
+        )
+        pf = PageFetcher(future).request_all()
+        all_pages = pf.num_results_all()
+
+        self.assertEqual(sum(all_pages), 1000)
+        for page in all_pages:
+            self.assertLess(page, 1000)
+
+    def test_large_page_range_queries_static_columns(self):
+        session = self.prepare()
+        self.create_ks(session, 'test_large_paging', 2)
+        session.execute("CREATE TABLE paging_test (pk text, ck text, s text static, v text, PRIMARY KEY(pk, ck))")
+
+        def get_key(text):
+            return unicode(uuid.uuid4())
+
+        def get_data(text):
+            return ' ' * 64 * 1024
+
+        data = """
+               | pk        | s          |
+               +-----------+------------+
+          *1000| [get_key] | [get_data] |
+               """
+
+        create_rows(data, session, 'paging_test', cl=CL.ALL, format_funcs={'pk': get_key, 's': get_data})
+
+        future = session.execute_async(
+            SimpleStatement("select * from paging_test", fetch_size=1000, consistency_level=CL.ALL)
+        )
+        pf = PageFetcher(future).request_all()
+        all_pages = pf.num_results_all()
+
+        self.assertEqual(sum(all_pages), 1000)
+        for page in all_pages:
+            self.assertLess(page, 1000)
+
+    def test_large_page_single_partition(self):
+        session = self.prepare()
+        self.create_ks(session, 'test_large_paging', 2)
+        session.execute("CREATE TABLE paging_test (pk int, ck text, v text, PRIMARY KEY(pk, ck))")
+
+        def get_key(text):
+            return unicode(uuid.uuid4())
+
+        def get_data(text):
+            return ' ' * 32 * 1024
+
+        data = """
+               | pk        | ck        | v          |
+               +-----------+-----------+------------+
+          *1000| 0         | [get_key] | [get_data] |
+               """
+
+        create_rows(data, session, 'paging_test', cl=CL.ALL, format_funcs={'pk': int, 'ck': get_key, 'v': get_data})
+
+        future = session.execute_async(
+            SimpleStatement("select * from paging_test where pk = 0", fetch_size=400, consistency_level=CL.ALL)
+        )
+        pf = PageFetcher(future).request_all()
+        all_pages = pf.num_results_all()
+
+        self.assertEqual(sum(all_pages), 1000)
+        for page in all_pages:
+            self.assertLess(page, 400)
