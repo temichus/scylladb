@@ -5,7 +5,6 @@ import traceback
 import re
 
 from functools import partial
-# TODO add in requirements.txt
 from enum import Enum  # Remove when switching to py3
 from multiprocessing import Process, Queue
 from unittest import skipIf
@@ -17,19 +16,19 @@ from cassandra.query import SimpleStatement
 from dtest import Tester, debug
 from tools import since, new_node
 from assertions import assert_all, assert_one, assert_invalid, assert_unavailable, assert_none, assert_crc_check_chance_equal
+from unittest import skip
 
 
-@since('3.0')
 class TestMaterializedViews(Tester):
     """
     Test materialized views implementation.
     @jira_ticket CASSANDRA-6477
-    @since 3.0
     """
 
     def prepare(self, user_table=False, rf=1, options={}, nodes=3):
         cluster = self.cluster
         cluster.populate([nodes, 0])
+        options['experimental'] = True
         if options:
             cluster.set_configuration_options(values=options)
         cluster.start()
@@ -71,8 +70,8 @@ class TestMaterializedViews(Tester):
 
         session = self.prepare(user_table=True)
 
-        result = list(session.execute(("SELECT * FROM system_schema.views "
-                                       "WHERE keyspace_name='ks' AND base_table_name='users' ALLOW FILTERING")))
+        result = list(session.execute(("SELECT * FROM system.views "
+                                       "WHERE keyspace_name='ks' ALLOW FILTERING")))
         self.assertEqual(len(result), 1, "Expecting 1 materialized view, got" + str(result))
 
     def test_gcgs_validation(self):
@@ -113,6 +112,7 @@ class TestMaterializedViews(Tester):
                        "updates. Setting gc_grace_seconds too low might cause undelivered updates"
                        " to expire before being replayed.")
 
+    @skip('Not supported by Scylla at the moment')
     def insert_test(self):
         """Test basic insertions"""
 
@@ -132,6 +132,7 @@ class TestMaterializedViews(Tester):
         result = list(session.execute("SELECT * FROM users_by_state WHERE state='MA';"))
         self.assertEqual(len(result), 0, "Expecting {} users, got {}".format(0, len(result)))
 
+    @skip('Not supported by Scylla at the moment')
     def populate_mv_after_insert_test(self):
         """Test that a view is OK when created with existing data"""
 
@@ -151,6 +152,7 @@ class TestMaterializedViews(Tester):
         for i in xrange(1000):
             assert_one(session, "SELECT * FROM t_by_v WHERE v = {}".format(i), [i, i])
 
+    @skip('Not supported by Scylla at the moment')
     def crc_check_chance_test(self):
         """Test that crc_check_chance parameter is properly populated after mv creation and update"""
 
@@ -166,6 +168,7 @@ class TestMaterializedViews(Tester):
 
         assert_crc_check_chance_equal(session, "t_by_v", 0.3, view=True)
 
+    @skip('Not supported by Scylla at the moment')
     def prepared_statement_test(self):
         """Test basic insertions with prepared statement"""
 
@@ -231,14 +234,14 @@ class TestMaterializedViews(Tester):
                          "SELECT * FROM users WHERE birth_year IS NOT NULL AND "
                          "username IS NOT NULL PRIMARY KEY (birth_year, username)"))
 
-        result = list(session.execute(("SELECT * FROM system_schema.views "
-                                       "WHERE keyspace_name='ks' AND base_table_name='users' ALLOW FILTERING")))
+        result = list(session.execute(("SELECT * FROM system.views "
+                                       "WHERE keyspace_name='ks'")))
         self.assertEqual(len(result), 2, "Expecting {} materialized view, got {}".format(2, len(result)))
 
         session.execute("DROP MATERIALIZED VIEW ks.users_by_state;")
 
-        result = list(session.execute(("SELECT * FROM system_schema.views "
-                                       "WHERE keyspace_name='ks' AND base_table_name='users' ALLOW FILTERING")))
+        result = list(session.execute(("SELECT * FROM system.views "
+                                       "WHERE keyspace_name='ks'")))
         self.assertEqual(len(result), 1, "Expecting {} materialized view, got {}".format(1, len(result)))
 
     def drop_column_test(self):
@@ -246,8 +249,8 @@ class TestMaterializedViews(Tester):
 
         session = self.prepare(user_table=True)
 
-        result = list(session.execute(("SELECT * FROM system_schema.views "
-                                       "WHERE keyspace_name='ks' AND base_table_name='users' ALLOW FILTERING")))
+        result = list(session.execute(("SELECT * FROM system.views "
+                                       "WHERE keyspace_name='ks'")))
         self.assertEqual(len(result), 1, "Expecting {} materialized view, got {}".format(1, len(result)))
 
         assert_invalid(
@@ -261,8 +264,8 @@ class TestMaterializedViews(Tester):
 
         session = self.prepare(user_table=True)
 
-        result = list(session.execute(("SELECT * FROM system_schema.views "
-                                       "WHERE keyspace_name='ks' AND base_table_name='users' ALLOW FILTERING")))
+        result = list(session.execute(("SELECT * FROM system.views "
+                                       "WHERE keyspace_name='ks'")))
         self.assertEqual(
             len(result), 1,
             "Expecting {} materialized view, got {}".format(1, len(result))
@@ -274,8 +277,8 @@ class TestMaterializedViews(Tester):
             "Cannot drop table when materialized views still depend on it"
         )
 
-        result = list(session.execute(("SELECT * FROM system_schema.views "
-                                       "WHERE keyspace_name='ks' AND base_table_name='users' ALLOW FILTERING")))
+        result = list(session.execute(("SELECT * FROM system.views "
+                                       "WHERE keyspace_name='ks'")))
         self.assertEqual(
             len(result), 1,
             "Expecting {} materialized view, got {}".format(1, len(result))
@@ -284,13 +287,14 @@ class TestMaterializedViews(Tester):
         session.execute("DROP MATERIALIZED VIEW ks.users_by_state;")
         session.execute("DROP TABLE ks.users;")
 
-        result = list(session.execute(("SELECT * FROM system_schema.views "
-                                       "WHERE keyspace_name='ks' AND base_table_name='users' ALLOW FILTERING")))
+        result = list(session.execute(("SELECT * FROM system.views "
+                                       "WHERE keyspace_name='ks'")))
         self.assertEqual(
             len(result), 0,
             "Expecting {} materialized view, got {}".format(1, len(result))
         )
 
+    @skip('Not supported by Scylla at the moment')
     def clustering_column_test(self):
         """Test that we can use clustering columns as primary key for a materialized view"""
 
@@ -355,6 +359,7 @@ class TestMaterializedViews(Tester):
         for i in xrange(1000, 1100):
             assert_one(session, "SELECT * FROM t_by_v WHERE v = {}".format(-i), [-i, i])
 
+    @skip('Not supported by Scylla at the moment')
     def add_dc_after_mv_simple_replication_test(self):
         """
         @jira_ticket CASSANDRA-10634
@@ -364,6 +369,7 @@ class TestMaterializedViews(Tester):
 
         self._add_dc_after_mv_test(1)
 
+    @skip('Not supported by Scylla at the moment')
     def add_dc_after_mv_network_replication_test(self):
         """
         @jira_ticket CASSANDRA-10634
@@ -373,6 +379,7 @@ class TestMaterializedViews(Tester):
 
         self._add_dc_after_mv_test({'dc1': 1, 'dc2': 1})
 
+    @skip('Not supported by Scylla at the moment')
     def add_node_after_mv_test(self):
         """Test that materialized views work as expected when adding a node."""
 
@@ -402,6 +409,7 @@ class TestMaterializedViews(Tester):
         for i in xrange(1000, 1100):
             assert_one(session, "SELECT * FROM t_by_v WHERE v = {}".format(-i), [-i, i])
 
+    @skip('Not supported by Scylla at the moment')
     def add_write_survey_node_after_mv_test(self):
         """
         @jira_ticket CASSANDRA-10621
@@ -430,6 +438,7 @@ class TestMaterializedViews(Tester):
         for i in xrange(1100):
             assert_one(session, "SELECT * FROM t_by_v WHERE v = {}".format(-i), [-i, i])
 
+    @skip('Not supported by Scylla at the moment')
     def allow_filtering_test(self):
         """Test that allow filtering works as usual for a materialized view"""
 
@@ -465,6 +474,7 @@ class TestMaterializedViews(Tester):
                 ['a', i, i, 3.0]
             )
 
+    @skip('Not supported by Scylla at the moment')
     def secondary_index_test(self):
         """Test that secondary indexes cannot be created on a materialized view"""
 
@@ -476,6 +486,7 @@ class TestMaterializedViews(Tester):
         assert_invalid(session, "CREATE INDEX ON t_by_v (v2)",
                        "Secondary indexes are not supported on materialized views")
 
+    @skip('Not supported by Scylla at the moment')
     def ttl_test(self):
         """
         Test that TTL works as expected for a materialized view
@@ -498,6 +509,7 @@ class TestMaterializedViews(Tester):
         rows = list(session.execute("SELECT * FROM t_by_v2"))
         self.assertEqual(len(rows), 0, "Expected 0 rows but got {}".format(len(rows)))
 
+    @skip('Not supported by Scylla at the moment')
     def query_all_new_column_test(self):
         """
         Test that a materialized view created with a 'SELECT *' works as expected when adding a new column
@@ -525,6 +537,7 @@ class TestMaterializedViews(Tester):
             ['TX', 'user1', 1968, None, 'f', 'ch@ngem3a', None]
         )
 
+    @skip('Not supported by Scylla at the moment')
     def query_new_column_test(self):
         """
         Test that a materialized view created with 'SELECT <col1, ...>' works as expected when adding a new column
@@ -555,6 +568,7 @@ class TestMaterializedViews(Tester):
             ['TX', 'user1']
         )
 
+    @skip('Not supported by Scylla at the moment')
     def lwt_test(self):
         """Test that lightweight transaction behave properly with a materialized view"""
 
@@ -632,6 +646,7 @@ class TestMaterializedViews(Tester):
                 [i, i, 'a', 3.0]
             )
 
+    @skip('Not supported by Scylla at the moment')
     def interrupt_build_process_test(self):
         """Test that an interupted MV build process is resumed as it should"""
 
@@ -688,6 +703,7 @@ class TestMaterializedViews(Tester):
                 cl=ConsistencyLevel.ALL
             )
 
+    @skip('Not supported by Scylla at the moment')
     def view_tombstone_test(self):
         """
         Test that a materialized views properly tombstone
@@ -758,6 +774,7 @@ class TestMaterializedViews(Tester):
             cl=ConsistencyLevel.ALL
         )
 
+    @skip('Not supported by Scylla at the moment')
     def check_trace_events(self, trace, expect_digest):
         # we should see multiple requests get enqueued prior to index scan
         # execution happening
@@ -777,6 +794,7 @@ class TestMaterializedViews(Tester):
             if expect_digest:
                 self.fail("Didn't find digest mismatch")
 
+    @skip('Not supported by Scylla at the moment')
     def simple_repair_test(self):
         """
         Test that a materialized view are consistent after a simple repair.
@@ -832,6 +850,7 @@ class TestMaterializedViews(Tester):
                 cl=ConsistencyLevel.ONE
             )
 
+    @skip('Not supported by Scylla at the moment')
     def base_replica_repair_test(self):
         """
         Test that a materialized view are consistent after the repair of the base replica.
@@ -898,6 +917,7 @@ class TestMaterializedViews(Tester):
                 [i, i, 'a', 3.0]
             )
 
+    @skip('Not supported by Scylla at the moment')
     def complex_repair_test(self):
         """
         Test that a materialized view are consistent after a more complex repair.
@@ -994,6 +1014,7 @@ class TestMaterializedViews(Tester):
                 cl=ConsistencyLevel.QUORUM
             )
 
+    @skip('Not supported by Scylla at the moment')
     def really_complex_repair_test(self):
         """
         Test that a materialized view are consistent after a more complex repair.
@@ -1083,6 +1104,7 @@ class TestMaterializedViews(Tester):
 
         assert_none(session2, "SELECT * FROM ks.t_by_v WHERE v2 = 'a'", cl=ConsistencyLevel.QUORUM)
 
+    @skip('Not supported by Scylla at the moment')
     def complex_mv_select_statements_test(self):
         """
         Test complex MV select statements
@@ -1407,6 +1429,7 @@ class TestMaterializedViewsConsistency(Tester):
         for row in data:
             self.rows[(row.a, row.b)] = row.c
 
+    @skip('Not supported by Scylla at the moment')
     def consistent_reads_after_write_test(self):
 
         session = self.prepare()

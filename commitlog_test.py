@@ -258,13 +258,13 @@ class TestCommitLog(Tester):
         for key in range(n_partitions):
             res = session.execute("SELECT * FROM Test.cf where pk1 = %d" % (key))
             self.assertItemsEqual(rows_to_list(res),
-                              [
-                               [key, 0, None, 99, u'two', 999],
-                               [key, 1, 2, None, u'four', None],
-                               [key, 2, 3, None, u'four', None],
-                               [key, 8, None, None, u'eight', None],
-                               [key, 9, None, None, u'seven', None],
-                              ])
+                                  [
+                [key, 0, None, 99, u'two', 999],
+                [key, 1, 2, None, u'four', None],
+                [key, 2, 3, None, u'four', None],
+                [key, 8, None, None, u'eight', None],
+                [key, 9, None, None, u'seven', None],
+            ])
 
         debug("Stop node abruptly")
         node1.stop(gently=False)
@@ -289,13 +289,13 @@ class TestCommitLog(Tester):
         for key in range(n_partitions):
             res = session.execute("SELECT * FROM Test.cf where pk1 = %d" % (key))
             self.assertItemsEqual(rows_to_list(res),
-                              [
-                               [key, 0, None, 99, u'two', 999],
-                               [key, 1, 2, None, u'four', None],
-                               [key, 2, 3, None, u'four', None],
-                               [key, 8, None, None, u'eight', None],
-                               [key, 9, None, None, u'seven', None],
-                              ])
+                                  [
+                [key, 0, None, 99, u'two', 999],
+                [key, 1, 2, None, u'four', None],
+                [key, 2, 3, None, u'four', None],
+                [key, 8, None, None, u'eight', None],
+                [key, 9, None, None, u'seven', None],
+            ])
 
     def default_segment_size_test(self):
         """ Test default commitlog_segment_size_in_mb (32MB) """
