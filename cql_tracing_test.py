@@ -172,6 +172,60 @@ class TestCqlTracing(Tester):
         match = node2.grep_log("Assertion .* failed.")
         self.assertEqual(len(match), 0)
 
+    def tracing_startup_test(self):
+        """
+        Check tracing functionality when Node is started:
+           - Check that CQL handling is not started before a local service is
+             properly started while a remote Node sends RPC messages requesting
+             tracing.
+        """
+        # Start a cluster of two nodes, and create a keyspace with RF=2.
+        self.cluster.populate(2).start()
+        node1, node2 = self.cluster.nodelist()
+
+        debug("Enable tracing for all CQL requests on node1...")
+        node1.nodetool('settraceprobability 1.0')
+
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 2)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+
+        debug("Stopping node2...")
+        node2.stop(wait_other_notice=True)
+
+        debug("Checking log of node2 for assertions...")
+        match = node2.grep_log("Assertion .* failed.")
+        self.assertEqual(len(match), 0)
+
+        def run(name, q):
+            try:
+                num_keys = 15000
+                q.put(True)
+                debug("Populating a table with {} keys...".format(num_keys))
+                insert_c1c2_no_prepared(session, keys=range(num_keys), consistency=ConsistencyLevel.ONE)
+                debug("insertion of {} keys is done".format(num_keys))
+            except:
+                debug("insertions thread was killed")
+
+        queue = Queue()
+        insert_thread = threading.Thread(target=run, args=("insert-thread", queue))
+        insert_thread.start()
+        queue.get(block=True)
+
+        random.seed()
+        wait_time = random.random()
+        debug("Wait for {} seconds".format(wait_time))
+        time.sleep(wait_time)
+
+        debug("Start node2...")
+        node2.start(wait_for_binary_proto=True)
+
+        insert_thread.join()
+
+        debug("Checking log of node2 for assertions...")
+        match = node2.grep_log("Assertion .* failed.")
+        self.assertEqual(len(match), 0)
+
 # ----------------------------------------------------------------------------------------------------------------------
     def grep_one_line(self, line, pattern):
         """
