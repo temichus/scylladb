@@ -217,3 +217,4 @@ update_cluster_layout_tests.py:TestUpdateClusterLayout.simple_removenode_1_test
 update_cluster_layout_tests.py:TestUpdateClusterLayout.simple_removenode_2_test
 user_types_test.py
 wide_rows_test.py
+materialized_views_test.py
