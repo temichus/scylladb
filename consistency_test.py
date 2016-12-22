@@ -17,7 +17,7 @@ from tools import (create_c1c2_table, insert_c1c2, insert_columns, query_c1c2,
 from thrift.protocol import TBinaryProtocol
 from thrift.transport import TSocket, TTransport
 from thrift_bindings.v22 import Cassandra
-from thrift_bindings.v22.Cassandra import ColumnParent, ConsistencyLevel, KeyRange, SlicePredicate, SliceRange
+from thrift_bindings.v22.Cassandra import ColumnParent, KeyRange, SlicePredicate, SliceRange
 
 from paging_test import PageFetcher
 
@@ -1107,7 +1107,7 @@ class TestConsistency(Tester):
         client.set_keyspace('ks')
 
         cp = ColumnParent('cf1')
-        res = client.get_range_slices(cp, SlicePredicate(column_names=['1']), KeyRange(start_token='00000000', end_token='00000005', count=1), ConsistencyLevel.ALL)
+        res = client.get_range_slices(cp, SlicePredicate(column_names=['1']), KeyRange(start_token='00000000', end_token='00000005', count=1), thrift_bindings.v22.Cassandra.ConsistencyLevel.ALL)
 
         assert len(res) == 1, 'Expecting 1 row, got %d (%s)' % (len(res), str(res))
         assert len(res[0].columns) == 1, 'Expecting 1 cell, got %d (%s)' % (len(res[0].columns), str(res[0].columns))
@@ -1151,7 +1151,7 @@ class TestConsistency(Tester):
         client.set_keyspace('ks')
 
         cp = ColumnParent('cf1')
-        res = client.get_range_slices(cp, SlicePredicate(slice_range=SliceRange(start='', finish='', count=1)), KeyRange(start_token='00000000', end_token='00000005'), ConsistencyLevel.ALL)
+        res = client.get_range_slices(cp, SlicePredicate(slice_range=SliceRange(start='', finish='', count=1)), KeyRange(start_token='00000000', end_token='00000005'), thrift_bindings.v22.Cassandra.ConsistencyLevel.ALL)
 
         assert len(res) == 1, 'Expecting 1 row, got %d (%s)' % (len(res), str(res))
         assert len(res[0].columns) == 1, 'Expecting 1 cell, got %d (%s)' % (len(res[0].columns), str(res[0].columns))
@@ -1276,7 +1276,7 @@ class TestConsistency(Tester):
         client.set_keyspace('ks')
 
         cp = ColumnParent('cf1')
-        res = client.get_range_slices(cp, SlicePredicate(column_names=['1']), KeyRange(start_token='00000000', end_token='00000005', count=2), ConsistencyLevel.ALL)
+        res = client.get_range_slices(cp, SlicePredicate(column_names=['1']), KeyRange(start_token='00000000', end_token='00000005', count=2), thrift_bindings.v22.Cassandra.ConsistencyLevel.ALL)
 
         assert len(res) == 2, 'Expecting 2 rows, got %d (%s)' % (len(res), str(res))
 
