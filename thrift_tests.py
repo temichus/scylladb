@@ -2496,3 +2496,84 @@ class TestResultKeyOrder(ThriftTester):
         assert result[2].key == 'key4'
         assert result[3].key == 'key3'
         assert result[4].key == 'key2'
+
+
+class TestWrappingRangeQueries(ThriftTester):
+
+    """
+    Test range queries, particularly those that wrap around the token
+    space (start > end, so we query (start, +inf] and (-inf, end])
+
+    Range queries are complicated, since the coordinator has to scan
+    vnodes, and within a vnode, a replica has to scan shards, and merge
+    it all together.
+    """
+
+    def __init__(self, *args, **kwargs):
+        # Use murmur3 partitioner since its sharding is much more complex
+        # than the others.
+        kwargs['cluster_options'] = {'partitioner': 'org.apache.cassandra.dht.Murmur3Partitioner',
+                                     'start_rpc': 'true'}
+        Tester.__init__(self, *args, **kwargs)
+
+    def test_wrapping_ranges(self):
+        # murmur3 tokens obtained using CQL TOKEN() function
+        key_token = {
+            'a': -8839064797231613815,
+            'c': -8198557465434950441,
+            'e': -4200008757497435756,
+            'd': -3786697372163639434,
+            'b': 8833996863197925870,
+        }
+
+        def token_for(key, delta=0):
+            return str(key_token[key] + delta)
+
+        _set_keyspace('Keyspace1')
+        CL = ConsistencyLevel.ONE
+        for key in ['a', 'b', 'c', 'd', 'e']:
+            client.insert(
+                key,
+                ColumnParent('Standard1'),
+                Column('c1', 'c1-' + key, 0),
+                CL)
+            client.insert(
+                key,
+                ColumnParent('Standard1'),
+                Column('c2', 'c2-' + key, 0),
+                CL)
+
+        """
+        Test a token range query.
+
+        first, last: the keys we want to read, in Thrift start-exclusive
+                     end-inclusive format
+        first_delta, last_delta: integers to add to tokens, in order to
+                     adjust inclusivity/exclusivity
+        count: partition limit for query
+        expected: list of keys we expect to see
+        """
+        def test_range(first, first_delta, last, last_delta, count, expected):
+            result = client.get_range_slices(
+                ColumnParent('Standard1'),
+                SlicePredicate(column_names=['c1', 'c2']),
+                KeyRange(start_token=token_for(first, first_delta),
+                         end_token=token_for(last, last_delta),
+                         count=count),
+                CL)
+            from itertools import izip
+            for a_result, a_expected in izip(result, expected):
+                assert a_result is not None
+                assert a_expected is not None
+                self.assertEqual(a_result.key, a_expected)
+
+        # token order: a c e d b
+        test_range('a', 0, 'a', 0, 10, ['c', 'e', 'd', 'b', 'a'])
+        test_range('a', -1, 'a', -1, 10, ['a', 'c', 'e', 'd', 'b'])
+        test_range('a', 1, 'a', 1, 10, ['c', 'e', 'd', 'b', 'a'])
+        test_range('b', -1, 'a', 0, 10, ['b', 'a'])
+        test_range('b', 0, 'a', -1, 10, [])
+        test_range('b', 0, 'a', 0, 10, ['a'])
+        test_range('b', -1, 'a', 0, 10, ['b', 'a'])
+        test_range('c', 0, 'e', -1, 2, [])
+        test_range('b', -1, 'a', 1, 10, ['b', 'a'])
