@@ -1,3 +1,9 @@
+"""
+All dtest functional test for authentication and authorization tests.
+
+STATE: NOT FULLY IMPLEMENTED
+"""
+
 import re
 import time
 
@@ -11,6 +17,9 @@ from unittest import skip
 
 
 class TestAuth(Tester):
+    """
+    Original Class of dtest
+    """
 
     def __init__(self, *args, **kwargs):
         self.ignore_log_patterns = [
@@ -22,6 +31,12 @@ class TestAuth(Tester):
         Tester.__init__(self, *args, **kwargs)
 
     def system_auth_ks_is_alterable_test(self):
+        """
+        Originally from dtest.
+        **Description:**
+
+        **Expected Result:**
+        """
         self.prepare(nodes=3)
         debug("nodes started")
 
@@ -53,6 +68,12 @@ class TestAuth(Tester):
             self.assertEquals(3, session.cluster.metadata.keyspaces['system_auth'].replication_strategy.replication_factor)
 
     def login_test(self):
+        """
+        Originally from dtest.
+        **Description:**
+        
+        **Expected Result:**
+        """
         # also tests default user creation (cassandra/cassandra)
         self.prepare()
         self.get_session(user='cassandra', password='cassandra')
@@ -68,6 +89,12 @@ class TestAuth(Tester):
     # from 2.2 role creation is granted by CREATE_ROLE permissions, not superuser status
     @since('1.2', max_version='2.1.x')
     def only_superuser_can_create_users_test(self):
+        """
+        Originally from dtest.
+        **Description:**
+
+        **Expected Result:**
+        """
         self.prepare()
 
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -78,12 +105,24 @@ class TestAuth(Tester):
 
     @since('1.2', max_version='2.1.x')
     def password_authenticator_create_user_requires_password_test(self):
+        """
+        Originally from dtest.
+        **Description:**
+
+        **Expected Result:**
+        """
         self.prepare()
 
         session = self.get_session(user='cassandra', password='cassandra')
         assert_invalid(session, "CREATE USER jackob NOSUPERUSER", 'PasswordAuthenticator requires PASSWORD option')
 
     def cant_create_existing_user_test(self):
+        """
+        Originally from dtest.
+        **Description:**
+
+        **Expected Result:**
+        """
         self.prepare()
 
         session = self.get_session(user='cassandra', password='cassandra')
@@ -91,6 +130,12 @@ class TestAuth(Tester):
         assert_invalid(session, "CREATE USER 'james@example.com' WITH PASSWORD '12345' NOSUPERUSER", 'james@example.com already exists')
 
     def list_users_test(self):
+        """
+        Originally from dtest.
+        **Description:**
+
+        **Expected Result:**
+        """
         self.prepare()
 
         session = self.get_session(user='cassandra', password='cassandra')
@@ -111,6 +156,12 @@ class TestAuth(Tester):
         self.assertTrue(users['dave'])
 
     def user_cant_drop_themselves_test(self):
+        """
+        Originally from dtest.
+        **Description:**
+
+        **Expected Result:**
+        """
         self.prepare()
 
         session = self.get_session(user='cassandra', password='cassandra')
@@ -120,6 +171,12 @@ class TestAuth(Tester):
     # from 2.2 role deletion is granted by DROP_ROLE permissions, not superuser status
     @since('1.2', max_version='2.1.x')
     def only_superusers_can_drop_users_test(self):
+        """
+        Originally from dtest.
+        **Description:**
+
+        **Expected Result:**
+        """
         self.prepare()
 
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -140,12 +197,24 @@ class TestAuth(Tester):
         self.assertEqual(2, len(rows))
 
     def dropping_nonexistent_user_throws_exception_test(self):
+        """
+        Originally from dtest.
+        **Description:**
+
+        **Expected Result:**
+        """
         self.prepare()
 
         session = self.get_session(user='cassandra', password='cassandra')
         assert_invalid(session, 'DROP USER nonexistent', "nonexistent doesn't exist")
 
     def regular_users_can_alter_their_passwords_only_test(self):
+        """
+        Originally from dtest.
+        **Description:**
+
+        **Expected Result:**
+        """
         self.prepare()
 
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -159,6 +228,12 @@ class TestAuth(Tester):
                                 cathy, "ALTER USER bob WITH PASSWORD 'cantchangeit'")
 
     def users_cant_alter_their_superuser_status_test(self):
+        """
+        Originally from dtest.
+        **Description:**
+
+        **Expected Result:**
+        """
         self.prepare()
 
         session = self.get_session(user='cassandra', password='cassandra')
@@ -166,6 +241,12 @@ class TestAuth(Tester):
                                 session, "ALTER USER cassandra NOSUPERUSER")
 
     def only_superuser_alters_superuser_status_test(self):
+        """
+        Originally from dtest.
+        **Description:**
+
+        **Expected Result:**
+        """
         self.prepare()
 
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -178,12 +259,24 @@ class TestAuth(Tester):
         cassandra.execute("ALTER USER cathy SUPERUSER")
 
     def altering_nonexistent_user_throws_exception_test(self):
+        """
+        Originally from dtest.
+        **Description:**
+
+        **Expected Result:**
+        """
         self.prepare()
 
         session = self.get_session(user='cassandra', password='cassandra')
         assert_invalid(session, "ALTER USER nonexistent WITH PASSWORD 'doesn''tmatter'", "nonexistent doesn't exist")
 
     def conditional_create_drop_user_test(self):
+        """
+        Originally from dtest.
+        **Description:**
+
+        **Expected Result:**
+        """
         self.prepare()
         session = self.get_session(user='cassandra', password='cassandra')
 
@@ -203,6 +296,12 @@ class TestAuth(Tester):
         self.assertEqual(1, len(users))  # cassandra
 
     def create_ks_auth_test(self):
+        """
+        Originally from dtest.
+        **Description:**
+
+        **Expected Result:**
+        """
         self.prepare()
 
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -217,6 +316,12 @@ class TestAuth(Tester):
         cathy.execute("""CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}""")
 
     def create_cf_auth_test(self):
+        """
+        Originally from dtest.
+        **Description:**
+
+        **Expected Result:**
+        """
         self.prepare()
 
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -231,6 +336,12 @@ class TestAuth(Tester):
         cathy.execute("CREATE TABLE ks.cf (id int primary key)")
 
     def alter_ks_auth_test(self):
+        """
+        Originally from dtest.
+        **Description:**
+
+        **Expected Result:**
+        """
         self.prepare()
 
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -247,6 +358,12 @@ class TestAuth(Tester):
 
     @skip('index')
     def alter_cf_auth_test(self):
+        """
+        Originally from dtest.
+        **Description:**
+
+        **Expected Result:** SKIPPED
+        """
         self.prepare()
 
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -279,6 +396,12 @@ class TestAuth(Tester):
 
     @since('3.0')
     def materialized_views_auth_test(self):
+        """
+        Originally from dtest.
+        **Description:**
+
+        **Expected Result:** SKIPPED
+        """
         self.prepare()
 
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -316,6 +439,12 @@ class TestAuth(Tester):
         cathy.execute("DROP MATERIALIZED VIEW mv1")
 
     def drop_ks_auth_test(self):
+        """
+        Originally from dtest.
+        **Description:**
+
+        **Expected Result:**
+        """
         self.prepare()
 
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -330,6 +459,12 @@ class TestAuth(Tester):
         cathy.execute("DROP KEYSPACE ks")
 
     def drop_cf_auth_test(self):
+        """
+        Originally from dtest.
+        **Description:**
+
+        **Expected Result:**
+        """
         self.prepare()
 
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -345,6 +480,12 @@ class TestAuth(Tester):
         cathy.execute("DROP TABLE ks.cf")
 
     def modify_and_select_auth_test(self):
+        """
+        Originally from dtest.
+        **Description:**
+
+        **Expected Result:**
+        """
         self.prepare()
 
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -388,6 +529,12 @@ class TestAuth(Tester):
         assert len(rows) == 0
 
     def grant_revoke_auth_test(self):
+        """
+        Originally from dtest.
+        **Description:**
+
+        **Expected Result:**
+        """
         self.prepare()
 
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -411,6 +558,12 @@ class TestAuth(Tester):
         cathy.execute("GRANT SELECT ON ALL KEYSPACES TO bob")
 
     def grant_revoke_validation_test(self):
+        """
+        Originally from dtest.
+        **Description:**
+
+        **Expected Result:**
+        """
         self.prepare()
 
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -426,6 +579,12 @@ class TestAuth(Tester):
         assert_invalid(cassandra, "REVOKE ALL ON KEYSPACE ks FROM nonexistent", "(User|Role) nonexistent doesn't exist")
 
     def grant_revoke_cleanup_test(self):
+        """
+        Originally from dtest.
+        **Description:**
+
+        **Expected Result:**
+        """
         self.prepare()
 
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -467,6 +626,12 @@ class TestAuth(Tester):
                                 cathy, "SELECT * FROM ks.cf")
 
     def permissions_caching_test(self):
+        """
+        Originally from dtest.
+        **Description:**
+
+        **Expected Result:**
+        """
         self.prepare(permissions_validity=2000)
 
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -518,6 +683,12 @@ class TestAuth(Tester):
         assert success
 
     def list_permissions_test(self):
+        """
+        Originally from dtest.
+        **Description:**
+
+        **Expected Result:**
+        """
         self.prepare()
 
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -585,6 +756,12 @@ class TestAuth(Tester):
                                 bob, "LIST ALL PERMISSIONS OF cathy")
 
     def type_auth_test(self):
+        """
+        Originally from dtest..
+        **Description:**
+
+        **Expected Result:**
+        """
         self.prepare()
 
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -605,6 +782,116 @@ class TestAuth(Tester):
         cathy.execute("ALTER TYPE ks.address ADD zip_code int")
         cassandra.execute("GRANT DROP ON KEYSPACE ks TO cathy")
         cathy.execute("DROP TYPE ks.address")
+
+
+    @skip('not-implemented')
+    def kill_the_node_with_the_auth_info_test(self):
+        """
+        **Description:** Killing the node (`killall scylla`) that has authentication info (when RF=1).
+        **Expected Result:** Cluster is unavailable - connection failed.
+        """
+        raise NotImplementedError
+
+    @skip('not-implemented')
+    def kill_one_of_the_nodes_with_the_auth_info_test(self):
+        """
+        **Description:** Killing the node that has authentication info (when RF>=2).
+        **Expected Result:** Cluster is available - successful connection.
+        """
+        raise NotImplementedError
+
+    @skip('not-implemented')
+    def dropping_keyspace_system_auth(self):
+        """
+        **Description:** Dropping keyspace system_auth (when RF=1).
+        **Expected Result:** Cluster is unavailable - connection failed.
+        """
+        raise NotImplementedError
+
+    @skip('not-implemented')
+    def dropping_one_replica_of_keyspace_system_auth(self):
+        """
+        **Description:** Dropping keyspace system_auth (when RF>=2).
+        **Expected Result:** Cluster is unavailable - connection failed.
+        """
+        raise NotImplementedError
+
+    @skip('not-implemented')
+    def kill_all_nodes_with_the_auth_info_except_one_test(self):
+        """
+        **Description:** Set RF of system_auth to 3, kill two nodes.
+        **Expected Result:** Cluster is available - successful connection
+        """
+        raise NotImplementedError
+
+    @skip('not-implemented')
+    def repair_system_auth_test(self):
+        """
+        **Description:** Set RF=2, drop system_auth table, then try to repair nodes.
+        **Expected Result:** Repair has finished, and system_auth is recovered.
+        """
+        raise NotImplementedError
+
+    @skip('not-implemented')
+    def change_setting_to_noauth_after_system_auth_was_lost_test(self):
+        """
+        **Description:** after the auth info is lost (dropping system_auth when RF=1),Change the setting of a node to no auth
+        (while one node is down), force a client to connect to that node.
+        **Expected Result:** Cluster is available - successful connection.
+        """
+        raise NotImplementedError
+
+    @skip('not-implemented')
+    def manually_copy_system_auth_files_after_system_auth_was_lost_test(self):
+        """
+        **Description:** after the auth info is lost (dropping system_auth when RF=1), Upload system_auth keyspace with scp to
+        other nodes, do "nodetool refresh".
+        **Expected Result:** Cluster is unavailable - connection failed.
+        """
+        raise NotImplementedError
+
+    @skip('not-implemented')
+    def remove_dead_node_test(self):
+        """
+        **Description:** Run "nodetool removenode"' on the dead node (when RF=2).
+        **Expected Result:** Cluster is available - successful connection.
+        """
+        raise NotImplementedError
+
+    @skip('not-implemented')
+    def manually_backup_and_restore_system_auth_test(self):
+        """
+        **Description:** Backup `system_auth` directory from the data directory to localhost, drop system_auth, turn off the auth,
+        upload the auto info and turn on auth
+        **Expected Result:** Auth is recovered, Cluster is available - successful connection.
+        """
+        raise NotImplementedError
+
+    @skip('not-implemented')
+    def snapshot_back_and_restore_system_auth_test(self):
+        """
+        **Description:** Backup data by creating snapshot, try to recover auth info from snapshot.
+        **Expected Result:** Auth is recovered, Cluster is available - successful connection.
+        """
+        raise NotImplementedError
+
+    @skip('not-implemented')
+    def all_authorization_operations_test(self):
+        """
+        **Description:** Test all authorization operations, actions and applied objects.
+        **Expected Result:** All commands run successfully, no crash is triggered.
+        """
+        raise NotImplementedError
+
+    @skip('not-implemented')
+    def authentication_enabled_only_in_one_node_test(self):
+        """
+        **Description:** Authentication is enabled only in one node while disabled in others -
+                         try to connect all node one by one.
+        **Expected Result:** it requests password to connect the node which enables the Authentication.
+        """
+        raise NotImplementedError
+
 
     def prepare(self, nodes=1, permissions_validity=0):
         config = {'authenticator': 'org.apache.cassandra.auth.PasswordAuthenticator',
