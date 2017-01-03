@@ -471,8 +471,8 @@ class RepairAdditionalTest(Tester):
         # the entire line to verify it is identical on the repaired machine.
         save_line = None
         for line in sstable.split('\n'):
-            if '["c1",' in line:
-                self.assertTrue('"e",1234,' in line, "TTL set to 1234")
+            if '"name" : "c1",' in line:
+                self.assertTrue('"ttl" : 1234,' in line, "TTL set to 1234")
                 save_line = line
         self.assertTrue(save_line is not None, "TTL set in sstable")
 
@@ -520,7 +520,7 @@ class RepairAdditionalTest(Tester):
         # expiration time (because we didn't do compaction, we'll see both
         # the old and new values in different sstables)
         for line in sstable.split('\n'):
-            if '["c1",' in line:
+            if '"name" : "c1",' in line:
                 if save_line == line:
                     save_line = None
         self.assertTrue(save_line is None, "expected c1 value and timeout in sstable")

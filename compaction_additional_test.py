@@ -80,7 +80,7 @@ class CompactionAdditionalTest(Tester):
         with open(jname, 'r') as g:
             jsoninfo = g.read()
 
-        numfound = jsoninfo.count("markedForDeleteAt")
+        numfound = jsoninfo.count("marked_deleted")
 
         self.assertLess(numfound, 100)
         self.assertGreater(numfound, 0)
@@ -108,7 +108,7 @@ class CompactionAdditionalTest(Tester):
         with open(jname, 'r') as g:
             jsoninfo = g.read()
 
-        numfound = jsoninfo.count("markedForDeleteAt")
+        numfound = jsoninfo.count("marked_deleted")
 
         self.assertEqual(numfound, 0)
 

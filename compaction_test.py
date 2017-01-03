@@ -51,7 +51,7 @@ class TestCompaction(Tester):
         with open(jname, 'r') as g:
             jsoninfo = g.read()
 
-        numfound = jsoninfo.count("markedForDeleteAt")
+        numfound = jsoninfo.count("marked_deleted")
 
         self.assertEqual(numfound, 10)
 
@@ -89,7 +89,7 @@ class TestCompaction(Tester):
         with open(jname, 'r') as g:
             jsoninfo = g.read()
 
-        numfound = jsoninfo.count("markedForDeleteAt")
+        numfound = jsoninfo.count("marked_deleted")
 
         self.assertEqual(numfound, 10)
 
@@ -109,7 +109,7 @@ class TestCompaction(Tester):
         with open(jname, 'r') as g:
             jsoninfo = g.read()
 
-        numfound = jsoninfo.count("markedForDeleteAt")
+        numfound = jsoninfo.count("marked_deleted")
 
         self.assertEqual(numfound, 0)
 
