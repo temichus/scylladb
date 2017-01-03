@@ -898,6 +898,65 @@ class RepairAdditionalTest(Tester):
         """
         self.repair_disjoint_data_test(['-seq'])
 
+    def repair_n_gt_rf(self, more_options=[]):
+        """
+        Another basic test for repair, this time we have more nodes than
+        replication factor, so different ranges of tokens have a different
+        set of replicas - so the repair is forced to retrieve different
+        sections of the data from different replicas.
+        """
+        debug("Starting cluster...")
+        # Disable hinted handoff so it doesn't do what we expect repair to do
+        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        # Create a cluster of 3 nodes, and a keyspace with RF=2 on all nodes
+        # (disable read repair, as we want to test the full repair).
+        self.cluster.populate(3).start()
+        node1, node2, node3 = self.cluster.nodelist()
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 2)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+
+        # Insert 1000 keys while node 3 is down. Because RF=2, all the data
+        # will have a replica in one of the two available nodes
+        debug("Adding data with node 3 down...")
+        node3.flush()
+        node3.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node1)
+        session.set_keyspace('ks')
+        insert_c1c2(session, keys=range(1000, 2000), consistency=ConsistencyLevel.ONE)
+        self.cluster.flush()
+
+        # Bring node 3 back up, it will not yet have any data
+        node3.start(wait_other_notice=True, wait_for_binary_proto=True)
+
+        # Run repair on node 3. It should copy to node 3 all data that node 3 should
+        # hold
+        time.sleep(10)  # see CASSANDRA-4373
+        debug("starting repair...")
+        info = node3.repair(more_options + ['ks'])
+        debug(info[0])
+        debug(info[1])
+
+        # check that node 3 can read all 1000 partitions, even if node 1 or
+        # or node 2 is down. Note that if both were down, it can't, because
+        # about a third of the data is only replicated on node1 and node2.
+        session = self.patient_cql_connection(node3, 'ks')
+        debug("Checking read with no node down...")
+        result = list(session.execute("SELECT * FROM cf LIMIT 2000"))
+        self.assertEqual(len(result), 1000, len(result))
+        debug("Checking read with node 1 down...")
+        node1.flush()
+        node1.stop(wait_other_notice=True)
+        result = list(session.execute("SELECT * FROM cf LIMIT 2000"))
+        self.assertEqual(len(result), 1000, len(result))
+        node1.start(wait_other_notice=True, wait_for_binary_proto=True)
+        debug("Checking read with node 2 down...")
+        node2.flush()
+        node2.stop(wait_other_notice=True)
+        result = list(session.execute("SELECT * FROM cf LIMIT 2000"))
+        self.assertEqual(len(result), 1000, len(result))
+        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+
     def repair_kill_1_test(self, kill_master=True):
         """
         Killing the master node of a repair stops the repair (obviously), but
