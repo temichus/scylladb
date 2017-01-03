@@ -1,16 +1,24 @@
+**Authentication & Authorization**
 auth_test.py
+**Backup & Restore**
 backup_restore_tests.py
+**Batch**
 batch_test.py
+**Bootstrap**
 bootstrap_test.py:TestBootstrap.killed_wiped_node_cannot_join_test
 bootstrap_test.py:TestBootstrap.local_quorum_bootstrap_test
 bootstrap_test.py:TestBootstrap.manual_bootstrap_test
 bootstrap_test.py:TestBootstrap.read_from_bootstrapped_node_test
 bootstrap_test.py:TestBootstrap.shutdown_wiped_node_cannot_join_test
 bootstrap_test.py:TestBootstrap.simple_bootstrap_test
+**CFID**
 cfid_test.py
+**clustering_key_filter**
 clustering_key_filter_test.py
+**Commitlog**
 commitlog_test.py:TestCommitLog.test_commitlog_replay_on_startup
 commitlog_test.py:TestCommitLog.test_commitlog_replay_with_alter_table
+**Compaction**
 compaction_additional_test.py
 compaction_test.py:TestCompaction_with_DateTieredCompactionStrategy.compaction_delete_2_test
 compaction_test.py:TestCompaction_with_DateTieredCompactionStrategy.compaction_delete_test
@@ -21,7 +29,9 @@ compaction_test.py:TestCompaction_with_LeveledCompactionStrategy.compaction_stra
 compaction_test.py:TestCompaction_with_SizeTieredCompactionStrategy.compaction_delete_2_test
 compaction_test.py:TestCompaction_with_SizeTieredCompactionStrategy.compaction_delete_test
 compaction_test.py:TestCompaction_with_SizeTieredCompactionStrategy.compaction_strategy_switching_test
+**concurrent_schema_changes**
 concurrent_schema_changes_test.py
+**Consistency**
 consistency_test.py:TestAccuracy.test_network_topology_strategy_users
 consistency_test.py:TestAccuracy.test_simple_strategy_users
 consistency_test.py:TestAvailability.test_network_topology_strategy
@@ -33,7 +43,9 @@ consistency_test.py:TestConsistency.short_read_delete_test
 consistency_test.py:TestConsistency.short_read_quorum_delete_test
 consistency_test.py:TestConsistency.short_read_reversed_test
 consistency_test.py:TestConsistency.short_read_test
+**Also bootstrap?**
 consistent_bootstrap_test.py
+**CQL**
 cql_additional_tests.py:TestCQL.alter_bug_test
 cql_additional_tests.py:TestCQL.alter_with_collections_test
 cql_additional_tests.py:TestCQL.batch_and_list_test
@@ -137,15 +149,25 @@ cql_additional_tests.py:TestCQL.unescaped_string_test
 cql_additional_tests.py:TestCQL.update_type_test
 cql_tests.py
 cql_tracing_test.py
+**Inter-node SSL**
 internode_ssl_test.py
+**json tools**
 json_tools_test.py
+**Large columns**
 largecolumn_test.py
+**Limits**
 limits_test.py
+**Migration**
 migration_test.py
+**Multi DC**
 multidc_putget_test.py
+**native_transport_ssl**
 native_transport_ssl_test.py
+**Nodetool**
 nodetool_additional_test.py
+**Offline tools**
 offline_tools_test.py
+**Paging**
 paging_additional_test.py
 paging_test.py:TestPagingDatasetChanges.test_cell_TTL_expiry_during_paging
 paging_test.py:TestPagingDatasetChanges.test_data_change_impacting_earlier_page
@@ -171,30 +193,45 @@ paging_test.py:TestPagingWithModifiers.test_with_allow_filtering
 paging_test.py:TestPagingWithModifiers.test_with_limit
 paging_test.py:TestPagingWithModifiers.test_with_order_by
 paging_test.py:TestPagingWithModifiers.test_with_order_by_reversed
+**Partitioner**
 partitioner_tests.py
+**Persistence**
 persistence_test.py
+**pushed_notifications**
 pushed_notifications_test.py:TestPushedNotifications.move_single_node_test
 pushed_notifications_test.py:TestPushedNotifications.restart_node_test
+**range_ghost**
 range_ghost_test.py
+**Repair**
 repair_additional_test.py
 repair_test.py
+**replace_address**
 replace_address_test.py
+**Schema**
 schema_management_test.py
 schema_test.py
+**Boot/Shutdown**
 simple_boot_shutdown.py
+**Cluster Driver**
 simple_cluster_driver_test.py
 simple_driver_test.py
+**Snapshot**
 snapshot_test.py:TestSnapshot.test_basic_snapshot_and_restore_with_refresh
+**SSTables**
 sstable_generation_loading_test.py:TestSSTableGenerationAndLoading.promoted_index_generation_with_small_partition_followed_by_a_large_partition_test
 sstableloader_test.py
 sstablesplit_test.py
+**Thrift**
 thrift_tests.py
+**Topology**
 topology_test.py:TestTopology.crash_during_decommission_test
 topology_test.py:TestTopology.decommissioned_node_cant_rejoin_test
 topology_test.py:TestTopology.decommission_test
 topology_test.py:TestTopology.movement_test
 topology_test.py:TestTopology.move_single_node_test
+**TTL**
 ttl_test.py
+**update_cluster_layout**
 update_cluster_layout_tests.py:TestUpdateClusterLayout.add_node_with_large_partition1_test
 update_cluster_layout_tests.py:TestUpdateClusterLayout.add_node_with_large_partition2_test
 update_cluster_layout_tests.py:TestUpdateClusterLayout.add_node_with_large_partition3_test
@@ -215,6 +252,10 @@ update_cluster_layout_tests.py:TestUpdateClusterLayout.simple_kill_new_node_whil
 update_cluster_layout_tests.py:TestUpdateClusterLayout.simple_kill_node_while_decommissioning_test
 update_cluster_layout_tests.py:TestUpdateClusterLayout.simple_removenode_1_test
 update_cluster_layout_tests.py:TestUpdateClusterLayout.simple_removenode_2_test
+**User Types**
 user_types_test.py
+**Wide Rows**
 wide_rows_test.py
+**Materialized Views**
 materialized_views_test.py
+**Other**
