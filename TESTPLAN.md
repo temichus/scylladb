@@ -37,6 +37,7 @@ Functional {#label_functional}
 | Functionality | Implemented Tests |
 | ------------- | :----------------  |
 | **Counters**  | super_counter_test.py |
+| **Materialized Views** | materialized_views_test.py |
 
 
 ### &nbsp;&nbsp; Regression {#label_Regression} ###
@@ -95,34 +96,6 @@ Stability {#label_Stability}
 * Crash Recovery?
 
 
-3rd Party Support & Integrations {#label_3rd_party_support}
------------------------------------------------------------
-* Thrift
-* Python Driver
-* Other Drivers?
-* Titan DB?
-* Spark
-* ...
-
-
-Scale {#label_Scale}
-------------------------------
-* Large Scale Clusters (>20)?
-* Extra-Large Scale Clusters (>100)?
-* Large Scale decommission
-* ???
-
-
-Load {#label_Load}
-------------------------------
-&nbsp;&nbsp;&nbsp;&nbsp; **Common server functionality during high load in terms of:**
-
-* CPU Bound
-* Network Bound
-* Disk Bound
-* Memory Bound
-
-
 Performance {#label_Performance}
 ---------------------------------
 &nbsp;&nbsp;**Single Schema**
@@ -135,7 +108,48 @@ Performance {#label_Performance}
 * Read-only workload
 * Mixed workload
 
-&nbsp;&nbsp;**Customers Workloads**
+Latency (c-s) under certain loads (25% CPU, 50% …, )
+Performance of ops (latency) and their affect on the system under certain loads
+Performance of Scaled env (Data, nodes, Sizes)
 
-* x
-* y
+&nbsp;&nbsp;**Customers Workloads**
+* OutBrain
+    - features
+    - Users
+* mParticle
+    - a
+    - b
+* Arista
+    - a
+    - b
+
+
+3rd Party Support & Integrations {#label_3rd_party_support}
+-----------------------------------------------------------
+* Thrift
+* Python Driver
+* Other Drivers?
+* Titan DB?
+* Spark
+* ...
+
+
+Scale {#label_Scale}
+------------------------------
+Testing functionality (e.g. Repair, compaction, compression, etc), stability and performance on:
+* Large size SStables (1TB, 2TB, 5TB, 10TB)
+* Scaling to **LARGE** size Clusters (>10)
+* Scaling to **Extra-Large** size Clusters (>30)
+* Large Scale decommission
+
+
+Load {#label_Load}
+------------------------------
+&nbsp;&nbsp;&nbsp;&nbsp; **Common server functionality during high load in terms of:**
+
+* CPU Bound
+* Network Bound
+* Disk Bound
+* Memory Bound
+
+
