@@ -37,6 +37,41 @@ class NativeTransportSSL(Tester):
         session = self.patient_cql_connection(node1, ssl_opts={'ca_certs': os.path.join(self.test_path, 'ccm_node.cer')})
         self._putget(cluster, session)
 
+    def connect_to_ssl_test_client_auth(self):
+        """
+        Connecting to SSL enabled native transport port should only be possible using SSL enabled client
+        """
+        cluster = self._populateCluster(enableSSL=True, requireAuth=True)
+        node1 = cluster.nodelist()[0]
+
+        cluster.start()
+
+        try:  # hack around assertRaise's lack of msg parameter
+            # try to connect without ssl options
+            self.patient_cql_connection(node1)
+            self.fail('Should not be able to connect to SSL socket without SSL enabled client')
+        except NoHostAvailable:
+            pass
+
+        assert len(node1.grep_log("(^io.netty.handler.ssl.NotSslRecordException.*|^.*An unexpected TLS packet was received.*)")) > 0, \
+            "Missing SSL handshake exception while connecting with non-SSL enabled client"
+
+        try:
+            # try to connect without auth cert
+            self.patient_cql_connection(node1, ssl_opts={'ca_certs': os.path.join(self.test_path, 'ccm_node.cer')})
+            self.fail('Should not be able to connect to SSL socket without SSL enabled client')
+        except NoHostAvailable:
+            pass
+
+
+        # enabled ssl + auth on the client and try again (this should work)
+        session = self.patient_cql_connection(node1, ssl_opts={
+            'ca_certs': os.path.join(self.test_path, 'ccm_node.cer'),
+            'keyfile' : os.path.join(self.test_path, 'ccm_node.key'),
+            'certfile' : os.path.join(self.test_path, 'ccm_node.pem')
+        })
+        self._putget(cluster, session)
+
     @skip('optional_ssl')
     def connect_to_ssl_optional_test(self):
         """
@@ -92,7 +127,7 @@ class NativeTransportSSL(Tester):
         session = self.patient_cql_connection(node1, port=9666, ssl_opts={'ca_certs': os.path.join(self.test_path, 'ccm_node.cer')})
         self._putget(cluster, session, ks='ks2')
 
-    def _populateCluster(self, enableSSL=False, nativePort=None, nativePortSSL=None, sslOptional=False):
+    def _populateCluster(self, enableSSL=False, nativePort=None, nativePortSSL=None, sslOptional=False, requireAuth=False):
         cluster = self.cluster
 
         if enableSSL:
@@ -107,13 +142,24 @@ class NativeTransportSSL(Tester):
             if is_scylla:
                 options.update({
                     'certificate': os.path.join(self.test_path, 'ccm_node.pem'),
-                    'keyfile': os.path.join(self.test_path, 'ccm_node.key'),
+                    'keyfile': os.path.join(self.test_path, 'ccm_node.key')
                 })
+                if requireAuth:
+                    options.update({
+                        'truststore' : os.path.join(self.test_path, 'ccm_node.cer'),
+                        'require_client_auth' : True
+                    })
             else:
                 options.update({
                     'keystore': os.path.join(self.test_path, 'keystore.jks'),
                     'keystore_password': 'cassandra',
                 })
+                if requireAuth:
+                    options.update({
+                        'truststore' : os.path.join(self.test_path, 'truststore.jks'),
+                        'truststore_password': 'cassandra',
+                        'require_client_auth' : True
+                    })
 
             cluster.set_configuration_options({'client_encryption_options': options})
 
