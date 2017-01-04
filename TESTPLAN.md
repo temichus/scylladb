@@ -1,48 +1,46 @@
 Scylla Test Plan {#mainpage}
 ====================================
 
-Test Plan Document - @release {#scylla_test_plan}
-========================================================
+Master Test Plan Document  {#scylla_test_plan}
+===============================================
 
 [TOC]
 
-This is the Scylla Test Plan document.\n
-It covers the tests executed to ensure the quality of the Database Services and associated tools, in terms of:
+This is Scylla Master Test Plan document.\n
+This document covers the master plan of testing scylla for including existing tests and our wish list.
+It covers the tests should be executed to ensure the quality of the product and associated tools, in terms of:
 * Platform Support
 * Functionality
 * Stability & Longevity
+* Performance
 * 3rd Party Support & Integrations
 * Scale
 * Load
-* Performance
 
+Each release should have a child page of this page with a **plan per release**.
 
+- - -
 Platforms Support {#label_Platforms_support}
 ---------------------------------------------------
+- - -
+
 ### &nbsp;&nbsp; Installation {#label_Installation} ###
-* Ubuntu...
-* Centos..
-* Debian?
+* Ubuntu
+* RHEL
+* Centos
+* Debian
 
-### &nbsp;&nbsp; Deployment {#label_Deployment} ###
+### &nbsp;&nbsp; Auto Deployment {#label_Deployment} ###
 * AWS
-* OpenStack
+* GCE
+* Openstack
 
-
+- - -
 Functional {#label_functional}
-----------------------------------
-### &nbsp;&nbsp; Progression {#label_Progression} ###
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; **New Functionality to be introduced in @release** 
-
-| Functionality | Implemented Tests |
-| ------------- | :----------------  |
-| **Counters**  | super_counter_test.py |
-| **Materialized Views** | materialized_views_test.py |
-
-
+-------------------------------------
+- - -
 ### &nbsp;&nbsp; Regression {#label_Regression} ###
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; **List of supported functionality that are part of previously released versions:** 
-
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; List of supported functionality that are part of previously released versions: 
 
 
 | Functionality | Implemented Tests |
@@ -86,33 +84,42 @@ Functional {#label_functional}
 | **update_cluster_layout** | update_cluster_layout_tests::TestUpdateClusterLayout.add_node_with_large_partition1_test\n update_cluster_layout_tests::TestUpdateClusterLayout.add_node_with_large_partition2_test\n update_cluster_layout_tests::TestUpdateClusterLayout.add_node_with_large_partition3_test\n update_cluster_layout_tests::TestUpdateClusterLayout.simple_add_new_node_while_query_info_1_test\n update_cluster_layout_tests::TestUpdateClusterLayout.simple_add_new_node_while_query_info_2_test\n update_cluster_layout_tests::TestUpdateClusterLayout.simple_add_new_node_while_schema_changes_test\n update_cluster_layout_tests::TestUpdateClusterLayout.simple_add_node_1_test\n update_cluster_layout_tests::TestUpdateClusterLayout.simple_add_two_nodes_in_parallel_test\n update_cluster_layout_tests::TestUpdateClusterLayout.simple_decommission_node_1_test\n update_cluster_layout_tests::TestUpdateClusterLayout.simple_decommission_node_2_test\n update_cluster_layout_tests::TestUpdateClusterLayout.simple_decommission_node_while_adding_info_1_test\n update_cluster_layout_tests::TestUpdateClusterLayout.simple_decommission_node_while_adding_info_2_test\n update_cluster_layout_tests::TestUpdateClusterLayout.simple_decommission_node_while_query_info_1_test\n update_cluster_layout_tests::TestUpdateClusterLayout.simple_decommission_node_while_query_info_2_test\n update_cluster_layout_tests::TestUpdateClusterLayout.simple_kill_new_node_while_bootstrapping_test\n update_cluster_layout_tests::TestUpdateClusterLayout.simple_kill_new_node_while_bootstrapping_with_parallel_writes_in_multidc_test\n update_cluster_layout_tests::TestUpdateClusterLayout.simple_kill_new_node_while_bootstrapping_with_parallel_writes_test\n update_cluster_layout_tests::TestUpdateClusterLayout.simple_kill_node_while_decommissioning_test\n update_cluster_layout_tests::TestUpdateClusterLayout.simple_removenode_1_test\n update_cluster_layout_tests::TestUpdateClusterLayout.simple_removenode_2_test\n  |
 | **User Types** | user_types_test.py\n  |
 | **Wide Rows** | wide_rows_test.py\n  |
+| **Materialized Views** | materialized_views_test.py |
 | **Other** | \n \n  | 
 
+&nbsp;&nbsp;
+
+- - -
 Stability {#label_Stability}
 ------------------------------
+- - -
 * Sanity
 * Short Term Longevity
 * Long Term Longevity
 * Crash Recovery?
 
-
+- - -
 Performance {#label_Performance}
 ---------------------------------
-&nbsp;&nbsp;**Single Schema**
-* Write-only workload
-* Read-only workload
-* Mixed workload
+- - -
 
-&nbsp;&nbsp;**Multiple Schemas**
-* Write-only workload
-* Read-only workload
-* Mixed workload
+#### &nbsp;&nbsp; Throughput ####
+* Single Schema
+    - Write-only workload
+    - Read-only workload
+    - Mixed workload
 
-Latency (c-s) under certain loads (25% CPU, 50% …, )
-Performance of ops (latency) and their affect on the system under certain loads
-Performance of Scaled env (Data, nodes, Sizes)
+* Multiple Schemas
+    - Write-only workload
+    - Read-only workload
+    - Mixed workload
 
-&nbsp;&nbsp;**Customers Workloads**
+#### &nbsp;&nbsp; Latency ####
+* Latency (c-s) under certain loads (25% CPU, 50% …, )
+* Performance of ops (latency) and their affect on the system under certain loads
+
+
+#### &nbsp;&nbsp;**Customers Workloads** ####
 * OutBrain
     - features
     - Users
@@ -123,16 +130,18 @@ Performance of Scaled env (Data, nodes, Sizes)
     - a
     - b
 
+- - -
 
 3rd Party Support & Integrations {#label_3rd_party_support}
------------------------------------------------------------
+--------------------------------------------------------------
 * Thrift
 * Python Driver
-* Other Drivers?
-* Titan DB?
+* Other Drivers
+* Titan DB
 * Spark
-* ...
+* ???
 
+- - -
 
 Scale {#label_Scale}
 ------------------------------
@@ -142,11 +151,11 @@ Testing functionality (e.g. Repair, compaction, compression, etc), stability and
 * Scaling to **Extra-Large** size Clusters (>30)
 * Large Scale decommission
 
+- - -
 
 Load {#label_Load}
 ------------------------------
-&nbsp;&nbsp;&nbsp;&nbsp; **Common server functionality during high load in terms of:**
-
+&nbsp;&nbsp;&nbsp;&nbsp; Common server functionality during high load in terms of:
 * CPU Bound
 * Network Bound
 * Disk Bound
