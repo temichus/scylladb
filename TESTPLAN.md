@@ -131,9 +131,10 @@ Performance {#label_Performance}
     - b
 
 - - -
-
 3rd Party Support & Integrations {#label_3rd_party_support}
 --------------------------------------------------------------
+- - -
+Integration testing with:
 * Thrift
 * Python Driver
 * Other Drivers
@@ -142,9 +143,9 @@ Performance {#label_Performance}
 * ???
 
 - - -
-
 Scale {#label_Scale}
 ------------------------------
+- - -
 Testing functionality (e.g. Repair, compaction, compression, etc), stability and performance on:
 * Large size SStables (1TB, 2TB, 5TB, 10TB)
 * Scaling to **LARGE** size Clusters (>10)
@@ -152,10 +153,10 @@ Testing functionality (e.g. Repair, compaction, compression, etc), stability and
 * Large Scale decommission
 
 - - -
-
 Load {#label_Load}
 ------------------------------
-&nbsp;&nbsp;&nbsp;&nbsp; Common server functionality during high load in terms of:
+- - -
+Common server functionality during high load in terms of:
 * CPU Bound
 * Network Bound
 * Disk Bound
