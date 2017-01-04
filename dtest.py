@@ -7,7 +7,6 @@ import logging
 import os
 import re
 import shutil
-import signal
 import subprocess
 import sys
 import tempfile
@@ -15,7 +14,6 @@ import threading
 import time
 import traceback
 import types
-import thread
 from unittest import TestCase
 
 import psutil
@@ -65,7 +63,6 @@ RECORD_COVERAGE = os.environ.get('RECORD_COVERAGE', '').lower() in ('yes', 'true
 REUSE_CLUSTER = os.environ.get('REUSE_CLUSTER', '').lower() in ('yes', 'true')
 SILENCE_DRIVER_ON_SHUTDOWN = os.environ.get('SILENCE_DRIVER_ON_SHUTDOWN', 'true').lower() in ('yes', 'true')
 IGNORE_REQUIRE = os.environ.get('IGNORE_REQUIRE', '').lower() in ('yes', 'true')
-TEST_TIMEOUT = os.environ.get('TEST_TIMEOUT', '600')
 
 CURRENT_TEST = ""
 
@@ -174,15 +171,9 @@ class Runner(threading.Thread):
         if self.__error is not None:
             raise self.__error
 
-def test_thread_timeout_signal(signum,stack):
-    raise Exception("Test timed out")
-
-def test_timeout(test):
-    debug("test %s timed out, killing it" % CURRENT_TEST)
-    test.execution_timer = None;
-    os.kill(os.getpid(), signal.SIGUSR1)
 
 class Tester(TestCase):
+
     def __init__(self, *argv, **kwargs):
         # if False, then scan the log of each node for errors after every test.
         if not hasattr(self, '_preserve_cluster'):
@@ -375,11 +366,6 @@ class Tester(TestCase):
         self.modify_log(self.cluster)
         self.connections = []
         self.runners = []
-        testtimeout =  int(TEST_TIMEOUT)
-        if testtimeout > 0:
-            signal.signal(signal.SIGUSR1, test_thread_timeout_signal)
-            self.execution_timer = threading.Timer(testtimeout,test_timeout, args=[self])
-            self.execution_timer.start()
 
     def copy_logs(self, directory=None, name=None):
         """Copy the current cluster's log files somewhere, by default to LOG_SAVED_DIR with a name of 'last'"""
@@ -587,12 +573,7 @@ class Tester(TestCase):
                 # Ignore - see comment above
                 pass
 
-
     def tearDown(self):
-        if self.execution_timer:
-           self.execution_timer.cancel()
-           self.execution_timer = None
-
         reset_environment_vars()
 
         for con in self.connections:
