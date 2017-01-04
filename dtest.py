@@ -15,6 +15,7 @@ import threading
 import time
 import traceback
 import types
+import thread
 from unittest import TestCase
 
 import psutil
@@ -173,19 +174,15 @@ class Runner(threading.Thread):
         if self.__error is not None:
             raise self.__error
 
-
-def test_thread_timeout_signal(signum, stack):
+def test_thread_timeout_signal(signum,stack):
     raise Exception("Test timed out")
-
 
 def test_timeout(test):
     debug("test %s timed out, killing it" % CURRENT_TEST)
-    test.execution_timer = None
+    test.execution_timer = None;
     os.kill(os.getpid(), signal.SIGUSR1)
 
-
 class Tester(TestCase):
-
     def __init__(self, *argv, **kwargs):
         # if False, then scan the log of each node for errors after every test.
         if not hasattr(self, '_preserve_cluster'):
@@ -378,10 +375,10 @@ class Tester(TestCase):
         self.modify_log(self.cluster)
         self.connections = []
         self.runners = []
-        testtimeout = int(TEST_TIMEOUT)
+        testtimeout =  int(TEST_TIMEOUT)
         if testtimeout > 0:
             signal.signal(signal.SIGUSR1, test_thread_timeout_signal)
-            self.execution_timer = threading.Timer(testtimeout, test_timeout, args=[self])
+            self.execution_timer = threading.Timer(testtimeout,test_timeout, args=[self])
             self.execution_timer.start()
 
     def copy_logs(self, directory=None, name=None):
@@ -590,10 +587,11 @@ class Tester(TestCase):
                 # Ignore - see comment above
                 pass
 
+
     def tearDown(self):
         if self.execution_timer:
-            self.execution_timer.cancel()
-            self.execution_timer = None
+           self.execution_timer.cancel()
+           self.execution_timer = None
 
         reset_environment_vars()
 
