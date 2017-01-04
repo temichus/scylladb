@@ -10,7 +10,7 @@ h2 {
 
 h3 {
     border: 0px solid black;
-    margin-top: 0px;
+    margin-top: 5px;
     margin-bottom: 5px;
     margin-right: 0px;
     margin-left: 10px;
@@ -65,9 +65,9 @@ ul {
 
 table {
     margin-top: 0px;
-    margin-bottom: 20px;
+    margin-bottom: 30px;
     margin-right: 0px;
-    margin-left: 25px;
+    margin-left: 40px;
     color: darkslategray;
     padding-top:0px;
     padding-bottom:0px;

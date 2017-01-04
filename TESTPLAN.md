@@ -25,15 +25,24 @@ Platforms Support {#label_Platforms_support}
 - - -
 
 ### &nbsp;&nbsp; Installation {#label_Installation} ###
-* Ubuntu
-* RHEL
-* Centos
-* Debian
 
+|Platform|Tested on Versions     |Test Coverage|
+|:------:|:---------------------:|:------------|
+| Ubuntu | 14.04\n 16.04\n       |scylla-artifacts.py:ScyllaArtifactSanity.test_after_install\n scylla-artifacts.py:ScyllaArtifactSanity.test_after_stop_start\n scylla-artifacts.py:ScyllaArtifactSanity.test_after_restart|
+| Centos | 7.2.1511\n 7.3.1611\n |scylla-artifacts.py:ScyllaArtifactSanity.test_after_install\n scylla-artifacts.py:ScyllaArtifactSanity.test_after_stop_start\n scylla-artifacts.py:ScyllaArtifactSanity.test_after_restart|
+| RHEL   | None                  |    None     |
+| Debian | None                  |    None     |
+
+&nbsp;
 ### &nbsp;&nbsp; Auto Deployment {#label_Deployment} ###
-* AWS
-* GCE
-* Openstack
+
+|Platform     |Test Coverage|
+|:-----------:|:------------|
+| AWS         |scylla-artifacts.py:ScyllaArtifactSanity.test_after_install\n scylla-artifacts.py:ScyllaArtifactSanity.test_after_stop_start\n scylla-artifacts.py:ScyllaArtifactSanity.test_after_restart|
+| GCE         |    None     |
+| OpenStack   |    None     |
+
+&nbsp;
 
 - - -
 Functional {#label_functional}
