@@ -890,13 +890,13 @@ class RepairAdditionalTest(Tester):
         """
         self.repair_multiple_test(['-pr'])
 
-    def repair_option_par_test(self):
+    def repair_option_seq_test(self):
         """
-        Test that the "-par" repair options works. In Scylla, it doesn't
+        Test that the "-seq" repair options works. In Scylla, it doesn't
         actually change anything, but we need to test it doesn't do anything
         bad.
         """
-        self.repair_disjoint_data_test(['-par'])
+        self.repair_disjoint_data_test(['-seq'])
 
     def repair_kill_1_test(self, kill_master=True):
         """
