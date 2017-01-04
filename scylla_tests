@@ -138,7 +138,6 @@ cql_additional_tests.py:TestCQL.update_type_test
 cql_tests.py
 cql_tracing_test.py
 internode_ssl_test.py
-json_tools_test.py
 largecolumn_test.py
 limits_test.py
 migration_test.py
