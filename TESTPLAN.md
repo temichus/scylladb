@@ -7,8 +7,8 @@ Master Test Plan Document  {#scylla_test_plan}
 [TOC]
 
 This is Scylla Master Test Plan document.\n
-This document covers the master plan of testing scylla for including existing tests and our wish list.
-It covers the tests should be executed to ensure the quality of the product and associated tools, in terms of:
+This document includes both already covered areas and missing areas that should be tested.\n
+To ensure the quality of the product and associated tools, testing should cover:
 * Platform Support
 * Functionality
 * Stability & Longevity
@@ -17,7 +17,7 @@ It covers the tests should be executed to ensure the quality of the product and 
 * Scale
 * Load
 
-Each release should have a child page of this page with a **plan per release**.
+Each release should have a **Release Test Plan** as child page of this page.
 
 - - -
 Platforms Support {#label_Platforms_support}
