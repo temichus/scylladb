@@ -1,612 +1,174 @@
 Scylla Test Plan {#mainpage}
-============================
+====================================
 
-Test Plan Document {#scylla_test_plan}
-======================================
+Master Test Plan Document  {#scylla_test_plan}
+===============================================
 
 [TOC]
 
-This is the Scylla Test Plan document. It covers the tests executed to ensure
-the quality of the Database Services and associated tools, in terms of
-functionality, administration tasks, distributed, performance,
-scalability and behavior under stress.
+This is Scylla Master Test Plan document.\n
+This document covers the master plan of testing scylla for including existing tests and our wish list.
+It covers the tests should be executed to ensure the quality of the product and associated tools, in terms of:
+* Platform Support
+* Functionality
+* Stability & Longevity
+* Performance
+* 3rd Party Support & Integrations
+* Scale
+* Load
 
-Many of the tests are implmented as a Scylla Distributed tests (that's why
-the test plan is located in the dtests repository), but there are some tests
-that are executed in other test suites. When that is the case, the test will
-be appropriately linked here.
+Each release should have a child page of this page with a **plan per release**.
 
-Functional {#label_functional} 
+- - -
+Platforms Support {#label_Platforms_support}
+---------------------------------------------------
+- - -
+
+### &nbsp;&nbsp; Installation {#label_Installation} ###
+
+|Platform|Tested on Versions     |Test Coverage|
+|:------:|:---------------------:|:------------|
+| Ubuntu | 14.04\n 16.04\n       |scylla-artifacts.py:ScyllaArtifactSanity.test_after_install\n scylla-artifacts.py:ScyllaArtifactSanity.test_after_stop_start\n scylla-artifacts.py:ScyllaArtifactSanity.test_after_restart|
+| Centos | 7.2.1511\n 7.3.1611\n |scylla-artifacts.py:ScyllaArtifactSanity.test_after_install\n scylla-artifacts.py:ScyllaArtifactSanity.test_after_stop_start\n scylla-artifacts.py:ScyllaArtifactSanity.test_after_restart|
+| RHEL   | None                  |    None     |
+| Debian | None                  |    None     |
+
+&nbsp;
+### &nbsp;&nbsp; Auto Deployment {#label_Deployment} ###
+
+|Platform     |Test Coverage|
+|:-----------:|:------------|
+| AWS         |scylla-artifacts.py:ScyllaArtifactSanity.test_after_install\n scylla-artifacts.py:ScyllaArtifactSanity.test_after_stop_start\n scylla-artifacts.py:ScyllaArtifactSanity.test_after_restart|
+| GCE         |    None     |
+| OpenStack   |    None     |
+
+&nbsp;
+
+- - -
+Functional {#label_functional}
+-------------------------------------
+- - -
+### &nbsp;&nbsp; Regression {#label_Regression} ###
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; List of supported functionality that are part of previously released versions: 
+
+
+| Functionality | Implemented Tests |
+| ------------- | :----------------  |
+| **Authentication & Authorization** | auth_test.py\n  |
+| **Backup & Restore** | backup_restore_tests.py\n  |
+| **Batch** | batch_test.py\n  |
+| **Bootstrap** | bootstrap_test::TestBootstrap.killed_wiped_node_cannot_join_test\n bootstrap_test::TestBootstrap.local_quorum_bootstrap_test\n bootstrap_test::TestBootstrap.manual_bootstrap_test\n bootstrap_test::TestBootstrap.read_from_bootstrapped_node_test\n bootstrap_test::TestBootstrap.shutdown_wiped_node_cannot_join_test\n bootstrap_test::TestBootstrap.simple_bootstrap_test\n  |
+| **CFID** | cfid_test.py\n  |
+| **clustering_key_filter** | clustering_key_filter_test.py\n  |
+| **Commitlog** | commitlog_test::TestCommitLog.test_commitlog_replay_on_startup\n commitlog_test::TestCommitLog.test_commitlog_replay_with_alter_table\n  |
+| **Compaction** | compaction_additional_test.py\n compaction_test::TestCompaction_with_DateTieredCompactionStrategy.compaction_delete_2_test\n compaction_test::TestCompaction_with_DateTieredCompactionStrategy.compaction_delete_test\n compaction_test::TestCompaction_with_DateTieredCompactionStrategy.compaction_strategy_switching_test\n compaction_test::TestCompaction_with_LeveledCompactionStrategy.compaction_delete_2_test\n compaction_test::TestCompaction_with_LeveledCompactionStrategy.compaction_delete_test\n compaction_test::TestCompaction_with_LeveledCompactionStrategy.compaction_strategy_switching_test\n compaction_test::TestCompaction_with_SizeTieredCompactionStrategy.compaction_delete_2_test\n compaction_test::TestCompaction_with_SizeTieredCompactionStrategy.compaction_delete_test\n compaction_test::TestCompaction_with_SizeTieredCompactionStrategy.compaction_strategy_switching_test\n  |
+| **concurrent_schema_changes** | concurrent_schema_changes_test.py\n  |
+| **Consistency** | consistency_test::TestAccuracy.test_network_topology_strategy_users\n consistency_test::TestAccuracy.test_simple_strategy_users\n consistency_test::TestAvailability.test_network_topology_strategy\n consistency_test::TestAvailability.test_simple_strategy\n consistency_test::TestConsistency.data_query_digest_test\n consistency_test::TestConsistency.quorum_available_during_failure_test\n consistency_test::TestConsistency.readrepair_test\n consistency_test::TestConsistency.short_read_delete_test\n consistency_test::TestConsistency.short_read_quorum_delete_test\n consistency_test::TestConsistency.short_read_reversed_test\n consistency_test::TestConsistency.short_read_test\n  |
+| **Also bootstrap?** | consistent_bootstrap_test.py\n  |
+| **CQL** | cql_additional_tests::TestCQL.alter_bug_test\n cql_additional_tests::TestCQL.alter_with_collections_test\n cql_additional_tests::TestCQL.batch_and_list_test\n cql_additional_tests::TestCQL.batch_test\n cql_additional_tests::TestCQL.blobAs_functions_test\n cql_additional_tests::TestCQL.boolean_test\n cql_additional_tests::TestCQL.bop_order_test\n cql_additional_tests::TestCQL.bug_4532_test\n cql_additional_tests::TestCQL.bug_4882_test\n cql_additional_tests::TestCQL.bug_6115_test\n cql_additional_tests::TestCQL.bug7105_test\n cql_additional_tests::TestCQL.clustering_order_and_functions_test\n cql_additional_tests::TestCQL.clustering_order_in_test\n cql_additional_tests::TestCQL.collection_and_regular_test\n cql_additional_tests::TestCQL.collection_compact_test\n cql_additional_tests::TestCQL.collection_function_test\n cql_additional_tests::TestCQL.collection_serialization_with_protocol_v2_test\n cql_additional_tests::TestCQL.column_name_validation_test\n cql_additional_tests::TestCQL.compact_metadata_test\n cql_additional_tests::TestCQL.composite_partition_key_validation_test\n cql_additional_tests::TestCQL.composite_row_key_test\n cql_additional_tests::TestCQL.compression_option_validation_test\n cql_additional_tests::TestCQL.conversion_functions_test\n cql_additional_tests::TestCQL.count_test\n cql_additional_tests::TestCQL.cql3_insert_thrift_test\n cql_additional_tests::TestCQL.create_invalid_test\n cql_additional_tests::TestCQL.date_test\n cql_additional_tests::TestCQL.delete_row_test\n cql_additional_tests::TestCQL.deletion_test\n cql_additional_tests::TestCQL.dense_cf_test\n cql_additional_tests::TestCQL.downgrade_to_compact_bug_test\n cql_additional_tests::TestCQL.drop_and_readd_collection_test\n cql_additional_tests::TestCQL.empty_blob_test\n cql_additional_tests::TestCQL.empty_in_test\n cql_additional_tests::TestCQL.exclusive_slice_test\n cql_additional_tests::TestCQL.float_with_exponent_test\n cql_additional_tests::TestCQL.function_and_reverse_type_test\n cql_additional_tests::TestCQL.function_with_null_test\n cql_additional_tests::TestCQL.identifier_test\n cql_additional_tests::TestCQL.in_clause_wide_rows_test\n cql_additional_tests::TestCQL.in_order_by_without_selecting_test\n cql_additional_tests::TestCQL.invalid_old_property_test\n cql_additional_tests::TestCQL.invalid_string_literals_test\n cql_additional_tests::TestCQL.in_with_desc_order_test\n cql_additional_tests::TestCQL.keyspace_creation_options_test\n cql_additional_tests::TestCQL.keyspace_test\n cql_additional_tests::TestCQL.large_clustering_in_test\n cql_additional_tests::TestCQL.large_count_test\n cql_additional_tests::TestCQL.limit_bugs_test\n cql_additional_tests::TestCQL.limit_multiget_test\n cql_additional_tests::TestCQL.limit_ranges_test\n cql_additional_tests::TestCQL.limit_sparse_test\n cql_additional_tests::TestCQL.list_prefetch_with_static_column_test\n cql_additional_tests::TestCQL.list_test\n cql_additional_tests::TestCQL.map_test\n cql_additional_tests::TestCQL.more_order_by_test\n cql_additional_tests::TestCQL.multi_collection_test\n cql_additional_tests::TestCQL.multi_list_set_test\n cql_additional_tests::TestCQL.multiordering_test\n cql_additional_tests::TestCQL.multiordering_validation_test\n cql_additional_tests::TestCQL.nan_infinity_test\n cql_additional_tests::TestCQL.negative_timestamp_test\n cql_additional_tests::TestCQL.noncomposite_static_cf_test\n cql_additional_tests::TestCQL.nonpure_function_collection_test\n cql_additional_tests::TestCQL.null_support_test\n cql_additional_tests::TestCQL.only_pk_test\n cql_additional_tests::TestCQL.order_by_multikey_test\n cql_additional_tests::TestCQL.order_by_test\n cql_additional_tests::TestCQL.order_by_validation_test\n cql_additional_tests::TestCQL.order_by_with_in_test\n cql_additional_tests::TestCQL.range_key_ordered_test\n cql_additional_tests::TestCQL.range_query_test\n cql_additional_tests::TestCQL.range_slice_test\n cql_additional_tests::TestCQL.range_with_deletes_test\n cql_additional_tests::TestCQL.remove_range_slice_test\n cql_additional_tests::TestCQL.rename_test\n cql_additional_tests::TestCQL.reversed_compact_multikey_test\n cql_additional_tests::TestCQL.reversed_compact_test\n cql_additional_tests::TestCQL.reversed_comparator_test\n cql_additional_tests::TestCQL.row_existence_test\n cql_additional_tests::TestCQL.select_distinct_test\n cql_additional_tests::TestCQL.select_distinct_with_deletions_test\n cql_additional_tests::TestCQL.select_key_in_test\n cql_additional_tests::TestCQL.select_with_alias_test\n cql_additional_tests::TestCQL.set_test\n cql_additional_tests::TestCQL.slicing_test\n cql_additional_tests::TestCQL.sparse_cf_test\n cql_additional_tests::TestCQL.static_cf_test\n cql_additional_tests::TestCQL.static_with_empty_clustering_test\n cql_additional_tests::TestCQL.static_with_limit_test\n cql_additional_tests::TestCQL.table_options_test\n cql_additional_tests::TestCQL.table_test\n cql_additional_tests::TestCQL.ticket_5230_test\n cql_additional_tests::TestCQL.timestamp_and_ttl_test\n cql_additional_tests::TestCQL.timeuuid_test\n cql_additional_tests::TestCQL.token_range_test\n cql_additional_tests::TestCQL.truncate_clean_cache_test\n cql_additional_tests::TestCQL.tuple_notation_test\n cql_additional_tests::TestCQL.undefined_column_handling_test\n cql_additional_tests::TestCQL.unescaped_string_test\n cql_additional_tests::TestCQL.update_type_test\n cql_tests.py\n cql_tracing_test.py\n  |
+| **Inter-node SSL** | internode_ssl_test.py\n  |
+| **json tools** | json_tools_test.py\n  |
+| **Large columns** | largecolumn_test.py\n  |
+| **Limits** | limits_test.py\n  |
+| **Migration** | migration_test.py\n  |
+| **Multi DC** | multidc_putget_test.py\n  |
+| **native_transport_ssl** | native_transport_ssl_test.py\n  |
+| **Nodetool** | nodetool_additional_test.py\n  |
+| **Offline tools** | offline_tools_test.py\n  |
+| **Paging** | paging_additional_test.py\n paging_test::TestPagingDatasetChanges.test_cell_TTL_expiry_during_paging\n paging_test::TestPagingDatasetChanges.test_data_change_impacting_earlier_page\n paging_test::TestPagingDatasetChanges.test_data_change_impacting_later_page\n paging_test::TestPagingDatasetChanges.test_node_unavailabe_during_paging\n paging_test::TestPagingDatasetChanges.test_row_TTL_expiry_during_paging\n paging_test::TestPagingData.static_columns_paging_test\n paging_test::TestPagingData.test_paging_across_multi_wide_rows\n paging_test::TestPagingData.test_paging_a_single_wide_row\n paging_test::TestPagingQueryIsolation.test_query_isolation\n paging_test::TestPagingSize.test_undefined_page_size_default\n paging_test::TestPagingSize.test_with_equal_results_to_page_size\n paging_test::TestPagingSize.test_with_less_results_than_page_size\n paging_test::TestPagingSize.test_with_more_results_than_page_size\n paging_test::TestPagingSize.test_with_no_results\n paging_test::TestPagingWithDeletions.test_multiple_cell_deletions\n paging_test::TestPagingWithDeletions.test_multiple_partition_deletions\n paging_test::TestPagingWithDeletions.test_single_cell_deletions\n paging_test::TestPagingWithDeletions.test_single_partition_deletions\n paging_test::TestPagingWithDeletions.test_single_row_deletions\n paging_test::TestPagingWithDeletions.test_ttl_deletions\n paging_test::TestPagingWithModifiers.test_with_allow_filtering\n paging_test::TestPagingWithModifiers.test_with_limit\n paging_test::TestPagingWithModifiers.test_with_order_by\n paging_test::TestPagingWithModifiers.test_with_order_by_reversed\n  |
+| **Partitioner** | partitioner_tests.py\n  |
+| **Persistence** | persistence_test.py\n  |
+| **pushed_notifications** | pushed_notifications_test::TestPushedNotifications.move_single_node_test\n pushed_notifications_test::TestPushedNotifications.restart_node_test\n  |
+| **range_ghost** | range_ghost_test.py\n  |
+| **Repair** | repair_additional_test.py\n repair_test.py\n  |
+| **replace_address** | replace_address_test.py\n  |
+| **Schema** | schema_management_test.py\n schema_test.py\n  |
+| **Boot/Shutdown** | simple_boot_shutdown.py\n  |
+| **Cluster Driver** | simple_cluster_driver_test.py\n simple_driver_test.py\n  |
+| **Snapshot** | snapshot_test::TestSnapshot.test_basic_snapshot_and_restore_with_refresh\n  |
+| **SSTables** | sstable_generation_loading_test::TestSSTableGenerationAndLoading.promoted_index_generation_with_small_partition_followed_by_a_large_partition_test\n sstableloader_test.py\n sstablesplit_test.py\n  |
+| **Thrift** | thrift_tests.py\n  |
+| **Topology** | topology_test::TestTopology.crash_during_decommission_test\n topology_test::TestTopology.decommissioned_node_cant_rejoin_test\n topology_test::TestTopology.decommission_test\n topology_test::TestTopology.movement_test\n topology_test::TestTopology.move_single_node_test\n  |
+| **TTL** | ttl_test.py\n  |
+| **update_cluster_layout** | update_cluster_layout_tests::TestUpdateClusterLayout.add_node_with_large_partition1_test\n update_cluster_layout_tests::TestUpdateClusterLayout.add_node_with_large_partition2_test\n update_cluster_layout_tests::TestUpdateClusterLayout.add_node_with_large_partition3_test\n update_cluster_layout_tests::TestUpdateClusterLayout.simple_add_new_node_while_query_info_1_test\n update_cluster_layout_tests::TestUpdateClusterLayout.simple_add_new_node_while_query_info_2_test\n update_cluster_layout_tests::TestUpdateClusterLayout.simple_add_new_node_while_schema_changes_test\n update_cluster_layout_tests::TestUpdateClusterLayout.simple_add_node_1_test\n update_cluster_layout_tests::TestUpdateClusterLayout.simple_add_two_nodes_in_parallel_test\n update_cluster_layout_tests::TestUpdateClusterLayout.simple_decommission_node_1_test\n update_cluster_layout_tests::TestUpdateClusterLayout.simple_decommission_node_2_test\n update_cluster_layout_tests::TestUpdateClusterLayout.simple_decommission_node_while_adding_info_1_test\n update_cluster_layout_tests::TestUpdateClusterLayout.simple_decommission_node_while_adding_info_2_test\n update_cluster_layout_tests::TestUpdateClusterLayout.simple_decommission_node_while_query_info_1_test\n update_cluster_layout_tests::TestUpdateClusterLayout.simple_decommission_node_while_query_info_2_test\n update_cluster_layout_tests::TestUpdateClusterLayout.simple_kill_new_node_while_bootstrapping_test\n update_cluster_layout_tests::TestUpdateClusterLayout.simple_kill_new_node_while_bootstrapping_with_parallel_writes_in_multidc_test\n update_cluster_layout_tests::TestUpdateClusterLayout.simple_kill_new_node_while_bootstrapping_with_parallel_writes_test\n update_cluster_layout_tests::TestUpdateClusterLayout.simple_kill_node_while_decommissioning_test\n update_cluster_layout_tests::TestUpdateClusterLayout.simple_removenode_1_test\n update_cluster_layout_tests::TestUpdateClusterLayout.simple_removenode_2_test\n  |
+| **User Types** | user_types_test.py\n  |
+| **Wide Rows** | wide_rows_test.py\n  |
+| **Materialized Views** | materialized_views_test.py |
+| **Other** | \n \n  | 
+
+&nbsp;&nbsp;
+
+- - -
+Stability {#label_Stability}
 ------------------------------
+- - -
+* Sanity
+* Short Term Longevity
+* Long Term Longevity
+* Crash Recovery?
+
+- - -
+Performance {#label_Performance}
+---------------------------------
+- - -
+
+#### &nbsp;&nbsp; Throughput ####
+* Single Schema
+    - Write-only workload
+    - Read-only workload
+    - Mixed workload
+
+* Multiple Schemas
+    - Write-only workload
+    - Read-only workload
+    - Mixed workload
+
+#### &nbsp;&nbsp; Latency ####
+* Latency (c-s) under certain loads (25% CPU, 50% …, )
+* Performance of ops (latency) and their affect on the system under certain loads
+
+
+#### &nbsp;&nbsp;**Customers Workloads** ####
+* OutBrain
+    - features
+    - Users
+* mParticle
+    - a
+    - b
+* Arista
+    - a
+    - b
+
+- - -
+3rd Party Support & Integrations {#label_3rd_party_support}
+--------------------------------------------------------------
+- - -
+Integration testing with:
+* Thrift
+* Python Driver
+* Other Drivers
+* Titan DB
+* Spark
+* ???
+
+- - -
+Scale {#label_Scale}
+------------------------------
+- - -
+Testing functionality (e.g. Repair, compaction, compression, etc), stability and performance on:
+* Large size SStables (1TB, 2TB, 5TB, 10TB)
+* Scaling to **LARGE** size Clusters (>10)
+* Scaling to **Extra-Large** size Clusters (>30)
+* Large Scale decommission
+
+- - -
+Load {#label_Load}
+------------------------------
+- - -
+Common server functionality during high load in terms of:
+* CPU Bound
+* Network Bound
+* Disk Bound
+* Memory Bound
 
-Ensure that the Scylla database and associated tools perform their functions
-adequately.
 
-### CQL {#label_cql} ###
-
-Scylla implements the Cassandra query language interface (CQL) [1], a
-language used to retrieve data from the database through SQL [2] style
-queries. The CQL tests aim to verify that CQL statements return appropriate
-values given a set of inputs, and that the Scylla clusters behave well while
-serving the CQL requests.
-
-CQL tests are implemented as dtests, and java unittests. See:
-
-* cql_tests.AbortedQueriesTester
-* cql_tests.CQLTester
-* cql_tests.MiscellaneousCQLTester
-* cql_tests.StorageProxyCQLTester
-* cql_prepared_test.TestCQL
-* cql_additional_tests.CQLAdditionalTests
-* cql_additional_tests.TestCQL
-* scylla_unsupported_test.ScyllaUnsupportedTest
-
-  [1]: https://cassandra.apache.org/doc/cql3/CQL.html
-  [2]: https://en.wikipedia.org/wiki/SQL
-
-### SSTables {#label_sstables} ###
-
-SSTables are the files that Scylla uses to actually store data in the disk.
-There are developer level tests to verify integrity and behavior of such
-files.
-
-### Companion Tools {#label_companion_tools} ###
-
-Tests the scylla companion tools.
-
-#### nodetool {#label_nodetool} ####
-
-nodetool should accept only supported commands and supported params
-nodetool should provide help only to supported commands and supported params
-
-Nodetool is a tool to control and manage scylla nodes. The subcommands to test
-are:
-
-##### move #####
-
-Test nodetool command `move`.
-
-##### cfhistograms #####
-
-Test nodetool command `cfhistograms`.
-
-##### cfstats #####
-
-Test nodetool command `cfstats`.
-
-##### clearsnapshot #####
-
-Test nodetool command `clearsnapshot`.
-
-##### compact  #####
-
-Test nodetool command `compact`.
-
-##### decommission #####
-
-Test nodetool command `decommission`.
-
-##### describecluster #####
-
-Test nodetool command `describecluster`.
-
-##### describering #####
-
-Test nodetool command `describering`.
-
-##### disablegossip #####
-
-Test nodetool command `disablegossip`.
-
-##### enablegossip #####
-
-Test nodetool command `enablegossip`.
-
-##### flush #####
-
-Test nodetool command `flush`.
-
-##### getendpoints #####
-
-Test nodetool command `getendpoints`.
-
-##### gossipinfo #####
-
-Test nodetool command `gossipinfo`.
-
-##### info #####
-
-Test nodetool command `info`.
-
-##### netstats #####
-
-Test nodetool command `netstats`.
-
-##### refresh #####
-
-Test nodetool command `refresh`.
-
-##### repair #####
-
-Test nodetool command `repair`.
-
-##### ring #####
-
-Test nodetool command `ring`.
-
-##### status #####
-
-Test nodetool command `status`.
-
-##### tpstats #####
-
-Test nodetool command `tpstats`.
-
-##### cleanup #####
-
-Test nodetool command `cleanup`.
-
-##### compactionhistory #####
-
-Test nodetool command `compactionhistory`.
-
-##### compactionstats #####
-
-Test nodetool command `compactionstats`.
-
-##### drain #####
-
-Test nodetool command `drain`.
-
-##### rebuild #####
-
-Test nodetool command `rebuild`.
-
-##### removenode #####
-
-Test nodetool command `removenode`.
-
-#### cassandra-stress {#label_cassandra_stress} ####
-
-The tool `cassandra-stress` executes read and write operations against a
-scylla cluster. It is used to verify scylla node operation throughput.
-
-#### cqlsh {#label_cqlsh} ####
-
-The tool `cqlsh` is an interface to perform CQL queries against a scylla
-database. We aim to verify if the tool is working according to the given
-user scenarios.
-
-### Installable packages and images {#label_installable_pkgs_imgs} ###
-
-Installable package testing works by:
-
-  1. Installing the given packages
-  2. Checking that the service is running
-  3. Run nodetool status
-  4. Run cassandra-stress
-  5. Restart services, repeat 2-4
-  6. Stop and start services, repeat 2-4
-
-Implemented in:
-
-https://github.com/lmr/scylla-artifact-tests
-
-#### Fedora RPMs {#label_fedora_rpms} ####
-
-Test the produced Fedora RPMs.
-
-#### CentOS RPMs {#label_centos_rpms} ####
-
-Test the produced CentOS RPMs.
-
-#### Ubuntu DEBs {#label_ubuntu_debs} ####
-
-Test the produced Ubuntu DEBs.
-
-#### AMI {#label_ami} ####
-
-Test the produced AMI image.
-
-#### Docker {#label_docker} ####
-
-Test the produced Docker image.
-
-## Administration {#label_administration} ###
-
-Tests operations that Database Administrators would perform on a scylla DB.
-
-### Adding nodes to an existing cluster {#label_add_nodes_cluster} ###
-
-Test that adding nodes to an existing cluster works.
-
-### Adding a data center to a cluster {#label_add_data_center_cluster} ###
-
-Test that adding a data center to a cluster works.
-
-### Replacing a dead node {#label_replace_dead_node} ###
-
-Test that it's possible to replace a dead node.
-
-### Replacing a dead seed node {#label_replace_dead_seed_node} ###
-
-Test that it's possible to replace a dead seed node.
-
-### Replacing a running node {#label_replace_running_node} ###
-
-Test that it's possible to replace a running node.
-
-### Decommissioning a data center {#label_decommission_data_center} ###
-
-Test that it's possible to decommission a data center.
-
-### Removing a node {#label_removing_node} ###
-
-Test removing a node from a cluster.
-
-### Reduce the size of a data center {#label_reduce_size_dc} ###
-
-Test reducing the size of a data center.
-
-### Switching snitches {#label_switching_snitches} ###
-
-Test switching the snitches.
-
-### Transitioning or migrating a cluster {#label_migrating_cluster} ###
-
-Test cluster migration/transitioning.
-
-### Snapshot (backup) / Restore {#label_snapshot_backup_restore} ###
-
-Test cases
-
-  * Base test cases ./snapshot_test.py
-  * Advanced tests cases (covering schema updates, failures etc.) snapshot_restore_additional_test.SnapshotRestoreAdditionalTest
-  * Testing of nodetool snapshot / clearsnapshot commands nodetool_additional_test.TestNodetool.global_create_after_clean nodetool_additional_test.TestNodetool.global_snapshot_test
-
-### Repair {#label_other_repair_functions} ###
-
-Test cases
-  * Base test cases repair_tesy.py
-  * Advanced test cases : repair_additional_test.RepairAdditionalTest
-  * Test nodetool options : FIXME
-
-### Compaction strategy {#label_compaction_strategy} ###
-
-Test the available, implemented scylla compaction strategy.
-
-#### SizedTiered {#label_sized_tiered} ####
-
-Test size tiered compaction.
-
-#### LeveledTiered {#label_leveled_tiered} ####
-
-Test leveled tiered compaction.
-
-#### DateTiered {#label_date_tiered} ####
-
-Test date tiered compaction.
-
-### Rolling upgrades {#label_rolling_upgrades} ###
-
-Test rolling upgrades.
-
-### JMX proxy failures {#label_jmx_proxy_failures} ###
-
-Verify how a scylla cluster behaves when only the JMX service fails.
-What happens with the pending operations?
-
-### Booting with different number of shards {#label_booting_df_nm_shards} ###
-
-Boot a scylla cluster, then stop it and re-start, now with a different number
-of shards.
-
-### Recovery tests {#label_recovery_tests} ###
-
-Test recovery functions.
-
-#### Kill scylla-server process and restore {#label_kill_server_restore} ####
-
-Kill scylla-server processes and restore the service afterwards.
-
-#### Poweroff machine {#label_poweroff_machine} ####
-
-Power off the bare metal machine where the scylla services lie and restore.
-
-### Migration from Cassandra {#label_migration_from_cassandra} ###
-
-Test migration from a Cassandra DB.
-
-#### Boot from existing Cassandra sstable directory {#label_b_sstable_dir} ####
-
-Populate a cassandra database, shut it down, then start scylla, using the
-same sstable directory. Verify results.
-
-#### Restore from a Cassandra snapshot {#label_restore_from_cassandra_snap} ####
-
-Populate a Cassandra database, take a snapshot, then restore it using scylla.
-
-Tests that need to be moved to test files
-
-- Check migration of all format of sstables (compressed and non compressed with and without compact storage)
-- Check migration of all format of compaction strategies - do we adhere to the strategy after migration (e.g. Leveled will we be able to use the level info from cassandra, date tiered can we use the files from origin)
-- Check migration of wide row tables
-- Check migration of all data types (collections, frozen, static etc).
-- Check migration of all data metadata (ttl, cell tombstone, row tombstone, range_tombstone)
-- Clock skew at migration (migration of data with future timestamps)
-- Check migration of schemas with items we do not support (e.g. counters, secondary indexes)
-
-- Do we want to check backport from Scylla to Cassandra as well ?
-
-Distributed {#label_distributed}
-------------------------------------
-
-Scylla is a distributed database system [3], and so, it's important that we
-verify its reliability under a number of adverse circumstances.
-
-  [3]: https://en.wikipedia.org/wiki/Distributed_computing
-
-### Schema Management {#label_schema_management} ###
-
-Distributed schema management 
-
-  * Server to client side notification tests - pushed_notifications_test.TestPushedNotifications
-  * Schema management under cluster topology changes and failure tests - schema_management_test.SchemaManagementTest
-
-### Snitches {#label_snitches} ###
-
-Test all snitch possibilities.
-
-### Gossip Protocol {#label_gossip_protocol} ###
-
-Gossip is a peer-to-peer communication protocol in which nodes periodically
-exchange state information about themselves and about other nodes they know
-about [6]. This item relates to how to test this protocol in real, living
-scylla cluster nodes.
-
-  [6]: https://docs.datastax.com/en/cassandra/2.0/cassandra/architecture/architectureGossipAbout_c.html
-
-### Consistency tests ###
-
-Test how scylla behaves when adverse conditions disturb nodes in terms of data
-consistency.
-
-* consistency_test - functional tests for distributed related features (concurrency, consistency level, read_repair, etc.)
-
-#### Read Repair ####
-
-
-### Upgrade ###
-
-Upgrade of scylla between minor / major versions in case of different cases
-
-- Upgrade without a change in protocols / data serialization (bug fix)
-- Upgrade with a change (mutations, query_result, schema, gossip info, streaming, repair protocol, sstable format, commitlog format, conf file, sharding, cql binary, cql protocol, messaging service additional method, rpc protocol)
-- Rollback for any change case
-
-Stability {#label_stability}
-----------------------------
-
-Abillity to handle different error cases and failures and continue to function
-
-### Single node tests {#label_single_node_tests} ###
-
-Tests that need to be moved to test files
-
-- Operation Errors (Network Errors, Disk Errors)
-   - Disk error are critical, we need to validate there is no data corruptions for the following operations:
-     - write commit log (we already seen that)
-     - sstable flush
-     - repair
-     - compaction
-     - restore/backup
-     - write hinted hand off (once we have it)
-     - log file
-   - Disk error can be:
-     - out of space
-     - out of bandwidth
-     - disk IO report (write fail)
-     - gracfull shutdown
-     - process kill from exception
-     - process kill (with kill -9)
-     - hard shutdown (power off)
-
-- Disk Bandwidth (with compression/without compression)- Write workload (Write+Read)
-   - Large batch statement processing
-   - Under changed disk performance (e.g. when the disk is stressed by other users irregulalrly)
-- Disk Bandwidth (with compression/without compression)- Read workload
-   - working set not in memory
-   - working set partially in memory
-   - items that have been updated in multiple sstables files
-   - Under changed disk performance (e.g. when the disk is stressed by other users irregulalrly)
-- Wide rows handling (common for many users / time series etc).
-- Very large results set performance impact (very large wide row / multiple rows)
-- Compaction Bandwidth (large disk size, is compaction limitted), compaction falling behind for multiple cases
-- Multiple compactions from nodetool
-- Burst testing on different load setting (including idle)
-- Repair bandwidth check while nodes/cluster is stressed
-- New node streaming while cluster is stressed
-- Alter Table while cluster is stressed
-- Memory pressure (huge, large and small objects)
-
-### Cluster tests {#label_cluster_tests} ###
-
-Tests that need to moved to test files
-
-- Cluster bandwidth - Write workload
-  - Under failed node when CL can be met and cannot be met - are we able to reach normal performance under error case
-  - Large batch statement processing
-- Cluster bandwidth - Read workload
-  - Under failed node when CL can be met and cannot be met - are we able to reach normal peroformance under error case
-  - Very large results set performance impact (very large wide row / multiple rows) - case of pulling a lot of info for additional processing
-- Burst testing on different load setting (including idle) / admin operations (add / decomission / repair etc.)
-- Non stable network (disconnects)
-- Slow Node
-- Clock Skew, multi-dc cross timezone
-- handling of daylight saving time update
-- Network bandwidth issues , cross dc network bandiwdth/latency issues (regular workload, management operations)
-- Resource leak issues on errors (network error - failed/killed remote node, failed/killed client)
-
-
-Performance {#label_performance}
-------------------------------------
-
-Scylla aims to be a high perorming database system, so it's imperative that
-it can serve requests at certain levels of throughput.
-
-### Read throughput {#label_read_througput} ###
-
-Test the performance of reading from a scylla node.
-
-### Write throughput {#label_write_througput} ###
-
-Test the performance of reading to a scylla node.
-
-### Latency {#label_latency} ###
-
-Test the latency (round trip time required to complete a request) for a scylla
-node.
-
-SSL Performance {#label_ssl_performance}
-------------------------------------
-Running with client node and node to node encryption (SSL) will affect throughput and performance. Each of the performance tests should be repeated with SSL to test its effect.
-
-### Read throughput with client to node SSL {#label_c2n_ssl_read_througput} ###
-
-Test the performance of reading from a scylla node with client to node encryption
-
-### Write throughput {#label_c2n_ssl_write_througput} ###
-
-Test the performance of reading to a scylla node with client to node encryption
-
-### Latency {#label_c2n_ssl_latency} ###
-
-Test the latency (round trip time required to complete a request) for a scylla
-node with client to node encryption
-
-### Read throughput with client to node SSL {#label_n2n_ssl_read_througput} ###
-
-Test the performance of reading from a scylla node with node to node encryption
-
-### Write throughput {#label_n2n_ssl_write_througput} ###
-
-Test the performance of reading to a scylla node with node to node encryption
-
-### Latency {#label_n2n_ssl_latency} ###
-
-Test the latency (round trip time required to complete a request) for a scylla
-node with node to node encryption
-
-Scalability tests {#label_scalability}
---------------------------------------
-
-### Maximum number of partitions {#label_max_part} ###
-
-Test the maximum number of partitions a scylla cluster can support.
-
-### Maximum number of rows {#label_max_rows} ###
-
-Test the maximum number of rows a scylla table can hold.
-
-### Maximum number of columns {#label_max_columns} ###
-
-Test the maximum number of columns a scylla table can hold.
-In Cassandra, maximum number of cells (rows x columns) in a single partition is (2 billion)[https://wiki.apache.org/cassandra/CassandraLimitations]
-A 10K is a huge number in practice.
-
-### Maximum number of  fields in a tuple {#label_max_fields_in_tuple} ###
-Test fields in a tuple can get to [32768](http://docs.datastax.com/en/cql/3.1/cql/cql_reference/refLimits.html)
-
-### Maximum key length {#label_max_key_length} ###
-Test key length can reach 65535
-
-### Maximum Query parameters in a query  {#label_query_parameters_in_query} ###
-Test query parameters can reach 65535
-
-### Maximum statements in a batch  {#label_statements_in_batch} ###
-Test statements in a batch can reach 65535
-
-Single column, value of: 2GB, xMB are recommended
-
-### Maximum blob size {#label_max_blob_size} ###
-
-Test max size of a blob (in MB) which allow scylla to run smoothly
-
-### Maximum number of nodes {#label_max_nodes} ###
-
-Test the maximum number of nodes a scylla cluster can support.
-
-### Maximum number of connections {#label_max_connections} ###
-
-Test the maximum number of concurrent connections
-[#674](https://github.com/scylladb/scylla/issues/674) is an issue this test should expose.
-
-### Largest data volume {#label_max_data_volume} ###
-
-Test the largest data volume a scylla DB can hold, in term of TB per node.
-10TB per node should normal, 100TB per node possible.
-Testing should cover compaction, repair and backups, all are affected by volume.
-
-Stress tests {#label_stress}
-----------------------------
-
-### Memory {#label_stress_memory} ###
-
-Test scylla behavior under different system memory conditions.
-
-#### Memory pressure {#label_stress_memory_pressure} ####
-
-Replicate a low menory condition, nearing the OOM killer, and see how scylla
-behaves.
-
-#### Mix of small and huge objects {#label_mem_small_and_huge_objs} ####
-
-Create small objects and large blobs, and perform operations in it and see how
-scylla behaves.
-
-### Disks {#label_stress_disk} ###
-
-Test a high amount of reads workload, from cache or out of cache.
-
-#### Random access vs local access {#label_stress_random_access} ####
-
-Test disk random access and local access.
-
-#### Scan resistance {#label_stress_scan_resistance} ####
-
-Scan resistence is a cache property of caches to not drop frequently accessed
-objects in face of large sequential data reads. This will be tested when scylla
-implements a scan resistant cache.
-
-Longevity tests {#label_Longevity}
-----------------------------------
-
-Ensure that the Scylla database and associated tools can function over long period of times.
-
-### Scylla Longevity {#label_scylla_longevity} ###
-Run scylla for 24h / 7d / 1 month
-
-* on EC2 /  bare metal
-* With EC2 zones / regions
-* With chaos monkey: kill a server every 30 min*
-* With chaos kong: kill DC every  hour *
-* With hourly repairs
-* With the following operations been done in the background some in parallel depdening on RF/Cluster size:
-    * A server is killed and started
-    * A server is drained stopped and started
-    * A server is added - wait till it finished
-    * A server is added and is being killed in the process
-    * A server is being decomissioned - wait till it finished
-    * A server is being decomissioned and is being killed in the process, restart node and repair
-    * A server is killed - part of the data is removed and started (repair is run - wait till it ends)
-    * A server is killed - part of the data is removed and started - rebuilt is run
-cassandra-stress read / cassandra-stress write is run in parallel with CL=Quorum
-A single thread in a loop that writes and reads known data allways growing is executed with CL=Quorum
- With RF=5 2 operations in parallel
- With RF=3 1 operation in parallel
-(need to think on how we handle cassandra-stress, write/read issues that can happen because of a failing node processing request).
-
-### scylla-jmx longevity {#label_scylla-jmx-longevity} ###
-
-Longevity test to scylla-jmx validating it does not have memory leak
-Test should include stressing the JMX.
