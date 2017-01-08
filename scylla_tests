@@ -258,4 +258,4 @@ user_types_test.py
 wide_rows_test.py
 **Materialized Views**
 materialized_views_test.py
-**Other (New Tests to be added below)**
+**Other**
