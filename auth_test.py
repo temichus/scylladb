@@ -71,7 +71,7 @@ class TestAuth(Tester):
         """
         Originally from dtest.
         **Description:**
-        
+
         **Expected Result:**
         """
         # also tests default user creation (cassandra/cassandra)
@@ -783,7 +783,6 @@ class TestAuth(Tester):
         cassandra.execute("GRANT DROP ON KEYSPACE ks TO cathy")
         cathy.execute("DROP TYPE ks.address")
 
-
     @skip('not-implemented')
     def kill_the_node_with_the_auth_info_test(self):
         """
@@ -835,8 +834,8 @@ class TestAuth(Tester):
     @skip('not-implemented')
     def change_setting_to_noauth_after_system_auth_was_lost_test(self):
         """
-        **Description:** after the auth info is lost (dropping system_auth when RF=1),Change the setting of a node to no auth
-        (while one node is down), force a client to connect to that node.
+        **Description:** after the auth info is lost (dropping system_auth when RF=1),Change the setting of a node
+        to no auth (while one node is down), force a client to connect to that node.
         **Expected Result:** Cluster is available - successful connection.
         """
         raise NotImplementedError
@@ -844,8 +843,8 @@ class TestAuth(Tester):
     @skip('not-implemented')
     def manually_copy_system_auth_files_after_system_auth_was_lost_test(self):
         """
-        **Description:** after the auth info is lost (dropping system_auth when RF=1), Upload system_auth keyspace with scp to
-        other nodes, do "nodetool refresh".
+        **Description:** after the auth info is lost (dropping system_auth when RF=1), Upload system_auth keyspace
+        with scp to other nodes, do "nodetool refresh".
         **Expected Result:** Cluster is unavailable - connection failed.
         """
         raise NotImplementedError
@@ -861,8 +860,8 @@ class TestAuth(Tester):
     @skip('not-implemented')
     def manually_backup_and_restore_system_auth_test(self):
         """
-        **Description:** Backup `system_auth` directory from the data directory to localhost, drop system_auth, turn off the auth,
-        upload the auto info and turn on auth
+        **Description:** Backup `system_auth` directory from the data directory to localhost, drop system_auth,
+        turn off the auth, upload the auto info and turn on auth.
         **Expected Result:** Auth is recovered, Cluster is available - successful connection.
         """
         raise NotImplementedError
@@ -891,7 +890,6 @@ class TestAuth(Tester):
         **Expected Result:** it requests password to connect the node which enables the Authentication.
         """
         raise NotImplementedError
-
 
     def prepare(self, nodes=1, permissions_validity=0):
         config = {'authenticator': 'org.apache.cassandra.auth.PasswordAuthenticator',
