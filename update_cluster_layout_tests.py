@@ -433,7 +433,9 @@ class TestUpdateClusterLayout(Tester):
                 except (OperationTimedOut) as e:
                     tfailed = str(datetime.now())
                     failed = "Server side escrption not thrown  driver side exception thrown OperationTimeout %s %s %s" % (e, tbefore, tfailed)
-                event.set()
+                finally:
+                    event.set()
+
             t = threading.Thread(target=run)
             t.setDaemon(True)
 
@@ -508,7 +510,8 @@ class TestUpdateClusterLayout(Tester):
             except (OperationTimedOut) as e:
                 tfailed = str(datetime.now())
                 failed = "Server side escrption not thrown  driver side exception thrown OperationTimeout %s %s %s" % (e, before, failed)
-            event.set()
+            finally:
+                event.set()
 
         t = threading.Thread(target=run)
         t.setDaemon(True)
@@ -556,9 +559,11 @@ class TestUpdateClusterLayout(Tester):
         event = threading.Event()
 
         def run():
-            insert_c1c2(session, keys=range(2000, 4000), consistency=consistency)
-            event.set()
-            pass
+            try:
+                insert_c1c2(session, keys=range(2000, 4000), consistency=consistency)
+            finally:
+                event.set()
+                pass
 
         t = threading.Thread(target=run)
         t.setDaemon(True)
@@ -610,16 +615,18 @@ class TestUpdateClusterLayout(Tester):
         event = threading.Event()
 
         def run():
-            query = SimpleStatement("DROP KEYSPACE ks")
-            result = list(session.execute(query))
+            try:
+                query = SimpleStatement("DROP KEYSPACE ks")
+                result = list(session.execute(query))
 
-            self.create_ks(session, 'ks1', rf)
-            self.create_cf(session, 'cf1', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
-            for i in xrange(0, 100):
-                insert = SimpleStatement("insert into ks1.cf1 (key,c1,c2) values ('%d','%d','%d')" % (i, i, i), consistency_level=consistency)
-                session.execute(insert)
-            event.set()
-            pass
+                self.create_ks(session, 'ks1', rf)
+                self.create_cf(session, 'cf1', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+                for i in xrange(0, 100):
+                    insert = SimpleStatement("insert into ks1.cf1 (key,c1,c2) values ('%d','%d','%d')" % (i, i, i), consistency_level=consistency)
+                    session.execute(insert)
+            finally:
+                event.set()
+                pass
 
         t = threading.Thread(target=run)
         t.setDaemon(True)
@@ -663,13 +670,15 @@ class TestUpdateClusterLayout(Tester):
         event = threading.Event()
 
         def run():
-            for i in xrange(1, 100):
-                query = SimpleStatement("SELECT * FROM cf", consistency_level=consistency)
-                result = list(session.execute(query))
-                self.assertEqual(len(result), 2000, len(result))
-                time.sleep(0.01)
-            event.set()
-            pass
+            try:
+                for i in xrange(1, 100):
+                    query = SimpleStatement("SELECT * FROM cf", consistency_level=consistency)
+                    result = list(session.execute(query))
+                    self.assertEqual(len(result), 2000, len(result))
+                    time.sleep(0.01)
+            finally:
+                event.set()
+                pass
 
         t = threading.Thread(target=run)
         t.setDaemon(True)
@@ -860,14 +869,16 @@ class TestUpdateClusterLayout(Tester):
         event = threading.Event()
 
         def run():
-            insert_c1c2(session, keys=range(2000, 4000), consistency=consistency)
+            try:
+                insert_c1c2(session, keys=range(2000, 4000), consistency=consistency)
 
-            query = SimpleStatement("SELECT * FROM cf", consistency_level=consistency)
-            result = list(session.execute(query))
-            self.assertEqual(len(result), 4000, len(result))
+                query = SimpleStatement("SELECT * FROM cf", consistency_level=consistency)
+                result = list(session.execute(query))
+                self.assertEqual(len(result), 4000, len(result))
 
-            event.set()
-            pass
+            finally:
+                event.set()
+                pass
 
         t = threading.Thread(target=run)
         t.setDaemon(True)
@@ -915,13 +926,15 @@ class TestUpdateClusterLayout(Tester):
         event = threading.Event()
 
         def run():
-            for i in xrange(1, 100):
-                query = SimpleStatement("SELECT * FROM cf", consistency_level=consistency)
-                result = list(session.execute(query))
-                self.assertEqual(len(result), 2000, len(result))
-                time.sleep(0.01)
-            event.set()
-            pass
+            try:
+                for i in xrange(1, 100):
+                    query = SimpleStatement("SELECT * FROM cf", consistency_level=consistency)
+                    result = list(session.execute(query))
+                    self.assertEqual(len(result), 2000, len(result))
+                    time.sleep(0.01)
+            finally:
+                event.set()
+                pass
 
         t = threading.Thread(target=run)
         t.setDaemon(True)
@@ -1045,14 +1058,15 @@ class TestUpdateClusterLayout(Tester):
         event = threading.Event()
 
         def run():
-            self.create_ks(session, 'ks1', rf)
-            self.create_cf(session, 'cf1', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
-            for i in xrange(0, 1000):
-                insert = SimpleStatement("insert into ks1.cf1 (key,c1,c2) values ('%d','%d','%d')" % (i, i, i), consistency_level=consistency)
-                session.execute(insert)
-
-            event.set()
-            pass
+            try:
+                self.create_ks(session, 'ks1', rf)
+                self.create_cf(session, 'cf1', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+                for i in xrange(0, 1000):
+                    insert = SimpleStatement("insert into ks1.cf1 (key,c1,c2) values ('%d','%d','%d')" % (i, i, i), consistency_level=consistency)
+                    session.execute(insert)
+            finally:
+                event.set()
+                pass
 
         t = threading.Thread(target=run)
         t.setDaemon(True)
