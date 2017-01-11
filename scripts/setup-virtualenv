@@ -59,3 +59,4 @@ pip install thrift
 pip install nose
 pip install psutil
 pip install pyyaml
+pip install enum34
