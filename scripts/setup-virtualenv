@@ -5,6 +5,7 @@
 # scripts/setup-virtualenv --virtualenv-root=PATH --python=PATH
 
 CASSANDRA_DRIVER_VERSION='3.7.1'
+THRIFT_VERSION='0.9.3'
 
 PROGRAM=$(basename $0)
 
@@ -41,6 +42,7 @@ fi
 
 echo "VIRTUALENV_ROOT = $VIRTUALENV_ROOT"
 echo "CASSANDRA_DRIVER_VERSION = $CASSANDRA_DRIVER_VERSION"
+echo "THRIFT_VERSION = $THRIFT_VERSION"
 echo "PYTHON = $PYTHON"
 
 #
@@ -55,7 +57,7 @@ virtualenv $VIRTUALENV_OPTS $VIRTUALENV_ROOT
 source $VIRTUALENV_ROOT/bin/activate
 easy_install -U setuptools
 pip install cassandra-driver==$CASSANDRA_DRIVER_VERSION
-pip install thrift
+pip install thrift==0.9.2
 pip install nose
 pip install psutil
 pip install pyyaml
