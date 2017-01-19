@@ -392,6 +392,7 @@ RepairTableContents = namedtuple('RepairTableContents',
 
 
 @since('2.2')
+@skip('Scylla does not have repair system tables')
 class TestRepairDataSystemTable(Tester):
     """
     @jira_ticket CASSANDRA-5839
