@@ -898,8 +898,6 @@ class TestAuth(Tester):
         self.cluster.set_configuration_options(values=config)
         self.cluster.populate(nodes).start()
 
-        # default user setup is delayed by 10 seconds to reduce log spam
-        time.sleep(10)
         n = self.wait_for_any_log(self.cluster.nodelist(), 'Created default superuser', 10)
         debug("Default role created by " + n.name)
 
