@@ -1568,7 +1568,8 @@ class TestMutations(ThriftTester):
         if self.cluster.version() >= '3.0':
             assert len(kspaces) == 7, [x.name for x in kspaces]  # ['Keyspace2', 'Keyspace1', 'system', 'system_traces', 'system_auth', 'system_distributed', 'system_schema']
         elif self.cluster.version() >= '2.2':
-            assert len(kspaces) == 6, [x.name for x in kspaces]  # ['Keyspace2', 'Keyspace1', 'system', 'system_traces', 'system_auth', 'system_distributed']
+            # Scylla does not have 'system_distributed' keyspace.
+            assert len(kspaces) == 5, [x.name for x in kspaces]  # ['Keyspace2', 'Keyspace1', 'system', 'system_traces', 'system_auth']
         else:
             assert len(kspaces) == 4, [x.name for x in kspaces]  # ['Keyspace2', 'Keyspace1', 'system', 'system_traces']
 
