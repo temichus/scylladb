@@ -83,7 +83,7 @@ class StorageProxyCQLTester(CQLTester):
         """
         CREATE TABLE, ALTER TABLE, TRUNCATE TABLE, DROP TABLE statements
         """
-        session = self.prepare(experimental=True)
+        session = self.prepare()
 
         session.execute("CREATE TABLE test1 (k int PRIMARY KEY, v1 int)")
         session.execute("CREATE TABLE test2 (k int, c1 int, v1 int, PRIMARY KEY (k, c1)) WITH COMPACT STORAGE")
@@ -347,7 +347,7 @@ class MiscellaneousCQLTester(CQLTester):
         """
         @jira_ticket CASSANDRA-7910
         """
-        session = self.prepare(experimental=True)
+        session = self.prepare()
 
         session.execute("CREATE TABLE test (k int PRIMARY KEY, a int, b int, c int)")
         session.execute("INSERT INTO test (k, a, b, c) VALUES (0, 0, 0, 0)")
