@@ -268,8 +268,9 @@ class MigrationTestBase(Tester):
         debug("Flushing a keyspace...")
         node.nodetool("flush -- ks")
 
-    def get_cassandra_sstable_dir(self, migrated_files_dir):
-        return "{}/cassandra-sstables/migration/{}".format(os.path.dirname(os.path.realpath(__file__)), migrated_files_dir)
+    def get_cassandra_sstable_dir(self,version ,migrated_files_dir):
+        return "{}/cassandra-sstables/migration/{}/{}".format(os.path.dirname(os.path.realpath(__file__)), version ,
+                                                              migrated_files_dir)
 
     def load_migrated_tables(self, node, migrated_files_dir):
         cassandra_sstable_dir = self.get_cassandra_sstable_dir(migrated_files_dir)
