@@ -24,6 +24,7 @@ class TestLargeColumn(Tester):
         return fields[6]
 
     @since('2.2')
+    @skip('Scylla nodetool does not have the gcstats sub-command')
     def cleanup_test(self):
         """
         See CASSANDRA-8670
