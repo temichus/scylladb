@@ -271,6 +271,7 @@ class TestReplaceAddress(Tester):
         self.assertListEqual(initialData, finalData)
 
     @since('2.2')
+    @skip('Scylla does not support the cassandra.reset_bootstrap_progress option.')
     def replace_with_reset_resume_state_test(self):
         """Test replace with resetting bootstrap progress"""
 
