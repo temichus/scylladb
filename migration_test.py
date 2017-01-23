@@ -273,7 +273,7 @@ class MigrationTestBase(Tester):
                                                               migrated_files_dir)
 
     def load_migrated_tables(self, node, migrated_files_dir):
-        cassandra_sstable_dir = self.get_cassandra_sstable_dir(migrated_files_dir)
+        cassandra_sstable_dir = self.get_cassandra_sstable_dir('2_1_x', migrated_files_dir)
         debug("cassandra sstable dir is {}".format(cassandra_sstable_dir))
 
         ks_dir = os.path.join(self.test_path, 'test', 'node1', 'data', 'ks')
@@ -383,7 +383,7 @@ class TestMigration(MigrationTestBase):
 
     # Helpers
     def copy_migrated_data_dir(self, migrated_data_dir, skip_system_traces=False):
-        cassandra_dir = "{}/data".format(self.get_cassandra_sstable_dir(migrated_data_dir))
+        cassandra_dir = "{}/data".format(self.get_cassandra_sstable_dir('2_1_x',migrated_data_dir))
         debug("cassandra data dir for counter is {}".format(cassandra_dir))
 
         scylla_dir = os.path.join(self.test_path, 'test', 'node1', 'data')
