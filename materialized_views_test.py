@@ -112,7 +112,6 @@ class TestMaterializedViews(Tester):
                        "updates. Setting gc_grace_seconds too low might cause undelivered updates"
                        " to expire before being replayed.")
 
-    @skip('Not supported by Scylla at the moment')
     def insert_test(self):
         """Test basic insertions"""
 
@@ -121,6 +120,9 @@ class TestMaterializedViews(Tester):
         self._insert_data(session)
 
         result = list(session.execute("SELECT * FROM users;"))
+        self.assertEqual(len(result), 4, "Expecting {} users, got {}".format(4, len(result)))
+
+        result = list(session.execute("SELECT * FROM users_by_state;"))
         self.assertEqual(len(result), 4, "Expecting {} users, got {}".format(4, len(result)))
 
         result = list(session.execute("SELECT * FROM users_by_state WHERE state='TX';"))
@@ -168,7 +170,6 @@ class TestMaterializedViews(Tester):
 
         assert_crc_check_chance_equal(session, "t_by_v", 0.3, view=True)
 
-    @skip('Not supported by Scylla at the moment')
     def prepared_statement_test(self):
         """Test basic insertions with prepared statement"""
 
@@ -217,7 +218,7 @@ class TestMaterializedViews(Tester):
                        "Cannot directly modify a materialized view")
 
         # cannot delete a cell
-        assert_invalid(session, "DELETE session_token from users_by_state where state='TX';",
+        assert_invalid(session, "DELETE session_token from users_by_state where state='TX' and username='user1';",
                        "Cannot directly modify a materialized view")
 
         # cannot alter a table
@@ -294,7 +295,6 @@ class TestMaterializedViews(Tester):
             "Expecting {} materialized view, got {}".format(1, len(result))
         )
 
-    @skip('Not supported by Scylla at the moment')
     def clustering_column_test(self):
         """Test that we can use clustering columns as primary key for a materialized view"""
 
@@ -438,7 +438,7 @@ class TestMaterializedViews(Tester):
         for i in xrange(1100):
             assert_one(session, "SELECT * FROM t_by_v WHERE v = {}".format(-i), [-i, i])
 
-    @skip('Not supported by Scylla at the moment')
+    @skip('Not supported by Scylla at the moment. See #2025')
     def allow_filtering_test(self):
         """Test that allow filtering works as usual for a materialized view"""
 
@@ -459,8 +459,8 @@ class TestMaterializedViews(Tester):
         rows = list(session.execute("SELECT * FROM t_by_v2 WHERE v2 = 'a'"))
         self.assertEqual(len(rows), 1000, "Expected 1000 rows but got {}".format(len(rows)))
 
-        assert_invalid(session, "SELECT * FROM t_by_v WHERE v = 1 AND v2 = 'a'")
-        assert_invalid(session, "SELECT * FROM t_by_v2 WHERE v2 = 'a' AND v = 1")
+        assert_invalid(session, "SELECT * FROM t_by_v WHERE v = 1 AND v2 = 'a'", expected=Exception)
+        assert_invalid(session, "SELECT * FROM t_by_v2 WHERE v2 = 'a' AND v = 1", expected=Exception)
 
         for i in xrange(1000):
             assert_one(
@@ -474,7 +474,7 @@ class TestMaterializedViews(Tester):
                 ['a', i, i, 3.0]
             )
 
-    @skip('Not supported by Scylla at the moment')
+    @skip('Not supported by Scylla at the moment. See #401')
     def secondary_index_test(self):
         """Test that secondary indexes cannot be created on a materialized view"""
 
@@ -486,7 +486,6 @@ class TestMaterializedViews(Tester):
         assert_invalid(session, "CREATE INDEX ON t_by_v (v2)",
                        "Secondary indexes are not supported on materialized views")
 
-    @skip('Not supported by Scylla at the moment')
     def ttl_test(self):
         """
         Test that TTL works as expected for a materialized view
@@ -509,7 +508,6 @@ class TestMaterializedViews(Tester):
         rows = list(session.execute("SELECT * FROM t_by_v2"))
         self.assertEqual(len(rows), 0, "Expected 0 rows but got {}".format(len(rows)))
 
-    @skip('Not supported by Scylla at the moment')
     def query_all_new_column_test(self):
         """
         Test that a materialized view created with a 'SELECT *' works as expected when adding a new column
@@ -537,7 +535,6 @@ class TestMaterializedViews(Tester):
             ['TX', 'user1', 1968, None, 'f', 'ch@ngem3a', None]
         )
 
-    @skip('Not supported by Scylla at the moment')
     def query_new_column_test(self):
         """
         Test that a materialized view created with 'SELECT <col1, ...>' works as expected when adding a new column
@@ -568,7 +565,7 @@ class TestMaterializedViews(Tester):
             ['TX', 'user1']
         )
 
-    @skip('Not supported by Scylla at the moment')
+    @skip('Not supported by Scylla at the moment. See #1359')
     def lwt_test(self):
         """Test that lightweight transaction behave properly with a materialized view"""
 
@@ -774,7 +771,6 @@ class TestMaterializedViews(Tester):
             cl=ConsistencyLevel.ALL
         )
 
-    @skip('Not supported by Scylla at the moment')
     def check_trace_events(self, trace, expect_digest):
         # we should see multiple requests get enqueued prior to index scan
         # execution happening
