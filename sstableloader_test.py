@@ -6,7 +6,7 @@ import os
 from migration_test import MigrationTestBase
 from dtest import Tester, debug
 from tools import safe_mkdtemp
-from nose import tools
+#from nose import tools
 
 
 #@tools.istest
@@ -17,7 +17,6 @@ class TestSSTableLoader(MigrationTestBase):
     def __init__(self, *args, **kwargs):
         kwargs['cluster_options'] = {'start_rpc': 'true'}
         Tester.__init__(self, *args, **kwargs)
-
 
     def load_migrated_tables(self, node, migrated_files_dir):
         cassandra_sstable_dir = self.get_cassandra_sstable_dir(self.version, migrated_files_dir)
@@ -45,7 +44,6 @@ class TestSSTableLoader(MigrationTestBase):
         if exit_status != 0:
             raise Exception("sstableloader command '%s' failed; exit status: %d'; stdout: %s; stderr: %s" %
                             (" ".join(args), exit_status, stdout, stderr))
-
 
 
 versions = ['2_1_x', '2_2_x']
