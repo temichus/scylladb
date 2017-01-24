@@ -2913,6 +2913,98 @@ class TestCQL(Tester):
         session.execute("SELECT t FROM test WHERE k = 0 AND t > maxTimeuuid(1234567) AND t < minTimeuuid('2012-11-07 18:18:22-0800')")
         # not sure what to check exactly so just checking the query returns
 
+    def cql_tinyint_type_test(self):
+        session = self.prepare()
+
+        session.execute("""
+            CREATE TABLE test (
+                t tinyint,
+                PRIMARY KEY (t)
+            )
+        """)
+
+        assert_invalid(session, "INSERT INTO test (t) VALUES (-129)", expected=InvalidRequest)
+        assert_invalid(session, "INSERT INTO test (t) VALUES (128)", expected=InvalidRequest)
+
+        session.execute("INSERT INTO test (t) VALUES (-128);")
+        session.execute("INSERT INTO test (t) VALUES (127);")
+
+        res = list(session.execute("SELECT * FROM test"))
+        assert len(res) == 2, res
+
+        self.assertEqual(-128, res[0].t)
+        self.assertEqual(127,  res[1].t)
+
+    def cql_smallint_type_test(self):
+        session = self.prepare()
+
+        session.execute("""
+            CREATE TABLE test (
+                t smallint,
+                PRIMARY KEY (t)
+            )
+        """)
+
+        assert_invalid(session, "INSERT INTO test (t) VALUES (-32769)", expected=InvalidRequest)
+        assert_invalid(session, "INSERT INTO test (t) VALUES (32768)", expected=InvalidRequest)
+
+        session.execute("INSERT INTO test (t) VALUES (-32768);")
+        session.execute("INSERT INTO test (t) VALUES (32767);")
+
+        res = list(session.execute("SELECT * FROM test"))
+        assert len(res) == 2, res
+
+        self.assertEqual(-32768, res[0].t)
+        self.assertEqual(32767,  res[1].t)
+
+    def cql_date_type_test(self):
+        session = self.prepare()
+
+        session.execute("""
+            CREATE TABLE test (
+                t date,
+                PRIMARY KEY (t)
+            )
+        """)
+
+        assert_invalid(session, "INSERT INTO test (t) VALUES ('-5877641-06-22')", expected=InvalidRequest)
+        assert_invalid(session, "INSERT INTO test (t) VALUES ('5881580-07-12')", expected=InvalidRequest)
+
+        session.execute("INSERT INTO test (t) VALUES ('-5877641-06-23')")
+        session.execute("INSERT INTO test (t) VALUES ('1970-01-01')")
+        session.execute("INSERT INTO test (t) VALUES ('5881580-07-11')")
+
+        res = list(session.execute("SELECT * FROM test"))
+        assert len(res) == 3, res
+
+        self.assertEqual("-2147483648", str(res[0].t))
+        self.assertEqual("1970-01-01",  str(res[1].t))
+        self.assertEqual("2147483647",  str(res[2].t))
+
+    def cql_time_type_test(self):
+        session = self.prepare()
+
+        session.execute("""
+            CREATE TABLE test (
+                t time,
+                PRIMARY KEY (t)
+            )
+        """)
+
+        assert_invalid(session, "INSERT INTO test (t) VALUES ('14:53')", expected=InvalidRequest)
+        assert_invalid(session, "INSERT INTO test (t) VALUES ('14:53:12.1234567890')", expected=InvalidRequest)
+
+        session.execute("INSERT INTO test (t) VALUES ('14:53:12')")
+        session.execute("INSERT INTO test (t) VALUES ('14:53:12.1234')")
+        session.execute("INSERT INTO test (t) VALUES ('14:53:12.123456789')")
+
+        res = list(session.execute("SELECT * FROM test"))
+        assert len(res) == 3, res
+
+        self.assertEqual("14:53:12.123400000", str(res[0].t))
+        self.assertEqual("14:53:12.000000000", str(res[1].t))
+        self.assertEqual("14:53:12.123456789", str(res[2].t))
+
     def float_with_exponent_test(self):
         session = self.prepare()
 
