@@ -21,7 +21,7 @@ from thrift_bindings.v22.Cassandra import (CfDef, Column, ColumnDef,
                                            SuperColumn)
 from tools import since
 from assertions import assert_one, assert_none
-from nose.tools import nottest
+from unittest import skip
 
 
 def get_thrift_client(host='127.0.0.1', port=9160):
@@ -390,7 +390,7 @@ class TestMutations(ThriftTester):
         assert _big_slice('key1', ColumnParent('Standard2')) == []
         #assert _big_slice('key1', ColumnParent('Super1')) == []
 
-    @nottest
+    @skip("LWT not implemented")
     def test_cas(self):
         _set_keyspace('Keyspace1')
 
@@ -437,7 +437,7 @@ class TestMutations(ThriftTester):
         debug("Testing CAS on mixed static/dynamic cf")
         test_cas_operations(_SIMPLE_COLUMNS, updated_columns, 'Standard4')
 
-    @nottest
+    @skip("Super columns not implemented")
     def test_missing_super(self):
         _set_keyspace('Keyspace1')
         _expect_missing(lambda: client.get('key1', ColumnPath('Super1', 'sc1', _i64(1)), ConsistencyLevel.ONE))
@@ -514,20 +514,20 @@ class TestMutations(ThriftTester):
         _insert_simple()
         _verify_simple()
 
-    @nottest
+    @skip("Super columns not implemented")
     def test_super_insert(self):
         _set_keyspace('Keyspace1')
         _insert_super()
         _verify_super()
 
-    @nottest
+    @skip("Super columns not implemented")
     def test_super_get(self):
         _set_keyspace('Keyspace1')
         _insert_super()
         result = client.get('key1', ColumnPath('Super1', 'sc2'), ConsistencyLevel.ONE).super_column
         assert result == _SUPER_COLUMNS[1], result
 
-    @nottest
+    @skip("Super columns not implemented")
     def test_super_subcolumn_limit(self):
         _set_keyspace('Keyspace1')
         _insert_super()
@@ -574,7 +574,7 @@ class TestMutations(ThriftTester):
         L.sort()
         assert slice == L, slice
 
-    @nottest
+    @skip("Super columns not implemented")
     def test_time_uuid(self):
         import uuid
         L = []
@@ -729,7 +729,7 @@ class TestMutations(ThriftTester):
                 for key in keys:
                     _assert_no_columnpath(key, ColumnPath(column_family, column=c.name))
 
-    @nottest
+    @skip("Super columns not implemented")
     def test_batch_mutate_remove_super_columns_with_standard_under(self):
         _set_keyspace('Keyspace1')
         column_families = ['Super1', 'Super2']
@@ -754,7 +754,7 @@ class TestMutations(ThriftTester):
                     for key in keys:
                         _assert_no_columnpath(key, ColumnPath(column_family, super_column=sc.name, column=c.name))
 
-    @nottest
+    @skip("Super columns not implemented")
     def test_batch_mutate_remove_super_columns_with_none_given_underneath(self):
         _set_keyspace('Keyspace1')
 
@@ -785,7 +785,7 @@ class TestMutations(ThriftTester):
                 for key in keys:
                     _assert_no_columnpath(key, ColumnPath('Super1', super_column=sc.name))
 
-    @nottest
+    @skip("Super columns not implemented")
     def test_batch_mutate_remove_super_columns_entire_row(self):
         _set_keyspace('Keyspace1')
 
@@ -835,7 +835,7 @@ class TestMutations(ThriftTester):
         _assert_columnpath_exists('key', ColumnPath('Standard1', column='c5'))
 
     # known failure: see CASSANDRA-10046
-    @nottest
+    @skip("Super columns not implemented")
     def test_batch_mutate_remove_slice_of_entire_supercolumns(self):
         _set_keyspace('Keyspace1')
 
@@ -863,7 +863,7 @@ class TestMutations(ThriftTester):
         _assert_columnpath_exists('key', ColumnPath('Super1', super_column='sc5', column=_i64(7)))
 
     @since('1.0', '2.2')
-    @nottest
+    @skip("Super columns not implemented")
     def test_batch_mutate_remove_slice_part_of_supercolumns(self):
         _set_keyspace('Keyspace1')
 
@@ -886,7 +886,7 @@ class TestMutations(ThriftTester):
         _assert_no_columnpath('key', ColumnPath('Super1', super_column='sc1', column=_i64(4)))
         _assert_columnpath_exists('key', ColumnPath('Super1', super_column='sc1', column=_i64(5)))
 
-    @nottest
+    @skip("Super columns not implemented")
     def test_batch_mutate_insertions_and_deletions(self):
         _set_keyspace('Keyspace1')
 
@@ -933,7 +933,7 @@ class TestMutations(ThriftTester):
                 _assert_columnpath_exists(key, ColumnPath('Super1', super_column='sc1', column=c))
                 _assert_columnpath_exists(key, ColumnPath('Super2', super_column='sc1', column=c))
 
-    @nottest
+    @skip("Indexes not implemented")
     def test_bad_system_calls(self):
         def duplicate_index_names():
             _set_keyspace('Keyspace1')
@@ -951,8 +951,6 @@ class TestMutations(ThriftTester):
             dele = Deletion(2, predicate=SlicePredicate(column_names=['baz']))
             client.batch_mutate({'key_34': {'Standard1': [Mutation(col, dele)]}},
                                 ConsistencyLevel.ONE)
-        _expect_exception(too_full, InvalidRequestException)
-
         # test_batch_mutate_does_not_accept_cosc_on_undefined_cf:
         def bad_cf():
             _set_keyspace('Keyspace1')
@@ -1061,7 +1059,7 @@ class TestMutations(ThriftTester):
         # counters don't support ANY
         #_expect_exception(lambda: client.add('key1', ColumnParent('Counter1', 'x'), CounterColumn('y', 1), ConsistencyLevel.ANY), InvalidRequestException)
 
-    @nottest
+    @skip("Super columns not implemented")
     def test_batch_insert_super(self):
         _set_keyspace('Keyspace1')
         cfmap = {'Super1': [Mutation(ColumnOrSuperColumn(super_column=c))
@@ -1072,7 +1070,7 @@ class TestMutations(ThriftTester):
         _verify_super('Super1')
         _verify_super('Super2')
 
-    @nottest
+    @skip("Super columns not implemented")
     def test_batch_insert_super_blocking(self):
         _set_keyspace('Keyspace1')
         cfmap = {'Super1': [Mutation(ColumnOrSuperColumn(super_column=c))
@@ -1136,7 +1134,7 @@ class TestMutations(ThriftTester):
         #assert _big_slice('key1', ColumnParent('Super1')) == []
         #assert _big_slice('key1', ColumnParent('Super1', 'sc1')) == []
 
-    @nottest
+    @skip("Super columns not implemented")
     def test_super_cf_remove_and_range_slice(self):
         _set_keyspace('Keyspace1')
 
@@ -1149,7 +1147,7 @@ class TestMutations(ThriftTester):
             rows[row.key] = scs
         assert rows == {'key3': []}, rows
 
-    @nottest
+    @skip("Super columns not implemented")
     def test_super_cf_remove_column(self):
         _set_keyspace('Keyspace1')
         _insert_simple()
@@ -1194,7 +1192,7 @@ class TestMutations(ThriftTester):
         e = _expect_exception(lambda: client.remove('key1', cp, 5, ConsistencyLevel.ONE), InvalidRequestException)
         assert e.why.find("column cannot be specified without") >= 0
 
-    @nottest
+    @skip("Super columns not implemented")
     def test_super_cf_remove_supercolumn(self):
         _set_keyspace('Keyspace1')
 
@@ -1233,7 +1231,7 @@ class TestMutations(ThriftTester):
                    for result in client.get_slice('key1', ColumnParent('Super1', 'sc2'), p, ConsistencyLevel.ONE)]
         assert columns == [Column(_i64(5), 'value5', 6)], columns
 
-    @nottest
+    @skip("Super columns not implemented")
     def test_super_cf_resurrect_subcolumn(self):
         _set_keyspace('Keyspace1')
         key = 'vijay'
@@ -1326,7 +1324,7 @@ class TestMutations(ThriftTester):
         _insert_range()
         _verify_range()
 
-    @nottest
+    @skip("Super columns not implemented")
     def test_get_slice_super_range(self):
         _set_keyspace('Keyspace1')
         _insert_super_range()
@@ -1345,7 +1343,7 @@ class TestMutations(ThriftTester):
         assert result[0].columns[0].column.name == 'col1'
         assert result[0].columns[1].column.name == 'col3'
 
-    @nottest
+    @skip("Super columns not implemented")
     def test_get_range_slice_super(self):
         _set_keyspace('Keyspace2')
         for key in ['key1', 'key2', 'key3', 'key4', 'key5']:
@@ -1538,7 +1536,7 @@ class TestMutations(ThriftTester):
             key = 'key' + str(i)
             assert counts[key] == i
 
-    @nottest
+    @skip("Super columns not implemented")
     def test_batch_mutate_super_deletion(self):
         _set_keyspace('Keyspace1')
         _insert_super('test')
@@ -1547,7 +1545,7 @@ class TestMutations(ThriftTester):
         client.batch_mutate({'test': cfmap}, ConsistencyLevel.ONE)
         _expect_missing(lambda: client.get('key1', ColumnPath('Super1', 'sc1'), ConsistencyLevel.ONE))
 
-    @nottest
+    @skip("Super columns not implemented")
     def test_super_reinsert(self):
         _set_keyspace('Keyspace1')
         for x in xrange(3):
@@ -1839,7 +1837,7 @@ class TestMutations(ThriftTester):
         #server_cf = [x for x in ks1.cf_defs if x.name == 'NewLongColumnFamily'][0]
         #assert server_cf.column_metadata[0].name == _i64(3), server_cf.column_metadata
 
-    @nottest
+    @skip("Indexes not implemented")
     def test_dynamic_indexes_creation_deletion(self):
         _set_keyspace('Keyspace1')
         cfdef = CfDef('Keyspace1', 'BlankCF')
@@ -1883,7 +1881,7 @@ class TestMutations(ThriftTester):
         client.system_drop_column_family('BlankCF')
         client.system_drop_column_family('BlankCF2')
 
-    @nottest
+    @skip("Indexes not implemented")
     def test_dynamic_indexes_with_system_update_cf(self):
         _set_keyspace('Keyspace1')
         cd = ColumnDef('birthdate', 'BytesType', None, None)
@@ -1928,7 +1926,7 @@ class TestMutations(ThriftTester):
         assert result[0].key == 'key1'
         assert len(result[0].columns) == 1, result[0].columns
 
-    @nottest
+    @skip("Super columns not implemented")
     def test_system_super_column_family_operations(self):
         _set_keyspace('Keyspace1')
 
@@ -1996,7 +1994,7 @@ class TestMutations(ThriftTester):
             client.describe_ring('system')
         _expect_exception(req, InvalidRequestException)
 
-    @nottest
+    @skip("Counters not implemented")
     def test_incr_decr_standard_add(self):
         _set_keyspace('Keyspace1')
 
@@ -2019,7 +2017,7 @@ class TestMutations(ThriftTester):
         rv3 = client.get('key1', ColumnPath(column_family='Counter1', column='c1'), ConsistencyLevel.ONE)
         assert rv3.counter_column.value == (d1 + d2 + d3)
 
-    @nottest
+    @skip("Super columns not implemented")
     def test_incr_decr_super_add(self):
         _set_keyspace('Keyspace1')
 
@@ -2044,7 +2042,7 @@ class TestMutations(ThriftTester):
         rv3 = client.get('key1', ColumnPath(column_family='SuperCounter1', super_column='sc1', column='c1'), ConsistencyLevel.ONE)
         assert rv3.counter_column.value == (d1 + d2 + d3)
 
-    @nottest
+    @skip("Counters not implemented")
     def test_incr_standard_remove(self):
         _set_keyspace('Keyspace1')
 
@@ -2070,7 +2068,7 @@ class TestMutations(ThriftTester):
         time.sleep(5)
         _assert_no_columnpath('key2', ColumnPath(column_family='Counter1', column='c1'))
 
-    @nottest
+    @skip("Super columns not implemented")
     def test_incr_super_remove(self):
         _set_keyspace('Keyspace1')
 
@@ -2096,7 +2094,7 @@ class TestMutations(ThriftTester):
         time.sleep(5)
         _assert_no_columnpath('key2', ColumnPath(column_family='SuperCounter1', super_column='sc1', column='c1'))
 
-    @nottest
+    @skip("Counters not implemented")
     def test_incr_decr_standard_remove(self):
         _set_keyspace('Keyspace1')
 
@@ -2122,7 +2120,7 @@ class TestMutations(ThriftTester):
         time.sleep(5)
         _assert_no_columnpath('key2', ColumnPath(column_family='Counter1', column='c1'))
 
-    @nottest
+    @skip("Super columns not implemented")
     def test_incr_decr_super_remove(self):
         _set_keyspace('Keyspace1')
 
@@ -2148,7 +2146,7 @@ class TestMutations(ThriftTester):
         time.sleep(5)
         _assert_no_columnpath('key2', ColumnPath(column_family='SuperCounter1', super_column='sc1', column='c1'))
 
-    @nottest
+    @skip("Counters not implemented")
     def test_incr_decr_standard_batch_add(self):
         _set_keyspace('Keyspace1')
 
@@ -2165,7 +2163,7 @@ class TestMutations(ThriftTester):
         rv1 = client.get('key1', ColumnPath(column_family='Counter1', column='c1'), ConsistencyLevel.ONE)
         assert rv1.counter_column.value == d1 + d2
 
-    @nottest
+    @skip("Counters not implemented")
     def test_incr_decr_standard_batch_remove(self):
         _set_keyspace('Keyspace1')
 
@@ -2237,7 +2235,7 @@ class TestMutations(ThriftTester):
             [composite('0', '0'), composite('1', '1'), composite('2', '2'),
              composite('6', '6'), composite('7', '7'), composite('8', '8'), composite('9', '9')])
 
-    @nottest
+    @skip("Counters not implemented")
     def test_incr_decr_standard_slice(self):
         _set_keyspace('Keyspace1')
 
@@ -2257,7 +2255,7 @@ class TestMutations(ThriftTester):
         assert counters[0].counter_column.value == d1 + d2
         assert counters[1].counter_column.value == d1
 
-    @nottest
+    @skip("Counters not implemented")
     def test_incr_decr_standard_muliget_slice(self):
         _set_keyspace('Keyspace1')
 
@@ -2284,19 +2282,19 @@ class TestMutations(ThriftTester):
         assert counters['key2'][0].counter_column.value == d1 + d2
         assert counters['key2'][1].counter_column.value == d1
 
-    @nottest
+    @skip("Counters not implemented")
     def test_counter_get_slice_range(self):
         _set_keyspace('Keyspace1')
         _insert_counter_range()
         _verify_counter_range()
 
-    @nottest
+    @skip("Super columns not implemented")
     def test_counter_get_slice_super_range(self):
         _set_keyspace('Keyspace1')
         _insert_counter_super_range()
         _verify_counter_super_range()
 
-    @nottest
+    @skip("Counters not implemented")
     def test_index_scan(self):
         _set_keyspace('Keyspace1')
         client.insert('key1', ColumnParent('Indexed1'), Column('birthdate', _i64(1), 0), ConsistencyLevel.ONE)
@@ -2326,7 +2324,7 @@ class TestMutations(ThriftTester):
         assert result[0].key == 'key3'
         assert len(result[0].columns) == 2, result[0].columns
 
-    @nottest
+    @skip("Secondary indexes not implemented")
     def test_index_scan_uuid_names(self):
         _set_keyspace('Keyspace1')
         sp = SlicePredicate(slice_range=SliceRange('', ''))
@@ -2350,7 +2348,7 @@ class TestMutations(ThriftTester):
         key_range = KeyRange('', '', None, None, [IndexExpression(uuid.UUID('00000000-0000-1000-0000-000000000000').bytes, IndexOperator.EQ, "foo")], 100)
         _expect_exception(lambda: client.get_range_slices(cp, sp, key_range, ConsistencyLevel.ONE), InvalidRequestException)
 
-    @nottest
+    @skip("Secondary indexes not implemented")
     def test_index_scan_expiring(self):
         """ Test that column ttled expires from KEYS index"""
         _set_keyspace('Keyspace1')
@@ -2376,7 +2374,7 @@ class TestMutations(ThriftTester):
         except NotFoundException:
             assert True, 'column did not exist'
 
-    @nottest
+    @skip("Super columns not implemented")
     def test_get_range_slice_after_deletion(self):
         _set_keyspace('Keyspace2')
         key = 'key1'
@@ -2429,7 +2427,7 @@ class TestTruncate(ThriftTester):
 
 class TestCQLAccesses(ThriftTester):
 
-    @nottest
+    @skip("Not supported yet. See #2037")
     def test_range_tombstone_and_static(self):
         node1, = self.cluster.nodelist()
         session = self.patient_cql_connection(node1)
