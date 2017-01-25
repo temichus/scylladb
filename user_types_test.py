@@ -6,7 +6,7 @@ from tools import since, require
 from assertions import assert_invalid
 from cassandra import Unauthorized, ConsistencyLevel
 from cassandra.query import SimpleStatement
-from nose.tools import nottest
+from unittest import skip
 
 
 def listify(item):
@@ -373,7 +373,7 @@ class TestUserTypes(Tester):
         self.assertEqual(first_name, u'Nero')
         self.assertEqual(like, u'arson')
 
-    @nottest
+    @skip("Secondary indexes not implemented yet")
     def test_type_secondary_indexing(self):
         """
         Confirm that user types are secondary-indexable
@@ -502,7 +502,6 @@ class TestUserTypes(Tester):
         self.assertEqual(first_name, u'Abraham')
         self.assertEqual(like, u'preserving unions')
 
-    @nottest
     def test_type_keyspace_permission_isolation(self):
         """
         Confirm permissions are respected for types in different keyspaces
@@ -614,7 +613,7 @@ class TestUserTypes(Tester):
         rows = list(session.execute("SELECT my_item FROM bucket WHERE id=1"))
         self.assertEqual(listify(rows[0]), [[u'test', None]])
 
-    @nottest
+    @skip("Counters not implemented")
     def test_no_counters_in_user_types(self):
         # CASSANDRA-7672
         cluster = self.cluster
