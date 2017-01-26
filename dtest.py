@@ -31,6 +31,8 @@ from ccmlib.node import TimeoutError
 from ccmlib.scylla_cluster import ScyllaCluster
 from nose.exc import SkipTest
 
+from multiprocessing import Queue, Lock
+
 os.environ['LOCALE'] = 'C'
 
 LOG_SAVED_DIR = "logs"
@@ -63,6 +65,7 @@ RECORD_COVERAGE = os.environ.get('RECORD_COVERAGE', '').lower() in ('yes', 'true
 REUSE_CLUSTER = os.environ.get('REUSE_CLUSTER', '').lower() in ('yes', 'true')
 SILENCE_DRIVER_ON_SHUTDOWN = os.environ.get('SILENCE_DRIVER_ON_SHUTDOWN', 'true').lower() in ('yes', 'true')
 IGNORE_REQUIRE = os.environ.get('IGNORE_REQUIRE', '').lower() in ('yes', 'true')
+NOSE_PROCESSES = os.environ.get('NOSE_PROCESSES',0)
 
 CURRENT_TEST = ""
 
@@ -171,14 +174,65 @@ class Runner(threading.Thread):
         if self.__error is not None:
             raise self.__error
 
+class ClusterIdAllocator:
+    def alloc(self):
+        fail
+
+    def free(self, id):
+        fail
+
+class SingleClusterIdAllocator(ClusterIdAllocator):
+    _allocated = False
+
+    def alloc(self):
+        if not self._allocated:
+            self._allocated = True
+            return 0;
+        raise Exception("No Available Cluster")
+
+    def free(self, id):
+        if self._allocated:
+            self._allocated = False
+            return
+        raise Exception("Cluster was not allocated")
+
+class MultiProcessClusterIdAllocator(ClusterIdAllocator):
+    _multiprocess_shared_ = True
+
+    def __init__(self):
+        self._id = Queue()
+        for id in range(0,99):
+            self._id.put(id)
+        self._lock = Lock()
+
+    def alloc(self):
+        with self._lock:
+            id = self._id.get()
+            return id
+
+    def free(self, id):
+        with self._lock:
+            self._id.put(id)
+
+def parallel_tests():
+    return NOSE_PROCESSES > 0
+
+if parallel_tests():
+    debug("going to run tests in parallel")
+    cluster_id_allocator = MultiProcessClusterIdAllocator()
+else:
+    debug("going to run tests sequentially")
+    cluster_id_allocator = SingleClusterIdAllocator()
 
 class Tester(TestCase):
+    _multiprocess_can_split_ = True
 
     def __init__(self, *argv, **kwargs):
         # if False, then scan the log of each node for errors after every test.
         if not hasattr(self, '_preserve_cluster'):
             self._preserve_cluster = False
         self.allow_log_errors = False
+        self.cluster_id_allocator = cluster_id_allocator
         self.cluster_options = kwargs.pop('cluster_options', None)
         super(Tester, self).__init__(*argv, **kwargs)
 
@@ -214,6 +268,10 @@ class Tester(TestCase):
 
         if OFFHEAP_MEMTABLES:
             cluster.set_configuration_options(values={'memtable_allocation_type': 'offheap_objects'})
+
+        id = self.cluster_id_allocator.alloc()
+        cluster.set_id(id)
+        cluster.set_ipprefix("127.0.%d." % id)
 
         return cluster
 
@@ -271,6 +329,8 @@ class Tester(TestCase):
             if not self._check_clean():
                 self._force_clean()
 
+        self.cluster_id_allocator.free(self.cluster.id)
+
     def set_node_to_current_version(self, node):
         version = os.environ.get('CASSANDRA_VERSION')
         cdir = CASSANDRA_DIR
@@ -299,6 +359,8 @@ class Tester(TestCase):
             for proc in psutil.process_iter():
                 if 'scylla' in proc.name():
                     proc.kill()
+
+
 
     def setUp(self):
         global CURRENT_TEST
@@ -342,6 +404,7 @@ class Tester(TestCase):
                 self._force_clean()
 
         self.cluster = self._get_cluster()
+
         if RECORD_COVERAGE:
             self.__setup_jacoco()
         # the failure detector can be quite slow in such tests with quick start/stop
@@ -359,9 +422,11 @@ class Tester(TestCase):
                 'request_timeout_in_ms': timeout
             })
 
-        with open(LAST_TEST_DIR, 'w') as f:
-            f.write(self.test_path + '\n')
-            f.write(self.cluster.name)
+        # if tests are running in parallel do not use last test info
+        if not parallel_tests():
+            with open(LAST_TEST_DIR, 'w') as f:
+                f.write(self.test_path + '\n')
+                f.write(self.cluster.name)
 
         self.modify_log(self.cluster)
         self.connections = []
