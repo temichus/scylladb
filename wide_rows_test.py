@@ -22,6 +22,7 @@ clients = (
 
 
 class TestWideRows(Tester):
+    _multiprocess_can_split_ = False
 
     def __init__(self, *args, **kwargs):
         Tester.__init__(self, *args, **kwargs)
