@@ -135,7 +135,6 @@ class StorageProxyCQLTester(CQLTester):
 
         assert_invalid(session, "SELECT * FROM test3 where v1 = 0", expected=InvalidRequest)
 
-    @skip('Scylla does not support ALTER TYPE')
     def type_test(self):
         """
         CREATE TYPE, ALTER TYPE, DROP TYPE statements
@@ -269,7 +268,6 @@ class MiscellaneousCQLTester(CQLTester):
                             "first 65535 elements will be returned to the "
                             "client. Please see http://cassandra.apache.org/doc/cql3/CQL.html#collections for more details.")
 
-    @skip('Scylla does not support inserting from thrift into a CQL3 table')
     def cql3_insert_thrift_test(self):
         """ Check that we can insert from thrift into a CQL3 table (#4377) """
         session = self.prepare(start_rpc=True)
@@ -300,7 +298,6 @@ class MiscellaneousCQLTester(CQLTester):
         res = session.execute("SELECT * FROM test")
         assert rows_to_list(res) == [[2, 4, 8]], res
 
-    @skip('system_add_column_family() fails with: TApplicationException: sorry, not implemented')
     def rename_test(self):
         session = self.prepare(start_rpc=True)
 
@@ -320,7 +317,7 @@ class MiscellaneousCQLTester(CQLTester):
         client.set_keyspace('ks')
         client.system_add_column_family(cfdef)
 
-        session.execute("INSERT INTO ks.test (key, column1, column2, column3, value) VALUES ('foo', 4, 3, 2, 'bar')")
+        session.execute("INSERT INTO ks.test (key1, column1, column2, column3, value) VALUES ('foo', 4, 3, 2, 'bar')")
 
         time.sleep(1)
 
