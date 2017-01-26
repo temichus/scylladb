@@ -82,9 +82,9 @@ class TestCqlTracing(Tester):
                                    return_output=True)
         debug(out)
         self.assertIn('Tracing session: ', out)
-        self.assertIn(' 127.0.0.1 ', out)
-        self.assertIn(' 127.0.0.2 ', out)
-        self.assertIn(' 127.0.0.3 ', out)
+        self.assertIn(" "+self.cluster.get_node_ip(1)+" ", out)
+        self.assertIn(" "+self.cluster.get_node_ip(2)+" ", out)
+        self.assertIn(" "+self.cluster.get_node_ip(3)+" ", out)
         self.assertIn('Request complete ', out)
         self.assertIn(" Frodo |  Baggins", out)
 

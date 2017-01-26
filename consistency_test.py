@@ -1052,7 +1052,7 @@ class TestConsistency(Tester):
         session1.execute(SimpleStatement('delete from ks.cf1 where p = 0 and c = 1', consistency_level=ConsistencyLevel.ONE))
 
         debug('Updating node2')
-        node2.start()
+        node2.start(wait_for_binary_proto=True)
         node1.stop()
 
         session2 = self.patient_cql_connection(node2)

@@ -213,12 +213,12 @@ class TestUpdateClusterLayout(Tester):
         i = len(cluster.nodes) + 1
         node3 = cluster.create_node('node%s' % i,
                                     True,
-                                    ('127.0.0.%s' % i, 9160),
-                                    ('127.0.0.%s' % i, 7000),
-                                    str(7000 + i * 100),
+                                    (cluster.get_node_ip(i), 9160),
+                                    (cluster.get_node_ip(i), 7000),
+                                    str(cluster.get_node_jmx_port(i)),
                                     None,
                                     None,
-                                    binary_interface=('127.0.0.%s' % i, 9042))
+                                    binary_interface=(cluster.get_node_ip(i), 9042))
 
         node2.start()
         time.sleep(0.1)
@@ -321,12 +321,12 @@ class TestUpdateClusterLayout(Tester):
             # creating an additional node without actually adding it to the cluster
             new_node = cluster.create_node('node%s' % i,
                                            True,
-                                           ('127.0.0.%s' % i, 9160),
-                                           ('127.0.0.%s' % i, 7000),
-                                           str(7000 + i * 100),
+                                           (cluster.get_node_ip(i), 9160),
+                                           (cluster.get_node_ip(i), 7000),
+                                           str(cluster.get_node_jmx_port(i)),
                                            None,
                                            None,
-                                           binary_interface=('127.0.0.%s' % i, 9042))
+                                           binary_interface=(cluster.get_node_ip(i), 9042))
             debug("Start Node %d" % i)
             new_node.start()
             new_node.watch_log_for("JOINING: Starting to bootstrap")
@@ -345,7 +345,7 @@ class TestUpdateClusterLayout(Tester):
             # UN  127.0.0.3  24834      256     ?       78b7e6ba-3039-4fc6-a875-a71661f8cd04  rack1
             # UJ  127.0.0.4  ?          256     ?       637edd3f-8888-48ab-b0ea-3ea81f8e9865  rack1
             status, err = node1.nodetool('status')
-            assert status.find("UJ  127.0.0.4 ") > -1, status
+            assert status.find("UJ  "+cluster.get_node_ip(4) + " ") > -1, status
 
             # Slep 30 seconds to make sure other nodes removed the new node
             time.sleep(30)
@@ -359,7 +359,7 @@ class TestUpdateClusterLayout(Tester):
             # UN  127.0.0.2  37278      256     ?       f118383c-c569-49d1-9aa6-223d3b224caa  rack1
             # UN  127.0.0.3  24834      256     ?       78b7e6ba-3039-4fc6-a875-a71661f8cd04  rack1
             status, err = node1.nodetool('status')
-            assert status.find("127.0.0.4") == -1, status
+            assert status.find(cluster.get_node_ip(4)) == -1, status
 
         result = list(session.execute("SELECT * FROM cf"))
         self.assertEqual(len(result), 1000, len(result))
@@ -402,12 +402,12 @@ class TestUpdateClusterLayout(Tester):
             # creating an additional node without actually adding it to the cluster
             new_node = cluster.create_node('node%s' % i,
                                            True,
-                                           ('127.0.0.%s' % i, 9160),
-                                           ('127.0.0.%s' % i, 7000),
-                                           str(7000 + i * 100),
+                                           (cluster.get_node_ip(i), 9160),
+                                           (cluster.get_node_ip(i), 7000),
+                                           str(cluster.get_node_jmx_port(i)),
                                            None,
                                            None,
-                                           binary_interface=('127.0.0.%s' % i, 9042))
+                                           binary_interface=(cluster.get_node_ip(i), 9042))
             event = threading.Event()
             failed = None
 
@@ -1174,14 +1174,14 @@ class TestUpdateClusterLayout(Tester):
         debug("Check the hearbeat of node 1 ...")
         status1, err1 = node1.nodetool('gossipinfo')
         gossipinfo_1 = self._get_gossipinfo(status1)
-        heartbeat_1 = int(gossipinfo_1['127.0.0.1']['heartbeat'])
+        heartbeat_1 = int(gossipinfo_1[cluster.get_node_ip(1)]['heartbeat'])
 
         time.sleep(3)
 
         debug("Check the hearbeat of node 1 updated ...")
         status2, err2 = node1.nodetool('gossipinfo')
         gossipinfo_2 = self._get_gossipinfo(status2)
-        heartbeat_2 = int(gossipinfo_2['127.0.0.1']['heartbeat'])
+        heartbeat_2 = int(gossipinfo_2[cluster.get_node_ip(1)]['heartbeat'])
         e_msg = ("Heartbeat for status 2 '%s' is not greater than for status 1 '%s', something is wrong" % (heartbeat_2, heartbeat_1))
         debug("heartbeat_2 = %d, heartbeat_1 = %d" % (heartbeat_2, heartbeat_1))
         self.assertGreater(heartbeat_2, heartbeat_1, e_msg)

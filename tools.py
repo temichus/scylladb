@@ -57,12 +57,12 @@ def new_node(cluster, bootstrap=True, token=None, remote_debug_port='0', data_ce
     # Changed from from creating ccmlib.Node to using the cluster create_node method to support creation of node based on cluster type
     node = cluster.create_node('node%s' % i,
                                bootstrap,
-                               ('127.0.0.%s' % i, 9160),
-                               ('127.0.0.%s' % i, 7000),
-                               str(7000 + i * 100),
+                               (cluster.get_node_ip(i), 9160),
+                               (cluster.get_node_ip(i), 7000),
+                               str(cluster.get_node_jmx_port(i)),
                                remote_debug_port,
                                token,
-                               binary_interface=('127.0.0.%s' % i, 9042))
+                               binary_interface=(cluster.get_node_ip(i), 9042))
     cluster.add(node, not bootstrap, data_center=data_center)
     return node
 
