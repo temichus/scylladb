@@ -90,6 +90,7 @@ class TestSchema(Tester):
         time.sleep(.5)
         nodes = cluster.nodelist()
         session = self.patient_cql_connection(nodes[0])
-        session.use_client_timestamp = False # It is forbidden to re-add a column with client-side timestamps
+        # It is forbidden to re-add a column with client-side timestamps
+        session.use_client_timestamp = False
         self.create_ks(session, 'ks', 1)
         return session

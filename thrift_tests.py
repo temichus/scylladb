@@ -952,6 +952,7 @@ class TestMutations(ThriftTester):
             client.batch_mutate({'key_34': {'Standard1': [Mutation(col, dele)]}},
                                 ConsistencyLevel.ONE)
         # test_batch_mutate_does_not_accept_cosc_on_undefined_cf:
+
         def bad_cf():
             _set_keyspace('Keyspace1')
             col = ColumnOrSuperColumn(column=Column("foo", 'bar', 0))
