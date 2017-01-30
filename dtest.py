@@ -257,7 +257,8 @@ class Tester(TestCase):
             cluster = Cluster(self.test_path, name, cassandra_version=version)
         else:
             if isScylla(cdir):
-                cluster = ScyllaCluster(self.test_path, name, cassandra_dir=cdir, install_dir=cdir)
+                cluster = ScyllaCluster(self.test_path, name, cassandra_dir=cdir, install_dir=cdir,
+                                        force_wait_for_cluster_start=parallel_tests())
             else:
                 cluster = Cluster(self.test_path, name, cassandra_dir=cdir)
 
