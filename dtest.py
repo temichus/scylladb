@@ -346,8 +346,11 @@ class Tester(TestCase):
 
         if isScylla(cdir):
             for proc in psutil.process_iter():
-                if 'scylla' in proc.name():
-                    return False
+                try:
+                    if 'scylla' in proc.name() and any(self.cluster.ipprefix in cmd for cmd in proc.cmdline()):
+                        return False
+                except Exception:
+                    pass
         return True
 
     def _force_clean(self):
@@ -357,9 +360,15 @@ class Tester(TestCase):
 
         if isScylla(cdir):
             for proc in psutil.process_iter():
-                if 'scylla' in proc.name():
-                    proc.kill()
-
+                try:
+                    if 'scylla' in proc.name() and any(self.cluster.ipprefix in cmd for cmd in proc.cmdline()):
+                        debug("proc %s killed - cluster %s" %(proc.pid,self.cluster.ipprefix))
+                        try:
+                            proc.kill()
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
 
 
     def setUp(self):
@@ -399,11 +408,11 @@ class Tester(TestCase):
                 # after a restart, /tmp will be emptied so we'll get an IOError when loading the old cluster here
                 pass
 
+        self.cluster = self._get_cluster()
+
         if not self._preserve_cluster:
             if not self._check_clean():
                 self._force_clean()
-
-        self.cluster = self._get_cluster()
 
         if RECORD_COVERAGE:
             self.__setup_jacoco()
