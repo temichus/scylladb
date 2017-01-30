@@ -628,7 +628,7 @@ class TestCQL(Tester):
         """
         Validate counter support.
         """
-        session = self.prepare()
+        session = self.prepare(experimental=True)
 
         session.execute("""
             CREATE TABLE clicks (
@@ -1135,7 +1135,7 @@ class TestCQL(Tester):
         assert rows_to_list(res) == [[2]], list(res)
 
     def reserved_keyword_test(self):
-        session = self.prepare()
+        session = self.prepare(experimental=True)
 
         session.execute("""
             CREATE TABLE test1 (
@@ -2321,7 +2321,7 @@ class TestCQL(Tester):
         Regression test for a validation bug.
         """
 
-        session = self.prepare()
+        session = self.prepare(experimental=True)
         assert_invalid(session, "CREATE TABLE test (id bigint PRIMARY KEY, count counter, things set<text>)",
                        matching=r"Cannot add a( non)? counter column", expected=ConfigurationException)
 
@@ -2796,7 +2796,7 @@ class TestCQL(Tester):
         assert_invalid(session, "SELECT writetime(l) FROM test WHERE k = 0")
 
     def collection_counter_test(self):
-        session = self.prepare()
+        session = self.prepare(experimental=True)
 
         assert_invalid(session, """
             CREATE TABLE test (
@@ -4943,24 +4943,6 @@ class CQLAdditionalTests(Tester):
         # cannot test drop secondary index because their are not created
         # in the first place
         pass
-
-    def test_counters(self):
-        cluster = self.prepare()
-        node = cluster.nodelist()[0]
-
-        session = self.patient_cql_connection(node)
-        self.create_ks(session, 'racing', 1)
-
-        c = """CREATE TABLE racing.page_view_counts
-              (counter_value counter,
-              url_name varchar,
-              page_name varchar,
-              PRIMARY KEY (url_name, page_name))"""
-        try:
-            session.execute(c)
-        except Exception, e:
-            assert(e.message == "Not implemented: COUNTERS")
-            assert(e.code == 0000)
 
     def test_lightweight_transaction(self):
         cluster = self.prepare()

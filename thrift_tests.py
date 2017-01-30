@@ -63,6 +63,7 @@ class BaseTester(Tester):
     def setUp(self):
         Tester.setUp(self)
         cluster = self.cluster
+        cluster.set_configuration_options(values={'experimental': True})
         cluster.populate(1)
         node1, = cluster.nodelist()
         # If vnodes are not used, we must set our own initial_token
@@ -102,7 +103,7 @@ class ThriftTester(BaseTester):
             #Cassandra.CfDef('Keyspace1', 'Super3', column_type='Super', subcomparator_type='LongType'),
             #Cassandra.CfDef('Keyspace1', 'Super4', column_type='Super', subcomparator_type='UTF8Type'),
             #Cassandra.CfDef('Keyspace1', 'Super5', column_type='Super', comparator_type='LongType', subcomparator_type='UTF8Type'),
-            #Cassandra.CfDef('Keyspace1', 'Counter1', default_validation_class='CounterColumnType'),
+            Cassandra.CfDef('Keyspace1', 'Counter1', default_validation_class='CounterColumnType'),
             #Cassandra.CfDef('Keyspace1', 'SuperCounter1', column_type='Super', default_validation_class='CounterColumnType'),
             #Cassandra.CfDef('Keyspace1', 'Indexed1', column_metadata=[Cassandra.ColumnDef('birthdate', 'LongType', Cassandra.IndexType.KEYS, 'birthdate_index')]),
             #Cassandra.CfDef('Keyspace1', 'Indexed2', comparator_type='TimeUUIDType', column_metadata=[Cassandra.ColumnDef(uuid.UUID('00000000-0000-1000-0000-000000000000').bytes, 'LongType', Cassandra.IndexType.KEYS)]),
@@ -1994,7 +1995,6 @@ class TestMutations(ThriftTester):
             client.describe_ring('system')
         _expect_exception(req, InvalidRequestException)
 
-    @skip("Counters not implemented")
     def test_incr_decr_standard_add(self):
         _set_keyspace('Keyspace1')
 
@@ -2042,7 +2042,6 @@ class TestMutations(ThriftTester):
         rv3 = client.get('key1', ColumnPath(column_family='SuperCounter1', super_column='sc1', column='c1'), ConsistencyLevel.ONE)
         assert rv3.counter_column.value == (d1 + d2 + d3)
 
-    @skip("Counters not implemented")
     def test_incr_standard_remove(self):
         _set_keyspace('Keyspace1')
 
@@ -2094,7 +2093,6 @@ class TestMutations(ThriftTester):
         time.sleep(5)
         _assert_no_columnpath('key2', ColumnPath(column_family='SuperCounter1', super_column='sc1', column='c1'))
 
-    @skip("Counters not implemented")
     def test_incr_decr_standard_remove(self):
         _set_keyspace('Keyspace1')
 
@@ -2146,7 +2144,6 @@ class TestMutations(ThriftTester):
         time.sleep(5)
         _assert_no_columnpath('key2', ColumnPath(column_family='SuperCounter1', super_column='sc1', column='c1'))
 
-    @skip("Counters not implemented")
     def test_incr_decr_standard_batch_add(self):
         _set_keyspace('Keyspace1')
 
@@ -2163,7 +2160,6 @@ class TestMutations(ThriftTester):
         rv1 = client.get('key1', ColumnPath(column_family='Counter1', column='c1'), ConsistencyLevel.ONE)
         assert rv1.counter_column.value == d1 + d2
 
-    @skip("Counters not implemented")
     def test_incr_decr_standard_batch_remove(self):
         _set_keyspace('Keyspace1')
 
@@ -2235,7 +2231,6 @@ class TestMutations(ThriftTester):
             [composite('0', '0'), composite('1', '1'), composite('2', '2'),
              composite('6', '6'), composite('7', '7'), composite('8', '8'), composite('9', '9')])
 
-    @skip("Counters not implemented")
     def test_incr_decr_standard_slice(self):
         _set_keyspace('Keyspace1')
 
@@ -2255,7 +2250,6 @@ class TestMutations(ThriftTester):
         assert counters[0].counter_column.value == d1 + d2
         assert counters[1].counter_column.value == d1
 
-    @skip("Counters not implemented")
     def test_incr_decr_standard_muliget_slice(self):
         _set_keyspace('Keyspace1')
 
@@ -2282,7 +2276,6 @@ class TestMutations(ThriftTester):
         assert counters['key2'][0].counter_column.value == d1 + d2
         assert counters['key2'][1].counter_column.value == d1
 
-    @skip("Counters not implemented")
     def test_counter_get_slice_range(self):
         _set_keyspace('Keyspace1')
         _insert_counter_range()
@@ -2294,7 +2287,6 @@ class TestMutations(ThriftTester):
         _insert_counter_super_range()
         _verify_counter_super_range()
 
-    @skip("Counters not implemented")
     def test_index_scan(self):
         _set_keyspace('Keyspace1')
         client.insert('key1', ColumnParent('Indexed1'), Column('birthdate', _i64(1), 0), ConsistencyLevel.ONE)

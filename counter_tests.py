@@ -14,6 +14,7 @@ class TestCounters(Tester):
     def simple_increment_test(self):
         """ Simple incrementation test (Created for #3465, that wasn't a bug) """
         cluster = self.cluster
+        cluster.set_configuration_options(values={'experimental': True})
 
         cluster.populate(3).start()
         nodes = cluster.nodelist()
@@ -46,6 +47,7 @@ class TestCounters(Tester):
         """ Test for bug of #4436 """
 
         cluster = self.cluster
+        cluster.set_configuration_options(values={'experimental': True})
 
         cluster.populate(2).start()
         nodes = cluster.nodelist()
@@ -114,6 +116,8 @@ class TestCounters(Tester):
         Do a bunch of writes with ONE, read back with ALL and check results.
         """
         cluster = self.cluster
+        cluster.set_configuration_options(values={'experimental': True})
+
         cluster.populate(3).start()
         node1, node2, node3 = cluster.nodelist()
         session = self.patient_cql_connection(node1)
@@ -195,6 +199,8 @@ class TestCounters(Tester):
         Test for singlular update statements that will affect multiple counters.
         """
         cluster = self.cluster
+        cluster.set_configuration_options(values={'experimental': True})
+
         cluster.populate(3).start()
         node1, node2, node3 = cluster.nodelist()
         session = self.patient_cql_connection(node1)
@@ -232,6 +238,8 @@ class TestCounters(Tester):
 
     def validate_empty_column_name_test(self):
         cluster = self.cluster
+        cluster.set_configuration_options(values={'experimental': True})
+
         cluster.populate(1).start()
         node1 = cluster.nodelist()[0]
         session = self.patient_cql_connection(node1)
@@ -258,6 +266,8 @@ class TestCounters(Tester):
     def drop_counter_column_test(self):
         """Test for CASSANDRA-7831"""
         cluster = self.cluster
+        cluster.set_configuration_options(values={'experimental': True})
+
         cluster.populate(1).start()
         node1, = cluster.nodelist()
         session = self.patient_cql_connection(node1)
