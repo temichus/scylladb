@@ -5,6 +5,7 @@ import random
 import struct
 import time
 from collections import OrderedDict
+from collections import namedtuple
 from uuid import UUID
 
 from cassandra import AlreadyExists, ConsistencyLevel, InvalidRequest
@@ -13,7 +14,10 @@ from cassandra.protocol import ConfigurationException
 from cassandra.protocol import ProtocolException
 from cassandra.protocol import SyntaxException
 from cassandra.query import SimpleStatement
+from cassandra.query import UNSET_VALUE
+from cassandra.util import SortedSet
 from cassandra.util import sortedset
+from cassandra.util import OrderedMapSerializedKey
 
 from assertions import assert_all, assert_invalid, assert_none, assert_one
 
@@ -33,6 +37,7 @@ from tools import require
 from tools import rows_to_list
 from tools import since
 
+from nose.tools import assert_equal
 from unittest import skip
 
 
@@ -1027,6 +1032,48 @@ class TestCQL(Tester):
         assert_invalid(session, "INSERT INTO test (k, c, v2) VALUES (0, 2, {1, null})")
         assert_invalid(session, "SELECT * FROM test WHERE k = null")
         assert_invalid(session, "INSERT INTO test (k, c, v2) VALUES (0, 0, { 'foo', 'bar', null })")
+
+    def unset_value_support_test(self):
+        """ Test support for unset value """
+        session = self.prepare(protocol_version=4)
+
+        session.execute("""
+            CREATE TYPE simple_type (
+            number int
+            )
+        """)
+
+        simple_type = namedtuple('simple_type', ('number'))
+
+        session.execute("""
+            CREATE TABLE test (
+                key int,
+                i int,
+                l list<int>,
+                s set<int>,
+                m map<int,int>,
+                t tuple<int,int>,
+                u frozen<simple_type>,
+                PRIMARY KEY (key)
+            );
+        """)
+
+        # Insert and verify test data:
+        session.execute("INSERT INTO test (key, i, l, s, m, t, u) VALUES (0, 1, [1, 2, 3], {1, 2, 3}, {1: 2}, (1, 2), {number: 1})")
+        res = session.execute("SELECT key, i, l, s, m, t, u FROM test")
+        assert_equal(rows_to_list(res), [[0, 1, list([1, 2, 3]), set([1, 2, 3]), dict({1: 2}), (1, 2), simple_type(1)]])
+
+        # Make sure unset works with all the types:
+        stmt = session.prepare("UPDATE test SET i = ?, l = ?, s = ?, m = ?, t = ?, u = ? WHERE key = ?")
+        session.execute(stmt.bind((UNSET_VALUE, UNSET_VALUE, UNSET_VALUE, UNSET_VALUE, UNSET_VALUE, UNSET_VALUE, 0)))
+        res = session.execute("SELECT key, i, l, s, m, t, u FROM test")
+        assert_equal(rows_to_list(res), [[0, 1, list([1, 2, 3]), set([1, 2, 3]), dict({1: 2}), (1, 2), simple_type(1)]])
+
+        # Mix values and unset values together:
+        stmt = session.prepare("UPDATE test SET i = ?, l = ?, s = ?, m = ?, t = ?, u = ? WHERE key = ?")
+        session.execute(stmt.bind((2, UNSET_VALUE, UNSET_VALUE, UNSET_VALUE, UNSET_VALUE, UNSET_VALUE, 0)))
+        res = session.execute("SELECT key, i, l, s, m, t, u FROM test")
+        assert_equal(rows_to_list(res), [[0, 2, list([1, 2, 3]), set([1, 2, 3]), dict({1: 2}), (1, 2), simple_type(1)]])
 
     def nameless_index_test(self):
         """ Test CREATE INDEX without name and validate the index can be dropped """
