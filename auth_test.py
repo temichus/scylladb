@@ -873,13 +873,61 @@ class TestAuth(Tester):
         debug('Check if the first session still works')
         self._check_session_available(session, expect_rf_err=True)
 
-    @skip('not-implemented')
     def kill_one_of_the_nodes_with_the_auth_info_test(self):
         """
         **Description:** Killing the node that has authentication info (when RF>=2).
         **Expected Result:** Cluster is available - successful connection.
         """
-        raise NotImplementedError
+        self.prepare(nodes=3)
+        debug('Cluster with 3 nodes started')
+
+        [node1, node2, node3] = self.cluster.nodelist()
+        session = self.get_session(node_idx=0, user='cassandra', password='cassandra')
+        debug('Successfully get the session from node1')
+        # make sure session works
+        self._check_session_available(session)
+
+        # change rf RF of system_auth to 2
+        session.execute("alter keyspace system_auth with replication = {'class': 'org.apache.cassandra.locator.SimpleStrategy', 'replication_factor':2};")
+        rf = session.cluster.metadata.keyspaces['system_auth'].replication_strategy.replication_factor
+        debug('Current RF of system_auth is %s' % rf)
+        self.assertEquals(2, rf)
+
+        # check the replicas endpoint of system_auth.user:cassandra
+        out, err = node1.nodetool("getendpoints system_auth users cassandra")
+        debug('Endpoints of system_auth.users:cassandra : %s' % out.strip().split('\n'))
+        rf_addresses = out.strip().split('\n')
+
+        for i in self.cluster.nodelist():
+            if i.address() not in rf_addresses:
+                src_node = i
+            if i.address() == rf_addresses[0]:
+                rf_node = i
+
+        assert rf_node.name.startswith('node')
+        rf_node_idx = int(rf_node.name[4:]) - 1
+
+        # re-get session from rf node before killing node
+        session = self.get_session(node_idx=rf_node_idx, user='cassandra',
+                                   password='cassandra')
+
+        debug('Kill src node(%s: %s) to break Auth info' % (src_node.name, src_node.address()))
+        src_node.stop(gently=False)
+
+        debug('Try to re-get session from first rf endpoint(%s: %s)' % (rf_node.name, rf_addresses[0]))
+        try:
+            new_session = self.get_session(node_idx=rf_node_idx,
+                                           user='cassandra',
+                                           password='cassandra')
+        except NoHostAvailable as e:
+            debug(e.errors)
+            assert isinstance(e.errors.values()[0], AuthenticationFailed)
+
+        debug('Check if the new session works')
+        self._check_session_available(new_session)
+
+        debug('Check if the first session still works')
+        self._check_session_available(session)
 
     @skip('not-implemented')
     def dropping_keyspace_system_auth(self):
