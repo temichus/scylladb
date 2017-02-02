@@ -28,7 +28,9 @@ concurrent_schema_changes_test.py
 consistency_test.py:TestAccuracy.test_network_topology_strategy_users
 consistency_test.py:TestAccuracy.test_simple_strategy_users
 consistency_test.py:TestAvailability.test_network_topology_strategy
+consistency_test.py:TestAvailability.test_network_topology_strategy_counters
 consistency_test.py:TestAvailability.test_simple_strategy
+consistency_test.py:TestAvailability.test_simple_strategy_counters
 consistency_test.py:TestConsistency.data_query_digest_test
 consistency_test.py:TestConsistency.quorum_available_during_failure_test
 consistency_test.py:TestConsistency.readrepair_test
@@ -37,6 +39,7 @@ consistency_test.py:TestConsistency.short_read_quorum_delete_test
 consistency_test.py:TestConsistency.short_read_reversed_test
 consistency_test.py:TestConsistency.short_read_test
 consistent_bootstrap_test.py
+counter_tests.py
 cql_additional_tests.py:TestCQL.alter_bug_test
 cql_additional_tests.py:TestCQL.alter_with_collections_test
 cql_additional_tests.py:TestCQL.batch_and_list_test
@@ -52,6 +55,7 @@ cql_additional_tests.py:TestCQL.clustering_order_and_functions_test
 cql_additional_tests.py:TestCQL.clustering_order_in_test
 cql_additional_tests.py:TestCQL.collection_and_regular_test
 cql_additional_tests.py:TestCQL.collection_compact_test
+cql_additional_tests.py:TestCQL.collection_counter_test
 cql_additional_tests.py:TestCQL.collection_function_test
 cql_additional_tests.py:TestCQL.collection_serialization_with_protocol_v2_test
 cql_additional_tests.py:TestCQL.column_name_validation_test
@@ -61,6 +65,7 @@ cql_additional_tests.py:TestCQL.composite_row_key_test
 cql_additional_tests.py:TestCQL.compression_option_validation_test
 cql_additional_tests.py:TestCQL.conversion_functions_test
 cql_additional_tests.py:TestCQL.count_test
+cql_additional_tests.py:TestCQL.counters_test
 cql_additional_tests.py:TestCQL.cql3_insert_thrift_test
 cql_additional_tests.py:TestCQL.create_invalid_test
 cql_additional_tests.py:TestCQL.date_test
@@ -113,6 +118,7 @@ cql_additional_tests.py:TestCQL.range_slice_test
 cql_additional_tests.py:TestCQL.range_with_deletes_test
 cql_additional_tests.py:TestCQL.remove_range_slice_test
 cql_additional_tests.py:TestCQL.rename_test
+cql_additional_tests.py:TestCQL.reserved_keyword_test
 cql_additional_tests.py:TestCQL.reversed_compact_multikey_test
 cql_additional_tests.py:TestCQL.reversed_compact_test
 cql_additional_tests.py:TestCQL.reversed_comparator_test
@@ -138,6 +144,7 @@ cql_additional_tests.py:TestCQL.tuple_notation_test
 cql_additional_tests.py:TestCQL.undefined_column_handling_test
 cql_additional_tests.py:TestCQL.unescaped_string_test
 cql_additional_tests.py:TestCQL.update_type_test
+cql_additional_tests.py:TestCQL.validate_counter_regular_test
 cql_tests.py
 cql_tracing_test.py
 internode_ssl_test.py
