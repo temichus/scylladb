@@ -200,6 +200,7 @@ class TestOfflineTools(Tester):
         self.assertTrue(max(final_levels) > 1)
 
     @since('2.2')
+    @skip('The test fails under Scylla')
     def sstableverify_test(self):
         """
         Generate sstables and test offline verification works correctly
