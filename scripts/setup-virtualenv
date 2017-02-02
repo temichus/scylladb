@@ -62,3 +62,4 @@ pip install nose
 pip install psutil
 pip install pyyaml
 pip install enum34
+pip install nose_xunitmp
