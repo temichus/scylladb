@@ -104,6 +104,8 @@ class TestHelper(Tester):
 
     def _start_cluster(self, save_sessions=False):
         cluster = self.cluster
+        cluster.set_configuration_options(values={'experimental': True})
+
         nodes = self.nodes
         rf = self.rf
 
@@ -127,7 +129,7 @@ class TestHelper(Tester):
 
     def create_tables(self, session):
         self.create_users_table(session)
-#        self.create_counters_table(session)
+        self.create_counters_table(session)
 
     def truncate_tables(self, session):
         statement = SimpleStatement("TRUNCATE users", ConsistencyLevel.ALL)

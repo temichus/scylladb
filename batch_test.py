@@ -32,7 +32,6 @@ class TestBatch(Tester):
         for node in self.cluster.nodelist():
             self.assertEquals(0, len(node.grep_log_for_errors()))
 
-    @require('counters')
     def counter_batch_accepts_counter_mutations_test(self):
         """ Test that counter batch accepts counter mutations """
         session = self.prepare()
@@ -47,7 +46,6 @@ class TestBatch(Tester):
         assert [list(rows[0]), list(rows[1]), list(rows[2])] == [
             [1], [1], [1]], rows
 
-    @require('counters')
     def counter_batch_rejects_regular_mutations_test(self):
         """ Test that counter batch rejects non-counter mutations """
         session = self.prepare()
@@ -212,7 +210,6 @@ class TestBatch(Tester):
         self.assertEquals(
             0, len(warning), "Cannot find the gc_grace_seconds warning message.")
 
-    @require('counters')
     def logged_batch_rejects_counter_mutations_test(self):
         """ Test that logged batch rejects counter mutations """
         session = self.prepare()
@@ -240,7 +237,6 @@ class TestBatch(Tester):
         assert [list(res[0]), list(res[1])] == [
             [0, u'Jack', u'Sparrow'], [2, u'Elizabeth', u'Swann']], res
 
-    @require('counters')
     def unlogged_batch_rejects_counter_mutations_test(self):
         """ Test that unlogged batch rejects counter mutations """
         session = self.prepare()
@@ -464,6 +460,7 @@ class TestBatch(Tester):
             assert False, "Expecting TimedOutException but no exception was raised"
 
     def prepare(self, nodes=1, compression=True, version=None):
+        self.cluster.set_configuration_options(values={'experimental': True})
         if not self.cluster.nodelist():
             self.cluster.populate(nodes)
             if version:
@@ -485,16 +482,14 @@ class TestBatch(Tester):
         debug('Creating schema...')
         self.create_ks(session, 'ks', rf)
 
-        # Scylla does not support counters, so let's skip
-        # creating the table 'clicks'.
-        # session.execute("""
-        #    CREATE TABLE clicks (
-        #        userid int,
-        #        url text,
-        #        total counter,
-        #        PRIMARY KEY (userid, url)
-        #     );
-        # """)
+        session.execute("""
+           CREATE TABLE clicks (
+               userid int,
+               url text,
+               total counter,
+               PRIMARY KEY (userid, url)
+            );
+        """)
 
         session.execute("""
             CREATE TABLE users (
