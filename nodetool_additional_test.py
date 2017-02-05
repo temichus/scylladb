@@ -1351,7 +1351,7 @@ class TestNodetool(Tester):
 
     def concurrent_repair_test(self):
         tst = [{"operations": [{"func": self.run_cluster}, {"func": self.concurrent_stress, "delay": 5}, {"func": self.repair, "time": 300, "delay": 10}],
-                "recurrent": [{"func": self.verify_info, "time": 20, "delay": 10}]},
+                "recurrent": [{"func": self.verify_all_api, "block": True}, {"func": self.verify_info, "time": 20, "delay": 10}]},
                {"operations": [{"func": self.concurrent_stress, "delay": 5}]},
                {"operations": [{"func": self.add_node, "time": 300}, {"func": self.repair, "time": 300}],
                 "recurrent": [{"func": self.verify_info, "time": 40}, {"func": self.verify_status, "time": 25}, {"func": self.verify_netstats, "time": 26}]}]
@@ -1415,7 +1415,7 @@ class TestNodetool(Tester):
         """
         self.ignore_log_patterns = ["migration_task - Can't send migration request: node"]
         tst = [{"operations": [{"func": self.run_cluster}],
-                "recurrent": [{"func": self.verify_info, "time": 20, "delay": 10}]},
+                "recurrent": [{"func": self.verify_all_api, "block": True}, {"func": self.verify_info, "time": 20, "delay": 10}]},
                {"operations": [{"func": self.concurrent_stress, "delay": 5, "args": [None, {"duration": "1m"}]}],
                 "recurrent": [{"func": self.verify_info, "time": 20, "delay": 10}]},
                {"operations": [{"func": self.concurrent_stress, "delay": 5, "args": [None, {"duration": "1m"}]}, {"func": self.drain, "delay": 5, "args": [1]}],
