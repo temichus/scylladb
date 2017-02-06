@@ -2288,6 +2288,7 @@ class TestMutations(ThriftTester):
         _insert_counter_super_range()
         _verify_counter_super_range()
 
+    @skip("Secondary indexes not implemented")
     def test_index_scan(self):
         _set_keyspace('Keyspace1')
         client.insert('key1', ColumnParent('Indexed1'), Column('birthdate', _i64(1), 0), ConsistencyLevel.ONE)
