@@ -149,7 +149,7 @@ class MigrationTestBase(Tester):
         self.assertEqual(result[0].ck2, 'aaa', "check partition key")
         self.assertEqual(result[0].data, 'fff', "check data")
 
-    def migrate_sstable_with_user_defined_types_tests(self):
+    def migrate_sstable_with_user_defined_types_test(self):
         node1 = self.start_cluster_and_get_node1()
 
         query = [

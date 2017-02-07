@@ -46,7 +46,7 @@ class TestSSTableLoader(MigrationTestBase):
                             (" ".join(args), exit_status, stdout, stderr))
 
 
-versions = ['2_1_x', '2_2_x']
+versions = ['2_1_x', '2_2_x', '3_0_x']
 for version in versions:
     cls_name = ('TestMigration_with_' + version)
     vars()[cls_name] = type(cls_name, (TestSSTableLoader,), {'version': version, '__test__': True})
