@@ -561,8 +561,8 @@ class TestUserTypes(Tester):
         user2_session.execute("ALTER TYPE ks2.simple_type RENAME user_number TO user_num;")
 
         # finally, drop the types using the correct user w/permissions to do so, consistency all avoids using a sleep
-        user1_session.execute(SimpleStatement("DROP TYPE ks1.simple_type;", ConsistencyLevel.ALL))
-        user2_session.execute(SimpleStatement("DROP TYPE ks2.simple_type;", ConsistencyLevel.ALL))
+        user1_session.execute(SimpleStatement("DROP TYPE ks1.simple_type;", consistency_level=ConsistencyLevel.ALL))
+        user2_session.execute(SimpleStatement("DROP TYPE ks2.simple_type;", consistency_level=ConsistencyLevel.ALL))
 
         time.sleep(5)
 
