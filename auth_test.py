@@ -929,13 +929,61 @@ class TestAuth(Tester):
         debug('Check if the first session still works')
         self._check_session_available(session)
 
-    @skip('not-implemented')
     def dropping_keyspace_system_auth(self):
         """
         **Description:** Dropping keyspace system_auth (when RF=1).
         **Expected Result:** Cluster is unavailable - connection failed.
         """
-        raise NotImplementedError
+        self.prepare(nodes=2)
+        debug('Cluster with 2 nodes started')
+
+        [node1, node2] = self.cluster.nodelist()
+        session = self.get_session(node_idx=0, user='cassandra',
+                                   password='cassandra')
+        debug('Successfully get the session from node1')
+        # make sure session works
+        self._check_session_available(session)
+
+        # verify the replication_factor of system_auth keyspace is 1
+        rf = session.cluster.metadata.keyspaces['system_auth'].replication_strategy.replication_factor
+        debug('system_auth rf: %s' % rf)
+        self.assertEquals(1, rf, "RF of system_auth isn't 1")
+
+        # check the replicas endpoint of system_auth.user:cassandra
+        out, err = node1.nodetool("getendpoints system_auth users cassandra")
+        debug('Endpoints of system_auth.users:cassandra : %s' % out.strip().split('\n'))
+        rf_address = out.strip().split('\n')[0]
+
+        src_node = node1
+        rf_node = node2
+        if node1.address() == rf_address:
+            src_node = node2
+            rf_node = node1
+
+        assert rf_node.name.startswith('node')
+        rf_node_idx = int(rf_node.name[4:]) - 1
+
+        # re-get session from rf node before killing node
+        session = self.get_session(node_idx=rf_node_idx, user='cassandra',
+                                   password='cassandra')
+
+        debug('drop keyspace system_auth')
+        session.execute("DROP KEYSPACE system_auth")
+
+        debug('Try to re-get session from first rf endpoint(%s: %s)' % (rf_node.name, rf_address))
+        try:
+            new_session = self.get_session(node_idx=rf_node_idx,
+                                           user='cassandra',
+                                           password='cassandra')
+        except NoHostAvailable as e:
+            debug(e.errors)
+            assert isinstance(e.errors.values()[0], AuthenticationFailed)
+        else:
+            debug('Check if the new session works')
+            self._check_session_available(new_session, expect_auth_err=True, expect_invalid_req=True)
+
+        debug('Check if the first session still works')
+        self._check_session_available(session, expect_auth_err=True, expect_invalid_req=True)
 
     @skip('not-implemented')
     def dropping_one_replica_of_keyspace_system_auth(self):
