@@ -324,7 +324,7 @@ class TestBootstrap(Tester):
         except NodeError:
             # It is expected that the node will not boot
             pass
-        node2.watch_log_for("A node with address .*127.0.0.4 already exists, cancelling join", from_mark=mark)
+        node2.watch_log_for("A node with address .*"+self.cluster.get_node_ip(4)+" already exists, cancelling join", from_mark=mark)
 
     def decommissioned_wiped_node_can_join_test(self):
         """

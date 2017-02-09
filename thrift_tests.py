@@ -33,7 +33,7 @@ def get_thrift_client(host='127.0.0.1', port=9160):
     return client
 
 
-thrift_client = client = get_thrift_client()
+thrift_client = client = None
 
 pid_fname = "system_test.pid"
 
@@ -62,6 +62,10 @@ class BaseTester(Tester):
 
     def setUp(self):
         Tester.setUp(self)
+
+        global client
+        global thrift_client
+
         cluster = self.cluster
         cluster.set_configuration_options(values={'experimental': True})
         cluster.populate(1)
@@ -74,12 +78,14 @@ class BaseTester(Tester):
             node1.set_configuration_options(values={'initial_token': "a".encode('hex')})
         cluster.start()
         session = self.patient_cql_connection(node1)
+        self.client = get_thrift_client(host=cluster.get_node_ip(1))
+        client = self.client
+        thrift_client = self.client
         self.open_client()
         self.define_schema()
 
 
 class ThriftTester(BaseTester):
-    client = thrift_client
 
     def open_client(self):
         self.client.transport.open()
@@ -1588,8 +1594,8 @@ class TestMutations(ThriftTester):
         assert client.describe_cluster_name() == 'test'
 
     def test_describe_ring(self):
-        assert list(client.describe_ring('Keyspace1'))[0].endpoints == ['127.0.0.1']
-        assert list(client.describe_local_ring('Keyspace1'))[0].endpoints == ['127.0.0.1']
+        assert list(client.describe_ring('Keyspace1'))[0].endpoints == [self.cluster.get_node_ip(1)]
+        assert list(client.describe_local_ring('Keyspace1'))[0].endpoints == [self.cluster.get_node_ip(1)]
 
     def test_describe_token_map(self):
         # test/conf/cassandra.yaml specifies org.apache.cassandra.dht.ByteOrderedPartitioner
@@ -1603,7 +1609,7 @@ class TestMutations(ThriftTester):
         token, node = ring[0]
         if not DISABLE_VNODES:
             assert re.match("[0-9A-Fa-f]{32}", token)
-        assert node == '127.0.0.1'
+        assert node == self.cluster.get_node_ip(1)
 
     def test_describe_partitioner(self):
         # Make sure this just reads back the values from the config.

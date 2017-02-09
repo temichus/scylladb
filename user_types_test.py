@@ -533,7 +533,9 @@ class TestUserTypes(Tester):
         superuser_session.execute("grant all permissions on keyspace ks2 to ks2_user;")
 
         user1_session = self.patient_cql_connection(node1, user='ks1_user', password='cassandra')
+        user1_session.default_timeout = 60.0
         user2_session = self.patient_cql_connection(node1, user='ks2_user', password='cassandra')
+        user2_session.default_timeout = 60.0
 
         # first make sure the users can't create types in each other's ks
         self.assertUnauthorized(user1_session, "CREATE TYPE ks2.simple_type (user_number int, user_text text );", 'User ks1_user has no CREATE permission on <keyspace ks2> or any of its parents')

@@ -90,7 +90,7 @@ class TestReplaceAddress(Tester):
         debug("Starting node 4 to replace node 3")
 
         node4 = new_node(cluster, bootstrap=True, token=None, remote_debug_port='0', data_center=None)
-        node4.start(replace_address='127.0.0.3', wait_for_binary_proto=True)
+        node4.start(replace_address=self.cluster.get_node_ip(3),wait_for_binary_proto=True)
 
         # query should work again
         debug("Verifying querying works again.")
@@ -99,14 +99,14 @@ class TestReplaceAddress(Tester):
         self.assertListEqual(initialData, finalData)
 
         debug("Verifying tokens migrated sucessfully")
-        movedTokensList = node4.grep_log("Token .* changing ownership from .*127.0.0.3 to .*127.0.0.4")
+        movedTokensList = node4.grep_log("Token .* changing ownership from .*"+self.cluster.get_node_ip(3)+" to .*"+self.cluster.get_node_ip(4))
         debug(movedTokensList[0])
         self.assertEqual(len(movedTokensList), numNodes)
 
         # check that restarting node 3 doesn't work
         debug("Try to restart node 3 (should fail)")
         node3.start()
-        checkCollision = node1.grep_log("between .*127.0.0.3 and .*127.0.0.4; .*127.0.0.4 is the new owner")
+        checkCollision = node1.grep_log("between .*"+self.cluster.get_node_ip(3)+" and .*"+self.cluster.get_node_ip(4)+"; .*"+self.cluster.get_node_ip(4)+" is the new owner")
         debug(checkCollision)
         self.assertEqual(len(checkCollision), 1)
 
@@ -122,7 +122,7 @@ class TestReplaceAddress(Tester):
         node4 = new_node(cluster, bootstrap=True, token=None, remote_debug_port='0', data_center=None)
 
         mark = node4.mark_log()
-        node4.start(replace_address='127.0.0.3')
+        node4.start(replace_address=self.cluster.get_node_ip(3))
         node4.watch_log_for(".Cannot replace a live node...", from_mark=mark)
         self.check_not_running(node4)
 
@@ -138,10 +138,10 @@ class TestReplaceAddress(Tester):
         # try to replace an unassigned ip address
         mark = node4.mark_log()
         try:
-            node4.start(replace_address='127.0.0.5')
+            node4.start(replace_address=self.cluster.get_node_ip(5))
         except NodeError:
             pass  # node doesn't start as expected
-        node4.watch_log_for("Cannot replace_address .*127.0.0.5 because it doesn't exist in gossip", from_mark=mark)
+        node4.watch_log_for("Cannot replace_address .*"+self.cluster.get_node_ip(5)+" because it doesn't exist in gossip", from_mark=mark)
         self.check_not_running(node4)
 
     def check_not_running(self, node):
@@ -188,7 +188,7 @@ class TestReplaceAddress(Tester):
         # replace node 3 with node 4
         debug("Starting node 4 to replace node 3")
         node4 = new_node(cluster, bootstrap=True, token=None, remote_debug_port='0', data_center=None)
-        node4.start(jvm_args=["-Dcassandra.replace_address_first_boot=127.0.0.3"], wait_for_binary_proto=True)
+        node4.start(jvm_args=["-Dcassandra.replace_address_first_boot="+self.cluster.get_node_ip(3)], wait_for_binary_proto=True)
 
         # query should work again
         debug("Verifying querying works again.")
@@ -196,14 +196,14 @@ class TestReplaceAddress(Tester):
         self.assertListEqual(initialData, finalData)
 
         debug("Verifying tokens migrated sucessfully")
-        movedTokensList = node4.grep_log("Token .* changing ownership from .*127.0.0.3 to .*127.0.0.4")
+        movedTokensList = node4.grep_log("Token .* changing ownership from .*"+self.cluster.get_node_ip(3)+" to .*"+self.cluster.get_node_ip(4))
         debug(movedTokensList[0])
         self.assertEqual(len(movedTokensList), numNodes)
 
         # check that restarting node 3 doesn't work
         debug("Try to restart node 3 (should fail)")
         node3.start()
-        checkCollision = node1.grep_log("between .*127.0.0.3 and .*127.0.0.4; .*127.0.0.4 is the new owner")
+        checkCollision = node1.grep_log("between .*"+self.cluster.get_node_ip(3)+" and .*"+self.cluster.get_node_ip(4)+"; .*"+self.cluster.get_node_ip(4)+" is the new owner")
         debug(checkCollision)
         self.assertEqual(len(checkCollision), 1)
 
@@ -217,7 +217,7 @@ class TestReplaceAddress(Tester):
 
         # we redo this check because restarting node should not result in tokens being moved again, ie number should be same
         debug("Verifying tokens migrated sucessfully")
-        movedTokensList = node4.grep_log("Token .* changing ownership from .*127.0.0.3 to .*127.0.0.4")
+        movedTokensList = node4.grep_log("Token .* changing ownership from .*"+self.cluster.get_node_ip(3)+" to .*"+self.cluster.get_node_ip(4))
         debug(movedTokensList[0])
         self.assertEqual(len(movedTokensList), numNodes)
 
@@ -246,7 +246,7 @@ class TestReplaceAddress(Tester):
         debug("Starting node 4 to replace node 3")
         node4 = new_node(cluster, bootstrap=True, token=None, remote_debug_port='0', data_center=None)
         try:
-            node4.start(jvm_args=["-Dcassandra.replace_address_first_boot=127.0.0.3"])
+            node4.start(jvm_args=["-Dcassandra.replace_address_first_boot="+self.cluster.get_node_ip(3)])
         except NodeError:
             pass  # node doesn't start as expected
         t.join()
@@ -295,7 +295,7 @@ class TestReplaceAddress(Tester):
         debug("Starting node 4 to replace node 3")
         node4 = new_node(cluster, bootstrap=True, token=None, remote_debug_port='0', data_center=None)
         try:
-            node4.start(jvm_args=["-Dcassandra.replace_address_first_boot=127.0.0.3"])
+            node4.start(jvm_args=["-Dcassandra.replace_address_first_boot="+self.cluster.get_node_ip(3)])
         except NodeError:
             pass  # node doesn't start as expected
         t.join()
@@ -305,7 +305,7 @@ class TestReplaceAddress(Tester):
         node4.stop()
         mark = node4.mark_log()
         node4.start(jvm_args=[
-                    "-Dcassandra.replace_address_first_boot=127.0.0.3",
+                    "-Dcassandra.replace_address_first_boot="+self.cluster.get_node_ip(3),
                     "-Dcassandra.reset_bootstrap_progress=true"
                     ])
         # check if we reset bootstrap state

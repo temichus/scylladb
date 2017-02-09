@@ -890,7 +890,7 @@ class TestNodetool(Tester):
         self.create_table(session, {"ks1": {"tables": {"tbl1": {"col1": "int", "col2": "text", "key": "col1"}}}})
         self.populate_data(session, {"ks1": {"tbl1": [{"col1": 4, "col2": "abc"}]}})
         endpoint = self.getendpoints(node, "ks1", "tbl1", "4")
-        self.assertTrue(endpoint.startswith("127.0.0"), "Invalid endpoint returned '" + endpoint + "'")
+        self.assertTrue(endpoint.startswith("127.0."), "Invalid endpoint returned '" + endpoint + "'")
 
     @staticmethod
     def gossipinfo(node):
