@@ -1361,13 +1361,12 @@ class TestNodetool(Tester):
         node = self.get_node(node)
         node.nodetool('rebuild ' + dc)
 
-    @staticmethod
-    def verify_all_api(giveup=30):
+    def verify_all_api(self,giveup=30):
         """ The snitch API starts at the very last part
         of the startup process. So when it's up all API is up
         """
         while giveup > 0:
-            req = urllib2.Request("http://localhost:10000/snitch/name")
+            req = urllib2.Request("http://" + self.cluster.get_node_ip(1) + ":10000/snitch/name")
             try:
                 urllib2.urlopen(req)
                 return
