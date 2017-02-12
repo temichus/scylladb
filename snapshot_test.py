@@ -4,11 +4,12 @@ import os
 import shutil
 import subprocess
 import time
+import uuid
 
 from cassandra.concurrent import execute_concurrent_with_args
 
 from dtest import Tester, debug
-from tools import safe_mkdtemp, replace_in_file
+from tools import safe_mkdtemp, replace_in_file, require
 
 
 class SnapshotTester(Tester):
@@ -148,6 +149,56 @@ class TestSnapshot(SnapshotTester):
         shutil.rmtree(snapshot_dir)
 
         self.assertEqual(rows[0][0], 100)
+
+    def restore_snapshot_with_alter_table(self, drop=False):
+        """
+        1. create table (A INT,B INT ,C INT)
+        2. insert and flush data
+        3. alter table: rename C to D / drop B
+        4. insert and flush data
+        5. create snapshot
+        6. stop node and clear data
+        7. try to load snapshot using sstableloader
+        """
+        cluster = self.cluster
+        cluster.populate(1).start()
+        (node1,) = cluster.nodelist()
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 1)
+        session.execute('CREATE TABLE ks.cf (key varchar, A int, B int, C int, PRIMARY KEY(key, c));')
+
+        query = "INSERT INTO ks.cf (key, A, B, C) VALUES ('{}', 11, 22, 33);".format(str(uuid.uuid1()))
+        session.execute(query)
+        node1.nodetool("flush -- ks")
+
+        debug('Alter table...')
+        session.execute("ALTER TABLE ks.cf RENAME C TO D;")
+        if drop:
+            session.execute("ALTER TABLE ks.cf DROP B;")
+        query = "INSERT INTO ks.cf (key, A, D) VALUES ('{}', 44, 55);".format(str(uuid.uuid1()))
+        session.execute(query)
+        node1.nodetool("flush -- ks")
+
+        snapshot_dir = self.make_snapshot(node1, 'ks', 'cf', 'basic')
+
+        # clear data
+        cluster.stop(gently=True)
+        debug('Clear data...')
+        data_path = '{}/data/ks/cf-*'.format(node1.get_path())
+        data_files = glob.glob(os.path.join(data_path, '*'))
+        for f in data_files:
+            if os.path.isfile(f):
+                os.unlink(f)
+
+        cluster.start()
+        self.restore_snapshot_with_sstableloader(snapshot_dir, node1, 'ks', 'cf')
+
+    def restore_snapshot_with_alter_table_test(self):
+        self.restore_snapshot_with_alter_table()
+
+    @require('#1470')
+    def restore_snapshot_with_alter_table_drop_column_test(self):
+        self.restore_snapshot_with_alter_table(drop=True)
 
 
 class TestArchiveCommitlog(SnapshotTester):
