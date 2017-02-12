@@ -1361,7 +1361,7 @@ class TestNodetool(Tester):
         node = self.get_node(node)
         node.nodetool('rebuild ' + dc)
 
-    def verify_all_api(self,giveup=30):
+    def verify_all_api(self,giveup=120):
         """ The snitch API starts at the very last part
         of the startup process. So when it's up all API is up
         """
