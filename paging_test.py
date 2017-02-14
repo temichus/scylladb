@@ -4,12 +4,12 @@ from unittest import skip
 
 from cassandra import ConsistencyLevel as CL
 from cassandra import InvalidRequest, ReadTimeout, ReadFailure
-from cassandra.query import SimpleStatement, dict_factory, named_tuple_factory
+from cassandra.query import SimpleStatement, dict_factory, named_tuple_factory, tuple_factory
 
 from assertions import assert_invalid
 from datahelp import create_rows, flatten_into_set, parse_data_into_dicts
 from dtest import Tester, run_scenarios
-from tools import require, since
+from tools import require, since, rows_to_list
 
 
 class Page(object):
@@ -930,6 +930,76 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
         results = list(session.execute("SELECT * FROM test WHERE a IN (0, 1, 2, 3, 4)"))
         self.assertEqual([0, 1, 2, 3, 4], sorted([r.s for r in results]))
 
+    def test_paging_on_compact_table_with_tombstone_on_first_column(self):
+
+        """
+        test paging, on  COMPACT tables without clustering columns, when the first column has a tombstone
+        @jira_ticket CASSANDRA-11467
+        """
+
+        session = self.prepare()
+        self.create_ks(session, 'test_paging_on_compact_table_with_tombstone', 2)
+        session.execute("CREATE TABLE test (a int primary key, b int, c int) WITH COMPACT STORAGE")
+        session.row_factory = tuple_factory
+
+        for i in xrange(5):
+            session.execute("INSERT INTO test (a, b, c) VALUES ({}, {}, {})".format(i, 1, 1))
+            session.execute("DELETE b FROM test WHERE a = {}".format(i))
+
+        for page_size in (2, 3, 4, 5, 7, 10):
+            session.default_fetch_size = page_size
+
+            res = rows_to_list(session.execute("SELECT * FROM test"))
+            self.assertEqual(res, [[1, None, 1],
+                                   [0, None, 1],
+                                   [2, None, 1],
+                                   [4, None, 1],
+                                   [3, None, 1]])
+
+    @since('2.1')
+    def test_paging_with_empty_row_and_empty_static_columns(self):
+        """
+        test paging when the rows and the static columns are empty
+        @jira_ticket CASSANDRA-13017
+        """
+
+        session = self.prepare()
+        self.create_ks(session, 'test_paging_with_empty_rows_and_static_columns', 2)
+        session.execute("CREATE TABLE test (pk int, c int, v int, s int static, primary key(pk, c))")
+        session.row_factory = tuple_factory
+
+        for i in xrange(5):
+            for j in xrange(5):
+                session.execute("INSERT INTO test (pk, c) VALUES ({}, {})".format(i, j))
+
+        for page_size in (2, 3, 4, 5, 7, 10):
+            session.default_fetch_size = page_size
+
+            res = rows_to_list(session.execute("SELECT DISTINCT pk FROM test"))
+            self.assertEqual(res, [[1],
+                                   [0],
+                                   [2],
+                                   [4],
+                                   [3]])
+
+            res = rows_to_list(session.execute("SELECT DISTINCT pk FROM test LIMIT 4"))
+            self.assertEqual(res, [[1],
+                                   [0],
+                                   [2],
+                                   [4]])
+
+            res = rows_to_list(session.execute("SELECT DISTINCT pk, s FROM test"))
+            self.assertEqual(res, [[1, None],
+                                   [0, None],
+                                   [2, None],
+                                   [4, None],
+                                   [3, None]])
+
+            res = rows_to_list(session.execute("SELECT DISTINCT pk, s FROM test LIMIT 4"))
+            self.assertEqual(res, [[1, None],
+                                   [0, None],
+                                   [2, None],
+                                   [4, None]])
 
 @since('2.0')
 class TestPagingDatasetChanges(BasePagingTester, PageAssertionMixin):
@@ -1554,3 +1624,38 @@ class TestPagingWithDeletions(BasePagingTester, PageAssertionMixin):
                    node3.grep_log(failure_msg))
 
         self.assertTrue(failure, "Cannot find tombstone failure threshold error in log")
+
+    def test_deletion_with_distinct_paging(self):
+        """
+        Test that deletion does not affect paging for distinct queries.
+
+        @jira_ticket CASSANDRA-10010
+        """
+        self.session = self.prepare()
+        self.create_ks(self.session, 'test_paging_size', 2)
+        self.session.execute("CREATE TABLE paging_test ( "
+                             "k int, s int static, c int, v int, "
+                             "PRIMARY KEY (k, c) )")
+
+        for whereClause in ('', 'WHERE k IN (0, 1, 2, 3)'):
+            for i in range(4):
+                for j in range(2):
+                    self.session.execute("INSERT INTO paging_test (k, s, c, v) VALUES (%s, %s, %s, %s)", (i, i, j, j))
+
+            self.session.default_fetch_size = 2
+            result = self.session.execute("SELECT DISTINCT k, s FROM paging_test {}".format(whereClause))
+            result = list(result)
+            self.assertEqual(4, len(result))
+
+            future = self.session.execute_async("SELECT DISTINCT k, s FROM paging_test {}".format(whereClause))
+
+            # this will fetch the first page
+            fetcher = PageFetcher(future)
+
+            # delete the first row in the last partition that was returned in the first page
+            self.session.execute("DELETE FROM paging_test WHERE k = %s AND c = %s", (result[1]['k'], 0))
+
+            # finish paging
+            fetcher.request_all()
+            self.assertEqual([2, 2], fetcher.num_results_all())
+
