@@ -90,7 +90,7 @@ class TestReplaceAddress(Tester):
         debug("Starting node 4 to replace node 3")
 
         node4 = new_node(cluster, bootstrap=True, token=None, remote_debug_port='0', data_center=None)
-        node4.start(replace_address=self.cluster.get_node_ip(3),wait_for_binary_proto=True)
+        node4.start(replace_address=self.cluster.get_node_ip(3), wait_for_binary_proto=True)
 
         # query should work again
         debug("Verifying querying works again.")

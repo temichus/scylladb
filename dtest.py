@@ -65,7 +65,7 @@ RECORD_COVERAGE = os.environ.get('RECORD_COVERAGE', '').lower() in ('yes', 'true
 REUSE_CLUSTER = os.environ.get('REUSE_CLUSTER', '').lower() in ('yes', 'true')
 SILENCE_DRIVER_ON_SHUTDOWN = os.environ.get('SILENCE_DRIVER_ON_SHUTDOWN', 'true').lower() in ('yes', 'true')
 IGNORE_REQUIRE = os.environ.get('IGNORE_REQUIRE', '').lower() in ('yes', 'true')
-NOSE_PROCESSES = os.environ.get('NOSE_PROCESSES',0)
+NOSE_PROCESSES = os.environ.get('NOSE_PROCESSES', 0)
 
 CURRENT_TEST = ""
 
@@ -174,6 +174,7 @@ class Runner(threading.Thread):
         if self.__error is not None:
             raise self.__error
 
+
 class ClusterIdAllocator:
     def alloc(self):
         fail
@@ -181,13 +182,14 @@ class ClusterIdAllocator:
     def free(self, id):
         fail
 
+
 class SingleClusterIdAllocator(ClusterIdAllocator):
     _allocated = False
 
     def alloc(self):
         if not self._allocated:
             self._allocated = True
-            return 0;
+            return 0
         raise Exception("No Available Cluster")
 
     def free(self, id):
@@ -196,12 +198,13 @@ class SingleClusterIdAllocator(ClusterIdAllocator):
             return
         raise Exception("Cluster was not allocated")
 
+
 class MultiProcessClusterIdAllocator(ClusterIdAllocator):
     _multiprocess_shared_ = True
 
     def __init__(self):
         self._id = Queue()
-        for id in range(0,99):
+        for id in range(0, 99):
             self._id.put(id)
         self._lock = Lock()
 
@@ -214,8 +217,10 @@ class MultiProcessClusterIdAllocator(ClusterIdAllocator):
         with self._lock:
             self._id.put(id)
 
+
 def parallel_tests():
     return NOSE_PROCESSES > 0
+
 
 if parallel_tests():
     debug("going to run tests in parallel")
@@ -223,6 +228,7 @@ if parallel_tests():
 else:
     debug("going to run tests sequentially")
     cluster_id_allocator = SingleClusterIdAllocator()
+
 
 class Tester(TestCase):
     _multiprocess_can_split_ = True
@@ -363,14 +369,13 @@ class Tester(TestCase):
             for proc in psutil.process_iter():
                 try:
                     if 'scylla' in proc.name() and any(self.cluster.ipprefix in cmd for cmd in proc.cmdline()):
-                        debug("proc %s killed - cluster %s" %(proc.pid,self.cluster.ipprefix))
+                        debug("proc %s killed - cluster %s" % (proc.pid, self.cluster.ipprefix))
                         try:
                             proc.kill()
                         except Exception:
                             pass
                 except Exception:
                     pass
-
 
     def setUp(self):
         global CURRENT_TEST

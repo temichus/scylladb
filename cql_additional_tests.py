@@ -15,9 +15,7 @@ from cassandra.protocol import ProtocolException
 from cassandra.protocol import SyntaxException
 from cassandra.query import SimpleStatement
 from cassandra.query import UNSET_VALUE
-from cassandra.util import SortedSet
 from cassandra.util import sortedset
-from cassandra.util import OrderedMapSerializedKey
 
 from assertions import assert_all, assert_invalid, assert_none, assert_one
 
@@ -432,7 +430,7 @@ class TestCQL(Tester):
         # Check that we do limit the output to 1 *and* that we respect query
         # order of keys (even though 48 is after 2)
         res = session.execute("SELECT * FROM clicks WHERE userid IN (48, 2) LIMIT 1")
-        if False and self.cluster.version() >= '2.2': # Scylla reports 2.1, but has 2.2 behavior.
+        if False and self.cluster.version() >= '2.2':  # Scylla reports 2.1, but has 2.2 behavior.
             assert rows_to_list(res) == [[2, 'http://foo.com', 42]], list(res)
         else:
             assert rows_to_list(res) == [[48, 'http://foo.com', 42]], list(res)
@@ -802,7 +800,7 @@ class TestCQL(Tester):
             session.execute("INSERT INTO test2 (k, c1, c2, v) VALUES (0, 0, %i, %i)" % (x, x))
 
         # Check first we don't allow IN everywhere
-        if False and self.cluster.version() >= '2.2': # FIXME: Scylla reports 2.2, but has 2.1 behavior.
+        if False and self.cluster.version() >= '2.2':  # FIXME: Scylla reports 2.2, but has 2.1 behavior.
             assert_none(session, "SELECT v FROM test2 WHERE k = 0 AND c1 IN (5, 2, 8) AND c2 = 3")
         else:
             assert_invalid(session, "SELECT v FROM test2 WHERE k = 0 AND c1 IN (5, 2, 8) AND c2 = 3")
@@ -4206,7 +4204,7 @@ class TestCQL(Tester):
         assert_all(cursor, "SELECT v FROM test WHERE k=0 AND c1 = 0 AND c2 IN (2, 0)", [[0], [2]])
         assert_all(cursor, "SELECT v FROM test WHERE k=0 AND c1 = 0 AND c2 IN (2, 0) ORDER BY c1 ASC", [[0], [2]])
         assert_all(cursor, "SELECT v FROM test WHERE k=0 AND c1 = 0 AND c2 IN (2, 0) ORDER BY c1 DESC", [[2], [0]])
-        if False and self.cluster.version() >= '2.2': # Scylla reports 2.2, but has 2.1 behavior.
+        if False and self.cluster.version() >= '2.2':  # Scylla reports 2.2, but has 2.1 behavior.
             assert_all(cursor, "SELECT v FROM test WHERE k IN (1, 0)", [[0], [1], [2], [3], [4], [5]])
         else:
             assert_all(cursor, "SELECT v FROM test WHERE k IN (1, 0)", [[3], [4], [5], [0], [1], [2]])

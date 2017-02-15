@@ -44,7 +44,7 @@ class SchemaManagementTest(Tester):
 
         debug("Restarting node3")
         node3.stop(gently=True)
-        node3.start(wait_for_binary_proto=True,wait_other_notice=True)
+        node3.start(wait_for_binary_proto=True, wait_other_notice=True)
 
         n_partitions = 20
         for i in range(n_partitions):

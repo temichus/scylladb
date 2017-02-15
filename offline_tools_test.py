@@ -9,6 +9,7 @@ from tools import since
 from nose.tools import nottest
 from unittest import skip
 
+
 class TestOfflineTools(Tester):
     """
     Test cassandra offline tools.
