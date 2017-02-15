@@ -1001,6 +1001,7 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
                                    [2, None],
                                    [4, None]])
 
+
 @since('2.0')
 class TestPagingDatasetChanges(BasePagingTester, PageAssertionMixin):
     """
@@ -1658,4 +1659,3 @@ class TestPagingWithDeletions(BasePagingTester, PageAssertionMixin):
             # finish paging
             fetcher.request_all()
             self.assertEqual([2, 2], fetcher.num_results_all())
-
