@@ -346,10 +346,9 @@ class TestUpdateClusterLayout(Tester):
             # UN  127.0.0.2  37278      256     ?       f118383c-c569-49d1-9aa6-223d3b224caa  rack1
             # UN  127.0.0.3  24834      256     ?       78b7e6ba-3039-4fc6-a875-a71661f8cd04  rack1
             # UJ  127.0.0.4  ?          256     ?       637edd3f-8888-48ab-b0ea-3ea81f8e9865  rack1
-            # indeed we have: ['UN', 'UN', 'UN']. BUG?
             self.wait_for_nodes_status(node1, ['UN', 'UN', 'UN', 'UJ'])
 
-            # Slep 30 seconds to make sure other nodes removed the new node
+            # Sleep 30 seconds to make sure other nodes removed the new node
             time.sleep(30)
             node1.watch_log_for("FatClient .* has been silent for .*ms, removing from gossip")
             node2.watch_log_for("FatClient .* has been silent for .*ms, removing from gossip")
@@ -920,7 +919,7 @@ class TestUpdateClusterLayout(Tester):
         m = re.findall('Datacenter: ([^\s]+)', out, re.MULTILINE)
         if m:
             res['Datacenter'] = m[0]
-        m = re.findall('^([UDNLJM]+)\s+([\d\.]+)\s+([^\s]+\s+[^\s]+)\s+([^\s]+)\s+([^\s]+)(?:\s[^\s]{2})?\s+([^\s]+)\s+([^\s]+)\s*$', out, re.MULTILINE)
+        m = re.findall('^([UDNLJM]+)\s+([\d\.]+)\s+([^\s]+\s+[^\s]+)\s+([^\s]+)\s+([^\s]+)(?:\s[^\s]{2})?\s+([^\s]+)\s+([^\s]+)\s*', out, re.MULTILINE)
         res["nodes"] = [self._list2status(s) for s in m]
         return res
 
