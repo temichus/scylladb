@@ -445,20 +445,15 @@ class TestUpdateClusterLayout(Tester):
             new_node.watch_log_for("JOINING: Starting to bootstrap")
             t.start()
             new_node.watch_log_for("Beginning stream session")
-            self.wait_for_nodes_status(node1, ['UN', 'UN', 'UN', 'UN'])
             debug("Stop Node %d" % i)
             new_node.stop(gently=False)
             for node in [node1, node2, node3]:
-                self.wait_for_nodes_status(node1, ['UN', 'UN', 'UN', 'DN'])
+                self.wait_for_nodes_status(node, ['UN', 'UN', 'UN'])
             event.wait()
             self.assertTrue(failed is None, failed)
 
             # Sleep 1 second to make sure other nodes knows this node is joining through gossip
             time.sleep(1)
-        #  BUG?
-        #  {Unavailable}Error from server: code=1000 [Unavailable exception]
-        #  message="Cannot achieve consistency level for cl ONE. Requires 1, alive 0"
-        #  info={'required_replicas': 1, 'alive_replicas': 0, 'consistency': 'ONE'}
         session.execute("SELECT * FROM cf")
 
     def simple_kill_new_node_while_bootstrapping_with_parallel_writes_in_multidc_test(self):
@@ -893,11 +888,8 @@ class TestUpdateClusterLayout(Tester):
 
         # check node2 has started decommission
         node2.watch_log_for("Beginning stream session")
-        # self.wait_for_nodes_status(node3, ['UN', 'UL', 'UN'])
 
         node1.stop(gently=False)
-
-        # self.wait_for_nodes_status(node3, ['DN', 'UL', 'UN'])
 
         # starting node1 - it should reconnect and run as is
         node1.start(wait_other_notice=True, wait_for_binary_proto=True)
