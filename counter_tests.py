@@ -5,6 +5,7 @@ from cassandra.query import SimpleStatement
 import random
 import time
 import uuid
+import threading
 from assertions import assert_invalid, assert_one
 from tools import rows_to_list, since
 
@@ -41,7 +42,7 @@ class TestCounters(Tester):
             assert len(res) == nb_counter
             for c in xrange(0, nb_counter):
                 assert len(res[c]) == 2, "Expecting key and counter for counter%i, got %s" % (c, str(res[c]))
-                assert res[c][1] == i + 1, "Expecting counter%i = %i, got %i" % (c, i + 1, res[c][0])
+                assert res[c][1] == i + 1, "Expecting counter%i = %i, got %i" % (c, i + 1, res[c][1])
 
     def upgrade_test(self):
         """ Test for bug of #4436 """
@@ -74,7 +75,6 @@ class TestCounters(Tester):
             upd = "UPDATE counterTable SET c = c + 1 WHERE k = %d;"
             batch = " ".join(["BEGIN COUNTER BATCH"] + [upd % x for x in keys] + ["APPLY BATCH;"])
 
-            kmap = {"k%d" % i: i for i in keys}
             for i in range(0, updates):
                 query = SimpleStatement(batch, consistency_level=ConsistencyLevel.QUORUM)
                 session.execute(query)
@@ -284,3 +284,119 @@ class TestCounters(Tester):
         session.execute("ALTER TABLE counter_bug drop c")
 
         assert_invalid(session, "ALTER TABLE counter_bug add c counter", "Cannot re-add previously dropped counter column c")
+
+    def increment_counters_in_threads_test(self):
+        # increment 2 counters * 500 times * 200 threads
+        cluster = self.cluster
+        cluster.set_configuration_options(values={'experimental': True})
+
+        cluster.populate(3).start()
+        nodes = cluster.nodelist()
+
+        session = self.patient_cql_connection(nodes[0])
+        self.create_ks(session, 'ks', 3)
+        self.create_cf(session, 'cf', validation="CounterColumnType", columns={'c': 'counter'})
+
+        sessions = [self.patient_cql_connection(node, 'ks') for node in nodes]
+        nb_increment = 500
+        nb_counter = 2
+
+        class ThreadedQuery(threading.Thread):
+
+            def __init__(self, connection):
+                threading.Thread.__init__(self)
+                self.connection = connection
+
+            def run(self):
+                nb_increment = 500
+                nb_counter = 2
+                for i in xrange(0, nb_increment):
+                    for c in xrange(0, nb_counter):
+                        query = SimpleStatement("UPDATE cf SET c = c + 1 WHERE key = 'counter%i'" % c,
+                                                consistency_level=ConsistencyLevel.QUORUM)
+                        self.connection.execute(query)
+
+        threads = []
+        num_threads = 200
+        for x in range(num_threads):
+            conn = sessions[x % len(nodes)]
+            threads.append(ThreadedQuery(conn))
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        conn = sessions[1 % len(nodes)]
+        keys = ",".join(["'counter%i'" % c for c in xrange(0, nb_counter)])
+        query = SimpleStatement("SELECT key, c FROM cf WHERE key IN (%s)" % keys,
+                                consistency_level=ConsistencyLevel.QUORUM)
+        res = list(conn.execute(query))
+        expected_counters = nb_increment * num_threads
+
+        assert len(res) == nb_counter
+        for c in xrange(0, nb_counter):
+            assert len(res[c]) == 2, "Expecting key and counter for counter%i, got %s" % (
+                c, str(res[c]))
+            assert res[c][1] == expected_counters, "Expecting counter%i = %i, got %i" % (
+                c, expected_counters, res[c][1])
+
+    def increment_decrement_counters_in_threads_test(self):
+        # increment/decrement 2 counters(2 inc vs 1 dec) * 500 times * 600 threads
+        cluster = self.cluster
+        cluster.set_configuration_options(values={'experimental': True})
+
+        cluster.populate(3).start()
+        nodes = cluster.nodelist()
+
+        session = self.patient_cql_connection(nodes[0])
+        self.create_ks(session, 'ks', 3)
+        self.create_cf(session, 'cf', validation="CounterColumnType", columns={'c': 'counter'})
+
+        sessions = [self.patient_cql_connection(node, 'ks') for node in nodes]
+        nb_increment = 500
+        nb_counter = 2
+
+        class ThreadedQuery(threading.Thread):
+
+            def __init__(self, connection, decrement):
+                threading.Thread.__init__(self)
+                self.connection = connection
+                self.decrement = decrement
+
+            def run(self):
+                nb_increment = 500
+                nb_counter = 2
+                for i in xrange(0, nb_increment):
+                    for c in xrange(0, nb_counter):
+                        if self.decrement:
+                            query = SimpleStatement("UPDATE cf SET c = c - 1 WHERE key = 'counter%i'" % c,
+                                                    consistency_level=ConsistencyLevel.QUORUM)
+                        else:
+                            query = SimpleStatement("UPDATE cf SET c = c + 1 WHERE key = 'counter%i'" % c,
+                                                    consistency_level=ConsistencyLevel.QUORUM)
+                        self.connection.execute(query)
+
+        threads = []
+        num_threads = 600
+        for x in range(num_threads):
+            conn = sessions[x % len(nodes)]
+            decrement = (x % len(nodes)) == 0
+            threads.append(ThreadedQuery(conn, decrement))
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        conn = sessions[1 % len(nodes)]
+        keys = ",".join(["'counter%i'" % c for c in xrange(0, nb_counter)])
+        query = SimpleStatement("SELECT key, c FROM cf WHERE key IN (%s)" % keys,
+                                consistency_level=ConsistencyLevel.QUORUM)
+        res = list(conn.execute(query))
+        expected_counters = nb_increment * num_threads / 3
+
+        assert len(res) == nb_counter
+        for c in xrange(0, nb_counter):
+            assert len(res[c]) == 2, "Expecting key and counter for counter%i, got %s" % (
+                c, str(res[c]))
+            assert res[c][1] == expected_counters, "Expecting counter%i = %i, got %i" % (
+                c, expected_counters, res[c][1])
