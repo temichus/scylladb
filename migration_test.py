@@ -9,6 +9,7 @@ from unittest import skip
 from cassandra.query import SimpleStatement
 
 from dtest import Tester, debug
+from tools import require
 from nose import tools
 
 
@@ -332,15 +333,57 @@ class MigrationTestBase(Tester):
 @tools.istest
 class TestMigration(MigrationTestBase):
 
-    @skip('not impled')
+    @require('#2119')
     def migrate_sstable_with_counter_test(self):
+        """
+        CREATE KEYSPACE ks WITH replication={'class':'SimpleStrategy', 'replication_factor':1};
+        CREATE TABLE ks.cf (first_name varchar, last_name varchar, cnt counter, PRIMARY KEY(first_name, last_name));
+        UPDATE ks.cf SET cnt = cnt + 1 WHERE first_name='albert' AND last_name='einstein';
+        UPDATE ks.cf SETcnt = cnt + 2 WHERE first_name='thomas' AND last_name='edison';
+        flush
+        UPDATE ks.cf SET cnt = cnt + 10 WHERE first_name='albert' AND last_name='einstein';
+        UPDATE ks.cf SET cnt = cnt + 3 WHERE first_name='marie' AND last_name='curie';
+        UPDATE ks.cf SET cnt = cnt - 5 WHERE first_name='albert' AND last_name='einstein';
+        flush
+        """
         cluster = self.cluster
-
         self.populate_cluster(cluster)
-        self.copy_migrated_data_dir('with_counter')
+        node1 = self.cluster.nodelist()[0]
+        node1.set_configuration_options(values={'experimental': True})
         self.start_cluster(cluster)
 
-        # FIXME: Check row content when counter gets supported.
+        query = "CREATE TABLE ks.cf " \
+                "(first_name varchar, last_name varchar, cnt counter, PRIMARY KEY(first_name, last_name));"
+        self.create_ks_and_cf(node1, None, None, False, query=query)
+        self.load_migrated_tables(node1, 'with_counter')
+
+        debug("Checking rows content...")
+        self.check_number_of_rows(node1, 3)
+        rows = self.get_all_rows_for_check(node1)
+        self.assertEqual(rows[0].first_name, 'albert')
+        self.assertEqual(rows[0].last_name, 'einstein')
+        self.assertEqual(rows[0].cnt, 6)
+        self.assertEqual(rows[1].first_name, 'thomas')
+        self.assertEqual(rows[1].last_name, 'edison')
+        self.assertEqual(rows[1].cnt, 2)
+        self.assertEqual(rows[2].first_name, 'marie')
+        self.assertEqual(rows[2].last_name, 'curie')
+        self.assertEqual(rows[2].cnt, 3)
+
+        debug("Change counters...")
+        conn = self.patient_cql_connection(node1, 'ks')
+        st = SimpleStatement("UPDATE ks.cf "
+                             "SET cnt = cnt + 5 WHERE first_name = \'albert\' and last_name = \'einstein\';")
+        conn.execute(st)
+        st = SimpleStatement("UPDATE ks.cf SET cnt = cnt - 1 WHERE first_name=\'thomas\' and last_name=\'edison\';")
+        conn.execute(st)
+        node1.nodetool("flush -- ks")
+
+        debug("Checking rows content...")
+        rows = self.get_all_rows_for_check(node1)
+        self.assertEqual(rows[0].cnt, 11)
+        self.assertEqual(rows[0].cnt, 1)
+        self.assertEqual(rows[0].cnt, 3)
 
     def migrate_sstable_with_schema_change_test(self):
         # Content of Cassandra dir generated with following cql commands:
