@@ -7,7 +7,7 @@ STATE: NOT FULLY IMPLEMENTED
 import re
 import time
 
-from cassandra import AuthenticationFailed, Unauthorized
+from cassandra import AuthenticationFailed, Unauthorized, InvalidRequest
 from cassandra.cluster import NoHostAvailable
 
 from assertions import assert_invalid
@@ -782,6 +782,39 @@ class TestAuth(Tester):
         cathy.execute("ALTER TYPE ks.address ADD zip_code int")
         cassandra.execute("GRANT DROP ON KEYSPACE ks TO cathy")
         cathy.execute("DROP TYPE ks.address")
+
+    def _check_session_available(self, session, expect_rf_err=False,
+                     expect_auth_err=False, expect_invalid_req=False):
+        try:
+            rows = list(session.execute('LIST USERS'))
+            debug('Debug users list: %s' % rows)
+            assert len(rows) > 0, "Failed to get user list from session"
+        except Unavailable as e:
+            debug('Debug: _check_session_available: Unavailable Exception')
+            if expect_rf_err:
+                assert e.alive_replicas != e.required_replicas, e.message
+                debug("Good: session isn't available (rf error) as expected")
+            else:
+                debug("Fail: session isn't available, but not expected error")
+                raise
+        except NoHostAvailable as e:
+            debug(e.errors)
+            if expect_auth_err:
+                assert isinstance(e.errors.values()[0], AuthenticationFailed)
+                debug("Good: session isn't available (auth err) as expected")
+            else:
+                debug("Fail: session isn't available, but not expected error")
+                raise
+        except InvalidRequest as e:
+            debug(e)
+            if expect_invalid_req:
+                debug("Good: session isn't available (invalid request) as expected")
+            else:
+                debug("Fail: session isn't available, but not expected error")
+                raise
+
+        if not (expect_rf_err or expect_auth_err or expect_invalid_req):
+            debug("Good: session is available as expected")
 
     @skip('not-implemented')
     def kill_the_node_with_the_auth_info_test(self):
