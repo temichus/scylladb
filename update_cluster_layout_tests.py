@@ -741,17 +741,18 @@ class TestUpdateClusterLayout(Tester):
 
     def simple_decommission_node_2_test(self):
         """
-        Test that on decommission row cache entries of non owned transfeered range are invalidated
+        Test that on decommission row cache entries of non owned transfered range are invalidated
 
         1. Create a cluster with a single node with rf=1,insert data
         2. Check the row cahe can be used as an estimator
         3. Add a new node
-        4. Check that all data can be read
-        5. Delete all the data
-        6. Compact data on new node
-        7. Restart new node (it should not have any data including tombstones)
-        8. Decommission the new node
-        9. Test if any data exists in the cluster
+        4. Cleanup data on original node (cache not cleared)
+        5. Check that all data can be read
+        6. Delete all the data
+        7. Compact data on new node
+        8. Restart new node (it should not have any data including tombstones)
+        9. Decommission the new node
+        10. Test if any data exists in the cluster
         """
 
         cluster = self.cluster
@@ -775,6 +776,7 @@ class TestUpdateClusterLayout(Tester):
         # We booted the new node and it got part of the items
         node2 = new_node(cluster)
         node2.start(wait_for_binary_proto=True, wait_other_notice=True)
+        node1.cleanup()
 
         session_node2 = self.patient_exclusive_cql_connection(node2)
         session_node2.execute("use ks;")
