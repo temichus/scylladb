@@ -7,7 +7,7 @@ import time
 import uuid
 import threading
 from assertions import assert_invalid, assert_one
-from tools import rows_to_list, since
+from tools import rows_to_list, since, require
 
 
 class TestCounters(Tester):
@@ -285,8 +285,13 @@ class TestCounters(Tester):
 
         assert_invalid(session, "ALTER TABLE counter_bug add c counter", "Cannot re-add previously dropped counter column c")
 
+    @require('1.7')
     def increment_counters_in_threads_test(self):
-        # increment 2 counters * 500 times * 200 threads
+        """
+        3 nodes in test
+        increment 2 counters * 200 threads * 500 times
+        expected result: counters equal 100000(500*200)
+        """
         cluster = self.cluster
         cluster.set_configuration_options(values={'experimental': True})
 
@@ -340,8 +345,15 @@ class TestCounters(Tester):
             assert res[c][1] == expected_counters, "Expecting counter%i = %i, got %i" % (
                 c, expected_counters, res[c][1])
 
+    @require('1.7')
     def increment_decrement_counters_in_threads_test(self):
-        # increment/decrement 2 counters(2 inc vs 1 dec) * 500 times * 600 threads
+        """
+        3 nodes in test
+        2 counters:
+        increment 500 times * 400 threads and
+        decrement 500 times * 200 threads in parallel
+        expected result: counters equal 100000(500*200)
+        """
         cluster = self.cluster
         cluster.set_configuration_options(values={'experimental': True})
 
