@@ -1456,14 +1456,17 @@ class TestUpdateClusterLayout(Tester):
         debug("Check rows on node1")
         self.check_rows_on_node(node1, nr_rows, ks='keyspace1', cf='standard1', counter_column='cn')
 
-    def increment_decrement_counters_in_threads_node_restarted_test(self):
+    def increment_decrement_counters_in_threads_nodes_restarted_test(self):
         """
         increment/decrement 2 counters(2 inc vs 1 dec) * 1000 times * 120 threads
         1. Create a cluster with 3 nodes with rf=3
         2. Start increment/decrement counters CL=QUORUM
-        3. Stop one node and sleep in 30 seconds
-        4. Start the node and wait when all counter ops complete
-        5. Verify counters consistency
+        3. Stop one node and wait 10 seconds
+        4. Start the node and wait 10 seconds
+        5. Stop another 2 nodes
+        6. Wait when all counter ops complete
+        7. Start 2 nodes
+        8. Verify counters consistency
         """
         cluster = self.cluster
         cluster.set_configuration_options(values={'experimental': True})
@@ -1494,10 +1497,10 @@ class TestUpdateClusterLayout(Tester):
                     for c in xrange(0, nb_counter):
                         if self.decrement:
                             query = SimpleStatement("UPDATE cf SET c = c - 1 WHERE key = 'counter%i'" % c,
-                                                    consistency_level=ConsistencyLevel.QUORUM)
+                                                    consistency_level=ConsistencyLevel.ONE)
                         else:
                             query = SimpleStatement("UPDATE cf SET c = c + 1 WHERE key = 'counter%i'" % c,
-                                                    consistency_level=ConsistencyLevel.QUORUM)
+                                                    consistency_level=ConsistencyLevel.ONE)
                         try:
                             self.connection.execute(query)
                             if self.decrement:
@@ -1523,13 +1526,20 @@ class TestUpdateClusterLayout(Tester):
 
         for t in threads:
             t.start()
+        # stop and restart one node for a while
         nodes[1].stop()
-        # nodes[1].stop(gently=False)
-        time.sleep(30)
+        time.sleep(10)
         nodes[1].start()
+        time.sleep(10)
+        # stop and restart another 2 nodes for a while
+        nodes[0].stop()
+        nodes[2].stop()
         for t in threads:
             t_result = t.join()
             result = {k: result.get(k, 0) + t_result.get(k, 0) for k in set(result)}
+        nodes[0].start()
+        nodes[2].start()
+        time.sleep(10)
 
         keys = ",".join(["'counter%i'" % c for c in xrange(0, nb_counter)])
         query = SimpleStatement("SELECT key, c FROM cf WHERE key IN (%s)" % keys,
@@ -1540,7 +1550,8 @@ class TestUpdateClusterLayout(Tester):
         assert res == list(sessions[2].execute(query)),\
             "different counter values in node0 and node2"
 
-        assert len(res) == nb_counter
         for c in xrange(0, nb_counter):
-            assert result[c] == res[c][1], "Expecting counter%i = %i, got %i" % (
-                c, result[c], res[c][1])
+            # if there is no failure when we updated counters we check their actual values
+            if result[c] == nb_increment * num_threads /3:
+                assert result[c] == res[c][1], "Expecting counter%i = %i, got %i" % (
+                    c, result[c], res[c][1])
