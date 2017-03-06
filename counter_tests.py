@@ -285,7 +285,6 @@ class TestCounters(Tester):
 
         assert_invalid(session, "ALTER TABLE counter_bug add c counter", "Cannot re-add previously dropped counter column c")
 
-    @require('1.7')
     def increment_counters_in_threads_test(self):
         """
         3 nodes in test
@@ -345,7 +344,6 @@ class TestCounters(Tester):
             assert res[c][1] == expected_counters, "Expecting counter%i = %i, got %i" % (
                 c, expected_counters, res[c][1])
 
-    @require('1.7')
     def increment_decrement_counters_in_threads_test(self):
         """
         3 nodes in test
