@@ -159,6 +159,48 @@ class CompactionAdditionalStrategyTests(Tester):
         sstable_split_parts[-2] = generation
         shutil.copy(file, os.path.join(os.path.dirname(file), '-'.join(sstable_split_parts)))
 
+    def compaction_removes_ttld_data_after_gc_period(self):
+        """
+        Test that compaction removes TTLd data after gc_period
+        1. start cluster
+        2. create a table with a small gc_perio
+        3. write data into the table with a small ttl
+        4. wait past ttl and gc_period
+        5. write some data and force compaction
+        6. check that ttl'd data was removed
+        Please note that we do not test that ttl data exists - we have other tests for this
+        """
+        cluster = self.cluster
+        cluster.populate(1).start(wait_for_binary_proto=True)
+        [node1] = cluster.nodelist()
+
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 1)
+
+        session.execute("create table ks.cf (key int PRIMARY KEY, val int) with compaction = {'class':'" + self.strategy + "'} and gc_grace_seconds = 1;")
+
+        for x in range(0, 100):
+            session.execute('insert into cf (key, val) values (' + str(x) + ',1) USING TTL 29')
+
+        time.sleep(31)
+
+        # check that after gc_period compaction removes ttl'd data
+        # force an update so that compact will have something todo
+        session.execute('insert into ks.cf (key, val) values (99,1);')
+        node1.flush()
+        node1.compact()
+
+        json_path = tempfile.mkstemp(suffix='.json')
+        jname = json_path[1]
+        with open(jname, 'w') as f:
+            node1.run_sstable2json(f)
+
+        with open(jname, 'r') as g:
+            jsoninfo = g.read()
+
+        numfound = jsoninfo.count("partition")
+
+        self.assertEqual(numfound, 1)
 
 strategies = ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy']
 for strategy in strategies:
