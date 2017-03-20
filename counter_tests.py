@@ -1,11 +1,15 @@
-from dtest import Tester
+from dtest import Tester, debug
 from cassandra import ConsistencyLevel
 from cassandra.query import SimpleStatement
+from cassandra.cluster import NoHostAvailable
 
 import random
 import time
 import uuid
+import os
 import threading
+import shutil
+
 from assertions import assert_invalid, assert_one
 from tools import rows_to_list, since, require
 
@@ -410,3 +414,190 @@ class TestCounters(Tester):
                 c, str(res[c]))
             assert res[c][1] == expected_counters, "Expecting counter%i = %i, got %i" % (
                 c, expected_counters, res[c][1])
+
+
+class TestCountersOnMultipleNodes(Tester):
+
+    def __init__(self, *argv, **kwargs):
+        kwargs['cluster_options'] = {'start_rpc': 'true'}
+        super(TestCountersOnMultipleNodes, self).__init__(*argv, **kwargs)
+        self.allow_log_errors = True
+        self._start_row = 2
+        self._row_cnt = 1000
+        self._extra_row_cnt = 0
+
+    def setUp(self):
+        super(TestCountersOnMultipleNodes, self).setUp()
+        debug("Starting cluster with 3 nodes.")
+        cluster = self.cluster
+        cluster.set_configuration_options(values={'experimental': True, 'hinted_handoff_enabled': False})
+        cluster.populate(3).start()
+        self.node1, self.node2, self.node3 = cluster.nodelist()
+
+    def tearDown(self):
+        row_cnt = self._row_cnt - self._start_row + self._extra_row_cnt
+        self._verify_data(row_cnt)
+        debug("Update counter data")
+        session = self.patient_cql_connection(self.node1)
+        for i in range(self._start_row, self._row_cnt):
+            session.execute("UPDATE Test.cf SET cnt = cnt - 1 WHERE pk = {};".format(i))
+            session.execute("UPDATE Test.cf SET cnt = cnt + 1 WHERE pk = {};".format(i))
+
+        self._verify_data(row_cnt)
+
+    def _populate_data(self, rf=2):
+        session = self.patient_cql_connection(self.node1)
+        self.create_ks(session, 'Test', rf)
+
+        session.execute("""
+                    CREATE TABLE cf (
+                        pk INT PRIMARY KEY,
+                        cnt COUNTER
+                    ) WITH read_repair_chance=0.0;
+                """)
+
+        debug("Update counter data")
+        for i in range(self._start_row, self._row_cnt):
+            session.execute("UPDATE Test.cf SET cnt = cnt + {} WHERE pk = {};".format(i, i))
+            session.execute("UPDATE Test.cf SET cnt = cnt - 1 WHERE pk = {};".format(i))
+            session.execute("UPDATE Test.cf SET cnt = cnt + 1 WHERE pk = {};".format(i))
+
+        self._verify_data(self._row_cnt - self._start_row)
+
+    def _verify_data(self, expected_row_count):
+        debug('Verify counter data')
+        session = self.patient_cql_connection(self.node1)
+        res = session.execute("SELECT * FROM Test.cf;")
+        rows = rows_to_list(res)
+        self.assertEquals(len(rows), expected_row_count)
+        for row in rows:
+            self.assertEquals(row[0], row[1])
+
+    def _verify_data_repair(self, expected_row_count):
+        for node in (self.node1, self.node2):
+            node.stop(wait_other_notice=True)
+
+        session = self.patient_cql_connection(self.node3)
+        pk_list = ','.join([str(i) for i in range(self._row_cnt, self._row_cnt + self._extra_row_cnt)])
+        query = SimpleStatement("SELECT * FROM Test.cf WHERE pk IN ({});".format(pk_list),
+                                consistency_level=ConsistencyLevel.ONE)
+        res = session.execute(query)
+        rows = rows_to_list(res)
+        self.assertEquals(len(rows), expected_row_count)
+
+        for node in (self.node1, self.node2):
+            node.start(wait_other_notice=True)
+
+    def _verify_data_rebuild(self):
+        for node in (self.node1, self.node2):
+            node.stop(wait_other_notice=True)
+
+        debug('Verify counter data on node3')
+        session = self.patient_cql_connection(self.node3)
+        query = SimpleStatement("SELECT * FROM Test.cf;", consistency_level=ConsistencyLevel.ONE)
+        res = session.execute(query)
+        rows = rows_to_list(res)
+        self.assertEquals(len(rows), self._row_cnt - self._start_row)
+        for row in rows:
+            self.assertEquals(row[0], row[1])
+
+        for node in (self.node1, self.node2):
+            node.start(wait_other_notice=True)
+
+    def counter_consistency_node_replace_test(self):
+        """
+        Cluster: 3 nodes, keyspace RF=2
+        Populate counters data, replace one of the nodes by a new one
+        Result: counters data stays consistent
+        """
+        self._populate_data()
+        debug('Stop node3 and create new node to replace it')
+        self.node3.stop(gently=True, wait_other_notice=True)
+        node4 = new_node(self.cluster, bootstrap=True, token=None, remote_debug_port='0')
+        debug('Start the new node')
+        node4.start(replace_address=self.cluster.get_node_ip(3), wait_for_binary_proto=True)
+
+    def counter_consistency_node_remove_test(self):
+        """
+        Cluster: 3 nodes, keyspace RF=2
+        Populate counters data, remove one of the nodes
+        Result: counters data stays consistent
+        """
+        self._populate_data()
+        debug('Stop and remove node2')
+        node2_hostid = self.node2.hostid()
+        self.node2.stop(wait_other_notice=True)
+        self.node1.nodetool("removenode %s" % node2_hostid)
+
+    def counter_consistency_node_add_test(self):
+        """
+        Cluster: 3 nodes, keyspace RF=2
+        Populate counters data, add a new node
+        Result: counters data stays consistent
+        """
+        self._populate_data()
+        debug('Add a new node')
+        node4 = new_node(self.cluster, bootstrap=True, token=None, remote_debug_port='0')
+        node4.start(wait_for_binary_proto=True)
+
+    def counter_consistency_node_decommission_test(self):
+        """
+        Cluster: 3 nodes, keyspace RF=1
+        Populate counters data, decommission one of the nodes
+        Result: counters data stays consistent
+        """
+        self._populate_data(rf=1)
+        debug('Decommission node2')
+        self.node2.decommission()
+        self.node2.stop()
+
+    def counter_consistency_node_repair_test(self):
+        """
+        Cluster: 3 nodes, keyspace RF=3
+        Populate counters data, stop one of the nodes, change counter data
+        Then start and repair the stopped node
+        Result: counters data stays consistent
+        """
+        self._extra_row_cnt = 10
+        self._populate_data(rf=3)
+        debug('Stop node3')
+        self.node3.flush()
+        self.node3.stop(wait_other_notice=True)
+
+        debug("Update counter data")
+        session = self.patient_cql_connection(self.node1)
+        for i in range(self._row_cnt, self._row_cnt + self._extra_row_cnt):
+            query = SimpleStatement("UPDATE Test.cf SET cnt = cnt + {} WHERE pk = {};".format(i, i),
+                                    consistency_level=ConsistencyLevel.TWO)
+            session.execute(query)
+
+        debug('Start node3 and verify new data is not present')
+        self.node3.start(wait_other_notice=True, wait_for_binary_proto=True)
+        self._verify_data_repair(0)
+        debug('Repair node3')
+        self.node3.repair()
+        debug('Verify new data is present on node3')
+        self._verify_data_repair(self._extra_row_cnt)
+
+    def counter_consistency_node_rebuild_test(self):
+        """
+        Cluster: 3 nodes, keyspace RF=3
+        Populate counters data, stop one of the nodes and remove sstables and commit log for it
+        Then start the node and rebuild it
+        Result: counters data stays consistent
+        """
+        self._populate_data(rf=3)
+        debug('Stop node3')
+        self.node3.flush()
+        self.node3.stop(wait_other_notice=True)
+
+        debug('Remove sstables and commit log for node3')
+        for dir_name in ('commitlogs', 'data'):
+            data_dir = os.path.join(self.node3.get_path(), dir_name)
+            shutil.rmtree(data_dir)
+
+        debug('Start node3 and rebuild it')
+        self.node3.start(wait_other_notice=True, wait_for_binary_proto=True)
+        self.node3.nodetool('rebuild')
+        self._verify_data_rebuild()
+

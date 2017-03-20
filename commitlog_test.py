@@ -602,3 +602,69 @@ class TestCommitLog(Tester):
         node.watch_log_for(expected_error, from_mark=mark)
         with self.assertRaises(TimeoutError):
             node.wait_for_binary_interface(from_mark=mark, timeout=20)
+
+    def test_commitlog_replay_with_counters(self):
+        """
+        Test commit log replay with counters
+        The goal of the test is to verify that commit log replay works correctly -
+        we save the end result in the commit log, not delta.
+        """
+        node1 = self.node1
+        node1.set_configuration_options(values={'experimental': True,
+                                                'commitlog_sync_period_in_ms': 200})
+        self.cluster.start()
+
+        debug("Create table")
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'Test', 1)
+        session.execute("""
+                    CREATE TABLE cf (
+                        pk1 INT,
+                        ck1 INT,
+                        cnt COUNTER,
+                        PRIMARY KEY(pk1, ck1)
+                    );
+                """)
+
+        debug("Increment counter")
+        for i in range(1, 10):
+            session.execute("UPDATE Test.cf SET cnt = cnt + {} WHERE pk1 = 5 AND ck1 = 6;".format(i))
+
+        res = session.execute("SELECT cnt FROM Test.cf WHERE pk1 = 5 AND ck1 = 6;")
+        rows = rows_to_list(res)
+        self.assertEquals(rows[0][0], 45)
+
+        debug("Decrement counter")
+        session.execute("UPDATE Test.cf SET cnt = cnt - 1 WHERE pk1 = 5 AND ck1 = 6;")
+        debug("Add one more counter")
+        session.execute("UPDATE Test.cf SET cnt = cnt + 10 WHERE pk1 = 7 AND ck1 = 8;")
+
+        res = session.execute("SELECT cnt FROM Test.cf;")
+        rows = rows_to_list(res)
+        self.assertEquals(rows[0][0], 44)
+        self.assertEquals(rows[1][0], 10)
+
+        # wait for commit log sync
+        time.sleep(2)
+
+        debug("Stop node abruptly")
+        node1.stop(gently=False)
+
+        debug("Verify commitlog was written before abrupt stop")
+        commitlog_dir = os.path.join(node1.get_path(), 'commitlogs')
+        commitlog_files = glob.glob(os.path.join(commitlog_dir, '*.log'))
+        self.assertTrue(len(commitlog_files) > 0)
+
+        debug("Verify commit log was replayed on startup")
+        node1.start()
+        node1.watch_log_for("Log replay complete")
+        # Here we verify there was more than 0 replayed mutations
+        zero_replays = node1.grep_log(" 0 replayed mutations")
+        self.assertEqual(0, len(zero_replays))
+
+        debug("Make query and ensure data is present as expected")
+        session = self.patient_cql_connection(node1)
+        res = session.execute("SELECT cnt FROM Test.cf;")
+        rows = rows_to_list(res)
+        self.assertEquals(rows[0][0], 44)
+        self.assertEquals(rows[1][0], 10)

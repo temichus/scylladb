@@ -1,6 +1,7 @@
 import threading
 import time
 import os
+import re
 from datetime import datetime
 
 from cassandra import Unavailable, ConsistencyLevel, WriteTimeout, OperationTimedOut
@@ -11,6 +12,7 @@ from ccmlib.node import NodeError
 
 from dtest import Tester, debug
 from tools import insert_c1c2, query_c1c2, new_node
+from tools import require
 import scylla_tools
 import collections
 
@@ -344,10 +346,9 @@ class TestUpdateClusterLayout(Tester):
             # UN  127.0.0.2  37278      256     ?       f118383c-c569-49d1-9aa6-223d3b224caa  rack1
             # UN  127.0.0.3  24834      256     ?       78b7e6ba-3039-4fc6-a875-a71661f8cd04  rack1
             # UJ  127.0.0.4  ?          256     ?       637edd3f-8888-48ab-b0ea-3ea81f8e9865  rack1
-            status, err = node1.nodetool('status')
-            assert status.find("UJ  "+cluster.get_node_ip(4) + " ") > -1, status
+            self.wait_for_nodes_status(node1, ['UN', 'UN', 'UN', 'UJ'])
 
-            # Slep 30 seconds to make sure other nodes removed the new node
+            # Sleep 30 seconds to make sure other nodes removed the new node
             time.sleep(30)
             node1.watch_log_for("FatClient .* has been silent for .*ms, removing from gossip")
             node2.watch_log_for("FatClient .* has been silent for .*ms, removing from gossip")
@@ -358,8 +359,7 @@ class TestUpdateClusterLayout(Tester):
             # UN  127.0.0.1  99823      256     ?       a7498138-1878-421d-8f11-cc98b204090a  rack1
             # UN  127.0.0.2  37278      256     ?       f118383c-c569-49d1-9aa6-223d3b224caa  rack1
             # UN  127.0.0.3  24834      256     ?       78b7e6ba-3039-4fc6-a875-a71661f8cd04  rack1
-            status, err = node1.nodetool('status')
-            assert status.find(cluster.get_node_ip(4)) == -1, status
+            self.wait_for_nodes_status(node1, ['UN', 'UN', 'UN'])
 
         result = list(session.execute("SELECT * FROM cf"))
         self.assertEqual(len(result), 1000, len(result))
@@ -369,7 +369,7 @@ class TestUpdateClusterLayout(Tester):
         Test bootstrapped node streams all data
         1. Create a cluster with a three nodes with rf=1, insert data
         2. Add node, wait for each to start bootstrapping and write additional data
-        3. kill it while writting data
+        3. kill it while writing data
         4. Check that the operation exists with an expected exception
         """
 
@@ -446,12 +446,13 @@ class TestUpdateClusterLayout(Tester):
             new_node.watch_log_for("Beginning stream session")
             debug("Stop Node %d" % i)
             new_node.stop(gently=False)
+            for node in [node1, node2, node3]:
+                self.wait_for_nodes_status(node, ['UN', 'UN', 'UN'])
             event.wait()
             self.assertTrue(failed is None, failed)
 
             # Sleep 1 second to make sure other nodes knows this node is joining through gossip
             time.sleep(1)
-
         session.execute("SELECT * FROM cf")
 
     def simple_kill_new_node_while_bootstrapping_with_parallel_writes_in_multidc_test(self):
@@ -486,7 +487,7 @@ class TestUpdateClusterLayout(Tester):
         # create a new node and adding it - we cannot do this more then once
         a_new_node = new_node(cluster, data_center='dc1')
         event = threading.Event()
-        failed = None
+        failed = before = None
 
         def run():
             try:
@@ -509,7 +510,7 @@ class TestUpdateClusterLayout(Tester):
                 pass
             except (OperationTimedOut) as e:
                 tfailed = str(datetime.now())
-                failed = "Server side escrption not thrown  driver side exception thrown OperationTimeout %s %s %s" % (e, before, failed)
+                failed = "Server side exception not thrown driver side exception thrown OperationTimeout %s %s %s" % (e, before, failed)
             finally:
                 event.set()
 
@@ -523,9 +524,11 @@ class TestUpdateClusterLayout(Tester):
         t.start()
         time.sleep(1)
         a_new_node.watch_log_for("Beginning stream session")
+        self.wait_for_nodes_status(node1, ['UN', 'UN', 'UN'])
         debug("Stop Node")
         a_new_node.stop(gently=False)
         event.wait()
+        self.wait_for_nodes_status(node1, ['UN', 'DN', 'UN'])
         self.assertTrue(failed is None, failed)
 
         # Sleep 1 second to make sure other nodes knows this node is joining through gossip
@@ -729,8 +732,7 @@ class TestUpdateClusterLayout(Tester):
         node2.decommission()
         # lets verify new connection can not be openned to a decomissioned node
         try:
-            session2 = self.patient_cql_connection(node2)
-            fail
+            self.patient_cql_connection(node2)
         except NoHostAvailable:
             pass
         node2.stop()
@@ -739,17 +741,18 @@ class TestUpdateClusterLayout(Tester):
 
     def simple_decommission_node_2_test(self):
         """
-        Test that on decommission row cache entries of non owned transfeered range are invalidated
+        Test that on decommission row cache entries of non owned transfered range are invalidated
 
         1. Create a cluster with a single node with rf=1,insert data
         2. Check the row cahe can be used as an estimator
         3. Add a new node
-        4. Check that all data can be read
-        5. Delete all the data
-        6. Compact data on new node
-        7. Restart new node (it should not have any data including tombstones)
-        8. Decommission the new node
-        9. Test if any data exists in the cluster
+        4. Cleanup data on original node (cache not cleared)
+        5. Check that all data can be read
+        6. Delete all the data
+        7. Compact data on new node
+        8. Restart new node (it should not have any data including tombstones)
+        9. Decommission the new node
+        10. Test if any data exists in the cluster
         """
 
         cluster = self.cluster
@@ -773,6 +776,7 @@ class TestUpdateClusterLayout(Tester):
         # We booted the new node and it got part of the items
         node2 = new_node(cluster)
         node2.start(wait_for_binary_proto=True, wait_other_notice=True)
+        node1.cleanup()
 
         session_node2 = self.patient_exclusive_cql_connection(node2)
         session_node2.execute("use ks;")
@@ -836,12 +840,99 @@ class TestUpdateClusterLayout(Tester):
 
         # check node2 has started decommission
         node2.watch_log_for("Beginning stream session")
+
         node2.stop(gently=False)
 
         # starting node2 - it should reconnect and run as is
         node2.start(wait_other_notice=True, wait_for_binary_proto=True)
         result = list(session.execute("SELECT * FROM cf"))
         self.assertEqual(len(result), 1000, len(result))
+
+        self.verify_nodes_status(node1, ['UN', 'UN', 'UN'])
+
+    @require("2042")
+    def simple_kill_remained_node_while_decommissioning_test(self):
+        """
+        Test a decommissioning node killed is able to rejoin the cluster with data
+        1. Create a cluster with a three nodes with rf=1, insert data
+        2. Decommission a node
+        3. While node is decommissioning kill another one
+        4. Boot the node back up
+        5. Check that the node rejoins the cluster and works correctly
+        """
+        cluster = self.cluster
+        self.allow_log_errors = True
+
+        # Disable hinted handoff and set batch commit log so this doesn't
+        # interfer with the test (this must be after the populate)
+        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True)
+        node1, node2, node3 = cluster.nodelist()
+
+        session = self.patient_cql_connection(node1)
+        time.sleep(5)
+        self.create_ks(session, 'ks', 1)
+        time.sleep(5)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        time.sleep(5)
+        insert_c1c2(session, keys=range(1000), consistency=ConsistencyLevel.ONE)
+
+        def run():
+            try:
+                node2.decommission()
+            except Exception:
+                pass
+
+        t = threading.Thread(target=run)
+        t.setDaemon(True)
+        t.start()
+
+        # check node2 has started decommission
+        node2.watch_log_for("Beginning stream session")
+
+        node1.stop(gently=False)
+
+        # starting node1 - it should reconnect and run as is
+        node1.start(wait_other_notice=True, wait_for_binary_proto=True)
+        result = list(session.execute("SELECT * FROM cf"))
+        self.assertEqual(len(result), 1000, len(result))
+
+        self.wait_for_nodes_status(node3, ['UN', 'UN', 'UN'])
+
+    def verify_nodes_status(self, node, exp_statuses, keyspace=""):
+        status = self.nodetool_status(node, keyspace)
+        statuses = [s['status'] for s in status['nodes']]
+        self.assertEqual(exp_statuses, statuses, "found statuses: %s" % statuses)
+
+    def wait_for_nodes_status(self, node, exp_statuses, keyspace="", timeout=30):
+        timeout = time.time() + timeout
+        while True:
+            try:
+                self.verify_nodes_status(node, exp_statuses, keyspace=keyspace)
+                break
+            except AssertionError:
+                time.sleep(1)
+                if time.time() > timeout:
+                    self.verify_nodes_status(node, exp_statuses, keyspace=keyspace)
+
+    def nodetool_status(self, node, keyspace=""):
+        res = {}
+        out = node.nodetool("status " + keyspace, True)[0]
+        m = re.findall('Datacenter: ([^\s]+)', out, re.MULTILINE)
+        if m:
+            res['Datacenter'] = m[0]
+        m = re.findall('^([UDNLJM]+)\s+([\d\.]+)\s+([^\s]+\s+[^\s]+)\s+([^\s]+)\s+([^\s]+)(?:\s[^\s]{2})?\s+([^\s]+)\s+([^\s]+)\s*', out, re.MULTILINE)
+        res["nodes"] = [self._list2status(s) for s in m]
+        return res
+
+    @staticmethod
+    def _list2status(lst):
+        heads = ["status", "address", "load", "tokens", "owns", "host id", "rack"]
+        res = {}
+        for i in range(len(heads)):
+            res[heads[i]] = lst[i]
+        return res
+
 
     def _simple_decommission_node_while_adding_info(self, rf):
         """
