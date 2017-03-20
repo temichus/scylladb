@@ -12,7 +12,7 @@ from cassandra.cluster import NoHostAvailable
 
 from assertions import assert_invalid
 from dtest import Tester, debug
-from tools import since
+from tools import since, new_node
 from unittest import skip
 
 
@@ -890,6 +890,41 @@ class TestAuth(Tester):
         **Expected Result:** it requests password to connect the node which enables the Authentication.
         """
         raise NotImplementedError
+
+    def adding_new_node_not_overwrite_global_schema_test(self):
+        """
+        **Description:** Add new node(RF=1) to cluster with keyspace RF=2
+        **Expected Result:** the keyspace RF was not changed
+        """
+        self.prepare(nodes=2)
+
+        session = self.get_session(user='cassandra', password='cassandra')
+        self.assertEquals(1, session.cluster.metadata.keyspaces['system_auth'].replication_strategy.replication_factor)
+
+        session.execute("ALTER KEYSPACE system_auth "
+                        "WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 2};")
+
+        session = self.get_session(user='cassandra', password='cassandra')
+        self.assertEquals(2, session.cluster.metadata.keyspaces['system_auth'].replication_strategy.replication_factor)
+
+        node3 = new_node(self.cluster, bootstrap=False)
+        node3.start()
+
+        session = self.get_session(user='cassandra', password='cassandra')
+        self.assertEquals(2, session.cluster.metadata.keyspaces['system_auth'].replication_strategy.replication_factor)
+
+        session = self.get_session(node_idx=2, user='cassandra', password='cassandra')
+        self.assertEquals(2, session.cluster.metadata.keyspaces['system_auth'].replication_strategy.replication_factor)
+
+        # wait for schema sync and verify rf
+        time.sleep(5)
+        node1 = self.cluster.nodelist()[0]
+        resp = node1.nodetool('describecluster')
+        lines = resp[0].split('\n')
+        schemas = [lines[i+1] for i, line in enumerate(lines) if line.find('Schema versions:') != -1]
+        self.assertEquals(1, len(schemas))
+        session = self.get_session(user='cassandra', password='cassandra')
+        self.assertEquals(2, session.cluster.metadata.keyspaces['system_auth'].replication_strategy.replication_factor)
 
     def prepare(self, nodes=1, permissions_validity=0):
         config = {'authenticator': 'org.apache.cassandra.auth.PasswordAuthenticator',
