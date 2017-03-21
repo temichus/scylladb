@@ -11,7 +11,7 @@ import threading
 import shutil
 
 from assertions import assert_invalid, assert_one
-from tools import rows_to_list, since, require
+from tools import rows_to_list, since, require, new_node
 
 
 class TestCounters(Tester):
