@@ -3,11 +3,13 @@ import re
 import shutil
 import time
 import uuid
+import subprocess
+import glob
 
 from cassandra.query import SimpleStatement
 
 from dtest import Tester, debug
-from tools import require, rows_to_list
+from tools import require, rows_to_list, safe_mkdtemp
 from nose import tools
 
 
@@ -195,7 +197,69 @@ class MigrationTestBase(Tester):
         self.assertEqual(result[0].p1, 'key1', "check partition key")
         self.assertEqual(result[0].r1, 2, "check value")
 
-# ######################## Helper functions ####################################
+    @require('#24 scylla-tools-java')
+    def migrate_sstable_with_large_row_number_test(self):
+        """
+        Create scylla cluster and run cassandra stress test to populate large number of rows.
+        Migrate sstables and validate that all the rows are loaded
+        """
+        cluster = self.cluster
+        cluster.populate(1).start()
+        node1 = cluster.nodelist()[0]
+
+        debug('Run stress test on node1')
+        node1.stress(['write', 'duration=1m', 'no-warmup', '-mode', 'cql3', 'native',
+                     '-rate', 'threads=4', '-col', 'n=FIXED(1)', 'size=FIXED(2)'], capture_output=True)
+        session = self.patient_cql_connection(node1)
+        rows = rows_to_list(session.execute('SELECT count(*) FROM keyspace1.standard1;'))
+        row_number_src = rows[0][0]
+        debug('{} rows written'.format(row_number_src))
+
+        debug('Flush data to sstables')
+        node1.flush()
+        debug('Stop node1')
+        node1.stop(wait_other_notice=True)
+
+        tmpdir = safe_mkdtemp()
+        dir = os.path.join(tmpdir, 'keyspace1', 'standard1')
+        os.makedirs(dir)
+        data_dir = self.get_cf_dir(os.path.join(node1.get_path(), 'data/keyspace1'), 'standard1')
+
+        debug('Copy node1 sstables from {} to {}'.format(data_dir, dir))
+        data_files = glob.glob(os.path.join(data_dir, '*.*'))
+        for data_file in data_files:
+            shutil.copy2(data_file, os.path.join(dir, os.path.basename(data_file)))
+
+        debug('Remove sstables and commit log for node1')
+        shutil.rmtree(os.path.join(node1.get_path(), 'commitlogs'))
+        for data_file in data_files:
+            os.unlink(data_file)
+
+        debug('Start node1')
+        node1.start(wait_other_notice=True)
+        time.sleep(5)
+
+        ip = node1.address()
+        debug('Run sstableloader on node1')
+        cmd = [node1.get_tool('sstableloader'), '-d', ip, dir]
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdout, stderr = p.communicate()
+        exit_status = p.wait()
+
+        shutil.rmtree(tmpdir)
+        if exit_status != 0:
+            raise Exception("sstableloader command '%s' failed; exit status: %d'; stdout: %s; stderr: %s" %
+                            (" ".join(cmd), exit_status, stdout, stderr))
+
+        time.sleep(5)
+        debug('Verify number of rows on node1')
+        session = self.patient_cql_connection(node1)
+        rows = rows_to_list(session.execute('SELECT count(*) FROM keyspace1.standard1;'))
+        row_number = rows[0][0]
+        debug('{} rows read'.format(row_number))
+        self.assertEqual(row_number, row_number_src)
+
+    # ######################## Helper functions ####################################
     def check_number_of_rows(self, node, expected_number_of_rows):
         debug("Checking rows on node1...")
         query = "SELECT COUNT(*) FROM cf"
@@ -271,19 +335,19 @@ class MigrationTestBase(Tester):
         return "{}/cassandra-sstables/migration/{}/{}".format(os.path.dirname(os.path.realpath(__file__)), version,
                                                               migrated_files_dir)
 
-    def load_migrated_tables(self, node, migrated_files_dir):
-        cassandra_sstable_dir = self.get_cassandra_sstable_dir('2_1_x', migrated_files_dir)
+    def load_migrated_tables(self, node, migrated_files_dir, ks='ks', cf='cf', version='2_1_x'):
+        cassandra_sstable_dir = self.get_cassandra_sstable_dir(version, migrated_files_dir)
         debug("cassandra sstable dir is {}".format(cassandra_sstable_dir))
 
-        ks_dir = os.path.join(self.test_path, 'test', 'node1', 'data', 'ks')
-        cf_dir = self.get_cf_dir(ks_dir, 'cf')
+        ks_dir = os.path.join(self.test_path, 'test', 'node1', 'data', ks)
+        cf_dir = self.get_cf_dir(ks_dir, cf)
         debug("Column family directory is {}".format(cf_dir))
 
         debug("Copying sstables created by Cassandra...")
         self.copy_files_to(cassandra_sstable_dir, cf_dir)
 
-        debug("Running 'nodetool refresh -- ks cf' to load migrated sstables")
-        node.nodetool("refresh -- ks cf")
+        debug("Running 'nodetool refresh -- {} {}' to load migrated sstables".format(ks, cf))
+        node.nodetool("refresh -- {} {}".format(ks, cf))
 
     def populate_cluster(self, cluster):
         # Disable hinted handoff and set batch commit log so this doesn't
