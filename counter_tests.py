@@ -2,6 +2,7 @@ import random
 import time
 import uuid
 import os
+import sys
 import threading
 import shutil
 
@@ -436,6 +437,64 @@ class TestCounters(Tester):
                 debug('Got an expected error trying to use {}: {}'.format(option.split()[0], ex))
             else:
                 raise Exception('USING {} was not rejected!'.format(option.split()[0]))
+
+    def prepare_statement_test(self):
+        """
+        update counters with prepare statement, and verify the data
+        """
+        cluster = self.cluster
+        cluster.set_configuration_options(values={'experimental': True})
+
+        cluster.populate(1).start()
+        node1, = cluster.nodelist()
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'counter_tests', 1)
+
+        session.execute("CREATE TABLE counter_bug (t int, c counter, primary key(t))")
+
+        debug('Created counter table, try to update one counter')
+        session.execute("UPDATE counter_bug SET c = c + 1 where t = 0")
+        res = session.execute("SELECT * from counter_bug")
+        rows = rows_to_list(res)
+        assert len(rows) == 1
+        assert rows == [[0, 1]]
+        # reset the counter (key=0) to 0
+        session.execute("UPDATE counter_bug SET c = c - 1 where t = 0")
+
+        keys_num = 1000
+
+        counter_list = []
+        debug('Update %s counters with random int by prepare statement' % keys_num)
+        for key in range(keys_num):
+            statement = session.prepare("update counter_tests.counter_bug set c = c + ? where t = ?")
+            # int is from `-sys.maxint - 1` to `sys.maxint`, we will reupdate
+            # counters with random int, so sys.maxint / 2 is safe to avoid rollover
+            rand_c = random.randint(-sys.maxint / 2, sys.maxint / 2)
+            counter_list.append([key, rand_c])
+            session.execute(statement.bind((rand_c, key)))
+        res = session.execute("SELECT * from counter_bug")
+        rows = rows_to_list(res)
+        for row in rows:
+            assert row in counter_list, "Counter isn't updated correctly"
+        assert len(rows) == keys_num
+        debug('Verified that all counters are updated correctly')
+
+        debug('Reupdate all counters')
+        for key in range(keys_num):
+            statement = session.prepare("update counter_tests.counter_bug set c = c + ? where t = ?")
+            rand_c = random.randint(-sys.maxint / 2, sys.maxint / 2)
+            session.execute(statement.bind((rand_c, key)))
+        res = session.execute("SELECT * from counter_bug")
+        rows = rows_to_list(res)
+        assert len(rows) == keys_num
+        debug('Verified that counters number is correct: %s' % keys_num)
+
+        debug('drop all counters')
+        for key in range(keys_num):
+            session.execute("DELETE c FROM counter_tests.counter_bug where t = %s" % key)
+        res = session.execute("SELECT * from counter_bug")
+        rows = rows_to_list(res)
+        assert len(rows) == 0
 
 
 class TestCountersOnMultipleNodes(Tester):
