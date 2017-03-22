@@ -103,9 +103,81 @@ class TestUpdateClusterLayout(Tester):
         self.check_rows_on_node(node2, 2000)
         self.check_rows_on_node(node1, 2000)
 
+    def add_multi_nodes(self, starting_size=3, node_count=10, rf=1):
+        """
+        Test growing a cluster to large scales of nodes
+        1. Create a cluster with a 6 nodes with rf=2, insert data
+        2. In a loop add new nodes
+        3. Check that all data exists
+        """
+        cluster = self.cluster
+
+        self.allow_log_errors = True
+
+        node1 = cluster.nodelist()[0]
+
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', rf)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+
+        consistency = ConsistencyLevel.ALL
+        debug("just before first insert")
+        insert_c1c2(session, keys=range(starting_size * 100 + 1000), consistency=ConsistencyLevel.ONE)
+
+        query = SimpleStatement("SELECT key FROM ks.cf limit 7000", consistency_level=consistency)
+        for i in range(starting_size + 1, node_count + 1):
+            node_i = new_node(cluster)
+            node_i.start(wait_for_binary_proto=True, wait_other_notice=True)
+            session_i = self.patient_exclusive_cql_connection(node_i)
+            session_i.execute("use ks;")
+            insert_c1c2(session_i, keys=range(100000 + i * 2000, 100000 + i * 2000 + 100), consistency=consistency)
+            debug("added %s" % node_i.name)
+
+            result = list(session.execute(query))
+            self.assertEqual(len(result), i * 100 + 1000, "data loss after increasing size to %d expecting %d rows %d" %
+                             (len(cluster.nodelist()), i * 100 + 1000, len(result)))
+
+    def add_50_nodes_test(self):
+        """
+        Test large scale cluster (50 nodes cluster).
+        Cluster starts with a starting_size=3 and grow to node_count=50 during a c-s write in the background (low load)
+        and c-s read after adding all nodes to make sure all data was written successfully.
+        In addition, while adding each node inserting 100 keys and verifying that all keys were written.
+        E.Result: All nodes (50) were added and c-s read successfully read all keys (200,000). 
+        """
+        starting_size = 3
+        cluster = self.cluster
+
+        self.allow_log_errors = True
+
+        # Disable hinted handoff and set batch commit log so this doesn't
+        # interfer with the test (this must be after the populate)
+        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.populate(starting_size).start()
+        node2 = cluster.nodelist()[1]
+
+        event = threading.Event()
+
+        def run():
+            try:
+                node2.stress(['write', 'cl=QUORUM', 'n=200000', 'no-warmup','-pop seq=1..200000', '-rate threads=2'])
+
+            finally:
+                event.set()
+                pass
+
+        t = threading.Thread(target=run)
+        t.setDaemon(True)
+        t.start()
+
+        self.add_multi_nodes(starting_size, node_count=50, rf=1)
+        event.wait()
+
+        node2.stress(['read', 'cl=QUORUM', 'n=200000', 'no-warmup', '-pop seq=1..200000', '-rate threads=2'])
+
     def _iterative_add_decommission(self, iterations=2, node_count=2, rf=1):
         """
-        Test gorwing and shrinking a cluster
+        Test growing and shrinking a cluster
         1. Create a cluster with a single node with rf=2, insert data
         2. In a loop add new nodes
         3. Check that all data exists
