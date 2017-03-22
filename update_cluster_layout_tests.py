@@ -1455,3 +1455,103 @@ class TestUpdateClusterLayout(Tester):
         self.check_rows_on_node(node2, nr_rows, ks='keyspace1', cf='standard1', counter_column='cn')
         debug("Check rows on node1")
         self.check_rows_on_node(node1, nr_rows, ks='keyspace1', cf='standard1', counter_column='cn')
+
+    def increment_decrement_counters_in_threads_nodes_restarted_test(self):
+        """
+        increment/decrement 2 counters(2 inc vs 1 dec) * 1000 times * 120 threads
+        1. Create a cluster with 3 nodes with rf=3
+        2. Start increment/decrement counters CL=QUORUM
+        3. Stop one node and wait 10 seconds
+        4. Start the node and wait 10 seconds
+        5. Stop another 2 nodes
+        6. Wait when all counter ops complete
+        7. Start 2 nodes
+        8. Verify counters consistency
+        """
+        cluster = self.cluster
+        cluster.set_configuration_options(values={'experimental': True})
+
+        cluster.populate(3).start()
+        nodes = cluster.nodelist()
+
+        session = self.patient_cql_connection(nodes[0])
+        self.create_ks(session, 'ks', 3)
+        self.create_cf(session, 'cf', validation="CounterColumnType", columns={'c': 'counter'})
+
+        sessions = [self.patient_cql_connection(node, 'ks') for node in nodes]
+        nb_increment = 1000
+        nb_counter = 2
+
+        class ThreadedQuery(threading.Thread):
+            nb_increment = 1000
+            nb_counter = 2
+
+            def __init__(self, connection, decrement, *args, **kwargs):
+                super(ThreadedQuery, self).__init__(*args, **kwargs)
+                self.connection = connection
+                self.decrement = decrement
+                self._return = dict.fromkeys([i for i in xrange(nb_counter)], 0)
+
+            def run(self):
+                for i in xrange(0, nb_increment):
+                    for c in xrange(0, nb_counter):
+                        if self.decrement:
+                            query = SimpleStatement("UPDATE cf SET c = c - 1 WHERE key = 'counter%i'" % c,
+                                                    consistency_level=ConsistencyLevel.ONE)
+                        else:
+                            query = SimpleStatement("UPDATE cf SET c = c + 1 WHERE key = 'counter%i'" % c,
+                                                    consistency_level=ConsistencyLevel.ONE)
+                        try:
+                            self.connection.execute(query)
+                            if self.decrement:
+                                self._return[c] -= 1
+                            else:
+                                self._return[c] += 1
+                            time.sleep(0.01)
+                        except Exception:
+                            time.sleep(1)
+
+            def join(self, *args, **kwargs):
+                super(ThreadedQuery, self).join(*args, **kwargs)
+                return self._return
+
+        result = dict.fromkeys([i for i in xrange(nb_counter)], 0)
+
+        threads = []
+        num_threads = 120
+        for x in range(num_threads):
+            conn = sessions[x % len(nodes)]
+            decrement = (x % len(nodes)) == 0
+            threads.append(ThreadedQuery(conn, decrement))
+
+        for t in threads:
+            t.start()
+        # stop and restart one node for a while
+        nodes[1].stop()
+        time.sleep(10)
+        nodes[1].start()
+        time.sleep(10)
+        # stop and restart another 2 nodes for a while
+        nodes[0].stop()
+        nodes[2].stop()
+        for t in threads:
+            t_result = t.join()
+            result = {k: result.get(k, 0) + t_result.get(k, 0) for k in set(result)}
+        nodes[0].start()
+        nodes[2].start()
+        time.sleep(10)
+
+        keys = ",".join(["'counter%i'" % c for c in xrange(0, nb_counter)])
+        query = SimpleStatement("SELECT key, c FROM cf WHERE key IN (%s)" % keys,
+                                consistency_level=ConsistencyLevel.QUORUM)
+        res = list(sessions[0].execute(query))
+        assert res == list(sessions[1].execute(query)),\
+            "different counter values in node0 and node1"
+        assert res == list(sessions[2].execute(query)),\
+            "different counter values in node0 and node2"
+
+        for c in xrange(0, nb_counter):
+            # if there is no failure when we updated counters we check their actual values
+            if result[c] == nb_increment * num_threads /3:
+                assert result[c] == res[c][1], "Expecting counter%i = %i, got %i" % (
+                    c, result[c], res[c][1])
