@@ -1,14 +1,13 @@
-from dtest import Tester, debug
-from cassandra import ConsistencyLevel
-from cassandra.query import SimpleStatement
-from cassandra.cluster import NoHostAvailable
-
 import random
 import time
 import uuid
 import os
 import threading
 import shutil
+
+from dtest import Tester, debug
+from cassandra import ConsistencyLevel, InvalidRequest
+from cassandra.query import SimpleStatement
 
 from assertions import assert_invalid, assert_one
 from tools import rows_to_list, since, require, new_node
@@ -35,12 +34,14 @@ class TestCounters(Tester):
         for i in xrange(0, nb_increment):
             for c in xrange(0, nb_counter):
                 session = sessions[(i + c) % len(nodes)]
-                query = SimpleStatement("UPDATE cf SET c = c + 1 WHERE key = 'counter%i'" % c, consistency_level=ConsistencyLevel.QUORUM)
+                query = SimpleStatement("UPDATE cf SET c = c + 1 WHERE key = 'counter%i'" % c,
+                                        consistency_level=ConsistencyLevel.QUORUM)
                 session.execute(query)
 
             session = sessions[i % len(nodes)]
             keys = ",".join(["'counter%i'" % c for c in xrange(0, nb_counter)])
-            query = SimpleStatement("SELECT key, c FROM cf WHERE key IN (%s)" % keys, consistency_level=ConsistencyLevel.QUORUM)
+            query = SimpleStatement("SELECT key, c FROM cf WHERE key IN (%s)" % keys,
+                                    consistency_level=ConsistencyLevel.QUORUM)
             res = list(session.execute(query))
 
             assert len(res) == nb_counter
@@ -287,7 +288,8 @@ class TestCounters(Tester):
 
         session.execute("ALTER TABLE counter_bug drop c")
 
-        assert_invalid(session, "ALTER TABLE counter_bug add c counter", "Cannot re-add previously dropped counter column c")
+        assert_invalid(session, "ALTER TABLE counter_bug add c counter",
+                       "Cannot re-add previously dropped counter column c")
 
     def increment_counters_in_threads_test(self):
         """
@@ -414,6 +416,26 @@ class TestCounters(Tester):
                 c, str(res[c]))
             assert res[c][1] == expected_counters, "Expecting counter%i = %i, got %i" % (
                 c, expected_counters, res[c][1])
+
+    def update_counter_with_ttl_and_timestamp_negative_test(self):
+        """
+        Try to update counter column using TTL/TIMESTAMP option
+        Result: should be rejected
+        """
+        cluster = self.cluster
+        cluster.set_configuration_options(values={'experimental': True})
+        cluster.populate(1).start()
+        session = self.patient_cql_connection(cluster.nodelist()[0])
+        self.create_ks(session, 'Test', 1)
+        session.execute("CREATE TABLE counters (t int PRIMARY KEY, c counter)")
+
+        for option in ('TTL 5', 'TIMESTAMP 11223344'):
+            try:
+                session.execute("UPDATE counters USING {} SET c = c + 1 where t = 1".format(option))
+            except InvalidRequest as ex:
+                debug('Got an expected error trying to use {}: {}'.format(option.split()[0], ex))
+            else:
+                raise Exception('USING {} was not rejected!'.format(option.split()[0]))
 
 
 class TestCountersOnMultipleNodes(Tester):
@@ -600,4 +622,3 @@ class TestCountersOnMultipleNodes(Tester):
         self.node3.start(wait_other_notice=True, wait_for_binary_proto=True)
         self.node3.nodetool('rebuild')
         self._verify_data_rebuild()
-
