@@ -18,7 +18,7 @@ from assertions import assert_all, assert_none
 from ccmlib import common
 from cqlsh_tools import monkeypatch_driver, unmonkeypatch_driver
 from dtest import Tester, debug
-from tools import create_c1c2_table, insert_c1c2, rows_to_list, since
+from tools import create_c1c2_table, insert_c1c2, rows_to_list, since, require
 
 
 class TestCqlsh(Tester):
@@ -41,7 +41,7 @@ class TestCqlsh(Tester):
         super(TestCqlsh, self).tearDown()
 
     @since('2.1.9')
-    def test_pep8_compliance(self):
+    def pep8_compliance_test(self):
         """
         @jira_ticket CASSANDRA-10066
         Checks that cqlsh is compliant with pep8 with the following command:
@@ -68,7 +68,7 @@ class TestCqlsh(Tester):
         self.assertEqual(len(stdout), 0, stdout)
         self.assertEqual(len(stderr), 0, stderr)
 
-    def test_simple_insert(self):
+    def simple_insert_test(self):
 
         self.cluster.populate(1)
         self.cluster.start(wait_for_binary_proto=True)
@@ -92,7 +92,7 @@ class TestCqlsh(Tester):
                          {k: v for k, v in rows})
 
     @since('2.2')
-    def test_past_and_future_dates(self):
+    def past_and_future_dates_test(self):
         self.cluster.populate(1)
         self.cluster.start(wait_for_binary_proto=True)
 
@@ -235,7 +235,7 @@ class TestCqlsh(Tester):
         self.assertEquals(output.count(' ⠊⠀⠉⠁⠝⠀⠑⠁⠞⠀⠛⠇⠁⠎⠎⠀⠁⠝⠙⠀⠊⠞⠀⠙⠕⠑⠎⠝⠞⠀⠓⠥⠗⠞⠀⠍⠑'), 16)
         self.assertEquals(output.count('᚛᚛ᚉᚑᚅᚔᚉᚉᚔᚋ ᚔᚈᚔ ᚍᚂᚐᚅᚑ ᚅᚔᚋᚌᚓᚅᚐ᚜'), 2)
 
-    def test_eat_glass(self):
+    def eat_glass_test(self):
 
         self.cluster.populate(1)
         self.cluster.start(wait_for_binary_proto=True)
@@ -357,7 +357,7 @@ UPDATE varcharmaptable SET varcharvarintmap['Vitrum edere possum, mihi non nocet
 
         self.verify_glass(node1)
 
-    def test_source_glass(self):
+    def source_glass_test(self):
 
         self.cluster.populate(1)
         self.cluster.start(wait_for_binary_proto=True)
@@ -368,7 +368,7 @@ UPDATE varcharmaptable SET varcharvarintmap['Vitrum edere possum, mihi non nocet
 
         self.verify_glass(node1)
 
-    def test_with_empty_values(self):
+    def with_empty_values_test(self):
         """
         CASSANDRA-7196. Make sure the server returns empty values and CQLSH prints them properly
         """
@@ -514,7 +514,7 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
         debug(output)
         self.assertTrue(expected in output, "Output \n {%s} \n doesn't contain expected\n {%s}" % (output, expected))
 
-    def test_list_queries(self):
+    def list_queries_test(self):
         config = {'authenticator': 'org.apache.cassandra.auth.PasswordAuthenticator',
                   'authorizer': 'org.apache.cassandra.auth.CassandraAuthorizer',
                   'permissions_validity_in_ms': '0'}
@@ -575,7 +575,7 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
 (6 rows)
 """)
 
-    def test_describe(self):
+    def describe_test(self):
         """
         @jira_ticket CASSANDRA-7814
         """
@@ -659,7 +659,7 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
         self.execute(cql="DESCRIBE test.test", expected_output=self.get_test_table_output(has_val=True, has_val_idx=False))
         self.execute(cql='DESCRIBE test.test_val_idx', expected_err="'test_val_idx' not found in keyspace 'test'")
 
-    def test_describe_describes_non_default_compaction_parameters(self):
+    def describe_describes_non_default_compaction_parameters_test(self):
         self.cluster.populate(1)
         self.cluster.start(wait_for_binary_proto=True)
         node, = self.cluster.nodelist()
@@ -673,7 +673,7 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
         self.assertIn("'min_threshold': '10'", stdout)
         self.assertIn("'max_threshold': '100'", stdout)
 
-    def test_describe_on_non_reserved_keywords(self):
+    def describe_on_non_reserved_keywords_test(self):
         """
         @jira_ticket CASSANDRA-9232
         Test that we can describe tables whose name is a non-reserved CQL keyword
@@ -690,7 +690,7 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
         self.assertIn("CREATE TABLE ks.map (", out)
 
     @since('3.0')
-    def test_describe_mv(self):
+    def describe_mv_test(self):
         """
         @jira_ticket CASSANDRA-9961
         """
@@ -884,7 +884,7 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
         expected_lines = [s.strip() for s in expected_response.split("\n") if s.strip()]
         self.assertEqual(expected_lines, lines)
 
-    def test_copy_to(self):
+    def copy_to_test(self):
         self.cluster.populate(1).start()
         node1, = self.cluster.nodelist()
 
@@ -922,7 +922,7 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
         new_results = list(session.execute("SELECT * FROM testcopyto"))
         self.assertItemsEqual(results, new_results)
 
-    def test_float_formatting(self):
+    def float_formatting_test(self):
         """ Tests for CASSANDRA-9224, check format of float and double values"""
         self.cluster.populate(1)
         self.cluster.start(wait_for_binary_proto=True)
@@ -1100,7 +1100,7 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
 """)
 
     @since('2.2')
-    def test_int_values(self):
+    def int_values_test(self):
         """ Tests for CASSANDRA-9399, check tables with int, bigint, smallint and tinyint values"""
         self.cluster.populate(1)
         self.cluster.start(wait_for_binary_proto=True)
@@ -1139,7 +1139,7 @@ CREATE TABLE int_checks.values (
 """)
 
     @since('2.2')
-    def test_datetime_values(self):
+    def datetime_values_test(self):
         """ Tests for CASSANDRA-9399, check tables with date and time values"""
         self.cluster.populate(1)
         self.cluster.start(wait_for_binary_proto=True)
@@ -1184,7 +1184,7 @@ CREATE TABLE datetime_checks.values (
 """)
 
     @since('2.2')
-    def test_tracing(self):
+    def tracing_test(self):
         """
         Tests for CASSANDRA-9399, check tracing works.
         We care mostly that we do not crash, not so much on the tracing content, which may change and would
@@ -1220,7 +1220,7 @@ CREATE TABLE datetime_checks.values (
 Tracing session:""")
 
     @since('2.2')
-    def test_client_warnings(self):
+    def client_warnings_test(self):
         """
         Tests for CASSANDRA-9399, check client warnings.
         """
@@ -1243,7 +1243,7 @@ Tracing session:""")
 Warnings :
 Unlogged batch covering 2 partitions detected against table [client_warnings.test]. You should use a logged batch for atomicity, or asynchronous writes for performance.""")
 
-    def test_connect_timeout(self):
+    def connect_timeout_test(self):
         """
         @jira_ticket CASSANDRA-9601
         """
@@ -1255,7 +1255,7 @@ Unlogged batch covering 2 partitions detected against table [client_warnings.tes
         stdout, stderr = self.run_cqlsh(node1, cmds='USE system', cqlsh_options=['--debug', '--connect-timeout=10'])
         self.assertTrue("Using connect timeout: 10 seconds" in stderr)
 
-    def test_refresh_schema_on_timeout_error(self):
+    def refresh_schema_on_timeout_error_test(self):
         """
         @jira_ticket CASSANDRA-9689
         """
@@ -1285,7 +1285,7 @@ Unlogged batch covering 2 partitions detected against table [client_warnings.tes
                       stderr)
         self.assertIn("OperationTimedOut: errors={}, last_host=127.0.0.1", stderr)
 
-    def test_describe_round_trip(self):
+    def describe_round_trip_test(self):
         """
         @jira_ticket CASSANDRA-9064
 
@@ -1322,7 +1322,7 @@ Unlogged batch covering 2 partitions detected against table [client_warnings.tes
         self.assertEqual(reloaded_describe_out, describe_out)
 
     @since('3.0')
-    def test_materialized_view(self):
+    def materialized_view_test(self):
         """
         Test operations on a materialized view: create, describe, select from, drop, create using describe output.
         @jira_ticket CASSANDRA-9961 and CASSANDRA-10348
@@ -1374,7 +1374,7 @@ Unlogged batch covering 2 partitions detected against table [client_warnings.tes
         self.assertEqual(select_out, reloaded_select_out)
 
     @since('3.0')
-    def test_clear(self):
+    def clear_test(self):
         """
         Test the CLEAR command
         @jira_ticket CASSANDRA-10086
@@ -1382,7 +1382,7 @@ Unlogged batch covering 2 partitions detected against table [client_warnings.tes
         self._test_clear_screen('CLEAR')
 
     @since('3.0')
-    def test_cls(self):
+    def cls_test(self):
         """
         Test the CLS command
         @jira_ticket CASSANDRA-10086
@@ -1418,7 +1418,7 @@ Unlogged batch covering 2 partitions detected against table [client_warnings.tes
         if not common.is_win():
             self.assertTrue(re.search(chr(27) + "\[[0,1,2]?J", out))
 
-    def test_batch(self):
+    def batch_test(self):
         """
         Test the BATCH command
         @jira_ticket CASSANDRA-10272
@@ -1451,7 +1451,8 @@ Unlogged batch covering 2 partitions detected against table [client_warnings.tes
             port = node.network_interfaces['thrift'][1]
         args = cqlsh_options + [host, str(port)]
         sys.stdout.flush()
-        p = subprocess.Popen([cli] + args, env=env, stdin=subprocess.PIPE, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+        p = subprocess.Popen([cli] + args, env=env, stdin=subprocess.PIPE, stderr=subprocess.PIPE,
+                             stdout=subprocess.PIPE)
         for cmd in cmds.split(';'):
             p.stdin.write(cmd + ';\n')
         p.stdin.write("quit;\n")
@@ -1469,7 +1470,7 @@ class CqlshSmokeTest(Tester):
         [self.node1] = self.cluster.nodelist()
         self.session = self.patient_cql_connection(self.node1)
 
-    def test_uuid(self):
+    def uuid_test(self):
         """
         the `uuid()` function can generate UUIDs from cqlsh.
         """
@@ -1497,7 +1498,7 @@ class CqlshSmokeTest(Tester):
         self.assertIsInstance(result[1][0], UUID)
         self.assertNotEqual(result[0][0], result[1][0])
 
-    def test_commented_lines(self):
+    def commented_lines_test(self):
         self.create_ks(self.session, 'ks', 1)
         self.create_cf(self.session, 'test')
 
@@ -1514,7 +1515,7 @@ class CqlshSmokeTest(Tester):
         self.assertEqual(err, "")
         self.assertTrue(out.strip().startswith("CREATE KEYSPACE ks"))
 
-    def test_colons_in_string_literals(self):
+    def colons_in_string_literals_test(self):
         self.create_ks(self.session, 'ks', 1)
         self.create_cf(self.session, 'test', columns={'i': 'int'})
 
@@ -1525,7 +1526,7 @@ class CqlshSmokeTest(Tester):
         assert_all(self.session, "SELECT key FROM test",
                    [[u'Cassandra:TheMovie']])
 
-    def test_select(self):
+    def select_test(self):
         self.create_ks(self.session, 'ks', 1)
         self.create_cf(self.session, 'test')
 
@@ -1542,14 +1543,14 @@ class CqlshSmokeTest(Tester):
         self.assertIn("a | a | a", out_lines)
         self.assertEqual(err, '')
 
-    def test_insert(self):
+    def insert_test(self):
         self.create_ks(self.session, 'ks', 1)
         self.create_cf(self.session, 'test')
 
         self.node1.run_cqlsh("INSERT INTO ks.test (key, c, v) VALUES ('a', 'a', 'a')")
         assert_all(self.session, "SELECT key, c, v FROM test", [[u"a", u"a", u"a"]])
 
-    def test_update(self):
+    def update_test(self):
         self.create_ks(self.session, 'ks', 1)
         self.create_cf(self.session, 'test')
 
@@ -1558,7 +1559,7 @@ class CqlshSmokeTest(Tester):
         self.node1.run_cqlsh("UPDATE ks.test SET v = 'b' WHERE key = 'a' AND c = 'a'")
         assert_all(self.session, "SELECT key, c, v FROM test", [[u"a", u"a", u"b"]])
 
-    def test_delete(self):
+    def delete_test(self):
         self.create_ks(self.session, 'ks', 1)
         self.create_cf(self.session, 'test', columns={'i': 'int'})
 
@@ -1575,7 +1576,7 @@ class CqlshSmokeTest(Tester):
         assert_all(self.session, 'SELECT key from test',
                    [[u'a'], [u'e'], [u'd'], [u'b']])
 
-    def test_batch(self):
+    def batch_test(self):
         self.create_ks(self.session, 'ks', 1)
         self.create_cf(self.session, 'test', columns={'i': 'int'})
         # run batch statement (inserts are fine)
@@ -1591,13 +1592,14 @@ class CqlshSmokeTest(Tester):
         assert_all(self.session, 'SELECT key FROM ks.test',
                    [[u'eggs'], [u'spam'], [u'sausage']])
 
-    def test_create_keyspace(self):
+    def create_keyspace_test(self):
         self.assertNotIn(u'created', self.get_keyspace_names())
 
-        self.node1.run_cqlsh("CREATE KEYSPACE created WITH replication = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 }")
+        self.node1.run_cqlsh("CREATE KEYSPACE created WITH replication = "
+                             "{ 'class' : 'SimpleStrategy', 'replication_factor' : 1 }")
         self.assertIn(u'created', self.get_keyspace_names())
 
-    def test_drop_keyspace(self):
+    def drop_keyspace_test(self):
         self.create_ks(self.session, 'ks', 1)
         self.assertIn(u'ks', self.get_keyspace_names())
 
@@ -1605,13 +1607,13 @@ class CqlshSmokeTest(Tester):
 
         self.assertNotIn(u'ks', self.get_keyspace_names())
 
-    def test_create_table(self):
+    def create_table_test(self):
         self.create_ks(self.session, 'ks', 1)
 
         self.node1.run_cqlsh('CREATE TABLE ks.test (i int PRIMARY KEY);')
         self.assertEquals(self.get_tables_in_keyspace('ks'), [u'test'])
 
-    def test_drop_table(self):
+    def drop_table_test(self):
         self.create_ks(self.session, 'ks', 1)
         self.create_cf(self.session, 'test')
 
@@ -1622,7 +1624,7 @@ class CqlshSmokeTest(Tester):
 
         self.assertEqual(0, len(self.session.cluster.metadata.keyspaces['ks'].tables))
 
-    def test_truncate(self):
+    def truncate_test(self):
         self.create_ks(self.session, 'ks', 1)
         self.create_cf(self.session, 'test', columns={'i': 'int'})
 
@@ -1637,7 +1639,29 @@ class CqlshSmokeTest(Tester):
         self.node1.run_cqlsh('TRUNCATE ks.test;')
         self.assertEqual([], rows_to_list(self.session.execute('SELECT * from test')))
 
-    def test_alter_table(self):
+    def truncate_with_limit_test(self):
+        """
+        Create keyspace RF=1 and table, populate the table with data
+        Truncate the table, run select with limit 1
+        Result: no error, no rows to return
+        Issue: https://github.com/scylladb/scylla/issues/1694
+        """
+        self.create_ks(self.session, 'ks', 1)
+        self.node1.run_cqlsh("CREATE TABLE ks.test "
+                             "(test_id int, partition_key text, time timestamp, value double, "
+                             "PRIMARY KEY ((test_id, partition_key), time));")
+
+        for i in range(0, 10):
+            query = "INSERT INTO ks.test (test_id, partition_key, time, value) "\
+                    "VALUES ({}, \'{}\', \'{}\', {});".format(
+                        i, str(uuid4()), datetime.datetime.now().replace(microsecond=0).isoformat(), float(i))
+            self.session.execute(query)
+        self.assertEqual([10], rows_to_list(self.session.execute('SELECT count(*) from test'))[0])
+
+        self.node1.run_cqlsh('TRUNCATE ks.test;')
+        self.assertEqual([], rows_to_list(self.session.execute('SELECT * from test limit 1')))
+
+    def alter_table_test(self):
         self.create_ks(self.session, 'ks', 1, )
         self.create_cf(self.session, 'test', columns={'i': 'ascii'})
 
@@ -1659,7 +1683,7 @@ class CqlshSmokeTest(Tester):
                        u'text'],
                       new_columns)
 
-    def test_use_keyspace(self):
+    def use_keyspace_test(self):
         # ks1 contains ks1table, ks2 contains ks2table
         self.create_ks(self.session, 'ks1', 1)
         self.create_cf(self.session, 'ks1table')
@@ -1685,7 +1709,8 @@ class CqlshSmokeTest(Tester):
         self.assertEqual(ks2_stderr, '')
 
     # DROP INDEX statement fails in 2.0 (see CASSANDRA-9247)
-    def test_drop_index(self):
+    @require('secondary index')
+    def drop_index_test(self):
         self.create_ks(self.session, 'ks', 1)
         self.create_cf(self.session, 'test', columns={'i': 'int'})
 
@@ -1707,7 +1732,8 @@ class CqlshSmokeTest(Tester):
         self.assertRaises(InvalidRequest, execute_requires_index)
 
     # DROP INDEX statement fails in 2.0 (see CASSANDRA-9247)
-    def test_create_index(self):
+    @require('secondary index')
+    def create_index_test(self):
         self.create_ks(self.session, 'ks', 1)
         self.create_cf(self.session, 'test', columns={'i': 'int'})
 
@@ -1751,7 +1777,7 @@ class CqlLoginTest(Tester):
         self.node1.watch_log_for('Created default superuser')
         self.session = self.patient_cql_connection(self.node1, user='cassandra', password='cassandra')
 
-    def test_login_keeps_keyspace(self):
+    def login_keeps_keyspace_test(self):
         self.create_ks(self.session, 'ks1', 1)
         self.create_cf(self.session, 'ks1table')
         self.session.execute("CREATE USER user1 WITH PASSWORD 'changeme';")
@@ -1768,7 +1794,7 @@ class CqlLoginTest(Tester):
         self.assertEqual([x for x in cqlsh_stdout.split() if x], ['ks1table', 'ks1table'])
         self.assertEqual(cqlsh_stderr, '')
 
-    def test_login_rejects_bad_pass(self):
+    def login_rejects_bad_pass_test(self):
         self.create_ks(self.session, 'ks1', 1)
         self.create_cf(self.session, 'ks1table')
         self.session.execute("CREATE USER user1 WITH PASSWORD 'changeme';")
@@ -1779,9 +1805,10 @@ class CqlLoginTest(Tester):
             ''',
             return_output=True,
             cqlsh_options=['-u', 'cassandra', '-p', 'cassandra'])
-        self.assertEqual(['''Username and/or password are incorrect''' in x for x in cqlsh_stderr.split("\n") if x], [True])
+        self.assertEqual(['''Username and/or password are incorrect''' in x for x in cqlsh_stderr.split("\n") if x],
+                         [True])
 
-    def test_login_authenticates_correct_user(self):
+    def login_authenticates_correct_user_test(self):
         self.create_ks(self.session, 'ks1', 1)
         self.create_cf(self.session, 'ks1table')
         self.session.execute("CREATE USER user1 WITH PASSWORD 'changeme';")
@@ -1813,7 +1840,7 @@ class CqlLoginTest(Tester):
                       "cqlsh stderr output: {}".format(expected_error,
                                                        '\n'.join(err_lines)))
 
-    def test_login_allows_bad_pass_and_continued_use(self):
+    def login_allows_bad_pass_and_continued_use_test(self):
         self.create_ks(self.session, 'ks1', 1)
         self.create_cf(self.session, 'ks1table')
         self.session.execute("CREATE USER user1 WITH PASSWORD 'changeme';")
@@ -1827,4 +1854,5 @@ class CqlLoginTest(Tester):
             return_output=True,
             cqlsh_options=['-u', 'cassandra', '-p', 'cassandra'])
         self.assertEqual([x for x in cqlsh_stdout.split() if x], ['ks1table'])
-        self.assertEqual(['''Username and/or password are incorrect''' in x for x in cqlsh_stderr.split("\n") if x], [True])
+        self.assertEqual(['''Username and/or password are incorrect''' in x for x in cqlsh_stderr.split("\n") if x],
+                         [True])
