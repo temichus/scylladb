@@ -105,8 +105,7 @@ class TestUpdateClusterLayout(Tester):
 
     def add_multi_nodes(self, starting_size=3, node_count=10, rf=1):
         """
-        Test growing a cluster to large scales of nodes
-        1. Create a cluster with a 6 nodes with rf=2, insert data
+        1. Create a cluster with 3 nodes and rf=1, insert data
         2. In a loop add new nodes
         3. Check that all data exists
         """
@@ -143,7 +142,7 @@ class TestUpdateClusterLayout(Tester):
         Cluster starts with a starting_size=3 and grow to node_count=50 during a c-s write in the background (low load)
         and c-s read after adding all nodes to make sure all data was written successfully.
         In addition, while adding each node inserting 100 keys and verifying that all keys were written.
-        E.Result: All nodes (50) were added and c-s read successfully read all keys (200,000). 
+        E.Result: All nodes (50) were added and c-s read successfully read all keys (200,000).
         """
         starting_size = 3
         cluster = self.cluster
