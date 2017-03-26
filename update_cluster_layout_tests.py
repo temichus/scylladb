@@ -19,7 +19,8 @@ import collections
 
 class TestUpdateClusterLayout(Tester):
 
-    def check_rows_on_node(self, node_to_check, rows, found=None, missings=None, restart=True, ks='ks', cf='cf', counter_column=None):
+    def check_rows_on_node(self, node_to_check, rows, found=None, missings=None, restart=True, ks='ks', cf='cf',
+                           counter_column=None):
         if found is None:
             found = []
         if missings is None:
@@ -33,7 +34,8 @@ class TestUpdateClusterLayout(Tester):
 
         session = self.patient_cql_connection(node_to_check, ks)
         if rows > 1000 and counter_column:
-            result = list(session.execute("select count(%s) from %s.%s limit %d;" % (counter_column, ks, cf, rows * 2), timeout=300))
+            result = list(session.execute("select count(%s) from %s.%s limit %d;" % (counter_column, ks, cf, rows * 2),
+                                          timeout=300))
             count = result[0][0]
             self.assertEqual(count, rows, count)
         else:
@@ -159,7 +161,8 @@ class TestUpdateClusterLayout(Tester):
 
         def run():
             try:
-                node2.stress(['write', 'cl=QUORUM', 'n=200000', 'no-warmup','-pop seq=1..200000', '-rate threads=2'])
+                node2.stress(['write', 'cl=QUORUM', 'n=300000', 'no-warmup',
+                              '-pop seq=1..300000', '-rate threads=2 limit=100/s'])
 
             finally:
                 event.set()
@@ -172,7 +175,7 @@ class TestUpdateClusterLayout(Tester):
         self.add_multi_nodes(starting_size, node_count=50, rf=1)
         event.wait()
 
-        node2.stress(['read', 'cl=QUORUM', 'n=200000', 'no-warmup', '-pop seq=1..200000', '-rate threads=2'])
+        node2.stress(['read', 'cl=QUORUM', 'n=300000', 'no-warmup', '-pop seq=1..300000'])
 
     def _iterative_add_decommission(self, iterations=2, node_count=2, rf=1):
         """
@@ -207,11 +210,13 @@ class TestUpdateClusterLayout(Tester):
                 node_i.start(wait_for_binary_proto=True, wait_other_notice=True)
                 session_i = self.patient_exclusive_cql_connection(node_i)
                 session_i.execute("use ks;")
-                insert_c1c2(session_i, keys=range(iteration * 100000 + i * 2000, iteration * 100000 + i * 2000 + 100), consistency=consistency)
+                insert_c1c2(session_i, keys=range(iteration * 100000 + i * 2000, iteration * 100000 + i * 2000 + 100),
+                            consistency=consistency)
                 debug("added %s" % node_i.name)
 
             result = list(session.execute(query))
-            self.assertEqual(len(result), iteration * node_count * 100 + 1000, "data loss after increasing size to %d expecting %d rows %d" %
+            self.assertEqual(len(result), iteration * node_count * 100 + 1000,
+                             "data loss after increasing size to %d expecting %d rows %d" %
                              (len(cluster.nodelist()), iteration * node_count * 100 + 1000, len(result)))
 
             for node_i in cluster.nodelist()[0:-1]:
@@ -223,7 +228,9 @@ class TestUpdateClusterLayout(Tester):
             last_node = cluster.nodelist()[-1]
             session = self.patient_cql_connection(last_node)
             result = list(session.execute("SELECT key FROM ks.cf limit 3000"))
-            self.assertEqual(len(result), iteration * node_count * 100 + 1000, "data loss after shrinking to 2 node execpeting %d rows %d" % (iteration * node_count * 100 + 1000, len(result)))
+            self.assertEqual(len(result), iteration * node_count * 100 + 1000,
+                             "data loss after shrinking to 2 node execpeting %d rows %d" %
+                             (iteration * node_count * 100 + 1000, len(result)))
 
         node1.decommission()
         node1.stop()
@@ -231,7 +238,8 @@ class TestUpdateClusterLayout(Tester):
         last_node = cluster.nodelist()[-1]
         session = self.patient_cql_connection(last_node)
         result = list(session.execute("SELECT key FROM ks.cf limit 3000"))
-        self.assertEqual(len(result), iterations * node_count * 100 + 1000, "data loss after shrinking to 1 node %s expecting %d rows %d" %
+        self.assertEqual(len(result), iterations * node_count * 100 + 1000,
+                         "data loss after shrinking to 1 node %s expecting %d rows %d" %
                          (last_node.name, iterations * node_count * 100 + 1000, len(result)))
 
     def iterative_add_1_node_decommission_1_node_rf_1_test(self):
@@ -488,7 +496,8 @@ class TestUpdateClusterLayout(Tester):
                     for key in range(2000, 4000):
                         # working around the default retry_policy that attempts 5 times
                         statement = SimpleStatement("INSERT INTO cf (key, c1, c2) VALUES ('k%d', 'value1', 'value2')" %
-                                                    key, consistency_level=ConsistencyLevel.ONE, retry_policy=FallthroughRetryPolicy())
+                                                    key, consistency_level=ConsistencyLevel.ONE,
+                                                    retry_policy=FallthroughRetryPolicy())
                         tbefore = str(datetime.now())
                         session.execute(statement)
                     debug("end write")
@@ -503,7 +512,8 @@ class TestUpdateClusterLayout(Tester):
                     pass
                 except (OperationTimedOut) as e:
                     tfailed = str(datetime.now())
-                    failed = "Server side escrption not thrown  driver side exception thrown OperationTimeout %s %s %s" % (e, tbefore, tfailed)
+                    failed = "Server side exception not thrown  driver side exception thrown OperationTimeout %s %s %s"\
+                             % (e, tbefore, tfailed)
                 finally:
                     event.set()
 
@@ -566,7 +576,8 @@ class TestUpdateClusterLayout(Tester):
                 for key in range(2000, 4000):
                     # working around the default retry_policy that attempts 5 times
                     statement = SimpleStatement("INSERT INTO cf (key, c1, c2) VALUES ('k%d', 'value1', 'value2')" %
-                                                key, consistency_level=ConsistencyLevel.EACH_QUORUM, retry_policy=FallthroughRetryPolicy())
+                                                key, consistency_level=ConsistencyLevel.EACH_QUORUM,
+                                                retry_policy=FallthroughRetryPolicy())
                     tbefore = str(datetime.now())
                     session.execute(statement)
                 debug("end write")
@@ -581,7 +592,8 @@ class TestUpdateClusterLayout(Tester):
                 pass
             except (OperationTimedOut) as e:
                 tfailed = str(datetime.now())
-                failed = "Server side exception not thrown driver side exception thrown OperationTimeout %s %s %s" % (e, before, failed)
+                failed = "Server side exception not thrown driver side exception thrown OperationTimeout %s %s %s" %\
+                         (e, before, failed)
             finally:
                 event.set()
 
@@ -696,7 +708,8 @@ class TestUpdateClusterLayout(Tester):
                 self.create_ks(session, 'ks1', rf)
                 self.create_cf(session, 'cf1', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
                 for i in xrange(0, 100):
-                    insert = SimpleStatement("insert into ks1.cf1 (key,c1,c2) values ('%d','%d','%d')" % (i, i, i), consistency_level=consistency)
+                    insert = SimpleStatement("insert into ks1.cf1 (key,c1,c2) values ('%d','%d','%d')" % (i, i, i),
+                                             consistency_level=consistency)
                     session.execute(insert)
             finally:
                 event.set()
@@ -1224,7 +1237,8 @@ class TestUpdateClusterLayout(Tester):
                 self.create_ks(session, 'ks1', rf)
                 self.create_cf(session, 'cf1', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
                 for i in xrange(0, 1000):
-                    insert = SimpleStatement("insert into ks1.cf1 (key,c1,c2) values ('%d','%d','%d')" % (i, i, i), consistency_level=consistency)
+                    insert = SimpleStatement("insert into ks1.cf1 (key,c1,c2) values ('%d','%d','%d')" % (i, i, i),
+                                             consistency_level=consistency)
                     session.execute(insert)
             finally:
                 event.set()
@@ -1344,7 +1358,8 @@ class TestUpdateClusterLayout(Tester):
         status2, err2 = node1.nodetool('gossipinfo')
         gossipinfo_2 = self._get_gossipinfo(status2)
         heartbeat_2 = int(gossipinfo_2[cluster.get_node_ip(1)]['heartbeat'])
-        e_msg = ("Heartbeat for status 2 '%s' is not greater than for status 1 '%s', something is wrong" % (heartbeat_2, heartbeat_1))
+        e_msg = ("Heartbeat for status 2 '%s' is not greater than for status 1 '%s', something is wrong" %
+                 (heartbeat_2, heartbeat_1))
         debug("heartbeat_2 = %d, heartbeat_1 = %d" % (heartbeat_2, heartbeat_1))
         self.assertGreater(heartbeat_2, heartbeat_1, e_msg)
 
@@ -1387,7 +1402,8 @@ class TestUpdateClusterLayout(Tester):
         c1s = [c1] * nr_rows
         c2s = [c2] * nr_rows
         debug("Insert data")
-        scylla_tools.insert_c1c2(session, keys=range(nr_rows), consistency=ConsistencyLevel.ONE, c1_values=c1s, c2_values=c2s)
+        scylla_tools.insert_c1c2(session, keys=range(nr_rows), consistency=ConsistencyLevel.ONE, c1_values=c1s,
+                                 c2_values=c2s)
 
         node2 = new_node(cluster)
         node2.start(wait_for_binary_proto=True)
@@ -1431,7 +1447,8 @@ class TestUpdateClusterLayout(Tester):
 
         # Insert data
         debug("Insert data")
-        scylla_tools.insert_c1cn(session, keys=range(nr_rows), consistency=ConsistencyLevel.ONE, nr_columns=nr_columns, column_size=column_size)
+        scylla_tools.insert_c1cn(session, keys=range(nr_rows), consistency=ConsistencyLevel.ONE, nr_columns=nr_columns,
+                                 column_size=column_size)
 
         node2 = new_node(cluster)
         node2.start(wait_for_binary_proto=True)
@@ -1477,7 +1494,8 @@ class TestUpdateClusterLayout(Tester):
                 c1s.append(v3)
                 c2s.append(v4)
         debug("Insert data")
-        scylla_tools.insert_c1c2(session, keys=xrange(nr_rows), consistency=ConsistencyLevel.ONE, c1_values=c1s, c2_values=c2s)
+        scylla_tools.insert_c1c2(session, keys=xrange(nr_rows), consistency=ConsistencyLevel.ONE, c1_values=c1s,
+                                 c2_values=c2s)
 
         node2 = new_node(cluster)
         node2.start(wait_for_binary_proto=True)
@@ -1515,7 +1533,8 @@ class TestUpdateClusterLayout(Tester):
         c_s_profile = os.path.abspath(c_s_profile)
         debug("Inject data with cassandra-stress starts")
         debug(c_s_profile)
-        node1.stress(['user', 'n=%s' % nr_partitions, 'cl=ONE', 'profile=%s' % c_s_profile, 'ops(insert=1)', '-rate threads=1'])
+        node1.stress(['user', 'n=%s' % nr_partitions, 'cl=ONE', 'profile=%s' % c_s_profile, 'ops(insert=1)',
+                      '-rate threads=1'])
         debug("Inject data with cassandra-stress completes")
 
         node2 = new_node(cluster)
