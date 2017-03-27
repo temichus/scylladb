@@ -138,44 +138,6 @@ class TestUpdateClusterLayout(Tester):
             self.assertEqual(len(result), i * 100 + 1000, "data loss after increasing size to %d expecting %d rows %d" %
                              (len(cluster.nodelist()), i * 100 + 1000, len(result)))
 
-    def add_50_nodes_test(self):
-        """
-        Test large scale cluster (50 nodes cluster).
-        Cluster starts with a starting_size=3 and grow to node_count=50 during a c-s write in the background (low load)
-        and c-s read after adding all nodes to make sure all data was written successfully.
-        In addition, while adding each node inserting 100 keys and verifying that all keys were written.
-        E.Result: All nodes (50) were added and c-s read successfully read all keys (200,000).
-        """
-        starting_size = 3
-        cluster = self.cluster
-
-        self.allow_log_errors = True
-
-        # Disable hinted handoff and set batch commit log so this doesn't
-        # interfer with the test (this must be after the populate)
-        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
-        cluster.populate(starting_size).start()
-        node2 = cluster.nodelist()[1]
-
-        event = threading.Event()
-
-        def run():
-            try:
-                node2.stress(['write', 'cl=QUORUM', 'n=300000', 'no-warmup',
-                              '-pop seq=1..300000', '-rate threads=2 limit=100/s'])
-
-            finally:
-                event.set()
-                pass
-
-        t = threading.Thread(target=run)
-        t.setDaemon(True)
-        t.start()
-
-        self.add_multi_nodes(starting_size, node_count=50, rf=1)
-        event.wait()
-
-        node2.stress(['read', 'cl=QUORUM', 'n=300000', 'no-warmup', '-pop seq=1..300000'])
 
     def _iterative_add_decommission(self, iterations=2, node_count=2, rf=1):
         """
@@ -1545,3 +1507,46 @@ class TestUpdateClusterLayout(Tester):
         self.check_rows_on_node(node2, nr_rows, ks='keyspace1', cf='standard1', counter_column='cn')
         debug("Check rows on node1")
         self.check_rows_on_node(node1, nr_rows, ks='keyspace1', cf='standard1', counter_column='cn')
+
+
+class TestLargeScaleCluster(TestUpdateClusterLayout):
+    _multiprocess_can_split_ = False
+
+    def add_50_nodes_test(self):
+        """
+        Test large scale cluster (50 nodes cluster).
+        Cluster starts with a starting_size=3 and grow to node_count=50 during a c-s write in the background (low load)
+        and c-s read after adding all nodes to make sure all data was written successfully.
+        In addition, while adding each node inserting 100 keys and verifying that all keys were written.
+        E.Result: All nodes (50) were added and c-s read successfully read all keys (200,000).
+        """
+        starting_size = 3
+        cluster = self.cluster
+
+        self.allow_log_errors = True
+
+        # Disable hinted handoff and set batch commit log so this doesn't
+        # interfer with the test (this must be after the populate)
+        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.populate(starting_size).start()
+        node2 = cluster.nodelist()[1]
+
+        event = threading.Event()
+
+        def run():
+            try:
+                node2.stress(['write', 'cl=QUORUM', 'n=300000', 'no-warmup',
+                              '-pop seq=1..300000', '-rate threads=2 limit=100/s'])
+
+            finally:
+                event.set()
+                pass
+
+        t = threading.Thread(target=run)
+        t.setDaemon(True)
+        t.start()
+
+        self.add_multi_nodes(starting_size, node_count=50, rf=1)
+        event.wait()
+
+        node2.stress(['read', 'cl=QUORUM', 'n=300000', 'no-warmup', '-pop seq=1..300000'])
