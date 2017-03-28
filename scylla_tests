@@ -147,6 +147,7 @@ cql_additional_tests.py:TestCQL.update_type_test
 cql_additional_tests.py:TestCQL.validate_counter_regular_test
 cql_tests.py
 cql_tracing_test.py
+cqlsh_tests/cqlsh_tests.py
 internode_ssl_test.py
 largecolumn_test.py
 limits_test.py
@@ -198,6 +199,7 @@ simple_cluster_driver_test.py
 simple_driver_test.py
 snapshot_test.py:TestSnapshot.test_basic_snapshot_and_restore_with_refresh
 sstable_generation_loading_test.py:TestSSTableGenerationAndLoading.promoted_index_generation_with_small_partition_followed_by_a_large_partition_test
+sstabledump_test.py
 sstableloader_test.py
 sstablesplit_test.py
 thrift_tests.py
