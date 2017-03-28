@@ -622,3 +622,90 @@ class TestCountersOnMultipleNodes(Tester):
         self.node3.start(wait_other_notice=True, wait_for_binary_proto=True)
         self.node3.nodetool('rebuild')
         self._verify_data_rebuild()
+
+
+class TestCountersStress(Tester):
+
+    def __init__(self, *argv, **kwargs):
+        super(TestCountersStress, self).__init__(*argv, **kwargs)
+        self._op_cnt = 100000
+
+    def setUp(self):
+        super(TestCountersStress, self).setUp()
+        cluster = self.cluster
+        cluster.set_configuration_options(values={'experimental': True})
+        cluster.populate(3).start()
+        self.node = cluster.nodelist()[0]
+
+    def counter_stress_test(self):
+        """
+        Run cassandra stress test with multiple concurrent updates/reads of counters
+        Result: written/read count is as expected
+        """
+        session = self.patient_cql_connection(self.node)
+        session.execute("""
+            CREATE KEYSPACE keyspace1
+            WITH replication = {'class': 'SimpleStrategy', 'replication_factor': '2'} AND durable_writes = true;
+        """)
+        session.execute("""
+            CREATE TABLE keyspace1.counter1 (
+                key blob PRIMARY KEY,
+                "C0" counter,
+                "C1" counter,
+                "C2" counter,
+                "C3" counter,
+                "C4" counter
+            ) WITH COMPACT STORAGE
+                AND bloom_filter_fp_chance = 0.01
+                AND caching = '{"keys":"ALL","rows_per_partition":"ALL"}'
+                AND comment = ''
+                AND compaction = {'class': 'SizeTieredCompactionStrategy'}
+                AND compression = {}
+                AND dclocal_read_repair_chance = 0.1
+                AND default_time_to_live = 0
+                AND gc_grace_seconds = 864000
+                AND max_index_interval = 2048
+                AND memtable_flush_period_in_ms = 0
+                AND min_index_interval = 128
+                AND read_repair_chance = 0.0
+                AND speculative_retry = '99.0PERCENTILE';
+        """)
+
+        debug('Run stress counter_write')
+        resp = self.node.stress_object(['counter_write', 'n={}'.format(self._op_cnt), '-rate', 'threads=4'])
+        if not resp or 'Total partitions:write' not in resp:
+            raise Exception('Error running stress test: {}'.format(resp))
+        self.assertGreaterEqual(resp['Total partitions:write'], self._op_cnt)
+        rows = rows_to_list(session.execute('SELECT count(*) FROM keyspace1.counter1;'))
+        self.assertEqual(rows[0][0], self._op_cnt)
+
+        debug('Run stress counter_read')
+        resp = self.node.stress_object(['counter_read', 'n={}'.format(self._op_cnt)])
+        if not resp or 'Total partitions:read' not in resp:
+            raise Exception('Error running stress test: {}'.format(resp))
+        self.assertGreaterEqual(resp['Total partitions:read'], self._op_cnt)
+
+    def counter_stress_user_profile_test(self):
+        """
+        Run cassandra stress test updates/reads of counters with user profile
+        Result: able to work with custom columns table
+        """
+        profile_path = os.path.join(os.path.dirname(__file__),
+                                    'test_data/c-s-profiles/cassandra-stress-custom-counters-1.yaml')
+
+        debug('Run stress update counters with user profile')
+        resp = self.node.stress_object(['user', 'profile={}'.format(profile_path),
+                                        'ops(insert=1)', 'n={}'.format(self._op_cnt), '-rate', 'threads=4'])
+        if not resp or 'Total partitions' not in resp:
+            raise Exception('Error running stress test: {}'.format(resp))
+        self.assertGreaterEqual(resp['Total partitions'], self._op_cnt)
+        session = self.patient_cql_connection(self.node)
+        rows = rows_to_list(session.execute('SELECT count(*) FROM ks.counter_cf;'))
+        self.assertEqual(rows[0][0], self._op_cnt)
+
+        debug('Run stress read counters with user profile')
+        resp = self.node.stress_object(['user', 'profile={}'.format(profile_path), 'ops(read1=1)',
+                                        'n={}'.format(self._op_cnt), '-rate', 'threads=4'])
+        if not resp or 'Total partitions' not in resp:
+            raise Exception('Error running stress test: {}'.format(resp))
+        self.assertGreaterEqual(resp['Total partitions'], self._op_cnt)
