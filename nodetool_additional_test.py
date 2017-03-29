@@ -256,9 +256,11 @@ class TestNodetool(Tester):
         [node1] = cluster.nodelist()
         cursor = self.patient_cql_connection(node1)
 
+        debug('Run stress write test')
         strs = self.stress_write(node1, times=1000, opt=['no-warmup'])
         node1.flush()
 
+        debug('Run and verify cfstats')
         table_name = 'standard1'
         o = node1.nodetool('cfstats', True)[0]
         output = TestNodetool._to_cfstats(o)
@@ -279,7 +281,9 @@ class TestNodetool(Tester):
         self.assertMapEqual(table, "Number of keys (estimate)", 1000)
         self.assertMapGreatEqual(table, "Memtable cell count", 0)
 
+        debug('Run stress mixed test')
         strs = self.stress_mixed(node1, times=1000)
+        debug('Run and verify cfstats')
         output = self._to_cfstats(node1.nodetool('cfstats keyspace1', True)[0])
         ks = output["keyspace1"]
         table = ks["tables"][table_name]
@@ -776,37 +780,43 @@ class TestNodetool(Tester):
         cluster = self.cluster
         cluster.populate(2).start(wait_for_binary_proto=True)
         node = cluster.nodelist()[0]
-        strs = self.stress_write(node, 10000)
+        strs = self.stress_write(node, 10000, duration='10s')
         res = self._get_cfhistogram(node, "keyspace1", "standard1")
+
         self.assertMapEqual(res, "ks", "keyspace1", "wrong keysyapce")
         self.assertMapEqual(res, "cf", "standard1", "wrong column family")
+        self.verify_cfhistograms(res=res)
         ltnc = strs['latency 99.9th percentile:write']
         for v in res["vals"]:
             self.assertMapEqual(res["vals"][v], "Read Latency", 0, "unexpected read latency")
             if float(ltnc) != 0.0:
                 self.assertMapLess(res["vals"][v], "Write Latency", ltnc * 1000, "unexpected write latency")
-        res = self._get_cfhistogram(node, "keyspace1", "standard1")
-        for v in res["vals"]:
-            self.assertMapEqual(res["vals"][v], "Read Latency", 0, "unexpected read latency")
-            self.assertMapEqual(res["vals"][v], "Write Latency", 0, "unexpected write latency")
-        self.verify_cfhistograms()
-        strs = self.stress_mixed(node, 10000)
-        res = self._get_cfhistogram(node, "keyspace1", "standard1")
-        ltnc = strs['latency 99.9th percentile:read']
-        if float(ltnc) == 0.0:
-            return
-        for v in res["vals"]:
-            self.assertMapLess(res["vals"][v], "Read Latency", ltnc * 1000, "unexpected read latency")
 
-    def verify_cfhistograms(self, node=None, ks="keyspace1", cf="standard1"):
-        node = self.get_node(node)
-        res = self._get_cfhistogram(node, ks, cf)
-        cur = -1
-        mn = res["vals"]["Min"]["Write Latency"]
-        self.assertLessEqual(mn, res["vals"]["50%"], "Min write latency should be smaller then 50%")
-        for v in ["50%", "75%", "95%", "98%", "99%", "Max"]:
-            self.assertMapGreatEqual(res["vals"][v], "Write Latency", cur, "write latency is not monotonic ")
-            cur = res["vals"][v]["Write Latency"]
+        strs = self.stress_mixed(node, 10000, duration='10s')
+        res = self._get_cfhistogram(node, "keyspace1", "standard1")
+        self.verify_cfhistograms(res=res, ltype='mixed')
+        if 'latency 99.9th percentile:read' in strs:
+            ltnc = strs['latency 99.9th percentile:read']
+            if float(ltnc) != 0.0:
+                for v in res["vals"]:
+                    self.assertMapLess(res["vals"][v], "Read Latency", ltnc * 1000, "unexpected read latency")
+
+    def verify_cfhistograms(self, node=None, ks="keyspace1", cf="standard1", res=None, ltype='write'):
+        if not res:
+            node = self.get_node(node)
+            res = self._get_cfhistogram(node, ks, cf)
+        latency_types = ['Write Latency']
+        if ltype == 'mixed':
+            latency_types.append('Read Latency')
+        for latency_type in latency_types:
+            cur = res["vals"]["Min"][latency_type]
+            for v in ["50%", "75%", "95%", "98%", "99%", "Max"]:
+                latency_val = res["vals"][v][latency_type]
+                self.assertNotEqual(float(latency_val), 0.0, "unexpected {} 0 for {} load".format(latency_type, v))
+                self.assertGreaterEqual(latency_val, cur,
+                                        "{} is not monotonic: {}({} load), was {}".format(latency_type, latency_val,
+                                                                                          v, cur))
+                cur = latency_val
 
     @staticmethod
     def describecluster(node):
@@ -1087,10 +1097,13 @@ class TestNodetool(Tester):
         cluster = self.cluster
         cluster.populate(2).start(wait_for_binary_proto=True)
         node = cluster.nodelist()[0]
+        debug('Run stress write test')
         self.stress_write(node, times=1000000, pop='seq=1..3000000000', opt=["-rate threads=10"])
+        debug('Add new node')
         node2 = new_node(cluster)
         node2.start(wait_for_binary_proto=False)
         node2.watch_log_for('streaming')
+        debug('Run and check netstats')
         stats = self.netstats(node)
         self.assertEquals(len(stats["streams"]), 1)
 
@@ -1099,12 +1112,18 @@ class TestNodetool(Tester):
             node = self.cluster.nodelist()[0]
         out = node.nodetool("proxyhistograms", True)[0]
         histogram = re.findall("^\s*([^\s]+)\s+(\d+\.\d+)\s+(\d+\.\d+)\s+([^\s]+)\s*$", out, re.MULTILINE)
-        return [self._list2dic(m, ["Percentile", "Read Latency", "Write Latency", "Range Latency"]) for m in histogram]
+        return {m[0]: self._list2dic(m[1:], ["Read Latency", "Write Latency", "Range Latency"]) for m in histogram}
 
-    def _verify_proxyhistogram(self, lst):
-        self.assertRegexpMatches(lst["Read Latency"], "\d+\.\d+", "Bad formatted Read latency")
-        self.assertRegexpMatches(lst["Write Latency"], "\d+\.\d+", "Bad formatted Write latency")
-        self.assertRegexpMatches(lst["Range Latency"], "\d+\.\d+", "Bad formatted Range latency")
+    def _verify_proxyhistogram(self, res):
+        for latency_type in ("Read Latency", "Write Latency", "Range Latency"):
+            cur = float(res["Min"][latency_type])
+            for v in ["50%", "75%", "95%", "98%", "99%", "Max"]:
+                latency_val = float(res[v][latency_type])
+                self.assertNotEqual(latency_val, 0.0, "unexpected {} 0 for {} load".format(latency_type, v))
+                self.assertGreaterEqual(latency_val, cur,
+                                        "{} is not monotonic: {}({} load), was {}".format(latency_type, latency_val,
+                                                                                          v, cur))
+                cur = latency_val
 
     def proxyhistograms_test(self):
         """
@@ -1114,10 +1133,11 @@ class TestNodetool(Tester):
         call proxyhistograms and validate its output
         """
         node = self.run_cluster()[0]
+        debug('Run stress write test')
         self.stress_write(node)
+        debug('Run and check proxyhistograms')
         res = self.proxyhistograms(node)
-        for l in res:
-            self._verify_proxyhistogram(l)
+        self._verify_proxyhistogram(res)
 
     def nodetool_version(self, node=None):
         if node is None:

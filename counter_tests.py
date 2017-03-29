@@ -1,14 +1,13 @@
-from dtest import Tester, debug
-from cassandra import ConsistencyLevel
-from cassandra.query import SimpleStatement
-from cassandra.cluster import NoHostAvailable
-
 import random
 import time
 import uuid
 import os
 import threading
 import shutil
+
+from dtest import Tester, debug
+from cassandra import ConsistencyLevel, InvalidRequest
+from cassandra.query import SimpleStatement
 
 from assertions import assert_invalid, assert_one
 from tools import rows_to_list, since, require, new_node
@@ -35,12 +34,14 @@ class TestCounters(Tester):
         for i in xrange(0, nb_increment):
             for c in xrange(0, nb_counter):
                 session = sessions[(i + c) % len(nodes)]
-                query = SimpleStatement("UPDATE cf SET c = c + 1 WHERE key = 'counter%i'" % c, consistency_level=ConsistencyLevel.QUORUM)
+                query = SimpleStatement("UPDATE cf SET c = c + 1 WHERE key = 'counter%i'" % c,
+                                        consistency_level=ConsistencyLevel.QUORUM)
                 session.execute(query)
 
             session = sessions[i % len(nodes)]
             keys = ",".join(["'counter%i'" % c for c in xrange(0, nb_counter)])
-            query = SimpleStatement("SELECT key, c FROM cf WHERE key IN (%s)" % keys, consistency_level=ConsistencyLevel.QUORUM)
+            query = SimpleStatement("SELECT key, c FROM cf WHERE key IN (%s)" % keys,
+                                    consistency_level=ConsistencyLevel.QUORUM)
             res = list(session.execute(query))
 
             assert len(res) == nb_counter
@@ -287,7 +288,8 @@ class TestCounters(Tester):
 
         session.execute("ALTER TABLE counter_bug drop c")
 
-        assert_invalid(session, "ALTER TABLE counter_bug add c counter", "Cannot re-add previously dropped counter column c")
+        assert_invalid(session, "ALTER TABLE counter_bug add c counter",
+                       "Cannot re-add previously dropped counter column c")
 
     def increment_counters_in_threads_test(self):
         """
@@ -414,6 +416,26 @@ class TestCounters(Tester):
                 c, str(res[c]))
             assert res[c][1] == expected_counters, "Expecting counter%i = %i, got %i" % (
                 c, expected_counters, res[c][1])
+
+    def update_counter_with_ttl_and_timestamp_negative_test(self):
+        """
+        Try to update counter column using TTL/TIMESTAMP option
+        Result: should be rejected
+        """
+        cluster = self.cluster
+        cluster.set_configuration_options(values={'experimental': True})
+        cluster.populate(1).start()
+        session = self.patient_cql_connection(cluster.nodelist()[0])
+        self.create_ks(session, 'Test', 1)
+        session.execute("CREATE TABLE counters (t int PRIMARY KEY, c counter)")
+
+        for option in ('TTL 5', 'TIMESTAMP 11223344'):
+            try:
+                session.execute("UPDATE counters USING {} SET c = c + 1 where t = 1".format(option))
+            except InvalidRequest as ex:
+                debug('Got an expected error trying to use {}: {}'.format(option.split()[0], ex))
+            else:
+                raise Exception('USING {} was not rejected!'.format(option.split()[0]))
 
 
 class TestCountersOnMultipleNodes(Tester):
@@ -601,3 +623,89 @@ class TestCountersOnMultipleNodes(Tester):
         self.node3.nodetool('rebuild')
         self._verify_data_rebuild()
 
+
+class TestCountersStress(Tester):
+
+    def __init__(self, *argv, **kwargs):
+        super(TestCountersStress, self).__init__(*argv, **kwargs)
+        self._op_cnt = 100000
+
+    def setUp(self):
+        super(TestCountersStress, self).setUp()
+        cluster = self.cluster
+        cluster.set_configuration_options(values={'experimental': True})
+        cluster.populate(3).start()
+        self.node = cluster.nodelist()[0]
+
+    def counter_stress_test(self):
+        """
+        Run cassandra stress test with multiple concurrent updates/reads of counters
+        Result: written/read count is as expected
+        """
+        session = self.patient_cql_connection(self.node)
+        session.execute("""
+            CREATE KEYSPACE keyspace1
+            WITH replication = {'class': 'SimpleStrategy', 'replication_factor': '2'} AND durable_writes = true;
+        """)
+        session.execute("""
+            CREATE TABLE keyspace1.counter1 (
+                key blob PRIMARY KEY,
+                "C0" counter,
+                "C1" counter,
+                "C2" counter,
+                "C3" counter,
+                "C4" counter
+            ) WITH COMPACT STORAGE
+                AND bloom_filter_fp_chance = 0.01
+                AND caching = '{"keys":"ALL","rows_per_partition":"ALL"}'
+                AND comment = ''
+                AND compaction = {'class': 'SizeTieredCompactionStrategy'}
+                AND compression = {}
+                AND dclocal_read_repair_chance = 0.1
+                AND default_time_to_live = 0
+                AND gc_grace_seconds = 864000
+                AND max_index_interval = 2048
+                AND memtable_flush_period_in_ms = 0
+                AND min_index_interval = 128
+                AND read_repair_chance = 0.0
+                AND speculative_retry = '99.0PERCENTILE';
+        """)
+
+        debug('Run stress counter_write')
+        resp = self.node.stress_object(['counter_write', 'n={}'.format(self._op_cnt), '-rate', 'threads=4'])
+        if not resp or 'Total partitions:write' not in resp:
+            raise Exception('Error running stress test: {}'.format(resp))
+        self.assertGreaterEqual(resp['Total partitions:write'], self._op_cnt)
+        rows = rows_to_list(session.execute('SELECT count(*) FROM keyspace1.counter1;'))
+        self.assertEqual(rows[0][0], self._op_cnt)
+
+        debug('Run stress counter_read')
+        resp = self.node.stress_object(['counter_read', 'n={}'.format(self._op_cnt)])
+        if not resp or 'Total partitions:read' not in resp:
+            raise Exception('Error running stress test: {}'.format(resp))
+        self.assertGreaterEqual(resp['Total partitions:read'], self._op_cnt)
+
+    def counter_stress_user_profile_test(self):
+        """
+        Run cassandra stress test updates/reads of counters with user profile
+        Result: able to work with custom columns table
+        """
+        profile_path = os.path.join(os.path.dirname(__file__),
+                                    'test_data/c-s-profiles/cassandra-stress-custom-counters-1.yaml')
+
+        debug('Run stress update counters with user profile')
+        resp = self.node.stress_object(['user', 'profile={}'.format(profile_path),
+                                        'ops(insert=1)', 'n={}'.format(self._op_cnt), '-rate', 'threads=4'])
+        if not resp or 'Total partitions' not in resp:
+            raise Exception('Error running stress test: {}'.format(resp))
+        self.assertGreaterEqual(resp['Total partitions'], self._op_cnt)
+        session = self.patient_cql_connection(self.node)
+        rows = rows_to_list(session.execute('SELECT count(*) FROM ks.counter_cf;'))
+        self.assertEqual(rows[0][0], self._op_cnt)
+
+        debug('Run stress read counters with user profile')
+        resp = self.node.stress_object(['user', 'profile={}'.format(profile_path), 'ops(read1=1)',
+                                        'n={}'.format(self._op_cnt), '-rate', 'threads=4'])
+        if not resp or 'Total partitions' not in resp:
+            raise Exception('Error running stress test: {}'.format(resp))
+        self.assertGreaterEqual(resp['Total partitions'], self._op_cnt)
