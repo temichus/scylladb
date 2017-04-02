@@ -96,8 +96,8 @@ class CqlshCopyTest(Tester):
         self.session.execute('DROP KEYSPACE IF EXISTS ks')
         self.create_ks(self.session, 'ks', 1)
 
-    def all_datatypes_prepare(self):
-        self.prepare()
+    def all_datatypes_prepare(self, nodes=1, partitioner="murmur3"):
+        self.prepare(nodes, partitioner)
 
         self.session.execute('CREATE TYPE name_type (firstname text, lastname text)')
         self.session.execute('''
