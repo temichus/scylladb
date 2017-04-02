@@ -11,6 +11,7 @@ from distutils.version import LooseVersion
 from tempfile import NamedTemporaryFile
 from uuid import UUID, uuid4
 
+from unittest import skip
 from cassandra import InvalidRequest
 from cassandra.concurrent import execute_concurrent_with_args
 
@@ -18,7 +19,7 @@ from assertions import assert_all, assert_none
 from ccmlib import common
 from cqlsh_tools import monkeypatch_driver, unmonkeypatch_driver
 from dtest import Tester, debug
-from tools import create_c1c2_table, insert_c1c2, rows_to_list, since, require
+from tools import create_c1c2_table, insert_c1c2, rows_to_list, require
 
 
 class TestCqlsh(Tester):
@@ -40,7 +41,7 @@ class TestCqlsh(Tester):
             os.unlink(self.tempfile.name)
         super(TestCqlsh, self).tearDown()
 
-    @since('2.1.9')
+    @skip('irrelevant')
     def pep8_compliance_test(self):
         """
         @jira_ticket CASSANDRA-10066
@@ -91,7 +92,6 @@ class TestCqlsh(Tester):
         self.assertEqual({1: 'one', 2: 'two', 3: 'three', 4: 'four', 5: 'five'},
                          {k: v for k, v in rows})
 
-    @since('2.2')
     def past_and_future_dates_test(self):
         self.cluster.populate(1)
         self.cluster.start(wait_for_binary_proto=True)
@@ -530,17 +530,7 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
         conn.execute("CREATE USER user1 WITH PASSWORD 'user1'")
         conn.execute("GRANT ALL ON ks.t1 TO user1")
 
-        if self.cluster.version() >= '2.2':
-            self.verify_output("LIST USERS", node1, """
- name      | super
------------+-------
- cassandra |  True
-     user1 | False
-
-(2 rows)
-""")
-        else:
-            self.verify_output("LIST USERS", node1, """
+        self.verify_output("LIST USERS", node1, """
  name      | super
 -----------+-------
      user1 | False
@@ -549,32 +539,20 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
 (2 rows)
 """)
 
-        if self.cluster.version() >= '2.2':
-            self.verify_output("LIST ALL PERMISSIONS OF user1", node1, """
- role  | username | resource      | permission
--------+----------+---------------+------------
- user1 |    user1 | <table ks.t1> |      ALTER
- user1 |    user1 | <table ks.t1> |       DROP
- user1 |    user1 | <table ks.t1> |     SELECT
- user1 |    user1 | <table ks.t1> |     MODIFY
- user1 |    user1 | <table ks.t1> |  AUTHORIZE
-
-(5 rows)
-""")
-        else:
-            self.verify_output("LIST ALL PERMISSIONS OF user1", node1, """
+        self.verify_output("LIST ALL PERMISSIONS OF user1", node1, """
  username | resource      | permission
 ----------+---------------+------------
-    user1 | <table ks.t1> |     CREATE
     user1 | <table ks.t1> |      ALTER
-    user1 | <table ks.t1> |       DROP
-    user1 | <table ks.t1> |     SELECT
-    user1 | <table ks.t1> |     MODIFY
     user1 | <table ks.t1> |  AUTHORIZE
+    user1 | <table ks.t1> |     CREATE
+    user1 | <table ks.t1> |       DROP
+    user1 | <table ks.t1> |     MODIFY
+    user1 | <table ks.t1> |     SELECT
 
 (6 rows)
 """)
 
+    @skip("Indexes not implemented")
     def describe_test(self):
         """
         @jira_ticket CASSANDRA-7814
@@ -689,7 +667,7 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
         self.assertEqual("", err)
         self.assertIn("CREATE TABLE ks.map (", out)
 
-    @since('3.0')
+    @require('materialized view')
     def describe_mv_test(self):
         """
         @jira_ticket CASSANDRA-9961
@@ -1099,7 +1077,6 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
     0 |  6 | 1e-16 | 1e-16
 """)
 
-    @since('2.2')
     def int_values_test(self):
         """ Tests for CASSANDRA-9399, check tables with int, bigint, smallint and tinyint values"""
         self.cluster.populate(1)
@@ -1138,7 +1115,6 @@ CREATE TABLE int_checks.values (
     val4 tinyint
 """)
 
-    @since('2.2')
     def datetime_values_test(self):
         """ Tests for CASSANDRA-9399, check tables with date and time values"""
         self.cluster.populate(1)
@@ -1183,7 +1159,6 @@ CREATE TABLE datetime_checks.values (
     PRIMARY KEY (d, t)
 """)
 
-    @since('2.2')
     def tracing_test(self):
         """
         Tests for CASSANDRA-9399, check tracing works.
@@ -1219,11 +1194,12 @@ CREATE TABLE datetime_checks.values (
 
 Tracing session:""")
 
-    @since('2.2')
+    @skip('No such warning')
     def client_warnings_test(self):
         """
         Tests for CASSANDRA-9399, check client warnings.
         """
+        self.cluster.set_configuration_options(values={'unlogged_batch_across_partitions_warn_threshold': 1})
         self.cluster.populate(1)
         self.cluster.start(wait_for_binary_proto=True)
 
@@ -1269,21 +1245,15 @@ Unlogged batch covering 2 partitions detected against table [client_warnings.tes
               CREATE KEYSPACE training WITH replication={'class':'SimpleStrategy','replication_factor':1};
               DESCRIBE KEYSPACES""")
         self.assertIn("training", stdout)
-        self.assertIn("Warning: schema version mismatch detected, which might be caused by DOWN nodes; "
-                      "if this is not the case, check the schema versions of your nodes in system.local "
-                      "and system.peers.",
-                      stderr)
-        self.assertIn("OperationTimedOut: errors={}, last_host=127.0.0.1", stderr)
+        self.assertIn("Warning: schema version mismatch detected", stderr)
+        self.assertIn("check the schema versions of your nodes in system.local and system.peers.", stderr)
 
         stdout, stderr = self.run_cqlsh(node1, """USE training;
                                                   CREATE TABLE mytable (id int, val text, PRIMARY KEY (id));
                                                   describe tables""")
         self.assertIn("mytable", stdout)
-        self.assertIn("Warning: schema version mismatch detected, which might be caused by DOWN nodes; "
-                      "if this is not the case, check the schema versions of your nodes in system.local "
-                      "and system.peers.",
-                      stderr)
-        self.assertIn("OperationTimedOut: errors={}, last_host=127.0.0.1", stderr)
+        self.assertIn("Warning: schema version mismatch detected", stderr)
+        self.assertIn("check the schema versions of your nodes in system.local and system.peers.", stderr)
 
     def describe_round_trip_test(self):
         """
@@ -1321,7 +1291,7 @@ Unlogged batch covering 2 partitions detected against table [client_warnings.tes
         # the table created before and after should be the same
         self.assertEqual(reloaded_describe_out, describe_out)
 
-    @since('3.0')
+    @require('materialized view')
     def materialized_view_test(self):
         """
         Test operations on a materialized view: create, describe, select from, drop, create using describe output.
@@ -1373,7 +1343,6 @@ Unlogged batch covering 2 partitions detected against table [client_warnings.tes
         self.assertEqual(0, len(err), err)
         self.assertEqual(select_out, reloaded_select_out)
 
-    @since('3.0')
     def clear_test(self):
         """
         Test the CLEAR command
@@ -1381,7 +1350,6 @@ Unlogged batch covering 2 partitions detected against table [client_warnings.tes
         """
         self._test_clear_screen('CLEAR')
 
-    @since('3.0')
     def cls_test(self):
         """
         Test the CLS command
@@ -1438,9 +1406,8 @@ Unlogged batch covering 2 partitions detected against table [client_warnings.tes
     def run_cqlsh(self, node, cmds, cqlsh_options=[], env_vars=None):
         if env_vars is None:
             env_vars = {}
-        cdir = node.get_install_dir()
-        cli = os.path.join(cdir, 'bin', common.platform_binary('cqlsh'))
-        env = common.make_cassandra_env(cdir, node.get_path())
+        cli = node.get_tool('cqlsh')
+        env = node.get_env()
         env['LANG'] = 'en_US.UTF-8'
         env.update(env_vars)
         if LooseVersion(self.cluster.version()) >= LooseVersion('2.1'):
@@ -1799,32 +1766,24 @@ class CqlLoginTest(Tester):
         self.create_cf(self.session, 'ks1table')
         self.session.execute("CREATE USER user1 WITH PASSWORD 'changeme';")
 
-        cqlsh_stdout, cqlsh_stderr = self.node1.run_cqlsh(
+        out, err = self.node1.run_cqlsh(
             '''
             LOGIN user1 'badpass';
             ''',
             return_output=True,
             cqlsh_options=['-u', 'cassandra', '-p', 'cassandra'])
-        self.assertEqual(['''Username and/or password are incorrect''' in x for x in cqlsh_stderr.split("\n") if x],
-                         [True])
+        self.assertIn('authentication failed', err)
 
     def login_authenticates_correct_user_test(self):
         self.create_ks(self.session, 'ks1', 1)
         self.create_cf(self.session, 'ks1table')
         self.session.execute("CREATE USER user1 WITH PASSWORD 'changeme';")
 
-        if self.cluster.version() >= '2.2':
-            query = '''
-                    LOGIN user1 'changeme';
-                    CREATE USER user2 WITH PASSWORD 'fail' SUPERUSER;
-                    '''
-            expected_error = "Only superusers can create a role with superuser status"
-        else:
-            query = '''
-                    LOGIN user1 'changeme';
-                    CREATE USER user2 WITH PASSWORD 'fail';
-                    '''
-            expected_error = 'Only superusers are allowed to perform CREATE USER queries'
+        query = '''
+                LOGIN user1 'changeme';
+                CREATE USER user2 WITH PASSWORD 'fail' SUPERUSER;
+                '''
+        expected_error = 'Only superusers are allowed to perform CREATE USER queries'
 
         cqlsh_stdout, cqlsh_stderr = self.node1.run_cqlsh(
             query,
@@ -1854,5 +1813,4 @@ class CqlLoginTest(Tester):
             return_output=True,
             cqlsh_options=['-u', 'cassandra', '-p', 'cassandra'])
         self.assertEqual([x for x in cqlsh_stdout.split() if x], ['ks1table'])
-        self.assertEqual(['''Username and/or password are incorrect''' in x for x in cqlsh_stderr.split("\n") if x],
-                         [True])
+        self.assertIn('authentication failed', cqlsh_stderr)
