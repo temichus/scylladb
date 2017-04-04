@@ -6,6 +6,8 @@ import struct
 import subprocess
 import time
 
+from unittest import skip
+
 from cassandra import WriteTimeout
 from cassandra.cluster import NoHostAvailable, OperationTimedOut
 
@@ -13,7 +15,7 @@ from ccmlib.common import is_win
 from ccmlib.node import Node, TimeoutError
 from assertions import assert_almost_equal, assert_none, assert_one
 from dtest import Tester, debug
-from tools import since, rows_to_list, require
+from tools import since, rows_to_list
 
 
 class TestCommitLog(Tester):
@@ -147,7 +149,7 @@ class TestCommitLog(Tester):
         with open(os.devnull, 'w') as devnull:
             self.node1.stress(['write', 'n=1M', '-col', 'size=FIXED(1000)', '-rate', 'threads=25'], stdout=devnull, stderr=subprocess.STDOUT)
 
-    @require(2250)
+    @skip('scylladb/scylla#2250)
     def test_commitlog_replay_on_startup(self):
         """ Test commit log replay """
         node1 = self.node1
@@ -377,7 +379,7 @@ class TestCommitLog(Tester):
             [2, 2]
         )
 
-    @require(2231, 2246)
+    @skip('scylladb/scylla#2231,2246)
     def die_failure_policy_test(self):
         """ Test the die commitlog failure policy """
         self.prepare(configuration={
@@ -391,7 +393,7 @@ class TestCommitLog(Tester):
         self.assertTrue(failure, "Cannot find the commitlog failure message in logs")
         self.assertFalse(self.node1.is_running(), "Node1 should not be running")
 
-    @require(2232, 2246)
+    @skip('scylladb/scylla2232, 2246)
     def ignore_failure_policy_test(self):
         """ Test the ignore commitlog failure policy """
         self.prepare(configuration={
