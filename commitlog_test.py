@@ -151,7 +151,7 @@ class TestCommitLog(Tester):
     def test_commitlog_replay_on_startup(self):
         """ Test commit log replay """
         node1 = self.node1
-        node1.set_configuration_options(batch_commitlog=None)
+        node1.set_configuration_options(batch_commitlog=True)
         node1.start()
 
         debug("Insert data")
@@ -389,7 +389,7 @@ class TestCommitLog(Tester):
                                       "storage_io_error \(Storage I/O error\: 13\: Permission denied\)")
         debug(failure)
         self.assertTrue(failure, "Cannot find the commitlog failure message in logs")
-        self.assertFalse(self.node1.is_running(), "Node1 should not be running") #BUG!
+        self.assertFalse(self.node1.is_running(), "Node1 should not be running")
 
     @require(2232, 2246)
     def ignore_failure_policy_test(self):
