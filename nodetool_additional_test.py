@@ -1126,7 +1126,7 @@ class TestNodetool(Tester):
         node = self.cluster.nodelist()[0]
         self.stress_write(node)
         try:
-            os.chmod(os.path.join(node.get_path(), 'data'), 644)
+            self._change_data_perms(node, 'data', 644)
             output = node.nodetool("enablebinary", True)
             self.assertEqual(('', ''), output, 'enablebinary not set')
             errors = node.grep_log(error_to_track)
@@ -1142,9 +1142,8 @@ class TestNodetool(Tester):
                 self.fail("refresh should be with Permission denied")
             except NodetoolError as e:
                 self.assertTrue("nodetool: Scylla API server HTTP POST to URL '/storage_service/sstables/keyspace1'"
-                                " failed: Storage I/O error: 13: Permission denied" in e.message, 'expected eror not found')
-            errors = node.grep_log("")
-            self.assertTrue(len(errors), 'Permission denied errors not found')
+                                " failed: Storage I/O error: 13: Permission denied" in e.message,
+                                'expected error not found in log')
         finally:
             self._change_data_perms(node, 'data', stat.S_IWRITE | stat.S_IREAD | stat.S_IEXEC)
             node.mark_log_for_errors()
