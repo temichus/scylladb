@@ -2,8 +2,15 @@ import os
 import tempfile
 import json
 import math
+import uuid
+from datetime import timedelta
+from dateutil.parser import parse
+from dateutil.tz import tzutc
+from decimal import Decimal
+import pprint
 from dtest import Tester, debug
 from tools import rows_to_list
+from cqlsh_tests.cqlsh_copy_tests import CqlshCopyTest
 
 
 class SSTableDumpTests(Tester):
@@ -112,3 +119,92 @@ class SSTableDumpTests(Tester):
             res.append(values)
         res = [tuple(item) for item in res]
         return res
+
+
+class SSTableDumpAllDatatypes(CqlshCopyTest, SSTableDumpTests):
+
+    def sstabledump_all_datatypes_test(self):
+        cluster = self.cluster
+        cluster.populate(1).start()
+        self.all_datatypes_prepare(nodes=1, partitioner=None)
+
+        # TODO: apply all the data on scylla-tools-java #24 fix
+        data = self.data[:19] + self.data[21:]
+        self.session.execute('ALTER TABLE ks.testdatatype DROP t')
+        self.session.execute('ALTER TABLE ks.testdatatype DROP u')
+        insert_statement = self.session.prepare(
+            # """INSERT INTO testdatatype (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v, w)
+            # VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""")
+            """INSERT INTO testdatatype (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, v, w)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""")
+        self.session.execute(insert_statement, data)
+
+        exp_results = rows_to_list(self.session.execute("SELECT * FROM testdatatype"))
+        debug(exp_results)
+
+        self.node = self.node1
+        data_json = self._dump_data()
+        pp = pprint.PrettyPrinter(indent=2)
+        debug(pp.pformat(data_json))
+
+        json_values = self._fetch_data_from_json(data_json)
+        self._compare_data(data, json_values)
+
+    def _fetch_data_from_json(self, data):
+        res = list()
+        p = list()
+        q = list()
+        r = dict()
+        format_val = {'b': lambda v: int(v),
+                      'c': lambda v: bytearray.fromhex(v),
+                      'd': lambda v: json.loads(v),
+                      'e': lambda v: Decimal(v),
+                      'f': lambda v: float(v),
+                      'g': lambda v: float(v),
+                      'i': lambda v: int(v),
+                      'j': lambda v: v.encode('utf-8'),
+                      'k': lambda v: (parse(v, tzinfos=tzutc) - timedelta(hours=3)),
+                      'l': lambda v: uuid.UUID(v),
+                      'm': lambda v: uuid.UUID(v),
+                      'o': lambda v: int(v),
+                      'p': lambda v: p.append((int(v))),
+                      'q': lambda v: q.extend(v),
+                      'r': lambda x, y: r.update(
+                          {(parse(x, tzinfos=tzutc) - timedelta(hours=3)): str(y)}),
+                      's': lambda v: tuple([json.loads(val) if i != 1 else val for i, val in enumerate(v.split(':'))]),
+                      }
+
+        for item in data[0]['rows'][0]['cells']:
+            if 'value' in item:
+                name = item['name']
+                value = item['value']
+                if name in format_val:
+                    if name == 'q':
+                        value = format_val[name](item['path'])
+                    elif name == 'r':
+                        value = format_val[name](item['path'][0], value)
+                    else:
+                        value = format_val[name](value)
+                if name not in ('p', 'q', 'r'):
+                    res.append(value)
+        res.insert(14, p)
+        res.insert(15, set(q))
+        res.insert(16, r)
+        res.insert(0, data[0]['partition']['key'][0])
+        res = tuple(res)
+        return res
+
+    def _compare_data(self, src, dst, debug_print=True):
+        debug('Compare data')
+        if debug_print:
+            debug('----------src----------')
+            debug(src)
+            debug('----------dst----------')
+            debug(dst)
+
+        # TODO: compare all when it will be readable
+        for i in range(0, len(src) - 2):
+            if isinstance(dst[i], dict):
+                self.assertEquals(dict(src[i]), dst[i])
+            else:
+                self.assertEquals(src[i], dst[i])
