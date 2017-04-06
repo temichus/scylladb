@@ -1,5 +1,6 @@
 import os
 import re
+import stat
 import sys
 import time
 import urllib2
@@ -8,6 +9,8 @@ from unittest import skip
 from binascii import hexlify
 
 import yaml
+
+from ccmlib.node import NodetoolError
 
 from dtest import Tester
 from tools import debug
@@ -1107,6 +1110,44 @@ class TestNodetool(Tester):
         debug('Run and check netstats')
         stats = self.netstats(node)
         self.assertEquals(len(stats["streams"]), 1)
+
+    def _change_data_perms(self, node, folder, mod):
+        path = os.path.join(node.get_path(), folder)
+        os.chmod(path, mod)
+
+    def nodetool_refresh_with_data_perms_test(self):
+        """ Test that nodetool refresh return Permission denied
+        when data folder is not writable
+        When prevent write to data folder verify that:
+        enablegossip and enablebinary pass
+        refresh failed with permission denied
+        """
+        error_to_track = "Found exception\: storage_io_error \(Storage I\/O error\: 13\: Permission denied"
+        self.run_cluster()
+        node = self.cluster.nodelist()[0]
+        self.stress_write(node)
+        try:
+            self._change_data_perms(node, 'data', 644)
+            output = node.nodetool("enablebinary", True)
+            self.assertEqual(('', ''), output, 'enablebinary not set')
+            errors = node.grep_log(error_to_track)
+            self.assertFalse(len(errors), 'Permission denied errors found')
+
+            output = node.nodetool("enablegossip", True)
+            self.assertEqual(('', ''), output, 'enablebinary not set')
+            errors = node.grep_log(error_to_track)
+            self.assertFalse(len(errors), 'Permission denied errors found')
+
+            try:
+                node.nodetool("refresh keyspace1 standard1")
+                self.fail("refresh should be with Permission denied")
+            except NodetoolError as e:
+                self.assertTrue("nodetool: Scylla API server HTTP POST to URL '/storage_service/sstables/keyspace1'"
+                                " failed: Storage I/O error: 13: Permission denied" in e.message,
+                                'expected error not found in log')
+        finally:
+            self._change_data_perms(node, 'data', stat.S_IWRITE | stat.S_IREAD | stat.S_IEXEC)
+            node.mark_log_for_errors()
 
     def proxyhistograms(self, node=None):
         if node is None:

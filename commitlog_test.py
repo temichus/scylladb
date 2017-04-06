@@ -6,6 +6,8 @@ import struct
 import subprocess
 import time
 
+from unittest import skip
+
 from cassandra import WriteTimeout
 from cassandra.cluster import NoHostAvailable, OperationTimedOut
 
@@ -39,6 +41,9 @@ class TestCommitLog(Tester):
         conf.update(configuration)
         self.cluster.set_configuration_options(values=conf, **kwargs)
         self.cluster.start()
+        unknown_options = self.cluster.nodelist()[0].grep_log("config - Unknown option")
+        if unknown_options:
+            self.fail("Unknown option found! Please check the test! %s" % unknown_options)
         self.session1 = self.patient_cql_connection(self.node1)
         if create_test_keyspace:
             self.session1.execute("DROP KEYSPACE IF EXISTS ks;")
@@ -144,6 +149,7 @@ class TestCommitLog(Tester):
         with open(os.devnull, 'w') as devnull:
             self.node1.stress(['write', 'n=1M', '-col', 'size=FIXED(1000)', '-rate', 'threads=25'], stdout=devnull, stderr=subprocess.STDOUT)
 
+    @skip('scylladb/scylla#2250')
     def test_commitlog_replay_on_startup(self):
         """ Test commit log replay """
         node1 = self.node1
@@ -192,6 +198,7 @@ class TestCommitLog(Tester):
 
         debug("Verify commit log was replayed on startup")
         node1.start()
+        self.assertTrue(node1.is_running(), "node is not running")
         node1.watch_log_for("Log replay complete")
         # Here we verify there was more than 0 replayed mutations
         zero_replays = node1.grep_log(" 0 replayed mutations")
@@ -310,13 +317,13 @@ class TestCommitLog(Tester):
     @since('2.2')
     def default_compressed_segment_size_test(self):
         """ Test default compressed commitlog_segment_size_in_mb (32MB) """
-
+        # Scylla: Unknown option commitlog_compression
         self._segment_size_test(32, compressed=True)
 
     @since('2.2')
     def small_compressed_segment_size_test(self):
         """ Test a small compressed commitlog_segment_size_in_mb (5MB) """
-
+        # Scylla: Unknown option commitlog_compression
         self._segment_size_test(5, compressed=True)
 
     def stop_failure_policy_test(self):
@@ -324,7 +331,8 @@ class TestCommitLog(Tester):
         self.prepare()
 
         self._provoke_commitlog_failure()
-        failure = self.node1.grep_log("Failed .+ commit log segments. Commit disk failure policy is stop; terminating thread")
+        failure = self.node1.grep_log("\[shard 0\] commitlog - Exception in segment reservation\: "
+                                      "storage_io_error \(Storage I/O error\: 13\: Permission denied\)")
         debug(failure)
         self.assertTrue(failure, "Cannot find the commitlog failure message in logs")
         self.assertTrue(self.node1.is_running(), "Node1 should still be running")
@@ -352,7 +360,8 @@ class TestCommitLog(Tester):
         """)
 
         self._provoke_commitlog_failure()
-        failure = self.node1.grep_log("Failed .+ commit log segments. Commit disk failure policy is stop_commit; terminating thread")
+        failure = self.node1.grep_log("\[shard 0\] commitlog - Exception in segment reservation\: "
+                                      "storage_io_error \(Storage I/O error\: 13\: Permission denied\)")
         debug(failure)
         self.assertTrue(failure, "Cannot find the commitlog failure message in logs")
         self.assertTrue(self.node1.is_running(), "Node1 should still be running")
@@ -370,6 +379,7 @@ class TestCommitLog(Tester):
             [2, 2]
         )
 
+    @skip('scylladb/scylla#2231,2246')
     def die_failure_policy_test(self):
         """ Test the die commitlog failure policy """
         self.prepare(configuration={
@@ -377,11 +387,13 @@ class TestCommitLog(Tester):
         })
 
         self._provoke_commitlog_failure()
-        failure = self.node1.grep_log("ERROR \[COMMIT-LOG-ALLOCATOR\].+JVM state determined to be unstable.  Exiting forcefully")
+        failure = self.node1.grep_log("\[shard 0\] commitlog - Exception in segment reservation\: "
+                                      "storage_io_error \(Storage I/O error\: 13\: Permission denied\)")
         debug(failure)
         self.assertTrue(failure, "Cannot find the commitlog failure message in logs")
         self.assertFalse(self.node1.is_running(), "Node1 should not be running")
 
+    @skip('scylladb/scylla2232, 2246')
     def ignore_failure_policy_test(self):
         """ Test the ignore commitlog failure policy """
         self.prepare(configuration={
@@ -389,7 +401,8 @@ class TestCommitLog(Tester):
         })
 
         self._provoke_commitlog_failure()
-        failure = self.node1.grep_log("ERROR \[COMMIT-LOG-ALLOCATOR\].+Failed .+ commit log segments")
+        failure = self.node1.grep_log("\[shard 0\] commitlog - Exception in segment reservation\: "
+                                      "storage_io_error \(Storage I/O error\: 13\: Permission denied\)")
         self.assertTrue(failure, "Cannot find the commitlog failure message in logs")
         self.assertTrue(self.node1.is_running(), "Node1 should still be running")
 
