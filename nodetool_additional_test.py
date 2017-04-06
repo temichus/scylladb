@@ -5,13 +5,14 @@ import time
 import urllib2
 from threading import Thread
 from unittest import skip
+from binascii import hexlify
 
 import yaml
 
 from dtest import Tester
 from tools import debug
 from tools import new_node
-from tools import no_vnodes
+from tools import no_vnodes, rows_to_list, require
 
 
 class TestNodetool(Tester):
@@ -1125,6 +1126,7 @@ class TestNodetool(Tester):
                                                                                           v, cur))
                 cur = latency_val
 
+    @require('#2167')
     def proxyhistograms_test(self):
         """
         This test the `nodetool proxyhistograms` command
@@ -1133,8 +1135,23 @@ class TestNodetool(Tester):
         call proxyhistograms and validate its output
         """
         node = self.run_cluster()[0]
-        debug('Run stress write test')
-        self.stress_write(node)
+        debug('Run stress write and mixed')
+        node.stress_object(['write', 'n=10000', '-rate', 'threads=4'])
+        node.stress_object(['mixed', 'n=10000', '-rate', 'threads=4'])
+        session = self.patient_cql_connection(node)
+        rows = session.execute("Select * from keyspace1.standard1 limit 100")
+        keys = ['0x' + hexlify(r[0]) for r in rows_to_list(rows)]
+        debug('Run range queries')
+        q_slice = 10
+        start = 0
+        end = q_slice - 1
+        for i in range(0, q_slice):
+            query = "SELECT * FROM keyspace1.standard1 WHERE "\
+                    "token(key) >= token({}) and token(key) <= token({})".format(keys[start], keys[end])
+            rows = session.execute(query)
+            self.assertEquals(len(rows_to_list(rows)), q_slice)
+            start += q_slice
+            end += q_slice
         debug('Run and check proxyhistograms')
         res = self.proxyhistograms(node)
         self._verify_proxyhistogram(res)
