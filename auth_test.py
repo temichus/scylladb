@@ -86,6 +86,20 @@ class TestAuth(Tester):
             self.get_session(user='doesntexist', password='doesntmatter')
         except NoHostAvailable as e:
             assert isinstance(e.errors.values()[0], AuthenticationFailed)
+        # Authentication ID must not be null
+        try:
+            self.get_session(user='', password='')
+        except NoHostAvailable as e:
+            assert isinstance(e.errors.values()[0], AuthenticationFailed)
+            assert 'Authentication ID must not be null' in e.errors.values()[0].message
+        # Password must not be null
+        try:
+            self.get_session(user='cassandra', password='')
+        except NoHostAvailable as e:
+            assert isinstance(e.errors.values()[0], AuthenticationFailed)
+            # Currently the null password can't be identified, comment the assert
+            # https://github.com/scylladb/scylla/issues/2274
+            # assert 'Password must not be null' in e.errors.values()[0].message
 
     # from 2.2 role creation is granted by CREATE_ROLE permissions, not superuser status
     @since('1.2', max_version='2.1.x')
