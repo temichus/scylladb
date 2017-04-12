@@ -929,7 +929,7 @@ class TestAuth(Tester):
         debug('Check if the first session still works')
         self._check_session_available(session)
 
-    def dropping_keyspace_system_auth(self):
+    def dropping_keyspace_system_auth_test(self):
         """
         **Description:** Dropping keyspace system_auth (when RF=1).
         **Expected Result:** Cluster is unavailable - connection failed.
