@@ -9,6 +9,7 @@ import shutil
 from dtest import Tester, debug
 from cassandra import ConsistencyLevel, InvalidRequest
 from cassandra.query import SimpleStatement
+from cassandra.query import UNSET_VALUE
 
 from assertions import assert_invalid, assert_one
 from tools import rows_to_list, since, require, new_node
@@ -535,6 +536,43 @@ class TestCounters(Tester):
         assert len(rows) == 1
         debug(rows)
         assert rows == [[0, sys.maxint]], "Int counter isn't recovered"
+
+    def prepare_unset_value_test(self):
+        """
+        Try to update counter with UNSET_VALUE
+        Expected result: nothing is changed
+        """
+        cluster = self.cluster
+        cluster.set_configuration_options(values={'experimental': True})
+
+        cluster.populate(1).start()
+        node1, = cluster.nodelist()
+        # protocol version >= 4
+        session = self.patient_cql_connection(node1, protocol_version=4)
+        self.create_ks(session, 'counter_tests', 1)
+
+        session.execute("CREATE TABLE counter_bug (t int, c counter, primary key(t))")
+
+        debug('Created counter table, try to update one counter')
+        session.execute("UPDATE counter_bug SET c = c + 1 where t = 0")
+        res = session.execute("SELECT * from counter_bug")
+        rows = rows_to_list(res)
+        assert len(rows) == 1
+        assert rows == [[0, 1]]
+
+        keys_num = 1000
+        debug('Update %s counters with UNSET_VALUE by prepare statement' % keys_num)
+
+        for key in range(keys_num):
+            statement = session.prepare("update counter_tests.counter_bug set c = c + ? where t = ?")
+            session.execute(statement.bind((UNSET_VALUE, key)))
+
+        res = session.execute("SELECT * from counter_bug")
+        rows = rows_to_list(res)
+        debug(rows)
+        assert len(rows) == 1, 'Update with UNSET_VALUE unexpectedly changed number of counters'
+        assert rows == [[0, 1]], 'Update with UNSET_VALUE unexpectedly changed value of first counter'
+        debug("Verified that all counters aren't updated by UNSET_VALUE")
 
 
 class TestCountersOnMultipleNodes(Tester):
