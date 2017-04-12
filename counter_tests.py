@@ -496,6 +496,46 @@ class TestCounters(Tester):
         rows = rows_to_list(res)
         assert len(rows) == 0
 
+    def int_rollover_test(self):
+        """
+        currently the counter will rollover when it reaches to MAX_INT.
+        https://github.com/scylladb/scylla/issues/2225 (WONTFIX)
+        Expected result: rollover
+        """
+        cluster = self.cluster
+        cluster.set_configuration_options(values={'experimental': True})
+
+        cluster.populate(1).start()
+        node1, = cluster.nodelist()
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'counter_tests', 1)
+
+        session.execute("CREATE TABLE counter_bug (t int, c counter, primary key(t))")
+
+        debug('Created counter table, try to update one counter to MAX_INT')
+        session.execute("UPDATE counter_bug SET c = c + %s where t = 0" % sys.maxint)
+        res = session.execute("SELECT * from counter_bug")
+        rows = rows_to_list(res)
+        assert len(rows) == 1
+        debug(rows)
+        assert rows == [[0, sys.maxint]], 'Failed to update counter to MAX_INT'
+
+        debug('Update the counter to make it rollover')
+        session.execute("UPDATE counter_bug SET c = c + 1 where t = 0")
+        res = session.execute("SELECT * from counter_bug")
+        rows = rows_to_list(res)
+        assert len(rows) == 1
+        debug(rows)
+        assert rows == [[0, -sys.maxint - 1]], "Int counter isn't rollover"
+
+        debug('Update the counter to make it recover')
+        session.execute("UPDATE counter_bug SET c = c - 1 where t = 0")
+        res = session.execute("SELECT * from counter_bug")
+        rows = rows_to_list(res)
+        assert len(rows) == 1
+        debug(rows)
+        assert rows == [[0, sys.maxint]], "Int counter isn't recovered"
+
 
 class TestCountersOnMultipleNodes(Tester):
 
