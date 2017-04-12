@@ -202,6 +202,7 @@ class CompactionAdditionalStrategyTests(Tester):
 
         self.assertEqual(numfound, 1)
 
+
 strategies = ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy']
 for strategy in strategies:
     cls_name = ('CompactionAdditionalStrategyTests_with_' + strategy)

@@ -8,7 +8,6 @@ import time
 from collections import namedtuple
 from contextlib import contextmanager
 from decimal import Decimal
-from dtest import warning
 from tempfile import NamedTemporaryFile
 from uuid import uuid1, uuid4
 
@@ -20,7 +19,7 @@ from cqlsh_tools import (DummyColorMap, assert_csvs_items_equal, csv_rows,
                          monkeypatch_driver, random_list,
                          strip_timezone_if_time_string, unmonkeypatch_driver,
                          write_rows_to_csv)
-from dtest import Tester, canReuseCluster, freshCluster, debug
+from dtest import Tester, canReuseCluster, freshCluster, debug, warning
 from tools import rows_to_list, require
 
 DEFAULT_FLOAT_PRECISION = 5  # magic number copied from cqlsh script

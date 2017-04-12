@@ -785,7 +785,7 @@ class TestAuth(Tester):
         cathy.execute("DROP TYPE ks.address")
 
     def _check_session_available(self, session, expect_rf_err=False,
-                     expect_auth_err=False, expect_invalid_req=False):
+                                 expect_auth_err=False, expect_invalid_req=False):
         try:
             rows = list(session.execute('LIST USERS'))
             debug('Debug users list: %s' % rows)

@@ -138,7 +138,6 @@ class TestUpdateClusterLayout(Tester):
             self.assertEqual(len(result), i * 100 + 1000, "data loss after increasing size to %d expecting %d rows %d" %
                              (len(cluster.nodelist()), i * 100 + 1000, len(result)))
 
-
     def _iterative_add_decommission(self, iterations=2, node_count=2, rf=1):
         """
         Test growing and shrinking a cluster
@@ -979,7 +978,6 @@ class TestUpdateClusterLayout(Tester):
             res[heads[i]] = lst[i]
         return res
 
-
     def _simple_decommission_node_while_adding_info(self, rf):
         """
         Test bootstrapped node streams all data
@@ -1604,9 +1602,10 @@ class TestUpdateClusterLayout(Tester):
 
         for c in xrange(0, nb_counter):
             # if there is no failure when we updated counters we check their actual values
-            if result[c] == nb_increment * num_threads /3:
+            if result[c] == nb_increment * num_threads / 3:
                 assert result[c] == res[c][1], "Expecting counter%i = %i, got %i" % (
                     c, result[c], res[c][1])
+
 
 class TestLargeScaleCluster(TestUpdateClusterLayout):
     _multiprocess_can_split_ = False
