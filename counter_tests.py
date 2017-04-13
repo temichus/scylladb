@@ -5,9 +5,10 @@ import os
 import sys
 import threading
 import shutil
+import re
 
 from dtest import Tester, debug
-from cassandra import ConsistencyLevel, InvalidRequest
+from cassandra import ConsistencyLevel, InvalidRequest, Unauthorized
 from cassandra.query import SimpleStatement
 from cassandra.query import UNSET_VALUE
 
@@ -573,6 +574,88 @@ class TestCounters(Tester):
         assert len(rows) == 1, 'Update with UNSET_VALUE unexpectedly changed number of counters'
         assert rows == [[0, 1]], 'Update with UNSET_VALUE unexpectedly changed value of first counter'
         debug("Verified that all counters aren't updated by UNSET_VALUE")
+
+    def assertUnauthorized(self, message, session, query):
+        with self.assertRaises(Unauthorized) as cm:
+            session.execute(query)
+        assert re.search(message, cm.exception.message), "Expected '%s', but got '%s'" % (message, cm.exception.message)
+
+    def counter_auth_test(self):
+        """
+        Test Authorization of counter table
+        """
+        cluster = self.cluster
+        config = {'authenticator': 'org.apache.cassandra.auth.PasswordAuthenticator',
+                  'authorizer': 'org.apache.cassandra.auth.CassandraAuthorizer',
+                  'permissions_validity_in_ms': 0,
+                  'experimental': True}
+        cluster.set_configuration_options(values=config)
+
+        cluster.populate(1).start()
+        n = self.wait_for_any_log(cluster.nodelist(), 'Created default superuser', 10)
+        debug("Default role created by " + n.name)
+
+        node1, = cluster.nodelist()
+        cassandra = self.patient_cql_connection(node1, user='cassandra', password='cassandra')
+        self.create_ks(cassandra, 'counter_tests', 1)
+
+        cassandra.execute("CREATE USER cathy WITH PASSWORD '12345'")
+        cathy = self.patient_cql_connection(node1, user='cathy', password='12345')
+
+        # CREATE
+        self.assertUnauthorized("User cathy has no CREATE permission on <keyspace counter_tests>",
+                                cathy, "CREATE TABLE counter_tests.counter_bug (t int, c counter, primary key(t))")
+
+        cassandra.execute("GRANT CREATE ON KEYSPACE counter_tests TO cathy")
+        cathy.execute("CREATE TABLE counter_tests.counter_bug (t int, c counter, primary key(t))")
+        debug("Verified that cathy has CREATE permission")
+
+        # MODIFY (UPDATE)
+        self.assertUnauthorized("User cathy has no MODIFY permission on <table counter_tests.counter_bug>",
+                                cathy, "UPDATE counter_tests.counter_bug SET c = c + 1 where t = 0")
+        cassandra.execute("GRANT MODIFY ON counter_tests.counter_bug TO cathy")
+        cathy.execute("UPDATE counter_tests.counter_bug SET c = c + 1 where t = 0")
+        debug("Verified that cathy has MODIFY permission")
+
+        # SELECT
+        self.assertUnauthorized("User cathy has no SELECT permission on <table counter_tests.counter_bug>",
+                                cathy, "SELECT * FROM counter_tests.counter_bug")
+
+        cassandra.execute("GRANT SELECT ON counter_tests.counter_bug TO cathy")
+
+        res = cathy.execute("SELECT * FROM counter_tests.counter_bug")
+        rows = rows_to_list(res)
+        assert rows == [[0, 1]]
+        debug("Verified that cathy has SELECT permission")
+
+        # ALTER
+        self.assertUnauthorized("User cathy has no ALTER permission on <table counter_tests.counter_bug>",
+                                cathy, "ALTER TABLE counter_tests.counter_bug RENAME t to t2")
+        cassandra.execute("GRANT ALTER ON counter_tests.counter_bug to cathy")
+        cathy.execute("ALTER TABLE counter_tests.counter_bug RENAME t to t2")
+        debug("Verified that cathy has ALTER(RENAME) permission")
+
+        # DROP
+        self.assertUnauthorized("User cathy has no DROP permission on <table counter_tests.counter_bug>",
+                                cathy, "DROP TABLE counter_tests.counter_bug")
+        debug("Give DROP permission to cathy")
+        cassandra.execute("GRANT DROP ON counter_tests.counter_bug to cathy")
+
+        # AUTHORIZE
+        self.assertUnauthorized("User cathy has no AUTHORIZE permission on <table counter_tests.counter_bug>",
+                                cathy, "REVOKE DROP ON counter_tests.counter_bug FROM cathy")
+        cassandra.execute("GRANT AUTHORIZE ON counter_tests.counter_bug to cathy")
+        cathy.execute("REVOKE DROP ON counter_tests.counter_bug FROM cathy")
+        debug("DROP permission is revoked by herself")
+
+        self.assertUnauthorized("User cathy has no DROP permission on <table counter_tests.counter_bug>",
+                                cathy, "DROP TABLE counter_tests.counter_bug")
+        debug("Verified that cathy has AUTHORIZE(REVOKE) permission to remove DROP permission from herself")
+
+        debug("Regive DROP permission to cathy, and try to drop table by cathy")
+        cassandra.execute("GRANT DROP ON counter_tests.counter_bug to cathy")
+        cathy.execute("DROP TABLE counter_tests.counter_bug")
+        debug("Verified that cathy has DROP permission")
 
 
 class TestCountersOnMultipleNodes(Tester):
