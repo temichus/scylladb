@@ -169,6 +169,7 @@ class TestCompaction(Tester):
             session.execute('delete from cf where key = ' + str(x))
 
         block_on_compaction_log(node1, ks='ks', table='cf')
+        time.sleep(1)
 
         try:
             cfs = os.listdir(node1.get_path() + "/data/ks")
