@@ -2,6 +2,7 @@
 
 import math
 import random
+import re
 import struct
 import time
 from collections import OrderedDict
@@ -5057,3 +5058,124 @@ class CQLAdditionalTests(Tester):
         except Exception, e:
             assert(e.message == "Not implemented: LIST")
             assert(e.code == 0000)
+
+    def test_limit_date_value_out_of_range(self):
+        # positive case for scylladb/scylla#1694
+        cluster = self.prepare()
+        node = cluster.nodelist()[0]
+        query_template = 'select * from raw_data %s;'
+        regex = r"([0-9]+) (rows)"
+
+        session = self.patient_cql_connection(node)
+        self.create_ks(session, 'ks', 1)
+        session.execute("""
+            CREATE TABLE ks.raw_data (
+                              test_id int,
+                              partition_key text,
+                              time timestamp,
+                              value double,
+                              PRIMARY KEY ((test_id, partition_key), time)
+                              ) WITH CLUSTERING ORDER BY (time ASC)
+                                AND bloom_filter_fp_chance = 0.01
+                                AND caching = '{"keys":"ALL","rows_per_partition":"ALL"}'
+                                AND comment = ''
+                                AND compaction = {'class': 'SizeTieredCompactionStrategy'}
+                                AND compression = {'sstable_compression': 'LZ4Compressor'}
+                                AND dclocal_read_repair_chance = 0.1
+                                AND default_time_to_live = 0
+                                AND gc_grace_seconds = 864000
+                                AND max_index_interval = 2048
+                                AND memtable_flush_period_in_ms = 0
+                                AND min_index_interval = 128
+                                AND read_repair_chance = 0.0
+                                AND speculative_retry = '99.0PERCENTILE';""")
+
+        res = session.execute(query_template % 'limit 1')
+        self.assertEqual(len(list(res)), 0)
+        out, err = node.run_cqlsh('use ks; ' + query_template % 'limit 1', show_output=True, return_output=True)
+        num_rows = int(re.search(regex, out).group(1))
+        self.assertEqual(num_rows, 0)
+
+        for i in xrange(100):
+            session.execute("insert into ks.raw_data (test_id, partition_key, time, value) "
+                            "values (%s, '%s', '%s-02-03 04:05+0000', %s);" % (i, i, 2000-i, i*1.0))
+
+        res = session.execute(query_template % 'limit 1')
+        self.assertEqual(len(list(res)), 1)
+        out, err = node.run_cqlsh('use ks; ' + query_template % 'limit 1', show_output=True, return_output=True)
+        num_rows = int(re.search(regex, out).group(1))
+        self.assertEqual(num_rows, 1)
+
+        res = session.execute(query_template % '')
+        self.assertEqual(len(list(res)), 100)
+        out, err = node.run_cqlsh('use ks; ' + query_template % '', show_output=True, return_output=True)
+        num_rows = int(re.search(regex, out).group(1))
+        self.assertEqual(num_rows, 100)
+
+    @skip('scylladb/scylla#2251')
+    def test_limit_date_value_out_of_range_lower_limit(self):
+        cluster = self.prepare()
+        node = cluster.nodelist()[0]
+        query_template = 'select * from raw_data %s;'
+        regex = r"([0-9]+) (rows)"
+
+        session = self.patient_cql_connection(node)
+        self.create_ks(session, 'ks', 1)
+        session.execute("""
+            CREATE TABLE ks.raw_data (
+                              test_id int,
+                              partition_key text,
+                              time timestamp,
+                              value double,
+                              PRIMARY KEY ((test_id, partition_key), time)
+                              ) WITH CLUSTERING ORDER BY (time ASC);""")
+
+        for i in xrange(2000):
+            session.execute("insert into ks.raw_data (test_id, partition_key, time, value) "
+                            "values (%s, '%s', '%s-02-03 04:05+0000', %s);" % (i, i, 2000-i, i*1.0))
+
+        res = session.execute(query_template % 'limit 1')
+        self.assertEqual(len(list(res)), 1)
+        out, err = node.run_cqlsh('use ks; ' + query_template % 'limit 1', show_output=True, return_output=True)
+        num_rows = int(re.search(regex, out).group(1))
+        self.assertEqual(num_rows, 1)
+
+        res = session.execute(query_template % '')
+        self.assertEqual(len(list(res)), 2000)
+        out, err = node.run_cqlsh('use ks; ' + query_template % 'limit 10', show_output=True, return_output=True)
+        num_rows = int(re.search(regex, out).group(1))
+        self.assertEqual(num_rows, 10)
+
+    def test_limit_date_value_out_of_range_upper_limit(self):
+        cluster = self.prepare()
+        node = cluster.nodelist()[0]
+        query_template = 'select * from raw_data %s;'
+        regex = r"([0-9]+) (rows)"
+
+        session = self.patient_cql_connection(node)
+        self.create_ks(session, 'ks', 1)
+        session.execute("""
+            CREATE TABLE ks.raw_data (
+                              test_id int,
+                              partition_key text,
+                              time timestamp,
+                              value double,
+                              PRIMARY KEY ((test_id, partition_key), time)
+                              ) WITH CLUSTERING ORDER BY (time DESC);""")
+
+        for i in xrange(8000):
+            session.execute("insert into ks.raw_data (test_id, partition_key, time, value) "
+                            "values (%s, '%s', '%s-02-03 04:05+0000', %s);" % (i, i, 2000+i, i*1.0))
+
+        res = session.execute(query_template % 'limit 1')
+        self.assertEqual(len(list(res)), 1)
+        out, err = node.run_cqlsh('use ks; ' + query_template % 'limit 1', show_output=True, return_output=True)
+        num_rows = int(re.search(regex, out).group(1))
+        self.assertEqual(num_rows, 1)
+
+        res = session.execute(query_template % '')
+        self.assertEqual(len(list(res)), 8000)
+        out, err = node.run_cqlsh('use ks; ' + query_template % 'limit 10', show_output=True, return_output=True)
+        num_rows = int(re.search(regex, out).group(1))
+        self.assertEqual(num_rows, 10)
+
