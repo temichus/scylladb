@@ -2,12 +2,15 @@ import random
 import time
 import uuid
 import os
+import sys
 import threading
 import shutil
+import re
 
 from dtest import Tester, debug
-from cassandra import ConsistencyLevel, InvalidRequest
+from cassandra import ConsistencyLevel, InvalidRequest, Unauthorized
 from cassandra.query import SimpleStatement
+from cassandra.query import UNSET_VALUE
 
 from assertions import assert_invalid, assert_one
 from tools import rows_to_list, since, require, new_node
@@ -436,6 +439,223 @@ class TestCounters(Tester):
                 debug('Got an expected error trying to use {}: {}'.format(option.split()[0], ex))
             else:
                 raise Exception('USING {} was not rejected!'.format(option.split()[0]))
+
+    def prepare_statement_test(self):
+        """
+        update counters with prepare statement, and verify the data
+        """
+        cluster = self.cluster
+        cluster.set_configuration_options(values={'experimental': True})
+
+        cluster.populate(1).start()
+        node1, = cluster.nodelist()
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'counter_tests', 1)
+
+        session.execute("CREATE TABLE counter_bug (t int, c counter, primary key(t))")
+
+        debug('Created counter table, try to update one counter')
+        session.execute("UPDATE counter_bug SET c = c + 1 where t = 0")
+        res = session.execute("SELECT * from counter_bug")
+        rows = rows_to_list(res)
+        assert len(rows) == 1
+        assert rows == [[0, 1]]
+        # reset the counter (key=0) to 0
+        session.execute("UPDATE counter_bug SET c = c - 1 where t = 0")
+
+        keys_num = 1000
+
+        counter_list = []
+        debug('Update %s counters with random int by prepare statement' % keys_num)
+        for key in range(keys_num):
+            statement = session.prepare("update counter_tests.counter_bug set c = c + ? where t = ?")
+            # int is from `-sys.maxint - 1` to `sys.maxint`, we will reupdate
+            # counters with random int, so sys.maxint / 2 is safe to avoid rollover
+            rand_c = random.randint(-sys.maxint / 2, sys.maxint / 2)
+            counter_list.append([key, rand_c])
+            session.execute(statement.bind((rand_c, key)))
+        res = session.execute("SELECT * from counter_bug")
+        rows = rows_to_list(res)
+        for row in rows:
+            assert row in counter_list, "Counter isn't updated correctly"
+        assert len(rows) == keys_num
+        debug('Verified that all counters are updated correctly')
+
+        debug('Reupdate all counters')
+        for key in range(keys_num):
+            statement = session.prepare("update counter_tests.counter_bug set c = c + ? where t = ?")
+            rand_c = random.randint(-sys.maxint / 2, sys.maxint / 2)
+            session.execute(statement.bind((rand_c, key)))
+        res = session.execute("SELECT * from counter_bug")
+        rows = rows_to_list(res)
+        assert len(rows) == keys_num
+        debug('Verified that counters number is correct: %s' % keys_num)
+
+        debug('drop all counters')
+        for key in range(keys_num):
+            session.execute("DELETE c FROM counter_tests.counter_bug where t = %s" % key)
+        res = session.execute("SELECT * from counter_bug")
+        rows = rows_to_list(res)
+        assert len(rows) == 0
+
+    def int_rollover_test(self):
+        """
+        currently the counter will rollover when it reaches to MAX_INT.
+        https://github.com/scylladb/scylla/issues/2225 (WONTFIX)
+        Expected result: rollover
+        """
+        cluster = self.cluster
+        cluster.set_configuration_options(values={'experimental': True})
+
+        cluster.populate(1).start()
+        node1, = cluster.nodelist()
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'counter_tests', 1)
+
+        session.execute("CREATE TABLE counter_bug (t int, c counter, primary key(t))")
+
+        debug('Created counter table, try to update one counter to MAX_INT')
+        session.execute("UPDATE counter_bug SET c = c + %s where t = 0" % sys.maxint)
+        res = session.execute("SELECT * from counter_bug")
+        rows = rows_to_list(res)
+        assert len(rows) == 1
+        debug(rows)
+        assert rows == [[0, sys.maxint]], 'Failed to update counter to MAX_INT'
+
+        debug('Update the counter to make it rollover')
+        session.execute("UPDATE counter_bug SET c = c + 1 where t = 0")
+        res = session.execute("SELECT * from counter_bug")
+        rows = rows_to_list(res)
+        assert len(rows) == 1
+        debug(rows)
+        assert rows == [[0, -sys.maxint - 1]], "Int counter isn't rollover"
+
+        debug('Update the counter to make it recover')
+        session.execute("UPDATE counter_bug SET c = c - 1 where t = 0")
+        res = session.execute("SELECT * from counter_bug")
+        rows = rows_to_list(res)
+        assert len(rows) == 1
+        debug(rows)
+        assert rows == [[0, sys.maxint]], "Int counter isn't recovered"
+
+    def prepare_unset_value_test(self):
+        """
+        Try to update counter with UNSET_VALUE
+        Expected result: nothing is changed
+        """
+        cluster = self.cluster
+        cluster.set_configuration_options(values={'experimental': True})
+
+        cluster.populate(1).start()
+        node1, = cluster.nodelist()
+        # protocol version >= 4
+        session = self.patient_cql_connection(node1, protocol_version=4)
+        self.create_ks(session, 'counter_tests', 1)
+
+        session.execute("CREATE TABLE counter_bug (t int, c counter, primary key(t))")
+
+        debug('Created counter table, try to update one counter')
+        session.execute("UPDATE counter_bug SET c = c + 1 where t = 0")
+        res = session.execute("SELECT * from counter_bug")
+        rows = rows_to_list(res)
+        assert len(rows) == 1
+        assert rows == [[0, 1]]
+
+        keys_num = 1000
+        debug('Update %s counters with UNSET_VALUE by prepare statement' % keys_num)
+
+        for key in range(keys_num):
+            statement = session.prepare("update counter_tests.counter_bug set c = c + ? where t = ?")
+            session.execute(statement.bind((UNSET_VALUE, key)))
+
+        res = session.execute("SELECT * from counter_bug")
+        rows = rows_to_list(res)
+        debug(rows)
+        assert len(rows) == 1, 'Update with UNSET_VALUE unexpectedly changed number of counters'
+        assert rows == [[0, 1]], 'Update with UNSET_VALUE unexpectedly changed value of first counter'
+        debug("Verified that all counters aren't updated by UNSET_VALUE")
+
+    def assertUnauthorized(self, message, session, query):
+        with self.assertRaises(Unauthorized) as cm:
+            session.execute(query)
+        assert re.search(message, cm.exception.message), "Expected '%s', but got '%s'" % (message, cm.exception.message)
+
+    def counter_auth_test(self):
+        """
+        Test Authorization of counter table
+        """
+        cluster = self.cluster
+        config = {'authenticator': 'org.apache.cassandra.auth.PasswordAuthenticator',
+                  'authorizer': 'org.apache.cassandra.auth.CassandraAuthorizer',
+                  'permissions_validity_in_ms': 0,
+                  'experimental': True}
+        cluster.set_configuration_options(values=config)
+
+        cluster.populate(1).start()
+        n = self.wait_for_any_log(cluster.nodelist(), 'Created default superuser', 10)
+        debug("Default role created by " + n.name)
+
+        node1, = cluster.nodelist()
+        cassandra = self.patient_cql_connection(node1, user='cassandra', password='cassandra')
+        self.create_ks(cassandra, 'counter_tests', 1)
+
+        cassandra.execute("CREATE USER cathy WITH PASSWORD '12345'")
+        cathy = self.patient_cql_connection(node1, user='cathy', password='12345')
+
+        # CREATE
+        self.assertUnauthorized("User cathy has no CREATE permission on <keyspace counter_tests>",
+                                cathy, "CREATE TABLE counter_tests.counter_bug (t int, c counter, primary key(t))")
+
+        cassandra.execute("GRANT CREATE ON KEYSPACE counter_tests TO cathy")
+        cathy.execute("CREATE TABLE counter_tests.counter_bug (t int, c counter, primary key(t))")
+        debug("Verified that cathy has CREATE permission")
+
+        # MODIFY (UPDATE)
+        self.assertUnauthorized("User cathy has no MODIFY permission on <table counter_tests.counter_bug>",
+                                cathy, "UPDATE counter_tests.counter_bug SET c = c + 1 where t = 0")
+        cassandra.execute("GRANT MODIFY ON counter_tests.counter_bug TO cathy")
+        cathy.execute("UPDATE counter_tests.counter_bug SET c = c + 1 where t = 0")
+        debug("Verified that cathy has MODIFY permission")
+
+        # SELECT
+        self.assertUnauthorized("User cathy has no SELECT permission on <table counter_tests.counter_bug>",
+                                cathy, "SELECT * FROM counter_tests.counter_bug")
+
+        cassandra.execute("GRANT SELECT ON counter_tests.counter_bug TO cathy")
+
+        res = cathy.execute("SELECT * FROM counter_tests.counter_bug")
+        rows = rows_to_list(res)
+        assert rows == [[0, 1]]
+        debug("Verified that cathy has SELECT permission")
+
+        # ALTER
+        self.assertUnauthorized("User cathy has no ALTER permission on <table counter_tests.counter_bug>",
+                                cathy, "ALTER TABLE counter_tests.counter_bug RENAME t to t2")
+        cassandra.execute("GRANT ALTER ON counter_tests.counter_bug to cathy")
+        cathy.execute("ALTER TABLE counter_tests.counter_bug RENAME t to t2")
+        debug("Verified that cathy has ALTER(RENAME) permission")
+
+        # DROP
+        self.assertUnauthorized("User cathy has no DROP permission on <table counter_tests.counter_bug>",
+                                cathy, "DROP TABLE counter_tests.counter_bug")
+        debug("Give DROP permission to cathy")
+        cassandra.execute("GRANT DROP ON counter_tests.counter_bug to cathy")
+
+        # AUTHORIZE
+        self.assertUnauthorized("User cathy has no AUTHORIZE permission on <table counter_tests.counter_bug>",
+                                cathy, "REVOKE DROP ON counter_tests.counter_bug FROM cathy")
+        cassandra.execute("GRANT AUTHORIZE ON counter_tests.counter_bug to cathy")
+        cathy.execute("REVOKE DROP ON counter_tests.counter_bug FROM cathy")
+        debug("DROP permission is revoked by herself")
+
+        self.assertUnauthorized("User cathy has no DROP permission on <table counter_tests.counter_bug>",
+                                cathy, "DROP TABLE counter_tests.counter_bug")
+        debug("Verified that cathy has AUTHORIZE(REVOKE) permission to remove DROP permission from herself")
+
+        debug("Regive DROP permission to cathy, and try to drop table by cathy")
+        cassandra.execute("GRANT DROP ON counter_tests.counter_bug to cathy")
+        cathy.execute("DROP TABLE counter_tests.counter_bug")
+        debug("Verified that cathy has DROP permission")
 
 
 class TestCountersOnMultipleNodes(Tester):
