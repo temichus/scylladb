@@ -197,7 +197,6 @@ class MigrationTestBase(Tester):
         self.assertEqual(result[0].p1, 'key1', "check partition key")
         self.assertEqual(result[0].r1, 2, "check value")
 
-    @require('#24 scylla-tools-java')
     def migrate_sstable_with_large_row_number_test(self):
         """
         Create scylla cluster and run cassandra stress test to populate large number of rows.
@@ -208,8 +207,11 @@ class MigrationTestBase(Tester):
         node1 = cluster.nodelist()[0]
 
         debug('Run stress test on node1')
-        node1.stress(['write', 'duration=1m', 'no-warmup', '-mode', 'cql3', 'native',
-                     '-rate', 'threads=4', '-col', 'n=FIXED(1)', 'size=FIXED(2)'], capture_output=True)
+        profile_path = os.path.join(os.path.dirname(__file__),
+                                    'test_data/c-s-profiles/cassandra-stress-custom-large-row-num-1.yaml')
+        node1.stress(['user', 'profile={}'.format(profile_path), 'ops(insert=1)', 'n=1000000', '-rate', 'threads=4'],
+                     capture_output=True)
+
         session = self.patient_cql_connection(node1)
         rows = rows_to_list(session.execute('SELECT count(*) FROM keyspace1.standard1;'))
         row_number_src = rows[0][0]
