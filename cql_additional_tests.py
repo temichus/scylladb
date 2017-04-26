@@ -4941,7 +4941,7 @@ class CQLAdditionalTests(Tester):
         cluster.populate(1).start()
         return cluster
 
-    def simple_null_value_tests(self):
+    def simple_null_value_test(self):
         cluster = self.prepare()
         node1 = cluster.nodelist()[0]
         session = self.patient_cql_connection(node1)
