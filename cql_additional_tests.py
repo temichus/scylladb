@@ -4962,7 +4962,7 @@ class CQLAdditionalTests(Tester):
         """))
         assert len(res) == 3, res
 
-    def test_create_secondary_indexes(self):
+    def create_secondary_indexes_test(self):
         cluster = self.prepare()
         node = cluster.nodelist()[0]
 
@@ -4985,12 +4985,12 @@ class CQLAdditionalTests(Tester):
             assert(e.message == "Indexes are not supported yet")
             assert(e.code == 0000)
 
-    def test_drop_secondary_indexes(self):
+    def drop_secondary_indexes_test(self):
         # cannot test drop secondary index because their are not created
         # in the first place
         pass
 
-    def test_lightweight_transaction(self):
+    def lightweight_transaction_test(self):
         cluster = self.prepare()
         node = cluster.nodelist()[0]
 
@@ -5015,7 +5015,7 @@ class CQLAdditionalTests(Tester):
             assert(e.code == 0000)
 
     @skip('scylladb/scylla#876')
-    def test_grant(self):
+    def grant_test(self):
         cluster = self.prepare()
         node = cluster.nodelist()[0]
 
@@ -5030,7 +5030,7 @@ class CQLAdditionalTests(Tester):
             assert(e.code == 0000)
 
     @skip('scylladb/scylla#876')
-    def test_revoke(self):
+    def revoke_test(self):
         cluster = self.prepare()
         node = cluster.nodelist()[0]
 
@@ -5045,7 +5045,7 @@ class CQLAdditionalTests(Tester):
             assert(e.code == 0000)
 
     @skip('scylladb/scylla#876')
-    def test_list(self):
+    def list_test(self):
         cluster = self.prepare()
         node = cluster.nodelist()[0]
 
@@ -5059,7 +5059,7 @@ class CQLAdditionalTests(Tester):
             assert(e.message == "Not implemented: LIST")
             assert(e.code == 0000)
 
-    def test_limit_date_value_out_of_range(self):
+    def limit_date_value_out_of_range_test(self):
         # positive case for scylladb/scylla#1694
         cluster = self.prepare()
         node = cluster.nodelist()[0]
@@ -5113,7 +5113,7 @@ class CQLAdditionalTests(Tester):
         self.assertEqual(num_rows, 100)
 
     @skip('scylladb/scylla#2251')
-    def test_limit_date_value_out_of_range_lower_limit(self):
+    def limit_date_value_out_of_range_lower_limit_test(self):
         cluster = self.prepare()
         node = cluster.nodelist()[0]
         query_template = 'select * from raw_data %s;'
@@ -5146,7 +5146,7 @@ class CQLAdditionalTests(Tester):
         num_rows = int(re.search(regex, out).group(1))
         self.assertEqual(num_rows, 10)
 
-    def test_limit_date_value_out_of_range_upper_limit(self):
+    def limit_date_value_out_of_range_upper_limit_test(self):
         cluster = self.prepare()
         node = cluster.nodelist()[0]
         query_template = 'select * from raw_data %s;'
