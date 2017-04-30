@@ -213,7 +213,7 @@ class MigrationTestBase(Tester):
                      capture_output=True)
 
         session = self.patient_cql_connection(node1)
-        rows = rows_to_list(session.execute('SELECT count(*) FROM keyspace1.standard1;'))
+        rows = rows_to_list(session.execute('SELECT count(*) FROM keyspace1.standard1;', timeout=300.0))
         row_number_src = rows[0][0]
         debug('{} rows written'.format(row_number_src))
 
@@ -256,7 +256,7 @@ class MigrationTestBase(Tester):
         time.sleep(5)
         debug('Verify number of rows on node1')
         session = self.patient_cql_connection(node1)
-        rows = rows_to_list(session.execute('SELECT count(*) FROM keyspace1.standard1;'))
+        rows = rows_to_list(session.execute('SELECT count(*) FROM keyspace1.standard1;', timeout=300.0))
         row_number = rows[0][0]
         debug('{} rows read'.format(row_number))
         self.assertEqual(row_number, row_number_src)
