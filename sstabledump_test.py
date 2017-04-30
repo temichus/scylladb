@@ -10,39 +10,10 @@ from decimal import Decimal
 import pprint
 from dtest import Tester, debug
 from tools import rows_to_list
-from cqlsh_tests.cqlsh_copy_tests import CqlshCopyTest
+from cqlsh_tests.cqlsh_copy_tests import CqlshPrepare
 
 
-class SSTableDumpTests(Tester):
-
-    def sstabledump_basic_test(self):
-        """
-        Populate data, run sstabledump, extract data from json
-        and compare it with a source
-        """
-        cluster = self.cluster
-        cluster.populate(1).start()
-        self.node = cluster.nodelist()[0]
-
-        session = self.patient_cql_connection(self.node)
-        session.execute("""CREATE KEYSPACE ks
-            WITH REPLICATION = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 };
-        """)
-        session.execute("""CREATE TABLE ks.cf (
-            name text PRIMARY KEY,
-            value_one int,
-            value_two int
-            );
-        """)
-
-        debug('Insert data')
-        values_list = [('mary', 1, 12), ('sara', 2, 24), ('mike', 3, 36), ('ted', 4, 48)]
-        for values in values_list:
-            session.execute("INSERT INTO ks.cf (name, value_one, value_two) VALUES {};".format(values))
-
-        data_json = self._dump_data()
-        json_values = self._fetch_data_from_json(data_json)
-        self._compare_data(values_list, json_values)
+class SSTableDump(Tester):
 
     def _fetch_data_from_json(self, data):
         res = list()
@@ -77,6 +48,38 @@ class SSTableDumpTests(Tester):
             debug(dst)
         symmetric_diff = set(src) ^ set(dst)
         self.assertEquals(len(symmetric_diff), 0)
+
+
+class SSTableDumpTests(SSTableDump):
+
+    def sstabledump_basic_test(self):
+        """
+        Populate data, run sstabledump, extract data from json
+        and compare it with a source
+        """
+        cluster = self.cluster
+        cluster.populate(1).start()
+        self.node = cluster.nodelist()[0]
+
+        session = self.patient_cql_connection(self.node)
+        session.execute("""CREATE KEYSPACE ks
+            WITH REPLICATION = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 };
+        """)
+        session.execute("""CREATE TABLE ks.cf (
+            name text PRIMARY KEY,
+            value_one int,
+            value_two int
+            );
+        """)
+
+        debug('Insert data')
+        values_list = [('mary', 1, 12), ('sara', 2, 24), ('mike', 3, 36), ('ted', 4, 48)]
+        for values in values_list:
+            session.execute("INSERT INTO ks.cf (name, value_one, value_two) VALUES {};".format(values))
+
+        data_json = self._dump_data()
+        json_values = self._fetch_data_from_json(data_json)
+        self._compare_data(values_list, json_values)
 
     def sstabledump_counter_basic_test(self):
         """
@@ -121,7 +124,7 @@ class SSTableDumpTests(Tester):
         return res
 
 
-class SSTableDumpAllDatatypes(CqlshCopyTest, SSTableDumpTests):
+class SSTableDumpAllDatatypes(CqlshPrepare, SSTableDump):
 
     def sstabledump_all_datatypes_test(self):
         cluster = self.cluster
