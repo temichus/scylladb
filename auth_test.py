@@ -5,15 +5,17 @@ STATE: NOT FULLY IMPLEMENTED
 """
 
 import re
+import socket
 import time
 
-from cassandra import AuthenticationFailed, Unauthorized, InvalidRequest
+from cassandra import AuthenticationFailed, Unauthorized, InvalidRequest, AlreadyExists
 from cassandra.cluster import NoHostAvailable
 from cassandra import Unavailable
 
 from assertions import assert_invalid
 from dtest import Tester, debug
-from tools import since, new_node
+from tools import since, new_node, require
+
 from unittest import skip
 
 
@@ -223,6 +225,53 @@ class TestAuth(Tester):
         session = self.get_session(user='cassandra', password='cassandra')
         assert_invalid(session, 'DROP USER nonexistent', "nonexistent doesn't exist")
 
+    def drop_user_case_sensitive_test(self):
+        """
+        * Launch a one node cluster
+        * Connect as the default superuser
+        * Create a user, 'Test'
+        * Verify that the drop user statement is case sensitive
+        """
+        self.prepare()
+        cassandra = self.get_session(user='cassandra', password='cassandra')
+        cassandra.execute("CREATE USER Test WITH PASSWORD '12345'")
+
+        # Should be invalid, as 'test' does not exist
+        assert_invalid(cassandra, "DROP USER test")
+
+        cassandra.execute("DROP USER Test")
+        rows = [x[0] for x in list(cassandra.execute("LIST USERS"))]
+        self.assertItemsEqual(rows, ['cassandra'])
+
+        cassandra.execute("CREATE USER test WITH PASSWORD '12345'")
+
+        # Should be invalid, as 'TEST' does not exist
+        assert_invalid(cassandra, "DROP USER TEST")
+
+        cassandra.execute("DROP USER test")
+        rows = [x[0] for x in list(cassandra.execute("LIST USERS"))]
+        self.assertItemsEqual(rows, ['cassandra'])
+
+    def alter_user_case_sensitive_test(self):
+        """
+        * Launch a one node cluster
+        * Connect as the default superuser
+        * Create a user, 'Test'
+        * Verify that ALTER statements on the user are case sensitive
+        """
+        self.prepare()
+        cassandra = self.get_session(user='cassandra', password='cassandra')
+        cassandra.execute("CREATE USER Test WITH PASSWORD '12345'")
+        cassandra.execute("ALTER USER Test WITH PASSWORD '54321'")
+        assert_invalid(cassandra, "ALTER USER test WITH PASSWORD '12345'")
+        assert_invalid(cassandra, "ALTER USER TEST WITH PASSWORD '12345'")
+
+        cassandra.execute('DROP USER Test')
+        cassandra.execute("CREATE USER test WITH PASSWORD '12345'")
+        assert_invalid(cassandra, "ALTER USER Test WITH PASSWORD '12345'")
+        assert_invalid(cassandra, "ALTER USER TEST WITH PASSWORD '12345'")
+        cassandra.execute("ALTER USER test WITH PASSWORD '54321'")
+
     def regular_users_can_alter_their_passwords_only_test(self):
         """
         Originally from dtest.
@@ -374,10 +423,13 @@ class TestAuth(Tester):
     @skip('index')
     def alter_cf_auth_test(self):
         """
-        Originally from dtest.
-        **Description:**
-
-        **Expected Result:** SKIPPED
+        * Launch a one node cluster
+        * Connect as the default superuser
+        * Create a new user, 'cathy', with no permissions
+        * Connect as 'cathy'
+        * Assert that trying to alter a ks as 'cathy' throws Unauthorized
+        * Grant 'cathy' alter permissions
+        * Assert that 'cathy' can alter a ks
         """
         self.prepare()
 
@@ -542,6 +594,40 @@ class TestAuth(Tester):
         rows = list(cathy.execute("SELECT * FROM ks.cf"))
 
         assert len(rows) == 0
+
+    @since('2.2')
+    def grant_revoke_without_ks_specified_test(self):
+        """
+        * Launch a one node cluster
+        * Connect as the default superuser
+        * Create table ks.cf
+        * Create a new users, 'cathy' and 'bob', with no permissions
+        * Grant ALL on ks.cf to cathy
+        * As cathy, try granting SELECT on cf to bob, without specifying the ks; verify it fails
+        * As cathy, USE ks, try again, verify it works this time
+        """
+        self.prepare()
+
+        cassandra = self.get_session(user='cassandra', password='cassandra')
+
+        cassandra.execute("CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}")
+        cassandra.execute("CREATE TABLE ks.cf (id int primary key, val int)")
+
+        cassandra.execute("CREATE USER cathy WITH PASSWORD '12345'")
+        cassandra.execute("CREATE USER bob WITH PASSWORD '12345'")
+
+        cassandra.execute("GRANT ALL ON ks.cf TO cathy")
+
+        cathy = self.get_session(user='cathy', password='12345')
+        bob = self.get_session(user='bob', password='12345')
+
+        assert_invalid(cathy, "GRANT SELECT ON cf TO bob", "No keyspace has been specified. USE a keyspace, or explicitly specify keyspace.tablename")
+        self.assertUnauthorized("User bob has no SELECT permission on <table ks.cf> or any of its parents",
+                                bob, "SELECT * FROM ks.cf")
+
+        cathy.execute("USE ks")
+        cathy.execute("GRANT SELECT ON cf TO bob")
+        bob.execute("SELECT * FROM ks.cf")
 
     def grant_revoke_auth_test(self):
         """
@@ -966,18 +1052,17 @@ class TestAuth(Tester):
         # check the replicas endpoint of system_auth.user:cassandra
         out, err = node1.nodetool("getendpoints system_auth users cassandra")
         debug('Endpoints of system_auth.users:cassandra : %s' % out.strip().split('\n'))
+        self.assertEqual(1, len(out.strip().split('\n')), "1 node expected")
         rf_address = out.strip().split('\n')[0]
 
-        src_node = node1
         rf_node = node2
         if node1.address() == rf_address:
-            src_node = node2
             rf_node = node1
 
         assert rf_node.name.startswith('node')
         rf_node_idx = int(rf_node.name[4:]) - 1
 
-        # re-get session from rf node before killing node
+        # re-get session from rf node before dropping keyspace system_auth
         session = self.get_session(node_idx=rf_node_idx, user='cassandra',
                                    password='cassandra')
 
@@ -999,38 +1084,298 @@ class TestAuth(Tester):
         debug('Check if the first session still works')
         self._check_session_available(session, expect_auth_err=True, expect_invalid_req=True)
 
-    @skip('not-implemented')
     def dropping_one_replica_of_keyspace_system_auth(self):
         """
         **Description:** Dropping keyspace system_auth (when RF>=2).
         **Expected Result:** Cluster is unavailable - connection failed.
         """
-        raise NotImplementedError
+        self.prepare(nodes=2)
+        debug('Cluster with 2 nodes started')
 
-    @skip('not-implemented')
+        [node1, node2] = self.cluster.nodelist()
+        session = self.get_session(node_idx=0, user='cassandra',
+                                   password='cassandra')
+        debug('Successfully get the session from node1')
+        # make sure session works
+        self._check_session_available(session)
+
+        # verify the replication_factor of system_auth keyspace is 1
+        rf = session.cluster.metadata.keyspaces['system_auth'].replication_strategy.replication_factor
+        debug('system_auth rf: %s' % rf)
+        self.assertEquals(1, rf, "RF of system_auth isn't 1")
+
+        # change rf RF of system_auth to 2
+        session.execute("alter keyspace system_auth with replication = {'class': 'org.apache.cassandra.locator.SimpleStrategy', 'replication_factor':2};")
+        # verify the replication_factor of system_auth keyspace is 2 now
+        rf = session.cluster.metadata.keyspaces['system_auth'].replication_strategy.replication_factor
+        debug('Current RF of system_auth is %s' % rf)
+        self.assertEquals(2, rf)
+
+        # check the replicas endpoint of system_auth.user:cassandra
+        out, err = node1.nodetool("getendpoints system_auth users cassandra")
+        debug('Endpoints of system_auth.users:cassandra : %s' % out.strip().split('\n'))
+        self.assertEqual(2, len(out.strip().split('\n')), "2 nodes expected")
+
+        debug('drop keyspace system_auth')
+        session.execute("DROP KEYSPACE system_auth")
+
+        # verify connection to all nodes
+        for n in xrange(2):
+            debug('Try to re-get session from first rf endpoint(node%s)' % n)
+            try:
+                new_session = self.get_session(node_idx=n,
+                                           user='cassandra',
+                                           password='cassandra')
+            except NoHostAvailable as e:
+                debug(e.errors)
+                assert isinstance(e.errors.values()[0], AuthenticationFailed)
+            else:
+                debug('Check if the new session works')
+                self._check_session_available(new_session, expect_auth_err=True, expect_invalid_req=True)
+
+        debug('Check if the first session still works')
+        self._check_session_available(session, expect_auth_err=True, expect_invalid_req=True)
+
     def kill_all_nodes_with_the_auth_info_except_one_test(self):
         """
         **Description:** Set RF of system_auth to 3, kill two nodes.
-        **Expected Result:** Cluster is available - successful connection
+        **Expected Result:** Cluster is unavailable - connection failed.
+        **Re-start 1 node. Connection to 2 successful.
+        **Re-start 2 node. Connection to 3 nodes successful.
         """
-        raise NotImplementedError
 
-    @skip('not-implemented')
-    def repair_system_auth_test(self):
-        """
-        **Description:** Set RF=2, drop system_auth table, then try to repair nodes.
-        **Expected Result:** Repair has finished, and system_auth is recovered.
-        """
-        raise NotImplementedError
+        self.prepare(nodes=3)
+        debug('Cluster with 3 nodes started')
 
-    @skip('not-implemented')
+        nodes = self.cluster.nodelist()
+        session = self.get_session(node_idx=0, user='cassandra', password='cassandra')
+        debug('Successfully get the session from node1')
+        # make sure session works
+        self._check_session_available(session)
+
+        # change rf RF of system_auth to 3
+        session.execute("alter keyspace system_auth with replication = {'class': 'org.apache.cassandra.locator.SimpleStrategy', 'replication_factor':3};")
+        self.assertEquals(3, self.get_session(node_idx=0, user='cassandra', password='cassandra').
+                          cluster.metadata.keyspaces['system_auth'].replication_strategy.replication_factor)
+
+        # check the replicas endpoint of system_auth.user:cassandra
+        out, err = nodes[0].nodetool("getendpoints system_auth users cassandra")
+        debug('Endpoints of system_auth.users:cassandra : %s' % out.strip().split('\n'))
+        self.assertEqual(3, len(out.strip().split('\n')), "3 nodes expected")
+
+        # re-get session from rf node before killing node
+        sessions = []
+        for i in xrange(3):
+            sessions.append(self.get_session(node_idx=i, user='cassandra',
+                                   password='cassandra'))
+
+        nodes[1].stop(wait_other_notice=True, gently=True)
+        nodes[2].stop(wait_other_notice=True, gently=True)
+        self._check_session_available(session, expect_auth_err=True, expect_invalid_req=True)
+
+        for i in xrange(3):
+            debug('Try to re-get session from %s: %s)' % (nodes[i].name, nodes[i].address()))
+            try:
+                self.get_session(node_idx=i,
+                                              user='cassandra',
+                                              password='cassandra')
+            except NoHostAvailable as e:
+                debug(e.errors)
+                if i in [0, 3]:
+                    assert isinstance(e.errors.values()[0], AuthenticationFailed)
+                else:
+                    assert isinstance(e.errors.values()[0], socket.error)
+            else:
+                if j == 1:
+                    self.fail("Connection should not be created")
+        nodes[1].start(wait_other_notice=True)
+        # connection to 2 nodes should be ok
+        for i in xrange(2):
+            debug('Try to re-get session from %s: %s)' % (nodes[i].name, nodes[i].address()))
+            self._check_session_available(
+                self.get_session(node_idx=i, user='cassandra', password='cassandra'))
+
+        try:
+            self.get_session(node_idx=i, user='cassandra', password='cassandra')
+        except NoHostAvailable as e:
+            debug(e.errors)
+
+        nodes[2].start(wait_other_notice=True)
+        # connection to all nodes should be ok
+        for i in xrange(3):
+            debug('Try to re-get session from %s: %s)' % (nodes[i].name, nodes[i].address()))
+            self._check_session_available(
+                self.get_session(node_idx=i, user='cassandra', password='cassandra'))
+
+        debug('Check if the first session still works')
+        self._check_session_available(session, expect_auth_err=True, expect_invalid_req=True)
+
+    @require("2338")
+    def drop_keyspace_system_auth(self):
+        """
+        **Description:** try to drop system_auth table
+        **Expected Result:** we should not be able to drop system_auth
+        """
+        self.prepare()
+        debug('Cluster with 1 nodes started')
+
+        # node = self.cluster.nodelist()[0]
+        session = self.get_session(node_idx=0, user='cassandra',
+                                   password='cassandra')
+        debug('Successfully get the session from node1')
+        # make sure session works
+        self._check_session_available(session)
+
+        # expected message like "Cannot DROP <keyspace system_auth>"
+        session.execute("DROP KEYSPACE system_auth")
+
     def change_setting_to_noauth_after_system_auth_was_lost_test(self):
         """
-        **Description:** after the auth info is lost (dropping system_auth when RF=1),Change the setting of a node
-        to no auth (while one node is down), force a client to connect to that node.
+        **Description:** after the auth info is lost, change the setting of a node
+        to no auth (while the node is down), force a client to connect to that node.
+        **Expected Result:** Cluster is available but connection failed.
+        """
+        self.prepare()
+        session = self.get_session(user='cassandra', password='cassandra')
+        self._check_session_available(session)
+        self.cluster.stop()
+        config = {'authenticator': 'org.apache.cassandra.auth.AllowAllAuthenticator',
+                  'authorizer': 'org.apache.cassandra.auth.AllowAllAuthorizer'}
+        self.cluster.set_configuration_options(values=config)
+        self.cluster.start(wait_for_binary_proto=True)
+
+        for session in [self.get_session(),
+                        self.get_session(user='cassandra', password='cassandra')]:
+            try:
+                session.execute("LIST USERS")
+                self.fail('You have to be logged in and not anonymous to perform this request!')
+            except Unauthorized as e:
+                self.assertEquals(e.message,
+                                  'Error from server: code=2100 [Unauthorized] message="You have to be logged in and not anonymous to perform this request"')
+
+    def restart_node_doesnt_lose_auth_data_test(self):
+        """
+        * Launch a one node cluster
+        * Connect as the default superuser
+        * Create some new users, grant them permissions
+        * Stop the cluster, switch to AllowAll auth, restart the cluster
+        * Stop the cluster, switch back to auth, restart the cluster
+        * Check all user auth data was preserved
+        """
+        self.prepare()
+        cassandra = self.get_session(user='cassandra', password='cassandra')
+        cassandra.execute("CREATE USER cathy WITH PASSWORD '12345'")
+        cassandra.execute("CREATE USER philip WITH PASSWORD 'strongpass'")
+        cassandra.execute("CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}")
+        cassandra.execute("CREATE TABLE ks.cf (id int PRIMARY KEY)")
+        cassandra.execute("GRANT ALL ON ks.cf to philip")
+
+        self.cluster.stop()
+        config = {'authenticator': 'org.apache.cassandra.auth.AllowAllAuthenticator',
+                  'authorizer': 'org.apache.cassandra.auth.AllowAllAuthorizer'}
+        self.cluster.set_configuration_options(values=config)
+        self.cluster.start(wait_for_binary_proto=True)
+
+        self.cluster.stop()
+        config = {'authenticator': 'org.apache.cassandra.auth.PasswordAuthenticator',
+                  'authorizer': 'org.apache.cassandra.auth.CassandraAuthorizer'}
+        self.cluster.set_configuration_options(values=config)
+        self.cluster.start(wait_for_binary_proto=True)
+
+        philip = self.get_session(user='philip', password='strongpass')
+        cathy = self.get_session(user='cathy', password='12345')
+        self.assertUnauthorized("User cathy has no SELECT permission on <table ks.cf> or any of its parents",
+                                cathy, "SELECT * FROM ks.cf")
+
+        philip.execute("SELECT * FROM ks.cf")
+
+    def system_keyspace_sensitive_test(self):
+        """
+        * Launch a one node cluster
+        * Try to create KEYSPACEs like: 'SYSTEM_tRaCeS', 'SYSTEM_aUtH'
+        * Creation should be failed because system keyspaces is not user-modifiable.
+        * Then drop system keyspaces - failed too.
+        """
+        self.prepare()
+        session = self.get_session(user='cassandra', password='cassandra')
+        try:
+            session.execute("create KEYSPACE SyStEM WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}")
+            self.fail("system keyspace is not user-modifiable")
+        except InvalidRequest as e:
+            self.assertEquals(e.message, 'Error from server: code=2200 [Invalid query] message="system keyspace is not user-modifiable"')
+
+        for name in ['SYSTEM_tRaCeS', 'SYSTEM_aUtH']:
+            try:
+                session.execute(
+                    "create KEYSPACE %s WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}" % name)
+                self.fail("Keyspace %s shouldn't be created")
+            except AlreadyExists as e:
+                self.assertEquals(e.message, "Keyspace '%s' already exists" % name.lower())
+
+        try:
+            session.execute("drop KEYSPACE system")
+            self.fail("system keyspace is not user-modifiable")
+        except Unauthorized as e:
+            self.assertEquals(e.message, 'Error from server: code=2100 [Unauthorized] message="system keyspace is not user-modifiable."')
+        # https://github.com/scylladb/scylla/issues/2338
+        """for name in ['SYSTEM_tRaCeS', 'SYSTEM_aUtH']:
+            try:
+                session.execute(
+                    "drop KEYSPACE %s" % name)
+                self.fail("Keyspace %s shouldn't be deleted")
+            except InvalidRequest as e:
+                self.assertEquals(e.message, 'Cannot DROP <keyspace %s>' % name.lower())"""
+
+    def remove_dead_node_test(self):
+        """
+        **Description:** Run "nodetool removenode"' on the dead node (when RF=2).
         **Expected Result:** Cluster is available - successful connection.
         """
-        raise NotImplementedError
+        self.prepare(nodes=3)
+        debug('Cluster with 3 nodes started')
+
+        [node1, node2, node3] = self.cluster.nodelist()
+        session = self.get_session(node_idx=0, user='cassandra', password='cassandra')
+        debug('Successfully get the session from node1')
+        # make sure session works
+        self._check_session_available(session)
+
+        # change rf RF of system_auth to 2
+        session.execute("alter keyspace system_auth with replication = {'class': 'org.apache.cassandra.locator.SimpleStrategy', 'replication_factor':2};")
+
+        node2_hostid = node2.hostid()
+        node2.stop(wait_other_notice=True, gently=False)
+        node1.nodetool("removenode %s" % node2_hostid)
+        session = self.get_session(node_idx=0, user='cassandra', password='cassandra')
+        self._check_session_available(session)
+
+    @require("2339")
+    def remove_dead_node_consistency_failed_test(self):
+        """
+        **Description:** Run "nodetool removenode"' on the dead node (when RF=2).
+        **Expected Result:** Cluster is available - successful connection.
+        """
+        self.prepare(nodes=2)
+        debug('Cluster with 2 nodes started')
+
+        [node1, node2] = self.cluster.nodelist()
+        session = self.get_session(node_idx=0, user='cassandra', password='cassandra')
+        debug('Successfully get the session from node1')
+        # make sure session works
+        self._check_session_available(session)
+
+        # change rf RF of system_auth to 2
+        session.execute("alter keyspace system_auth with replication = {'class': 'org.apache.cassandra.locator.SimpleStrategy', 'replication_factor':2};")
+
+        node2_hostid = node2.hostid()
+        node2.stop(wait_other_notice=True, gently=False)
+        node1.nodetool("removenode %s" % node2_hostid)
+        try:
+            self.get_session(node_idx=0, user='cassandra', password='cassandra')
+        except NoHostAvailable as e:
+            debug(e.errors)
+            assert isinstance(e.errors.values()[0], AuthenticationFailed)
+            self.asserTrue('Cannot achieve consistency level QUORUM' in e.errors.values()[0].message)
 
     @skip('not-implemented')
     def manually_copy_system_auth_files_after_system_auth_was_lost_test(self):
@@ -1039,15 +1384,6 @@ class TestAuth(Tester):
         with scp to other nodes, do "nodetool refresh".
         **Expected Result:** Cluster is unavailable - connection failed.
         """
-        raise NotImplementedError
-
-    @skip('not-implemented')
-    def remove_dead_node_test(self):
-        """
-        **Description:** Run "nodetool removenode"' on the dead node (when RF=2).
-        **Expected Result:** Cluster is available - successful connection.
-        """
-        raise NotImplementedError
 
     @skip('not-implemented')
     def manually_backup_and_restore_system_auth_test(self):
