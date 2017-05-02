@@ -104,7 +104,8 @@ class TestAuth(Tester):
             # assert 'Password must not be null' in e.errors.values()[0].message
 
     # from 2.2 role creation is granted by CREATE_ROLE permissions, not superuser status
-    @since('1.2', max_version='2.1.x')
+    # @since('1.2', max_version='2.1.x')
+    # we still support NOSUPERUSER!!!
     def only_superuser_can_create_users_test(self):
         """
         Originally from dtest.
@@ -120,7 +121,8 @@ class TestAuth(Tester):
         jackob = self.get_session(user='jackob', password='12345')
         self.assertUnauthorized('Only superusers are allowed to perform CREATE (\[ROLE\|USER\]|USER) queries', jackob, "CREATE USER james WITH PASSWORD '54321' NOSUPERUSER")
 
-    @since('1.2', max_version='2.1.x')
+    # @since('1.2', max_version='2.1.x')
+    # we still support NOSUPERUSER!!!
     def password_authenticator_create_user_requires_password_test(self):
         """
         Originally from dtest.
@@ -186,7 +188,8 @@ class TestAuth(Tester):
         assert_invalid(session, "DROP USER cassandra", "(Users aren't allowed to DROP themselves|Cannot DROP primary role for current login)")
 
     # from 2.2 role deletion is granted by DROP_ROLE permissions, not superuser status
-    @since('1.2', max_version='2.1.x')
+    # @since('1.2', max_version='2.1.x')
+    # we still support NOSUPERUSER!!!
     def only_superusers_can_drop_users_test(self):
         """
         Originally from dtest.
@@ -243,6 +246,9 @@ class TestAuth(Tester):
         rows = [x[0] for x in list(cassandra.execute("LIST USERS"))]
         self.assertItemsEqual(rows, ['cassandra'])
 
+        # Should be invalid, as 'Test' does not exist anymore
+        assert_invalid(cassandra, "DROP USER Test")
+
         cassandra.execute("CREATE USER test WITH PASSWORD '12345'")
 
         # Should be invalid, as 'TEST' does not exist
@@ -251,6 +257,9 @@ class TestAuth(Tester):
         cassandra.execute("DROP USER test")
         rows = [x[0] for x in list(cassandra.execute("LIST USERS"))]
         self.assertItemsEqual(rows, ['cassandra'])
+
+        # Should be invalid, as 'test' does not exist anymore
+        assert_invalid(cassandra, "DROP USER test")
 
     def alter_user_case_sensitive_test(self):
         """
