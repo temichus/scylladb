@@ -470,6 +470,46 @@ class TestAuth(Tester):
         cassandra.execute("GRANT ALTER ON ks.cf TO cathy")
         cathy.execute("DROP INDEX cf_val_idx")
 
+    def alter_cf_auth_test_without_indexes(self):
+        """
+        * Launch a one node cluster
+        * Connect as the default superuser
+        * Create a new user, 'cathy', with no permissions
+        * Connect as 'cathy'
+        * Assert that trying to alter a ks as 'cathy' throws Unauthorized
+        * Grant 'cathy' alter permissions
+        * Assert that 'cathy' can alter a ks
+        """
+        self.prepare()
+
+        cassandra = self.get_session(user='cassandra', password='cassandra')
+        cassandra.execute("CREATE USER cathy WITH PASSWORD '12345'")
+        cassandra.execute("CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}")
+        cassandra.execute("CREATE TABLE ks.cf (id int primary key)")
+
+        cathy = self.get_session(user='cathy', password='12345')
+        self.assertUnauthorized("User cathy has no ALTER permission on <table ks.cf> or any of its parents",
+                                cathy, "ALTER TABLE ks.cf ADD val int")
+
+        cassandra.execute("GRANT ALTER ON ks.cf TO cathy")
+        cathy.execute("ALTER TABLE ks.cf ADD val int")
+
+        cassandra.execute("REVOKE ALTER ON ks.cf FROM cathy")
+        self.assertUnauthorized("User cathy has no ALTER permission on <table ks.cf> or any of its parents",
+                                cathy, "CREATE INDEX ON ks.cf(val)")
+
+        cassandra.execute("GRANT ALTER ON ks.cf TO cathy")
+        cathy.execute("ALTER TABLE ks.cf ADD val2 int")
+
+        cassandra.execute("REVOKE ALTER ON ks.cf FROM cathy")
+
+        cathy.execute("USE ks")
+        self.assertUnauthorized("User cathy has no ALTER permission on <table ks.cf> or any of its parents",
+                                cathy, "ALTER TABLE ks.cf DROP val2")
+
+        cassandra.execute("GRANT ALTER ON ks.cf TO cathy")
+        cathy.execute("ALTER TABLE ks.cf DROP val2")
+
     @since('3.0')
     def materialized_views_auth_test(self):
         """
@@ -792,6 +832,7 @@ class TestAuth(Tester):
 
         assert success
 
+    @require("2344")
     def list_permissions_test(self):
         """
         Originally from dtest.
@@ -823,7 +864,7 @@ class TestAuth(Tester):
                            ('bob', '<table ks.cf2>', 'MODIFY')]
 
         # CASSANDRA-7216 automatically grants permissions on a role to its creator
-        if self.cluster.cassandra_version() >= '2.2.0':
+        if self.cluster.cassandra_version() >= '2.2':
             all_permissions.extend(data_resource_creator_permissions('cassandra', '<keyspace ks>'))
             all_permissions.extend(data_resource_creator_permissions('cassandra', '<table ks.cf>'))
             all_permissions.extend(data_resource_creator_permissions('cassandra', '<table ks.cf2>'))
@@ -838,13 +879,13 @@ class TestAuth(Tester):
                                      cassandra, "LIST ALL PERMISSIONS OF cathy")
 
         expected_permissions = [('cathy', '<table ks.cf>', 'MODIFY'), ('bob', '<table ks.cf>', 'DROP')]
-        if self.cluster.cassandra_version() >= '2.2.0':
+        if self.cluster.cassandra_version() >= '2.2':
             expected_permissions.extend(data_resource_creator_permissions('cassandra', '<table ks.cf>'))
         self.assertPermissionsListed(expected_permissions, cassandra, "LIST ALL PERMISSIONS ON ks.cf NORECURSIVE")
 
         expected_permissions = [('cathy', '<table ks.cf2>', 'SELECT')]
         # CASSANDRA-7216 automatically grants permissions on a role to its creator
-        if self.cluster.cassandra_version() >= '2.2.0':
+        if self.cluster.cassandra_version() >= '2.2':
             expected_permissions.append(('cassandra', '<table ks.cf2>', 'SELECT'))
             expected_permissions.append(('cassandra', '<keyspace ks>', 'SELECT'))
         self.assertPermissionsListed(expected_permissions, cassandra, "LIST SELECT ON ks.cf2")
@@ -1411,13 +1452,92 @@ class TestAuth(Tester):
         """
         raise NotImplementedError
 
-    @skip('not-implemented')
     def all_authorization_operations_test(self):
         """
         **Description:** Test all authorization operations, actions and applied objects.
         **Expected Result:** All commands run successfully, no crash is triggered.
         """
-        raise NotImplementedError
+        self.prepare()
+
+        cassandra = self.get_session(user='cassandra', password='cassandra')
+        cassandra.execute("CREATE USER cathy WITH PASSWORD '12345'")
+        cassandra.execute("CREATE USER bob WITH PASSWORD '12345'")
+        cassandra.execute("CREATE USER dave WITH PASSWORD '12345'")
+        cassandra.execute("CREATE USER anna WITH PASSWORD '12345'")
+        cassandra.execute("CREATE USER chuk WITH PASSWORD '12345'")
+        cassandra.execute("CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}")
+        cassandra.execute("CREATE TABLE ks.cf (id int primary key, val int)")
+        cassandra.execute("CREATE TABLE ks.cf2 (id int primary key, val int)")
+
+        cassandra.execute("GRANT CREATE ON ALL KEYSPACES TO cathy")
+        cassandra.execute("GRANT ALTER ON KEYSPACE ks TO bob")
+        cassandra.execute("GRANT SELECT ON ALL KEYSPACES TO dave")
+        cassandra.execute("GRANT ALL ON ks.cf TO dave")
+        cassandra.execute("GRANT MODIFY ON KEYSPACE ks TO anna")
+        cassandra.execute("GRANT MODIFY ON ks.cf TO cathy")
+        cassandra.execute("GRANT DROP ON ks.cf TO bob")
+        cassandra.execute("GRANT MODIFY ON ks.cf2 TO bob")
+        cassandra.execute("GRANT SELECT ON ks.cf2 TO cathy")
+        cassandra.execute("GRANT ALL PERMISSIONS ON ks.cf2 TO chuk")
+
+        all_permissions = [('anna', '<keyspace ks>', 'MODIFY'),
+                           ('bob', '<keyspace ks>', 'ALTER'),
+                           ('bob', '<table ks.cf>', 'DROP'),
+                           ('bob', '<table ks.cf2>', 'MODIFY'),
+                           ('cathy', '<all keyspaces>', 'CREATE'),
+                           ('cathy', '<table ks.cf>', 'MODIFY'),
+                           ('cathy', '<table ks.cf2>', 'SELECT'),
+                           ('chuk', '<table ks.cf2>', 'ALTER'),
+                           ('chuk', '<table ks.cf2>', 'AUTHORIZE'),
+                           ('chuk', '<table ks.cf2>', 'CREATE'),
+                           ('chuk', '<table ks.cf2>', 'DROP'),
+                           ('chuk', '<table ks.cf2>', 'MODIFY'),
+                           ('chuk', '<table ks.cf2>', 'SELECT'),
+                           ('dave', '<all keyspaces>', 'SELECT'),
+                           ('dave', '<table ks.cf>', 'ALTER'),
+                           ('dave', '<table ks.cf>', 'AUTHORIZE'),
+                           ('dave', '<table ks.cf>', 'CREATE'),
+                           ('dave', '<table ks.cf>', 'DROP'),
+                           ('dave', '<table ks.cf>', 'MODIFY'),
+                           ('dave', '<table ks.cf>', 'SELECT')]
+
+        self.assertPermissionsListed(all_permissions, cassandra, "LIST ALL PERMISSIONS")
+
+        self.assertPermissionsListed([('cathy', '<all keyspaces>', 'CREATE'),
+                                      ('cathy', '<table ks.cf>', 'MODIFY'),
+                                      ('cathy', '<table ks.cf2>', 'SELECT')],
+                                     cassandra, "LIST ALL PERMISSIONS OF cathy")
+
+        expected_permissions = [('bob', '<table ks.cf>', 'DROP'),
+                                ('cathy', '<table ks.cf>', 'MODIFY'),
+                                ('dave', '<table ks.cf>', 'ALTER'),
+                                ('dave', '<table ks.cf>', 'AUTHORIZE'),
+                                ('dave', '<table ks.cf>', 'CREATE'),
+                                ('dave', '<table ks.cf>', 'DROP'),
+                                ('dave', '<table ks.cf>', 'MODIFY'),
+                                ('dave', '<table ks.cf>', 'SELECT')]
+        self.assertPermissionsListed(expected_permissions, cassandra, "LIST ALL PERMISSIONS ON ks.cf NORECURSIVE")
+
+        expected_permissions = [('cathy', '<table ks.cf2>', 'SELECT'),
+                                ('chuk', '<table ks.cf2>', 'SELECT'),
+                                ('dave', '<all keyspaces>', 'SELECT')]
+        self.assertPermissionsListed(expected_permissions, cassandra, "LIST SELECT ON ks.cf2")
+
+        self.assertPermissionsListed([('cathy', '<all keyspaces>', 'CREATE'),
+                                      ('cathy', '<table ks.cf>', 'MODIFY')],
+                                     cassandra, "LIST ALL ON ks.cf OF cathy")
+
+        bob = self.get_session(user='bob', password='12345')
+        self.assertPermissionsListed([('bob', '<keyspace ks>', 'ALTER'),
+                                      ('bob', '<table ks.cf>', 'DROP'),
+                                      ('bob', '<table ks.cf2>', 'MODIFY')],
+                                     bob, "LIST ALL PERMISSIONS OF bob")
+
+        self.assertUnauthorized("You are not authorized to view everyone's permissions",
+                                bob, "LIST ALL PERMISSIONS")
+
+        self.assertUnauthorized("You are not authorized to view cathy's permissions",
+                                bob, "LIST ALL PERMISSIONS OF cathy")
 
     @skip('not-implemented')
     def authentication_enabled_only_in_one_node_test(self):
