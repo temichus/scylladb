@@ -4,8 +4,10 @@ All dtest functional test for authentication and authorization tests.
 STATE: NOT FULLY IMPLEMENTED
 """
 
+import os
 import re
 import socket
+import subprocess
 import time
 
 from cassandra import AuthenticationFailed, Unauthorized, InvalidRequest, AlreadyExists
@@ -1539,14 +1541,32 @@ class TestAuth(Tester):
         self.assertUnauthorized("You are not authorized to view cathy's permissions",
                                 bob, "LIST ALL PERMISSIONS OF cathy")
 
-    @skip('not-implemented')
+    @require('2346')
     def authentication_enabled_only_in_one_node_test(self):
         """
         **Description:** Authentication is enabled only in one node while disabled in others -
                          try to connect all node one by one.
         **Expected Result:** it requests password to connect the node which enables the Authentication.
         """
-        raise NotImplementedError
+        self.prepare()
+
+        node = new_node(self.cluster, bootstrap=False)
+
+        # remove authenticator/authorizer from second node
+        data_dir = os.path.join(node.get_path(), 'conf/scylla.yaml')
+        cmd = 'sed -i.bak /authorizer/d "%s"' % data_dir
+        subprocess.Popen(cmd.split(), stdout=subprocess.PIPE)
+        cmd = 'sed -i.bak /authenticator/d "%s"' % data_dir
+        subprocess.Popen(cmd.split(), stdout=subprocess.PIPE)
+
+        node.start(wait_for_binary_proto=True)
+        # we can connect via cqlsh but can't create session here
+        # wait until https://github.com/scylladb/scylla/issues/2346 is resolved
+        session = self.get_session(node_idx=0, user='cassandra', password='cassandra')
+        self._check_session_available(session)
+
+        session = self.get_session(node_idx=1, user='cassandra', password='cassandra')
+        self._check_session_available(session, expect_auth_err=True, expect_invalid_req=True)
 
     def adding_new_node_not_overwrite_global_schema_test(self):
         """
