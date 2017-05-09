@@ -348,11 +348,13 @@ class TestNodetool(Tester):
         snapshot = m[0]
         data_dir = os.path.join(node1.get_path(), "data")
         keyspaces = [f for f in os.listdir(data_dir) if os.path.isdir(os.path.join(data_dir, f))]
-        self.assertEqual(3, len(keyspaces), "wrong number of directories in the data dir")
+        self.assertEqual(4, len(keyspaces), "wrong number of directories in the data dir")
         for ks in keyspaces:
             keyspace_dir = os.path.join(data_dir, ks)
             column_families = [os.path.join(keyspace_dir, f) for f in os.listdir(keyspace_dir) if os.path.isdir(os.path.join(keyspace_dir, f))]
             for cf in column_families:
+                if ks == "system" and "schema" in cf:
+                    continue
                 self.assertTrue(os.path.isdir(os.path.join(cf, "snapshots", snapshot)), "Missing snapshot dir under ks=" + ks + " cf " + cf)
                 self.assertIn("manifest.json", os.listdir(os.path.join(cf, "snapshots", snapshot)), "Missing manifest.json in " + os.path.join(cf, "snapshots", snapshot))
         self.verify_snapshot(node1, "keyspace1", snapshot)
@@ -382,7 +384,7 @@ class TestNodetool(Tester):
         self.assertEqual(tag, snapshot, "wrong directory found in node snapshot command: '" + out + "'")
         data_dir = os.path.join(node1.get_path(), "data")
         keyspaces = [f for f in os.listdir(data_dir) if os.path.isdir(os.path.join(data_dir, f))]
-        self.assertEqual(3, len(keyspaces), "wrong number of directories in the data dir")
+        self.assertEqual(4, len(keyspaces), "wrong number of directories in the data dir")
         if kc:
             brk = kc.split('.')
             keyspace = brk[0]
@@ -392,6 +394,8 @@ class TestNodetool(Tester):
             column_families = [f for f in os.listdir(keyspace_dir) if os.path.isdir(os.path.join(keyspace_dir, f))]
             for c in column_families:
                 cf = os.path.join(keyspace_dir, c)
+                if ks == "system" and "schema" in cf:
+                    continue
                 if not keyspace or (keyspace == ks and (not column_family or c.startswith(column_family))):
                     self.assertTrue(os.path.isdir(os.path.join(cf, "snapshots", snapshot)), "Missing snapshot dir under ks=" + ks + " cf " + cf)
                     self.assertIn("manifest.json", os.listdir(os.path.join(cf, "snapshots", snapshot)), "Missing manifest.json in " + os.path.join(cf, "snapshots", snapshot))
@@ -413,11 +417,11 @@ class TestNodetool(Tester):
         self.tst_snapshot("snaptag", keyspace="keyspace1")
 
     def snapshot_tag_keyspace_cf_test(self):
-        self.tst_snapshot("snaptag", keyspace="system", column_family="schema_columnfamilies")
+        self.tst_snapshot("snaptag", keyspace="system_schema", column_family="tables")
 
     @skip("#1133")
     def snapshot_tag_kc_test(self):
-        self.tst_snapshot("snaptag", kc="system.schema_columnfamilies")
+        self.tst_snapshot("snaptag", kc="system_schema.tables")
 
     @staticmethod
     def _list2dic(lst, heads):
@@ -1204,7 +1208,7 @@ class TestNodetool(Tester):
 
     def version_test(self):
         self.run_cluster(nodes=1)
-        self.assertRegexpMatches(self.nodetool_version(), "ReleaseVersion: 2\.\d+\.\d+", "Wrong version")
+        self.assertRegexpMatches(self.nodetool_version(), "ReleaseVersion: 3\.\d+\.\d+", "Wrong version")
 
     def run_cluster(self, nodes=2):
         cluster = self.cluster
