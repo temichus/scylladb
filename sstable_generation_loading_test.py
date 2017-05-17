@@ -160,6 +160,7 @@ class TestSSTableGenerationAndLoading(Tester):
         debug("Testing sstableloader with pre_compression=%s and post_compression=%s" % (pre_compression, post_compression))
 
         cluster = self.cluster
+        cluster.set_configuration_options(values={'experimental': True})
         cluster.populate(2).start()
         node1, node2 = cluster.nodelist()
         time.sleep(.5)
@@ -205,16 +206,13 @@ class TestSSTableGenerationAndLoading(Tester):
 
         debug("Calling sstableloader")
         # call sstableloader to re-load each cf.
-        cdir = node1.get_install_dir()
-        sstableloader = os.path.join(cdir, 'bin', ccmcommon.platform_binary('sstableloader'))
-        env = ccmcommon.make_cassandra_env(cdir, node1.get_path())
         host = node1.address()
         sstablecopy_dir = copy_root + '/ks'
         for cf_dir in os.listdir(sstablecopy_dir):
             full_cf_dir = os.path.join(sstablecopy_dir, cf_dir)
             if os.path.isdir(full_cf_dir):
-                cmd_args = [sstableloader, '--nodes', host, full_cf_dir]
-                p = subprocess.Popen(cmd_args, env=env)
+                cmd_args = [node1.get_tool('sstableloader'), '--nodes', host, full_cf_dir]
+                p = subprocess.Popen(cmd_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 exit_status = p.wait()
                 self.assertEqual(0, exit_status,
                                  "sstableloader exited with a non-zero status: %d" % exit_status)
@@ -231,9 +229,8 @@ class TestSSTableGenerationAndLoading(Tester):
         # data. Lets read it all to make sure it is all there.
         read_and_validate_data(session)
 
-        debug("scrubbing, compacting, and repairing")
+        debug("compacting, and repairing")
         # do some operations and try reading the data again.
-        node1.nodetool('scrub')
         node1.nodetool('compact')
         node1.nodetool('repair')
 

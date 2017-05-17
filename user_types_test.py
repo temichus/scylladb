@@ -615,10 +615,10 @@ class TestUserTypes(Tester):
         rows = list(session.execute("SELECT my_item FROM bucket WHERE id=1"))
         self.assertEqual(listify(rows[0]), [[u'test', None]])
 
-    @skip("Counters not implemented")
     def test_no_counters_in_user_types(self):
         # CASSANDRA-7672
         cluster = self.cluster
+        cluster.set_configuration_options(values={'experimental': True})
         cluster.populate(1).start()
         [node1] = cluster.nodelist()
         session = self.patient_cql_connection(node1)
