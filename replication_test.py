@@ -1,13 +1,13 @@
-from collections import defaultdict
 import os
 import re
 import time
+from cassandra import ConsistencyLevel
+from cassandra.query import SimpleStatement
+from collections import defaultdict
+from unittest import skip
 
 from dtest import Tester, debug, PRINT_DEBUG
-from tools import no_vnodes, since
-
-from cassandra.query import SimpleStatement
-from cassandra import ConsistencyLevel
+from tools import no_vnodes, since, require
 
 TRACE_DETERMINE_REPLICAS = re.compile('Determining replicas for mutation')
 TRACE_SEND_MESSAGE = re.compile('Sending message to /([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)')
@@ -315,6 +315,7 @@ class SnitchConfigurationUpdateTest(Tester):
             else:
                 raise RuntimeError("Ran out of time waiting for topology to change on node {}".format(i))
 
+    @skip("unrecognised option '-Dcassandra.ignore_rack=true'")
     def test_rf_collapse_gossiping_property_file_snitch(self):
         """
         @jira_ticket CASSANDRA-10238
@@ -331,6 +332,7 @@ class SnitchConfigurationUpdateTest(Tester):
                                        final_racks=["rack1", "rack1", "rack1"],
                                        nodes_to_shutdown=[0, 2])
 
+    @skip("unrecognised option '-Dcassandra.ignore_rack=true'")
     def test_rf_expand_gossiping_property_file_snitch(self):
         """
         @jira_ticket CASSANDRA-10238
@@ -347,6 +349,7 @@ class SnitchConfigurationUpdateTest(Tester):
                                        final_racks=["rack0", "rack1", "rack2"],
                                        nodes_to_shutdown=[0, 2])
 
+    @skip("unrecognised option '-Dcassandra.ignore_rack=true'")
     def test_rf_collapse_gossiping_property_file_snitch_multi_dc(self):
         """
         @jira_ticket CASSANDRA-10238
@@ -363,6 +366,7 @@ class SnitchConfigurationUpdateTest(Tester):
                                        final_racks=["rack1", "rack1", "rack1", "rack1", "rack1", "rack1"],
                                        nodes_to_shutdown=[0, 2, 3, 5])
 
+    @skip("unrecognised option '-Dcassandra.ignore_rack=true'")
     def test_rf_expand_gossiping_property_file_snitch_multi_dc(self):
         """
         @jira_ticket CASSANDRA-10238
@@ -379,6 +383,7 @@ class SnitchConfigurationUpdateTest(Tester):
                                        final_racks=["rack0", "rack1", "rack2", "rack0", "rack1", "rack2"],
                                        nodes_to_shutdown=[0, 2, 3, 5])
 
+    @skip("unrecognised option '-Dcassandra.ignore_rack=true'")
     def test_rf_collapse_property_file_snitch(self):
         """
         @jira_ticket CASSANDRA-10238
@@ -395,6 +400,7 @@ class SnitchConfigurationUpdateTest(Tester):
                                        final_racks=["rack0", "rack0", "rack0"],
                                        nodes_to_shutdown=[1, 2])
 
+    @skip("unrecognised option '-Dcassandra.ignore_rack=true'")
     def test_rf_expand_property_file_snitch(self):
         """
         @jira_ticket CASSANDRA-10238
@@ -412,6 +418,7 @@ class SnitchConfigurationUpdateTest(Tester):
                                        nodes_to_shutdown=[1, 2])
 
     @since('2.0', max_version='2.1.x')
+    @skip("unrecognised option '-Dcassandra.ignore_rack=true'")
     def test_rf_collapse_yaml_file_snitch(self):
         """
         @jira_ticket CASSANDRA-10238
@@ -447,6 +454,7 @@ class SnitchConfigurationUpdateTest(Tester):
                                        nodes_to_shutdown=[1, 2])
 
     @since('2.0', max_version='2.1.x')
+    @skip("unrecognised option '-Dcassandra.ignore_rack=true'")
     def test_rf_expand_yaml_file_snitch(self):
         """
         @jira_ticket CASSANDRA-10238
@@ -535,6 +543,7 @@ class SnitchConfigurationUpdateTest(Tester):
         # nodes have joined racks, check endpoint counts again
         self.check_endpoint_count('testing', 'rf_test', cluster.nodelist(), rf)
 
+    @require("2387")
     def test_cannot_restart_with_different_rack(self):
         """
         @jira_ticket CASSANDRA-10242
@@ -577,6 +586,7 @@ class SnitchConfigurationUpdateTest(Tester):
         else:
             node1.watch_log_for("Fatal exception during initialization", from_mark=mark)
 
+    @require('2390')
     def test_failed_snitch_update_gossiping_property_file_snitch(self):
         """
         @jira_ticket CASSANDRA-10243
@@ -591,6 +601,7 @@ class SnitchConfigurationUpdateTest(Tester):
                                         racks=["rack1", "rack1", "rack1"],
                                         error='')
 
+    @skip("unable to find class 'org.apache.cassandra.locator.PropertyFileSnitch'")
     def test_failed_snitch_update_property_file_snitch(self):
         """
         @jira_ticket CASSANDRA-10243
@@ -672,3 +683,35 @@ class SnitchConfigurationUpdateTest(Tester):
         if error:
             for node, mark in zip(cluster.nodelist(), marks):
                 node.watch_log_for(error, from_mark=mark)
+
+    @require('2387')
+    def test_switch_data_center_startup_fails(self):
+        """
+        @jira_ticket CASSANDRA-9474
+
+        Confirm that switching data centers fails to bring up the node.
+        """
+        expected_error = (r"Cannot start node if snitch's data center (.*) differs from previous data center (.*)\. "
+                          "Please fix the snitch configuration, decommission and rebootstrap this node or use the flag -Dcassandra.ignore_dc=true.")
+        self.ignore_log_patterns = [expected_error]
+
+        cluster = self.cluster
+        cluster.populate(1)
+        cluster.set_configuration_options(values={'endpoint_snitch': 'org.apache.cassandra.locator.GossipingPropertyFileSnitch'})
+
+        node = cluster.nodelist()[0]
+        with open(os.path.join(node.get_conf_dir(), 'cassandra-rackdc.properties'), 'w') as topo_file:
+            topo_file.write("dc=dc9" + os.linesep)
+            topo_file.write("rack=rack1" + os.linesep)
+
+        cluster.start(wait_for_binary_proto=True)
+
+        node.stop()
+
+        with open(os.path.join(node.get_conf_dir(), 'cassandra-rackdc.properties'), 'w') as topo_file:
+            topo_file.write("dc=dc0" + os.linesep)
+            topo_file.write("rack=rack1" + os.linesep)
+
+        mark = node.mark_log()
+        node.start()
+        node.watch_log_for(expected_error, from_mark=mark, timeout=10)
