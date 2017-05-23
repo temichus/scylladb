@@ -946,7 +946,7 @@ class TestAuth(Tester):
     def dropping_keyspace_system_auth_test(self):
         """
         **Description:** Dropping keyspace system_auth (when RF=1).
-        **Expected Result:** Cluster is unavailable - connection failed.
+        **Expected Result:** Unauthorized: Error from server: code=2100 [Unauthorized] message="Cannot DROP <keyspace system_auth> **.
         """
         self.prepare(nodes=2)
         debug('Cluster with 2 nodes started')
@@ -982,22 +982,7 @@ class TestAuth(Tester):
                                    password='cassandra')
 
         debug('drop keyspace system_auth')
-        session.execute("DROP KEYSPACE system_auth")
-
-        debug('Try to re-get session from first rf endpoint(%s: %s)' % (rf_node.name, rf_address))
-        try:
-            new_session = self.get_session(node_idx=rf_node_idx,
-                                           user='cassandra',
-                                           password='cassandra')
-        except NoHostAvailable as e:
-            debug(e.errors)
-            assert isinstance(e.errors.values()[0], AuthenticationFailed)
-        else:
-            debug('Check if the new session works')
-            self._check_session_available(new_session, expect_auth_err=True, expect_invalid_req=True)
-
-        debug('Check if the first session still works')
-        self._check_session_available(session, expect_auth_err=True, expect_invalid_req=True)
+        self.assertUnauthorized("Cannot DROP <keyspace system_auth>", session, "DROP KEYSPACE system_auth")
 
     @skip('not-implemented')
     def dropping_one_replica_of_keyspace_system_auth(self):
