@@ -1121,7 +1121,8 @@ class TestAuth(Tester):
     def prepare(self, nodes=1, permissions_validity=0):
         config = {'authenticator': 'org.apache.cassandra.auth.PasswordAuthenticator',
                   'authorizer': 'org.apache.cassandra.auth.CassandraAuthorizer',
-                  'permissions_validity_in_ms': permissions_validity}
+                  'permissions_validity_in_ms': permissions_validity,
+                  'permissions_update_interval_in_ms' : int(permissions_validity / 2)}
         self.cluster.set_configuration_options(values=config)
         self.cluster.populate(nodes).start()
 
