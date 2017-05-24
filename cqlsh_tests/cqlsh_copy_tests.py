@@ -48,34 +48,7 @@ class UTC(datetime.tzinfo):
         return datetime.timedelta(0)
 
 
-@canReuseCluster
-class CqlshCopyTest(Tester):
-    """
-    Tests the COPY TO and COPY FROM features in cqlsh.
-    @jira_ticket CASSANDRA-3906
-    """
-
-    def __init__(self, *args, **kwargs):
-        Tester.__init__(self, *args, **kwargs)
-
-    @classmethod
-    def setUpClass(cls):
-        cls._cached_driver_methods = monkeypatch_driver()
-
-    @classmethod
-    def tearDownClass(cls):
-        unmonkeypatch_driver(cls._cached_driver_methods)
-
-    def tearDown(self):
-        try:
-            if self.tempfile:
-                if is_win():
-                    self.tempfile.close()
-                os.unlink(self.tempfile.name)
-        except AttributeError:
-            pass
-
-        super(CqlshCopyTest, self).tearDown()
+class CqlshPrepare(Tester):
 
     def prepare(self, nodes=1, partitioner="murmur3", configuration_options=None):
         if not self.cluster.nodelist():
@@ -213,6 +186,33 @@ class CqlshCopyTest(Tester):
                      # some tests
                      ImmutableSet([ImmutableSet(['127.0.0.1']), ImmutableSet(['127.0.0.1', '127.0.0.2'])])
                      )
+
+
+@canReuseCluster
+class CqlshCopyTest(CqlshPrepare):
+    """
+    Tests the COPY TO and COPY FROM features in cqlsh.
+    @jira_ticket CASSANDRA-3906
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls._cached_driver_methods = monkeypatch_driver()
+
+    @classmethod
+    def tearDownClass(cls):
+        unmonkeypatch_driver(cls._cached_driver_methods)
+
+    def tearDown(self):
+        try:
+            if self.tempfile:
+                if is_win():
+                    self.tempfile.close()
+                os.unlink(self.tempfile.name)
+        except AttributeError:
+            pass
+
+        super(CqlshCopyTest, self).tearDown()
 
     @contextmanager
     def _cqlshlib(self):

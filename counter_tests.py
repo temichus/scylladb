@@ -657,6 +657,46 @@ class TestCounters(Tester):
         cathy.execute("DROP TABLE counter_tests.counter_bug")
         debug("Verified that cathy has DROP permission")
 
+    def static_counter_column_test(self):
+        """
+        Test of static counter column
+        """
+        cluster = self.cluster
+        cluster.set_configuration_options(values={'experimental': True})
+        cluster.populate(1).start()
+        node1 = cluster.nodelist()[0]
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'Test', 1)
+        session.execute("CREATE TABLE Test.cf (pk int, ck int, s counter static, v counter, primary key (pk, ck))")
+
+        debug("Update counters")
+        pk = 10
+        incr = 1
+        for i in range(1, 101):
+            session.execute("UPDATE Test.cf SET s=s+{}, v=v+{} where pk = {} and ck = {}".format(incr, i + 1, pk, i))
+
+        debug('Verify counter data')
+        res = session.execute("SELECT * FROM Test.cf;")
+        self.assertEquals(len(rows_to_list(res)), 100)
+        res = session.execute("SELECT s,v FROM Test.cf;")
+        rows = sorted(rows_to_list(res))
+        for i in range(1, 101):
+            self.assertEquals(rows[i - 1][0], 100)
+            self.assertEquals(rows[i - 1][1], i + 1)
+
+        debug("Update static counter column")
+        incr = 10
+        for i in range(1, 11):
+            session.execute("UPDATE Test.cf SET s=s+{} where pk = {}".format(incr, pk))
+
+        debug('Verify counter data')
+        res = session.execute("SELECT s,v FROM Test.cf;")
+        rows = sorted(rows_to_list(res))
+        self.assertEquals(len(rows), 100)
+        for i in range(1, 101):
+            self.assertEquals(rows[i - 1][0], 200)
+            self.assertEquals(rows[i - 1][1], i + 1)
+
 
 class TestCountersOnMultipleNodes(Tester):
 
