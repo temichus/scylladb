@@ -58,10 +58,10 @@ class TestCqlTracing(Tester):
             );
         """)
 
-        out, err = node1.run_cqlsh('TRACING ON', return_output=True)
+        out, err = node1.run_cqlsh('TRACING ON', return_output=True, cqlsh_options=['--no-color'])
         self.assertIn('Tracing is enabled', out)
 
-        out, err = node1.run_cqlsh('TRACING ON; SELECT * from system.peers', return_output=True)
+        out, err = node1.run_cqlsh('TRACING ON; SELECT * from ks.users', return_output=True, cqlsh_options=['--no-color'])
         self.assertIn('Tracing session: ', out)
         self.assertIn('Request complete ', out)
 
@@ -70,7 +70,7 @@ class TestCqlTracing(Tester):
             "CONSISTENCY ALL; TRACING ON; "
             "INSERT INTO ks.users (userid, firstname, lastname, age) "
             "VALUES (550e8400-e29b-41d4-a716-446655440000, 'Frodo', 'Baggins', 32)",
-            return_output=True)
+            return_output=True, cqlsh_options=['--no-color'])
         debug(out)
         self.assertIn('Tracing session: ', out)
         self.assertIn('Request complete ', out)
@@ -79,7 +79,7 @@ class TestCqlTracing(Tester):
         out, err = node1.run_cqlsh('CONSISTENCY ALL; TRACING ON; '
                                    'SELECT firstname, lastname '
                                    'FROM ks.users WHERE userid = 550e8400-e29b-41d4-a716-446655440000',
-                                   return_output=True)
+                                   return_output=True, cqlsh_options=['--no-color'])
         debug(out)
         self.assertIn('Tracing session: ', out)
         self.assertIn(" "+self.cluster.get_node_ip(1)+" ", out)
