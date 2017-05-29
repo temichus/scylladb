@@ -1610,7 +1610,6 @@ class TestAuth(Tester):
         session = self.get_session(node_idx=1, user='cassandra', password='cassandra')
         try:
             self._check_session_available(session, expect_auth_err=True, expect_invalid_req=True)
-            self.fail("Unauthorized expected")
         except Unauthorized as e:
             self.assertEqual(e.message, 'Error from server: code=2100 [Unauthorized] message='
                                         '"You have to be logged in and not anonymous to perform this request"')
