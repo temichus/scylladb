@@ -687,7 +687,13 @@ class TestCounters(Tester):
         debug("Update static counter column")
         incr = 10
         for i in range(1, 11):
-            session.execute("UPDATE Test.cf SET s=s+{} where pk = {}".format(incr, pk))
+            # update static counter with two methods, they have same effect
+            if i % 2 == 0:
+                # update all items of same pk
+                session.execute("UPDATE Test.cf SET s=s+{} where pk = {}".format(incr, pk))
+            else:
+                # only update one item that is assigned by pk + ck
+                session.execute("UPDATE Test.cf SET s=s+{}, v=v+{} where pk = {} and ck = {}".format(incr, 0, pk, i))
 
         debug('Verify counter data')
         res = session.execute("SELECT s,v FROM Test.cf;")
