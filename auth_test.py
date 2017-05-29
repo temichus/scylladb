@@ -1597,16 +1597,19 @@ class TestAuth(Tester):
         subprocess.Popen(cmd.split(), stdout=subprocess.PIPE)
 
         node.start(wait_for_binary_proto=True)
+        time.sleep(10)
         try:
-            self.get_session(node_idx=0, user='cassandra', password='cassandra')
-            self.fail("AuthenticationFailed expected")
+            session = self.get_session(node_idx=0, user='cassandra', password='cassandra')
+            self._check_session_available(session, expect_auth_err=True, expect_invalid_req=True)
+        except Unauthorized as e:
+            self.assertEqual(e.message, 'Error from server: code=2100 [Unauthorized] message='
+                             '"You have to be logged in and not anonymous to perform this request"')
         except Exception as e:
             assert isinstance(e.errors.values()[0], AuthenticationFailed)
 
         session = self.get_session(node_idx=1, user='cassandra', password='cassandra')
         try:
             self._check_session_available(session, expect_auth_err=True, expect_invalid_req=True)
-            self.fail("Unauthorized expected")
         except Unauthorized as e:
             self.assertEqual(e.message, 'Error from server: code=2100 [Unauthorized] message='
                                         '"You have to be logged in and not anonymous to perform this request"')
@@ -1667,8 +1670,8 @@ class TestAuth(Tester):
                   'authorizer': 'org.apache.cassandra.auth.CassandraAuthorizer',
                   'permissions_validity_in_ms': permissions_validity,
                   'permissions_update_interval_in_ms' : int(permissions_validity / 2)}
-	if experimental:
-	    config.update({'experimental': True})
+        if experimental:
+            config.update({'experimental': True})
         self.cluster.set_configuration_options(values=config)
         self.cluster.populate(nodes).start()
 

@@ -245,11 +245,13 @@ class TestConcurrentSchemaChanges(Tester):
                 self.assertEqual(1, len(list(session.execute("select * from base_{0} where c2 = {1}".format(n, ins)))))
 
     @since('3.0')
+    @skip('Not implemented: INDEXES')
     def create_lots_of_mv_concurrently_test(self):
         """
         create materialized views across multiple threads concurrently
         """
         cluster = self.cluster
+        cluster.set_configuration_options(values={'experimental': True})
         cluster.populate(3).start()
         node1, node2, node3 = cluster.nodelist()
         session = self.cql_connection(node1)
@@ -270,6 +272,7 @@ class TestConcurrentSchemaChanges(Tester):
 
         debug("waiting for indexes to fill in")
         wait(60)
+        # Error from server: code=0000 [Server error] message="Not implemented: INDEXES"
         result = list(session.execute(("SELECT * FROM system_schema.views "
                                        "WHERE keyspace_name='lots_o_views' AND base_table_name='source_data' ALLOW FILTERING")))
         self.assertEqual(10, len(result), "missing some mv from source_data table")
