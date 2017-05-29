@@ -1,9 +1,10 @@
 import time
 from threading import Thread
+from unittest import skip
 
 from cassandra import ConsistencyLevel
-
 from ccmlib.node import NodetoolError
+
 from dtest import Tester
 from tools import insert_c1c2, query_c1c2
 
@@ -24,6 +25,7 @@ class TestRebuild(Tester):
         ]
         Tester.__init__(self, *args, **kwargs)
 
+    @skip("unable to find class 'org.apache.cassandra.locator.PropertyFileSnitch")
     def simple_rebuild_test(self):
         """
         @jira_ticket CASSANDRA-9119
