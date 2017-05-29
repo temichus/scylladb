@@ -10,6 +10,7 @@ from contextlib import contextmanager
 from decimal import Decimal
 from tempfile import NamedTemporaryFile
 from uuid import uuid1, uuid4
+from unittest import skip
 
 from cassandra.concurrent import execute_concurrent_with_args
 from cassandra.util import SortedSet
@@ -297,7 +298,7 @@ class CqlshCopyTest(CqlshPrepare):
         # into a bare function if cqlshlib is made easier to interact with.
         return [[self.format_for_csv(v) for v in row] for row in result]
 
-    @require('#2393')
+    @skip('#2393')
     def test_list_data(self):
         """
         Tests the COPY TO command with the list datatype by:
@@ -325,7 +326,7 @@ class CqlshCopyTest(CqlshPrepare):
 
         self.assertCsvResultEqual(self.tempfile.name, results)
 
-    @require('#2393')
+    @skip('#2393')
     def test_tuple_data(self):
         """
         Tests the COPY TO command with the tuple datatype by:
@@ -937,7 +938,7 @@ class CqlshCopyTest(CqlshPrepare):
         """
         self.data_validation_on_read_template('test', expect_invalid=True)
 
-    @require('#2393')
+    @skip('#2393')
     def test_all_datatypes_write(self):
         """
         Test that, after COPYing a table containing all CQL datatypes to a CSV
@@ -964,7 +965,7 @@ class CqlshCopyTest(CqlshPrepare):
 
         self.assertCsvResultEqual(self.tempfile.name, results)
 
-    @require('#2393')
+    @skip('#2393')
     def test_all_datatypes_read(self):
         """
         Test that, after COPYing a CSV file to a table containing all CQL
