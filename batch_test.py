@@ -1,6 +1,7 @@
 import sys
 import time
 from unittest import skipIf
+from unittest import skip
 
 from cassandra import ConsistencyLevel
 from cassandra import Timeout
@@ -376,6 +377,7 @@ class TestBatch(Tester):
         assert_one(session, "SELECT * FROM users", [0, 'Jack', 'Sparrow'])
         assert_one(session, "SELECT * FROM dogs", [0, 'Pluto'])
 
+    @skip('scylla-ccm does not support different versions')
     @since('3.0', max_version='3.0.x')
     def logged_batch_compatibility_1_test(self):
         """
@@ -385,6 +387,7 @@ class TestBatch(Tester):
         """
         self._logged_batch_compatibility_test(0, 1, 'git:cassandra-2.2', 2)
 
+    @skip('scylla-ccm does not support different versions')
     @since('3.0', max_version='3.0.x')
     @skipIf(sys.platform == 'win32', 'Windows production support only on 2.2+')
     def logged_batch_compatibility_2_test(self):
@@ -395,6 +398,7 @@ class TestBatch(Tester):
         """
         self._logged_batch_compatibility_test(0, 1, 'git:cassandra-2.1', 2)
 
+    @skip('scylla-ccm does not support different versions')
     @since('3.0', max_version='3.0.x')
     @skipIf(sys.platform == 'win32', 'Windows production support only on 2.2+')
     def logged_batch_compatibility_3_test(self):
@@ -405,6 +409,7 @@ class TestBatch(Tester):
         """
         self._logged_batch_compatibility_test(0, 2, 'git:cassandra-2.1', 1)
 
+    @skip('scylla-ccm does not support different versions')
     @since('3.0', max_version='3.0.x')
     def logged_batch_compatibility_4_test(self):
         """
@@ -424,6 +429,7 @@ class TestBatch(Tester):
         """
         self._logged_batch_compatibility_test(2, 2, 'git:cassandra-2.1', 1)
 
+    @skip('scylla-ccm does not support different versions')
     def _logged_batch_compatibility_test(self, coordinator_idx, current_nodes, previous_version, previous_nodes):
         session = self.prepare_mixed(
             coordinator_idx, current_nodes, previous_version, previous_nodes)
