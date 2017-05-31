@@ -552,7 +552,7 @@ class Tester(TestCase):
         return session
 
     def patient_cql_connection(self, node, keyspace=None,
-                               user=None, password=None, request_timeout=30, compression=True,
+                               user=None, password=None, request_timeout=60, compression=True,
                                protocol_version=None, port=None, ssl_opts=None, **kwargs):
         """
         Returns a connection after it stops throwing NoHostAvailables due to not being ready.
@@ -610,7 +610,7 @@ class Tester(TestCase):
             session.execute(query % (name, "'class':'SimpleStrategy', 'replication_factor':%d" % rf))
         else:
             assert len(rf) != 0, "At least one datacenter/rf pair is needed"
-            # we assume networkTopolyStrategy
+            # we assume networkTopologyStrategy
             options = (', ').join(['\'%s\':%d' % (d, r) for d, r in rf.iteritems()])
             session.execute(query % (name, "'class':'NetworkTopologyStrategy', %s" % options))
         session.execute('USE %s' % name)
