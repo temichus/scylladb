@@ -391,7 +391,7 @@ class TestUpdateClusterLayout(Tester):
         node2 = cluster.nodelist()[1]
         node3 = cluster.nodelist()[2]
 
-        session = self.cql_connection(node1, default_timeout=60)
+        session = self.cql_connection(node1)
         self.create_ks(session, 'ks', 1)
         self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
         statement = session.prepare("INSERT INTO cf (key, c1, c2) VALUES (?, 'value1', 'value2')")
@@ -481,7 +481,7 @@ class TestUpdateClusterLayout(Tester):
         node1 = cluster.nodelist()[0]
         node2 = cluster.nodelist()[1]
 
-        session = self.cql_connection(node1, default_timeout=60)
+        session = self.cql_connection(node1)
         self.create_ks(session, 'ks', {'dc1': 1, 'dc2': 1})
         self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 

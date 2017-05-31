@@ -68,7 +68,7 @@ class TestReplaceAddress(Tester):
         debug("Inserting Data...")
         node1.stress(['write', 'n=10000', '-schema', 'replication(factor=3)'])
 
-        session = self.patient_cql_connection(node1, default_timeout=45)
+        session = self.patient_cql_connection(node1)
         stress_table = 'keyspace1.standard1'
         query = SimpleStatement('select * from %s LIMIT 1' % stress_table, consistency_level=ConsistencyLevel.THREE)
         initialData = list(session.execute(query))
