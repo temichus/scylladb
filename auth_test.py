@@ -1620,8 +1620,8 @@ class TestAuth(Tester):
         except Exception as e:
             assert isinstance(e.errors.values()[0], AuthenticationFailed)
 
-        session = self.get_session(node_idx=1)
         try:
+            session = self.get_session(node_idx=1)
             self._check_session_available(session, expect_auth_err=True, expect_invalid_req=True)
             self.fail("Unauthorized expected")
         except Exception as e:
