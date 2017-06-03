@@ -45,6 +45,7 @@ class TestRepair(Tester):
                 node.start(wait_other_notice=True)
 
     @since('2.2.1')
+    @skip('Scylla does not support anticompaction.')
     def no_anticompaction_after_dclocal_repair_test(self):
         """
         @jira_ticket CASSANDRA-10422
@@ -65,6 +66,7 @@ class TestRepair(Tester):
             self.assertFalse(node.grep_log("Starting anticompaction"))
 
     @since('2.2.1')
+    @skip('Scylla does not support anticompaction.')
     def no_anticompaction_after_hostspecific_repair_test(self):
         """
         @jira_ticket CASSANDRA-10422
@@ -81,6 +83,7 @@ class TestRepair(Tester):
             self.assertFalse(node.grep_log("Starting anticompaction"))
 
     @since('2.2.4')
+    @skip('Scylla does not support anticompaction.')
     def no_anticompaction_after_subrange_repair_test(self):
         """
         @jira_ticket CASSANDRA-10422
