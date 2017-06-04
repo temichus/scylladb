@@ -5,7 +5,7 @@ import random
 import re
 import struct
 import time
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 from collections import namedtuple
 from uuid import UUID
 
@@ -20,7 +20,7 @@ from cassandra.util import sortedset
 
 from assertions import assert_all, assert_invalid, assert_none, assert_one
 
-from dtest import Tester
+from dtest import Tester, debug
 from dtest import canReuseCluster
 from dtest import freshCluster
 
@@ -5179,3 +5179,81 @@ class CQLAdditionalTests(Tester):
         num_rows = int(re.search(regex, out).group(1))
         self.assertEqual(num_rows, 10)
 
+    def select_all_data_and_filter_explicitly_test(self):
+        # https://github.com/scylladb/scylla/issues/2272
+        cluster = self.prepare()
+        node = cluster.nodelist()[0]
+
+        session = self.patient_cql_connection(node)
+        self.create_ks(session, 'ks', 1)
+        session.execute("""
+                  CREATE TABLE ks.hour_data (
+                  bucket text,
+                  hour_ts int,
+                  ug int,
+                  user bigint,
+                  PRIMARY KEY (bucket, hour_ts, ug, user)
+              ) WITH CLUSTERING ORDER BY (hour_ts ASC, ug ASC, user ASC)
+                  AND bloom_filter_fp_chance = 0.01
+                  AND caching = '{"keys":"ALL","rows_per_partition":"ALL"}'
+                  AND comment = ''
+                  AND compaction = {'class': 'LeveledCompactionStrategy'}
+                  AND compression = {'sstable_compression': 'org.apache.cassandra.io.compress.LZ4Compressor'}
+                  AND dclocal_read_repair_chance = 0.1
+                  AND default_time_to_live = 0
+                  AND gc_grace_seconds = 864000
+                  AND max_index_interval = 2048
+                  AND memtable_flush_period_in_ms = 0
+                  AND min_index_interval = 128
+                  AND read_repair_chance = 0.0
+                  AND speculative_retry = '99.0PERCENTILE';""")
+        # insert 10K random data
+        for i in xrange(10000):
+            session.execute("insert into ks.hour_data (bucket, hour_ts, ug, user) "
+                            "values ('2017-29-03', %s, %s, %s);" % (
+                            random.randint(0, 23), random.randint(1, 17), random.randint(0, 9999999999)))
+        # A little more data from another bucket
+        for i in xrange(100):
+            session.execute("insert into ks.hour_data (bucket, hour_ts, ug, user) "
+                            "values ('2017-29-04', %s, %s, %s);" % (
+                            random.randint(0, 23), random.randint(1, 17), random.randint(0, 9999999999)))
+        # filter only by bucket
+        sql = """
+        SELECT hour_ts, ug, user
+        FROM hour_data
+        WHERE bucket = '2017-29-03'
+        """
+        counted = defaultdict(int)
+        res = session.execute(sql)
+        for num, row in enumerate(res):
+            counted[(row.hour_ts, row.ug)] += 1
+
+        r_implicitly = {}
+        i = 0
+        for (hour, ug), count in sorted(counted.iteritems()):
+            r_implicitly[i] = (hour, ug, count)
+            i += 1
+            debug("%s %s %s " % (hour, ug, count))
+
+        # filter explicitly by hour_ts and ug
+        sql = """
+        SELECT hour_ts, ug, user
+        FROM hour_data
+        WHERE bucket = '2017-29-03' AND hour_ts = %s AND ug = %s
+        """
+
+        r_explicitly = {}
+        i = 0
+
+        for hour_ts in xrange(24):
+            counted = defaultdict(int)
+            for ug in range(1, 18):
+                res = session.execute(sql, (hour_ts, ug))
+                for num, row in enumerate(res):
+                    counted[(row.hour_ts, row.ug)] += 1
+            for (hour, ug), count in sorted(counted.iteritems()):
+                r_explicitly[i] = (hour, ug, count)
+                i += 1
+            debug("%s %s %s " % (hour, ug, count))
+        # expect the same data
+        assert r_explicitly == r_implicitly
