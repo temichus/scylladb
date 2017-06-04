@@ -5180,7 +5180,7 @@ class CQLAdditionalTests(Tester):
         self.assertEqual(num_rows, 10)
 
     def select_all_data_and_filter_explicitly_test(self):
-        # https://github.com/scylladb/scylla/issues/2272https://github.com/scylladb/scylla/issues/2272
+        # https://github.com/scylladb/scylla/issues/2272
         cluster = self.prepare()
         node = cluster.nodelist()[0]
 
