@@ -74,7 +74,7 @@ logging.basicConfig(filename=os.path.join(LOG_SAVED_DIR, "dtest.log"),
                     filemode='w',
                     format='%(asctime)s,%(msecs)d %(name)s %(current_test)s %(levelname)s %(message)s',
                     datefmt='%H:%M:%S',
-                    level=logging.DEBUG)
+                    level=logging.WARNING)
 
 LOG = logging.getLogger('dtest')
 # set python-driver log level to WARN by default for dtest
@@ -532,7 +532,7 @@ class Tester(TestCase):
                             protocol_version=protocol_version,
                             port=port,
                             ssl_options=ssl_opts,
-                            connect_timeout=30,
+                            connect_timeout=5,
                             max_schema_agreement_wait=60,
                             control_connection_timeout=6.0,
                             execution_profiles=profiles)
@@ -551,8 +551,8 @@ class Tester(TestCase):
         self.connections.append(session)
         return session
 
-    def patient_cql_connection(self, node, keyspace=None,
-                               user=None, password=None, request_timeout=60, compression=True,
+    def patient_cql_connection(self, node, keyspace=None, user=None, password=None,
+                               request_timeout=20, compression=True, timeout=60,
                                protocol_version=None, port=None, ssl_opts=None, **kwargs):
         """
         Returns a connection after it stops throwing NoHostAvailables due to not being ready.
@@ -560,7 +560,7 @@ class Tester(TestCase):
         If the timeout is exceeded, the exception is raised.
         """
         if is_win():
-            request_timeout *= 2
+            timeout *= 2
 
         return retry_till_success(
             self.cql_connection,
@@ -568,6 +568,7 @@ class Tester(TestCase):
             keyspace=keyspace,
             user=user,
             password=password,
+            timeout=timeout,
             request_timeout=request_timeout,
             compression=compression,
             protocol_version=protocol_version,
@@ -577,8 +578,8 @@ class Tester(TestCase):
             **kwargs
         )
 
-    def patient_exclusive_cql_connection(self, node, keyspace=None,
-                                         user=None, password=None, timeout=30, compression=True,
+    def patient_exclusive_cql_connection(self, node, keyspace=None, user=None, password=None,
+                                         timeout=60, request_timeout=20, compression=True,
                                          protocol_version=None, port=None, ssl_opts=None,  **kwargs):
         """
         Returns a connection after it stops throwing NoHostAvailables due to not being ready.
@@ -595,6 +596,7 @@ class Tester(TestCase):
             user=user,
             password=password,
             timeout=timeout,
+            request_timeout=request_timeout,
             compression=compression,
             protocol_version=protocol_version,
             port=port,
