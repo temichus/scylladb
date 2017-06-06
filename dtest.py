@@ -552,7 +552,7 @@ class Tester(TestCase):
         return session
 
     def patient_cql_connection(self, node, keyspace=None, user=None, password=None,
-                               request_timeout=20, compression=True, timeout=60,
+                               request_timeout=30, compression=True, timeout=60,
                                protocol_version=None, port=None, ssl_opts=None, **kwargs):
         """
         Returns a connection after it stops throwing NoHostAvailables due to not being ready.
@@ -579,7 +579,7 @@ class Tester(TestCase):
         )
 
     def patient_exclusive_cql_connection(self, node, keyspace=None, user=None, password=None,
-                                         timeout=60, request_timeout=20, compression=True,
+                                         timeout=60, request_timeout=30, compression=True,
                                          protocol_version=None, port=None, ssl_opts=None,  **kwargs):
         """
         Returns a connection after it stops throwing NoHostAvailables due to not being ready.
