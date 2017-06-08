@@ -200,7 +200,7 @@ schema_test.py
 simple_boot_shutdown.py
 simple_cluster_driver_test.py
 simple_driver_test.py
-snapshot_test.py:TestSnapshot.test_basic_snapshot_and_restore_with_refresh
+snapshot_test.py:TestSnapshot
 sstable_generation_loading_test.py
 sstabledump_test.py
 sstableloader_test.py
