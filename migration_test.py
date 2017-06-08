@@ -397,9 +397,9 @@ class MigrationTestBase(Tester):
 @tools.istest
 class TestMigration(MigrationTestBase):
 
-    @require('#2119')
     def migrate_sstable_with_counter_test(self):
         """
+        https://github.com/scylladb/scylla/issues/2119
         CREATE KEYSPACE ks WITH replication={'class':'SimpleStrategy', 'replication_factor':1};
         CREATE TABLE ks.cf (first_name varchar, last_name varchar, cnt counter, PRIMARY KEY(first_name, last_name));
         UPDATE ks.cf SET cnt = cnt + 1 WHERE first_name='albert' AND last_name='einstein';
@@ -413,7 +413,7 @@ class TestMigration(MigrationTestBase):
         cluster = self.cluster
         self.populate_cluster(cluster)
         node1 = self.cluster.nodelist()[0]
-        node1.set_configuration_options(values={'experimental': True})
+        node1.set_configuration_options()
         self.start_cluster(cluster)
 
         query = "CREATE TABLE ks.cf " \
@@ -446,10 +446,10 @@ class TestMigration(MigrationTestBase):
         debug("Checking rows content...")
         rows = self.get_all_rows_for_check(node1)
         self.assertEqual(rows[0].cnt, 11)
-        self.assertEqual(rows[0].cnt, 1)
-        self.assertEqual(rows[0].cnt, 3)
+        self.assertEqual(rows[1].cnt, 1)
+        self.assertEqual(rows[2].cnt, 3)
 
-    @require('#2119')
+    @require('#2458')
     def migrate_sstable_with_old_format_counter_test(self):
         """
         create cassandra cluster version 2.0.x
@@ -466,7 +466,7 @@ class TestMigration(MigrationTestBase):
         cluster = self.cluster
         self.populate_cluster(cluster)
         node1 = self.cluster.nodelist()[0]
-        node1.set_configuration_options(values={'experimental': True})
+        node1.set_configuration_options()
         self.start_cluster(cluster)
 
         query = "CREATE TABLE ks.cf (pk int PRIMARY KEY, cnt COUNTER);"
