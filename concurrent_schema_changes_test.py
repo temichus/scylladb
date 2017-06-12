@@ -195,7 +195,7 @@ class TestConcurrentSchemaChanges(Tester):
         self.validate_schema_consistent(node2)
         self.validate_schema_consistent(node3)
 
-    # @skip('indexes')
+    @skip('indexes')
     def create_lots_of_indexes_concurrently_test(self):
         """
         create indexes across multiple threads concurrently
@@ -246,8 +246,8 @@ class TestConcurrentSchemaChanges(Tester):
                 self.assertEqual(1, len(list(session.execute("select * from base_{0} where c1 = {1}".format(n, ins)))))
                 self.assertEqual(1, len(list(session.execute("select * from base_{0} where c2 = {1}".format(n, ins)))))
 
-    # @since('3.0')
-    # @skip('Not implemented: INDEXES')
+    @since('3.0')
+    @skip('Not implemented: INDEXES')
     def create_lots_of_mv_concurrently_test(self):
         """
         create materialized views across multiple threads concurrently
@@ -304,7 +304,7 @@ class TestConcurrentSchemaChanges(Tester):
     def _verify_lots_of_schema_actions(self, session):
         session.cluster.control_connection.wait_for_schema_agreement()
 
-        # the above should guarentee this -- but to be sure
+        # the above should guarantee this -- but to be sure
         node1, node2, node3 = self.cluster.nodelist()
         self.validate_schema_consistent(node1)
         self.validate_schema_consistent(node2)
@@ -463,6 +463,7 @@ class TestConcurrentSchemaChanges(Tester):
     def decommission_node_test(self):
         debug("decommission_node_test()")
         cluster = self.cluster
+        cluster.set_configuration_options(values={'experimental': True})
 
         cluster.populate(1)
         # create and add a new node, I must not be a seed, otherwise
@@ -493,6 +494,7 @@ class TestConcurrentSchemaChanges(Tester):
     def snapshot_test(self):
         debug("snapshot_test()")
         cluster = self.cluster
+        cluster.set_configuration_options(values={'experimental': True})
         cluster.populate(2).start()
         node1, node2 = cluster.nodelist()
         wait(2)
