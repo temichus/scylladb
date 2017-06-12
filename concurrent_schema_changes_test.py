@@ -53,7 +53,7 @@ class TestConcurrentSchemaChanges(Tester):
                         % namespace)
 
         # create an index
-        # session.execute("CREATE INDEX index_%s ON cf_%s(col2)" % (namespace, namespace))
+        session.execute("CREATE INDEX index_%s ON cf_%s(col2)" % (namespace, namespace))
 
         # create a column family that can be deleted later.
         query = """
@@ -108,17 +108,17 @@ class TestConcurrentSchemaChanges(Tester):
         session.execute(query)
 
         # alter column family
-        # query = """
-        #    ALTER COLUMNFAMILY cf_%s
-        #    ADD col4 text;
-        #""" % namespace
-        #session.execute(query)
+        query = """
+           ALTER COLUMNFAMILY cf_%s
+           ADD col4 text;
+        """ % namespace
+        session.execute(query)
 
         # add index
-        #session.execute("CREATE INDEX index2_%s ON cf_%s(col3)" % (namespace, namespace))
+        session.execute("CREATE INDEX index2_%s ON cf_%s(col3)" % (namespace, namespace))
 
         # remove an index
-        #session.execute("DROP INDEX index_%s" % namespace)
+        session.execute("DROP INDEX index_%s" % namespace)
 
     def validate_schema_consistent(self, node):
         """ Makes sure that there is only one schema """
@@ -129,7 +129,7 @@ class TestConcurrentSchemaChanges(Tester):
         num_schemas = len(re.findall('\[.*?\]', schemas))
         assert num_schemas == 1, "There were multiple schema versions: " + pprint.pformat(schemas)
 
-    @skip("The test case was disabled in Scylla Jenkins job")
+    # @skip("The test case was disabled in Scylla Jenkins job")
     def create_lots_of_tables_concurrently_test(self):
         """
         create tables across multiple threads concurrently
@@ -163,6 +163,7 @@ class TestConcurrentSchemaChanges(Tester):
         create alters across multiple threads concurrently
         """
         cluster = self.cluster
+        cluster.set_configuration_options(values={'experimental': True})
         cluster.populate(3).start()
 
         node1, node2, node3 = cluster.nodelist()
@@ -194,12 +195,13 @@ class TestConcurrentSchemaChanges(Tester):
         self.validate_schema_consistent(node2)
         self.validate_schema_consistent(node3)
 
-    @skip('indexes')
+    # @skip('indexes')
     def create_lots_of_indexes_concurrently_test(self):
         """
         create indexes across multiple threads concurrently
         """
         cluster = self.cluster
+        cluster.set_configuration_options(values={'experimental': True})
         cluster.populate(2).start()
 
         node1, node2 = cluster.nodelist()
@@ -244,8 +246,8 @@ class TestConcurrentSchemaChanges(Tester):
                 self.assertEqual(1, len(list(session.execute("select * from base_{0} where c1 = {1}".format(n, ins)))))
                 self.assertEqual(1, len(list(session.execute("select * from base_{0} where c2 = {1}".format(n, ins)))))
 
-    @since('3.0')
-    @skip('Not implemented: INDEXES')
+    # @since('3.0')
+    # @skip('Not implemented: INDEXES')
     def create_lots_of_mv_concurrently_test(self):
         """
         create materialized views across multiple threads concurrently
@@ -290,10 +292,10 @@ class TestConcurrentSchemaChanges(Tester):
         cmds = []
         for n in range(20):
             cmds.append(("create table new_table_{0} (id uuid primary key, c1 int, c2 int, c3 int, c4 int);".format(n), ()))
-#            for a in range(1, 8):
-#                cmds.append(("alter table alter_me_{0} drop s{1};".format(n, a), ()))
-#                cmds.append(("alter table alter_me_{0} add c{1} int;".format(n, a), ()))
-#                cmds.append(("create index ix_index_me_{0}_c{1} on index_me_{0} (c{1});".format(n, a), ()))
+            for a in range(1, 8):
+                cmds.append(("alter table alter_me_{0} drop s{1};".format(n, a), ()))
+                cmds.append(("alter table alter_me_{0} add c{1} int;".format(n, a), ()))
+                cmds.append(("create index ix_index_me_{0}_c{1} on index_me_{0} (c{1});".format(n, a), ()))
 
         results = execute_concurrent(session, cmds, concurrency=100, raise_on_first_error=True)
         for (success, result) in results:
@@ -330,6 +332,7 @@ class TestConcurrentSchemaChanges(Tester):
         create tables, indexes, alters across multiple threads concurrently
         """
         cluster = self.cluster
+        cluster.set_configuration_options(values={'experimental': True})
         cluster.populate(3).start()
         node1, node2, node3 = cluster.nodelist()
         session = self.cql_connection(node1)
@@ -346,6 +349,7 @@ class TestConcurrentSchemaChanges(Tester):
         create tables, indexes, alters across multiple threads concurrently with a node down
         """
         cluster = self.cluster
+        cluster.set_configuration_options(values={'experimental': True})
         cluster.populate(3).start()
         node1, node2, node3 = cluster.nodelist()
         session = self.cql_connection(node1)
@@ -367,7 +371,9 @@ class TestConcurrentSchemaChanges(Tester):
         debug("basic_test()")
 
         cluster = self.cluster
+        cluster.set_configuration_options(values={'experimental': True})
         cluster.populate(2).start()
+
         node1 = cluster.nodelist()[0]
         wait(2)
         session = self.cql_connection(node1)
@@ -379,6 +385,7 @@ class TestConcurrentSchemaChanges(Tester):
     def changes_to_different_nodes_test(self):
         debug("changes_to_different_nodes_test()")
         cluster = self.cluster
+        cluster.set_configuration_options(values={'experimental': True})
         cluster.populate(2).start()
         node1, node2 = cluster.nodelist()
         wait(2)
@@ -407,6 +414,7 @@ class TestConcurrentSchemaChanges(Tester):
         """
         debug("changes_while_node_down_test()")
         cluster = self.cluster
+        cluster.set_configuration_options(values={'experimental': True})
         cluster.populate(2).start()
         node1, node2 = cluster.nodelist()
         wait(2)
@@ -434,6 +442,7 @@ class TestConcurrentSchemaChanges(Tester):
         """
         debug("changes_while_node_toggle_test()")
         cluster = self.cluster
+        cluster.set_configuration_options(values={'experimental': True})
         cluster.populate(2).start()
         node1, node2 = cluster.nodelist()
         wait(2)
