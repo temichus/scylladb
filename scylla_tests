@@ -204,7 +204,6 @@ snapshot_test.py:TestSnapshot
 sstable_generation_loading_test.py
 sstabledump_test.py
 sstableloader_test.py
-sstablesplit_test.py
 thrift_tests.py
 topology_test.py:TestTopology.crash_during_decommission_test
 topology_test.py:TestTopology.decommissioned_node_cant_rejoin_test
