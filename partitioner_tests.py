@@ -44,11 +44,5 @@ class TestPartitioner(Tester):
 
         self.assertEqual(len(result), 30, len(result))
 
-    def random_partitioner_test(self):
-        self.run_cluster("org.apache.cassandra.dht.RandomPartitioner", "cassandra.3.nodes.30.rows.256.random.partitioner")
-
-    def byteordered_partitioner_test(self):
-        self.run_cluster("org.apache.cassandra.dht.ByteOrderedPartitioner", "cassandra.3.nodes.30.rows.256.byteordered.partitioner")
-
     def murmur3_partitioner_test(self):
         self.run_cluster("org.apache.cassandra.dht.Murmur3Partitioner", "cassandra.3.nodes.30.rows.256.murmur3.partitioner")
