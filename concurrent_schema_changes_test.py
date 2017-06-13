@@ -129,7 +129,7 @@ class TestConcurrentSchemaChanges(Tester):
         num_schemas = len(re.findall('\[.*?\]', schemas))
         assert num_schemas == 1, "There were multiple schema versions: " + pprint.pformat(schemas)
 
-    # @skip("The test case was disabled in Scylla Jenkins job")
+    @skip("The test case was disabled in Scylla Jenkins job")
     def create_lots_of_tables_concurrently_test(self):
         """
         create tables across multiple threads concurrently
