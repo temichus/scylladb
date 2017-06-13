@@ -143,6 +143,7 @@ class TestBatch(Tester):
             [0, u'Jack', u'Sparrow'], [1, u'Will', u'Turner']], res
 
     @since('3.0')
+    @require('#2483')
     def logged_batch_gcgs_below_threshold_single_table_test(self):
         """ Test that logged batch accepts regular mutations """
         session = self.prepare()
@@ -166,6 +167,7 @@ class TestBatch(Tester):
             1, len(warning), "Cannot find the gc_grace_seconds warning message.")
 
     @since('3.0')
+    @require('#2483')
     def logged_batch_gcgs_below_threshold_multi_table_test(self):
         """ Test that logged batch accepts regular mutations """
         session = self.prepare()
