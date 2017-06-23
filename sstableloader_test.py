@@ -38,6 +38,10 @@ class TestSSTableLoader(MigrationTestBase):
         p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = p.communicate()
         exit_status = p.wait()
+        if stderr:
+            debug("=== sstableloader stderr ===")
+            debug(stderr)
+            debug("====")
 
         shutil.rmtree(tmpdir)
 
