@@ -13,3 +13,4 @@ pycassa
 six
 thrift
 enum
+requests
