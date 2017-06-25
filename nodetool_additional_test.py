@@ -193,7 +193,7 @@ class TestNodetool(Tester):
         one node remains
         """
         cluster = self.cluster
-        cluster.populate(2).start(wait_for_binary_proto=True)
+        cluster.populate(2).start(wait_for_binary_proto=True,wait_other_notice=True)
         [node1, node2] = cluster.nodelist()
         status = self.nodetool_status(node1)
         self.assertEqual(2, len(status["nodes"]), "wrong number of nodes")
