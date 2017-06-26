@@ -5,6 +5,7 @@ import time
 import uuid
 import subprocess
 import glob
+import datetime
 
 from cassandra.query import SimpleStatement
 
@@ -275,83 +276,39 @@ class MigrationTestBase(Tester):
         self.load_migrated_tables(node1, 'with_variant_data_types')
         self.check_number_of_rows(node1, 3)
         result = self.get_all_rows_for_check(node1)
-        import datetime
-        import uuid
-        self.assertEqual(result[0].aascii, 'tzach', "check ascii column")
-        self.assertEqual(result[0].abigint, 1999, "check bigint column")
-        self.assertEqual(str(result[0].ablob).encode(
-            'hex'), '0000000000000003', "check blob column")
-        self.assertEqual(result[0].aboolean, True, "check boolean column")
-        self.assertEqual(result[0].adecimal, 10, "check decimal column")
-        self.assertEqual(result[0].adouble, 10.10, "check double column")
-        self.assertEqual(round(result[0].afloat, 2),
-                         11.11, "check afloat column")
-        self.assertEqual(
-            result[0].ainet, '204.202.130.223', "check ainet column")
-        self.assertEqual(result[0].aint, 17, "check inet column")
-        self.assertEqual(result[0].atext, "text", "check text column")
-        self.assertEqual(result[0].atimestamp, datetime.datetime(
-            2016, 8, 30, 7, 1), "check timestamp column")
-        self.assertEqual(result[0].atimeuuid, uuid.UUID(
-            'e23f450f-53a6-11e2-7f7f-7f7f7f7f7f7f'), "check timeuuid column")
-        self.assertEqual(result[0].auuid, uuid.UUID(
-            '123e4567-e89b-12d3-a456-426655440000'), "check uuid column")
-        self.assertEqual(result[0].avarchar, unicode(
-            "tzachvarchar"), "check varchar column")
-        self.assertEqual(result[0].avarint, 17, "check varint column")
-        self.assertEqual(result[0].alist, [1, 2, 3], "check list column")
-        self.assertEqual(result[0].amap, {1: 2}, "check map column")
-        self.assertEqual(result[0].aset, {1, 2, 3, 4}, "check set column")
-        self.assertEqual(result[1].aascii, 'tzach', "check ascii column")
-        self.assertEqual(result[1].abigint, 2000, "check bigint column")
-        self.assertEqual(str(result[1].ablob).encode(
-            'hex'), '0000000000000003', "check blob column")
-        self.assertEqual(result[1].aboolean, True, "check boolean column")
-        self.assertEqual(result[1].adecimal, 10, "check decimal column")
-        self.assertEqual(result[1].adouble, 10.10, "check double column")
-        self.assertEqual(round(result[1].afloat, 2),
-                         11.11, "check afloat column")
-        self.assertEqual(
-            result[1].ainet, '204.202.130.223', "check ainet column")
-        self.assertEqual(result[1].aint, 17, "check inet column")
-        self.assertEqual(result[1].atext, "text", "check text column")
-        self.assertEqual(result[1].atimestamp, datetime.datetime(
-            2016, 8, 30, 7, 1), "check timestamp column")
-        self.assertEqual(result[1].atimeuuid, uuid.UUID(
-            'e23f450f-53a6-11e2-7f7f-7f7f7f7f7f7f'), "check timeuuid column")
-        self.assertEqual(result[1].auuid, uuid.UUID(
-            '123e4567-e89b-12d3-a456-426655440000'), "check uuid column")
-        self.assertEqual(result[1].avarchar, unicode(
-            "tzachvarchar"), "check varchar column")
-        self.assertEqual(result[1].avarint, 17, "check varint column")
-        self.assertEqual(result[1].alist, [1, 2, 3], "check list column")
-        self.assertEqual(result[1].amap, {1: 2}, "check map column")
-        self.assertEqual(result[1].aset, {1, 2, 3, 4}, "check set column")
-        self.assertEqual(result[2].aascii, 'livyatan', "check ascii column")
-        self.assertEqual(result[2].abigint, 2001, "check bigint column")
-        self.assertEqual(str(result[2].ablob).encode(
-            'hex'), '0000000000000003', "check blob column")
-        self.assertEqual(result[2].aboolean, True, "check boolean column")
-        self.assertEqual(result[2].adecimal, 10, "check decimal column")
-        self.assertEqual(result[2].adouble, 10.10, "check double column")
-        self.assertEqual(round(result[2].afloat, 2),
-                         11.11, "check afloat column")
-        self.assertEqual(
-            result[2].ainet, '204.202.130.223', "check ainet column")
-        self.assertEqual(result[2].aint, 17, "check inet column")
-        self.assertEqual(result[2].atext, "text", "check text column")
-        self.assertEqual(result[2].atimestamp, datetime.datetime(
-            2016, 8, 30, 7, 1), "check timestamp column")
-        self.assertEqual(result[2].atimeuuid, uuid.UUID(
-            'e23f450f-53a6-11e2-7f7f-7f7f7f7f7f7f'), "check timeuuid column")
-        self.assertEqual(result[2].auuid, uuid.UUID(
-            '123e4567-e89b-12d3-a456-426655440000'), "check uuid column")
-        self.assertEqual(result[2].avarchar, unicode(
-            "tzachvarchar"), "check varchar column")
-        self.assertEqual(result[2].avarint, 17, "check varint column")
-        self.assertEqual(result[2].alist, [1, 2, 3], "check list column")
-        self.assertEqual(result[2].amap, {1: 2}, "check map column")
-        self.assertEqual(result[2].aset, {1, 2, 3, 4}, "check set column")
+        for i in range(0, 3):
+            if i == 0 or i == 1:
+                self.assertEqual(result[i].aascii,
+                                 'tzach', "check ascii column")
+            if i == 2:
+                self.assertEqual(result[i].aascii,
+                                 'livyatan', "check ascii column")
+            self.assertEqual(result[i].abigint, 1999 +
+                             i, "check bigint column")
+            self.assertEqual(str(result[i].ablob).encode(
+                'hex'), '0000000000000003', "check blob column")
+            self.assertEqual(result[i].aboolean, True, "check boolean column")
+            self.assertEqual(result[i].adecimal, 10, "check decimal column")
+            self.assertEqual(result[i].adouble, 10.10, "check double column")
+            self.assertEqual(
+                round(result[i].afloat, 2), 11.11, "check afloat column")
+            self.assertEqual(
+                result[i].ainet, '204.202.130.223', "check ainet column")
+            self.assertEqual(result[i].aint, 17, "check inet column")
+            self.assertEqual(result[i].atext, "text", "check text column")
+            self.assertEqual(result[i].atimestamp, datetime.datetime(
+                2016, 8, 30, 7, 1), "check timestamp column")
+            self.assertEqual(result[i].atimeuuid, uuid.UUID(
+                'e23f450f-53a6-11e2-7f7f-7f7f7f7f7f7f'),
+                "check timeuuid column")
+            self.assertEqual(result[i].auuid, uuid.UUID(
+                '123e4567-e89b-12d3-a456-426655440000'), "check uuid column")
+            self.assertEqual(result[i].avarchar, unicode(
+                "tzachvarchar"), "check varchar column")
+            self.assertEqual(result[i].avarint, 17, "check varint column")
+            self.assertEqual(result[i].alist, [1, 2, 3], "check list column")
+            self.assertEqual(result[i].amap, {1: 2}, "check map column")
+            self.assertEqual(result[i].aset, {1, 2, 3, 4}, "check set column")
 
     # ######################## Helper functions ####################################
     def check_number_of_rows(self, node, expected_number_of_rows):
