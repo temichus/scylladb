@@ -264,13 +264,26 @@ class MigrationTestBase(Tester):
 
     def migrate_sstable_with_variant_data_types_test(self):
         node1 = self.start_cluster_and_get_node1()
-        query = "CREATE COLUMNFAMILY ks.cf (aascii ascii, abigint bigint, ablo"\
-            "b blob, aboolean boolean, adecimal decimal, adouble double, afloa"\
-            "t float, ainet inet, aint int, atext text, atimestamp timestamp, "\
-            "atimeuuid timeuuid, auuid uuid, avarchar varchar, avarint varint,"\
-            " alist list<int>, amap map<int,int>, aset set<int>, PRIMARY KEY ("\
-            "aascii, abigint)) WITH comment=\'test cf\' AND read_repair_chance"\
-            "=0.000000"
+        query = "CREATE COLUMNFAMILY ks.cf (aascii ascii,"\
+            "abigint bigint,"\
+            "ablob blob,"\
+            "aboolean boolean,"\
+            "adouble double,"\
+            "adecimal decimal,"\
+            "afloat float,"\
+            "ainet inet,"\
+            "aint int,"\
+            "atext text,"\
+            "atimestamp timestamp,"\
+            "atimeuuid timeuuid,"\
+            "auuid uuid,"\
+            "avarchar varchar,"\
+            "avarint varint,"\
+            "alist list<int>,"\
+            "amap map<int,int>,"\
+            "aset set<int>,"\
+            "PRIMARY KEY (aascii, abigint)) "\
+            "WITH comment=\'test cf\' AND read_repair_chance=0.000000"
         self.create_ks_and_cf(node1, None, None, False, query=query)
         node1.flush()
         self.load_migrated_tables(node1, 'with_variant_data_types')
@@ -309,7 +322,6 @@ class MigrationTestBase(Tester):
             self.assertEqual(result[i].alist, [1, 2, 3], "check list column")
             self.assertEqual(result[i].amap, {1: 2}, "check map column")
             self.assertEqual(result[i].aset, {1, 2, 3, 4}, "check set column")
-
     # ######################## Helper functions ####################################
     def check_number_of_rows(self, node, expected_number_of_rows):
         debug("Checking rows on node1...")
