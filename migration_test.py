@@ -5,6 +5,7 @@ import time
 import uuid
 import subprocess
 import glob
+import datetime
 
 from cassandra.query import SimpleStatement
 
@@ -261,6 +262,66 @@ class MigrationTestBase(Tester):
         debug('{} rows read'.format(row_number))
         self.assertEqual(row_number, row_number_src)
 
+    def migrate_sstable_with_variant_data_types_test(self):
+        node1 = self.start_cluster_and_get_node1()
+        query = "CREATE COLUMNFAMILY ks.cf (aascii ascii,"\
+            "abigint bigint,"\
+            "ablob blob,"\
+            "aboolean boolean,"\
+            "adouble double,"\
+            "adecimal decimal,"\
+            "afloat float,"\
+            "ainet inet,"\
+            "aint int,"\
+            "atext text,"\
+            "atimestamp timestamp,"\
+            "atimeuuid timeuuid,"\
+            "auuid uuid,"\
+            "avarchar varchar,"\
+            "avarint varint,"\
+            "alist list<int>,"\
+            "amap map<int,int>,"\
+            "aset set<int>,"\
+            "PRIMARY KEY (aascii, abigint)) "\
+            "WITH comment=\'test cf\' AND read_repair_chance=0.000000"
+        self.create_ks_and_cf(node1, None, None, False, query=query)
+        node1.flush()
+        self.load_migrated_tables(node1, 'with_variant_data_types')
+        self.check_number_of_rows(node1, 3)
+        result = self.get_all_rows_for_check(node1)
+        for i in range(0, 3):
+            if i == 0 or i == 1:
+                self.assertEqual(result[i].aascii,
+                                 'tzach', "check ascii column")
+            if i == 2:
+                self.assertEqual(result[i].aascii,
+                                 'livyatan', "check ascii column")
+            self.assertEqual(result[i].abigint, 1999 +
+                             i, "check bigint column")
+            self.assertEqual(str(result[i].ablob).encode(
+                'hex'), '0000000000000003', "check blob column")
+            self.assertEqual(result[i].aboolean, True, "check boolean column")
+            self.assertEqual(result[i].adecimal, 10, "check decimal column")
+            self.assertEqual(result[i].adouble, 10.10, "check double column")
+            self.assertEqual(
+                round(result[i].afloat, 2), 11.11, "check afloat column")
+            self.assertEqual(
+                result[i].ainet, '204.202.130.223', "check ainet column")
+            self.assertEqual(result[i].aint, 17, "check inet column")
+            self.assertEqual(result[i].atext, "text", "check text column")
+            self.assertEqual(result[i].atimestamp, datetime.datetime(
+                2016, 8, 30, 7, 1), "check timestamp column")
+            self.assertEqual(result[i].atimeuuid, uuid.UUID(
+                'e23f450f-53a6-11e2-7f7f-7f7f7f7f7f7f'),
+                "check timeuuid column")
+            self.assertEqual(result[i].auuid, uuid.UUID(
+                '123e4567-e89b-12d3-a456-426655440000'), "check uuid column")
+            self.assertEqual(result[i].avarchar, unicode(
+                "tzachvarchar"), "check varchar column")
+            self.assertEqual(result[i].avarint, 17, "check varint column")
+            self.assertEqual(result[i].alist, [1, 2, 3], "check list column")
+            self.assertEqual(result[i].amap, {1: 2}, "check map column")
+            self.assertEqual(result[i].aset, {1, 2, 3, 4}, "check set column")
     # ######################## Helper functions ####################################
     def check_number_of_rows(self, node, expected_number_of_rows):
         debug("Checking rows on node1...")
