@@ -52,18 +52,27 @@ class ReshardingTest(Tester):
         self.assertEquals(data_files_num, expected_num)
 
     def _wait_for_resharding(self, timeout=60):
+        """
+        wait until there's no RESHARD listed in compactionstats
+        sleep for more 5 seconds
+        break if there's no RESHARD in compactionstats
+        """
         debug('Wait for re-sharding to be finished')
-        patt = re.compile('pending tasks: (\d+)')
+        patt = re.compile('RESHARD')
         to = 0
+        sleep_time = 5
         while to <= timeout:
             out, err = self.node.nodetool("compactionstats", capture_output=True)
             m = patt.search(out)
             if not to or to == timeout:
                 debug(out)
-            if m and not int(m.group(1)):
-                return True
-            time.sleep(1)
-            to += 1
+            if not m:
+                if not timeout:
+                    return True
+                time.sleep(sleep_time)
+                return self._wait_for_resharding(timeout=0)
+            time.sleep(sleep_time)
+            to += sleep_time
         return False
 
     def _run_stress(self, op_cnt, stress_cmd):
@@ -74,7 +83,7 @@ class ReshardingTest(Tester):
 
     def _verify_row_number(self, cf, expected_row_num):
         session = self.patient_cql_connection(self.node)
-        resp = session.execute('SELECT count(*) FROM keyspace1.{};'.format(cf))
+        resp = session.execute('SELECT count(*) FROM keyspace1.{};'.format(cf), timeout=120)
         row_number = tools.rows_to_list(resp)[0][0]
         debug('number of rows: {}'.format(row_number))
         self.assertEquals(row_number, expected_row_num)
@@ -86,7 +95,6 @@ class ReshardingTest(Tester):
         self.assertEquals(res['Total errors'], 0)
         self.assertGreaterEqual(res['Total partitions'], op_cnt)
 
-    @tools.require('#30')
     def resharding_basic_test(self):
         """
         Resharding with small data set(c-s 1M objects) after changing the parameter
@@ -106,16 +114,14 @@ class ReshardingTest(Tester):
         self.assertLessEqual(data_files_num_during, data_files_num_before * 3)
 
         res = self._wait_for_resharding()
-        # self.assertEquals(res, True, 'Failed to recognize re-sharding finish')
+        self.assertEquals(res, True, 'Failed to recognize re-sharding finish')
 
-        # currently NO_SSTABLES_PRIOR_TO_RESHARDING * SMP COUNT, will be changed to be equal in the future
-        self._verify_number_of_data_files(data_files_num_before * int(self._smp))
+        self._verify_number_of_data_files(data_files_num_before)
 
         stress_cmd = ['read', 'n={}'.format(op_cnt), 'no-warmup', '-rate', 'threads=16']
         self._verify_data(op_cnt, stress_cmd)
         self._verify_row_number('standard1', op_cnt)
 
-    @tools.require('#30')
     def resharding_counter_test(self):
         """
         Resharding with small counter data set(c-s 1M counter objects) after changing the parameter
@@ -164,10 +170,9 @@ class ReshardingTest(Tester):
         self.assertLessEqual(data_files_num_during, data_files_num_before * 3)
 
         res = self._wait_for_resharding()
-        # self.assertEquals(res, True, 'Failed to recognize re-sharding finish')
+        self.assertEquals(res, True, 'Failed to recognize re-sharding finish')
 
-        # currently NO_SSTABLES_PRIOR_TO_RESHARDING * SMP COUNT, will be changed to be equal in the future
-        self._verify_number_of_data_files(data_files_num_before * int(self._smp))
+        self._verify_number_of_data_files(data_files_num_before)
 
         stress_cmd = ['counter_read', 'n={}'.format(op_cnt), 'no-warmup', '-rate', 'threads=16']
         self._verify_data(op_cnt, stress_cmd)
