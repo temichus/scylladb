@@ -12,7 +12,6 @@ class NodeMetrics(object):
 
     def __init__(self, ip, port='9180'):
         self._url = 'http://{}:{}/metrics'.format(ip, port)
-        # self._headers = {'Accept': 'application/vnd.google.protobuf;'}
         self._headers = {}
 
     def _get(self):
@@ -65,7 +64,6 @@ class HeatWeightedLB(Tester):
                 for k, v in metrics.iteritems():
                     delta = v - node_metrics[k][node_ind][-1]['val'] if node_metrics[k][node_ind] else 0
                     node_metrics[k][node_ind].append(dict(val=v, delta=delta))
-                # print 'node {}: {}'.format(node_ind, metrics)
             time.sleep(1)
         self._pretty_print(node_metrics)
         return node_metrics
@@ -110,7 +108,7 @@ class HeatWeightedLB(Tester):
         thr.start()
         return thr
 
-    def heat_weighted_load_balancing_test(self):
+    def run_heat_weighted_load_balancing(self, cl):
         """
         Create 3-node cluster, run write, then read all the data(heat cache),
         restart one node, check that it starts to serve gradually due to a cold cache.
@@ -121,7 +119,7 @@ class HeatWeightedLB(Tester):
 
         debug('Run stress write')
         resp = self.node1.stress_object(
-            ['write', 'cl=QUORUM', '-schema', 'replication(factor=3)', '-rate', 'threads=4',
+            ['write', 'cl={}'.format(cl), '-schema', 'replication(factor=3)', '-rate', 'threads=4',
              '-pop', 'seq=1..{}'.format(self._op_cnt)])
         if not resp or 'Total partitions:write' not in resp:
             raise Exception('Error running stress test: {}'.format(resp))
@@ -148,3 +146,15 @@ class HeatWeightedLB(Tester):
 
         debug('Wait for stress read finish')
         thr.join()
+
+    def heat_weighted_load_balancing_cl_ONE_test(self):
+        self.run_heat_weighted_load_balancing('ONE')
+
+    def heat_weighted_load_balancing_cl_TWO_test(self):
+        self.run_heat_weighted_load_balancing('TWO')
+
+    def heat_weighted_load_balancing_cl_ANY_test(self):
+        self.run_heat_weighted_load_balancing('ANY')
+
+    def heat_weighted_load_balancing_cl_QUORUM_test(self):
+        self.run_heat_weighted_load_balancing('QUORUM')
