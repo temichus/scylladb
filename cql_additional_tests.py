@@ -582,9 +582,12 @@ class TestCQL(Tester):
         assert rows_to_list(res) == [[0, 0, 0, 0, 0], [0, 0, 1, 1, 0], [0, 0, 1, 1, -1],
                                      [0, 0, 1, 0, 2], [0, -1, 2, 2, 2]], list(res)
 
+    @require("2564")
     def simple_tuple_query_test(self):
         """
         @jira_ticket CASSANDRA-8613
+        [Invalid query] message="Clustering columns may not be skipped in multi-column relations.
+        They should appear in the PRIMARY KEY order. Got (c, d, e) > (1, 1, 1)"
         """
         session = self.prepare()
 
@@ -762,6 +765,7 @@ class TestCQL(Tester):
         res = list(session.execute("SELECT v FROM test WHERE k = 0 AND c >= 2 AND c < 6 ORDER BY c DESC LIMIT 2"))
         assert len(res) == 2 and res[0][0] == 5 and res[len(res) - 1][0] == 4, list(res)
 
+    @require("2566")
     def in_clause_wide_rows_test(self):
         """ Check IN support for 'wide rows' in SELECT statement """
         session = self.prepare()
@@ -801,7 +805,7 @@ class TestCQL(Tester):
             session.execute("INSERT INTO test2 (k, c1, c2, v) VALUES (0, 0, %i, %i)" % (x, x))
 
         # Check first we don't allow IN everywhere
-        if False and self.cluster.version() >= '2.2':  # FIXME: Scylla reports 2.2, but has 2.1 behavior.
+        if self.cluster.version() >= '2.2':  # FIXME: Scylla reports 2.2, but has 2.1 behavior.
             assert_none(session, "SELECT v FROM test2 WHERE k = 0 AND c1 IN (5, 2, 8) AND c2 = 3")
         else:
             assert_invalid(session, "SELECT v FROM test2 WHERE k = 0 AND c1 IN (5, 2, 8) AND c2 = 3")
