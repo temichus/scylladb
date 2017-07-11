@@ -408,6 +408,7 @@ class TestCQL(Tester):
         res = session.execute("SELECT * FROM clicks WHERE token(userid) > token(2) LIMIT 1")
         assert rows_to_list(res) == [[3, 'http://foo.com', 42]], list(res)
 
+    @require("2574")
     def limit_multiget_test(self):
         """
         Validate LIMIT option for 'multiget' in SELECT statements.
@@ -431,7 +432,7 @@ class TestCQL(Tester):
         # Check that we do limit the output to 1 *and* that we respect query
         # order of keys (even though 48 is after 2)
         res = session.execute("SELECT * FROM clicks WHERE userid IN (48, 2) LIMIT 1")
-        if False and self.cluster.version() >= '2.2':  # Scylla reports 2.1, but has 2.2 behavior.
+        if self.cluster.version() >= '2.2':  # Scylla reports 2.1, but has 2.2 behavior.
             assert rows_to_list(res) == [[2, 'http://foo.com', 42]], list(res)
         else:
             assert rows_to_list(res) == [[48, 'http://foo.com', 42]], list(res)
@@ -805,7 +806,7 @@ class TestCQL(Tester):
             session.execute("INSERT INTO test2 (k, c1, c2, v) VALUES (0, 0, %i, %i)" % (x, x))
 
         # Check first we don't allow IN everywhere
-        if self.cluster.version() >= '2.2':  # FIXME: Scylla reports 2.2, but has 2.1 behavior.
+        if self.cluster.version() >= '2.2':
             assert_none(session, "SELECT v FROM test2 WHERE k = 0 AND c1 IN (5, 2, 8) AND c2 = 3")
         else:
             assert_invalid(session, "SELECT v FROM test2 WHERE k = 0 AND c1 IN (5, 2, 8) AND c2 = 3")
@@ -4188,6 +4189,7 @@ class TestCQL(Tester):
         assert_one(session, "UPDATE test SET v = 1 WHERE k = 0 IF lock = null", [True])
 
     @since('2.1')
+    @require('2574')
     def in_order_by_without_selecting_test(self):
         """ Test that columns don't need to be selected for ORDER BY when there is a IN (#4911) """
 
@@ -4209,7 +4211,7 @@ class TestCQL(Tester):
         assert_all(cursor, "SELECT v FROM test WHERE k=0 AND c1 = 0 AND c2 IN (2, 0)", [[0], [2]])
         assert_all(cursor, "SELECT v FROM test WHERE k=0 AND c1 = 0 AND c2 IN (2, 0) ORDER BY c1 ASC", [[0], [2]])
         assert_all(cursor, "SELECT v FROM test WHERE k=0 AND c1 = 0 AND c2 IN (2, 0) ORDER BY c1 DESC", [[2], [0]])
-        if False and self.cluster.version() >= '2.2':  # Scylla reports 2.2, but has 2.1 behavior.
+        if self.cluster.version() >= '2.2':  # Scylla reports 2.2, but has 2.1 behavior.
             assert_all(cursor, "SELECT v FROM test WHERE k IN (1, 0)", [[0], [1], [2], [3], [4], [5]])
         else:
             assert_all(cursor, "SELECT v FROM test WHERE k IN (1, 0)", [[3], [4], [5], [0], [1], [2]])
