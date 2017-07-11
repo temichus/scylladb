@@ -83,11 +83,11 @@ def assert_crc_check_chance_equal(session, table, expected, ks="ks", view=False)
     """
     if view:
         assert_one(session,
-                   "SELECT crc_check_chance from system_schema.views WHERE keyspace_name = 'ks' AND "
-                   "view_name = '{table}';".format(table=table),
+                   "SELECT crc_check_chance from system_schema.views WHERE keyspace_name = '{ks}' AND "
+                   "view_name = '{table}';".format(table=table, ks=ks),
                    [expected])
     else:
         assert_one(session,
-                   "SELECT crc_check_chance from system_schema.tables WHERE keyspace_name = 'ks' AND "
-                   "table_name = '{table}';".format(table=table),
+                   "SELECT crc_check_chance from system_schema.tables WHERE keyspace_name = '{ks}' AND "
+                   "table_name = '{table}';".format(table=table, ks=ks),
                    [expected])

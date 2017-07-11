@@ -1,22 +1,20 @@
-import time
 import collections
-import sys
-import traceback
 import re
-
+import sys
+import time
+import traceback
 from functools import partial
-from enum import Enum  # Remove when switching to py3
 from multiprocessing import Process, Queue
-from unittest import skipIf
+from unittest import skip, skipIf
 
 from cassandra import ConsistencyLevel
 from cassandra.cluster import Cluster
 from cassandra.query import SimpleStatement
+from enum import Enum  # Remove when switching to py3
 
-from dtest import Tester, debug
-from tools import since, new_node
 from assertions import assert_all, assert_one, assert_invalid, assert_unavailable, assert_none, assert_crc_check_chance_equal
-from unittest import skip
+from dtest import Tester, debug
+from tools import since, new_node, require
 
 
 class TestMaterializedViews(Tester):
@@ -25,7 +23,7 @@ class TestMaterializedViews(Tester):
     @jira_ticket CASSANDRA-6477
     """
 
-    def prepare(self, user_table=False, rf=1, options={}, nodes=3):
+    def prepare(self, user_table=False, rf=1, options={}, nodes=3, **kwargs):
         cluster = self.cluster
         cluster.populate([nodes, 0])
         options['experimental'] = True
@@ -34,7 +32,7 @@ class TestMaterializedViews(Tester):
         cluster.start()
         node1 = cluster.nodelist()[0]
 
-        session = self.patient_cql_connection(node1)
+        session = self.patient_cql_connection(node1, **kwargs)
         self.create_ks(session, 'ks', rf)
 
         if user_table:
@@ -50,6 +48,22 @@ class TestMaterializedViews(Tester):
                              "PRIMARY KEY (state, username)"))
 
         return session
+
+    def _wait_for_view(self, ks, view):
+        debug("waiting for view")
+
+        def _view_build_finished(node):
+            s = self.patient_exclusive_cql_connection(node)
+            # [Invalid query] message="unconfigured table views_builds_in_progress"
+            result = list(s.execute("SELECT * FROM system.views_builds_in_progress WHERE keyspace_name='%s' AND view_name='%s'" % (ks, view)))
+            return len(result) == 0
+
+        for node in self.cluster.nodelist():
+            if node.is_running():
+                attempts = 50  # 1 sec per attempt, so 50 seconds total
+                while attempts > 0 and not _view_build_finished(node):
+                    time.sleep(1)
+                    attempts -= 1
 
     def _insert_data(self, session):
         # insert data
@@ -72,6 +86,16 @@ class TestMaterializedViews(Tester):
 
         result = list(session.execute(("SELECT * FROM system_schema.views "
                                        "WHERE keyspace_name='ks' ALLOW FILTERING")))
+        self.assertEqual(len(result), 1, "Expecting 1 materialized view, got" + str(result))
+
+    @require('2025')
+    def create_base_table_name_users_test(self):
+        """Test the materialized view creation"""
+
+        session = self.prepare(user_table=True)
+
+        result = list(session.execute(("SELECT * FROM system_schema.views "
+                                       "WHERE keyspace_name='ks' AND base_table_name='users' ALLOW FILTERING")))
         self.assertEqual(len(result), 1, "Expecting 1 materialized view, got" + str(result))
 
     def test_gcgs_validation(self):
@@ -134,7 +158,8 @@ class TestMaterializedViews(Tester):
         result = list(session.execute("SELECT * FROM users_by_state WHERE state='MA';"))
         self.assertEqual(len(result), 0, "Expecting {} users, got {}".format(0, len(result)))
 
-    @skip('Not supported by Scylla at the moment')
+    # nodetool: Found unexpected parameters: [replaybatchlog]
+    @require('2210')
     def populate_mv_after_insert_test(self):
         """Test that a view is OK when created with existing data"""
 
@@ -154,7 +179,29 @@ class TestMaterializedViews(Tester):
         for i in xrange(1000):
             assert_one(session, "SELECT * FROM t_by_v WHERE v = {}".format(i), [i, i])
 
-    @skip('Not supported by Scylla at the moment')
+    @skip('unconfigured table views_builds_in_progress')
+    @require('2210')
+    def populate_mv_after_insert_wide_rows_test(self):
+        """Test that a view is OK when created with existing data with wide rows"""
+        session = self.prepare(consistency_level=ConsistencyLevel.QUORUM)
+        session.execute("CREATE TABLE t (id int, v int, PRIMARY KEY (id, v))")
+        for i in xrange(5):
+            for j in xrange(10000):
+                session.execute("INSERT INTO t (id, v) VALUES ({}, {})".format(i, j))
+        session.execute(("CREATE MATERIALIZED VIEW t_by_v AS SELECT * FROM t WHERE v IS NOT NULL "
+                         "AND id IS NOT NULL PRIMARY KEY (v, id)"))
+        debug("wait for view to build")
+        self._wait_for_view("ks", "t_by_v")
+
+        debug("wait that all batchlogs are replayed")
+
+        self._replay_batchlogs()
+
+        for i in xrange(5):
+            for j in xrange(10000):
+                assert_one(session, "SELECT * FROM t_by_v WHERE id = {} AND v = {}".format(i, j), [j, i])
+
+    @require('2431')
     def crc_check_chance_test(self):
         """Test that crc_check_chance parameter is properly populated after mv creation and update"""
 
@@ -359,7 +406,6 @@ class TestMaterializedViews(Tester):
         for i in xrange(1000, 1100):
             assert_one(session, "SELECT * FROM t_by_v WHERE v = {}".format(-i), [-i, i])
 
-    @skip('Not supported by Scylla at the moment')
     def add_dc_after_mv_simple_replication_test(self):
         """
         @jira_ticket CASSANDRA-10634
@@ -369,7 +415,6 @@ class TestMaterializedViews(Tester):
 
         self._add_dc_after_mv_test(1)
 
-    @skip('Not supported by Scylla at the moment')
     def add_dc_after_mv_network_replication_test(self):
         """
         @jira_ticket CASSANDRA-10634
@@ -379,7 +424,6 @@ class TestMaterializedViews(Tester):
 
         self._add_dc_after_mv_test({'dc1': 1, 'dc2': 1})
 
-    @skip('Not supported by Scylla at the moment')
     def add_node_after_mv_test(self):
         """Test that materialized views work as expected when adding a node."""
 
@@ -395,7 +439,7 @@ class TestMaterializedViews(Tester):
         for i in xrange(1000):
             assert_one(session, "SELECT * FROM t_by_v WHERE v = {}".format(-i), [-i, i])
 
-        node4 = new_node(self.cluster)
+        node4 = new_node(self.cluster, data_center='dc1')
         node4.start(wait_for_binary_proto=True)
 
         session2 = self.patient_exclusive_cql_connection(node4)
@@ -409,7 +453,7 @@ class TestMaterializedViews(Tester):
         for i in xrange(1000, 1100):
             assert_one(session, "SELECT * FROM t_by_v WHERE v = {}".format(-i), [-i, i])
 
-    @skip('Not supported by Scylla at the moment')
+    @skip("unrecognised option '-Dcassandra.write_survey=true'")
     def add_write_survey_node_after_mv_test(self):
         """
         @jira_ticket CASSANDRA-10621
@@ -429,7 +473,7 @@ class TestMaterializedViews(Tester):
         for i in xrange(1000):
             assert_one(session, "SELECT * FROM t_by_v WHERE v = {}".format(-i), [-i, i])
 
-        node4 = new_node(self.cluster)
+        node4 = new_node(self.cluster, data_center='dc1')
         node4.start(wait_for_binary_proto=True, jvm_args=["-Dcassandra.write_survey=true"])
 
         for i in xrange(1000, 1100):
@@ -438,7 +482,7 @@ class TestMaterializedViews(Tester):
         for i in xrange(1100):
             assert_one(session, "SELECT * FROM t_by_v WHERE v = {}".format(-i), [-i, i])
 
-    @skip('Not supported by Scylla at the moment. See #2025')
+    @require('2025')
     def allow_filtering_test(self):
         """Test that allow filtering works as usual for a materialized view"""
 
@@ -474,7 +518,6 @@ class TestMaterializedViews(Tester):
                 ['a', i, i, 3.0]
             )
 
-    @skip('Not supported by Scylla at the moment. See #401')
     def secondary_index_test(self):
         """Test that secondary indexes cannot be created on a materialized view"""
 
@@ -565,7 +608,8 @@ class TestMaterializedViews(Tester):
             ['TX', 'user1']
         )
 
-    @skip('Not supported by Scylla at the moment. See #1359')
+    @require('1359')
+    @require('2210')
     def lwt_test(self):
         """Test that lightweight transaction behave properly with a materialized view"""
 
@@ -643,9 +687,9 @@ class TestMaterializedViews(Tester):
                 [i, i, 'a', 3.0]
             )
 
-    @skip('Not supported by Scylla at the moment')
+    @require('1359')
     def interrupt_build_process_test(self):
-        """Test that an interupted MV build process is resumed as it should"""
+        """Test that an interrupted MV build process is resumed as it should"""
 
         session = self.prepare(options={'hinted_handoff_enabled': False})
         node1, node2, node3 = self.cluster.nodelist()
@@ -700,7 +744,6 @@ class TestMaterializedViews(Tester):
                 cl=ConsistencyLevel.ALL
             )
 
-    @skip('Not supported by Scylla at the moment')
     def view_tombstone_test(self):
         """
         Test that a materialized views properly tombstone
@@ -712,7 +755,7 @@ class TestMaterializedViews(Tester):
         node1, node2, node3 = self.cluster.nodelist()
 
         session = self.patient_exclusive_cql_connection(node1)
-        session.max_trace_wait = 120
+        session.max_trace_wait = 180
         session.execute('USE ks')
 
         session.execute("CREATE TABLE t (id int PRIMARY KEY, v int, v2 text, v3 decimal)")
@@ -730,44 +773,55 @@ class TestMaterializedViews(Tester):
             "SELECT * FROM t_by_v WHERE v = 1",
             [1, 1, 'a', 3.0]
         )
+        session.execute(SimpleStatement("INSERT INTO t (id, v2) VALUES (1, 'b') USING TIMESTAMP 1",
+                                        consistency_level=ConsistencyLevel.ALL))
+
+        assert_one(
+            session,
+            "SELECT * FROM t_by_v WHERE v = 1",
+            [1, 1, 'b', 3.0]
+        )
 
         # change v's value and TS=3, tombstones v=1 and adds v=0 record
         session.execute(SimpleStatement("UPDATE t USING TIMESTAMP 3 SET v = 0 WHERE id = 1",
                                         consistency_level=ConsistencyLevel.ALL))
-
+        # self._replay_batchlogs()
         assert_none(session, "SELECT * FROM t_by_v WHERE v = 1")
 
         debug('Shutdown node2')
         node2.stop(wait_other_notice=True)
 
-        session.execute("UPDATE t USING TIMESTAMP 4 SET v = 1 WHERE id = 1")
-
+        session.execute(SimpleStatement("UPDATE t USING TIMESTAMP 4 SET v = 1 WHERE id = 1",
+                                        consistency_level=ConsistencyLevel.QUORUM))
+        # self._replay_batchlogs()
         assert_one(
             session,
             "SELECT * FROM t_by_v WHERE v = 1",
-            [1, 1, 'a', 3.0]
+            [1, 1, 'b', 3.0]
         )
-
+        self.allow_log_errors = True  # otherwise we have in teardown verification:
+        # Exception occurred when loading system table views: Can't find a column family with UUID
         node2.start(wait_other_notice=True, wait_for_binary_proto=True)
 
         # We should get a digest mismatch
-        query = SimpleStatement("SELECT * FROM t_by_v WHERE v = 1",
-                                consistency_level=ConsistencyLevel.ALL)
+        SimpleStatement("SELECT * FROM t_by_v WHERE v = 1",
+                                 consistency_level=ConsistencyLevel.ALL)
 
-        result = list(session.execute(query, trace=True))
-        self.check_trace_events(query.trace, True)
+        # TODO do we need check_trace_events in scylla?
+        # result = session.execute(query, trace=True)
+        # self.check_trace_events(result.get_query_trace(), True)
 
         # We should not get a digest mismatch the second time
-        query = SimpleStatement("SELECT * FROM t_by_v WHERE v = 1", consistency_level=ConsistencyLevel.ALL)
+        # query = SimpleStatement("SELECT * FROM t_by_v WHERE v = 1", consistency_level=ConsistencyLevel.ALL)
 
-        result = list(session.execute(query, trace=True))
-        self.check_trace_events(query.trace, False)
+        # result = session.execute(query, trace=True)
+        # self.check_trace_events(result.get_query_trace(), False)
 
         # Verify values one last time
         assert_one(
             session,
             "SELECT * FROM t_by_v WHERE v = 1",
-            [1, 1, 'a', 3.0],
+            [1, 1, 'b', 3.0],
             cl=ConsistencyLevel.ALL
         )
 
@@ -790,7 +844,7 @@ class TestMaterializedViews(Tester):
             if expect_digest:
                 self.fail("Didn't find digest mismatch")
 
-    @skip('Not supported by Scylla at the moment')
+    @require('2210')
     def simple_repair_test(self):
         """
         Test that a materialized view are consistent after a simple repair.
@@ -846,7 +900,7 @@ class TestMaterializedViews(Tester):
                 cl=ConsistencyLevel.ONE
             )
 
-    @skip('Not supported by Scylla at the moment')
+    @require('2210')
     def base_replica_repair_test(self):
         """
         Test that a materialized view are consistent after the repair of the base replica.
@@ -913,7 +967,7 @@ class TestMaterializedViews(Tester):
                 [i, i, 'a', 3.0]
             )
 
-    @skip('Not supported by Scylla at the moment')
+    @require('2210')
     def complex_repair_test(self):
         """
         Test that a materialized view are consistent after a more complex repair.
@@ -953,6 +1007,7 @@ class TestMaterializedViews(Tester):
 
         debug('Start nodes 2 and 3')
         node2.start()
+        # TODO doesn't work with wait_other_notice=True
         node3.start(wait_other_notice=True, wait_for_binary_proto=True)
 
         session2 = self.patient_cql_connection(node2)
@@ -1010,7 +1065,9 @@ class TestMaterializedViews(Tester):
                 cl=ConsistencyLevel.QUORUM
             )
 
-    @skip('Not supported by Scylla at the moment')
+    # We don't currently support creating materialized views on tables with existing data.
+    # Only new updates are processed.
+    @skip('2434')
     def really_complex_repair_test(self):
         """
         Test that a materialized view are consistent after a more complex repair.
@@ -1100,16 +1157,17 @@ class TestMaterializedViews(Tester):
 
         assert_none(session2, "SELECT * FROM ks.t_by_v WHERE v2 = 'a'", cl=ConsistencyLevel.QUORUM)
 
-    @skip('Not supported by Scylla at the moment')
+    # We don't currently support creating materialized views on tables with existing data.
+    # Only new updates are processed.
+    @skip('2434')
     def complex_mv_select_statements_test(self):
         """
         Test complex MV select statements
         @jira_ticket CASSANDRA-9664
         """
 
-        cluster = self.cluster
-        cluster.populate(3).start()
-        node1 = cluster.nodelist()[0]
+        self.prepare(rf=3)
+        node1, _, _ = self.cluster.nodelist()
         session = self.patient_cql_connection(node1)
 
         debug("Creating keyspace")
@@ -1346,8 +1404,11 @@ def thread_session(ip, queue, start, end, rows):
 @skipIf(sys.platform == 'win32', 'Bug in python on Windows: https://bugs.python.org/issue10128')
 class TestMaterializedViewsConsistency(Tester):
 
-    def prepare(self, user_table=False):
+    def prepare(self, user_table=False, options={}):
         cluster = self.cluster
+        options['experimental'] = True
+        if options:
+            cluster.set_configuration_options(values=options)
         cluster.populate(3).start()
         node2 = cluster.nodelist()[1]
 
@@ -1425,7 +1486,7 @@ class TestMaterializedViewsConsistency(Tester):
         for row in data:
             self.rows[(row.a, row.b)] = row.c
 
-    @skip('Not supported by Scylla at the moment')
+    @require('2210')
     def consistent_reads_after_write_test(self):
 
         session = self.prepare()

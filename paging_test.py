@@ -180,12 +180,11 @@ class PageAssertionMixin(object):
 
 class BasePagingTester(Tester):
 
-    def prepare(self):
+    def prepare(self, row_factory=dict_factory):
         cluster = self.cluster
         cluster.populate(3).start()
         node1 = cluster.nodelist()[0]
-        session = self.patient_cql_connection(node1)
-        session.row_factory = dict_factory
+        session = self.patient_cql_connection(node1, row_factory=row_factory)
         return session
 
 
@@ -684,10 +683,9 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
         @jira_ticket CASSANDRA-8502.
         """
 
-        session = self.prepare()
+        session = self.prepare(row_factory=named_tuple_factory)
         self.create_ks(session, 'test_paging_static_cols', 2)
         session.execute("CREATE TABLE test (a int, b int, c int, s1 int static, s2 int static, PRIMARY KEY (a, b))")
-        session.row_factory = named_tuple_factory
 
         for i in range(4):
             for j in range(4):
@@ -915,10 +913,9 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
         @jira_ticket CASSANDRA-10381.
         """
 
-        session = self.prepare()
+        session = self.prepare(row_factory=named_tuple_factory)
         self.create_ks(session, 'test_paging_static_cols', 2)
         session.execute("CREATE TABLE test (a int, b int, c int, s int static, PRIMARY KEY (a, b))")
-        session.row_factory = named_tuple_factory
 
         for i in range(10):
             session.execute("UPDATE test SET s = {} WHERE a = {}".format(i, i))
@@ -937,10 +934,9 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
         @jira_ticket CASSANDRA-11467
         """
 
-        session = self.prepare()
+        session = self.prepare(row_factory=tuple_factory)
         self.create_ks(session, 'test_paging_on_compact_table_with_tombstone', 2)
         session.execute("CREATE TABLE test (a int primary key, b int, c int) WITH COMPACT STORAGE")
-        session.row_factory = tuple_factory
 
         for i in xrange(5):
             session.execute("INSERT INTO test (a, b, c) VALUES ({}, {}, {})".format(i, 1, 1))
@@ -963,10 +959,9 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
         @jira_ticket CASSANDRA-13017
         """
 
-        session = self.prepare()
+        session = self.prepare(row_factory=tuple_factory)
         self.create_ks(session, 'test_paging_with_empty_rows_and_static_columns', 2)
         session.execute("CREATE TABLE test (pk int, c int, v int, s int static, primary key(pk, c))")
-        session.row_factory = tuple_factory
 
         for i in xrange(5):
             for j in xrange(5):
