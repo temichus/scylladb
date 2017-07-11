@@ -228,7 +228,7 @@ class CqlshCopyTest(CqlshPrepare):
         cassandra_dir = self.cluster.nodelist()[0].get_install_dir()
 
         try:
-            sys.path.append(os.path.join(cassandra_dir, '../scylla-tools-java/pylib'))
+            sys.path.append(os.path.join(cassandra_dir, 'resources/cassandra/pylib'))
             import cqlshlib
             yield cqlshlib
         finally:
