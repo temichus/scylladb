@@ -408,7 +408,7 @@ class TestCQL(Tester):
         res = session.execute("SELECT * FROM clicks WHERE token(userid) > token(2) LIMIT 1")
         assert rows_to_list(res) == [[3, 'http://foo.com', 42]], list(res)
 
-    @require("2574")
+    @require("2029")
     def limit_multiget_test(self):
         """
         Validate LIMIT option for 'multiget' in SELECT statements.
@@ -432,7 +432,7 @@ class TestCQL(Tester):
         # Check that we do limit the output to 1 *and* that we respect query
         # order of keys (even though 48 is after 2)
         res = session.execute("SELECT * FROM clicks WHERE userid IN (48, 2) LIMIT 1")
-        if self.cluster.version() >= '2.2':  # Scylla reports 2.1, but has 2.2 behavior.
+        if self.cluster.version() >= '2.2':  # Scylla reports 3.0, but has <2.2 behavior.
             assert rows_to_list(res) == [[2, 'http://foo.com', 42]], list(res)
         else:
             assert rows_to_list(res) == [[48, 'http://foo.com', 42]], list(res)
@@ -455,7 +455,7 @@ class TestCQL(Tester):
         session.execute("""INSERT INTO foo (a, b, c, d, e) VALUES (0, 0, 2, 0, 3);""")
         session.execute("""INSERT INTO foo (a, b, c, d, e) VALUES (0, -1, 2, 2, 2);""")
 
-    @require("7281")
+    @require("2050")
     def tuple_query_mixed_order_columns_test(self):
         """
         @jira_ticket CASSANDRA-7281
@@ -470,7 +470,7 @@ class TestCQL(Tester):
         assert rows_to_list(res) == [[0, 2, 0, 0, 0], [0, 1, 0, 0, 0], [0, 0, 1, 2, -1],
                                      [0, 0, 1, 1, 1], [0, 0, 2, 1, -3], [0, 0, 2, 0, 3]], list(res)
 
-    @require("7281")
+    @require("2050")
     def tuple_query_mixed_order_columns_test2(self):
         """
         @jira_ticket CASSANDRA-7281
@@ -485,7 +485,7 @@ class TestCQL(Tester):
         assert rows_to_list(res) == [[0, 2, 0, 0, 0], [0, 1, 0, 0, 0], [0, 0, 2, 1, -3],
                                      [0, 0, 2, 0, 3], [0, 0, 1, 2, -1], [0, 0, 1, 1, 1]], list(res)
 
-    @require("7281")
+    @require("2050")
     def tuple_query_mixed_order_columns_test3(self):
         """
         @jira_ticket CASSANDRA-7281
@@ -500,7 +500,7 @@ class TestCQL(Tester):
         assert rows_to_list(res) == [[0, 0, 2, 1, -3], [0, 0, 2, 0, 3], [0, 0, 1, 2, -1],
                                      [0, 0, 1, 1, 1], [0, 1, 0, 0, 0], [0, 2, 0, 0, 0]], list(res)
 
-    @require("7281")
+    @require("2050")
     def tuple_query_mixed_order_columns_test4(self):
         """
         @jira_ticket CASSANDRA-7281
@@ -515,7 +515,7 @@ class TestCQL(Tester):
         assert rows_to_list(res) == [[0, 2, 0, 0, 0], [0, 1, 0, 0, 0], [0, 0, 1, 1, 1],
                                      [0, 0, 1, 2, -1], [0, 0, 2, 0, 3], [0, 0, 2, 1, -3]], list(res)
 
-    @require("7281")
+    @require("2050")
     def tuple_query_mixed_order_columns_test5(self):
         """
         @jira_ticket CASSANDRA-7281
@@ -529,7 +529,6 @@ class TestCQL(Tester):
         assert rows_to_list(res) == [[0, 2, 0, 0, 0], [0, 1, 0, 0, 0], [0, 0, 2, 1, -3],
                                      [0, 0, 2, 0, 3], [0, 0, 1, 2, -1], [0, 0, 1, 1, 1]], list(res)
 
-    @require("7281")
     def tuple_query_mixed_order_columns_test6(self):
         """CASSANDRA-7281: SELECT on tuple relations are broken for mixed ASC/DESC clustering order
             Test that non mixed columns are still working.
@@ -541,7 +540,7 @@ class TestCQL(Tester):
         assert rows_to_list(res) == [[0, 0, 1, 1, 1], [0, 0, 1, 2, -1], [0, 0, 2, 0, 3],
                                      [0, 0, 2, 1, -3], [0, 1, 0, 0, 0], [0, 2, 0, 0, 0]], list(res)
 
-    @require("7281")
+    @require("2050")
     def tuple_query_mixed_order_columns_test7(self):
         """
         @jira_ticket CASSANDRA-7281
@@ -555,7 +554,7 @@ class TestCQL(Tester):
         assert rows_to_list(res) == [[0, 0, 0, 0, 0], [0, 0, 1, 1, -1], [0, 0, 1, 1, 0],
                                      [0, 0, 1, 0, 2], [0, -1, 2, 2, 2]], list(res)
 
-    @require("7281")
+    @require("2050")
     def tuple_query_mixed_order_columns_test8(self):
         """
         @jira_ticket CASSANDRA-7281
@@ -569,7 +568,7 @@ class TestCQL(Tester):
         assert rows_to_list(res) == [[0, -1, 2, 2, 2], [0, 0, 1, 1, -1], [0, 0, 1, 1, 0],
                                      [0, 0, 1, 0, 2], [0, 0, 0, 0, 0]], list(res)
 
-    @require("7281")
+    @require("2050")
     def tuple_query_mixed_order_columns_test9(self):
         """
         @jira_ticket CASSANDRA-7281
@@ -583,7 +582,7 @@ class TestCQL(Tester):
         assert rows_to_list(res) == [[0, 0, 0, 0, 0], [0, 0, 1, 1, 0], [0, 0, 1, 1, -1],
                                      [0, 0, 1, 0, 2], [0, -1, 2, 2, 2]], list(res)
 
-    @require("2564")
+    @require("64")
     def simple_tuple_query_test(self):
         """
         @jira_ticket CASSANDRA-8613
@@ -663,6 +662,7 @@ class TestCQL(Tester):
         res = session.execute("SELECT total FROM clicks WHERE userid = 1 AND url = 'http://foo.com'")
         assert rows_to_list(res) == [[-4]], list(res)
 
+    @skip('indexes')
     def indexed_with_eq_test(self):
         """ Check that you can query for an indexed column even with a key EQ clause """
         session = self.prepare()
@@ -1079,6 +1079,7 @@ class TestCQL(Tester):
         res = session.execute("SELECT key, i, l, s, m, t, u FROM test")
         assert_equal(rows_to_list(res), [[0, 2, list([1, 2, 3]), set([1, 2, 3]), dict({1: 2}), (1, 2), simple_type(1)]])
 
+    @skip('indexes')
     def nameless_index_test(self):
         """ Test CREATE INDEX without name and validate the index can be dropped """
         session = self.prepare()
@@ -1587,6 +1588,7 @@ class TestCQL(Tester):
         res = list(session.execute("SELECT * FROM test"))
         assert len(res) == 3, res
 
+    @skip('indexes')
     def range_query_2ndary_test(self):
         """ Test range queries with 2ndary indexes (#4257) """
         session = self.prepare()
@@ -1927,6 +1929,7 @@ class TestCQL(Tester):
 
         v = self.cluster.version()
         if v < "2.2.0":
+            # still failed in 3.0: https://github.com/scylladb/scylla/issues/1735
             assert_invalid(session, "SELECT * FROM test WHERE k1 IN (0, 1) and k2 = 3")
 
         res = session.execute("SELECT * FROM test WHERE token(k1, k2) = token(0, 1)")
@@ -2082,6 +2085,7 @@ class TestCQL(Tester):
         assert len(res) == 2, res
 
     @freshCluster()
+    @skip('indexes')
     def composite_index_with_pk_test(self):
 
         session = self.prepare(ordered=True)
@@ -2255,6 +2259,7 @@ class TestCQL(Tester):
         assert_invalid(session, "SELECT col1 FROM test WHERE my_id > 'key1' ORDER BY col1;")
 
     @freshCluster()
+    @skip("unconfigured table schema_keyspaces")
     def create_alter_options_test(self):
         session = self.prepare(create_keyspace=False)
 
@@ -2312,6 +2317,7 @@ class TestCQL(Tester):
         res = session.execute("SELECT * FROM test")
         assert rows_to_list(res) == [[0, 0], [2, 2]], list(res)
 
+    @skip('indexes')
     def indexes_composite_test(self):
         session = self.prepare()
 
@@ -2350,6 +2356,7 @@ class TestCQL(Tester):
         res = session.execute("SELECT blog_id, timestamp FROM test WHERE author = 'bob'")
         assert rows_to_list(res) == [[1, 0], [1, 3], [0, 0]], list(res)
 
+    @skip('indexes')
     def refuse_in_with_indexes_test(self):
         """ Test for the validation bug of #4709 """
 
@@ -2684,6 +2691,7 @@ class TestCQL(Tester):
         self.assertItemsEqual(rows_to_list(res), [[[1, 24, 3], [4, 42, 6]]])
 
     @freshCluster()
+    @skip('indexes')
     def composite_index_collections_test(self):
         session = self.prepare(ordered=True)
         session.execute("""
@@ -2731,6 +2739,7 @@ class TestCQL(Tester):
         res = session.execute("SELECT v1, v2 FROM test WHERE k IN (0, 1, 2)")
         assert rows_to_list(res) == [], list(res)
 
+    @skip('indexes')
     def allow_filtering_test(self):
         session = self.prepare()
 
@@ -3091,6 +3100,7 @@ class TestCQL(Tester):
         assert rows_to_list(res) == [[1, 2]], list(res)
 
     @since('2.0')
+    @skip('indexes')
     def clustering_indexing_test(self):
         session = self.prepare()
 
@@ -3150,6 +3160,7 @@ class TestCQL(Tester):
         assert_invalid(session, "CREATE INDEX ON test3(c)")
 
     @since('2.0')
+    @skip('indexes')
     def edge_2i_on_complex_pk_test(self):
         session = self.prepare()
 
@@ -3189,6 +3200,7 @@ class TestCQL(Tester):
         res = session.execute("SELECT value FROM indexed WHERE pk0 = 5 AND pk1 = 0 AND ck0 = 1 AND ck2 = 3 ALLOW FILTERING")
         self.assertEqual([[4]], rows_to_list(res))
 
+    @skip('indexes')
     def bug_5240_test(self):
         session = self.prepare()
 
@@ -3362,6 +3374,7 @@ class TestCQL(Tester):
         session.execute("SELECT dateOf(t) FROM test")
 
     @since('2.0')
+    @skip("Not implemented: LWT")
     def conditional_update_test(self):
         session = self.prepare()
 
@@ -3433,6 +3446,7 @@ class TestCQL(Tester):
             assert_one(session, "DELETE FROM test WHERE k = 0 IF v1 IN (null)", [True])
 
     @since('2.0.7')
+    @skip("Not implemented: LWT")
     def conditional_delete_test(self):
         session = self.prepare()
 
@@ -3694,6 +3708,7 @@ class TestCQL(Tester):
         assert_one(session, "SELECT dateOf(t) FROM test WHERE k=0", [None])
 
     @freshCluster()
+    @skip("Not implemented: LWT")
     def cas_simple_test(self):
         session = self.prepare(nodes=3, rf=3)
 
@@ -3705,6 +3720,7 @@ class TestCQL(Tester):
             assert_one(session, "UPDATE tkns SET consumed = TRUE WHERE tkn = %i IF consumed = FALSE;" % i, [True], cl=ConsistencyLevel.QUORUM)
             assert_one(session, "UPDATE tkns SET consumed = TRUE WHERE tkn = %i IF consumed = FALSE;" % i, [False, True], cl=ConsistencyLevel.QUORUM)
 
+    @skip('indexes')
     def bug_6050_test(self):
         session = self.prepare()
 
@@ -3720,6 +3736,7 @@ class TestCQL(Tester):
         assert_invalid(session, "SELECT * FROM test WHERE a = 3 AND b IN (1, 3)")
 
     @since('2.0')
+    @skip("Not implemented: LWT")
     def bug_6069_test(self):
         session = self.prepare()
 
@@ -3908,6 +3925,7 @@ class TestCQL(Tester):
         assert_all(session, "SELECT * FROM test", [[0, 1, None, 1], [0, 2, None, 2]])
 
     @since('2.0')
+    @skip("Not implemented: LWT")
     def static_columns_cas_test(self):
         session = self.prepare()
 
@@ -4041,6 +4059,7 @@ class TestCQL(Tester):
                            """)
 
     @since('2.0')
+    @skip('indexes')
     def static_columns_with_2i_test(self):
         session = self.prepare()
 
@@ -4160,6 +4179,7 @@ class TestCQL(Tester):
             self.assertEqual(range(10), sorted([r[0] for r in rows]))
             self.assertEqual(range(10), sorted([r[1] for r in rows]))
 
+    @skip('indexes')
     def select_count_paging_test(self):
         """
         @jira_ticket CASSANDRA-6579
@@ -4179,6 +4199,7 @@ class TestCQL(Tester):
             assert_one(session, "select count(*) from test where field3 = false limit 1;", [1])
 
     @since('2.0')
+    @skip("Not implemented: LWT")
     def cas_and_ttl_test(self):
         session = self.prepare()
         session.execute("CREATE TABLE test (k int PRIMARY KEY, v int, lock boolean)")
@@ -4189,7 +4210,7 @@ class TestCQL(Tester):
         assert_one(session, "UPDATE test SET v = 1 WHERE k = 0 IF lock = null", [True])
 
     @since('2.1')
-    @require('2574')
+    @require('2029')
     def in_order_by_without_selecting_test(self):
         """ Test that columns don't need to be selected for ORDER BY when there is a IN (#4911) """
 
@@ -4327,6 +4348,7 @@ class TestCQL(Tester):
         assert_all(session, "SELECT * FROM test WHERE k=0 AND c1 = 0 AND c2 IN (2, 0) ORDER BY c1 DESC", [[0, 0, 2], [0, 0, 0]])
 
     @since('2.0')
+    @skip("Not implemented: LWT")
     def cas_and_compact_test(self):
         """
         @jira_ticket CASSANDRA-6813
@@ -4353,6 +4375,7 @@ class TestCQL(Tester):
         assert_one(session, "INSERT INTO lock(partition, key, owner) VALUES ('a', 'c', 'x') IF NOT EXISTS", [True])
 
     @since('2.0')
+    @skip("Not implemented: LWT")
     def list_item_conditional_test(self):
         # Lists
         session = self.prepare()
@@ -4383,6 +4406,7 @@ class TestCQL(Tester):
             assert_none(session, "SELECT * FROM tlist")
 
     @since('2.0')
+    @skip("Not implemented: LWT")
     def map_item_conditional_test(self):
         session = self.prepare()
 
@@ -4574,6 +4598,7 @@ class TestCQL(Tester):
         assert_one(session, "SELECT * FROM test WHERE a=1 AND b=2 ORDER BY b DESC", [1, 2, 3, 3])
 
     @since('2.0')
+    @skip('unconfigured table schema_keyspaces')
     def conditional_ddl_keyspace_test(self):
         session = self.prepare(create_keyspace=False)
 
@@ -4607,6 +4632,7 @@ class TestCQL(Tester):
         assert_none(session, "select * from system.schema_keyspaces where keyspace_name = 'my_test_ks'")
 
     @since('2.0')
+    @skip('unconfigured table schema_columnfamilies')
     def conditional_ddl_table_test(self):
         session = self.prepare(create_keyspace=False)
 
@@ -4651,6 +4677,7 @@ class TestCQL(Tester):
                        where keyspace_name = 'my_test_ks' and columnfamily_name = 'my_test_table'""")
 
     @since('2.0')
+    @skip('indexes')
     def conditional_ddl_index_test(self):
         session = self.prepare(create_keyspace=False)
 
@@ -4691,6 +4718,7 @@ class TestCQL(Tester):
         assert_none(session, """select index_name from system."IndexInfo" where table_name = 'my_test_ks'""")
 
     @since('2.0')
+    @skip('indexes')
     def bug_6612_test(self):
         session = self.prepare()
 
@@ -4799,6 +4827,7 @@ class TestCQL(Tester):
 
         assert_none(session, "select * from space1.table1 where a=1 and b=1")
 
+    @skip('indexes')
     def bug_5732_test(self):
         session = self.prepare(use_cache=True, experimental=True)
 
@@ -4836,7 +4865,6 @@ class TestCQL(Tester):
         session = self.patient_cql_connection(self.cluster.nodelist()[0])
         assert_all(session, "SELECT k FROM ks.test WHERE v = 0", [[0]])
 
-    @require(9565)
     def double_with_npe_test(self):
         """
         @jira_ticket CASSANDRA-9565
@@ -4968,6 +4996,7 @@ class CQLAdditionalTests(Tester):
         """))
         assert len(res) == 3, res
 
+    @require('876')
     def create_secondary_indexes_test(self):
         cluster = self.prepare()
         node = cluster.nodelist()[0]
@@ -4990,11 +5019,6 @@ class CQLAdditionalTests(Tester):
         except Exception, e:
             assert(e.message == "Indexes are not supported yet")
             assert(e.code == 0000)
-
-    def drop_secondary_indexes_test(self):
-        # cannot test drop secondary index because their are not created
-        # in the first place
-        pass
 
     def lightweight_transaction_test(self):
         cluster = self.prepare()
@@ -5020,7 +5044,7 @@ class CQLAdditionalTests(Tester):
             assert(e.message == "Not implemented: LWT")
             assert(e.code == 0000)
 
-    @skip('scylladb/scylla#876')
+    @require('876')
     def grant_test(self):
         cluster = self.prepare()
         node = cluster.nodelist()[0]
@@ -5035,7 +5059,7 @@ class CQLAdditionalTests(Tester):
             assert(e.message == "Not implemented: GRANT")
             assert(e.code == 0000)
 
-    @skip('scylladb/scylla#876')
+    @require('876')
     def revoke_test(self):
         cluster = self.prepare()
         node = cluster.nodelist()[0]
@@ -5050,7 +5074,7 @@ class CQLAdditionalTests(Tester):
             assert(e.message == "Not implemented: REVOKE")
             assert(e.code == 0000)
 
-    @skip('scylladb/scylla#876')
+    @require('876')
     def list_test(self):
         cluster = self.prepare()
         node = cluster.nodelist()[0]
@@ -5118,7 +5142,7 @@ class CQLAdditionalTests(Tester):
         num_rows = int(re.search(regex, out).group(1))
         self.assertEqual(num_rows, 100)
 
-    @skip('scylladb/scylla#2251')
+    @require('2251')
     def limit_date_value_out_of_range_lower_limit_test(self):
         cluster = self.prepare()
         node = cluster.nodelist()[0]
