@@ -63,7 +63,6 @@ class NativeTransportSSL(Tester):
         except NoHostAvailable:
             pass
 
-
         # enabled ssl + auth on the client and try again (this should work)
         session = self.patient_cql_connection(node1, ssl_opts={
             'ca_certs': os.path.join(self.test_path, 'ccm_node.cer'),
@@ -108,7 +107,6 @@ class NativeTransportSSL(Tester):
         session = self.patient_cql_connection(node1, port=9567)
         self._putget(cluster, session)
 
-    @since('3.0')
     def use_custom_ssl_port_test(self):
         """
         Connect to additional ssl enabled native transport port
