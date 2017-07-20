@@ -25,10 +25,6 @@ class ReshardingTest(Tester):
         cluster.start(jvm_args=['--smp', self._smp, '--memory', self._mem])
         self.node = cluster.nodelist()[0]
 
-    def tearDown(self):
-        session = self.patient_cql_connection(self.node)
-        session.execute('DROP KEYSPACE IF EXISTS keyspace1;')
-
     def _reload_with_resharding(self):
         debug('Reload node with resharding')
         self.node.stop(wait_other_notice=True)
