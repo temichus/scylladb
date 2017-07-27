@@ -3,7 +3,7 @@ import time
 from dtest import Tester
 from tools import since, rows_to_list
 from assertions import assert_invalid
-
+from cassandra.concurrent import execute_concurrent
 
 @since('2.0')
 class TestSchema(Tester):
@@ -94,3 +94,24 @@ class TestSchema(Tester):
         session.use_client_timestamp = False
         self.create_ks(session, 'ks', 1)
         return session
+
+    # Reproducer for https://github.com/scylladb/scylla/issues/2623
+    def restart_with_large_tables_test(self):
+        cluster = self.cluster
+        cluster.set_configuration_options(values={'max_cached_partition_size_in_kb': 1})
+        session = self.prepare()
+
+        n_tables = 100
+        col_name = 'a' * 1024
+        session.execute("USE ks")
+        cmds = [("CREATE TABLE cf_{} (key int PRIMARY KEY, {} int)".format(i, col_name), ()) for i in range(n_tables)]
+
+        nodes= cluster.nodelist()
+        execute_concurrent(session, cmds, raise_on_first_error=True, concurrency=10)
+
+        nodes[0].stop()
+        nodes[0].start()
+
+        session = self.patient_cql_connection(nodes[0])
+        session.execute("select * from ks.cf_0")
+        session.execute("select * from ks.cf_{}".format(n_tables - 1))
