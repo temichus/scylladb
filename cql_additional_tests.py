@@ -4931,6 +4931,40 @@ class TestCQL(Tester):
         assert rows_to_list(res) == [[5], [6], [7], [1], [2], [0], [4], [3]], list(res)
 
 
+    def collection_column_can_replace_dropped_non_collection_column(self):
+        session = self.prepare(ordered=True)
+
+        session.execute("""
+            CREATE TABLE test (
+                k text PRIMARY KEY,
+                v int,
+            )
+        """)
+
+        session.execute("INSERT INTO test (k, v) VALUES ('k', 10)")
+
+        res = session.execute("SELECT * FROM test")
+        assert rows_to_list(res) == [['k', 10]], list(res)
+
+        session.execute("""ALTER TABLE test DROP v""")
+
+        res = session.execute("SELECT * FROM test")
+        assert rows_to_list(res) == [['k']], list(res)
+
+        session.execute("""ALTER TABLE test ADD v list<int>""")
+
+        session.execute("INSERT INTO test (k, v) VALUES ('k', [8])")
+
+        res = session.execute("SELECT * FROM test")
+        assert rows_to_list(res) == [['k', [8]]], list(res)
+
+        session.execute("""ALTER TABLE test DROP v""")
+
+        res = session.execute("SELECT * FROM test")
+        assert rows_to_list(res) == [['k']], list(res)
+
+        assert_invalid(session, "ALTER TABLE test ADD v list<text>", expected=InvalidRequest)
+
 class CQLAdditionalTests(Tester):
 
     def prepare(self):
