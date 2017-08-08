@@ -2850,6 +2850,40 @@ class TestMaterializedViews(Tester):
             session.execute("DROP MATERIALIZED VIEW mv")
             session.execute("DROP TABLE test")
 
+    def propagate_view_creation_over_non_existing_table(self):
+        """
+        The internal addition of a view over a non existing table should be ignored
+        @jira_ticket CASSANDRA-13737
+        """
+
+        self.prepare(rf=3, options={'shadow_round_ms': 1000})
+        node1, node2, node3 = self.cluster.nodelist()
+        session = self.patient_cql_connection(node1, consistency_level=ConsistencyLevel.QUORUM)
+        session.execute('USE ks')
+        session.execute('CREATE TABLE users (username varchar PRIMARY KEY, state varchar)')
+
+        # create a materialized view only in nodes 1 and 2
+        debug("Stopping node3")
+        node3.stop(wait_other_notice=True)
+        debug("Creating view")
+        session.cluster.max_schema_agreement_wait = 0
+        session.execute(('CREATE MATERIALIZED VIEW users_by_state AS '
+                         'SELECT * FROM users WHERE state IS NOT NULL AND username IS NOT NULL '
+                         'PRIMARY KEY (state, username)'))
+
+        debug("Stopping other nodes")
+        node1.stop(wait_other_notice=True)
+        node2.stop(wait_other_notice=True)
+        debug("Restarting node3")
+        node3.start(wait_for_binary_proto=True)
+        session = self.patient_cql_connection(node3, consistency_level=ConsistencyLevel.QUORUM)
+        debug("Dropping table")
+        session.execute('DROP TABLE ks.users')
+
+        debug("Restarting cluster")
+        self.cluster.stop()
+        self.cluster.start()
+
     @skip("Requires #3295 to inject failure")
     def base_view_consistency_on_failure_after_mv_apply_test(self):
         self._test_base_view_consistency_on_crash("after")
