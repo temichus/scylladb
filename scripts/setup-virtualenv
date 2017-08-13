@@ -64,3 +64,4 @@ pip install pyyaml
 pip install enum34
 pip install nose_xunitmp
 pip install python-dateutil
+pip install requests
