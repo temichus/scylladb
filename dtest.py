@@ -14,6 +14,7 @@ import threading
 import time
 import traceback
 import types
+import requests
 from unittest import TestCase
 
 import psutil
@@ -806,6 +807,28 @@ class Tester(TestCase):
 
         raise TimeoutError(time.strftime("%d %b %Y %H:%M:%S", time.gmtime()) +
                            " Unable to find :" + pattern + " in any node log within " + str(timeout) + "s")
+
+    def _prometheus_get(self, ip, port='9180'):
+        prometheus_url = 'http://{}:{}/metrics'.format(ip, port)
+        resp = requests.get(prometheus_url)
+        if resp.status_code not in [200, 201, 202]:
+            raise 'Failed getting metrics from server! error: {}'.format(resp.content)
+        return resp.content
+
+    def get_node_metrics(self, node_ip, port='9180', metrics=[]):
+        metrics_res = {}
+        if metrics:
+            for metric in self._prometheus_get(node_ip, port).splitlines():
+                for metric_name in metrics:
+                    if not metric.startswith('#') and re.search(metric_name, metric):
+                        val = metric.split()[-1]
+                        try:
+                            val = int(val)
+                        except ValueError:
+                            val = float(val)
+                        metrics_res[metric_name] = val if metric_name not in metrics_res\
+                            else metrics_res[metric_name] + val
+        return metrics_res
 
 
 def canReuseCluster(Tester):

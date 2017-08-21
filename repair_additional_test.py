@@ -12,6 +12,7 @@ import tempfile
 import os
 import threading
 import random
+import math
 
 
 class RepairAdditionalTest(Tester):
@@ -1426,6 +1427,58 @@ class RepairAdditionalTest(Tester):
         result = list(session.execute("SELECT * from cf"))
         debug(len(result))
         self.assertEqual(len(result), 2000)
+
+    def get_streaming_total_bytes(self, node_ips=[]):
+        metrics = {'scylla_streaming_total_incoming_bytes': 0, 'scylla_streaming_total_outgoing_bytes': 0}
+        for node_ip in node_ips:
+            node_metrics = self.get_node_metrics(node_ip=node_ip, metrics=metrics.keys())
+            for key in metrics:
+                self.assertIn(key, node_metrics, 'Metrics not found: {}'.format(key))
+            metrics = {k: metrics[k] + node_metrics[k] for k in metrics}
+        debug(metrics)
+        return metrics
+
+    def no_read_amplification_on_repair_test(self):
+        """
+        Check total bytes read during streaming on repair corresponds to data size
+        """
+        cluster = self.cluster
+        debug("Starting cluster..")
+        cluster.populate(4).start(wait_for_binary_proto=True)
+        nodes = cluster.nodelist()
+
+        debug("Stop node2")
+        nodes[1].stop(wait_other_notice=True)
+
+        debug("Run stress write")
+        cnt = 1000000
+        size = 1024
+        resp = nodes[0].stress_object(stress_options=['write', 'n={}'.format(cnt), 'cl=QUORUM',
+                                                      '-schema', 'replication(factor=3)',
+                                                      '-col', 'size=FIXED({}) n=FIXED(1)'.format(size)])
+        self.assertIsInstance(resp, dict, 'Stress error: {}'.format(resp))
+        self.assertAlmostEqual(int(resp['Total partitions:write']), cnt, delta=500)
+
+        debug("Start node2")
+        nodes[1].start(wait_other_notice=True)
+
+        debug("Start node2 repair")
+        thr = threading.Thread(target=lambda: nodes[1].nodetool("repair -local keyspace1 standard1"))
+        thr.start()
+
+        debug("Verify there is no read amplification in repair streaming")
+        node_ips = [cluster.get_node_ip(node_ind) for node_ind in xrange(1, len(nodes) + 1)]
+        amplification_rate = 3
+        max_val = {}
+        while thr.is_alive():
+            bytes_total = self.get_streaming_total_bytes(node_ips)
+            for param in bytes_total:
+                self.assertLess(bytes_total[param], size * cnt * amplification_rate)
+                max_val[param] = bytes_total[param] if param not in max_val else max(max_val[param], bytes_total[param])
+            thr.join(3)
+        for key in max_val:
+            debug('{}: {}(+{}%)'.format(
+                key, max_val[key], int(math.fabs(max_val[key] - (cnt * size)) * 100 / (cnt * size))))
 
     @skip('unimplemented')
     def repair_of_cluster_all_nodes_are_out_of_sync(self):

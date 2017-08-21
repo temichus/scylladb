@@ -1,44 +1,13 @@
 import threading
-import requests
 import time
-import re
 from dtest import Tester, debug
 
 
-class NodeMetrics(object):
+class HeatWeightedLB(Tester):
+
     METRICS = ['scylla_storage_proxy_coordinator_reads_local_node',
                'scylla_storage_proxy_replica_reads',
                'scylla_column_family_cache_hit_rate.*cf=.*standard1']
-
-    def __init__(self, ip, port='9180'):
-        self._url = 'http://{}:{}/metrics'.format(ip, port)
-        self._headers = {}
-
-    def _get(self):
-        resp = requests.get(self._url, headers=self._headers)
-        if resp.status_code not in [200, 201, 202]:
-            raise 'Failed getting metrics from server! error: {}'.format(resp.content)
-        return resp.content
-
-    def get_metrics(self):
-        node_metrics = self._get()
-        metrics = dict()
-        for metric in node_metrics.split('\n'):
-            for metric_name in self.METRICS:
-                if not metric.startswith('#') and re.search(metric_name, metric):
-                    val = metric.split()[-1]
-                    try:
-                        val = int(val)
-                    except ValueError:
-                        val = float(val)
-                    if metric_name not in metrics:
-                        metrics[metric_name] = val
-                    else:
-                        metrics[metric_name] += val
-        return metrics
-
-
-class HeatWeightedLB(Tester):
 
     def __init__(self, *argv, **kwargs):
         super(HeatWeightedLB, self).__init__(*argv, **kwargs)
@@ -56,11 +25,10 @@ class HeatWeightedLB(Tester):
 
     def get_metrics_from_nodes(self):
         debug('Get metrics from all nodes')
-        node_metrics = {k: {1: [], 2: [], 3: []} for k in NodeMetrics.METRICS}
+        node_metrics = {k: {1: [], 2: [], 3: []} for k in self.METRICS}
         for i in range(50):
             for node_ind in (1, 2, 3):
-                nm = NodeMetrics(self.cluster.get_node_ip(node_ind))
-                metrics = nm.get_metrics()
+                metrics = self.get_node_metrics(node_ip=self.cluster.get_node_ip(node_ind), metrics=self.METRICS)
                 for k, v in metrics.iteritems():
                     delta = v - node_metrics[k][node_ind][-1]['val'] if node_metrics[k][node_ind] else 0
                     node_metrics[k][node_ind].append(dict(val=v, delta=delta))
