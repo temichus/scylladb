@@ -889,7 +889,6 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
 
         # session
         with open(self.tempfile.name, 'r') as csvfile:
-            row_count = 0
             csvreader = csv.reader(csvfile)
             result_list = [map(str, cql_row) for cql_row in results]
             self.assertItemsEqual(result_list, csvreader)
@@ -1720,6 +1719,28 @@ class CqlshSmokeTest(Tester):
         # drop the index, then make sure it fails again
         self.session.execute('DROP INDEX ks.index_to_drop;')
         self.assertRaises(InvalidRequest, execute_requires_index)
+
+    def incorrect_clustering_restrictions_test(self):
+        # https://github.com/scylladb/scylla/issues/2421
+        self.create_ks(self.session, 'ks', 1)  # self.create_cf(self.session, 'ks1table')
+        self.session.execute("""CREATE TABLE foo2 (id text,
+                                a text,
+                                b text,
+                                at timestamp,
+                                c text,
+                                PRIMARY KEY (id,at,a,b,c));""")
+        self.node1.run_cqlsh(
+            "insert into ks.foo2 (id, a,b,at,c) values ('id2', 'a1', 'b1', '2017-01-01T00:00:01.000', 'c2');")
+        self.node1.run_cqlsh(
+            "insert into ks.foo2 (id, a,b,at,c) values ('id2', 'a1', 'b1', '2017-01-01T00:00:00.000', 'c1');")
+
+        _, cqlsh_stderr = self.node1.run_cqlsh(
+            "SELECT id FROM ks.foo2 WHERE id = 't' AND a = 'y' AND b = 'z' AND"
+            " at <= '2017-01-01T00:00:00.000' AND at >= '2016-01-01T00:00:00.000';",
+            return_output=True)
+
+        self.assertEqual(cqlsh_stderr, """<stdin>:2:InvalidRequest: Error from server: code=2200 [Invalid query] \
+        message="PRIMARY KEY column "b" cannot be restricted (preceding column "at" is restricted by a non-EQ relation)"\n""")
 
     def get_keyspace_names(self):
         self.session.cluster.refresh_schema_metadata()
