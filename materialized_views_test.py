@@ -9,7 +9,7 @@ from multiprocessing import Process, Queue
 from Queue import Queue as TQueue
 from unittest import skip, skipIf
 
-from cassandra import ConsistencyLevel
+from cassandra import ConsistencyLevel, WriteFailure
 from cassandra.cluster import Cluster
 from cassandra.query import SimpleStatement
 from enum import Enum  # Remove when switching to py3
@@ -2850,6 +2850,88 @@ class TestMaterializedViews(Tester):
             session.execute("DROP MATERIALIZED VIEW mv")
             session.execute("DROP TABLE test")
 
+    @skip("Requires #3295 to inject failure")
+    def base_view_consistency_on_failure_after_mv_apply_test(self):
+        self._test_base_view_consistency_on_crash("after")
+
+    @skip("Requires #3295 to inject failure")
+    def base_view_consistency_on_failure_before_mv_apply_test(self):
+        self._test_base_view_consistency_on_crash("before")
+
+    def _test_base_view_consistency_on_crash(self, fail_phase):
+        """
+         * Fails base table write before or after applying views
+         * Restart node and replay commit and batchlog
+         * Check that base and views are present
+
+         @jira_ticket CASSANDRA-13069
+        """
+
+        self.cluster.set_batch_commitlog(enabled=True)
+        self.ignore_log_patterns = [r'Dummy failure', r"Failed to force-recycle all segments"]
+        self.prepare(rf=1, install_byteman=True)
+        node1, node2, node3 = self.cluster.nodelist()
+        session = self.patient_exclusive_cql_connection(node1)
+        session.execute('USE ks')
+
+        session.execute("CREATE TABLE t (id int PRIMARY KEY, v int, v2 text, v3 decimal)")
+        session.execute(("CREATE MATERIALIZED VIEW t_by_v AS SELECT * FROM t "
+                         "WHERE v IS NOT NULL AND id IS NOT NULL PRIMARY KEY (v, id)"))
+
+        session.cluster.control_connection.wait_for_schema_agreement()
+
+        debug('Make node1 fail {} view writes'.format(fail_phase))
+        node1.byteman_submit(['./byteman/fail_{}_view_write.btm'.format(fail_phase)])
+
+        debug('Write 1000 rows - all node1 writes should fail')
+
+        failed = False
+        for i in xrange(1, 1000):
+            try:
+                session.execute("INSERT INTO t (id, v, v2, v3) VALUES ({v}, {v}, 'a', 3.0) USING TIMESTAMP {v}".format(v=i))
+            except WriteFailure:
+                failed = True
+
+        self.assertTrue(failed, "Should fail at least once.")
+        self.assertTrue(node1.grep_log("Dummy failure"), "Should throw Dummy failure")
+
+        missing_entries = 0
+        session = self.patient_exclusive_cql_connection(node1)
+        session.execute('USE ks')
+        for i in xrange(1, 1000):
+            view_entry = rows_to_list(session.execute(SimpleStatement("SELECT * FROM t_by_v WHERE id = {} AND v = {}".format(i, i),
+                                                      consistency_level=ConsistencyLevel.ONE)))
+            base_entry = rows_to_list(session.execute(SimpleStatement("SELECT * FROM t WHERE id = {}".format(i),
+                                                      consistency_level=ConsistencyLevel.ONE)))
+
+            if not base_entry:
+                missing_entries += 1
+            if not view_entry:
+                missing_entries += 1
+
+        debug("Missing entries {}".format(missing_entries))
+        self.assertTrue(missing_entries > 0, )
+
+        debug('Restarting node1 to ensure commit log is replayed')
+        node1.stop(wait_other_notice=True)
+        # Set batchlog.replay_timeout_seconds=1 so we can ensure batchlog will be replayed below
+        node1.start(jvm_args=["-Dcassandra.batchlog.replay_timeout_in_ms=1"])
+
+        debug('Replay batchlogs')
+        time.sleep(0.001)  # Wait batchlog.replay_timeout_in_ms=1 (ms)
+        self._replay_batchlogs()
+
+        debug('Verify that both the base table entry and view are present after commit and batchlog replay')
+        session = self.patient_exclusive_cql_connection(node1)
+        session.execute('USE ks')
+        for i in xrange(1, 1000):
+            view_entry = rows_to_list(session.execute(SimpleStatement("SELECT * FROM t_by_v WHERE id = {} AND v = {}".format(i, i),
+                                                      consistency_level=ConsistencyLevel.ONE)))
+            base_entry = rows_to_list(session.execute(SimpleStatement("SELECT * FROM t WHERE id = {}".format(i),
+                                                      consistency_level=ConsistencyLevel.ONE)))
+
+            self.assertTrue(base_entry, "Both base {} and view entry {} should exist.".format(base_entry, view_entry))
+            self.assertTrue(view_entry, "Both base {} and view entry {} should exist.".format(base_entry, view_entry))
 
 # For read verification
 class MutationPresence(Enum):
