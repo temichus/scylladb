@@ -295,7 +295,7 @@ class TestConcurrentSchemaChanges(Tester):
             for a in range(1, 8):
                 cmds.append(("alter table alter_me_{0} drop s{1};".format(n, a), ()))
                 cmds.append(("alter table alter_me_{0} add c{1} int;".format(n, a), ()))
-                cmds.append(("create index ix_index_me_{0}_c{1} on index_me_{0} (c{1});".format(n, a), ()))
+#                cmds.append(("create index ix_index_me_{0}_c{1} on index_me_{0} (c{1});".format(n, a), ()))
 
         results = execute_concurrent(session, cmds, concurrency=100, raise_on_first_error=True)
         for (success, result) in results:
