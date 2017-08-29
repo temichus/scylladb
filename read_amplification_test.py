@@ -33,7 +33,8 @@ class ReadAmplificationTest(Tester):
         size = 1024
         resp = nodes[0].stress_object(stress_options=['write', 'n={}'.format(cnt), 'cl=QUORUM',
                                                       '-schema', 'replication(factor=3)',
-                                                      '-col', 'size=FIXED({}) n=FIXED(1)'.format(size)])
+                                                      '-col', 'size=FIXED({}) n=FIXED(1)'.format(size),
+                                                      '-pop', 'seq=1..{}'.format(cnt)])
         self.assertIsInstance(resp, dict, 'Stress error: {}'.format(resp))
         self.assertAlmostEqual(int(resp['Total partitions:write']), cnt, delta=500)
 
@@ -59,7 +60,7 @@ class ReadAmplificationTest(Tester):
             debug('{}: {}(+{}%)'.format(
                 key, max_val[key], int(math.fabs(max_val[key] - (cnt * size)) * 100 / (cnt * size))))
 
-    def read_amplification(self, read_size, wait_interval=1, threads=100):
+    def read_amplification(self, read_size, wait_interval=1, threads=100, max_ratio_expected=10):
         """
         Check total bytes read corresponds to data size
         """
@@ -73,12 +74,15 @@ class ReadAmplificationTest(Tester):
         debug("Write {} bytes({} writes of {} bytes) of data".format(read_size, cnt, size))
         resp = node.stress_object(stress_options=['write', 'n={}'.format(cnt),
                                                   '-col', 'size=FIXED({}) n=FIXED(1)'.format(size),
-                                                  '-rate', 'threads=16'])
+                                                  '-rate', 'threads=16', '-pop', 'seq=1..{}'.format(cnt)])
         self.assertIsInstance(resp, dict, 'Stress error: {}'.format(resp))
         self.assertAlmostEqual(int(resp['Total partitions:write']), cnt, delta=int(cnt / 100))
 
         node.flush()
-        debug('Restart node')
+        debug('Run compaction to prevent running this during read')
+        node.compact()
+        time.sleep(10)
+        debug('Restart node - for cache cleanup')
         node.stop(wait_other_notice=True)
         node.start(wait_other_notice=True)
         time.sleep(10)
@@ -92,7 +96,8 @@ class ReadAmplificationTest(Tester):
         def run_read(threads=100):
             resp = node.stress_object(stress_options=['read', 'n={}'.format(cnt),
                                                       '-col', 'size=FIXED({}) n=FIXED(1)'.format(size),
-                                                      '-rate', 'threads={}'.format(threads)])
+                                                      '-rate', 'threads={}'.format(threads),
+                                                      '-pop', 'seq=1..{}'.format(cnt)])
             self.assertIsInstance(resp, dict, 'Stress error: {}'.format(resp))
             self.assertAlmostEqual(int(resp['Total partitions:read']), cnt, delta=int(cnt / 100))
 
@@ -116,10 +121,10 @@ class ReadAmplificationTest(Tester):
         size_formatted = '{}kb'.format(size_formatted) if size_formatted < 1024 else\
             '{}mb'.format(size_formatted / 1024)
         debug('Read amplification for {} data size: {} times or {}%'.format(size_formatted, ampl, ampl_percent))
-        self.assertLessEqual(ampl, 10, 'Read amplification is too large: {} times'.format(ampl))
+        self.assertLessEqual(ampl, max_ratio_expected, 'Read amplification is too large: {} times'.format(ampl))
 
     def no_amplification_on_read_20kb_test(self):
-        self.read_amplification(1024 * 20, 1, 1)
+        self.read_amplification(1024 * 20, 1, 1, 20)
 
     def no_amplification_on_read_20mb_test(self):
         self.read_amplification(1024 * 1024 * 20)
