@@ -361,7 +361,6 @@ class MigrationTestBase(Tester):
         rows = rows_to_list(res)
         self.assertEqual(len(rows), 10)
 
-    @require('#2527')
     def migrate_sstable_with_counter_test(self):
         """
         https://github.com/scylladb/scylla/issues/2119
