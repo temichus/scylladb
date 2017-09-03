@@ -794,20 +794,22 @@ class TestNodetool(Tester):
         self.assertMapEqual(res, "ks", "keyspace1", "wrong keysyapce")
         self.assertMapEqual(res, "cf", "standard1", "wrong column family")
         self.verify_cfhistograms(res=res)
-        ltnc = strs['latency 99.9th percentile:write']
+        ltnc = strs['latency max:write']
         for v in res["vals"]:
             self.assertMapEqual(res["vals"][v], "Read Latency", 0, "unexpected read latency")
             if float(ltnc) != 0.0:
-                self.assertMapLess(res["vals"][v], "Write Latency", ltnc * 1000, "unexpected write latency")
+                if v != "Max":
+                    self.assertMapLess(res["vals"][v], "Write Latency", ltnc * 1000, "unexpected write latency")
 
         strs = self.stress_mixed(node, 10000, duration='10s')
         res = self._get_cfhistogram(node, "keyspace1", "standard1")
         self.verify_cfhistograms(res=res, ltype='mixed')
-        if 'latency 99.9th percentile:read' in strs:
-            ltnc = strs['latency 99.9th percentile:read']
+        if 'latency max:read' in strs:
+            ltnc = strs['latency max:read']
             if float(ltnc) != 0.0:
                 for v in res["vals"]:
-                    self.assertMapLess(res["vals"][v], "Read Latency", ltnc * 1000, "unexpected read latency")
+                    if v != "Max":
+                        self.assertMapLess(res["vals"][v], "Read Latency", ltnc * 1000, "unexpected read latency")
 
     def verify_cfhistograms(self, node=None, ks="keyspace1", cf="standard1", res=None, ltype='write'):
         if not res:
