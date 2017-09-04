@@ -90,6 +90,7 @@ persistence_test.py
 pushed_notifications_test.py:TestPushedNotifications.move_single_node_test
 pushed_notifications_test.py:TestPushedNotifications.restart_node_test
 range_ghost_test.py
+read_amplification_test.py
 rebuild_test.py
 repair_additional_test.py
 repair_test.py
