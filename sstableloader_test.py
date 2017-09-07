@@ -48,7 +48,7 @@ class TestSSTableLoader(MigrationTestBase):
         if exit_status != 0:
             raise Exception("sstableloader command '%s' failed; exit status: %d'; stdout: %s; stderr: %s" %
                             (" ".join(args), exit_status, stdout, stderr))
-    @require 2621
+    @require('2621')
     def load_migrated_tables_with_old_counter_test(self):
         if self.__class__.__name__ == 'TestMigration_with_2_1_x':
             self.migrate_sstable_with_old_format_counter_helper()
