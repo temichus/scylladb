@@ -972,7 +972,7 @@ class TestCountersStress(Tester):
         self.assertEqual(rows[0][0], self._op_cnt)
 
         debug('Run stress counter_read')
-        resp = self.node.stress_object(['counter_read', 'n={}'.format(self._op_cnt)])
+        resp = self.node.stress_object(['counter_read', 'n={}'.format(self._op_cnt), '-rate', 'threads=4'])
         if not resp or 'Total partitions:read' not in resp:
             raise Exception('Error running stress test: {}'.format(resp))
         self.assertGreaterEqual(resp['Total partitions:read'], self._op_cnt)
