@@ -325,41 +325,7 @@ class MigrationTestBase(Tester):
 
     @require('#2458')
     def migrate_sstable_with_old_format_counter_test(self):
-        """
-        create cassandra cluster version 2.0.x
-        CREATE KEYSPACE ks WITH replication={'class':'SimpleStrategy', 'replication_factor':1};
-        CREATE TABLE ks.cf (pk int PRIMARY KEY, cnt COUNTER);
-        add 10 counters
-        create cassandra cluster version 2.1.x
-        create ks and cf
-        copy sstables from 2.0.x
-        start node and run nodetool upgradesstables
-        add more 10 counters
-        """
-        self.allow_log_errors = True
-        cluster = self.cluster
-        self.populate_cluster(cluster)
-        node1 = self.cluster.nodelist()[0]
-        node1.set_configuration_options()
-        self.start_cluster(cluster)
-
-        query = "CREATE TABLE ks.cf (pk int PRIMARY KEY, cnt COUNTER);"
-        self.create_ks_and_cf(node1, None, None, False, query=query)
-        self.load_migrated_tables(node1, 'with_old_format_counter')
-
-        debug("Checking counters data...")
-        rows = self.get_all_rows_for_check(node1)
-        self.assertEqual(len(rows), 20)
-
-        debug('Try to create a new counters table...')
-        conn = self.patient_cql_connection(node1, 'ks')
-        conn.execute(SimpleStatement("CREATE TABLE ks.cf_new (pk int PRIMARY KEY, cnt COUNTER);"))
-        for i in range(1, 11):
-            query = "UPDATE ks.cf_new SET cnt = cnt + {} WHERE pk={};".format(i, i)
-            conn.execute(SimpleStatement(query))
-        res = conn.execute(SimpleStatement("SELECT * FROM ks.cf_new"))
-        rows = rows_to_list(res)
-        self.assertEqual(len(rows), 10)
+        migrate_sstable_with_old_format_counter_helper()
 
     def migrate_sstable_with_counter_test(self):
         """
@@ -414,6 +380,44 @@ class MigrationTestBase(Tester):
         self.assertEqual(rows[2].cnt, 3)
 
     # ######################## Helper functions ####################################
+
+    def migrate_sstable_with_old_format_counter_helper(self):
+        """
+        create cassandra cluster version 2.0.x
+        CREATE KEYSPACE ks WITH replication={'class':'SimpleStrategy', 'replication_factor':1};
+        CREATE TABLE ks.cf (pk int PRIMARY KEY, cnt COUNTER);
+        add 10 counters
+        create cassandra cluster version 2.1.x
+        create ks and cf
+        copy sstables from 2.0.x
+        start node and run nodetool upgradesstables
+        add more 10 counters
+        """
+        self.allow_log_errors = True
+        cluster = self.cluster
+        self.populate_cluster(cluster)
+        node1 = self.cluster.nodelist()[0]
+        node1.set_configuration_options()
+        self.start_cluster(cluster)
+
+        query = "CREATE TABLE ks.cf (pk int PRIMARY KEY, cnt COUNTER);"
+        self.create_ks_and_cf(node1, None, None, False, query=query)
+        self.load_migrated_tables(node1, 'with_old_format_counter')
+
+        debug("Checking counters data...")
+        rows = self.get_all_rows_for_check(node1)
+        self.assertEqual(len(rows), 20)
+
+        debug('Try to create a new counters table...')
+        conn = self.patient_cql_connection(node1, 'ks')
+        conn.execute(SimpleStatement("CREATE TABLE ks.cf_new (pk int PRIMARY KEY, cnt COUNTER);"))
+        for i in range(1, 11):
+            query = "UPDATE ks.cf_new SET cnt = cnt + {} WHERE pk={};".format(i, i)
+            conn.execute(SimpleStatement(query))
+        res = conn.execute(SimpleStatement("SELECT * FROM ks.cf_new"))
+        rows = rows_to_list(res)
+        self.assertEqual(len(rows), 10)
+
     def check_number_of_rows(self, node, expected_number_of_rows):
         debug("Checking rows on node1...")
         query = "SELECT COUNT(*) FROM cf"
