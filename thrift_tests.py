@@ -392,6 +392,21 @@ class TestMutations(ThriftTester):
         time.sleep(0.1)
         _verify_simple()
 
+    def test_prepared_simple(self):
+        """
+        Insert a row and then read it back using prepared statements.
+        """
+        _set_keyspace('Keyspace1')
+        cd = ColumnDef('v', 'AsciiType', None, None)
+        newcf = CfDef('Keyspace1', 'cf', default_validation_class='AsciiType', column_metadata=[cd])
+        client.system_add_column_family(newcf)
+
+        prepared_ins = client.prepare_cql3_query("INSERT INTO cf (key, v) VALUES (?, ?)", Cassandra.Compression.NONE)
+        prepared_sel = client.prepare_cql3_query("SELECT v FROM cf WHERE key=?", Cassandra.Compression.NONE)
+        res = client.execute_prepared_cql3_query(prepared_ins.itemId, ['0', 'my_value'], ConsistencyLevel.ONE)
+        rows = client.execute_prepared_cql3_query(prepared_sel.itemId, ['0'], ConsistencyLevel.ONE)
+        assert rows.rows[0].columns[0].value == 'my_value'
+
     def test_empty_slice(self):
         _set_keyspace('Keyspace1')
         assert _big_slice('key1', ColumnParent('Standard2')) == []
