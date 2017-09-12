@@ -6,8 +6,10 @@ from dtest import Tester, debug
 
 class TestPartitioner(Tester):
 
-    def run_cluster(self, partitioner_name, data_dir):
+    def run_cluster(self, partitioner_name, data_dir, deprecated=False):
         cluster = self.cluster
+        if deprecated:
+            cluster.set_configuration_options(values={'enable_deprecated_partitioners': True})
         cluster.set_partitioner(partitioner_name)
 
         debug("Populate 3 Nodes")
@@ -45,4 +47,15 @@ class TestPartitioner(Tester):
         self.assertEqual(len(result), 30, len(result))
 
     def murmur3_partitioner_test(self):
-        self.run_cluster("org.apache.cassandra.dht.Murmur3Partitioner", "cassandra.3.nodes.30.rows.256.murmur3.partitioner")
+        self.run_cluster("org.apache.cassandra.dht.Murmur3Partitioner",
+                         "cassandra.3.nodes.30.rows.256.murmur3.partitioner")
+
+    def random_partitioner_test(self):
+        self.run_cluster("org.apache.cassandra.dht.RandomPartitioner",
+                         "cassandra.3.nodes.30.rows.256.random.partitioner",
+                         deprecated=True)
+
+    def byte_ordered_partitioner_test(self):
+        self.run_cluster("org.apache.cassandra.dht.ByteOrderedPartitioner",
+                         "cassandra.3.nodes.30.rows.256.byteordered.partitioner",
+                         deprecated=True)
