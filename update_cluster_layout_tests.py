@@ -1595,7 +1595,7 @@ class TestLargeScaleCluster(Tester):
         debug("just before first insert")
         insert_c1c2(session, keys=range(starting_size * 100 + 1000), consistency=ConsistencyLevel.ONE)
 
-        query = SimpleStatement("SELECT key FROM ks.cf limit 7000", consistency_level=consistency)
+        query = SimpleStatement("SELECT key FROM ks.cf",fetch_size=100, consistency_level=consistency)
         for i in range(starting_size + 1, node_count + 1):
             node_i = new_node(cluster)
             node_i.start(wait_for_binary_proto=True, wait_other_notice=True)
