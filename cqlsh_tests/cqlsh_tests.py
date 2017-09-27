@@ -4,6 +4,7 @@ import csv
 import datetime
 import os
 import re
+import time
 import subprocess
 import sys
 from decimal import Decimal
@@ -19,7 +20,7 @@ from assertions import assert_all, assert_none
 from ccmlib import common
 from cqlsh_tools import monkeypatch_driver, unmonkeypatch_driver
 from dtest import Tester, debug
-from tools import create_c1c2_table, insert_c1c2, rows_to_list, require
+from tools import create_c1c2_table, insert_c1c2, rows_to_list, require, new_node
 
 
 class TestCqlsh(Tester):
@@ -1741,6 +1742,42 @@ class CqlshSmokeTest(Tester):
 
         self.assertEqual(cqlsh_stderr, """<stdin>:2:InvalidRequest: Error from server: code=2200 [Invalid query] \
         message="PRIMARY KEY column "b" cannot be restricted (preceding column "at" is restricted by a non-EQ relation)"\n""")
+
+    def select_all_cl_quorum_test(self):
+        """
+         https://github.com/scylladb/scylla/issues/2593
+         ccm create scylla-4 --scylla --vnodes -n 4 --install-dir=/home//scylla
+         ccm start
+         ccm node1 stress write n=1000
+         ccm node1 cqlsh
+             select * from keyspace1.standard1;
+             alter KEYSPACE keyspace1 WITH replication = {'class': 'SimpleStrategy', 'replication_factor' : '4'};
+             consistency quorum;
+             select * from keyspace1.standard1;
+         """
+        # [shard 0] storage_proxy - no row count in query result, should not happen here
+        self.allow_log_errors = True
+
+        for i in range(3):
+            new_node(self.cluster, bootstrap=False).start()
+        time.sleep(60)
+        self.cluster.nodelist()[0].stress(['write', 'n=1K', '-rate', 'threads=8'])
+
+        ks1_stdout, ks1_stderr = self.node1.run_cqlsh('select * from keyspace1.standard1 LIMIT 10;', return_output=True)
+        self.assertEqual(ks1_stderr, '')
+        self.assertEqual(10, len([x for x in ks1_stdout.split("\n") if x and x.startswith(' 0x')]))
+        ks1_stdout, ks1_stderr = self.node1.run_cqlsh("alter KEYSPACE keyspace1 WITH replication = {'class': 'SimpleStrategy', 'replication_factor' : '4'};", return_output=True)
+        self.assertEqual(ks1_stderr, '')
+        self.assertEqual(ks1_stdout, '')
+        ks1_stdout, ks1_stderr = self.node1.run_cqlsh('select * from keyspace1.standard1 LIMIT 10;', return_output=True)
+        self.assertEqual(ks1_stderr, '')
+        self.assertEqual(10, len([x for x in ks1_stdout.split("\n") if x and x.startswith(' 0x')]))
+        ks1_stdout, ks1_stderr = self.node1.run_cqlsh('consistency quorum;', return_output=True)
+        self.assertEqual(ks1_stderr, '')
+        self.assertEqual(ks1_stdout, 'Consistency level set to QUORUM.\n')
+        ks1_stdout, ks1_stderr = self.node1.run_cqlsh('select * from keyspace1.standard1 LIMIT 10;', return_output=True)
+        self.assertEqual(ks1_stderr, '')
+        self.assertEqual(10, len([x for x in ks1_stdout.split("\n") if x and x.startswith(' 0x')]))
 
     def get_keyspace_names(self):
         self.session.cluster.refresh_schema_metadata()
