@@ -8,6 +8,7 @@ import glob
 import datetime
 
 from cassandra.query import SimpleStatement
+from ccmlib.node import NodetoolError
 
 from dtest import Tester, debug
 from tools import require, rows_to_list, safe_mkdtemp
@@ -349,35 +350,8 @@ class MigrationTestBase(Tester):
         query = "CREATE TABLE ks.cf " \
                 "(first_name varchar, last_name varchar, cnt counter, PRIMARY KEY(first_name, last_name));"
         self.create_ks_and_cf(node1, None, None, False, query=query)
-        self.load_migrated_tables(node1, 'with_counter')
-
-        debug("Checking rows content...")
-        self.check_number_of_rows(node1, 3)
-        rows = self.get_all_rows_for_check(node1)
-        self.assertEqual(rows[0].first_name, 'albert')
-        self.assertEqual(rows[0].last_name, 'einstein')
-        self.assertEqual(rows[0].cnt, 6)
-        self.assertEqual(rows[1].first_name, 'thomas')
-        self.assertEqual(rows[1].last_name, 'edison')
-        self.assertEqual(rows[1].cnt, 2)
-        self.assertEqual(rows[2].first_name, 'marie')
-        self.assertEqual(rows[2].last_name, 'curie')
-        self.assertEqual(rows[2].cnt, 3)
-
-        debug("Change counters...")
-        conn = self.patient_cql_connection(node1, 'ks')
-        st = SimpleStatement("UPDATE ks.cf "
-                             "SET cnt = cnt + 5 WHERE first_name = \'albert\' and last_name = \'einstein\';")
-        conn.execute(st)
-        st = SimpleStatement("UPDATE ks.cf SET cnt = cnt - 1 WHERE first_name=\'thomas\' and last_name=\'edison\';")
-        conn.execute(st)
-        node1.nodetool("flush -- ks")
-
-        debug("Checking rows content...")
-        rows = self.get_all_rows_for_check(node1)
-        self.assertEqual(rows[0].cnt, 11)
-        self.assertEqual(rows[1].cnt, 1)
-        self.assertEqual(rows[2].cnt, 3)
+        expected_message = 'Loading non-Scylla SSTables containing counters is not supported.'
+        self.load_migrated_tables_expect_fail(node1, 'with_counter', message=expected_message)
 
     # ######################## Helper functions ####################################
 
@@ -506,6 +480,25 @@ class MigrationTestBase(Tester):
 
         debug("Running 'nodetool refresh -- {} {}' to load migrated sstables".format(ks, cf))
         node.nodetool("refresh -- {} {}".format(ks, cf))
+
+    def load_migrated_tables_expect_fail(self, node, migrated_files_dir, message=None, ks='ks', cf='cf', version='2_1_x'):
+        cassandra_sstable_dir = self.get_cassandra_sstable_dir(version, migrated_files_dir)
+        debug("cassandra sstable dir is {}".format(cassandra_sstable_dir))
+
+        ks_dir = os.path.join(self.test_path, 'test', 'node1', 'data', ks)
+        cf_dir = self.get_cf_dir(ks_dir, cf)
+        debug("Column family directory is {}".format(cf_dir))
+
+        debug("Copying sstables created by Cassandra...")
+        self.copy_files_to(cassandra_sstable_dir, cf_dir + "/upload")
+
+        debug("Running 'nodetool refresh -- {} {}' to load migrated sstables".format(ks, cf))
+        try:
+            node.nodetool("refresh -- {} {}".format(ks, cf))
+            assert False
+        except NodetoolError as error:
+            if message:
+                assert message in str(error), error
 
     def populate_cluster(self, cluster):
         # Disable hinted handoff and set batch commit log so this doesn't
