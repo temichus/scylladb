@@ -1273,7 +1273,7 @@ class TestAuth(Tester):
                 else:
                     assert isinstance(e.errors.values()[0], socket.error)
             else:
-                if j == 1:
+                if i == 1:
                     self.fail("Connection should not be created")
         nodes[1].start(wait_other_notice=True)
         # connection to 2 nodes should be ok
