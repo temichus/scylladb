@@ -67,7 +67,8 @@ class BaseTester(Tester):
         global thrift_client
 
         cluster = self.cluster
-        cluster.set_configuration_options(values={'experimental': True})
+        cluster.set_configuration_options(values={'experimental': True,
+                                                  'enable_deprecated_partitioners': True})
         cluster.populate(1)
         node1, = cluster.nodelist()
         # If vnodes are not used, we must set our own initial_token
