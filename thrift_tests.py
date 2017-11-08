@@ -2,6 +2,7 @@ import re
 import struct
 import time
 import uuid
+from threading import Thread
 
 from thrift.protocol import TBinaryProtocol
 from thrift.transport import TSocket, TTransport
@@ -2593,3 +2594,40 @@ class TestWrappingRangeQueries(ThriftTester):
         test_range('b', -1, 'a', 0, 10, ['b', 'a'])
         test_range('c', 0, 'e', -1, 2, [])
         test_range('b', -1, 'a', 1, 10, ['b', 'a'])
+
+class TestServerShutdown(ThriftTester):
+
+    """
+    Test thrift server can gracefully shutdown
+    """
+
+    def __init__(self, *args, **kwargs):
+        # Use murmur3 partitioner since its sharding is much more complex
+        # than the others.
+        kwargs['cluster_options'] = {'partitioner': 'org.apache.cassandra.dht.Murmur3Partitioner',
+                                     'start_rpc': 'true'}
+        Tester.__init__(self, *args, **kwargs)
+
+    def test_concurrent_stop(self):
+        node1, = self.cluster.nodelist()
+
+        def stop():
+            node1.stop()
+
+        def do_writes():
+            _set_keyspace('Keyspace1')
+            num_keys = 10000
+            keys = ['key' + str(i) for i in range(1, num_keys + 1)]
+            try:
+                _insert_multi(keys)
+            except:
+                pass
+
+        twriter = Thread(target = do_writes)
+        twriter.start()
+        tstop = Thread(target = stop)
+        tstop.start()
+        tstop.join()
+        twriter.join()
+
+        assert not node1.grep_log('Backtrace'), 'Thrift server crashed on stop'
