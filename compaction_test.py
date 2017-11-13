@@ -30,7 +30,8 @@ class TestCompaction(Tester):
         session = self.patient_cql_connection(node1)
         self.create_ks(session, 'ks', 1)
 
-        session.execute("create table ks.cf (key int PRIMARY KEY, val int) with compaction = {'class':'" + self.strategy + "'} and gc_grace_seconds = 30;")
+        session.execute("create table ks.cf (key int PRIMARY KEY, val int) "
+                        "with compaction = {'class':'" + self.strategy + "'} and gc_grace_seconds = 30;")
 
         for x in range(0, 100):
             session.execute('insert into cf (key, val) values (' + str(x) + ',1)')
@@ -59,7 +60,7 @@ class TestCompaction(Tester):
     def compaction_delete_test(self):
         """
         Test that executing a delete properly tombstones a row.
-        Insert data, delete a partition of data and check that the requesite rows are tombstoned.
+        Insert data, delete a partition of data and check that the requisite rows are tombstoned.
         """
         self._compaction_delete_test()
 
@@ -76,7 +77,7 @@ class TestCompaction(Tester):
         session = self.patient_cql_connection(node1)
 
         # check that after compaction the tombstones remain
-        # force an update so that compact will have something todo
+        # force an update so that compact will have something to do
         session.execute('insert into ks.cf (key, val) values (99,1);')
         node1.flush()
         node1.compact()
@@ -96,7 +97,7 @@ class TestCompaction(Tester):
         time.sleep(31)
 
         # check that after gc_period compaction removes tombstones
-        # force an update so that compact will have something todo
+        # force an update so that compact will have something to do
         session.execute('insert into ks.cf (key, val) values (99,1);')
         node1.flush()
         node1.compact()
@@ -131,7 +132,7 @@ class TestCompaction(Tester):
         if output.find(table_name) != -1:
             output = output[output.find(table_name):]
             output = output[output.find("Space used (live)"):]
-            initialValue = int(output[output.find(":") + 1:output.find("\n")].strip())
+            initial_value = int(output[output.find(":") + 1:output.find("\n")].strip())
         else:
             debug("datasize not found")
             debug(output)
@@ -142,11 +143,11 @@ class TestCompaction(Tester):
         if output.find(table_name) != -1:
             output = output[output.find(table_name):]
             output = output[output.find("Space used (live)"):]
-            finalValue = int(output[output.find(":") + 1:output.find("\n")].strip())
+            final_value = int(output[output.find(":") + 1:output.find("\n")].strip())
         else:
             debug("datasize not found")
 
-        self.assertLess(finalValue, initialValue)
+        self.assertLess(final_value, initial_value)
 
     def sstable_deletion_test(self):
         """
@@ -160,7 +161,8 @@ class TestCompaction(Tester):
         [node1] = cluster.nodelist()
         session = self.patient_cql_connection(node1)
         self.create_ks(session, 'ks', 1)
-        session.execute("create table cf (key int PRIMARY KEY, val int) with gc_grace_seconds = 0 and compaction= {'class':'" + self.strategy + "'}")
+        session.execute("create table cf (key int PRIMARY KEY, val int) with gc_grace_seconds = 0 and "
+                        "compaction= {'class':'" + self.strategy + "'}")
 
         for x in range(0, 100):
             session.execute('insert into cf (key, val) values (' + str(x) + ',1)')
@@ -198,8 +200,9 @@ class TestCompaction(Tester):
         session = self.patient_cql_connection(node1)
         self.create_ks(session, 'ks', 1)
         # max sstable age is 0.5 minute:
-        session.execute("""create table cf (key int PRIMARY KEY, val int) with gc_grace_seconds = 0
-            and compaction= {'class':'DateTieredCompactionStrategy', 'max_sstable_age_days':0.00035, 'min_threshold':2}""")
+        session.execute("create table cf (key int PRIMARY KEY, val int) with gc_grace_seconds = 0 and "
+                        "compaction= {'class':'DateTieredCompactionStrategy', 'max_sstable_age_days':0.00035, "
+                        "'min_threshold':2}")
 
         # insert data
         for x in range(0, 300):
@@ -217,7 +220,9 @@ class TestCompaction(Tester):
         # we only check every 10 minutes - sstable should still be there:
         assert expired_sstable in node1.get_sstables('ks', 'cf')
 
-        session.execute("alter table cf with compaction =  {'class':'DateTieredCompactionStrategy', 'max_sstable_age_days':0.00035, 'min_threshold':2, 'expired_sstable_check_frequency_seconds':0}")
+        session.execute("alter table cf with "
+                        "compaction =  {'class':'DateTieredCompactionStrategy', 'max_sstable_age_days':0.00035, "
+                        "'min_threshold':2, 'expired_sstable_check_frequency_seconds':0}")
         time.sleep(1)
         for x in range(0, 100):
             session.execute('insert into cf (key, val) values (%d, %d)' % (x, x))
@@ -261,7 +266,8 @@ class TestCompaction(Tester):
         """Ensure that switching strategies does not result in problems.
         Insert data, switch strategies, then check against data loss.
         """
-        strategies = ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy']
+        strategies = ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy',
+                      'TimeWindowCompactionStrategy']
 
         if self.strategy in strategies:
             strategies.remove(self.strategy)
@@ -273,7 +279,8 @@ class TestCompaction(Tester):
                 session = self.patient_cql_connection(node1)
                 self.create_ks(session, 'ks', 1)
 
-                session.execute("create table ks.cf (key int PRIMARY KEY, val int) with gc_grace_seconds = 0 and compaction= {'class':'" + self.strategy + "'};")
+                session.execute("create table ks.cf (key int PRIMARY KEY, val int) with gc_grace_seconds = 0 "
+                                "and compaction= {'class':'" + self.strategy + "'};")
 
                 for x in range(0, 100):
                     session.execute('insert into ks.cf (key, val) values (' + str(x) + ',1)')
@@ -299,7 +306,8 @@ class TestCompaction(Tester):
     def large_compaction_warning_test(self):
         """
         @jira_ticket CASSANDRA-9643
-        Check that we log a warning when the partition size is bigger than compaction_large_partition_warning_threshold_mb
+        Check that we log a warning when the partition size is bigger than
+        compaction_large_partition_warning_threshold_mb
         """
         cluster = self.cluster
         cluster.set_configuration_options({'compaction_large_partition_warning_threshold_mb': 1})
@@ -313,7 +321,8 @@ class TestCompaction(Tester):
         strlen = (1024 * 1024) / 100
         session.execute("CREATE TABLE large(userid text PRIMARY KEY, properties map<int, text>) with compression = {}")
         for i in range(200):  # ensures partition size larger than compaction_large_partition_warning_threshold_mb
-            session.execute("UPDATE ks.large SET properties[%i] = '%s' WHERE userid = 'user'" % (i, get_random_word(strlen)))
+            session.execute("UPDATE ks.large SET properties[%i] = '%s' "
+                            "WHERE userid = 'user'" % (i, get_random_word(strlen)))
 
         ret = list(session.execute("SELECT properties from ks.large where userid = 'user'"))
         assert len(ret) == 1
@@ -338,7 +347,8 @@ class TestCompaction(Tester):
         [node] = cluster.nodelist()
         session = self.patient_cql_connection(node)
         self.create_ks(session, 'ks', 1)
-        session.execute('CREATE TABLE to_disable (id int PRIMARY KEY, d TEXT) WITH compaction = {{\'class\':\'{0}\'}}'.format(self.strategy))
+        session.execute('CREATE TABLE to_disable (id int PRIMARY KEY, d TEXT) '
+                        'WITH compaction = {{\'class\':\'{0}\'}}'.format(self.strategy))
         node.nodetool('disableautocompaction ks to_disable')
         for i in range(1000):
             session.execute('insert into to_disable (id, d) values ({0}, \'{1}\')'.format(i, 'hello' * 100))
@@ -348,11 +358,13 @@ class TestCompaction(Tester):
             log_file = 'system.log'
         else:
             log_file = 'debug.log'
-        self.assertTrue(len(node.grep_log('Compacting.+to_disable', filename=log_file)) == 0, 'Found compaction log items for {0}'.format(self.strategy))
+        self.assertTrue(len(node.grep_log('Compacting.+to_disable', filename=log_file)) == 0,
+                        'Found compaction log items for {0}'.format(self.strategy))
         node.nodetool('enableautocompaction ks to_disable')
         # sleep to allow compactions to start
         time.sleep(2)
-        self.assertTrue(len(node.grep_log('Compacting.+to_disable', filename=log_file)) > 0, 'Found no log items for {0}'.format(self.strategy))
+        self.assertTrue(len(node.grep_log('Compacting.+to_disable', filename=log_file)) > 0,
+                        'Found no log items for {0}'.format(self.strategy))
 
     def disable_autocompaction_schema_test(self):
         """
@@ -363,12 +375,14 @@ class TestCompaction(Tester):
         [node] = cluster.nodelist()
         session = self.patient_cql_connection(node)
         self.create_ks(session, 'ks', 1)
-        session.execute('CREATE TABLE to_disable (id int PRIMARY KEY, d TEXT) WITH compaction = {{\'class\':\'{0}\', \'enabled\':\'false\'}}'.format(self.strategy))
+        session.execute('CREATE TABLE to_disable (id int PRIMARY KEY, d TEXT) '
+                        'WITH compaction = {{\'class\':\'{0}\', \'enabled\':\'false\'}}'.format(self.strategy))
         for i in range(1000):
             session.execute('insert into to_disable (id, d) values ({0}, \'{1}\')'.format(i, 'hello' * 100))
             if i % 100 == 0:
                 node.flush()
-        self.assertTrue(len(node.grep_log('Compacting.+to_disable')) == 0, 'Found compaction log items for {0}'.format(self.strategy))
+        self.assertTrue(len(node.grep_log('Compacting.+to_disable')) == 0,
+                        'Found compaction log items for {0}'.format(self.strategy))
         # should still be disabled after restart:
         node.stop()
         node.start(wait_for_binary_proto=True)
@@ -380,11 +394,13 @@ class TestCompaction(Tester):
             log_file = 'system.log'
         else:
             log_file = 'debug.log'
-        self.assertTrue(len(node.grep_log('Compacting.+to_disable', filename=log_file)) == 0, 'Found compaction log items for {0}'.format(self.strategy))
+        self.assertTrue(len(node.grep_log('Compacting.+to_disable', filename=log_file)) == 0,
+                        'Found compaction log items for {0}'.format(self.strategy))
         node.nodetool('enableautocompaction ks to_disable')
         # sleep to allow compactions to start
         time.sleep(2)
-        self.assertTrue(len(node.grep_log('Compacting.+to_disable', filename=log_file)) > 0, 'Found no log items for {0}'.format(self.strategy))
+        self.assertTrue(len(node.grep_log('Compacting.+to_disable', filename=log_file)) > 0,
+                        'Found no log items for {0}'.format(self.strategy))
 
     def disable_autocompaction_alter_test(self):
         """
@@ -395,8 +411,10 @@ class TestCompaction(Tester):
         [node] = cluster.nodelist()
         session = self.patient_cql_connection(node)
         self.create_ks(session, 'ks', 1)
-        session.execute('CREATE TABLE to_disable (id int PRIMARY KEY, d TEXT) WITH compaction = {{\'class\':\'{0}\'}}'.format(self.strategy))
-        session.execute('ALTER TABLE to_disable WITH compaction = {{\'class\':\'{0}\', \'enabled\':\'false\'}}'.format(self.strategy))
+        session.execute('CREATE TABLE to_disable (id int PRIMARY KEY, d TEXT) '
+                        'WITH compaction = {{\'class\':\'{0}\'}}'.format(self.strategy))
+        session.execute('ALTER TABLE to_disable '
+                        'WITH compaction = {{\'class\':\'{0}\', \'enabled\':\'false\'}}'.format(self.strategy))
         for i in range(1000):
             session.execute('insert into to_disable (id, d) values ({0}, \'{1}\')'.format(i, 'hello' * 100))
             if i % 100 == 0:
@@ -405,14 +423,17 @@ class TestCompaction(Tester):
             log_file = 'system.log'
         else:
             log_file = 'debug.log'
-        self.assertTrue(len(node.grep_log('Compacting.+to_disable', filename=log_file)) == 0, 'Found compaction log items for {0}'.format(self.strategy))
-        session.execute('ALTER TABLE to_disable WITH compaction = {{\'class\':\'{0}\', \'enabled\':\'true\'}}'.format(self.strategy))
+        self.assertTrue(len(node.grep_log('Compacting.+to_disable', filename=log_file)) == 0,
+                        'Found compaction log items for {0}'.format(self.strategy))
+        session.execute('ALTER TABLE to_disable '
+                        'WITH compaction = {{\'class\':\'{0}\', \'enabled\':\'true\'}}'.format(self.strategy))
         # we need to flush atleast once when altering to enable:
         session.execute('insert into to_disable (id, d) values (99, \'hello\')')
         node.flush()
         # sleep to allow compactions to start
         time.sleep(2)
-        self.assertTrue(len(node.grep_log('Compacting.+to_disable', filename=log_file)) > 0, 'Found no log items for {0}'.format(self.strategy))
+        self.assertTrue(len(node.grep_log('Compacting.+to_disable', filename=log_file)) > 0,
+                        'Found no log items for {0}'.format(self.strategy))
 
     def disable_autocompaction_alter_and_nodetool_test(self):
         """
@@ -423,7 +444,8 @@ class TestCompaction(Tester):
         [node] = cluster.nodelist()
         session = self.patient_cql_connection(node)
         self.create_ks(session, 'ks', 1)
-        session.execute('CREATE TABLE to_disable (id int PRIMARY KEY, d TEXT) WITH compaction = {{\'class\':\'{0}\'}}'.format(self.strategy))
+        session.execute('CREATE TABLE to_disable (id int PRIMARY KEY, d TEXT) '
+                        'WITH compaction = {{\'class\':\'{0}\'}}'.format(self.strategy))
         node.nodetool('disableautocompaction ks to_disable')
         for i in range(1000):
             session.execute('insert into to_disable (id, d) values ({0}, \'{1}\')'.format(i, 'hello' * 100))
@@ -433,25 +455,29 @@ class TestCompaction(Tester):
             log_file = 'system.log'
         else:
             log_file = 'debug.log'
-        self.assertTrue(len(node.grep_log('Compacting.+to_disable', filename=log_file)) == 0, 'Found compaction log items for {0}'.format(self.strategy))
-        session.execute('ALTER TABLE to_disable WITH compaction = {{\'class\':\'{0}\', \'tombstone_threshold\':0.9}}'.format(self.strategy))
+        self.assertTrue(len(node.grep_log('Compacting.+to_disable', filename=log_file)) == 0,
+                        'Found compaction log items for {0}'.format(self.strategy))
+        session.execute('ALTER TABLE to_disable '
+                        'WITH compaction = {{\'class\':\'{0}\', \'tombstone_threshold\':0.9}}'.format(self.strategy))
         session.execute('insert into to_disable (id, d) values (99, \'hello\')')
         node.flush()
         time.sleep(2)
-        self.assertTrue(len(node.grep_log('Compacting.+to_disable', filename=log_file)) == 0, 'Found log items for {0}'.format(self.strategy))
+        self.assertTrue(len(node.grep_log('Compacting.+to_disable', filename=log_file)) == 0,
+                        'Found log items for {0}'.format(self.strategy))
         node.nodetool('enableautocompaction ks to_disable')
         # sleep to allow compactions to start
         time.sleep(2)
-        self.assertTrue(len(node.grep_log('Compacting.+to_disable', filename=log_file)) > 0, 'Found no log items for {0}'.format(self.strategy))
+        self.assertTrue(len(node.grep_log('Compacting.+to_disable', filename=log_file)) > 0,
+                        'Found no log items for {0}'.format(self.strategy))
 
     def skip_if_no_major_compaction(self):
         if self.cluster.version() < '2.2' and self.strategy == 'LeveledCompactionStrategy':
             self.skipTest('major compaction not implemented for LCS in this version of Cassandra')
 
 
-def get_random_word(wordLen):
+def get_random_word(word_len):
     word = ''
-    for i in range(wordLen):
+    for i in range(word_len):
         word += random.choice('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789')
     return word
 
@@ -499,7 +525,8 @@ def stress_write(node, keycount=100000):
     node.stress(['write', 'n={keycount}'.format(keycount=keycount)])
 
 
-strategies = ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy']
+strategies = ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy',
+              'TimeWindowCompactionStrategy']
 for strategy in strategies:
     cls_name = ('TestCompaction_with_' + strategy)
     vars()[cls_name] = type(cls_name, (TestCompaction,), {'strategy': strategy, '__test__': True})
