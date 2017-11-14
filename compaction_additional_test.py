@@ -32,7 +32,8 @@ class CompactionAdditionalTest(Tester):
         session = self.patient_cql_connection(node1)
         self.create_ks(session, 'ks', 1)
 
-        session.execute("create table ks.cf (key int PRIMARY KEY, val int) with compaction = {'class':'SizeTieredCompactionStrategy'} and gc_grace_seconds = 30;")
+        session.execute("create table ks.cf (key int PRIMARY KEY, val int) "
+                        "with compaction = {'class':'SizeTieredCompactionStrategy'} and gc_grace_seconds = 30;")
 
         for x in range(0, 100):
             session.execute('insert into cf (key, val) values (' + str(x) + ',1)')
@@ -127,7 +128,8 @@ class CompactionAdditionalStrategyTests(Tester):
 
         session = self.patient_cql_connection(node1)
         self.create_ks(session, 'ks', 1)
-        session.execute("create table ks.cf (key int PRIMARY KEY, val int) with compaction = {'class':'" + self.strategy + "'};")
+        session.execute("create table ks.cf (key int PRIMARY KEY, val int) "
+                        "with compaction = {'class':'" + self.strategy + "'};")
 
         for x in range(0, 100):
             session.execute('insert into cf (key, val) values (' + str(x) + ',1)')
@@ -140,7 +142,8 @@ class CompactionAdditionalStrategyTests(Tester):
             os.remove(f)
 
         keyspace_dir = os.path.join(node1.get_path(), 'data', 'ks')
-        sstablefiles = glob.glob(glob.glob(os.path.join(keyspace_dir, 'cf' + '-*', '*-TOC.txt'))[0].replace('TOC.txt', '') + '*')
+        sstablefiles = glob.glob(glob.glob(os.path.join(keyspace_dir,
+                                                        'cf' + '-*', '*-TOC.txt'))[0].replace('TOC.txt', '') + '*')
         for f in sstablefiles:
             for generation_suffix in xrange(10, 40):
                 self._copy_sstable_file(f, "9999%d" % generation_suffix)
@@ -177,7 +180,8 @@ class CompactionAdditionalStrategyTests(Tester):
         session = self.patient_cql_connection(node1)
         self.create_ks(session, 'ks', 1)
 
-        session.execute("create table ks.cf (key int PRIMARY KEY, val int) with compaction = {'class':'" + self.strategy + "'} and gc_grace_seconds = 1;")
+        session.execute("create table ks.cf (key int PRIMARY KEY, val int) "
+                        "with compaction = {'class':'" + self.strategy + "'} and gc_grace_seconds = 1;")
 
         for x in range(0, 100):
             session.execute('insert into cf (key, val) values (' + str(x) + ',1) USING TTL 29')
@@ -203,7 +207,8 @@ class CompactionAdditionalStrategyTests(Tester):
         self.assertEqual(numfound, 1)
 
 
-strategies = ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy']
+strategies = ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy',
+              'TimeWindowCompactionStrategy']
 for strategy in strategies:
     cls_name = ('CompactionAdditionalStrategyTests_with_' + strategy)
     vars()[cls_name] = type(cls_name, (CompactionAdditionalStrategyTests,), {'strategy': strategy, '__test__': True})
