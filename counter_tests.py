@@ -22,6 +22,7 @@ class TestCounters(Tester):
         """ Simple incrementation test (Created for #3465, that wasn't a bug) """
         cluster = self.cluster
         cluster.set_configuration_options(values={'experimental': True})
+        cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
 
         cluster.populate(3).start()
         nodes = cluster.nodelist()
@@ -57,6 +58,7 @@ class TestCounters(Tester):
 
         cluster = self.cluster
         cluster.set_configuration_options(values={'experimental': True})
+        cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
 
         cluster.populate(2).start()
         nodes = cluster.nodelist()
@@ -125,6 +127,7 @@ class TestCounters(Tester):
         """
         cluster = self.cluster
         cluster.set_configuration_options(values={'experimental': True})
+        cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
 
         cluster.populate(3).start()
         node1, node2, node3 = cluster.nodelist()
@@ -208,6 +211,7 @@ class TestCounters(Tester):
         """
         cluster = self.cluster
         cluster.set_configuration_options(values={'experimental': True})
+        cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
 
         cluster.populate(3).start()
         node1, node2, node3 = cluster.nodelist()
@@ -247,6 +251,7 @@ class TestCounters(Tester):
     def validate_empty_column_name_test(self):
         cluster = self.cluster
         cluster.set_configuration_options(values={'experimental': True})
+        cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
 
         cluster.populate(1).start()
         node1 = cluster.nodelist()[0]
@@ -275,6 +280,7 @@ class TestCounters(Tester):
         """Test for CASSANDRA-7831"""
         cluster = self.cluster
         cluster.set_configuration_options(values={'experimental': True})
+        cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
 
         cluster.populate(1).start()
         node1, = cluster.nodelist()
@@ -302,6 +308,7 @@ class TestCounters(Tester):
         """
         cluster = self.cluster
         cluster.set_configuration_options(values={'experimental': True})
+        cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
 
         cluster.populate(3).start()
         nodes = cluster.nodelist()
@@ -363,6 +370,7 @@ class TestCounters(Tester):
         """
         cluster = self.cluster
         cluster.set_configuration_options(values={'experimental': True})
+        cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
 
         cluster.populate(3).start()
         nodes = cluster.nodelist()
@@ -427,6 +435,7 @@ class TestCounters(Tester):
         """
         cluster = self.cluster
         cluster.set_configuration_options(values={'experimental': True})
+        cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
         cluster.populate(1).start()
         session = self.patient_cql_connection(cluster.nodelist()[0])
         self.create_ks(session, 'Test', 1)
@@ -446,6 +455,7 @@ class TestCounters(Tester):
         """
         cluster = self.cluster
         cluster.set_configuration_options(values={'experimental': True})
+        cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
 
         cluster.populate(1).start()
         node1, = cluster.nodelist()
@@ -506,6 +516,7 @@ class TestCounters(Tester):
         """
         cluster = self.cluster
         cluster.set_configuration_options(values={'experimental': True})
+        cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
 
         cluster.populate(1).start()
         node1, = cluster.nodelist()
@@ -545,6 +556,7 @@ class TestCounters(Tester):
         """
         cluster = self.cluster
         cluster.set_configuration_options(values={'experimental': True})
+        cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
 
         cluster.populate(1).start()
         node1, = cluster.nodelist()
@@ -590,6 +602,7 @@ class TestCounters(Tester):
                   'permissions_validity_in_ms': 0,
                   'experimental': True}
         cluster.set_configuration_options(values=config)
+        cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
 
         cluster.populate(1).start()
         n = self.wait_for_any_log(cluster.nodelist(), 'Created default superuser', 10)
@@ -663,6 +676,7 @@ class TestCounters(Tester):
         """
         cluster = self.cluster
         cluster.set_configuration_options(values={'experimental': True})
+        cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
         cluster.populate(1).start()
         node1 = cluster.nodelist()[0]
         session = self.patient_cql_connection(node1)
@@ -709,6 +723,7 @@ class TestCounters(Tester):
         """
         cluster = self.cluster
         cluster.set_configuration_options(values={'experimental': True})
+        cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
         cluster.populate(3).start()
         node1 = cluster.nodelist()[0]
         session = self.patient_cql_connection(node1)
@@ -745,6 +760,7 @@ class TestCountersOnMultipleNodes(Tester):
         debug("Starting cluster with 3 nodes.")
         cluster = self.cluster
         cluster.set_configuration_options(values={'experimental': True, 'hinted_handoff_enabled': False})
+        cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
         cluster.populate(3).start()
         self.node1, self.node2, self.node3 = cluster.nodelist()
 
@@ -926,6 +942,7 @@ class TestCountersStress(Tester):
         super(TestCountersStress, self).setUp()
         cluster = self.cluster
         cluster.set_configuration_options(values={'experimental': True})
+        cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
         cluster.populate(3).start()
         self.node = cluster.nodelist()[0]
 
