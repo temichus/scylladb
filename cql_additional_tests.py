@@ -47,6 +47,7 @@ class TestCQL(Tester):
         cluster = self.cluster
 
         if (ordered):
+            cluster.set_configuration_options(values={'enable_deprecated_partitioners': True})
             cluster.set_partitioner("org.apache.cassandra.dht.ByteOrderedPartitioner")
 
         if (use_cache):

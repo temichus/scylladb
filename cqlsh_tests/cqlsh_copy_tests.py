@@ -55,6 +55,8 @@ class CqlshPrepare(Tester):
         if not self.cluster.nodelist():
             p = PARTITIONERS[partitioner]
             self.cluster.set_partitioner(p)
+            if partitioner != "murmur3":
+                self.cluster.set_configuration_options(values={'enable_deprecated_partitioners': True})
             if configuration_options:
                 self.cluster.set_configuration_options(values=configuration_options)
             self.cluster.populate(nodes).start(wait_for_binary_proto=True)
