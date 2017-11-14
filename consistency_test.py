@@ -105,6 +105,7 @@ class TestHelper(Tester):
     def _start_cluster(self, save_sessions=False):
         cluster = self.cluster
         cluster.set_configuration_options(values={'experimental': True})
+        cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
 
         nodes = self.nodes
         rf = self.rf
@@ -785,6 +786,7 @@ class TestConsistency(Tester):
         # interfer with the test
         cluster.set_configuration_options(
             values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
 
         cluster.populate(3).start(wait_other_notice=True)
         node1, node2, node3 = cluster.nodelist()
@@ -829,6 +831,7 @@ class TestConsistency(Tester):
         # interfer with the test
         cluster.set_configuration_options(
             values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
 
         cluster.populate(2).start(wait_other_notice=True)
         node1, node2 = cluster.nodelist()
@@ -870,6 +873,7 @@ class TestConsistency(Tester):
         # interfere with the test
         cluster.set_configuration_options(
             values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
 
         cluster.populate(3).start(wait_other_notice=True)
         node1, node2, node3 = cluster.nodelist()
@@ -912,6 +916,7 @@ class TestConsistency(Tester):
         cluster = self.cluster
         cluster.set_configuration_options(
             values={'hinted_handoff_enabled': False})
+        cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
 
         if DISABLE_VNODES:
             cluster.populate(2).start()
@@ -951,6 +956,7 @@ class TestConsistency(Tester):
         # interfere with the test
         cluster.set_configuration_options(
             values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
 
         cluster.populate(3).start(wait_other_notice=True)
         node1, node2, node3 = cluster.nodelist()
@@ -993,6 +999,7 @@ class TestConsistency(Tester):
 
         debug("Creating a ring")
         cluster = self.cluster
+        cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
         if DISABLE_VNODES:
             cluster.populate(3).start()
         else:
@@ -1037,8 +1044,9 @@ class TestConsistency(Tester):
     def data_query_digest_test(self):
         debug('Create cluster')
         cluster = self.cluster
-        cluster.populate(2).start()
+        cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
         cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        cluster.populate(2).start()
         node1, node2 = cluster.nodelist()
 
         debug('Prepare column family')
@@ -1076,6 +1084,7 @@ class TestConsistency(Tester):
         cluster = self.cluster
         cluster.set_partitioner("org.apache.cassandra.dht.ByteOrderedPartitioner")
         cluster.set_configuration_options(values={'start_rpc': True})
+        cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
         cluster.populate(2).start()
         cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
         node1, node2 = cluster.nodelist()
@@ -1120,8 +1129,9 @@ class TestConsistency(Tester):
         cluster = self.cluster
         cluster.set_partitioner("org.apache.cassandra.dht.ByteOrderedPartitioner")
         cluster.set_configuration_options(values={'start_rpc': True})
-        cluster.populate(2).start()
+        cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
         cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        cluster.populate(2).start()
         node1, node2 = cluster.nodelist()
 
         debug('Prepare column family')
@@ -1162,8 +1172,9 @@ class TestConsistency(Tester):
     def empty_reconciled_result(self):
         debug('Create cluster')
         cluster = self.cluster
-        cluster.populate(2).start()
         cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
+        cluster.populate(2).start()
         node1, node2 = cluster.nodelist()
 
         debug('Prepare column family')
@@ -1200,8 +1211,9 @@ class TestConsistency(Tester):
     def empty_reconciled_result_with_paging(self):
         debug('Create cluster')
         cluster = self.cluster
-        cluster.populate(2).start()
+        cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
         cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        cluster.populate(2).start()
         node1, node2 = cluster.nodelist()
 
         debug('Prepare column family')
@@ -1243,6 +1255,7 @@ class TestConsistency(Tester):
         cluster = self.cluster
         cluster.set_partitioner("org.apache.cassandra.dht.ByteOrderedPartitioner")
         cluster.set_configuration_options(values={'start_rpc': True})
+        cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
         cluster.populate(2).start()
         cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
         node1, node2 = cluster.nodelist()
@@ -1292,8 +1305,9 @@ class TestConsistency(Tester):
         debug('Create cluster')
         cluster = self.cluster
         cluster.set_partitioner("org.apache.cassandra.dht.ByteOrderedPartitioner")
-        cluster.populate(2).start()
+        cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
         cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        cluster.populate(2).start()
         node1, node2 = cluster.nodelist()
 
         debug('Prepare column family')
