@@ -21,7 +21,7 @@ class NativeTransportSSL(Tester):
         cluster = self._populateCluster(enableSSL=True)
         node1 = cluster.nodelist()[0]
 
-        cluster.start()
+        cluster.start(jvm_args=['--logger-log-level','cql_server=debug'])
 
         try:  # hack around assertRaise's lack of msg parameter
             # try to connect without ssl options
@@ -44,7 +44,7 @@ class NativeTransportSSL(Tester):
         cluster = self._populateCluster(enableSSL=True, requireAuth=True)
         node1 = cluster.nodelist()[0]
 
-        cluster.start()
+        cluster.start(jvm_args=['--logger-log-level','cql_server=debug'])
 
         try:  # hack around assertRaise's lack of msg parameter
             # try to connect without ssl options
