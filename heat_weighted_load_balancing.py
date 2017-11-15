@@ -15,9 +15,13 @@ class HeatWeightedLB(Tester):
 
     def _pretty_print(self, metrics):
         for key in metrics:
+            for node_ind in (1, 2, 3):
+                if not metrics[key][node_ind]:
+                    debug('WARNING: no metrics found for {}'.format(key))
+                    continue
             print key
             print '{:10s}   {:10s}   {:10s}'.format('node1', 'node2', 'node3')
-            for i in range(50):
+            for i in range(100):
                 value = 'delta' if 'cache_hit_rate' not in key else 'val'
                 print '{:15s}  {:15s}  {:15s}'.format(str(metrics[key][1][i][value]),
                                                       str(metrics[key][2][i][value]),
@@ -26,7 +30,7 @@ class HeatWeightedLB(Tester):
     def get_metrics_from_nodes(self):
         debug('Get metrics from all nodes')
         node_metrics = {k: {1: [], 2: [], 3: []} for k in self.METRICS}
-        for i in range(50):
+        for i in range(100):
             for node_ind in (1, 2, 3):
                 metrics = self.get_node_metrics(node_ip=self.cluster.get_node_ip(node_ind), metrics=self.METRICS)
                 for k, v in metrics.iteritems():
@@ -44,16 +48,16 @@ class HeatWeightedLB(Tester):
         """
         debug('Verify metrics')
         for key in ('scylla_storage_proxy_coordinator_reads_local_node', 'scylla_storage_proxy_replica_reads'):
-            for i in range(10, 50):
+            for i in range(30, 70):
                 for node_ind in (1, 3):
                     if cached:
                         # parameter's delta is almost equal for all the nodes
                         self.assertLessEqual(metrics[key][node_ind][i]['delta']/metrics[key][2][i]['delta'], 1)
                     else:
-                        # parameter's delta on the restarted node is less from 7 to 13 times
-                        self.assertIn(metrics[key][node_ind][i]['delta']/metrics[key][2][i]['delta'], range(7, 13))
+                        # parameter's delta on the restarted node is less from 5 to 13 times
+                        self.assertIn(metrics[key][node_ind][i]['delta']/metrics[key][2][i]['delta'], range(5, 13))
         key = 'scylla_column_family_cache_hit_rate.*cf=.*standard1'
-        for i in range(20, 50):
+        for i in range(30, 70):
             for node_ind in (1, 3):
                 if cached:
                     # parameter's value is equal for all the nodes
@@ -82,6 +86,7 @@ class HeatWeightedLB(Tester):
         restart one node, check that it starts to serve gradually due to a cold cache.
         """
         cluster = self.cluster
+        cluster.set_configuration_options(values={'enable_keyspace_column_family_metrics': True})
         cluster.populate(3).start()
         self.node1, self.node2, self.node3 = cluster.nodelist()
 
