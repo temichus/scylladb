@@ -285,7 +285,7 @@ class TestUpdateClusterLayout(Tester):
 
         debug("Start node 4...")
         node4 = new_node(cluster)
-        node4.start()
+        node4.start(jvm_args=['--logger-log-level','stream_session=debug'])
         node4.watch_log_for("Beginning stream session")
 
         debug("Stop node 2...")
@@ -337,7 +337,7 @@ class TestUpdateClusterLayout(Tester):
                                            None,
                                            binary_interface=(cluster.get_node_ip(i), 9042))
             debug("Start Node %d" % i)
-            new_node.start()
+            new_node.start(jvm_args=['--logger-log-level','stream_session=debug'])
             new_node.watch_log_for("JOINING: Starting to bootstrap")
             new_node.watch_log_for("Beginning stream session")
             debug("Stop Node %d" % i)
@@ -448,7 +448,7 @@ class TestUpdateClusterLayout(Tester):
             t.setDaemon(True)
 
             debug("Start Node %d" % i)
-            new_node.start()
+            new_node.start(jvm_args=['--logger-log-level','stream_session=debug'])
             new_node.watch_log_for("JOINING: Starting to bootstrap")
             t.start()
             new_node.watch_log_for("Beginning stream session")
@@ -527,7 +527,7 @@ class TestUpdateClusterLayout(Tester):
         t.setDaemon(True)
 
         debug("Start Node")
-        a_new_node.start()
+        a_new_node.start(jvm_args=['--logger-log-level','stream_session=debug'])
         a_new_node.watch_log_for("JOINING: Starting to bootstrap")
         time.sleep(1)
         t.start()
@@ -581,7 +581,7 @@ class TestUpdateClusterLayout(Tester):
         t.setDaemon(True)
 
         node4 = new_node(cluster)
-        node4.start()
+        node4.start(jvm_args=['--logger-log-level','stream_session=debug'])
         node4.watch_log_for("Beginning stream session")
         t.start()
 
@@ -645,7 +645,7 @@ class TestUpdateClusterLayout(Tester):
         t.setDaemon(True)
 
         node4 = new_node(cluster)
-        node4.start()
+        node4.start(jvm_args=['--logger-log-level','stream_session=debug'])
         node4.watch_log_for("Beginning stream session")
         t.start()
 
@@ -697,7 +697,7 @@ class TestUpdateClusterLayout(Tester):
         t.setDaemon(True)
 
         node4 = new_node(cluster)
-        node4.start()
+        node4.start(jvm_args=['--logger-log-level','stream_session=debug'])
         node4.watch_log_for("Beginning stream session")
         t.start()
 
@@ -829,7 +829,7 @@ class TestUpdateClusterLayout(Tester):
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfer with the test (this must be after the populate)
         cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
-        cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True)
+        cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True,jvm_args=['--logger-log-level','stream_session=debug'])
         node1, node2, node3 = cluster.nodelist()
 
         session = self.patient_cql_connection(node1)
@@ -876,7 +876,7 @@ class TestUpdateClusterLayout(Tester):
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfer with the test (this must be after the populate)
         cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
-        cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True)
+        cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True,jvm_args=['--logger-log-level','stream_session=debug'])
         node1, node2, node3 = cluster.nodelist()
 
         session = self.patient_cql_connection(node1)
@@ -1177,7 +1177,7 @@ class TestUpdateClusterLayout(Tester):
             t.start()
 
         node4 = new_node(cluster)
-        node4.start()
+        node4.start(jvm_args=['--logger-log-level','stream_session=debug'])
         node4.watch_log_for("Beginning stream session")
         # Create table and insert data during bootstrapping of the new node
         if when == "during":
@@ -1263,7 +1263,7 @@ class TestUpdateClusterLayout(Tester):
 
         debug("Start node 4...")
         node4 = new_node(cluster)
-        node4.start()
+        node4.start(jvm_args=['--logger-log-level','stream_session=debug'])
         node4.watch_log_for("Beginning stream session")
 
         debug("Stop node 4 ...")
