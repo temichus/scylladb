@@ -113,6 +113,62 @@ class CompactionAdditionalTest(Tester):
 
         self.assertEqual(numfound, 0)
 
+    def compaction_removes_ttld_data_by_time_windows(self):
+        """
+        Test that TWCS compaction removes TTLd data after gc_period by time windows
+        1. start cluster
+        2. create a table with a small gc_period
+        3. write data into the table with a small ttl
+        4. wait past ttl and gc_period
+        5. write some data and force compaction
+        6. check that ttl'd data was removed
+        Please note that we do not test that ttl data exists - we have other tests for this
+        """
+        cluster = self.cluster
+        cluster.populate(3).start(wait_for_binary_proto=True)
+        [node1] = cluster.nodelist()
+
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 3)
+
+        session.execute("create table ks.cf (key int PRIMARY KEY, val int) "
+                        "with compaction = {'class':'" + self.strategy + "'} and gc_grace_seconds = 1;")
+
+        session.execute("CREATE TABLE ks.twcs (id int, value int, text_value text, PRIMARY KEY (id, value)) "
+                        "WITH CLUSTERING ORDER BY (value ASC) AND bloom_filter_fp_chance = 0.01 "
+                        "AND gc_grace_seconds = 60 AND default_time_to_live = 180 "
+                        "AND compaction = {'compaction_window_size': '1', 'compaction_window_unit': 'MINUTES', "
+                        "'class': 'TimeWindowCompactionStrategy'}")
+
+        for t in range(0, 12):
+            for x in range(0, 100):
+                session.execute('insert into cf (key, val) values (' + str(x) + ',1) USING TTL 29')
+                session.execute('insert into ks.twcs (id, value, text_value) '
+                                'values (' + str(x) + ', x, "This data should be TTLed soon") USING TTL 29')
+            node1.flush()
+
+        time.sleep(331)
+
+        # # check that after gc_period compaction removes ttl'd data
+        # # force an update so that compact will have something todo
+        # session.execute('insert into ks.cf (key, val) values (99,1);')
+        # node1.flush()
+        # node1.compact()
+
+        json_path = tempfile.mkstemp(suffix='.json')
+        jname = json_path[1]
+        with open(jname, 'w') as f:
+            node1.run_sstable2json(f)
+
+        with open(jname, 'r') as g:
+            jsoninfo = g.read()
+
+        numfound = jsoninfo.count("partition")
+
+        time.sleep(331)
+
+        self.assertEqual(numfound, 1)
+
 
 class CompactionAdditionalStrategyTests(Tester):
     __test__ = False
@@ -162,7 +218,7 @@ class CompactionAdditionalStrategyTests(Tester):
         sstable_split_parts[-2] = generation
         shutil.copy(file, os.path.join(os.path.dirname(file), '-'.join(sstable_split_parts)))
 
-    def compaction_removes_ttld_data_after_gc_period(self):
+    def compaction_removes_ttld_data_after_gc_period_test(self):
         """
         Test that compaction removes TTLd data after gc_period
         1. start cluster
