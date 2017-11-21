@@ -48,16 +48,22 @@ class HeatWeightedLB(Tester):
         """
         debug('Verify metrics')
         for key in ('scylla_storage_proxy_coordinator_reads_local_node', 'scylla_storage_proxy_replica_reads'):
-            for i in range(30, 70):
+            debug('Verify {}'.format(key))
+            for i in range(10, 50):
                 for node_ind in (1, 3):
                     if cached:
                         # parameter's delta is almost equal for all the nodes
                         self.assertLessEqual(metrics[key][node_ind][i]['delta']/metrics[key][2][i]['delta'], 1)
                     else:
                         # parameter's delta on the restarted node is less from 5 to 13 times
-                        self.assertIn(metrics[key][node_ind][i]['delta']/metrics[key][2][i]['delta'], range(5, 13))
+                        mean_window = 5
+                        mean_avg = sum([metrics[key][node_ind][j]['delta'] for j in range(i, i + mean_window)]) / mean_window
+                        node_mean_avg = sum([metrics[key][2][j]['delta'] for j in range(i, i + mean_window)]) / mean_window
+                        self.assertIn(mean_avg / node_mean_avg, range(5, 13),
+                                      'Cache difference between nodes is less then expected: {}/{}, metric {}'.format(
+                                          mean_avg, node_mean_avg, key))
         key = 'scylla_column_family_cache_hit_rate.*cf=.*standard1'
-        for i in range(30, 70):
+        for i in range(20, 50):
             for node_ind in (1, 3):
                 if cached:
                     # parameter's value is equal for all the nodes
