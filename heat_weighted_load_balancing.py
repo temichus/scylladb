@@ -55,11 +55,11 @@ class HeatWeightedLB(Tester):
                         # parameter's delta is almost equal for all the nodes
                         self.assertLessEqual(metrics[key][node_ind][i]['delta']/metrics[key][2][i]['delta'], 1)
                     else:
-                        # parameter's delta on the restarted node is less from 5 to 13 times
+                        # parameter's delta on the restarted node is less from 4 to 13 times
                         mean_window = 5
                         mean_avg = sum([metrics[key][node_ind][j]['delta'] for j in range(i, i + mean_window)]) / mean_window
                         node_mean_avg = sum([metrics[key][2][j]['delta'] for j in range(i, i + mean_window)]) / mean_window
-                        self.assertIn(mean_avg / node_mean_avg, range(5, 13),
+                        self.assertIn(mean_avg / node_mean_avg, range(4, 13),
                                       'Cache difference between nodes is less then expected: {}/{}, metric {}'.format(
                                           mean_avg, node_mean_avg, key))
         key = 'scylla_column_family_cache_hit_rate.*cf=.*standard1'
