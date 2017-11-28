@@ -1850,6 +1850,78 @@ class TestAuth(Tester):
         else:
             self.fail('Session should not be created')
 
+    def transitional_auth_from_pwdauth_test(self):
+        """
+        Start cluster with PasswordAuthenticator/CassandraAuthorizer, rolling upgrade cluster
+        to enable Transitional Auth, create a normal user and verify its permission, then
+        switch to AllowAll Auth. It's a wrong transitional order but we want to cover it.
+        """
+        debug('STEP: start cluster with PasswordAuthenticator/CassandraAuthorizer')
+        self.prepare(nodes=3, enable_auth=True)
+        self.wait_for_any_log(self.cluster.nodelist(), 'Created default superuser', 10)
+
+        session = self.get_session(user='cassandra', password='cassandra')
+        debug('STEP: create normal user by super cassandra')
+        session.execute("CREATE USER normal WITH PASSWORD '123456' NOSUPERUSER")
+
+        session = self.get_session(user='normal', password='123456')
+        rows = list(session.execute('LIST USERS'))
+        assert len(rows) == 2, "Expect to see `cassandra` and `normal`, actual: %s" % (rows)
+        debug('Verified normal user was created and available')
+
+        debug('STEP: verify user without credentials can not login')
+        try:
+            session = self.get_session(user='normal', password='wrongpwd')
+            self._check_session_available(session, expect_auth_err=True)
+        except NoHostAvailable as e:
+            debug(e)
+            assert isinstance(e.errors.values()[0], AuthenticationFailed)
+        else:
+            self.fail('Session should not be created')
+
+        debug('STEP: update conf and restart cluster to use TransitionalAuthenticator/TransitionalAuthorizer')
+        config = {'authenticator': 'com.scylladb.auth.TransitionalAuthenticator',
+                   'authorizer': 'com.scylladb.auth.TransitionalAuthorizer'}
+        self.cluster.set_configuration_options(values=config)
+        for node in self.cluster.nodelist():
+            node.stop()
+            node.start(wait_for_binary_proto=True)
+
+        debug('STEP: verify normal user has permission to list users')
+        session = self.get_session(user='normal', password='123456')
+        session.execute('LIST USERS')
+
+        debug('STEP: verify user will login as anonymous if authentication fails')
+        session = self.get_session(user='normal', password='wrongpwd')
+        self.assertUnauthorized("You have to be logged in and not anonymous to perform this request", session,
+                                "LIST USERS")
+
+        debug('STEP: verify user without credentials can not login')
+        try:
+            session = self.get_session()
+            self._check_session_available(session, expect_auth_err=True)
+        except NoHostAvailable as e:
+            debug(e)
+            assert isinstance(e.errors.values()[0], AuthenticationFailed)
+        else:
+            self.fail('Session should not be created')
+
+        debug('STEP: update conf and restart cluster to use AllowAllAuthenticator/AllowAllAuthorizer')
+        config = {'authenticator': 'AllowAllAuthenticator',
+                   'authorizer': 'AllowAllAuthorizer'}
+        self.cluster.set_configuration_options(values=config)
+        for node in self.cluster.nodelist():
+            node.stop()
+            node.start(wait_for_binary_proto=True)
+
+        debug('STEP: verify all users will login as anonymous')
+        session = self.get_session(user='cassandra', password='cassandra')
+        self.assertUnauthorized("You have to be logged in and not anonymous to perform this request", session,
+                                "LIST USERS")
+        session = self.get_session(user='normal', password='123456')
+        self.assertUnauthorized("You have to be logged in and not anonymous to perform this request", session,
+                                "LIST USERS")
+
     def prepare(self, nodes=1, permissions_validity=0, experimental=False, enable_auth=True):
         config = {'permissions_validity_in_ms': permissions_validity,
                   'permissions_update_interval_in_ms': int(permissions_validity / 2)}
