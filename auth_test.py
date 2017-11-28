@@ -1922,6 +1922,41 @@ class TestAuth(Tester):
         self.assertUnauthorized("You have to be logged in and not anonymous to perform this request", session,
                                 "LIST USERS")
 
+    def transitional_auth_betweenness_from_default_test(self):
+        """
+        Start cluster with default Auth, test user permission during rolling upgrade of enable Transitional Auth.
+        """
+        debug('STEP: start cluster with default AllowAllAuthenticator/AllowAllAuthorizer')
+        self.prepare(nodes=2, enable_auth=False)
+        nodes = self.cluster.nodelist()
+
+        debug('STEP: update config and restart node1 to enable Transitional Auth')
+        nodes[0].stop(wait_other_notice=True, gently=True)
+        config = {'authenticator': 'com.scylladb.auth.TransitionalAuthenticator',
+                   'authorizer': 'com.scylladb.auth.TransitionalAuthorizer'}
+        nodes[0].set_configuration_options(values=config)
+        nodes[0].start(wait_for_binary_proto=True)
+        self.wait_for_any_log(self.cluster.nodelist(), 'Created default superuser', 10)
+
+        session = self.get_session(node_idx=0, user='cassandra', password='cassandra')
+        session.execute("CREATE USER normal WITH PASSWORD '123456' NOSUPERUSER")
+
+        debug('STEP: (on node1) verify normal user has permission to list users')
+        session = self.get_session(node_idx=0, user='normal', password='123456')
+        session.execute('LIST USERS')
+        debug('STEP: (on node1) verify user will login as anonymous if authentication fails')
+        session = self.get_session(node_idx=0, user='normal', password='wrongpwd')
+        self.assertUnauthorized("You have to be logged in and not anonymous to perform this request", session,
+                                "LIST USERS")
+
+        debug('STEP: (on node2) verify all users will login as anonymous if authentication fails')
+        session = self.get_session(node_idx=1, user='cassandra', password='cassandra')
+        self.assertUnauthorized("You have to be logged in and not anonymous to perform this request", session,
+                                "LIST USERS")
+        session = self.get_session(node_idx=1, user='normal', password='123456')
+        self.assertUnauthorized("You have to be logged in and not anonymous to perform this request", session,
+                                "LIST USERS")
+
     def prepare(self, nodes=1, permissions_validity=0, experimental=False, enable_auth=True):
         config = {'permissions_validity_in_ms': permissions_validity,
                   'permissions_update_interval_in_ms': int(permissions_validity / 2)}
