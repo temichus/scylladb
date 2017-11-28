@@ -1957,6 +1957,46 @@ class TestAuth(Tester):
         self.assertUnauthorized("You have to be logged in and not anonymous to perform this request", session,
                                 "LIST USERS")
 
+    def transitional_auth_betweenness_from_pwdauth_test(self):
+        """
+        Start cluster with strict Auth, test user permission during rolling upgrade of enable Transitional Auth.
+        It's a wrong order to transition from strict Auth to AllowAllAuth, but we want to cover it.
+        """
+        debug('STEP: start cluster with PasswordAuthenticator/CassandraAuthorizer')
+        self.prepare(nodes=2, enable_auth=True)
+        nodes = self.cluster.nodelist()
+
+        session = self.get_session(user='cassandra', password='cassandra')
+        debug('STEP: create normal user (normal) by super cassandra')
+        session.execute("CREATE USER normal WITH PASSWORD '123456' NOSUPERUSER")
+
+        session = self.get_session(user='normal', password='123456')
+        rows = list(session.execute('LIST USERS'))
+        assert len(rows) == 2, "Expect to see `cassandra` and `normal`, actual: %s" % (rows)
+        debug('Verified normal was created, and available')
+
+        config = {'authenticator': 'com.scylladb.auth.TransitionalAuthenticator',
+                   'authorizer': 'com.scylladb.auth.TransitionalAuthorizer'}
+
+        debug('STEP: update config and restart node1 to enable Transitional Auth')
+        nodes[0].stop(wait_other_notice=True, gently=True)
+        nodes[0].set_configuration_options(values=config)
+        nodes[0].start(wait_for_binary_proto=True)
+
+        debug('STEP: (on node1) verify all users will login as anonymous if authentication fails')
+        session = self.get_session(node_idx=0, user='normal', password='wrong')
+        self.assertUnauthorized("You have to be logged in and not anonymous to perform this request", session,
+                                "LIST USERS")
+
+        try:
+            session = self.get_session(node_idx=1, user='normal', password='wrong')
+            session.execute("LIST USERS")
+        except NoHostAvailable as e:
+            assert isinstance(e.errors.values()[0], AuthenticationFailed)
+            debug("can't get session of node2 with normal user/password")
+        else:
+            self.fail('Session should not be created')
+
     def prepare(self, nodes=1, permissions_validity=0, experimental=False, enable_auth=True):
         config = {'permissions_validity_in_ms': permissions_validity,
                   'permissions_update_interval_in_ms': int(permissions_validity / 2)}
