@@ -182,7 +182,7 @@ class BasePagingTester(Tester):
 
     def prepare(self, row_factory=dict_factory):
         cluster = self.cluster
-        cluster.populate(3).start()
+        cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1 = cluster.nodelist()[0]
         session = self.patient_cql_connection(node1, row_factory=row_factory)
         return session
