@@ -14,7 +14,9 @@ import threading
 import random
 
 
-class RepairAdditionalTest(Tester):
+
+class RepairAdditionalBase(Tester):
+    __test__ = False
 
     def check_rows_on_node(self, node_to_check, rows, found=None, missings=None, restart=True):
         if found is None:
@@ -44,7 +46,10 @@ class RepairAdditionalTest(Tester):
             for node in stopped_nodes:
                 node.start(wait_other_notice=True)
 
-    def repair_disjoint_data_test(self, more_options=[]):
+    def _repair(self, node, options=[]):
+        return node.repair(options)
+
+    def _repair_disjoint_data_test(self, more_options=[]):
         """
         On each of three replicas, insert completely different data.
         Confirm that repairing a single of these nodes brings all the data
@@ -94,7 +99,7 @@ class RepairAdditionalTest(Tester):
         # Run repair on (arbitrarily), node 3
         time.sleep(10)  # see CASSANDRA-4373
         debug("starting repair...")
-        info = node3.repair(more_options + ['ks'])
+        info = self._repair(node3,more_options + ['ks'])
         debug(info[0])
         debug(info[1])
 
@@ -103,7 +108,7 @@ class RepairAdditionalTest(Tester):
         self.check_rows_on_node(node2, 3000)
         self.check_rows_on_node(node3, 3000)
 
-    def repair_schema_test(self):
+    def _repair_schema_test(self):
         """
         In a keyspace with two replicas, insert a new column family on one
         replica only (while the other node is down), and initiate repair from
@@ -132,7 +137,7 @@ class RepairAdditionalTest(Tester):
         node2.start(wait_other_notice=True, wait_for_binary_proto=True)
         time.sleep(10)  # see CASSANDRA-4373
         debug("starting repair on node1...")
-        info = node1.repair(['ks'])
+        info = self._repair(node1,['ks'])
         debug(info[0])
         debug(info[1])
 
@@ -142,7 +147,7 @@ class RepairAdditionalTest(Tester):
         debug("checking data on node2...")
         self.check_rows_on_node(node2, 1000)
 
-    def repair_schema_2_test(self):
+    def _repair_schema_2_test(self):
         """
         In a keyspace with two replicas, insert a new column family on one
         replica only (while the other node is down), and initiate repair from
@@ -175,7 +180,7 @@ class RepairAdditionalTest(Tester):
         node2.start(wait_other_notice=True, wait_for_binary_proto=True)
         time.sleep(10)  # see CASSANDRA-4373
         debug("starting repair on node1...")
-        info = node2.repair(['ks'])
+        info = self._repair(node2,['ks'])
         debug(info[0])
         debug(info[1])
 
@@ -185,7 +190,7 @@ class RepairAdditionalTest(Tester):
         debug("checking data on node2...")
         self.check_rows_on_node(node2, 1000)
 
-    def repair_cell_update_test(self):
+    def _repair_cell_update_test(self):
         """
         With data replicated on two nodes, update an existing partition on only
         one of these nodes (with the other node down). Then confirm that repair can
@@ -231,7 +236,7 @@ class RepairAdditionalTest(Tester):
         # Finally bring both nodes up, repair, and confirm (by bringing up only
         # node 2) that the data on node2 is now up to date.
         node1.start(wait_other_notice=True, wait_for_binary_proto=True)
-        info = node2.repair(['ks'])
+        info = self._repair(node2,['ks'])
         debug(info[0])
         debug(info[1])
         node1.flush()
@@ -243,7 +248,7 @@ class RepairAdditionalTest(Tester):
         self.assertEqual(result[0].c1, 'new', result[0].c1)
         self.assertEqual(result[0].c2, 'yo', result[0].c2)
 
-    def repair_cell_delete_test(self):
+    def _repair_cell_delete_test(self):
         """
         With data replicated on two nodes, update an existing partition on only
         one of these nodes (with the other node down) to delete an existing cell.
@@ -289,7 +294,7 @@ class RepairAdditionalTest(Tester):
         # Finally bring both nodes up, repair, and confirm (by bringing up only
         # node 2) that the data on node2 is now up to date.
         node1.start(wait_other_notice=True, wait_for_binary_proto=True)
-        info = node2.repair(['ks'])
+        info = self._repair(node2,['ks'])
         debug(info[0])
         debug(info[1])
         node1.flush()
@@ -301,7 +306,7 @@ class RepairAdditionalTest(Tester):
         self.assertEqual(result[0].c1, None, result[0].c1)
         self.assertEqual(result[0].c2, 'hi', result[0].c2)
 
-    def repair_row_delete_test(self):
+    def _repair_row_delete_test(self):
         """
         With data replicated on two nodes, update an existing partition on only
         one of these nodes (with the other node down) to delete an existing CQL row.
@@ -348,7 +353,7 @@ class RepairAdditionalTest(Tester):
         # Finally bring both nodes up, repair, and confirm (by bringing up only
         # node 2) that the data on node2 is now up to date.
         node1.start(wait_other_notice=True, wait_for_binary_proto=True)
-        info = node2.repair(['ks'])
+        info = self._repair(node2,['ks'])
         debug(info[0])
         debug(info[1])
         node1.flush()
@@ -360,7 +365,7 @@ class RepairAdditionalTest(Tester):
         self.assertEqual(result[0].pet, 'adamdami', result[0].pet)
         self.assertEqual(result[0].age, 1, result[0].age)
 
-    def repair_partition_delete_test(self):
+    def _repair_partition_delete_test(self):
         """
         With data replicated on two nodes, delete partition on only one of these
         nodes (with the other node down). Then confirm that repair can fix this on
@@ -409,7 +414,7 @@ class RepairAdditionalTest(Tester):
         # Finally bring both nodes up, repair, and confirm (by bringing up only
         # node 2) that the data on node2 is now up to date.
         node1.start(wait_other_notice=True, wait_for_binary_proto=True)
-        info = node2.repair(['ks'])
+        info = self._repair(node2,['ks'])
         debug(info[0])
         debug(info[1])
         node1.flush()
@@ -427,7 +432,7 @@ class RepairAdditionalTest(Tester):
         tmp.seek(0)
         return tmp.read()
 
-    def repair_ttl_update_test(self):
+    def _repair_ttl_update_test(self):
         """
         With data replicated on two nodes, update an existing partition on only
         one of these nodes (with the other node down). Then confirm that repair can
@@ -503,7 +508,7 @@ class RepairAdditionalTest(Tester):
         # Finally bring both nodes up, repair, and confirm (by bringing up only
         # node 2) that the data on node2 is now up to date.
         node1.start(wait_other_notice=True, wait_for_binary_proto=True)
-        info = node2.repair(['ks'])
+        info = self._repair(node2,['ks'])
         debug(info[0])
         debug(info[1])
         node1.flush()
@@ -525,7 +530,7 @@ class RepairAdditionalTest(Tester):
                     save_line = None
         self.assertTrue(save_line is None, "expected c1 value and timeout in sstable")
 
-    def repair_option_pr_test(self):
+    def _repair_option_pr_test(self):
         """
         Test the "partitioner range" (-pr) option. We start two nodes and a
         keyspace with RF=2, and put 1000 different rows on each of the nodes
@@ -596,7 +601,7 @@ class RepairAdditionalTest(Tester):
         self.check_rows_on_node(node1, 2000)
         self.check_rows_on_node(node2, 2000)
 
-    def repair_option_cf_test(self):
+    def _repair_option_cf_test(self):
         """
         Test that we can specify the list of column families to repair. We
         create 3 column families in need of repair, and ask to repair only 2
@@ -673,7 +678,7 @@ class RepairAdditionalTest(Tester):
         session = self.patient_cql_connection(node2, 'ks')
         self.assertEqual(len(list(session.execute("SELECT * from cf2"))), 2, "cf2 on node2")
 
-    def repair_option_invalid_ks_cf_test(self):
+    def _repair_option_invalid_ks_cf_test(self):
         """
         Test that specifying a non-existant keyspace or column family to
         repair results in failure.
@@ -697,7 +702,7 @@ class RepairAdditionalTest(Tester):
         # Finally, sanity check that a valid repair succeeds:
         node1.repair(['ks', 'cf'])
 
-    def repair_option_dc_test(self):
+    def _repair_option_dc_test(self):
         """
         Test the "-dc" and "-local" repair options: Create 3 data centers, the
         first with 2 nodes, second with 1 node, and third with 1 node. We then
@@ -822,7 +827,7 @@ class RepairAdditionalTest(Tester):
         session = self.patient_cql_connection(node4, 'ks')
         self.assertEqual(len(list(session.execute("SELECT * from cf"))), 1, "cf on node4")
 
-    def repair_multiple_test(self, more_options=[]):
+    def _repair_multiple_test(self, more_options=[]):
         """
         Starting multiple repairs in parallel from multiple nodes (without
         "-pr") is a waste, but besides being wasteful, should not cause any
@@ -881,7 +886,7 @@ class RepairAdditionalTest(Tester):
         self.check_rows_on_node(node2, 3000)
         self.check_rows_on_node(node3, 3000)
 
-    def repair_multiple_pr_test(self):
+    def _repair_multiple_pr_test(self):
         """
         If a user plans to start repair from multiple nodes in parallel, he
         should at least use the "-pr" (partitioner range) option to avoid
@@ -890,7 +895,7 @@ class RepairAdditionalTest(Tester):
         """
         self.repair_multiple_test(['-pr'])
 
-    def repair_option_seq_test(self):
+    def _repair_option_seq_test(self):
         """
         Test that the "-seq" repair options works. In Scylla, it doesn't
         actually change anything, but we need to test it doesn't do anything
@@ -957,7 +962,7 @@ class RepairAdditionalTest(Tester):
         self.assertEqual(len(result), 1000, len(result))
         node2.start(wait_other_notice=True, wait_for_binary_proto=True)
 
-    def repair_kill_1_test(self, kill_master=True):
+    def _repair_kill_1_test(self, kill_master=True):
         """
         Killing the master node of a repair stops the repair (obviously), but
         does not otherwise cause problems on the other nodes.
@@ -1023,16 +1028,16 @@ class RepairAdditionalTest(Tester):
         # failing parts of the repair), and we just want to ignore them.
         self.allow_log_errors = True
 
-    def repair_kill_2_test(self):
+    def _repair_kill_2_test(self):
         """
         Killing a participant (non-master) of a repair stops the repair with
         an error. Note that this doesn't work on Cassandra - see
         https://support.datastax.com/hc/en-us/articles/204226119-Troubleshooting-hanging-repairs
         Moreover, the other nodes continue to work correctly.
         """
-        self.repair_kill_1_test(False)
+        self._repair_kill_1_test(False)
 
-    def repair_kill_3_test(self):
+    def _repair_kill_3_test(self):
         """
         When a node busy in being a repair master is killed, check that it
         shuts down normally and doesn't crash because of shut down bugs.
@@ -1080,7 +1085,7 @@ class RepairAdditionalTest(Tester):
         debug(match)
         self.assertEqual(len(match), 0)
 
-    def repair_during_update_test(self, more_options=[]):
+    def _repair_during_update_test(self, more_options=[]):
         """
         Test that a repair works correctly in parallel with data being
         updated: We set up a cluster of two replicas with different data,
@@ -1136,7 +1141,7 @@ class RepairAdditionalTest(Tester):
         self.check_rows_on_node(node1, count)
         self.check_rows_on_node(node2, count)
 
-    def repair_with_down_nodes_1_test(self, more_options=[]):
+    def _repair_with_down_nodes_1_test(self, more_options=[]):
         """
         Test that a repair fails when no replica can be found for one of the
         ranges being repaired, because of a down node.
@@ -1157,7 +1162,7 @@ class RepairAdditionalTest(Tester):
         with self.assertRaises(NodetoolError):
             node2.repair(['ks'])
 
-    def repair_with_down_nodes_1a_test(self, more_options=[]):
+    def _repair_with_down_nodes_1a_test(self, more_options=[]):
         """
         When we have 3 nodes with RF=2, bring down one of the nodes and
         start repair on another. This repair will fail because for some of
@@ -1251,7 +1256,7 @@ class RepairAdditionalTest(Tester):
         result = list(session.execute("SELECT * from cf"))
         self.assertEqual(len(result), 2000)
 
-    def repair_with_down_nodes_2_test(self, more_options=[]):
+    def _repair_with_down_nodes_2_test(self, more_options=[]):
         """
         Test that a repair fails when one of the replicas of one of the ranges
         being repaired is missing. The fact that another replica does exist is
@@ -1273,7 +1278,7 @@ class RepairAdditionalTest(Tester):
         with self.assertRaises(NodetoolError):
             node2.repair(['ks'])
 
-    def repair_with_down_nodes_2a_test(self, more_options=[]):
+    def _repair_with_down_nodes_2a_test(self, more_options=[]):
         """
         This test is similar to repair_with_down_nodes_1a_test, except we
         have 4 nodes with RF=3, and shut down node 4.
@@ -1359,7 +1364,7 @@ class RepairAdditionalTest(Tester):
         debug(len(result))
         self.assertEqual(len(result), 2000)
 
-    def repair_with_down_nodes_2b_test(self, more_options=[]):
+    def _repair_with_down_nodes_2b_test(self, more_options=[]):
         """
         This is a stricter version of test 2a above. We keep it as a separate
         test because it fails miserably on Apache Cassandra (and older
@@ -1428,7 +1433,7 @@ class RepairAdditionalTest(Tester):
         self.assertEqual(len(result), 2000)
 
     @skip('unimplemented')
-    def repair_of_cluster_all_nodes_are_out_of_sync(self):
+    def _repair_of_cluster_all_nodes_are_out_of_sync(self):
         """
         Check that repair fixes all inconsistencies in data
         1. Create a cluster of 3 nodes with rf=3, disable read_repair, hinted_handoff
@@ -1447,7 +1452,7 @@ class RepairAdditionalTest(Tester):
         fail
 
     @skip('unimplemented')
-    def full_repair_of_node_initiated_on_node_with_latest_data_test(self):
+    def _full_repair_of_node_initiated_on_node_with_latest_data_test(self):
         """
         Check that repair transfers all the data in case non exists
         1. Create a cluster of 2 nodes with rf=2, disable read_repair, hinted_handoff
@@ -1460,7 +1465,7 @@ class RepairAdditionalTest(Tester):
         fail
 
     @skip('unimplemented')
-    def full_repair_of_node_initiated_on_node_without_data(self):
+    def _full_repair_of_node_initiated_on_node_without_data(self):
         """
         Check that repair transfers all the data in case non exists
         1. Create a cluster of 2 nodes with rf=2, disable read_repair, hinted_handoff
@@ -1473,7 +1478,7 @@ class RepairAdditionalTest(Tester):
         fail
 
     @skip('unimplemented')
-    def repair_fixes_updates_to_cells_test(self):
+    def _repair_fixes_updates_to_cells_test(self):
         """
         Check that repair fixes a few update to cells contents
         1. Create a cluster of 2 nodes with rf=2, disable read_repair, hinted_handoff
@@ -1487,7 +1492,7 @@ class RepairAdditionalTest(Tester):
         fail
 
     @skip('unimplemented')
-    def repair_fixes_remove_of_keys_test(self):
+    def _repair_fixes_remove_of_keys_test(self):
         """
         Check that repair fixes a few removed keys
         1. Create a cluster of 2 nodes with rf=2, disable read_repair, hinted_handoff
@@ -1501,7 +1506,7 @@ class RepairAdditionalTest(Tester):
         fail
 
     @skip('unimplemented')
-    def repair_fixes_deletion_of_cells_test(self):
+    def _repair_fixes_deletion_of_cells_test(self):
         """
         Check that repair fixes a deleteion of cells
         1. Create a cluster of 2 nodes with rf=2, disable read_repair, hinted_handoff
@@ -1515,7 +1520,7 @@ class RepairAdditionalTest(Tester):
         fail
 
     @skip('unimplemented')
-    def repair_fixes_deletion_of_range_of_cells_test(self):
+    def _repair_fixes_deletion_of_range_of_cells_test(self):
         """
         Check that repair fixes a deletion of cell range
         1. Create a cluster of 2 nodes with rf=2, disable read_repair, hinted_handoff
@@ -1529,7 +1534,7 @@ class RepairAdditionalTest(Tester):
         fail
 
     @skip('unimplemented')
-    def repair_fixes_update_of_ttl_test(self):
+    def _repair_fixes_update_of_ttl_test(self):
         """
         Check that repair fixes updates to ttl
         CQL: UPDATE table USING TTL <ttl value> where key=X
@@ -1544,7 +1549,7 @@ class RepairAdditionalTest(Tester):
         fail
 
     @skip('unimplemented')
-    def fail_node_initiating_repair_test(self):
+    def _fail_node_initiating_repair_test(self):
         """
         Check that killing a repaired node does not cause additional failures
         1. Create a cluster of 2 nodes with rf=2
@@ -1559,7 +1564,7 @@ class RepairAdditionalTest(Tester):
         fail
 
     @skip('unimplemented')
-    def fail_node_responding_to_repair_test(self):
+    def _fail_node_responding_to_repair_test(self):
         """
         Check that killing a repairing node does not cause additional failures
         1. Create a cluster of 2 nodes with rf=2
@@ -1575,7 +1580,7 @@ class RepairAdditionalTest(Tester):
         fail
 
     @skip('unimplemented')
-    def repair_while_data_is_updated_test(self):
+    def _repair_while_data_is_updated_test(self):
         """
         Check that data can be updated while repair is running
         1. Create a cluster of 2 nodes with rf=2
@@ -1590,7 +1595,7 @@ class RepairAdditionalTest(Tester):
         fail
 
     @skip('unimplemented')
-    def repair_while_nodes_are_down_1_test(self):
+    def _repair_while_nodes_are_down_1_test(self):
         """
         Check that repair is not able to complete if no replicas for data exist
         1. Create a cluster of 3 nodes with rf=2
@@ -1604,7 +1609,7 @@ class RepairAdditionalTest(Tester):
         fail
 
     @skip('unimplemented')
-    def repair_while_nodes_are_down_2_test(self):
+    def _repair_while_nodes_are_down_2_test(self):
         """
         Check that repair is able to complete if one replica of data exists
         1. Create a cluster of 4 nodes with rf=3
@@ -1618,7 +1623,7 @@ class RepairAdditionalTest(Tester):
         fail
 
     @skip('unimplemented')
-    def repair_while_new_node_is_added_test(self):
+    def _repair_while_new_node_is_added_test(self):
         """
         Check that repair is accompileshed while new node is added
         1. Create a cluster of 2 nodes with rf=2
@@ -1631,7 +1636,7 @@ class RepairAdditionalTest(Tester):
         fail
 
     @skip('unimplemented')
-    def repair_while_node_is_decomissioned_test(self):
+    def _repair_while_node_is_decomissioned_test(self):
         """
         Check that repair is accompileshed while node is decomissioned
         1. Create a cluster of 3 nodes with rf=2
@@ -1643,3 +1648,78 @@ class RepairAdditionalTest(Tester):
         8. Stop node 1 - does node 2 hold all the data
         """
         fail
+
+class RepairAdditionalTest(RepairAdditionalBase):
+    __test__ = True
+
+    def repair_disjoint_data_test(self, more_options=[]):
+        return RepairAdditionalBase._repair_disjoint_data_test(self,more_options)
+
+    def repair_schema_test(self):
+        return RepairAdditionalBase._repair_schema_test(self)
+
+    def repair_schema_2_test(self):
+        return RepairAdditionalBase._repair_schema_2_test(self)
+
+    def repair_cell_update_test(self):
+       return RepairAdditionalBase._repair_cell_update_test(self)
+
+    def repair_cell_delete_test(self):
+       return RepairAdditionalBase._repair_cell_delete_test(self)
+
+    def repair_row_delete_test(self):
+       return RepairAdditionalBase._repair_row_delete_test(self)
+
+    def repair_partition_delete_test(self):
+       return RepairAdditionalBase._repair_partition_delete_test(self)
+
+    def repair_ttl_update_test(self):
+       return RepairAdditionalBase._repair_ttl_update_test(self)
+
+    def repair_option_pr_test(self):
+       return RepairAdditionalBase._repair_option_pr_test(self)
+
+    def repair_option_cf_test(self):
+       return RepairAdditionalBase._repair_option_cf_test(self)
+
+    def repair_option_invalid_ks_cf_test(self):
+       return RepairAdditionalBase._repair_option_invalid_ks_cf_test(self)
+
+    def repair_option_dc_test(self):
+       return RepairAdditionalBase._repair_option_dc_test(self)
+
+    def repair_multiple_test(self, more_options=[]):
+       return RepairAdditionalBase._repair_multiple_test(self)
+
+    def repair_multiple_pr_test(self):
+       return RepairAdditionalBase._repair_multiple_pr_test(self)
+
+    def repair_option_seq_test(self):
+       return RepairAdditionalBase._repair_option_seq_test(self)
+
+    def repair_kill_1_test(self, kill_master=True):
+       return RepairAdditionalBase._repair_kill_1_test(self)
+
+    def repair_kill_2_test(self):
+       return RepairAdditionalBase._repair_kill_2_test(self)
+
+    def repair_kill_3_test(self):
+       return RepairAdditionalBase._repair_kill_3_test(self)
+
+    def repair_during_update_test(self, more_options=[]):
+       return RepairAdditionalBase._repair_during_update_test(self,more_options)
+
+    def repair_with_down_nodes_1_test(self, more_options=[]):
+       return RepairAdditionalBase._repair_with_down_nodes_1_test(self,more_options)
+
+    def repair_with_down_nodes_1a_test(self, more_options=[]):
+       return RepairAdditionalBase._repair_with_down_nodes_1a_test(self,more_options)
+
+    def repair_with_down_nodes_2_test(self, more_options=[]):
+       return RepairAdditionalBase._repair_with_down_nodes_2_test(self,more_options)
+
+    def repair_with_down_nodes_2a_test(self, more_options=[]):
+       return RepairAdditionalBase._repair_with_down_nodes_2a_test(self,more_options)
+
+    def repair_with_down_nodes_2b_test(self, more_options=[]):
+       return RepairAdditionalBase._repair_with_down_nodes_2b_test(self,more_options)
