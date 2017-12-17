@@ -29,15 +29,15 @@ class ScyllaMgmtRepairTest(RepairAdditionalBase):
         unit = "repair1" # str(uuid.uuid4()).replace("-","") 
         node.cluster.sctool(["cluster","add","--hosts",node.address(),"--name",cluster,"--shard-count","1"])
         node.cluster.sctool(["repair","unit","add","--keyspace",keyspace,"--cluster",cluster,"--name",unit])
-        out,err = node.cluster.sctool(["repair","schedule","--unit",unit,"--cluster",cluster,'--interval','0','--start-date', 'now'])
+        out,err = node.cluster.sctool(["repair","schedule",unit,"--cluster",cluster,'--interval','0','--start-date', 'now'])
         pos = out.find("\n")
         repair_id = out[:pos]
         # currently there is a delay between the schedule and getting the task running so we have this delay
         time.sleep(60)
-        out, err = node.cluster.sctool(["repair","progress","--task",repair_id,"--unit",unit,"--cluster",cluster])
+        out, err = node.cluster.sctool(["repair","progress",repair_id,"--unit",unit,"--cluster",cluster])
         while out.startswith("Status: done") == False:
            time.sleep(1)
-           out, err = node.cluster.sctool(["repair","progress","--task",repair_id,"--unit","repair1","--cluster","test1"])
+           out, err = node.cluster.sctool(["repair","progress",repair_id,"--unit","repair1","--cluster","test1"])
         return out,err
 
     def repair_disjoint_data_test(self, more_options=[]):
