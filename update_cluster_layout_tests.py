@@ -236,10 +236,9 @@ class TestUpdateClusterLayout(Tester):
             # lets check that it detected there was another bootstrapping in progress
             node3.watch_log_for("Checking bootstrapping/leaving/moving nodes: .* sleep 1 second and check again .*")
             node3.watch_log_for("Checking bootstrapping/leaving/moving nodes: ok")
-        except NodeError:
+        except:
             # if the node was not allowed to boot check reason
-            node3.watch_log_for("Other bootstrapping/leaving/moving nodes detected, cannot bootstrap while cassandra.consistent.rangemovement is true")
-            pass
+            node3.watch_log_for("Other bootstrapping/leaving/moving nodes detected, cannot bootstrap while consistent_rangemovement is true")
 
         node2.watch_log_for("Starting listening for CQL clients")
         session = self.patient_exclusive_cql_connection(node2)
@@ -527,17 +526,16 @@ class TestUpdateClusterLayout(Tester):
         t.setDaemon(True)
 
         debug("Start Node")
-        a_new_node.start(jvm_args=['--logger-log-level','stream_session=debug'])
+        a_new_node.start()
         a_new_node.watch_log_for("JOINING: Starting to bootstrap")
         time.sleep(1)
         t.start()
         time.sleep(1)
-        a_new_node.watch_log_for("Beginning stream session")
-        self.wait_for_nodes_status(node1, ['UN', 'UN', 'UN'])
+        a_new_node.watch_log_for("Executing streaming plan")
+        self.wait_for_nodes_status(node1, ['UN', 'UJ', 'UN'])
         debug("Stop Node")
         a_new_node.stop(gently=False)
         event.wait()
-        self.wait_for_nodes_status(node1, ['UN', 'DN', 'UN'])
         self.assertTrue(failed is None, failed)
 
         # Sleep 1 second to make sure other nodes knows this node is joining through gossip
