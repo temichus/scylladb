@@ -1735,13 +1735,13 @@ class CqlshSmokeTest(Tester):
         self.node1.run_cqlsh(
             "insert into ks.foo2 (id, a,b,at,c) values ('id2', 'a1', 'b1', '2017-01-01T00:00:00.000', 'c1');")
 
-        _, cqlsh_stderr = self.node1.run_cqlsh(
+        cqlsh_stderr = self.node1.run_cqlsh(
             "SELECT id FROM ks.foo2 WHERE id = 't' AND a = 'y' AND b = 'z' AND"
             " at <= '2017-01-01T00:00:00.000' AND at >= '2016-01-01T00:00:00.000';",
             return_output=True)
 
-        self.assertEqual(cqlsh_stderr, """<stdin>:2:InvalidRequest: Error from server: code=2200 [Invalid query] \
-        message="PRIMARY KEY column "b" cannot be restricted (preceding column "at" is restricted by a non-EQ relation)"\n""")
+        self.assertEqual(cqlsh_stderr[1], """<stdin>:2:InvalidRequest: Error from server: code=2200 [Invalid query] message="PRIMARY KEY column "b" cannot be restricted (preceding column "at" is restricted by a non-EQ relation)"\n""")
+
 
     def select_all_cl_quorum_test(self):
         """
