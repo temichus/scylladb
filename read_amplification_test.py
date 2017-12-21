@@ -130,4 +130,4 @@ class ReadAmplificationTest(Tester):
         self.read_amplification(1024 * 1024 * 20)
 
     def no_amplification_on_read_1gb_test(self):
-        self.read_amplification(1024 * 1024 * 1000, 15, 1000)
+        self.read_amplification(1024 * 1024 * 1000, 180, 10)
