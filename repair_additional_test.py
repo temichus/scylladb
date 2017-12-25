@@ -12,6 +12,8 @@ import tempfile
 import os
 import threading
 import random
+import datetime
+import commands
 
 
 
@@ -1432,6 +1434,106 @@ class RepairAdditionalBase(Tester):
         debug(len(result))
         self.assertEqual(len(result), 2000)
 
+    def _repair_abort_test(self):
+        """
+        Add different data to each node, then start repair in background,
+        try to abort repair before complete, verify the repair streaming stops,
+        and some keys aren't synced.
+        """
+        # Disable hinted handoff so it doesn't do what we expect repair to do
+        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        # Create a cluster of 3 nodes, and a keyspace with RF=3 on all nodes
+        # (disable read repair, as we want to test the full repair).
+        self.cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True)
+        node1, node2, node3 = self.cluster.nodelist()
+        session = self.patient_exclusive_cql_connection(node1)
+        self.create_ks(session, 'ks', 3)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+
+        keys_unit = 3000
+        # Insert 3000 keys *only* on node 1, another 3000 keys *only* on node 2,
+        # another 3000 *only on node 3:
+        debug("Adding data only on node 1...")
+        node2.flush()
+        node2.stop(wait_other_notice=True)
+        node3.flush()
+        node3.stop(wait_other_notice=True)
+        session = self.patient_exclusive_cql_connection(node1)
+        session.set_keyspace('ks')
+        insert_c1c2(session, keys=range(0, keys_unit), consistency=ConsistencyLevel.ONE)
+        self.cluster.flush()
+
+        debug("Adding data only on node 2...")
+        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+        node1.flush()
+        node1.stop(wait_other_notice=True)
+        session = self.patient_exclusive_cql_connection(node2)
+        session.set_keyspace('ks')
+        insert_c1c2(session, keys=range(keys_unit, 2 * keys_unit), consistency=ConsistencyLevel.ONE)
+
+        debug("Adding data only on node 3...")
+        node3.start(wait_other_notice=True, wait_for_binary_proto=True)
+        node2.flush()
+        node2.stop(wait_other_notice=True)
+        session = self.patient_exclusive_cql_connection(node3)
+        session.set_keyspace('ks')
+        insert_c1c2(session, keys=range(2 * keys_unit, 3 * keys_unit), consistency=ConsistencyLevel.ONE)
+
+        # Bring up all 3 nodes, each should have different data
+        node1.start(wait_other_notice=True, wait_for_binary_proto=True)
+        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+
+        # Run repair on (arbitrarily), node 3
+        time.sleep(10)  # see CASSANDRA-4373
+        debug("starting repair...")
+
+        sessions = {node3: session}
+        sessions[node1] = self.patient_exclusive_cql_connection(node1, 'ks')
+        sessions[node2] = self.patient_exclusive_cql_connection(node2, 'ks')
+
+        def checking_keys_num(prefix='', less_than_num=None):
+            rows = 3 * keys_unit
+            for node in [node1, node2, node3]:
+                result = list(sessions[node].execute("SELECT * FROM cf LIMIT %d" % (rows * 2)))
+                debug('%s - %s, keys num: %s' % (prefix, node_to_check, len(result)))
+                if less_than_num:
+                    assert len(result) <= less_than_num
+
+        def repair_thread(more_options):
+            try:
+                debug('Start repair')
+                info = self._repair(node3, more_options)
+                debug(info[0])
+                debug(info[1])
+            except Exception as ex:
+                debug(ex)
+                output = commands.getoutput('curl http://%s:10000/stream_manager/', self.get_ip_from_node(node3))
+                assert 'repair-' not in output
+                checking_keys_num('After Repair Exception')
+
+        checking_keys_num('Before Repair')
+        thread1 = threading.Thread(target=repair_thread, args=(['ks'], ))
+        thread1.start()
+
+        found_repair_sessions = False
+        for i in range(600):
+            output = commands.getoutput('curl http://%s:10000/stream_manager/', self.get_ip_from_node(node3))
+            if 'repair-' in output:
+                debug('Found repair stream sessions')
+                found_repair_sessions = True
+                break
+            time.sleep(0.01)
+        assert found_repair_sessions, 'repair stream sessions must exist before abort'
+
+        debug('Abort repair sessions')
+        commands.getoutput('curl -X POST  --header "Accept: application/json" "http://127.0.0.3:10000/storage_service/force_terminate_repair"')
+        thread1.join()
+
+        debug('Sleep 10 seconds')
+        time.sleep(10)
+        self.cluster.flush()
+        checking_keys_num('After Abort', less_than_num=9000)
+
     @skip('unimplemented')
     def _repair_of_cluster_all_nodes_are_out_of_sync(self):
         """
@@ -1723,3 +1825,6 @@ class RepairAdditionalTest(RepairAdditionalBase):
 
     def repair_with_down_nodes_2b_test(self, more_options=[]):
        return RepairAdditionalBase._repair_with_down_nodes_2b_test(self,more_options)
+
+    def repair_abort_test(self):
+       return RepairAdditionalBase._repair_abort_test(self)
