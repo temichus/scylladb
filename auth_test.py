@@ -1804,9 +1804,15 @@ class TestAuth(Tester):
         debug('STEP: create normal user by super cassandra')
         session.execute("CREATE USER normal WITH PASSWORD '123456' NOSUPERUSER")
 
-        debug('STEP: verify normal user has permission to list users')
+        debug('STEP: check permissions (LIST/CREATE/GRANT/REVOKE) of normal user')
         session = self.get_session(user='normal', password='123456')
         session.execute('LIST USERS')
+        session.execute("CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}")
+        session.execute("CREATE TABLE ks.cf (id int primary key)")
+        self.assertUnauthorized("User normal has no AUTHORIZE permission on <table ks.cf> or any of its parents",
+                                session, "GRANT ALTER ON ks.cf TO normal")
+        self.assertUnauthorized("User normal has no AUTHORIZE permission on <table ks.cf> or any of its parents",
+                                session, "REVOKE SELECT ON ks.cf from normal")
 
         debug('STEP: verify user will login as anonymous if authentication fails')
         session = self.get_session(user='normal', password='wrongpwd')
@@ -1887,9 +1893,15 @@ class TestAuth(Tester):
             node.stop()
             node.start(wait_for_binary_proto=True)
 
-        debug('STEP: verify normal user has permission to list users')
+        debug('STEP: check permissions (LIST/CREATE/GRANT/REVOKE) of normal user')
         session = self.get_session(user='normal', password='123456')
         session.execute('LIST USERS')
+        session.execute("CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}")
+        session.execute("CREATE TABLE ks.cf (id int primary key)")
+        self.assertUnauthorized("User normal has no AUTHORIZE permission on <table ks.cf> or any of its parents",
+                                session, "GRANT ALTER ON ks.cf TO normal")
+        self.assertUnauthorized("User normal has no AUTHORIZE permission on <table ks.cf> or any of its parents",
+                                session, "REVOKE SELECT ON ks.cf from normal")
 
         debug('STEP: verify user will login as anonymous if authentication fails')
         session = self.get_session(user='normal', password='wrongpwd')
