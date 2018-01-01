@@ -269,6 +269,56 @@ class TestAuth(Tester):
         assert_invalid(cassandra, "DROP USER TEST")
         assert_invalid(cassandra, "DROP USER Test")
 
+    def drop_user_revoke_all_test(self):
+        """
+        Test all user permissions will be revoked when the user is dropped.
+
+        * Create two test user: `test` & `test2`
+        * Super gives test SELECT/AUTHORIZE permission
+        * `test` gives SELECT permission to `test2`
+        * Drop `test` user
+        * Recreate a `test` user
+        * Verify `test` doesn't has original permissions, they are all revoked
+        """
+        self.prepare(nodes=1)
+
+        debug("Create two test users: `test` and `test2`, and create table ks.cf")
+        cassandra = self.get_session(user='cassandra', password='cassandra')
+        cassandra.execute("CREATE USER test WITH PASSWORD '12345'")
+        cassandra.execute("CREATE USER test2 WITH PASSWORD '12345'")
+        cassandra.execute("CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}")
+        cassandra.execute("CREATE TABLE ks.cf (id int primary key)")
+
+        debug("Verify `test` user doesn't have SELECT/AUTHORIZE permissions")
+        session = self.get_session(user='test', password='12345')
+        self.assertUnauthorized("User test has no SELECT permission on <table ks.cf> or any of its parents",
+                                session, "SELECT * FROM ks.cf")
+        self.assertUnauthorized("User test has no AUTHORIZE permission on <table ks.cf> or any of its parents",
+                                session, "GRANT SELECT ON ks.cf TO test2")
+
+        debug('Super gives `test` user SELECT/AUTHORIZE permission on ks.cf')
+        cassandra.execute("GRANT SELECT ON ks.cf TO test")
+        cassandra.execute("GRANT AUTHORIZE ON ks.cf TO test")
+        session.execute("SELECT * from ks.cf")
+
+        debug('`test` user gives SELECT permission to `test2`')
+        session.execute("GRANT SELECT ON ks.cf TO test2")
+
+        debug('Super drops `test` user')
+        cassandra.execute("DROP USER test")
+
+        debug('Verify test2 still has SELECT permission')
+        session = self.get_session(user='test2', password='12345')
+        session.execute("SELECT * from ks.cf")
+
+        debug("Recreate `test` user, and verify it doesn't have SELECT/AUTHORIZE permissions")
+        cassandra.execute("CREATE USER test WITH PASSWORD '12345'")
+        session = self.get_session(user='test', password='12345')
+        self.assertUnauthorized("User test has no SELECT permission on <table ks.cf> or any of its parents",
+                                session, "SELECT * FROM ks.cf")
+        self.assertUnauthorized("User test has no AUTHORIZE permission on <table ks.cf> or any of its parents",
+                                session, "GRANT SELECT ON ks.cf TO test2")
+
     def alter_user_case_sensitive_test(self):
         """
         * Launch a one node cluster
