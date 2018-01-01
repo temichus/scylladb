@@ -9,6 +9,7 @@ import re
 import socket
 import subprocess
 import time
+from datetime import datetime, timedelta
 
 from cassandra import AuthenticationFailed, Unauthorized, InvalidRequest, AlreadyExists
 from cassandra.cluster import NoHostAvailable
@@ -837,8 +838,18 @@ class TestAuth(Tester):
         """
         Originally from dtest.
         **Description:**
+        * Launch a one node cluster, with a 2s permission cache
+        * Connect as the default superuser
+        * Create a new user, 'cathy'
+        * Create a table, ks.cf
+        * Connect as cathy in two separate sessions
+        * Grant SELECT to cathy
+        * Verify that reading from ks.cf throws Unauthorized until the cache expires
+        * Verify that after the cache expires, we can eventually read with both sessions
 
         **Expected Result:**
+
+        @jira_ticket CASSANDRA-10655
         """
         self.prepare(permissions_validity=2000)
 
@@ -855,13 +866,35 @@ class TestAuth(Tester):
         self.assertUnauthorized("User cathy has no SELECT permission on <table ks.cf> or any of its parents",
                                 cathy, "SELECT * FROM ks.cf")
 
-        # grant SELECT to cathy
-        cassandra.execute("GRANT SELECT ON ks.cf TO cathy")
-        # should still fail after 1 second.
-        time.sleep(1.0)
-        for c in cathys:
-            self.assertUnauthorized("User cathy has no SELECT permission on <table ks.cf> or any of its parents",
-                                    c, "SELECT * FROM ks.cf")
+        def check_caching(attempt=0):
+            attempt += 1
+            if attempt > 3:
+                self.fail("Unable to verify cache expiry in 3 attempts, failing")
+
+            debug("Attempting to verify cache expiry, attempt #{i}".format(i=attempt))
+            # grant SELECT to cathy
+            cassandra.execute("GRANT SELECT ON ks.cf TO cathy")
+            grant_time = datetime.now()
+            # selects should still fail after 1 second, but if execution was
+            # delayed for some reason such that the cache expired, retry
+            time.sleep(1.0)
+            for c in cathys:
+                try:
+                    c.execute("SELECT * FROM ks.cf")
+                    # this should still fail, but if the cache has expired while we paused, try again
+                    delta = datetime.now() - grant_time
+                    if delta > timedelta(seconds=2):
+                        # try again
+                        cassandra.execute("REVOKE SELECT ON ks.cf FROM cathy")
+                        time.sleep(2.5)
+                        check_caching(attempt)
+                    else:
+                        # legit failure
+                        self.fail("Expecting query to raise an exception, but nothing was raised.")
+                except Unauthorized as e:
+                    self.assertEquals(e.message, 'Error from server: code=2100 [Unauthorized] message="User cathy has no SELECT permission on <table ks.cf> or any of its parents"')
+
+        check_caching()
 
         # wait until the cache definitely expires and retry - should succeed now
         time.sleep(1.5)
