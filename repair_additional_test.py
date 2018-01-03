@@ -1458,7 +1458,7 @@ class RepairAdditionalBase(Tester):
         node2.stop(wait_other_notice=True)
         node3.flush()
         node3.stop(wait_other_notice=True)
-        session = self.patient_exclusive_cql_connection(node1)
+        session = self.patient_cql_connection(node1)
         session.set_keyspace('ks')
         insert_c1c2(session, keys=range(0, keys_unit), consistency=ConsistencyLevel.ONE)
         self.cluster.flush()
@@ -1467,7 +1467,7 @@ class RepairAdditionalBase(Tester):
         node2.start(wait_other_notice=True, wait_for_binary_proto=True)
         node1.flush()
         node1.stop(wait_other_notice=True)
-        session = self.patient_exclusive_cql_connection(node2)
+        session = self.patient_cql_connection(node2)
         session.set_keyspace('ks')
         insert_c1c2(session, keys=range(keys_unit, 2 * keys_unit), consistency=ConsistencyLevel.ONE)
 
@@ -1475,7 +1475,7 @@ class RepairAdditionalBase(Tester):
         node3.start(wait_other_notice=True, wait_for_binary_proto=True)
         node2.flush()
         node2.stop(wait_other_notice=True)
-        session = self.patient_exclusive_cql_connection(node3)
+        session = self.patient_cql_connection(node3)
         session.set_keyspace('ks')
         insert_c1c2(session, keys=range(2 * keys_unit, 3 * keys_unit), consistency=ConsistencyLevel.ONE)
 
@@ -1487,17 +1487,23 @@ class RepairAdditionalBase(Tester):
         time.sleep(10)  # see CASSANDRA-4373
         debug("starting repair...")
 
-        sessions = {node3: session}
-        sessions[node1] = self.patient_exclusive_cql_connection(node1, 'ks')
-        sessions[node2] = self.patient_exclusive_cql_connection(node2, 'ks')
-
         def checking_keys_num(prefix='', less_than_num=None):
             rows = 3 * keys_unit
-            for node in [node1, node2, node3]:
-                result = list(sessions[node].execute("SELECT * FROM cf LIMIT %d" % (rows * 2)))
-                debug('%s - %s, keys num: %s' % (prefix, node_to_check, len(result)))
+            for node_to_check in self.cluster.nodes.values():
+                stopped_nodes = []
+                for node in self.cluster.nodes.values():
+                    if node.is_running() and node is not node_to_check:
+                        stopped_nodes.append(node)
+                        node.stop(wait_other_notice=True)
+
+                session = self.patient_cql_connection(node_to_check, 'ks')
+                result = list(session.execute("SELECT * FROM cf LIMIT %d" % (rows * 2)))
+                debug('%s - %s, keys num: %s' % (prefix, node_to_check.name, len(result)))
                 if less_than_num:
                     assert len(result) <= less_than_num
+
+                for node in stopped_nodes:
+                    node.start(wait_other_notice=True)
 
         def repair_thread(more_options):
             try:
@@ -1507,7 +1513,7 @@ class RepairAdditionalBase(Tester):
                 debug(info[1])
             except Exception as ex:
                 debug(ex)
-                output = commands.getoutput('curl http://%s:10000/stream_manager/', self.get_ip_from_node(node3))
+                output = commands.getoutput('curl http://%s:10000/stream_manager/' % self.get_ip_from_node(node3))
                 assert 'repair-' not in output
                 checking_keys_num('After Repair Exception')
 
@@ -1517,7 +1523,7 @@ class RepairAdditionalBase(Tester):
 
         found_repair_sessions = False
         for i in range(600):
-            output = commands.getoutput('curl http://%s:10000/stream_manager/', self.get_ip_from_node(node3))
+            output = commands.getoutput('curl http://%s:10000/stream_manager/' % self.get_ip_from_node(node3))
             if 'repair-' in output:
                 debug('Found repair stream sessions')
                 found_repair_sessions = True
@@ -1526,13 +1532,14 @@ class RepairAdditionalBase(Tester):
         assert found_repair_sessions, 'repair stream sessions must exist before abort'
 
         debug('Abort repair sessions')
-        commands.getoutput('curl -X POST  --header "Accept: application/json" "http://127.0.0.3:10000/storage_service/force_terminate_repair"')
-        thread1.join()
+        url = "http://%s:10000/storage_service/force_terminate_repair" % self.get_ip_from_node(node3)
+        commands.getoutput('curl -X POST  --header "Accept: application/json" %s' % url)
+        thread1.join(timeout=120)
 
         debug('Sleep 10 seconds')
         time.sleep(10)
         self.cluster.flush()
-        checking_keys_num('After Abort', less_than_num=9000)
+        checking_keys_num('After Abort', less_than_num=keys_unit * 3)
 
     @skip('unimplemented')
     def _repair_of_cluster_all_nodes_are_out_of_sync(self):
