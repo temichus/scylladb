@@ -9,6 +9,8 @@ from scylla_tools import get_sstables_files, insert_c1c2, get_cf_dir
 from cassandra import ConsistencyLevel
 from assertions import assert_none
 
+from datetime import datetime
+
 
 class CompactionAdditionalTest(Tester):
 
@@ -131,7 +133,7 @@ class CompactionAdditionalTest(Tester):
         nodes = cluster.nodelist()
         node1 = nodes[0]
 
-        TIME_TO_SLEEP_BETWEEN_FILES = 5  # 10
+        TIME_TO_SLEEP_BETWEEN_FILES = 5
         NUMBER_OF_FILES = 13
         NUMBER_OF_KEYS = 100
         TTL = 70
@@ -141,7 +143,7 @@ class CompactionAdditionalTest(Tester):
         debug("Creating keyspace 'ks'...")
         self.create_ks(session, 'ks', 1)
 
-        # DEFAULT TTL set to 180, gc_grace set to 30 and expiry check set to 60.
+        # DEFAULT TTL set to 70, gc_grace set to 10 and expiry check set to 60.
         # It means that every 60 seconds it should purge all sstabls that are older than 180+30
         debug("Creating a column family 'cf' with TWCS and DEFAULT TTL of {}".format(TTL))
         self.create_cf(session, 'cf', gc_grace=GC_GRACE, columns={'c1': 'text', 'c2': 'text'}, default_ttl=TTL,
@@ -205,7 +207,7 @@ class CompactionAdditionalTest(Tester):
         """
         1. Create TABLE with compaction_window_size of 1 MINUTES
         2. Insert data for x minutes while flushing to disk.
-        3. Sleep for twice the window size to make sure all files and compactions are flushed.
+        3. Sleep for one window size to make sure all files and compactions are flushed.
         4. Insert more data while flushing to disk
         5. Verify that the previous files created and compacted still exist.
         (Otherwise it means they were compacted wrongly).
@@ -216,10 +218,10 @@ class CompactionAdditionalTest(Tester):
         nodes = cluster.nodelist()
         node1 = nodes[0]
 
-        TIME_TO_SLEEP_BETWEEN_FILES = 3#10
-        TIME_TO_SLEEP_BETWEEN_ITERATIONS = 5#60
+        WINDOW_SIZE_MINS=1
+        TIME_TO_SLEEP_BETWEEN_FILES = 10
         NUMBER_OF_FILES = 12
-        NUMBER_OF_ITERATIONS = 2#3
+        NUMBER_OF_ITERATIONS = 2
         NUMBER_OF_KEYS = 100
 
         session = self.patient_cql_connection(node1)
@@ -227,8 +229,8 @@ class CompactionAdditionalTest(Tester):
         self.create_ks(session, 'ks', 1)
 
         debug("Creating a column family 'cf' with TWCS")
-        self.create_cf(session, 'cf', gc_grace=30, columns={'c1': 'text', 'c2': 'text'},
-                       compaction={'compaction_window_size': '1', 'compaction_window_unit': 'MINUTES',
+        self.create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'},
+                       compaction={'compaction_window_size': WINDOW_SIZE_MINS, 'compaction_window_unit': 'MINUTES',
                                    'class': 'TimeWindowCompactionStrategy'})
 
         for t in range(0, NUMBER_OF_FILES):
@@ -238,8 +240,8 @@ class CompactionAdditionalTest(Tester):
             time.sleep(TIME_TO_SLEEP_BETWEEN_FILES)
 
         node1.flush()
-        debug("Sleep twice the compaction window size to make sure all files were compacted to their windows")
-        time.sleep(TIME_TO_SLEEP_BETWEEN_ITERATIONS)
+        debug("Sleep the compaction window size to make sure all files were compacted to their windows")
+        time.sleep(WINDOW_SIZE_MINS * 60)
 
         ks_dir = os.path.join(self.test_path, 'test', 'node1', 'data', 'ks')
         cf_dir = get_cf_dir(ks_dir, 'cf')
@@ -264,16 +266,6 @@ class CompactionAdditionalTest(Tester):
                                                               "compaction or wrong deletion. " \
                                                               "Expecting {} but Found {}".format(sstables_files1,
                                                                                                  sstables_files2)
-        with open('final.txt', 'w') as h:
-            node1.run_sstablemetadata(output_file=h, keyspace='ks')
-
-        with open('final.txt', 'r') as r:
-            finaloutput = r.read()
-
-        matches = findall('(^Maximum timestamp): ([0-9]{16})', finaloutput)
-        for match in matches:
-            print match[0]
-            print time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(int(match[1]) / 1000000))
 
 
 class CompactionAdditionalStrategyTests(Tester):
