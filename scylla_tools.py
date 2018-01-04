@@ -4,6 +4,7 @@ from cassandra import ConsistencyLevel
 from cassandra.concurrent import execute_concurrent_with_args, execute_concurrent
 from cassandra.query import SimpleStatement
 from ccmlib import common
+import re
 
 
 def build_insert_params(keys, n, c1_values, c2_values):
@@ -149,3 +150,40 @@ def scylla_mode(modes):
     cdir = os.environ.get('CASSANDRA_DIR')
     idir, mode = common.scylla_extract_install_dir_and_mode(cdir)
     return unittest.skipIf(common.isScylla(cdir) and not NO_SKIP and modes.find(mode) == -1, 'Test disabled for scylla %s' % mode)
+
+
+def get_sstables_files(cf_dir, ks_name, cf_name, f_type=''):
+    """
+    Returns a set of sstable(s) files for a given KS and CF
+    """
+    sstable_pattern = re.compile("{}-{}-.*{}".format(ks_name, cf_name, f_type))
+    sstables_files = set()
+    for f in os.listdir(cf_dir):
+        if sstable_pattern.match(f):
+            sstables_files.add(f)
+
+    return sstables_files
+
+
+def get_all_files_in_dir(dir_path):
+    """
+    Returs a set of all files in the given directory
+    """
+    dir_files = set()
+    for f in os.listdir(dir_path):
+        full_name = os.path.join(dir_path, f)
+        if os.path.isfile(full_name):
+            dir_files.add(f)
+
+    return dir_files
+
+
+def get_cf_dir(ks_dir, cf_name):
+    """
+    Return the first CF directory for a CF with a given name
+    """
+    cf_pattern = re.compile("{}-".format(cf_name))
+    for root, dirs, files in os.walk(ks_dir):
+        for d in dirs:
+            if cf_pattern.match(d):
+                return os.path.join(root, d)
