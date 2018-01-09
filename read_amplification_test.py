@@ -1,7 +1,13 @@
 import threading
 import math
 import time
+from cassandra.query import SimpleStatement
 from dtest import Tester, debug
+from upgrade_tests.paging_test import PageFetcher
+
+PARTITION_READ = 'partition'
+SCAN_READ = 'scan'
+KBYTE = 1024
 
 
 class ReadAmplificationTest(Tester):
@@ -30,7 +36,7 @@ class ReadAmplificationTest(Tester):
 
         debug("Run stress write")
         cnt = 1000000
-        size = 1024
+        size = KBYTE
         resp = nodes[0].stress_object(stress_options=['write', 'n={}'.format(cnt), 'cl=QUORUM',
                                                       '-schema', 'replication(factor=3)',
                                                       '-col', 'size=FIXED({}) n=FIXED(1)'.format(size),
@@ -60,7 +66,7 @@ class ReadAmplificationTest(Tester):
             debug('{}: {}(+{}%)'.format(
                 key, max_val[key], int(math.fabs(max_val[key] - (cnt * size)) * 100 / (cnt * size))))
 
-    def read_amplification(self, read_size, wait_interval=1, threads=100, max_ratio_expected=10):
+    def read_amplification(self, read_type, read_size, wait_interval=1, threads=100, max_ratio_expected=10):
         """
         Check total bytes read corresponds to data size
         """
@@ -69,7 +75,7 @@ class ReadAmplificationTest(Tester):
         cluster.populate(1).start(wait_for_binary_proto=True)
         node = cluster.nodelist()[0]
 
-        size = 1024
+        size = KBYTE
         cnt = read_size / size
         debug("Write {} bytes({} writes of {} bytes) of data".format(read_size, cnt, size))
         resp = node.stress_object(stress_options=['write', 'n={}'.format(cnt),
@@ -101,8 +107,20 @@ class ReadAmplificationTest(Tester):
             self.assertIsInstance(resp, dict, 'Stress error: {}'.format(resp))
             self.assertAlmostEqual(int(resp['Total partitions:read']), cnt, delta=int(cnt / 100))
 
+        def run_scan_read():
+            session = self.patient_cql_connection(node)
+            future = session.execute_async(
+                SimpleStatement("select * from keyspace1.standard1", fetch_size=10)
+            )
+            pf = PageFetcher(future).request_all(timeout=30)
+            all_pages = pf.num_results_all()
+            self.assertEqual(sum(all_pages), cnt)
+
         debug('Start reading')
-        thr = threading.Thread(target=run_read, args=(threads, ))
+        if read_type == PARTITION_READ:
+            thr = threading.Thread(target=run_read, args=(threads, ))
+        else:
+            thr = threading.Thread(target=run_scan_read)
         thr.start()
 
         debug('Metrics during read')
@@ -117,17 +135,26 @@ class ReadAmplificationTest(Tester):
         total_written_bytes = cnt * size
         ampl = total_read_bytes / total_written_bytes
         ampl_percent = total_read_bytes * 100 / total_written_bytes
-        size_formatted = read_size / 1024
-        size_formatted = '{}kb'.format(size_formatted) if size_formatted < 1024 else\
-            '{}mb'.format(size_formatted / 1024)
+        size_formatted = read_size / KBYTE
+        size_formatted = '{}kb'.format(size_formatted) if size_formatted < KBYTE else\
+            '{}mb'.format(size_formatted / KBYTE)
         debug('Read amplification for {} data size: {} times or {}%'.format(size_formatted, ampl, ampl_percent))
         self.assertLessEqual(ampl, max_ratio_expected, 'Read amplification is too large: {} times'.format(ampl))
 
     def no_amplification_on_read_20kb_test(self):
-        self.read_amplification(1024 * 20, 1, 1, 20)
+        self.read_amplification(PARTITION_READ, KBYTE * 20, 1, 1, 20)
 
     def no_amplification_on_read_20mb_test(self):
-        self.read_amplification(1024 * 1024 * 20)
+        self.read_amplification(PARTITION_READ, KBYTE * KBYTE * 20)
 
     def no_amplification_on_read_1gb_test(self):
-        self.read_amplification(1024 * 1024 * 1000, 180, 10)
+        self.read_amplification(PARTITION_READ, KBYTE * KBYTE * 1000, 180, 10)
+
+    def no_amplification_on_scanning_read_20kb_test(self):
+        self.read_amplification(SCAN_READ, KBYTE * 20)
+
+    def no_amplification_on_scanning_read_2mb_test(self):
+        self.read_amplification(SCAN_READ, KBYTE * KBYTE * 2)
+
+    def no_amplification_on_scanning_read_20mb_test(self):
+        self.read_amplification(SCAN_READ, KBYTE * KBYTE * 20)
