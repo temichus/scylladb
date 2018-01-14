@@ -106,6 +106,43 @@ class TestAuth(Tester):
             # https://github.com/scylladb/scylla/issues/2274
             # assert 'Password must not be null' in e.errors.values()[0].message
 
+    def anonymous_test(self):
+        """
+        Both Scylla and Cassandra allow to create a non-anonymous user which name
+        is `anonymous`, Scylla identifies the anonymous user by a flag, not match
+        with the name. In authorization, we strictly check anonymous flag before
+        query the permission table, which might filter by username. So we are safe.
+        """
+        self.prepare(nodes=1)
+        cassandra = self.get_session(user='cassandra', password='cassandra')
+
+        debug('Create a non-anonymous user which name is `anonymous`')
+        cassandra.execute("CREATE USER anonymous WITH PASSWORD '12345' NOSUPERUSER")
+
+        debug('Login with non-anonymous user `anonymous`')
+        session = self.get_session(user='anonymous', password='12345')
+
+        debug('The new user should has permission to LIST users')
+        debug("we don't expect to see error: `You have to be logged in and not anonymous to perform this request`")
+        session.execute("LIST USERS")
+
+        debug('Give AUTHORIZE permission to non-anonymous user `anonymous`')
+        cassandra.execute('GRANT AUTHORIZE ON ALL KEYSPACES to anonymous')
+
+        debug('Update config and restart to enable AllowAllAuthenticator/AllowAllAuthorizer')
+        self.cluster.stop()
+        config = {'authenticator': 'org.apache.cassandra.auth.AllowAllAuthenticator',
+                  'authorizer': 'org.apache.cassandra.auth.AllowAllAuthorizer'}
+        self.cluster.set_configuration_options(values=config)
+        self.cluster.start(wait_for_binary_proto=True)
+
+        debug('Verify permissions of real anonymous user')
+        session = self.get_session(user='anonymous', password='12345')
+        self.assertUnauthorized("You have to be logged in and not anonymous to perform this request", session,
+                                "LIST USERS")
+        self.assertUnauthorized("You have to be logged in and not anonymous to perform this request", session,
+                                "GRANT SELECT ON ALL KEYSPACES TO anonymous")
+
     # from 2.2 role creation is granted by CREATE_ROLE permissions, not superuser status
     # @since('1.2', max_version='2.1.x')
     # we still support NOSUPERUSER!!!
