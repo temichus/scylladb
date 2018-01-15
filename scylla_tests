@@ -44,6 +44,7 @@ consistency_test.py:TestConsistency.short_read_test
 consistent_bootstrap_test.py
 counter_tests.py
 cql_additional_tests.py
+cql_cast_test.py
 cql_tests.py
 cql_tracing_test.py
 cqlsh_tests/cqlsh_tests.py
