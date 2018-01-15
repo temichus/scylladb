@@ -6,6 +6,7 @@ from cassandra.query import SimpleStatement
 from datahelp import create_rows
 from paging_test import PageFetcher, BasePagingTester, PageAssertionMixin
 from scylla_tools import scylla_mode
+from tools import since
 
 
 class TestAggregatePaging(BasePagingTester, PageAssertionMixin):
@@ -170,3 +171,192 @@ class TestLargePaging(BasePagingTester, PageAssertionMixin):
         self.assertEqual(sum(all_pages), 1000)
         for page in all_pages:
             self.assertLess(page, 400)
+
+
+class TestPagingSavedQueryStateBase(BasePagingTester):
+    LOOKUPS = 'querier_cache_lookups'
+    MISSES = 'querier_cache_misses'
+    DROPS = 'querier_cache_drops'
+    TIME_BASED_EVICTIONS = 'querier_cache_time_based_evictions'
+    RESOURCE_BASED_EVICTIONS = 'querier_cache_resource_based_evictions'
+    MEMORY_BASED_EVICTIONS = 'querier_cache_memory_based_evictions'
+    POPULATION = 'querier_cache_population'
+
+    ALL_METRICS = [LOOKUPS, MISSES, DROPS, TIME_BASED_EVICTIONS, RESOURCE_BASED_EVICTIONS, MEMORY_BASED_EVICTIONS]
+
+    def metrics_equal(self, node_metrics, expected_metrics):
+        for metric in self.ALL_METRICS:
+            expected_metric = expected_metrics.get(metric.replace("querier_cache_", ""), 0)
+
+            if expected_metric == -1:
+                continue
+
+            if node_metrics[metric] != expected_metric:
+                return False
+
+        return True
+
+    def match_node_metrics(self, node, expected_metrics, matched):
+        if expected_metrics is None:
+            return
+
+        node_metrics = self.get_node_metrics(self.get_ip_from_node(node), metrics=self.ALL_METRICS)
+
+        matched_any = False
+
+        for i, metrics_variant in enumerate(expected_metrics):
+            if self.metrics_equal(node_metrics, metrics_variant):
+                matched.add(i)
+                matched_any = True
+
+        if not matched_any:
+            print("\nNode metrics doesn't match any of the expected metrics:\nnode_metrics: {}\nexpected_metrics: {}".format(node_metrics, expected_metrics))
+
+        # The node's metrics must match at least one expected metrics
+        self.assertEqual(matched_any, True)
+
+    def assert_nodes_metrics(self, expected_metrics):
+        nodes = self.cluster.nodelist()
+
+        matched = set()
+
+        for node in nodes:
+            self.match_node_metrics(node, expected_metrics, matched)
+
+        # All expected metrics have to match at least node's metrics
+        self.assertEqual(len(matched), len(expected_metrics))
+
+
+class TestPagingSavedQueryStateSingularRanges(TestPagingSavedQueryStateBase):
+    """
+    Tests concerned with querier-reuse during paging.
+    """
+
+    def setup_simple_table(self, **kwargs):
+        self.create_ks(self.session, 'paging_additional_test_querier_reuse', 2)
+        query = "CREATE TABLE test_singular (pk int, ck int, val text, PRIMARY KEY (pk, ck))"
+
+        if len(kwargs) > 0:
+            options = []
+            for key, val in kwargs.iteritems():
+                if type(val) is float or type(val) is int:
+                    options.append("{}={}".format(key, val))
+                else:
+                    options.append("{}='{}'".format(key, val))
+
+            query += " WITH " + " AND ".join(options)
+
+        self.session.execute(query)
+
+        data = """
+             | pk | ck | val    |
+             +----+----+--------+
+             | 1  | 1  | val1_1 |
+             | 1  | 2  | val1_2 |
+             | 1  | 3  | val1_3 |
+             | 1  | 4  | val1_4 |
+             | 2  | 1  | val2_1 |
+             | 2  | 2  | val2_2 |
+             | 2  | 3  | val2_3 |
+             | 2  | 4  | val2_4 |
+             | 2  | 5  | val2_5 |
+             | 2  | 6  | val2_6 |
+        """
+
+        create_rows(data, self.session, 'test_singular', cl=CL.ALL,
+                    format_funcs={
+                        'pk': int,
+                        'ck': int,
+                        'val': unicode,
+                    })
+
+        return [
+            {'pk': 1, 'ck': 1, 'val': 'val1_1'},
+            {'pk': 1, 'ck': 2, 'val': 'val1_2'},
+            {'pk': 1, 'ck': 3, 'val': 'val1_3'},
+            {'pk': 1, 'ck': 4, 'val': 'val1_4'},
+            {'pk': 2, 'ck': 1, 'val': 'val2_1'},
+            {'pk': 2, 'ck': 2, 'val': 'val2_2'},
+            {'pk': 2, 'ck': 3, 'val': 'val2_3'},
+            {'pk': 2, 'ck': 4, 'val': 'val2_4'},
+            {'pk': 2, 'ck': 5, 'val': 'val2_5'},
+            {'pk': 2, 'ck': 6, 'val': 'val2_6'},
+        ]
+
+
+    def test_single_partition(self):
+        """
+        Test that the querier is saved and reused.
+        """
+        self.session = self.prepare()
+
+        data = self.setup_simple_table()
+
+        future = self.session.execute_async(
+            SimpleStatement("select * from test_singular where pk = 1", fetch_size=3, consistency_level=CL.ALL)
+        )
+        pf = PageFetcher(future)
+
+        all_pages = pf.request_all()
+        self.assertEqual(pf.all_data(), [p for p in data if p['pk'] == 1])
+
+        self.assertEqual(pf.requested_pages, 2)
+        self.assert_nodes_metrics(({'lookups': pf.requested_pages - 1}, {}))
+
+
+    def test_two_partitions(self):
+        """
+        Test that when the coordinator throws away parts of the results
+        the replica recognizes the position mismatch and drops the
+        cached querier.
+        """
+        self.session = self.prepare()
+
+        data = self.setup_simple_table()
+
+        future = self.session.execute_async(
+            SimpleStatement("select * from test_singular where pk in (1, 2)", fetch_size=5, consistency_level=CL.ALL)
+        )
+        pf = PageFetcher(future)
+
+        all_pages = pf.request_all()
+
+        self.assertEqual(pf.requested_pages, 3)
+        self.assertEqual(pf.all_data(), data)
+        self.assert_nodes_metrics(({'lookups': pf.requested_pages - 1, 'drops': 1}, {}))
+
+
+    def test_replica_usage(self):
+        """
+        Test that the coordinator sends all page-requests consistently to the
+        same replica.
+        """
+        self.session = self.prepare()
+
+        data = self.setup_simple_table(speculative_retry="NONE", dclocal_read_repair_chance=0.0)
+
+        future = self.session.execute_async(
+            SimpleStatement("select * from test_singular where pk = 2", fetch_size=1, consistency_level=CL.ONE)
+        )
+        pf = PageFetcher(future)
+
+        def get_coordinator_reads_metric(node_ip):
+            return self.get_node_metrics(node_ip, metrics=["storage_proxy_coordinator_reads"])["storage_proxy_coordinator_reads"]
+
+        node_ips = [self.get_ip_from_node(node) for node in self.cluster.nodelist()]
+        coordinator_reads_baseline = {node_ip: get_coordinator_reads_metric(node_ip) for node_ip in node_ips}
+
+        all_pages = pf.request_all()
+
+        for node_ip in node_ips:
+            new_reads = get_coordinator_reads_metric(node_ip) - coordinator_reads_baseline[node_ip]
+            # Verify that each node was used as a coordinator at least once
+            # and therefore that the test is meaningful.
+            # Currently the driver will round-robin through the nodes as all
+            # them will have the read partitions. If this assumption will not
+            # hold in the future this test will become obsolete.
+            self.assertGreater(new_reads, 0)
+
+        self.assertEqual(pf.requested_pages, 7)
+        self.assertEqual(pf.all_data(), [p for p in data if p['pk'] == 2])
+        self.assert_nodes_metrics(({'lookups': pf.requested_pages - 1}, {}))
