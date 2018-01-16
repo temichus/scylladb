@@ -30,7 +30,7 @@ class NativeTransportSSL(Tester):
         except NoHostAvailable:
             pass
 
-        assert len(node1.grep_log("(^io.netty.handler.ssl.NotSslRecordException.*|^.*An unexpected TLS packet was received.*)")) > 0, \
+        assert len(node1.grep_log("(^io.netty.handler.ssl.NotSslRecordException.*|^.*An unexpected TLS packet was received.*|^.*The specified session has been invalidated for some reason.*)")) > 0, \
             "Missing SSL handshake exception while connecting with non-SSL enabled client"
 
         # enabled ssl on the client and try again (this should work)
@@ -41,6 +41,7 @@ class NativeTransportSSL(Tester):
         """
         Connecting to SSL enabled native transport port should only be possible using SSL enabled client
         """
+
         cluster = self._populateCluster(enableSSL=True, requireAuth=True)
         node1 = cluster.nodelist()[0]
 
@@ -53,7 +54,7 @@ class NativeTransportSSL(Tester):
         except NoHostAvailable:
             pass
 
-        assert len(node1.grep_log("(^io.netty.handler.ssl.NotSslRecordException.*|^.*An unexpected TLS packet was received.*)")) > 0, \
+        assert len(node1.grep_log("(^io.netty.handler.ssl.NotSslRecordException.*|^.*An unexpected TLS packet was received.*|^.*The specified session has been invalidated for some reason.*)")) > 0, \
             "Missing SSL handshake exception while connecting with non-SSL enabled client"
 
         try:
