@@ -1589,8 +1589,8 @@ class TestMutations(ThriftTester):
     def test_describe_keyspace(self):
         kspaces = client.describe_keyspaces()
         if self.cluster.version() >= '3.0':
-            # Scylla does not have system_auth or system_distributed keyspaces.
-            assert len(kspaces) == 5, [x.name for x in kspaces]  # ['Keyspace2', 'Keyspace1', 'system', 'system_traces', 'system_schema']
+            # Scylla does not have the system_distributed keyspace.
+            assert len(kspaces) == 6, [x.name for x in kspaces]  # ['Keyspace2', 'Keyspace1', 'system', 'system_traces', 'system_schema', 'system_auth']
         elif self.cluster.version() >= '2.2':
             # Scylla does not have system_auth or system_distributed keyspaces.
             assert len(kspaces) == 5, [x.name for x in kspaces]  # ['Keyspace2', 'Keyspace1', 'system', 'system_traces']
