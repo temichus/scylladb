@@ -1,7 +1,7 @@
 import re
 from cassandra import InvalidRequest, Unavailable, ConsistencyLevel, WriteFailure, WriteTimeout, ReadFailure, ReadTimeout
 from cassandra.query import SimpleStatement
-from tools import rows_to_list
+from tools import rows_to_list, run_query_with_data_processing
 
 
 def assert_unavailable(fun, *args):
@@ -91,3 +91,12 @@ def assert_crc_check_chance_equal(session, table, expected, ks="ks", view=False)
                    "SELECT crc_check_chance from system_schema.tables WHERE keyspace_name = '{ks}' AND "
                    "table_name = '{table}';".format(table=table, ks=ks),
                    [expected])
+
+def assert_two_queries_equal(session1, query1, session2, query2, consistency_level=ConsistencyLevel.ONE, session_timeout=120,
+                             group=False, groupby_column1=None, groupby_column2=None, restrict_column1=None,
+                             restrict_column2=None, restrict_value1=None, restrict_value2=None):
+    exp_res = run_query_with_data_processing(session1, query1, group=group, consistency_level=consistency_level, session_timeout=session_timeout,
+                                             groupby_column=groupby_column1, restrict_column=restrict_column1, restrict_value=restrict_value1)
+    act_res = run_query_with_data_processing(session2, query2, group=group, consistency_level=consistency_level, session_timeout=session_timeout,
+                                             groupby_column=groupby_column2, restrict_column=restrict_column2, restrict_value=restrict_value2)
+    assert exp_res == act_res, "Expected %s, but got %s" % (exp_res, act_res)
