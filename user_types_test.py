@@ -774,3 +774,18 @@ class TestUserTypes(Tester):
             "CREATE TABLE t (id int PRIMARY KEY, v frozen<user_types.udt>)",
             "Statement on keyspace user_ks cannot refer to a user type in keyspace user_types"
         )
+
+    def test_keyspace_drop_with_table_containing_udt(self):
+        """
+        Test for #3068
+        """
+
+        cluster = self.cluster
+        cluster.populate(1).start()
+        node1 = cluster.nodelist()[0]
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 1)
+
+        session.execute("CREATE TYPE udt (first text, second int)")
+        session.execute("CREATE TABLE table1 (id uuid PRIMARY KEY, x frozen<udt>);")
+        session.execute("DROP KEYSPACE IF EXISTS ks;")
