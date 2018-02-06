@@ -1,5 +1,6 @@
 import time
 from collections import OrderedDict
+from tools import require
 
 from cassandra import ConsistencyLevel
 from cassandra.query import SimpleStatement
@@ -10,7 +11,8 @@ from assertions import (
     assert_none,
     assert_row_count,
     assert_almost_equal,
-    assert_unavailable
+    assert_unavailable,
+    assert_invalid
 )
 from dtest import Tester, canReuseCluster
 from tools import since
@@ -360,6 +362,61 @@ class TestTTL(Tester):
         # the statement
         # self.session1.execute("delete from session where id = 'abc' if usr ='abc'")
         self.session1.execute("delete from session where id = 'abc'")
+        assert_row_count(self.session1, 'session', 0)
+
+    @require('3182')
+    def boundary_ttl_test(self):
+        """
+        Test with boundary invalid and valid TTL.
+
+        (2 ** 31) : 2147483648            # invalid signed int
+        (2 ** 31) - 1 : 2147483647        # max signed int
+        20 * 365 * 24 * 3600 : 630720000  # 20 years in seconds
+        boundary_ttl = MAX_DELETE_TIME - int(time.time())  # max valid ttl which will reach to max signed
+                                                           # int after adding current time
+        boundary_ttl + 1 # invalid
+        """
+        DEBUG_WITH_BUG_TTL = False
+        self.prepare()
+
+        if self._preserve_cluster:
+            self.session1.execute("DROP TABLE IF EXISTS session")
+
+        self.session1.execute("CREATE TABLE session (id text, usr text, valid int, PRIMARY KEY (id))")
+
+        # InvalidRequest: Error from server: code=2200 [Invalid query] message="marshaling error: Value out of range for type org.apache.cassandra.db.marshal.Int32Type: '2147483648'"
+        assert_invalid(self.session1, "insert into session (id, usr) values ('abc', 'abc') USING TTL 2147483648")
+
+        # InvalidRequest: Error from server: code=2200 [Invalid query] message="ttl is too large. requested (2147483647) maximum (630720000)"
+        assert_invalid(self.session1, "insert into session (id, usr) values ('abc', 'abc') USING TTL 2147483647")
+
+        if DEBUG_WITH_BUG_TTL:
+            self.session1.execute("insert into session (id, usr) values ('abc', 'abc') USING TTL 630720000")
+        else:
+            assert_invalid(self.session1, "insert into session (id, usr) values ('abc', 'abc') USING TTL 630720000")
+
+        assert_row_count(self.session1, 'session', 0)
+
+        MAX_DELETE_TIME = 2 ** 31 - 1
+        start_time = time.time()
+        boundary_ttl = MAX_DELETE_TIME - int(start_time)
+
+        self.session1.execute("insert into session (id, usr) values ('abc', 'abc') USING TTL %s" % boundary_ttl)
+        assert_row_count(self.session1, 'session', 1)
+        self.smart_sleep(start_time, 10)
+        assert_row_count(self.session1, 'session', 1)
+
+        start_time = time.time()
+        boundary_ttl = MAX_DELETE_TIME - int(start_time)
+        if DEBUG_WITH_BUG_TTL:
+            self.session1.execute("insert into session (id, usr) values ('def', 'def') USING TTL %s" % (boundary_ttl + 1))
+        else:
+            assert_invalid(self.session1, "insert into session (id, usr) values ('def', 'def') USING TTL %s" % boundary_ttl + 1)
+        assert_row_count(self.session1, 'session', 1)
+
+        start_time = time.time()
+        self.session1.execute("insert into session (id, usr) values ('abc', 'abc') USING TTL %s" % 5)
+        self.smart_sleep(start_time, 10)
         assert_row_count(self.session1, 'session', 0)
 
 
