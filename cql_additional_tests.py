@@ -5,6 +5,8 @@ import random
 import re
 import struct
 import time
+import os
+
 from collections import OrderedDict, defaultdict
 from collections import namedtuple
 from uuid import UUID
@@ -5322,3 +5324,39 @@ class CQLAdditionalTests(Tester):
             debug("%s %s %s " % (hour, ug, count))
         # expect the same data
         assert r_explicitly == r_implicitly
+
+    def create_100tables_test(self):
+        """
+        The scenario referenced https://github.com/scylladb/scylla/issues/2923
+
+        Create 100 tables, and try to restart the scylla-server of two nodes
+        """
+        self.cluster.populate(3).start()
+        nodes = self.cluster.nodelist()
+        schema_file = "test_data/c-s-profiles/create_100tables.yaml"
+        assert os.path.exists(schema_file), "schema file doesn't exist"
+
+        debug("Create 100+ tables by simple_test_100tables.yaml")
+        nodes[0].run_cqlsh(cmds="SOURCE '%s'" % schema_file, show_output=True, return_output=True)
+
+        debug("Check created tables in KEYSPACE `veraminetest`")
+        out, err = nodes[0].run_cqlsh(cmds='USE veraminetest; DESCRIBE TABLES', show_output=True, return_output=True)
+        assert len(out.split()) == 112, 'created 100+ tables'
+
+        debug("Drain node1")
+        resp = nodes[0].drain()
+        debug("Restart node1")
+        nodes[0].stop(wait_other_notice=False, gently=False)
+        nodes[0].start(wait_other_notice=True)
+
+        debug("Drain node2")
+        resp = nodes[1].drain()
+        debug("Restart node2")
+        nodes[1].stop(wait_other_notice=False, gently=False)
+        nodes[1].start(wait_other_notice=True)
+
+        session = self.patient_cql_connection(nodes[0])
+
+        debug("Check created tables in KEYSPACE `veraminetest` after restart")
+        out, err = nodes[0].run_cqlsh(cmds='USE veraminetest; DESCRIBE TABLES', show_output=True, return_output=True)
+        assert len(out.split()) == 112, 'created 100+ tables'
