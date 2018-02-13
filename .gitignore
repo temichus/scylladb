@@ -5,3 +5,4 @@ upgrade
 *.iml
 html/
 doxygen/doxypy-0.4.2/
+.idea/

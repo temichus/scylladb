@@ -1784,22 +1784,261 @@ class TestAuth(Tester):
         session = self.get_session(user='cassandra', password='cassandra')
         self.assertEquals(2, session.cluster.metadata.keyspaces['system_auth'].replication_strategy.replication_factor)
 
-    def prepare(self, nodes=1, permissions_validity=0, experimental=False):
+    def transitional_auth_from_default_test(self):
+        """
+        Start cluster with default Auth, rolling upgrade cluster to enable Transitional Auth,
+        create a normal user and verify its permission, rolling upgrade cluster to strict Auth.
+        """
+        debug('STEP: start cluster with default AllowAllAuthenticator/AllowAllAuthorizer')
+        self.prepare(nodes=3, enable_auth=False)
+
+        debug('STEP: update conf and restart cluster to use TransitionalAuthenticator/TransitionalAuthorizer')
+        config = {'authenticator': 'com.scylladb.auth.TransitionalAuthenticator',
+                  'authorizer': 'com.scylladb.auth.TransitionalAuthorizer'}
+        self.cluster.set_configuration_options(values=config)
+        for node in self.cluster.nodelist():
+            node.stop()
+            node.start(wait_for_binary_proto=True)
+
+        cassandra = self.get_session(user='cassandra', password='cassandra')
+        debug('STEP: create normal user by super cassandra')
+        cassandra.execute("CREATE USER normal WITH PASSWORD '123456' NOSUPERUSER")
+
+        debug('STEP: check permissions (LIST/CREATE/GRANT/REVOKE) of normal user')
+        session = self.get_session(user='normal', password='123456')
+        session.execute('LIST USERS')
+        session.execute("CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}")
+        session.execute("CREATE TABLE ks.cf (id int primary key)")
+        session.execute("SELECT * FROM ks.cf")
+        self.assertUnauthorized("User normal has no AUTHORIZE permission on <table ks.cf> or any of its parents",
+                                session, "GRANT SELECT ON ks.cf TO normal")
+        self.assertUnauthorized("User normal has no AUTHORIZE permission on <table ks.cf> or any of its parents",
+                                session, "REVOKE SELECT ON ks.cf from normal")
+        cassandra.execute("GRANT AUTHORIZE ON ks.cf TO normal")
+
+        debug('STEP: verify user will login as anonymous if authentication fails')
+        session = self.get_session(user='normal', password='wrongpwd')
+        self.assertUnauthorized("You have to be logged in and not anonymous to perform this request", session,
+                                "LIST USERS")
+
+        debug('STEP: verify user without credentials can not login')
+        try:
+            session = self.get_session()
+            self._check_session_available(session, expect_auth_err=True)
+        except NoHostAvailable as e:
+            debug(e)
+            assert isinstance(e.errors.values()[0], AuthenticationFailed)
+        else:
+            self.fail('Session should not be created')
+
+        debug('STEP: update conf and restart cluster to use strict PasswordAuthenticator/CassandraAuthorizer')
         config = {'authenticator': 'org.apache.cassandra.auth.PasswordAuthenticator',
-                  'authorizer': 'org.apache.cassandra.auth.CassandraAuthorizer',
-                  'permissions_validity_in_ms': permissions_validity,
-                  'permissions_update_interval_in_ms' : int(permissions_validity / 2)}
+                  'authorizer': 'org.apache.cassandra.auth.CassandraAuthorizer'}
+        self.cluster.set_configuration_options(values=config)
+        for node in self.cluster.nodelist():
+            node.stop()
+            node.start(wait_for_binary_proto=True)
+
+        debug('STEP: verify user without credentials or with wrong credentials can not login')
+        try:
+            session = self.get_session()
+            self._check_session_available(session, expect_auth_err=True)
+        except NoHostAvailable as e:
+            debug(e)
+            assert isinstance(e.errors.values()[0], AuthenticationFailed)
+        else:
+            self.fail('Session should not be created')
+
+        try:
+            session = self.get_session(user='normal', password='wrongpwd')
+            self._check_session_available(session, expect_auth_err=True)
+        except NoHostAvailable as e:
+            debug(e)
+            assert isinstance(e.errors.values()[0], AuthenticationFailed)
+        else:
+            self.fail('Session should not be created')
+
+        session = self.get_session(user='normal', password='123456')
+        self.assertUnauthorized("User normal has no SELECT permission on <table ks.cf> or any of its parents",
+                                session, "SELECT * FROM ks.cf")
+        self.assertUnauthorized("User normal has no SELECT permission on <table ks.cf> or any of its parents",
+                                 session, "REVOKE SELECT ON ks.cf from normal")
+
+    def transitional_auth_from_pwdauth_test(self):
+        """
+        Start cluster with PasswordAuthenticator/CassandraAuthorizer, rolling upgrade cluster
+        to enable Transitional Auth, create a normal user and verify its permission, then
+        switch to AllowAll Auth. It's a wrong transitional order but we want to cover it.
+        """
+        debug('STEP: start cluster with PasswordAuthenticator/CassandraAuthorizer')
+        self.prepare(nodes=3, enable_auth=True)
+        self.wait_for_any_log(self.cluster.nodelist(), 'Created default superuser', 10)
+
+        session = self.get_session(user='cassandra', password='cassandra')
+        debug('STEP: create normal user by super cassandra')
+        session.execute("CREATE USER normal WITH PASSWORD '123456' NOSUPERUSER")
+
+        session = self.get_session(user='normal', password='123456')
+        rows = list(session.execute('LIST USERS'))
+        assert len(rows) == 2, "Expect to see `cassandra` and `normal`, actual: %s" % (rows)
+        debug('Verified normal user was created and available')
+
+        debug('STEP: verify user without credentials can not login')
+        try:
+            session = self.get_session(user='normal', password='wrongpwd')
+            self._check_session_available(session, expect_auth_err=True)
+        except NoHostAvailable as e:
+            debug(e)
+            assert isinstance(e.errors.values()[0], AuthenticationFailed)
+        else:
+            self.fail('Session should not be created')
+
+        debug('STEP: update conf and restart cluster to use TransitionalAuthenticator/TransitionalAuthorizer')
+        config = {'authenticator': 'com.scylladb.auth.TransitionalAuthenticator',
+                   'authorizer': 'com.scylladb.auth.TransitionalAuthorizer'}
+        self.cluster.set_configuration_options(values=config)
+        for node in self.cluster.nodelist():
+            node.stop()
+            node.start(wait_for_binary_proto=True)
+
+        debug('STEP: check permissions (LIST/CREATE/GRANT/REVOKE) of normal user')
+        session = self.get_session(user='normal', password='123456')
+        session.execute('LIST USERS')
+        session.execute("CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}")
+        session.execute("CREATE TABLE ks.cf (id int primary key)")
+        self.assertUnauthorized("User normal has no AUTHORIZE permission on <table ks.cf> or any of its parents",
+                                session, "GRANT ALTER ON ks.cf TO normal")
+        self.assertUnauthorized("User normal has no AUTHORIZE permission on <table ks.cf> or any of its parents",
+                                session, "REVOKE SELECT ON ks.cf from normal")
+
+        debug('STEP: verify user will login as anonymous if authentication fails')
+        session = self.get_session(user='normal', password='wrongpwd')
+        self.assertUnauthorized("You have to be logged in and not anonymous to perform this request", session,
+                                "LIST USERS")
+
+        debug('STEP: verify user without credentials can not login')
+        try:
+            session = self.get_session()
+            self._check_session_available(session, expect_auth_err=True)
+        except NoHostAvailable as e:
+            debug(e)
+            assert isinstance(e.errors.values()[0], AuthenticationFailed)
+        else:
+            self.fail('Session should not be created')
+
+        debug('STEP: update conf and restart cluster to use AllowAllAuthenticator/AllowAllAuthorizer')
+        config = {'authenticator': 'AllowAllAuthenticator',
+                   'authorizer': 'AllowAllAuthorizer'}
+        self.cluster.set_configuration_options(values=config)
+        for node in self.cluster.nodelist():
+            node.stop()
+            node.start(wait_for_binary_proto=True)
+
+        debug('STEP: verify all users will login as anonymous')
+        session = self.get_session(user='cassandra', password='cassandra')
+        self.assertUnauthorized("You have to be logged in and not anonymous to perform this request", session,
+                                "LIST USERS")
+        session = self.get_session(user='normal', password='123456')
+        self.assertUnauthorized("You have to be logged in and not anonymous to perform this request", session,
+                                "LIST USERS")
+
+    def transitional_auth_betweenness_from_default_test(self):
+        """
+        Start cluster with default Auth, test user permission during rolling upgrade of enable Transitional Auth.
+        """
+        debug('STEP: start cluster with default AllowAllAuthenticator/AllowAllAuthorizer')
+        self.prepare(nodes=2, enable_auth=False)
+        nodes = self.cluster.nodelist()
+
+        debug('STEP: update config and restart node1 to enable Transitional Auth')
+        nodes[0].stop(wait_other_notice=True, gently=True)
+        config = {'authenticator': 'com.scylladb.auth.TransitionalAuthenticator',
+                   'authorizer': 'com.scylladb.auth.TransitionalAuthorizer'}
+        nodes[0].set_configuration_options(values=config)
+        nodes[0].start(wait_for_binary_proto=True)
+        self.wait_for_any_log(self.cluster.nodelist(), 'Created default superuser', 10)
+
+        session = self.get_session(node_idx=0, user='cassandra', password='cassandra')
+        session.execute("CREATE USER normal WITH PASSWORD '123456' NOSUPERUSER")
+
+        debug('STEP: (on node1) verify normal user has permission to list users')
+        session = self.get_session(node_idx=0, user='normal', password='123456')
+        session.execute('LIST USERS')
+        debug('STEP: (on node1) verify user will login as anonymous if authentication fails')
+        session = self.get_session(node_idx=0, user='normal', password='wrongpwd')
+        self.assertUnauthorized("You have to be logged in and not anonymous to perform this request", session,
+                                "LIST USERS")
+
+        debug('STEP: (on node2) verify all users will login as anonymous if authentication fails')
+        session = self.get_session(node_idx=1, user='cassandra', password='cassandra')
+        self.assertUnauthorized("You have to be logged in and not anonymous to perform this request", session,
+                                "LIST USERS")
+        session = self.get_session(node_idx=1, user='normal', password='123456')
+        self.assertUnauthorized("You have to be logged in and not anonymous to perform this request", session,
+                                "LIST USERS")
+
+    def transitional_auth_betweenness_from_pwdauth_test(self):
+        """
+        Start cluster with strict Auth, test user permission during rolling upgrade of enable Transitional Auth.
+        It's a wrong order to transition from strict Auth to AllowAllAuth, but we want to cover it.
+        """
+        debug('STEP: start cluster with PasswordAuthenticator/CassandraAuthorizer')
+        self.prepare(nodes=2, enable_auth=True)
+        nodes = self.cluster.nodelist()
+
+        session = self.get_session(user='cassandra', password='cassandra')
+        debug('STEP: create normal user (normal) by super cassandra')
+        session.execute("CREATE USER normal WITH PASSWORD '123456' NOSUPERUSER")
+
+        session = self.get_session(user='normal', password='123456')
+        rows = list(session.execute('LIST USERS'))
+        assert len(rows) == 2, "Expect to see `cassandra` and `normal`, actual: %s" % (rows)
+        debug('Verified normal was created, and available')
+
+        config = {'authenticator': 'com.scylladb.auth.TransitionalAuthenticator',
+                   'authorizer': 'com.scylladb.auth.TransitionalAuthorizer'}
+
+        debug('STEP: update config and restart node1 to enable Transitional Auth')
+        nodes[0].stop(wait_other_notice=True, gently=True)
+        nodes[0].set_configuration_options(values=config)
+        nodes[0].start(wait_for_binary_proto=True)
+
+        debug('STEP: (on node1) verify all users will login as anonymous if authentication fails')
+        session = self.get_session(node_idx=0, user='normal', password='wrong')
+        self.assertUnauthorized("You have to be logged in and not anonymous to perform this request", session,
+                                "LIST USERS")
+
+        try:
+            session = self.get_session(node_idx=1, user='normal', password='wrong')
+            session.execute("LIST USERS")
+        except NoHostAvailable as e:
+            assert isinstance(e.errors.values()[0], AuthenticationFailed)
+            debug("can't get session of node2 with normal user/password")
+        else:
+            self.fail('Session should not be created')
+
+    def prepare(self, nodes=1, permissions_validity=0, experimental=False, enable_auth=True):
+        config = {'permissions_validity_in_ms': permissions_validity,
+                  'permissions_update_interval_in_ms': int(permissions_validity / 2)}
+        auth_conf = {'authenticator': 'org.apache.cassandra.auth.PasswordAuthenticator',
+                     'authorizer': 'org.apache.cassandra.auth.CassandraAuthorizer'}
+        if enable_auth:
+            config.update(auth_conf)
         if experimental:
             config.update({'experimental': True})
         self.cluster.set_configuration_options(values=config)
         self.cluster.populate(nodes).start()
 
-        n = self.wait_for_any_log(self.cluster.nodelist(), 'Created default superuser', 10)
-        debug("Default role created by " + n.name)
+        if enable_auth:
+            n = self.wait_for_any_log(self.cluster.nodelist(), 'Created default superuser', 10)
+            debug("Default role created by " + n.name)
 
-    def get_session(self, node_idx=0, user=None, password=None):
+    def get_session(self, node_idx=0, user=None, password=None, exclusive=True):
         node = self.cluster.nodelist()[node_idx]
-        conn = self.patient_cql_connection(node, user=user, password=password)
+        if exclusive:
+            conn = self.patient_exclusive_cql_connection(node, user=user, password=password)
+        else:
+            conn = self.patient_cql_connection(node, user=user, password=password)
         return conn
 
     def assertPermissionsListed(self, expected, session, query):
