@@ -7,6 +7,7 @@ import sys
 import tempfile
 import time
 import unittest
+from itertools import groupby
 from distutils.version import LooseVersion
 from threading import Thread
 
@@ -15,7 +16,7 @@ from cassandra.concurrent import execute_concurrent_with_args
 from cassandra.query import SimpleStatement
 from nose.plugins.attrib import attr
 
-from dtest import CASSANDRA_DIR, DISABLE_VNODES, IGNORE_REQUIRE, debug
+from dtest import CASSANDRA_DIR, DISABLE_VNODES, IGNORE_REQUIRE, debug, make_execution_profile
 
 
 def rows_to_list(rows):
@@ -357,6 +358,23 @@ def require(require_pattern, broken_in=None):
     else:
         return tagging_decorator
 
+def run_query_with_data_processing(session, query, consistency_level=ConsistencyLevel.ONE, session_timeout=120,
+                             group=False, groupby_column=None, restrict_column=None, restrict_value=None):
+    debug(query)
+    result = session.execute(SimpleStatement(query, consistency_level=consistency_level), timeout=session_timeout)
+    if restrict_column:
+        restrict_column_index = [i for i, clmn in enumerate(result.current_rows[0]._fields) if clmn == restrict_column][0]
+        restrict_value = [restrict_value] if not isinstance(restrict_value, list) else restrict_value
+
+    if group:
+        groupby_column_index = [i for i, clmn in enumerate(result.current_rows[0]._fields) if clmn == groupby_column][0]
+        result = [item[groupby_column_index] for item in result.current_rows if item[restrict_column_index] in restrict_value] \
+                         if restrict_value and restrict_column \
+                         else [item[groupby_column_index] for item in result.current_rows]
+        result = [[key, len(list(group))] for key, group in groupby(sorted(result))]
+    elif restrict_value and restrict_column:
+        result = [item for item in result.current_rows if item[restrict_column_index] in restrict_value]
+    return result
 
 def cassandra_git_branch(cdir=None):
     '''Get the name of the git branch at CASSANDRA_DIR.
