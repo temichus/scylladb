@@ -15,11 +15,11 @@ from cassandra.cluster import Cluster
 from cassandra.query import SimpleStatement
 from enum import Enum  # Remove when switching to py3
 
-from assertions import assert_all, assert_one, assert_invalid, assert_unavailable, assert_none, assert_crc_check_chance_equal, \
-    assert_row_count, assert_two_queries_equal
+from assertions import assert_all, assert_one, assert_invalid, assert_unavailable, assert_none, \
+    assert_crc_check_chance_equal, assert_row_count, assert_two_queries_equal, assert_row_count_from_every_node
 from dtest import Tester, debug
 from tools import since, new_node, require
-from scylla_tools import TableManager, MaterializedViewManager
+from scylla_tools import TableManager, MaterializedViewManager, flush_by_node
 
 from nose.plugins.attrib import attr
 # from nose.tools import (assert_equal)
@@ -36,7 +36,7 @@ class TestMaterializedViews(Tester):
     @jira_ticket CASSANDRA-6477
     """
 
-    def prepare(self, user_table=False, rf=1, options={}, nodes=3, **kwargs):
+    def prepare(self, user_table=False, rf=1, options={}, nodes=3, fetch_size=None, **kwargs):
         """
 
         :param user_table:
@@ -57,6 +57,8 @@ class TestMaterializedViews(Tester):
         node1 = cluster.nodelist()[0]
 
         session = self.patient_cql_connection(node1, **kwargs)
+        if fetch_size:
+            session.default_fetch_size = fetch_size
         self.create_ks(session, 'ks', rf)
 
         if user_table:
@@ -248,7 +250,7 @@ class TestMaterializedViews(Tester):
         self._add_dc_during_mv_change('update', 3, 4)
 
     def _add_dc_during_mv_change(self, change, rf, nodes, start_prefill=4000, more_inserts=4000):
-        session = self.prepare(rf=rf, nodes=nodes)
+        session = self.prepare(rf=rf, nodes=nodes, fetch_size=start_prefill+more_inserts*2)
         node1 = self.cluster.nodelist()[0]
         tm = TableManager(session, self.cluster,
                           columns = {'int': {'amount': 2, 'frozen': False, 'value length': {'min': 1, 'max': 100}}
@@ -289,14 +291,16 @@ class TestMaterializedViews(Tester):
                                          group=True, groupby_column1=tm.column_names_list[-1], groupby_column2=tm.column_names_list[-1],
                                          restrict_column1=mv.mv_where_restriction.keys()[0], restrict_value1=mv_restrict_value)
 
-    def add_mv_records(self, session, tm, mv_restrict_value, inserts=10, delay=0):
+    def add_mv_records(self, session, tm, mv_restrict_value=None, inserts=10, delay=0):
         if delay:
             time.sleep(delay)
 
-        id = session.execute('select max(id) as id from {}'.format(tm.table_name)).current_rows[0].id +1
-        tm.prefill_table(inserts, data={'int': [mv_restrict_value]}, start_id_from=id, flush=False)
+        id = tm.get_max_id() +1
+        data = {'int': [mv_restrict_value]} if mv_restrict_value else None
+        tm.prefill_table(inserts, data=data, start_id_from=id, flush=False)
 
-    def _multiple_int_updates(self, session, tm, updated_column, filter_column, filter_value, update_to_boundaries, updates=10, delay=0):
+    def _multiple_int_updates(self, session, tm, updated_column, filter_column, filter_value, update_to_boundaries,
+                              updates=10, delay=0):
         if delay:
             time.sleep(delay)
 
@@ -322,6 +326,85 @@ class TestMaterializedViews(Tester):
         for i in xrange(0, nodes):
             debug('Bootstrapping {0} node in {1}'.format(i+1, data_center))
             self._add_new_node(data_center=data_center, queue=None)
+
+    def hundred_mv_concurrent_test(self):
+        """
+        Performance and functional test.
+        - Create 100 materialized views on the same base table.
+        - Pre-fill the table with 5000 records. Expected same records amount in the all views
+        - Validate the records count in the base table and all MVs
+        - In the parallel threads run: insert 5000 new records / updates / reads
+        - Validate the records count in the base table and all MVs
+        - If previous validation passed - validated the data in the MVs is as in the base table
+        """
+        self._parallel_updates_inserts(mvs_amount=100)
+
+    def small_concurrent_test(self):
+        """
+        This test is same as "hundreds_mvs_on_table_test" test, just small.
+        It was added for easy testing concurrent view updates
+        """
+        self._parallel_updates_inserts(mvs_amount=10)
+
+    def _parallel_updates_inserts(self, records=2000, nodes=3, rf=3, mvs_amount=1):
+        def _assert_rows_count(expected_rows=None, by_node=False):
+            names_list = [tm.table_name] + tm.materialized_views.keys() if expected_rows else tm.materialized_views.keys()
+            for name in names_list:
+                debug(name)
+                if expected_rows:
+                    if by_node:
+                        assert_row_count_from_every_node(session, name, expected_rows, nodes_list=self.cluster.nodelist())
+                    else:
+                        assert_row_count(session, name, expected_rows, consistency_level=ConsistencyLevel.ALL)
+                else:
+                    assert_two_queries_equal(session, 'select count(*) from {}'.format(tm.table_name),
+                                             session, 'select count(*) from {}'.format(name))
+
+        session = self.prepare(rf=rf, nodes=nodes, fetch_size=records*3)
+        tm = TableManager(session, self.cluster,
+                          columns = {'int': {'amount': mvs_amount, 'frozen': False, 'value length': {'min': 1, 'max': 100}}
+                                     }, pk_columns={}, cl_columns = {})
+        tm.create_table()
+
+        for i in xrange(1, len(tm.column_names_list)):
+            ctype = tm.columns_list[i].split(' ')[1]
+            mv = MaterializedViewManager(tm)
+            mv.create_materialized_view(mv_columns={ctype: {'names': [tm.column_names_list[i]]}},
+                                        mv_pk_column={'names': [tm.column_names_list[i]]},
+                                       )
+
+        start_data = [2, 5, 12, 45, 63, 78, 36, 85, 98, 100]
+        tm.prefill_table(records, data={'int': start_data})
+        _assert_rows_count(records)
+
+        new_data = [-2, -5, -12, -45, -63, -78, -36, -85, -98, -100]
+        proc_functions = [
+                          {'func': tm.prefill_table, 'args': (records,),
+                           'kwargs': {'data': {'int': new_data}, 'start_id_from': records+1}}
+                          , {'func': tm.multiple_int_updates_by_id, 'args': ([200, 300],),
+                           'kwargs': {'filter_values': start_data+new_data, 'updates': 1000, 'same_id': False}}
+                          , {'func': tm.multiple_int_updates_by_id, 'args': ([300, 400],),
+                           'kwargs': {'filter_values': start_data, 'updates': 1000}}
+                          , {'func': tm.select_all_mvs, 'kwargs': {'reads': 2000, 'by_id': True}}
+                         ]
+
+        self._managed_thread(proc_functions)
+        flush_by_node(self.cluster)
+        time.sleep(180)
+
+        # Validate count on every node
+        _assert_rows_count(records*2, by_node=True)
+
+        # Validate data
+        query_template = 'select {clmn} from {tbl}'
+        for mv_name, mv in tm.materialized_views.iteritems():
+            exp_query = query_template.format(clmn=mv.mv_columns_list[-1], tbl=tm.table_name)
+            act_query = query_template.format(clmn=mv.mv_columns_list[-1], tbl=mv_name)
+            debug('Compare: {0} AND {1}'.format(exp_query, act_query))
+            assert_two_queries_equal(session, exp_query, session, act_query,
+                                     consistency_level=ConsistencyLevel.QUORUM, session_timeout=120,
+                                     group=True, groupby_column1=mv.mv_columns_list[-1],
+                                     groupby_column2=mv.mv_columns_list[-1])
 
     @skip('under investigation')
     def mv_on_index_column_test(self):
@@ -524,6 +607,31 @@ class TestMaterializedViews(Tester):
         # cannot alter a view
         assert_invalid(session, "ALTER TABLE users_by_state ADD first_name varchar",
                        "Cannot use ALTER TABLE on Materialized View")
+
+    def immutable_truncate_mv_test(self):
+        """Test that a materialized view is immutable"""
+        session = self.prepare(user_table=True)
+        session.execute("INSERT INTO users (state, username) VALUES ('TX', 'user1')")
+
+        # cannot truncate a view
+        assert_invalid(session, "TRUNCATE table users_by_state",
+                       "Cannot TRUNCATE the Materialized View")
+
+    @skip('not developed yet')
+    def truncate_base_test(self):
+        """Test truncate base table and as result - materialized view"""
+        session = self.prepare(user_table=True)
+        session.execute("INSERT INTO users (state, username) VALUES ('TX', 'user1')")
+
+        # ensure sstables are created and will be dropped
+        self.cluster.flush()
+
+        # ensure data is loaded into cache and the cache will be cleared
+        assert_one(session, "SELECT * FROM users_by_state", ['TX', 'user1', None, None, None, None])
+
+        session.execute("TRUNCATE table users")
+
+        self._assert_count_table_mv(session, 'users', 0, 'users_by_state', 0)
 
     def drop_mv_test(self):
         """Test that we can drop a view properly"""
@@ -852,7 +960,7 @@ class TestMaterializedViews(Tester):
         # session2 = self.patient_exclusive_cql_connection(node4)
 
         session2 = self._add_new_node(wait_for_binary_proto=True,
-                                      jvm_args=["-Dcassandra.migration_task_wait_in_seconds={}".format(MIGRATION_WAIT)],
+                                      # jvm_args=["-Dcassandra.migration_task_wait_in_seconds={}".format(MIGRATION_WAIT)],
                                       configuration_options={'max_mutation_size_in_kb': 20})
         for i in xrange(10):
             for j in xrange(100):
@@ -909,7 +1017,7 @@ class TestMaterializedViews(Tester):
         #
         # session2 = self.patient_exclusive_cql_connection(node4)
         session2 = self._add_new_node(wait_for_binary_proto=True,
-                                      jvm_args=["-Dcassandra.migration_task_wait_in_seconds={}".format(MIGRATION_WAIT)],
+                                      # jvm_args=["-Dcassandra.migration_task_wait_in_seconds={}".format(MIGRATION_WAIT)],
                                       configuration_options={'max_mutation_size_in_kb': 20})
         for i in xrange(5):
             for j in xrange(5000):
