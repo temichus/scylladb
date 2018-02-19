@@ -381,6 +381,30 @@ class TableManager(object):
 
         debug('Finish prefill')
 
+    def multiple_deletes(self, filters):
+        """
+        :param filter: {<column_name1>: [<value1>,<value2>,..] <column_name2>: [<value1>,<value2>,..], ..}
+        """
+        for i in xrange(0, len(next(filters.itervalues()))):
+            filter = {}
+            for column, values in filters.iteritems():
+                filter.update({column: values[i]})
+            self.delete_row(filter)
+
+    def delete_row(self, filter):
+        """
+        :param filter: {<column_name1>: <value>, <column_name2>: <value>, ..}
+        """
+        where_statement = ['{0}={1}'.format(column, self.prepare_value(str(value))) for column, value in filter.iteritems()]
+        query = 'delete from {tbl} where {where}'.format(tbl=self.table_name, where=' and '.join(s for s in where_statement))
+        debug(query)
+        self.session.execute(query)
+
+    def truncate_table(self):
+        query = 'truncate table {tbl}'.format(tbl=self.table_name)
+        debug(query)
+        self.session.execute(query)
+
     def _create_data_array(self, rows, ready_data=None):
         def _get_random(dupl):
             if ready_data and c_type in ready_data and dupl:
@@ -597,6 +621,9 @@ class TableManager(object):
     def set_mv(self, mv_name, mv_self_arr):
         self.materialized_views[mv_name] = mv_self_arr
 
+    def remove_mv(self, mv_name):
+        del self.materialized_views[mv_name]
+
 class MaterializedViewManager(object):
     """Class provides interface to create and manage materialized views"""
     TEMPLATE_MV_NAME = '{0}_mv_{1}'
@@ -687,6 +714,16 @@ class MaterializedViewManager(object):
             self.parent_table.session.execute(statement)
             self.parent_table.set_mv(self.mv_name, self)
 
+    def drop_mv(self):
+        self.parent_table.session.execute('drop materialized view {}'.format(self.mv_name))
+        self.parent_table.remove_mv(mv_name=self.mv_name)
+        self.mv_name = ''
+        self.mv_columns_list = None
+        self.mv_pk_list = None
+        self.mv_cl_list = None
+        self.mv_where_clause = None
+        self.mv_options = None
+
     def _restriction_list(self, mv_where_restriction):
         restriction_dict = {}
         if mv_where_restriction:
@@ -748,7 +785,7 @@ class MaterializedViewManager(object):
         mv_pk_column_list = deepcopy(self.parent_table.pk_list)
         if 'names' in mv_pk_column:
             for name in mv_pk_column['names']:
-                if [name for n in self.parent_table.columns_list if '{} '.format(name) in n] and name not in mv_pk_column_list:
+                if name in self.parent_table.column_names_list and name not in mv_pk_column_list:
                     mv_pk_column_list.append(name)
         elif 'type' in mv_pk_column:
             clmns = [clmn.split(' ')[0] for clmn in self.parent_table.columns_list if ' {}'.format(mv_pk_column['type']) in clmn
