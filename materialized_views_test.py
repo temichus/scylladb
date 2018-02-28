@@ -15,11 +15,11 @@ from cassandra.cluster import Cluster
 from cassandra.query import SimpleStatement
 from enum import Enum  # Remove when switching to py3
 
-from assertions import assert_all, assert_one, assert_invalid, assert_unavailable, assert_none, assert_crc_check_chance_equal, \
-    assert_row_count, assert_two_queries_equal
+from assertions import assert_all, assert_one, assert_invalid, assert_unavailable, assert_none, \
+    assert_crc_check_chance_equal, assert_row_count, assert_two_queries_equal, assert_row_count_from_every_node
 from dtest import Tester, debug
 from tools import since, new_node, require
-from scylla_tools import TableManager, MaterializedViewManager
+from scylla_tools import TableManager, MaterializedViewManager, flush_by_node
 
 from nose.plugins.attrib import attr
 # from nose.tools import (assert_equal)
@@ -36,7 +36,7 @@ class TestMaterializedViews(Tester):
     @jira_ticket CASSANDRA-6477
     """
 
-    def prepare(self, user_table=False, rf=1, options={}, nodes=3, **kwargs):
+    def prepare(self, user_table=False, rf=1, options={}, nodes=3, fetch_size=None, **kwargs):
         """
 
         :param user_table:
@@ -57,6 +57,8 @@ class TestMaterializedViews(Tester):
         node1 = cluster.nodelist()[0]
 
         session = self.patient_cql_connection(node1, **kwargs)
+        if fetch_size:
+            session.default_fetch_size = fetch_size
         self.create_ks(session, 'ks', rf)
 
         if user_table:
@@ -248,7 +250,7 @@ class TestMaterializedViews(Tester):
         self._add_dc_during_mv_change('update', 3, 4)
 
     def _add_dc_during_mv_change(self, change, rf, nodes, start_prefill=4000, more_inserts=4000):
-        session = self.prepare(rf=rf, nodes=nodes)
+        session = self.prepare(rf=rf, nodes=nodes, fetch_size=start_prefill+more_inserts*2)
         node1 = self.cluster.nodelist()[0]
         tm = TableManager(session, self.cluster,
                           columns = {'int': {'amount': 2, 'frozen': False, 'value length': {'min': 1, 'max': 100}}
@@ -274,7 +276,7 @@ class TestMaterializedViews(Tester):
 
         proc_functions = [{'func': self._add_few_nodes, 'args': (2, 'dc2')},
                           {'func': self.add_mv_records if change == 'insert' else self._multiple_int_updates,
-                           'args': (session, tm, mv_restrict_value) if change == 'insert' else
+                           'args': (tm, mv_restrict_value) if change == 'insert' else
                                    (session, tm, tm.column_names_list[-1], mv.mv_where_restriction.keys()[0], mv_restrict_value, [100, 200]),
                            'kwargs':  {'delay': 5, 'inserts': more_inserts} if change == 'insert' else {'delay': 5, 'updates': 200}}]
 
@@ -289,14 +291,16 @@ class TestMaterializedViews(Tester):
                                          group=True, groupby_column1=tm.column_names_list[-1], groupby_column2=tm.column_names_list[-1],
                                          restrict_column1=mv.mv_where_restriction.keys()[0], restrict_value1=mv_restrict_value)
 
-    def add_mv_records(self, session, tm, mv_restrict_value, inserts=10, delay=0):
+    def add_mv_records(self, tm, mv_restrict_value=None, inserts=10, delay=0):
         if delay:
             time.sleep(delay)
 
-        id = session.execute('select max(id) as id from {}'.format(tm.table_name)).current_rows[0].id +1
-        tm.prefill_table(inserts, data={'int': [mv_restrict_value]}, start_id_from=id, flush=False)
+        id = tm.get_max_id() +1
+        data = {'int': [mv_restrict_value]} if mv_restrict_value else None
+        tm.prefill_table(inserts, data=data, start_id_from=id, flush=False)
 
-    def _multiple_int_updates(self, session, tm, updated_column, filter_column, filter_value, update_to_boundaries, updates=10, delay=0):
+    def _multiple_int_updates(self, session, tm, updated_column, filter_column, filter_value, update_to_boundaries,
+                              updates=10, delay=0):
         if delay:
             time.sleep(delay)
 
@@ -323,6 +327,85 @@ class TestMaterializedViews(Tester):
             debug('Bootstrapping {0} node in {1}'.format(i+1, data_center))
             self._add_new_node(data_center=data_center, queue=None)
 
+    def hundred_mv_concurrent_test(self):
+        """
+        Performance and functional test.
+        - Create 100 materialized views on the same base table.
+        - Pre-fill the table with 5000 records. Expected same records amount in the all views
+        - Validate the records count in the base table and all MVs
+        - In the parallel threads run: insert 5000 new records / updates / reads
+        - Validate the records count in the base table and all MVs
+        - If previous validation passed - validated the data in the MVs is as in the base table
+        """
+        self._parallel_updates_inserts(mvs_amount=100)
+
+    def small_concurrent_test(self):
+        """
+        This test is same as "hundreds_mvs_on_table_test" test, just small.
+        It was added for easy testing concurrent view updates
+        """
+        self._parallel_updates_inserts(mvs_amount=10)
+
+    def _parallel_updates_inserts(self, records=2000, nodes=3, rf=3, mvs_amount=1):
+        def _assert_rows_count(expected_rows=None, by_node=False):
+            names_list = [tm.table_name] + tm.materialized_views.keys() if expected_rows else tm.materialized_views.keys()
+            for name in names_list:
+                debug(name)
+                if expected_rows:
+                    if by_node:
+                        assert_row_count_from_every_node(session, name, expected_rows, nodes_list=self.cluster.nodelist())
+                    else:
+                        assert_row_count(session, name, expected_rows, consistency_level=ConsistencyLevel.ALL)
+                else:
+                    assert_two_queries_equal(session, 'select count(*) from {}'.format(tm.table_name),
+                                             session, 'select count(*) from {}'.format(name))
+
+        session = self.prepare(rf=rf, nodes=nodes, fetch_size=records*3)
+        tm = TableManager(session, self.cluster,
+                          columns = {'int': {'amount': mvs_amount, 'frozen': False, 'value length': {'min': 1, 'max': 100}}
+                                     }, pk_columns={}, cl_columns = {})
+        tm.create_table()
+
+        for i in xrange(1, len(tm.column_names_list)):
+            ctype = tm.columns_list[i].split(' ')[1]
+            mv = MaterializedViewManager(tm)
+            mv.create_materialized_view(mv_columns={ctype: {'names': [tm.column_names_list[i]]}},
+                                        mv_pk_column={'names': [tm.column_names_list[i]]},
+                                       )
+
+        start_data = [2, 5, 12, 45, 63, 78, 36, 85, 98, 100]
+        tm.prefill_table(records, data={'int': start_data})
+        _assert_rows_count(records)
+
+        new_data = [-2, -5, -12, -45, -63, -78, -36, -85, -98, -100]
+        proc_functions = [
+                          {'func': tm.prefill_table, 'args': (records,),
+                           'kwargs': {'data': {'int': new_data}, 'start_id_from': records+1}}
+                          , {'func': tm.multiple_int_updates_by_id, 'args': ([200, 300],),
+                           'kwargs': {'filter_values': start_data+new_data, 'updates': 1000, 'same_id': False}}
+                          , {'func': tm.multiple_int_updates_by_id, 'args': ([300, 400],),
+                           'kwargs': {'filter_values': start_data, 'updates': 1000}}
+                          , {'func': tm.select_all_mvs, 'kwargs': {'reads': 2000, 'by_id': True}}
+                         ]
+
+        self._managed_thread(proc_functions)
+        flush_by_node(self.cluster)
+        time.sleep(180)
+
+        # Validate count on every node
+        _assert_rows_count(records*2, by_node=True)
+
+        # Validate data
+        query_template = 'select {clmn} from {tbl}'
+        for mv_name, mv in tm.materialized_views.iteritems():
+            exp_query = query_template.format(clmn=mv.mv_columns_list[-1], tbl=tm.table_name)
+            act_query = query_template.format(clmn=mv.mv_columns_list[-1], tbl=mv_name)
+            debug('Compare: {0} AND {1}'.format(exp_query, act_query))
+            assert_two_queries_equal(session, exp_query, session, act_query,
+                                     consistency_level=ConsistencyLevel.QUORUM, session_timeout=120,
+                                     group=True, groupby_column1=mv.mv_columns_list[-1],
+                                     groupby_column2=mv.mv_columns_list[-1])
+
     @skip('under investigation')
     def mv_on_index_column_test(self):
         session = self.prepare()
@@ -331,6 +414,201 @@ class TestMaterializedViews(Tester):
         session.execute('CREATE MATERIALIZED VIEW ToDo_ToDo_User_id_idx_index AS SELECT ToDo_User_id, id FROM ToDo WHERE ToDo_User_id IS NOT NULL PRIMARY KEY (ToDo_User_id, id)')
         result = session.execute('select * from ToDo where ToDo_User_id = 00112233-4455-6677-8899-aabbccddeeff')
         print(result)
+
+    def _create_mvs_by_one_int_column(self, tm, mvs_amount):
+        for i in xrange(1, mvs_amount+1):
+            mv = MaterializedViewManager(tm)
+            mv.create_materialized_view(mv_columns={'int': {'names': [tm.column_names_list[i]]}},
+                                        mv_pk_column={'names': [tm.column_names_list[i]]})
+
+    @skip('under developing')
+    def mv_populating_from_existing_data_test(self):
+        """ Create one materialized view on the populated base table """
+        self._mv_populating_from_existing_data_test()
+
+    @skip('under developing')
+    def mvs_populating_from_existing_data_test(self):
+        """ Create 10 materialized view on the populated base table """
+        self._mv_populating_from_existing_data_test(mvs=10)
+
+    def _mv_populating_from_existing_data_test(self, nodes=4, rf=3, mvs=1, prefill=1000):
+        session = self.prepare(rf=rf, nodes=nodes)
+        tm = TableManager(session, self.cluster,
+                          columns={'int': {'amount': mvs, 'frozen': False,
+                                           'value length': {'min': 1, 'max': 100}}
+                                   }, pk_columns={}, cl_columns={})
+        tm.create_table()
+        tm.prefill_table(prefill)
+
+        self._create_mvs_by_one_int_column(tm, mvs)
+        self.cluster.flush()
+
+        self._validate_data_in_mvs(tm, session, prefill, prefill)
+
+    @skip('under developing')
+    def mv_populating_from_existing_data_with_restriction_test(self):
+        session = self.prepare(rf=3, nodes=4)
+        mvs = 10
+        tm = TableManager(session, self.cluster,
+                          columns={'int': {'amount': mvs+1, 'frozen': False,
+                                           'value length': {'min': 1, 'max': 100}}
+                                   }, cl_columns={})
+        tm.create_table()
+        data = [2, 5, 12, 45, 53, 78, 36, 85, 98, 100]
+        tm.prefill_table(10000, data={'int': data})
+
+        for i in xrange(2, mvs+1):
+            mv = MaterializedViewManager(tm)
+            mv.create_materialized_view(mv_columns={'int': {'names': [tm.column_names_list[i]]}},
+                                        mv_pk_column={'names': [tm.column_names_list[i]]},
+                                        mv_where_restriction={
+                                        'names': {tm.pk_list[1]: {'operator': '=', 'value': data[i-1]}}})
+
+        query = 'select id, clmn_int0, {clmn} from {tbl}'
+        for mv_name, mv in tm.materialized_views.iteritems():
+            act_query = query.format(clmn=mv.mv_columns_list[0], tbl=mv.mv_name)
+            exp_query = query.format(clmn=mv.mv_columns_list[0], tbl=tm.table_name)
+            assert_two_queries_equal(session, exp_query, session, act_query, consistency_level=ConsistencyLevel.QUORUM,
+                                     session_timeout=120,
+                                     group=True, groupby_column1=mv.mv_columns_list[0],
+                                     groupby_column2=mv.mv_columns_list[0],
+                                     restrict_column1=mv.mv_where_restriction.keys()[0],
+                                     restrict_value1=mv.mv_where_restriction[mv.mv_where_restriction.keys()[0]]['value'])
+
+    @skip('under developing')
+    def mv_populating_from_existing_data_during_inserts_test(self):
+        """ Create 20 materialized views in parallel with base table prefill """
+        self._mv_populating_from_existing_data_during_changes_test('insert')
+
+    @skip('under developing')
+    def mv_populating_from_existing_data_during_updates_test(self):
+        """ Create 20 materialized views in parallel with base table deletes """
+        self._mv_populating_from_existing_data_during_changes_test('update')
+
+    @skip('under developing')
+    def mv_populating_from_existing_data_during_delets_test(self):
+        """ Create 20 materialized views in parallel with base table deletes """
+        self._mv_populating_from_existing_data_during_changes_test('delete')
+
+    @skip('under developing')
+    def mv_populating_from_existing_data_during_extend_test(self):
+        """ Create 20 materialized views in parallel with base table deletes """
+        self._mv_populating_from_existing_data_during_changes_test('add node')
+
+    @skip('under developing')
+    def mv_populating_from_existing_data_during_node_remove_test(self):
+        """ Create 20 materialized views in parallel with base table deletes """
+        self._mv_populating_from_existing_data_during_changes_test('remove node')
+
+    @skip('under developing')
+    def mv_populating_from_existing_data_during_node_stop_test(self):
+        """ Create 20 materialized views in parallel with base table deletes """
+        self._mv_populating_from_existing_data_during_changes_test('stop node')
+
+    @skip('under developing')
+    def mv_populating_from_existing_data_during_node_decommission_test(self):
+        """ Create 20 materialized views in parallel with base table deletes """
+        self._mv_populating_from_existing_data_during_changes_test('decommission')
+
+    @skip('under developing')
+    def mv_populating_from_existing_data_during_node_restart_test(self):
+        """ Create 20 materialized views in parallel with base table deletes """
+        self._mv_populating_from_existing_data_during_changes_test('restart node')
+
+    def _mv_populating_from_existing_data_during_changes_test(self, change_type, nodes=4, rf=3, mvs=20, prefill=1000):
+        session = self.prepare(rf=rf, nodes=nodes)
+        tm = TableManager(session, self.cluster,
+                          columns={'int': {'amount': mvs, 'frozen': False,
+                                           'value length': {'min': 1, 'max': 100}}
+                                   }, pk_columns={}, cl_columns={})
+
+        rows_after_test = prefill
+        if change_type == 'insert':
+            change_func = {'func': tm.prefill_table, 'args': (prefill,), 'kwargs': {'start_id_from': prefill+1}}
+            rows_after_test = prefill*2
+        elif change_type=='update':
+            change_func = {'func': tm.multiple_int_updates_by_id, 'args': ([-100, -1],), 'kwargs': {'same_id': False}}
+        elif change_type=='delete':
+            change_func = {'func': tm.multiple_deletes, 'args': ({'id': [i for i in xrange(100, 600)]},)}
+            rows_after_test = prefill - 500
+        elif change_type == 'add node':
+            change_func = {'func': self._add_new_node}
+        elif change_type == 'decommission':
+            change_func = {'func': self.cluster.nodes['node2'].nodetool, 'args': ('decommission',)}
+        elif change_type == 'restart node':
+            change_func = {'func': self._restart_node, 'args': (self.cluster.nodes['node2'],), 'kwargs': {'delay': 5}}
+        elif change_type in ['remove node', 'stop node']:
+            change_func = {'func': self._node_action_with_delay, 'args': (change_type.split(' ')[0], self.cluster.nodelist()[1]),
+                           'kwargs': {'delay': 5}}
+        else:
+            assert False, 'Unexpected parameter "change_type": {}. ' \
+                          'Expected values: insert / update / delete / add node / remove node / stop node / decommission' \
+                          'restart node'.format(change_type)
+
+        tm.create_table()
+        tm.prefill_table(prefill)
+        self.cluster.flush()
+
+        proc_functions = [change_func, {'func': self._create_mvs_by_one_int_column, 'args': (tm, mvs)}]
+        self._managed_thread(proc_functions)
+
+        self.cluster.flush()
+
+        self._validate_data_in_mvs(tm, session, rows_after_test, rows_after_test)
+
+    def _restart_node(self, node, delay=0):
+        time.sleep(delay)
+        debug('Start {} restart'.format(node.name))
+        node.stop()
+        time.sleep(5)
+        node.start()
+        debug('Finish node {} restart'.format(node.name))
+
+    def _validate_data_in_mvs(self, tm, session, table_expected_rows, mv_expected_rows, grouby_column_index=-1):
+        query = 'select * from {}'
+        for mv_name, mv in tm.materialized_views.iteritems():
+            self._assert_count_table_mv(session, tm.table_name, table_expected_rows, mv_name, mv_expected_rows)
+
+            assert_two_queries_equal(session, query.format(tm.table_name),
+                                     session, query.format(mv_name), consistency_level=ConsistencyLevel.ALL,
+                                     session_timeout=120, group=True,
+                                     groupby_column1=mv.mv_columns_list[grouby_column_index],
+                                     groupby_column2=mv.mv_columns_list[grouby_column_index])
+
+    def fetch_mv_after_recreate_test(self):
+        """ Validate it's allowed to fetch from MV after it is dropped and recreated
+        """
+        session = self.prepare(rf=3, nodes=3)
+        tm = TableManager(session, self.cluster,
+                          columns = {'int': {'amount': 2, 'frozen': False,
+                                             'value length': {'min': 1, 'max': 100}}
+                                     }, cl_columns = {})
+        tm.create_table()
+
+        mv = MaterializedViewManager(tm)
+        mv.create_materialized_view(mv_pk_column={'type': 'int'})
+
+        tm.prefill_table(1)
+        self.cluster.flush()
+
+        query = 'select * from {}'
+        assert_two_queries_equal(session, query.format(tm.table_name),
+                                 session, query.format(mv.mv_name),
+                                 consistency_level=ConsistencyLevel.ALL, session_timeout=120)
+        # Drop materialized view
+        mv.drop_mv()
+        # Truncate table because of view can't be populated from existent data
+        tm.truncate_table()
+        # Create same materialized view
+        mv = MaterializedViewManager(tm)
+        mv.create_materialized_view(mv_pk_column={'type': 'int'})
+
+        tm.prefill_table(1, start_id_from=1)
+        self.cluster.flush()
+
+        assert_two_queries_equal(session, query.format(tm.table_name),
+                                 session, query.format(mv.mv_name),
+                                 consistency_level=ConsistencyLevel.ALL, session_timeout=120)
 
     def create_test(self):
         """Test the materialized view creation"""
@@ -524,6 +802,31 @@ class TestMaterializedViews(Tester):
         # cannot alter a view
         assert_invalid(session, "ALTER TABLE users_by_state ADD first_name varchar",
                        "Cannot use ALTER TABLE on Materialized View")
+
+    def immutable_truncate_mv_test(self):
+        """Test that a materialized view is immutable"""
+        session = self.prepare(user_table=True)
+        session.execute("INSERT INTO users (state, username) VALUES ('TX', 'user1')")
+
+        # cannot truncate a view
+        assert_invalid(session, "TRUNCATE table users_by_state",
+                       "Cannot TRUNCATE materialized view directly")
+
+    @skip('not developed yet')
+    def truncate_base_test(self):
+        """Test truncate base table and as result - materialized view"""
+        session = self.prepare(user_table=True)
+        session.execute("INSERT INTO users (state, username) VALUES ('TX', 'user1')")
+
+        # ensure sstables are created and will be dropped
+        self.cluster.flush()
+
+        # ensure data is loaded into cache and the cache will be cleared
+        assert_one(session, "SELECT * FROM users_by_state", ['TX', 'user1', None, None, None, None])
+
+        session.execute("TRUNCATE table users")
+
+        self._assert_count_table_mv(session, 'users', 0, 'users_by_state', 0)
 
     def drop_mv_test(self):
         """Test that we can drop a view properly"""
@@ -800,7 +1103,7 @@ class TestMaterializedViews(Tester):
         for i in xrange(1000, 1100):
             assert_one(session, "SELECT * FROM t_by_v WHERE v = {}".format(-i), [-i, i])
 
-    @skip('unrecognised option \'-Dcassandra.migration_task_wait_in_seconds\'')
+    # @skip('unrecognised option \'-Dcassandra.migration_task_wait_in_seconds\'')
     @attr('resource-intensive')
     def add_node_after_wide_mv_with_range_deletions_test(self):
         """
@@ -844,16 +1147,11 @@ class TestMaterializedViews(Tester):
                     assert_one(session, "SELECT * FROM t WHERE id = {} and v = {}".format(i, j), [i, j])
                     assert_one(session, "SELECT * FROM t_by_v WHERE id = {} and v = {}".format(i, j), [j, i])
 
-        # node4 = new_node(self.cluster)
-        # node4.set_configuration_options(values={'max_mutation_size_in_kb': 20})  # CASSANDRA-11670
-        # debug("Start join at {}".format(time.strftime("%H:%M:%S")))
-        # node4.start(wait_for_binary_proto=True, jvm_args=["-Dcassandra.migration_task_wait_in_seconds={}".format(MIGRATION_WAIT)])
-        #
-        # session2 = self.patient_exclusive_cql_connection(node4)
-
-        session2 = self._add_new_node(wait_for_binary_proto=True,
-                                      jvm_args=["-Dcassandra.migration_task_wait_in_seconds={}".format(MIGRATION_WAIT)],
-                                      configuration_options={'max_mutation_size_in_kb': 20})
+        # Scylla does not support migration_task_wait_in_seconds and max_mutation_size_in_kb parameters
+        session2 = self._add_new_node(wait_for_binary_proto=True
+                                      # , jvm_args=["-Dcassandra.migration_task_wait_in_seconds={}".format(MIGRATION_WAIT)],
+                                      # configuration_options={'max_mutation_size_in_kb': 20}
+                                      )
         for i in xrange(10):
             for j in xrange(100):
                 if j % 10 == 0 or (j - 1) % 10 == 0:
@@ -876,7 +1174,7 @@ class TestMaterializedViews(Tester):
                     assert_one(session2, "SELECT * FROM ks.t WHERE id = {} and v = {}".format(i, j), [i, j])
                     assert_one(session2, "SELECT * FROM ks.t_by_v WHERE id = {} and v = {}".format(i, j), [j, i])
 
-    @skip('unrecognised option \'-Dcassandra.migration_task_wait_in_second\'')
+    # @skip('unrecognised option \'-Dcassandra.migration_task_wait_in_second\'')
     @attr('resource-intensive')
     def add_node_after_very_wide_mv_test(self):
         """
@@ -902,15 +1200,11 @@ class TestMaterializedViews(Tester):
             for j in xrange(5000):
                 assert_one(session, "SELECT * FROM t_by_v WHERE id = {} and v = {}".format(i, j), [j, i])
 
-        # node4 = new_node(self.cluster)
-        # node4.set_configuration_options(values={'max_mutation_size_in_kb': 20})  # CASSANDRA-11670
-        # debug("Start join at {}".format(time.strftime("%H:%M:%S")))
-        # node4.start(wait_for_binary_proto=True, jvm_args=["-Dcassandra.migration_task_wait_in_seconds={}".format(MIGRATION_WAIT)])
-        #
-        # session2 = self.patient_exclusive_cql_connection(node4)
-        session2 = self._add_new_node(wait_for_binary_proto=True,
-                                      jvm_args=["-Dcassandra.migration_task_wait_in_seconds={}".format(MIGRATION_WAIT)],
-                                      configuration_options={'max_mutation_size_in_kb': 20})
+        # Scylla does not support migration_task_wait_in_seconds and max_mutation_size_in_kb parameters
+        session2 = self._add_new_node(wait_for_binary_proto=True
+                                      # , jvm_args=["-Dcassandra.migration_task_wait_in_seconds={}".format(MIGRATION_WAIT)],
+                                      # configuration_options={'max_mutation_size_in_kb': 20}
+                                      )
         for i in xrange(5):
             for j in xrange(5000):
                 assert_one(session2, "SELECT * FROM ks.t_by_v WHERE id = {} and v = {}".format(i, j), [j, i])

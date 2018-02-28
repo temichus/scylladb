@@ -192,6 +192,9 @@ def get_cf_dir(ks_dir, cf_name):
             if cf_pattern.match(d):
                 return os.path.join(root, d)
 
+def flush_by_node(cluster):
+    for node in cluster.nodelist():
+        node.flush()
 
 class TableManager(object):
     """Class provides interface to create and prefill tables and materialized views by user demand"""
@@ -371,10 +374,36 @@ class TableManager(object):
         statement.consistency_level = consistency
 
         execute_concurrent_with_args(self.session, statement,
-                                     map(lambda k: [k+start_id_from]+[data_arr[t][k] for t in xrange(0, len(data_arr))], [ k for k in xrange(0,rows)]))
+                                     map(lambda k: [k+start_id_from]+[data_arr[t][k] for t in xrange(0, len(data_arr))],
+                                         [ k for k in xrange(0,rows)]))
         if flush:
-            self.cluster.flush()
+            flush_by_node(self.cluster)
+
         debug('Finish prefill')
+
+    def multiple_deletes(self, filters):
+        """
+        :param filter: {<column_name1>: [<value1>,<value2>,..] <column_name2>: [<value1>,<value2>,..], ..}
+        """
+        for i in xrange(0, len(next(filters.itervalues()))):
+            filter = {}
+            for column, values in filters.iteritems():
+                filter.update({column: values[i]})
+            self.delete_row(filter)
+
+    def delete_row(self, filter):
+        """
+        :param filter: {<column_name1>: <value>, <column_name2>: <value>, ..}
+        """
+        where_statement = ['{0}={1}'.format(column, self.prepare_value(str(value))) for column, value in filter.iteritems()]
+        query = 'delete from {tbl} where {where}'.format(tbl=self.table_name, where=' and '.join(s for s in where_statement))
+        debug(query)
+        self.session.execute(query)
+
+    def truncate_table(self):
+        query = 'truncate table {tbl}'.format(tbl=self.table_name)
+        debug(query)
+        self.session.execute(query)
 
     def _create_data_array(self, rows, ready_data=None):
         def _get_random(dupl):
@@ -474,6 +503,59 @@ class TableManager(object):
             return (set_dict, filter_str)
         return (None, None)
 
+    def multiple_int_updates_by_id(self, update_to_boundaries, filter_values=[], updated_columns=None, updates=100,
+                                   flush=True, same_id=True):
+        query = 'select * from {}'.format(self.table_name)
+        updated_columns = updated_columns or [c for c in self.column_names_list
+                                            if '{} int'.format(c) in self.columns_list
+                                              and c not in self.pk_list+self.cl_list]
+
+        res = list(self.session.execute(query + ' LIMIT 1'))
+        updated_column = updated_columns[random.randint(0, len(updated_columns) - 1)]
+        updated_column_index = [i for i, clmn in enumerate(res[0]._fields) if clmn == updated_column][0]
+        id = None
+        id_condition = False if not same_id else None
+        res = list(self.session.execute(query))
+        for _ in xrange(updates):
+            # Select column for update
+            k = 0
+            if not same_id:
+                res = list(self.session.execute(query))
+            while not id_condition:
+                i = random.randint(0, len(res)-1)
+                if (filter_values and res[i][updated_column_index] in filter_values) or not filter_values:
+                    id = res[i].id
+                    id_condition = False if not same_id else id
+                    break
+                k += 1
+                if k > len(res):
+                    break
+
+            if id:
+                self.update_table(set_clause={'by name': {updated_column: random.randint(update_to_boundaries[0],
+                                                                                         update_to_boundaries[1])}},
+                                  where_filter={'by name': {'id': {'operator': '=', 'value': id}}})
+
+        debug('Updates finished')
+
+    def select_all_mvs(self, reads=100, by_id=False):
+        debug('Start reads from MVs')
+        statement_template = 'select * from {0}'
+        if by_id:
+            max_id = self.get_max_id()
+            statement_template = statement_template + ' where id={1}'
+        else:
+            statement_template = statement_template + ' LIMIT 10'
+
+        for _ in xrange(0, reads):
+            i = random.randint(0, len(self.materialized_views)-1)
+            mv_name = [name for j, name in enumerate(self.materialized_views.keys()) if j == i][0]
+            statement = statement_template.format(mv_name, random.randint(0, max_id)) if by_id else \
+                                 statement_template.format(mv_name)
+            debug(statement)
+            self.session.execute(statement)
+        debug('Finish reads from MVs')
+
     def prepare_value(self, value):
         try:
             _ = int(value)
@@ -533,8 +615,14 @@ class TableManager(object):
             result.update({name: {'value': res.current_rows[row_index][i], 'operator': '='}})
         return result
 
+    def get_max_id(self):
+        return self.session.execute('select max(id) as id from {}'.format(self.table_name)).current_rows[0].id
+
     def set_mv(self, mv_name, mv_self_arr):
         self.materialized_views[mv_name] = mv_self_arr
+
+    def remove_mv(self, mv_name):
+        del self.materialized_views[mv_name]
 
 class MaterializedViewManager(object):
     """Class provides interface to create and manage materialized views"""
@@ -622,9 +710,19 @@ class MaterializedViewManager(object):
                                 pk=', '.join([k for k in self.mv_pk_list]),
                                 cl='' if not self.parent_table.cl_list or set(self.parent_table.cl_list).issubset(self.mv_pk_list)
                                       else ', {}'.format(', '.join([k for k in self.mv_cl_list])))
-            debug(statement)
+            debug(statement+';')
             self.parent_table.session.execute(statement)
             self.parent_table.set_mv(self.mv_name, self)
+
+    def drop_mv(self):
+        self.parent_table.session.execute('drop materialized view {}'.format(self.mv_name))
+        self.parent_table.remove_mv(mv_name=self.mv_name)
+        self.mv_name = ''
+        self.mv_columns_list = None
+        self.mv_pk_list = None
+        self.mv_cl_list = None
+        self.mv_where_clause = None
+        self.mv_options = None
 
     def _restriction_list(self, mv_where_restriction):
         restriction_dict = {}
@@ -687,7 +785,7 @@ class MaterializedViewManager(object):
         mv_pk_column_list = deepcopy(self.parent_table.pk_list)
         if 'names' in mv_pk_column:
             for name in mv_pk_column['names']:
-                if [name for n in self.parent_table.columns_list if '{} '.format(name) in n] and name not in mv_pk_column_list:
+                if name in self.parent_table.column_names_list and name not in mv_pk_column_list:
                     mv_pk_column_list.append(name)
         elif 'type' in mv_pk_column:
             clmns = [clmn.split(' ')[0] for clmn in self.parent_table.columns_list if ' {}'.format(mv_pk_column['type']) in clmn

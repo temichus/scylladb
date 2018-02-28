@@ -65,16 +65,35 @@ def assert_almost_equal(*args, **kwargs):
     assert vmin > vmax * (1.0 - error) or vmin == vmax, "values not within %.2f%% of the max: %s" % (error * 100, args)
 
 
-def assert_row_count(session, table_name, expected):
+def assert_row_count(session, table_name, expected, consistency_level=ConsistencyLevel.QUORUM):
     """ Function to validate the row count expected in table_name """
 
-    query = "SELECT count(*) FROM {};".format(table_name)
-    res = list(session.execute(query))
-    count = res[0][0]
+    query = "SELECT count(*) FROM {}".format(table_name)
+    count = run_query_with_data_processing(session, query, consistency_level=consistency_level)
+    if isinstance(count, list):
+        count = count[0][0]
     assert count == expected, "Expected a row count of {} in table '{}', but got {}".format(
-        expected, table_name, count
-    )
+        expected, table_name, count)
 
+def assert_row_count_from_every_node(session, table_name, expected, nodes_list):
+    """ Function to validate the row count expected in table_name running from every node"""
+
+    query = "SELECT count(*) FROM {0}.{1};".format(session.keyspace, table_name)
+    failed_nodes = []
+    for node in nodes_list:
+        res = node.run_cqlsh(query, return_output=True)
+        count = res[0].split('\n')[3].lstrip()
+        try:
+            count = int(count)
+        except TypeError:
+            failed_nodes.append('Query "{2}" run failed. Node: {0}, error message: {1}'.format
+                                (node.name, count, query))
+        if count != expected:
+            failed_nodes.append('Node: {0}, actual count: {1}'.format(node.name, count))
+
+    if failed_nodes:
+        assert not failed_nodes, 'Expected a row count of {0} in table "{1}", but got: {2}'.format \
+                            (expected, table_name,'; '.join(msg for msg in failed_nodes))
 
 def assert_crc_check_chance_equal(session, table, expected, ks="ks", view=False):
     """
@@ -99,4 +118,4 @@ def assert_two_queries_equal(session1, query1, session2, query2, consistency_lev
                                              groupby_column=groupby_column1, restrict_column=restrict_column1, restrict_value=restrict_value1)
     act_res = run_query_with_data_processing(session2, query2, group=group, consistency_level=consistency_level, session_timeout=session_timeout,
                                              groupby_column=groupby_column2, restrict_column=restrict_column2, restrict_value=restrict_value2)
-    assert exp_res == act_res, "Expected %s, but got %s" % (exp_res, act_res)
+    assert exp_res == act_res, "Expected %s, but got %s. Query1: %s; Query2: %s" % (exp_res, act_res, query1, query2)
