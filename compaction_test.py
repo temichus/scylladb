@@ -354,7 +354,7 @@ class TestCompaction(Tester):
             session.execute('insert into to_disable (id, d) values ({0}, \'{1}\')'.format(i, 'hello' * 100))
             if i % 100 == 0:
                 node.flush()
-        if node.get_cassandra_version() < '2.2':
+        if node.is_scylla() or node.get_cassandra_version() < '2.2':
             log_file = 'system.log'
         else:
             log_file = 'debug.log'
@@ -390,7 +390,7 @@ class TestCompaction(Tester):
         session.execute("use ks")
         # sleep to make sure we dont start any logs
         time.sleep(2)
-        if node.get_cassandra_version() < '2.2':
+        if node.is_scylla() or node.get_cassandra_version() < '2.2':
             log_file = 'system.log'
         else:
             log_file = 'debug.log'
@@ -419,7 +419,7 @@ class TestCompaction(Tester):
             session.execute('insert into to_disable (id, d) values ({0}, \'{1}\')'.format(i, 'hello' * 100))
             if i % 100 == 0:
                 node.flush()
-        if node.get_cassandra_version() < '2.2':
+        if node.is_scylla() or node.get_cassandra_version() < '2.2':
             log_file = 'system.log'
         else:
             log_file = 'debug.log'
@@ -451,7 +451,7 @@ class TestCompaction(Tester):
             session.execute('insert into to_disable (id, d) values ({0}, \'{1}\')'.format(i, 'hello' * 100))
             if i % 100 == 0:
                 node.flush()
-        if node.get_cassandra_version() < '2.2':
+        if node.is_scylla() or node.get_cassandra_version() < '2.2':
             log_file = 'system.log'
         else:
             log_file = 'debug.log'
@@ -503,7 +503,7 @@ def block_on_compaction_log(node, ks=None, table=None):
     compaction completes before the method starts, it may not occur again
     during this method.
     """
-    if node.get_cassandra_version() < '2.2':
+    if node.is_scylla() or node.get_cassandra_version() < '2.2':
         log_file = 'system.log'
     else:
         log_file = 'debug.log'
