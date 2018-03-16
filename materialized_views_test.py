@@ -860,28 +860,6 @@ class TestMaterializedViews(Tester):
         for i in xrange(1000):
             assert_one(session, "SELECT * FROM t_by_v WHERE v = {}".format(i), [i, i])
 
-    @skip('unconfigured table views_builds_in_progress')
-    @require('2210')
-    def populate_mv_after_insert_wide_rows_test(self):
-        """Test that a view is OK when created with existing data with wide rows"""
-        session = self.prepare(consistency_level=ConsistencyLevel.QUORUM)
-        session.execute("CREATE TABLE t (id int, v int, PRIMARY KEY (id, v))")
-        for i in xrange(5):
-            for j in xrange(10000):
-                session.execute("INSERT INTO t (id, v) VALUES ({}, {})".format(i, j))
-        session.execute(("CREATE MATERIALIZED VIEW t_by_v AS SELECT * FROM t WHERE v IS NOT NULL "
-                         "AND id IS NOT NULL PRIMARY KEY (v, id)"))
-        self.debug_with_time("wait for view to build")
-        self._wait_for_view("ks", "t_by_v")
-
-        self.debug_with_time("wait that all batchlogs are replayed")
-
-        self._replay_batchlogs()
-
-        for i in xrange(5):
-            for j in xrange(10000):
-                assert_one(session, "SELECT * FROM t_by_v WHERE id = {} AND v = {}".format(i, j), [j, i])
-
     @require('2431')
     def crc_check_chance_test(self):
         """Test that crc_check_chance parameter is properly populated after mv creation and update"""
