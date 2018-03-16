@@ -2277,9 +2277,6 @@ class TestMaterializedViews(Tester):
 
         assert_none(session2, "SELECT * FROM ks.t_by_v WHERE v2 = 'a'", cl=ConsistencyLevel.QUORUM)
 
-    # We don't currently support creating materialized views on tables with existing data.
-    # Only new updates are processed.
-    @skip('2434')
     def complex_mv_select_statements_test(self):
         """
         Test complex MV select statements
@@ -2329,7 +2326,8 @@ class TestMaterializedViews(Tester):
 
             session.execute("CREATE MATERIALIZED VIEW mv AS SELECT * FROM test WHERE "
                             "a = 1 AND b IS NOT NULL AND c = 1 PRIMARY KEY {}".format(mv_primary_key))
-            time.sleep(3)
+
+            self._wait_for_view(session, "mvtest", "mv")
 
             assert_all(
                 session, "SELECT a, b, c, d FROM mv",
