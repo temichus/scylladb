@@ -2428,6 +2428,7 @@ class TestMaterializedViews(Tester):
 
 # For read verification
 class MutationPresence(Enum):
+    __order__ = 'match extra missing excluded unknown'
     match = 1
     extra = 2
     missing = 3
@@ -2644,6 +2645,10 @@ class TestMaterializedViewsConsistency(Tester):
 
     # nodetool: Found unexpected parameters: [replaybatchlog]
     @require('2210')
+    # Scylla doesn't rely on the batchlog, but running this
+    # test in debug mode fails because some writes timeout.
+    # To enable this, we would need to store failed updates;
+    # we plan to leverage hinted handoff for this.
     def _consistent_reads_after_write_test(self, num_partitions):
 
         session = self.prepare()
