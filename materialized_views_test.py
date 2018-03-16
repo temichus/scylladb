@@ -1934,7 +1934,7 @@ class TestMaterializedViews(Tester):
         for i in xrange(prefill):
             assert_one(session, 'select {0} from {1} where id={2}'.format(mv_pk_column, tm.table_name, i), [2])
 
-
+    @skip('Requires #3275, which activates the view write path for streaming due to repair')
     def simple_repair_test(self):
         """
         Test that a materialized view are consistent after a simple repair.
@@ -1955,7 +1955,7 @@ class TestMaterializedViews(Tester):
         for i in xrange(1000):
             session.execute("INSERT INTO t (id, v, v2, v3) VALUES ({v}, {v}, 'a', 3.0)".format(v=i))
 
-        # Issue 2210. It's taken from Cassandra. Not supported by Scylla
+        # Scylla doesn't leverage the batchlog for MVs
         #self._replay_batchlogs()
 
         self.debug_with_time('Verify the data in the MV with CL=ONE')
@@ -1991,7 +1991,7 @@ class TestMaterializedViews(Tester):
                 cl=ConsistencyLevel.ONE
             )
 
-    @skip('#3253')
+    @skip('Requires #3275, which activates the view write path for streaming due to repair')
     def base_replica_repair_test(self):
         self._base_replica_repair_test()
 
@@ -2020,7 +2020,7 @@ class TestMaterializedViews(Tester):
         for i in xrange(1000):
             session.execute("INSERT INTO t (id, v, v2, v3) VALUES ({v}, {v}, 'a', 3.0)".format(v=i))
 
-        # Issue 2210. It's taken from Cassandra. Not supported by Scylla
+        # Scylla doesn't leverage the batchlog for MVs
         #self._replay_batchlogs()
 
         self.debug_with_time('Verify the data in the MV with CL=ALL')
@@ -2087,6 +2087,7 @@ class TestMaterializedViews(Tester):
                 [i, i, 'a', 3.0]
             )
 
+    @skip('Requires #3275, which activates the view write path for streaming due to repair')
     def complex_repair_test(self):
         """
         Test that a materialized view are consistent after a more complex repair.
@@ -2126,7 +2127,7 @@ class TestMaterializedViews(Tester):
         session.cluster.control_connection.wait_for_schema_agreement()
 
         _stop_nodes([node2, node3])
-        rows = 10
+        rows = 1000
 
         self.debug_with_time('Write initial data to node1 (will be replicated to node4 and node5)')
         for i in xrange(rows):
@@ -2134,9 +2135,10 @@ class TestMaterializedViews(Tester):
 
         _verify_data_by_one(session, rows, ConsistencyLevel.ONE, False, 'Verify the data in the MV on node1 with CL=ONE')
 
-        self.debug_with_time('Close connection to node1')
-        session.cluster.shutdown()
+        self.debug_with_time('Shutdown node1, node4 and node5')
         _stop_nodes([node1, node4, node5])
+
+        self.debug_with_time('Start nodes 2 and 3')
         _start_nodes([node2, node3])
 
         session2 = self.patient_cql_connection(node2)
@@ -2152,8 +2154,9 @@ class TestMaterializedViews(Tester):
         _verify_data_by_one(session2, rows, ConsistencyLevel.ONE, True,
                             'Verify the new data in the MV on node2 with CL=ONE')
 
-        self.debug_with_time('Wait for batchlogs to expire from node2 and node3')
-        time.sleep(5)
+        # Scylla doesn't leverage the batchlog for MVs
+        #self.debug_with_time('Wait for batchlogs to expire from node2 and node3')
+        #time.sleep(5)
 
         _start_nodes([node1, node4, node5])
         _stop_nodes([node2, node3])
@@ -2185,9 +2188,7 @@ class TestMaterializedViews(Tester):
     def debug_with_time(self, message):
         debug('{0} {1}'.format(datetime.datetime.now(), message))
 
-    # We don't currently support creating materialized views on tables with existing data.
-    # Only new updates are processed.
-    @skip('2434')
+    @skip('Requires #3275, which activates the view write path for streaming due to repair')
     def really_complex_repair_test(self):
         """
         Test that a materialized view are consistent after a more complex repair.
@@ -2211,26 +2212,25 @@ class TestMaterializedViews(Tester):
 
         session.execute("INSERT INTO ks.t (id, v, v2, v3) VALUES (1, 1, 'a', 3.0)")
         session.execute("INSERT INTO ks.t (id, v, v2, v3) VALUES (2, 2, 'a', 3.0)")
-        self._replay_batchlogs()
+        # Scylla doesn't leverage the batchlog for MVs
+        #self._replay_batchlogs()
         self.debug_with_time('Verify the data in the MV on node1 with CL=ONE')
         assert_all(session, "SELECT * FROM ks.t_by_v WHERE v2 = 'a'", [['a', 1, 1, 3.0], ['a', 2, 2, 3.0]])
 
         session.execute("INSERT INTO ks.t (id, v, v2, v3) VALUES (1, 1, 'b', 3.0)")
         session.execute("INSERT INTO ks.t (id, v, v2, v3) VALUES (2, 2, 'b', 3.0)")
-        self._replay_batchlogs()
+        # Scylla doesn't leverage the batchlog for MVs
+        #self._replay_batchlogs()
         self.debug_with_time('Verify the data in the MV on node1 with CL=ONE')
         assert_all(session, "SELECT * FROM ks.t_by_v WHERE v2 = 'b'", [['b', 1, 1, 3.0], ['b', 2, 2, 3.0]])
 
         session.shutdown()
 
         self.debug_with_time('Shutdown node1, node4 and node5')
-        node1.stop()
-        node4.stop()
-        node5.stop()
+        _stop_nodes([node1, node4, node5])
 
         self.debug_with_time('Start nodes 2 and 3')
-        node2.start()
-        node3.start(wait_other_notice=True, wait_for_binary_proto=True)
+        _start_nodes([node2, node3])
 
         session2 = self.patient_cql_connection(node2)
         session2.execute('USE ks')
@@ -2241,23 +2241,27 @@ class TestMaterializedViews(Tester):
         self.debug_with_time('Write new data in node2 that overlap those in node1')
         session2.execute("INSERT INTO ks.t (id, v, v2, v3) VALUES (1, 1, 'c', 3.0)")
         session2.execute("INSERT INTO ks.t (id, v, v2, v3) VALUES (2, 2, 'c', 3.0)")
-        self._replay_batchlogs()
+        # Scylla doesn't leverage the batchlog for MVs
+        #self._replay_batchlogs()
         assert_all(session2, "SELECT * FROM ks.t_by_v WHERE v2 = 'c'", [['c', 1, 1, 3.0], ['c', 2, 2, 3.0]])
 
         session2.execute("INSERT INTO ks.t (id, v, v2, v3) VALUES (1, 1, 'd', 3.0)")
         session2.execute("INSERT INTO ks.t (id, v, v2, v3) VALUES (2, 2, 'd', 3.0)")
-        self._replay_batchlogs()
+        # Scylla doesn't leverage the batchlog for MVs
+        #self._replay_batchlogs()
         assert_all(session2, "SELECT * FROM ks.t_by_v WHERE v2 = 'd'", [['d', 1, 1, 3.0], ['d', 2, 2, 3.0]])
 
         self.debug_with_time("Composite delete of everything")
         session2.execute("DELETE FROM ks.t WHERE id = 1 and v = 1")
         session2.execute("DELETE FROM ks.t WHERE id = 2 and v = 2")
-        self._replay_batchlogs()
+        # Scylla doesn't leverage the batchlog for MVs
+        #self._replay_batchlogs()
         assert_none(session2, "SELECT * FROM ks.t_by_v WHERE v2 = 'c'")
         assert_none(session2, "SELECT * FROM ks.t_by_v WHERE v2 = 'd'")
 
-        self.debug_with_time('Wait for batchlogs to expire from node2 and node3')
-        time.sleep(5)
+        # Scylla doesn't leverage the batchlog for MVs
+        #self.debug_with_time('Wait for batchlogs to expire from node2 and node3')
+        #time.sleep(5)
 
         self.debug_with_time('Start remaining nodes')
         node1.start(wait_other_notice=True, wait_for_binary_proto=True)
