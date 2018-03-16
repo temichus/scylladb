@@ -18,6 +18,7 @@ from assertions import assert_all, assert_one, assert_invalid, assert_unavailabl
     assert_crc_check_chance_equal, assert_row_count, assert_two_queries_equal, assert_row_count_from_every_node
 from dtest import Tester, debug
 from tools import since, new_node, require
+from tools import since, new_node, require, rows_to_list
 from scylla_tools import TableManager, MaterializedViewManager, flush_by_node, managed_thread
 
 from nose.plugins.attrib import attr
@@ -74,21 +75,21 @@ class TestMaterializedViews(Tester):
 
         return session
 
-    def _wait_for_view(self, ks, view):
-        self.debug_with_time("waiting for view")
+    def _wait_for_view(self, session, ks, view):
+        self.debug_with_time("Waiting for view {}.{} to finish building...".format(ks, view))
 
-        def _view_build_finished(node):
-            s = self.patient_exclusive_cql_connection(node)
-            # [Invalid query] message="unconfigured table views_builds_in_progress"
-            result = list(s.execute("SELECT * FROM system.views_builds_in_progress WHERE keyspace_name='%s' AND view_name='%s'" % (ks, view)))
-            return len(result) == 0
+        def _view_build_finished():
+            result = rows_to_list(session.execute("SELECT status FROM system_distributed.view_build_status WHERE keyspace_name='%s' AND view_name='%s'" % (ks, view)))
+            return result == [[u'SUCCESS']] * len(self.cluster.nodelist())
 
-        for node in self.cluster.nodelist():
-            if node.is_running():
-                attempts = 50  # 1 sec per attempt, so 50 seconds total
-                while attempts > 0 and not _view_build_finished(node):
-                    time.sleep(1)
-                    attempts -= 1
+        attempts = 20
+        while attempts > 0:
+            if _view_build_finished():
+                return
+            time.sleep(3)
+            attempts -= 1
+
+        raise Exception("View not built")
 
     def _insert_data(self, session):
         # insert data
