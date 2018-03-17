@@ -1772,11 +1772,11 @@ class TestMaterializedViews(Tester):
         self.debug_with_time("Verify all data")
         assert_row_count(session, 't_by_v', rows, consistency_level=ConsistencyLevel.ALL);
 
-    @since('3.0')
+    @skip("Under investigation")
     def test_no_base_column_in_view_pk_complex_timestamp_with_flush(self):
         self._test_no_base_column_in_view_pk_complex_timestamp(flush=True)
 
-    @since('3.0')
+    @skip("Under investigation")
     def test_no_base_column_in_view_pk_complex_timestamp_without_flush(self):
         self._test_no_base_column_in_view_pk_complex_timestamp(flush=False)
 
@@ -1878,11 +1878,11 @@ class TestMaterializedViews(Tester):
         assert_none(session, "SELECT * FROM t")
         assert_none(session, "SELECT * FROM mv")
 
-    @since('3.0')
+    @skip("Under investigation")
     def test_base_column_in_view_pk_complex_timestamp_with_flush(self):
         self._test_base_column_in_view_pk_complex_timestamp(flush=True)
 
-    @since('3.0')
+    @skip("Under investigation")
     def test_base_column_in_view_pk_complex_timestamp_without_flush(self):
         self._test_base_column_in_view_pk_complex_timestamp(flush=False)
 
@@ -2008,15 +2008,15 @@ class TestMaterializedViews(Tester):
         self.check_trace_events(result.get_query_trace(), False)
         self.assertEqual(0, len(result.current_rows))
 
-    @since('3.0')
+    @skip("Under investigation")
     def test_expired_liveness_with_limit_rf1_nodes1(self):
         self._test_expired_liveness_with_limit(rf=1, nodes=1)
 
-    @since('3.0')
+    @skip("Under investigation")
     def test_expired_liveness_with_limit_rf1_nodes3(self):
         self._test_expired_liveness_with_limit(rf=1, nodes=3)
 
-    @since('3.0')
+    @skip("Under investigation")
     def test_expired_liveness_with_limit_rf3(self):
         self._test_expired_liveness_with_limit(rf=3, nodes=3)
 
@@ -2064,11 +2064,11 @@ class TestMaterializedViews(Tester):
         assert_all(session, "SELECT k,a,b FROM mv limit 2", [[50, 50, 50], [99, 99, 99]])
         assert_all(session, "SELECT k,a,b FROM mv", [[50, 50, 50], [99, 99, 99]])
 
-    @since('3.0')
+    @skip("Under investigation")
     def test_base_column_in_view_pk_commutative_tombstone_with_flush(self):
         self._test_base_column_in_view_pk_commutative_tombstone_(flush=True)
 
-    @since('3.0')
+    @skip("Under investigation")
     def test_base_column_in_view_pk_commutative_tombstone_without_flush(self):
         self._test_base_column_in_view_pk_commutative_tombstone_(flush=False)
 
