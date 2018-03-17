@@ -91,6 +91,19 @@ class TestMaterializedViews(Tester):
 
         raise Exception("View not built")
 
+    def _wait_for_view_build_start(self, session, ks, view, seconds_to_wait = 20):
+
+        def _check_build_started():
+            result = rows_to_list(session.execute("SELECT last_token FROM system.views_builds_in_progress "
+                                                  "WHERE keyspace_name='ks' AND view_name='t_by_v'"))
+            return result != [[None]]
+
+        debug("Ensure view building started.")
+        start = time.time()
+        while not _check_build_started():
+            if time.time() - start > seconds_to_wait:
+                raise Exception("View building didn't start in {} seconds".format(seconds_to_wait))
+
     def _insert_data(self, session):
         # insert data
         insert_stmt = "INSERT INTO users (username, password, gender, state, birth_year) VALUES "
@@ -1707,62 +1720,49 @@ class TestMaterializedViews(Tester):
                 [i, i, 'a', 3.0]
             )
 
-    @require('1359')
     def interrupt_build_process_test(self):
         """Test that an interrupted MV build process is resumed as it should"""
 
-        session = self.prepare(options={'hinted_handoff_enabled': False})
+        session = self.prepare(options={'hinted_handoff_enabled': False, 'shadow_round_ms': 1000})
         node1, node2, node3 = self.cluster.nodelist()
 
+        self.allow_log_errors = True
         session.execute("CREATE TABLE t (id int PRIMARY KEY, v int, v2 text, v3 decimal)")
 
+        rows = 200000
         self.debug_with_time("Inserting initial data")
-        for i in xrange(10000):
-            session.execute(
-                "INSERT INTO t (id, v, v2, v3) VALUES ({v}, {v}, 'a', 3.0) IF NOT EXISTS".format(v=i)
-            )
+        insert_stmt = session.prepare("INSERT INTO t (id, v, v2, v3) VALUES (?, ?, ?, ?)")
+        for i in xrange(rows):
+            session.execute(insert_stmt, (i, i, 'a', 3.0))
 
         self.debug_with_time("Create a MV")
+        # Don't wait for schema agreement, or we risk view building concluding too soon
+        session.cluster.max_schema_agreement_wait = 0
         session.execute(("CREATE MATERIALIZED VIEW t_by_v AS SELECT * FROM t "
                          "WHERE v IS NOT NULL AND id IS NOT NULL PRIMARY KEY (v, id)"))
 
+        self._wait_for_view_build_start(session, "ks", "t_by_v")
+
         self.debug_with_time("Stop the cluster. Interrupt the MV build process.")
         self.cluster.stop()
+
+        self.debug_with_time("Ensure view building didn't finish.")
+        have_finished = 0
+        for node in self.cluster.nodelist():
+            finished = node.grep_log("Finished building view")
+            have_finished += len(finished)
+        assert have_finished < len(self.cluster.nodelist())
 
         self.debug_with_time("Restart the cluster")
         self.cluster.start(wait_for_binary_proto=True)
         session = self.patient_cql_connection(node1)
         session.execute("USE ks")
 
-        self.debug_with_time("MV shouldn't be built yet.")
-        assert_none(session, "SELECT * FROM t_by_v WHERE v=10000;")
-
-        self.debug_with_time("Wait and ensure the MV build resumed. Waiting up to 2 minutes.")
-        start = time.time()
-        while True:
-            try:
-                result = list(session.execute("SELECT count(*) FROM t_by_v;"))
-                self.assertNotEqual(result[0].count, 10000)
-            except AssertionError:
-                self.debug_with_time("MV build process is finished")
-                break
-
-            elapsed = (time.time() - start) / 60
-            if elapsed > 2:
-                break
-
-            time.sleep(5)
+        self.debug_with_time("Wait and ensure the MV build resumed.")
+        self._wait_for_view(session, "ks", "t_by_v")
 
         self.debug_with_time("Verify all data")
-        result = list(session.execute("SELECT count(*) FROM t_by_v;"))
-        self.assertEqual(result[0].count, 10000)
-        for i in xrange(10000):
-            assert_one(
-                session,
-                "SELECT * FROM t_by_v WHERE v = {}".format(i),
-                [i, i, 'a', 3.0],
-                cl=ConsistencyLevel.ALL
-            )
+        assert_row_count(session, 't_by_v', rows, consistency_level=ConsistencyLevel.ALL);
 
     def view_tombstone_test(self):
         """
