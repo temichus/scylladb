@@ -91,13 +91,13 @@ def reset_environment_vars():
 
 
 def warning(msg):
-    LOG.warning(CURRENT_TEST + ' - ' + msg)
+    LOG.warning(CURRENT_TEST + ' - ' + str(msg))
     if PRINT_DEBUG:
         print "WARN: " + msg
 
 
 def debug(msg):
-    LOG.debug(CURRENT_TEST + ' - ' + msg)
+    LOG.debug(CURRENT_TEST + ' - ' + str(msg))
     if PRINT_DEBUG:
         print msg
 
