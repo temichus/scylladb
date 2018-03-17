@@ -1533,7 +1533,7 @@ class TestMaterializedViews(Tester):
              - base table with materialized view
              - one column from base table is not included into materialized view
              - record is inserted into base table with no TTL ( the record won't be expired)
-            Test case: MV's PK column is updated with TTL = 20 ( the column value will be expired after 20 seconds)
+            Test case: MV's PK column is updated with TTL = 5 ( the column value will be expired after 5 seconds)
             Expected result: the record exists in both base table and removed from materialized view
         """
         session = self.prepare()
@@ -1555,7 +1555,7 @@ class TestMaterializedViews(Tester):
         self._assert_count_table_mv(session, tm.table_name, prefill, mv.mv_name, prefill)
 
         # Run update base table of MV's PK column with TTL
-        ttl = 20
+        ttl = 5
         upd_column = list(set(mv.mv_pk_list+mv.mv_cl_list) - set(tm.pk_list+tm.cl_list))[0]
         tm.update_table({'by name': {upd_column: 1}}, {'by name': tm.get_value_for_filter()}, using_clause={'ttl': ttl})
         self._assert_count_table_mv(session, tm.table_name, prefill, mv.mv_name, prefill)
