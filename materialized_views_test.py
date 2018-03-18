@@ -783,16 +783,6 @@ class TestMaterializedViews(Tester):
                                        "WHERE keyspace_name='ks' ALLOW FILTERING")))
         self.assertEqual(len(result), 1, "Expecting 1 materialized view, got" + str(result))
 
-    @require('2025')
-    def create_base_table_name_users_test(self):
-        """Test the materialized view creation"""
-
-        session = self.prepare(user_table=True)
-
-        result = list(session.execute(("SELECT * FROM system_schema.views "
-                                       "WHERE keyspace_name='ks' AND base_table_name='users' ALLOW FILTERING")))
-        self.assertEqual(len(result), 1, "Expecting 1 materialized view, got" + str(result))
-
     def gcgs_validation_test(self):
         """Verify that it's not possible to create or set a too low gc_grace_seconds on MVs"""
         session = self.prepare(user_table=True)
