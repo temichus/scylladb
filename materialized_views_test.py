@@ -1768,6 +1768,47 @@ class TestMaterializedViews(Tester):
         self.debug_with_time("Verify all data")
         assert_row_count(session, 't_by_v', rows, consistency_level=ConsistencyLevel.ALL);
 
+    @skip("Takes too long, because there's no good way to interrupt "
+          "the build process aside from creating lots of rows. Depends on #3295")
+    def drop_while_building_test(self):
+        """Test that a MV build is interrupted when the view is removed"""
+
+        session = self.prepare(options={'hinted_handoff_enabled': False})
+
+        # Expect at least one error since writing a view update can race with
+        # dropping the view.
+        self.allow_log_errors = True
+
+        session.execute("CREATE TABLE t (id int PRIMARY KEY, v int, v2 text, v3 decimal)")
+
+        rows = 1000000
+        self.debug_with_time("Inserting initial data")
+        insert_stmt = session.prepare("INSERT INTO t (id, v, v2, v3) VALUES (?, ?, ?, ?)")
+        for i in xrange(rows):
+            session.execute(insert_stmt, (i, i, 'a', 3.0))
+
+        self.debug_with_time("Create a MV")
+        session.cluster.max_schema_agreement_wait = 1
+        session.execute(("CREATE MATERIALIZED VIEW t_by_v AS SELECT * FROM t "
+                         "WHERE v IS NOT NULL AND id IS NOT NULL PRIMARY KEY (v, id)"))
+
+        self._wait_for_view_build_start(session, "ks", "t_by_v")
+
+        self.debug_with_time("Drop the MV while it is still building")
+        session.execute("DROP MATERIALIZED VIEW t_by_v")
+
+        self.debug_with_time("Verify view building never finished.")
+        have_finished = 0
+        for node in self.cluster.nodelist():
+            finished = node.grep_log("Finished building view")
+            have_finished += len(finished)
+        assert have_finished < len(self.cluster.nodelist())
+
+        assert_invalid(session, "SELECT COUNT(*) FROM t_by_v")
+        assert_none(session, "SELECT * FROM system.views_builds_in_progress")
+        assert_none(session, "SELECT * FROM system.built_views")
+        assert_none(session, "SELECT * FROM system_distributed.view_build_status")
+
     @skip("Under investigation")
     def test_no_base_column_in_view_pk_complex_timestamp_with_flush(self):
         self._test_no_base_column_in_view_pk_complex_timestamp(flush=True)
