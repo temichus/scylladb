@@ -119,3 +119,7 @@ def assert_two_queries_equal(session1, query1, session2, query2, consistency_lev
     act_res = run_query_with_data_processing(session2, query2, group=group, consistency_level=consistency_level, session_timeout=session_timeout,
                                              groupby_column=groupby_column2, restrict_column=restrict_column2, restrict_value=restrict_value2)
     assert exp_res == act_res, "Expected %s, but got %s. Query1: %s; Query2: %s" % (exp_res, act_res, query1, query2)
+
+def assert_two_queries_equal_ignore_order(session1, query1, session2, query2, consistency_level=ConsistencyLevel.ONE, session_timeout=120):
+    expected = rows_to_list(session1.execute(query1))
+    assert_all(session2, query2, expected, consistency_level, ignore_order=True)

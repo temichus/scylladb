@@ -15,7 +15,8 @@ from cassandra.query import SimpleStatement
 from enum import Enum  # Remove when switching to py3
 
 from assertions import assert_all, assert_one, assert_invalid, assert_unavailable, assert_none, \
-    assert_crc_check_chance_equal, assert_row_count, assert_two_queries_equal, assert_row_count_from_every_node
+    assert_crc_check_chance_equal, assert_row_count, assert_two_queries_equal, assert_row_count_from_every_node, \
+    assert_two_queries_equal_ignore_order
 from dtest import Tester, debug
 from tools import since, new_node, require
 from tools import since, new_node, require, rows_to_list
@@ -756,27 +757,22 @@ class TestMaterializedViews(Tester):
         mv = MaterializedViewManager(tm)
         mv.create_materialized_view(mv_pk_column={'type': 'int'})
 
-        tm.prefill_table(1)
-        self.cluster.flush()
+        tm.prefill_table(100)
 
         query = 'select * from {}'
-        assert_two_queries_equal(session, query.format(tm.table_name),
-                                 session, query.format(mv.mv_name),
-                                 consistency_level=ConsistencyLevel.ALL, session_timeout=120)
-        # Drop materialized view
+        assert_two_queries_equal_ignore_order(session, query.format(tm.table_name),
+                                              session, query.format(mv.mv_name),
+                                              consistency_level=ConsistencyLevel.ALL, session_timeout=120)
+        debug("Drop materialized view and create another with the same name")
         mv.drop_mv()
-        # Truncate table because of view can't be populated from existent data
-        tm.truncate_table()
-        # Create same materialized view
         mv = MaterializedViewManager(tm)
         mv.create_materialized_view(mv_pk_column={'type': 'int'})
 
-        tm.prefill_table(1, start_id_from=1)
-        self.cluster.flush()
+        self._wait_for_view(session, tm.keyspace, mv.mv_name)
 
-        assert_two_queries_equal(session, query.format(tm.table_name),
-                                 session, query.format(mv.mv_name),
-                                 consistency_level=ConsistencyLevel.ALL, session_timeout=120)
+        assert_two_queries_equal_ignore_order(session, query.format(tm.table_name),
+                                              session, query.format(mv.mv_name),
+                                              consistency_level=ConsistencyLevel.ALL, session_timeout=120)
 
     def create_test(self):
         """Test the materialized view creation"""
