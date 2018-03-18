@@ -853,8 +853,6 @@ class TestMaterializedViews(Tester):
         result = list(session.execute("SELECT * FROM users_by_state WHERE state='MA';"))
         self.assertEqual(len(result), 0, "Expecting {} users, got {}".format(0, len(result)))
 
-    # nodetool: Found unexpected parameters: [replaybatchlog]
-    @require('2210')
     def populate_mv_after_insert_test(self):
         """Test that a view is OK when created with existing data"""
 
@@ -870,9 +868,6 @@ class TestMaterializedViews(Tester):
 
         self.debug_with_time("wait for view to build")
         self._wait_for_view("ks", "t_by_v")
-
-        self.debug_with_time("wait that all batchlogs are replayed")
-        self._replay_batchlogs()
 
         for i in xrange(1000):
             assert_one(session, "SELECT * FROM t_by_v WHERE v = {}".format(i), [i, i])
