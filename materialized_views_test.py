@@ -857,8 +857,7 @@ class TestMaterializedViews(Tester):
         session.execute(("CREATE MATERIALIZED VIEW t_by_v AS SELECT * FROM t WHERE v IS NOT NULL "
                          "AND id IS NOT NULL PRIMARY KEY (v, id)"))
 
-        self.debug_with_time("wait for view to build")
-        self._wait_for_view("ks", "t_by_v")
+        self._wait_for_view(session, 'ks', 't_by_v')
 
         for i in xrange(1000):
             assert_one(session, "SELECT * FROM t_by_v WHERE v = {}".format(i), [i, i])
@@ -876,6 +875,8 @@ class TestMaterializedViews(Tester):
 
         session.execute(("CREATE MATERIALIZED VIEW t_by_v AS SELECT * FROM t WHERE v IS NOT NULL "
                          "AND id IS NOT NULL PRIMARY KEY (v, id)"))
+
+        self._wait_for_view(session, 'ks', 't_by_v')
 
         for i in xrange(5):
             for j in xrange(10000):
