@@ -238,7 +238,7 @@ class TestMaterializedViews(Tester):
             Verify that MV records are as it exists in the base table
             Validate the log has no errors.
         """
-        self._add_dc_during_mv_change('insert', 3, 4, start_prefill=1000, more_inserts=4000)
+        self._add_dc_during_mv_change('insert', 3, 4, start_prefill=1000, more_inserts=300000)
 
     def add_dc_during_mv_update_test(self):
         """ Test expand cluster - add new DC during MV inserts
@@ -246,7 +246,7 @@ class TestMaterializedViews(Tester):
             table that cause to update materialized view as well.
             Verify that MV records are according to the base table
         """
-        self._add_dc_during_mv_change('update', 3, 4, start_prefill=4000, more_inserts=4000)
+        self._add_dc_during_mv_change('update', 3, 4, start_prefill=4000, more_inserts=300000)
 
     def _add_dc_during_mv_change(self, change, rf, nodes, start_prefill, more_inserts):
         session = self.prepare(rf=rf, nodes=nodes, fetch_size=start_prefill+more_inserts*2)
@@ -286,7 +286,7 @@ class TestMaterializedViews(Tester):
         for node in self.cluster.nodelist():
             if node.data_center == 'dc2':
                 session = self.patient_exclusive_cql_connection(node, keyspace=tm.keyspace)
-                assert_two_queries_equal(session, exp_query, session, act_query, consistency_level=ConsistencyLevel.QUORUM, session_timeout=120,
+                assert_two_queries_equal(session, exp_query, session, act_query, consistency_level=ConsistencyLevel.ALL, session_timeout=120,
                                          group=True, groupby_column1=tm.column_names_list[-1], groupby_column2=tm.column_names_list[-1],
                                          restrict_column1=mv.mv_where_restriction.keys()[0], restrict_value1=mv_restrict_value)
 
@@ -304,6 +304,7 @@ class TestMaterializedViews(Tester):
         if delay:
             time.sleep(delay)
 
+        debug('Start updates')
         res = session.execute('select * from {}'.format(tm.table_name)).current_rows
         updated_column_index = [i for i, clmn in enumerate(res[0]._fields) if clmn == updated_column][0]
         for _ in xrange(updates):
@@ -317,6 +318,7 @@ class TestMaterializedViews(Tester):
             tm.update_table(set_clause={'by name': {updated_column: random.randint(update_to_boundaries[0], update_to_boundaries[1])}},
                             where_filter={'by name': {filter_column: {'operator': '=', 'value': filter_value},
                                                       'id': {'operator': '=', 'value': id}}})
+        debug('Updates were finished')
 
     def _add_few_nodes(self, nodes, data_center, delay=0, queue=None):
         if delay:
