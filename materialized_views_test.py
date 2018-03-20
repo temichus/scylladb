@@ -92,6 +92,7 @@ class TestMaterializedViews(Tester):
             result = rows_to_list(session.execute("SELECT status FROM system_distributed.view_build_status WHERE keyspace_name='%s' AND view_name='%s'" % (ks, view)))
             return result == [[u'SUCCESS']] * len(self.cluster.nodelist())
 
+        debug("Waiting for view {}.{} to finish building...".format(ks, view))
         attempts = 20
         while attempts > 0:
             if _view_build_finished():
@@ -501,71 +502,72 @@ class TestMaterializedViews(Tester):
                                      restrict_column1=mv.mv_where_restriction.keys()[0],
                                      restrict_value1=mv.mv_where_restriction[mv.mv_where_restriction.keys()[0]]['value'])
 
-    @skip('under developing')
     def mv_populating_from_existing_data_during_inserts_test(self):
-        """ Create 20 materialized views in parallel with base table prefill """
-        self._mv_populating_from_existing_data_during_changes('insert', nodes=4, rf=3, mvs=20, prefill=1000)
+        """ Create 10 materialized views in parallel with base table prefill """
+        self._mv_populating_from_existing_data_during_changes_test('insert', nodes=4, rf=3, mvs=10, prefill=40000, fail=False)
 
-    @skip('under developing')
     def mv_populating_from_existing_data_during_updates_test(self):
-        """ Create 20 materialized views in parallel with base table deletes """
-        self._mv_populating_from_existing_data_during_changes('update', nodes=4, rf=3, mvs=20, prefill=1000)
+        """ Create 10 materialized views in parallel with base table updates """
+        self._mv_populating_from_existing_data_during_changes_test('update', nodes=4, rf=3, mvs=10, prefill=40000, fail=False)
 
-    @skip('under developing')
-    def mv_populating_from_existing_data_during_delets_test(self):
-        """ Create 20 materialized views in parallel with base table deletes """
-        self._mv_populating_from_existing_data_during_changes('delete', nodes=4, rf=3, mvs=20, prefill=1000)
+    def mv_populating_from_existing_data_during_deletes_test(self):
+        """ Create 10 materialized views in parallel with base table deletes """
+        self._mv_populating_from_existing_data_during_changes_test('delete', nodes=4, rf=3, mvs=10, prefill=40000, fail=False)
 
-    @skip('under developing')
+    @skip("Requires #3275")
     def mv_populating_from_existing_data_during_extend_test(self):
-        """ Create 20 materialized views in parallel with base table deletes """
-        self._mv_populating_from_existing_data_during_changes('add node', nodes=4, rf=3, mvs=20, prefill=1000)
+        """ Create 10 materialized views in parallel with adding a node """
+        self._mv_populating_from_existing_data_during_changes_test('add node', nodes=4, rf=3, mvs=10, prefill=40000, fail=False)
 
-    @skip('under developing')
     def mv_populating_from_existing_data_during_node_remove_test(self):
-        """ Create 20 materialized views in parallel with base table deletes """
-        self._mv_populating_from_existing_data_during_changes('remove node', nodes=4, rf=3, mvs=20, prefill=1000)
+        """ Create 10 materialized views in parallel with removing a node """
+        self._mv_populating_from_existing_data_during_changes_test('remove node', nodes=4, rf=3, mvs=10, prefill=40000, fail=True)
 
-    @skip('under developing')
     def mv_populating_from_existing_data_during_node_stop_test(self):
-        """ Create 20 materialized views in parallel with base table deletes """
-        self._mv_populating_from_existing_data_during_changes('stop node', nodes=4, rf=3, mvs=20, prefill=1000)
+        """ Create 10 materialized views in parallel with stopping a node """
+        self._mv_populating_from_existing_data_during_changes_test('stop node', nodes=4, rf=3, mvs=10, prefill=40000, fail=True)
 
-    @skip('under developing')
+    @skip("Requires #3275")
     def mv_populating_from_existing_data_during_node_decommission_test(self):
-        """ Create 20 materialized views in parallel with base table deletes """
-        self._mv_populating_from_existing_data_during_changes('decommission', nodes=4, rf=3, mvs=20, prefill=1000)
+        """ Create 10 materialized views in parallel with a node decommission """
+        self._mv_populating_from_existing_data_during_changes_test('decommission', nodes=4, rf=3, mvs=10, prefill=40000, fail=False)
 
-    @skip('under developing')
     def mv_populating_from_existing_data_during_node_restart_test(self):
-        """ Create 20 materialized views in parallel with base table deletes """
-        self._mv_populating_from_existing_data_during_changes('restart node', nodes=4, rf=3, mvs=20, prefill=1000)
+        """ Create 10 materialized views in parallel with a node restart """
+        self._mv_populating_from_existing_data_during_changes_test('restart node', nodes=4, rf=3, mvs=10, prefill=40000, fail=False)
 
-    def _mv_populating_from_existing_data_during_changes(self, change_type, nodes, rf, mvs, prefill):
-        session = self.prepare(rf=rf, nodes=nodes, options={'hinted_handoff_enabled': False, 'read_repair_chance': 0.0})
+    def _mv_populating_from_existing_data_during_changes_test(self, change_type, nodes=4, rf=3, mvs=10, prefill=40000, fail=False):
+        session = self.prepare(options={'prometheus_port': 0})
         tm = TableManager(session, self.cluster,
                           columns={'int': {'amount': mvs, 'frozen': False,
                                            'value length': {'min': 1, 'max': 100}}
                                    }, pk_columns={}, cl_columns={})
 
         rows_after_test = prefill
+
+        def _with_delay(func, delay):
+            def invoke_after_sleep(*args, **kwargs):
+                time.sleep(delay)
+                return func(*args, **kwargs)
+            return invoke_after_sleep
+
         if change_type == 'insert':
-            change_func = {'func': tm.prefill_table, 'args': (prefill,), 'kwargs': {'start_id_from': prefill+1}}
-            rows_after_test = prefill*2
+            change_func = {'func': _with_delay(tm.prefill_table, 1), 'args': (prefill / 2,), 'kwargs': {'start_id_from': prefill+1}}
+            rows_after_test = prefill*1.5
         elif change_type=='update':
-            change_func = {'func': tm.multiple_int_updates_by_id, 'args': ([-100, -1],), 'kwargs': {'same_id': False}}
+            change_func = {'func': _with_delay(tm.multiple_int_updates_by_id, 1), 'args': ([-100, -1],), 'kwargs': {'same_id': False}}
         elif change_type=='delete':
-            change_func = {'func': tm.multiple_deletes, 'args': ({'id': [i for i in xrange(100, 600)]},)}
-            rows_after_test = prefill - 500
+            change_func = {'func': _with_delay(tm.multiple_deletes, 1), 'args': ({'id': [i for i in xrange(1000, 6000)]},)}
+            rows_after_test = max(0, prefill - 5000)
         elif change_type == 'add node':
-            change_func = {'func': self._add_new_node}
+            change_func = {'func': _with_delay(self._add_new_node, 1)}
         elif change_type == 'decommission':
-            change_func = {'func': self.cluster.nodes['node2'].nodetool, 'args': ('decommission',)}
+            change_func = {'func': _with_delay(self.cluster.nodes['node2'].nodetool, 2), 'args': ('decommission',)}
         elif change_type == 'restart node':
-            change_func = {'func': self._restart_node, 'args': (self.cluster.nodes['node2'],), 'kwargs': {'delay': 5}}
+            change_func = {'func': self._restart_node, 'args': (self.cluster.nodes['node2'],), 'kwargs': {'delay': 1}}
         elif change_type in ['remove node', 'stop node']:
             change_func = {'func': self._node_action_with_delay, 'args': (change_type.split(' ')[0], self.cluster.nodelist()[1]),
-                           'kwargs': {'delay': 5}}
+                           'kwargs': {'delay': 1}}
         else:
             assert False, 'Unexpected parameter "change_type": {}. ' \
                           'Expected values: insert / update / delete / add node / remove node / stop node / decommission' \
@@ -575,12 +577,21 @@ class TestMaterializedViews(Tester):
         tm.prefill_table(prefill)
         self.cluster.flush()
 
+        debug('Disabling schema agreement')
+        session.cluster.max_schema_agreement_wait = 0
+
         proc_functions = [change_func, {'func': self._create_mvs_by_one_column, 'args': (tm, mvs)}]
         managed_thread(proc_functions)
 
-        self.cluster.flush()
+        try:
+            for mv_name, _ in tm.materialized_views.iteritems():
+                self._wait_for_view(session, tm.keyspace, mv_name)
 
-        self._validate_data_in_mvs(tm, session, rows_after_test, rows_after_test)
+            self._validate_data_in_mvs(tm, session, rows_after_test, rows_after_test)
+            assert not fail, "Expected to fail, but the data was correctly validated."
+        except:
+            if not fail:
+                raise
 
     def _restart_node(self, node, delay=0):
         time.sleep(delay)
