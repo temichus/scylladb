@@ -229,6 +229,8 @@ class ReshardingTest(Tester):
         Resharding with small counter data set(c-s 1M counter objects) after changing the parameter
         and restarting the cluster
         """
+        if self.compaction_strategy in ['SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy']:
+            self.skipTest('issue #3302 - High data files amount during resharding')
         session = self.patient_cql_connection(self.node)
         session.execute("""
             CREATE KEYSPACE keyspace1
@@ -258,7 +260,7 @@ class ReshardingTest(Tester):
         """)
 
         debug('Run counter_write stress test on node1')
-        op_cnt = 1000000
+        op_cnt = 10000
         stress_cmd = ['counter_write', 'n={}'.format(op_cnt), 'no-warmup', '-rate', 'threads=16',
                       '-schema', 'compaction(strategy={})'.format(self.compaction_strategy)]
 
@@ -266,20 +268,25 @@ class ReshardingTest(Tester):
 
         self._verify_row_number('counter1', op_cnt)
 
-        data_files_num_before = self._reload_with_resharding()
+        data_files_num_before = self._reload_with_resharding(smp=self.smp_for_increase)
 
         data_files_num_during = self._get_number_of_data_files()
+        # data_files_num_before * 3: multiply by 3 because of we expect that files amount could
+        #                            be increased not more than *3 (by Avi)
         self.assertLessEqual(data_files_num_during, data_files_num_before * 3)
 
         res = self._wait_for_resharding()
         self.assertEquals(res, True, 'Failed to recognize re-sharding finish')
 
-        self._verify_number_of_data_files(data_files_num_before)
+        # data_files_num_before * 3: multiply by 3 because of we expect that files amount could
+        #                            be increased not more than *3 (by Avi)
+        self._verify_number_of_data_files(data_files_num_before * 3)
+        self._check_logs_for_errors()
 
         stress_cmd = ['counter_read', 'n={}'.format(op_cnt), 'no-warmup', '-rate', 'threads=16']
         self._verify_data(op_cnt, stress_cmd)
         self._verify_row_number('counter1', op_cnt)
-
+        
 
 strategies = ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy']
 # SMP value should be according to the monster environment
