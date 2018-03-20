@@ -478,7 +478,6 @@ class TableManager(object):
         # TODO: add - select columns from materialized views
         if delay:
             time.sleep(delay)
-        debug("Start update at {}".format(time.strftime("%H:%M:%S")))
         set_dict = self._bulid_set_clause(set_clause, exclude_columns=update_columns_exclude or [])
         filter_dict = self._build_filter(where_filter)
 
@@ -495,12 +494,9 @@ class TableManager(object):
                             .format(ks=self.keyspace, table_name=self.table_name,
                                    using='' if not using_clause else using_str,
                                    set_clause=set_str, filter=filter_str)
-            debug(statement)
             self.session.execute(statement)
             if queue:
                 queue.put_nowait((set_dict, filter_str))
-            debug((set_dict, filter_str))
-            debug("Update finished at {}".format(time.strftime("%H:%M:%S")))
             return (set_dict, filter_str)
         return (None, None)
 
@@ -719,7 +715,7 @@ class MaterializedViewManager(object):
 
     def drop_mv(self):
         debug('Start drop materialized view {}'.format(self.mv_name))
-        future = self.parent_table.session.execute('drop materialized view {}'.format(self.mv_name))
+        self.parent_table.session.execute('drop materialized view {}'.format(self.mv_name))
         debug('Finish drop materialized view {}'.format(self.mv_name))
         self.parent_table.remove_mv(mv_name=self.mv_name)
         self.mv_name = ''
