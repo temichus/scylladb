@@ -448,12 +448,10 @@ class TestMaterializedViews(Tester):
             mv.create_materialized_view(mv_columns={tm.columns_list[i].split(' ')[1]: {'names': [tm.column_names_list[i]]}},
                                         mv_pk_column={'names': [tm.column_names_list[i]]})
 
-    @skip('under developing')
     def mv_populating_from_existing_data_test(self):
         """ Create one materialized view on the populated base table """
         self._mv_populating_from_existing_data(nodes=4, rf=3, mvs=1, prefill=100)
 
-    @skip('under developing')
     def mvs_populating_from_existing_data_test(self):
         """ Create 10 materialized view on the populated base table """
         self._mv_populating_from_existing_data(nodes=4, rf=3, mvs=10, prefill=1000)
@@ -470,9 +468,11 @@ class TestMaterializedViews(Tester):
         self._create_mvs_by_one_column(tm, mvs)
         self.cluster.flush()
 
+        for mv_name in tm.materialized_views.iterkeys():
+            self._wait_for_view(session, tm.keyspace, mv_name)
+
         self._validate_data_in_mvs(tm, session, prefill, prefill)
 
-    @skip('under developing')
     def mv_populating_from_existing_data_with_restriction_test(self):
         session = self.prepare(rf=3, nodes=4)
         mvs = 10
@@ -490,6 +490,9 @@ class TestMaterializedViews(Tester):
                                         mv_pk_column={'names': [tm.column_names_list[i]]},
                                         mv_where_restriction={
                                         'names': {tm.pk_list[1]: {'operator': '=', 'value': data[i-1]}}})
+
+        for mv_name in tm.materialized_views.iterkeys():
+            self._wait_for_view(session, tm.keyspace, mv_name)
 
         query = 'select id, clmn_int0, {clmn} from {tbl}'
         for mv_name, mv in tm.materialized_views.iteritems():
