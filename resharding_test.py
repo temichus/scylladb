@@ -181,6 +181,47 @@ class ReshardingTest(Tester):
             self.skipTest('issue #3302 - High data files amount during resharding')
         self._resharding_basic(self.smp, rows=1000, murmur3=self.murmur3_for_increase)
 
+    @require('#3273')
+    def resharding_by_murmur3_decrease_test(self):
+        """
+        Resharding with 10M objects after decreasing the MURMUR3 parameter
+        and restarting the cluster
+        """
+        if self.compaction_strategy in ['SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy']:
+            self.skipTest('issue #3302 - High data files amount during resharding')
+        self._resharding_basic(self.smp, rows=1000, murmur3=self.murmur3_for_decrease)
+
+    @require('#3273,#2852,#3302')
+    def resharding_by_smp_increase_test(self):
+        """
+        Resharding with 10M objects after increasing the SMP parameter
+        and restarting the cluster
+        """
+        self._resharding_basic(self.smp_for_increase, rows=10000, murmur3=self.murmur3)
+
+    @require('#3273,#2852,#3302')
+    def resharding_by_smp_decrease_test(self):
+        """
+        Resharding with 10M objects after decreasing the SMP parameter
+        and restarting the cluster
+        """
+        self._resharding_basic(self.smp_for_decrease, rows=100000, murmur3=self.murmur3)
+
+    @require('#3303')
+    def resharding_by_same_smp_test(self):
+        """
+        Cluster with 10M objects. Both SMP and MURMUR3 parameter are not changed.
+        No resharding expected
+        """
+        self._resharding_basic(self.smp, rows=1000, murmur3=self.murmur3)
+
+    @require('#3273')
+    def resharding_by_murmur3_smp_test(self):
+        """
+        Cluster with 10M objects. Both SMP and MURMUR3 parameter are changed
+        and restarting the cluster
+        """
+        self._resharding_basic(self.smp_for_increase, rows=1000, murmur3=self.murmur3_for_increase)
 
     @require('#3273')
     def resharding_counter_test(self):
