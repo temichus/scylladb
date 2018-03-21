@@ -1819,7 +1819,6 @@ class TestMaterializedViews(Tester):
         status = node1.nodetool('viewbuildstatus')
         self.debug_with_time(status)
 
-    @skip('#3253')
     def repair_mv_test(self):
         """ Test repair of materialized view """
         session = self.prepare(rf=3, nodes=3, options={'hinted_handoff_enabled': False}, fetch_size=100)
@@ -1832,8 +1831,8 @@ class TestMaterializedViews(Tester):
         mv_pk_column = tm.column_names_list[-2]
         mv = MaterializedViewManager(tm)
         mv.create_materialized_view(mv_pk_column={'names': [mv_pk_column]})
-
-        tm.prefill_table(100, data={'int': [2]})
+        prefill = 100
+        tm.prefill_table(prefill, data={'int': [2]})
         self.cluster.flush()
 
         table_statement = 'select * from {}'.format(tm.table_name)
@@ -1843,8 +1842,9 @@ class TestMaterializedViews(Tester):
 
         node2.stop(wait_other_notice=True)
 
-        tm.update_table(set_clause={'by name': {mv_pk_column: 3}},
-                        where_filter={'by name': {'id': {'value': 0, 'operator': '='}}},
+        for i in xrange(prefill/2):
+            tm.update_table(set_clause={'by name': {mv_pk_column: 3}},
+                        where_filter={'by name': {'id': {'value': i, 'operator': '='}}},
                         consistency_level=ConsistencyLevel.ONE)
 
         assert_two_queries_equal(session, table_statement,
@@ -1859,9 +1859,16 @@ class TestMaterializedViews(Tester):
         node3.stop(wait_other_notice=True)
 
         # Validate data
-        self.debug_with_time('Verify the data in the MV with CL=ONE')
-        assert_two_queries_equal(session, table_statement, session, mv_statement,
-                                 consistency_level=ConsistencyLevel.ONE, session_timeout=120)
+        self.debug_with_time('Verify the MV data for updated rows in the MV with CL=ONE')
+        assert_one(session, 'select count(*) from {1} where {0}=2 ALLOW FILTERING'.format(mv_pk_column, mv.mv_name), [50])
+
+        self.debug_with_time('Verify the MV data for not updated rows in the MV with CL=ONE')
+        assert_one(session, 'select count(*) from {1} where {0}=3 ALLOW FILTERING'.format(mv_pk_column, mv.mv_name), [50])
+
+        self.debug_with_time('Verify the base table data with CL=ONE - all rows shouldn\'t be updated')
+        for i in xrange(prefill):
+            assert_one(session, 'select {0} from {1} where id={2}'.format(mv_pk_column, tm.table_name, i), [2])
+
 
     def simple_repair_test(self):
         """
