@@ -4,24 +4,26 @@ import re
 import time
 from dtest import Tester, debug
 from tools import rows_to_list, require
-import datetime
+from scylla_tools import TableManager, MaterializedViewManager
+from assertions import assert_one, assert_two_queries_equal
+from cassandra import ConsistencyLevel
 
 class ReshardingTest(Tester):
-    DEFAUL_MUMUR3 = 12
+    DEFAULT_MURMUR3_PARTITIONER = 12
     DEFAULT_SMP = '2'
     DEFAULT_NODES = 1
+    SMP_FOR_INCREASE = '47'
+    SMP_FOR_DECREASE = '9'
+    MURMUR3_PARTITIONER_FOR_DECREASE = 10
+    MURMUR3_PARTITIONER_FOR_INCREASE = 17
     __test__ = False
     def __init__(self, *args, **kwargs):
         super(ReshardingTest, self).__init__(*args, **kwargs)
         self.compaction_strategy = self.compaction_strategy if hasattr(self, 'compaction_strategy') else 'LeveledCompactionStrategy'
         self.smp = self.smp if hasattr(self, 'smp') else self.DEFAULT_SMP
-        self.murmur3 = self.murmur3 if hasattr(self, 'murmur3') else self.DEFAUL_MUMUR3
+        self.murmur3 = self.murmur3 if hasattr(self, 'murmur3') else self.DEFAULT_MURMUR3_PARTITIONER
         self.nodes = self.nodes if hasattr(self, 'nodes') else self.DEFAULT_NODES
         # smp_for_increase and smp_for_decrease values should be according to the monster environment
-        self.smp_for_increase = '47'
-        self.smp_for_decrease = '9'
-        self.murmur3_for_decrease = 10
-        self.murmur3_for_increase = 17
         self.rf = 1 if self.nodes < 3 else 3
         self.mem =  self.set_memory_param(self.smp)
 
@@ -37,33 +39,32 @@ class ReshardingTest(Tester):
     def set_memory_param(smp):
         return '{}M'.format(512 * int(smp))
 
-    def _reload_with_resharding(self, murmur3=DEFAUL_MUMUR3, smp=None):
-        debug('{0} Reload node with resharding:\n CPU: from {1} to {2}\n murmur3 parameter: from {3} to {4}'.format(
-                                    datetime.datetime.now(), self.smp, smp, self.murmur3, murmur3))
+    def _reload_with_resharding(self, murmur3=DEFAULT_MURMUR3_PARTITIONER, smp=None, data_dir='data/keyspace1/standard1-*'):
+        debug('Reload node with resharding:\n CPU: from {0} to {1}\n murmur3 parameter: from {2} to {3}'.format(
+                                    self.smp, smp, self.murmur3, murmur3))
         smp = self.smp if not smp else smp
         self.node.stop(wait_other_notice=True)
 
-        data_files_num_before = self._get_number_of_data_files()
+        data_files_num_before = self._get_number_of_data_files(data_dir=data_dir)
         self.node.set_configuration_options(values={'murmur3_partitioner_ignore_msb_bits': murmur3})
         self.node.start(jvm_args=['--smp', smp, '--memory', self.set_memory_param(smp)],
                         wait_other_notice=True, wait_for_binary_proto=True)
-        debug('{0} Node has been started'.format(datetime.datetime.now()))
+        debug('Node has been started')
         return data_files_num_before
 
     def _get_number_of_data_files(self, data_dir='data/keyspace1/standard1-*'):
         data_files = []
-        for node in self.cluster.nodelist():
-            data_dir = os.path.join(node.get_path(), data_dir)
-            data_files.extend(glob.glob(os.path.join(data_dir, '*.*')))
-            # TODO: remove the debug lines below when the issue #3302 is fixed
-            # debug('\n\n\n\n\n\n')
-            # debug(len(data_files))
-            # debug('\n'.join(['{0} - size {1} bytes'.format(f, os.stat(f).st_size) for f in data_files]))
+        data_dir = os.path.join(self.node.get_path(), data_dir)
+        data_files.extend(glob.glob(os.path.join(data_dir, '*.*')))
+        # TODO: remove the debug lines below when the issue #3302 is fixed
+        # debug('\n\n\n\n\n\n')
+        # debug(len(data_files))
+        # debug('\n'.join(['{0} - size {1} bytes'.format(f, os.stat(f).st_size) for f in data_files]))
         return len(data_files)
 
-    def _verify_number_of_data_files(self, expected_num):
+    def _verify_number_of_data_files(self, expected_num, data_dir='data/keyspace1/standard1-*'):
         debug('Verify number of data files')
-        data_files_num = self._get_number_of_data_files()
+        data_files_num = self._get_number_of_data_files(data_dir=data_dir)
         self.assertLessEqual(data_files_num, expected_num,
                              msg='{0} not less than or equal to {1}. Data files amount after resharding '
                                  'should be not more then data files amount before resharding multiplying by 3.'.format
@@ -93,9 +94,9 @@ class ReshardingTest(Tester):
                 break
             prev_out = [o[0] for o in out]
             # END - Temporary solution while the "compactionstats" problem will be resolved
-            # debug('{0} {1}'.format(datetime.datetime.now(), out))
+            # debug(out)
             # if not to or to == timeout:
-            #     debug('{0} {1}'.format(datetime.datetime.now(), out))
+            #     debug(out)
             if not m:
                 if not timeout:
                     return reshard_found
@@ -171,41 +172,41 @@ class ReshardingTest(Tester):
         # data_files_num_before * 3: multiply by 3 because of could be increased not more than *3 (by Avi)
         self._verify_number_of_data_files(data_files_num_before*3)
 
-    @require('#3273')
     def resharding_by_murmur3_increase_test(self):
         """
         Resharding with 10M objects after increasing the MURMUR3 parameter
         and restarting the cluster
         """
-        if self.compaction_strategy in ['SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy']:
+        if self.compaction_strategy in ['SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy',
+                                        'TimeWindowCompactionStrategy']:
             self.skipTest('issue #3302 - High data files amount during resharding')
-        self._resharding_basic(self.smp, rows=1000, murmur3=self.murmur3_for_increase)
+        self._resharding_basic(self.smp, rows=1000, murmur3=self.MURMUR3_PARTITIONER_FOR_INCREASE)
 
-    @require('#3273')
     def resharding_by_murmur3_decrease_test(self):
         """
         Resharding with 10M objects after decreasing the MURMUR3 parameter
         and restarting the cluster
         """
-        if self.compaction_strategy in ['SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy']:
+        if self.compaction_strategy in ['SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy',
+                                        'TimeWindowCompactionStrategy']:
             self.skipTest('issue #3302 - High data files amount during resharding')
-        self._resharding_basic(self.smp, rows=1000, murmur3=self.murmur3_for_decrease)
+        self._resharding_basic(self.smp, rows=1000, murmur3=self.MURMUR3_PARTITIONER_FOR_DECREASE)
 
-    @require('#3273,#2852,#3302')
+    @require('#2852,#3302')
     def resharding_by_smp_increase_test(self):
         """
         Resharding with 10M objects after increasing the SMP parameter
         and restarting the cluster
         """
-        self._resharding_basic(self.smp_for_increase, rows=10000, murmur3=self.murmur3)
+        self._resharding_basic(self.SMP_FOR_INCREASE, rows=10000, murmur3=self.murmur3)
 
-    @require('#3273,#2852,#3302')
+    @require('#2852,#3302')
     def resharding_by_smp_decrease_test(self):
         """
         Resharding with 10M objects after decreasing the SMP parameter
         and restarting the cluster
         """
-        self._resharding_basic(self.smp_for_decrease, rows=100000, murmur3=self.murmur3)
+        self._resharding_basic(self.SMP_FOR_DECREASE, rows=100000, murmur3=self.murmur3)
 
     @require('#3303')
     def resharding_by_same_smp_test(self):
@@ -215,21 +216,23 @@ class ReshardingTest(Tester):
         """
         self._resharding_basic(self.smp, rows=1000, murmur3=self.murmur3)
 
-    @require('#3273')
     def resharding_by_murmur3_smp_test(self):
         """
         Cluster with 10M objects. Both SMP and MURMUR3 parameter are changed
         and restarting the cluster
         """
-        self._resharding_basic(self.smp_for_increase, rows=1000, murmur3=self.murmur3_for_increase)
+        if self.compaction_strategy in ['SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy',
+                                        'TimeWindowCompactionStrategy']:
+            self.skipTest('issue #3302 - High data files amount during resharding')
+        self._resharding_basic(self.SMP_FOR_INCREASE, rows=1000, murmur3=self.MURMUR3_PARTITIONER_FOR_INCREASE)
 
-    @require('#3273')
     def resharding_counter_test(self):
         """
         Resharding with small counter data set(c-s 1M counter objects) after changing the parameter
         and restarting the cluster
         """
-        if self.compaction_strategy in ['SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy']:
+        if self.compaction_strategy in ['SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy',
+                                        'TimeWindowCompactionStrategy']:
             self.skipTest('issue #3302 - High data files amount during resharding')
         session = self.patient_cql_connection(self.node)
         session.execute("""
@@ -262,13 +265,14 @@ class ReshardingTest(Tester):
         debug('Run counter_write stress test on node1')
         op_cnt = 10000
         stress_cmd = ['counter_write', 'n={}'.format(op_cnt), 'no-warmup', '-rate', 'threads=16',
-                      '-schema', 'compaction(strategy={})'.format(self.compaction_strategy)]
+                      '-schema', 'replication(factor={})'.format(self.rf),
+                      'compaction(strategy={})'.format(self.compaction_strategy)]
 
         self._run_stress(op_cnt, stress_cmd)
 
         self._verify_row_number('counter1', op_cnt)
 
-        data_files_num_before = self._reload_with_resharding(smp=self.smp_for_increase)
+        data_files_num_before = self._reload_with_resharding(smp=self.SMP_FOR_INCREASE)
 
         data_files_num_during = self._get_number_of_data_files()
         # data_files_num_before * 3: multiply by 3 because of we expect that files amount could
@@ -286,14 +290,71 @@ class ReshardingTest(Tester):
         stress_cmd = ['counter_read', 'n={}'.format(op_cnt), 'no-warmup', '-rate', 'threads=16']
         self._verify_data(op_cnt, stress_cmd)
         self._verify_row_number('counter1', op_cnt)
-        
 
-strategies = ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy']
+    def resharding_mv_test(self):
+        """
+        Resharding with small counter data set(c-s 1M counter objects) after changing the parameter
+        and restarting the cluster
+        """
+        if self.compaction_strategy in ['SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy']:
+            self.skipTest('issue #3302 - High data files amount during resharding')
+        session = self.patient_cql_connection(self.node)
+        self.create_ks(session, 'ks', self.rf)
+        op_cnt = 10000
+        tm = TableManager(session, self.cluster,
+                          columns={'int': {'amount': 1, 'frozen': False, 'value length': {'min': 1, 'max': 100}}
+                                   }, pk_columns={}, cl_columns={})
+        tm.create_table()
+
+        mv = MaterializedViewManager(tm)
+        mv_pk_name = tm.column_names_list[-1]
+        mv.create_materialized_view(mv_columns={'int': {'names': [mv_pk_name]}},
+                                    mv_pk_column={'type': 'int'})
+
+        tm.prefill_table(op_cnt)
+
+        self._verify_row_number(tm.table_name, op_cnt, keyspace=tm.keyspace)
+        self._verify_row_number(mv.mv_name, op_cnt, keyspace=tm.keyspace)
+
+        data_dir = 'data/{0}/{1}-*'.format(tm.keyspace, tm.table_name)
+        data_files_num_before = self._reload_with_resharding(smp=self.SMP_FOR_INCREASE, data_dir=data_dir)
+
+        data_files_num_during = self._get_number_of_data_files(data_dir=data_dir)
+        # data_files_num_before * 3: multiply by 3 because of we expect that files amount could
+        #                            be increased not more than *3 (by Avi)
+        self.assertLessEqual(data_files_num_during, data_files_num_before * 3)
+
+        res = self._wait_for_resharding()
+        self.assertEquals(res, True, 'Failed to recognize re-sharding finish')
+
+        # data_files_num_before * 3: multiply by 3 because of we expect that files amount could
+        #                            be increased not more than *3 (by Avi)
+        self._verify_number_of_data_files(data_files_num_before * 3, data_dir=data_dir)
+        self._check_logs_for_errors()
+
+        # Read data
+        session = self.patient_cql_connection(self.node)
+        query = 'select count(*) from {0}.{1} where id={2}'
+        for i in xrange(op_cnt):
+            assert_one(session, query.format(tm.keyspace, tm.table_name, i), [1])
+            assert_one(session, query.format(tm.keyspace, mv.mv_name, i), [1])
+
+        # Validate data
+        self._verify_row_number(tm.table_name, op_cnt, keyspace=tm.keyspace)
+        self._verify_row_number(mv.mv_name, op_cnt, keyspace=tm.keyspace)
+        query = 'select * from {0}.{1}'
+        assert_two_queries_equal(session, query.format(tm.keyspace, tm.table_name),
+                                 session, query.format(tm.keyspace, tm.table_name),
+                                 consistency_level=ConsistencyLevel.ALL, session_timeout=120,
+                                 group=True, groupby_column1=mv_pk_name, groupby_column2=mv_pk_name)
+
+strategies = ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy',
+              'TimeWindowCompactionStrategy']
 # SMP value should be according to the monster environment
 smp = '24'
 murmur3 = 15
-for node in [1, 4]:
+for node_count in [1, 4]:
     for strategy in strategies:
-        cls_name = ('ReshardingTest_nodes' + str(node) + '_with_' + strategy)
-        vars()[cls_name] = type(cls_name, (ReshardingTest,), {'nodes': node, 'compaction_strategy': strategy, 'smp': smp,
-                                                              'murmur3': murmur3, '__test__': True})
+        cls_name = ('ReshardingTest_nodes' + str(node_count) + '_with_' + strategy)
+        vars()[cls_name] = type(cls_name, (ReshardingTest,), {'nodes': node_count, 'compaction_strategy': strategy,
+                                                              'smp': smp, 'murmur3': murmur3, '__test__': True})
