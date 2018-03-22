@@ -5,7 +5,7 @@ import time, datetime
 import traceback
 import random
 from functools import partial
-from multiprocessing import Process, Queue
+from multiprocessing import Process, Queue, cpu_count
 from Queue import Queue as TQueue
 from unittest import skip, skipIf
 
@@ -37,7 +37,7 @@ class TestMaterializedViews(Tester):
     @jira_ticket CASSANDRA-6477
     """
 
-    def prepare(self, user_table=False, rf=1, options={}, nodes=3, fetch_size=None, **kwargs):
+    def prepare(self, user_table=False, rf=1, options={}, nodes=3, fetch_size=None, jvm_args=[], **kwargs):
         """
 
         :param user_table:
@@ -54,7 +54,7 @@ class TestMaterializedViews(Tester):
         options['experimental'] = True
         if options:
             cluster.set_configuration_options(values=options)
-        cluster.start()
+        cluster.start(jvm_args=jvm_args)
         node1 = cluster.nodelist()[0]
 
         session = self.patient_cql_connection(node1, **kwargs)
@@ -1855,6 +1855,81 @@ class TestMaterializedViews(Tester):
 
         self.debug_with_time("Verify all data")
         assert_row_count(session, 't_by_v', rows, consistency_level=ConsistencyLevel.ALL);
+
+    def interrupt_build_process_with_resharding_low_to_half_test(self):
+        """Test that an interrupted MV build process is resumed, with resharding 1 -> cpu_count() / 2"""
+        self._do_resharding_test('1', str(cpu_count() / 2))
+
+    def interrupt_build_process_with_resharding_half_to_max_test(self):
+        """Test that an interrupted MV build process is resumed, with resharding cpu_count() / 2 -> cpu_count()"""
+        # For some reason, Scylla's hwloc only sees cpu_count() - 1 cpus
+        self._do_resharding_test(str(cpu_count() / 2), str(cpu_count() - 1))
+
+    def interrupt_build_process_with_resharding_max_to_half_test(self):
+        """Test that an interrupted MV build process is resumed, with resharding cpu_count() -> cpu_count() / 2"""
+        # For some reason, Scylla's hwloc only sees cpu_count() - 1 cpus
+        self._do_resharding_test(str(cpu_count() - 1), str(cpu_count() / 2))
+
+    def interrupt_build_process_with_resharding_half_to_low_test(self):
+        """Test that an interrupted MV build process is resumed, with resharding cpu_count() / 2 -> 1"""
+        self._do_resharding_test(str(cpu_count() / 2), '1')
+
+    @staticmethod
+    def set_memory_param(smp):
+        return '{}M'.format(512 * int(smp))
+
+    def _do_resharding_test(self, smp_before, smp_after):
+        session = self.prepare(options={'hinted_handoff_enabled': False, 'shadow_round_ms': 1000, 'prometheus_port': 0},
+                               jvm_args=['--smp', smp_before, '--memory', self.set_memory_param(smp_before)])
+        node1, node2, node3 = self.cluster.nodelist()
+
+        self.allow_log_errors = True
+        session.execute("CREATE TABLE t (id int PRIMARY KEY, v int, v2 text, v3 decimal)")
+
+        rows = 200000
+        self.debug_with_time("Inserting initial data; smp = " + smp_before)
+        insert_stmt = session.prepare("INSERT INTO t (id, v, v2, v3) VALUES (?, ?, ?, ?)")
+        for i in xrange(rows):
+            session.execute(insert_stmt, (i, i, str(i), 3.0))
+
+        self.debug_with_time("Create a couple of MVs")
+        # Don't wait for schema agreement, or we risk view building concluding too soon
+        session.cluster.max_schema_agreement_wait = 0
+        session.execute(("CREATE MATERIALIZED VIEW t_by_v AS SELECT * FROM t "
+                         "WHERE v IS NOT NULL AND id IS NOT NULL PRIMARY KEY (v, id)"))
+        session.execute(("CREATE MATERIALIZED VIEW t_by_v2 AS SELECT * FROM t "
+                         "WHERE v2 IS NOT NULL AND id IS NOT NULL PRIMARY KEY (v2, id)"))
+
+        self._wait_for_view_build_start(session, "ks", "t_by_v")
+
+        self.debug_with_time("Stop the cluster. Interrupt the MV build process.")
+        # Our views build quickly, so instead of having to insert lots of data and
+        # risk the test taking too long, just force the cluster down
+        self.cluster.stop()
+
+        self.debug_with_time("Ensure view building didn't finish.")
+        have_finished = 0
+        for node in self.cluster.nodelist():
+            finished = node.grep_log("Finished building view")
+            have_finished += len(finished)
+        assert have_finished < 2 * len(self.cluster.nodelist())
+
+        self.debug_with_time("Restart the cluster with shards " + smp_after)
+        for node in self.cluster.nodelist():
+            self.debug_with_time("Starting node " + node.name)
+            node.start(jvm_args=['--smp', smp_after, '--memory', self.set_memory_param(smp_after)],
+                       wait_for_binary_proto=True)
+
+        session = self.patient_cql_connection(node1)
+        session.execute("USE ks")
+
+        self.debug_with_time("Wait and ensure the MV build resumed.")
+        self._wait_for_view(session, "ks", "t_by_v")
+        self._wait_for_view(session, "ks", "t_by_v2")
+
+        self.debug_with_time("Verify all data")
+        assert_row_count(session, 't_by_v', rows, consistency_level=ConsistencyLevel.ALL);
+        assert_row_count(session, 't_by_v2', rows, consistency_level=ConsistencyLevel.ALL);
 
     @skip("Takes too long, because there's no good way to interrupt "
           "the build process aside from creating lots of rows. Depends on #3295")
