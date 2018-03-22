@@ -80,7 +80,7 @@ class CompactionAdditionalTest(Tester):
         json_path = tempfile.mkstemp(suffix='.json')
         jname = json_path[1]
         with open(jname, 'w') as f:
-            node1.run_sstable2json(f)
+            node1.run_sstable2json(f, keyspace='ks')
 
         with open(jname, 'r') as g:
             jsoninfo = g.read()
@@ -108,7 +108,7 @@ class CompactionAdditionalTest(Tester):
         json_path = tempfile.mkstemp(suffix='.json')
         jname = json_path[1]
         with open(jname, 'w') as f:
-            node1.run_sstable2json(f)
+            node1.run_sstable2json(f, keyspace='ks')
 
         with open(jname, 'r') as g:
             jsoninfo = g.read()
@@ -313,7 +313,14 @@ class CompactionAdditionalStrategyTests(Tester):
 
     def _copy_sstable_file(self, file, generation):
         sstable_split_parts = os.path.basename(file).split('-')
-        sstable_split_parts[-2] = generation
+        if (len(sstable_split_parts) == 5):
+            # <= ka format
+            sstable_split_parts[-2] = generation
+        elif (len(sstable_split_parts) == 4):
+            # >= la format
+            sstable_split_parts[1] = generation
+        else:
+            raise RuntimeError("Unexpected format of file name: '%s'" % file)
         shutil.copy(file, os.path.join(os.path.dirname(file), '-'.join(sstable_split_parts)))
 
     def compaction_removes_ttld_data_after_gc_period_test(self):
@@ -352,7 +359,7 @@ class CompactionAdditionalStrategyTests(Tester):
         json_path = tempfile.mkstemp(suffix='.json')
         jname = json_path[1]
         with open(jname, 'w') as f:
-            node1.run_sstable2json(f)
+            node1.run_sstable2json(f, keyspace='ks')
 
         with open(jname, 'r') as g:
             jsoninfo = g.read()
