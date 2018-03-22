@@ -10,7 +10,8 @@ from dtest import debug
 import random, string
 import itertools
 from copy import deepcopy
-
+from threading import Thread
+import datetime
 
 def build_insert_params(keys, n, c1_values, c2_values):
     if (len(keys) == 0 and n is None) or (len(keys) != 0 and n is not None):
@@ -477,7 +478,6 @@ class TableManager(object):
         # TODO: add - select columns from materialized views
         if delay:
             time.sleep(delay)
-        debug("Start update at {}".format(time.strftime("%H:%M:%S")))
         set_dict = self._bulid_set_clause(set_clause, exclude_columns=update_columns_exclude or [])
         filter_dict = self._build_filter(where_filter)
 
@@ -494,12 +494,9 @@ class TableManager(object):
                             .format(ks=self.keyspace, table_name=self.table_name,
                                    using='' if not using_clause else using_str,
                                    set_clause=set_str, filter=filter_str)
-            debug(statement)
             self.session.execute(statement)
             if queue:
                 queue.put_nowait((set_dict, filter_str))
-            debug((set_dict, filter_str))
-            debug("Update finished at {}".format(time.strftime("%H:%M:%S")))
             return (set_dict, filter_str)
         return (None, None)
 
@@ -619,7 +616,8 @@ class TableManager(object):
         return result
 
     def get_max_id(self):
-        return self.session.execute('select max(id) as id from {}'.format(self.table_name)).current_rows[0].id
+        id = self.session.execute('select max(id) as id from {}'.format(self.table_name)).current_rows[0].id
+        return 0 if not id else id
 
     def set_mv(self, mv_name, mv_self_arr):
         self.materialized_views[mv_name] = mv_self_arr
@@ -715,10 +713,13 @@ class MaterializedViewManager(object):
                                       else ', {}'.format(', '.join([k for k in self.mv_cl_list])))
             debug(statement+';')
             self.parent_table.session.execute(statement)
+            debug('Materialized view {} has been created'.format(self.mv_name))
             self.parent_table.set_mv(self.mv_name, self)
 
     def drop_mv(self):
+        debug('Start drop materialized view {}'.format(self.mv_name))
         self.parent_table.session.execute('drop materialized view {}'.format(self.mv_name))
+        debug('Finish drop materialized view {}'.format(self.mv_name))
         self.parent_table.remove_mv(mv_name=self.mv_name)
         self.mv_name = ''
         self.mv_columns_list = None
@@ -802,3 +803,30 @@ class MaterializedViewManager(object):
     def my_count_query(self, filter=None):
         #TODO: handle filter
         return 'SELECT COUNT(*) FROM {my_name}{where_clause}'.format(my_name=self.mv_name, where_clause=filter or '')
+
+def managed_thread(proc_functions, queue=None):
+    """
+    Function starts threads and run functions defined in the proc_functions variable. Save results of the functions if asked
+    :param proc_functions: variable holds list of dictionaries with threads definitions. Expected structure:
+                           [{'func': <function pointer - the function will be runs from the thread>,
+                             'args': (arg1, arg2, arg3), - explicit function arguments by order in the function
+                             'kwargs': {<arg name1>: value, <arg name2>: value} - function arguments by name
+                            }, - first thread definition
+                            {{'func': <function pointer, 'args': (), 'kwargs': {}} - second thread, no arguments
+                           ]
+    :param proc_functions: list
+    :param queue: queue pointer
+    :param queue: Queue.Queue
+    :return: results of all treads if queue is not None
+    :rtype: list | None
+    """
+    debug('Threads start at {}'.format(datetime.datetime.now()))
+    threads = [Thread(target=func['func'], args=func['args'] if 'args' in func else [],
+                      kwargs=func['kwargs'] if 'kwargs' in func else {})
+               for func in proc_functions]
+    _ = [t.start() for t in threads]
+    _ = [t.join() for t in threads]
+    debug('Threads finished at {}'.format(datetime.datetime.now()))
+    if queue:
+        results = [queue.get() for _ in threads]
+        return results
