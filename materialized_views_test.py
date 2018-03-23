@@ -719,6 +719,7 @@ class TestMaterializedViews(Tester):
             - Test that the view does not exist in the system schema and base table has 1000000 rows
         """
 
+        self.allow_log_errors = True
         prefill = 1000000
 
         def _create_mvs(delay=0):
