@@ -652,16 +652,15 @@ class TestMaterializedViews(Tester):
         """ Few keyspaces and every keyspace has a few tables and every table has a few MVs.
             MVs are created on the empty base tables
         """
-        self._multi_mvs_on_different_base_tables_multi_ks(rf=3, tables=10, mvs=20, prefill_start=10000,
+        self._multi_mvs_on_different_base_tables_multi_ks(rf=3, tables=3, mvs=4, prefill_start=10000,
                                                           increase_rows=10, populated_table=False)
 
-    @skip('under developing')
     def multi_mvs_on_different_populated_base_tables_test(self):
         """ Few keyspaces and every keyspace has a few tables and every table has a few MVs.
             MVs are created on the populated base tables
         """
         """ Test when keyspace has a few tables and every table has a few MVs. MVs are created on the populated base tables """
-        self._multi_mvs_on_different_base_tables_multi_ks(rf=3, tables=10, mvs=20, prefill_start=10000,
+        self._multi_mvs_on_different_base_tables_multi_ks(rf=3, tables=3, mvs=4, prefill_start=10000,
                                                           increase_rows=10, populated_table=True)
 
     def _multi_mvs_on_different_base_tables_multi_ks(self, rf, tables, mvs, prefill_start, increase_rows, populated_table):
@@ -676,8 +675,7 @@ class TestMaterializedViews(Tester):
                                       'increase_rows': increase_rows, 'populated_table': populated_table}})
         managed_thread(proc_functions)
 
-    def _multi_mvs_on_different_base_tables(self, session, tables=10, mvs=20, prefill_start=10000,
-                                            increase_rows=10, populated_table=False):
+    def _multi_mvs_on_different_base_tables(self, session, tables, mvs, prefill_start, increase_rows, populated_table):
         def _prefill_base_tables():
             prefill = prefill_start
             for base_table in base_tables:
@@ -687,11 +685,14 @@ class TestMaterializedViews(Tester):
         def _create_mvs():
             for base_table in base_tables:
                 self._create_mvs_by_one_column(base_table, mvs_amount=mvs)
+            for base_table in base_tables:
+                for mv_name, _ in base_table.materialized_views.iteritems():
+                    self._wait_for_view(session, base_table.keyspace, mv_name)
 
         base_tables = []
         for i in xrange(tables):
             tm = TableManager(session, self.cluster, table_name='tm_table{}'.format(i),
-                          columns={'int': {'amount': mvs/2, 'frozen': False,
+                          columns={'int': {'amount': mvs / 2, 'frozen': False,
                                            'value length': {'min': 1, 'max': 100}},
                                    'text': {'amount': mvs / 2, 'frozen': False,
                                            'value length': {'min': 1, 'max': 10}}
@@ -703,7 +704,6 @@ class TestMaterializedViews(Tester):
         for func in order:
             func()
 
-        self.cluster.flush()
         prefill = prefill_start
         for base_table in base_tables:
             self._validate_data_in_mvs(base_table, session, prefill, prefill)
