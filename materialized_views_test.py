@@ -709,8 +709,8 @@ class TestMaterializedViews(Tester):
             self._validate_data_in_mvs(base_table, session, prefill, prefill)
             prefill = prefill + increase_rows
 
-    def drop_mv_during_building_test(self):
-        """ Test drop a view while building is in progress: the view is created on empty base table and dropped during table prefill
+    def drop_mv_during_base_table_writes_test(self):
+        """ Test drop a view during base table writes: the view is created on empty base table and dropped during table prefill
             Test scenario:
             - Create base table
             - Create materialized view
@@ -718,9 +718,9 @@ class TestMaterializedViews(Tester):
             - After 40 seconds (before the table prefill is finished) drop the MV
             - Test that the view does not exist in the system schema and base table has 1000000 rows
         """
-        self._drop_mv_during_building(rf=3, nodes=4, prefill=1000000, populated_table=False)
 
-    def _drop_mv_during_building(self, rf, nodes, prefill, populated_table):
+        prefill = 1000000
+
         def _create_mvs(delay=0):
             time.sleep(delay)
             mv = MaterializedViewManager(tm)
@@ -731,32 +731,21 @@ class TestMaterializedViews(Tester):
             time.sleep(delay)
             next(tm.materialized_views.itervalues()).drop_mv()
 
-        session = self.prepare(rf=rf, nodes=nodes)
+        session = self.prepare(rf=3, nodes=4)
         tm = TableManager(session, self.cluster,
                           columns={'int': {'amount': 1, 'frozen': False,
                                            'value length': {'min': 1, 'max': 100}}
                                    }, pk_columns={}, cl_columns={})
         tm.create_table()
 
-        # TODO: we can use nodetool.viewbuildstatus to check the view build progress. Not supported yet
-        if populated_table:
-            self.add_mv_records(tm, inserts=prefill)
-            _create_mvs()
-            _drop_mv(delay=4)
-        else:
-            _create_mvs()
-            proc_functions = [{'func': self.add_mv_records, 'args': (tm,), 'kwargs': {'inserts': prefill, 'delay': 0}},
-                              {'func': _drop_mv, 'kwargs': {'delay': 40}}
-                             ]
-            managed_thread(proc_functions)
+        _create_mvs()
+        proc_functions = [{'func': self.add_mv_records, 'args': (tm,), 'kwargs': {'inserts': prefill, 'delay': 0}},
+                          {'func': _drop_mv, 'kwargs': {'delay': 40}}
+                         ]
+        managed_thread(proc_functions)
         self.cluster.flush()
 
         assert_none(session, 'select * from system_schema.views', cl=ConsistencyLevel.ALL)
-        # TODO: the tables are under developing now
-        # assert_none(session, 'select * from system.views_builds_in_progress', cl=ConsistencyLevel.ALL)
-        # assert_none(session, 'select * from system.built_views', cl=ConsistencyLevel.ALL)
-        # assert_none(session, 'select * from system_distributed.view_build_status', cl=ConsistencyLevel.ALL)
-
         assert_row_count(session, tm.table_name, prefill)
 
     def fetch_mv_after_recreate_test(self):
