@@ -500,8 +500,8 @@ class TableManager(object):
             return (set_dict, filter_str)
         return (None, None)
 
-    def multiple_int_updates_by_id(self, update_to_boundaries, filter_values=[], updated_columns=None, updates=100,
-                                   flush=True, same_id=True):
+    def multiple_int_updates_by_id(self, update_to_boundaries, filter_values=[], ids=[],
+                                   updated_columns=None, updates=100, same_id=True):
         query = 'select * from {}'.format(self.table_name)
         updated_columns = updated_columns or [c for c in self.column_names_list
                                             if '{} int'.format(c) in self.columns_list
@@ -515,20 +515,23 @@ class TableManager(object):
         res = list(self.session.execute(query))
         for _ in xrange(updates):
             # Select column for update
-            k = 0
-            if not same_id:
-                res = list(self.session.execute(query))
-            while not id_condition:
-                i = random.randint(0, len(res)-1)
-                if (filter_values and res[i][updated_column_index] in filter_values) or not filter_values:
-                    id = res[i].id
-                    id_condition = False if not same_id else id
-                    break
-                k += 1
-                if k > len(res):
-                    break
+            if not ids:
+                k = 0
+                if not same_id:
+                    res = list(self.session.execute(query))
+                while not id_condition:
+                    i = random.randint(0, len(res)-1)
+                    if (filter_values and res[i][updated_column_index] in filter_values) or not filter_values:
+                        id = res[i].id
+                        id_condition = False if not same_id else id
+                        break
+                    k += 1
+                    if k > len(res):
+                        break
+            else:
+                id = ids[random.randint(0, len(ids) - 1)]
 
-            if id:
+            if id is not None:
                 self.update_table(set_clause={'by name': {updated_column: random.randint(update_to_boundaries[0],
                                                                                          update_to_boundaries[1])}},
                                   where_filter={'by name': {'id': {'operator': '=', 'value': id}}})
