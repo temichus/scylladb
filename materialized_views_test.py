@@ -406,7 +406,7 @@ class TestMaterializedViews(Tester):
 
         new_data = [-2, -5, -12, -45, -63, -78, -36, -85, -98, -100]
         proc_functions = [
-                          {'func': tm.prefill_table, 'args': (records,),
+            {'func': tm.prefill_table, 'args': (records,),
                            'kwargs': {'data': {'int': new_data}, 'start_id_from': records+1}}
                           , {'func': tm.multiple_int_updates_by_id, 'args': ([200, 300],),
                            'kwargs': {'filter_values': start_data+new_data, 'updates': 1000, 'same_id': False}}
@@ -625,7 +625,7 @@ class TestMaterializedViews(Tester):
                                    }, pk_columns={}, cl_columns={})
 
         tm.create_table()
-        self._create_mvs_by_one_int_column(tm, mvs)
+        self._create_mvs_by_one_column(tm, mvs)
 
         start_data = [2, 5, 12, 45, 63, 78, 36, 85, 98, 100]
         tm.prefill_table(prefill, data={'int': start_data})
@@ -636,7 +636,7 @@ class TestMaterializedViews(Tester):
                            'kwargs': {'same_id': False, 'ids': [0 for _ in xrange(0, 1001)],
                                       'updates': 1000}},
                           {'func': tm.multiple_deletes, 'args': ({'id': [0 for _ in xrange(0, 1001)]},)}]
-        self._managed_thread(proc_functions)
+        managed_thread(proc_functions)
 
         self.cluster.flush()
 
