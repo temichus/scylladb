@@ -73,7 +73,7 @@ CURRENT_TEST = ""
 
 logging.basicConfig(filename=os.path.join(LOG_SAVED_DIR, "dtest.log"),
                     filemode='w',
-                    format='%(asctime)s,%(msecs)d %(name)s %(current_test)s %(levelname)s %(message)s',
+                    format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
                     datefmt='%H:%M:%S',
                     level=logging.WARNING)
 
@@ -91,13 +91,13 @@ def reset_environment_vars():
 
 
 def warning(msg):
-    LOG.warning(msg, extra={"current_test": CURRENT_TEST})
+    LOG.warning(CURRENT_TEST + ' - ' + str(msg))
     if PRINT_DEBUG:
         print "WARN: " + msg
 
 
 def debug(msg):
-    LOG.debug(msg, extra={"current_test": CURRENT_TEST})
+    LOG.debug(CURRENT_TEST + ' - ' + str(msg))
     if PRINT_DEBUG:
         print msg
 
