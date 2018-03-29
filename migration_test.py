@@ -240,7 +240,7 @@ class MigrationTestBase(Tester):
             os.unlink(data_file)
 
         debug('Start node1')
-        node1.start(wait_other_notice=True)
+        node1.start(wait_for_binary_proto=True)
         time.sleep(5)
 
         ip = node1.address()
