@@ -15,6 +15,7 @@ import time
 import traceback
 import types
 import requests
+import datetime
 from unittest import TestCase
 
 import psutil
@@ -96,8 +97,9 @@ def warning(msg):
         print "WARN: " + msg
 
 
-def debug(msg):
+def debug(msg, add_timestamp=True):
     LOG.debug(CURRENT_TEST + ' - ' + str(msg))
+    msg = '{0}{1}'.format('{} '.format(datetime.datetime.now()) if add_timestamp else '', msg)
     if PRINT_DEBUG:
         print msg
 

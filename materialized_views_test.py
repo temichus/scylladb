@@ -1,7 +1,7 @@
 import collections
 import re
 import sys, os
-import time, datetime
+import time
 import traceback
 import random
 from functools import partial
@@ -86,7 +86,7 @@ class TestMaterializedViews(Tester):
             self.cluster.compact()
 
     def _wait_for_view(self, session, ks, view):
-        self.debug_with_time("Waiting for view {}.{} to finish building...".format(ks, view))
+        debug("Waiting for view {}.{} to finish building...".format(ks, view))
 
         def _view_build_finished():
             result = rows_to_list(session.execute("SELECT status FROM system_distributed.view_build_status WHERE keyspace_name='%s' AND view_name='%s'" % (ks, view)))
@@ -124,7 +124,7 @@ class TestMaterializedViews(Tester):
         session.execute(insert_stmt + "('user4', 'ch@ngem3d', 'm', 'TX', 1974);")
 
     def _replay_batchlogs(self):
-        self.debug_with_time("Replaying batchlog on all nodes")
+        debug("Replaying batchlog on all nodes")
         for node in self.cluster.nodelist():
             if node.is_running():
                 node.nodetool("replaybatchlog")
@@ -237,19 +237,19 @@ class TestMaterializedViews(Tester):
             assert False, 'Unsupported node action'
 
         if delay:
-            self.debug_with_time('Sleep for {} seconds'.format(delay))
+            debug('Sleep for {} seconds'.format(delay))
             time.sleep(delay)
 
-        self.debug_with_time('START: {0} node {1}'.format(action, node.name))
+        debug('START: {0} node {1}'.format(action, node.name))
         if action == 'stop':
             node.stop(wait=wait, wait_other_notice=wait_other_notice, gently=gently)
         else:
             self.cluster.remove(node)
-        self.debug_with_time('FINISH: {0} node {1}'.format(action, node.name))
+        debug('FINISH: {0} node {1}'.format(action, node.name))
 
     def _stop_few_nodes(self, by_dc_name='', by_node_names=[], delay=0, wait=True, wait_other_notice=False, gently=True):
         if delay:
-            self.debug_with_time('Sleep for {} seconds'.format(delay))
+            debug('Sleep for {} seconds'.format(delay))
             time.sleep(delay)
 
         for node in self.cluster.nodelist():
@@ -347,11 +347,11 @@ class TestMaterializedViews(Tester):
 
     def _add_few_nodes(self, nodes, data_center, delay=0, queue=None):
         if delay:
-            self.debug_with_time('Sleep for {} seconds'.format(delay))
+            debug('Sleep for {} seconds'.format(delay))
             time.sleep(delay)
 
         for i in xrange(0, nodes):
-            self.debug_with_time('Bootstrapping {0} node in {1}'.format(i+1, data_center))
+            debug('Bootstrapping {0} node in {1}'.format(i+1, data_center))
             self._add_new_node(data_center=data_center, queue=None)
 
     def hundred_mv_concurrent_test(self):
@@ -377,7 +377,7 @@ class TestMaterializedViews(Tester):
         def _assert_rows_count(expected_rows=None, by_node=False):
             names_list = [tm.table_name] + tm.materialized_views.keys() if expected_rows else tm.materialized_views.keys()
             for name in names_list:
-                self.debug_with_time(name)
+                debug(name)
                 if expected_rows:
                     if by_node:
                         assert_row_count_from_every_node(session, name, expected_rows, nodes_list=self.cluster.nodelist())
@@ -427,7 +427,7 @@ class TestMaterializedViews(Tester):
         for mv_name, mv in tm.materialized_views.iteritems():
             exp_query = query_template.format(clmn=mv.mv_columns_list[-1], tbl=tm.table_name)
             act_query = query_template.format(clmn=mv.mv_columns_list[-1], tbl=mv_name)
-            self.debug_with_time('Compare: {0} AND {1}'.format(exp_query, act_query))
+            debug('Compare: {0} AND {1}'.format(exp_query, act_query))
             assert_two_queries_equal(session, exp_query, session, act_query,
                                      consistency_level=ConsistencyLevel.QUORUM, session_timeout=120,
                                      group=True, groupby_column1=mv.mv_columns_list[-1],
@@ -598,11 +598,11 @@ class TestMaterializedViews(Tester):
 
     def _restart_node(self, node, delay=0):
         time.sleep(delay)
-        self.debug_with_time('Start {} restart'.format(node.name))
+        debug('Start {} restart'.format(node.name))
         node.stop()
         time.sleep(5)
         node.start()
-        self.debug_with_time('Finish node {} restart'.format(node.name))
+        debug('Finish node {} restart'.format(node.name))
 
     def _validate_data_in_mvs(self, tm, session, table_expected_rows, mv_expected_rows, grouby_column_index=-1):
         query = 'select * from {}'
@@ -1083,42 +1083,42 @@ class TestMaterializedViews(Tester):
 
         session = self.prepare(rf=rf)
 
-        self.debug_with_time("Creating schema")
+        debug("Creating schema")
         session.execute("CREATE TABLE t (id int PRIMARY KEY, v int)")
         session.execute(("CREATE MATERIALIZED VIEW t_by_v AS SELECT * FROM t "
                          "WHERE v IS NOT NULL AND id IS NOT NULL PRIMARY KEY (v, id)"))
 
-        self.debug_with_time("Writing 1k to base")
+        debug("Writing 1k to base")
         for i in xrange(1000):
             session.execute("INSERT INTO t (id, v) VALUES ({id}, {v})".format(id=i, v=-i))
 
-        self.debug_with_time("Reading 1k from view")
+        debug("Reading 1k from view")
         for i in xrange(1000):
             assert_one(session, "SELECT * FROM t_by_v WHERE v = {}".format(-i), [-i, i])
 
-        self.debug_with_time("Reading 1k from base")
+        debug("Reading 1k from base")
         for i in xrange(1000):
             assert_one(session, "SELECT * FROM t WHERE id = {}".format(i), [i, -i])
 
-        self.debug_with_time("Bootstrapping new node in another dc")
+        debug("Bootstrapping new node in another dc")
         node4 = new_node(self.cluster, data_center='dc2')
         node4.start(wait_other_notice=True, wait_for_binary_proto=True)
 
-        self.debug_with_time("Bootstrapping new node in another dc")
+        debug("Bootstrapping new node in another dc")
         node5 = new_node(self.cluster, remote_debug_port='1414', data_center='dc2')
         node5.start()
 
         session2 = self.patient_exclusive_cql_connection(node4)
 
-        self.debug_with_time("Verifying data from new node in view")
+        debug("Verifying data from new node in view")
         for i in xrange(1000):
             assert_one(session2, "SELECT * FROM ks.t_by_v WHERE v = {}".format(-i), [-i, i])
 
-        self.debug_with_time("Inserting 100 into base")
+        debug("Inserting 100 into base")
         for i in xrange(1000, 1100):
             session.execute("INSERT INTO t (id, v) VALUES ({id}, {v})".format(id=i, v=-i))
 
-        self.debug_with_time("Verify 100 in view")
+        debug("Verify 100 in view")
         for i in xrange(1000, 1100):
             assert_one(session, "SELECT * FROM t_by_v WHERE v = {}".format(-i), [-i, i])
 
@@ -1734,14 +1734,14 @@ class TestMaterializedViews(Tester):
         session.execute(("CREATE MATERIALIZED VIEW t_by_v AS SELECT * FROM t "
                          "WHERE v IS NOT NULL AND id IS NOT NULL PRIMARY KEY (v, id)"))
 
-        self.debug_with_time("Inserting initial data using IF NOT EXISTS")
+        debug("Inserting initial data using IF NOT EXISTS")
         for i in xrange(1000):
             session.execute(
                 "INSERT INTO t (id, v, v2, v3) VALUES ({v}, {v}, 'a', 3.0) IF NOT EXISTS".format(v=i)
             )
         self._replay_batchlogs()
 
-        self.debug_with_time("All rows should have been inserted")
+        debug("All rows should have been inserted")
         for i in xrange(1000):
             assert_one(
                 session,
@@ -1749,7 +1749,7 @@ class TestMaterializedViews(Tester):
                 [i, i, 'a', 3.0]
             )
 
-        self.debug_with_time("Tyring to UpInsert data with a different value using IF NOT EXISTS")
+        debug("Tyring to UpInsert data with a different value using IF NOT EXISTS")
         for i in xrange(1000):
             v = i * 2
             session.execute(
@@ -1757,7 +1757,7 @@ class TestMaterializedViews(Tester):
             )
         self._replay_batchlogs()
 
-        self.debug_with_time("No rows should have changed")
+        debug("No rows should have changed")
         for i in xrange(1000):
             assert_one(
                 session,
@@ -1765,7 +1765,7 @@ class TestMaterializedViews(Tester):
                 [i, i, 'a', 3.0]
             )
 
-        self.debug_with_time("Update the 10 first rows with a different value")
+        debug("Update the 10 first rows with a different value")
         for i in xrange(1000):
             v = i + 2000
             session.execute(
@@ -1773,7 +1773,7 @@ class TestMaterializedViews(Tester):
             )
         self._replay_batchlogs()
 
-        self.debug_with_time("Verify that only the 10 first rows changed.")
+        debug("Verify that only the 10 first rows changed.")
         results = list(session.execute("SELECT * FROM t_by_v;"))
         self.assertEqual(len(results), 1000)
         for i in xrange(1000):
@@ -1784,7 +1784,7 @@ class TestMaterializedViews(Tester):
                 [v, i, 'a', 3.0]
             )
 
-        self.debug_with_time("Deleting the first 10 rows")
+        debug("Deleting the first 10 rows")
         for i in xrange(1000):
             v = i + 2000
             session.execute(
@@ -1792,7 +1792,7 @@ class TestMaterializedViews(Tester):
             )
         self._replay_batchlogs()
 
-        self.debug_with_time("Verify that only the 10 first rows have been deleted.")
+        debug("Verify that only the 10 first rows have been deleted.")
         results = list(session.execute("SELECT * FROM t_by_v;"))
         self.assertEqual(len(results), 990)
         for i in xrange(10, 1000):
@@ -1812,12 +1812,12 @@ class TestMaterializedViews(Tester):
         session.execute("CREATE TABLE t (id int PRIMARY KEY, v int, v2 text, v3 decimal)")
 
         rows = 200000
-        self.debug_with_time("Inserting initial data")
+        debug("Inserting initial data")
         insert_stmt = session.prepare("INSERT INTO t (id, v, v2, v3) VALUES (?, ?, ?, ?)")
         for i in xrange(rows):
             session.execute(insert_stmt, (i, i, 'a', 3.0))
 
-        self.debug_with_time("Create a MV")
+        debug("Create a MV")
         # Don't wait for schema agreement, or we risk view building concluding too soon
         session.cluster.max_schema_agreement_wait = 0
         session.execute(("CREATE MATERIALIZED VIEW t_by_v AS SELECT * FROM t "
@@ -1825,25 +1825,25 @@ class TestMaterializedViews(Tester):
 
         self._wait_for_view_build_start(session, "ks", "t_by_v")
 
-        self.debug_with_time("Stop the cluster. Interrupt the MV build process.")
+        debug("Stop the cluster. Interrupt the MV build process.")
         self.cluster.stop()
 
-        self.debug_with_time("Ensure view building didn't finish.")
+        debug("Ensure view building didn't finish.")
         have_finished = 0
         for node in self.cluster.nodelist():
             finished = node.grep_log("Finished building view")
             have_finished += len(finished)
         assert have_finished < len(self.cluster.nodelist())
 
-        self.debug_with_time("Restart the cluster")
+        debug("Restart the cluster")
         self.cluster.start(wait_for_binary_proto=True)
         session = self.patient_cql_connection(node1)
         session.execute("USE ks")
 
-        self.debug_with_time("Wait and ensure the MV build resumed.")
+        debug("Wait and ensure the MV build resumed.")
         self._wait_for_view(session, "ks", "t_by_v")
 
-        self.debug_with_time("Verify all data")
+        debug("Verify all data")
         assert_row_count(session, 't_by_v', rows, consistency_level=ConsistencyLevel.ALL);
 
     def interrupt_build_process_with_resharding_low_to_half_test(self):
@@ -1877,12 +1877,12 @@ class TestMaterializedViews(Tester):
         session.execute("CREATE TABLE t (id int PRIMARY KEY, v int, v2 text, v3 decimal)")
 
         rows = 200000
-        self.debug_with_time("Inserting initial data; smp = " + smp_before)
+        debug("Inserting initial data; smp = " + smp_before)
         insert_stmt = session.prepare("INSERT INTO t (id, v, v2, v3) VALUES (?, ?, ?, ?)")
         for i in xrange(rows):
             session.execute(insert_stmt, (i, i, str(i), 3.0))
 
-        self.debug_with_time("Create a couple of MVs")
+        debug("Create a couple of MVs")
         # Don't wait for schema agreement, or we risk view building concluding too soon
         session.cluster.max_schema_agreement_wait = 0
         session.execute(("CREATE MATERIALIZED VIEW t_by_v AS SELECT * FROM t "
@@ -1892,32 +1892,32 @@ class TestMaterializedViews(Tester):
 
         self._wait_for_view_build_start(session, "ks", "t_by_v")
 
-        self.debug_with_time("Stop the cluster. Interrupt the MV build process.")
+        debug("Stop the cluster. Interrupt the MV build process.")
         # Our views build quickly, so instead of having to insert lots of data and
         # risk the test taking too long, just force the cluster down
         self.cluster.stop()
 
-        self.debug_with_time("Ensure view building didn't finish.")
+        debug("Ensure view building didn't finish.")
         have_finished = 0
         for node in self.cluster.nodelist():
             finished = node.grep_log("Finished building view")
             have_finished += len(finished)
         assert have_finished < 2 * len(self.cluster.nodelist())
 
-        self.debug_with_time("Restart the cluster with shards " + smp_after)
+        debug("Restart the cluster with shards " + smp_after)
         for node in self.cluster.nodelist():
-            self.debug_with_time("Starting node " + node.name)
+            debug("Starting node " + node.name)
             node.start(jvm_args=['--smp', smp_after, '--memory', self.set_memory_param(smp_after)],
                        wait_for_binary_proto=True)
 
         session = self.patient_cql_connection(node1)
         session.execute("USE ks")
 
-        self.debug_with_time("Wait and ensure the MV build resumed.")
+        debug("Wait and ensure the MV build resumed.")
         self._wait_for_view(session, "ks", "t_by_v")
         self._wait_for_view(session, "ks", "t_by_v2")
 
-        self.debug_with_time("Verify all data")
+        debug("Verify all data")
         assert_row_count(session, 't_by_v', rows, consistency_level=ConsistencyLevel.ALL);
         assert_row_count(session, 't_by_v2', rows, consistency_level=ConsistencyLevel.ALL);
 
@@ -1935,22 +1935,22 @@ class TestMaterializedViews(Tester):
         session.execute("CREATE TABLE t (id int PRIMARY KEY, v int, v2 text, v3 decimal)")
 
         rows = 1000000
-        self.debug_with_time("Inserting initial data")
+        debug("Inserting initial data")
         insert_stmt = session.prepare("INSERT INTO t (id, v, v2, v3) VALUES (?, ?, ?, ?)")
         for i in xrange(rows):
             session.execute(insert_stmt, (i, i, 'a', 3.0))
 
-        self.debug_with_time("Create a MV")
+        debug("Create a MV")
         session.cluster.max_schema_agreement_wait = 1
         session.execute(("CREATE MATERIALIZED VIEW t_by_v AS SELECT * FROM t "
                          "WHERE v IS NOT NULL AND id IS NOT NULL PRIMARY KEY (v, id)"))
 
         self._wait_for_view_build_start(session, "ks", "t_by_v")
 
-        self.debug_with_time("Drop the MV while it is still building")
+        debug("Drop the MV while it is still building")
         session.execute("DROP MATERIALIZED VIEW t_by_v")
 
-        self.debug_with_time("Verify view building never finished.")
+        debug("Verify view building never finished.")
         have_finished = 0
         for node in self.cluster.nodelist():
             finished = node.grep_log("Finished building view")
@@ -2455,7 +2455,7 @@ class TestMaterializedViews(Tester):
                                         consistency_level=ConsistencyLevel.ALL))
         assert_none(session, "SELECT * FROM t_by_v WHERE v = 1")
 
-        self.debug_with_time('Shutdown node2')
+        debug('Shutdown node2')
         node2.stop(wait_other_notice=True)
 
         session.execute(SimpleStatement("UPDATE t USING TIMESTAMP 4 SET v = 1 WHERE id = 1",
@@ -2508,7 +2508,7 @@ class TestMaterializedViews(Tester):
         tm.prefill_table(rows)
         self.cluster.flush()
         status = node1.nodetool('viewbuildstatus')
-        self.debug_with_time(status)
+        debug(status)
 
     def repair_mv_test(self):
         """ Test repair of materialized view """
@@ -2543,20 +2543,20 @@ class TestMaterializedViews(Tester):
 
         node2.start(wait_other_notice=True, wait_for_binary_proto=True)
 
-        self.debug_with_time('Repair the mv replica')
+        debug('Repair the mv replica')
         node1.nodetool("repair {ks} {mv_name}".format(ks=tm.keyspace, mv_name=mv.mv_name))
 
         node1.stop(wait_other_notice=True)
         node3.stop(wait_other_notice=True)
 
         # Validate data
-        self.debug_with_time('Verify the MV data for updated rows in the MV with CL=ONE')
+        debug('Verify the MV data for updated rows in the MV with CL=ONE')
         assert_one(session, 'select count(*) from {1} where {0}=2 ALLOW FILTERING'.format(mv_pk_column, mv.mv_name), [50])
 
-        self.debug_with_time('Verify the MV data for not updated rows in the MV with CL=ONE')
+        debug('Verify the MV data for not updated rows in the MV with CL=ONE')
         assert_one(session, 'select count(*) from {1} where {0}=3 ALLOW FILTERING'.format(mv_pk_column, mv.mv_name), [50])
 
-        self.debug_with_time('Verify the base table data with CL=ONE - all rows shouldn\'t be updated')
+        debug('Verify the base table data with CL=ONE - all rows shouldn\'t be updated')
         for i in xrange(prefill):
             assert_one(session, 'select {0} from {1} where id={2}'.format(mv_pk_column, tm.table_name, i), [2])
 
@@ -2575,7 +2575,7 @@ class TestMaterializedViews(Tester):
 
         session.cluster.control_connection.wait_for_schema_agreement()
 
-        self.debug_with_time('Shutdown node2')
+        debug('Shutdown node2')
         node2.stop(wait_other_notice=True)
 
         for i in xrange(1000):
@@ -2584,7 +2584,7 @@ class TestMaterializedViews(Tester):
         # Scylla doesn't leverage the batchlog for MVs
         #self._replay_batchlogs()
 
-        self.debug_with_time('Verify the data in the MV with CL=ONE')
+        debug('Verify the data in the MV with CL=ONE')
         for i in xrange(1000):
             assert_one(
                 session,
@@ -2592,7 +2592,7 @@ class TestMaterializedViews(Tester):
                 [i, i, 'a', 3.0]
             )
 
-        self.debug_with_time('Verify the data in the MV with CL=ALL. All should be unavailable.')
+        debug('Verify the data in the MV with CL=ALL. All should be unavailable.')
         for i in xrange(1000):
             statement = SimpleStatement(
                 "SELECT * FROM t_by_v WHERE v = {}".format(i),
@@ -2604,11 +2604,11 @@ class TestMaterializedViews(Tester):
                 statement
             )
 
-        self.debug_with_time('Start node2, and repair')
+        debug('Start node2, and repair')
         node2.start(wait_other_notice=True, wait_for_binary_proto=True)
         node1.repair()
 
-        self.debug_with_time('Verify the data in the MV with CL=ONE. All should be available now.')
+        debug('Verify the data in the MV with CL=ONE. All should be available now.')
         for i in xrange(1000):
             assert_one(
                 session,
@@ -2642,14 +2642,14 @@ class TestMaterializedViews(Tester):
 
         session.cluster.control_connection.wait_for_schema_agreement()
 
-        self.debug_with_time('Write initial data')
+        debug('Write initial data')
         for i in xrange(1000):
             session.execute("INSERT INTO t (id, v, v2, v3) VALUES ({v}, {v}, 'a', 3.0)".format(v=i))
 
         # Scylla doesn't leverage the batchlog for MVs
         #self._replay_batchlogs()
 
-        self.debug_with_time('Verify the data in the MV with CL=ALL')
+        debug('Verify the data in the MV with CL=ALL')
         for i in xrange(1000):
             assert_one(
                 session,
@@ -2658,9 +2658,9 @@ class TestMaterializedViews(Tester):
                 cl=ConsistencyLevel.ALL
             )
 
-        self.debug_with_time('Shutdown node1')
+        debug('Shutdown node1')
         node1.stop(wait_other_notice=True)
-        self.debug_with_time('Delete node1 data')
+        debug('Delete node1 data')
         node1.clear(clear_all=True)
 
         # This code is taken from Cassandra. Not relevant for us
@@ -2675,29 +2675,29 @@ class TestMaterializedViews(Tester):
         # node1.start(wait_other_notice=True, wait_for_binary_proto=True, jvm_args=jvm_args)
 
         node1.start(wait_other_notice=True, wait_for_binary_proto=True)
-        self.debug_with_time('Shutdown node2 and node3')
+        debug('Shutdown node2 and node3')
         node2.stop(wait_other_notice=True)
         node3.stop(wait_other_notice=True)
 
         session = self.patient_exclusive_cql_connection(node1)
         session.execute('USE ks')
 
-        self.debug_with_time('Verify that there is no data on node1')
+        debug('Verify that there is no data on node1')
         for i in xrange(1000):
             assert_none(
                 session,
                 "SELECT * FROM t_by_v WHERE v = {}".format(i)
             )
 
-        self.debug_with_time('Restarting node2 and node3')
+        debug('Restarting node2 and node3')
         node2.start(wait_other_notice=True, wait_for_binary_proto=True)
         node3.start(wait_other_notice=True, wait_for_binary_proto=True)
 
         # Just repair the base replica
-        self.debug_with_time('Starting repair on node1')
+        debug('Starting repair on node1')
         node1.nodetool("repair ks t")
 
-        self.debug_with_time('Verify base table data with cl=ONE')
+        debug('Verify base table data with cl=ONE')
         for i in xrange(1000):
             assert_one(
                 session,
@@ -2705,7 +2705,7 @@ class TestMaterializedViews(Tester):
                 [i, i, 'a', 3.0]
             )
 
-        self.debug_with_time('Verify materialize view data with cl=ONE')
+        debug('Verify materialize view data with cl=ONE')
         for i in xrange(1000):
             assert_one(
                 session,
@@ -2720,16 +2720,16 @@ class TestMaterializedViews(Tester):
         """
         def _stop_nodes(nodes):
             for node in nodes:
-                self.debug_with_time('Stop {}'.format(node.name))
+                debug('Stop {}'.format(node.name))
                 node.stop(wait_other_notice=True)
 
         def _start_nodes(nodes):
             for node in nodes:
-                self.debug_with_time('Start {}'.format(node.name))
+                debug('Start {}'.format(node.name))
                 node.start(wait_other_notice=True, wait_for_binary_proto=True)
 
         def _verify_data_by_one(session, rows, cl, multiply, debug_message, none_data=False):
-            self.debug_with_time(debug_message)
+            debug(debug_message)
             statement_template = "SELECT * FROM ks.t_by_v WHERE v = {}"
             for i in xrange(rows):
                 v = i * 2 if multiply else i
@@ -2755,16 +2755,16 @@ class TestMaterializedViews(Tester):
         _stop_nodes([node2, node3])
         rows = 1000
 
-        self.debug_with_time('Write initial data to node1 (will be replicated to node4 and node5)')
+        debug('Write initial data to node1 (will be replicated to node4 and node5)')
         for i in xrange(rows):
             session.execute("INSERT INTO ks.t (id, v, v2, v3) VALUES ({v}, {v}, 'a', 3.0)".format(v=i))
 
         _verify_data_by_one(session, rows, ConsistencyLevel.ONE, False, 'Verify the data in the MV on node1 with CL=ONE')
 
-        self.debug_with_time('Shutdown node1, node4 and node5')
+        debug('Shutdown node1, node4 and node5')
         _stop_nodes([node1, node4, node5])
 
-        self.debug_with_time('Start nodes 2 and 3')
+        debug('Start nodes 2 and 3')
         _start_nodes([node2, node3])
 
         session2 = self.patient_cql_connection(node2)
@@ -2772,7 +2772,7 @@ class TestMaterializedViews(Tester):
         _verify_data_by_one(session2, rows, ConsistencyLevel.ONE, False,
                             'Verify the data in the MV on node2 with CL=ONE. No rows should be found.', none_data=True)
 
-        self.debug_with_time('Write new data in node2 and node3 that overlap those in node1, node4 and node5')
+        debug('Write new data in node2 and node3 that overlap those in node1, node4 and node5')
         for i in xrange(rows):
             # we write i*2 as value, instead of i
             session2.execute("INSERT INTO ks.t (id, v, v2, v3) VALUES ({v}, {v}, 'a', 6.0)".format(v=i * 2))
@@ -2781,7 +2781,7 @@ class TestMaterializedViews(Tester):
                             'Verify the new data in the MV on node2 with CL=ONE')
 
         # Scylla doesn't leverage the batchlog for MVs
-        #self.debug_with_time('Wait for batchlogs to expire from node2 and node3')
+        #debug('Wait for batchlogs to expire from node2 and node3')
         #time.sleep(5)
 
         _start_nodes([node1, node4, node5])
@@ -2793,26 +2793,23 @@ class TestMaterializedViews(Tester):
 
         _start_nodes([node2, node3])
 
-        self.debug_with_time('Run global repair on node1')
+        debug('Run global repair on node1')
         node1.repair()
 
         _stop_nodes([node2, node3])
 
         table_statement = 'SELECT * FROM ks.t'
         mv_statement = 'SELECT * FROM ks.t_by_v'
-        self.debug_with_time('Read data from MV at quorum (new data should be returned after repair)')
+        debug('Read data from MV at quorum (new data should be returned after repair)')
         assert_two_queries_equal(session, table_statement, session, mv_statement,
                                  consistency_level=ConsistencyLevel.QUORUM, session_timeout=120)
 
         _start_nodes([node2, node3])
         _stop_nodes([node1, node4, node5])
 
-        self.debug_with_time('Read data from MV at quorum (new data should be returned after repair)')
+        debug('Read data from MV at quorum (new data should be returned after repair)')
         assert_two_queries_equal(session2, table_statement, session2, mv_statement,
                                  consistency_level=ConsistencyLevel.ONE, session_timeout=120)
-
-    def debug_with_time(self, message):
-        debug('{0} {1}'.format(datetime.datetime.now(), message))
 
     @skip('Requires #3275, which activates the view write path for streaming due to repair')
     def really_complex_repair_test(self):
@@ -2832,7 +2829,7 @@ class TestMaterializedViews(Tester):
 
         session.cluster.control_connection.wait_for_schema_agreement()
 
-        self.debug_with_time('Shutdown node2 and node3')
+        debug('Shutdown node2 and node3')
         node2.stop(wait_other_notice=True)
         node3.stop(wait_other_notice=True)
 
@@ -2840,31 +2837,31 @@ class TestMaterializedViews(Tester):
         session.execute("INSERT INTO ks.t (id, v, v2, v3) VALUES (2, 2, 'a', 3.0)")
         # Scylla doesn't leverage the batchlog for MVs
         #self._replay_batchlogs()
-        self.debug_with_time('Verify the data in the MV on node1 with CL=ONE')
+        debug('Verify the data in the MV on node1 with CL=ONE')
         assert_all(session, "SELECT * FROM ks.t_by_v WHERE v2 = 'a'", [['a', 1, 1, 3.0], ['a', 2, 2, 3.0]])
 
         session.execute("INSERT INTO ks.t (id, v, v2, v3) VALUES (1, 1, 'b', 3.0)")
         session.execute("INSERT INTO ks.t (id, v, v2, v3) VALUES (2, 2, 'b', 3.0)")
         # Scylla doesn't leverage the batchlog for MVs
         #self._replay_batchlogs()
-        self.debug_with_time('Verify the data in the MV on node1 with CL=ONE')
+        debug('Verify the data in the MV on node1 with CL=ONE')
         assert_all(session, "SELECT * FROM ks.t_by_v WHERE v2 = 'b'", [['b', 1, 1, 3.0], ['b', 2, 2, 3.0]])
 
         session.shutdown()
 
-        self.debug_with_time('Shutdown node1, node4 and node5')
+        debug('Shutdown node1, node4 and node5')
         _stop_nodes([node1, node4, node5])
 
-        self.debug_with_time('Start nodes 2 and 3')
+        debug('Start nodes 2 and 3')
         _start_nodes([node2, node3])
 
         session2 = self.patient_cql_connection(node2)
         session2.execute('USE ks')
 
-        self.debug_with_time('Verify the data in the MV on node2 with CL=ONE. No rows should be found.')
+        debug('Verify the data in the MV on node2 with CL=ONE. No rows should be found.')
         assert_none(session2, "SELECT * FROM ks.t_by_v WHERE v2 = 'a'")
 
-        self.debug_with_time('Write new data in node2 that overlap those in node1')
+        debug('Write new data in node2 that overlap those in node1')
         session2.execute("INSERT INTO ks.t (id, v, v2, v3) VALUES (1, 1, 'c', 3.0)")
         session2.execute("INSERT INTO ks.t (id, v, v2, v3) VALUES (2, 2, 'c', 3.0)")
         # Scylla doesn't leverage the batchlog for MVs
@@ -2877,7 +2874,7 @@ class TestMaterializedViews(Tester):
         #self._replay_batchlogs()
         assert_all(session2, "SELECT * FROM ks.t_by_v WHERE v2 = 'd'", [['d', 1, 1, 3.0], ['d', 2, 2, 3.0]])
 
-        self.debug_with_time("Composite delete of everything")
+        debug("Composite delete of everything")
         session2.execute("DELETE FROM ks.t WHERE id = 1 and v = 1")
         session2.execute("DELETE FROM ks.t WHERE id = 2 and v = 2")
         # Scylla doesn't leverage the batchlog for MVs
@@ -2886,10 +2883,10 @@ class TestMaterializedViews(Tester):
         assert_none(session2, "SELECT * FROM ks.t_by_v WHERE v2 = 'd'")
 
         # Scylla doesn't leverage the batchlog for MVs
-        #self.debug_with_time('Wait for batchlogs to expire from node2 and node3')
+        #debug('Wait for batchlogs to expire from node2 and node3')
         #time.sleep(5)
 
-        self.debug_with_time('Start remaining nodes')
+        debug('Start remaining nodes')
         node1.start(wait_other_notice=True, wait_for_binary_proto=True)
         node4.start(wait_other_notice=True, wait_for_binary_proto=True)
         node5.start(wait_other_notice=True, wait_for_binary_proto=True)
@@ -2902,7 +2899,7 @@ class TestMaterializedViews(Tester):
             cl=ConsistencyLevel.QUORUM
         )
 
-        self.debug_with_time('Run global repair on node1')
+        debug('Run global repair on node1')
         node1.repair()
 
         assert_none(session2, "SELECT * FROM ks.t_by_v WHERE v2 = 'a'", cl=ConsistencyLevel.QUORUM)
@@ -2917,7 +2914,7 @@ class TestMaterializedViews(Tester):
         node1, _, _ = self.cluster.nodelist()
         session = self.patient_cql_connection(node1)
 
-        self.debug_with_time("Creating keyspace")
+        debug("Creating keyspace")
         session.execute("CREATE KEYSPACE mvtest WITH replication = "
                         "{'class': 'SimpleStrategy', 'replication_factor': '3'}")
         session.execute('USE mvtest')
@@ -2952,7 +2949,7 @@ class TestMaterializedViews(Tester):
             for row in rows:
                 session.execute(insert_stmt, row)
 
-            self.debug_with_time("Testing MV primary key: {}".format(mv_primary_key))
+            debug("Testing MV primary key: {}".format(mv_primary_key))
 
             session.execute("CREATE MATERIALIZED VIEW mv AS SELECT * FROM test WHERE "
                             "a = 1 AND b IS NOT NULL AND c = 1 PRIMARY KEY {}".format(mv_primary_key))
@@ -3286,7 +3283,7 @@ class TestMaterializedViewsConsistency(Tester):
         self.rows = {}
         self.update_stats_every = 100
 
-        self.debug_with_time("Set to talk to node 2")
+        debug("Set to talk to node 2")
         self.session = self.patient_cql_connection(node2)
 
         return self.session
@@ -3384,7 +3381,7 @@ class TestMaterializedViewsConsistency(Tester):
         queues = [None] * processes
         eachProcess = (upper - lower) / processes
 
-        self.debug_with_time("Creating schema")
+        debug("Creating schema")
         session.execute(
             ("CREATE KEYSPACE IF NOT EXISTS mvtest WITH replication = "
              "{'class': 'SimpleStrategy', 'replication_factor': '3'}")
@@ -3397,11 +3394,11 @@ class TestMaterializedViewsConsistency(Tester):
         insert1 = session.prepare("INSERT INTO mvtest.test1 (a,b,c,d) VALUES (?,?,?,?)")
         insert1.consistency_level = writeConsistency
 
-        self.debug_with_time("Writing data to base table")
+        debug("Writing data to base table")
         for i in range(upper / 10):
             self._do_row(insert1, i, num_partitions)
 
-        self.debug_with_time("Creating materialized view")
+        debug("Creating materialized view")
         session.execute(
             ('CREATE MATERIALIZED VIEW mvtest.mv1 AS '
              'SELECT a,b,c,d FROM mvtest.test1 WHERE a IS NOT NULL AND b IS NOT NULL AND '
@@ -3409,7 +3406,7 @@ class TestMaterializedViewsConsistency(Tester):
         )
         session.cluster.control_connection.wait_for_schema_agreement()
 
-        self.debug_with_time("Writing more data to base table")
+        debug("Writing more data to base table")
         for i in range(upper / 10, upper):
             self._do_row(insert1, i, num_partitions)
 
@@ -3417,14 +3414,14 @@ class TestMaterializedViewsConsistency(Tester):
         while self.num_request_done < upper:
             time.sleep(1)
 
-        self.debug_with_time("Making sure all batchlogs are replayed on node1")
+        debug("Making sure all batchlogs are replayed on node1")
         node1.nodetool("replaybatchlog")
-        self.debug_with_time("Making sure all batchlogs are replayed on node2")
+        debug("Making sure all batchlogs are replayed on node2")
         node2.nodetool("replaybatchlog")
-        self.debug_with_time("Making sure all batchlogs are replayed on node3")
+        debug("Making sure all batchlogs are replayed on node3")
         node3.nodetool("replaybatchlog")
 
-        self.debug_with_time("Finished writes, now verifying reads")
+        debug("Finished writes, now verifying reads")
         self._populate_rows()
 
         for i in range(processes):
