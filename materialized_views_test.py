@@ -747,7 +747,7 @@ class TestMaterializedViews(Tester):
         self.cluster.flush()
 
         assert_none(session, 'select * from system_schema.views', cl=ConsistencyLevel.ALL)
-        assert_row_count(session, tm.table_name, prefill)
+        assert_row_count(session, tm.table_name, prefill, consistency_level=ConsistencyLevel.QUORUM)
 
     def fetch_mv_after_recreate_test(self):
         """ Validate it's allowed to fetch from MV after it is dropped and recreated
@@ -1572,8 +1572,8 @@ class TestMaterializedViews(Tester):
         self._assert_count_table_mv(session, tm.table_name, prefill, mv.mv_name, prefill-1)
 
     def _assert_count_table_mv(self, session, table_name, table_expected_count, mv_name, mv_expected_count):
-        assert_row_count(session, table_name, table_expected_count)
-        assert_row_count(session, mv_name, mv_expected_count)
+        assert_row_count(session, table_name, table_expected_count, consistency_level=ConsistencyLevel.QUORUM)
+        assert_row_count(session, mv_name, mv_expected_count, consistency_level=ConsistencyLevel.QUORUM)
 
     def ttl_test(self):
         """
@@ -1844,7 +1844,7 @@ class TestMaterializedViews(Tester):
         self._wait_for_view(session, "ks", "t_by_v")
 
         self.debug_with_time("Verify all data")
-        assert_row_count(session, 't_by_v', rows, consistency_level=ConsistencyLevel.ALL);
+        assert_row_count(session, 't_by_v', rows, consistency_level=ConsistencyLevel.ALL)
 
     def interrupt_build_process_with_resharding_low_to_half_test(self):
         """Test that an interrupted MV build process is resumed, with resharding 1 -> cpu_count() / 2"""
@@ -1918,8 +1918,8 @@ class TestMaterializedViews(Tester):
         self._wait_for_view(session, "ks", "t_by_v2")
 
         self.debug_with_time("Verify all data")
-        assert_row_count(session, 't_by_v', rows, consistency_level=ConsistencyLevel.ALL);
-        assert_row_count(session, 't_by_v2', rows, consistency_level=ConsistencyLevel.ALL);
+        assert_row_count(session, 't_by_v', rows, consistency_level=ConsistencyLevel.ALL)
+        assert_row_count(session, 't_by_v2', rows, consistency_level=ConsistencyLevel.ALL)
 
     @skip("Takes too long, because there's no good way to interrupt "
           "the build process aside from creating lots of rows. Depends on #3295")
