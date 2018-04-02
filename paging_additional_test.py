@@ -360,3 +360,26 @@ class TestPagingSavedQueryStateSingularRanges(TestPagingSavedQueryStateBase):
         self.assertEqual(pf.requested_pages, 7)
         self.assertEqual(pf.all_data(), [p for p in data if p['pk'] == 2])
         self.assert_nodes_metrics(({'lookups': pf.requested_pages - 1}, {}))
+
+    def test_per_query_read_repair_decision(self):
+        """
+        Test that that the read-repair decision made on the first page
+        of the query is sticky to all pages of the query.
+        """
+        self.cluster.set_configuration_options(
+            values={'tombstone_failure_threshold': 500}
+        )
+        self.session = self.prepare()
+
+        data = self.setup_simple_table(speculative_retry="NONE", dclocal_read_repair_chance=0.5)
+
+        future = self.session.execute_async(
+            SimpleStatement("select * from test_singular where pk = 2", fetch_size=1, consistency_level=CL.ONE)
+        )
+        pf = PageFetcher(future)
+
+        all_pages = pf.request_all()
+
+        self.assertEqual(pf.requested_pages, 7)
+        self.assertEqual(pf.all_data(), [p for p in data if p['pk'] == 2])
+        self.assert_nodes_metrics(({'lookups': pf.requested_pages - 1}, {}))
