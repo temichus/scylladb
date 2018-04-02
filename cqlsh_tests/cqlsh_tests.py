@@ -531,7 +531,17 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
         conn.execute("CREATE USER user1 WITH PASSWORD 'user1'")
         conn.execute("GRANT ALL ON ks.t1 TO user1")
 
-        self.verify_output("LIST USERS", node1, """
+        if self.cluster.version() >= '3.0':
+            self.verify_output("LIST USERS", node1, """
+ name      | super
+-----------+-------
+ cassandra |  True
+     user1 | False
+
+(2 rows)
+""")
+        else:
+            self.verify_output("LIST USERS", node1, """
  name      | super
 -----------+-------
      user1 | False
@@ -540,7 +550,20 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
 (2 rows)
 """)
 
-        self.verify_output("LIST ALL PERMISSIONS OF user1", node1, """
+        if self.cluster.version() >= '3.0':
+            self.verify_output("LIST ALL PERMISSIONS OF user1", node1, """
+ role  | username | resource      | permission
+-------+----------+---------------+------------
+ user1 |    user1 | <table ks.t1> |      ALTER
+ user1 |    user1 | <table ks.t1> |  AUTHORIZE
+ user1 |    user1 | <table ks.t1> |       DROP
+ user1 |    user1 | <table ks.t1> |     MODIFY
+ user1 |    user1 | <table ks.t1> |     SELECT
+
+(5 rows)
+""")
+        else:
+            self.verify_output("LIST ALL PERMISSIONS OF user1", node1, """
  username | resource      | permission
 ----------+---------------+------------
     user1 | <table ks.t1> |      ALTER
