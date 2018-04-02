@@ -747,7 +747,7 @@ class TestMaterializedViews(Tester):
         self.cluster.flush()
 
         assert_none(session, 'select * from system_schema.views', cl=ConsistencyLevel.ALL)
-        assert_row_count(session, tm.table_name, prefill)
+        assert_row_count(session, tm.table_name, prefill, consistency_level=ConsistencyLevel.QUORUM)
 
     def fetch_mv_after_recreate_test(self):
         """ Validate it's allowed to fetch from MV after it is dropped and recreated
@@ -1572,8 +1572,8 @@ class TestMaterializedViews(Tester):
         self._assert_count_table_mv(session, tm.table_name, prefill, mv.mv_name, prefill-1)
 
     def _assert_count_table_mv(self, session, table_name, table_expected_count, mv_name, mv_expected_count):
-        assert_row_count(session, table_name, table_expected_count)
-        assert_row_count(session, mv_name, mv_expected_count)
+        assert_row_count(session, table_name, table_expected_count, consistency_level=ConsistencyLevel.QUORUM)
+        assert_row_count(session, mv_name, mv_expected_count, consistency_level=ConsistencyLevel.QUORUM)
 
     def ttl_test(self):
         """

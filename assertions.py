@@ -65,7 +65,7 @@ def assert_almost_equal(*args, **kwargs):
     assert vmin > vmax * (1.0 - error) or vmin == vmax, "values not within %.2f%% of the max: %s" % (error * 100, args)
 
 
-def assert_row_count(session, table_name, expected, consistency_level=ConsistencyLevel.QUORUM):
+def assert_row_count(session, table_name, expected, consistency_level=ConsistencyLevel.ONE):
     """ Function to validate the row count expected in table_name """
 
     query = "SELECT count(*) FROM {}".format(table_name)
