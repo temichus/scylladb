@@ -6,7 +6,7 @@ from cassandra.query import SimpleStatement
 from datahelp import create_rows
 from paging_test import PageFetcher, BasePagingTester, PageAssertionMixin
 from scylla_tools import scylla_mode
-from tools import since
+from dtest import debug
 
 
 class TestAggregatePaging(BasePagingTester, PageAssertionMixin):
@@ -80,99 +80,6 @@ class TestAggregatePaging(BasePagingTester, PageAssertionMixin):
         self._test_paged_count_with_clustering_key('desc')
 
 
-class TestLargePaging(BasePagingTester, PageAssertionMixin):
-    """
-    Tests for queries attempting to fetch large pages
-    """
-
-    def test_large_page_range_queries(self):
-        session = self.prepare()
-        self.create_ks(session, 'test_large_paging', 2)
-        session.execute("CREATE TABLE paging_test (pk text, ck text, v text, PRIMARY KEY(pk, ck))")
-
-        def get_key(text):
-            return unicode(uuid.uuid4())
-
-        def get_data(text):
-            return ' ' * 64 * 1024
-
-        data = """
-               | pk        | ck        | v          |
-               +-----------+-----------+------------+
-          *1000| [get_key] | [get_key] | [get_data] |
-               """
-
-        create_rows(data, session, 'paging_test', cl=CL.ALL, format_funcs={'pk': get_key, 'ck': get_key, 'v': get_data})
-
-        future = session.execute_async(
-            SimpleStatement("select * from paging_test", fetch_size=1000, consistency_level=CL.ALL)
-        )
-        pf = PageFetcher(future).request_all()
-        all_pages = pf.num_results_all()
-
-        self.assertEqual(sum(all_pages), 1000)
-        for page in all_pages:
-            self.assertLess(page, 1000)
-
-    def test_large_page_range_queries_static_columns(self):
-        session = self.prepare()
-        self.create_ks(session, 'test_large_paging', 2)
-        session.execute("CREATE TABLE paging_test (pk text, ck text, s text static, v text, PRIMARY KEY(pk, ck))")
-
-        def get_key(text):
-            return unicode(uuid.uuid4())
-
-        def get_data(text):
-            return ' ' * 64 * 1024
-
-        data = """
-               | pk        | s          |
-               +-----------+------------+
-          *1000| [get_key] | [get_data] |
-               """
-
-        create_rows(data, session, 'paging_test', cl=CL.ALL, format_funcs={'pk': get_key, 's': get_data})
-
-        future = session.execute_async(
-            SimpleStatement("select * from paging_test", fetch_size=1000, consistency_level=CL.ALL)
-        )
-        pf = PageFetcher(future).request_all()
-        all_pages = pf.num_results_all()
-
-        self.assertEqual(sum(all_pages), 1000)
-        for page in all_pages:
-            self.assertLess(page, 1000)
-
-    def test_large_page_single_partition(self):
-        session = self.prepare()
-        self.create_ks(session, 'test_large_paging', 2)
-        session.execute("CREATE TABLE paging_test (pk int, ck text, v text, PRIMARY KEY(pk, ck))")
-
-        def get_key(text):
-            return unicode(uuid.uuid4())
-
-        def get_data(text):
-            return ' ' * 32 * 1024
-
-        data = """
-               | pk        | ck        | v          |
-               +-----------+-----------+------------+
-          *1000| 0         | [get_key] | [get_data] |
-               """
-
-        create_rows(data, session, 'paging_test', cl=CL.ALL, format_funcs={'pk': int, 'ck': get_key, 'v': get_data})
-
-        future = session.execute_async(
-            SimpleStatement("select * from paging_test where pk = 0", fetch_size=400, consistency_level=CL.ALL)
-        )
-        pf = PageFetcher(future).request_all()
-        all_pages = pf.num_results_all()
-
-        self.assertEqual(sum(all_pages), 1000)
-        for page in all_pages:
-            self.assertLess(page, 400)
-
-
 class TestPagingSavedQueryStateBase(BasePagingTester):
     LOOKUPS = 'querier_cache_lookups'
     MISSES = 'querier_cache_misses'
@@ -201,6 +108,7 @@ class TestPagingSavedQueryStateBase(BasePagingTester):
             return
 
         node_metrics = self.get_node_metrics(self.get_ip_from_node(node), metrics=self.ALL_METRICS)
+        debug('{} metrics: {}'.format(node.name, node_metrics))
 
         matched_any = False
 
@@ -210,7 +118,8 @@ class TestPagingSavedQueryStateBase(BasePagingTester):
                 matched_any = True
 
         if not matched_any:
-            print("\nNode metrics doesn't match any of the expected metrics:\nnode_metrics: {}\nexpected_metrics: {}".format(node_metrics, expected_metrics))
+            debug("Node metrics doesn't match any of the expected metrics:"
+                  "\nnode_metrics: {}\nexpected_metrics: {}".format(node_metrics, expected_metrics))
 
         # The node's metrics must match at least one expected metrics
         self.assertEqual(matched_any, True)
@@ -225,6 +134,95 @@ class TestPagingSavedQueryStateBase(BasePagingTester):
 
         # All expected metrics have to match at least node's metrics
         self.assertEqual(len(matched), len(expected_metrics))
+
+
+class TestLargePaging(TestPagingSavedQueryStateBase, PageAssertionMixin):
+    """
+    Tests for queries attempting to fetch large pages
+    """
+    KS_NAME = 'test_large_paging'
+    CF_NAME = 'paging_test'
+
+    def setUp(self, *args, **kwargs):
+        super(TestLargePaging, self).setUp(*args, **kwargs)
+        self.session = self.prepare()
+        self.create_ks(self.session, self.KS_NAME, 2)
+
+    def fill_data(self, data, data_size, keys, vals, format_funcs={}):
+        def get_key(text):
+            return unicode(uuid.uuid4())
+
+        def get_data(text):
+            return ' ' * data_size
+
+        format_funcs.update({key: get_key for key in keys})
+        format_funcs.update({val: get_data for val in vals})
+        create_rows(data, self.session, self.CF_NAME, cl=CL.ALL, format_funcs=format_funcs)
+
+    def validate_data(self, query, fetch_size, row_cnt, validate_metrics=False):
+        future = self.session.execute_async(
+            SimpleStatement(query, fetch_size=fetch_size, consistency_level=CL.ALL)
+        )
+        pf = PageFetcher(future).request_all()
+        all_pages = pf.num_results_all()
+
+        self.assertEqual(sum(all_pages), row_cnt)
+        for page in all_pages:
+            self.assertLessEqual(page, fetch_size)
+
+        if validate_metrics:
+            self.assert_nodes_metrics(({'lookups': pf.requested_pages - 1}, {}))
+
+    def test_large_page_range_queries(self):
+        self.session.execute("CREATE TABLE %s (pk text, ck text, v text, PRIMARY KEY(pk, ck))" % self.CF_NAME)
+
+        data = """
+               | pk        | ck        | v          |
+               +-----------+-----------+------------+
+          *1000| [get_key] | [get_key] | [get_data] |
+               """
+
+        self.fill_data(data=data, data_size=64 * 1024, keys=['pk', 'ck'], vals=['v'])
+        self.validate_data(query="select * from %s" % self.CF_NAME, fetch_size=1000, row_cnt=1000)
+
+    def test_large_page_range_queries_static_columns(self):
+        self.session.execute("CREATE TABLE %s (pk text, ck text, s text static, v text, PRIMARY KEY(pk, ck))" %
+                             self.CF_NAME)
+
+        data = """
+               | pk        | s          |
+               +-----------+------------+
+          *1000| [get_key] | [get_data] |
+               """
+
+        self.fill_data(data=data, data_size=64 * 1024, keys=['pk'], vals=['s'])
+        self.validate_data(query="select * from %s" % self.CF_NAME, fetch_size=1000, row_cnt=1000)
+
+    def test_large_page_single_partition(self):
+        self.session.execute("CREATE TABLE %s (pk int, ck text, v text, PRIMARY KEY(pk, ck))" % self.CF_NAME)
+
+        data = """
+               | pk        | ck        | v          |
+               +-----------+-----------+------------+
+          *1000| 0         | [get_key] | [get_data] |
+               """
+
+        self.fill_data(data=data, data_size=32 * 1024, keys=['ck'], vals=['v'], format_funcs={'pk': int})
+        self.validate_data(query="select * from %s where pk = 0" % self.CF_NAME, fetch_size=400, row_cnt=1000,
+                           validate_metrics=True)
+
+    def test_small_page_single_partition(self):
+        self.session.execute("CREATE TABLE %s (pk int, ck text, v text, PRIMARY KEY(pk, ck))" % self.CF_NAME)
+
+        data = """
+               | pk        | ck        | v          |
+               +-----------+-----------+------------+
+          *1000| 0         | [get_key] | [get_data] |
+               """
+
+        self.fill_data(data=data, data_size=32 * 1024, keys=['ck'], vals=['v'], format_funcs={'pk': int})
+        self.validate_data(query="select * from %s where pk = 0" % self.CF_NAME, fetch_size=15, row_cnt=1000,
+                           validate_metrics=True)
 
 
 class TestPagingSavedQueryStateSingularRanges(TestPagingSavedQueryStateBase):
@@ -283,7 +281,6 @@ class TestPagingSavedQueryStateSingularRanges(TestPagingSavedQueryStateBase):
             {'pk': 2, 'ck': 6, 'val': 'val2_6'},
         ]
 
-
     def test_single_partition(self):
         """
         Test that the querier is saved and reused.
@@ -302,7 +299,6 @@ class TestPagingSavedQueryStateSingularRanges(TestPagingSavedQueryStateBase):
 
         self.assertEqual(pf.requested_pages, 2)
         self.assert_nodes_metrics(({'lookups': pf.requested_pages - 1}, {}))
-
 
     def test_two_partitions(self):
         """
@@ -324,7 +320,6 @@ class TestPagingSavedQueryStateSingularRanges(TestPagingSavedQueryStateBase):
         self.assertEqual(pf.requested_pages, 3)
         self.assertEqual(pf.all_data(), data)
         self.assert_nodes_metrics(({'lookups': pf.requested_pages - 1, 'drops': 1}, {}))
-
 
     def test_replica_usage(self):
         """
