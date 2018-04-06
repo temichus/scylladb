@@ -161,8 +161,7 @@ class TestAuth(Tester):
         jackob = self.get_session(user='jackob', password='12345')
         self.assertUnauthorized('Only superusers are allowed to perform CREATE (\[ROLE\|USER\]|USER) queries', jackob, "CREATE USER james WITH PASSWORD '54321' NOSUPERUSER")
 
-    # @since('1.2', max_version='2.1.x')
-    # we still support NOSUPERUSER!!!
+    @since('1.2', max_version='2.1.x')
     def password_authenticator_create_user_requires_password_test(self):
         """
         Originally from dtest.
