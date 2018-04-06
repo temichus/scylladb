@@ -1880,7 +1880,7 @@ class TestAuth(Tester):
 
         session = self.get_session(user='normal', password='123456')
         rows = list(session.execute('LIST USERS'))
-        assert len(rows) == 2, "Expect to see `cassandra` and `normal`, actual: %s" % (rows)
+        assert len(rows) == 1, "Expect to see `normal`, actual: %s" % (rows)
         debug('Verified normal user was created and available')
 
         debug('STEP: verify user without credentials can not login')
