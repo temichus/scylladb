@@ -166,14 +166,14 @@ class SSTableDumpAllDatatypes(CqlshPrepare, SSTableDump):
                       'g': lambda v: float(v),
                       'i': lambda v: int(v),
                       'j': lambda v: v.encode('utf-8'),
-                      'k': lambda v: (parse(v, tzinfos=tzutc) - timedelta(hours=3)),
+                      'k': lambda v: (parse(v).replace(tzinfo=tzutc()) - timedelta(hours=3)),
                       'l': lambda v: uuid.UUID(v),
                       'm': lambda v: uuid.UUID(v),
                       'o': lambda v: int(v),
                       'p': lambda v: p.append((int(v))),
                       'q': lambda v: q.extend(v),
                       'r': lambda x, y: r.update(
-                          {(parse(x, tzinfos=tzutc) - timedelta(hours=3)): str(y)}),
+                          {(parse(x).replace(tzinfo=tzutc()) - timedelta(hours=3)): str(y)}),
                       's': lambda v: tuple([json.loads(val) if i != 1 else val for i, val in enumerate(v.split(':'))]),
                       }
 
