@@ -2041,11 +2041,15 @@ class TestAuth(Tester):
             conn = self.patient_cql_connection(node, user=user, password=password)
         return conn
 
-    def assertPermissionsListed(self, expected, session, query):
+    def assertPermissionsListed(self, expected, session, query, include_superuser=False):
         # from cassandra.query import named_tuple_factory
         # session.row_factory = named_tuple_factory
         rows = session.execute(query)
         perms = [(str(r.username), str(r.resource), str(r.permission)) for r in rows]
+
+        if not include_superuser:
+            perms = [(u, r, p) for (u, r, p) in perms if u != 'cassandra']
+
         self.assertEqual(sorted(expected), sorted(perms))
 
     def assertUnauthorized(self, message, session, query):
