@@ -357,13 +357,15 @@ class TableManager(object):
                                         exclude_list=self.pk_list)
         self.column_names_list = [c.split(' ')[0] for c in self.columns_list]
 
-    def prefill_table(self, rows, data=None, start_id_from=0, consistency=ConsistencyLevel.QUORUM, using=None, flush=True):
+    def prefill_table(self, rows, data=None, start_id_from=0, consistency=ConsistencyLevel.QUORUM, using=None, flush=True,
+                      delay=0):
         """
         Function pre-fill the table(named as value of self.table_name) with requested rows
         :param rows: how many rows should be in the table
         :type rows: varint
         :return:
         """
+        time.sleep(delay)
         data_arr = self._create_data_array(rows, ready_data=data)
         using_str = ' USING {0} {1}'.format(using.keys()[0], using[using.keys()[0]]) if using else ''
         st = 'INSERT INTO {ks}.{table_name} ({columns}) VALUES ({values}){using}'\
@@ -382,10 +384,11 @@ class TableManager(object):
 
         debug('Finish prefill')
 
-    def multiple_deletes(self, filters):
+    def multiple_deletes(self, filters, delay=0):
         """
         :param filter: {<column_name1>: [<value1>,<value2>,..] <column_name2>: [<value1>,<value2>,..], ..}
         """
+        time.sleep(delay)
         for i in xrange(0, len(next(filters.itervalues()))):
             filter = {}
             for column, values in filters.iteritems():
@@ -501,7 +504,8 @@ class TableManager(object):
         return (None, None)
 
     def multiple_int_updates_by_id(self, update_to_boundaries, filter_values=[], ids=[],
-                                   updated_columns=None, updates=100, same_id=True):
+                                   updated_columns=None, updates=100, same_id=True, delay=0):
+        time.sleep(delay)
         query = 'select * from {}'.format(self.table_name)
         updated_columns = updated_columns or [c for c in self.column_names_list
                                             if '{} int'.format(c) in self.columns_list

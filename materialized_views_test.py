@@ -1,5 +1,4 @@
 import collections
-import re
 import sys, os
 import time
 import traceback
@@ -18,9 +17,9 @@ from assertions import assert_all, assert_one, assert_invalid, assert_unavailabl
     assert_crc_check_chance_equal, assert_row_count, assert_two_queries_equal, assert_row_count_from_every_node, \
     assert_two_queries_equal_ignore_order
 from dtest import Tester, debug
-from tools import since, new_node, require
 from tools import since, new_node, require, rows_to_list
 from scylla_tools import TableManager, MaterializedViewManager, flush_by_node, managed_thread
+from cassandra.cluster import NoHostAvailable
 
 from nose.plugins.attrib import attr
 # from nose.tools import (assert_equal)
@@ -106,7 +105,7 @@ class TestMaterializedViews(Tester):
 
         def _check_build_started():
             result = rows_to_list(session.execute("SELECT last_token FROM system.views_builds_in_progress "
-                                                  "WHERE keyspace_name='ks' AND view_name='t_by_v'"))
+                                                  "WHERE keyspace_name='{0}' AND view_name='{1}'".format(ks, view)))
             return result != [[None]]
 
         debug("Ensure view building started.")
@@ -233,7 +232,7 @@ class TestMaterializedViews(Tester):
         :param action: expected values: stop, remove
         :param action: str
         """
-        if action not in ['stop', 'remove']:
+        if action not in ['stop', 'remove', 'decommission']:
             assert False, 'Unsupported node action'
 
         if delay:
@@ -243,8 +242,10 @@ class TestMaterializedViews(Tester):
         debug('START: {0} node {1}'.format(action, node.name))
         if action == 'stop':
             node.stop(wait=wait, wait_other_notice=wait_other_notice, gently=gently)
-        else:
+        elif action == 'remove':
             self.cluster.remove(node)
+        else:
+            node.nodetool(action)
         debug('FINISH: {0} node {1}'.format(action, node.name))
 
     def _stop_few_nodes(self, by_dc_name='', by_node_names=[], delay=0, wait=True, wait_other_notice=False, gently=True):
@@ -517,11 +518,12 @@ class TestMaterializedViews(Tester):
         """ Create 10 materialized views in parallel with base table deletes """
         self._mv_populating_from_existing_data_during_changes_test('delete', nodes=4, rf=3, mvs=10, prefill=40000, fail=False)
 
-    @skip("Requires #3275")
+    @require("#3275")
     def mv_populating_from_existing_data_during_extend_test(self):
         """ Create 10 materialized views in parallel with adding a node """
         self._mv_populating_from_existing_data_during_changes_test('add node', nodes=4, rf=3, mvs=10, prefill=40000, fail=False)
 
+    @require('#3333')
     def mv_populating_from_existing_data_during_node_remove_test(self):
         """ Create 10 materialized views in parallel with removing a node """
         self._mv_populating_from_existing_data_during_changes_test('remove node', nodes=4, rf=3, mvs=10, prefill=40000, fail=True)
@@ -530,17 +532,18 @@ class TestMaterializedViews(Tester):
         """ Create 10 materialized views in parallel with stopping a node """
         self._mv_populating_from_existing_data_during_changes_test('stop node', nodes=4, rf=3, mvs=10, prefill=40000, fail=True)
 
-    @skip("Requires #3275")
+    @require("#3275")
     def mv_populating_from_existing_data_during_node_decommission_test(self):
         """ Create 10 materialized views in parallel with a node decommission """
         self._mv_populating_from_existing_data_during_changes_test('decommission', nodes=4, rf=3, mvs=10, prefill=40000, fail=False)
 
+    @require('#3324')
     def mv_populating_from_existing_data_during_node_restart_test(self):
         """ Create 10 materialized views in parallel with a node restart """
         self._mv_populating_from_existing_data_during_changes_test('restart node', nodes=4, rf=3, mvs=10, prefill=40000, fail=False)
 
-    def _mv_populating_from_existing_data_during_changes_test(self, change_type, nodes=4, rf=3, mvs=10, prefill=40000, fail=False):
-        session = self.prepare(options={'prometheus_port': 0})
+    def _mv_populating_from_existing_data_during_changes_test(self, change_type, nodes, rf, mvs, prefill, fail):
+        session = self.prepare(rf=rf, nodes=nodes, options={'prometheus_port': 0})
         tm = TableManager(session, self.cluster,
                           columns={'int': {'amount': mvs, 'frozen': False,
                                            'value length': {'min': 1, 'max': 100}}
@@ -548,24 +551,20 @@ class TestMaterializedViews(Tester):
 
         rows_after_test = prefill
 
-        def _with_delay(func, delay):
-            def invoke_after_sleep(*args, **kwargs):
-                time.sleep(delay)
-                return func(*args, **kwargs)
-            return invoke_after_sleep
-
         if change_type == 'insert':
-            change_func = {'func': _with_delay(tm.prefill_table, 1), 'args': (prefill / 2,), 'kwargs': {'start_id_from': prefill+1}}
+            change_func = {'func': tm.prefill_table, 'args': (prefill / 2,), 'kwargs': {'start_id_from': prefill+1, 'delay': 1}}
             rows_after_test = prefill*1.5
         elif change_type=='update':
-            change_func = {'func': _with_delay(tm.multiple_int_updates_by_id, 1), 'args': ([-100, -1],), 'kwargs': {'same_id': False}}
+            change_func = {'func': tm.multiple_int_updates_by_id, 'args': ([-100, -1],),
+                           'kwargs': {'same_id': False, 'delay': 1}}
         elif change_type=='delete':
-            change_func = {'func': _with_delay(tm.multiple_deletes, 1), 'args': ({'id': [i for i in xrange(1000, 6000)]},)}
+            change_func = {'func': tm.multiple_deletes, 'args': ({'id': [i for i in xrange(1000, 6000)]},), 'kwargs': {'delay': 1}}
             rows_after_test = max(0, prefill - 5000)
         elif change_type == 'add node':
-            change_func = {'func': _with_delay(self._add_new_node, 1)}
+            change_func = {'func': self._add_new_node, 'kwargs': {'delay': 1}}
         elif change_type == 'decommission':
-            change_func = {'func': _with_delay(self.cluster.nodes['node2'].nodetool, 2), 'args': ('decommission',)}
+            change_func = {'func': self._node_action_with_delay, 'args': ('decommission', self.cluster.nodes['node2']),
+                           'kwargs': {'delay': 2}}
         elif change_type == 'restart node':
             change_func = {'func': self._restart_node, 'args': (self.cluster.nodes['node2'],), 'kwargs': {'delay': 1}}
         elif change_type in ['remove node', 'stop node']:
@@ -587,14 +586,14 @@ class TestMaterializedViews(Tester):
         managed_thread(proc_functions)
 
         try:
-            for mv_name, _ in tm.materialized_views.iteritems():
+            for mv_name in tm.materialized_views.iterkeys():
                 self._wait_for_view(session, tm.keyspace, mv_name)
 
             self._validate_data_in_mvs(tm, session, rows_after_test, rows_after_test)
             assert not fail, "Expected to fail, but the data was correctly validated."
-        except:
+        except Exception as e:
             if not fail:
-                raise
+                assert False, e.message
 
     def _restart_node(self, node, delay=0):
         time.sleep(delay)
@@ -686,7 +685,7 @@ class TestMaterializedViews(Tester):
             for base_table in base_tables:
                 self._create_mvs_by_one_column(base_table, mvs_amount=mvs)
             for base_table in base_tables:
-                for mv_name, _ in base_table.materialized_views.iteritems():
+                for mv_name in base_table.materialized_views.iterkeys():
                     self._wait_for_view(session, base_table.keyspace, mv_name)
 
         base_tables = []
@@ -1178,7 +1177,8 @@ class TestMaterializedViews(Tester):
                                  group=True, groupby_column1=select, groupby_column2=select)
 
     def _add_new_node(self, data_center='dc1', wait_for_binary_proto=True, jvm_args=None,
-                      configuration_options=None, queue=None):
+                      configuration_options=None, queue=None, delay=0):
+        time.sleep(delay)
         node = new_node(self.cluster, data_center=data_center)
         if configuration_options:
             node.set_configuration_options(values=configuration_options)  # CASSANDRA-11670
@@ -1427,7 +1427,7 @@ class TestMaterializedViews(Tester):
         assert_invalid(session, "CREATE INDEX ON t_by_v (v2)",
                        "Secondary indexes are not supported on materialized views")
 
-    @skip('#2367')
+    @require('#2367')
     # Restriction validation is allowed in S* but fails. Should be disable to be compatible with C*
     def restriction_on_non_mv_pk_test(self):
         """
@@ -1452,7 +1452,7 @@ class TestMaterializedViews(Tester):
                                'view creation (got restrictions on: {})'.format(next(mv.mv_where_restriction.iterkeys()))
             assert e.message == expected_error, '\nExpected error: {0}.\n Received error: {1}'.format(expected_error, e.message)
 
-    @skip('#3140')
+    @require('#3140')
     def ttl_remove_with_non_mv_column_test(self):
         """
             Pre-condition:
@@ -2560,7 +2560,8 @@ class TestMaterializedViews(Tester):
         for i in xrange(prefill):
             assert_one(session, 'select {0} from {1} where id={2}'.format(mv_pk_column, tm.table_name, i), [2])
 
-    @skip('Requires #3275, which activates the view write path for streaming due to repair')
+    @require('#3275')
+    # issue 3275, which activates the view write path for streaming due to repair
     def simple_repair_test(self):
         """
         Test that a materialized view are consistent after a simple repair.
@@ -2617,7 +2618,8 @@ class TestMaterializedViews(Tester):
                 cl=ConsistencyLevel.ONE
             )
 
-    @skip('Requires #3275, which activates the view write path for streaming due to repair')
+    @require('#3275')
+    # issue #3275, which activates the view write path for streaming due to repair
     def base_replica_repair_test(self):
         self._base_replica_repair_test()
 
@@ -2713,21 +2715,22 @@ class TestMaterializedViews(Tester):
                 [i, i, 'a', 3.0]
             )
 
-    @skip('Requires #3275, which activates the view write path for streaming due to repair')
+    def _stop_nodes(self, nodes):
+        for node in nodes:
+            debug('Stop {}'.format(node.name))
+            node.stop(wait_other_notice=True)
+
+    def _start_nodes(self, nodes):
+        for node in nodes:
+            debug('Start {}'.format(node.name))
+            node.start(wait_other_notice=True, wait_for_binary_proto=True)
+
+    @require('#3275')
+    # issue #3275, which activates the view write path for streaming due to repair
     def complex_repair_test(self):
         """
         Test that a materialized view are consistent after a more complex repair.
         """
-        def _stop_nodes(nodes):
-            for node in nodes:
-                debug('Stop {}'.format(node.name))
-                node.stop(wait_other_notice=True)
-
-        def _start_nodes(nodes):
-            for node in nodes:
-                debug('Start {}'.format(node.name))
-                node.start(wait_other_notice=True, wait_for_binary_proto=True)
-
         def _verify_data_by_one(session, rows, cl, multiply, debug_message, none_data=False):
             debug(debug_message)
             statement_template = "SELECT * FROM ks.t_by_v WHERE v = {}"
@@ -2752,7 +2755,7 @@ class TestMaterializedViews(Tester):
 
         session.cluster.control_connection.wait_for_schema_agreement()
 
-        _stop_nodes([node2, node3])
+        self._stop_nodes([node2, node3])
         rows = 1000
 
         debug('Write initial data to node1 (will be replicated to node4 and node5)')
@@ -2762,10 +2765,10 @@ class TestMaterializedViews(Tester):
         _verify_data_by_one(session, rows, ConsistencyLevel.ONE, False, 'Verify the data in the MV on node1 with CL=ONE')
 
         debug('Shutdown node1, node4 and node5')
-        _stop_nodes([node1, node4, node5])
+        self._stop_nodes([node1, node4, node5])
 
         debug('Start nodes 2 and 3')
-        _start_nodes([node2, node3])
+        self._start_nodes([node2, node3])
 
         session2 = self.patient_cql_connection(node2)
 
@@ -2784,19 +2787,19 @@ class TestMaterializedViews(Tester):
         #debug('Wait for batchlogs to expire from node2 and node3')
         #time.sleep(5)
 
-        _start_nodes([node1, node4, node5])
-        _stop_nodes([node2, node3])
+        self._start_nodes([node1, node4, node5])
+        self._stop_nodes([node2, node3])
         session = self.patient_cql_connection(node1)
 
         _verify_data_by_one(session, rows, ConsistencyLevel.QUORUM, False,
                             'Verify the new data in the MV on node2 with CL=ONE')
 
-        _start_nodes([node2, node3])
+        self._start_nodes([node2, node3])
 
         debug('Run global repair on node1')
         node1.repair()
 
-        _stop_nodes([node2, node3])
+        self._stop_nodes([node2, node3])
 
         table_statement = 'SELECT * FROM ks.t'
         mv_statement = 'SELECT * FROM ks.t_by_v'
@@ -2804,14 +2807,15 @@ class TestMaterializedViews(Tester):
         assert_two_queries_equal(session, table_statement, session, mv_statement,
                                  consistency_level=ConsistencyLevel.QUORUM, session_timeout=120)
 
-        _start_nodes([node2, node3])
-        _stop_nodes([node1, node4, node5])
+        self._start_nodes([node2, node3])
+        self._stop_nodes([node1, node4, node5])
 
         debug('Read data from MV at quorum (new data should be returned after repair)')
         assert_two_queries_equal(session2, table_statement, session2, mv_statement,
                                  consistency_level=ConsistencyLevel.ONE, session_timeout=120)
 
-    @skip('Requires #3275, which activates the view write path for streaming due to repair')
+    @require('#3275')
+    # issue #3275, which activates the view write path for streaming due to repair
     def really_complex_repair_test(self):
         """
         Test that a materialized view are consistent after a more complex repair.
@@ -2850,10 +2854,10 @@ class TestMaterializedViews(Tester):
         session.shutdown()
 
         debug('Shutdown node1, node4 and node5')
-        _stop_nodes([node1, node4, node5])
+        self._stop_nodes([node1, node4, node5])
 
         debug('Start nodes 2 and 3')
-        _start_nodes([node2, node3])
+        self._start_nodes([node2, node3])
 
         session2 = self.patient_cql_connection(node2)
         session2.execute('USE ks')
@@ -3063,11 +3067,11 @@ class TestMaterializedViews(Tester):
         self.cluster.stop()
         self.cluster.start()
 
-    @skip("Requires #3295 to inject failure")
+    @require("#3295")
     def base_view_consistency_on_failure_after_mv_apply_test(self):
         self._test_base_view_consistency_on_crash("after")
 
-    @skip("Requires #3295 to inject failure")
+    @require("#3295")
     def base_view_consistency_on_failure_before_mv_apply_test(self):
         self._test_base_view_consistency_on_crash("before")
 
