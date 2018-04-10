@@ -91,7 +91,6 @@ class TestMaterializedViews(Tester):
             result = rows_to_list(session.execute("SELECT status FROM system_distributed.view_build_status WHERE keyspace_name='%s' AND view_name='%s'" % (ks, view)))
             return result == [[u'SUCCESS']] * len(self.cluster.nodelist())
 
-        debug("Waiting for view {}.{} to finish building...".format(ks, view))
         attempts = 20
         while attempts > 0:
             if _view_build_finished():
@@ -99,7 +98,7 @@ class TestMaterializedViews(Tester):
             time.sleep(3)
             attempts -= 1
 
-        raise Exception("View not built")
+        raise Exception("View {}.{} not built".format(ks, view))
 
     def _wait_for_view_build_start(self, session, ks, view, seconds_to_wait = 20):
 
