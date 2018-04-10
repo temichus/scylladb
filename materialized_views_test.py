@@ -589,10 +589,13 @@ class TestMaterializedViews(Tester):
                 self._wait_for_view(session, tm.keyspace, mv_name)
 
             self._validate_data_in_mvs(tm, session, rows_after_test, rows_after_test)
-            assert not fail, "Expected to fail, but the data was correctly validated."
-        except Exception as e:
+        except Exception:
             if not fail:
-                assert False, e.message
+                raise
+            else:
+                return
+
+        assert not fail, "Expected to fail, but the data was correctly validated."
 
     def _restart_node(self, node, delay=0):
         time.sleep(delay)
