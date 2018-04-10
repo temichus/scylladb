@@ -1715,7 +1715,7 @@ class TestAuth(Tester):
         create a normal user and verify its permission, rolling upgrade cluster to strict Auth.
         """
         debug('STEP: start cluster with default AllowAllAuthenticator/AllowAllAuthorizer')
-        self.prepare(nodes=3, enable_auth=False)
+        self.prepare(nodes=3, enable_auth=False, wait_for_superuser=True)
 
         debug('STEP: update conf and restart cluster to use TransitionalAuthenticator/TransitionalAuthorizer')
         config = {'authenticator': 'com.scylladb.auth.TransitionalAuthenticator',
@@ -1729,22 +1729,19 @@ class TestAuth(Tester):
         debug('STEP: create normal user by super cassandra')
         cassandra.execute("CREATE USER normal WITH PASSWORD '123456' NOSUPERUSER")
 
-        debug('STEP: check permissions (LIST/CREATE/GRANT/REVOKE) of normal user')
-        session = self.get_session(user='normal', password='123456')
-        session.execute('LIST USERS')
-        session.execute("CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}")
-        session.execute("CREATE TABLE ks.cf (id int primary key)")
-        session.execute("SELECT * FROM ks.cf")
-        self.assertUnauthorized("User normal has no AUTHORIZE permission on <table ks.cf> or any of its parents",
-                                session, "GRANT SELECT ON ks.cf TO normal")
-        self.assertUnauthorized("User normal has no AUTHORIZE permission on <table ks.cf> or any of its parents",
-                                session, "REVOKE SELECT ON ks.cf from normal")
-        cassandra.execute("GRANT AUTHORIZE ON ks.cf TO normal")
-
         debug('STEP: verify user will login as anonymous if authentication fails')
         session = self.get_session(user='normal', password='wrongpwd')
         self.assertUnauthorized("You have to be logged in and not anonymous to perform this request", session,
                                 "LIST USERS")
+
+        debug('STEP: check default permissions (CREATE/ALTER/DROP/SELECT/MODIFY) of all users')
+        session.execute("CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}")
+        session.execute("CREATE TABLE ks.cf (id int primary key)")
+        session.execute("SELECT * FROM ks.cf")
+        self.assertUnauthorized("You have to be logged in and not anonymous to perform this request",
+                                session, "GRANT SELECT ON ks.cf TO normal")
+        self.assertUnauthorized("You have to be logged in and not anonymous to perform this request",
+                                session, "REVOKE SELECT ON ks.cf from normal")
 
         debug('STEP: verify user without credentials can not login')
         try:
@@ -1786,7 +1783,7 @@ class TestAuth(Tester):
         session = self.get_session(user='normal', password='123456')
         self.assertUnauthorized("User normal has no SELECT permission on <table ks.cf> or any of its parents",
                                 session, "SELECT * FROM ks.cf")
-        self.assertUnauthorized("User normal has no SELECT permission on <table ks.cf> or any of its parents",
+        self.assertUnauthorized("User normal has no AUTHORIZE permission on <table ks.cf> or any of its parents",
                                  session, "REVOKE SELECT ON ks.cf from normal")
 
     def transitional_auth_from_pwdauth_test(self):
@@ -1942,7 +1939,7 @@ class TestAuth(Tester):
         else:
             self.fail('Session should not be created')
 
-    def prepare(self, nodes=1, permissions_validity=0, experimental=False, enable_auth=True):
+    def prepare(self, nodes=1, permissions_validity=0, experimental=False, enable_auth=True, wait_for_superuser=False):
         config = {'permissions_validity_in_ms': permissions_validity,
                   'permissions_update_interval_in_ms': int(permissions_validity / 2)}
         auth_conf = {'authenticator': 'org.apache.cassandra.auth.PasswordAuthenticator',
@@ -1954,7 +1951,7 @@ class TestAuth(Tester):
         self.cluster.set_configuration_options(values=config)
         self.cluster.populate(nodes).start()
 
-        if enable_auth:
+        if enable_auth or wait_for_superuser:
             n = self.wait_for_any_log(self.cluster.nodelist(), 'Created default superuser', 10)
             debug("Default role created by " + n.name)
 
