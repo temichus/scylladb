@@ -393,7 +393,7 @@ class TestAuth(Tester):
         cathy = self.get_session(user='cathy', password='12345')
         cathy.execute("ALTER USER cathy WITH PASSWORD '54321'")
         cathy = self.get_session(user='cathy', password='54321')
-        self.assertUnauthorized("You aren't allowed to alter this user|User cathy does not have sufficient privileges to perform the requested operation",
+        self.assertUnauthorized("User cathy has no ALTER permission on <role bob> or any of its parents",
                                 cathy, "ALTER USER bob WITH PASSWORD 'cantchangeit'")
 
     def users_cant_alter_their_superuser_status_test(self):
