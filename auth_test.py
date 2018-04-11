@@ -227,8 +227,7 @@ class TestAuth(Tester):
         assert_invalid(session, "DROP USER cassandra", "(Users aren't allowed to DROP themselves|Cannot DROP primary role for current login)")
 
     # from 2.2 role deletion is granted by DROP_ROLE permissions, not superuser status
-    # @since('1.2', max_version='2.1.x')
-    # we still support NOSUPERUSER!!!
+    @since('1.2', max_version='2.1.x')
     def only_superusers_can_drop_users_test(self):
         """
         Originally from dtest.
