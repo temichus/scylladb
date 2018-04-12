@@ -90,7 +90,7 @@ class ReadAmplificationTest(Tester):
         time.sleep(10)
         debug('Restart node - for cache cleanup')
         node.stop(wait_other_notice=True)
-        node.start(wait_other_notice=True)
+        node.start(wait_other_notice=True,wait_for_binary_proto=True)
         time.sleep(10)
 
         debug('Metrics before read')
