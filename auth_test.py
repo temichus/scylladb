@@ -144,8 +144,7 @@ class TestAuth(Tester):
                                 "GRANT SELECT ON ALL KEYSPACES TO anonymous")
 
     # from 2.2 role creation is granted by CREATE_ROLE permissions, not superuser status
-    # @since('1.2', max_version='2.1.x')
-    # we still support NOSUPERUSER!!!
+    @since('1.2', max_version='2.1.x')
     def only_superuser_can_create_users_test(self):
         """
         Originally from dtest.
