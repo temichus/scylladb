@@ -58,7 +58,7 @@ class CQLAuditTester(AuditTester):
     """
 
     def assertAuditRow(self, row, category, statement, table="", ks="ks", user="anonymous", cl="ONE", error=False):
-        self.assertEqual(row[1], "127.0.0.1")
+        self.assertEqual(row[1], self.cluster.get_node_ip(1))
         self.assertEqual(row[3], category)
         self.assertEqual(row[4], cl)
         self.assertEqual(row[5], error)
