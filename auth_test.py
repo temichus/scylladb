@@ -1080,20 +1080,21 @@ class TestAuth(Tester):
         **Description:** Killing the node that has authentication info (when RF>=2).
         **Expected Result:** Cluster is available - successful connection.
         """
-        self.prepare(nodes=3)
-        debug('Cluster with 3 nodes started')
+        self.prepare(nodes=4)
+        debug('Cluster with 4 nodes started')
 
-        [node1, node2, node3] = self.cluster.nodelist()
+        [node1, node2, node3, node4] = self.cluster.nodelist()
         session = self.get_session(node_idx=0, user='cassandra', password='cassandra')
         debug('Successfully get the session from node1')
         # make sure session works
         self._check_session_available(session)
 
-        # change rf RF of system_auth to 2
-        session.execute("alter keyspace system_auth with replication = {'class': 'org.apache.cassandra.locator.SimpleStrategy', 'replication_factor':2};")
+        # change rf RF of system_auth to 3
+        session.execute(
+            "alter keyspace system_auth with replication = {'class': 'org.apache.cassandra.locator.SimpleStrategy', 'replication_factor':3};")
         rf = session.cluster.metadata.keyspaces['system_auth'].replication_strategy.replication_factor
         debug('Current RF of system_auth is %s' % rf)
-        self.assertEquals(2, rf)
+        self.assertEquals(3, rf)
 
         # check the replicas endpoint of system_auth.user:cassandra
         out, err = node1.nodetool("getendpoints system_auth users cassandra")
