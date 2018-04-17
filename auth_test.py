@@ -1304,7 +1304,7 @@ class TestAuth(Tester):
 
         nodes[1].stop(wait_other_notice=True, gently=True)
         nodes[2].stop(wait_other_notice=True, gently=True)
-        self._check_session_available(session, expect_auth_err=True, expect_invalid_req=True)
+        self._check_session_available(session, expect_auth_err=True, expect_invalid_req=True, expect_rf_err=True)
 
         for i in xrange(3):
             debug('Try to re-get session from %s: %s)' % (nodes[i].name, nodes[i].address()))
