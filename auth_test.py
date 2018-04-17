@@ -1079,20 +1079,21 @@ class TestAuth(Tester):
         **Description:** Killing the node that has authentication info (when RF>=2).
         **Expected Result:** Cluster is available - successful connection.
         """
-        self.prepare(nodes=3)
-        debug('Cluster with 3 nodes started')
+        self.prepare(nodes=4)
+        debug('Cluster with 4 nodes started')
 
-        [node1, node2, node3] = self.cluster.nodelist()
+        [node1, node2, node3, node4] = self.cluster.nodelist()
         session = self.get_session(node_idx=0, user='cassandra', password='cassandra')
         debug('Successfully get the session from node1')
         # make sure session works
         self._check_session_available(session)
 
-        # change rf RF of system_auth to 2
-        session.execute("alter keyspace system_auth with replication = {'class': 'org.apache.cassandra.locator.SimpleStrategy', 'replication_factor':2};")
+        # change rf RF of system_auth to 3
+        session.execute(
+            "alter keyspace system_auth with replication = {'class': 'org.apache.cassandra.locator.SimpleStrategy', 'replication_factor':3};")
         rf = session.cluster.metadata.keyspaces['system_auth'].replication_strategy.replication_factor
         debug('Current RF of system_auth is %s' % rf)
-        self.assertEquals(2, rf)
+        self.assertEquals(3, rf)
 
         # check the replicas endpoint of system_auth.user:cassandra
         out, err = node1.nodetool("getendpoints system_auth users cassandra")
@@ -1104,6 +1105,8 @@ class TestAuth(Tester):
                 src_node = i
             if i.address() == rf_addresses[0]:
                 rf_node = i
+            if i.address() == rf_addresses[1]:
+                rf_node2 = i
 
         assert rf_node.name.startswith('node')
         rf_node_idx = int(rf_node.name[4:]) - 1
@@ -1112,8 +1115,8 @@ class TestAuth(Tester):
         session = self.get_session(node_idx=rf_node_idx, user='cassandra',
                                    password='cassandra')
 
-        debug('Kill src node(%s: %s) to break Auth info' % (src_node.name, src_node.address()))
-        src_node.stop(gently=False)
+        debug('Kill rf node2(%s: %s) to break Auth info' % (rf_node2.name, rf_node2.address()))
+        rf_node2.stop(gently=False)
 
         debug('Try to re-get session from first rf endpoint(%s: %s)' % (rf_node.name, rf_addresses[0]))
         try:
