@@ -1106,6 +1106,8 @@ class TestAuth(Tester):
                 src_node = i
             if i.address() == rf_addresses[0]:
                 rf_node = i
+            if i.address() == rf_addresses[1]:
+                rf_node2 = i
 
         assert rf_node.name.startswith('node')
         rf_node_idx = int(rf_node.name[4:]) - 1
@@ -1114,8 +1116,8 @@ class TestAuth(Tester):
         session = self.get_session(node_idx=rf_node_idx, user='cassandra',
                                    password='cassandra')
 
-        debug('Kill src node(%s: %s) to break Auth info' % (src_node.name, src_node.address()))
-        src_node.stop(gently=False)
+        debug('Kill rf node2(%s: %s) to break Auth info' % (rf_node2.name, rf_node2.address()))
+        rf_node2.stop(gently=False)
 
         debug('Try to re-get session from first rf endpoint(%s: %s)' % (rf_node.name, rf_addresses[0]))
         try:
