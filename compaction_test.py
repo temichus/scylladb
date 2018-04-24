@@ -331,12 +331,19 @@ class TestCompaction(Tester):
         node.flush()
 
         node.nodetool('compact ks large')
-        node.watch_log_for('Writing large partition ks/large:user \(\d+ bytes\)', from_mark=mark, timeout=180)
+        node.watch_log_for('Writing large row ks/large:.* \(\d+ bytes\)', from_mark=mark, timeout=180)
 
         ret = list(session.execute("SELECT properties from ks.large where userid = 'user'"))
 
         assert len(ret) == 1
         self.assertEqual(200, len(ret[0][0].keys()))
+
+        # Check that system.large_partitions contains this large entry
+        large_partition_ret = list(session.execute("SELECT * from system.large_partitions"))
+        self.assertEqual(len(large_partition_ret), 1)
+        row = large_partition_ret[0]
+        self.assertEqual(row.partition_size, 2104020)
+        self.assertEqual(row.partition_key, 'user')
 
     def disable_autocompaction_nodetool_test(self):
         """
