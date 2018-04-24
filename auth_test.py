@@ -160,6 +160,22 @@ class TestAuth(Tester):
         jackob = self.get_session(user='jackob', password='12345')
         self.assertUnauthorized('Only superusers are allowed to perform CREATE (\[ROLE\|USER\]|USER) queries', jackob, "CREATE USER james WITH PASSWORD '54321' NOSUPERUSER")
 
+    @since('2.2')
+    def create_user_permissions_test(self):
+        """
+        Description: Try to create new user in two ways, somebody can execute `CREATE USER/CREATE ROLE` is either if
+                     they're a superuser or if they have the CREATE permission on <all roles>.
+
+        Expected Result: Fail to create new user for nosuperuser that has no CREATE permission on <all roles>.
+        """
+        self.prepare()
+
+        cassandra = self.get_session(user='cassandra', password='cassandra')
+        cassandra.execute("CREATE USER jackob WITH PASSWORD '12345' NOSUPERUSER")
+
+        jackob = self.get_session(user='jackob', password='12345')
+        self.assertUnauthorized('User jackob has no CREATE permission on <all roles> or any of its parents', jackob, "CREATE USER james WITH PASSWORD '54321' NOSUPERUSER")
+
     @since('1.2', max_version='2.1.x')
     def password_authenticator_create_user_requires_password_test(self):
         """
