@@ -326,7 +326,7 @@ class MigrationTestBase(Tester):
 
     @require('#2458')
     def migrate_sstable_with_old_format_counter_test(self):
-        migrate_sstable_with_old_format_counter_helper()
+        self.migrate_sstable_with_old_format_counter_helper()
 
     def migrate_sstable_with_counter_test(self):
         """
@@ -467,38 +467,6 @@ class MigrationTestBase(Tester):
         return "{}/cassandra-sstables/migration/{}/{}".format(os.path.dirname(os.path.realpath(__file__)), version,
                                                               migrated_files_dir)
 
-    def load_migrated_tables(self, node, migrated_files_dir, ks='ks', cf='cf', version='2_1_x'):
-        cassandra_sstable_dir = self.get_cassandra_sstable_dir(version, migrated_files_dir)
-        debug("cassandra sstable dir is {}".format(cassandra_sstable_dir))
-
-        ks_dir = os.path.join(self.test_path, 'test', 'node1', 'data', ks)
-        cf_dir = self.get_cf_dir(ks_dir, cf)
-        debug("Column family directory is {}".format(cf_dir))
-
-        debug("Copying sstables created by Cassandra...")
-        self.copy_files_to(cassandra_sstable_dir, cf_dir)
-
-        debug("Running 'nodetool refresh -- {} {}' to load migrated sstables".format(ks, cf))
-        node.nodetool("refresh -- {} {}".format(ks, cf))
-
-    def load_migrated_tables_expect_fail(self, node, migrated_files_dir, message=None, ks='ks', cf='cf', version='2_1_x'):
-        cassandra_sstable_dir = self.get_cassandra_sstable_dir(version, migrated_files_dir)
-        debug("cassandra sstable dir is {}".format(cassandra_sstable_dir))
-
-        ks_dir = os.path.join(self.test_path, 'test', 'node1', 'data', ks)
-        cf_dir = self.get_cf_dir(ks_dir, cf)
-        debug("Column family directory is {}".format(cf_dir))
-
-        debug("Copying sstables created by Cassandra...")
-        self.copy_files_to(cassandra_sstable_dir, cf_dir + "/upload")
-
-        debug("Running 'nodetool refresh -- {} {}' to load migrated sstables".format(ks, cf))
-        try:
-            node.nodetool("refresh -- {} {}".format(ks, cf))
-            assert False
-        except NodetoolError as error:
-            if message:
-                assert message in str(error), error
 
     def populate_cluster(self, cluster):
         # Disable hinted handoff and set batch commit log so this doesn't
@@ -543,8 +511,12 @@ class MigrationTestBase(Tester):
 #
 
 
-@tools.istest
+@tools.nottest
 class TestMigration(MigrationTestBase):
+
+    def __init__(self, *args, **kwargs):
+        kwargs['cluster_options'] = {'start_rpc': 'true'}
+        Tester.__init__(self, *args, **kwargs)
 
     def migrate_sstable_with_schema_change_test(self):
         # Content of Cassandra dir generated with following cql commands:
@@ -600,3 +572,51 @@ class TestMigration(MigrationTestBase):
         if not skip_system_traces:
             debug("Copying data/system_traces created by Cassandra...")
             self.recursive_copy_to(os.path.join(cassandra_dir, 'system_traces'), os.path.join(scylla_dir, 'system_traces'))
+
+    def load_migrated_tables(self, node, migrated_files_dir, ks='ks', cf='cf'):
+        cassandra_sstable_dir = self.get_cassandra_sstable_dir(self.version, migrated_files_dir)
+        debug("cassandra sstable dir is {}".format(cassandra_sstable_dir))
+
+        ks_dir = os.path.join(self.test_path, 'test', 'node1', 'data', ks)
+        cf_dir = self.get_cf_dir(ks_dir, cf)
+        debug("Column family directory is {}".format(cf_dir))
+
+        debug("Copying sstables created by Cassandra...")
+        self.copy_files_to(cassandra_sstable_dir, cf_dir)
+
+        debug("Running 'nodetool refresh -- {} {}' to load migrated sstables".format(ks, cf))
+        node.nodetool("refresh -- {} {}".format(ks, cf))
+
+    def load_migrated_tables_expect_fail(self, node, migrated_files_dir, message=None, ks='ks', cf='cf'):
+        cassandra_sstable_dir = self.get_cassandra_sstable_dir(self.version, migrated_files_dir)
+        debug("cassandra sstable dir is {}".format(cassandra_sstable_dir))
+
+        ks_dir = os.path.join(self.test_path, 'test', 'node1', 'data', ks)
+        cf_dir = self.get_cf_dir(ks_dir, cf)
+        debug("Column family directory is {}".format(cf_dir))
+
+        debug("Copying sstables created by Cassandra...")
+        self.copy_files_to(cassandra_sstable_dir, cf_dir + "/upload")
+
+        debug("Running 'nodetool refresh -- {} {}' to load migrated sstables".format(ks, cf))
+        try:
+            node.nodetool("refresh -- {} {}".format(ks, cf))
+            assert False
+        except NodetoolError as error:
+            if message:
+                assert message in str(error), error
+
+    def migrate_sstable_with_counter_test(self):
+        if self.version == '2_2_x':
+            self.skipTest('issue #3395 - Migration from Cassandra 2_2_X fails for "lb" files')
+        super(TestMigration, self).migrate_sstable_with_counter_test()
+
+    def migrate_sstable_with_variant_data_types_test(self):
+        if self.version == '2_2_x':
+            self.skipTest('issue #3395 - Migration from Cassandra 2_2_X fails for "lb" files')
+        super(TestMigration, self).migrate_sstable_with_variant_data_types_test()
+
+versions = ['2_1_x', '2_2_x']
+for version in versions:
+    cls_name = ('TestMigration_with_' + version)
+    vars()[cls_name] = type(cls_name, (TestMigration,), {'version': version, '__test__': True})
