@@ -149,6 +149,11 @@ class RepairAdditionalBase(Tester):
         debug("checking data on node2...")
         self.check_rows_on_node(node2, 1000)
 
+        if not hasattr(self, 'ignore_log_patterns'):
+            self.ignore_log_patterns = []
+        self.ignore_log_patterns(r'.*migration_task - Can\'t send migration request.*')
+
+
     def _repair_schema_2_test(self):
         """
         In a keyspace with two replicas, insert a new column family on one
@@ -191,6 +196,10 @@ class RepairAdditionalBase(Tester):
         self.check_rows_on_node(node1, 1000)
         debug("checking data on node2...")
         self.check_rows_on_node(node2, 1000)
+
+        if not hasattr(self, 'ignore_log_patterns'):
+            self.ignore_log_patterns = []
+        self.ignore_log_patterns(r'.*migration_task - Can\'t send migration request.*')
 
     def _repair_cell_update_test(self):
         """
