@@ -9,7 +9,7 @@ from scylla_tools import get_sstables_files, insert_c1c2, get_cf_dir
 from cassandra import ConsistencyLevel
 from assertions import assert_none
 
-from datetime import datetime
+from datetime import datetime as dt
 
 
 class CompactionAdditionalTest(Tester):
@@ -190,9 +190,8 @@ class CompactionAdditionalTest(Tester):
         # CHECK log: should have something like:
         # "Compacted 2 sstables to []. 36623 bytes to 0 (~0% of original) in 2ms = 0.00MB/s.
         #  ~512 total partitions merged to 0."
-        found = node1.watch_log_for("Compacted [0-9]+ sstables to \[\]. [0-9]+ bytes to 0 \(\~0\% of original\) "
-                                    "in [0-9]ms = 0\.00MB\/s\. \~[0-9]+ total partitions merged to 0\.", timeout=5,
-                                    from_mark=mark)
+        found = node1.watch_log_for("Compacted [0-9]+ sstables to \[\]. [0-9]+ bytes to 0 \(\~0\% of original\) ",
+                                    timeout=5, from_mark=mark)
         debug(found)
         # Save the names of the current sstable files
         sstables_files2 = get_sstables_files(cf_dir, 'ks', 'cf', f_type='Data')
@@ -219,8 +218,8 @@ class CompactionAdditionalTest(Tester):
         node1 = nodes[0]
 
         WINDOW_SIZE_MINS=1
-        TIME_TO_SLEEP_BETWEEN_FILES = 10
-        NUMBER_OF_FILES = 12
+        TIME_TO_SLEEP_BETWEEN_FILES = 15
+        NUMBER_OF_FILES = 13
         NUMBER_OF_ITERATIONS = 2
         NUMBER_OF_KEYS = 100
 
@@ -233,13 +232,19 @@ class CompactionAdditionalTest(Tester):
                        compaction={'compaction_window_size': WINDOW_SIZE_MINS, 'compaction_window_unit': 'MINUTES',
                                    'class': 'TimeWindowCompactionStrategy'})
 
+        # Always start to write files when a new minutes start to get consistent results
+        while dt.now().second > 5:
+            time.sleep(1)
+            debug(dt.now().second)
+
         for t in range(0, NUMBER_OF_FILES):
             debug("Inserting concurrently 100 keys...")
             insert_c1c2(session, n=NUMBER_OF_KEYS, consistency=ConsistencyLevel.ONE)
             node1.flush()
             time.sleep(TIME_TO_SLEEP_BETWEEN_FILES)
 
-        node1.flush()
+        # Probably this sleep not really needed
+        # Todo: test without it several times and remove it
         debug("Sleep the compaction window size to make sure all files were compacted to their windows")
         time.sleep(WINDOW_SIZE_MINS * 60)
 
