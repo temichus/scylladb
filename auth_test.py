@@ -1494,6 +1494,7 @@ class TestAuth(Tester):
 
         # change rf RF of system_auth to 2
         session.execute("alter keyspace system_auth with replication = {'class': 'org.apache.cassandra.locator.SimpleStrategy', 'replication_factor':2};")
+        self.cluster.repair()
 
         node2_hostid = node2.hostid()
         node2.stop(wait_other_notice=True, gently=False)
