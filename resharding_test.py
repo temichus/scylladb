@@ -31,7 +31,7 @@ class ReshardingTest(Tester):
         super(ReshardingTest, self).setUp()
         cluster = self.cluster
         cluster = cluster.populate(self.nodes)
-        cluster.set_configuration_options(values={'experimental': True})
+        cluster.set_configuration_options(values={'experimental': True, 'murmur3_partitioner_ignore_msb_bits': self.murmur3})
         cluster.start(jvm_args=['--smp', self.smp, '--memory', self.mem])
         self.node = cluster.nodelist()[0]
 
@@ -208,7 +208,6 @@ class ReshardingTest(Tester):
         """
         self._resharding_basic(self.SMP_FOR_DECREASE, rows=100000, murmur3=self.murmur3)
 
-    @require('#3303')
     def resharding_by_same_smp_test(self):
         """
         Cluster with 10M objects. Both SMP and MURMUR3 parameter are not changed.
@@ -291,13 +290,12 @@ class ReshardingTest(Tester):
         self._verify_data(op_cnt, stress_cmd)
         self._verify_row_number('counter1', op_cnt)
 
+    @require('#3302')
     def resharding_mv_test(self):
         """
         Resharding with small counter data set(c-s 1M counter objects) after changing the parameter
         and restarting the cluster
         """
-        if self.compaction_strategy in ['SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy']:
-            self.skipTest('issue #3302 - High data files amount during resharding')
         session = self.patient_cql_connection(self.node)
         self.create_ks(session, 'ks', self.rf)
         op_cnt = 10000
