@@ -1241,8 +1241,10 @@ class TestNodetool(Tester):
         self.assertRegexpMatches(self.nodetool_version(), "ReleaseVersion: 3\.\d+\.\d+", "Wrong version")
 
     def run_cluster(self, nodes=2):
+        self.cluster_started = False
         cluster = self.cluster
         cluster.populate(nodes).start(wait_for_binary_proto=True)
+        self.cluster_started = True
         return cluster.nodelist()
 
     def create_datacenter(self, nodes=None, run_dc1=True, run_dc2=False):
@@ -1474,19 +1476,14 @@ class TestNodetool(Tester):
         node.nodetool('rebuild ' + dc)
 
     def verify_all_api(self, giveup=120):
-        """ The snitch API starts at the very last part
-        of the startup process. So when it's up all API is up
+        """ Check that the cluster is available
         """
         while giveup > 0:
-            req = urllib2.Request("http://" + self.cluster.get_node_ip(1) + ":10000/snitch/name")
-            try:
-                urllib2.urlopen(req)
+            if self.cluster_started:
                 return
-            except (urllib2.HTTPError, urllib2.URLError) as e:
-                pass
             time.sleep(1)
             giveup -= 1
-        raise Exception("API is not available")
+        raise Exception("Cluster did not start")
 
     def get_node(self, node):
         if node is None:
