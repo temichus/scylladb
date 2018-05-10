@@ -151,7 +151,7 @@ class RepairAdditionalBase(Tester):
 
         if not hasattr(self, 'ignore_log_patterns'):
             self.ignore_log_patterns = []
-        self.ignore_log_patterns(r'.*migration_task - Can\'t send migration request.*')
+        self.ignore_log_patterns.append(r'.*migration_task - Can\'t send migration request.*')
 
 
     def _repair_schema_2_test(self):
@@ -199,7 +199,7 @@ class RepairAdditionalBase(Tester):
 
         if not hasattr(self, 'ignore_log_patterns'):
             self.ignore_log_patterns = []
-        self.ignore_log_patterns(r'.*migration_task - Can\'t send migration request.*')
+        self.ignore_log_patterns.append(r'.*migration_task - Can\'t send migration request.*')
 
     def _repair_cell_update_test(self):
         """
