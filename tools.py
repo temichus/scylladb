@@ -40,11 +40,23 @@ def insert_c1c2(session, keys=None, n=None, consistency=ConsistencyLevel.QUORUM)
 
     execute_concurrent_with_args(session, statement, [['k{}'.format(k)] for k in keys])
 
+def delete_c1c2(session, keys=None, n=None, consistency=ConsistencyLevel.QUORUM):
+    if (keys is None and n is None) or (keys is not None and n is not None):
+        raise ValueError("Expected exactly one of 'keys' or 'n' arguments to not be None; "
+                         "got keys={keys}, n={n}".format(keys=keys, n=n))
+    if n:
+        keys = list(range(n))
+
+    statement = session.prepare("DELETE FROM cf WHERE key=?")
+    statement.consistency_level = consistency
+
+    execute_concurrent_with_args(session, statement, [['k{}'.format(k)] for k in keys])
+
 
 def query_c1c2(session, key, consistency=ConsistencyLevel.QUORUM, tolerate_missing=False, must_be_missing=False):
     query = SimpleStatement('SELECT c1, c2 FROM cf WHERE key=\'k%d\'' % key, consistency_level=consistency)
     rows = list(session.execute(query))
-    if not tolerate_missing:
+    if not tolerate_missing and not must_be_missing:
         assert len(rows) == 1
         res = rows[0]
         assert len(res) == 2 and res[0] == 'value1' and res[1] == 'value2', res
