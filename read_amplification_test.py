@@ -2,8 +2,10 @@ import threading
 import math
 import time
 from cassandra.query import SimpleStatement
+from cassandra import ConsistencyLevel
 from dtest import Tester, debug
 from upgrade_tests.paging_test import PageFetcher
+import scylla_tools
 
 PARTITION_READ = 'partition'
 SCAN_READ = 'scan'
@@ -66,7 +68,7 @@ class ReadAmplificationTest(Tester):
             debug('{}: {}(+{}%)'.format(
                 key, max_val[key], int(math.fabs(max_val[key] - (cnt * size)) * 100 / (cnt * size))))
 
-    def read_amplification(self, read_type, read_size, wait_interval=1, threads=100, max_ratio_expected=10):
+    def read_amplification(self, read_type, read_size, wait_interval=1, max_ratio_expected=10):
         """
         Check total bytes read corresponds to data size
         """
@@ -75,14 +77,20 @@ class ReadAmplificationTest(Tester):
         cluster.populate(1).start(wait_for_binary_proto=True)
         node = cluster.nodelist()[0]
 
-        size = KBYTE
+        session = self.patient_cql_connection(node)
+        self.create_ks(session, 'ks', 1)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+
+        c1 = 'a' * KBYTE
+        c2 = 'b' * KBYTE
+        size = KBYTE * 2
         cnt = read_size / size
-        debug("Write {} bytes({} writes of {} bytes) of data".format(read_size, cnt, size))
-        resp = node.stress_object(stress_options=['write', 'n={}'.format(cnt),
-                                                  '-col', 'size=FIXED({}) n=FIXED(1)'.format(size),
-                                                  '-rate', 'threads=16', '-pop', 'seq=1..{}'.format(cnt)])
-        self.assertIsInstance(resp, dict, 'Stress error: {}'.format(resp))
-        self.assertAlmostEqual(int(resp['Total partitions:write']), cnt, delta=int(cnt / 100))
+        debug('count: %s' % cnt)
+        c1s = [c1] * cnt
+        c2s = [c2] * cnt
+        debug("Insert data")
+        scylla_tools.insert_c1c2(session, keys=range(cnt), consistency=ConsistencyLevel.ONE,
+                                 c1_values=c1s, c2_values=c2s)
 
         node.flush()
         debug('Run compaction to prevent running this during read')
@@ -90,48 +98,51 @@ class ReadAmplificationTest(Tester):
         time.sleep(10)
         debug('Restart node - for cache cleanup')
         node.stop(wait_other_notice=True)
-        node.start(wait_other_notice=True,wait_for_binary_proto=True)
+        node.start(wait_other_notice=True, wait_for_binary_proto=True)
         time.sleep(10)
 
         debug('Metrics before read')
+        session = self.patient_cql_connection(node)
         metric_names = ['scylla_reactor_aio_bytes_read', 'scylla_reactor_aio_reads']
         node_ip = cluster.get_node_ip(1)
         io_bytes_before = self.get_metrics(metric_names, [node_ip])
         debug(io_bytes_before)
 
-        def run_read(threads=100):
-            resp = node.stress_object(stress_options=['read', 'n={}'.format(cnt),
-                                                      '-col', 'size=FIXED({}) n=FIXED(1)'.format(size),
-                                                      '-rate', 'threads={}'.format(threads),
-                                                      '-pop', 'seq=1..{}'.format(cnt)])
-            self.assertIsInstance(resp, dict, 'Stress error: {}'.format(resp))
-            self.assertAlmostEqual(int(resp['Total partitions:read']), cnt, delta=int(cnt / 100))
+        def run_read():
+            for i in range(cnt):
+                result = list(session.execute("SELECT c1,c2 FROM ks.cf where key = \'k{}\'".format(i)))
+                self.assertEqual(len(result), 1, len(result))
 
         def run_scan_read():
-            session = self.patient_cql_connection(node)
             future = session.execute_async(
-                SimpleStatement("select * from keyspace1.standard1", fetch_size=10)
+                SimpleStatement("select * from ks.cf", fetch_size=25)
             )
             pf = PageFetcher(future).request_all(timeout=30)
             all_pages = pf.num_results_all()
             self.assertEqual(sum(all_pages), cnt)
 
+        def get_total_read_bytes(bytes_read, bytes_before):
+            return bytes_read['scylla_reactor_aio_bytes_read'] - bytes_before['scylla_reactor_aio_bytes_read']
+
         debug('Start reading')
-        if read_type == PARTITION_READ:
-            thr = threading.Thread(target=run_read, args=(threads, ))
-        else:
-            thr = threading.Thread(target=run_scan_read)
+        thr_target = run_read if read_type == PARTITION_READ else run_scan_read
+        thr = threading.Thread(target=thr_target)
         thr.start()
 
         debug('Metrics during read')
-        while thr.is_alive():
+        total_read_bytes = 0
+        while thr.is_alive() or total_read_bytes == 0:
             io_bytes_read = self.get_metrics(metric_names, [node_ip])
+            total_read_bytes = get_total_read_bytes(io_bytes_read, io_bytes_before)
             debug(io_bytes_read)
             thr.join(wait_interval)
 
+        debug('Metrics after read')
+        io_bytes_after = self.get_metrics(metric_names, [node_ip])
+        debug(io_bytes_after)
+
         debug("Verify there is no read amplification")
-        total_read_bytes = io_bytes_read['scylla_reactor_aio_bytes_read'] -\
-                           io_bytes_before['scylla_reactor_aio_bytes_read']
+        total_read_bytes = get_total_read_bytes(io_bytes_after, io_bytes_before)
         total_written_bytes = cnt * size
         ampl = total_read_bytes / total_written_bytes
         ampl_percent = total_read_bytes * 100 / total_written_bytes
@@ -142,13 +153,13 @@ class ReadAmplificationTest(Tester):
         self.assertLessEqual(ampl, max_ratio_expected, 'Read amplification is too large: {} times'.format(ampl))
 
     def no_amplification_on_read_20kb_test(self):
-        self.read_amplification(PARTITION_READ, KBYTE * 20, 1, 1, 20)
+        self.read_amplification(PARTITION_READ, KBYTE * 20, 1, 20)
+
+    def no_amplification_on_read_400kb_test(self):
+        self.read_amplification(PARTITION_READ, KBYTE * 400)
 
     def no_amplification_on_read_20mb_test(self):
         self.read_amplification(PARTITION_READ, KBYTE * KBYTE * 20)
-
-    def no_amplification_on_read_1gb_test(self):
-        self.read_amplification(PARTITION_READ, KBYTE * KBYTE * 1000, 180, 10)
 
     def no_amplification_on_scanning_read_20kb_test(self):
         self.read_amplification(SCAN_READ, KBYTE * 20)
