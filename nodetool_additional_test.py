@@ -306,7 +306,10 @@ class TestNodetool(Tester):
         self.assertMapGreatEqual(table, "Bloom filter false positives", 0)
         self.assertMapGreatEqual(table, "Bloom filter false ratio", 0)
         self.assertMapGreatEqual(table, "Bloom filter space used", 0)
-        self.assertMapGreatEqual(table, "Bloom filter off heap memory used", 100000)
+        # bloom filter will allocate something between 512 and 128kB, depending on the keys we insert and on
+        # the internals of the bitmap. With 128kB memory we can hold at most 16k elements.
+        self.assertMapGreatEqual(table, "Bloom filter off heap memory used", 512)
+        self.assertMapLessEqual(table, "Bloom filter off heap memory used", 128 * 1024)
         self.assertMapGreatEqual(table, "Index summary off heap memory used", 500)
         self.assertMapEqual(table, "Compression metadata off heap memory used", 0)
         self.assertMapEqual(table, "Compacted partition minimum bytes", 259)
