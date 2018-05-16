@@ -4,6 +4,7 @@ from dtest import Tester, debug
 
 
 class HeatWeightedLB(Tester):
+    _multiprocess_can_split_ = False
 
     METRICS = ['scylla_storage_proxy_coordinator_reads_local_node',
                'scylla_storage_proxy_replica_reads',
