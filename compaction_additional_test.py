@@ -3,7 +3,6 @@ import time
 import os
 import shutil
 import glob
-from re import findall
 from dtest import Tester, debug
 from scylla_tools import get_sstables_files, insert_c1c2, get_cf_dir
 from cassandra import ConsistencyLevel
@@ -117,6 +116,72 @@ class CompactionAdditionalTest(Tester):
 
         self.assertEqual(numfound, 0)
 
+    def wait_for_new_minute(self):
+        while dt.now().second > 5:
+            time.sleep(1)
+
+    def write_n_data_files(self, node, session, num_of_files, num_of_keys, consistency=ConsistencyLevel.ONE):
+        for t in range(0, num_of_files):
+            debug("Inserting concurrently {} keys...".format(num_of_keys))
+            insert_c1c2(session, n=num_of_keys, consistency=consistency)
+            node.flush()
+
+    def compact_data_by_time_window_test(self):
+        """
+        1. Create TABLE with compaction_window_size of 1 MINUTES
+        2. Insert data for 4 minutes while flushing to disk.
+        3. Insert more data for 2 mins while flushing to disk
+        4. Verify that the previous files created and compacted still exist.
+        (Otherwise it means they were compacted wrongly).
+        """
+        debug("Starting a cluster of one node...")
+        cluster = self.cluster
+        cluster.populate(1).start(wait_for_binary_proto=True)
+        nodes = cluster.nodelist()
+        node1 = nodes[0]
+
+        window_size_mins = 1
+
+        session = self.patient_cql_connection(node1)
+        debug("Creating keyspace 'ks'...")
+        self.create_ks(session, 'ks', 1)
+
+        debug("Creating a column family 'cf' with TWCS")
+        self.create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'},
+                       compaction={'compaction_window_size': window_size_mins , 'compaction_window_unit': 'MINUTES',
+                                   'class': 'TimeWindowCompactionStrategy'})
+
+        # Wait for new minute to start before inserting data - keep the test consistent
+        self.wait_for_new_minute()
+
+        # Write data for x4 time than the window_size (i.e. 4 mins) - to have 4 different windows.
+        for minute in range(0, window_size_mins * 4):
+            # Assuming writing the files take LESS than a MINUTE
+            self.write_n_data_files(node=node1, session=session, num_of_files=7, num_of_keys=10)
+            self.wait_for_new_minute()
+
+        # Get list of sstables names
+        cf_dir = get_cf_dir(os.path.join(self.test_path, 'test', 'node1', 'data', 'ks'), 'cf')
+        sstables_files1 = get_sstables_files(cf_dir, 'ks', 'cf', f_type='Data')
+        debug("Files BEFORE: {}".format(sstables_files1))
+
+        # Write additional data for 2 times the window-size (i.e. 2 mins)
+        # (to verify that the original files remain the same and aren't compacted).
+        for minute in range(0, window_size_mins * 2):
+            # Assuming writing the files take LESS than a MINUTE
+            self.write_n_data_files(node=node1, session=session, num_of_files=7, num_of_keys=10)
+            self.wait_for_new_minute()
+
+        # Get list of sstables names
+        cf_dir = get_cf_dir(os.path.join(self.test_path, 'test', 'node1', 'data', 'ks'), 'cf')
+        sstables_files2 = get_sstables_files(cf_dir, 'ks', 'cf', f_type='Data')
+        debug("Files AFTER adding data: {}".format(sstables_files2))
+
+        assert sstables_files1.issubset(sstables_files2), "some of the original sstables are missing. " \
+                                                          "Possibly due to wrong compaction" \
+                                                          "Expecting {} but Found {}".format(sstables_files1,
+                                                                                             sstables_files2)
+
     def compaction_removes_ttld_data_by_time_windows_test(self):
         """
         Test that TWCS compaction removes TTLd data after gc_period by time windows
@@ -133,9 +198,9 @@ class CompactionAdditionalTest(Tester):
         nodes = cluster.nodelist()
         node1 = nodes[0]
 
-        TIME_TO_SLEEP_BETWEEN_FILES = 5
-        NUMBER_OF_FILES = 13
-        NUMBER_OF_KEYS = 100
+        TIME_TO_SLEEP_BETWEEN_FILES = 15
+        NUMBER_OF_FILES = 11
+        NUMBER_OF_KEYS = 10
         TTL = 70
         GC_GRACE=10
 
@@ -151,6 +216,9 @@ class CompactionAdditionalTest(Tester):
                                    'class': 'TimeWindowCompactionStrategy',
                                    'expired_sstable_check_frequency_seconds': '60'})
 
+        # Always start the test at th beginning of the minute for consistent results
+        self.wait_for_new_minute()
+
         for t in range(0, NUMBER_OF_FILES):
             debug("Inserting concurrently {} keys...".format(NUMBER_OF_KEYS))
             insert_c1c2(session, n=NUMBER_OF_KEYS, consistency=ConsistencyLevel.ONE)
@@ -158,7 +226,6 @@ class CompactionAdditionalTest(Tester):
             time.sleep(TIME_TO_SLEEP_BETWEEN_FILES)
 
         node1.flush()
-
         ks_dir = os.path.join(self.test_path, 'test', 'node1', 'data', 'ks')
         cf_dir = get_cf_dir(ks_dir, 'cf')
         debug("'cf' directory is {}".format(cf_dir))
@@ -173,7 +240,7 @@ class CompactionAdditionalTest(Tester):
         # Save the names of the current sstable files
         sstables_files2 = get_sstables_files(cf_dir, 'ks', 'cf', f_type='Data')
         debug("sstables AFTER SLEEP: {}".format(sstables_files2))
-
+        
         # Even after the TTL+GC time has passed, the sstables remains till new data is inserted.
         # This assert just verifies that the files are still there.
         assert set(sstables_files1) == set(sstables_files2), \
@@ -183,7 +250,7 @@ class CompactionAdditionalTest(Tester):
 
         mark = node1.mark_log()
         # Insert one key to trigger a sstable expiration check (expired_sstable_check_frequency_seconds': '60').
-        insert_c1c2(session, n=1, consistency=ConsistencyLevel.ONE)
+        insert_c1c2(session, n=10, consistency=ConsistencyLevel.ONE)
         node1.flush()
         # Non mandatory Sleep, just to let any unfinished compaction to finish.
         time.sleep(5)
@@ -201,76 +268,6 @@ class CompactionAdditionalTest(Tester):
         self.assertFalse(unpurged_files, "PROBLEM Some of original files are still there and were NOT PURGED: {}".format(unpurged_files))
 
         debug("Purge SUCCEEDED, original files are not there {}".format(sstables_files2))
-
-    def compact_data_by_time_window_test(self):
-        """
-        1. Create TABLE with compaction_window_size of 1 MINUTES
-        2. Insert data for x minutes while flushing to disk.
-        3. Sleep for one window size to make sure all files and compactions are flushed.
-        4. Insert more data while flushing to disk
-        5. Verify that the previous files created and compacted still exist.
-        (Otherwise it means they were compacted wrongly).
-        """
-        debug("Starting a cluster of one node...")
-        cluster = self.cluster
-        cluster.populate(1).start(wait_for_binary_proto=True)
-        nodes = cluster.nodelist()
-        node1 = nodes[0]
-
-        WINDOW_SIZE_MINS=1
-        TIME_TO_SLEEP_BETWEEN_FILES = 15
-        NUMBER_OF_FILES = 13
-        NUMBER_OF_ITERATIONS = 2
-        NUMBER_OF_KEYS = 100
-
-        session = self.patient_cql_connection(node1)
-        debug("Creating keyspace 'ks'...")
-        self.create_ks(session, 'ks', 1)
-
-        debug("Creating a column family 'cf' with TWCS")
-        self.create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'},
-                       compaction={'compaction_window_size': WINDOW_SIZE_MINS, 'compaction_window_unit': 'MINUTES',
-                                   'class': 'TimeWindowCompactionStrategy'})
-
-        # Always start to write files when a new minutes start to get consistent results
-        while dt.now().second > 5:
-            time.sleep(1)
-            debug(dt.now().second)
-
-        for t in range(0, NUMBER_OF_FILES):
-            debug("Inserting concurrently 100 keys...")
-            insert_c1c2(session, n=NUMBER_OF_KEYS, consistency=ConsistencyLevel.ONE)
-            node1.flush()
-            time.sleep(TIME_TO_SLEEP_BETWEEN_FILES)
-
-        # Probably this sleep not really needed
-        # Todo: test without it several times and remove it
-        debug("Sleep the compaction window size to make sure all files were compacted to their windows")
-        time.sleep(WINDOW_SIZE_MINS * 60)
-
-        ks_dir = os.path.join(self.test_path, 'test', 'node1', 'data', 'ks')
-        cf_dir = get_cf_dir(ks_dir, 'cf')
-        debug("'cf' directory is {}".format(cf_dir))
-
-        # Save the names of the current sstable files
-        sstables_files1 = get_sstables_files(cf_dir, 'ks', 'cf', f_type='Data')
-        debug("sstables BEFORE Inserting more data: {}".format(sstables_files1))
-
-        for i in range(0, NUMBER_OF_ITERATIONS):
-            for t in range(0, NUMBER_OF_FILES):
-                debug("Inserting concurrently 100 keys...")
-                insert_c1c2(session, n=NUMBER_OF_KEYS, consistency=ConsistencyLevel.ONE)
-                node1.flush()
-                time.sleep(TIME_TO_SLEEP_BETWEEN_FILES)
-
-            # Save the names of the current sstable files
-            sstables_files2 = get_sstables_files(cf_dir, 'ks', 'cf', f_type='Data')
-            debug("sstables AFTER Inserting more data: {}".format(sstables_files2))
-
-            assert sstables_files1.issubset(sstables_files2), "some sstables are missing. Possibly due to wrong " \
-                                                              "compaction or wrong deletion. " \
-                                                              "Expecting {} but Found {}".format(sstables_files1,
-                                                                                                 sstables_files2)
 
 
 class CompactionAdditionalStrategyTests(Tester):
