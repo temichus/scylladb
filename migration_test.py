@@ -476,7 +476,7 @@ class MigrationTestBase(Tester):
         cluster.populate(1)
 
     def start_cluster(self, cluster):
-        cluster.start()
+        cluster.start(wait_for_binary_proto=True,wait_other_notice=True)
 
     def get_node(self, cluster, node_idx):
         return cluster.nodelist()[node_idx]
