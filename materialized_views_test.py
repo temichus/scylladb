@@ -623,18 +623,32 @@ class TestMaterializedViews(Tester):
         proc_functions = [change_func, {'func': self._create_mvs_by_one_column, 'args': (tm, mvs)}]
         managed_thread(proc_functions)
 
+        self.allow_log_errors = fail
+
         try:
             for mv_name in tm.materialized_views.iterkeys():
                 self._wait_for_view(session, tm.keyspace, mv_name)
 
-            self._validate_data_in_mvs(tm, session, rows_after_test, rows_after_test)
+            self._validate_data_in_mvs(tm, session, rows_after_test, rows_after_test,
+                                       consistency_level=ConsistencyLevel.QUORUM
+                                       if change_type in ['remove node', 'stop node', 'restart node']
+                                                    else ConsistencyLevel.ALL)
+
+            if change_type == 'restart node':
+                self.cluster.nodelist()[1].start()
+                for mv_name in tm.materialized_views.iterkeys():
+                    self._wait_for_view(session, tm.keyspace, mv_name)
+
+                self._validate_data_in_mvs(tm, session, rows_after_test, rows_after_test)
         except Exception:
             if not fail:
                 raise
             else:
-                return
+                assert True
 
-        assert not fail, "Expected to fail, but the data was correctly validated."
+        self._check_errors(self.cluster.nodelist()[0], exclude_errors=['migration_task - Can''t send migration request',
+                                                                       'mutation_write_timeout_exception'])
+        assert True
 
     def _restart_node(self, node, delay=0):
         time.sleep(delay)
@@ -644,13 +658,14 @@ class TestMaterializedViews(Tester):
         node.start()
         debug('Finish node {} restart'.format(node.name))
 
-    def _validate_data_in_mvs(self, tm, session, table_expected_rows, mv_expected_rows, grouby_column_index=-1):
+    def _validate_data_in_mvs(self, tm, session, table_expected_rows, mv_expected_rows, grouby_column_index=-1,
+                              consistency_level=ConsistencyLevel.ALL):
         query = 'select * from {}'
         for mv_name, mv in tm.materialized_views.iteritems():
             self._assert_count_table_mv(session, tm.table_name, table_expected_rows, mv_name, mv_expected_rows)
 
             assert_two_queries_equal(session, query.format(tm.table_name),
-                                     session, query.format(mv_name), consistency_level=ConsistencyLevel.ALL,
+                                     session, query.format(mv_name), consistency_level=consistency_level,
                                      session_timeout=120, group=True,
                                      groupby_column1=mv.mv_columns_list[grouby_column_index],
                                      groupby_column2=mv.mv_columns_list[grouby_column_index])
