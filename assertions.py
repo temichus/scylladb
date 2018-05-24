@@ -81,19 +81,26 @@ def assert_row_count_from_every_node(session, table_name, expected, nodes_list):
     query = "SELECT count(*) FROM {0}.{1};".format(session.keyspace, table_name)
     failed_nodes = []
     for node in nodes_list:
+        if node.status != 'UP':
+            continue
         res = node.run_cqlsh(query, return_output=True)
-        count = res[0].split('\n')[3].lstrip()
+        count = 0
         try:
+            count = res[0].split('\n')[3].lstrip()
             count = int(count)
         except TypeError:
             failed_nodes.append('Query "{2}" run failed. Node: {0}, error message: {1}'.format
                                 (node.name, count, query))
+        except Exception as e:
+            failed_nodes.append('Query "{2}" run failed. Node: {0}, error message: {1}'.format
+                                (node.name, e.message, query))
+
         if count != expected:
             failed_nodes.append('Node: {0}, actual count: {1}'.format(node.name, count))
 
     if failed_nodes:
-        assert not failed_nodes, 'Expected a row count of {0} in table "{1}", but got: {2}'.format \
-                            (expected, table_name,'; '.join(msg for msg in failed_nodes))
+        assert not failed_nodes, 'Expected a row count of {0} in table "{1}", but got:\n {2}'.format \
+                            (expected, table_name,'\n '.join(msg for msg in failed_nodes))
 
 def assert_crc_check_chance_equal(session, table, expected, ks="ks", view=False):
     """
