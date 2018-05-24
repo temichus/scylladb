@@ -87,13 +87,14 @@ class TestMaterializedViews(Tester):
     def _wait_for_view(self, session, ks, view):
         debug("Waiting for view {}.{} to finish building...".format(ks, view))
 
-        def _view_build_finished():
+        def _view_build_finished(live_nodes_amount):
             result = rows_to_list(session.execute("SELECT status FROM system_distributed.view_build_status WHERE keyspace_name='%s' AND view_name='%s'" % (ks, view)))
-            return result == [[u'SUCCESS']] * len(self.cluster.nodelist())
+            return len([status for status in result  if status[0] == 'SUCCESS']) >= live_nodes_amount
 
         attempts = 20
+        live_nodes_amount = len([node for node in self.cluster.nodelist() if node.status == 'UP'])
         while attempts > 0:
-            if _view_build_finished():
+            if _view_build_finished(live_nodes_amount):
                 return
             time.sleep(3)
             attempts -= 1
@@ -1179,9 +1180,9 @@ class TestMaterializedViews(Tester):
                                  group=True, groupby_column1=select, groupby_column2=select)
 
     def _add_new_node(self, data_center='dc1', wait_for_binary_proto=True, jvm_args=None,
-                      configuration_options=None, queue=None, delay=0):
+                      configuration_options=None, queue=None, delay=0, new_node_index=None):
         time.sleep(delay)
-        node = new_node(self.cluster, data_center=data_center)
+        node = new_node(self.cluster, data_center=data_center, new_node_index=new_node_index)
         if configuration_options:
             node.set_configuration_options(values=configuration_options)  # CASSANDRA-11670
         debug("Start join at {}".format(time.strftime("%H:%M:%S")))
