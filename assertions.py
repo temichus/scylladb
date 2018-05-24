@@ -2,7 +2,7 @@ import re
 from cassandra import InvalidRequest, Unavailable, ConsistencyLevel, WriteFailure, WriteTimeout, ReadFailure, ReadTimeout
 from cassandra.query import SimpleStatement
 from tools import rows_to_list, run_query_with_data_processing
-
+import time
 
 def assert_unavailable(fun, *args):
     try:
@@ -44,13 +44,19 @@ def assert_none(session, query, cl=ConsistencyLevel.ONE):
     assert list_res == [], "Expected nothing from %s, but got %s" % (query, list_res)
 
 
-def assert_all(session, query, expected, cl=ConsistencyLevel.ONE, ignore_order=False):
+def assert_all(session, query, expected, cl=ConsistencyLevel.ONE, ignore_order=False, attempts=1):
+    # Parameter attempts is added because of materialized views insertions performs asynchronously.
+    # We sleep in proportion to the attempt, but always retry until it succeeds or we exceed the maximum number of attempts.
     simple_query = SimpleStatement(query, consistency_level=cl)
-    res = session.execute(simple_query)
-    list_res = rows_to_list(res)
-    if ignore_order:
-        expected = sorted(expected)
-        list_res = sorted(list_res)
+    for _ in xrange(attempts):
+        res = session.execute(simple_query)
+        list_res = rows_to_list(res)
+        if ignore_order:
+            expected = sorted(expected)
+            list_res = sorted(list_res)
+        if list_res == expected:
+            break
+        time.sleep(1)
     assert list_res == expected, "Expected %s from %s, but got %s" % (expected, query, list_res)
 
 
