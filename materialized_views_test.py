@@ -128,7 +128,6 @@ class TestMaterializedViews(Tester):
             if node.is_running():
                 node.nodetool("replaybatchlog")
 
-    @require('#2783')
     def stop_node_during_mv_insert_4_nodes_test(self):
         """ Test stopping node during MV inserts
             Test starts with a starting size 4 and stops one node during inserts into base table that cause to update materialized view as well
@@ -146,7 +145,6 @@ class TestMaterializedViews(Tester):
         """
         self._run_node_failure_during_mv_stress_insert(rf=3, nodes=3, node_action='stop')
 
-    @require('#2783')
     def remove_node_during_mv_insert_4_nodes_test(self):
         """ Test removing node during MV inserts
             Test starts with a starting size 4 and removes one node during inserts into base table that cause to update materialized view as well
@@ -156,6 +154,16 @@ class TestMaterializedViews(Tester):
         """
         self._run_node_failure_during_mv_stress_insert(rf=3, nodes=4, node_action='remove')
 
+    @require('#3382')
+    def decommission_node_during_mv_insert_4_nodes_test(self):
+        """ Test removing node during MV inserts
+            Test starts with a starting size 4 and removes one node during inserts into base table that cause to update materialized view as well
+            (using cs_mv_profile.yaml profile).
+            Validate the log has no errors.
+            Issue #2783: there are mutation_write_timeout_exception in case starting size 4 and more
+        """
+        self._run_node_failure_during_mv_stress_insert(rf=3, nodes=4, node_action='decommission')
+
     def remove_node_during_mv_insert_3_nodes_test(self):
         """ Test removing node during MV inserts
             Test starts with a starting size 3 and removes one node during inserts into base table that cause to update materialized view as well
@@ -164,7 +172,6 @@ class TestMaterializedViews(Tester):
         """
         self._run_node_failure_during_mv_stress_insert(rf=3, nodes=3, node_action='remove')
 
-    @require('#2783')
     def double_node_failure_during_mv_insert_4_nodes_test(self):
         """ Test stopping 2 nodes during MV inserts
             Test starts with a starting size 4 and stops 2 nodes during inserts into base table that cause to update materialized view as well
@@ -245,7 +252,13 @@ class TestMaterializedViews(Tester):
         elif action == 'remove':
             self.cluster.remove(node)
         else:
+            new_node_index = len(self.cluster.nodelist()) + 1
             node.nodetool(action)
+            if action == 'decommission':
+                debug('START add new node')
+                self._add_new_node(new_node_index=new_node_index)
+                debug('FINISH add new node')
+
         debug('FINISH: {0} node {1}'.format(action, node.name))
 
     def _stop_few_nodes(self, by_dc_name='', by_node_names=[], delay=0, wait=True, wait_other_notice=False, gently=True):
@@ -518,12 +531,10 @@ class TestMaterializedViews(Tester):
         """ Create 10 materialized views in parallel with base table deletes """
         self._mv_populating_from_existing_data_during_changes_test('delete', nodes=4, rf=3, mvs=10, prefill=40000, fail=False)
 
-    @require("#3275")
     def mv_populating_from_existing_data_during_extend_test(self):
         """ Create 10 materialized views in parallel with adding a node """
         self._mv_populating_from_existing_data_during_changes_test('add node', nodes=4, rf=3, mvs=10, prefill=40000, fail=False)
 
-    @require('#3333')
     def mv_populating_from_existing_data_during_node_remove_test(self):
         """ Create 10 materialized views in parallel with removing a node """
         self._mv_populating_from_existing_data_during_changes_test('remove node', nodes=4, rf=3, mvs=10, prefill=40000, fail=True)
@@ -532,12 +543,10 @@ class TestMaterializedViews(Tester):
         """ Create 10 materialized views in parallel with stopping a node """
         self._mv_populating_from_existing_data_during_changes_test('stop node', nodes=4, rf=3, mvs=10, prefill=40000, fail=True)
 
-    @require("#3275")
     def mv_populating_from_existing_data_during_node_decommission_test(self):
         """ Create 10 materialized views in parallel with a node decommission """
         self._mv_populating_from_existing_data_during_changes_test('decommission', nodes=4, rf=3, mvs=10, prefill=40000, fail=False)
 
-    @require('#3324')
     def mv_populating_from_existing_data_during_node_restart_test(self):
         """ Create 10 materialized views in parallel with a node restart """
         self._mv_populating_from_existing_data_during_changes_test('restart node', nodes=4, rf=3, mvs=10, prefill=40000, fail=False)
@@ -566,7 +575,7 @@ class TestMaterializedViews(Tester):
             change_func = {'func': self._node_action_with_delay, 'args': ('decommission', self.cluster.nodes['node2']),
                            'kwargs': {'delay': 2}}
         elif change_type == 'restart node':
-            change_func = {'func': self._restart_node, 'args': (self.cluster.nodes['node2'],), 'kwargs': {'delay': 1}}
+            change_func = {'func': self._node_action_with_delay, 'args': ('stop', self.cluster.nodelist()[1]), 'kwargs': {'delay': 1}}
         elif change_type in ['remove node', 'stop node']:
             change_func = {'func': self._node_action_with_delay, 'args': (change_type.split(' ')[0], self.cluster.nodelist()[1]),
                            'kwargs': {'delay': 1}}
