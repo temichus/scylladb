@@ -12,8 +12,8 @@ class ReshardingTest(Tester):
     DEFAULT_MURMUR3_PARTITIONER = 12
     DEFAULT_SMP = '2'
     DEFAULT_NODES = 1
-    SMP_FOR_INCREASE = '47'
-    SMP_FOR_DECREASE = '9'
+    SMP_FOR_INCREASE = '9'
+    SMP_FOR_DECREASE = DEFAULT_SMP
     MURMUR3_PARTITIONER_FOR_DECREASE = 10
     MURMUR3_PARTITIONER_FOR_INCREASE = 17
     __test__ = False
@@ -349,7 +349,7 @@ class ReshardingTest(Tester):
 strategies = ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy',
               'TimeWindowCompactionStrategy']
 # SMP value should be according to the monster environment
-smp = '24'
+smp = '5'
 murmur3 = 15
 for node_count in [1, 4]:
     for strategy in strategies:
