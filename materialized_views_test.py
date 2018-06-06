@@ -192,7 +192,7 @@ class TestMaterializedViews(Tester):
         self._run_node_failure_during_mv_stress_insert(rf=3, nodes=3, node_action='stop', duration='2m', double_failure=True,
                                                        exclude_errors=['mutation_write_timeout_exception'])
 
-    def _run_node_failure_during_mv_stress_insert(self, rf, nodes, node_action, delay=30, duration='10m', double_failure=False, exclude_errors=None):
+    def _run_node_failure_during_mv_stress_insert(self, rf, nodes, node_action, delay=30, duration='1m', double_failure=False, exclude_errors=None):
         self.prepare(rf=rf, nodes=nodes)
         mv_profile = os.path.abspath(os.path.join("test_data", 'cassandra-mv-profile', 'cs_mv_profile.yaml'))
 
