@@ -6,6 +6,78 @@ from tools import create_c1c2_table, insert_c1c2, query_c1c2, delete_c1c2
 import time
 
 class TestHintedHandoff(Tester):
+    def hintedhandoff_rebalance_test(self):
+        """
+        Test that hints segments rebalancing code works.
+
+        Things to verify:
+           - Hints segments are evenly rebalanced.
+           - Hints are properly sent and accepted on the destination site after rebalancing.
+
+        Test will:
+           - Create a cluster of 3 nodes with SMP=1.
+           - Stop node3.
+           - Populate the data using the cassandra-stress tool: RF=3.
+           - Restart the nodes of the cluster with SMP=3 (setting the "hintable DC" to non-existing DC in order to
+             prevent hints from being sent) and check that hints segments are balanced among shard.
+           - Repeat the previous step for SMP=2.
+           - Restart the nodes and don't prevent hints sending this time.
+           - Wait till all hints are sent.
+           - Stop nodes node1 and node2.
+           - Verify that all data may be read from node3.
+
+        """
+        self.__start_cluster_with_hints(num=3, custom_args=['--smp', '1'])
+
+        [node1, node2, node3] = self.cluster.nodelist()
+
+        debug("Stopping node3...")
+        node3.stop(wait_other_notice=True)
+
+        debug("Populating the data...")
+        op_cnt = 1000000
+        stress_cmd = ['write', 'n={}'.format(op_cnt), 'no-warmup', 'cl=QUORUM', '-rate', 'threads=300', '-schema', 'replication(factor=3)']
+        resp = node1.stress_object(stress_cmd)
+
+        if not resp or 'Total partitions:write' not in resp:
+            raise Exception('Error running stress test: {}'.format(resp))
+
+        assert resp['Total partitions:write'] == op_cnt
+
+        debug("Check SMP=3")
+        self.__stop_all([node1, node2])
+        self.__start_all([node1, node2, node3], hh_enabled_value='dont_send_hints', extra_jvm_args=['--smp', '3'])
+        self.__check_rebalanced_dirs([node1, node2], node3, 3)
+
+        debug("Check SMP=2")
+        self.__stop_all([node2, node3, node1])
+        self.__start_all([node1, node2, node3], hh_enabled_value='dont_send_hints', extra_jvm_args=['--smp', '2'])
+        self.__check_rebalanced_dirs([node1, node2], node3, 2)
+
+        debug("Check that shard 2 directories are gone")
+        assert self.__check_hints_dir_present(node_from=node1, node_to=node3, must_be_present=False, shard=2) and \
+               self.__check_hints_dir_present(node_from=node2, node_to=node3, must_be_present=False, shard=2)
+
+        debug("Check data consistency")
+        self.__stop_all([node2, node3, node1])
+        self.__start_all([node1, node2, node3], extra_jvm_args=['--smp', '2'])
+
+        # Wait fill all hints are sent
+        for node in [node1, node2]:
+            for shard in xrange(0, 2):
+                while self.__get_hint_segs_count(node, node3, shard) > 1:
+                    debug("Still sending hints")
+                    time.sleep(1)
+
+        self.__stop_all([node2, node1])
+        debug("Reading data")
+        stress_cmd = ['read', 'n={}'.format(op_cnt), 'no-warmup', 'cl=ONE', '-rate', 'threads=300', '-schema', 'replication(factor=3)']
+        resp = node3.stress_object(stress_cmd)
+        if not resp or 'Total partitions:read' not in resp:
+            raise Exception('Error running stress test: {}'.format(resp))
+
+        assert resp['Total partitions:read'] == op_cnt
+
     def hintedhandoff_removenode_test(self):
         """
         Test hints draining when node is removed (nodetool removenode) from the cluster.
@@ -238,23 +310,66 @@ class TestHintedHandoff(Tester):
         """
         return 15
 
-    def __jvm_args(self, node):
-        return ['--hinted-handoff-enabled', 'true', '--experimental', 'true']
-        # return []
+    def __jvm_args(self, node, hh_enabled_value=None):
+        hh_enabled = 'true'
+        if not hh_enabled_value is None:
+            hh_enabled = hh_enabled_value
 
-    def __start_cluster_with_hints(self, num):
+        return ['--hinted-handoff-enabled', hh_enabled, '--experimental', 'true']
+
+    def __start_cluster_with_hints(self, num, custom_args=[], hh_enabled_value=None):
         cluster = self.cluster
         cluster.populate(num)
         nodes = self.cluster.nodelist()
 
         for node in nodes:
-            node.start(wait_for_binary_proto=True, jvm_args=self.__jvm_args(node))
+            node.start(wait_for_binary_proto=True, jvm_args=self.__jvm_args(node, hh_enabled_value) + custom_args)
 
-    def __check_hints_dir_present(self, node_from, node_to, must_be_present=True):
-        dir_name = "{}/hints/*/{}".format(node_from.get_path(), node_to.address())
+    def __check_hints_dir_present(self, node_from, node_to, must_be_present=True, shard=None):
+        dir_name = ""
+        if shard is None:
+            dir_name = "{}/hints/*/{}".format(node_from.get_path(), node_to.address())
+        else:
+            dir_name = "{}/hints/{}/{}".format(node_from.get_path(), shard, node_to.address())
 
         debug("Check that the directory {} is {}...".format(dir_name, "present" if must_be_present else "not present"))
         if must_be_present:
             return len(glob.glob(dir_name)) != 0
         else:
             return len(glob.glob(dir_name)) == 0
+
+    def __get_hint_segs_count(self, node_from, node_to, shard=0):
+        files_mask = "{}/hints/{}/{}/*".format(node_from.get_path(), shard, node_to.address())
+        return len(glob.glob(files_mask))
+
+    def __stop_all(self, nodes):
+        for node in nodes:
+            debug("Stopping {}...".format(node.name))
+            node.stop(wait_other_notice=True)
+
+    def __start_all(self, nodes, hh_enabled_value=None, extra_jvm_args=[]):
+        for node in nodes:
+            debug("Starting {}...".format(node.name))
+            node.start(wait_for_binary_proto=True,
+                       jvm_args=self.__jvm_args(node, hh_enabled_value=hh_enabled_value) + extra_jvm_args)
+
+    def __check_rebalanced_dirs(self, nodes, down_node, num_shards):
+        """
+        Check that number of hint files on each shard differs by not more than 1 from the number of hint files on other
+        shards.
+        """
+        hints_on_nodes = []
+
+        for node in nodes:
+            hints_on_node = []
+
+            for shard in xrange(0, num_shards):
+                hints_on_node.append(self.__get_hint_segs_count(node_from=node, node_to=down_node, shard=shard))
+
+            hints_on_nodes.append(hints_on_node)
+
+        for i in xrange(0, num_shards):
+            for k in xrange(i + 1, num_shards):
+                for j in xrange(0, len(nodes)):
+                    debug("{}: comparing number of files on shards {} and {}".format(nodes[j].name, i, k))
+                    assert abs(hints_on_nodes[j][i] - hints_on_nodes[j][k]) <= 1
