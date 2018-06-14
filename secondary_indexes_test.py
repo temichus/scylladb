@@ -5,6 +5,10 @@ import time
 import uuid
 from unittest import skipIf
 
+from dtest import Tester, debug
+from tools import since
+from assertions import assert_invalid, assert_one, assert_row_count
+
 from cassandra import InvalidRequest
 from cassandra.concurrent import (execute_concurrent,
                                   execute_concurrent_with_args)
@@ -512,6 +516,40 @@ class TestSecondaryIndexes(Tester):
 
         rows = list(session.execute("SELECT * FROM tbl WHERE c0 = 'a' AND c1 = 'b' ALLOW FILTERING;"))
         self.assertEqual(2, len(rows))
+
+    def test_truncate_base(self):
+        """
+        asserts that truncating base table will result in truncating secondary index as well
+        """
+        cluster = self.cluster
+        cluster.populate(1).start()
+        node1, = cluster.nodelist()
+        session = self.patient_cql_connection(node1)
+        session.execute("CREATE KEYSPACE ks WITH REPLICATION = {'class': 'SimpleStrategy', 'replication_factor': '1'};")
+        session.execute("USE ks;")
+        session.execute("CREATE TABLE tbl (id uuid primary key, c0 text, c1 text);")
+        session.execute("CREATE INDEX ix_tbl_c0 ON tbl(c0);")
+        session.execute("CREATE INDEX ix_tbl_c1 ON tbl(c1);")
+        session.execute("INSERT INTO tbl (id, c0, c1) values (uuid(), 'a', 'b');")
+        session.execute("INSERT INTO tbl (id, c0, c1) values (uuid(), 'a', 'b');")
+        session.execute("INSERT INTO tbl (id, c0, c1) values (uuid(), 'q', 'b');")
+        session.execute("INSERT INTO tbl (id, c0, c1) values (uuid(), 'a', 'e');")
+        session.execute("INSERT INTO tbl (id, c0, c1) values (uuid(), 'a', 'e');")
+
+        # ensure sstables are created and will be dropped
+        self.cluster.flush()
+        # ensure data is loaded into cache and the cache will be cleared
+        self.assertEquals(4, len(list(session.execute("SELECT * FROM tbl WHERE c0 = 'a'"))))
+
+        assert_row_count(session, "tbl", 5)
+        session.execute("TRUNCATE table tbl")
+        assert_row_count(session, "tbl", 0)
+
+        # check that index queries are also truncated
+        rows = list(session.execute("SELECT * FROM tbl WHERE c0 = 'a';"))
+        self.assertEqual(0, len(rows))
+        rows = list(session.execute("SELECT * FROM tbl WHERE c1 = 'b';"))
+        self.assertEqual(0, len(rows))
 
     @since('3.0')
     def test_only_coordinator_chooses_index_for_query(self):
