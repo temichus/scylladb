@@ -1107,6 +1107,7 @@ class TestAuth(Tester):
         # change rf RF of system_auth to 3
         session.execute(
             "alter keyspace system_auth with replication = {'class': 'org.apache.cassandra.locator.SimpleStrategy', 'replication_factor':3};")
+        self.cluster.repair()
         rf = session.cluster.metadata.keyspaces['system_auth'].replication_strategy.replication_factor
         debug('Current RF of system_auth is %s' % rf)
         self.assertEquals(3, rf)
@@ -1255,6 +1256,7 @@ class TestAuth(Tester):
 
         # change rf RF of system_auth to 2
         session.execute("alter keyspace system_auth with replication = {'class': 'org.apache.cassandra.locator.SimpleStrategy', 'replication_factor':2};")
+        self.cluster.repair()
         # verify the replication_factor of system_auth keyspace is 2 now
         rf = session.cluster.metadata.keyspaces['system_auth'].replication_strategy.replication_factor
         debug('Current RF of system_auth is %s' % rf)
@@ -1304,6 +1306,7 @@ class TestAuth(Tester):
 
         # change rf RF of system_auth to 3
         session.execute("alter keyspace system_auth with replication = {'class': 'org.apache.cassandra.locator.SimpleStrategy', 'replication_factor':3};")
+        self.cluster.repair()
         self.assertEquals(3, self.get_session(node_idx=0, user='cassandra', password='cassandra').
                           cluster.metadata.keyspaces['system_auth'].replication_strategy.replication_factor)
 
@@ -1519,6 +1522,7 @@ class TestAuth(Tester):
 
         # change rf RF of system_auth to 2
         session.execute("alter keyspace system_auth with replication = {'class': 'org.apache.cassandra.locator.SimpleStrategy', 'replication_factor':2};")
+        self.cluster.repair()
 
         node2_hostid = node2.hostid()
         node2.stop(wait_other_notice=True, gently=False)
@@ -1704,6 +1708,7 @@ class TestAuth(Tester):
 
         session.execute("ALTER KEYSPACE system_auth "
                         "WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 2};")
+        self.cluster.repair()
 
         session = self.get_session(user='cassandra', password='cassandra')
         self.assertEquals(2, session.cluster.metadata.keyspaces['system_auth'].replication_strategy.replication_factor)
