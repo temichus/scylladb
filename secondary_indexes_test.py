@@ -113,17 +113,17 @@ class TestSecondaryIndexes(Tester):
                 self.fail("Didn't find matching trace event")
 
         query = SimpleStatement("SELECT * FROM ks.cf WHERE b='1';")
-        result = session.execute(query, trace=True)
+        result = list(session.execute(query, trace=True))
         self.assertEqual(3, len(list(result)))
         check_trace_events(result.get_query_trace())
 
         query = SimpleStatement("SELECT * FROM ks.cf WHERE b='1' LIMIT 100;")
-        result = session.execute(query, trace=True)
+        result = list(session.execute(query, trace=True))
         self.assertEqual(3, len(list(result)))
         check_trace_events(result.get_query_trace())
 
         query = SimpleStatement("SELECT * FROM ks.cf WHERE b='1' LIMIT 3;")
-        result = session.execute(query, trace=True)
+        result = list(session.execute(query, trace=True))
         self.assertEqual(3, len(list(result)))
         check_trace_events(result.get_query_trace())
 
@@ -574,7 +574,7 @@ class TestSecondaryIndexes(Tester):
             check_trace_events(trace, regex, expected_matches, halt_on_failure)
 
         query = SimpleStatement("SELECT * FROM ks.cf WHERE b='1';")
-        result = session.execute(query, trace=True)
+        result = list(session.execute(query, trace=True))
         self.assertEqual(3, len(list(result)))
 
         trace = result.get_query_trace()
