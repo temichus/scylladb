@@ -351,7 +351,7 @@ class TestNodetool(Tester):
         snapshot = m[0]
         data_dir = os.path.join(node1.get_path(), "data")
         keyspaces = [f for f in os.listdir(data_dir) if os.path.isdir(os.path.join(data_dir, f))]
-        self.assertEqual(6, len(keyspaces), "wrong number of directories in the data dir")
+        self.assertEqual(7, len(keyspaces), "wrong number of directories in the data dir")
         for ks in keyspaces:
             keyspace_dir = os.path.join(data_dir, ks)
             column_families = [os.path.join(keyspace_dir, f) for f in os.listdir(keyspace_dir) if os.path.isdir(os.path.join(keyspace_dir, f))]
@@ -387,7 +387,7 @@ class TestNodetool(Tester):
         self.assertEqual(tag, snapshot, "wrong directory found in node snapshot command: '" + out + "'")
         data_dir = os.path.join(node1.get_path(), "data")
         keyspaces = [f for f in os.listdir(data_dir) if os.path.isdir(os.path.join(data_dir, f))]
-        self.assertEqual(6, len(keyspaces), "wrong number of directories in the data dir")
+        self.assertEqual(7, len(keyspaces), "wrong number of directories in the data dir")
         if kc:
             brk = kc.split('.')
             keyspace = brk[0]
