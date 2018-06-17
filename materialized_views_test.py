@@ -53,7 +53,7 @@ class TestMaterializedViews(Tester):
         options['experimental'] = True
         if options:
             cluster.set_configuration_options(values=options)
-        cluster.start(jvm_args=jvm_args)
+        cluster.start(jvm_args=jvm_args,wait_other_notice=True,wait_for_binry_proto=True)
         node1 = cluster.nodelist()[0]
 
         session = self.patient_cql_connection(node1, **kwargs)
