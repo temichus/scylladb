@@ -32,6 +32,7 @@ class TestNodetool(Tester):
                                     {"func": self.verify_status, "time": 25}, {"func": self.verify_netstats, "time": 26},
                                     {"func": self.verify_cfhistograms, "time": 25}, {"func": self.verify_cfstats, "time": 25, "args": [None, "keyspace1"]},
                                     {"func": self.verify_describering, "time": 25}, {"func": self.verify_decribecluster, "time": 25}]
+        self.reserved_names = ['view_pending_updates']
 
     @staticmethod
     def _to_cfstats(out):
@@ -350,8 +351,8 @@ class TestNodetool(Tester):
         self.assertTrue(m, "No directory found in node snapshot command: '" + out + "'")
         snapshot = m[0]
         data_dir = os.path.join(node1.get_path(), "data")
-        keyspaces = [f for f in os.listdir(data_dir) if os.path.isdir(os.path.join(data_dir, f))]
-        self.assertEqual(7, len(keyspaces), "wrong number of directories in the data dir")
+        keyspaces = [f for f in os.listdir(data_dir) if os.path.isdir(os.path.join(data_dir, f)) and f not in self.reserved_names]
+        self.assertEqual(6, len(keyspaces), "wrong number of directories in the data dir")
         for ks in keyspaces:
             keyspace_dir = os.path.join(data_dir, ks)
             column_families = [os.path.join(keyspace_dir, f) for f in os.listdir(keyspace_dir) if os.path.isdir(os.path.join(keyspace_dir, f))]
@@ -386,8 +387,8 @@ class TestNodetool(Tester):
         snapshot = m[0]
         self.assertEqual(tag, snapshot, "wrong directory found in node snapshot command: '" + out + "'")
         data_dir = os.path.join(node1.get_path(), "data")
-        keyspaces = [f for f in os.listdir(data_dir) if os.path.isdir(os.path.join(data_dir, f))]
-        self.assertEqual(7, len(keyspaces), "wrong number of directories in the data dir")
+        keyspaces = [f for f in os.listdir(data_dir) if os.path.isdir(os.path.join(data_dir, f)) and f not in self.reserved_names]
+        self.assertEqual(6, len(keyspaces), "wrong number of directories in the data dir")
         if kc:
             brk = kc.split('.')
             keyspace = brk[0]
