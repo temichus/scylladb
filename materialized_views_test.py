@@ -2419,8 +2419,9 @@ class TestMaterializedViews(Tester):
         session.execute('USE ks')
 
         session.execute("CREATE TABLE t (id int PRIMARY KEY, v int, v2 text, v3 decimal)")
-        session.execute(("CREATE MATERIALIZED VIEW t_by_v AS SELECT * FROM t "
-                         "WHERE v IS NOT NULL AND id IS NOT NULL PRIMARY KEY (v,id)"))
+        session.execute("CREATE MATERIALIZED VIEW t_by_v AS SELECT * FROM t "
+                        "WHERE v IS NOT NULL AND id IS NOT NULL PRIMARY KEY (v,id) "
+                        "WITH read_repair_chance = 0.0 AND dclocal_read_repair_chance = 0.0 AND speculative_retry = 'none'")
 
         session.cluster.control_connection.wait_for_schema_agreement()
 
@@ -2447,11 +2448,12 @@ class TestMaterializedViews(Tester):
                                         consistency_level=ConsistencyLevel.ALL))
         assert_none(session, "SELECT * FROM t_by_v WHERE v = 1")
 
-        debug('Shutdown node2')
+        debug('Shutdown nodes 2 and 3')
         node2.stop(wait_other_notice=True)
+        node3.stop(wait_other_notice=True)
 
         session.execute(SimpleStatement("UPDATE t USING TIMESTAMP 4 SET v = 1 WHERE id = 1",
-                                        consistency_level=ConsistencyLevel.QUORUM))
+                                        consistency_level=ConsistencyLevel.ONE))
         assert_one(
             session,
             "SELECT * FROM t_by_v WHERE v = 1",
@@ -2461,11 +2463,20 @@ class TestMaterializedViews(Tester):
         self.allow_log_errors = True  # otherwise we have in teardown verification:
         # Exception occurred when loading system table views: Can't find a column family with UUID
         node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+        node3.start(wait_other_notice=True, wait_for_binary_proto=True)
+
         session2 = self.patient_exclusive_cql_connection(node2)
         session2.execute('USE ks')
 
-        # node2 has the old, stale data
-        assert_none(session2, "SELECT * FROM t_by_v WHERE v = 1")
+        # We retry sending failed view updates, but just to view replica
+        # paired with node1. This means one of node 2 and 3 will always
+        # have the old, stale data
+        try:
+            assert_none(session2, "SELECT * FROM t_by_v WHERE v = 1")
+        except AssertionError:
+            session3 = self.patient_exclusive_cql_connection(node2)
+            session3.execute('USE ks')
+            assert_none(session3, "SELECT * FROM t_by_v WHERE v = 1")
 
         # We should get a digest mismatch, and data should be repaired
         assert_one(
