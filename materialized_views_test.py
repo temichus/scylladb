@@ -17,7 +17,7 @@ from assertions import assert_all, assert_one, assert_invalid, assert_unavailabl
     assert_crc_check_chance_equal, assert_row_count, assert_two_queries_equal, assert_row_count_from_every_node, \
     assert_two_queries_equal_ignore_order
 from dtest import Tester, debug
-from tools import since, new_node, require, rows_to_list
+from tools import since, new_node, require, rows_to_list, run_query_with_data_processing
 from scylla_tools import TableManager, MaterializedViewManager, flush_by_node, managed_thread
 from cassandra.cluster import NoHostAvailable
 
@@ -87,13 +87,14 @@ class TestMaterializedViews(Tester):
     def _wait_for_view(self, session, ks, view):
         debug("Waiting for view {}.{} to finish building...".format(ks, view))
 
-        def _view_build_finished():
+        def _view_build_finished(live_nodes_amount):
             result = rows_to_list(session.execute("SELECT status FROM system_distributed.view_build_status WHERE keyspace_name='%s' AND view_name='%s'" % (ks, view)))
-            return result == [[u'SUCCESS']] * len(self.cluster.nodelist())
+            return len([status for status in result  if status[0] == 'SUCCESS']) >= live_nodes_amount
 
         attempts = 20
+        live_nodes_amount = len([node for node in self.cluster.nodelist() if node.status == 'UP'])
         while attempts > 0:
-            if _view_build_finished():
+            if _view_build_finished(live_nodes_amount):
                 return
             time.sleep(3)
             attempts -= 1
@@ -127,7 +128,6 @@ class TestMaterializedViews(Tester):
             if node.is_running():
                 node.nodetool("replaybatchlog")
 
-    @require('#2783')
     def stop_node_during_mv_insert_4_nodes_test(self):
         """ Test stopping node during MV inserts
             Test starts with a starting size 4 and stops one node during inserts into base table that cause to update materialized view as well
@@ -135,7 +135,7 @@ class TestMaterializedViews(Tester):
             Validate the log has no errors.
             Issue #2783: there are mutation_write_timeout_exception in case starting size 4 and more
         """
-        self._run_node_failure_during_mv_stress_insert(rf=3, nodes=4, node_action='stop')
+        self._run_node_failure_during_mv_stress_insert(rf=3, nodes=4, node_action='stop', exclude_errors=['mutation_write_timeout_exception'])
 
     def stop_node_during_mv_insert_3_nodes_test(self):
         """ Test stopping node during MV inserts
@@ -143,9 +143,8 @@ class TestMaterializedViews(Tester):
             (using cs_mv_profile.yaml profile).
             Validate the log has no errors
         """
-        self._run_node_failure_during_mv_stress_insert(rf=3, nodes=3, node_action='stop')
+        self._run_node_failure_during_mv_stress_insert(rf=3, nodes=3, node_action='stop', exclude_errors=['mutation_write_timeout_exception'])
 
-    @require('#2783')
     def remove_node_during_mv_insert_4_nodes_test(self):
         """ Test removing node during MV inserts
             Test starts with a starting size 4 and removes one node during inserts into base table that cause to update materialized view as well
@@ -153,7 +152,17 @@ class TestMaterializedViews(Tester):
             Validate the log has no errors.
             Issue #2783: there are mutation_write_timeout_exception in case starting size 4 and more
         """
-        self._run_node_failure_during_mv_stress_insert(rf=3, nodes=4, node_action='remove')
+        self._run_node_failure_during_mv_stress_insert(rf=3, nodes=4, node_action='remove', exclude_errors=['mutation_write_timeout_exception'])
+
+    @require('#3382')
+    def decommission_node_during_mv_insert_4_nodes_test(self):
+        """ Test removing node during MV inserts
+            Test starts with a starting size 4 and removes one node during inserts into base table that cause to update materialized view as well
+            (using cs_mv_profile.yaml profile).
+            Validate the log has no errors.
+            Issue #2783: there are mutation_write_timeout_exception in case starting size 4 and more
+        """
+        self._run_node_failure_during_mv_stress_insert(rf=3, nodes=4, node_action='decommission', exclude_errors=['mutation_write_timeout_exception'])
 
     def remove_node_during_mv_insert_3_nodes_test(self):
         """ Test removing node during MV inserts
@@ -161,9 +170,8 @@ class TestMaterializedViews(Tester):
             (using cs_mv_profile.yaml profile).
             Validate the log has no errors.
         """
-        self._run_node_failure_during_mv_stress_insert(rf=3, nodes=3, node_action='remove')
+        self._run_node_failure_during_mv_stress_insert(rf=3, nodes=3, node_action='remove', exclude_errors=['mutation_write_timeout_exception'])
 
-    @require('#2783')
     def double_node_failure_during_mv_insert_4_nodes_test(self):
         """ Test stopping 2 nodes during MV inserts
             Test starts with a starting size 4 and stops 2 nodes during inserts into base table that cause to update materialized view as well
@@ -171,7 +179,8 @@ class TestMaterializedViews(Tester):
             Validate the log has no errors.
             Issue #2783: there are mutation_write_timeout_exception in case starting size 4 and more
         """
-        self._run_node_failure_during_mv_stress_insert(rf=3, nodes=4, node_action='stop', duration='2m', double_failure=True)
+        self._run_node_failure_during_mv_stress_insert(rf=3, nodes=4, node_action='stop', duration='2m', double_failure=True,
+                                                       exclude_errors=['mutation_write_timeout_exception'])
 
     def double_node_failure_during_mv_insert_3_nodes_test(self):
         """ Test stopping 2 nodes during MV inserts
@@ -180,29 +189,29 @@ class TestMaterializedViews(Tester):
             Validate the log has no errors.
             Issue #2783: there are mutation_write_timeout_exception in case starting size 4 and more
         """
-        self._run_node_failure_during_mv_stress_insert(rf=3, nodes=3, node_action='stop', duration='2m', double_failure=True)
+        self._run_node_failure_during_mv_stress_insert(rf=3, nodes=3, node_action='stop', duration='2m', double_failure=True,
+                                                       exclude_errors=['mutation_write_timeout_exception'])
 
-    def _run_node_failure_during_mv_stress_insert(self, rf, nodes, node_action, delay=30, duration='1m', double_failure=False):
+    def _run_node_failure_during_mv_stress_insert(self, rf, nodes, node_action, delay=30, duration='1m', double_failure=False, exclude_errors=None):
         self.prepare(rf=rf, nodes=nodes)
         mv_profile = os.path.abspath(os.path.join("test_data", 'cassandra-mv-profile', 'cs_mv_profile.yaml'))
 
         node1 = self.cluster.nodelist()[0]
+        node1.stress(stress_options=['write', 'cl=QUORUM', 'n=1000000', "-mode cql3 native", "-rate threads=10", "-pop seq=1..1000000"],
+                                    capture_output=True)
         proc_functions = [
             {'func': node1.stress, 'args': [['user', 'profile={}'.format(mv_profile), 'cl=QUORUM', 'duration={}'.format(duration),
                                              'ops(insert=1,read1=1,read2=1,read3=1)', '-mode cql3  native', '-rate threads=10'], True]},
+            {'func': node1.stress, 'args': [['mixed', "cl=QUORUM", "duration=10m",
+                                             "-mode cql3 native", "-rate threads=10", "-pop seq=1..1000000", "-log interval=5"], True]},
             {'func': self._node_action_with_delay, 'args': (node_action, self.cluster.nodelist()[1]),'kwargs': {'delay': delay}}]
         if double_failure and len(self.cluster.nodelist()) > 2:
             proc_functions.append({'func': self._node_action_with_delay, 'args': (node_action, self.cluster.nodelist()[2]),
                                    'kwargs': {'delay': delay}})
         managed_thread(proc_functions)
 
-        errors = node1.grep_log_for_errors(distinct_errors=True, search_str='Error')
+        self._validate_cs_results(node1, exclude_errors, node_action, double_failure)
 
-        if errors:
-            assert False, '\n'.join(list(errors))
-        assert True
-
-    @require('#2783')
     def multidc_dc_failure_during_mv_insert_test(self):
         """ Test stopping all DC nodes during MV inserts
             Test starts with a starting size: two DCs with 2 nodes each, and stops 2 nodes of second DC during inserts into base
@@ -220,11 +229,8 @@ class TestMaterializedViews(Tester):
                           {'func': self._stop_few_nodes, 'kwargs': {'delay': 30, 'by_dc_name': 'dc2'}}]
         managed_thread(proc_functions)
 
-        errors = node1_dc1.grep_log_for_errors(distinct_errors=True, search_str='Error')
-
-        if errors:
-            assert False, '\n'.join(list(errors))
-        assert True
+        self.allow_log_errors = True
+        self._validate_cs_results(node1_dc1, exclude_errors=['mutation_write_timeout_exception'], node_action='', double_failure=True)
 
     def _node_action_with_delay(self, action, node, delay=0, wait=True, wait_other_notice=False, gently=True):
         """
@@ -244,7 +250,13 @@ class TestMaterializedViews(Tester):
         elif action == 'remove':
             self.cluster.remove(node)
         else:
+            new_node_index = len(self.cluster.nodelist()) + 1
             node.nodetool(action)
+            if action == 'decommission':
+                debug('START add new node')
+                self._add_new_node(new_node_index=new_node_index)
+                debug('FINISH add new node')
+
         debug('FINISH: {0} node {1}'.format(action, node.name))
 
     def _stop_few_nodes(self, by_dc_name='', by_node_names=[], delay=0, wait=True, wait_other_notice=False, gently=True):
@@ -256,6 +268,7 @@ class TestMaterializedViews(Tester):
             if (by_dc_name and node.data_center == by_dc_name) or (by_node_names and node.name in by_node_names):
                 self._node_action_with_delay('stop', node, wait=wait, wait_other_notice=wait_other_notice, gently=gently)
 
+    @require('#3382')
     def add_dc_during_mv_insert_test(self):
         """ Test expand cluster - add new DC during MV inserts
             Test starts with a starting size: one DCs with 4 nodes, and add new 2 nodes of second DC during inserts into base
@@ -264,6 +277,36 @@ class TestMaterializedViews(Tester):
             Validate the log has no errors.
         """
         self._add_dc_during_mv_change('insert', 3, 4, start_prefill=1000, more_inserts=300000)
+
+    def _check_errors(self, node, exclude_errors):
+        errors = node.grep_log_for_errors(distinct_errors=True, search_str='Error')
+
+        if exclude_errors:
+            for ee in exclude_errors:
+                errors = [error for error in list(errors) if ee not in error]
+
+        if errors:
+            assert False, '\n'.join(list(errors))
+        else:
+            self.allow_log_errors = True
+
+    def _validate_cs_results(self, node, exclude_errors, node_action, double_failure):
+        self._check_errors(node, exclude_errors)
+        session = self.patient_exclusive_cql_connection(node)
+        session.execute('USE mview')
+        cl = ConsistencyLevel.ONE if double_failure else ConsistencyLevel.QUORUM if node_action in ['stop', 'remove'] else ConsistencyLevel.ALL
+        exp_res = run_query_with_data_processing(session, 'select count(*) from mview.users', consistency_level=cl)
+        try:
+            exp_res = int(exp_res[0].count)
+        except TypeError:
+            debug('Try to select rows count from mview.users table. Expected integer vale, received: {}'.format(exp_res[0].count))
+            raise
+        except Exception as e:
+            debug('Try to select rows count from mview.users table. Failed with error: {}'.format(e.message))
+            raise
+
+        assert_row_count_from_every_node(session, 'users_by_first_name', exp_res, nodes_list=self.cluster.nodelist())
+        assert_row_count_from_every_node(session, 'users_by_last_name', exp_res, nodes_list=self.cluster.nodelist())
 
     def add_dc_during_mv_update_test(self):
         """ Test expand cluster - add new DC during MV inserts
@@ -517,26 +560,22 @@ class TestMaterializedViews(Tester):
         """ Create 10 materialized views in parallel with base table deletes """
         self._mv_populating_from_existing_data_during_changes_test('delete', nodes=4, rf=3, mvs=10, prefill=40000, fail=False)
 
-    @require("#3275")
     def mv_populating_from_existing_data_during_extend_test(self):
         """ Create 10 materialized views in parallel with adding a node """
         self._mv_populating_from_existing_data_during_changes_test('add node', nodes=4, rf=3, mvs=10, prefill=40000, fail=False)
 
-    @require('#3333')
     def mv_populating_from_existing_data_during_node_remove_test(self):
         """ Create 10 materialized views in parallel with removing a node """
-        self._mv_populating_from_existing_data_during_changes_test('remove node', nodes=4, rf=3, mvs=10, prefill=40000, fail=True)
+        self._mv_populating_from_existing_data_during_changes_test('remove node', nodes=4, rf=3, mvs=10, prefill=40000, fail=False)
 
     def mv_populating_from_existing_data_during_node_stop_test(self):
         """ Create 10 materialized views in parallel with stopping a node """
-        self._mv_populating_from_existing_data_during_changes_test('stop node', nodes=4, rf=3, mvs=10, prefill=40000, fail=True)
+        self._mv_populating_from_existing_data_during_changes_test('stop node', nodes=4, rf=3, mvs=10, prefill=40000, fail=False)
 
-    @require("#3275")
     def mv_populating_from_existing_data_during_node_decommission_test(self):
         """ Create 10 materialized views in parallel with a node decommission """
         self._mv_populating_from_existing_data_during_changes_test('decommission', nodes=4, rf=3, mvs=10, prefill=40000, fail=False)
 
-    @require('#3324')
     def mv_populating_from_existing_data_during_node_restart_test(self):
         """ Create 10 materialized views in parallel with a node restart """
         self._mv_populating_from_existing_data_during_changes_test('restart node', nodes=4, rf=3, mvs=10, prefill=40000, fail=False)
@@ -565,7 +604,7 @@ class TestMaterializedViews(Tester):
             change_func = {'func': self._node_action_with_delay, 'args': ('decommission', self.cluster.nodes['node2']),
                            'kwargs': {'delay': 2}}
         elif change_type == 'restart node':
-            change_func = {'func': self._restart_node, 'args': (self.cluster.nodes['node2'],), 'kwargs': {'delay': 1}}
+            change_func = {'func': self._node_action_with_delay, 'args': ('stop', self.cluster.nodelist()[1]), 'kwargs': {'delay': 1}}
         elif change_type in ['remove node', 'stop node']:
             change_func = {'func': self._node_action_with_delay, 'args': (change_type.split(' ')[0], self.cluster.nodelist()[1]),
                            'kwargs': {'delay': 1}}
@@ -584,18 +623,32 @@ class TestMaterializedViews(Tester):
         proc_functions = [change_func, {'func': self._create_mvs_by_one_column, 'args': (tm, mvs)}]
         managed_thread(proc_functions)
 
+        self.allow_log_errors = fail
+
         try:
             for mv_name in tm.materialized_views.iterkeys():
                 self._wait_for_view(session, tm.keyspace, mv_name)
 
-            self._validate_data_in_mvs(tm, session, rows_after_test, rows_after_test)
+            self._validate_data_in_mvs(tm, session, rows_after_test, rows_after_test,
+                                       consistency_level=ConsistencyLevel.QUORUM
+                                       if change_type in ['remove node', 'stop node', 'restart node']
+                                                    else ConsistencyLevel.ALL)
+
+            if change_type == 'restart node':
+                self.cluster.nodelist()[1].start()
+                for mv_name in tm.materialized_views.iterkeys():
+                    self._wait_for_view(session, tm.keyspace, mv_name)
+
+                self._validate_data_in_mvs(tm, session, rows_after_test, rows_after_test)
         except Exception:
             if not fail:
                 raise
             else:
-                return
+                assert True
 
-        assert not fail, "Expected to fail, but the data was correctly validated."
+        self._check_errors(self.cluster.nodelist()[0], exclude_errors=['migration_task - Can''t send migration request',
+                                                                       'mutation_write_timeout_exception'])
+        assert True
 
     def _restart_node(self, node, delay=0):
         time.sleep(delay)
@@ -605,13 +658,14 @@ class TestMaterializedViews(Tester):
         node.start()
         debug('Finish node {} restart'.format(node.name))
 
-    def _validate_data_in_mvs(self, tm, session, table_expected_rows, mv_expected_rows, grouby_column_index=-1):
+    def _validate_data_in_mvs(self, tm, session, table_expected_rows, mv_expected_rows, grouby_column_index=-1,
+                              consistency_level=ConsistencyLevel.ALL):
         query = 'select * from {}'
         for mv_name, mv in tm.materialized_views.iteritems():
             self._assert_count_table_mv(session, tm.table_name, table_expected_rows, mv_name, mv_expected_rows)
 
             assert_two_queries_equal(session, query.format(tm.table_name),
-                                     session, query.format(mv_name), consistency_level=ConsistencyLevel.ALL,
+                                     session, query.format(mv_name), consistency_level=consistency_level,
                                      session_timeout=120, group=True,
                                      groupby_column1=mv.mv_columns_list[grouby_column_index],
                                      groupby_column2=mv.mv_columns_list[grouby_column_index])
@@ -719,7 +773,7 @@ class TestMaterializedViews(Tester):
             - After 40 seconds (before the table prefill is finished) drop the MV
             - Test that the view does not exist in the system schema and base table has 1000000 rows
         """
-
+        # Allowed error is mutation_write_timeout_exception
         self.allow_log_errors = True
         prefill = 1000000
 
@@ -749,6 +803,8 @@ class TestMaterializedViews(Tester):
 
         assert_none(session, 'select * from system_schema.views', cl=ConsistencyLevel.ALL)
         assert_row_count(session, tm.table_name, prefill, consistency_level=ConsistencyLevel.QUORUM)
+
+        self._check_errors(node=self.cluster.nodelist()[0], exclude_errors=['mutation_write_timeout_exception'])
 
     def fetch_mv_after_recreate_test(self):
         """ Validate it's allowed to fetch from MV after it is dropped and recreated
@@ -1123,6 +1179,8 @@ class TestMaterializedViews(Tester):
         for i in xrange(1000, 1100):
             assert_one(session, "SELECT * FROM t_by_v WHERE v = {}".format(-i), [-i, i])
 
+        self._check_errors(node=self.cluster.nodelist()[0], exclude_errors='migration_task - Can''t send migration request')
+
     def add_node_during_base_table_update_test(self):
         """ Test expand cluster - add one node during MV updates
             Test starts with a starting size: one DCs with 4 nodes, and add new node to the same DC during update existent records of base
@@ -1179,9 +1237,9 @@ class TestMaterializedViews(Tester):
                                  group=True, groupby_column1=select, groupby_column2=select)
 
     def _add_new_node(self, data_center='dc1', wait_for_binary_proto=True, jvm_args=None,
-                      configuration_options=None, queue=None, delay=0):
+                      configuration_options=None, queue=None, delay=0, new_node_index=None):
         time.sleep(delay)
-        node = new_node(self.cluster, data_center=data_center)
+        node = new_node(self.cluster, data_center=data_center, new_node_index=new_node_index)
         if configuration_options:
             node.set_configuration_options(values=configuration_options)  # CASSANDRA-11670
         debug("Start join at {}".format(time.strftime("%H:%M:%S")))
@@ -2966,7 +3024,7 @@ class TestMaterializedViews(Tester):
                 session, "SELECT a, b, c, d FROM mv",
                 [[1, 0, 1, 0], [1, 1, 1, 0]],
                 ignore_order=True,
-                cl=ConsistencyLevel.QUORUM
+                cl=ConsistencyLevel.QUORUM, attempts=20
             )
 
             # insert new row that does match the filter
@@ -2975,7 +3033,7 @@ class TestMaterializedViews(Tester):
                 session, "SELECT a, b, c, d FROM mv",
                 [[1, 0, 1, 0], [1, 1, 1, 0], [1, 2, 1, 0]],
                 ignore_order=True,
-                cl=ConsistencyLevel.QUORUM
+                cl=ConsistencyLevel.QUORUM, attempts=20
             )
 
             # update rows that does not match the filter
@@ -2985,7 +3043,7 @@ class TestMaterializedViews(Tester):
                 session, "SELECT a, b, c, d FROM mv",
                 [[1, 0, 1, 0], [1, 1, 1, 0], [1, 2, 1, 0]],
                 ignore_order=True,
-                cl=ConsistencyLevel.QUORUM
+                cl=ConsistencyLevel.QUORUM, attempts=20
             )
 
             # update a row that does match the filter
@@ -2994,7 +3052,7 @@ class TestMaterializedViews(Tester):
                 session, "SELECT a, b, c, d FROM mv",
                 [[1, 0, 1, 0], [1, 1, 1, 2], [1, 2, 1, 0]],
                 ignore_order=True,
-                cl=ConsistencyLevel.QUORUM
+                cl=ConsistencyLevel.QUORUM, attempts=20
             )
 
             # delete rows that does not match the filter
@@ -3005,7 +3063,7 @@ class TestMaterializedViews(Tester):
                 session, "SELECT a, b, c, d FROM mv",
                 [[1, 0, 1, 0], [1, 1, 1, 2], [1, 2, 1, 0]],
                 ignore_order=True,
-                cl=ConsistencyLevel.QUORUM
+                cl=ConsistencyLevel.QUORUM, attempts=20
             )
 
             # delete a row that does match the filter
@@ -3014,12 +3072,12 @@ class TestMaterializedViews(Tester):
                 session, "SELECT a, b, c, d FROM mv",
                 [[1, 0, 1, 0], [1, 2, 1, 0]],
                 ignore_order=True,
-                cl=ConsistencyLevel.QUORUM
+                cl=ConsistencyLevel.QUORUM, attempts=20
             )
 
             # delete a partition that matches the filter
             session.execute(delete_stmt2, (1,))
-            assert_all(session, "SELECT a, b, c, d FROM mv", [], cl=ConsistencyLevel.QUORUM)
+            assert_all(session, "SELECT a, b, c, d FROM mv", [], cl=ConsistencyLevel.QUORUM, attempts=20)
 
             # Cleanup
             session.execute("DROP MATERIALIZED VIEW mv")
