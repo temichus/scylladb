@@ -834,7 +834,7 @@ class TestUpdateClusterLayout(Tester):
         self.create_ks(session, 'ks', 1)
         self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
-        insert_c1c2(session, keys=range(1000), consistency=ConsistencyLevel.ONE)
+        insert_c1c2(session, keys=range(10000), consistency=ConsistencyLevel.ONE)
 
         def run():
             try:
@@ -849,12 +849,15 @@ class TestUpdateClusterLayout(Tester):
         # check node2 has started decommission
         node2.watch_log_for("Beginning stream session")
 
+        debug("Stop node2 ");
         node2.stop(gently=False)
 
         # starting node2 - it should reconnect and run as is
-        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
-        result = list(session.execute("SELECT * FROM cf"))
-        self.assertEqual(len(result), 1000, len(result))
+        debug("Start node2 ");
+        node2.start(wait_other_notice=False, wait_for_binary_proto=True)
+        session2= self.patient_cql_connection(node2)
+        result = list(session2.execute("SELECT * FROM ks.cf"))
+        self.assertEqual(len(result), 10000, len(result))
 
         self.verify_nodes_status(node1, ['UN', 'UN', 'UN'])
 
