@@ -1180,8 +1180,7 @@ class TestNodetool(Tester):
                 node.nodetool("refresh keyspace1 standard1")
                 self.fail("refresh should be with Permission denied")
             except NodetoolError as e:
-                self.assertTrue("nodetool: Scylla API server HTTP POST to URL '/storage_service/sstables/keyspace1'"
-                                " failed: Storage I/O error: 13: Permission denied" in e.message,
+                self.assertTrue("Storage I/O error: 13" in e.message,
                                 'expected error not found in log')
         finally:
             self._change_data_perms(node, 'data', stat.S_IWRITE | stat.S_IREAD | stat.S_IEXEC)
