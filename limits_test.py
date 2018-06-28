@@ -15,7 +15,7 @@ MAX_KEY_SIZE = LIMIT_64_K
 MAX_BLOB_SIZE = 8388608  # theoretical limit LIMIT_2GB
 MAX_COLUMNS = LIMIT_64_K
 MAX_TUPLES = LIMIT_32K
-MAX_BATCH_SIZE = LIMIT_64_K
+MAX_BATCH_SIZE = 50 * 1024
 MAX_CELLS_COLUMNS = LIMIT_32K
 MAX_CELLS_BATCH_SIZE = 1000
 MAX_CELLS = 16777216
@@ -214,27 +214,30 @@ class TestLimits(Tester):
             count <<= 1
             self._do_test_max_tuples(session, node, count - 1)
 
-    def _do_test_max_batch_size(self, session, node, count):
-        print("Testing max batch size for size=%i" % count)
-        # in the future embed a blob in this
-        # so the batch will be 64K
+    def _do_test_max_batch_size(self, session, node, size):
+        print("Testing max batch size for size=%i" % size)
         c = """
             CREATE TABLE stuff (
               k int PRIMARY KEY,
+              v text
             );
             """
         session.execute(c)
 
         c = "BEGIN UNLOGGED  BATCH\n"
-        for i in range(count):
-            c += "INSERT INTO stuff (k) VALUES(%i)\n" % i
+        row_size = 1000
+        overhead = 100
+        blob = (row_size - overhead) * 'x'
+        rows = size / row_size
+        for i in range(rows):
+            c += "INSERT INTO stuff (k, v) VALUES(%i, '%s')\n" % (i, blob)
         c += "APPLY BATCH;\n"
 
         session.execute(c)
 
         c = "SELECT * FROM STUFF;"
         res = session.execute(c)
-        self.assertEqual(len(list(res)), count)
+        self.assertEqual(len(list(res)), rows)
 
         session.execute("""DROP TABLE STUFF""")
 
