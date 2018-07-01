@@ -3,32 +3,58 @@ import random
 import re
 import time
 import uuid
+from unittest import skipIf
 
 from dtest import Tester, debug
 from tools import since
 from assertions import assert_invalid, assert_one, assert_row_count
+
 from cassandra import InvalidRequest
-from cassandra.concurrent import execute_concurrent
-from cassandra.query import BatchStatement, SimpleStatement
+from cassandra.concurrent import (execute_concurrent,
+                                  execute_concurrent_with_args)
 from cassandra.protocol import ConfigurationException
+from cassandra.query import BatchStatement, SimpleStatement
+
+from dtest import (DISABLE_VNODES, OFFHEAP_MEMTABLES, DtestTimeoutError,
+                   Tester, debug, CASSANDRA_VERSION_FROM_BUILD, create_ks, create_cf)
+from tools.assertions import assert_bootstrap_state, assert_invalid, assert_none, assert_one, assert_row_count
+from tools.data import index_is_built, rows_to_list
+from tools.decorators import since
+from tools.misc import new_node
 
 
 class TestSecondaryIndexes(Tester):
 
-    def bug3367_test(self):
+    @staticmethod
+    def _index_sstables_files(node, keyspace, table, index):
+        files = []
+        for data_dir in node.data_directories():
+            data_dir = os.path.join(data_dir, keyspace)
+            base_tbl_dir = os.path.join(data_dir, [s for s in os.listdir(data_dir) if s.startswith(table)][0])
+            index_sstables_dir = os.path.join(base_tbl_dir, '.' + index)
+            files.extend(os.listdir(index_sstables_dir))
+        return set(files)
+
+    def data_created_before_index_not_returned_in_where_query_test(self):
+        """
+        @jira_ticket CASSANDRA-3367
+        """
         cluster = self.cluster
         cluster.populate(1).start()
         [node1] = cluster.nodelist()
 
         session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'ks', 1)
+        create_ks(session, 'ks', 1)
 
-        columns = {"password": "varchar", "gender": "varchar", "session_token": "varchar", "state": "varchar", "birth_year": "bigint"}
-        self.create_cf(session, 'users', columns=columns)
+        columns = {"password": "varchar", "gender": "varchar", "session_token": "varchar", "state": "varchar",
+                   "birth_year": "bigint"}
+        create_cf(session, 'users', columns=columns)
 
         # insert data
-        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user1', 'ch@ngem3a', 'f', 'TX', 1968);")
-        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user2', 'ch@ngem3b', 'm', 'CA', 1971);")
+        session.execute(
+            "INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user1', 'ch@ngem3a', 'f', 'TX', 1968);")
+        session.execute(
+            "INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user2', 'ch@ngem3b', 'm', 'CA', 1971);")
 
         # create index
         session.execute("CREATE INDEX gender_key ON users (gender);")
@@ -36,17 +62,16 @@ class TestSecondaryIndexes(Tester):
         session.execute("CREATE INDEX birth_year_key ON users (birth_year);")
 
         # insert data
-        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user3', 'ch@ngem3c', 'f', 'FL', 1978);")
-        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user4', 'ch@ngem3d', 'm', 'TX', 1974);")
+        session.execute(
+            "INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user3', 'ch@ngem3c', 'f', 'FL', 1978);")
+        session.execute(
+            "INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user4', 'ch@ngem3d', 'm', 'TX', 1974);")
 
-        result = list(session.execute("SELECT * FROM users;"))
-        assert len(result) == 4, "Expecting 4 users, got" + str(result)
+        assert_row_count(session, "users", 4)
 
-        result = list(session.execute("SELECT * FROM users WHERE state='TX';"))
-        assert len(result) == 2, "Expecting 2 users, got" + str(result)
+        assert_row_count(session, "users", 2, "state='TX'")
 
-        result = list(session.execute("SELECT * FROM users WHERE state='CA';"))
-        assert len(result) == 1, "Expecting 1 users, got" + str(result)
+        assert_row_count(session, "users", 1, "state='CA'")
 
     def test_low_cardinality_indexes(self):
         """
@@ -84,7 +109,8 @@ class TestSecondaryIndexes(Tester):
                 if match:
                     concurrency = int(match.group(1))
                     expected_per_range = float(match.group(2))
-                    self.assertTrue(concurrency > 1, "Expected more than 1 concurrent range request, got %d" % concurrency)
+                    self.assertTrue(concurrency > 1,
+                                    "Expected more than 1 concurrent range request, got %d" % concurrency)
                     self.assertTrue(expected_per_range > 0)
                     break
             else:
@@ -110,18 +136,27 @@ class TestSecondaryIndexes(Tester):
             self.assertEqual(limit, len(result))
 
     def test_6924_dropping_ks(self):
-        """Tests CASSANDRA-6924
-
+        """
+        @jira_ticket CASSANDRA-6924
+        @jira_ticket CASSANDRA-11729
         Data inserted immediately after dropping and recreating a
         keyspace with an indexed column familiy is not included
         in the index.
+        This test can be flaky due to concurrency issues during
+        schema updates. See CASSANDRA-11729 for an explanation.
         """
         # Reproducing requires at least 3 nodes:
         cluster = self.cluster
         cluster.populate(3).start()
         node1, node2, node3 = cluster.nodelist()
-        conn = self.patient_cql_connection(node1)
-        session = conn
+        session = self.patient_cql_connection(node1)
+
+        # We have to wait up to RING_DELAY + 1 seconds for the MV Builder task
+        # to complete, to prevent schema concurrency issues with the drop
+        # keyspace calls that come later. See CASSANDRA-11729.
+        if self.cluster.version() > '3.0':
+            self.cluster.wait_for_any_log('Completed submission of build tasks for any materialized views',
+                                          timeout=35, filename='debug.log')
 
         # This only occurs when dropping and recreating with
         # the same name, so loop through this test a few times:
@@ -132,7 +167,7 @@ class TestSecondaryIndexes(Tester):
             except ConfigurationException:
                 pass
 
-            self.create_ks(session, 'ks', 1)
+            create_ks(session, 'ks', 1)
             session.execute("CREATE TABLE ks.cf (key text PRIMARY KEY, col1 text);")
             session.execute("CREATE INDEX on ks.cf (col1);")
 
@@ -147,8 +182,8 @@ class TestSecondaryIndexes(Tester):
             self.assertEqual(count, 10)
 
     def test_6924_dropping_cf(self):
-        """Tests CASSANDRA-6924
-
+        """
+        @jira_ticket CASSANDRA-6924
         Data inserted immediately after dropping and recreating an
         indexed column family is not included in the index.
         """
@@ -156,9 +191,9 @@ class TestSecondaryIndexes(Tester):
         cluster = self.cluster
         cluster.populate(3).start()
         node1, node2, node3 = cluster.nodelist()
-        conn = self.patient_cql_connection(node1)
-        session = conn
-        self.create_ks(session, 'ks', 1)
+        session = self.patient_cql_connection(node1)
+
+        create_ks(session, 'ks', 1)
 
         # This only occurs when dropping and recreating with
         # the same name, so loop through this test a few times:
@@ -183,17 +218,17 @@ class TestSecondaryIndexes(Tester):
             self.assertEqual(count, 10)
 
     def test_8280_validate_indexed_values(self):
-        """Tests CASSANDRA-8280
-
+        """
+        @jira_ticket CASSANDRA-8280
         Reject inserts & updates where values of any indexed
         column is > 64k
         """
         cluster = self.cluster
         cluster.populate(1).start()
         node1 = cluster.nodelist()[0]
-        conn = self.patient_cql_connection(node1)
-        session = conn
-        self.create_ks(session, 'ks', 1)
+        session = self.patient_cql_connection(node1)
+
+        create_ks(session, 'ks', 1)
 
         self.insert_row_with_oversize_value("CREATE TABLE %s(a int, b int, c text, PRIMARY KEY (a))",
                                             "CREATE INDEX ON %s(c)",
@@ -239,7 +274,7 @@ class TestSecondaryIndexes(Tester):
     def _execute_and_fail(self, operation, cql_string):
         try:
             operation()
-            assert False, "Expecting query %s to be invalid" % cql_string
+            self.fail("Expecting query {} to be invalid".format(cql_string))
         except AssertionError as e:
             raise e
         except InvalidRequest:
@@ -259,7 +294,7 @@ class TestSecondaryIndexes(Tester):
         if all_match:
             return
         else:
-            time.sleep(0.10)
+            time.sleep(1)
             self.wait_for_schema_agreement(session)
 
     @since('3.0')
@@ -272,38 +307,185 @@ class TestSecondaryIndexes(Tester):
         node1, = cluster.nodelist()
         session = self.patient_cql_connection(node1)
 
-        node1.stress(['write', 'n=50K'])
+        node1.stress(['write', 'n=50K', 'no-warmup'])
         session.execute("use keyspace1;")
         lookup_value = session.execute('select "C0" from standard1 limit 1')[0].C0
         session.execute('CREATE INDEX ix_c0 ON standard1("C0");')
 
-        def index_is_built():
-            return len(list(session.execute(
-                """SELECT * FROM system."IndexInfo"
-                   WHERE table_name ='keyspace1' AND index_name='ix_c0'"""))) == 1
-
-        while not index_is_built():
+        start = time.time()
+        while time.time() < start + 30:
             debug("waiting for index to build")
             time.sleep(1)
+            if index_is_built(node1, session, 'keyspace1', 'standard1', 'ix_c0'):
+                break
+        else:
+            raise DtestTimeoutError()
 
         stmt = session.prepare('select * from standard1 where "C0" = ?')
         self.assertEqual(1, len(list(session.execute(stmt, [lookup_value]))))
-        base_tbl_dir = os.path.dirname(node1.get_sstablespath(keyspace="keyspace1", tables=["standard1"])[0])
-        index_sstables_dir = os.path.join(base_tbl_dir, '.ix_c0')
-
-        before_files = os.listdir(index_sstables_dir)
+        before_files = self._index_sstables_files(node1, 'keyspace1', 'standard1', 'ix_c0')
 
         node1.nodetool("rebuild_index keyspace1 standard1 ix_c0")
-        while not index_is_built():
+        start = time.time()
+        while time.time() < start + 30:
             debug("waiting for index to rebuild")
             time.sleep(1)
+            if index_is_built(node1, session, 'keyspace1', 'standard1', 'ix_c0'):
+                break
+        else:
+            raise DtestTimeoutError()
 
-        after_files = os.listdir(index_sstables_dir)
-        self.assertNotEqual(set(before_files), set(after_files))
+        after_files = self._index_sstables_files(node1, 'keyspace1', 'standard1', 'ix_c0')
+        self.assertNotEqual(before_files, after_files)
         self.assertEqual(1, len(list(session.execute(stmt, [lookup_value]))))
 
         # verify that only the expected row is present in the build indexes table
         self.assertEqual(1, len(list(session.execute("""SELECT * FROM system."IndexInfo";"""))))
+
+    @since('4.0')
+    def test_failing_manual_rebuild_index(self):
+        """
+        @jira_ticket CASSANDRA-10130
+        Tests the management of index status during manual index rebuilding failures.
+        """
+
+        cluster = self.cluster
+        cluster.populate(1, install_byteman=True).start(wait_for_binary_proto=True)
+        node = cluster.nodelist()[0]
+
+        session = self.patient_cql_connection(node)
+        create_ks(session, 'k', 1)
+        session.execute("CREATE TABLE k.t (k int PRIMARY KEY, v int)")
+        session.execute("CREATE INDEX idx ON k.t(v)")
+        session.execute("INSERT INTO k.t(k, v) VALUES (0, 1)")
+        session.execute("INSERT INTO k.t(k, v) VALUES (2, 3)")
+
+        # Verify that the index is marked as built and it can answer queries
+        assert_one(session, """SELECT * FROM system."IndexInfo" WHERE table_name='k'""", ['k', 'idx'])
+        assert_one(session, "SELECT * FROM k.t WHERE v = 1", [0, 1])
+
+        # Simulate a failing index rebuild
+        before_files = self._index_sstables_files(node, 'k', 't', 'idx')
+        node.byteman_submit(['./byteman/index_build_failure.btm'])
+        with self.assertRaises(Exception):
+            node.nodetool("rebuild_index k t idx")
+        after_files = self._index_sstables_files(node, 'k', 't', 'idx')
+
+        # Verify that the index is not rebuilt, not marked as built, and it still can answer queries
+        self.assertEqual(before_files, after_files)
+        assert_none(session, """SELECT * FROM system."IndexInfo" WHERE table_name='k'""")
+        assert_one(session, "SELECT * FROM k.t WHERE v = 1", [0, 1])
+
+        # Restart the node to trigger the scheduled index rebuild
+        before_files = after_files
+        node.nodetool('drain')
+        node.stop()
+        cluster.start()
+        session = self.patient_cql_connection(node)
+        session.execute("USE k")
+        after_files = self._index_sstables_files(node, 'k', 't', 'idx')
+
+        # Verify that, the index is rebuilt, marked as built, and it can answer queries
+        self.assertNotEqual(before_files, after_files)
+        assert_one(session, """SELECT * FROM system."IndexInfo" WHERE table_name='k'""", ['k', 'idx'])
+        assert_one(session, "SELECT * FROM k.t WHERE v = 1", [0, 1])
+
+        # Simulate another failing index rebuild
+        before_files = self._index_sstables_files(node, 'k', 't', 'idx')
+        node.byteman_submit(['./byteman/index_build_failure.btm'])
+        with self.assertRaises(Exception):
+            node.nodetool("rebuild_index k t idx")
+        after_files = self._index_sstables_files(node, 'k', 't', 'idx')
+
+        # Verify that the index is not rebuilt, not marked as built, and it still can answer queries
+        self.assertEqual(before_files, after_files)
+        assert_none(session, """SELECT * FROM system."IndexInfo" WHERE table_name='k'""")
+        assert_one(session, "SELECT * FROM k.t WHERE v = 1", [0, 1])
+
+        # Successfully rebuild the index
+        before_files = after_files
+        node.nodetool("rebuild_index k t idx")
+        cluster.wait_for_compactions()
+        after_files = self._index_sstables_files(node, 'k', 't', 'idx')
+
+        # Verify that the index is rebuilt, marked as built, and it can answer queries
+        self.assertNotEqual(before_files, after_files)
+        assert_one(session, """SELECT * FROM system."IndexInfo" WHERE table_name='k'""", ['k', 'idx'])
+        assert_one(session, "SELECT * FROM k.t WHERE v = 1", [0, 1])
+
+    @since('4.0')
+    def test_drop_index_while_building(self):
+        """
+        asserts that indexes deleted before they have been completely build are invalidated and not built after restart
+        """
+        cluster = self.cluster
+        cluster.populate(1).start()
+        node = cluster.nodelist()[0]
+        session = self.patient_cql_connection(node)
+
+        # Create some thousands of rows to guarantee a long index building
+        node.stress(['write', 'n=50K', 'no-warmup'])
+        session.execute("USE keyspace1")
+
+        # Create an index and immediately drop it, without waiting for index building
+        session.execute('CREATE INDEX idx ON standard1("C0")')
+        session.execute('DROP INDEX idx')
+        cluster.wait_for_compactions()
+
+        # Check that the index is not marked as built nor queryable
+        assert_none(session, """SELECT * FROM system."IndexInfo" WHERE table_name='keyspace1'""")
+        assert_invalid(session,
+                       'SELECT * FROM standard1 WHERE "C0" = 0x00',
+                       'Cannot execute this query as it might involve data filtering')
+
+        # Restart the node to trigger any eventual unexpected index rebuild
+        node.nodetool('drain')
+        node.stop()
+        cluster.start()
+        session = self.patient_cql_connection(node)
+        session.execute("USE keyspace1")
+
+        # The index should remain not built nor queryable after restart
+        assert_none(session, """SELECT * FROM system."IndexInfo" WHERE table_name='keyspace1'""")
+        assert_invalid(session,
+                       'SELECT * FROM standard1 WHERE "C0" = 0x00',
+                       'Cannot execute this query as it might involve data filtering')
+
+    @since('4.0')
+    def test_index_is_not_always_rebuilt_at_start(self):
+        """
+        @jira_ticket CASSANDRA-10130
+        Tests the management of index status during manual index rebuilding failures.
+        """
+
+        cluster = self.cluster
+        cluster.populate(1, install_byteman=True).start(wait_for_binary_proto=True)
+        node = cluster.nodelist()[0]
+
+        session = self.patient_cql_connection(node)
+        create_ks(session, 'k', 1)
+        session.execute("CREATE TABLE k.t (k int PRIMARY KEY, v int)")
+        session.execute("CREATE INDEX idx ON k.t(v)")
+        session.execute("INSERT INTO k.t(k, v) VALUES (0, 1)")
+        session.execute("INSERT INTO k.t(k, v) VALUES (2, 3)")
+
+        # Verify that the index is marked as built and it can answer queries
+        assert_one(session, """SELECT * FROM system."IndexInfo" WHERE table_name='k'""", ['k', 'idx'])
+        assert_one(session, "SELECT * FROM k.t WHERE v = 1", [0, 1])
+
+        # Restart the node to trigger any eventual undesired index rebuild
+        before_files = self._index_sstables_files(node, 'k', 't', 'idx')
+        node.nodetool('drain')
+        node.stop()
+        cluster.start()
+        session = self.patient_cql_connection(node)
+        session.execute("USE k")
+        after_files = self._index_sstables_files(node, 'k', 't', 'idx')
+
+        # Verify that, the index is not rebuilt, marked as built, and it can answer queries
+        self.assertNotEqual(before_files, after_files)
+        assert_one(session, """SELECT * FROM system."IndexInfo" WHERE table_name='k'""", ['k', 'idx'])
+        assert_one(session, "SELECT * FROM k.t WHERE v = 1", [0, 1])
 
     def test_multi_index_filtering_query(self):
         """
@@ -379,7 +561,7 @@ class TestSecondaryIndexes(Tester):
         cluster = self.cluster
         cluster.populate(3).start()
         node1, node2, node3 = cluster.nodelist()
-        session = self.patient_cql_connection(node1)
+        session = self.patient_exclusive_cql_connection(node3)
         session.max_trace_wait = 120
         session.execute("CREATE KEYSPACE ks WITH REPLICATION = {'class': 'SimpleStrategy', 'replication_factor': '1'};")
         session.execute("CREATE TABLE ks.cf (a text PRIMARY KEY, b text);")
@@ -393,9 +575,9 @@ class TestSecondaryIndexes(Tester):
 
         cluster.flush()
 
-        def check_trace_events(trace, regex, expected_matches):
+        def check_trace_events(trace, regex, expected_matches, on_failure):
             """
-            Check for the presence of certain trace events. exact_matches should be a list of
+            Check for the presence of certain trace events. expected_matches should be a list of
             tuple(source, min_count, max_count) indicating that of all the trace events for the
             the source, the supplied regex should match at least min_count trace messages & at
             most max_count messages. E.g. [(127.0.0.1, 1, 10), (127.0.0.2, 0, 0)]
@@ -412,13 +594,22 @@ class TestSecondaryIndexes(Tester):
                 if match:
                     if event.source in match_counts:
                         match_counts[event.source] += 1
-
             for event_source, min_matches, max_matches in expected_matches:
                 if match_counts[event_source] < min_matches or match_counts[event_source] > max_matches:
-                    self.fail("Expected to find between {min} and {max} trace events matching {pattern} from {source}, "
-                              "but actually found {actual}. (Full counts: {all})"
-                              .format(min=min_matches, max=max_matches, pattern=regex, source=event_source,
-                                      actual=match_counts[event_source], all=match_counts))
+                    on_failure(trace, regex, expected_matches, match_counts, event_source, min_matches, max_matches)
+
+        def halt_on_failure(trace, regex, expected_matches, match_counts, event_source, min_expected, max_expected):
+            self.fail("Expected to find between {min} and {max} trace events matching {pattern} from {source}, "
+                      "but actually found {actual}. (Full counts: {all})"
+                      .format(min=min_expected, max=max_expected, pattern=regex, source=event_source,
+                              actual=match_counts[event_source], all=match_counts))
+
+        def retry_on_failure(trace, regex, expected_matches, match_counts, event_source, min_expected, max_expected):
+            debug("Trace event inspection did not match expected, sleeping before re-fetching trace events. "
+                  "Expected: {expected} Actual: {actual}".format(expected=expected_matches, actual=match_counts))
+            time.sleep(2)
+            trace.populate(max_wait=2.0)
+            check_trace_events(trace, regex, expected_matches, halt_on_failure)
 
         query = SimpleStatement("SELECT * FROM ks.cf WHERE b='1';")
         result = list(session.execute(query, trace=True))
@@ -426,21 +617,61 @@ class TestSecondaryIndexes(Tester):
 
         trace = result.get_query_trace()
 
-        # node2 is the coordinator for the query
+        # we have forced node3 to act as the coordinator for
+        # all requests by using an exclusive connection, so
+        # only node3 should select the index to use
         check_trace_events(trace,
                            "Index mean cardinalities are b_index:[0-9]*. Scanning with b_index.",
-                           [("127.0.0.1", 0, 0), ("127.0.0.2", 1, 1), ("127.0.0.3", 0, 0)])
+                           [("127.0.0.1", 0, 0), ("127.0.0.2", 0, 0), ("127.0.0.3", 1, 1)],
+                           retry_on_failure)
         # check that the index is used on each node, really we only care that the matching
         # message appears on every node, so the max count is not important
         check_trace_events(trace,
                            "Executing read on ks.cf using index b_index",
-                           [("127.0.0.1", 1, 200), ("127.0.0.2", 1, 200), ("127.0.0.3", 1, 200)])
+                           [("127.0.0.1", 1, 200), ("127.0.0.2", 1, 200), ("127.0.0.3", 1, 200)],
+                           retry_on_failure)
+
+    @skipIf(DISABLE_VNODES, "Test should only run with vnodes")
+    def test_query_indexes_with_vnodes(self):
+        """
+        Verifies correct query behaviour in the presence of vnodes
+        @jira_ticket CASSANDRA-11104
+        """
+        cluster = self.cluster
+        cluster.populate(2).start()
+        node1, node2 = cluster.nodelist()
+        session = self.patient_cql_connection(node1)
+        session.execute("CREATE KEYSPACE ks WITH REPLICATION = {'class': 'SimpleStrategy', 'replication_factor': '1'};")
+        session.execute("CREATE TABLE ks.compact_table (a int PRIMARY KEY, b int) WITH COMPACT STORAGE;")
+        session.execute("CREATE INDEX keys_index ON ks.compact_table (b);")
+        session.execute("CREATE TABLE ks.regular_table (a int PRIMARY KEY, b int)")
+        session.execute("CREATE INDEX composites_index on ks.regular_table (b)")
+
+        for node in cluster.nodelist():
+            start = time.time()
+            while time.time() < start + 10:
+                debug("waiting for index to build")
+                time.sleep(1)
+                if index_is_built(node, session, 'ks', 'regular_table', 'composites_index'):
+                    break
+            else:
+                raise DtestTimeoutError()
+
+        insert_args = [(i, i % 2) for i in xrange(100)]
+        execute_concurrent_with_args(session,
+                                     session.prepare("INSERT INTO ks.compact_table (a, b) VALUES (?, ?)"),
+                                     insert_args)
+        execute_concurrent_with_args(session,
+                                     session.prepare("INSERT INTO ks.regular_table (a, b) VALUES (?, ?)"),
+                                     insert_args)
+
+        res = session.execute("SELECT * FROM ks.compact_table WHERE b = 0")
+        self.assertEqual(len(rows_to_list(res)), 50)
+        res = session.execute("SELECT * FROM ks.regular_table WHERE b = 0")
+        self.assertEqual(len(rows_to_list(res)), 50)
 
 
 class TestSecondaryIndexesOnCollections(Tester):
-
-    def __init__(self, *args, **kwargs):
-        Tester.__init__(self, *args, **kwargs)
 
     def test_tuple_indexes(self):
         """
@@ -450,7 +681,7 @@ class TestSecondaryIndexesOnCollections(Tester):
         cluster.populate(1).start()
         [node1] = cluster.nodelist()
         session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'tuple_index_test', 1)
+        create_ks(session, 'tuple_index_test', 1)
         session.execute("use tuple_index_test")
         session.execute("""
             CREATE TABLE simple_with_tuple (
@@ -472,14 +703,6 @@ class TestSecondaryIndexesOnCollections(Tester):
         for (success, result) in results:
             self.assertTrue(success, "didn't get success on insert: {0}".format(result))
 
-        # no index present yet, make sure there's an error trying to query column
-        stmt = ("SELECT * from simple_with_tuple where single_tuple = (1)")
-
-        if self.cluster.version() < "3":
-            assert_invalid(session, stmt, 'No secondary indexes on the restricted columns support the provided operators')
-        else:
-            assert_invalid(session, stmt, 'No supported secondary index found for the non primary key columns restrictions')
-
         session.execute("CREATE INDEX idx_single_tuple ON simple_with_tuple(single_tuple);")
         session.execute("CREATE INDEX idx_double_tuple ON simple_with_tuple(double_tuple);")
         session.execute("CREATE INDEX idx_triple_tuple ON simple_with_tuple(triple_tuple);")
@@ -488,14 +711,22 @@ class TestSecondaryIndexesOnCollections(Tester):
 
         # check if indexes work on existing data
         for n in range(50):
-            self.assertEqual(5, len(list(session.execute("select * from simple_with_tuple where single_tuple = ({0});".format(n)))))
-            self.assertEqual(0, len(list(session.execute("select * from simple_with_tuple where single_tuple = (-1);".format(n)))))
-            self.assertEqual(5, len(list(session.execute("select * from simple_with_tuple where double_tuple = ({0},{0});".format(n)))))
-            self.assertEqual(0, len(list(session.execute("select * from simple_with_tuple where double_tuple = ({0},-1);".format(n)))))
-            self.assertEqual(5, len(list(session.execute("select * from simple_with_tuple where triple_tuple = ({0},{0},{0});".format(n)))))
-            self.assertEqual(0, len(list(session.execute("select * from simple_with_tuple where triple_tuple = ({0},{0},-1);".format(n)))))
-            self.assertEqual(5, len(list(session.execute("select * from simple_with_tuple where nested_one = ({0},({0},{0}));".format(n)))))
-            self.assertEqual(0, len(list(session.execute("select * from simple_with_tuple where nested_one = ({0},({0},-1));".format(n)))))
+            self.assertEqual(5, len(
+                list(session.execute("select * from simple_with_tuple where single_tuple = ({0});".format(n)))))
+            self.assertEqual(0, len(
+                list(session.execute("select * from simple_with_tuple where single_tuple = (-1);".format(n)))))
+            self.assertEqual(5, len(
+                list(session.execute("select * from simple_with_tuple where double_tuple = ({0},{0});".format(n)))))
+            self.assertEqual(0, len(
+                list(session.execute("select * from simple_with_tuple where double_tuple = ({0},-1);".format(n)))))
+            self.assertEqual(5, len(
+                list(session.execute("select * from simple_with_tuple where triple_tuple = ({0},{0},{0});".format(n)))))
+            self.assertEqual(0, len(
+                list(session.execute("select * from simple_with_tuple where triple_tuple = ({0},{0},-1);".format(n)))))
+            self.assertEqual(5, len(
+                list(session.execute("select * from simple_with_tuple where nested_one = ({0},({0},{0}));".format(n)))))
+            self.assertEqual(0, len(
+                list(session.execute("select * from simple_with_tuple where nested_one = ({0},({0},-1));".format(n)))))
 
         # check if indexes work on new data inserted after index creation
         results = execute_concurrent(session, cmds * 3, raise_on_first_error=True, concurrency=200)
@@ -503,10 +734,14 @@ class TestSecondaryIndexesOnCollections(Tester):
             self.assertTrue(success, "didn't get success on insert: {0}".format(result))
         time.sleep(5)
         for n in range(50):
-            self.assertEqual(8, len(list(session.execute("select * from simple_with_tuple where single_tuple = ({0});".format(n)))))
-            self.assertEqual(8, len(list(session.execute("select * from simple_with_tuple where double_tuple = ({0},{0});".format(n)))))
-            self.assertEqual(8, len(list(session.execute("select * from simple_with_tuple where triple_tuple = ({0},{0},{0});".format(n)))))
-            self.assertEqual(8, len(list(session.execute("select * from simple_with_tuple where nested_one = ({0},({0},{0}));".format(n)))))
+            self.assertEqual(8, len(
+                list(session.execute("select * from simple_with_tuple where single_tuple = ({0});".format(n)))))
+            self.assertEqual(8, len(
+                list(session.execute("select * from simple_with_tuple where double_tuple = ({0},{0});".format(n)))))
+            self.assertEqual(8, len(
+                list(session.execute("select * from simple_with_tuple where triple_tuple = ({0},{0},{0});".format(n)))))
+            self.assertEqual(8, len(
+                list(session.execute("select * from simple_with_tuple where nested_one = ({0},({0},{0}));".format(n)))))
 
         # check if indexes work on mutated data
         for n in range(5):
@@ -520,22 +755,31 @@ class TestSecondaryIndexesOnCollections(Tester):
 
             rows = session.execute("select * from simple_with_tuple where triple_tuple = ({0},{0},{0});".format(n))
             for row in rows:
-                session.execute("update simple_with_tuple set triple_tuple = (-999,-999,-999) where id = {0}".format(row.id))
+                session.execute(
+                    "update simple_with_tuple set triple_tuple = (-999,-999,-999) where id = {0}".format(row.id))
 
             rows = session.execute("select * from simple_with_tuple where nested_one = ({0},({0},{0}));".format(n))
             for row in rows:
-                session.execute("update simple_with_tuple set nested_one = (-999,(-999,-999)) where id = {0}".format(row.id))
+                session.execute(
+                    "update simple_with_tuple set nested_one = (-999,(-999,-999)) where id = {0}".format(row.id))
 
         for n in range(5):
-            self.assertEqual(0, len(list(session.execute("select * from simple_with_tuple where single_tuple = ({0});".format(n)))))
-            self.assertEqual(0, len(list(session.execute("select * from simple_with_tuple where double_tuple = ({0},{0});".format(n)))))
-            self.assertEqual(0, len(list(session.execute("select * from simple_with_tuple where triple_tuple = ({0},{0},{0});".format(n)))))
-            self.assertEqual(0, len(list(session.execute("select * from simple_with_tuple where nested_one = ({0},({0},{0}));".format(n)))))
+            self.assertEqual(0, len(
+                list(session.execute("select * from simple_with_tuple where single_tuple = ({0});".format(n)))))
+            self.assertEqual(0, len(
+                list(session.execute("select * from simple_with_tuple where double_tuple = ({0},{0});".format(n)))))
+            self.assertEqual(0, len(
+                list(session.execute("select * from simple_with_tuple where triple_tuple = ({0},{0},{0});".format(n)))))
+            self.assertEqual(0, len(
+                list(session.execute("select * from simple_with_tuple where nested_one = ({0},({0},{0}));".format(n)))))
 
         self.assertEqual(40, len(list(session.execute("select * from simple_with_tuple where single_tuple = (-999);"))))
-        self.assertEqual(40, len(list(session.execute("select * from simple_with_tuple where double_tuple = (-999,-999);"))))
-        self.assertEqual(40, len(list(session.execute("select * from simple_with_tuple where triple_tuple = (-999,-999,-999);"))))
-        self.assertEqual(40, len(list(session.execute("select * from simple_with_tuple where nested_one = (-999,(-999,-999));"))))
+        self.assertEqual(40, len(
+            list(session.execute("select * from simple_with_tuple where double_tuple = (-999,-999);"))))
+        self.assertEqual(40, len(
+            list(session.execute("select * from simple_with_tuple where triple_tuple = (-999,-999,-999);"))))
+        self.assertEqual(40, len(
+            list(session.execute("select * from simple_with_tuple where nested_one = (-999,(-999,-999));"))))
 
     def test_list_indexes(self):
         """
@@ -545,7 +789,7 @@ class TestSecondaryIndexesOnCollections(Tester):
         cluster.populate(1).start()
         [node1] = cluster.nodelist()
         session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'list_index_search', 1)
+        create_ks(session, 'list_index_search', 1)
 
         stmt = ("CREATE TABLE list_index_search.users ("
                 "user_id uuid PRIMARY KEY,"
@@ -553,15 +797,6 @@ class TestSecondaryIndexesOnCollections(Tester):
                 "uuids list<uuid>"
                 ");")
         session.execute(stmt)
-
-        # no index present yet, make sure there's an error trying to query column
-        stmt = ("SELECT * from list_index_search.users where uuids contains {some_uuid}"
-                ).format(some_uuid=uuid.uuid4())
-
-        if self.cluster.version() < "3":
-            assert_invalid(session, stmt, 'No secondary indexes on the restricted columns support the provided operators')
-        else:
-            assert_invalid(session, stmt, 'No supported secondary index found for the non primary key columns restrictions')
 
         # add index and query again (even though there are no rows in the table yet)
         stmt = "CREATE INDEX user_uuids on list_index_search.users (uuids);"
@@ -614,7 +849,8 @@ class TestSecondaryIndexesOnCollections(Tester):
             )
 
         # confirm there is now 50k rows with the 'shared' uuid above in the secondary index
-        stmt = ("SELECT * from list_index_search.users where uuids contains {shared_uuid}").format(shared_uuid=shared_uuid)
+        stmt = ("SELECT * from list_index_search.users where uuids contains {shared_uuid}").format(
+            shared_uuid=shared_uuid)
         rows = list(session.execute(stmt))
         result = [row for row in rows]
         self.assertEqual(50000, len(result))
@@ -644,20 +880,13 @@ class TestSecondaryIndexesOnCollections(Tester):
         cluster.populate(1).start()
         [node1] = cluster.nodelist()
         session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'set_index_search', 1)
+        create_ks(session, 'set_index_search', 1)
 
         stmt = ("CREATE TABLE set_index_search.users ("
                 "user_id uuid PRIMARY KEY,"
                 "email text,"
                 "uuids set<uuid>);")
         session.execute(stmt)
-
-        # no index present yet, make sure there's an error trying to query column
-        stmt = ("SELECT * from set_index_search.users where uuids contains {some_uuid}").format(some_uuid=uuid.uuid4())
-        if self.cluster.version() < "3":
-            assert_invalid(session, stmt, 'No secondary indexes on the restricted columns support the provided operators')
-        else:
-            assert_invalid(session, stmt, 'No supported secondary index found for the non primary key columns restrictions')
 
         # add index and query again (even though there are no rows in the table yet)
         stmt = "CREATE INDEX user_uuids on set_index_search.users (uuids);"
@@ -679,7 +908,8 @@ class TestSecondaryIndexesOnCollections(Tester):
 
         _id = uuid.uuid4()
         # alter the row to add a single item to the indexed set
-        stmt = ("UPDATE set_index_search.users set uuids = {{{id}}} where user_id = {user_id}").format(id=_id, user_id=user1_uuid)
+        stmt = ("UPDATE set_index_search.users set uuids = {{{id}}} where user_id = {user_id}").format(id=_id,
+                                                                                                       user_id=user1_uuid)
         session.execute(stmt)
 
         stmt = ("SELECT * from set_index_search.users where uuids contains {some_uuid}").format(some_uuid=_id)
@@ -708,7 +938,8 @@ class TestSecondaryIndexesOnCollections(Tester):
             )
 
         # confirm there is now 50k rows with the 'shared' uuid above in the secondary index
-        stmt = ("SELECT * from set_index_search.users where uuids contains {shared_uuid}").format(shared_uuid=shared_uuid)
+        stmt = ("SELECT * from set_index_search.users where uuids contains {shared_uuid}").format(
+            shared_uuid=shared_uuid)
         rows = session.execute(stmt)
         result = [row for row in rows]
         self.assertEqual(50000, len(result))
@@ -741,7 +972,7 @@ class TestSecondaryIndexesOnCollections(Tester):
         cluster.populate(1).start()
         [node1] = cluster.nodelist()
         session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'map_double_index', 1)
+        create_ks(session, 'map_double_index', 1)
         session.execute("""
                 CREATE TABLE map_tbl (
                     id uuid primary key,
@@ -783,6 +1014,7 @@ class TestSecondaryIndexesOnCollections(Tester):
         session.cluster.refresh_schema_metadata()
         self.assertEqual(0, len(session.cluster.metadata.keyspaces["map_double_index"].indexes))
 
+    @skipIf(OFFHEAP_MEMTABLES, 'Hangs with offheap memtables')
     def test_map_indexes(self):
         """
         Checks that secondary indexes on maps work for querying on both keys and values
@@ -791,7 +1023,7 @@ class TestSecondaryIndexesOnCollections(Tester):
         cluster.populate(1).start()
         [node1] = cluster.nodelist()
         session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'map_index_search', 1)
+        create_ks(session, 'map_index_search', 1)
 
         stmt = ("CREATE TABLE map_index_search.users ("
                 "user_id uuid PRIMARY KEY,"
@@ -799,22 +1031,12 @@ class TestSecondaryIndexesOnCollections(Tester):
                 "uuids map<uuid, uuid>);")
         session.execute(stmt)
 
-        no_index_error = ('No secondary indexes on the restricted columns support the provided operators'
-                          if self.cluster.version() < '3' else
-                          'No supported secondary index found for the non primary key columns restrictions')
-        # no index present yet, make sure there's an error trying to query column
-        stmt = ("SELECT * from map_index_search.users where uuids contains {some_uuid}").format(some_uuid=uuid.uuid4())
-        assert_invalid(session, stmt, no_index_error)
-
-        stmt = ("SELECT * from map_index_search.users where uuids contains key {some_uuid}"
-                ).format(some_uuid=uuid.uuid4())
-        assert_invalid(session, stmt, no_index_error)
-
         # add index on keys and query again (even though there are no rows in the table yet)
         stmt = "CREATE INDEX user_uuids on map_index_search.users (KEYS(uuids));"
         session.execute(stmt)
 
-        stmt = "SELECT * from map_index_search.users where uuids contains key {some_uuid}".format(some_uuid=uuid.uuid4())
+        stmt = "SELECT * from map_index_search.users where uuids contains key {some_uuid}".format(
+            some_uuid=uuid.uuid4())
         rows = list(session.execute(stmt))
         self.assertEqual(0, len(rows))
 
@@ -825,7 +1047,8 @@ class TestSecondaryIndexesOnCollections(Tester):
                 ).format(user_id=user1_uuid)
         session.execute(stmt)
 
-        stmt = ("SELECT * from map_index_search.users where uuids contains key {some_uuid}").format(some_uuid=uuid.uuid4())
+        stmt = ("SELECT * from map_index_search.users where uuids contains key {some_uuid}").format(
+            some_uuid=uuid.uuid4())
         rows = list(session.execute(stmt))
         self.assertEqual(0, len(rows))
 
@@ -852,7 +1075,8 @@ class TestSecondaryIndexesOnCollections(Tester):
             # give each record a unique email address using the int index, add unique ids for keys and values
             stmt = ("INSERT INTO map_index_search.users (user_id, email, uuids)"
                     "values ({user_uuid}, '{prefix}@example.com', {{{u_uuid1}:{u_uuid2}, {s_uuid}:{s_uuid}}})"
-                    ).format(user_uuid=user_uuid, prefix=i, s_uuid=shared_uuid, u_uuid1=unshared_uuid1, u_uuid2=unshared_uuid2)
+                    ).format(user_uuid=user_uuid, prefix=i, s_uuid=shared_uuid, u_uuid1=unshared_uuid1,
+                             u_uuid2=unshared_uuid2)
             session.execute(stmt)
 
             log.append(
@@ -908,16 +1132,14 @@ class TestSecondaryIndexesOnCollections(Tester):
             stmt = "CREATE INDEX user_uuids_values on map_index_search.users (uuids);"
             session.execute(stmt)
 
-        def index_is_built():
-            index_name = 'user_uuids_values'
-            if self.cluster.version() < '3.0':
-                index_name = 'users.' + index_name
-            return len(list(session.execute("""SELECT * FROM system."IndexInfo"
-                   WHERE table_name ='map_index_search' AND index_name='{0}'""".format(index_name)))) == 1
-
-        while not index_is_built():
+        start = time.time()
+        while time.time() < start + 30:
             debug("waiting for index to build")
             time.sleep(1)
+            if index_is_built(node1, session, 'map_index_search', 'users', 'user_uuids_values'):
+                break
+        else:
+            raise DtestTimeoutError()
 
         # shuffle the log in-place, and double-check a slice of records by querying the secondary index
         random.shuffle(log)
@@ -930,7 +1152,7 @@ class TestSecondaryIndexesOnCollections(Tester):
                     ).format(unshared_uuid2=log_entry['unshared_uuid2'])
 
             rows = list(session.execute(stmt))
-            self.assertEqual(1, len(rows))
+            self.assertEqual(1, len(rows), rows)
 
             db_user_id, db_email, db_uuids = rows[0]
             self.assertEqual(db_user_id, log_entry['user_id'])
@@ -958,7 +1180,7 @@ class TestUpgradeSecondaryIndexes(Tester):
 
         [node1] = cluster.nodelist()
         session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'index_upgrade', 1)
+        create_ks(session, 'index_upgrade', 1)
         session.execute("CREATE TABLE index_upgrade.table1 (k int PRIMARY KEY, v int)")
         session.execute("CREATE INDEX ON index_upgrade.table1(v)")
         session.execute("INSERT INTO index_upgrade.table1 (k,v) VALUES (0,0)")
@@ -1003,3 +1225,102 @@ class TestUpgradeSecondaryIndexes(Tester):
             node.set_log_level("INFO")
             node.start(wait_other_notice=True)
             # node.nodetool('upgradesstables -a')
+
+
+@skipIf(CASSANDRA_VERSION_FROM_BUILD == '3.9', "Test doesn't run on 3.9")
+@since('3.10')
+class TestPreJoinCallback(Tester):
+
+    def __init__(self, *args, **kwargs):
+        # Ignore these log patterns:
+        self.ignore_log_patterns = [
+            # ignore all streaming errors during bootstrap
+            r'Exception encountered during startup',
+            r'Streaming error occurred',
+            r'\[Stream.*\] Streaming error occurred',
+            r'\[Stream.*\] Remote peer 127.0.0.\d failed stream session',
+            r'Error while waiting on bootstrap to complete. Bootstrap will have to be restarted.'
+        ]
+        Tester.__init__(self, *args, **kwargs)
+
+    def _base_test(self, joinFn):
+        cluster = self.cluster
+        tokens = cluster.balanced_tokens(2)
+        cluster.set_configuration_options(values={'num_tokens': 1})
+
+        # Create a single node cluster
+        cluster.populate(1)
+        node1 = cluster.nodelist()[0]
+        node1.set_configuration_options(values={'initial_token': tokens[0]})
+        cluster.start(wait_other_notice=True)
+
+        # Create a table with 2i
+        session = self.patient_cql_connection(node1)
+        create_ks(session, 'ks', 1)
+        create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'})
+        session.execute("CREATE INDEX c2_idx ON cf (c2);")
+
+        keys = 10000
+        insert_statement = session.prepare("INSERT INTO ks.cf (key, c1, c2) VALUES (?, 'value1', 'value2')")
+        execute_concurrent_with_args(session, insert_statement, [['k%d' % k] for k in range(keys)])
+
+        # Run the join function to test
+        joinFn(cluster, tokens[1])
+
+    def bootstrap_test(self):
+        def bootstrap(cluster, token):
+            node2 = new_node(cluster)
+            node2.set_configuration_options(values={'initial_token': token})
+            node2.start(wait_for_binary_proto=True)
+            self.assertTrue(node2.grep_log('Executing pre-join post-bootstrap tasks'))
+
+        self._base_test(bootstrap)
+
+    def resume_test(self):
+        def resume(cluster, token):
+            node1 = cluster.nodes['node1']
+            # set up byteman on node1 to inject a failure when streaming to node2
+            node1.stop(wait=True)
+            node1.byteman_port = '8100'
+            node1.import_config_files()
+            node1.start(wait_for_binary_proto=True)
+            node1.byteman_submit(['./byteman/inject_failure_streaming_to_node2.btm'])
+
+            node2 = new_node(cluster)
+            node2.set_configuration_options(values={'initial_token': token, 'streaming_socket_timeout_in_ms': 1000})
+            node2.start(wait_other_notice=False, wait_for_binary_proto=True)
+            assert_bootstrap_state(self, node2, 'IN_PROGRESS')
+
+            node2.nodetool("bootstrap resume")
+            assert_bootstrap_state(self, node2, 'COMPLETED')
+            self.assertTrue(node2.grep_log('Executing pre-join post-bootstrap tasks'))
+
+        self._base_test(resume)
+
+    def manual_join_test(self):
+        def manual_join(cluster, token):
+            node2 = new_node(cluster)
+            node2.set_configuration_options(values={'initial_token': token})
+            node2.start(join_ring=False, wait_for_binary_proto=True, wait_other_notice=240)
+            self.assertTrue(node2.grep_log('Not joining ring as requested'))
+            self.assertFalse(node2.grep_log('Executing pre-join'))
+
+            node2.nodetool("join")
+            self.assertTrue(node2.grep_log('Executing pre-join post-bootstrap tasks'))
+
+        self._base_test(manual_join)
+
+    def write_survey_test(self):
+        def write_survey_and_join(cluster, token):
+            node2 = new_node(cluster)
+            node2.set_configuration_options(values={'initial_token': token})
+            node2.start(jvm_args=["-Dcassandra.write_survey=true"], wait_for_binary_proto=True)
+            self.assertTrue(node2.grep_log(
+                'Startup complete, but write survey mode is active, not becoming an active ring member.'))
+            self.assertFalse(node2.grep_log('Executing pre-join'))
+
+            node2.nodetool("join")
+            self.assertTrue(node2.grep_log('Leaving write survey mode and joining ring at operator request'))
+            self.assertTrue(node2.grep_log('Executing pre-join post-bootstrap tasks'))
+
+        self._base_test(write_survey_and_join)
