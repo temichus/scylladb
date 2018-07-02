@@ -12,6 +12,7 @@ import itertools
 from copy import deepcopy
 from threading import Thread
 import datetime
+from tools import rows_to_list
 
 def build_insert_params(keys, n, c1_values, c2_values):
     if (len(keys) == 0 and n is None) or (len(keys) != 0 and n is not None):
@@ -834,3 +835,37 @@ def managed_thread(proc_functions, queue=None):
     if queue:
         results = [queue.get() for _ in threads]
         return results
+
+def view_built_status_query(ks='', view='', select_column='status'):
+    query = "SELECT {} FROM system_distributed.view_build_status".format(select_column)
+    if ks or view:
+        query = "{} WHERE ".format(query)
+        where = ' AND '.join(['{0} = \'{1}\''.format(k, v) for k, v in {'keyspace_name': ks, 'view_name': view}.iteritems() if v])
+        if ks:
+            query = "{0} {1}".format(query, where)
+    return query
+
+def get_index_view_name(index_name):
+    return '{}_index'.format(index_name)
+
+def index_is_built(cluster, session, ks_name, table_name, index_name):
+    _wait_for_view(cluster, session, ks_name, get_index_view_name(index_name))
+    return len(list(session.execute(
+        "SELECT * FROM system_schema.indexes WHERE keyspace_name = '{0}' and table_name ='{1}' AND index_name='{2}'".format(ks_name, table_name, index_name)))) == 1
+
+def _wait_for_view(cluster, session, ks, view):
+    debug("Waiting for view {}.{} to finish building...".format(ks, view))
+
+    def _view_build_finished(live_nodes_amount):
+        result = rows_to_list(session.execute(view_built_status_query(ks, view)))
+        return len([status for status in result  if status[0] == 'SUCCESS']) >= live_nodes_amount
+
+    attempts = 40
+    live_nodes_amount = len([node for node in cluster.nodelist() if node.status == 'UP'])
+    while attempts > 0:
+        if _view_build_finished(live_nodes_amount):
+            return
+        time.sleep(3)
+        attempts -= 1
+
+    raise Exception("View {}.{} not built".format(ks, view))

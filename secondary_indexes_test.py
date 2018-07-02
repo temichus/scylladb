@@ -7,20 +7,14 @@ from unittest import skipIf
 
 from dtest import Tester, debug
 from tools import since
-from assertions import assert_invalid, assert_one, assert_row_count
+from assertions import assert_all, assert_invalid, assert_one, assert_row_count
+from scylla_tools import index_is_built
 
-from cassandra import InvalidRequest
+from cassandra import ConsistencyLevel, InvalidRequest
 from cassandra.concurrent import (execute_concurrent,
                                   execute_concurrent_with_args)
 from cassandra.protocol import ConfigurationException
 from cassandra.query import BatchStatement, SimpleStatement
-
-from dtest import (DISABLE_VNODES, OFFHEAP_MEMTABLES, DtestTimeoutError,
-                   Tester, debug, CASSANDRA_VERSION_FROM_BUILD, create_ks, create_cf)
-from tools.assertions import assert_bootstrap_state, assert_invalid, assert_none, assert_one, assert_row_count
-from tools.data import index_is_built, rows_to_list
-from tools.decorators import since
-from tools.misc import new_node
 
 
 class TestSecondaryIndexes(Tester):
@@ -35,43 +29,31 @@ class TestSecondaryIndexes(Tester):
             files.extend(os.listdir(index_sstables_dir))
         return set(files)
 
-    def data_created_before_index_not_returned_in_where_query_test(self):
+    def test_query_data_created_before_index(self):
         """
-        @jira_ticket CASSANDRA-3367
+        Create the index on the populated table and read the data that was inserted before index
         """
-        cluster = self.cluster
-        cluster.populate(1).start()
-        [node1] = cluster.nodelist()
-
-        session = self.patient_cql_connection(node1)
-        create_ks(session, 'ks', 1)
-
-        columns = {"password": "varchar", "gender": "varchar", "session_token": "varchar", "state": "varchar",
-                   "birth_year": "bigint"}
-        create_cf(session, 'users', columns=columns)
+        session = prepare(self, user_table=True, nodes=4, rf=3)
 
         # insert data
-        session.execute(
-            "INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user1', 'ch@ngem3a', 'f', 'TX', 1968);")
-        session.execute(
-            "INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user2', 'ch@ngem3b', 'm', 'CA', 1971);")
+        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user1', 'ch@ngem3a', 'f', 'TX', 1968);")
+        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user2', 'ch@ngem3b', 'm', 'CA', 1971);")
 
         # create index
-        session.execute("CREATE INDEX gender_key ON users (gender);")
-        session.execute("CREATE INDEX state_key ON users (state);")
-        session.execute("CREATE INDEX birth_year_key ON users (birth_year);")
+        create_and_build_index(self.create_index, self.cluster, session, ks_name='ks', table_name='users',
+                               index_column='gender', index_name='gender_key', compaction=self.compaction_strategy)
+        create_and_build_index(self.create_index, self.cluster, session, ks_name='ks', table_name='users',
+                               index_column='state', index_name='state_key', compaction=self.compaction_strategy)
+        create_and_build_index(self.create_index, self.cluster, session, ks_name='ks', table_name='users',
+                               index_column='birth_year', index_name='birth_year_key', compaction=self.compaction_strategy)
 
         # insert data
-        session.execute(
-            "INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user3', 'ch@ngem3c', 'f', 'FL', 1978);")
-        session.execute(
-            "INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user4', 'ch@ngem3d', 'm', 'TX', 1974);")
+        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user3', 'ch@ngem3c', 'f', 'FL', 1978);")
+        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user4', 'ch@ngem3d', 'm', 'TX', 1974);")
 
-        assert_row_count(session, "users", 4)
-
-        assert_row_count(session, "users", 2, "state='TX'")
-
-        assert_row_count(session, "users", 1, "state='CA'")
+        assert_all(session, "select count(*) from users", expected=[[4]], cl=ConsistencyLevel.QUORUM)
+        assert_all(session, "select count(*) from users where state='TX'", expected=[[2]], cl=ConsistencyLevel.QUORUM)
+        assert_all(session, "select count(*) from users where state='CA'", expected=[[1]], cl=ConsistencyLevel.QUORUM)
 
     def test_low_cardinality_indexes(self):
         """
@@ -1324,3 +1306,41 @@ class TestPreJoinCallback(Tester):
             self.assertTrue(node2.grep_log('Executing pre-join post-bootstrap tasks'))
 
         self._base_test(write_survey_and_join)
+
+def create_and_build_index(create_index_func, cluster, session, ks_name, table_name, index_column, index_name, compaction=None):
+    create_index_func(session, table_name, index_column, index_name, compaction)
+    index_is_built(cluster, session, ks_name, table_name, index_name)
+
+def prepare(self, user_table=False, rf=3, options={}, keyspace_name='ks', nodes=3,
+            fetch_size=None, jvm_args=[], session_node=1, **kwargs):
+    """
+    Prepare environment for test
+    """
+    strategies = ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy',
+                  'TimeWindowCompactionStrategy']
+    self.compaction_strategy = strategies[random.randint(0, len(strategies)-1)]
+    cluster = self.cluster
+    populate = nodes if isinstance(nodes, list) else [nodes, 0]
+    cluster.populate(populate)
+    options['experimental'] = True
+    if options:
+        cluster.set_configuration_options(values=options)
+    if not jvm_args:
+        jvm_args = ['--smp', '2', '--memory', '1G']
+    cluster.start(jvm_args=jvm_args)
+    node1 = cluster.nodelist()[session_node-1]
+
+    session = self.patient_cql_connection(node1, **kwargs)
+    if fetch_size:
+        session.default_fetch_size = fetch_size
+    self.create_ks(session, keyspace_name, rf)
+
+    if user_table:
+        columns = {"password": "varchar", "gender": "varchar", "session_token": "varchar", "state": "varchar",
+                   "birth_year": "bigint"}
+        self.create_cf(session, 'users', columns=columns, compaction={'class': self.compaction_strategy})
+
+    return session
+
+class DtestTimeoutError(Exception):
+    pass
