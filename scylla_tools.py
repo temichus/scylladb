@@ -869,3 +869,16 @@ def _wait_for_view(cluster, session, ks, view):
         attempts -= 1
 
     raise Exception("View {}.{} not built".format(ks, view))
+
+def check_errors(node, exclude_errors, search_str='Error'):
+    errors = node.grep_log_for_errors(distinct_errors=True, search_str=search_str)
+
+    if exclude_errors:
+        for ee in exclude_errors:
+            errors = [error for error in list(errors) if ee not in error]
+
+    if errors:
+        assert False, '\n'.join(list(errors))
+    else:
+        # Set allow_log_errors to True
+        return True

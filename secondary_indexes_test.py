@@ -3,12 +3,12 @@ import random
 import re
 import time
 import uuid
-from unittest import skipIf
+from unittest import skipIf, skip
 
 from dtest import Tester, debug
-from tools import since, require
+from tools import since, require, rows_to_list
 from assertions import assert_all, assert_invalid, assert_one, assert_row_count, assert_none
-from scylla_tools import index_is_built
+from scylla_tools import index_is_built, get_index_view_name, view_built_status_query, check_errors
 
 from cassandra import ConsistencyLevel, InvalidRequest
 from cassandra.concurrent import (execute_concurrent,
@@ -421,43 +421,57 @@ class TestSecondaryIndexes(Tester):
         assert_one(session, """SELECT * FROM system."IndexInfo" WHERE table_name='k'""", ['k', 'idx'])
         assert_one(session, "SELECT * FROM k.t WHERE v = 1", [0, 1])
 
-    @since('4.0')
     def test_drop_index_while_building(self):
         """
-        asserts that indexes deleted before they have been completely build are invalidated and not built after restart
+        Asserts that indexes deleted before they have been completely build are invalidated and not built after restart
         """
-        cluster = self.cluster
-        cluster.populate(1).start()
-        node = cluster.nodelist()[0]
-        session = self.patient_cql_connection(node)
+        keyspace_name = 'keyspace1'
+        table_name = 'standard1'
+        index_name = 'idx'
+        index_column = '"C0"'
+
+        session = prepare(self, nodes=4, rf=3, keyspace_name=keyspace_name)
+        node = self.cluster.nodelist()[0]
 
         # Create some thousands of rows to guarantee a long index building
-        node.stress(['write', 'n=50K', 'no-warmup'])
-        session.execute("USE keyspace1")
+        node.stress(['write', 'n=50K', 'no-warmup', '-schema', 'replication(factor=3)',
+                     'compaction(strategy={})'.format(self.compaction_strategy)])
 
         # Create an index and immediately drop it, without waiting for index building
-        session.execute('CREATE INDEX idx ON standard1("C0")')
-        session.execute('DROP INDEX idx')
-        cluster.wait_for_compactions()
+        self.create_index(session, table_name, index_column, index_name, compaction=self.compaction_strategy)
+
+        # Get view ID
+        res = session.execute('select id from system_schema.views where keyspace_name=\'{0}\' and view_name=\'{1}\''
+                              .format(keyspace_name, get_index_view_name(index_name)))
+        assert res, 'Secondary index view named {} has not built'.format(get_index_view_name(index_name))
+        view_id = rows_to_list(res)[0][0]
+        debug('View ID: {}'.format(view_id))
+
+        session.execute('DROP INDEX {}'.format(index_name))
+
+        self.cluster.wait_for_compactions()
 
         # Check that the index is not marked as built nor queryable
-        assert_none(session, """SELECT * FROM system."IndexInfo" WHERE table_name='keyspace1'""")
-        assert_invalid(session,
-                       'SELECT * FROM standard1 WHERE "C0" = 0x00',
-                       'Cannot execute this query as it might involve data filtering')
+        assert_none(session, view_built_status_query(ks=keyspace_name, view=get_index_view_name(index_name)))
+        assert_invalid(session, 'SELECT * FROM {0} WHERE {1} = 0x00'.format(table_name, index_column),
+                       matching='No index found', expected=Exception)
 
         # Restart the node to trigger any eventual unexpected index rebuild
-        node.nodetool('drain')
-        node.stop()
-        cluster.start()
-        session = self.patient_cql_connection(node)
-        session.execute("USE keyspace1")
+        session = self._drain_node(node, keyspace_name)
 
         # The index should remain not built nor queryable after restart
-        assert_none(session, """SELECT * FROM system."IndexInfo" WHERE table_name='keyspace1'""")
-        assert_invalid(session,
-                       'SELECT * FROM standard1 WHERE "C0" = 0x00',
-                       'Cannot execute this query as it might involve data filtering')
+        assert_none(session, view_built_status_query(ks=keyspace_name, view=get_index_view_name(index_name)))
+        assert_invalid(session, 'SELECT * FROM {0} WHERE {1} = 0x00'.format(table_name, index_column),
+                       matching='No index found', expected=Exception)
+
+        self.allow_log_errors = check_errors(node, ['Can\'t find a column family with UUID {}'.format(view_id),
+                                                    'mutation_write_failure_exception'], search_str='ERROR')
+
+    def _drain_node(self, node, keyspace_name):
+        node.nodetool('drain')
+        node.stop()
+        self.cluster.start()
+        return self.patient_cql_connection(node, keyspace=keyspace_name)
 
     @since('4.0')
     def test_index_is_not_always_rebuilt_at_start(self):
