@@ -6,8 +6,8 @@ import uuid
 from unittest import skipIf
 
 from dtest import Tester, debug
-from tools import since
-from assertions import assert_all, assert_invalid, assert_one, assert_row_count
+from tools import since, require
+from assertions import assert_all, assert_invalid, assert_one, assert_row_count, assert_none
 from scylla_tools import index_is_built
 
 from cassandra import ConsistencyLevel, InvalidRequest
@@ -54,6 +54,59 @@ class TestSecondaryIndexes(Tester):
         assert_all(session, "select count(*) from users", expected=[[4]], cl=ConsistencyLevel.QUORUM)
         assert_all(session, "select count(*) from users where state='TX'", expected=[[2]], cl=ConsistencyLevel.QUORUM)
         assert_all(session, "select count(*) from users where state='CA'", expected=[[1]], cl=ConsistencyLevel.QUORUM)
+
+    @require('#3539')
+    def test_query_data_by_pk_and_index(self):
+        """
+        Filter data by primary key and secondary index
+        """
+        session = prepare(self, user_table=True, nodes=4, rf=3)
+
+        # insert data
+        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user1', 'ch@ngem3a', 'f', 'TX', 1968);")
+        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user2', 'ch@ngem3b', 'm', 'CA', 1971);")
+        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user3', 'ch@ngem3c', 'f', 'FL', 1978);")
+        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user4', 'ch@ngem3d', 'm', 'TX', 1974);")
+
+        # create index
+        create_and_build_index(self.create_index, self.cluster, session, ks_name='ks', table_name='users',
+                               index_column='gender', index_name='gender_key', compaction=self.compaction_strategy)
+
+        assert_all(session, "select count(*) from users", expected=[[4]], cl=ConsistencyLevel.QUORUM)
+        assert_all(session, "select count(*) from users where gender='f'", expected=[[2]], cl=ConsistencyLevel.QUORUM)
+        assert_all(session, "select * from users where KEY='user2' and gender='m'", expected=[['user2', 'ch@ngem3b', 'm', 'CA', 1971]],
+                   cl=ConsistencyLevel.ALL)
+        assert_none(session, "select count(*) from users where KEY='user1' and gender='m'", cl=ConsistencyLevel.QUORUM)
+
+    @require('#3539')
+    def test_query_data_by_ck_and_index(self):
+        """
+        Filter data by primary and clustering keys and secondary index
+        """
+        ks_name = 'ks'
+        table_name = 'cf'
+        index_column = 'v'
+        index_name = 'v_inx'
+
+        session = prepare(self, nodes=4, rf=3)
+        self.create_cf(session, '{0}.{1}'.format(ks_name, table_name), key_type='text', compaction={'class': self.compaction_strategy})
+
+        # insert data
+        session.execute("INSERT INTO {} (key, c, v) VALUES ('user1', 'ch@ngem3a', 'f')".format(table_name))
+        session.execute("INSERT INTO {} (key, c, v) VALUES ('user2', 'ch@ngem3b', 'm')".format(table_name))
+        session.execute("INSERT INTO {} (key, c, v) VALUES ('user3', 'ch@ngem3c', 'f')".format(table_name))
+        session.execute("INSERT INTO {} (key, c, v) VALUES ('user4', 'ch@ngem3d', 'm')".format(table_name))
+
+        # create index
+        create_and_build_index(self.create_index, self.cluster, session, ks_name=ks_name, table_name=table_name,
+                               index_column=index_column, index_name=index_name, compaction=self.compaction_strategy)
+
+        assert_all(session, "select count(*) from {}".format(table_name), expected=[[4]], cl=ConsistencyLevel.QUORUM)
+        assert_all(session, "select count(*) from {} where v='f'".format(table_name), expected=[[2]], cl=ConsistencyLevel.QUORUM)
+        assert_all(session, "select count(*) from {} where key='user2' and c='ch@ngem3b' and v='m'".format(table_name),
+                   expected=[[1]], cl=ConsistencyLevel.ALL)
+        assert_none(session, "select count(*) from {} where KEY='user1' and c='ch@ngem3a' and gender='m'".format(table_name),
+                    cl=ConsistencyLevel.QUORUM)
 
     def test_low_cardinality_indexes(self):
         """
