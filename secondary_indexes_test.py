@@ -29,6 +29,14 @@ class TestSecondaryIndexes(Tester):
             files.extend(os.listdir(index_sstables_dir))
         return set(files)
 
+    def config_keyspace(self, session, ks_name, table_name, index, ks_create=True):
+        if ks_create:
+            self.create_ks(session, ks_name, 1)
+        self.create_cf(session, '{0}.{1}'.format(ks_name, table_name), key_type='text', columns={'col1': 'text'},
+                        compaction = {'class': self.compaction_strategy})
+        create_and_build_index(self.create_index, self.cluster, session, ks_name, table_name,
+                               index['index_column'], index['index_name'], compaction=self.compaction_strategy)
+
     def test_query_data_created_before_index(self):
         """
         Create the index on the populated table and read the data that was inserted before index
@@ -110,65 +118,34 @@ class TestSecondaryIndexes(Tester):
 
     def test_low_cardinality_indexes(self):
         """
-        Checks that low-cardinality secondary index subqueries are executed
-        concurrently
+        Checks that low-cardinality secondary index subqueries are executed concurrently
         """
-        cluster = self.cluster
-        cluster.populate(3).start()
-        node1, node2, node3 = cluster.nodelist()
+        session = prepare(self, nodes=4, rf=3)
 
-        session = self.patient_cql_connection(node1)
-        session.max_trace_wait = 120
-        session.execute("CREATE KEYSPACE ks WITH REPLICATION = {'class': 'SimpleStrategy', 'replication_factor': '1'};")
-        session.execute("CREATE TABLE ks.cf (a text PRIMARY KEY, b text);")
-        session.execute("CREATE INDEX b_index ON ks.cf (b);")
+        ks_name = 'ks'
+        table_name = 'cf'
+        index = {'index_name': 'col1_index', 'index_column': 'col1'}
+
+        self.config_keyspace(session, ks_name, table_name, index, ks_create=False)
+
         num_rows = 100
         for i in range(num_rows):
             indexed_value = i % (num_rows / 3)
             # use the same indexed value three times
-            session.execute("INSERT INTO ks.cf (a, b) VALUES ('%d', '%d');" % (i, indexed_value))
+            session.execute("INSERT INTO {0}.{1} (key, col1) VALUES ('{2}', '{3}');".format(ks_name, table_name, i, indexed_value))
 
-        cluster.flush()
+        self.cluster.flush()
 
-        def check_trace_events(trace):
-            # we should see multiple requests get enqueued prior to index scan
-            # execution happening
-
-            # Look for messages like:
-            #         Submitting range requests on 769    ranges with a concurrency of 769    (0.0070312 rows per range expected)
-            regex = r"Submitting range requests on [0-9]+ ranges with a concurrency of (\d+) \(([0-9.]+) rows per range expected\)"
-
-            for event in trace.events:
-                desc = event.description
-                match = re.match(regex, desc)
-                if match:
-                    concurrency = int(match.group(1))
-                    expected_per_range = float(match.group(2))
-                    self.assertTrue(concurrency > 1,
-                                    "Expected more than 1 concurrent range request, got %d" % concurrency)
-                    self.assertTrue(expected_per_range > 0)
-                    break
-            else:
-                self.fail("Didn't find matching trace event")
-
-        query = SimpleStatement("SELECT * FROM ks.cf WHERE b='1';")
-        result = list(session.execute(query, trace=True))
-        self.assertEqual(3, len(list(result)))
-        check_trace_events(result.get_query_trace())
-
-        query = SimpleStatement("SELECT * FROM ks.cf WHERE b='1' LIMIT 100;")
-        result = list(session.execute(query, trace=True))
-        self.assertEqual(3, len(list(result)))
-        check_trace_events(result.get_query_trace())
-
-        query = SimpleStatement("SELECT * FROM ks.cf WHERE b='1' LIMIT 3;")
-        result = list(session.execute(query, trace=True))
-        self.assertEqual(3, len(list(result)))
-        check_trace_events(result.get_query_trace())
+        assert_all(session, "SELECT count(*) FROM {0}.{1} WHERE {2}='1'".format(ks_name, table_name, index['index_column']),
+                   expected=[[3]], cl=ConsistencyLevel.QUORUM)
+        assert_all(session, "SELECT count(*) FROM {0}.{1} WHERE {2}='1' LIMIT 100".format(ks_name, table_name, index['index_column']),
+                   expected=[[3]], cl=ConsistencyLevel.QUORUM)
+        assert_all(session, "SELECT count(*) FROM {0}.{1} WHERE {2}='1' LIMIT 3".format(ks_name, table_name, index['index_column']),
+                   expected=[[3]], cl=ConsistencyLevel.QUORUM)
 
         for limit in (1, 2):
-            result = list(session.execute("SELECT * FROM ks.cf WHERE b='1' LIMIT %d;" % (limit,)))
-            self.assertEqual(limit, len(result))
+            assert_all(session, "select count(*) from {0}.{1} WHERE {2}='1' LIMIT {3}".format(ks_name, table_name, index['index_column'], limit),
+                       expected=[[limit]], cl=ConsistencyLevel.QUORUM)
 
     def test_6924_dropping_ks(self):
         """
