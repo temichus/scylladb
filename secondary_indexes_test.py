@@ -147,87 +147,66 @@ class TestSecondaryIndexes(Tester):
             assert_all(session, "select count(*) from {0}.{1} WHERE {2}='1' LIMIT {3}".format(ks_name, table_name, index['index_column'], limit),
                        expected=[[limit]], cl=ConsistencyLevel.QUORUM)
 
-    def test_6924_dropping_ks(self):
+    def test_insert_data_after_recreating_ks(self):
         """
-        @jira_ticket CASSANDRA-6924
-        @jira_ticket CASSANDRA-11729
-        Data inserted immediately after dropping and recreating a
-        keyspace with an indexed column familiy is not included
+        Data inserted immediately after dropping and recreating a keyspace with an indexed column familiy is not included
         in the index.
-        This test can be flaky due to concurrency issues during
-        schema updates. See CASSANDRA-11729 for an explanation.
         """
-        # Reproducing requires at least 3 nodes:
-        cluster = self.cluster
-        cluster.populate(3).start()
-        node1, node2, node3 = cluster.nodelist()
-        session = self.patient_cql_connection(node1)
+        session = prepare(self, nodes=4, rf=3)
 
-        # We have to wait up to RING_DELAY + 1 seconds for the MV Builder task
-        # to complete, to prevent schema concurrency issues with the drop
-        # keyspace calls that come later. See CASSANDRA-11729.
-        if self.cluster.version() > '3.0':
-            self.cluster.wait_for_any_log('Completed submission of build tasks for any materialized views',
-                                          timeout=35, filename='debug.log')
+        ks_name = 'ks'
+        table_name = 'cf'
+        index = {'index_name': 'col1_key', 'index_column': 'col1'}
+        self.config_keyspace(session, ks_name, table_name, index, ks_create=False)
 
-        # This only occurs when dropping and recreating with
-        # the same name, so loop through this test a few times:
         for i in range(10):
             debug("round %s" % i)
             try:
-                session.execute("DROP KEYSPACE ks")
+                session.execute("DROP KEYSPACE {}".format(ks_name))
             except ConfigurationException:
                 pass
 
-            create_ks(session, 'ks', 1)
-            session.execute("CREATE TABLE ks.cf (key text PRIMARY KEY, col1 text);")
-            session.execute("CREATE INDEX on ks.cf (col1);")
+            self.config_keyspace(session, ks_name, table_name, index)
 
             for r in range(10):
-                stmt = "INSERT INTO ks.cf (key, col1) VALUES ('%s','asdf');" % r
-                session.execute(stmt)
+                session.execute("INSERT INTO {0}.{1} (key, col1) VALUES ('{2}','asdf');".format(ks_name, table_name, r))
 
             self.wait_for_schema_agreement(session)
+            time.sleep(30)
+            assert_all(session, "select count(*) from {0}.{1} WHERE col1='asdf'".format(ks_name, table_name),
+                       expected=[[10]], cl=ConsistencyLevel.QUORUM)
 
-            rows = session.execute("select count(*) from ks.cf WHERE col1='asdf'")
-            count = rows[0][0]
-            self.assertEqual(count, 10)
-
-    def test_6924_dropping_cf(self):
+    def test_insert_data_after_recreating_cf(self):
         """
-        @jira_ticket CASSANDRA-6924
-        Data inserted immediately after dropping and recreating an
-        indexed column family is not included in the index.
+        Data inserted immediately after dropping and recreating an indexed column family is not included in the index.
         """
-        # Reproducing requires at least 3 nodes:
-        cluster = self.cluster
-        cluster.populate(3).start()
-        node1, node2, node3 = cluster.nodelist()
-        session = self.patient_cql_connection(node1)
+        session = prepare(self, nodes=4, rf=3)
 
-        create_ks(session, 'ks', 1)
+        ks_name = 'ks'
+        table_name = 'cf'
+        index = {'index_name': 'col1_key', 'index_column': 'col1'}
+        self.config_keyspace(session, ks_name, table_name, index, ks_create=False)
+        for r in range(10):
+            session.execute("INSERT INTO {0}.{1} (key, col1) VALUES ('{2}','asdf');".format(ks_name, table_name, r))
 
-        # This only occurs when dropping and recreating with
-        # the same name, so loop through this test a few times:
         for i in range(10):
             debug("round %s" % i)
+            drop_stmt = "DROP COLUMNFAMILY {0}.{1}".format(ks_name, table_name)
             try:
-                session.execute("DROP COLUMNFAMILY ks.cf")
+                debug(drop_stmt)
+                session.execute(drop_stmt)
             except InvalidRequest:
                 pass
 
-            session.execute("CREATE TABLE ks.cf (key text PRIMARY KEY, col1 text);")
-            session.execute("CREATE INDEX on ks.cf (col1);")
+            self.config_keyspace(session, ks_name, table_name, index, ks_create=False)
 
             for r in range(10):
-                stmt = "INSERT INTO ks.cf (key, col1) VALUES ('%s','asdf');" % r
-                session.execute(stmt)
+                session.execute("INSERT INTO {0}.{1} (key, {3}) VALUES ('{2}','asdf');".format(ks_name, table_name, r, index['index_column']))
 
             self.wait_for_schema_agreement(session)
-
-            rows = session.execute("select count(*) from ks.cf WHERE col1='asdf'")
-            count = rows[0][0]
-            self.assertEqual(count, 10)
+            time.sleep(30)
+            assert_all(session, "select count(*) from {0}.{1} WHERE {2}='asdf'".format(ks_name, table_name, index['index_column']),
+                       expected=[[10]], cl=ConsistencyLevel.QUORUM)
 
     def test_8280_validate_indexed_values(self):
         """
