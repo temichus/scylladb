@@ -6,7 +6,7 @@ import uuid
 from unittest import skipIf, skip
 
 from dtest import Tester, debug
-from tools import since, require, rows_to_list
+from tools import since, require, rows_to_list, new_node
 from assertions import assert_all, assert_invalid, assert_one, assert_row_count, assert_none
 from scylla_tools import index_is_built, get_index_view_name, view_built_status_query, check_errors
 
@@ -305,7 +305,7 @@ class TestSecondaryIndexes(Tester):
             time.sleep(1)
             self.wait_for_schema_agreement(session)
 
-    @since('3.0')
+    @skip('Not relevant for Scylla - manual index rebuild is not supported')
     def test_manual_rebuild_index(self):
         """
         asserts that new sstables are written when rebuild_index is called from nodetool
@@ -350,7 +350,7 @@ class TestSecondaryIndexes(Tester):
         # verify that only the expected row is present in the build indexes table
         self.assertEqual(1, len(list(session.execute("""SELECT * FROM system."IndexInfo";"""))))
 
-    @since('4.0')
+    @skip('Not relevant for Scylla - manual index rebuild is not supported')
     def test_failing_manual_rebuild_index(self):
         """
         @jira_ticket CASSANDRA-10130
@@ -362,7 +362,7 @@ class TestSecondaryIndexes(Tester):
         node = cluster.nodelist()[0]
 
         session = self.patient_cql_connection(node)
-        create_ks(session, 'k', 1)
+        self.create_ks(session, 'k', 1)
         session.execute("CREATE TABLE k.t (k int PRIMARY KEY, v int)")
         session.execute("CREATE INDEX idx ON k.t(v)")
         session.execute("INSERT INTO k.t(k, v) VALUES (0, 1)")
@@ -473,42 +473,6 @@ class TestSecondaryIndexes(Tester):
         self.cluster.start()
         return self.patient_cql_connection(node, keyspace=keyspace_name)
 
-    @since('4.0')
-    def test_index_is_not_always_rebuilt_at_start(self):
-        """
-        @jira_ticket CASSANDRA-10130
-        Tests the management of index status during manual index rebuilding failures.
-        """
-
-        cluster = self.cluster
-        cluster.populate(1, install_byteman=True).start(wait_for_binary_proto=True)
-        node = cluster.nodelist()[0]
-
-        session = self.patient_cql_connection(node)
-        create_ks(session, 'k', 1)
-        session.execute("CREATE TABLE k.t (k int PRIMARY KEY, v int)")
-        session.execute("CREATE INDEX idx ON k.t(v)")
-        session.execute("INSERT INTO k.t(k, v) VALUES (0, 1)")
-        session.execute("INSERT INTO k.t(k, v) VALUES (2, 3)")
-
-        # Verify that the index is marked as built and it can answer queries
-        assert_one(session, """SELECT * FROM system."IndexInfo" WHERE table_name='k'""", ['k', 'idx'])
-        assert_one(session, "SELECT * FROM k.t WHERE v = 1", [0, 1])
-
-        # Restart the node to trigger any eventual undesired index rebuild
-        before_files = self._index_sstables_files(node, 'k', 't', 'idx')
-        node.nodetool('drain')
-        node.stop()
-        cluster.start()
-        session = self.patient_cql_connection(node)
-        session.execute("USE k")
-        after_files = self._index_sstables_files(node, 'k', 't', 'idx')
-
-        # Verify that, the index is not rebuilt, marked as built, and it can answer queries
-        self.assertNotEqual(before_files, after_files)
-        assert_one(session, """SELECT * FROM system."IndexInfo" WHERE table_name='k'""", ['k', 'idx'])
-        assert_one(session, "SELECT * FROM k.t WHERE v = 1", [0, 1])
-
     def test_multi_index_filtering_query(self):
         """
         asserts that having multiple indexes that cover all predicates still requires ALLOW FILTERING to also be present
@@ -573,7 +537,7 @@ class TestSecondaryIndexes(Tester):
         rows = list(session.execute("SELECT * FROM tbl WHERE c1 = 'b';"))
         self.assertEqual(0, len(rows))
 
-    @since('3.0')
+    @skip('Not relevant. No index information in the query trace')
     def test_only_coordinator_chooses_index_for_query(self):
         """
         Checks that the index to use is selected (once) on the coordinator and
@@ -1183,7 +1147,7 @@ class TestSecondaryIndexesOnCollections(Tester):
             self.assertTrue(shared_uuid in db_uuids)
             self.assertTrue(log_entry['unshared_uuid2'] in db_uuids.values())
 
-
+@skip('Not relevant for Scylla')
 class TestUpgradeSecondaryIndexes(Tester):
 
     @since('2.1', max_version='2.1.x')
@@ -1202,7 +1166,7 @@ class TestUpgradeSecondaryIndexes(Tester):
 
         [node1] = cluster.nodelist()
         session = self.patient_cql_connection(node1)
-        create_ks(session, 'index_upgrade', 1)
+        self.create_ks(session, 'index_upgrade', 1)
         session.execute("CREATE TABLE index_upgrade.table1 (k int PRIMARY KEY, v int)")
         session.execute("CREATE INDEX ON index_upgrade.table1(v)")
         session.execute("INSERT INTO index_upgrade.table1 (k,v) VALUES (0,0)")
@@ -1249,8 +1213,7 @@ class TestUpgradeSecondaryIndexes(Tester):
             # node.nodetool('upgradesstables -a')
 
 
-@skipIf(CASSANDRA_VERSION_FROM_BUILD == '3.9', "Test doesn't run on 3.9")
-@since('3.10')
+@skip('Not relevant for Scylla')
 class TestPreJoinCallback(Tester):
 
     def __init__(self, *args, **kwargs):
@@ -1278,8 +1241,8 @@ class TestPreJoinCallback(Tester):
 
         # Create a table with 2i
         session = self.patient_cql_connection(node1)
-        create_ks(session, 'ks', 1)
-        create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'})
+        self.create_ks(session, 'ks', 1)
+        self.create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'})
         session.execute("CREATE INDEX c2_idx ON cf (c2);")
 
         keys = 10000
@@ -1346,6 +1309,19 @@ class TestPreJoinCallback(Tester):
             self.assertTrue(node2.grep_log('Executing pre-join post-bootstrap tasks'))
 
         self._base_test(write_survey_and_join)
+
+def assert_bootstrap_state(tester, node, expected_bootstrap_state):
+    """
+    Assert that a node is on a given bootstrap state
+    @param tester The dtest.Tester object to fetch the exclusive connection to the node
+    @param node The node to check bootstrap state
+    @param expected_bootstrap_state Bootstrap state to expect
+    Examples:
+    assert_bootstrap_state(self, node3, 'COMPLETED')
+    """
+    session = tester.patient_exclusive_cql_connection(node)
+    # assert_one(session, "SELECT bootstrapped FROM system.local WHERE key='local'", [expected_bootstrap_state])
+    assert_all(session, "SELECT bootstrapped FROM system.local WHERE key='local'", [expected_bootstrap_state])
 
 def create_and_build_index(create_index_func, cluster, session, ks_name, table_name, index_column, index_name, compaction=None):
     create_index_func(session, table_name, index_column, index_name, compaction)
