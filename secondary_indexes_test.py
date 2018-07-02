@@ -18,6 +18,8 @@ from cassandra.query import BatchStatement, SimpleStatement
 
 
 class TestSecondaryIndexes(Tester):
+    LONG_TEXT_LENGTH = 8193
+    OVERSIZE_LENGTH = 66536
 
     @staticmethod
     def _index_sstables_files(node, keyspace, table, index):
@@ -208,64 +210,79 @@ class TestSecondaryIndexes(Tester):
             assert_all(session, "select count(*) from {0}.{1} WHERE {2}='asdf'".format(ks_name, table_name, index['index_column']),
                        expected=[[10]], cl=ConsistencyLevel.QUORUM)
 
-    def test_8280_validate_indexed_values(self):
+    @require('3501')
+    def test_oversize_indexed_values(self):
         """
-        @jira_ticket CASSANDRA-8280
-        Reject inserts & updates where values of any indexed
-        column is > 64k
+        Reject inserts & updates where values of any indexed column is > 64k
         """
-        cluster = self.cluster
-        cluster.populate(1).start()
-        node1 = cluster.nodelist()[0]
-        session = self.patient_cql_connection(node1)
+        self._validate_long_indexed_values(self.OVERSIZE_LENGTH)
 
-        create_ks(session, 'ks', 1)
+    @require('3501')
+    def test_long_indexed_values(self):
+        """
+        Correct inserts & updates where values of any indexed column is long and up to 64k
+        """
+        self._validate_long_indexed_values(self.LONG_TEXT_LENGTH)
 
-        self.insert_row_with_oversize_value("CREATE TABLE %s(a int, b int, c text, PRIMARY KEY (a))",
-                                            "CREATE INDEX ON %s(c)",
-                                            "INSERT INTO %s (a, b, c) VALUES (0, 0, ?)",
-                                            session)
+    def _validate_long_indexed_values(self, value_length):
+        session = prepare(self, nodes=4, rf=3)
 
-        self.insert_row_with_oversize_value("CREATE TABLE %s(a int, b text, c int, PRIMARY KEY (a, b))",
-                                            "CREATE INDEX ON %s(b)",
-                                            "INSERT INTO %s (a, b, c) VALUES (0, ?, 0)",
-                                            session)
+        self.insert_row_with_long_value("CREATE TABLE %s(a int, b int, c varchar, PRIMARY KEY (a)) WITH compaction = %",
+                                        "CREATE INDEX ON %s(c)",
+                                        "INSERT INTO %s (a, b, c) VALUES (0, 0, ?)",
+                                        session, column_name='c', value_length=value_length)
 
-        self.insert_row_with_oversize_value("CREATE TABLE %s(a text, b int, c int, PRIMARY KEY ((a, b)))",
-                                            "CREATE INDEX ON %s(a)",
-                                            "INSERT INTO %s (a, b, c) VALUES (?, 0, 0)",
-                                            session)
+        self.insert_row_with_long_value("CREATE TABLE %s(a int, b text, c int, PRIMARY KEY (a, b)) WITH compaction = %",
+                                        "CREATE INDEX ON %s(b)",
+                                        "INSERT INTO %s (a, b, c) VALUES (0, ?, 0)",
+                                        session, column_name='b', value_length=value_length)
 
-        self.insert_row_with_oversize_value("CREATE TABLE %s(a int, b text, PRIMARY KEY (a)) WITH COMPACT STORAGE",
-                                            "CREATE INDEX ON %s(b)",
-                                            "INSERT INTO %s (a, b) VALUES (0, ?)",
-                                            session)
+        self.insert_row_with_long_value("CREATE TABLE %s(a text, b int, c int, PRIMARY KEY ((a, b))) WITH compaction = %",
+                                        "CREATE INDEX ON %s(a)",
+                                        "INSERT INTO %s (a, b, c) VALUES (?, 0, 0)",
+                                        session, column_name='a', value_length=value_length)
 
-    def insert_row_with_oversize_value(self, create_table_cql, create_index_cql, insert_cql, session):
+        self.insert_row_with_long_value("CREATE TABLE %s(a int, b text, PRIMARY KEY (a)) WITH COMPACT STORAGE",
+                                        "CREATE INDEX ON %s(b)",
+                                        "INSERT INTO %s (a, b) VALUES (0, ?)",
+                                        session, column_name='b', value_length=value_length)
+
+    def insert_row_with_long_value(self, create_table_cql, create_index_cql, insert_cql, session, column_name, value_length):
         """ Validate two variations of the supplied insert statement, first
         as it is and then again transformed into a conditional statement
         """
         table_name = "table_" + str(int(round(time.time() * 1000)))
-        session.execute(create_table_cql % table_name)
-        session.execute(create_index_cql % table_name)
-        value = "X" * 65536
-        self._assert_invalid_request(session, insert_cql % table_name, value)
-        self._assert_invalid_request(session, (insert_cql % table_name) + ' IF NOT EXISTS', value)
+        session.execute(create_table_cql % table_name, {'class': self.compaction_strategy})
+        session.execute(create_index_cql % table_name, {'class': self.compaction_strategy})
+        value = "X" * value_length
+        self._assert_request(session, insert_cql % table_name, value, table_name, column_name, value_length)
+        self._assert_request(session, (insert_cql % table_name) + ' IF NOT EXISTS', value, table_name, column_name, value_length)
 
-    def _assert_invalid_request(self, session, insert_cql, value):
+    def _assert_request(self, session, insert_cql, value, table_name, column_name, value_length):
         """ Perform two executions of the supplied statement, as a
         single statement and again as part of a batch
         """
         prepared = session.prepare(insert_cql)
-        self._execute_and_fail(lambda: session.execute(prepared, [value]), insert_cql)
+        self._execute_and_assert(lambda: session.execute(prepared, [value]), insert_cql, table_name, column_name, session,
+                                 value_length)
         batch = BatchStatement()
         batch.add(prepared, [value])
-        self._execute_and_fail(lambda: session.execute(batch), insert_cql)
+        self._execute_and_assert(lambda: session.execute(batch), insert_cql, table_name, column_name, session, value_length)
 
-    def _execute_and_fail(self, operation, cql_string):
+    def _execute_and_assert(self, operation, cql_string, table_name, column_name, session, value_length):
         try:
             operation()
-            self.fail("Expecting query {} to be invalid".format(cql_string))
+            res_length = 0
+            result = list(session.execute('select {0} from {1}'.format(column_name, table_name)))
+            if result:
+                res_length = len(list(result[0])[0])
+            if value_length == self.OVERSIZE_LENGTH:
+                assert_success = False
+                assert_fail = "Expecting query %s to be invalid" % cql_string
+            else:
+                assert_success = (value_length == res_length)
+                assert_fail = "Expecting value length is {0}, received {1}".format(value_length, res_length)
+            assert assert_success, assert_fail
         except AssertionError as e:
             raise e
         except InvalidRequest:
