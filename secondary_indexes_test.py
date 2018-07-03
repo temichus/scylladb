@@ -473,35 +473,40 @@ class TestSecondaryIndexes(Tester):
         self.cluster.start()
         return self.patient_cql_connection(node, keyspace=keyspace_name)
 
+    @require('3206')
     def test_multi_index_filtering_query(self):
         """
         asserts that having multiple indexes that cover all predicates still requires ALLOW FILTERING to also be present
         """
-        cluster = self.cluster
-        cluster.populate(1).start()
-        node1, = cluster.nodelist()
-        session = self.patient_cql_connection(node1)
-        session.execute("CREATE KEYSPACE ks WITH REPLICATION = {'class': 'SimpleStrategy', 'replication_factor': '1'};")
-        session.execute("USE ks;")
-        session.execute("CREATE TABLE tbl (id uuid primary key, c0 text, c1 text, c2 text);")
-        session.execute("CREATE INDEX ix_tbl_c0 ON tbl(c0);")
-        session.execute("CREATE INDEX ix_tbl_c1 ON tbl(c1);")
-        session.execute("INSERT INTO tbl (id, c0, c1, c2) values (uuid(), 'a', 'b', 'c');")
-        session.execute("INSERT INTO tbl (id, c0, c1, c2) values (uuid(), 'a', 'b', 'c');")
-        session.execute("INSERT INTO tbl (id, c0, c1, c2) values (uuid(), 'q', 'b', 'c');")
-        session.execute("INSERT INTO tbl (id, c0, c1, c2) values (uuid(), 'a', 'e', 'f');")
-        session.execute("INSERT INTO tbl (id, c0, c1, c2) values (uuid(), 'a', 'e', 'f');")
+        keyspace_name = 'ks'
+        table_name = 'tbl'
+        index_names = {'ix_tbl_c0': 'c0', 'ix_tbl_c1': 'c1'}
 
-        rows = list(session.execute("SELECT * FROM tbl WHERE c0 = 'a';"))
-        self.assertEqual(4, len(rows))
+        session = prepare(self, nodes=4, rf=3, keyspace_name=keyspace_name)
 
-        stmt = "SELECT * FROM tbl WHERE c0 = 'a' AND c1 = 'b';"
-        assert_invalid(session, stmt, "Cannot execute this query as it might involve data filtering and thus may have "
-                                      "unpredictable performance. If you want to execute this query despite the "
-                                      "performance unpredictability, use ALLOW FILTERING")
+        self.create_cf(session, table_name, key_type='uuid', columns={'c0': 'text', 'c1': 'text', 'c2': 'text'},
+                       compaction={'class': self.compaction_strategy})
 
-        rows = list(session.execute("SELECT * FROM tbl WHERE c0 = 'a' AND c1 = 'b' ALLOW FILTERING;"))
-        self.assertEqual(2, len(rows))
+        for name, column in index_names.iteritems():
+            create_and_build_index(self.create_index, self.cluster, session, keyspace_name, table_name, column, name,
+                                   compaction=self.compaction_strategy)
+
+        smt = "INSERT INTO {0} (key, c0, c1, c2) values (uuid(), '{1}', '{2}', '{3}')"
+        session.execute(smt.format(table_name, 'a', 'b', 'c'))
+        session.execute(smt.format(table_name, 'a', 'b', 'c'))
+        session.execute(smt.format(table_name, 'q', 'b', 'c'))
+        session.execute(smt.format(table_name, 'a', 'e', 'f'))
+        session.execute(smt.format(table_name, 'a', 'e', 'f'))
+
+        assert_all(session, "SELECT count(*) FROM {0} WHERE {1} = 'a';".format(table_name, index_names['ix_tbl_c0']),
+                   expected=[[4]], cl=ConsistencyLevel.QUORUM)
+
+        # Filter query by multi index without using ALLOW FILTERING option expected fail
+        smt = "SELECT count(*) FROM {0} WHERE {1} = 'a' AND {2} = 'b'".format(table_name, index_names['ix_tbl_c0'],
+                                                                              index_names['ix_tbl_c1'])
+        assert_invalid(session, smt, matching='use ALLOW FILTERING')
+
+        assert_all(session, '{} ALLOW FILTERING'.format(smt), expected=[[2]], cl=ConsistencyLevel.QUORUM)
 
     def test_truncate_base(self):
         """
