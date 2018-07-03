@@ -7,7 +7,7 @@ from unittest import skipIf, skip
 
 from dtest import Tester, debug
 from tools import since, require, rows_to_list, new_node
-from assertions import assert_all, assert_invalid, assert_one, assert_row_count, assert_none
+from assertions import assert_all, assert_invalid, assert_one, assert_row_count, assert_none, assert_expected_error
 from scylla_tools import index_is_built, get_index_view_name, view_built_status_query, check_errors
 
 from cassandra import ConsistencyLevel, InvalidRequest
@@ -657,6 +657,29 @@ class TestSecondaryIndexes(Tester):
             res = session.execute("SELECT * FROM {}.{} WHERE {} = 0".format(keyspace_name, table, index_column))
             self.assertEqual(len(rows_to_list(res)), 50)
 
+    def test_multi_column_index(self):
+        """
+        Test that impossible to create secondary index on the few columns and valid error message is received
+        """
+        keyspace_name = 'ks'
+        table_name = 'cf'
+        index_columns = {'b': 'int', 'c': 'int'}
+
+        session = prepare(self, nodes=1, rf=1, keyspace_name=keyspace_name)
+
+        # try to create index on 2 columns
+        self.create_cf(session, table_name, key_type='int', columns=index_columns, compaction={'class': self.compaction_strategy})
+        assert_expected_error(func=self.create_index, expected_error='Only CUSTOM indexes support multiple columns',
+                              args=(session, table_name, index_columns),
+                              kwargs={'index_name': 'two_columns_index', 'compaction':self.compaction_strategy})
+
+        # try to create index on 6 columns
+        table_name = 'cf_6columns'
+        index_columns = {'b': 'int', 'c': 'int', 'd': 'int', 'e': 'int', 'f': 'int', 'g': 'int'}
+        self.create_cf(session, table_name, key_type='int', columns=index_columns, compaction={'class': self.compaction_strategy})
+        assert_expected_error(func=self.create_index, expected_error='Only CUSTOM indexes support multiple columns',
+                              args=(session, table_name, index_columns),
+                              kwargs={'index_name': 'six_columns_index', 'compaction':self.compaction_strategy})
 
 class TestSecondaryIndexesOnCollections(Tester):
 
