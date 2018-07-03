@@ -681,6 +681,66 @@ class TestSecondaryIndexes(Tester):
                               args=(session, table_name, index_columns),
                               kwargs={'index_name': 'six_columns_index', 'compaction':self.compaction_strategy})
 
+    def _prepare_for_ttl(self):
+        keyspace_name = 'ks'
+        table_name = 'cf'
+        index_column = 'b'
+        index_name = '{}_inx'.format(index_column)
+        select_query = 'select * from {} where {} = {}'
+        mv_query = 'select key, {} from {}'.format(index_column, get_index_view_name(index_name))
+
+        session = prepare(self, nodes=1, rf=1, keyspace_name=keyspace_name)
+
+        self.create_cf(session, table_name, key_type='int', columns={'b': 'int', 'c': 'int'},
+                       compaction={'class':self.compaction_strategy})
+        session.execute("INSERT INTO {} (key, b, c) VALUES (0, 1, 2)".format(table_name))
+        assert_all(session, select_query.format(table_name, 'key', 0), [[0, 1, 2]], cl=ConsistencyLevel.ALL)
+
+        create_and_build_index(self.create_index, self.cluster, session, keyspace_name, table_name, index_column,
+                               index_name, compaction=self.compaction_strategy)
+        assert_all(session, select_query.format(table_name, index_column, 1), [[0, 1, 2]], cl=ConsistencyLevel.ALL)
+        return session, keyspace_name, table_name, index_column, index_name, select_query, mv_query
+
+    def test_ttl_index_column(self):
+        """
+        Verify SI with default_time_to_live can be deleted properly using expired livenessInfo
+        """
+        session, keyspace_name, table_name, index_column, index_name, select_query, mv_query = self._prepare_for_ttl()
+
+        ttl = 60
+        debug('Update index column with TTL {}'.format(ttl))
+        session.execute("UPDATE {} USING TTL {} SET {}=3 WHERE key=0".format(table_name, ttl, index_column))
+        assert_all(session, select_query.format(table_name, 'key', 0), [[0, 3, 2]], cl=ConsistencyLevel.ALL)
+        assert_all(session, select_query.format(table_name, index_column, 3), [[0, 3, 2]], cl=ConsistencyLevel.ALL)
+        assert_none(session, select_query.format(table_name, index_column, 1), cl=ConsistencyLevel.ALL)
+        assert_all(session, mv_query, [[0, 3]], cl=ConsistencyLevel.ALL)
+
+        time.sleep(ttl+5)
+        # Validate that no record is returned when filtered by index
+        assert_all(session, select_query.format(table_name, 'key', 0), [[0, None, 2]], cl=ConsistencyLevel.ALL)
+        assert_none(session, select_query.format(table_name, index_column, 3), cl=ConsistencyLevel.ALL)
+        assert_none(session, select_query.format(table_name, index_column, 1), cl=ConsistencyLevel.ALL)
+        assert_none(session, mv_query, cl=ConsistencyLevel.ALL)
+
+    def test_ttl_non_index_column(self):
+        """
+        Verify SI is not impact from TTL on non-imdex column
+        """
+        session, keyspace_name, table_name, index_column, index_name, select_query, mv_query = self._prepare_for_ttl()
+
+        ttl = 60
+        debug('Update non-index column with TTL {}'.format(ttl))
+        session.execute("UPDATE {} USING TTL {} SET {}=3 WHERE key=0".format(table_name, ttl, 'c'))
+        assert_all(session, select_query.format(table_name, 'key', 0), [[0, 1, 3]], cl=ConsistencyLevel.ALL)
+        assert_all(session, select_query.format(table_name, index_column, 1), [[0, 1, 3]], cl=ConsistencyLevel.ALL)
+        assert_all(session, mv_query, [[0, 1]], cl=ConsistencyLevel.ALL)
+
+        time.sleep(ttl+5)
+        # Validate that record is returned when filtered by index
+        assert_all(session, select_query.format(table_name, 'key', 0), [[0, 1, None]], cl=ConsistencyLevel.ALL)
+        assert_all(session, select_query.format(table_name, index_column, 1), [[0, 1, None]], cl=ConsistencyLevel.ALL)
+        assert_all(session, mv_query, [[0, 1]], cl=ConsistencyLevel.ALL)
+
 class TestSecondaryIndexesOnCollections(Tester):
 
     def test_tuple_indexes(self):
