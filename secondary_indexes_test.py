@@ -512,35 +512,43 @@ class TestSecondaryIndexes(Tester):
         """
         asserts that truncating base table will result in truncating secondary index as well
         """
-        cluster = self.cluster
-        cluster.populate(1).start()
-        node1, = cluster.nodelist()
-        session = self.patient_cql_connection(node1)
-        session.execute("CREATE KEYSPACE ks WITH REPLICATION = {'class': 'SimpleStrategy', 'replication_factor': '1'};")
-        session.execute("USE ks;")
-        session.execute("CREATE TABLE tbl (id uuid primary key, c0 text, c1 text);")
-        session.execute("CREATE INDEX ix_tbl_c0 ON tbl(c0);")
-        session.execute("CREATE INDEX ix_tbl_c1 ON tbl(c1);")
-        session.execute("INSERT INTO tbl (id, c0, c1) values (uuid(), 'a', 'b');")
-        session.execute("INSERT INTO tbl (id, c0, c1) values (uuid(), 'a', 'b');")
-        session.execute("INSERT INTO tbl (id, c0, c1) values (uuid(), 'q', 'b');")
-        session.execute("INSERT INTO tbl (id, c0, c1) values (uuid(), 'a', 'e');")
-        session.execute("INSERT INTO tbl (id, c0, c1) values (uuid(), 'a', 'e');")
+        keyspace_name = 'ks'
+        table_name = 'tbl'
+        index_names = {'ix_tbl_c0': 'c0', 'ix_tbl_c1': 'c1'}
+
+        session = prepare(self, nodes=4, rf=3, keyspace_name=keyspace_name)
+
+        self.create_cf(session, table_name, key_type='uuid', columns={'c0': 'text', 'c1': 'text', 'c2': 'text'},
+                       compaction={'class': self.compaction_strategy})
+
+        for name, column in index_names.iteritems():
+            create_and_build_index(self.create_index, self.cluster, session, keyspace_name, table_name, column, name,
+                                   compaction=self.compaction_strategy)
+
+        smt = "INSERT INTO {0} (key, c0, c1) values (uuid(), '{1}', '{2}')"
+        session.execute(smt.format(table_name, 'a', 'b'))
+        session.execute(smt.format(table_name, 'a', 'b'))
+        session.execute(smt.format(table_name, 'q', 'b'))
+        session.execute(smt.format(table_name, 'a', 'e'))
+        session.execute(smt.format(table_name, 'a', 'e'))
 
         # ensure sstables are created and will be dropped
         self.cluster.flush()
+
+        smt = "SELECT count(*) FROM {0} WHERE {1} = '{2}'"
+
         # ensure data is loaded into cache and the cache will be cleared
-        self.assertEquals(4, len(list(session.execute("SELECT * FROM tbl WHERE c0 = 'a'"))))
+        assert_all(session, smt.format(table_name, index_names['ix_tbl_c0'], 'a'), expected=[[4]], cl=ConsistencyLevel.QUORUM)
 
         assert_row_count(session, "tbl", 5)
+
         session.execute("TRUNCATE table tbl")
         assert_row_count(session, "tbl", 0)
 
         # check that index queries are also truncated
-        rows = list(session.execute("SELECT * FROM tbl WHERE c0 = 'a';"))
-        self.assertEqual(0, len(rows))
-        rows = list(session.execute("SELECT * FROM tbl WHERE c1 = 'b';"))
-        self.assertEqual(0, len(rows))
+        assert_all(session, smt.format(table_name, index_names['ix_tbl_c0'], 'a'), expected=[[0]], cl=ConsistencyLevel.QUORUM)
+
+        assert_all(session, smt.format(table_name, index_names['ix_tbl_c1'], 'b'), expected=[[0]], cl=ConsistencyLevel.QUORUM)
 
     @skip('Not relevant. No index information in the query trace')
     def test_only_coordinator_chooses_index_for_query(self):
