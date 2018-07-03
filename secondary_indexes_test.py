@@ -877,6 +877,69 @@ class TestSecondaryIndexes(Tester):
                                              ['Can\'t send migration request: node {} is down'.format(node2_ip)],
                                              search_str='ERROR')
 
+    def test_stop_node_after_index_build(self):
+        """
+        Stop one node after index building and read data by index
+        """
+        self._node_action_after_index_build(node_action='stop', nodes=4, rf=3, num_rows=1000)
+
+    def test_remove_node_after_index_build(self):
+        """
+        Remove one node after index building and read data by index
+        """
+        self._node_action_after_index_build(node_action='remove', nodes=4, rf=3, num_rows=1000)
+
+    def test_decommission_node_after_index_build(self):
+        """
+        Decommission one node after index building and read data by index
+        """
+        self._node_action_after_index_build(node_action='decommission', nodes=4, rf=3, num_rows=1000)
+
+    def test_add_node_after_index_build(self):
+        """
+        Decommission one node after index building and read data by index
+        """
+        self._node_action_after_index_build(node_action='add', nodes=3, rf=3, num_rows=1000)
+
+    def _node_action_after_index_build(self, node_action, nodes, rf, num_rows):
+        keyspace_name = 'ks'
+        table_name = 'cf'
+        index_name = 'b_index'
+        index_column = 'b'
+        view_name = get_index_view_name(index_name)
+
+        session = prepare(self, nodes=nodes, rf=rf, keyspace_name=keyspace_name, session_node=3)
+        node2 = self.cluster.nodelist()[1]
+        node2_ip = list(node2.network_interfaces['binary'])[0]
+
+        self.create_cf(session, table_name, key_type='int', columns={'b': 'int'}, compaction={'class': self.compaction_strategy})
+
+        statement = session.prepare("INSERT INTO {}.{} (key, b) VALUES (?, ?)".format(keyspace_name, table_name))
+        statement.consistency_level = ConsistencyLevel.QUORUM
+
+        execute_concurrent_with_args(session, statement,
+                                     map(lambda k: [k] + [k + num_rows], [k for k in xrange(0, num_rows)]))
+        self.cluster.flush()
+
+        # Create index and wait while the index is built
+        create_and_build_index(self.create_index, self.cluster, session, ks_name=keyspace_name, table_name=table_name,
+                               index_name=index_name, index_column=index_column, compaction=self.compaction_strategy)
+
+        # Perform action on second node
+        self._node_action_with_delay(node_action, node=node2)
+
+        # Validate the data using filtering by index
+        self.validate_index_data(session, cl=ConsistencyLevel.ONE, num_rows=num_rows, table_name=table_name,
+                                 index_column=index_column)
+
+        # Validate view rows
+        assert_row_count_from_every_node(session, table_name=view_name, expected=num_rows,
+                                         nodes_list=self.cluster.nodelist())
+
+        self.allow_log_errors = check_errors(self.cluster.nodelist()[0],
+                                             ['Can\'t send migration request: node {} is down'.format(node2_ip)],
+                                             search_str='ERROR')
+
     def validate_index_data(self, session, cl, num_rows, table_name, index_column):
         debug('Verify data with {} consistency level'.format(ConsistencyLevel.value_to_name[cl]))
         for i in xrange(num_rows):
