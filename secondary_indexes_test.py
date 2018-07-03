@@ -741,6 +741,58 @@ class TestSecondaryIndexes(Tester):
         assert_all(session, select_query.format(table_name, index_column, 1), [[0, 1, None]], cl=ConsistencyLevel.ALL)
         assert_all(session, mv_query, [[0, 1]], cl=ConsistencyLevel.ALL)
 
+    def test_delete_indexed_rows(self):
+            """
+            Delete rows from indexed table and read data by index
+            """
+            keyspace_name = 'ks'
+            table_name = 'cf'
+            index_name = 'b_index'
+            index_column = 'b'
+
+            session = prepare(self, nodes=4, rf=3, keyspace_name=keyspace_name, session_node=3)
+
+            self.create_cf(session, table_name, key_type='int', columns={'b': 'int'},
+                           compaction={'class': self.compaction_strategy})
+            create_and_build_index(self.create_index, self.cluster, session, ks_name=keyspace_name,
+                                   table_name=table_name,
+                                   index_column=index_column, index_name=index_name,
+                                   compaction=self.compaction_strategy)
+
+            num_rows = 100
+            for i in range(num_rows):
+                indexed_value = i + 100
+                session.execute(
+                    "INSERT INTO {}.{} (key, b) VALUES ({}, {})".format(keyspace_name, table_name, i, indexed_value))
+
+            self.cluster.flush()
+
+            # Delete 10 rows by index
+            debug('Delete 10 rows by index')
+            start_key, delete_num = 30, 10
+            rows_for_delete = list(range(start_key, start_key + delete_num))
+            for i in rows_for_delete:
+                session.execute("DELETE FROM {} WHERE key = {}".format(table_name, i))
+            time.sleep(30)
+
+            # Valudate the data in not in table
+            assert_row_count(session, table_name=table_name, expected=num_rows - delete_num,
+                             consistency_level=ConsistencyLevel.ALL)
+            query = 'select key, b from {} where {}={}'
+            for i in list(range(num_rows)):
+                if i in rows_for_delete:
+                    assert_none(session, query=query.format(table_name, 'key', i), cl=ConsistencyLevel.ALL)
+                    assert_none(session, query=query.format(table_name, index_column, i + 100), cl=ConsistencyLevel.ALL)
+                else:
+                    res = [[i, i + 100]]
+                    assert_all(session, query=query.format(table_name, 'key', i), expected=res, cl=ConsistencyLevel.ALL)
+                    assert_all(session, query=query.format(table_name, index_column, i + 100), expected=res,
+                               cl=ConsistencyLevel.ALL)
+
+            # Valudate the data in not in table and SI materialized view
+            assert_row_count(session, table_name=get_index_view_name(index_name), expected=num_rows - delete_num,
+                             consistency_level=ConsistencyLevel.ALL)
+
 class TestSecondaryIndexesOnCollections(Tester):
 
     def test_tuple_indexes(self):
