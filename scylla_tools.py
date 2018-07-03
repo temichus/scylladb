@@ -870,6 +870,19 @@ def _wait_for_view(cluster, session, ks, view):
 
     raise Exception("View {}.{} not built".format(ks, view))
 
+def wait_for_view_build_start(session, ks, view, seconds_to_wait = 20):
+
+    def _check_build_started():
+        result = rows_to_list(session.execute("SELECT last_token FROM system.views_builds_in_progress "
+                                              "WHERE keyspace_name='{0}' AND view_name='{1}'".format(ks, view)))
+        return result != [[None]]
+
+    debug("Ensure view building started.")
+    start = time.time()
+    while not _check_build_started():
+        if time.time() - start > seconds_to_wait:
+            raise Exception("View building didn't start in {} seconds".format(seconds_to_wait))
+
 def check_errors(node, exclude_errors, search_str='Error'):
     errors = node.grep_log_for_errors(distinct_errors=True, search_str=search_str)
 
@@ -882,3 +895,10 @@ def check_errors(node, exclude_errors, search_str='Error'):
     else:
         # Set allow_log_errors to True
         return True
+
+def remove_node(cluster, node):
+    hostid = node.hostid()
+    cluster.remove(node)
+    time.sleep(30)
+    remove_using_node = cluster.nodelist()[0]
+    remove_using_node.nodetool("removenode {}".format(hostid))

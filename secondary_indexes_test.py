@@ -7,8 +7,10 @@ from unittest import skipIf, skip
 
 from dtest import Tester, debug
 from tools import since, require, rows_to_list, new_node
-from assertions import assert_all, assert_invalid, assert_one, assert_row_count, assert_none, assert_expected_error
-from scylla_tools import index_is_built, get_index_view_name, view_built_status_query, check_errors
+from assertions import assert_all, assert_invalid, assert_one, assert_row_count, assert_none, assert_expected_error, \
+                        assert_row_count_from_every_node
+from scylla_tools import index_is_built, get_index_view_name, view_built_status_query, check_errors, \
+    wait_for_view_build_start, remove_node
 
 from cassandra import ConsistencyLevel, InvalidRequest
 from cassandra.concurrent import (execute_concurrent,
@@ -792,6 +794,133 @@ class TestSecondaryIndexes(Tester):
             # Valudate the data in not in table and SI materialized view
             assert_row_count(session, table_name=get_index_view_name(index_name), expected=num_rows - delete_num,
                              consistency_level=ConsistencyLevel.ALL)
+
+    def test_stop_node_during_index_build(self):
+        """
+        Stop one node during index building and read data by index
+        """
+        self._node_action_during_index_build(node_action='stop', nodes=4, rf=3, num_rows=100000)
+
+    def test_remove_node_during_index_build(self):
+        """
+        Remove one node during index building and read data by index
+        """
+        self._node_action_during_index_build(node_action='remove', nodes=4, rf=3, num_rows=100000)
+
+    def test_decommission_node_during_index_build(self):
+        """
+        Decommission one node during index building and read data by index
+        """
+        self._node_action_during_index_build(node_action='decommission', nodes=4, rf=3, num_rows=100000)
+
+    def test_add_node_during_index_build(self):
+        """
+        Decommission one node during index building and read data by index
+        """
+        self._node_action_during_index_build(node_action='add', nodes=3, rf=3, num_rows=100000)
+
+    def _node_action_during_index_build(self, node_action, nodes, rf, num_rows):
+        keyspace_name = 'ks'
+        table_name = 'cf'
+        index_name = 'b_index'
+        index_column = 'b'
+        view_name = get_index_view_name(index_name)
+
+        session = prepare(self, nodes=nodes, rf=rf, keyspace_name=keyspace_name, session_node=3)
+        node2 = self.cluster.nodelist()[1]
+        node2_ip = list(node2.network_interfaces['binary'])[0]
+
+        self.create_cf(session, table_name, key_type='int', columns={'b': 'int'}, compaction={'class': self.compaction_strategy})
+
+        statement = session.prepare("INSERT INTO {}.{} (key, b) VALUES (?, ?)".format(keyspace_name, table_name))
+        statement.consistency_level = ConsistencyLevel.QUORUM
+
+        execute_concurrent_with_args(session, statement,
+                                     map(lambda k: [k] + [k+num_rows], [k for k in xrange(0, num_rows)]))
+        self.cluster.flush()
+
+        # Create index and wait while the build is starting
+        self.create_index(session, table_name, index_column, index_name, compaction=self.compaction_strategy)
+        wait_for_view_build_start(session, ks=keyspace_name, view=view_name)
+
+        # Perform action on second node
+        self._node_action_with_delay(node_action, node2)
+
+        index_is_built(self.cluster, session, ks_name=keyspace_name, table_name=table_name, index_name=index_name)
+
+        # Validate the data using filtering by index with cl=QUORUM becasue expected that may be partually missed data on the replicas
+        self.validate_index_data(session, cl=ConsistencyLevel.QUORUM, num_rows=num_rows, table_name=table_name,
+                                 index_column=index_column)
+
+        if node_action == 'add':
+            assert True
+
+        if node_action in ['remove', 'decommission']:
+            debug('Add new node')
+            session = self._add_new_node(node_index=nodes+1)
+            session.execute('USE {}'.format(keyspace_name))
+        elif node_action == 'stop':
+            debug('Start node {}'.format(node2.name))
+            node2.start(wait_for_binary_proto=True)
+
+        # Wait for index data update
+        time.sleep(30)
+
+        # Validate the data using filtering by index with cl=ONE
+        self.validate_index_data(session, cl=ConsistencyLevel.ONE, num_rows=num_rows, table_name=table_name,
+                                 index_column=index_column)
+
+        # Validate view rows
+        assert_row_count_from_every_node(session, table_name=view_name, expected=num_rows,
+                                         nodes_list=self.cluster.nodelist())
+        self.allow_log_errors = check_errors(self.cluster.nodelist()[0],
+                                             ['Can\'t send migration request: node {} is down'.format(node2_ip)],
+                                             search_str='ERROR')
+
+    def validate_index_data(self, session, cl, num_rows, table_name, index_column):
+        debug('Verify data with {} consistency level'.format(ConsistencyLevel.value_to_name[cl]))
+        for i in xrange(num_rows):
+            assert_all(session, 'select key from {} where {} = {}'.format(table_name, index_column, i + num_rows),
+                       expected=[[i]], cl=cl)
+
+    def _node_action_with_delay(self, action, node=None, delay=0, wait=True, wait_other_notice=False, gently=True):
+        """
+        :param action: expected values: stop, remove
+        :param action: str
+        """
+        if action not in ['stop', 'remove', 'decommission', 'add']:
+            assert False, 'Unsupported node action'
+
+        if delay:
+            debug('Sleep for {} seconds'.format(delay))
+            time.sleep(delay)
+
+        debug('START: {0} node {1}'.format(action, node.name))
+        if action == 'stop':
+            node.stop(wait=wait, wait_other_notice=wait_other_notice, gently=gently)
+        elif action == 'remove':
+            remove_node(cluster=self.cluster, node=node)
+        elif action == 'add':
+            self._add_new_node()
+        else:
+            node.nodetool(action)
+            if action == 'decommission':
+                node.stop(wait=wait, wait_other_notice=wait_other_notice, gently=gently)
+        debug('FINISH: {0} node {1}'.format(action, node.name))
+
+    def _add_new_node(self, data_center='dc1', wait_for_binary_proto=True, jvm_args=None,
+                      configuration_options=None, queue=None, delay=0, node_index=None):
+        time.sleep(delay)
+        node = new_node(self.cluster, data_center=data_center, new_node_index=node_index)
+        if configuration_options:
+            node.set_configuration_options(values=configuration_options)  # CASSANDRA-11670
+        debug("Start join at {}".format(time.strftime("%H:%M:%S")))
+        node.start(wait_for_binary_proto=wait_for_binary_proto, jvm_args=jvm_args)
+        session = self.patient_exclusive_cql_connection(node)
+        debug("Finish join at {}".format(time.strftime("%H:%M:%S")))
+        if queue:
+            queue.put_nowait((session))
+        return session
 
 class TestSecondaryIndexesOnCollections(Tester):
 
