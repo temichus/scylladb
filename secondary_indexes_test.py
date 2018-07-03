@@ -987,29 +987,29 @@ class TestSecondaryIndexes(Tester):
 
 class TestSecondaryIndexesOnCollections(Tester):
 
+    def __init__(self, *args, **kwargs):
+        Tester.__init__(self, *args, **kwargs)
+
     def test_tuple_indexes(self):
         """
         Checks that secondary indexes on tuples work for querying
         """
-        cluster = self.cluster
-        cluster.populate(1).start()
-        [node1] = cluster.nodelist()
-        session = self.patient_cql_connection(node1)
-        create_ks(session, 'tuple_index_test', 1)
-        session.execute("use tuple_index_test")
-        session.execute("""
-            CREATE TABLE simple_with_tuple (
-                id uuid primary key,
-                normal_col int,
-                single_tuple tuple<int>,
-                double_tuple tuple<int, int>,
-                triple_tuple tuple<int, int, int>,
-                nested_one tuple<int, tuple<int, int>>
-            )""")
-        cmds = [("""insert into simple_with_tuple
-                        (id, normal_col, single_tuple, double_tuple, triple_tuple, nested_one)
+        keyspace_name = 'tuple_index_test'
+        table_name = 'simple_with_tuple'
+        index_columns = {'single_tuple': '({0})', 'double_tuple': '({0},{0})', 'triple_tuple': '({0},{0},{0})',
+                         'nested_one': '({0},({0},{0}))'}
+        session = prepare(self, nodes=1, rf=1, keyspace_name=keyspace_name)
+
+        self.create_cf(session, table_name, key_type='uuid', columns={'normal_col': 'int', 'single_tuple': 'tuple<int>',
+                                                                      'double_tuple': 'tuple<int, int>',
+                                                                      'triple_tuple': 'tuple<int, int, int>',
+                                                                      'nested_one': 'tuple<int, tuple<int, int>>'}
+                       , compaction={'class': self.compaction_strategy})
+
+        cmds = [("""insert into {1}
+                        (key, normal_col, single_tuple, double_tuple, triple_tuple, nested_one)
                     values
-                        (uuid(), {0}, ({0}), ({0},{0}), ({0},{0},{0}), ({0},({0},{0})))""".format(n), ())
+                        (uuid(), {0}, ({0}), ({0},{0}), ({0},{0},{0}), ({0},({0},{0})))""".format(n, table_name), ())
                 for n in range(50)]
 
         results = execute_concurrent(session, cmds * 5, raise_on_first_error=True, concurrency=200)
@@ -1017,463 +1017,167 @@ class TestSecondaryIndexesOnCollections(Tester):
         for (success, result) in results:
             self.assertTrue(success, "didn't get success on insert: {0}".format(result))
 
-        session.execute("CREATE INDEX idx_single_tuple ON simple_with_tuple(single_tuple);")
-        session.execute("CREATE INDEX idx_double_tuple ON simple_with_tuple(double_tuple);")
-        session.execute("CREATE INDEX idx_triple_tuple ON simple_with_tuple(triple_tuple);")
-        session.execute("CREATE INDEX idx_nested_tuple ON simple_with_tuple(nested_one);")
-        time.sleep(10)
+        # no index present yet, make sure there's an error trying to query column
+        stmt = ("SELECT * from {} where single_tuple = (1)".format(table_name))
 
+        assert_invalid(session, stmt, matching='No index found', expected=Exception)
+
+        for index_column in index_columns.iterkeys():
+            create_and_build_index(self.create_index, self.cluster, session, keyspace_name, table_name, index_column,
+                                   'idx_' + index_column, compaction=self.compaction_strategy)
+
+        select_cmd = "select * from {} where {} = {}"
         # check if indexes work on existing data
         for n in range(50):
-            self.assertEqual(5, len(
-                list(session.execute("select * from simple_with_tuple where single_tuple = ({0});".format(n)))))
-            self.assertEqual(0, len(
-                list(session.execute("select * from simple_with_tuple where single_tuple = (-1);".format(n)))))
-            self.assertEqual(5, len(
-                list(session.execute("select * from simple_with_tuple where double_tuple = ({0},{0});".format(n)))))
-            self.assertEqual(0, len(
-                list(session.execute("select * from simple_with_tuple where double_tuple = ({0},-1);".format(n)))))
-            self.assertEqual(5, len(
-                list(session.execute("select * from simple_with_tuple where triple_tuple = ({0},{0},{0});".format(n)))))
-            self.assertEqual(0, len(
-                list(session.execute("select * from simple_with_tuple where triple_tuple = ({0},{0},-1);".format(n)))))
-            self.assertEqual(5, len(
-                list(session.execute("select * from simple_with_tuple where nested_one = ({0},({0},{0}));".format(n)))))
-            self.assertEqual(0, len(
-                list(session.execute("select * from simple_with_tuple where nested_one = ({0},({0},-1));".format(n)))))
+            for index_column, template in index_columns.iteritems():
+                self.assertEqual(5, len(
+                    list(session.execute(select_cmd.format(table_name, index_column, template.format(n))))))
+                self.assertEqual(0, len(
+                    list(session.execute(select_cmd.format(table_name, index_column, template.format(-1))))))
 
         # check if indexes work on new data inserted after index creation
         results = execute_concurrent(session, cmds * 3, raise_on_first_error=True, concurrency=200)
         for (success, result) in results:
             self.assertTrue(success, "didn't get success on insert: {0}".format(result))
         time.sleep(5)
+
+        def _validate_data(expected_rows, format_value):
+            for index_column, template in index_columns.iteritems():
+                self.assertEqual(expected_rows, len(
+                    list(session.execute(select_cmd.format(table_name, index_column, template.format(format_value))))))
+
         for n in range(50):
-            self.assertEqual(8, len(
-                list(session.execute("select * from simple_with_tuple where single_tuple = ({0});".format(n)))))
-            self.assertEqual(8, len(
-                list(session.execute("select * from simple_with_tuple where double_tuple = ({0},{0});".format(n)))))
-            self.assertEqual(8, len(
-                list(session.execute("select * from simple_with_tuple where triple_tuple = ({0},{0},{0});".format(n)))))
-            self.assertEqual(8, len(
-                list(session.execute("select * from simple_with_tuple where nested_one = ({0},({0},{0}));".format(n)))))
+            _validate_data(expected_rows=8, format_value=n)
 
         # check if indexes work on mutated data
         for n in range(5):
-            rows = session.execute("select * from simple_with_tuple where single_tuple = ({0});".format(n))
-            for row in rows:
-                session.execute("update simple_with_tuple set single_tuple = (-999) where id = {0}".format(row.id))
-
-            rows = session.execute("select * from simple_with_tuple where double_tuple = ({0},{0});".format(n))
-            for row in rows:
-                session.execute("update simple_with_tuple set double_tuple = (-999,-999) where id = {0}".format(row.id))
-
-            rows = session.execute("select * from simple_with_tuple where triple_tuple = ({0},{0},{0});".format(n))
-            for row in rows:
-                session.execute(
-                    "update simple_with_tuple set triple_tuple = (-999,-999,-999) where id = {0}".format(row.id))
-
-            rows = session.execute("select * from simple_with_tuple where nested_one = ({0},({0},{0}));".format(n))
-            for row in rows:
-                session.execute(
-                    "update simple_with_tuple set nested_one = (-999,(-999,-999)) where id = {0}".format(row.id))
+            for index_column, template in index_columns.iteritems():
+                rows = session.execute(select_cmd.format(table_name, index_column, template.format(n)))
+                for row in rows:
+                    session.execute("update {} set {} = {} where key = {}".format(table_name, index_column, template.format(-999), row.key))
 
         for n in range(5):
-            self.assertEqual(0, len(
-                list(session.execute("select * from simple_with_tuple where single_tuple = ({0});".format(n)))))
-            self.assertEqual(0, len(
-                list(session.execute("select * from simple_with_tuple where double_tuple = ({0},{0});".format(n)))))
-            self.assertEqual(0, len(
-                list(session.execute("select * from simple_with_tuple where triple_tuple = ({0},{0},{0});".format(n)))))
-            self.assertEqual(0, len(
-                list(session.execute("select * from simple_with_tuple where nested_one = ({0},({0},{0}));".format(n)))))
+            _validate_data(expected_rows=0, format_value=n)
 
-        self.assertEqual(40, len(list(session.execute("select * from simple_with_tuple where single_tuple = (-999);"))))
-        self.assertEqual(40, len(
-            list(session.execute("select * from simple_with_tuple where double_tuple = (-999,-999);"))))
-        self.assertEqual(40, len(
-            list(session.execute("select * from simple_with_tuple where triple_tuple = (-999,-999,-999);"))))
-        self.assertEqual(40, len(
-            list(session.execute("select * from simple_with_tuple where nested_one = (-999,(-999,-999));"))))
+        for n in range(50):
+            _validate_data(expected_rows=40, format_value=-999)
 
+    @require('#2962')
     def test_list_indexes(self):
+        self.collection_indexes_run(type='list')
+
+    @require('#2962')
+    def test_set_indexes(self):
+        self.collection_indexes_run(type='set')
+
+    @require('#2962')
+    def test_map_indexes(self):
+        self.collection_indexes_run(type='map')
+
+    def collection_indexes_run(self, type):
         """
         Checks that secondary indexes on lists work for querying.
         """
-        cluster = self.cluster
-        cluster.populate(1).start()
-        [node1] = cluster.nodelist()
-        session = self.patient_cql_connection(node1)
-        create_ks(session, 'list_index_search', 1)
+        keyspace_name = 'index_search'
+        table_name = 'users'
+        index_name = 'user_uuids'
+        index_column = 'uuids'
+        index_column_type = {'list': 'list<uuid>', 'map': 'map<uuid, uuid>', 'set': 'set<uuid>'}
+        session = prepare(self, nodes=1, rf=1, keyspace_name=keyspace_name)
 
-        stmt = ("CREATE TABLE list_index_search.users ("
-                "user_id uuid PRIMARY KEY,"
-                "email text,"
-                "uuids list<uuid>"
-                ");")
-        session.execute(stmt)
+        self.create_cf(session, table_name, key_type='uuid', columns={'email': 'text', 'uuids': index_column_type[type]}
+                       , compaction={'class': self.compaction_strategy})
+
+        select_cmd = "SELECT * from {} where {} contains {}"
+
+        # no index present yet, make sure there's an error trying to query column
+        assert_invalid(session, select_cmd.format(table_name, index_column, uuid.uuid4()), matching='No index found', expected=Exception)
 
         # add index and query again (even though there are no rows in the table yet)
-        stmt = "CREATE INDEX user_uuids on list_index_search.users (uuids);"
-        session.execute(stmt)
+        create_and_build_index(self.create_index, self.cluster, session, keyspace_name, table_name, index_column,
+                               index_name, compaction=self.compaction_strategy)
 
-        stmt = ("SELECT * from list_index_search.users where uuids contains {some_uuid}").format(some_uuid=uuid.uuid4())
-        row = list(session.execute(stmt))
-        self.assertEqual(0, len(row))
+        self.assertEqual(0, len(list(session.execute(select_cmd.format(table_name, index_column, uuid.uuid4())))))
 
         # add a row which doesn't specify data for the indexed column, and query again
         user1_uuid = uuid.uuid4()
-        stmt = ("INSERT INTO list_index_search.users (user_id, email)"
-                "values ({user_id}, 'test@example.com')"
-                ).format(user_id=user1_uuid)
-        session.execute(stmt)
+        session.execute("INSERT INTO {} (key, email) values ({}, 'test@example.com')".format(table_name, user1_uuid))
 
-        stmt = ("SELECT * from list_index_search.users where uuids contains {some_uuid}").format(some_uuid=uuid.uuid4())
-        row = list(session.execute(stmt))
-        self.assertEqual(0, len(row))
+        self.assertEqual(0, len(list(session.execute(select_cmd.format(table_name, index_column, uuid.uuid4())))))
 
-        _id = uuid.uuid4()
         # alter the row to add a single item to the indexed list
-        stmt = ("UPDATE list_index_search.users set uuids = [{id}] where user_id = {user_id}"
-                ).format(id=_id, user_id=user1_uuid)
-        session.execute(stmt)
-
-        stmt = ("SELECT * from list_index_search.users where uuids contains {some_uuid}").format(some_uuid=_id)
-        row = list(session.execute(stmt))
-        self.assertEqual(1, len(row))
-
-        # add a bunch of user records and query them back
-        shared_uuid = uuid.uuid4()  # this uuid will be on all records
-
-        log = []
-
-        for i in range(50000):
-            user_uuid = uuid.uuid4()
-            unshared_uuid = uuid.uuid4()
-
-            # give each record a unique email address using the int index
-            stmt = ("INSERT INTO list_index_search.users (user_id, email, uuids)"
-                    "values ({user_uuid}, '{prefix}@example.com', [{s_uuid}, {u_uuid}])"
-                    ).format(user_uuid=user_uuid, prefix=i, s_uuid=shared_uuid, u_uuid=unshared_uuid)
-            session.execute(stmt)
-
-            log.append(
-                {'user_id': user_uuid,
-                 'email': str(i) + '@example.com',
-                 'unshared_uuid': unshared_uuid}
-            )
-
-        # confirm there is now 50k rows with the 'shared' uuid above in the secondary index
-        stmt = ("SELECT * from list_index_search.users where uuids contains {shared_uuid}").format(
-            shared_uuid=shared_uuid)
-        rows = list(session.execute(stmt))
-        result = [row for row in rows]
-        self.assertEqual(50000, len(result))
-
-        # shuffle the log in-place, and double-check a slice of records by querying the secondary index
-        random.shuffle(log)
-
-        for log_entry in log[:1000]:
-            stmt = ("SELECT user_id, email, uuids FROM list_index_search.users where uuids contains {unshared_uuid}"
-                    ).format(unshared_uuid=log_entry['unshared_uuid'])
-            rows = list(session.execute(stmt))
-
-            self.assertEqual(1, len(rows))
-
-            db_user_id, db_email, db_uuids = rows[0]
-
-            self.assertEqual(db_user_id, log_entry['user_id'])
-            self.assertEqual(db_email, log_entry['email'])
-            self.assertEqual(str(db_uuids[0]), str(shared_uuid))
-            self.assertEqual(str(db_uuids[1]), str(log_entry['unshared_uuid']))
-
-    def test_set_indexes(self):
-        """
-        Checks that secondary indexes on sets work for querying.
-        """
-        cluster = self.cluster
-        cluster.populate(1).start()
-        [node1] = cluster.nodelist()
-        session = self.patient_cql_connection(node1)
-        create_ks(session, 'set_index_search', 1)
-
-        stmt = ("CREATE TABLE set_index_search.users ("
-                "user_id uuid PRIMARY KEY,"
-                "email text,"
-                "uuids set<uuid>);")
-        session.execute(stmt)
-
-        # add index and query again (even though there are no rows in the table yet)
-        stmt = "CREATE INDEX user_uuids on set_index_search.users (uuids);"
-        session.execute(stmt)
-
-        stmt = ("SELECT * from set_index_search.users where uuids contains {some_uuid}").format(some_uuid=uuid.uuid4())
-        row = list(session.execute(stmt))
-        self.assertEqual(0, len(row))
-
-        # add a row which doesn't specify data for the indexed column, and query again
-        user1_uuid = uuid.uuid4()
-        stmt = ("INSERT INTO set_index_search.users (user_id, email) values ({user_id}, 'test@example.com')"
-                ).format(user_id=user1_uuid)
-        session.execute(stmt)
-
-        stmt = ("SELECT * from set_index_search.users where uuids contains {some_uuid}").format(some_uuid=uuid.uuid4())
-        row = list(session.execute(stmt))
-        self.assertEqual(0, len(row))
-
         _id = uuid.uuid4()
-        # alter the row to add a single item to the indexed set
-        stmt = ("UPDATE set_index_search.users set uuids = {{{id}}} where user_id = {user_id}").format(id=_id,
-                                                                                                       user_id=user1_uuid)
-        session.execute(stmt)
+        index_value = {'set': '{{{id}}}', 'list': '[{id}]', 'map': '{{{id}:{user_id}}}'}
+        session.execute("UPDATE {} set {} = {} where key = {}".format(table_name, index_column,
+                                                                      index_value[type].format(id=_id, user_id=user1_uuid), user1_uuid))
+        time.sleep(5)
 
-        stmt = ("SELECT * from set_index_search.users where uuids contains {some_uuid}").format(some_uuid=_id)
-        row = list(session.execute(stmt))
-        self.assertEqual(1, len(row))
+        self.assertEqual(1, len(list(session.execute(select_cmd.format(table_name, index_column, _id)))))
 
         # add a bunch of user records and query them back
         shared_uuid = uuid.uuid4()  # this uuid will be on all records
 
         log = []
-
-        for i in range(50000):
-            user_uuid = uuid.uuid4()
-            unshared_uuid = uuid.uuid4()
-
-            # give each record a unique email address using the int index
-            stmt = ("INSERT INTO set_index_search.users (user_id, email, uuids)"
-                    "values ({user_uuid}, '{prefix}@example.com', {{{s_uuid}, {u_uuid}}})"
-                    ).format(user_uuid=user_uuid, prefix=i, s_uuid=shared_uuid, u_uuid=unshared_uuid)
-            session.execute(stmt)
-
-            log.append(
-                {'user_id': user_uuid,
-                 'email': str(i) + '@example.com',
-                 'unshared_uuid': unshared_uuid}
-            )
-
-        # confirm there is now 50k rows with the 'shared' uuid above in the secondary index
-        stmt = ("SELECT * from set_index_search.users where uuids contains {shared_uuid}").format(
-            shared_uuid=shared_uuid)
-        rows = session.execute(stmt)
-        result = [row for row in rows]
-        self.assertEqual(50000, len(result))
-
-        # shuffle the log in-place, and double-check a slice of records by querying the secondary index
-        random.shuffle(log)
-
-        for log_entry in log[:1000]:
-            stmt = ("SELECT user_id, email, uuids FROM set_index_search.users where uuids contains {unshared_uuid}"
-                    ).format(unshared_uuid=log_entry['unshared_uuid'])
-            rows = list(session.execute(stmt))
-
-            self.assertEqual(1, len(rows))
-
-            db_user_id, db_email, db_uuids = rows[0]
-
-            self.assertEqual(db_user_id, log_entry['user_id'])
-            self.assertEqual(db_email, log_entry['email'])
-            self.assertTrue(shared_uuid in db_uuids)
-            self.assertTrue(log_entry['unshared_uuid'] in db_uuids)
-
-    @since('3.0')
-    def test_multiple_indexes_on_single_map_column(self):
-        """
-        verifying functionality of multiple unique secondary indexes on a single column
-        @jira_ticket CASSANDRA-7771
-        @since 3.0
-        """
-        cluster = self.cluster
-        cluster.populate(1).start()
-        [node1] = cluster.nodelist()
-        session = self.patient_cql_connection(node1)
-        create_ks(session, 'map_double_index', 1)
-        session.execute("""
-                CREATE TABLE map_tbl (
-                    id uuid primary key,
-                    amap map<text, int>
-                )
-            """)
-        session.execute("CREATE INDEX map_keys ON map_tbl(keys(amap))")
-        session.execute("CREATE INDEX map_values ON map_tbl(amap)")
-        session.execute("CREATE INDEX map_entries ON map_tbl(entries(amap))")
-
-        # multiple indexes on a single column are allowed but identical duplicate indexes are not
-        assert_invalid(session,
-                       "CREATE INDEX map_values_2 ON map_tbl(amap)",
-                       'Index map_values_2 is a duplicate of existing index map_values')
-
-        session.execute("INSERT INTO map_tbl (id, amap) values (uuid(), {'foo': 1, 'bar': 2});")
-        session.execute("INSERT INTO map_tbl (id, amap) values (uuid(), {'faz': 1, 'baz': 2});")
-
-        value_search = list(session.execute("SELECT * FROM map_tbl WHERE amap CONTAINS 1"))
-        self.assertEqual(2, len(value_search), "incorrect number of rows when querying on map values")
-
-        key_search = list(session.execute("SELECT * FROM map_tbl WHERE amap CONTAINS KEY 'foo'"))
-        self.assertEqual(1, len(key_search), "incorrect number of rows when querying on map keys")
-
-        entries_search = list(session.execute("SELECT * FROM map_tbl WHERE amap['foo'] = 1"))
-        self.assertEqual(1, len(entries_search), "incorrect number of rows when querying on map entries")
-
-        session.cluster.refresh_schema_metadata()
-        table_meta = session.cluster.metadata.keyspaces["map_double_index"].tables["map_tbl"]
-        self.assertEqual(3, len(table_meta.indexes))
-        self.assertItemsEqual(['map_keys', 'map_values', 'map_entries'], table_meta.indexes)
-        self.assertEqual(3, len(session.cluster.metadata.keyspaces["map_double_index"].indexes))
-
-        self.assertTrue('map_keys' in table_meta.export_as_string())
-        self.assertTrue('map_values' in table_meta.export_as_string())
-        self.assertTrue('map_entries' in table_meta.export_as_string())
-
-        session.execute("DROP TABLE map_tbl")
-        session.cluster.refresh_schema_metadata()
-        self.assertEqual(0, len(session.cluster.metadata.keyspaces["map_double_index"].indexes))
-
-    @skipIf(OFFHEAP_MEMTABLES, 'Hangs with offheap memtables')
-    def test_map_indexes(self):
-        """
-        Checks that secondary indexes on maps work for querying on both keys and values
-        """
-        cluster = self.cluster
-        cluster.populate(1).start()
-        [node1] = cluster.nodelist()
-        session = self.patient_cql_connection(node1)
-        create_ks(session, 'map_index_search', 1)
-
-        stmt = ("CREATE TABLE map_index_search.users ("
-                "user_id uuid PRIMARY KEY,"
-                "email text,"
-                "uuids map<uuid, uuid>);")
-        session.execute(stmt)
-
-        # add index on keys and query again (even though there are no rows in the table yet)
-        stmt = "CREATE INDEX user_uuids on map_index_search.users (KEYS(uuids));"
-        session.execute(stmt)
-
-        stmt = "SELECT * from map_index_search.users where uuids contains key {some_uuid}".format(
-            some_uuid=uuid.uuid4())
-        rows = list(session.execute(stmt))
-        self.assertEqual(0, len(rows))
-
-        # add a row which doesn't specify data for the indexed column, and query again
-        user1_uuid = uuid.uuid4()
-        stmt = ("INSERT INTO map_index_search.users (user_id, email)"
-                "values ({user_id}, 'test@example.com')"
-                ).format(user_id=user1_uuid)
-        session.execute(stmt)
-
-        stmt = ("SELECT * from map_index_search.users where uuids contains key {some_uuid}").format(
-            some_uuid=uuid.uuid4())
-        rows = list(session.execute(stmt))
-        self.assertEqual(0, len(rows))
-
-        _id = uuid.uuid4()
-
-        # alter the row to add a single item to the indexed map
-        stmt = ("UPDATE map_index_search.users set uuids = {{{id}:{user_id}}} where user_id = {user_id}"
-                ).format(id=_id, user_id=user1_uuid)
-        session.execute(stmt)
-
-        stmt = ("SELECT * from map_index_search.users where uuids contains key {some_uuid}").format(some_uuid=_id)
-        rows = list(session.execute(stmt))
-        self.assertEqual(1, len(rows))
-
-        # add a bunch of user records and query them back
-        shared_uuid = uuid.uuid4()  # this uuid will be on all records
-
-        log = []
+        index_value = {'set': '{{{s_uuid}, {u_uuid1}}}', 'list': '[{s_uuid}, {u_uuid1}]', 'map': '{{{u_uuid1}:{u_uuid2}, {s_uuid}:{s_uuid}}}'}
         for i in range(50000):
             user_uuid = uuid.uuid4()
             unshared_uuid1 = uuid.uuid4()
             unshared_uuid2 = uuid.uuid4()
 
-            # give each record a unique email address using the int index, add unique ids for keys and values
-            stmt = ("INSERT INTO map_index_search.users (user_id, email, uuids)"
-                    "values ({user_uuid}, '{prefix}@example.com', {{{u_uuid1}:{u_uuid2}, {s_uuid}:{s_uuid}}})"
-                    ).format(user_uuid=user_uuid, prefix=i, s_uuid=shared_uuid, u_uuid1=unshared_uuid1,
-                             u_uuid2=unshared_uuid2)
-            session.execute(stmt)
+            # give each record a unique email address using the int index
+            session.execute("INSERT INTO {table_name} (key, email, uuids) values ({key}, '{prefix}@example.com', {index_value})"
+                            .format(table_name=table_name, key=user_uuid, prefix=i, index_value=index_value[type].format(s_uuid=shared_uuid, u_uuid1=unshared_uuid1, u_uuid2=unshared_uuid2)))
 
-            log.append(
-                {'user_id': user_uuid,
-                 'email': str(i) + '@example.com',
-                 'unshared_uuid1': unshared_uuid1,
-                 'unshared_uuid2': unshared_uuid2}
-            )
+            log.append({'user_id': user_uuid, 'email': str(i) + '@example.com', 'unshared_uuid1': unshared_uuid1})
+            if type == 'map':
+                log[-1].update({'unshared_uuid2': unshared_uuid2})
 
         # confirm there is now 50k rows with the 'shared' uuid above in the secondary index
-        stmt = ("SELECT * from map_index_search.users where uuids contains key {shared_uuid}"
-                ).format(shared_uuid=shared_uuid)
-        rows = session.execute(stmt)
-        result = [row for row in rows]
-        self.assertEqual(50000, len(result))
-
-        # shuffle the log in-place, and double-check a slice of records by querying the secondary index on keys
-        random.shuffle(log)
-
-        for log_entry in log[:1000]:
-            stmt = ("SELECT user_id, email, uuids FROM map_index_search.users where uuids contains key {unshared_uuid1}"
-                    ).format(unshared_uuid1=log_entry['unshared_uuid1'])
-            row = session.execute(stmt)
-
-            result = list(row)
-            rows = self.assertEqual(1, len(result))
-
-            db_user_id, db_email, db_uuids = result[0]
-
-            self.assertEqual(db_user_id, log_entry['user_id'])
-            self.assertEqual(db_email, log_entry['email'])
-
-            self.assertTrue(shared_uuid in db_uuids)
-            self.assertTrue(log_entry['unshared_uuid1'] in db_uuids)
-
-        # attempt to add an index on map values as well (should fail pre 3.0)
-        stmt = "CREATE INDEX user_uuids_values on map_index_search.users (uuids);"
-        if self.cluster.version() < '3.0':
-            if self.cluster.version() >= '2.2':
-                matching = "Cannot create index on values\(uuids\): an index on keys\(uuids\) already exists and indexing a map on more than one dimension at the same time is not currently supported"
-            else:
-                matching = "Cannot create index on uuids values, an index on uuids keys already exists and indexing a map on both keys and values at the same time is not currently supported"
-            assert_invalid(session, stmt, matching)
-        else:
-            session.execute(stmt)
-
-        if self.cluster.version() < '3.0':
-            # since cannot have index on map keys and values remove current index on keys
-            stmt = "DROP INDEX user_uuids;"
-            session.execute(stmt)
-
-            # add index on values (will index rows added prior)
-            stmt = "CREATE INDEX user_uuids_values on map_index_search.users (uuids);"
-            session.execute(stmt)
-
-        start = time.time()
-        while time.time() < start + 30:
-            debug("waiting for index to build")
-            time.sleep(1)
-            if index_is_built(node1, session, 'map_index_search', 'users', 'user_uuids_values'):
-                break
-        else:
-            raise DtestTimeoutError()
+        self.assertEqual(50000, len(list(session.execute(select_cmd.format(table_name, index_column, shared_uuid)))))
 
         # shuffle the log in-place, and double-check a slice of records by querying the secondary index
         random.shuffle(log)
 
-        time.sleep(10)
-
-        # since we already inserted unique ids for values as well, check that appropriate records are found
         for log_entry in log[:1000]:
-            stmt = ("SELECT user_id, email, uuids FROM map_index_search.users where uuids contains {unshared_uuid2}"
-                    ).format(unshared_uuid2=log_entry['unshared_uuid2'])
-
-            rows = list(session.execute(stmt))
-            self.assertEqual(1, len(rows), rows)
+            rows = list(session.execute("SELECT key, email, uuids FROM {} where {} contains {}"
+                                        .format(table_name, index_column, log_entry['unshared_uuid1'])))
+            self.assertEqual(1, len(rows))
 
             db_user_id, db_email, db_uuids = rows[0]
-            self.assertEqual(db_user_id, log_entry['user_id'])
-            self.assertEqual(db_email, log_entry['email'])
 
-            self.assertTrue(shared_uuid in db_uuids)
-            self.assertTrue(log_entry['unshared_uuid2'] in db_uuids.values())
+            self.assertEqual(db_user_id, log_entry['key'])
+            self.assertEqual(db_email, log_entry['email'])
+            self.assertEqual(str(db_uuids[0]), str(shared_uuid))
+            self.assertEqual(str(db_uuids[1]), str(log_entry['unshared_uuid1']))
+
+        if type == 'map':
+            # attempt to add an index on map values as well (should fail pre 3.0)
+            index_name_new = 'user_uuids_values'
+
+            assert_expected_error(func=self.create_index,
+                                  expected_error='Index {} is a duplicate of existing index {}'.format(index_name_new, index_name),
+                                  args=(session, table_name, index_column), kwargs={'index_name': 'index_name_new'})
+
+            debug('Drop index {}'.format(index_name))
+            session.execute("DROP INDEX {}".format(index_name))
+
+            # add index on values (will index rows added prior)
+            create_and_build_index(self.create_index, self.cluster, session, keyspace_name, table_name, index_column, index_name_new)
+
+            # shuffle the log in-place, and double-check a slice of records by querying the secondary index
+            random.shuffle(log)
+
+            # since we already inserted unique ids for values as well, check that appropriate records are found
+            for log_entry in log[:1000]:
+                rows = list(session.execute(select_cmd.format(table_name, index_column, log_entry['unshared_uuid2'])))
+                self.assertEqual(1, len(rows))
+
+                db_user_id, db_email, db_uuids = rows[0]
+                self.assertEqual(db_user_id, log_entry['key'])
+                self.assertEqual(db_email, log_entry['email'])
+
+                self.assertTrue(shared_uuid in db_uuids)
+                self.assertTrue(log_entry['unshared_uuid2'] in db_uuids.values())
 
 @skip('Not relevant for Scylla')
 class TestUpgradeSecondaryIndexes(Tester):
