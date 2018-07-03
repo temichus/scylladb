@@ -630,44 +630,32 @@ class TestSecondaryIndexes(Tester):
                            [("127.0.0.1", 1, 200), ("127.0.0.2", 1, 200), ("127.0.0.3", 1, 200)],
                            retry_on_failure)
 
-    @skipIf(DISABLE_VNODES, "Test should only run with vnodes")
     def test_query_indexes_with_vnodes(self):
         """
         Verifies correct query behaviour in the presence of vnodes
         @jira_ticket CASSANDRA-11104
         """
-        cluster = self.cluster
-        cluster.populate(2).start()
-        node1, node2 = cluster.nodelist()
-        session = self.patient_cql_connection(node1)
-        session.execute("CREATE KEYSPACE ks WITH REPLICATION = {'class': 'SimpleStrategy', 'replication_factor': '1'};")
-        session.execute("CREATE TABLE ks.compact_table (a int PRIMARY KEY, b int) WITH COMPACT STORAGE;")
-        session.execute("CREATE INDEX keys_index ON ks.compact_table (b);")
-        session.execute("CREATE TABLE ks.regular_table (a int PRIMARY KEY, b int)")
-        session.execute("CREATE INDEX composites_index on ks.regular_table (b)")
+        keyspace_name = 'ks'
+        # True/False: create table with/without compact storage
+        tables = {'compact_table': True, 'regular_table': False}
+        index_column = 'b'
 
-        for node in cluster.nodelist():
-            start = time.time()
-            while time.time() < start + 10:
-                debug("waiting for index to build")
-                time.sleep(1)
-                if index_is_built(node, session, 'ks', 'regular_table', 'composites_index'):
-                    break
-            else:
-                raise DtestTimeoutError()
+        session = prepare(self, nodes=1, rf=1, keyspace_name=keyspace_name, use_vnodes=True)
+
+        for table_name, compact_storage in tables.iteritems():
+            self.create_cf(session, table_name, key_type='int', columns={'b': 'int'}, compact_storage=compact_storage,
+                           compaction={'class': self.compaction_strategy})
+            create_and_build_index(self.create_index, self.cluster, session, keyspace_name, table_name, index_column,
+                                   get_index_view_name(table_name), compaction=self.compaction_strategy)
 
         insert_args = [(i, i % 2) for i in xrange(100)]
-        execute_concurrent_with_args(session,
-                                     session.prepare("INSERT INTO ks.compact_table (a, b) VALUES (?, ?)"),
-                                     insert_args)
-        execute_concurrent_with_args(session,
-                                     session.prepare("INSERT INTO ks.regular_table (a, b) VALUES (?, ?)"),
-                                     insert_args)
-
-        res = session.execute("SELECT * FROM ks.compact_table WHERE b = 0")
-        self.assertEqual(len(rows_to_list(res)), 50)
-        res = session.execute("SELECT * FROM ks.regular_table WHERE b = 0")
-        self.assertEqual(len(rows_to_list(res)), 50)
+        for table in tables:
+            debug('Perform the test for {} table'.format(table))
+            execute_concurrent_with_args(session,
+                                         session.prepare("INSERT INTO {}.{} (key, {}) VALUES (?, ?)".format(keyspace_name, table, index_column)),
+                                         insert_args)
+            res = session.execute("SELECT * FROM {}.{} WHERE {} = 0".format(keyspace_name, table, index_column))
+            self.assertEqual(len(rows_to_list(res)), 50)
 
 
 class TestSecondaryIndexesOnCollections(Tester):
@@ -1340,7 +1328,7 @@ def create_and_build_index(create_index_func, cluster, session, ks_name, table_n
     create_index_func(session, table_name, index_column, index_name, compaction)
     index_is_built(cluster, session, ks_name, table_name, index_name)
 
-def prepare(self, user_table=False, rf=3, options={}, keyspace_name='ks', nodes=3,
+def prepare(self, user_table=False, rf=3, options={}, keyspace_name='ks', nodes=3, use_vnodes=False,
             fetch_size=None, jvm_args=[], session_node=1, **kwargs):
     """
     Prepare environment for test
@@ -1350,7 +1338,7 @@ def prepare(self, user_table=False, rf=3, options={}, keyspace_name='ks', nodes=
     self.compaction_strategy = strategies[random.randint(0, len(strategies)-1)]
     cluster = self.cluster
     populate = nodes if isinstance(nodes, list) else [nodes, 0]
-    cluster.populate(populate)
+    cluster.populate(populate, use_vnodes=True)
     options['experimental'] = True
     if options:
         cluster.set_configuration_options(values=options)
