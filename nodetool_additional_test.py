@@ -488,7 +488,7 @@ class TestNodetool(Tester):
 
     def _compact(self, keyspace):
         cluster = self.cluster
-        cluster.populate(1).start(wait_for_binary_proto=True)
+        cluster.populate(1).start(jvm_args=["--compaction-enforce-min-threshold", "true"], wait_for_binary_proto=True)
         [node1] = cluster.nodelist()
         cursor = self.patient_cql_connection(node1)
 
