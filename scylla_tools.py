@@ -336,7 +336,10 @@ class TableManager(object):
                         columns_definition=', '.join([s for s in self.columns_list]),
                         pks=', '.join([s for s in self.pk_list]),
                         cls=', {}'.format(', '.join([s for s in self.cl_list])) if self.cl_list else '')
-
+        if self.table_options:
+            statement = statement + ' WITH'
+            for op, value in self.table_options.iteritems():
+                statement = '{} {} = {}'.format(statement, op, value)
         debug(statement)
         self.session.execute(statement)
 
@@ -652,7 +655,8 @@ class MaterializedViewManager(object):
                 self.mv_name = self.TEMPLATE_MV_NAME.format(self.parent_table.table_name, mv_index)
 
     # TODO: add possibility for PK and CL order
-    def create_materialized_view(self, mv_columns=None, mv_pk_column=None, mv_cl_column=None, mv_where_restriction=None):
+    def create_materialized_view(self, mv_columns=None, mv_pk_column=None, mv_cl_column=None, mv_where_restriction=None,
+                                 options=None):
         """
         :param mv_columns: {<column type>: {  'amount': <how many columns with this type>,
                                             'names': [columns names, comma separated]
@@ -717,6 +721,12 @@ class MaterializedViewManager(object):
                                       else ', {}'.format(', '.join([k for k in self.mv_cl_list])))
             debug(statement+';')
             self.parent_table.session.execute(statement)
+
+            if options:
+                for op, value in options.iteritems():
+                    self.parent_table.session.execute('ALTER MATERIALIZED VIEW {ks}.{mv_name} WITH {op} = {value}'.format
+                                                      (ks=self.parent_table.keyspace, mv_name=self.mv_name,
+                                                       op=op, value=value))
             debug('Materialized view {} has been created'.format(self.mv_name))
             self.parent_table.set_mv(self.mv_name, self)
 

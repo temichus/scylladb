@@ -290,7 +290,7 @@ class ReshardingTest(Tester):
         self._verify_data(op_cnt, stress_cmd)
         self._verify_row_number('counter1', op_cnt)
 
-    @require('#3302')
+    # @require('#3302')
     def resharding_mv_test(self):
         """
         Resharding with small counter data set(c-s 1M counter objects) after changing the parameter
@@ -298,16 +298,17 @@ class ReshardingTest(Tester):
         """
         session = self.patient_cql_connection(self.node)
         self.create_ks(session, 'ks', self.rf)
+        compaction = {'compaction': {'class': self.compaction_strategy}}
         op_cnt = 10000
         tm = TableManager(session, self.cluster,
                           columns={'int': {'amount': 1, 'frozen': False, 'value length': {'min': 1, 'max': 100}}
-                                   }, pk_columns={}, cl_columns={})
+                                   }, pk_columns={}, cl_columns={}, table_options=compaction)
         tm.create_table()
 
         mv = MaterializedViewManager(tm)
         mv_pk_name = tm.column_names_list[-1]
         mv.create_materialized_view(mv_columns={'int': {'names': [mv_pk_name]}},
-                                    mv_pk_column={'type': 'int'})
+                                    mv_pk_column={'type': 'int'}, options=compaction)
 
         tm.prefill_table(op_cnt)
 
