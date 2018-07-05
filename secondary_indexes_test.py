@@ -3,16 +3,16 @@ import random
 import re
 import time
 import uuid
-from unittest import skipIf, skip
+from unittest import skip
 
 from dtest import Tester, debug
 from tools import since, require, rows_to_list, new_node
 from assertions import assert_all, assert_invalid, assert_one, assert_row_count, assert_none, assert_expected_error, \
                         assert_row_count_from_every_node
 from scylla_tools import index_is_built, get_index_view_name, view_built_status_query, check_errors, \
-    wait_for_view_build_start, remove_node
+                         wait_for_view_build_start, remove_node, check_errors_all_nodes
 
-from cassandra import ConsistencyLevel, InvalidRequest
+from cassandra import ConsistencyLevel, InvalidRequest, WriteFailure
 from cassandra.concurrent import (execute_concurrent,
                                   execute_concurrent_with_args)
 from cassandra.protocol import ConfigurationException
@@ -212,66 +212,75 @@ class TestSecondaryIndexes(Tester):
             assert_all(session, "select count(*) from {0}.{1} WHERE {2}='asdf'".format(ks_name, table_name, index['index_column']),
                        expected=[[10]], cl=ConsistencyLevel.QUORUM)
 
-    @require('3501')
+    # @require('3501')
     def test_oversize_indexed_values(self):
         """
         Reject inserts & updates where values of any indexed column is > 64k
         """
-        self._validate_long_indexed_values(self.OVERSIZE_LENGTH)
+        expect_message = 'Key size too large'
+        self._validate_long_indexed_values(self.OVERSIZE_LENGTH, expect_message)
 
-    @require('3501')
+    # @require('3501')
     def test_long_indexed_values(self):
         """
         Correct inserts & updates where values of any indexed column is long and up to 64k
         """
-        self._validate_long_indexed_values(self.LONG_TEXT_LENGTH)
+        self._validate_long_indexed_values(self.LONG_TEXT_LENGTH, expect_message=None)
 
-    def _validate_long_indexed_values(self, value_length):
+    def _validate_long_indexed_values(self, value_length, expect_message):
         session = prepare(self, nodes=4, rf=3)
+        test = 'oversize' if value_length == self.OVERSIZE_LENGTH else 'long'
 
-        self.insert_row_with_long_value("CREATE TABLE %s(a int, b int, c varchar, PRIMARY KEY (a)) WITH compaction = %",
+        debug('Insert {} value into non-PK column'.format(test))
+        self.insert_row_with_long_value("CREATE TABLE %s(a int, b int, c varchar, PRIMARY KEY (a)) WITH compaction = %s",
                                         "CREATE INDEX ON %s(c)",
                                         "INSERT INTO %s (a, b, c) VALUES (0, 0, ?)",
-                                        session, column_name='c', value_length=value_length)
+                                        session, column_name='c', value_length=value_length, expect_message=expect_message)
 
-        self.insert_row_with_long_value("CREATE TABLE %s(a int, b text, c int, PRIMARY KEY (a, b)) WITH compaction = %",
+        debug('Insert {} value into clustering key column'.format(test))
+        self.insert_row_with_long_value("CREATE TABLE %s(a int, b text, c int, PRIMARY KEY (a, b)) WITH compaction = %s",
                                         "CREATE INDEX ON %s(b)",
                                         "INSERT INTO %s (a, b, c) VALUES (0, ?, 0)",
-                                        session, column_name='b', value_length=value_length)
+                                        session, column_name='b', value_length=value_length, expect_message=expect_message)
 
-        self.insert_row_with_long_value("CREATE TABLE %s(a text, b int, c int, PRIMARY KEY ((a, b))) WITH compaction = %",
+        debug('Insert {} value into partition key column'.format(test))
+        self.insert_row_with_long_value("CREATE TABLE %s(a text, b int, c int, PRIMARY KEY ((a, b))) WITH compaction = %s",
                                         "CREATE INDEX ON %s(a)",
                                         "INSERT INTO %s (a, b, c) VALUES (?, 0, 0)",
-                                        session, column_name='a', value_length=value_length)
+                                        session, column_name='a', value_length=value_length, expect_message=expect_message)
 
-        self.insert_row_with_long_value("CREATE TABLE %s(a int, b text, PRIMARY KEY (a)) WITH COMPACT STORAGE",
+        debug('Table with compact storage. Insert {} value into non-PK column'.format(test))
+        self.insert_row_with_long_value("CREATE TABLE %s(a int, b text, PRIMARY KEY (a)) WITH COMPACT STORAGE and compaction = %s",
                                         "CREATE INDEX ON %s(b)",
                                         "INSERT INTO %s (a, b) VALUES (0, ?)",
-                                        session, column_name='b', value_length=value_length)
+                                        session, column_name='b', value_length=value_length, expect_message=expect_message)
 
-    def insert_row_with_long_value(self, create_table_cql, create_index_cql, insert_cql, session, column_name, value_length):
+        self.allow_log_errors = check_errors_all_nodes(self.cluster.nodelist(), exclude_errors=expect_message)
+
+    def insert_row_with_long_value(self, create_table_cql, create_index_cql, insert_cql, session, column_name,
+                                   value_length, expect_message):
         """ Validate two variations of the supplied insert statement, first
         as it is and then again transformed into a conditional statement
         """
         table_name = "table_" + str(int(round(time.time() * 1000)))
-        session.execute(create_table_cql % table_name, {'class': self.compaction_strategy})
-        session.execute(create_index_cql % table_name, {'class': self.compaction_strategy})
+        session.execute(create_table_cql % (table_name, {'class': self.compaction_strategy}))
+        session.execute(create_index_cql % table_name)
         value = "X" * value_length
-        self._assert_request(session, insert_cql % table_name, value, table_name, column_name, value_length)
-        self._assert_request(session, (insert_cql % table_name) + ' IF NOT EXISTS', value, table_name, column_name, value_length)
+        self._assert_request(session, insert_cql % table_name, value, table_name, column_name, value_length, expect_message)
 
-    def _assert_request(self, session, insert_cql, value, table_name, column_name, value_length):
+    def _assert_request(self, session, insert_cql, value, table_name, column_name, value_length, expect_message):
         """ Perform two executions of the supplied statement, as a
         single statement and again as part of a batch
         """
         prepared = session.prepare(insert_cql)
         self._execute_and_assert(lambda: session.execute(prepared, [value]), insert_cql, table_name, column_name, session,
-                                 value_length)
+                                 value_length, expect_message)
         batch = BatchStatement()
         batch.add(prepared, [value])
-        self._execute_and_assert(lambda: session.execute(batch), insert_cql, table_name, column_name, session, value_length)
+        self._execute_and_assert(lambda: session.execute(batch), insert_cql, table_name, column_name, session, value_length,
+                                 expect_message)
 
-    def _execute_and_assert(self, operation, cql_string, table_name, column_name, session, value_length):
+    def _execute_and_assert(self, operation, cql_string, table_name, column_name, session, value_length, expect_message):
         try:
             operation()
             res_length = 0
@@ -287,8 +296,14 @@ class TestSecondaryIndexes(Tester):
             assert assert_success, assert_fail
         except AssertionError as e:
             raise e
-        except InvalidRequest:
-            pass
+        except WriteFailure:
+            if not expect_message:
+                raise
+            if expect_message and not self.cluster.nodelist()[0].grep_log(expr=expect_message):
+                self.assertFalse(False, 'Expected that failure reason is "{}", but the message wasn\'t found in the log'.format(expect_message))
+        except Exception as e:
+            if (expect_message and expect_message not in e.message) or not expect_message:
+                raise e
 
     def wait_for_schema_agreement(self, session):
         rows = list(session.execute("SELECT schema_version FROM system.local"))
