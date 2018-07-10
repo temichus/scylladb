@@ -1,7 +1,7 @@
 from time import sleep
 from unittest import skip
 
-from cassandra import ConsistencyLevel, ReadTimeout, Unavailable
+from cassandra import ConsistencyLevel, ReadTimeout, Unavailable, ReadFailure
 from cassandra.query import SimpleStatement
 
 from ccmlib.node import NodeError
@@ -82,7 +82,7 @@ class TestReplaceAddress(Tester):
             try:
                 query = SimpleStatement('select * from %s LIMIT 1' % stress_table, consistency_level=ConsistencyLevel.THREE)
                 session.execute(query)
-            except (Unavailable, ReadTimeout):
+            except (Unavailable, ReadTimeout, ReadFailure):
                 raise NodeUnavailable("Node could not be queried.")
 
         # replace node 3 with node 4
@@ -181,7 +181,7 @@ class TestReplaceAddress(Tester):
         with self.assertRaises(NodeUnavailable):
             try:
                 session.execute(query, timeout=30)
-            except (Unavailable, ReadTimeout):
+            except (Unavailable, ReadTimeout, ReadFailure):
                 raise NodeUnavailable("Node could not be queried.")
 
         # replace node 3 with node 4
