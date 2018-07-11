@@ -362,7 +362,7 @@ class TestUserTypes(Tester):
               SELECT id, name.first from person_likes where id={id};
            """.format(id=_id)
 
-        assert_invalid(session, stmt, 'Partition key parts: name must be restricted as other parts are')
+        assert_invalid(session, stmt, 'use ALLOW FILTERING')
 
         stmt = """
               SELECT id, name.first, like from person_likes where id={id} and name = {{first:'Nero', middle: 'Claudius Caesar Augustus', last: 'Germanicus'}};
