@@ -290,7 +290,7 @@ class ReshardingTest(Tester):
         self._verify_data(op_cnt, stress_cmd)
         self._verify_row_number('counter1', op_cnt)
 
-    # @require('#3302')
+    @require('#3302')
     def resharding_mv_test(self):
         """
         Resharding with small counter data set(c-s 1M counter objects) after changing the parameter
