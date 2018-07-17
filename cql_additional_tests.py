@@ -2742,7 +2742,6 @@ class TestCQL(Tester):
         res = session.execute("SELECT v1, v2 FROM test WHERE k IN (0, 1, 2)")
         assert rows_to_list(res) == [], list(res)
 
-    @skip('indexes')
     def allow_filtering_test(self):
         session = self.prepare()
 
