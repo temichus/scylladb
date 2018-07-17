@@ -659,6 +659,16 @@ class Tester(TestCase):
         session.execute(query)
         time.sleep(0.2)
 
+    def create_index(self, session, table_name, index_column, index_name=None, compaction=None):
+        index_column = [index_column] if isinstance(index_column, str) else index_column
+        query = "CREATE INDEX {0} ON {1} ({2});".format(index_name, table_name, ', '.join([i for i in index_column]))
+        debug('Create index: {}'.format(query))
+        session.execute(query)
+        if compaction:
+            # Update appropriate to index materialized view with compaction storage
+            session.execute('ALTER MATERIALIZED VIEW {}_index WITH compaction={}'.format(index_name, {'class': compaction}))
+        debug('Index {} has been created'.format(index_name))
+
     @classmethod
     def tearDownClass(cls):
         reset_environment_vars()

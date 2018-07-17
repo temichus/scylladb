@@ -136,3 +136,15 @@ def assert_two_queries_equal(session1, query1, session2, query2, consistency_lev
 def assert_two_queries_equal_ignore_order(session1, query1, session2, query2, consistency_level=ConsistencyLevel.ONE, session_timeout=120):
     expected = rows_to_list(session1.execute(query1))
     assert_all(session2, query2, expected, consistency_level, ignore_order=True)
+
+def assert_expected_error(func, expected_error, args, kwargs):
+    try:
+        func(*args, **kwargs)
+        assert False, 'Expected failure, but function was succeeded'
+    except AssertionError:
+        raise
+    except Exception as e:
+        if expected_error in e.message:
+            assert True
+        else:
+            raise

@@ -12,6 +12,7 @@ import itertools
 from copy import deepcopy
 from threading import Thread
 import datetime
+from tools import rows_to_list
 
 def build_insert_params(keys, n, c1_values, c2_values):
     if (len(keys) == 0 and n is None) or (len(keys) != 0 and n is not None):
@@ -844,3 +845,76 @@ def managed_thread(proc_functions, queue=None):
     if queue:
         results = [queue.get() for _ in threads]
         return results
+
+def view_built_status_query(ks='', view='', select_column='status'):
+    query = "SELECT {} FROM system_distributed.view_build_status".format(select_column)
+    if ks or view:
+        query = "{} WHERE ".format(query)
+        where = ' AND '.join(['{0} = \'{1}\''.format(k, v) for k, v in {'keyspace_name': ks, 'view_name': view}.iteritems() if v])
+        if ks:
+            query = "{0} {1}".format(query, where)
+    return query
+
+def get_index_view_name(index_name):
+    return '{}_index'.format(index_name)
+
+def index_is_built(cluster, session, ks_name, table_name, index_name):
+    _wait_for_view(cluster, session, ks_name, get_index_view_name(index_name))
+    return len(list(session.execute(
+        "SELECT * FROM system_schema.indexes WHERE keyspace_name = '{0}' and table_name ='{1}' AND index_name='{2}'".format(ks_name, table_name, index_name)))) == 1
+
+def _wait_for_view(cluster, session, ks, view):
+    debug("Waiting for view {}.{} to finish building...".format(ks, view))
+
+    def _view_build_finished(live_nodes_amount):
+        result = rows_to_list(session.execute(view_built_status_query(ks, view)))
+        return len([status for status in result  if status[0] == 'SUCCESS']) >= live_nodes_amount
+
+    attempts = 40
+    live_nodes_amount = len([node for node in cluster.nodelist() if node.status == 'UP'])
+    while attempts > 0:
+        if _view_build_finished(live_nodes_amount):
+            return
+        time.sleep(3)
+        attempts -= 1
+
+    raise Exception("View {}.{} not built".format(ks, view))
+
+def wait_for_view_build_start(session, ks, view, seconds_to_wait = 20):
+
+    def _check_build_started():
+        result = rows_to_list(session.execute("SELECT last_token FROM system.views_builds_in_progress "
+                                              "WHERE keyspace_name='{0}' AND view_name='{1}'".format(ks, view)))
+        return result != [[None]]
+
+    debug("Ensure view building started.")
+    start = time.time()
+    while not _check_build_started():
+        if time.time() - start > seconds_to_wait:
+            raise Exception("View building didn't start in {} seconds".format(seconds_to_wait))
+
+def check_errors_all_nodes(nodes, exclude_errors, search_str='Error'):
+    errors = None
+    for node in nodes:
+        errors = check_errors(node=node, exclude_errors=exclude_errors, search_str=search_str)
+    return  errors
+
+def check_errors(node, exclude_errors, search_str='Error'):
+    errors = node.grep_log_for_errors(distinct_errors=True, search_str=search_str)
+
+    if exclude_errors:
+        for ee in exclude_errors:
+            errors = [error for error in list(errors) if ee not in error]
+
+    if errors:
+        assert False, '\n'.join(list(errors))
+    else:
+        # Set allow_log_errors to True
+        return True
+
+def remove_node(cluster, node):
+    hostid = node.hostid()
+    cluster.remove(node)
+    time.sleep(30)
+    remove_using_node = cluster.nodelist()[0]
+    remove_using_node.nodetool("removenode {}".format(hostid))
