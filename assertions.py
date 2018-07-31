@@ -71,38 +71,49 @@ def assert_almost_equal(*args, **kwargs):
     assert vmin > vmax * (1.0 - error) or vmin == vmax, "values not within %.2f%% of the max: %s" % (error * 100, args)
 
 
-def assert_row_count(session, table_name, expected, consistency_level=ConsistencyLevel.ONE):
+def assert_row_count(session, table_name, expected, consistency_level=ConsistencyLevel.ONE, attempt=1):
     """ Function to validate the row count expected in table_name """
 
+    count = None
     query = "SELECT count(*) FROM {}".format(table_name)
-    count = run_query_with_data_processing(session, query, consistency_level=consistency_level)
-    if isinstance(count, list):
-        count = count[0][0]
-    assert count == expected, "Expected a row count of {} in table '{}', but got {}".format(
-        expected, table_name, count)
+    for _ in xrange(attempt):
+        count = run_query_with_data_processing(session, query, consistency_level=consistency_level)
+        if isinstance(count, list):
+            count = count[0][0]
+        if count == expected:
+            break
+        time.sleep(10)
 
-def assert_row_count_from_every_node(session, table_name, expected, nodes_list):
+    assert count == expected, "Expected a row count of {} in table '{}', but got {}".format(
+            expected, table_name, count)
+
+def assert_row_count_from_every_node(session, table_name, expected, nodes_list, attempt=1):
     """ Function to validate the row count expected in table_name running from every node"""
 
-    query = "SELECT count(*) FROM {0}.{1};".format(session.keyspace, table_name)
     failed_nodes = []
-    for node in nodes_list:
-        if node.status != 'UP':
-            continue
-        res = node.run_cqlsh(query, return_output=True)
-        count = 0
-        try:
-            count = res[0].split('\n')[3].lstrip()
-            count = int(count)
-        except TypeError:
-            failed_nodes.append('Query "{2}" run failed. Node: {0}, error message: {1}'.format
-                                (node.name, count, query))
-        except Exception as e:
-            failed_nodes.append('Query "{2}" run failed. Node: {0}, error message: {1}'.format
-                                (node.name, e.message, query))
+    query = "SELECT count(*) FROM {0}.{1};".format(session.keyspace, table_name)
+    for _ in xrange(attempt):
+        failed_nodes = []
+        for node in nodes_list:
+            if node.status != 'UP':
+                continue
+            res = node.run_cqlsh(query, return_output=True)
+            count = 0
+            try:
+                count = res[0].split('\n')[3].lstrip()
+                count = int(count)
+            except TypeError:
+                failed_nodes.append('Query "{2}" run failed. Node: {0}, error message: {1}'.format
+                                    (node.name, count, query))
+            except Exception as e:
+                failed_nodes.append('Query "{2}" run failed. Node: {0}, error message: {1}'.format
+                                    (node.name, e.message, query))
 
-        if count != expected:
-            failed_nodes.append('Node: {0}, actual count: {1}'.format(node.name, count))
+            if count != expected:
+                failed_nodes.append('Node: {0}, actual count: {1}'.format(node.name, count))
+        if not failed_nodes:
+            break
+        time.sleep(10)
 
     if failed_nodes:
         assert not failed_nodes, 'Expected a row count of {0} in table "{1}", but got:\n {2}'.format \

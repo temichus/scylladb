@@ -18,7 +18,7 @@ from assertions import assert_all, assert_one, assert_invalid, assert_unavailabl
     assert_two_queries_equal_ignore_order
 from dtest import Tester, debug
 from tools import since, new_node, require, rows_to_list, run_query_with_data_processing
-from scylla_tools import TableManager, MaterializedViewManager, flush_by_node, managed_thread
+from scylla_tools import TableManager, MaterializedViewManager, flush_by_node, managed_thread, remove_node
 from cassandra.cluster import NoHostAvailable
 
 from nose.plugins.attrib import attr
@@ -221,20 +221,24 @@ class TestMaterializedViews(Tester):
         mv_profile = os.path.abspath(os.path.join("test_data", 'cassandra-mv-profile', 'cs_mv_profile.yaml'))
 
         node1 = self.cluster.nodelist()[0]
-        node1.stress(stress_options=['write', 'cl=QUORUM', 'n=1000000', "-mode cql3 native", "-rate threads=10", "-pop seq=1..1000000"],
+        n = 1000000
+        stdout, stderr = node1.stress(stress_options=['write', 'cl=QUORUM', 'n={}'.format(n), "-mode cql3 native", "-rate threads=10", "-pop seq=1..{}".format(n)],
                                     capture_output=True)
+        self.assertFalse(stderr, 'Run c-s failed: {}'.format(stderr))
+
         proc_functions = [
             {'func': node1.stress, 'args': [['user', 'profile={}'.format(mv_profile), 'cl=QUORUM', 'duration={}'.format(duration),
                                              'ops(insert=1,read1=1,read2=1,read3=1)', '-mode cql3  native', '-rate threads=10'], True]},
             {'func': node1.stress, 'args': [['mixed', "cl=QUORUM", "duration=10m",
-                                             "-mode cql3 native", "-rate threads=10", "-pop seq=1..1000000", "-log interval=5"], True]},
-            {'func': self._node_action_with_delay, 'args': (node_action, self.cluster.nodelist()[1]),'kwargs': {'delay': delay}}]
+                                             "-mode cql3 native", "-rate threads=10", "-pop seq=1..{}".format(n), "-log interval=5"], True]},
+            {'func': self._node_action_with_delay, 'args': (node_action, self.cluster.nodelist()[1]),'kwargs': {'delay': delay}}
+        ]
         if double_failure and len(self.cluster.nodelist()) > 2:
             proc_functions.append({'func': self._node_action_with_delay, 'args': (node_action, self.cluster.nodelist()[2]),
                                    'kwargs': {'delay': delay}})
         managed_thread(proc_functions)
 
-        self._validate_cs_results(node1, exclude_errors, node_action, double_failure)
+        self._validate_cs_results(node1, exclude_errors, node_action, double_failure, by_node=False)
 
     def multidc_dc_failure_during_mv_insert_test(self):
         """ Test stopping all DC nodes during MV inserts
@@ -272,7 +276,7 @@ class TestMaterializedViews(Tester):
         if action == 'stop':
             node.stop(wait=wait, wait_other_notice=wait_other_notice, gently=gently)
         elif action == 'remove':
-            self.cluster.remove(node)
+            remove_node(self.cluster, node)
         else:
             new_node_index = len(self.cluster.nodelist()) + 1
             node.nodetool(action)
@@ -314,11 +318,12 @@ class TestMaterializedViews(Tester):
         else:
             self.allow_log_errors = True
 
-    def _validate_cs_results(self, node, exclude_errors, node_action, double_failure):
+    def _validate_cs_results(self, node, exclude_errors, node_action, double_failure, by_node=False, cl=None):
         self._check_errors(node, exclude_errors)
         session = self.patient_exclusive_cql_connection(node)
         session.execute('USE mview')
-        cl = ConsistencyLevel.ONE if double_failure else ConsistencyLevel.QUORUM if node_action in ['stop', 'remove'] else ConsistencyLevel.ALL
+        cl = cl or (ConsistencyLevel.ONE if double_failure else ConsistencyLevel.QUORUM if node_action in ['stop'] else ConsistencyLevel.ALL)
+        debug('Validate data using CL={}'.format(cl))
         exp_res = run_query_with_data_processing(session, 'select count(*) from mview.users', consistency_level=cl)
         try:
             exp_res = int(exp_res[0].count)
@@ -329,8 +334,13 @@ class TestMaterializedViews(Tester):
             debug('Try to select rows count from mview.users table. Failed with error: {}'.format(e.message))
             raise
 
-        assert_row_count_from_every_node(session, 'users_by_first_name', exp_res, nodes_list=self.cluster.nodelist())
-        assert_row_count_from_every_node(session, 'users_by_last_name', exp_res, nodes_list=self.cluster.nodelist())
+        assert_row_count(session, 'users_by_first_name', exp_res, consistency_level=cl, attempt=20)
+        assert_row_count(session, 'users_by_last_name', exp_res, consistency_level=cl, attempt=20)
+        if by_node:
+            assert_row_count_from_every_node(session, 'users_by_first_name', exp_res, nodes_list=self.cluster.nodelist(), attempt=20)
+            assert_row_count_from_every_node(session, 'users_by_last_name', exp_res, nodes_list=self.cluster.nodelist(), attempt=20)
+
+        assert True
 
     def add_dc_during_mv_update_test(self):
         """ Test expand cluster - add new DC during MV inserts
