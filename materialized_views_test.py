@@ -36,6 +36,30 @@ class TestMaterializedViews(Tester):
     @jira_ticket CASSANDRA-6477
     """
 
+    def eventually(self, fun, trials=10, sleep_time_s=1):
+        """
+        Runs a function until it succeeds or the trial limit is reached
+        """
+        assert trials > 0
+        for i in range(trials - 1):
+            try:
+                return fun()
+            except:
+                time.sleep(sleep_time_s)
+        return fun()
+
+    def eventually_assert_one(self, *args):
+        """
+        Shortcut for eventually(lambda: assert_one(args))
+        """
+        return self.eventually(lambda: assert_one(*args))
+
+    def eventually_assert_none(self, *args):
+        """
+        Shortcut for eventually(lambda: assert_one(args))
+        """
+        return self.eventually(lambda: assert_none(*args))
+
     def prepare(self, user_table=False, rf=1, options={}, nodes=3, fetch_size=None, jvm_args=[], **kwargs):
         """
 
@@ -2044,20 +2068,20 @@ class TestMaterializedViews(Tester):
         session.cluster.control_connection.wait_for_schema_agreement()
 
         self.update_view(session, "UPDATE t2 SET c=1 WHERE k=1 AND a=1;", flush)
-        assert_one(session, "SELECT k,a,b,c FROM t2", [1, 1, None, 1])
-        assert_one(session, "SELECT k,a,b FROM mv2", [1, 1, None])
+        self.eventually_assert_one(session, "SELECT k,a,b,c FROM t2", [1, 1, None, 1])
+        self.eventually_assert_one(session, "SELECT k,a,b FROM mv2", [1, 1, None])
 
         self.update_view(session, "UPDATE t2 SET c=null WHERE k=1 AND a=1;", flush)
-        assert_none(session, "SELECT k,a,b,c FROM t2")
-        assert_none(session, "SELECT k,a,b FROM mv2")
+        self.eventually_assert_none(session, "SELECT k,a,b,c FROM t2")
+        self.eventually_assert_none(session, "SELECT k,a,b FROM mv2")
 
         self.update_view(session, "UPDATE t2 SET c=2 WHERE k=1 AND a=1;", flush)
-        assert_one(session, "SELECT k,a,b,c FROM t2", [1, 1, None, 2])
-        assert_one(session, "SELECT k,a,b FROM mv2", [1, 1, None])
+        self.eventually_assert_one(session, "SELECT k,a,b,c FROM t2", [1, 1, None, 2])
+        self.eventually_assert_one(session, "SELECT k,a,b FROM mv2", [1, 1, None])
 
         self.update_view(session, "DELETE c FROM t2 WHERE k=1 AND a=1;", flush)
-        assert_none(session, "SELECT k,a,b,c FROM t2")
-        assert_none(session, "SELECT k,a,b FROM mv2")
+        self.eventually_assert_none(session, "SELECT k,a,b,c FROM t2")
+        self.eventually_assert_none(session, "SELECT k,a,b FROM mv2")
 
         if flush:
             self.cluster.compact()
@@ -2072,8 +2096,8 @@ class TestMaterializedViews(Tester):
 
         time.sleep(6)
 
-        assert_none(session, "SELECT k,a,b,c FROM t2")
-        assert_none(session, "SELECT k,a,b FROM mv2")
+        self.eventually_assert_none(session, "SELECT k,a,b,c FROM t2")
+        self.eventually_assert_none(session, "SELECT k,a,b FROM mv2")
 
         if flush:
             self.cluster.compact()
@@ -2087,16 +2111,16 @@ class TestMaterializedViews(Tester):
         session.cluster.control_connection.wait_for_schema_agreement()
 
         self.update_view(session, "INSERT INTO t (k, a, b) VALUES (1, 1, 1);", flush)
-        assert_one(session, "SELECT * FROM t", [1, 1, 1])
-        assert_one(session, "SELECT * FROM mv", [1, 1, 1])
+        self.eventually_assert_one(session, "SELECT * FROM t", [1, 1, 1])
+        self.eventually_assert_one(session, "SELECT * FROM mv", [1, 1, 1])
 
         self.update_view(session, "INSERT INTO t (k, a, b) VALUES (1, 2, 1);", flush)
-        assert_one(session, "SELECT * FROM t", [1, 2, 1])
-        assert_one(session, "SELECT * FROM mv", [1, 2, 1])
+        self.eventually_assert_one(session, "SELECT * FROM t", [1, 2, 1])
+        self.eventually_assert_one(session, "SELECT * FROM mv", [1, 2, 1])
 
         self.update_view(session, "INSERT INTO t (k, a, b) VALUES (1, 3, 1);", flush)
-        assert_one(session, "SELECT * FROM t", [1, 3, 1])
-        assert_one(session, "SELECT * FROM mv", [1, 3, 1])
+        self.eventually_assert_one(session, "SELECT * FROM t", [1, 3, 1])
+        self.eventually_assert_one(session, "SELECT * FROM mv", [1, 3, 1])
 
         if flush:
             self.cluster.compact()
@@ -2105,16 +2129,16 @@ class TestMaterializedViews(Tester):
 
         # user provided ttl
         self.update_view(session, "UPDATE t USING TTL 50 SET a = 4 WHERE k = 1", flush)
-        assert_one(session, "SELECT * FROM t", [1, 4, 1])
-        assert_one(session, "SELECT * FROM mv", [1, 4, 1])
+        self.eventually_assert_one(session, "SELECT * FROM t", [1, 4, 1])
+        self.eventually_assert_one(session, "SELECT * FROM mv", [1, 4, 1])
 
         self.update_view(session, "UPDATE t USING TTL 40 SET a = 5 WHERE k = 1", flush)
-        assert_one(session, "SELECT * FROM t", [1, 5, 1])
-        assert_one(session, "SELECT * FROM mv", [1, 5, 1])
+        self.eventually_assert_one(session, "SELECT * FROM t", [1, 5, 1])
+        self.eventually_assert_one(session, "SELECT * FROM mv", [1, 5, 1])
 
         self.update_view(session, "UPDATE t USING TTL 30 SET a = 6 WHERE k = 1", flush)
-        assert_one(session, "SELECT * FROM t", [1, 6, 1])
-        assert_one(session, "SELECT * FROM mv", [1, 6, 1])
+        self.eventually_assert_one(session, "SELECT * FROM t", [1, 6, 1])
+        self.eventually_assert_one(session, "SELECT * FROM mv", [1, 6, 1])
 
         if flush:
             self.cluster.compact()
@@ -2145,58 +2169,58 @@ class TestMaterializedViews(Tester):
 
         # update unselected, view row should be alive
         self.update_view(session, "UPDATE t USING TIMESTAMP 1 SET e=1 WHERE k=1 AND c=1;", flush)
-        assert_one(session, "SELECT * FROM t", [1, 1, None, None, 1, None])
-        assert_one(session, "SELECT * FROM mv", [1, 1, None, None])
+        self.eventually_assert_one(session, "SELECT * FROM t", [1, 1, None, None, 1, None])
+        self.eventually_assert_one(session, "SELECT * FROM mv", [1, 1, None, None])
 
         # remove unselected, add selected column, view row should be alive
         self.update_view(session, "UPDATE t USING TIMESTAMP 2 SET e=null, b=1 WHERE k=1 AND c=1;", flush)
-        assert_one(session, "SELECT * FROM t", [1, 1, None, 1, None, None])
-        assert_one(session, "SELECT * FROM mv", [1, 1, None, 1])
+        self.eventually_assert_one(session, "SELECT * FROM t", [1, 1, None, 1, None, None])
+        self.eventually_assert_one(session, "SELECT * FROM mv", [1, 1, None, 1])
 
         # remove selected column, view row is removed
         self.update_view(session, "UPDATE t USING TIMESTAMP 2 SET e=null, b=null WHERE k=1 AND c=1;", flush)
-        assert_none(session, "SELECT * FROM t")
-        assert_none(session, "SELECT * FROM mv")
+        self.eventually_assert_none(session, "SELECT * FROM t")
+        self.eventually_assert_none(session, "SELECT * FROM mv")
 
         # update unselected with ts=3, view row should be alive
         self.update_view(session, "UPDATE t USING TIMESTAMP 3 SET f=1 WHERE k=1 AND c=1;", flush)
-        assert_one(session, "SELECT * FROM t", [1, 1, None, None, None, 1])
-        assert_one(session, "SELECT * FROM mv", [1, 1, None, None])
+        self.eventually_assert_one(session, "SELECT * FROM t", [1, 1, None, None, None, 1])
+        self.eventually_assert_one(session, "SELECT * FROM mv", [1, 1, None, None])
 
         # insert livenesssInfo, view row should be alive
         self.update_view(session, "INSERT INTO t(k,c) VALUES(1,1) USING TIMESTAMP 3", flush)
-        assert_one(session, "SELECT * FROM t", [1, 1, None, None, None, 1])
-        assert_one(session, "SELECT * FROM mv", [1, 1, None, None])
+        self.eventually_assert_one(session, "SELECT * FROM t", [1, 1, None, None, None, 1])
+        self.eventually_assert_one(session, "SELECT * FROM mv", [1, 1, None, None])
 
         # remove unselected, view row should be alive because of base livenessInfo alive
         self.update_view(session, "UPDATE t USING TIMESTAMP 3 SET f=null WHERE k=1 AND c=1;", flush)
-        assert_one(session, "SELECT * FROM t", [1, 1, None, None, None, None])
-        assert_one(session, "SELECT * FROM mv", [1, 1, None, None])
+        self.eventually_assert_one(session, "SELECT * FROM t", [1, 1, None, None, None, None])
+        self.eventually_assert_one(session, "SELECT * FROM mv", [1, 1, None, None])
 
         # add selected column, view row should be alive
         self.update_view(session, "UPDATE t USING TIMESTAMP 3 SET a=1 WHERE k=1 AND c=1;", flush)
-        assert_one(session, "SELECT * FROM t", [1, 1, 1, None, None, None])
-        assert_one(session, "SELECT * FROM mv", [1, 1, 1, None])
+        self.eventually_assert_one(session, "SELECT * FROM t", [1, 1, 1, None, None, None])
+        self.eventually_assert_one(session, "SELECT * FROM mv", [1, 1, 1, None])
 
         # update unselected, view row should be alive
         self.update_view(session, "UPDATE t USING TIMESTAMP 4 SET f=1 WHERE k=1 AND c=1;", flush)
-        assert_one(session, "SELECT * FROM t", [1, 1, 1, None, None, 1])
-        assert_one(session, "SELECT * FROM mv", [1, 1, 1, None])
+        self.eventually_assert_one(session, "SELECT * FROM t", [1, 1, 1, None, None, 1])
+        self.eventually_assert_one(session, "SELECT * FROM mv", [1, 1, 1, None])
 
         # delete with ts=3, view row should be alive due to unselected@ts4
         self.update_view(session, "DELETE FROM t USING TIMESTAMP 3 WHERE k=1 AND c=1;", flush)
-        assert_one(session, "SELECT * FROM t", [1, 1, None, None, None, 1])
-        assert_one(session, "SELECT * FROM mv", [1, 1, None, None])
+        self.eventually_assert_one(session, "SELECT * FROM t", [1, 1, None, None, None, 1])
+        self.eventually_assert_one(session, "SELECT * FROM mv", [1, 1, None, None])
 
         # remove unselected, view row should be removed
         self.update_view(session, "UPDATE t USING TIMESTAMP 4 SET f=null WHERE k=1 AND c=1;", flush)
-        assert_none(session, "SELECT * FROM t")
-        assert_none(session, "SELECT * FROM mv")
+        self.eventually_assert_none(session, "SELECT * FROM t")
+        self.eventually_assert_none(session, "SELECT * FROM mv")
 
         # add selected with ts=7, view row is alive
         self.update_view(session, "UPDATE t USING TIMESTAMP 7 SET b=1 WHERE k=1 AND c=1;", flush)
-        assert_one(session, "SELECT * FROM t", [1, 1, None, 1, None, None])
-        assert_one(session, "SELECT * FROM mv", [1, 1, None, 1])
+        self.eventually_assert_one(session, "SELECT * FROM t", [1, 1, None, 1, None, None])
+        self.eventually_assert_one(session, "SELECT * FROM mv", [1, 1, None, 1])
 
         # remove selected with ts=7, view row is dead
         self.update_view(session, "UPDATE t USING TIMESTAMP 7 SET b=null WHERE k=1 AND c=1;", flush)
@@ -2205,27 +2229,27 @@ class TestMaterializedViews(Tester):
 
         # add selected with ts=5, view row is alive (selected column should not affects each other)
         self.update_view(session, "UPDATE t USING TIMESTAMP 5 SET a=1 WHERE k=1 AND c=1;", flush)
-        assert_one(session, "SELECT * FROM t", [1, 1, 1, None, None, None])
-        assert_one(session, "SELECT * FROM mv", [1, 1, 1, None])
+        self.eventually_assert_one(session, "SELECT * FROM t", [1, 1, 1, None, None, None])
+        self.eventually_assert_one(session, "SELECT * FROM mv", [1, 1, 1, None])
 
         # add selected with ttl=10
         self.update_view(session, "UPDATE t USING TTL 10 SET a=1 WHERE k=1 AND c=1;", flush)
-        assert_one(session, "SELECT * FROM t", [1, 1, 1, None, None, None])
-        assert_one(session, "SELECT * FROM mv", [1, 1, 1, None])
+        self.eventually_assert_one(session, "SELECT * FROM t", [1, 1, 1, None, None, None])
+        self.eventually_assert_one(session, "SELECT * FROM mv", [1, 1, 1, None])
 
         time.sleep(10)
 
-        assert_none(session, "SELECT * FROM mv")
+        self.eventually_assert_none(session, "SELECT * FROM mv")
 
         # update unselected with ttl=10, view row should be alive
         self.update_view(session, "UPDATE t USING TTL 10 SET f=1 WHERE k=1 AND c=1;", flush)
-        assert_one(session, "SELECT * FROM t", [1, 1, None, None, None, 1])
-        assert_one(session, "SELECT * FROM mv", [1, 1, None, None])
+        self.eventually_assert_one(session, "SELECT * FROM t", [1, 1, None, None, None, 1])
+        self.eventually_assert_one(session, "SELECT * FROM mv", [1, 1, None, None])
 
         time.sleep(11)
 
-        assert_none(session, "SELECT * FROM t")
-        assert_none(session, "SELECT * FROM mv")
+        self.eventually_assert_none(session, "SELECT * FROM t")
+        self.eventually_assert_none(session, "SELECT * FROM mv")
 
     def test_base_column_in_view_pk_complex_timestamp_with_flush(self):
         self._test_base_column_in_view_pk_complex_timestamp(flush=True)
@@ -2251,55 +2275,55 @@ class TestMaterializedViews(Tester):
 
         # Set initial values TS=1
         self.update_view(session, "INSERT INTO t (k, a, b) VALUES (1, 1, 1) USING TIMESTAMP 1;", flush)
-        assert_one(session, "SELECT * FROM t", [1, 1, 1])
-        assert_one(session, "SELECT * FROM mv", [1, 1, 1])
+        self.eventually_assert_one(session, "SELECT * FROM t", [1, 1, 1])
+        self.eventually_assert_one(session, "SELECT * FROM mv", [1, 1, 1])
 
         # increase b ts to 10
         self.update_view(session, "UPDATE t USING TIMESTAMP 10 SET b = 2 WHERE k = 1;", flush)
-        assert_one(session, "SELECT k,a,b,writetime(b) FROM t", [1, 1, 2, 10])
-        assert_one(session, "SELECT k,a,b,writetime(b) FROM mv", [1, 1, 2, 10])
+        self.eventually_assert_one(session, "SELECT k,a,b,writetime(b) FROM t", [1, 1, 2, 10])
+        self.eventually_assert_one(session, "SELECT k,a,b,writetime(b) FROM mv", [1, 1, 2, 10])
 
         # switch entries. shadow a = 1, insert a = 2
         self.update_view(session, "UPDATE t USING TIMESTAMP 2 SET a = 2 WHERE k = 1;", flush)
-        assert_one(session, "SELECT k,a,b,writetime(b) FROM t", [1, 2, 2, 10])
-        assert_one(session, "SELECT k,a,b,writetime(b) FROM mv", [1, 2, 2, 10])
+        self.eventually_assert_one(session, "SELECT k,a,b,writetime(b) FROM t", [1, 2, 2, 10])
+        self.eventually_assert_one(session, "SELECT k,a,b,writetime(b) FROM mv", [1, 2, 2, 10])
 
         # switch entries. shadow a = 2, insert a = 1
         self.update_view(session, "UPDATE t USING TIMESTAMP 3 SET a = 1 WHERE k = 1;", flush)
-        assert_one(session, "SELECT k,a,b,writetime(b) FROM t", [1, 1, 2, 10])
-        assert_one(session, "SELECT k,a,b,writetime(b) FROM mv", [1, 1, 2, 10])
+        self.eventually_assert_one(session, "SELECT k,a,b,writetime(b) FROM t", [1, 1, 2, 10])
+        self.eventually_assert_one(session, "SELECT k,a,b,writetime(b) FROM mv", [1, 1, 2, 10])
 
         # switch entries. shadow a = 1, insert a = 2
         self.update_view(session, "UPDATE t USING TIMESTAMP 4 SET a = 2 WHERE k = 1;", flush, compact=True)
-        assert_one(session, "SELECT k,a,b,writetime(b) FROM t", [1, 2, 2, 10])
-        assert_one(session, "SELECT k,a,b,writetime(b) FROM mv", [1, 2, 2, 10])
+        self.eventually_assert_one(session, "SELECT k,a,b,writetime(b) FROM t", [1, 2, 2, 10])
+        self.eventually_assert_one(session, "SELECT k,a,b,writetime(b) FROM mv", [1, 2, 2, 10])
 
         # able to shadow view row even if base-column in view pk's ts is smaller than row timestamp
         # set row TS = 20, a@6, b@20
         self.update_view(session, "DELETE FROM t USING TIMESTAMP 5 where k = 1;", flush)
-        assert_one(session, "SELECT k,a,b,writetime(b) FROM t", [1, None, 2, 10])
-        assert_none(session, "SELECT k,a,b,writetime(b) FROM mv")
+        self.eventually_assert_one(session, "SELECT k,a,b,writetime(b) FROM t", [1, None, 2, 10])
+        self.eventually_assert_none(session, "SELECT k,a,b,writetime(b) FROM mv")
         self.update_view(session, "INSERT INTO t (k, a, b) VALUES (1, 1, 1) USING TIMESTAMP 6;", flush)
-        assert_one(session, "SELECT k,a,b,writetime(b) FROM t", [1, 1, 2, 10])
-        assert_one(session, "SELECT k,a,b,writetime(b) FROM mv", [1, 1, 2, 10])
+        self.eventually_assert_one(session, "SELECT k,a,b,writetime(b) FROM t", [1, 1, 2, 10])
+        self.eventually_assert_one(session, "SELECT k,a,b,writetime(b) FROM mv", [1, 1, 2, 10])
         self.update_view(session, "INSERT INTO t (k, b) VALUES (1, 1) USING TIMESTAMP 20;", flush)
-        assert_one(session, "SELECT k,a,b,writetime(b) FROM t", [1, 1, 1, 20])
-        assert_one(session, "SELECT k,a,b,writetime(b) FROM mv", [1, 1, 1, 20])
+        self.eventually_assert_one(session, "SELECT k,a,b,writetime(b) FROM t", [1, 1, 1, 20])
+        self.eventually_assert_one(session, "SELECT k,a,b,writetime(b) FROM mv", [1, 1, 1, 20])
 
         # switch entries. shadow a = 1, insert a = 2
         self.update_view(session, "UPDATE t USING TIMESTAMP 7 SET a = 2 WHERE k = 1;", flush)
-        assert_one(session, "SELECT k,a,b,writetime(a),writetime(b) FROM t", [1, 2, 1, 7, 20])
-        assert_one(session, "SELECT k,a,b,writetime(b) FROM mv", [1, 2, 1, 20])
+        self.eventually_assert_one(session, "SELECT k,a,b,writetime(a),writetime(b) FROM t", [1, 2, 1, 7, 20])
+        self.eventually_assert_one(session, "SELECT k,a,b,writetime(b) FROM mv", [1, 2, 1, 20])
 
         # switch entries. shadow a = 2, insert a = 1
         self.update_view(session, "UPDATE t USING TIMESTAMP 8 SET a = 1 WHERE k = 1;", flush)
-        assert_one(session, "SELECT k,a,b,writetime(a),writetime(b) FROM t", [1, 1, 1, 8, 20])
-        assert_one(session, "SELECT k,a,b,writetime(b) FROM mv", [1, 1, 1, 20])
+        self.eventually_assert_one(session, "SELECT k,a,b,writetime(a),writetime(b) FROM t", [1, 1, 1, 8, 20])
+        self.eventually_assert_one(session, "SELECT k,a,b,writetime(b) FROM mv", [1, 1, 1, 20])
 
         # create another view row
         self.update_view(session, "INSERT INTO t (k, a, b) VALUES (2, 2, 2);", flush)
-        assert_one(session, "SELECT k,a,b FROM t WHERE k = 2", [2, 2, 2])
-        assert_one(session, "SELECT k,a,b FROM mv WHERE k = 2", [2, 2, 2])
+        self.eventually_assert_one(session, "SELECT k,a,b FROM t WHERE k = 2", [2, 2, 2])
+        self.eventually_assert_one(session, "SELECT k,a,b FROM mv WHERE k = 2", [2, 2, 2])
 
         # stop node2, node3
         debug('Shutdown node2')
@@ -2326,10 +2350,9 @@ class TestMaterializedViews(Tester):
         #self.assertEqual(0, len(result.current_rows))
 
         # For k = 1 & a = 1, second time no digest mismatch
-        result = session.execute(query, trace=True)
         #self.check_trace_events(result.get_query_trace(), False)
         #assert_none(session, "SELECT * FROM mv WHERE k = 1 AND a = 1")
-        self.assertEqual(0, len(result.current_rows))
+        self.eventually(lambda: self.assertEqual(0, len(session.execute(query, trace=True).current_rows)))
 
         # For k = 1 & a = 2, We should get a digest mismatch of data and repaired for a = 2
         query = SimpleStatement("SELECT * FROM mv WHERE k = 1 AND a = 2", consistency_level=ConsistencyLevel.ALL)
@@ -2338,15 +2361,13 @@ class TestMaterializedViews(Tester):
         #self.assertEqual(1, len(result.current_rows))
 
         # For k = 1 & a = 2, second time no digest mismatch
-        result = session.execute(query, trace=True)
         #self.check_trace_events(result.get_query_trace(), False)
-        self.assertEqual(1, len(result.current_rows))
-        assert_one(session, "SELECT k,a,b,writetime(b) FROM mv WHERE k = 1", [1, 2, 1, 20])
+        self.eventually(lambda: self.assertEqual(1, len(session.execute(query, trace=True).current_rows)))
+        self.eventually_assert_one(session, "SELECT k,a,b,writetime(b) FROM mv WHERE k = 1", [1, 2, 1, 20])
 
         time.sleep(3)
         # For k = 2 & a = 2, We should get a digest mismatch of expired and repaired
         query = SimpleStatement("SELECT * FROM mv WHERE k = 2 AND a = 2", consistency_level=ConsistencyLevel.ALL)
-        result = session.execute(query, trace=True)
         #self.check_trace_events(result.get_query_trace(), True)
         #debug(result.current_rows)
         #self.assertEqual(0, len(result.current_rows))
@@ -2354,7 +2375,7 @@ class TestMaterializedViews(Tester):
         # For k = 2 & a = 2, second time no digest mismatch
         #result = session.execute(query, trace=True)
         #self.check_trace_events(result.get_query_trace(), False)
-        self.assertEqual(0, len(result.current_rows))
+        self.eventually(lambda: self.assertEqual(0, len(session.execute(query, trace=True).current_rows)))
 
     def test_expired_liveness_with_limit_rf1_nodes1(self):
         self._test_expired_liveness_with_limit(rf=1, nodes=1)
@@ -2431,37 +2452,37 @@ class TestMaterializedViews(Tester):
 
         # sstable 1, Set initial values TS=1
         self.update_view(session, "INSERT INTO t (id, v, v2, v3) VALUES (1, 1, 'a', 3.0) USING TIMESTAMP 1", flush)
-        assert_one(session, "SELECT * FROM t_by_v", [1, 1, 'a', 3.0])
+        self.eventually_assert_one(session, "SELECT * FROM t_by_v", [1, 1, 'a', 3.0])
 
         # sstable 2, change v's value and TS=2, tombstones v=1 and adds v=0 record
         self.update_view(session, "DELETE FROM t USING TIMESTAMP 2 WHERE id = 1;", flush)
-        assert_none(session, "SELECT * FROM t_by_v")
-        assert_none(session, "SELECT * FROM t")
+        self.eventually_assert_none(session, "SELECT * FROM t_by_v")
+        self.eventually_assert_none(session, "SELECT * FROM t")
 
         # sstable 3, tombstones of mv created by base deletion should remain.
         self.update_view(session, "INSERT INTO t (id, v) VALUES (1, 1) USING TIMESTAMP 3", flush)
-        assert_one(session, "SELECT * FROM t_by_v", [1, 1, None, None])
-        assert_one(session, "SELECT * FROM t", [1, 1, None, None])
+        self.eventually_assert_one(session, "SELECT * FROM t_by_v", [1, 1, None, None])
+        self.eventually_assert_one(session, "SELECT * FROM t", [1, 1, None, None])
 
         # sstable 4, shadow view row (id=1, v=1), insert (id=1, v=2, ts=4)
         self.update_view(session, "UPDATE t USING TIMESTAMP 4 set v = 2 WHERE id = 1;", flush)
-        assert_one(session, "SELECT * FROM t_by_v", [2, 1, None, None])
-        assert_one(session, "SELECT * FROM t", [1, 2, None, None])
+        self.eventually_assert_one(session, "SELECT * FROM t_by_v", [2, 1, None, None])
+        self.eventually_assert_one(session, "SELECT * FROM t", [1, 2, None, None])
 
         # sstable 5, shadow view row (id=1, v=2), insert (id=1, v=1 ts=5)
         self.update_view(session, "UPDATE t USING TIMESTAMP 5 set v = 1 WHERE id = 1;", flush)
-        assert_one(session, "SELECT * FROM t_by_v", [1, 1, None, None])
-        assert_one(session, "SELECT * FROM t", [1, 1, None, None])  # data deleted by row-tombstone@2 should not resurrect
+        self.eventually_assert_one(session, "SELECT * FROM t_by_v", [1, 1, None, None])
+        self.eventually_assert_one(session, "SELECT * FROM t", [1, 1, None, None])  # data deleted by row-tombstone@2 should not resurrect
 
         if flush:
             self.cluster.compact()
-            assert_one(session, "SELECT * FROM t_by_v", [1, 1, None, None])
-            assert_one(session, "SELECT * FROM t", [1, 1, None, None])  # data deleted by row-tombstone@2 should not resurrect
+            self.eventually_assert_one(session, "SELECT * FROM t_by_v", [1, 1, None, None])
+            self.eventually_assert_one(session, "SELECT * FROM t", [1, 1, None, None])  # data deleted by row-tombstone@2 should not resurrect
 
         # shadow view row (id=1, v=1)
         self.update_view(session, "UPDATE t USING TIMESTAMP 5 set v = null WHERE id = 1;", flush)
-        assert_none(session, "SELECT * FROM t_by_v")
-        assert_one(session, "SELECT * FROM t", [1, None, None, None])
+        self.eventually_assert_none(session, "SELECT * FROM t_by_v")
+        self.eventually_assert_one(session, "SELECT * FROM t", [1, None, None, None])
 
     def view_tombstone_test(self):
         """
