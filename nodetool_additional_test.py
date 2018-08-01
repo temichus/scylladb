@@ -51,9 +51,15 @@ class TestNodetool(Tester):
                         if "Table" in obj:
                             ks["tables"][obj["Table"]] = obj
                     obj = {}
-                obj[m.group(1).strip()] = m.group(2).strip()
+                k = m.group(1).strip()
+                v = m.group(2).strip()
+                obj[k] = v
+                # origin 3.11 changes this metric name.
+                # fix by double-map value
+                if k == "Number of partitions (estimate)":
+                    obj["Number of keys (estimate)"] = v
             else:
-                if l.find("----------------") >= 0:
+                if l.find("----------------") >= 0 and ks != None:
                     if obj != {}:
                         if "Table" in obj:
                             ks["tables"][obj["Table"]] = obj

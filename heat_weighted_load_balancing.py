@@ -80,7 +80,7 @@ class HeatWeightedLB(Tester):
             resp = self.node1.stress_object(
                 ['read', 'cl=QUORUM', '-schema', 'replication(factor=3)', '-rate', 'threads>=4', 'threads<=64',
                  '-pop', 'seq=1..{}'.format(self._op_cnt)])
-            if not resp or 'Total partitions:read' not in resp:
+            if not resp or 'total partitions:read' not in resp:
                 raise Exception('Error running stress test: {}'.format(resp))
 
         thr = threading.Thread(target=run_read)
@@ -101,7 +101,7 @@ class HeatWeightedLB(Tester):
         resp = self.node1.stress_object(
             ['write', 'cl={}'.format(cl), '-schema', 'replication(factor=3)', '-rate', 'threads=4',
              '-pop', 'seq=1..{}'.format(self._op_cnt)])
-        if not resp or 'Total partitions:write' not in resp:
+        if not resp or 'total partitions:write' not in resp:
             raise Exception('Error running stress test: {}'.format(resp))
 
         debug('Flush system tables')

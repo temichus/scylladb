@@ -263,6 +263,8 @@ class CqlshCopyTest(CqlshPrepare):
     def format_for_csv(self, val):
         with self._cqlshlib() as cqlshlib:
             from cqlshlib.formatting import format_value
+            from cqlshlib.formatting import format_value_default
+            from cqlshlib.formatting import _formatters
             try:
                 from cqlshlib.formatting import DateTimeFormat
                 date_time_format = DateTimeFormat()
@@ -281,14 +283,16 @@ class CqlshCopyTest(CqlshPrepare):
         # different versions use time_format or date_time_format
         # but all versions reject spurious values, so we just use both
         # here
-        return format_value(var_type,
-                            val,
-                            encoding=encoding_name,
-                            date_time_format=date_time_format,
-                            time_format=DEFAULT_TIME_FORMAT,
-                            float_precision=DEFAULT_FLOAT_PRECISION,
-                            colormap=DummyColorMap(),
-                            nullval=None).strval
+
+        formatter = _formatters.get(var_type.__name__.lower(), format_value_default)
+
+        return formatter(val,
+                         encoding=encoding_name,
+                         date_time_format=date_time_format,
+                         time_format=DEFAULT_TIME_FORMAT,
+                         float_precision=DEFAULT_FLOAT_PRECISION,
+                         colormap=DummyColorMap(),
+                         nullval=None).strval
 
     def result_to_csv_rows(self, result):
         """
