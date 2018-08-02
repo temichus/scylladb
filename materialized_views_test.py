@@ -75,6 +75,7 @@ class TestMaterializedViews(Tester):
         populate = nodes if isinstance(nodes, list) else [nodes, 0]
         cluster.populate(populate)
         options['experimental'] = True
+        self.rf = rf
         if options:
             cluster.set_configuration_options(values=options)
         cluster.start(jvm_args=jvm_args,wait_other_notice=True,wait_for_binary_proto=True)
@@ -322,7 +323,13 @@ class TestMaterializedViews(Tester):
         self._check_errors(node, exclude_errors)
         session = self.patient_exclusive_cql_connection(node)
         session.execute('USE mview')
-        cl = cl or (ConsistencyLevel.ONE if double_failure else ConsistencyLevel.QUORUM if node_action in ['stop'] else ConsistencyLevel.ALL)
+        # Set CL as:
+        #      - for double failure - ONE
+        #      - for stop node action - QUORUM
+        #      - if RF more then nodes acount - QUORUM
+        #      - for remove node action - ALL
+        cl = cl or (ConsistencyLevel.ONE if double_failure else ConsistencyLevel.QUORUM
+                    if node_action in ['stop']  or self.rf > len(self.cluster.nodelist()) else ConsistencyLevel.ALL)
         debug('Validate data using CL={}'.format(cl))
         exp_res = run_query_with_data_processing(session, 'select count(*) from mview.users', consistency_level=cl)
         try:
