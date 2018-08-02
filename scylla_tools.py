@@ -912,9 +912,8 @@ def check_errors(node, exclude_errors, search_str='Error'):
         # Set allow_log_errors to True
         return True
 
-def remove_node(cluster, node):
+def remove_node(cluster, node, wait_other_notice=True):
     hostid = node.hostid()
-    cluster.remove(node)
-    time.sleep(30)
+    cluster.remove(node, wait_other_notice=wait_other_notice)
     remove_using_node = cluster.nodelist()[0]
     remove_using_node.nodetool("removenode {}".format(hostid))

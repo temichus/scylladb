@@ -231,7 +231,7 @@ class TestMaterializedViews(Tester):
                                              'ops(insert=1,read1=1,read2=1,read3=1)', '-mode cql3  native', '-rate threads=10'], True]},
             {'func': node1.stress, 'args': [['mixed', "cl=QUORUM", "duration=10m",
                                              "-mode cql3 native", "-rate threads=10", "-pop seq=1..{}".format(n), "-log interval=5"], True]},
-            {'func': self._node_action_with_delay, 'args': (node_action, self.cluster.nodelist()[1]),'kwargs': {'delay': delay}}
+            {'func': self._node_action_with_delay, 'args': (node_action, self.cluster.nodelist()[1]), 'kwargs': {'delay': delay}}
         ]
         if double_failure and len(self.cluster.nodelist()) > 2:
             proc_functions.append({'func': self._node_action_with_delay, 'args': (node_action, self.cluster.nodelist()[2]),
@@ -260,7 +260,7 @@ class TestMaterializedViews(Tester):
         self.allow_log_errors = True
         self._validate_cs_results(node1_dc1, exclude_errors=['mutation_write_timeout_exception'], node_action='', double_failure=True)
 
-    def _node_action_with_delay(self, action, node, delay=0, wait=True, wait_other_notice=False, gently=True):
+    def _node_action_with_delay(self, action, node, delay=0, wait=True, wait_other_notice=True, gently=True):
         """
         :param action: expected values: stop, remove
         :param action: str
@@ -276,7 +276,7 @@ class TestMaterializedViews(Tester):
         if action == 'stop':
             node.stop(wait=wait, wait_other_notice=wait_other_notice, gently=gently)
         elif action == 'remove':
-            remove_node(self.cluster, node)
+            remove_node(self.cluster, node, wait_other_notice=wait_other_notice)
         else:
             new_node_index = len(self.cluster.nodelist()) + 1
             node.nodetool(action)
