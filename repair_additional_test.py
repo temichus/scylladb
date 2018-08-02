@@ -612,6 +612,216 @@ class RepairAdditionalBase(Tester):
         self.check_rows_on_node(node1, 2000)
         self.check_rows_on_node(node2, 2000)
 
+    def _repair_option_pr_dc_host_test(self):
+        """
+        Test how the "partitioner range" (-pr) option interacts with the
+        options which restrict the nodes participating in the repair -
+        -dc, -local and -hosts.
+        Since -pr usually assigns each token to just one node in the entire
+        cluster, it is generally forbidden to restrict the repair to only
+        part of the cluster otherwise some ranges will never be repaired.
+        Nevertheless, combining -pr with restriction to the local dc
+        ("-local") *is* allowed, and changes the meaning of -pr to not
+        pick just one node in the cluster as the primary for every token -
+        but rather one node in every dc.
+        In this test we verify that forbidden option combinations are
+        indeed forbidden, and the supported combination "-pr -local" is
+        supported correctly - so if we loop on all nodes of just one dc
+        and repair them with "-pr -local", it will repair the data center
+        completely, over the entire token range.
+        """
+        # Start a cluster of three data centers with two nodes each, and
+        # create a keyspace ks with RF=2, and a table cf.
+        # Hinted handoff and read repair are disabled so they don't fix the
+        # problems which repair is supposed to fix.
+        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        self.cluster.populate([2,2,2]).start(wait_for_binary_proto=True, wait_other_notice=True)
+        node1_1, node1_2, node2_1, node2_2, node3_1, node3_2 = self.cluster.nodelist()
+        session = self.patient_cql_connection(node1_1)
+        self.create_ks(session, 'ks', {'dc1': 2, 'dc2': 2, 'dc3': 2})
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+
+        # Repair with "-pr" that restricts the repair to a subset of
+        # data centers or a subset of hosts is forbidden, and should
+        # cause a failure. Since generally repair not including the
+        # current dc or host is forbidden, we check a case which does
+        # include the current dc and the current host.
+        # Interestingly, both nodetool (Repair.java) and Scylla have
+        # code to fail this case, so we only test the outer layer
+        # (Repair.java).
+        # Note that combining -pr with -local is a special case,
+        # which is supported, and we'll test below.
+        with self.assertRaises(NodetoolError):
+            node1_1.repair(['-pr', '-dc', 'dc1,dc3', 'ks'])
+
+        # Same issue with combination of -pr with -hosts
+        with self.assertRaises(NodetoolError):
+            node1_1.repair(['-pr', '-hosts', node1_1.address(), 'ks'])
+
+        # Although combining -pr with -local is allowed (see below),
+        # the supposedly equivalent "-pr -dc dc1" (when dc1 is the local
+        # dc) is NOT allowed, caught by nodetool (Repair.java).
+        # Let's test that this is indeed the case.
+        # I think this is deliberate, and the thinking is that we want to
+        # allow only a command which, if run on every node, will work.
+        # So while "-pr -local" will work (repair using the local cluster
+        # on every node), "-pr -dc dc1" will not (for nodes in dc2, dc2
+        # would need to be used instead).
+        # Note that as far as Scylla is concerned, there is no difference
+        # between "-local" or "-dc dc1" when dc1 is the local dc1. So this
+        # case *could* have worked if nodetool didn't forbid it.
+        with self.assertRaises(NodetoolError):
+            node1_1.repair(['-pr', '-dc', 'dc1', 'ks'])
+
+        # However, "-pr" combined with restriction to the *local* datacenter
+        # is supported, and should be supported correctly (see issue #3557).
+        # In that case, if we run repair with "-pr -local" on all the nodes
+        # of this datacenter only, all token ranges will be repaired and not
+        # parts. Let's start with the trivial test that -pr -local doesn't
+        # cause an error. Then we'll check a more elaborate example with
+        # actual data, repair again and verify it actually repairs data.
+        node1_1.repair(['-pr', '-local', 'ks'])
+
+        # Insert 1000 keys *only* on node 1, another 1000 keys *only* on node 2
+        # both in the first data center. The other data centers will be
+        # completely missing this data:
+        debug("Adding data only on node 1...")
+        for node in self.cluster.nodelist():
+            if node != node1_1:
+                node.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node1_1, 'ks')
+        insert_c1c2(session, keys=range(1000, 2000), consistency=ConsistencyLevel.LOCAL_ONE)
+        self.cluster.flush()
+        debug("Adding data only on node 2...")
+        node1_2.start(wait_other_notice=True, wait_for_binary_proto=True)
+        node1_1.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node1_2, 'ks')
+        insert_c1c2(session, keys=range(2000, 3000), consistency=ConsistencyLevel.LOCAL_ONE)
+
+        # Bring up all nodes, each node on dc 1 should have different data
+        # and all the nodes of the two other clusters are empty (but that's
+        # not important in this case).
+        for node in self.cluster.nodelist():
+            if node != node1_2:
+                node.start(wait_other_notice=True, wait_for_binary_proto=True)
+
+        # Run dc-local partioner-range repair on node 1
+        info = node1_1.repair(['-pr', '-local', 'ks'])
+        debug(info[0])
+        debug(info[1])
+        # We expect "-pr" repair to have repaired only half of the ranges
+        # (those for which node 1 is their primary replica), so both nodes
+        # should now have around 1500 partitions. We don't know the exact
+        # number, but given the assumed random distribution of tokens and keys,
+        # it is unlikely to be far from 1500 - let's assert it is between
+        # 1200 and 1800
+        # Note that if the "-local" *was* not obeyed, we would see a
+        # failure here because without "-local", "-pr" repair of just one
+        # node in a cluster of 6 would just repair 1/6th of the range,
+        # not 1/2.
+        node1_1.flush()
+        node1_1.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node1_2, 'ks')
+        count_query = SimpleStatement("SELECT count(*) from cf", consistency_level=ConsistencyLevel.ONE)
+        count = session.execute(count_query)[0][0]
+        self.assertTrue(count > 1200 and count < 1800, "expected pr repair to repair part, but not everything")
+        node1_1.start(wait_other_notice=True, wait_for_binary_proto=True)
+        node1_2.flush()
+        node1_2.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node1_1, 'ks')
+        count = session.execute(count_query)[0][0]
+        self.assertTrue(count > 1200 and count < 1800, "expected pr repair to repair part, but not everything")
+        node1_2.start(wait_other_notice=True, wait_for_binary_proto=True)
+
+        # Run a second dc-local "-pr" repair, this time on node 2. This
+        # should repair all the ranges not previously repared (i.e., this
+        # times the ranges whose primary is node 2), and at the end, all
+        # data, 2000 partitions, should be on both nodes.
+        # Note that if the "-local" *was* not obeyed, we would see a
+        # failure here because without "-local", one would need to do
+        # a "-pr" repair on all six nodes of the cluster to cover the
+        # entire token range.
+        info = node1_2.repair(['-pr', '-local', 'ks'])
+        debug(info[0])
+        debug(info[1])
+        self.check_rows_on_node(node1_1, 2000)
+        self.check_rows_on_node(node1_2, 2000)
+
+    def _repair_option_pr_multi_dc_test(self):
+        """
+        Test how the "partitioner range" (-pr) option interacts with the
+        a multi-dc setup (but without a "-local" parameter tested above).
+        A user needs to do a -pr repair on each and every one of the nodes -
+        on all data centers - to achieve a full repair.
+        """
+        # Start a cluster of three data centers with two nodes each, and
+        # create a keyspace ks with RF=2, and a table cf.
+        # Hinted handoff and read repair are disabled so they don't fix the
+        # problems which repair is supposed to fix.
+        debug("Starting 6 nodes...")
+        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        self.cluster.populate([2,2,2]).start(wait_for_binary_proto=True, wait_other_notice=True)
+        node1_1, node1_2, node2_1, node2_2, node3_1, node3_2 = self.cluster.nodelist()
+        session = self.patient_cql_connection(node1_1)
+        self.create_ks(session, 'ks', {'dc1': 2, 'dc2': 2, 'dc3': 2})
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+
+        # Insert 1000 keys *only* on node 1, another 1000 keys *only* on node 2
+        # both in the first data center. The other data centers will be
+        # completely missing this data:
+        debug("Adding data only on node 1...")
+        for node in self.cluster.nodelist():
+            if node != node1_1:
+                node.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node1_1, 'ks')
+        insert_c1c2(session, keys=range(1000, 2000), consistency=ConsistencyLevel.LOCAL_ONE)
+        self.cluster.flush()
+        debug("Adding data only on node 2...")
+        node1_2.start(wait_other_notice=True, wait_for_binary_proto=True)
+        node1_1.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node1_2, 'ks')
+        insert_c1c2(session, keys=range(2000, 3000), consistency=ConsistencyLevel.LOCAL_ONE)
+
+        # Bring up all nodes, each should have different data
+        # (all the nodes of the two other clusters are empty, but that's
+        # not important in this case).
+        debug("Bring back all nodes...")
+        for node in self.cluster.nodelist():
+            if node != node1_2:
+                node.start(wait_other_notice=True, wait_for_binary_proto=True)
+
+        # Run dc-local partioner-range repair on node 1
+        debug("Repair with -pr on node 1...")
+        info = node1_1.repair(['-pr', 'ks'])
+        debug(info[0])
+        debug(info[1])
+        # We expect "-pr" repair to have repaired only 1/6th of the ranges
+        # (those for which node 1 is their primary replica), so node 1
+        # should now have around 1166 partitions. We don't know the exact
+        # number, but given the assumed random distribution of tokens and keys,
+        # it is unlikely to be far from 1166 - let's assert it is between
+        # 1050 and 1300
+        node1_2.flush()
+        node1_2.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node1_1, 'ks')
+        count = len(list(session.execute("SELECT * FROM cf LIMIT 2000")))
+        debug(count)
+        self.assertTrue(count > 1050 and count < 1300, "expected pr repair to repair part, but not everything")
+        node1_2.start(wait_other_notice=True, wait_for_binary_proto=True)
+
+        # Run dc-local "-pr" repair on all other nodes. This should repair
+        # all the ranges not previously repared and at the end, all
+        # data, 2000 partitions, should be on all nodes.
+        for node in self.cluster.nodelist():
+            if node != node1_1:
+                debug("Repair with -pr on " + node.name)
+                info = node.repair(['-pr', 'ks'])
+                debug(info[0])
+                debug(info[1])
+        for node in self.cluster.nodelist():
+            debug("Checking data on " + node.name)
+            self.check_rows_on_node(node, 2000)
+
     def _repair_option_cf_test(self):
         """
         Test that we can specify the list of column families to repair. We
@@ -1796,6 +2006,12 @@ class RepairAdditionalTest(RepairAdditionalBase):
 
     def repair_option_pr_test(self):
        return RepairAdditionalBase._repair_option_pr_test(self)
+
+    def repair_option_pr_dc_host_test(self):
+       return RepairAdditionalBase._repair_option_pr_dc_host_test(self)
+
+    def repair_option_pr_multi_dc_test(self):
+       return RepairAdditionalBase._repair_option_pr_multi_dc_test(self)
 
     def repair_option_cf_test(self):
        return RepairAdditionalBase._repair_option_cf_test(self)
