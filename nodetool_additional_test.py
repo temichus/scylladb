@@ -764,6 +764,7 @@ class TestNodetool(Tester):
     @staticmethod
     def _get_cfhistogram(node, ks, cf):
         out = node.nodetool("cfhistograms " + ks + " " + cf, True)[0]
+        debug(out)
         m = re.findall(r"^([^\/]+)\/(.*)\s+histograms\s*$", out, re.MULTILINE)
         res = {}
         if m:
