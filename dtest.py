@@ -35,6 +35,7 @@ from ccmlib.scylla_cluster import ScyllaCluster
 from nose.exc import SkipTest
 
 from multiprocessing import Queue, Lock
+from functools import wraps
 
 os.environ['LOCALE'] = 'C'
 
@@ -930,3 +931,33 @@ def run_scenarios(scenarios, handler, deferred_exceptions=tuple()):
 
     if errors:
         raise MultiError(errors, tracebacks)
+
+
+class retrying(object):
+    """
+        Used as a decorator to retry function run that can possibly fail with allowed exceptions list
+    """
+    def __init__(self, n=3, sleep_time=1, allowed_exceptions=(Exception,), message=""):
+        self.n = n  # number of times to retry
+        self.sleep_time = sleep_time  # number seconds to sleep between retries
+        self.allowed_exceptions = allowed_exceptions  # if Exception is not allowed will raise
+        self.message = message  # string that will be printed between retries
+
+    def __call__(self, func):
+        @wraps(func)
+        def inner(*args, **kwargs):
+            for i in xrange(self.n):
+                try:
+                    if self.message:
+                        LOG.info("%s [try #%s]" % (self.message, i))
+                    return func(*args, **kwargs)
+                except self.allowed_exceptions as e:
+                    LOG.debug("retrying: %r" % e)
+                    time.sleep(self.sleep_time)
+                    if i == self.n - 1:
+                        LOG.error("Number of retries exceeded!")
+                        raise
+        return inner
+
+
+flaky = retrying(n=5, sleep_time=3, message="Flaky test")
