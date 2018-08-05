@@ -100,6 +100,7 @@ replication_test.py
 resharding_test.py
 schema_management_test.py
 schema_test.py
+secondary_indexes_test.py
 simple_boot_shutdown.py
 simple_cluster_driver_test.py
 simple_driver_test.py
