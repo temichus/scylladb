@@ -14,6 +14,7 @@ import threading
 import time
 import traceback
 import types
+import itertools
 import requests
 import datetime
 from unittest import TestCase
@@ -961,3 +962,46 @@ class retrying(object):
 
 
 flaky = retrying(n=5, sleep_time=3, message="Flaky test")
+
+
+class run_with_params(object):
+    """
+       Will run function with different arguments provided as arguments for the decorator.
+       Example:
+            In [1]: @run_with_params(num=[1,2,3],what=["pryanik", "pastila"], persons=["Bentsi", "Nastya"])
+                ...: def give(num, what, persons):
+                ...:     print "Giving {num} {what} to {persons}".format(**locals())
+
+            In [2]: give()
+            Giving 1 pryanik to Bentsi
+            Giving 2 pryanik to Bentsi
+            Giving 3 pryanik to Bentsi
+            Giving 1 pastila to Bentsi
+            Giving 2 pastila to Bentsi
+            Giving 3 pastila to Bentsi
+            Giving 1 pryanik to Nastya
+            Giving 2 pryanik to Nastya
+            Giving 3 pryanik to Nastya
+            Giving 1 pastila to Nastya
+            Giving 2 pastila to Nastya
+            Giving 3 pastila to Nastya
+        Decorator is inspired by Pytest's parameterize
+    """
+    def __init__(self, *args, **kwargs):
+         self.args = args
+         self.kwargs = kwargs
+
+    def __call__(self, func):
+        @wraps(func)
+        def inner(*args, **kwargs):
+            l = []
+            for key, values in self.kwargs.items():
+                vals_product = list(itertools.product(*[[key], values]))
+                l.append(vals_product)
+            cartesian_product = list(itertools.product(*l))
+            for arg in cartesian_product:
+                kwargs.update({k: v for k, v in arg})
+                func(*(args + self.args), **kwargs)
+        return inner
+
+

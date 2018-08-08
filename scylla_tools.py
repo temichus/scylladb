@@ -14,6 +14,7 @@ from threading import Thread
 import datetime
 from tools import rows_to_list
 
+
 def build_insert_params(keys, n, c1_values, c2_values):
     if (len(keys) == 0 and n is None) or (len(keys) != 0 and n is not None):
         raise ValueError("Expected exactly one of 'keys' or 'n' arguments to not be None; "
@@ -158,17 +159,11 @@ def scylla_mode(modes):
     return unittest.skipIf(common.isScylla(cdir) and not NO_SKIP and modes.find(mode) == -1, 'Test disabled for scylla %s' % mode)
 
 
-def get_sstables_files(cf_dir, ks_name, cf_name, f_type=''):
+def get_sstables_files(cf_dir, f_type=''):
     """
     Returns a set of sstable(s) files for a given KS and CF
     """
-    sstable_pattern = re.compile("{}-{}-.*{}".format(ks_name, cf_name, f_type))
-    sstables_files = set()
-    for f in os.listdir(cf_dir):
-        if sstable_pattern.match(f):
-            sstables_files.add(f)
-
-    return sstables_files
+    return set([fname for fname in get_all_files_in_dir(cf_dir) if f_type in fname])
 
 
 def get_all_files_in_dir(dir_path):

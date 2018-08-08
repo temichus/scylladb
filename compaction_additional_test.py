@@ -3,7 +3,7 @@ import time
 import os
 import shutil
 import glob
-from dtest import Tester, debug
+from dtest import Tester, debug, run_with_params
 from scylla_tools import get_sstables_files, insert_c1c2, get_cf_dir
 from cassandra import ConsistencyLevel
 from assertions import assert_none
@@ -120,13 +120,14 @@ class CompactionAdditionalTest(Tester):
         while dt.now().second > 5:
             time.sleep(1)
 
-    def write_n_data_files(self, node, session, num_of_files, num_of_keys, consistency=ConsistencyLevel.ONE):
+    def write_n_data_files(self, node, session, key_space, num_of_files, num_of_keys, consistency=ConsistencyLevel.ONE):
         for t in range(0, num_of_files):
             debug("Inserting concurrently {} keys...".format(num_of_keys))
-            insert_c1c2(session, n=num_of_keys, consistency=consistency)
+            insert_c1c2(session, n=num_of_keys, consistency=consistency, ks=key_space)
             node.flush()
 
-    def compact_data_by_time_window_test(self):
+    @run_with_params(timestamp_resolution=["MICROSECONDS", "MILLISECONDS"])
+    def compact_data_by_time_window_test(self, timestamp_resolution):
         """
         1. Create TABLE with compaction_window_size of 1 MINUTES
         2. Insert data for 4 minutes while flushing to disk.
@@ -136,19 +137,22 @@ class CompactionAdditionalTest(Tester):
         """
         debug("Starting a cluster of one node...")
         cluster = self.cluster
-        cluster.populate(1).start(wait_for_binary_proto=True)
+        if not cluster.nodelist():
+            cluster.populate(1).start(wait_for_binary_proto=True)
         nodes = cluster.nodelist()
         node1 = nodes[0]
 
         window_size_mins = 1
 
         session = self.patient_cql_connection(node1)
-        debug("Creating keyspace 'ks'...")
-        self.create_ks(session, 'ks', 1)
+        key_space_name = 'ks_' + timestamp_resolution.lower()
+        debug("Creating keyspace '%s'..." % key_space_name)
+        self.create_ks(session, key_space_name, 1)
 
         debug("Creating a column family 'cf' with TWCS")
         self.create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'},
-                       compaction={'compaction_window_size': window_size_mins , 'compaction_window_unit': 'MINUTES',
+                       compaction={'compaction_window_size': window_size_mins, 'compaction_window_unit': "MINUTES",
+                                   'timestamp_resolution': timestamp_resolution,
                                    'class': 'TimeWindowCompactionStrategy'})
 
         # Wait for new minute to start before inserting data - keep the test consistent
@@ -157,24 +161,24 @@ class CompactionAdditionalTest(Tester):
         # Write data for x4 time than the window_size (i.e. 4 mins) - to have 4 different windows.
         for minute in range(0, window_size_mins * 4):
             # Assuming writing the files take LESS than a MINUTE
-            self.write_n_data_files(node=node1, session=session, num_of_files=7, num_of_keys=10)
+            self.write_n_data_files(node=node1, session=session, key_space=key_space_name, num_of_files=7, num_of_keys=10)
             self.wait_for_new_minute()
 
         # Get list of sstables names
-        cf_dir = get_cf_dir(os.path.join(self.test_path, 'test', 'node1', 'data', 'ks'), 'cf')
-        sstables_files1 = get_sstables_files(cf_dir, 'ks', 'cf', f_type='Data')
+        cf_dir = get_cf_dir(os.path.join(self.test_path, 'test', 'node1', 'data', key_space_name), 'cf')
+        sstables_files1 = get_sstables_files(cf_dir, f_type='Data')
         debug("Files BEFORE: {}".format(sstables_files1))
-
+        assert len(sstables_files1) > 0, "No SSTable files found in %s!" % cf_dir
         # Write additional data for 2 times the window-size (i.e. 2 mins)
         # (to verify that the original files remain the same and aren't compacted).
         for minute in range(0, window_size_mins * 2):
             # Assuming writing the files take LESS than a MINUTE
-            self.write_n_data_files(node=node1, session=session, num_of_files=7, num_of_keys=10)
+            self.write_n_data_files(node=node1, session=session,  key_space=key_space_name,num_of_files=7, num_of_keys=10)
             self.wait_for_new_minute()
 
         # Get list of sstables names
-        cf_dir = get_cf_dir(os.path.join(self.test_path, 'test', 'node1', 'data', 'ks'), 'cf')
-        sstables_files2 = get_sstables_files(cf_dir, 'ks', 'cf', f_type='Data')
+        cf_dir = get_cf_dir(os.path.join(self.test_path, 'test', 'node1', 'data', key_space_name), 'cf')
+        sstables_files2 = get_sstables_files(cf_dir, f_type='Data')
         debug("Files AFTER adding data: {}".format(sstables_files2))
 
         assert sstables_files1.issubset(sstables_files2), "some of the original sstables are missing. " \
@@ -231,14 +235,14 @@ class CompactionAdditionalTest(Tester):
         debug("'cf' directory is {}".format(cf_dir))
 
         # Save the names of the current sstable files
-        sstables_files1 = get_sstables_files(cf_dir, 'ks', 'cf', f_type='Data')
+        sstables_files1 = get_sstables_files(cf_dir, f_type='Data')
         debug("sstables BEFORE SLEEP: {}".format(sstables_files1))
 
         debug("Sleep for {} seconds (TTL + GC) to let the files to completly TTL'ed".format(TTL+GC_GRACE))
         time.sleep(TTL+GC_GRACE)
 
         # Save the names of the current sstable files
-        sstables_files2 = get_sstables_files(cf_dir, 'ks', 'cf', f_type='Data')
+        sstables_files2 = get_sstables_files(cf_dir, f_type='Data')
         debug("sstables AFTER SLEEP: {}".format(sstables_files2))
         
         # Even after the TTL+GC time has passed, the sstables remains till new data is inserted.
@@ -261,7 +265,7 @@ class CompactionAdditionalTest(Tester):
                                     timeout=5, from_mark=mark)
         debug(found)
         # Save the names of the current sstable files
-        sstables_files2 = get_sstables_files(cf_dir, 'ks', 'cf', f_type='Data')
+        sstables_files2 = get_sstables_files(cf_dir, f_type='Data')
         debug("sstables AFTER INSERT more data and EXPIRATION OF older sstables: {}".format(sstables_files2))
 
         unpurged_files = set(sstables_files1).intersection(sstables_files2)

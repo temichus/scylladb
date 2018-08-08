@@ -11,7 +11,7 @@ from cassandra import ConsistencyLevel
 from cassandra.query import SimpleStatement
 
 from dtest import Tester, debug
-from scylla_tools import insert_c1c2, query_c1c2_concurrent
+from scylla_tools import insert_c1c2, query_c1c2_concurrent, get_sstables_files
 
 
 class TestBackupRestore(Tester):
@@ -455,11 +455,11 @@ class TestBackupRestore(Tester):
         debug("'cf' directory is {}".format(cf_dir))
 
         # Save the names of the current sstable files
-        sstables_files1 = self.get_sstables_files(cf_dir, 'ks', 'cf')
+        sstables_files1 = get_sstables_files(cf_dir)
         debug("sstables before compaction: {}".format(sstables_files1))
 
         # get the names of files in the 'backups' subdir
-        backups1_files = self.get_sstables_files("{}/backups".format(cf_dir), 'ks', 'cf')
+        backups1_files = get_sstables_files("{}/backups".format(cf_dir))
         debug("backups before compaction: {}".format(backups1_files))
 
         self.assertEqual(sstables_files1, backups1_files, "backup doesn't contain all sstable files")
@@ -467,10 +467,10 @@ class TestBackupRestore(Tester):
         debug("Run a compaction...")
         node1.compact()
 
-        sstables_files2 = self.get_sstables_files(cf_dir, 'ks', 'cf')
+        sstables_files2 = get_sstables_files(cf_dir)
         debug("sstables after compaction: {}".format(sstables_files2))
 
-        backups2_files = self.get_sstables_files("{}/backups".format(cf_dir), 'ks', 'cf')
+        backups2_files = get_sstables_files("{}/backups".format(cf_dir))
         debug("backups after compaction: {}".format(backups2_files))
 
         # backup should not contain compacted sstables therefore its contents
@@ -657,17 +657,6 @@ class TestBackupRestore(Tester):
             self.assertTrue(test_dir is None, "'snapshot{}' has not been deleted!".format(i))
 
 # ######################## Helper functions ####################################
-    def get_sstables_files(self, cf_dir, ks_name, cf_name):
-        """
-        Returns a set of sstable(s) files for a given KS and CF
-        """
-        sstable_pattern = re.compile("{}-{}-".format(ks_name, cf_name))
-        sstables_files = set()
-        for f in os.listdir(cf_dir):
-            if sstable_pattern.match(f):
-                sstables_files.add(f)
-
-        return sstables_files
 
     def get_all_files_in_dir(self, dir_path):
         """
