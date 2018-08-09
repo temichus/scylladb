@@ -4,11 +4,11 @@ import os
 import re
 import subprocess
 import sys
+from time import sleep
 from distutils.version import LooseVersion
-from ccmlib import common
 from ccmlib.common import is_win
 from dtest import Tester
-from tools import since
+from tools import since, require
 
 
 def build_doc_context(tester, test_name, prepare=True, connection=None, nodes=None):
@@ -27,7 +27,7 @@ def build_doc_context(tester, test_name, prepare=True, connection=None, nodes=No
     if prepare:
         if connection or nodes:
             raise RuntimeError("Cannot auto prepare doctest context when connection or nodes are provided.")
-
+        tester.cluster.set_configuration_options(values={'experimental': True})
         tester.cluster.populate(1).start()
         nodes = tester.cluster.nodelist()
         connection = tester.patient_cql_connection(nodes[0])
@@ -58,9 +58,8 @@ def build_doc_context(tester, test_name, prepare=True, connection=None, nodes=No
         Modified from cqlsh_tests.py
         Attempts to make direct cqlsh communication.
         """
-        cdir = nodes[0].get_install_dir()
-        cli = os.path.join(cdir, 'bin', common.platform_binary('cqlsh'))
-        env = common.make_cassandra_env(cdir, nodes[0].get_path())
+        cli = nodes[0].get_tool('cqlsh')
+        env = nodes[0].get_env()
         env['LANG'] = 'en_US.UTF-8'
         if LooseVersion(tester.cluster.version()) >= LooseVersion('2.1'):
             host = nodes[0].network_interfaces['binary'][0]
@@ -136,6 +135,16 @@ def build_doc_context(tester, test_name, prepare=True, connection=None, nodes=No
         """
         return connection.execute(query)
 
+    def waiting_mv_prefill_finish(cmds):
+        output = None
+        for _ in xrange(20):
+            output = cqlsh(cmds=cmds)
+            if output.split('\n')[3].strip():
+                break
+            sleep(10)
+        if output:
+            print(output)
+
     return {
         'ks': ks,
         'enabled_ks': enabled_ks,
@@ -144,7 +153,8 @@ def build_doc_context(tester, test_name, prepare=True, connection=None, nodes=No
         'cqlsh_print': cqlsh_print,
         'cqlsh_err': cqlsh_err,
         'cqlsh_err_print': cqlsh_err_print,
-        'tester': tester
+        'tester': tester,
+        'waiting_mv_prefill_finish': waiting_mv_prefill_finish
     }
 
 
@@ -184,7 +194,6 @@ def run_func_docstring(tester, test_func, globs=None, verbose=False, compileflag
         raise RuntimeError("No tests were run!")
 
 
-@since('2.2')
 class ToJsonSelectTests(Tester):
     """
     Tests using toJson with a SELECT statement
@@ -192,6 +201,58 @@ class ToJsonSelectTests(Tester):
 
     def basic_data_types_test(self):
         """
+
+        Create our schema:
+
+            >>> cqlsh_print('''
+            ... CREATE TABLE primitive_type_test (
+            ...  key1 text PRIMARY KEY,
+            ...  col1 ascii,
+            ...  col2 blob,
+            ...  col3 inet,
+            ...  col4 text,
+            ...  col5 timestamp,
+            ...  col6 timeuuid,
+            ...  col7 uuid,
+            ...  col8 varchar,
+            ...  col9 bigint,
+            ...  col10 decimal,
+            ...  col11 double,
+            ...  col12 float,
+            ...  col13 int,
+            ...  col14 varint,
+            ...  col15 boolean)
+            ... ''')
+
+        Update the row to have all values defined:
+
+            >>> cqlsh('''
+            ... INSERT INTO primitive_type_test (key1, col1, col2, col3, col4, col5, col6, col7, col8, col9, col10, col11, col12, col13, col14, col15)
+            ...   VALUES ('foo', 'bar', 0x0011, '127.0.0.1', 'blarg', '2011-02-03 04:05+0000', 0ad6dfb6-7a6e-11e4-bc39-b4b6763e9d6f, bdf5e8ac-a75e-4321-9ac8-938fc9576c4a, 'bleh', -9223372036854775808, 1234.45678, 98712312.1222, 98712312.5252, -2147483648, 2147483648, true)
+            ... ''')
+
+        Query the values back as json:
+
+            >>> cqlsh_print('''
+            ... SELECT toJson(col1), toJson(col2), toJson(col3), toJson(col4), toJson(col5),
+            ...        toJson(col6), toJson(col7), toJson(col8), toJson(col9), toJson(col10),
+            ...        toJson(col11),toJson(col12),toJson(col13),toJson(col14),toJson(col15)
+            ...  FROM primitive_type_test WHERE key1 = 'foo'
+            ... ''')
+            <BLANKLINE>
+             system.tojson(col1) | system.tojson(col2) | system.tojson(col3) | system.tojson(col4) | system.tojson(col5)   | system.tojson(col6)                    | system.tojson(col7)                    | system.tojson(col8) | system.tojson(col9)  | system.tojson(col10) | system.tojson(col11) | system.tojson(col12) | system.tojson(col13) | system.tojson(col14) | system.tojson(col15)
+            ---------------------+---------------------+---------------------+---------------------+-----------------------+----------------------------------------+----------------------------------------+---------------------+----------------------+----------------------+----------------------+----------------------+----------------------+----------------------+----------------------
+                           "bar" |            "0x0011" |         "127.0.0.1" |             "blarg" | "2011-02-03T04:05:00" | "0ad6dfb6-7a6e-11e4-bc39-b4b6763e9d6f" | "bdf5e8ac-a75e-4321-9ac8-938fc9576c4a" |              "bleh" | -9223372036854775808 |           1234.45678 |          9.87123e+07 |          9.87123e+07 |          -2147483648 |           2147483648 |                 true
+            <BLANKLINE>
+            (1 rows)
+            <BLANKLINE>
+        """
+        run_func_docstring(tester=self, test_func=self.basic_data_types_test)
+
+    @require('#3667')
+    def basic_data_types_with_null_test(self):
+        """
+
         Create our schema:
 
             >>> cqlsh_print('''
@@ -236,30 +297,8 @@ class ToJsonSelectTests(Tester):
             (1 rows)
             <BLANKLINE>
 
-        Update the row to have all values defined:
-
-            >>> cqlsh('''
-            ... INSERT INTO primitive_type_test (key1, col1, col2, col3, col4, col5, col6, col7, col8, col9, col10, col11, col12, col13, col14, col15)
-            ...   VALUES ('foo', 'bar', 0x0011, '127.0.0.1', 'blarg', '2011-02-03 04:05+0000', 0ad6dfb6-7a6e-11e4-bc39-b4b6763e9d6f, bdf5e8ac-a75e-4321-9ac8-938fc9576c4a, 'bleh', -9223372036854775808, 1234.45678, 98712312.1222, 98712312.5252, -2147483648, 2147483648, true)
-            ... ''')
-
-        Query the values back as json:
-
-            >>> cqlsh_print('''
-            ... SELECT toJson(col1), toJson(col2), toJson(col3), toJson(col4), toJson(col5),
-            ...        toJson(col6), toJson(col7), toJson(col8), toJson(col9), toJson(col10),
-            ...        toJson(col11),toJson(col12),toJson(col13),toJson(col14),toJson(col15)
-            ...  FROM primitive_type_test WHERE key1 = 'foo'
-            ... ''')
-            <BLANKLINE>
-             system.tojson(col1) | system.tojson(col2) | system.tojson(col3) | system.tojson(col4) | system.tojson(col5)       | system.tojson(col6)                    | system.tojson(col7)                    | system.tojson(col8) | system.tojson(col9)  | system.tojson(col10) | system.tojson(col11) | system.tojson(col12) | system.tojson(col13) | system.tojson(col14) | system.tojson(col15)
-            ---------------------+---------------------+---------------------+---------------------+---------------------------+----------------------------------------+----------------------------------------+---------------------+----------------------+----------------------+----------------------+----------------------+----------------------+----------------------+----------------------
-                           "bar" |            "0x0011" |         "127.0.0.1" |             "blarg" | "2011.....................| "0ad6dfb6-7a6e-11e4-bc39-b4b6763e9d6f" | "bdf5e8ac-a75e-4321-9ac8-938fc9576c4a" |              "bleh" | -9223372036854775808 |           1234.45678 |      9.87123121222E7 |          9.8712312E7 |          -2147483648 |           2147483648 |                 true
-            <BLANKLINE>
-            (1 rows)
-            <BLANKLINE>
         """
-        run_func_docstring(tester=self, test_func=self.basic_data_types_test)
+        run_func_docstring(tester=self, test_func=self.basic_data_types_with_null_test)
 
     # yes, it's probably weird to use json for counter changes
     def counters_test(self):
@@ -269,9 +308,7 @@ class ToJsonSelectTests(Tester):
             >>> cqlsh('''
             ... CREATE TABLE my_counters (
             ...  key1 text PRIMARY KEY,
-            ...  col1 counter,
-            ...  col2 counter,
-            ...  col3 counter )
+            ...  col1 counter)
             ... ''')
 
         Add a row with some counter values unset, and one incremented:
@@ -281,18 +318,50 @@ class ToJsonSelectTests(Tester):
         Query the empty/non-empty values back as json:
 
             >>> cqlsh_print('''
-            ... SELECT toJson(col1), toJson(col2), toJson(col3) from my_counters
+            ... SELECT  toJson(col1) from my_counters
             ... ''')
             <BLANKLINE>
-             system.tojson(col1) | system.tojson(col2) | system.tojson(col3)
-            ---------------------+---------------------+---------------------
-                               1 |                null |                null
+             system.tojson(col1)
+            ---------------------
+                               1
             <BLANKLINE>
             (1 rows)
             <BLANKLINE>
         """
         run_func_docstring(tester=self, test_func=self.counters_test)
 
+    @require('#3667')
+    def counters_with_null_test(self):
+        """
+        Add a table with a few counters:
+
+            >>> cqlsh('''
+            ... CREATE TABLE my_counters (
+            ...  key1 text PRIMARY KEY,
+            ...  col1 counter,
+            ...  col2 counter )
+            ... ''')
+
+        Add a row with some counter values unset, and one incremented:
+
+            >>> cqlsh("UPDATE my_counters SET col1 = col1+1 WHERE key1 = 'foo'")
+
+        Query the empty/non-empty values back as json:
+
+            >>> cqlsh_print('''
+            ... SELECT toJson(col1), toJson(col2) from my_counters
+            ... ''')
+            <BLANKLINE>
+             system.tojson(col1) | system.tojson(col2)
+            ---------------------+---------------------
+                               1 |                null
+            <BLANKLINE>
+            (1 rows)
+            <BLANKLINE>
+        """
+        run_func_docstring(tester=self, test_func=self.counters_with_null_test)
+
+    @require('#3662')
     def complex_data_types_test(self):
         """
         Build some user types and a schema that uses them:
@@ -331,24 +400,6 @@ class ToJsonSelectTests(Tester):
             ...   many_sinks list<frozen<t_kitchen_sink>>,
             ...   named_sinks map<text, frozen<t_kitchen_sink>> )
             ... ''')
-
-        Add a row without the complex fields defined:
-
-            >>> cqlsh("INSERT INTO complex_types (key1) values ('foo')")
-
-        Call toJson on the null fields:
-
-            >>> cqlsh_print('''
-            ... SELECT toJson(mylist), toJson(myset), toJson(mymap), toJson(mytuple), toJson(myudt), toJson(mytodolists), toJson(many_sinks), toJson(named_sinks)
-            ...   FROM complex_types where key1 = 'foo'
-            ... ''')
-            <BLANKLINE>
-             system.tojson(mylist) | system.tojson(myset) | system.tojson(mymap) | system.tojson(mytuple) | system.tojson(myudt) | system.tojson(mytodolists) | system.tojson(many_sinks) | system.tojson(named_sinks)
-            -----------------------+----------------------+----------------------+------------------------+----------------------+----------------------------+---------------------------+----------------------------
-                              null |                 null |                 null |                   null |                 null |                       null |                      null |                       null
-            <BLANKLINE>
-            (1 rows)
-            <BLANKLINE>
 
         Define a row with the complex data types:
 
@@ -443,8 +494,140 @@ class ToJsonSelectTests(Tester):
         """
         run_func_docstring(tester=self, test_func=self.complex_data_types_test)
 
+    @require('#3667')
+    def complex_data_types_with_null_test(self):
+        """
+        Build some user types and a schema that uses them:
 
-@since('2.2')
+            >>> cqlsh("CREATE TYPE t_todo_item (label text, details text)")
+            >>> cqlsh("CREATE TYPE t_todo_list (name text, todo_list list<frozen<t_todo_item>>)")
+            >>> cqlsh('''
+            ... CREATE TYPE t_kitchen_sink (
+            ...   item1 ascii,
+            ...   item2 blob,
+            ...   item3 inet,
+            ...   item4 text,
+            ...   item5 timestamp,
+            ...   item6 timeuuid,
+            ...   item7 uuid,
+            ...   item8 varchar,
+            ...   item9 bigint,
+            ...   item10 decimal,
+            ...   item11 double,
+            ...   item12 float,
+            ...   item13 int,
+            ...   item14 varint,
+            ...   item15 boolean,
+            ...   item16 list<int> )
+            ... ''')
+
+            >>> cqlsh('''
+            ... CREATE TABLE complex_types (
+            ...   key1 text PRIMARY KEY,
+            ...   mylist list<text>,
+            ...   myset set<uuid>,
+            ...   mymap map<text, int>,
+            ...   mytuple frozen<tuple<text, int, uuid, boolean>>,
+            ...   myudt frozen<t_kitchen_sink>,
+            ...   mytodolists list<frozen<t_todo_list>>,
+            ...   many_sinks list<frozen<t_kitchen_sink>>,
+            ...   named_sinks map<text, frozen<t_kitchen_sink>> )
+            ... ''')
+
+        Add a row without the complex fields defined:
+
+            >>> cqlsh("INSERT INTO complex_types (key1) values ('foo')")
+
+        Call toJson on the null fields:
+
+            >>> cqlsh_print('''
+            ... SELECT toJson(mylist), toJson(myset), toJson(mymap), toJson(mytuple), toJson(myudt), toJson(mytodolists), toJson(many_sinks), toJson(named_sinks)
+            ...   FROM complex_types where key1 = 'foo'
+            ... ''')
+            <BLANKLINE>
+             system.tojson(mylist) | system.tojson(myset) | system.tojson(mymap) | system.tojson(mytuple) | system.tojson(myudt) | system.tojson(mytodolists) | system.tojson(many_sinks) | system.tojson(named_sinks)
+            -----------------------+----------------------+----------------------+------------------------+----------------------+----------------------------+---------------------------+----------------------------
+                              null |                 null |                 null |                   null |                 null |                       null |                      null |                       null
+            <BLANKLINE>
+            (1 rows)
+            <BLANKLINE>
+        """
+        run_func_docstring(tester=self, test_func=self.complex_data_types_with_null_test)
+
+    def mv_basic_data_types_with_test(self):
+        """
+        Create our schema:
+
+            >>> cqlsh_print('''
+            ... CREATE TABLE primitive_type_test (
+            ...  key1 text PRIMARY KEY,
+            ...  col1 ascii,
+            ...  col2 blob,
+            ...  col3 inet,
+            ...  col4 text,
+            ...  col5 timestamp,
+            ...  col6 timeuuid,
+            ...  col7 uuid,
+            ...  col8 varchar,
+            ...  col9 bigint,
+            ...  col10 decimal,
+            ...  col11 double,
+            ...  col12 float,
+            ...  col13 int,
+            ...  col14 varint,
+            ...  col15 boolean)
+            ... ''')
+
+       Create materialized view:
+
+            >>> cqlsh_print('''
+            ... CREATE MATERIALIZED VIEW mv_primitive_type_test AS SELECT * FROM primitive_type_test WHERE key1 is not null and col1 is not null PRIMARY KEY (key1, col1)
+            ... ''')
+
+       Update the row to have all values defined:
+
+            >>> cqlsh('''
+            ... INSERT INTO primitive_type_test (key1, col1, col2, col3, col4, col5, col6, col7, col8, col9, col10, col11, col12, col13, col14, col15)
+            ...   VALUES ('foo', 'bar', 0x0011, '127.0.0.1', 'blarg', '2011-02-03 04:05+0000', 0ad6dfb6-7a6e-11e4-bc39-b4b6763e9d6f, bdf5e8ac-a75e-4321-9ac8-938fc9576c4a, 'bleh', -9223372036854775808, 1234.45678, 98712312.1222, 98712312.5252, -2147483648, 2147483648, true)
+            ... ''')
+
+        Query table the values back as json:
+
+            >>> cqlsh_print('''
+            ... SELECT toJson(col1), toJson(col2), toJson(col3), toJson(col4), toJson(col5),
+            ...        toJson(col6), toJson(col7), toJson(col8), toJson(col9), toJson(col10),
+            ...        toJson(col11),toJson(col12),toJson(col13),toJson(col14),toJson(col15)
+            ...  FROM primitive_type_test WHERE key1 = 'foo'
+            ... ''')
+            <BLANKLINE>
+             system.tojson(col1) | system.tojson(col2) | system.tojson(col3) | system.tojson(col4) | system.tojson(col5)   | system.tojson(col6)                    | system.tojson(col7)                    | system.tojson(col8) | system.tojson(col9)  | system.tojson(col10) | system.tojson(col11) | system.tojson(col12) | system.tojson(col13) | system.tojson(col14) | system.tojson(col15)
+            ---------------------+---------------------+---------------------+---------------------+-----------------------+----------------------------------------+----------------------------------------+---------------------+----------------------+----------------------+----------------------+----------------------+----------------------+----------------------+----------------------
+                           "bar" |            "0x0011" |         "127.0.0.1" |             "blarg" | "2011-02-03T04:05:00" | "0ad6dfb6-7a6e-11e4-bc39-b4b6763e9d6f" | "bdf5e8ac-a75e-4321-9ac8-938fc9576c4a" |              "bleh" | -9223372036854775808 |           1234.45678 |          9.87123e+07 |          9.87123e+07 |          -2147483648 |           2147483648 |                 true
+            <BLANKLINE>
+            (1 rows)
+            <BLANKLINE>
+
+
+        Query materialized view the values back as json:
+
+            >>> waiting_mv_prefill_finish('''
+            ... SELECT toJson(col1), toJson(col2), toJson(col3), toJson(col4), toJson(col5),
+            ...        toJson(col6), toJson(col7), toJson(col8), toJson(col9), toJson(col10),
+            ...        toJson(col11),toJson(col12),toJson(col13),toJson(col14),toJson(col15)
+            ...  FROM mv_primitive_type_test WHERE key1 = 'foo' and col1 = 'bar'
+            ... ''')
+            <BLANKLINE>
+             system.tojson(col1) | system.tojson(col2) | system.tojson(col3) | system.tojson(col4) | system.tojson(col5)   | system.tojson(col6)                    | system.tojson(col7)                    | system.tojson(col8) | system.tojson(col9)  | system.tojson(col10) | system.tojson(col11) | system.tojson(col12) | system.tojson(col13) | system.tojson(col14) | system.tojson(col15)
+            ---------------------+---------------------+---------------------+---------------------+-----------------------+----------------------------------------+----------------------------------------+---------------------+----------------------+----------------------+----------------------+----------------------+----------------------+----------------------+----------------------
+                           "bar" |            "0x0011" |         "127.0.0.1" |             "blarg" | "2011-02-03T04:05:00" | "0ad6dfb6-7a6e-11e4-bc39-b4b6763e9d6f" | "bdf5e8ac-a75e-4321-9ac8-938fc9576c4a" |              "bleh" | -9223372036854775808 |           1234.45678 |          9.87123e+07 |          9.87123e+07 |          -2147483648 |           2147483648 |                 true
+            <BLANKLINE>
+            (1 rows)
+            <BLANKLINE>
+
+        """
+        run_func_docstring(tester=self, test_func=self.mv_basic_data_types_with_test)
+
+
 class FromJsonUpdateTests(Tester):
     """
     Tests using fromJson within UPDATE statements.
@@ -491,11 +674,11 @@ class FromJsonUpdateTests(Tester):
             ...     col7 = fromJson('"05dd0249-25b4-4dec-ba27-54f8730f3c03"'),
             ...     col8 = fromJson('"bleh2"'),
             ...     col9 = fromJson('-8223372036854775808'),
-            ...     col10 = fromJson('"2234.45678"'),
+            ...     col10 = fromJson('2234.45678'),
             ...     col11 = fromJson('8.87123121222E7'),
             ...     col12 = fromJson('7.8712312E7'),
             ...     col13 = fromJson('-1947483648'),
-            ...     col14 = fromJson('"1847483648"'),
+            ...     col14 = fromJson('1847483648'),
             ...     col15 = fromJson('false')
             ... WHERE key1 = 'test'
             ... ''')
@@ -507,15 +690,16 @@ class FromJsonUpdateTests(Tester):
             ...   FROM primitive_type_test WHERE key1 = 'test'
             ... ''')
             <BLANKLINE>
-             col1 | col2   | col3      | col4   | col5                     | col6                                 | col7                                 | col8  | col9                 | col10      | col11      | col12      | col13       | col14      | col15
-            ------+--------+-----------+--------+--------------------------+--------------------------------------+--------------------------------------+-------+----------------------+------------+------------+------------+-------------+------------+-------
-             bar1 | 0x0012 | 127.0.0.2 | blarg2 | 2011.....................| efe0922a-8638-11e4-b2ac-b4b6763e9d6f | 05dd0249-25b4-4dec-ba27-54f8730f3c03 | bleh2 | -8223372036854775808 | 2234.45678 | 8.8712e+07 | 7.8712e+07 | -1947483648 | 1847483648 | False
+             col1 | col2   | col3      | col4   | col5                     | col6                                 | col7                                 | col8  | col9                 | col10      | col11               | col12    | col13       | col14      | col15
+            ------+--------+-----------+--------+--------------------------+--------------------------------------+--------------------------------------+-------+----------------------+------------+---------------------+----------+-------------+------------+-------
+             bar1 | 0x0012 | 127.0.0.2 | blarg2 | 2011-02-02 21:05:00+0000 | efe0922a-8638-11e4-b2ac-b4b6763e9d6f | 05dd0249-25b4-4dec-ba27-54f8730f3c03 | bleh2 | -8223372036854775808 | 2234.45678 | 88712312.1221999973 | 78712312 | -1947483648 | 1847483648 | False
             <BLANKLINE>
             (1 rows)
             <BLANKLINE>
         """
         run_func_docstring(tester=self, test_func=self.basic_data_types_test)
 
+    @require('#3662')
     def complex_data_types_test(self):
         """"
         UDT and schema setup:
@@ -745,12 +929,12 @@ class FromJsonUpdateTests(Tester):
         run_func_docstring(tester=self, test_func=self.collection_update_test)
 
 
-@since('2.2')
 class FromJsonSelectTests(Tester):
     """
     Tests using fromJson in conjunction with a SELECT statement
     """
 
+    @require('#3662')
     def selecting_pkey_as_json_test(self):
         """
         Schema setup:
@@ -787,6 +971,7 @@ class FromJsonSelectTests(Tester):
         """
         run_func_docstring(tester=self, test_func=self.selecting_pkey_as_json_test)
 
+    @require('#3662')
     def select_using_secondary_index_test(self):
         """
         Schema setup and secondary index:
@@ -827,7 +1012,6 @@ class FromJsonSelectTests(Tester):
         run_func_docstring(tester=self, test_func=self.select_using_secondary_index_test)
 
 
-@since('2.2')
 class FromJsonInsertTests(Tester):
     """
     Tests using fromJson within INSERT statements.
@@ -861,7 +1045,10 @@ class FromJsonInsertTests(Tester):
 
             >>> cqlsh('''
             ... INSERT INTO primitive_type_test (key1, col1, col2, col3, col4, col5, col6, col7, col8, col9, col10, col11, col12, col13, col14, col15)
-            ...   VALUES (fromJson('"test"'), fromJson('"bar"'), fromJson('"0x0011"'), fromJson('"127.0.0.1"'), fromJson('"blarg"'), fromJson('"2011-02-02 21:05:00.000"'), fromJson('"0ad6dfb6-7a6e-11e4-bc39-b4b6763e9d6f"'), fromJson('"bdf5e8ac-a75e-4321-9ac8-938fc9576c4a"'), fromJson('"bleh"'), fromJson('-9223372036854775808'), fromJson('"1234.45678"'), fromJson('9.87123121222E7'), fromJson('9.8712312E7'), fromJson('-2147483648'), fromJson('"2147483648"'), fromJson('true'))
+            ...   VALUES (fromJson('"test"'), fromJson('"bar"'), fromJson('"0x0011"'), fromJson('"127.0.0.1"'), fromJson('"blarg"'),
+            ...    fromJson('"2011-02-02 21:05:00.000"'), fromJson('"0ad6dfb6-7a6e-11e4-bc39-b4b6763e9d6f"'), fromJson('"bdf5e8ac-a75e-4321-9ac8-938fc9576c4a"'),
+            ...    fromJson('"bleh"'), fromJson('-9223372036854775808'), fromJson('1234.45678'), fromJson('9.87123121222E7'), fromJson('9.8712312E7'),
+            ...    fromJson('-2147483648'), fromJson('2147483648'), fromJson('true'))
             ... ''')
 
         Query back the row and make sure data is represented correctly:
@@ -871,9 +1058,9 @@ class FromJsonInsertTests(Tester):
             ... FROM primitive_type_test WHERE key1 = 'test'
             ... ''')
             <BLANKLINE>
-             col1 | col2   | col3      | col4  | col5                     | col6                                 | col7                                 | col8 | col9                 | col10      | col11      | col12      | col13       | col14      | col15
-            ------+--------+-----------+-------+--------------------------+--------------------------------------+--------------------------------------+------+----------------------+------------+------------+------------+-------------+------------+-------
-              bar | 0x0011 | 127.0.0.1 | blarg | 2011.....................| 0ad6dfb6-7a6e-11e4-bc39-b4b6763e9d6f | bdf5e8ac-a75e-4321-9ac8-938fc9576c4a | bleh | -9223372036854775808 | 1234.45678 | 9.8712e+07 | 9.8712e+07 | -2147483648 | 2147483648 |  True
+             col1 | col2   | col3      | col4  | col5                     | col6                                 | col7                                 | col8 | col9                 | col10      | col11               | col12    | col13       | col14      | col15
+            ------+--------+-----------+-------+--------------------------+--------------------------------------+--------------------------------------+------+----------------------+------------+---------------------+----------+-------------+------------+-------
+              bar | 0x0011 | 127.0.0.1 | blarg | 2011-02-02 19:05:00+0000 | 0ad6dfb6-7a6e-11e4-bc39-b4b6763e9d6f | bdf5e8ac-a75e-4321-9ac8-938fc9576c4a | bleh | -9223372036854775808 | 1234.45678 | 98712312.1221999973 | 98712312 | -2147483648 | 2147483648 |  True
             <BLANKLINE>
             (1 rows)
             <BLANKLINE>
@@ -887,15 +1074,16 @@ class FromJsonInsertTests(Tester):
             ... FROM primitive_type_test WHERE key1 = 'test'
             ... ''')
             <BLANKLINE>
-             system.tojson(col1) | system.tojson(col2) | system.tojson(col3) | system.tojson(col4) | system.tojson(col5)       | system.tojson(col6)                    | system.tojson(col7)                    | system.tojson(col8) | system.tojson(col9)  | system.tojson(col10) | system.tojson(col11) | system.tojson(col12) | system.tojson(col13) | system.tojson(col14) | system.tojson(col15)
-            ---------------------+---------------------+---------------------+---------------------+---------------------------+----------------------------------------+----------------------------------------+---------------------+----------------------+----------------------+----------------------+----------------------+----------------------+----------------------+----------------------
-                           "bar" |            "0x0011" |         "127.0.0.1" |             "blarg" | "2011.....................| "0ad6dfb6-7a6e-11e4-bc39-b4b6763e9d6f" | "bdf5e8ac-a75e-4321-9ac8-938fc9576c4a" |              "bleh" | -9223372036854775808 |           1234.45678 |      9.87123121222E7 |          9.8712312E7 |          -2147483648 |           2147483648 |                 true
+             system.tojson(col1) | system.tojson(col2) | system.tojson(col3) | system.tojson(col4) | system.tojson(col5)   | system.tojson(col6)                    | system.tojson(col7)                    | system.tojson(col8) | system.tojson(col9)  | system.tojson(col10) | system.tojson(col11) | system.tojson(col12) | system.tojson(col13) | system.tojson(col14) | system.tojson(col15)
+            ---------------------+---------------------+---------------------+---------------------+-----------------------+----------------------------------------+----------------------------------------+---------------------+----------------------+----------------------+----------------------+----------------------+----------------------+----------------------+----------------------
+                           "bar" |            "0x0011" |         "127.0.0.1" |             "blarg" | "2011-02-02T19:05:00" | "0ad6dfb6-7a6e-11e4-bc39-b4b6763e9d6f" | "bdf5e8ac-a75e-4321-9ac8-938fc9576c4a" |              "bleh" | -9223372036854775808 |           1234.45678 |          9.87123e+07 |          9.87123e+07 |          -2147483648 |           2147483648 |                 true
             <BLANKLINE>
             (1 rows)
             <BLANKLINE>
         """
         run_func_docstring(tester=self, test_func=self.basic_data_types_test)
 
+    @require('#3662')
     def complex_data_types_test(self):
         """
         Build some user types and a schema that uses them:
@@ -1050,12 +1238,11 @@ class FromJsonInsertTests(Tester):
         run_func_docstring(tester=self, test_func=self.complex_data_types_test)
 
 
-@since('2.2')
 class FromJsonDeleteTests(Tester):
     """
     Tests using fromJson within DELETE statements.
     """
-
+    @require('#3662')
     def delete_using_pkey_json_test(self):
         """
         Schema setup:
@@ -1114,12 +1301,11 @@ class FromJsonDeleteTests(Tester):
         run_func_docstring(tester=self, test_func=self.delete_using_pkey_json_test)
 
 
-@since('2.2')
 class JsonFullRowInsertSelect(Tester):
     """
     Tests for creating full rows from json documents, selecting full rows back as json documents, and related functionality.
     """
-
+    @require('#3666')
     def simple_schema_test(self):
         """
         Create schema:
@@ -1141,50 +1327,21 @@ class JsonFullRowInsertSelect(Tester):
             ...   col12 float,
             ...   col13 int,
             ...   col14 varint,
-            ...   col15 boolean)
+            ...   col15 boolean,
+            ...   col16 time,
+            ...   col17 date,
+            ...   col18 tinyint)
             ... ''')
-
-        Add two rows with all null values, create the first row using a regular INSERT statement, and the second row using JSON. Different key for each row:
-
-            >>> cqlsh("INSERT INTO primitive_type_test (key1) values ('foo')")
-
-            >>> cqlsh('''
-            ... INSERT INTO primitive_type_test JSON '{"key1":"bar"}'
-            ... ''')
-
-        Query back both rows as JSON:
-
-            >>> cqlsh_print("SELECT JSON * FROM primitive_type_test")
-            <BLANKLINE>
-             [json]
-            -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-             {"key1": "bar", "col1": null, "col10": null, "col11": null, "col12": null, "col13": null, "col14": null, "col15": null, "col2": null, "col3": null, "col4": null, "col5": null, "col6": null, "col7": null, "col8": null, "col9": null}
-             {"key1": "foo", "col1": null, "col10": null, "col11": null, "col12": null, "col13": null, "col14": null, "col15": null, "col2": null, "col3": null, "col4": null, "col5": null, "col6": null, "col7": null, "col8": null, "col9": null}
-            <BLANKLINE>
-            (2 rows)
-            <BLANKLINE>
-
-        Query back both rows as non-JSON to be sure they look ok there:
-
-            >>> cqlsh_print("SELECT * FROM primitive_type_test")
-            <BLANKLINE>
-             key1 | col1 | col10 | col11 | col12 | col13 | col14 | col15 | col2 | col3 | col4 | col5 | col6 | col7 | col8 | col9
-            ------+------+-------+-------+-------+-------+-------+-------+------+------+------+------+------+------+------+------
-              bar | null |  null |  null |  null |  null |  null |  null | null | null | null | null | null | null | null | null
-              foo | null |  null |  null |  null |  null |  null |  null | null | null | null | null | null | null | null | null
-            <BLANKLINE>
-            (2 rows)
-            <BLANKLINE>
 
         Use a plain insert to update one row, and a JSON insert to update the other:
 
             >>> cqlsh('''
-            ... INSERT INTO primitive_type_test (key1, col1, col2, col3, col4, col5, col6, col7, col8, col9, col10, col11, col12, col13, col14, col15)
-            ...   VALUES ('foo', 'bar', 0x0011, '127.0.0.1', 'blarg', '2011-02-03 04:05+0000', 0ad6dfb6-7a6e-11e4-bc39-b4b6763e9d6f, bdf5e8ac-a75e-4321-9ac8-938fc9576c4a, 'bleh', -9223372036854775808, 1234.45678, 98712312.1222, 98712312.5252, -2147483648, 2147483648, true)
+            ... INSERT INTO primitive_type_test (key1, col1, col2, col3, col4, col5, col6, col7, col8, col9, col10, col11, col12, col13, col14, col15, col16, col17, col18)
+            ...   VALUES ('foo', 'bar', 0x0011, '127.0.0.1', 'blarg', '2011-02-03 04:05+0000', 0ad6dfb6-7a6e-11e4-bc39-b4b6763e9d6f, bdf5e8ac-a75e-4321-9ac8-938fc9576c4a, 'bleh', -9223372036854775808, 1234.45678, 98712312.1222, 98712312.5252, -2147483648, 2147483648, true, '13:07:45.089', '2017-11-25', 123)
             ... ''')
 
             >>> cqlsh('''
-            ... INSERT INTO primitive_type_test JSON '{"key1": "bar", "col1": "bar", "col2": "0x0011", "col3": "127.0.0.1", "col4": "blarg", "col5": "2011-02-02 21:05:00.000", "col6": "0ad6dfb6-7a6e-11e4-bc39-b4b6763e9d6f", "col7": "bdf5e8ac-a75e-4321-9ac8-938fc9576c4a", "col8": "bleh", "col9": -9223372036854775808, "col10": "1234.45678", "col11":9.87123121222E7, "col12": 9.87123121222E7, "col13": -2147483648, "col14": 2147483648, "col15": true}'
+            ... INSERT INTO primitive_type_test JSON '{"key1": "bar", "col1": "bar", "col2": "0x0011", "col3": "127.0.0.1", "col4": "blarg", "col5": "2011-02-02 21:05:00.000", "col6": "0ad6dfb6-7a6e-11e4-bc39-b4b6763e9d6f", "col7": "bdf5e8ac-a75e-4321-9ac8-938fc9576c4a", "col8": "bleh", "col9": -9223372036854775808, "col10": "1234.45678", "col11":9.87123121222E7, "col12": 9.87123121222E7, "col13": -2147483648, "col14": 2147483648, "col15": true, "col16": "13:07:45.089", "col17":"2017-11-25", "col18": "123"}'
             ... ''')
 
         Query back both rows as JSON:
@@ -1193,8 +1350,8 @@ class JsonFullRowInsertSelect(Tester):
             <BLANKLINE>
              [json]
             --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-             {"key1": "bar", "col1": "bar", "col10": 1234.45678, "col11": 9.87123121222E7, "col12": 9.8712312E7, "col13": -2147483648, "col14": 2147483648, "col15": true, "col2": "0x0011", "col3": "127.0.0.1", "col4": "blarg", "col5": "2011...", "col6": "0ad6dfb6-7a6e-11e4-bc39-b4b6763e9d6f", "col7": "bdf5e8ac-a75e-4321-9ac8-938fc9576c4a", "col8": "bleh", "col9": -9223372036854775808}
-             {"key1": "foo", "col1": "bar", "col10": 1234.45678, "col11": 9.87123121222E7, "col12": 9.8712312E7, "col13": -2147483648, "col14": 2147483648, "col15": true, "col2": "0x0011", "col3": "127.0.0.1", "col4": "blarg", "col5": "2011...", "col6": "0ad6dfb6-7a6e-11e4-bc39-b4b6763e9d6f", "col7": "bdf5e8ac-a75e-4321-9ac8-938fc9576c4a", "col8": "bleh", "col9": -9223372036854775808}
+             {"key1": "bar", "col1": "bar", "col10": 1234.45678, "col11": 9.87123121222E7, "col12": 9.8712312E7, "col13": -2147483648, "col14": 2147483648, "col15": true, "col2": "0x0011", "col3": "127.0.0.1", "col4": "blarg", "col5": "2011...", "col6": "0ad6dfb6-7a6e-11e4-bc39-b4b6763e9d6f", "col7": "bdf5e8ac-a75e-4321-9ac8-938fc9576c4a", "col8": "bleh", "col9": -9223372036854775808, "col16": "13:07:45.089", "col17":"2017-11-25", "col18": 123}
+             {"key1": "foo", "col1": "bar", "col10": 1234.45678, "col11": 9.87123e+07, "col12": 9.87123e+07, "col13": -2147483648, "col14": 2147483648, "col15": true, "col16": 13:07:45.089000000, "col17": "2017-11-25", "col18": 123, "col2": "0x0011", "col3": "127.0.0.1", "col4": "blarg", "col5": "2011-02-03T04:05:00", "col6": "0ad6dfb6-7a6e-11e4-bc39-b4b6763e9d6f", "col7": "bdf5e8ac-a75e-4321-9ac8-938fc9576c4a", "col8": "bleh", "col9": -9223372036854775808}
             <BLANKLINE>
             (2 rows)
             <BLANKLINE>
@@ -1215,16 +1372,17 @@ class JsonFullRowInsertSelect(Tester):
 
             >>> cqlsh_print("SELECT * FROM primitive_type_test")
             <BLANKLINE>
-             key1 | col1 | col10      | col11      | col12      | col13       | col14      | col15 | col2   | col3      | col4  | col5                     | col6                                 | col7                                 | col8 | col9
-            ------+------+------------+------------+------------+-------------+------------+-------+--------+-----------+-------+--------------------------+--------------------------------------+--------------------------------------+------+----------------------
+            key1 | col1 | col10      | col11               | col12    | col13       | col14      | col15 | col16              | col17      | col18 | col2   | col3      | col4  | col5                     | col6                                 | col7                                 | col8 | col9
+            ------+------+------------+---------------------+----------+-------------+------------+-------+--------------------+------------+-------+--------+-----------+-------+--------------------------+--------------------------------------+--------------------------------------+------+----------------------
               bar |  bar | 1234.45678 | 9.8712e+07 | 9.8712e+07 | -2147483648 | 2147483648 |  True | 0x0011 | 127.0.0.1 | blarg | 2011.....................| 0ad6dfb6-7a6e-11e4-bc39-b4b6763e9d6f | bdf5e8ac-a75e-4321-9ac8-938fc9576c4a | bleh | -9223372036854775808
-              foo |  bar | 1234.45678 | 9.8712e+07 | 9.8712e+07 | -2147483648 | 2147483648 |  True | 0x0011 | 127.0.0.1 | blarg | 2011.....................| 0ad6dfb6-7a6e-11e4-bc39-b4b6763e9d6f | bdf5e8ac-a75e-4321-9ac8-938fc9576c4a | bleh | -9223372036854775808
+              foo |  bar | 1234.45678 | 98712312.1221999973 | 98712312 | -2147483648 | 2147483648 |  True | 13:07:45.089000000 | 2017-11-25 |   123 | 0x0011 | 127.0.0.1 | blarg | 2011-02-03 04:05:00+0000 | 0ad6dfb6-7a6e-11e4-bc39-b4b6763e9d6f | bdf5e8ac-a75e-4321-9ac8-938fc9576c4a | bleh | -9223372036854775808
             <BLANKLINE>
             (2 rows)
             <BLANKLINE>
         """
         run_func_docstring(tester=self, test_func=self.simple_schema_test)
 
+    @require('#3665')
     def pkey_requirement_test(self):
         """
         Create schema:
@@ -1257,6 +1415,7 @@ class JsonFullRowInsertSelect(Tester):
         """
         run_func_docstring(tester=self, test_func=self.pkey_requirement_test)
 
+    @require('#3664')
     def null_value_test(self):
         """
         Create schema:
@@ -1300,6 +1459,7 @@ class JsonFullRowInsertSelect(Tester):
         """
         run_func_docstring(tester=self, test_func=self.null_value_test)
 
+    @require('#3664')
     def complex_schema_test(self):
         """
         Create some udt's and schema:
@@ -1501,3 +1661,68 @@ class JsonFullRowInsertSelect(Tester):
 
         """
         run_func_docstring(tester=self, test_func=self.complex_schema_test)
+
+    def mv_insert_json_test(self):
+        """
+        Create table:
+
+            >>> cqlsh('''
+            ... CREATE TABLE complex_types (
+            ...   key1 text PRIMARY KEY,
+            ...   mvKey int,
+            ...   mytodolists list<text> )
+            ... ''')
+
+       Create materialized view:
+
+            >>> cqlsh_print('''
+            ... CREATE MATERIALIZED VIEW mv_complex_types AS SELECT * FROM complex_types WHERE key1 is not null and mvKey is not null PRIMARY KEY (key1, mvKey)
+            ... ''')
+
+        Add data for "row1" using a normal insert statement to update the record:
+
+            >>> cqlsh('''
+            ... INSERT INTO complex_types (key1, mvKey, mytodolists)
+            ... VALUES (
+            ...   'row1',
+            ...   12,
+            ...   ['five', 'six', 'seven', 'eight']
+            ... )
+            ... ''')
+
+        Add data for "row2" using JSON, but which should be equivalent to "row1" after insert:
+
+            >>> cqlsh('''
+            ... INSERT INTO complex_types
+            ... JSON '{
+            ...   "key1":"row2",
+            ...   "mvKey":258,
+            ...   "mytodolists":["five", "six", "seven", "eight"]
+            ...   }'
+            ... ''')
+
+        Query the table and make sure it match:
+
+            >>> cqlsh_print("SELECT key1, mvKey, mytodolists from complex_types")
+            <BLANKLINE>
+             key1 | mvkey | mytodolists
+            ------+-------+-----------------------------------
+             row1 |    12 | ['five', 'six', 'seven', 'eight']
+             row2 |   258 | ['five', 'six', 'seven', 'eight']
+            <BLANKLINE>
+            (2 rows)
+            <BLANKLINE>
+
+        Query the MV and make sure it match:
+
+            >>> waiting_mv_prefill_finish("SELECT key1, mvKey, mytodolists from mv_complex_types")
+            <BLANKLINE>
+             key1 | mvkey | mytodolists
+            ------+-------+-----------------------------------
+             row1 |    12 | ['five', 'six', 'seven', 'eight']
+             row2 |   258 | ['five', 'six', 'seven', 'eight']
+            <BLANKLINE>
+            (2 rows)
+            <BLANKLINE>
+        """
+        run_func_docstring(tester=self, test_func=self.mv_insert_json_test)
