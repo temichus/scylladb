@@ -471,7 +471,7 @@ class TestSecondaryIndexes(Tester):
         # Check that the index is not marked as built nor queryable
         assert_none(session, view_built_status_query(ks=keyspace_name, view=get_index_view_name(index_name)))
         assert_invalid(session, 'SELECT * FROM {0} WHERE {1} = 0x00'.format(table_name, index_column),
-                       matching='No index found', expected=Exception)
+                       matching='use ALLOW FILTERING', expected=Exception)
 
         # Restart the node to trigger any eventual unexpected index rebuild
         session = self._drain_node(node, keyspace_name)
@@ -479,7 +479,7 @@ class TestSecondaryIndexes(Tester):
         # The index should remain not built nor queryable after restart
         assert_none(session, view_built_status_query(ks=keyspace_name, view=get_index_view_name(index_name)))
         assert_invalid(session, 'SELECT * FROM {0} WHERE {1} = 0x00'.format(table_name, index_column),
-                       matching='No index found', expected=Exception)
+                       matching='use ALLOW FILTERING', expected=Exception)
 
         self.allow_log_errors = check_errors(node, ['Can\'t find a column family with UUID {}'.format(view_id),
                                                     'mutation_write_failure_exception'], search_str='ERROR')
@@ -1035,7 +1035,7 @@ class TestSecondaryIndexesOnCollections(Tester):
         # no index present yet, make sure there's an error trying to query column
         stmt = ("SELECT * from {} where single_tuple = (1)".format(table_name))
 
-        assert_invalid(session, stmt, matching='No index found', expected=Exception)
+        assert_invalid(session, stmt, matching='use ALLOW FILTERING', expected=Exception)
 
         for index_column in index_columns.iterkeys():
             create_and_build_index(self.create_index, self.cluster, session, keyspace_name, table_name, index_column,
@@ -1106,7 +1106,7 @@ class TestSecondaryIndexesOnCollections(Tester):
         select_cmd = "SELECT * from {} where {} contains {}"
 
         # no index present yet, make sure there's an error trying to query column
-        assert_invalid(session, select_cmd.format(table_name, index_column, uuid.uuid4()), matching='No index found', expected=Exception)
+        assert_invalid(session, select_cmd.format(table_name, index_column, uuid.uuid4()), matching='use ALLOW FILTERING', expected=Exception)
 
         # add index and query again (even though there are no rows in the table yet)
         create_and_build_index(self.create_index, self.cluster, session, keyspace_name, table_name, index_column,
