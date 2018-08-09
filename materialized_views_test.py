@@ -323,13 +323,7 @@ class TestMaterializedViews(Tester):
         self._check_errors(node, exclude_errors)
         session = self.patient_exclusive_cql_connection(node)
         session.execute('USE mview')
-        # Set CL as:
-        #      - for double failure - ONE
-        #      - for stop node action - QUORUM
-        #      - if RF more then nodes acount - QUORUM
-        #      - for remove node action - ALL
-        cl = cl or (ConsistencyLevel.ONE if double_failure else ConsistencyLevel.QUORUM
-                    if node_action in ['stop']  or self.rf > len(self.cluster.nodelist()) else ConsistencyLevel.ALL)
+        cl = self.set_consistency_level(node_action=node_action, double_failure=double_failure, cl=cl)
         debug('Validate data using CL={}'.format(cl))
         exp_res = run_query_with_data_processing(session, 'select count(*) from mview.users', consistency_level=cl)
         try:
@@ -555,7 +549,8 @@ class TestMaterializedViews(Tester):
         for mv_name in tm.materialized_views.iterkeys():
             self._wait_for_view(session, tm.keyspace, mv_name)
 
-        self._validate_data_in_mvs(tm, session, prefill, prefill)
+        self._validate_data_in_mvs(tm=tm, session=session, table_expected_rows=prefill, mv_expected_rows=prefill,
+                                   consistency_level=ConsistencyLevel.ALL)
 
     def mv_populating_from_existing_data_with_restriction_test(self):
         session = self.prepare(rf=3, nodes=4)
@@ -670,17 +665,16 @@ class TestMaterializedViews(Tester):
             for mv_name in tm.materialized_views.iterkeys():
                 self._wait_for_view(session, tm.keyspace, mv_name)
 
-            self._validate_data_in_mvs(tm, session, rows_after_test, rows_after_test,
-                                       consistency_level=ConsistencyLevel.QUORUM
-                                       if change_type in ['remove node', 'stop node', 'restart node']
-                                                    else ConsistencyLevel.ALL)
+            self._validate_data_in_mvs(tm=tm, session=session, table_expected_rows=rows_after_test, mv_expected_rows=rows_after_test,
+                                       node_action=change_type.split(' ')[0])
 
             if change_type == 'restart node':
                 self.cluster.nodelist()[1].start()
                 for mv_name in tm.materialized_views.iterkeys():
                     self._wait_for_view(session, tm.keyspace, mv_name)
 
-                self._validate_data_in_mvs(tm, session, rows_after_test, rows_after_test)
+                self._validate_data_in_mvs(tm=tm, session=session, table_expected_rows=rows_after_test, mv_expected_rows=rows_after_test,
+                                           consistency_level=ConsistencyLevel.ALL)
         except Exception:
             if not fail:
                 raise
@@ -699,11 +693,23 @@ class TestMaterializedViews(Tester):
         node.start()
         debug('Finish node {} restart'.format(node.name))
 
-    def _validate_data_in_mvs(self, tm, session, table_expected_rows, mv_expected_rows, grouby_column_index=-1,
-                              consistency_level=ConsistencyLevel.ALL):
+    def set_consistency_level(self, node_action, double_failure=None, cl=None):
+        # Set CL as:
+        #      - for double failure - ONE
+        #      - for stop node action - QUORUM
+        #      - if RF more then active nodes amount - QUORUM
+        #      - for remove node action - ALL
+        cl = cl or (ConsistencyLevel.ONE if double_failure else ConsistencyLevel.QUORUM
+                    if node_action in ['stop', 'restart', 'decommission'] or self.rf > len(self.cluster.nodelist()) else ConsistencyLevel.ALL)
+        debug('Query will run with consistency level {}'.format(cl))
+        return cl
+
+    def _validate_data_in_mvs(self, tm, session, table_expected_rows, mv_expected_rows, node_action=None, grouby_column_index=-1,
+                              consistency_level=None):
         query = 'select * from {}'
+        consistency_level = self.set_consistency_level(node_action=node_action, cl=consistency_level)
         for mv_name, mv in tm.materialized_views.iteritems():
-            self._assert_count_table_mv(session, tm.table_name, table_expected_rows, mv_name, mv_expected_rows)
+            self._assert_count_table_mv(session, tm.table_name, table_expected_rows, mv_name, mv_expected_rows, cl=consistency_level)
 
             assert_two_queries_equal(session, query.format(tm.table_name),
                                      session, query.format(mv_name), consistency_level=consistency_level,
@@ -802,7 +808,8 @@ class TestMaterializedViews(Tester):
 
         prefill = prefill_start
         for base_table in base_tables:
-            self._validate_data_in_mvs(base_table, session, prefill, prefill)
+            self._validate_data_in_mvs(tm=base_table, session=session, table_expected_rows=prefill, mv_expected_rows=prefill,
+                                       consistency_level=ConsistencyLevel.ALL)
             prefill = prefill + increase_rows
 
     def drop_mv_during_base_table_writes_test(self):
@@ -1672,9 +1679,9 @@ class TestMaterializedViews(Tester):
         # Check if the record still exists in the both table and materialized view
         self._assert_count_table_mv(session, tm.table_name, prefill, mv.mv_name, prefill-1)
 
-    def _assert_count_table_mv(self, session, table_name, table_expected_count, mv_name, mv_expected_count):
-        assert_row_count(session, table_name, table_expected_count, consistency_level=ConsistencyLevel.QUORUM)
-        assert_row_count(session, mv_name, mv_expected_count, consistency_level=ConsistencyLevel.QUORUM)
+    def _assert_count_table_mv(self, session, table_name, table_expected_count, mv_name, mv_expected_count, cl=ConsistencyLevel.QUORUM):
+        assert_row_count(session, table_name, table_expected_count, consistency_level=cl)
+        assert_row_count(session, mv_name, mv_expected_count, consistency_level=cl)
 
     def ttl_test(self):
         """
