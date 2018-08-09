@@ -2,7 +2,7 @@ import os
 import glob
 import re
 import time
-from dtest import Tester, debug
+from dtest import Tester, debug, flaky
 from tools import rows_to_list, require
 from scylla_tools import TableManager, MaterializedViewManager
 from assertions import assert_one, assert_two_queries_equal
@@ -19,6 +19,7 @@ class ReshardingTest(Tester):
     __test__ = False
     def __init__(self, *args, **kwargs):
         super(ReshardingTest, self).__init__(*args, **kwargs)
+        self._multiprocess_can_split_ = False
         self.compaction_strategy = self.compaction_strategy if hasattr(self, 'compaction_strategy') else 'LeveledCompactionStrategy'
         self.smp = self.smp if hasattr(self, 'smp') else self.DEFAULT_SMP
         self.murmur3 = self.murmur3 if hasattr(self, 'murmur3') else self.DEFAULT_MURMUR3_PARTITIONER
@@ -207,6 +208,7 @@ class ReshardingTest(Tester):
         """
         self._resharding_basic(self.SMP_FOR_INCREASE, rows=1000, murmur3=self.MURMUR3_PARTITIONER_FOR_INCREASE)
 
+    @flaky
     def resharding_counter_test(self):
         """
         Resharding with small counter data set(c-s 1M counter objects) after changing the parameter

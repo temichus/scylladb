@@ -5,7 +5,7 @@ import time
 import uuid
 from unittest import skip
 
-from dtest import Tester, debug
+from dtest import Tester, debug, flaky
 from tools import since, require, rows_to_list, new_node
 from assertions import assert_all, assert_invalid, assert_one, assert_row_count, assert_none, assert_expected_error, \
                         assert_row_count_from_every_node
@@ -41,6 +41,7 @@ class TestSecondaryIndexes(Tester):
         create_and_build_index(self.create_index, self.cluster, session, ks_name, table_name,
                                index['index_column'], index['index_name'], compaction=self.compaction_strategy)
 
+    @flaky
     def test_query_data_created_before_index(self):
         """
         Create the index on the populated table and read the data that was inserted before index
@@ -438,6 +439,7 @@ class TestSecondaryIndexes(Tester):
         assert_one(session, """SELECT * FROM system."IndexInfo" WHERE table_name='k'""", ['k', 'idx'])
         assert_one(session, "SELECT * FROM k.t WHERE v = 1", [0, 1])
 
+    @flaky
     def test_drop_index_while_building(self):
         """
         Asserts that indexes deleted before they have been completely build are invalidated and not built after restart
@@ -816,6 +818,7 @@ class TestSecondaryIndexes(Tester):
         """
         self._node_action_during_index_build(node_action='stop', nodes=4, rf=3, num_rows=100000)
 
+    @flaky
     def test_remove_node_during_index_build(self):
         """
         Remove one node during index building and read data by index
