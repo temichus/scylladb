@@ -107,6 +107,9 @@ class ReshardingTest(Tester):
             to += sleep_time
         return reshard_found
 
+    def _remove_existent_ks(self, session, keyspace_name):
+        session.execute("DROP KEYSPACE IF EXISTS {}".format(keyspace_name))
+
     def _run_stress(self, op_cnt, stress_cmd):
         res = self.node.stress_object(stress_cmd)
         self.assertIsInstance(res, dict, 'failed to run stress test')
@@ -214,13 +217,16 @@ class ReshardingTest(Tester):
         Resharding with small counter data set(c-s 1M counter objects) after changing the parameter
         and restarting the cluster
         """
+        keyspace_name = 'keyspace1'
         session = self.patient_cql_connection(self.node)
+        # If test failed and re-run by @flaky decorator, the existent keyspace should be re-created
+        self._remove_existent_ks(session=session, keyspace_name=keyspace_name)
         session.execute("""
-            CREATE KEYSPACE keyspace1
+            CREATE KEYSPACE %s
             WITH replication = {'class': 'SimpleStrategy', 'replication_factor': '1'};
-        """)
+        """ % keyspace_name)
         session.execute("""
-            CREATE TABLE keyspace1.counter1 (
+            CREATE TABLE %s.counter1 (
                 key blob PRIMARY KEY,
                 "C0" counter,
                 "C1" counter,
@@ -240,7 +246,7 @@ class ReshardingTest(Tester):
                 AND min_index_interval = 128
                 AND read_repair_chance = 0.0
                 AND speculative_retry = '99.0PERCENTILE';
-        """)
+        """ % keyspace_name)
 
         debug('Run counter_write stress test on node1')
         op_cnt = 10000
