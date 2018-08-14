@@ -5,7 +5,7 @@ import time
 import uuid
 from unittest import skip
 
-from dtest import Tester, debug, flaky
+from dtest import Tester, debug, flaky_with_tear_down
 from tools import since, require, rows_to_list, new_node
 from assertions import assert_all, assert_invalid, assert_one, assert_row_count, assert_none, assert_expected_error, \
                         assert_row_count_from_every_node
@@ -41,7 +41,7 @@ class TestSecondaryIndexes(Tester):
         create_and_build_index(self.create_index, self.cluster, session, ks_name, table_name,
                                index['index_column'], index['index_name'], compaction=self.compaction_strategy)
 
-    @flaky
+    @flaky_with_tear_down
     def test_query_data_created_before_index(self):
         """
         Create the index on the populated table and read the data that was inserted before index
@@ -439,7 +439,7 @@ class TestSecondaryIndexes(Tester):
         assert_one(session, """SELECT * FROM system."IndexInfo" WHERE table_name='k'""", ['k', 'idx'])
         assert_one(session, "SELECT * FROM k.t WHERE v = 1", [0, 1])
 
-    @flaky
+    @flaky_with_tear_down
     def test_drop_index_while_building(self):
         """
         Asserts that indexes deleted before they have been completely build are invalidated and not built after restart
@@ -812,13 +812,14 @@ class TestSecondaryIndexes(Tester):
             assert_row_count(session, table_name=get_index_view_name(index_name), expected=num_rows - delete_num,
                              consistency_level=ConsistencyLevel.ALL)
 
+    @flaky_with_tear_down
     def test_stop_node_during_index_build(self):
         """
         Stop one node during index building and read data by index
         """
         self._node_action_during_index_build(node_action='stop', nodes=4, rf=3, num_rows=100000)
 
-    @flaky
+    @flaky_with_tear_down
     def test_remove_node_during_index_build(self):
         """
         Remove one node during index building and read data by index
@@ -866,7 +867,7 @@ class TestSecondaryIndexes(Tester):
 
         index_is_built(self.cluster, session, ks_name=keyspace_name, table_name=table_name, index_name=index_name)
 
-        # Validate the data using filtering by index with cl=QUORUM becasue expected that may be partually missed data on the replicas
+        # Validate the data using filtering by index with cl=QUORUM because expected that may be partually missed data on the replicas
         self.validate_index_data(session, cl=ConsistencyLevel.QUORUM, num_rows=num_rows, table_name=table_name,
                                  index_column=index_column)
 

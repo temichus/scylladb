@@ -938,11 +938,12 @@ class retrying(object):
     """
         Used as a decorator to retry function run that can possibly fail with allowed exceptions list
     """
-    def __init__(self, n=3, sleep_time=1, allowed_exceptions=(Exception,), message=""):
+    def __init__(self, n=3, sleep_time=1, allowed_exceptions=(Exception,), message="", tear_down_on_failure=False):
         self.n = n  # number of times to retry
         self.sleep_time = sleep_time  # number seconds to sleep between retries
         self.allowed_exceptions = allowed_exceptions  # if Exception is not allowed will raise
         self.message = message  # string that will be printed between retries
+        self.tear_down_on_failure = tear_down_on_failure
 
     def __call__(self, func):
         @wraps(func)
@@ -958,10 +959,16 @@ class retrying(object):
                     if i == self.n - 1:
                         LOG.error("Number of retries exceeded!")
                         raise
+                    if self.tear_down_on_failure:
+                        args[0].allow_log_errors = True
+                        args[0].tearDown()
+                        args[0].setUp()
+
         return inner
 
 
 flaky = retrying(n=5, sleep_time=3, message="Flaky test")
+flaky_with_tear_down = retrying(n=5, sleep_time=3, message="Flaky test", tear_down_on_failure=True)
 
 
 class run_with_params(object):
