@@ -1,4 +1,5 @@
 # coding: utf-8
+import functools
 from typing import NamedTuple, Optional
 import string
 import time
@@ -143,36 +144,61 @@ class TestSchemaManagement(Tester):
                                                    consistency_level=ConsistencyLevel.ALL))
         assert len(rows_to_list(rows)) == 1, f"Expected 1 row but got rows:{rows} instead"
 
-    @pytest.mark.skip('unimplemented')
-    def alter_table_in_parallel_to_write(self):
+    @pytest.mark.parametrize("case", ("write", "read", "read_and_write"))
+    def test_alter_table_in_parallel_to_read_and_write(self, case):
         """
         Create a table and write into while altering the table
-        1. Create a cluster of 3 nodes
-        2. Run insert statements in a loop
+        1. Create a cluster of 3 nodes and populate a table
+        2. Run write/read/read_and_write" statement in a loop
         3. Alter table while inserts are running
         """
-        raise NotImplementedError
+        logger.debug('1. Create a cluster of 3 nodes and populate a table')
+        self.cluster.set_configuration_options(values={'ring_delay_ms': 5000})
+        self.cluster.populate(3)
+        self.cluster.start(wait_other_notice=True)
+        col_number = 20
 
-    @pytest.mark.skip('unimplemented')
-    def alter_table_in_parallel_to_read(self):
-        """
-        Create a table and populate it and read from it while altering the table
-        1. Create a cluster of 3 nodes and populate a table
-        2. Run query statements in a loop
-        3. Alter table while query are running
-        """
-        raise NotImplementedError
+        [node1, node2, node3] = self.cluster.nodelist()
+        session = self.patient_exclusive_cql_connection(node1)
 
-    @pytest.mark.skip('unimplemented')
-    def alter_table_in_parallel_to_read_and_write(self):
-        """
-        Create a table and populate it and read from it while altering the table
-        1. Create a cluster of 3 nodes and populate a table
-        2. Run query statements in a loop
-        3. Run insert statements in a loop
-        4. Alter table while query and insert are running
-        """
-        raise NotImplementedError
+        def alter_table():
+            alter_statement = f'ALTER TABLE keyspace1.standard1 DROP ("C{col_number-1}", "C{col_number-2}")'
+            logger.debug(f"alter_statement {alter_statement}")
+            return session.execute(alter_statement)
+
+        def cs_run(stress_type, col=col_number-2):
+            node2.stress_object([stress_type, 'n=10000', 'cl=QUORUM', '-schema',
+                                 'replication(factor=1)', '-col', f'n=FIXED({col})', '-rate', 'threads=1'])
+
+        logger.debug("Populate")
+        cs_run("write", col_number)
+
+        case_map = {
+            "read": functools.partial(cs_run, "read"),
+            "write": functools.partial(cs_run, "write"),
+            "read_and_write": functools.partial(cs_run, "mixed"),
+        }
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            logger.debug(f'2. Run {case} statement in a loop')
+            statement_future = executor.submit(case_map[case])
+
+            logger.debug(f"let's {case} statement work some time")
+            time.sleep(2)
+
+            logger.debug('3. Alter table while inserts are running')
+            alter_result = alter_table()
+            logger.debug(alter_result.all())
+
+            logger.debug(f'wait till {case} statement finished')
+            statement_future.result()
+
+        rows = session.execute(SimpleStatement("SELECT * FROM keyspace1.standard1 LIMIT 1;",
+                                               consistency_level=ConsistencyLevel.ALL))
+        assert len(rows_to_list(rows)[0]) == col_number-1, \
+            f"Expected {col_number-1} columns but got rows:{rows} instead"
+
+        logger.debug('reade and check data')
+        cs_run("read")
 
     @pytest.mark.skip('unimplemented')
     def commitlog_replays_after_schema_change(self):
