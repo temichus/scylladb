@@ -249,7 +249,6 @@ class ToJsonSelectTests(Tester):
         """
         run_func_docstring(tester=self, test_func=self.basic_data_types_test)
 
-    @require('#3667')
     def basic_data_types_with_null_test(self):
         """
 
@@ -330,7 +329,6 @@ class ToJsonSelectTests(Tester):
         """
         run_func_docstring(tester=self, test_func=self.counters_test)
 
-    @require('#3667')
     def counters_with_null_test(self):
         """
         Add a table with a few counters:
@@ -494,7 +492,6 @@ class ToJsonSelectTests(Tester):
         """
         run_func_docstring(tester=self, test_func=self.complex_data_types_test)
 
-    @require('#3667')
     def complex_data_types_with_null_test(self):
         """
         Build some user types and a schema that uses them:
@@ -1341,7 +1338,7 @@ class JsonFullRowInsertSelect(Tester):
             ... ''')
 
             >>> cqlsh('''
-            ... INSERT INTO primitive_type_test JSON '{"key1": "bar", "col1": "bar", "col2": "0x0011", "col3": "127.0.0.1", "col4": "blarg", "col5": "2011-02-02 21:05:00.000", "col6": "0ad6dfb6-7a6e-11e4-bc39-b4b6763e9d6f", "col7": "bdf5e8ac-a75e-4321-9ac8-938fc9576c4a", "col8": "bleh", "col9": -9223372036854775808, "col10": "1234.45678", "col11":9.87123121222E7, "col12": 9.87123121222E7, "col13": -2147483648, "col14": 2147483648, "col15": true, "col16": "13:07:45.089", "col17":"2017-11-25", "col18": "123"}'
+            ... INSERT INTO primitive_type_test JSON '{"key1": "bar", "col1": "bar", "col2": "0x0011", "col3": "127.0.0.1", "col4": "blarg", "col5": "2011-02-02 21:05:00.000", "col6": "0ad6dfb6-7a6e-11e4-bc39-b4b6763e9d6f", "col7": "bdf5e8ac-a75e-4321-9ac8-938fc9576c4a", "col8": "bleh", "col9": "-9223372036854775808", "col10": "1234.45678", "col11":"9.87123121222E7", "col12": "9.87123121222E7", "col13": "-2147483648", "col14": "2147483648", "col15": true, "col16": "13:07:45.089", "col17":"2017-11-25", "col18": "123"}'
             ... ''')
 
         Query back both rows as JSON:
@@ -1349,8 +1346,8 @@ class JsonFullRowInsertSelect(Tester):
             >>> cqlsh_print("SELECT JSON * FROM primitive_type_test")
             <BLANKLINE>
              [json]
-            --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-             {"key1": "bar", "col1": "bar", "col10": 1234.45678, "col11": 9.87123121222E7, "col12": 9.8712312E7, "col13": -2147483648, "col14": 2147483648, "col15": true, "col2": "0x0011", "col3": "127.0.0.1", "col4": "blarg", "col5": "2011...", "col6": "0ad6dfb6-7a6e-11e4-bc39-b4b6763e9d6f", "col7": "bdf5e8ac-a75e-4321-9ac8-938fc9576c4a", "col8": "bleh", "col9": -9223372036854775808, "col16": "13:07:45.089", "col17":"2017-11-25", "col18": 123}
+            ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+             {"key1": "bar", "col1": "bar", "col10": 1234.45678, "col11": 9.87123e+07, "col12": 9.87123e+07, "col13": -2147483648, "col14": 2147483648, "col15": true, "col16": 13:07:45.089000000, "col17": "2017-11-25", "col18": 123, "col2": "0x0011", "col3": "127.0.0.1", "col4": "blarg", "col5": "2011-02-02T19:05:00", "col6": "0ad6dfb6-7a6e-11e4-bc39-b4b6763e9d6f", "col7": "bdf5e8ac-a75e-4321-9ac8-938fc9576c4a", "col8": "bleh", "col9": -9223372036854775808}
              {"key1": "foo", "col1": "bar", "col10": 1234.45678, "col11": 9.87123e+07, "col12": 9.87123e+07, "col13": -2147483648, "col14": 2147483648, "col15": true, "col16": 13:07:45.089000000, "col17": "2017-11-25", "col18": 123, "col2": "0x0011", "col3": "127.0.0.1", "col4": "blarg", "col5": "2011-02-03T04:05:00", "col6": "0ad6dfb6-7a6e-11e4-bc39-b4b6763e9d6f", "col7": "bdf5e8ac-a75e-4321-9ac8-938fc9576c4a", "col8": "bleh", "col9": -9223372036854775808}
             <BLANKLINE>
             (2 rows)
@@ -1361,9 +1358,9 @@ class JsonFullRowInsertSelect(Tester):
             >>> cqlsh_print("SELECT JSON col15, col1, col3, col13, col11, col2, col4 FROM primitive_type_test WHERE key1 in ('foo', 'bar')")
             <BLANKLINE>
              [json]
-            ----------------------------------------------------------------------------------------------------------------------------------------
-             {"col15": true, "col1": "bar", "col3": "127.0.0.1", "col13": -2147483648, "col11": 9.87123121222E7, "col2": "0x0011", "col4": "blarg"}
-             {"col15": true, "col1": "bar", "col3": "127.0.0.1", "col13": -2147483648, "col11": 9.87123121222E7, "col2": "0x0011", "col4": "blarg"}
+            ------------------------------------------------------------------------------------------------------------------------------------
+             {"col15": true, "col1": "bar", "col3": "127.0.0.1", "col13": -2147483648, "col11": 9.87123e+07, "col2": "0x0011", "col4": "blarg"}
+             {"col15": true, "col1": "bar", "col3": "127.0.0.1", "col13": -2147483648, "col11": 9.87123e+07, "col2": "0x0011", "col4": "blarg"}
             <BLANKLINE>
             (2 rows)
             <BLANKLINE>
@@ -1372,17 +1369,16 @@ class JsonFullRowInsertSelect(Tester):
 
             >>> cqlsh_print("SELECT * FROM primitive_type_test")
             <BLANKLINE>
-            key1 | col1 | col10      | col11               | col12    | col13       | col14      | col15 | col16              | col17      | col18 | col2   | col3      | col4  | col5                     | col6                                 | col7                                 | col8 | col9
+             key1 | col1 | col10      | col11               | col12    | col13       | col14      | col15 | col16              | col17      | col18 | col2   | col3      | col4  | col5                     | col6                                 | col7                                 | col8 | col9
             ------+------+------------+---------------------+----------+-------------+------------+-------+--------------------+------------+-------+--------+-----------+-------+--------------------------+--------------------------------------+--------------------------------------+------+----------------------
-              bar |  bar | 1234.45678 | 9.8712e+07 | 9.8712e+07 | -2147483648 | 2147483648 |  True | 0x0011 | 127.0.0.1 | blarg | 2011.....................| 0ad6dfb6-7a6e-11e4-bc39-b4b6763e9d6f | bdf5e8ac-a75e-4321-9ac8-938fc9576c4a | bleh | -9223372036854775808
+              bar |  bar | 1234.45678 | 98712312.1221999973 | 98712312 | -2147483648 | 2147483648 |  True | 13:07:45.089000000 | 2017-11-25 |   123 | 0x0011 | 127.0.0.1 | blarg | 2011-02-02 19:05:00+0000 | 0ad6dfb6-7a6e-11e4-bc39-b4b6763e9d6f | bdf5e8ac-a75e-4321-9ac8-938fc9576c4a | bleh | -9223372036854775808
               foo |  bar | 1234.45678 | 98712312.1221999973 | 98712312 | -2147483648 | 2147483648 |  True | 13:07:45.089000000 | 2017-11-25 |   123 | 0x0011 | 127.0.0.1 | blarg | 2011-02-03 04:05:00+0000 | 0ad6dfb6-7a6e-11e4-bc39-b4b6763e9d6f | bdf5e8ac-a75e-4321-9ac8-938fc9576c4a | bleh | -9223372036854775808
             <BLANKLINE>
             (2 rows)
             <BLANKLINE>
-        """
+            """
         run_func_docstring(tester=self, test_func=self.simple_schema_test)
 
-    @require('#3665')
     def pkey_requirement_test(self):
         """
         Create schema:
@@ -1410,12 +1406,11 @@ class JsonFullRowInsertSelect(Tester):
         Try to create a JSON row with the pkey omitted from the column list, and omitted from the JSON data:
 
             >>> cqlsh_err_print('''INSERT INTO primitive_type_test JSON '{"col1": "bar"}' ''')
-            <stdin>:2:InvalidRequest: code=2200 [Invalid query] message="Invalid null value in condition for column key1"
+            <stdin>:2:InvalidRequest: Error from server: code=2200 [Invalid query] message="Missing mandatory PRIMARY KEY part key1"
             <BLANKLINE>
         """
         run_func_docstring(tester=self, test_func=self.pkey_requirement_test)
 
-    @require('#3664')
     def null_value_test(self):
         """
         Create schema:
@@ -1459,7 +1454,7 @@ class JsonFullRowInsertSelect(Tester):
         """
         run_func_docstring(tester=self, test_func=self.null_value_test)
 
-    @require('#3664')
+    @require('#3708,3664')
     def complex_schema_test(self):
         """
         Create some udt's and schema:
