@@ -16,7 +16,7 @@ from enum import Enum  # Remove when switching to py3
 from assertions import assert_all, assert_one, assert_invalid, assert_unavailable, assert_none, \
     assert_crc_check_chance_equal, assert_row_count, assert_two_queries_equal, assert_row_count_from_every_node, \
     assert_two_queries_equal_ignore_order
-from dtest import Tester, debug, flaky
+from dtest import Tester, debug, flaky_with_tear_down
 from tools import since, new_node, require, rows_to_list, run_query_with_data_processing
 from scylla_tools import TableManager, MaterializedViewManager, flush_by_node, managed_thread, remove_node
 from cassandra.cluster import NoHostAvailable
@@ -197,6 +197,7 @@ class TestMaterializedViews(Tester):
         """
         self._run_node_failure_during_mv_stress_insert(rf=3, nodes=3, node_action='remove', exclude_errors=['mutation_write_timeout_exception'])
 
+    @flaky_with_tear_down
     def double_node_failure_during_mv_insert_4_nodes_test(self):
         """ Test stopping 2 nodes during MV inserts
             Test starts with a starting size 4 and stops 2 nodes during inserts into base table that cause to update materialized view as well
@@ -343,7 +344,7 @@ class TestMaterializedViews(Tester):
 
         assert True
 
-    @flaky
+    @flaky_with_tear_down
     def add_dc_during_mv_update_test(self):
         """ Test expand cluster - add new DC during MV inserts
             Test starts with a starting size: one DCs with 4 nodes, and add new 2 nodes of second DC during update existent records of base
@@ -1317,6 +1318,7 @@ class TestMaterializedViews(Tester):
 
         self._add_dc_after_mv_test({'dc1': 1, 'dc2': 1})
 
+    @flaky_with_tear_down
     def add_node_after_mv_test(self):
         """
         @jira_ticket CASSANDRA-10978
@@ -1347,7 +1349,7 @@ class TestMaterializedViews(Tester):
             assert_one(session, "SELECT * FROM t_by_v WHERE v = {}".format(-i), [-i, i])
 
     # @skip('unrecognised option \'-Dcassandra.migration_task_wait_in_seconds\'')
-    @flaky
+    @flaky_with_tear_down
     @attr('resource-intensive')
     def add_node_after_wide_mv_with_range_deletions_test(self):
         """
