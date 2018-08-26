@@ -1,3 +1,4 @@
+from unittest import skip
 from cassandra import ConsistencyLevel
 
 from dtest import Tester, debug
