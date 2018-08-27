@@ -652,7 +652,7 @@ class MaterializedViewManager(object):
 
     # TODO: add possibility for PK and CL order
     def create_materialized_view(self, mv_columns=None, mv_pk_column=None, mv_cl_column=None, mv_where_restriction=None,
-                                 options=None):
+                                 options=None, wait_for_view_built=True):
         """
         :param mv_columns: {<column type>: {  'amount': <how many columns with this type>,
                                             'names': [columns names, comma separated]
@@ -717,6 +717,10 @@ class MaterializedViewManager(object):
                                       else ', {}'.format(', '.join([k for k in self.mv_cl_list])))
             debug(statement+';')
             self.parent_table.session.execute(statement)
+
+            if wait_for_view_built:
+                wait_for_view(cluster=self.parent_table.cluster, session=self.parent_table.session,
+                               ks=self.parent_table.keyspace, view=self.mv_name)
 
             if options:
                 for op, value in options.iteritems():
@@ -853,12 +857,12 @@ def view_built_status_query(ks='', view='', select_column='status'):
 def get_index_view_name(index_name):
     return '{}_index'.format(index_name)
 
-def index_is_built(cluster, session, ks_name, table_name, index_name):
-    _wait_for_view(cluster, session, ks_name, get_index_view_name(index_name))
+def index_is_built(cluster, session, ks_name, table_name, index_name, raise_exception=True):
+    wait_for_view(cluster, session, ks_name, get_index_view_name(index_name), raise_exception=raise_exception)
     return len(list(session.execute(
         "SELECT * FROM system_schema.indexes WHERE keyspace_name = '{0}' and table_name ='{1}' AND index_name='{2}'".format(ks_name, table_name, index_name)))) == 1
 
-def _wait_for_view(cluster, session, ks, view):
+def wait_for_view(cluster, session, ks, view, raise_exception=True):
     debug("Waiting for view {}.{} to finish building...".format(ks, view))
 
     def _view_build_finished(live_nodes_amount):
@@ -873,7 +877,11 @@ def _wait_for_view(cluster, session, ks, view):
         time.sleep(3)
         attempts -= 1
 
-    raise Exception("View {}.{} not built".format(ks, view))
+    error_msg = "View {}.{} not built".format(ks, view)
+    if raise_exception:
+        raise Exception(error_msg)
+    else:
+        debug(error_msg)
 
 def wait_for_view_build_start(session, ks, view, seconds_to_wait = 20):
 
