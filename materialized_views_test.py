@@ -76,7 +76,7 @@ class TestMaterializedViews(Tester):
         populate = nodes if isinstance(nodes, list) else [nodes, 0]
         cluster.populate(populate)
         options['experimental'] = True
-        self.rf = rf
+        self.rf = sum([v for v in rf.itervalues()]) if isinstance(rf, dict) else rf
         if options:
             cluster.set_configuration_options(values=options)
         cluster.start(jvm_args=jvm_args,wait_other_notice=True,wait_for_binary_proto=True)
@@ -219,8 +219,8 @@ class TestMaterializedViews(Tester):
             Validate the log has no errors.
             Issue #2783: there are mutation_write_timeout_exception in case starting size 4 and more
         """
-        self.prepare(rf=3, nodes=[2, 2])
-        mv_profile = os.path.abspath(os.path.join("test_data", 'cassandra-mv-profile', 'cs_mv_profile.yaml'))
+        self.prepare(rf={'dc1': 2, 'dc2': 1}, nodes=[3, 3])
+        mv_profile = os.path.abspath(os.path.join("test_data", 'cassandra-mv-profile', 'cs_mv_multidc_profile.yaml'))
 
         node1_dc1 = [node for node in self.cluster.nodelist() if node.data_center == 'dc1'][0]
         proc_functions = [{'func': node1_dc1.stress, 'args': [['user', 'profile={}'.format(mv_profile), 'cl=QUORUM', 'duration=2m',
