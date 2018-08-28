@@ -34,13 +34,12 @@ class TestAggregatePaging(BasePagingTester, PageAssertionMixin):
         # They main thing we are testing is that page size > limit does not break the
         # count result. (#650)
         for page_size in sizes:
-            for limit in sizes:
-                future = session.execute_async(
-                    SimpleStatement("select count(*) from paging_test limit {}".format(limit), fetch_size=page_size, consistency_level=CL.ALL)
-                )
-                pf = PageFetcher(future).request_all()
-                self.assertEqual(pf.num_results_all(), [1])
-                self.assertEqual(pf.all_data(), [{u'count': limit}])
+            future = session.execute_async(
+                SimpleStatement("select count(*) from paging_test limit {}".format(1), fetch_size=page_size, consistency_level=CL.ALL)
+            )
+            pf = PageFetcher(future).request_all()
+            self.assertEqual(pf.num_results_all(), [1])
+            self.assertEqual(pf.all_data(), [{u'count': 5001}])
 
     @scylla_mode('release')
     def test_paged_count_with_limit(self):
