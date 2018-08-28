@@ -183,6 +183,7 @@ class ReshardingTest(Tester):
         """
         self._resharding_basic(self.smp, rows=1000, murmur3=self.MURMUR3_PARTITIONER_FOR_DECREASE)
 
+    @flaky
     def resharding_by_smp_increase_test(self):
         """
         Resharding with 10M objects after increasing the SMP parameter
@@ -190,6 +191,7 @@ class ReshardingTest(Tester):
         """
         self._resharding_basic(self.SMP_FOR_INCREASE, rows=10000, murmur3=self.murmur3)
 
+    @flaky
     def resharding_by_smp_decrease_test(self):
         """
         Resharding with 10M objects after decreasing the SMP parameter
