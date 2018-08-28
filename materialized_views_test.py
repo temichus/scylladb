@@ -18,7 +18,8 @@ from assertions import assert_all, assert_one, assert_invalid, assert_unavailabl
     assert_two_queries_equal_ignore_order
 from dtest import Tester, debug, flaky
 from tools import since, new_node, require, rows_to_list, run_query_with_data_processing
-from scylla_tools import TableManager, MaterializedViewManager, flush_by_node, managed_thread, remove_node
+from scylla_tools import TableManager, MaterializedViewManager, flush_by_node, managed_thread, remove_node, wait_for_view, \
+                            wait_for_view_build_start
 from cassandra.cluster import NoHostAvailable
 
 from nose.plugins.attrib import attr
@@ -108,36 +109,6 @@ class TestMaterializedViews(Tester):
             self.cluster.flush()
         if compact:
             self.cluster.compact()
-
-    def _wait_for_view(self, session, ks, view):
-        debug("Waiting for view {}.{} to finish building...".format(ks, view))
-
-        def _view_build_finished(live_nodes_amount):
-            result = rows_to_list(session.execute("SELECT status FROM system_distributed.view_build_status WHERE keyspace_name='%s' AND view_name='%s'" % (ks, view)))
-            return len([status for status in result  if status[0] == 'SUCCESS']) >= live_nodes_amount
-
-        attempts = 20
-        live_nodes_amount = len([node for node in self.cluster.nodelist() if node.status == 'UP'])
-        while attempts > 0:
-            if _view_build_finished(live_nodes_amount):
-                return
-            time.sleep(3)
-            attempts -= 1
-
-        raise Exception("View {}.{} not built".format(ks, view))
-
-    def _wait_for_view_build_start(self, session, ks, view, seconds_to_wait = 20):
-
-        def _check_build_started():
-            result = rows_to_list(session.execute("SELECT last_token FROM system.views_builds_in_progress "
-                                                  "WHERE keyspace_name='{0}' AND view_name='{1}'".format(ks, view)))
-            return result != [[None]]
-
-        debug("Ensure view building started.")
-        start = time.time()
-        while not _check_build_started():
-            if time.time() - start > seconds_to_wait:
-                raise Exception("View building didn't start in {} seconds".format(seconds_to_wait))
 
     def _insert_data(self, session):
         # insert data
@@ -521,11 +492,11 @@ class TestMaterializedViews(Tester):
         result = session.execute('select * from ToDo where ToDo_User_id = 00112233-4455-6677-8899-aabbccddeeff')
         print(result)
 
-    def _create_mvs_by_one_column(self, tm, mvs_amount):
+    def _create_mvs_by_one_column(self, tm, mvs_amount, wait_for_view_built=False):
         for i in xrange(1, mvs_amount+1):
             mv = MaterializedViewManager(tm)
             mv.create_materialized_view(mv_columns={tm.columns_list[i].split(' ')[1]: {'names': [tm.column_names_list[i]]}},
-                                        mv_pk_column={'names': [tm.column_names_list[i]]})
+                                        mv_pk_column={'names': [tm.column_names_list[i]]}, wait_for_view_built=wait_for_view_built)
 
     def mv_populating_from_existing_data_test(self):
         """ Create one materialized view on the populated base table """
@@ -544,11 +515,8 @@ class TestMaterializedViews(Tester):
         tm.create_table()
         tm.prefill_table(prefill)
 
-        self._create_mvs_by_one_column(tm, mvs)
+        self._create_mvs_by_one_column(tm, mvs, wait_for_view_built=True)
         self.cluster.flush()
-
-        for mv_name in tm.materialized_views.iterkeys():
-            self._wait_for_view(session, tm.keyspace, mv_name)
 
         self._validate_data_in_mvs(tm=tm, session=session, table_expected_rows=prefill, mv_expected_rows=prefill,
                                    consistency_level=ConsistencyLevel.ALL)
@@ -570,9 +538,6 @@ class TestMaterializedViews(Tester):
                                         mv_pk_column={'names': [tm.column_names_list[i]]},
                                         mv_where_restriction={
                                         'names': {tm.pk_list[1]: {'operator': '=', 'value': data[i-1]}}})
-
-        for mv_name in tm.materialized_views.iterkeys():
-            self._wait_for_view(session, tm.keyspace, mv_name)
 
         query = 'select id, clmn_int0, {clmn} from {tbl}'
         for mv_name, mv in tm.materialized_views.iteritems():
@@ -664,7 +629,7 @@ class TestMaterializedViews(Tester):
 
         try:
             for mv_name in tm.materialized_views.iterkeys():
-                self._wait_for_view(session, tm.keyspace, mv_name)
+                wait_for_view(cluster=self.cluster, session=session, ks=tm.keyspace, view=mv_name)
 
             self._validate_data_in_mvs(tm=tm, session=session, table_expected_rows=rows_after_test, mv_expected_rows=rows_after_test,
                                        node_action=change_type.split(' ')[0])
@@ -672,7 +637,7 @@ class TestMaterializedViews(Tester):
             if change_type == 'restart node':
                 self.cluster.nodelist()[1].start()
                 for mv_name in tm.materialized_views.iterkeys():
-                    self._wait_for_view(session, tm.keyspace, mv_name)
+                    wait_for_view(cluster=self.cluster, session=session, ks=tm.keyspace, view=mv_name)
 
                 self._validate_data_in_mvs(tm=tm, session=session, table_expected_rows=rows_after_test, mv_expected_rows=rows_after_test,
                                            consistency_level=ConsistencyLevel.ALL)
@@ -728,7 +693,7 @@ class TestMaterializedViews(Tester):
                                    }, pk_columns={}, cl_columns={})
 
         tm.create_table()
-        self._create_mvs_by_one_column(tm, mvs)
+        self._create_mvs_by_one_column(tm, mvs, wait_for_view_built=True)
 
         start_data = [2, 5, 12, 45, 63, 78, 36, 85, 98, 100]
         tm.prefill_table(prefill, data={'int': start_data})
@@ -787,10 +752,7 @@ class TestMaterializedViews(Tester):
 
         def _create_mvs():
             for base_table in base_tables:
-                self._create_mvs_by_one_column(base_table, mvs_amount=mvs)
-            for base_table in base_tables:
-                for mv_name in base_table.materialized_views.iterkeys():
-                    self._wait_for_view(session, base_table.keyspace, mv_name)
+                self._create_mvs_by_one_column(base_table, mvs_amount=mvs, wait_for_view_built=True)
 
         base_tables = []
         for i in xrange(tables):
@@ -879,8 +841,6 @@ class TestMaterializedViews(Tester):
         mv = MaterializedViewManager(tm)
         mv.create_materialized_view(mv_pk_column={'type': 'int'})
 
-        self._wait_for_view(session, tm.keyspace, mv.mv_name)
-
         assert_two_queries_equal_ignore_order(session, query.format(tm.table_name),
                                               session, query.format(mv.mv_name),
                                               consistency_level=ConsistencyLevel.ALL, session_timeout=120)
@@ -967,7 +927,7 @@ class TestMaterializedViews(Tester):
         session.execute(("CREATE MATERIALIZED VIEW t_by_v AS SELECT * FROM t WHERE v IS NOT NULL "
                          "AND id IS NOT NULL PRIMARY KEY (v, id)"))
 
-        self._wait_for_view(session, 'ks', 't_by_v')
+        wait_for_view(cluster=self.cluster, session=session, ks='ks', view='t_by_v')
 
         for i in xrange(1000):
             assert_one(session, "SELECT * FROM t_by_v WHERE v = {}".format(i), [i, i])
@@ -986,7 +946,7 @@ class TestMaterializedViews(Tester):
         session.execute(("CREATE MATERIALIZED VIEW t_by_v AS SELECT * FROM t WHERE v IS NOT NULL "
                          "AND id IS NOT NULL PRIMARY KEY (v, id)"))
 
-        self._wait_for_view(session, 'ks', 't_by_v')
+        wait_for_view(cluster=self.cluster, session=session, ks='ks', view='t_by_v')
 
         for i in xrange(5):
             for j in xrange(10000):
@@ -1556,7 +1516,8 @@ class TestMaterializedViews(Tester):
         pks = mv.create_mv_pk_list({'type': 'int'})
         try:
             mv.create_materialized_view(mv_columns={'int': {'amount': 1}}, mv_pk_column={'names': pks},
-                                    mv_where_restriction={'names': {pks[-1]: {'operator': '>', 'value': 1}}})
+                                    mv_where_restriction={'names': {pks[-1]: {'operator': '>', 'value': 1}}},
+                                        wait_for_view_built=False)
         except Exception as e:
             expected_error = 'Non-primary key columns cannot be restricted in the SELECT statement used for materialized ' \
                                'view creation (got restrictions on: {})'.format(next(mv.mv_where_restriction.iterkeys()))
@@ -1933,7 +1894,7 @@ class TestMaterializedViews(Tester):
         session.execute(("CREATE MATERIALIZED VIEW t_by_v AS SELECT * FROM t "
                          "WHERE v IS NOT NULL AND id IS NOT NULL PRIMARY KEY (v, id)"))
 
-        self._wait_for_view_build_start(session, "ks", "t_by_v")
+        wait_for_view_build_start(session, "ks", "t_by_v")
 
         debug("Stop the cluster. Interrupt the MV build process.")
         self.cluster.stop()
@@ -1951,10 +1912,10 @@ class TestMaterializedViews(Tester):
         session.execute("USE ks")
 
         debug("Wait and ensure the MV build resumed.")
-        self._wait_for_view(session, "ks", "t_by_v")
+        wait_for_view(cluster=self.cluster, session=session, ks="ks", view="t_by_v")
 
         debug("Verify all data")
-        assert_row_count(session, 't_by_v', rows, consistency_level=ConsistencyLevel.ALL);
+        assert_row_count(session, 't_by_v', rows, consistency_level=ConsistencyLevel.ALL)
 
     def interrupt_build_process_with_resharding_low_to_half_test(self):
         """Test that an interrupted MV build process is resumed, with resharding 1 -> cpu_count() / 2"""
@@ -2000,7 +1961,7 @@ class TestMaterializedViews(Tester):
         session.execute(("CREATE MATERIALIZED VIEW t_by_v2 AS SELECT * FROM t "
                          "WHERE v2 IS NOT NULL AND id IS NOT NULL PRIMARY KEY (v2, id)"))
 
-        self._wait_for_view_build_start(session, "ks", "t_by_v")
+        wait_for_view_build_start(session, "ks", "t_by_v")
 
         debug("Stop the cluster. Interrupt the MV build process.")
         # Our views build quickly, so instead of having to insert lots of data and
@@ -2024,12 +1985,12 @@ class TestMaterializedViews(Tester):
         session.execute("USE ks")
 
         debug("Wait and ensure the MV build resumed.")
-        self._wait_for_view(session, "ks", "t_by_v")
-        self._wait_for_view(session, "ks", "t_by_v2")
+        wait_for_view(cluster=self.cluster, session=session, ks='ks', view="t_by_v")
+        wait_for_view(cluster=self.cluster, session=session, ks='ks', view="t_by_v2")
 
         debug("Verify all data")
-        assert_row_count(session, 't_by_v', rows, consistency_level=ConsistencyLevel.ALL);
-        assert_row_count(session, 't_by_v2', rows, consistency_level=ConsistencyLevel.ALL);
+        assert_row_count(session, 't_by_v', rows, consistency_level=ConsistencyLevel.ALL)
+        assert_row_count(session, 't_by_v2', rows, consistency_level=ConsistencyLevel.ALL)
 
     @skip("Takes too long, because there's no good way to interrupt "
           "the build process aside from creating lots of rows. Depends on #3295")
@@ -2055,7 +2016,7 @@ class TestMaterializedViews(Tester):
         session.execute(("CREATE MATERIALIZED VIEW t_by_v AS SELECT * FROM t "
                          "WHERE v IS NOT NULL AND id IS NOT NULL PRIMARY KEY (v, id)"))
 
-        self._wait_for_view_build_start(session, "ks", "t_by_v")
+        wait_for_view_build_start(session, "ks", "t_by_v")
 
         debug("Drop the MV while it is still building")
         session.execute("DROP MATERIALIZED VIEW t_by_v")
@@ -3066,7 +3027,7 @@ class TestMaterializedViews(Tester):
             session.execute("CREATE MATERIALIZED VIEW mv AS SELECT * FROM test WHERE "
                             "a = 1 AND b IS NOT NULL AND c = 1 PRIMARY KEY {}".format(mv_primary_key))
 
-            self._wait_for_view(session, "mvtest", "mv")
+            wait_for_view(cluster=self.cluster, session=session, ks="mvtest", view="mv")
 
             assert_all(
                 session, "SELECT a, b, c, d FROM mv",
