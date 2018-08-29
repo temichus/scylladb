@@ -87,6 +87,21 @@ def assert_row_count(session, table_name, expected, consistency_level=Consistenc
     assert count == expected, "Expected a row count of {} in table '{}', but got {}".format(
             expected, table_name, count)
 
+def assert_row_count_in_select(session, query, expected, consistency_level=ConsistencyLevel.ONE, attempt=1):
+    """ Function to validate the row count are returned by select """
+
+    count = None
+    simple_query = SimpleStatement(query, consistency_level=consistency_level)
+    for _ in xrange(attempt):
+        res = session.execute(simple_query)
+        count = len(rows_to_list(res))
+        if count == expected:
+            break
+        time.sleep(10)
+
+    assert count == expected, "Expected a row count of {} in query \"{}\", but got {}".format(
+            expected, query, count)
+
 def assert_row_count_from_every_node(session, table_name, expected, nodes_list, attempt=1):
     """ Function to validate the row count expected in table_name running from every node"""
 
