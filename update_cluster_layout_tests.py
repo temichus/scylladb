@@ -526,21 +526,21 @@ class TestUpdateClusterLayout(Tester):
         t.setDaemon(True)
 
         debug("Start Node")
-        a_new_node.start()
+        a_new_node.start(jvm_args=['--logger-log-level','stream_session=debug'])
         a_new_node.watch_log_for("JOINING: Starting to bootstrap")
         time.sleep(1)
         t.start()
         time.sleep(1)
-        a_new_node.watch_log_for("Executing streaming plan")
-        self.wait_for_nodes_status(node1, ['UN', 'UJ', 'UN'])
+        a_new_node.watch_log_for("Beginning stream session")
+        self.wait_for_nodes_status(node1, [['UN', 'UJ', 'UN'], ['UN', 'UN', 'UN']])
         debug("Stop Node")
         a_new_node.stop(gently=False)
         event.wait()
         self.assertTrue(failed is None, failed)
 
-        # Sleep 1 second to make sure other nodes knows this node is joining through gossip
-        time.sleep(1)
+        self.wait_for_nodes_status(node1, [['UN', 'UN'], ['UN', 'DN', 'UN']])
 
+        debug("Query Again")
         session.execute("SELECT * FROM cf")
 
     def _simple_add_new_node_while_adding_info(self, rf):
