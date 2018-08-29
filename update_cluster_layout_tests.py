@@ -910,10 +910,16 @@ class TestUpdateClusterLayout(Tester):
 
         self.wait_for_nodes_status(node3, ['UN', 'UN', 'UN'])
 
-    def verify_nodes_status(self, node, exp_statuses, keyspace=""):
+    def verify_nodes_status(self, node, exp_statuses_list, keyspace=""):
+        if exp_statuses_list and not isinstance(exp_statuses_list[0], list):
+            exp_statuses_list = [exp_statuses_list]
         status = self.nodetool_status(node, keyspace)
         statuses = [s['status'] for s in status['nodes']]
-        self.assertEqual(exp_statuses, statuses, "found statuses: %s" % statuses)
+        find_expected_status = False
+        for exp_statuses in exp_statuses_list:
+            if exp_statuses == statuses:
+                find_expected_status = True
+        self.assertEqual(find_expected_status, True, "found statuses: %s" % statuses)
 
     def wait_for_nodes_status(self, node, exp_statuses, keyspace="", timeout=30):
         timeout = time.time() + timeout
