@@ -211,7 +211,7 @@ class TestMaterializedViews(Tester):
                                    'kwargs': {'delay': delay}})
         managed_thread(proc_functions)
 
-        self._validate_cs_results(node1, exclude_errors, node_action, double_failure, by_node=False)
+        self.eventually(lambda: self._validate_cs_results(node1, exclude_errors, node_action, double_failure, by_node=False))
 
     def multidc_dc_failure_during_mv_insert_test(self):
         """ Test stopping all DC nodes during MV inserts
@@ -231,7 +231,7 @@ class TestMaterializedViews(Tester):
         managed_thread(proc_functions)
 
         self.allow_log_errors = True
-        self._validate_cs_results(node1_dc1, exclude_errors=['mutation_write_timeout_exception'], node_action='', double_failure=True)
+        self.eventually(lambda: self._validate_cs_results(node1_dc1, exclude_errors=['mutation_write_timeout_exception'], node_action='', double_failure=True))
 
     def _node_action_with_delay(self, action, node, delay=0, wait=True, wait_other_notice=True, gently=True):
         """
