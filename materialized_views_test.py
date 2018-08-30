@@ -3045,7 +3045,7 @@ class TestMaterializedViews(Tester):
                 session, "SELECT a, b, c, d FROM mv",
                 [[1, 0, 1, 0], [1, 1, 1, 0]],
                 ignore_order=True,
-                cl=ConsistencyLevel.QUORUM, attempts=20
+                cl=ConsistencyLevel.QUORUM, num_attempts=20
             )
 
             # insert new row that does match the filter
@@ -3054,7 +3054,7 @@ class TestMaterializedViews(Tester):
                 session, "SELECT a, b, c, d FROM mv",
                 [[1, 0, 1, 0], [1, 1, 1, 0], [1, 2, 1, 0]],
                 ignore_order=True,
-                cl=ConsistencyLevel.QUORUM, attempts=20
+                cl=ConsistencyLevel.QUORUM, num_attempts=20
             )
 
             # update rows that does not match the filter
@@ -3064,7 +3064,7 @@ class TestMaterializedViews(Tester):
                 session, "SELECT a, b, c, d FROM mv",
                 [[1, 0, 1, 0], [1, 1, 1, 0], [1, 2, 1, 0]],
                 ignore_order=True,
-                cl=ConsistencyLevel.QUORUM, attempts=20
+                cl=ConsistencyLevel.QUORUM, num_attempts=20
             )
 
             # update a row that does match the filter
@@ -3073,7 +3073,7 @@ class TestMaterializedViews(Tester):
                 session, "SELECT a, b, c, d FROM mv",
                 [[1, 0, 1, 0], [1, 1, 1, 2], [1, 2, 1, 0]],
                 ignore_order=True,
-                cl=ConsistencyLevel.QUORUM, attempts=20
+                cl=ConsistencyLevel.QUORUM, num_attempts=20
             )
 
             # delete rows that does not match the filter
@@ -3084,7 +3084,7 @@ class TestMaterializedViews(Tester):
                 session, "SELECT a, b, c, d FROM mv",
                 [[1, 0, 1, 0], [1, 1, 1, 2], [1, 2, 1, 0]],
                 ignore_order=True,
-                cl=ConsistencyLevel.QUORUM, attempts=20
+                cl=ConsistencyLevel.QUORUM, num_attempts=20
             )
 
             # delete a row that does match the filter
@@ -3093,12 +3093,12 @@ class TestMaterializedViews(Tester):
                 session, "SELECT a, b, c, d FROM mv",
                 [[1, 0, 1, 0], [1, 2, 1, 0]],
                 ignore_order=True,
-                cl=ConsistencyLevel.QUORUM, attempts=20
+                cl=ConsistencyLevel.QUORUM, num_attempts=20
             )
 
             # delete a partition that matches the filter
             session.execute(delete_stmt2, (1,))
-            assert_all(session, "SELECT a, b, c, d FROM mv", [], cl=ConsistencyLevel.QUORUM, attempts=20)
+            assert_all(session, "SELECT a, b, c, d FROM mv", [], cl=ConsistencyLevel.QUORUM, num_attempts=20)
 
             # Cleanup
             session.execute("DROP MATERIALIZED VIEW mv")

@@ -938,8 +938,8 @@ class retrying(object):
     """
         Used as a decorator to retry function run that can possibly fail with allowed exceptions list
     """
-    def __init__(self, n=3, sleep_time=1, allowed_exceptions=(Exception,), message="", tear_down_on_failure=False):
-        self.n = n  # number of times to retry
+    def __init__(self, num_attempts=3, sleep_time=1, allowed_exceptions=(Exception,), message="", tear_down_on_failure=False):
+        self.num_attempts = num_attempts  # number of times to retry
         self.sleep_time = sleep_time  # number seconds to sleep between retries
         self.allowed_exceptions = allowed_exceptions  # if Exception is not allowed will raise
         self.message = message  # string that will be printed between retries
@@ -948,16 +948,17 @@ class retrying(object):
     def __call__(self, func):
         @wraps(func)
         def inner(*args, **kwargs):
-            for i in xrange(self.n):
+            num_attempts = kwargs.get('num_attempts', self.num_attempts)
+            for i in xrange(num_attempts):
                 try:
                     if self.message:
-                        LOG.info("%s [try #%s]" % (self.message, i))
+                        debug("%s [try #%s]" % (self.message, i))
                     return func(*args, **kwargs)
                 except self.allowed_exceptions as e:
-                    LOG.debug("retrying: %r" % e)
+                    debug("retrying: %r" % e)
                     time.sleep(self.sleep_time)
-                    if i == self.n - 1:
-                        LOG.error("Number of retries exceeded!")
+                    if i == num_attempts - 1:
+                        debug("Number of retries exceeded!")
                         raise
                     if self.tear_down_on_failure:
                         args[0].allow_log_errors = True
@@ -966,9 +967,9 @@ class retrying(object):
 
         return inner
 
-
-flaky = retrying(n=5, sleep_time=3, message="Flaky test")
-flaky_with_tear_down = retrying(n=5, sleep_time=3, message="Flaky test", tear_down_on_failure=True)
+retry_with_func_attempts = retrying(num_attempts=None, sleep_time=10) # Ignore decorator's num_attempts. Take num_attempts from function arguments
+flaky = retrying(num_attempts=5, sleep_time=3, message="Flaky test")
+flaky_with_tear_down = retrying(num_attempts=5, sleep_time=3, message="Flaky test", tear_down_on_failure=True)
 
 
 class run_with_params(object):

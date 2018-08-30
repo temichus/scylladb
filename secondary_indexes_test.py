@@ -8,7 +8,7 @@ from unittest import skip
 from dtest import Tester, debug, flaky_with_tear_down
 from tools import since, require, rows_to_list, new_node
 from assertions import assert_all, assert_invalid, assert_one, assert_row_count, assert_none, assert_expected_error, \
-                        assert_row_count_from_every_node
+                        assert_row_count_from_every_node, assert_row_count_in_select
 from scylla_tools import index_is_built, get_index_view_name, view_built_status_query, check_errors, \
                          wait_for_view_build_start, remove_node, check_errors_all_nodes
 
@@ -142,15 +142,15 @@ class TestSecondaryIndexes(Tester):
         self.cluster.flush()
 
         assert_all(session, "SELECT count(*) FROM {0}.{1} WHERE {2}='1'".format(ks_name, table_name, index['index_column']),
-                   expected=[[3]], cl=ConsistencyLevel.QUORUM)
+                   expected=[[3]], cl=ConsistencyLevel.QUORUM, num_attempts=20)
         assert_all(session, "SELECT count(*) FROM {0}.{1} WHERE {2}='1' LIMIT 100".format(ks_name, table_name, index['index_column']),
-                   expected=[[3]], cl=ConsistencyLevel.QUORUM)
+                   expected=[[3]], cl=ConsistencyLevel.QUORUM, num_attempts=20)
         assert_all(session, "SELECT count(*) FROM {0}.{1} WHERE {2}='1' LIMIT 3".format(ks_name, table_name, index['index_column']),
-                   expected=[[3]], cl=ConsistencyLevel.QUORUM)
+                   expected=[[3]], cl=ConsistencyLevel.QUORUM, num_attempts=20)
 
         for limit in (1, 2):
-            assert_all(session, "select count(*) from {0}.{1} WHERE {2}='1' LIMIT {3}".format(ks_name, table_name, index['index_column'], limit),
-                       expected=[[limit]], cl=ConsistencyLevel.QUORUM)
+            assert_row_count_in_select(session, query="select * from {0}.{1} WHERE {2}='1' LIMIT {3}".format(ks_name, table_name, index['index_column'], limit),
+                                       num_rows_expected=limit, consistency_level=ConsistencyLevel.QUORUM, num_attempts=20)
 
     def test_insert_data_after_recreating_ks(self):
         """
