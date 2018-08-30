@@ -142,15 +142,15 @@ class TestSecondaryIndexes(Tester):
         self.cluster.flush()
 
         assert_all(session, "SELECT count(*) FROM {0}.{1} WHERE {2}='1'".format(ks_name, table_name, index['index_column']),
-                   expected=[[3]], cl=ConsistencyLevel.QUORUM, attempts=20)
+                   expected=[[3]], cl=ConsistencyLevel.QUORUM, num_attempts=20)
         assert_all(session, "SELECT count(*) FROM {0}.{1} WHERE {2}='1' LIMIT 100".format(ks_name, table_name, index['index_column']),
-                   expected=[[3]], cl=ConsistencyLevel.QUORUM, attempts=20)
+                   expected=[[3]], cl=ConsistencyLevel.QUORUM, num_attempts=20)
         assert_all(session, "SELECT count(*) FROM {0}.{1} WHERE {2}='1' LIMIT 3".format(ks_name, table_name, index['index_column']),
-                   expected=[[3]], cl=ConsistencyLevel.QUORUM, attempts=20)
+                   expected=[[3]], cl=ConsistencyLevel.QUORUM, num_attempts=20)
 
         for limit in (1, 2):
             assert_row_count_in_select(session, query="select * from {0}.{1} WHERE {2}='1' LIMIT {3}".format(ks_name, table_name, index['index_column'], limit),
-                                       expected=limit, consistency_level=ConsistencyLevel.QUORUM, attempt=20)
+                                       num_rows_expected=limit, consistency_level=ConsistencyLevel.QUORUM, num_attempts=20)
 
     def test_insert_data_after_recreating_ks(self):
         """

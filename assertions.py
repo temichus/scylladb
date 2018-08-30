@@ -3,6 +3,7 @@ from cassandra import InvalidRequest, Unavailable, ConsistencyLevel, WriteFailur
 from cassandra.query import SimpleStatement
 from tools import rows_to_list, run_query_with_data_processing
 import time
+from dtest import retry_with_func_attempts
 
 def assert_unavailable(fun, *args):
     try:
@@ -44,11 +45,11 @@ def assert_none(session, query, cl=ConsistencyLevel.ONE):
     assert list_res == [], "Expected nothing from %s, but got %s" % (query, list_res)
 
 
-def assert_all(session, query, expected, cl=ConsistencyLevel.ONE, ignore_order=False, attempts=1):
+def assert_all(session, query, expected, cl=ConsistencyLevel.ONE, ignore_order=False, num_attempts=1):
     # Parameter attempts is added because of materialized views insertions performs asynchronously.
     # We sleep in proportion to the attempt, but always retry until it succeeds or we exceed the maximum number of attempts.
     simple_query = SimpleStatement(query, consistency_level=cl)
-    for _ in xrange(attempts):
+    for _ in xrange(num_attempts):
         res = session.execute(simple_query)
         list_res = rows_to_list(res)
         if ignore_order:
@@ -87,20 +88,17 @@ def assert_row_count(session, table_name, expected, consistency_level=Consistenc
     assert count == expected, "Expected a row count of {} in table '{}', but got {}".format(
             expected, table_name, count)
 
-def assert_row_count_in_select(session, query, expected, consistency_level=ConsistencyLevel.ONE, attempt=1):
-    """ Function to validate the row count are returned by select """
-
-    count = None
+@retry_with_func_attempts
+def assert_row_count_in_select(session, query, num_rows_expected, consistency_level=ConsistencyLevel.ONE, num_attempts=1):
+    """
+    Function to validate the row count are returned by select
+    :param num_attempts: defines how many time try to assert data in case failure. Used in asserts_retry decorator
+    """
     simple_query = SimpleStatement(query, consistency_level=consistency_level)
-    for _ in xrange(attempt):
-        res = session.execute(simple_query)
-        count = len(rows_to_list(res))
-        if count == expected:
-            break
-        time.sleep(10)
-
-    assert count == expected, "Expected a row count of {} in query \"{}\", but got {}".format(
-            expected, query, count)
+    res = session.execute(simple_query)
+    count = len(rows_to_list(res))
+    assert count == num_rows_expected, "Expected a row count of {} in query \"{}\", but got {}".format(
+            num_rows_expected, query, count)
 
 def assert_row_count_from_every_node(session, table_name, expected, nodes_list, attempt=1):
     """ Function to validate the row count expected in table_name running from every node"""
