@@ -37,7 +37,7 @@ class TestMaterializedViews(Tester):
     @jira_ticket CASSANDRA-6477
     """
 
-    def eventually(self, fun, trials=10, sleep_time_s=1):
+    def eventually(self, fun, trials=30, sleep_time_s=1):
         """
         Runs a function until it succeeds or the trial limit is reached
         """
