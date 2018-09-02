@@ -307,11 +307,11 @@ class TestMaterializedViews(Tester):
             debug('Try to select rows count from mview.users table. Failed with error: {}'.format(e.message))
             raise
 
-        assert_row_count(session, 'users_by_first_name', exp_res, consistency_level=cl, attempt=20)
-        assert_row_count(session, 'users_by_last_name', exp_res, consistency_level=cl, attempt=20)
+        assert_row_count(session, 'users_by_first_name', exp_res, consistency_level=cl, num_attempts=20)
+        assert_row_count(session, 'users_by_last_name', exp_res, consistency_level=cl, num_attempts=20)
         if by_node:
-            assert_row_count_from_every_node(session, 'users_by_first_name', exp_res, nodes_list=self.cluster.nodelist(), attempt=20)
-            assert_row_count_from_every_node(session, 'users_by_last_name', exp_res, nodes_list=self.cluster.nodelist(), attempt=20)
+            assert_row_count_from_every_node(session, 'users_by_first_name', exp_res, nodes_list=self.cluster.nodelist(), num_attempts=20)
+            assert_row_count_from_every_node(session, 'users_by_last_name', exp_res, nodes_list=self.cluster.nodelist(), num_attempts=20)
 
         assert True
 

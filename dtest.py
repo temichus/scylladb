@@ -17,6 +17,7 @@ import types
 import itertools
 import requests
 import datetime
+import inspect
 from unittest import TestCase
 
 import psutil
@@ -948,7 +949,15 @@ class retrying(object):
     def __call__(self, func):
         @wraps(func)
         def inner(*args, **kwargs):
-            num_attempts = kwargs.get('num_attempts', self.num_attempts)
+            func_args = inspect.getargspec(func)
+            num_attempts = self.num_attempts
+            if 'num_attempts' in func_args.args:
+                num_attempts = kwargs.get('num_attempts')
+                if not num_attempts:
+                    default_args = func_args.args[-len(func_args.defaults):]
+                    num_attempts_position = default_args.index('num_attempts')
+                    num_attempts = func_args.defaults[num_attempts_position]
+
             for i in xrange(num_attempts):
                 try:
                     if self.message:
@@ -967,7 +976,7 @@ class retrying(object):
 
         return inner
 
-retry_with_func_attempts = retrying(num_attempts=None, sleep_time=10) # Ignore decorator's num_attempts. Take num_attempts from function arguments
+retry_with_func_attempts = retrying(num_attempts=1, sleep_time=10) # Ignore decorator's num_attempts. Take num_attempts from function arguments
 flaky = retrying(num_attempts=5, sleep_time=3, message="Flaky test")
 flaky_with_tear_down = retrying(num_attempts=5, sleep_time=3, message="Flaky test", tear_down_on_failure=True)
 
