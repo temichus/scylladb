@@ -526,21 +526,21 @@ class TestUpdateClusterLayout(Tester):
         t.setDaemon(True)
 
         debug("Start Node")
-        a_new_node.start()
+        a_new_node.start(jvm_args=['--logger-log-level','stream_session=debug'])
         a_new_node.watch_log_for("JOINING: Starting to bootstrap")
         time.sleep(1)
         t.start()
         time.sleep(1)
-        a_new_node.watch_log_for("Executing streaming plan")
-        self.wait_for_nodes_status(node1, ['UN', 'UJ', 'UN'])
+        a_new_node.watch_log_for("Beginning stream session")
+        self.wait_for_nodes_status(node1, [['UN', 'UJ', 'UN'], ['UN', 'UN', 'UN']])
         debug("Stop Node")
         a_new_node.stop(gently=False)
         event.wait()
         self.assertTrue(failed is None, failed)
 
-        # Sleep 1 second to make sure other nodes knows this node is joining through gossip
-        time.sleep(1)
+        self.wait_for_nodes_status(node1, [['UN', 'UN'], ['UN', 'DN', 'UN']])
 
+        debug("Query Again")
         session.execute("SELECT * FROM cf")
 
     def _simple_add_new_node_while_adding_info(self, rf):
@@ -910,10 +910,16 @@ class TestUpdateClusterLayout(Tester):
 
         self.wait_for_nodes_status(node3, ['UN', 'UN', 'UN'])
 
-    def verify_nodes_status(self, node, exp_statuses, keyspace=""):
+    def verify_nodes_status(self, node, exp_statuses_list, keyspace=""):
+        if exp_statuses_list and not isinstance(exp_statuses_list[0], list):
+            exp_statuses_list = [exp_statuses_list]
         status = self.nodetool_status(node, keyspace)
         statuses = [s['status'] for s in status['nodes']]
-        self.assertEqual(exp_statuses, statuses, "found statuses: %s" % statuses)
+        find_expected_status = False
+        for exp_statuses in exp_statuses_list:
+            if exp_statuses == statuses:
+                find_expected_status = True
+        self.assertEqual(find_expected_status, True, "found statuses: %s" % statuses)
 
     def wait_for_nodes_status(self, node, exp_statuses, keyspace="", timeout=30):
         timeout = time.time() + timeout
