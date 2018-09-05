@@ -117,15 +117,14 @@ def assert_row_count_from_every_node(session, table_name, expected, nodes_list, 
         try:
             count = res[0].split('\n')[3].lstrip()
             count = int(count)
+            if count != expected:
+                failed_nodes.append('Node: {0}, actual count: {1}'.format(node.name, count))
         except TypeError:
-            failed_nodes.append('Query "{2}" run failed. Node: {0}, error message: {1}'.format
-                                (node.name, count, query))
+            failed_nodes.append('Query "{2}" run failed. Node: {0}, query result: {3}. Error message: {1}'.format
+                                (node.name, count, query, res))
         except Exception as e:
-            failed_nodes.append('Query "{2}" run failed. Node: {0}, error message: {1}'.format
-                                (node.name, e.message, query))
-
-        if count != expected:
-            failed_nodes.append('Node: {0}, actual count: {1}'.format(node.name, count))
+            failed_nodes.append('Query "{2}" run failed. Node: {0}, query result: {3}. Error message: {1}'.format
+                                (node.name, e.message, query, res))
 
     if failed_nodes:
         assert not failed_nodes, 'Expected a row count of {0} in table "{1}", but got:\n {2}'.format \
