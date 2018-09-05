@@ -94,6 +94,6 @@ class TestSSTableLoader(MigrationTestBase):
 
 versions = ['2_1_x', '2_2_x', '3_0_x']
 for version in versions:
-    for prepared in ['-x', '']:
-        cls_name = ('TestMigration_with_{0}{1}'.format(version, '_prepared' if prepared else ''))
-        vars()[cls_name] = type(cls_name, (TestSSTableLoader,), {'version': version, 'prepared': prepared, '__test__': True})
+    for prepared in ['-nx', '']:
+        cls_name = ('TestMigration_with_{0}{1}'.format(version, '' if prepared else '_prepared'))
+        vars()[cls_name] = type(cls_name, (TestSSTableLoader,), {'version': version, 'prepared':prepared, '__test__': True})
