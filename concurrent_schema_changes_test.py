@@ -344,6 +344,7 @@ class TestConcurrentSchemaChanges(Tester):
         wait(60)
         self._verify_lots_of_schema_actions(session)
 
+    @skip('/scylladb/scylla-dtest/issues/709')
     def create_lots_of_schema_churn_with_node_down_test(self):
         """
         create tables, indexes, alters across multiple threads concurrently with a node down
