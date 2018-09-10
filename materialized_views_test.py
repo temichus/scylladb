@@ -471,7 +471,7 @@ class TestMaterializedViews(Tester):
         time.sleep(180)
 
         # Validate count on every node
-        _assert_rows_count(records*2, by_node=True)
+        self.eventually(lambda: _assert_rows_count(records*2, by_node=True))
 
         # Validate data
         query_template = 'select {clmn} from {tbl}'
@@ -479,10 +479,10 @@ class TestMaterializedViews(Tester):
             exp_query = query_template.format(clmn=mv.mv_columns_list[-1], tbl=tm.table_name)
             act_query = query_template.format(clmn=mv.mv_columns_list[-1], tbl=mv_name)
             debug('Compare: {0} AND {1}'.format(exp_query, act_query))
-            assert_two_queries_equal(session, exp_query, session, act_query,
+            self.eventually(lambda: assert_two_queries_equal(session, exp_query, session, act_query,
                                      consistency_level=ConsistencyLevel.QUORUM, session_timeout=120,
                                      group=True, groupby_column1=mv.mv_columns_list[-1],
-                                     groupby_column2=mv.mv_columns_list[-1])
+                                     groupby_column2=mv.mv_columns_list[-1]))
 
     @skip('under investigation')
     def mv_on_index_column_test(self):
@@ -544,12 +544,12 @@ class TestMaterializedViews(Tester):
         for mv_name, mv in tm.materialized_views.iteritems():
             act_query = query.format(clmn=mv.mv_columns_list[0], tbl=mv.mv_name)
             exp_query = query.format(clmn=mv.mv_columns_list[0], tbl=tm.table_name)
-            assert_two_queries_equal(session, exp_query, session, act_query, consistency_level=ConsistencyLevel.QUORUM,
+            self.eventually(lambda: assert_two_queries_equal(session, exp_query, session, act_query, consistency_level=ConsistencyLevel.QUORUM,
                                      session_timeout=120,
                                      group=True, groupby_column1=mv.mv_columns_list[0],
                                      groupby_column2=mv.mv_columns_list[0],
                                      restrict_column1=mv.mv_where_restriction.keys()[0],
-                                     restrict_value1=mv.mv_where_restriction[mv.mv_where_restriction.keys()[0]]['value'])
+                                     restrict_value1=mv.mv_where_restriction[mv.mv_where_restriction.keys()[0]]['value']))
 
     def mv_populating_from_existing_data_during_inserts_test(self):
         """ Create 10 materialized views in parallel with base table prefill """
@@ -678,11 +678,11 @@ class TestMaterializedViews(Tester):
         for mv_name, mv in tm.materialized_views.iteritems():
             self._assert_count_table_mv(session, tm.table_name, table_expected_rows, mv_name, mv_expected_rows, cl=consistency_level)
 
-            assert_two_queries_equal(session, query.format(tm.table_name),
+            self.eventually(lambda: assert_two_queries_equal(session, query.format(tm.table_name),
                                      session, query.format(mv_name), consistency_level=consistency_level,
                                      session_timeout=120, group=True,
                                      groupby_column1=mv.mv_columns_list[grouby_column_index],
-                                     groupby_column2=mv.mv_columns_list[grouby_column_index])
+                                     groupby_column2=mv.mv_columns_list[grouby_column_index]))
 
     def concurrent_updates_deletes_test(self):
         prefill = 2
@@ -710,12 +710,12 @@ class TestMaterializedViews(Tester):
         self.cluster.flush()
 
         mv_name, mv = next(tm.materialized_views.iteritems())
-        assert_two_queries_equal(session, 'select * from {}'.format(tm.table_name),
+        self.eventually(lambda: assert_two_queries_equal(session, 'select * from {}'.format(tm.table_name),
                                  session, 'select * from {}'.format(mv_name),
                                  consistency_level=ConsistencyLevel.QUORUM,
                                  session_timeout=120, group=True,
                                  groupby_column1=mv.mv_columns_list[-1],
-                                 groupby_column2=mv.mv_columns_list[-1])
+                                 groupby_column2=mv.mv_columns_list[-1]))
 
     def multi_mvs_on_different_base_tables_test(self):
         """ Few keyspaces and every keyspace has a few tables and every table has a few MVs.
@@ -1991,8 +1991,8 @@ class TestMaterializedViews(Tester):
         wait_for_view(cluster=self.cluster, session=session, ks='ks', view="t_by_v2")
 
         debug("Verify all data")
-        assert_row_count(session, 't_by_v', rows, consistency_level=ConsistencyLevel.ALL)
-        assert_row_count(session, 't_by_v2', rows, consistency_level=ConsistencyLevel.ALL)
+        self.eventually(lambda: assert_row_count(session, 't_by_v', rows, consistency_level=ConsistencyLevel.ALL))
+        self.eventually(lambda: assert_row_count(session, 't_by_v2', rows, consistency_level=ConsistencyLevel.ALL))
 
     @skip("Takes too long, because there's no good way to interrupt "
           "the build process aside from creating lots of rows. Depends on #3295")
