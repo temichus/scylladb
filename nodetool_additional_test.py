@@ -1549,7 +1549,10 @@ class TestNodetool(Tester):
             cmd += ["-pop", pop]
         if opt:
             cmd += opt
-        return node.stress_object(cmd)
+        ret = node.stress_object(cmd)
+        if type(ret) == type(str()):
+            raise Exception('Error running cassandra-stress: {}'.format(ret))
+        return ret
 
     def stress_write(self, node, times=10000, duration=None, col=None, pop=None, opt=None):
         if opt is None:
