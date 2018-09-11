@@ -230,7 +230,7 @@ class TestUpdateClusterLayout(Tester):
                                     binary_interface=(cluster.get_node_ip(i), 9042))
 
         node2.start()
-        node2.watch_log_for(".*")
+        node2.watch_log_for("JOINING: sleeping .* ms for pending range setup")
         try:
             node3.start(wait_other_notice=True, wait_for_binary_proto=True)
             # lets check that it detected there was another bootstrapping in progress
