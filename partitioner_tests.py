@@ -5,6 +5,7 @@ from dtest import Tester, debug
 
 
 class TestPartitioner(Tester):
+    _multiprocess_can_split_ = False
 
     def run_cluster(self, partitioner_name, data_dir, deprecated=False):
         cluster = self.cluster
