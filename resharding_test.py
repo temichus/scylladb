@@ -128,7 +128,6 @@ class ReshardingTest(Tester):
         res = self.node.stress_object(stress_cmd)
         self.assertIsInstance(res, dict, 'failed to run stress test')
         self.assertEquals(res['Total errors'], 0)
-        self.assertGreaterEqual(res['Total partitions'], op_cnt)
 
     def _check_logs_for_errors(self):
         debug('Verify there are no errors in the logs')
@@ -162,7 +161,7 @@ class ReshardingTest(Tester):
         # Verify data files number after resharding and compaction
         self._verify_number_of_data_files(data_files_num_before=data_files_num_before, reshard_to=reshard_to)
 
-        stress_cmd = ['read', 'n={}'.format(op_cnt), 'no-warmup', '-rate', 'threads=16']
+        stress_cmd = ['read', 'n={}'.format(op_cnt), 'no-warmup', '-rate', 'threads=16', '-errors ignore']
         self._verify_data(op_cnt, stress_cmd)
         self._verify_row_number('standard1', op_cnt)
 
