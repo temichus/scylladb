@@ -51,6 +51,7 @@ cqlsh_tests/cqlsh_tests.py
 cqlsh_tests/cqlsh_copy_tests.py
 heat_weighted_load_balancing.py
 internode_ssl_test.py
+json_test.py
 largecolumn_test.py
 limits_test.py
 migration_test.py

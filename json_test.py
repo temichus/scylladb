@@ -1302,7 +1302,6 @@ class JsonFullRowInsertSelect(Tester):
     """
     Tests for creating full rows from json documents, selecting full rows back as json documents, and related functionality.
     """
-    @require('#3666')
     def simple_schema_test(self):
         """
         Create schema:
