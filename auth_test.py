@@ -1656,9 +1656,13 @@ class TestAuth(Tester):
         # remove authenticator/authorizer from second node
         data_dir = os.path.join(node.get_path(), 'conf/scylla.yaml')
         cmd = 'sed -i.bak /authorizer/d %s' % data_dir
-        subprocess.Popen(cmd.split(), stdout=subprocess.PIPE)
+        p1 = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE)
         cmd = 'sed -i.bak /authenticator/d %s' % data_dir
-        subprocess.Popen(cmd.split(), stdout=subprocess.PIPE)
+        p2 = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE)
+        out, err = p1.communicate()
+        assert p1.returncode == 0, err
+        out, err = p2.communicate(), err
+        assert p2.returncode == 0
 
         node.start(wait_for_binary_proto=True)
         time.sleep(10)
