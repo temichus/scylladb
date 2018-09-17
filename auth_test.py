@@ -1657,12 +1657,13 @@ class TestAuth(Tester):
         data_dir = os.path.join(node.get_path(), 'conf/scylla.yaml')
         cmd = 'sed -i.bak /authorizer/d %s' % data_dir
         p1 = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE)
-        cmd = 'sed -i.bak /authenticator/d %s' % data_dir
-        p2 = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE)
         out, err = p1.communicate()
         assert p1.returncode == 0, err
-        out, err = p2.communicate(), err
-        assert p2.returncode == 0
+
+        cmd = 'sed -i.bak /authenticator/d %s' % data_dir
+        p2 = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE)
+        out, err = p2.communicate()
+        assert p2.returncode == 0, err
 
         node.start(wait_for_binary_proto=True)
         time.sleep(10)
