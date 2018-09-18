@@ -38,12 +38,12 @@ class TestHintedHandoff(Tester):
         debug("Populating the data...")
         op_cnt = 1000000
         stress_cmd = ['write', 'n={}'.format(op_cnt), 'no-warmup', 'cl=QUORUM', '-rate', 'threads=300', '-schema', 'replication(factor=3)']
-        resp = node1.stress_object(stress_cmd)
+        resp = node1.stress_object(stress_cmd, ignore_errors = True)
 
-        if not resp or 'Total partitions:write' not in resp:
+        if not resp or 'total partitions:write' not in resp:
             raise Exception('Error running stress test: {}'.format(resp))
 
-        assert resp['Total partitions:write'] == op_cnt
+        assert resp['total partitions:write'] == op_cnt
 
         debug("Check SMP=3")
         self.__stop_all([node1, node2])
@@ -73,11 +73,11 @@ class TestHintedHandoff(Tester):
         self.__stop_all([node2, node1])
         debug("Reading data")
         stress_cmd = ['read', 'n={}'.format(op_cnt), 'no-warmup', 'cl=ONE', '-rate', 'threads=300', '-schema', 'replication(factor=3)']
-        resp = node3.stress_object(stress_cmd)
-        if not resp or 'Total partitions:read' not in resp:
+        resp = node3.stress_object(stress_cmd, ignore_errors = True)
+        if not resp or 'total partitions:read' not in resp:
             raise Exception('Error running stress test: {}'.format(resp))
 
-        assert resp['Total partitions:read'] == op_cnt
+        assert resp['total partitions:read'] == op_cnt
 
     def hintedhandoff_removenode_test(self):
         """
