@@ -113,8 +113,8 @@ class ReshardingTest(Tester):
     def _run_stress(self, op_cnt, stress_cmd):
         res = self.node.stress_object(stress_cmd)
         self.assertIsInstance(res, dict, 'failed to run stress test')
-        self.assertEquals(res['Total errors'], 0)
-        self.assertGreaterEqual(res['Total partitions'], op_cnt)
+        self.assertEquals(res['total errors'], 0)
+        self.assertGreaterEqual(res['total partitions'], op_cnt)
 
     def _verify_row_number(self, cf, expected_row_num, keyspace='keyspace1'):
         session = self.patient_cql_connection(self.node)
@@ -127,7 +127,7 @@ class ReshardingTest(Tester):
         debug('Read data')
         res = self.node.stress_object(stress_cmd)
         self.assertIsInstance(res, dict, 'failed to run stress test')
-        self.assertEquals(res['Total errors'], 0)
+        self.assertEquals(res['total errors'], 0)
 
     def _check_logs_for_errors(self):
         debug('Verify there are no errors in the logs')
