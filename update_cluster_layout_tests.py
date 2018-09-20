@@ -1500,12 +1500,11 @@ class TestUpdateClusterLayout(Tester):
         self.create_ks(session, 'ks', 3)
         self.create_cf(session, 'cf', validation="CounterColumnType", columns={'c': 'counter'})
 
-        sessions = [self.patient_cql_connection(node, 'ks') for node in nodes]
-        nb_increment = 1000
+        nb_increment = 500
         nb_counter = 2
 
         class ThreadedQuery(threading.Thread):
-            nb_increment = 1000
+            nb_increment = 500
             nb_counter = 2
 
             def __init__(self, connection, decrement, *args, **kwargs):
@@ -1530,7 +1529,8 @@ class TestUpdateClusterLayout(Tester):
                             else:
                                 self._return[c] += 1
                             time.sleep(0.01)
-                        except Exception:
+                        except Exception as e:
+                            assert False, str(e)
                             time.sleep(1)
 
             def join(self, *args, **kwargs):
@@ -1539,33 +1539,46 @@ class TestUpdateClusterLayout(Tester):
 
         result = dict.fromkeys([i for i in xrange(nb_counter)], 0)
 
-        threads = []
         num_threads = 120
+
+        # stop and restart one node for a while
+        nodes[2].stop()
+
+        threads = []
         for x in range(num_threads):
-            conn = sessions[x % len(nodes)]
+            conn = self.patient_cql_connection(nodes[x % (len(nodes) - 1)], 'ks')
             decrement = (x % len(nodes)) == 0
             threads.append(ThreadedQuery(conn, decrement))
+            threads[-1].start()
 
-        for t in threads:
-            t.start()
-        # stop and restart one node for a while
-        nodes[1].stop()
-        time.sleep(10)
-        nodes[1].start()
-        time.sleep(10)
-        # stop and restart another 2 nodes for a while
-        nodes[0].stop()
-        nodes[2].stop()
         for t in threads:
             t_result = t.join()
             result = {k: result.get(k, 0) + t_result.get(k, 0) for k in set(result)}
-        nodes[0].start()
-        nodes[2].start()
-        time.sleep(10)
+
+        nodes[2].start(wait_other_notice=True, wait_for_binary_proto=True)
+
+        nodes[0].stop()
+        nodes[1].stop()
+
+        threads = []
+        for x in range(num_threads):
+            conn = self.patient_cql_connection(nodes[2], 'ks')
+            decrement = (x % len(nodes)) == 0
+            threads.append(ThreadedQuery(conn, decrement))
+            threads[-1].start()
+
+        for t in threads:
+            t_result = t.join()
+            result = {k: result.get(k, 0) + t_result.get(k, 0) for k in set(result)}
+
+        nodes[0].start(wait_other_notice=True, wait_for_binary_proto=True)
+        nodes[1].start(wait_other_notice=True, wait_for_binary_proto=True)
+
+        sessions = [self.patient_cql_connection(node, 'ks') for node in nodes]
 
         keys = ",".join(["'counter%i'" % c for c in xrange(0, nb_counter)])
         query = SimpleStatement("SELECT key, c FROM cf WHERE key IN (%s)" % keys,
-                                consistency_level=ConsistencyLevel.QUORUM)
+                                consistency_level=ConsistencyLevel.ALL)
         res = list(sessions[0].execute(query))
         assert res == list(sessions[1].execute(query)),\
             "different counter values in node0 and node1"
@@ -1573,10 +1586,8 @@ class TestUpdateClusterLayout(Tester):
             "different counter values in node0 and node2"
 
         for c in xrange(0, nb_counter):
-            # if there is no failure when we updated counters we check their actual values
-            if result[c] == nb_increment * num_threads / 3:
-                assert result[c] == res[c][1], "Expecting counter%i = %i, got %i" % (
-                    c, result[c], res[c][1])
+            assert result[c] == res[c][1], "Expecting counter%i = %i, got %i" % (
+                c, result[c], res[c][1])
 
 
 class TestLargeScaleCluster(Tester):
