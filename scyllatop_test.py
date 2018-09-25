@@ -25,6 +25,7 @@ class TestScyllaTop(Tester):
         assert p.returncode == 0, err
         debug(out)
         debug('Length of output is %s' % len(out.split()))
+        assert len(out) > 0, 'Output should not be empty'
 
     def batch_mode_start(self, wait=True, n=1):
         """
@@ -38,6 +39,7 @@ class TestScyllaTop(Tester):
         assert p.returncode == 0, err
         debug(out)
         debug('Length of output is %s' % len(out.split()))
+        assert len(out) > 0, 'Output should not be empty'
 
     def help_test(self):
         """
@@ -51,6 +53,7 @@ class TestScyllaTop(Tester):
         out, err = p.communicate()
         assert p.returncode == 0, err
         debug(out)
+        assert len(out) > 0, 'Output should not be empty'
 
     def default_start_test(self):
         """
