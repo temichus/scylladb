@@ -1,5 +1,6 @@
 # coding: utf-8
 
+from nose.tools import assert_equal
 from dtest import debug
 from dtest import canReuseCluster
 from tools import require
@@ -189,11 +190,8 @@ class CQLCastTest(CqlshPrepare):
             for from_type in data_dict[fromt]:
                 debug('\n\n\n============================ CAST FROM {} ======================================'.format(from_type))
                 udt_column_name = '{0}.{1}'.format(column_name, self.COLUMN_NAME_TEMPLATE.format(from_type))
-                success, fail = self._test_one_type(from_type, data_dict[fromt], exclude, udt_column_name, table_name, success, fail,
+                self._test_one_type(from_type, data_dict[fromt], exclude, udt_column_name, table_name, success, fail,
                                     test_types=test_types, test_to=test_to, compare_error=compare_error)
-        if success > 0 or fail > 0:
-            debug('\nSucceded test cases: {0}. Failed test cases: {1}'.format(success, fail))
-            self.assertEqual(fail, 0)
 
     def _test_run(self, test_from,  data_dict, test_to=None, test_types=None, exclude=True, compare_error=False):
         """
@@ -222,11 +220,8 @@ class CQLCastTest(CqlshPrepare):
                 if not self._create_table_for_cast(table_name, from_type, column_name, data_dict[from_type]):
                     debug('FAILURE: table {0} was not created. See error above'.format(table_name))
                     continue
-                success, fail = self._test_one_type(from_type, data_dict, exclude, column_name, table_name, success, fail,
+                self._test_one_type(from_type, data_dict, exclude, column_name, table_name, success, fail,
                                     test_types=test_types, test_to=test_to, compare_error=compare_error)
-        if success > 0 or fail > 0:
-            debug('\nSucceded test cases: {0}. Failed test cases: {1}'.format(success, fail))
-            self.assertEqual(fail, 0)
 
     def _prepare_udf_table(self, data_dict, fromt, type_name, table_name, column_name):
         self.assertFalse(not self._create_type(data_dict[fromt], type_name),
@@ -271,15 +266,7 @@ class CQLCastTest(CqlshPrepare):
 
                             actual_result = actual_result.split('\n')[3].strip() \
                                     if not compare_error and actual_result else err if compare_error else ''
-                            expected_result = str(exp_result)
-                            if actual_result == expected_result:
-                                success += 1
-                            else:
-                                fail += 1
-                                debug('\nFAILURE: Test {2} from {3} to {4} case failed. Expected result: {0}. Actual result: {1}{5}'
-                                    .format(expected_result, actual_result, self.TESTS[test][1], from_type, to_type,
-                                            '. Error: {}'.format(err) if not compare_error and err else ''))
-        return (success, fail)
+                            assert_equal(actual_result, str(exp_result), "casting from type %s to type %s" % (from_type, to_type))
 
     def is_commented(self, exclude, ttype):
         return True if not exclude and ttype.startswith('#') else False
