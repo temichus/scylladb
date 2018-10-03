@@ -2,9 +2,9 @@
 
 from dtest import Tester
 from unittest import skip
-from tools import debug
+from tools import debug, rows_to_list
 from cassandra import ConsistencyLevel
-
+from cassandra.query import SimpleStatement
 
 class SchemaManagementTest(Tester):
 
@@ -192,3 +192,65 @@ class SchemaManagementTest(Tester):
         6. Verify the stopped node synchs on the updated schema
         """
         fail
+
+
+    def test_reads_schema_recreated_while_node_down(self):
+        self.cluster.set_configuration_options(values={ 'ring_delay_ms': 1000 })
+        self.cluster.populate(2)
+        self.cluster.start(wait_other_notice=True)
+
+        [node1, node2] = self.cluster.nodelist()
+
+        session = self.patient_cql_connection(node1)
+
+        debug('Creating schema')
+        self.create_ks(session, 'ks', 2)
+        session.execute("CREATE TABLE cf (p int PRIMARY KEY, v text);")
+
+        debug('Populating')
+        session.execute(SimpleStatement("INSERT INTO cf (p, v) VALUES (1, '1')", consistency_level = ConsistencyLevel.ALL))
+
+        debug("Stopping node2")
+        node2.stop(gently=True)
+
+        debug("Re-creating schema")
+        session.execute("DROP TABLE cf;")
+        session.execute("CREATE TABLE cf (p int PRIMARY KEY, v1 bigint, v2 text);")
+
+        debug("Restarting node2")
+        node2.start(wait_for_binary_proto=True)
+
+        rows = session.execute(SimpleStatement("SELECT * FROM cf", consistency_level = ConsistencyLevel.ALL))
+        assert rows_to_list(rows) == [], "Expected an empty result set, got %s" % (rows)
+
+    def test_writes_schema_recreated_while_node_down(self):
+        self.cluster.set_configuration_options(values={ 'ring_delay_ms': 1000 })
+        self.cluster.populate(2)
+        self.cluster.start(wait_other_notice=True)
+
+        [node1, node2] = self.cluster.nodelist()
+
+        session = self.patient_cql_connection(node1)
+
+        debug('Creating schema')
+        self.create_ks(session, 'ks', 2)
+        session.execute("CREATE TABLE cf (p int PRIMARY KEY, v text);")
+
+        debug('Populating')
+        session.execute(SimpleStatement("INSERT INTO cf (p, v) VALUES (1, '1')", consistency_level = ConsistencyLevel.ALL))
+
+        debug("Stopping node2")
+        node2.stop(gently=True)
+
+        debug("Re-creating schema")
+        session.execute("DROP TABLE cf;")
+        session.execute("CREATE TABLE cf (p int PRIMARY KEY, v text);")
+
+        debug("Restarting node2")
+        node2.start(wait_for_binary_proto=True)
+
+        session.execute(SimpleStatement("INSERT INTO cf (p, v) VALUES (2, '2')", consistency_level = ConsistencyLevel.ALL))
+
+        rows = session.execute(SimpleStatement("SELECT * FROM cf", consistency_level = ConsistencyLevel.ALL))
+        expected = [[2, '2']]
+        assert rows_to_list(rows) == expected, "Expected %s, got %s" % (expected, rows_to_list(rows))
