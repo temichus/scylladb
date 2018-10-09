@@ -904,17 +904,17 @@ class TestCountersStress(Tester):
 
         debug('Run stress counter_write')
         resp = self.node.stress_object(['counter_write', 'n={}'.format(self._op_cnt), '-rate', 'threads=4'])
-        if not resp or 'Total partitions:write' not in resp:
+        if not resp or 'total partitions:write' not in resp:
             raise Exception('Error running stress test: {}'.format(resp))
-        self.assertGreaterEqual(resp['Total partitions:write'], self._op_cnt)
+        self.assertGreaterEqual(resp['total partitions:write'], self._op_cnt)
         rows = rows_to_list(session.execute('SELECT count(*) FROM keyspace1.counter1;'))
         self.assertEqual(rows[0][0], self._op_cnt)
 
         debug('Run stress counter_read')
         resp = self.node.stress_object(['counter_read', 'n={}'.format(self._op_cnt), '-rate', 'threads=4'])
-        if not resp or 'Total partitions:read' not in resp:
+        if not resp or 'total partitions:read' not in resp:
             raise Exception('Error running stress test: {}'.format(resp))
-        self.assertGreaterEqual(resp['Total partitions:read'], self._op_cnt)
+        self.assertGreaterEqual(resp['total partitions:read'], self._op_cnt)
 
     def counter_stress_user_profile_test(self):
         """
@@ -927,9 +927,9 @@ class TestCountersStress(Tester):
         debug('Run stress update counters with user profile')
         resp = self.node.stress_object(['user', 'profile={}'.format(profile_path),
                                         'ops(insert=1)', 'n={}'.format(self._op_cnt), '-rate', 'threads=4'])
-        if not resp or 'Total partitions' not in resp:
+        if not resp or 'total partitions' not in resp:
             raise Exception('Error running stress test: {}'.format(resp))
-        self.assertGreaterEqual(resp['Total partitions'], self._op_cnt)
+        self.assertGreaterEqual(resp['total partitions'], self._op_cnt)
         session = self.patient_cql_connection(self.node)
         rows = rows_to_list(session.execute('SELECT count(*) FROM ks.counter_cf;'))
         self.assertEqual(rows[0][0], self._op_cnt)
@@ -937,6 +937,6 @@ class TestCountersStress(Tester):
         debug('Run stress read counters with user profile')
         resp = self.node.stress_object(['user', 'profile={}'.format(profile_path), 'ops(read1=1)',
                                         'n={}'.format(self._op_cnt), '-rate', 'threads=4'])
-        if not resp or 'Total partitions' not in resp:
+        if not resp or 'total partitions' not in resp:
             raise Exception('Error running stress test: {}'.format(resp))
-        self.assertGreaterEqual(resp['Total partitions'], self._op_cnt)
+        self.assertGreaterEqual(resp['total partitions'], self._op_cnt)
