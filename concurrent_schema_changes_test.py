@@ -53,7 +53,7 @@ class TestConcurrentSchemaChanges(Tester):
                         % namespace)
 
         # create an index
-        # session.execute("CREATE INDEX index_%s ON cf_%s(col2)" % (namespace, namespace))
+        session.execute("CREATE INDEX index_%s ON cf_%s(col2)" % (namespace, namespace))
 
         # create a column family that can be deleted later.
         query = """
@@ -118,7 +118,7 @@ class TestConcurrentSchemaChanges(Tester):
         session.execute("CREATE INDEX index2_%s ON cf_%s(col3)" % (namespace, namespace))
 
         # remove an index
-        # session.execute("DROP INDEX index_%s" % namespace)
+        session.execute("DROP INDEX index_%s" % namespace)
 
     def validate_schema_consistent(self, node):
         """ Makes sure that there is only one schema """
