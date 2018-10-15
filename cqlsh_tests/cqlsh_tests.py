@@ -111,8 +111,8 @@ class TestCqlsh(Tester):
 
         output, err = self.run_cqlsh(node1, 'use simple; SELECT * FROM simpledate')
 
-        self.assertIn("2143-04-19 11:21:01+0000", output)
-        self.assertIn("1943-04-19 11:21:01+0000", output)
+        self.assertIn("2143-04-19 11:21:01.000000+0000", output)
+        self.assertIn("1943-04-19 11:21:01.000000+0000", output)
 
     def verify_glass(self, node):
         session = self.patient_cql_connection(node)
