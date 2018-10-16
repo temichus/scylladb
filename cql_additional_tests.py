@@ -2743,7 +2743,7 @@ class TestCQL(Tester):
         assert rows_to_list(res) == [], list(res)
 
     def allow_filtering_test(self):
-        session = self.prepare()
+        session = self.prepare(experimental=True)
 
         session.execute("""
             CREATE TABLE test (

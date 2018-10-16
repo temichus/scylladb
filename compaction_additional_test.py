@@ -30,6 +30,7 @@ class CompactionAdditionalTest(Tester):
         cluster = self.cluster
         cluster.populate(1)
         [node1] = cluster.nodelist()
+        node1.set_log_level("DEBUG")
         node1.start(wait_for_binary_proto=True, jvm_args=['--smp', '1'])
 
         session = self.patient_cql_connection(node1)
@@ -138,7 +139,10 @@ class CompactionAdditionalTest(Tester):
         debug("Starting a cluster of one node...")
         cluster = self.cluster
         if not cluster.nodelist():
-            cluster.populate(1).start(wait_for_binary_proto=True)
+            cluster.populate(1)
+            [node1] = cluster.nodelist()
+            node1.set_log_level("DEBUG")
+            node1.start(wait_for_binary_proto=True)
         nodes = cluster.nodelist()
         node1 = nodes[0]
 
@@ -198,9 +202,10 @@ class CompactionAdditionalTest(Tester):
 
         debug("Starting a cluster of one node...")
         cluster = self.cluster
-        cluster.populate(1).start(wait_for_binary_proto=True)
-        nodes = cluster.nodelist()
-        node1 = nodes[0]
+        cluster.populate(1)
+        [node1] = cluster.nodelist()
+        node1.set_log_level("DEBUG")
+        node1.start(wait_for_binary_proto=True)
 
         TIME_TO_SLEEP_BETWEEN_FILES = 15
         NUMBER_OF_FILES = 11
@@ -283,8 +288,10 @@ class CompactionAdditionalStrategyTests(Tester):
 
     def compaction_is_started_on_boot_test(self):
         cluster = self.cluster
-        cluster.populate(1).start()
+        cluster.populate(1)
         [node1] = cluster.nodelist()
+        node1.set_log_level("DEBUG")
+        node1.start(wait_for_binary_proto=True)
 
         session = self.patient_cql_connection(node1)
         self.create_ks(session, 'ks', 1)
@@ -341,9 +348,10 @@ class CompactionAdditionalStrategyTests(Tester):
         Please note that we do not test that ttl data exists - we have other tests for this
         """
         cluster = self.cluster
-        cluster.populate(1).start(wait_for_binary_proto=True)
-        nodes = cluster.nodelist()
-        node1 = nodes[0]
+        cluster.populate(1)
+        [node1] = cluster.nodelist()
+        node1.set_log_level("DEBUG")
+        node1.start(wait_for_binary_proto=True)
 
         session = self.patient_cql_connection(node1)
         self.create_ks(session, 'ks', 1)

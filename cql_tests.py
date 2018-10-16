@@ -16,7 +16,7 @@ from thrift_bindings.v22.ttypes import \
 from thrift_bindings.v22.ttypes import (CfDef, Column, ColumnOrSuperColumn,
                                         Mutation)
 from thrift_tests import get_thrift_client
-from tools import debug, require, rows_to_list, since
+from tools import debug, require, rows_to_list, since, new_node
 
 
 class CQLTester(Tester):
@@ -403,6 +403,37 @@ class MiscellaneousCQLTester(CQLTester):
 
         res = list(session.execute("SELECT * FROM test"))
         assert len(res) == 2, res
+
+
+class TruncateTester(CQLTester):
+    def truncate_after_restart_test(self):
+        session = self.prepare(nodes=1, create_keyspace=False)
+
+        session.execute("CREATE KEYSPACE ks WITH replication = { 'class':'SimpleStrategy', 'replication_factor':1} AND DURABLE_WRITES = true")
+        session.execute("CREATE TABLE ks.test1 (k int PRIMARY KEY, v1 int)")
+
+        node2 = new_node(self.cluster, bootstrap=True)
+        node2.start(wait_for_binary_proto=True)
+
+        data = list([i, i] for i in xrange(0, 30))
+        def insert_data(conn):
+            for (x, y) in data:
+                conn.execute("INSERT INTO ks.test1 (k, v1) VALUES (%d, %d)" % (x, y))
+
+        insert_data(session)
+        res = sorted(session.execute("SELECT * FROM ks.test1"))
+        assert rows_to_list(res) == data, rows_to_list(res)
+
+        node2.stop(wait_other_notice=True)
+        node2.start(wait_for_binary_proto=True)
+
+        # Many connections to exercise many shards
+        conns = [self.patient_exclusive_cql_connection(node2) for i in xrange(0, 3)]
+        for conn in conns:
+            insert_data(conn)
+            conn.execute("TRUNCATE ks.test1")
+            res = conn.execute(SimpleStatement("SELECT * FROM ks.test1", consistency_level=ConsistencyLevel.ALL))
+            assert rows_to_list(res) == [], res
 
 
 @since('3.0')

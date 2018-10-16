@@ -143,3 +143,4 @@ wide_rows_test.py
 materialized_views_test.py
 compact_storage_tests.py
 hintedhandoff_additional_test.py
+scyllatop_test.py
