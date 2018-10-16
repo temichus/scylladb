@@ -5,17 +5,21 @@ All dtest functional test for scyllatop utils.
 import subprocess
 import time
 import signal
+import os
 
 from dtest import Tester, debug
 
 
 class TestScyllaTop(Tester):
 
+    def get_cli(self):
+        return os.path.join(self.cluster.nodelist()[0].get_install_dir(), 'dist/common/bin/scyllatop')
+
     def interactive_start(self, wait=True, sleep_time=3):
         """
         Common usage, start scyllatop without options
         """
-        cmd = "scyllatop"
+        cmd = self.get_cli()
         p = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE)
         if not wait:
             return p
@@ -31,7 +35,7 @@ class TestScyllaTop(Tester):
         """
         Start scyllatop in batch mode
         """
-        cmd = "scyllatop -v DEBUG -b -n %s" % n
+        cmd = "%s -v DEBUG -b -n %s" % (self.get_cli(), n)
         p = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE)
         if not wait:
             return p
@@ -48,7 +52,7 @@ class TestScyllaTop(Tester):
         self.cluster.populate(3).start(wait_for_binary_proto=True)
         debug("3 nodes started")
 
-        cmd = 'scyllatop --help'
+        cmd = '%s --help' % self.get_cli()
         p = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE)
         out, err = p.communicate()
         assert p.returncode == 0, err
