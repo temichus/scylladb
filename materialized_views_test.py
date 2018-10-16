@@ -1452,7 +1452,6 @@ class TestMaterializedViews(Tester):
         for i in xrange(1100):
             assert_one(session, "SELECT * FROM t_by_v WHERE v = {}".format(-i), [-i, i])
 
-    @require('2025')
     def allow_filtering_test(self):
         """Test that allow filtering works as usual for a materialized view"""
 
