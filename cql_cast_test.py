@@ -1,5 +1,6 @@
 # coding: utf-8
 
+from nose.tools import assert_equal
 from dtest import debug
 from dtest import canReuseCluster
 from tools import require
@@ -189,11 +190,8 @@ class CQLCastTest(CqlshPrepare):
             for from_type in data_dict[fromt]:
                 debug('\n\n\n============================ CAST FROM {} ======================================'.format(from_type))
                 udt_column_name = '{0}.{1}'.format(column_name, self.COLUMN_NAME_TEMPLATE.format(from_type))
-                success, fail = self._test_one_type(from_type, data_dict[fromt], exclude, udt_column_name, table_name, success, fail,
+                self._test_one_type(from_type, data_dict[fromt], exclude, udt_column_name, table_name, success, fail,
                                     test_types=test_types, test_to=test_to, compare_error=compare_error)
-        if success > 0 or fail > 0:
-            debug('\nSucceded test cases: {0}. Failed test cases: {1}'.format(success, fail))
-            self.assertEqual(fail, 0)
 
     def _test_run(self, test_from,  data_dict, test_to=None, test_types=None, exclude=True, compare_error=False):
         """
@@ -222,11 +220,8 @@ class CQLCastTest(CqlshPrepare):
                 if not self._create_table_for_cast(table_name, from_type, column_name, data_dict[from_type]):
                     debug('FAILURE: table {0} was not created. See error above'.format(table_name))
                     continue
-                success, fail = self._test_one_type(from_type, data_dict, exclude, column_name, table_name, success, fail,
+                self._test_one_type(from_type, data_dict, exclude, column_name, table_name, success, fail,
                                     test_types=test_types, test_to=test_to, compare_error=compare_error)
-        if success > 0 or fail > 0:
-            debug('\nSucceded test cases: {0}. Failed test cases: {1}'.format(success, fail))
-            self.assertEqual(fail, 0)
 
     def _prepare_udf_table(self, data_dict, fromt, type_name, table_name, column_name):
         self.assertFalse(not self._create_type(data_dict[fromt], type_name),
@@ -271,15 +266,7 @@ class CQLCastTest(CqlshPrepare):
 
                             actual_result = actual_result.split('\n')[3].strip() \
                                     if not compare_error and actual_result else err if compare_error else ''
-                            expected_result = str(exp_result)
-                            if actual_result == expected_result:
-                                success += 1
-                            else:
-                                fail += 1
-                                debug('\nFAILURE: Test {2} from {3} to {4} case failed. Expected result: {0}. Actual result: {1}{5}'
-                                    .format(expected_result, actual_result, self.TESTS[test][1], from_type, to_type,
-                                            '. Error: {}'.format(err) if not compare_error and err else ''))
-        return (success, fail)
+                            assert_equal(actual_result, str(exp_result), "casting from type %s to type %s" % (from_type, to_type))
 
     def is_commented(self, exclude, ttype):
         return True if not exclude and ttype.startswith('#') else False
@@ -602,12 +589,12 @@ class TestData(object):
                           }],
                    ["\'abcdefj\'", {'cast': {'text': 'abcdefj', 'varchar': 'abcdefj'}}]
                 ],
-        'date':[["\'2017-11-25\'", {'cast': {'timestamp': '2017-11-25 00:00:00+0000'},
-                                'min':  {'timestamp': '1900-01-01 00:00:00+0000'},
-                                'max':  {'timestamp': '2458-12-13 00:00:00+0000'}
+        'date':[["\'2017-11-25\'", {'cast': {'timestamp': '2017-11-25 00:00:00.000000+0000'},
+                                'min':  {'timestamp': '1900-01-01 00:00:00.000000+0000'},
+                                'max':  {'timestamp': '2458-12-13 00:00:00.000000+0000'}
                                }],
-                ["\'1900-01-01\'", {'cast':  {'timestamp': '1900-01-01 00:00:00+0000'}}],
-                ["\'2458-12-13\'", {'cast':  {'timestamp': '2458-12-13 00:00:00+0000'}}]
+                ["\'1900-01-01\'", {'cast':  {'timestamp': '1900-01-01 00:00:00.000000+0000'}}],
+                ["\'2458-12-13\'", {'cast':  {'timestamp': '2458-12-13 00:00:00.000000+0000'}}]
                ],
         'time':[["\'13:07:45.089\'", {'cast': {'text': '13:07:45.089000000', 'varchar': '13:07:45.089000000'},
                                 'min': {'text': '00:45:25.123000000', 'varchar': '00:45:25.123000000'},
@@ -627,18 +614,18 @@ class TestData(object):
                   {'cast': {'date': '1900-01-01', '#text': '1900-01-01T00:00:00.000Z', '#varchar': '1900-01-01T00:00:00.000Z'}}]
                ],
         'timeuuid': [['minTimeuuid(\'2018-01-01 17:01:07+0000\')',
-                       {'cast': {'timestamp': '2018-01-01 17:01:07+0000', 'date': '2018-01-01',
+                       {'cast': {'timestamp': '2018-01-01 17:01:07.000000+0000', 'date': '2018-01-01',
                                  'text': '5bb48b80-ef15-11e7-8080-808080808080', 'varchar': '5bb48b80-ef15-11e7-8080-808080808080'},
-                        'min': {'timestamp': '1900-01-01 00:00:00+0000', 'date': '1900-01-01',
+                        'min': {'timestamp': '1900-01-01 00:00:00.000000+0000', 'date': '1900-01-01',
                                 'text': '3c230000-a32f-1163-8080-808080808080', 'varchar': '3c230000-a32f-1163-8080-808080808080'},
-                        'max': {'timestamp': '2018-01-01 17:01:07+0000', 'date': '2018-01-01',
+                        'max': {'timestamp': '2018-01-01 17:01:07.000000+0000', 'date': '2018-01-01',
                                 'text': '7a73e600-eb01-11e7-8080-808080808080', 'varchar': '7a73e600-eb01-11e7-8080-808080808080'}
                         }],
                       ['minTimeuuid(\'2017-12-27 12:28:44+0000\')',
-                       {'cast': {'timestamp': '2017-12-27 12:28:44+0000', 'date': '2017-12-27',
+                       {'cast': {'timestamp': '2017-12-27 12:28:44.000000+0000', 'date': '2017-12-27',
                                  'text': '7a73e600-eb01-11e7-8080-808080808080', 'varchar': '7a73e600-eb01-11e7-8080-808080808080'}}],
                       ['minTimeuuid(\'1900-01-01 00:00:00+0000\')',
-                       {'cast': {'timestamp': '1900-01-01 00:00:00+0000', 'date': '1900-01-01',
+                       {'cast': {'timestamp': '1900-01-01 00:00:00.000000+0000', 'date': '1900-01-01',
                                  'text': '3c230000-a32f-1163-8080-808080808080', 'varchar': '3c230000-a32f-1163-8080-808080808080'}}]
                       ],
         'uuid': [['de5cba0d-41a2-4f39-8834-35130d8b5d86',
