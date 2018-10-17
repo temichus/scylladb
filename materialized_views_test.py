@@ -1941,7 +1941,7 @@ class TestMaterializedViews(Tester):
         return '{}M'.format(512 * int(smp))
 
     def _do_resharding_test(self, smp_before, smp_after):
-        session = self.prepare(options={'hinted_handoff_enabled': False, 'shadow_round_ms': 1000, 'prometheus_port': 0},
+        session = self.prepare(options={'hinted_handoff_enabled': False, 'shadow_round_ms': 1000, 'prometheus_port': 0, 'read_request_timeout_in_ms': 100000, 'range_request_timeout_in_ms': 100000},
                                jvm_args=['--smp', smp_before, '--memory', self.set_memory_param(smp_before)])
         node1, node2, node3 = self.cluster.nodelist()
 
