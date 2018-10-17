@@ -33,6 +33,15 @@ class TestBootstrap(Tester):
         Tester.__init__(self, *args, **kwargs)
         self.allow_log_errors = True
 
+    def get_space_used(self, node, table_name='cf'):
+        output = node.nodetool('cfstats', True)[0]
+        if output.find(table_name) != -1:
+            output = output[output.find(table_name):]
+            output = output[output.find("Space used (total)"):]
+            initial_value = int(output[output.find(":") + 1:output.find("\n")].strip())
+            return initial_value
+        return -1
+
     def simple_bootstrap_test(self):
         cluster = self.cluster
         tokens = cluster.balanced_tokens(2)
@@ -52,17 +61,15 @@ class TestBootstrap(Tester):
         self.create_ks(session, 'ks', 1)
         self.create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'})
 
-        # record the size before inserting any of our own data
-        empty_size = node1.data_size()
-        debug("node1 empty size : %s" % float(empty_size))
 
         insert_statement = session.prepare("INSERT INTO ks.cf (key, c1, c2) VALUES (?, 'value1', 'value2')")
         execute_concurrent_with_args(session, insert_statement, [['k%d' % k] for k in range(keys)])
 
         node1.flush()
         node1.compact()
-        initial_size = node1.data_size()
-        debug("node1 size before bootstrapping node2: %s" % float(initial_size))
+
+        data_total_size_node1 = self.get_space_used(node1)
+        debug("before={}".format(data_total_size_node1))
 
         # Reads inserted data all during the bootstrap process. We shouldn't
         # get any error
@@ -77,18 +84,16 @@ class TestBootstrap(Tester):
 
         reader.check()
         node1.cleanup()
-        debug("node1 size after cleanup: %s" % float(node1.data_size()))
         node1.compact()
-        debug("node1 size after compacting: %s" % float(node1.data_size()))
         time.sleep(.5)
         reader.check()
 
-        debug("node2 size after compacting: %s" % float(node2.data_size()))
+        data_total_size_node1_after = self.get_space_used(node1)
+        data_total_size_node2_after = self.get_space_used(node2)
 
-        size1 = float(node1.data_size())
-        size2 = float(node2.data_size())
-        assert_almost_equal(size1, size2, error=0.3)
-        assert_almost_equal(float(initial_size - empty_size), 2 * (size1 - float(empty_size)))
+        debug("before={}, after={} + {}={}".format(data_total_size_node1, data_total_size_node1_after, data_total_size_node2_after, data_total_size_node1_after+data_total_size_node2_after));
+        assert_almost_equal(data_total_size_node1, data_total_size_node1_after + data_total_size_node2_after, error=0.3)
+        assert_almost_equal(data_total_size_node1_after, data_total_size_node1_after, error=0.3)
 
     def read_from_bootstrapped_node_test(self):
         """Test bootstrapped node sees existing data, eg. CASSANDRA-6648"""
