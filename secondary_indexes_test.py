@@ -492,7 +492,6 @@ class TestSecondaryIndexes(Tester):
         self.cluster.start()
         return self.patient_cql_connection(node, keyspace=keyspace_name)
 
-    @require('3206')
     def test_multi_index_filtering_query(self):
         """
         asserts that having multiple indexes that cover all predicates still requires ALLOW FILTERING to also be present
