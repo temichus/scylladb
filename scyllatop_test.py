@@ -28,9 +28,9 @@ class TestScyllaTop(Tester):
         time.sleep(sleep_time)
         p.send_signal(signal.SIGINT)
         out, err = p.communicate()
-        assert p.returncode == 0, err
         debug(out)
         debug('Length of output is %s' % len(out.split()))
+        assert p.returncode == 0, err
         assert len(out) > 0, 'Output should not be empty'
 
     def batch_mode_start(self, wait=True, n=1):
@@ -42,9 +42,9 @@ class TestScyllaTop(Tester):
         if not wait:
             return p
         out, err = p.communicate()
-        assert p.returncode == 0, err
         debug(out)
         debug('Length of output is %s' % len(out.split()))
+        assert p.returncode == 0, err
         assert len(out) > 0, 'Output should not be empty'
 
     def help_test(self):
@@ -57,8 +57,8 @@ class TestScyllaTop(Tester):
         cmd = '%s --help' % self.get_cli()
         p = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE)
         out, err = p.communicate()
-        assert p.returncode == 0, err
         debug(out)
+        assert p.returncode == 0, err
         assert len(out) > 0, 'Output should not be empty'
 
     def default_start_test(self):
@@ -77,9 +77,9 @@ class TestScyllaTop(Tester):
 
         p.send_signal(signal.SIGINT)
         out, err = p.communicate()
-        assert p.returncode == 0, err
         debug(out)
         debug('Length of output is %s' % len(out.split()))
+        assert p.returncode == 0, err
 
     def batch_mode_start_test(self):
         """
@@ -95,6 +95,6 @@ class TestScyllaTop(Tester):
         node.stress(['write', 'duration=20s', "no-warmup", '-rate', 'threads=2'])
         debug('Write stress completed')
         out, err = p.communicate()
-        assert p.returncode == 0, err
         debug(out)
         debug('Length of output is %s' % len(out.split()))
+        assert p.returncode == 0, err
