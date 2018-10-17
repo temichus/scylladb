@@ -13,7 +13,9 @@ from dtest import Tester, debug
 class TestScyllaTop(Tester):
 
     def get_cli(self):
-        return os.path.join(self.cluster.nodelist()[0].get_install_dir(), 'dist/common/bin/scyllatop')
+        cli = os.path.join(self.cluster.nodelist()[0].get_install_dir(), 'tools/scyllatop/scyllatop.py')
+        debug(cli)
+        return cli
 
     def interactive_start(self, wait=True, sleep_time=3):
         """
