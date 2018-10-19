@@ -39,7 +39,7 @@ class TestPartitioner(Tester):
 
         debug("Start 3 Nodes")
 
-        c.start()
+        c.start(wait_for_binary_proto=True, wait_other_notice=True)
 
         session = self.patient_cql_connection(node1)
 
