@@ -1,0 +1,40 @@
+from dtest import Tester, debug
+from cassandra import ConsistencyLevel
+from tools import insert_c1c2, new_node
+
+
+class TestCleanup(Tester):
+
+    def cleanup_test(self):
+        cluster = self.cluster
+        cluster.populate(1).start(wait_for_binary_proto=True)
+        node1 = cluster.nodelist()[0]
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 1)
+        self.create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'})
+        insert_c1c2(session, keys=range(100000), consistency=ConsistencyLevel.ALL)
+        node1.stop()
+        node1.start(wait_for_binary_proto=True)
+        node1.cleanup()
+        session = self.patient_cql_connection(node1)
+        rows = session.execute("select count(*) from ks.cf;");
+        self.assertEqual(rows[0][0],100000)
+
+    def cluster_cleanup_test(self):
+        cluster = self.cluster
+        cluster.populate(3).start(wait_for_binary_proto=True,wait_other_notice=True)
+        node1 = cluster.nodelist()[0]
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 3)
+        self.create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'})
+        insert_c1c2(session, keys=range(100000), consistency=ConsistencyLevel.ALL)
+        node4 = new_node(cluster)
+        node4.start(wait_for_binary_proto=True, wait_other_notice=True)
+        cluster.flush()
+        cluster.stop()
+        cluster.start(wait_for_binary_proto=True,wait_other_notice=True)
+        for node in cluster.nodelist():
+            node.cleanup()
+        rows = session.execute("select count(*) from ks.cf;");
+        self.assertEqual(rows[0][0],100000)
+
