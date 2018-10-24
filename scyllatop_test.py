@@ -13,7 +13,9 @@ from dtest import Tester, debug
 class TestScyllaTop(Tester):
 
     def get_cli(self):
-        cli = os.path.join(self.cluster.nodelist()[0].get_install_dir(), 'tools/scyllatop/scyllatop.py')
+        node = self.cluster.nodelist()[0]
+        cli = os.path.join(node.get_install_dir(), 'tools/scyllatop/scyllatop.py')
+        cli += ' -p http://%s:9180/metrics' % node.address()
         debug(cli)
         return cli
 
