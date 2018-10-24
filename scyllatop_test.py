@@ -19,7 +19,7 @@ class TestScyllaTop(Tester):
         debug(cli)
         return cli
 
-    def interactive_start(self, wait=True, sleep_time=5):
+    def interactive_start(self, wait=True, sleep_time=60):
         """
         Common usage, start scyllatop without options
         """
