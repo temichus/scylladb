@@ -74,7 +74,7 @@ class TestScyllaTop(Tester):
 
         p = self.interactive_start(wait=False)
         node = self.cluster.nodelist()[0]
-        node.stress(['write', 'duration=20s', "no-warmup", '-rate', 'threads=2'])
+        node.stress(['write', 'duration=60s', "no-warmup", '-rate', 'threads=2'])
         debug('Write stress completed')
 
         p.send_signal(signal.SIGINT)
@@ -94,7 +94,7 @@ class TestScyllaTop(Tester):
 
         p = self.batch_mode_start(wait=False, n=20)
         node = self.cluster.nodelist()[0]
-        node.stress(['write', 'duration=20s', "no-warmup", '-rate', 'threads=2'])
+        node.stress(['write', 'duration=60s', "no-warmup", '-rate', 'threads=2'])
         debug('Write stress completed')
         out, err = p.communicate()
         debug(out)
