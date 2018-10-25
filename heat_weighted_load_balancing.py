@@ -78,7 +78,7 @@ class HeatWeightedLB(Tester):
         def run_read():
             debug('Run stress read')
             resp = self.node1.stress_object(
-                ['read', 'cl=QUORUM', '-schema', 'replication(factor=3)', '-rate', 'threads>=4', 'threads<=64',
+                ['read', 'cl=QUORUM', 'duration=1m','-schema', 'replication(factor=3)', '-rate', 'threads>=4', 'threads<=64',
                  '-pop', 'seq=1..{}'.format(self._op_cnt)])
             if not resp or 'total partitions:read' not in resp:
                 raise Exception('Error running stress test: {}'.format(resp))
@@ -94,12 +94,12 @@ class HeatWeightedLB(Tester):
         """
         cluster = self.cluster
         cluster.set_configuration_options(values={'enable_keyspace_column_family_metrics': True})
-        cluster.populate(3).start()
+        cluster.populate(3).start(wait_for_binary_proto=True,wait_other_notice=True)
         self.node1, self.node2, self.node3 = cluster.nodelist()
 
         debug('Run stress write')
         resp = self.node1.stress_object(
-            ['write', 'cl={}'.format(cl), '-schema', 'replication(factor=3)', '-rate', 'threads=4',
+            ['write', 'cl={}'.format(cl), 'n={}'.format(self._op_cnt),'-schema', 'replication(factor=3)', '-rate', 'threads=4',
              '-pop', 'seq=1..{}'.format(self._op_cnt)])
         if not resp or 'total partitions:write' not in resp:
             raise Exception('Error running stress test: {}'.format(resp))
