@@ -458,7 +458,7 @@ class TestCQL(Tester):
         session.execute("""INSERT INTO foo (a, b, c, d, e) VALUES (0, 0, 2, 0, 3);""")
         session.execute("""INSERT INTO foo (a, b, c, d, e) VALUES (0, -1, 2, 2, 2);""")
 
-    @require("2050")
+    @require("2029")
     def tuple_query_mixed_order_columns_test(self):
         """
         @jira_ticket CASSANDRA-7281
@@ -474,7 +474,7 @@ class TestCQL(Tester):
         assert rows_list == [[0, 2, 0, 0, 0], [0, 1, 0, 0, 0], [0, 0, 1, 2, -1],
                              [0, 0, 1, 1, 1], [0, 0, 2, 1, -3], [0, 0, 2, 0, 3]], rows_list
 
-    @require("2050")
+    @require("2029")
     def tuple_query_mixed_order_columns_test2(self):
         """
         @jira_ticket CASSANDRA-7281
@@ -490,7 +490,7 @@ class TestCQL(Tester):
         assert rows_list == [[0, 2, 0, 0, 0], [0, 1, 0, 0, 0], [0, 0, 2, 1, -3],
                              [0, 0, 2, 0, 3], [0, 0, 1, 2, -1], [0, 0, 1, 1, 1]], rows_list
 
-    @require("2050")
+    @require("2029")
     def tuple_query_mixed_order_columns_test3(self):
         """
         @jira_ticket CASSANDRA-7281
@@ -506,7 +506,7 @@ class TestCQL(Tester):
         assert rows_list == [[0, 0, 2, 1, -3], [0, 0, 2, 0, 3], [0, 0, 1, 2, -1],
                              [0, 0, 1, 1, 1], [0, 1, 0, 0, 0], [0, 2, 0, 0, 0]], rows_list
 
-    @require("2050")
+    @require("2029")
     def tuple_query_mixed_order_columns_test4(self):
         """
         @jira_ticket CASSANDRA-7281
@@ -522,7 +522,7 @@ class TestCQL(Tester):
         assert rows_list == [[0, 2, 0, 0, 0], [0, 1, 0, 0, 0], [0, 0, 1, 1, 1],
                              [0, 0, 1, 2, -1], [0, 0, 2, 0, 3], [0, 0, 2, 1, -3]], rows_list
 
-    @require("2050")
+    @require("2029")
     def tuple_query_mixed_order_columns_test5(self):
         """
         @jira_ticket CASSANDRA-7281
@@ -549,7 +549,7 @@ class TestCQL(Tester):
         assert rows_list == [[0, 0, 1, 1, 1], [0, 0, 1, 2, -1], [0, 0, 2, 0, 3],
                              [0, 0, 2, 1, -3], [0, 1, 0, 0, 0], [0, 2, 0, 0, 0]], rows_list
 
-    @require("2050")
+    @require("2029")
     def tuple_query_mixed_order_columns_test7(self):
         """
         @jira_ticket CASSANDRA-7281
@@ -564,7 +564,7 @@ class TestCQL(Tester):
         assert rows_list == [[0, 0, 0, 0, 0], [0, 0, 1, 1, -1], [0, 0, 1, 1, 0],
                              [0, 0, 1, 0, 2], [0, -1, 2, 2, 2]], rows_list
 
-    @require("2050")
+    @require("2029")
     def tuple_query_mixed_order_columns_test8(self):
         """
         @jira_ticket CASSANDRA-7281
@@ -579,7 +579,7 @@ class TestCQL(Tester):
         assert rows_list == [[0, -1, 2, 2, 2], [0, 0, 1, 1, -1], [0, 0, 1, 1, 0],
                              [0, 0, 1, 0, 2], [0, 0, 0, 0, 0]], rows_list
 
-    @require("2050")
+    @require("2029")
     def tuple_query_mixed_order_columns_test9(self):
         """
         @jira_ticket CASSANDRA-7281
