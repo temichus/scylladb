@@ -470,8 +470,9 @@ class TestCQL(Tester):
 
         self.tuple_query_mixed_order_columns_prepare(session, 'DESC', 'ASC', 'DESC', 'ASC')
         res = session.execute("SELECT * FROM foo WHERE a=0 AND (b, c, d, e) > (0, 1, 1, 0);")
-        assert rows_to_list(res) == [[0, 2, 0, 0, 0], [0, 1, 0, 0, 0], [0, 0, 1, 2, -1],
-                                     [0, 0, 1, 1, 1], [0, 0, 2, 1, -3], [0, 0, 2, 0, 3]], list(res)
+        rows_list = rows_to_list(res)
+        assert rows_list == [[0, 2, 0, 0, 0], [0, 1, 0, 0, 0], [0, 0, 1, 2, -1],
+                             [0, 0, 1, 1, 1], [0, 0, 2, 1, -3], [0, 0, 2, 0, 3]], rows_list
 
     @require("2050")
     def tuple_query_mixed_order_columns_test2(self):
@@ -485,8 +486,9 @@ class TestCQL(Tester):
 
         self.tuple_query_mixed_order_columns_prepare(session, 'DESC', 'DESC', 'DESC', 'ASC')
         res = session.execute("SELECT * FROM foo WHERE a=0 AND (b, c, d, e) > (0, 1, 1, 0);")
-        assert rows_to_list(res) == [[0, 2, 0, 0, 0], [0, 1, 0, 0, 0], [0, 0, 2, 1, -3],
-                                     [0, 0, 2, 0, 3], [0, 0, 1, 2, -1], [0, 0, 1, 1, 1]], list(res)
+        rows_list = rows_to_list(res)
+        assert rows_list == [[0, 2, 0, 0, 0], [0, 1, 0, 0, 0], [0, 0, 2, 1, -3],
+                             [0, 0, 2, 0, 3], [0, 0, 1, 2, -1], [0, 0, 1, 1, 1]], rows_list
 
     @require("2050")
     def tuple_query_mixed_order_columns_test3(self):
@@ -500,8 +502,9 @@ class TestCQL(Tester):
 
         self.tuple_query_mixed_order_columns_prepare(session, 'ASC', 'DESC', 'DESC', 'ASC')
         res = session.execute("SELECT * FROM foo WHERE a=0 AND (b, c, d, e) > (0, 1, 1, 0);")
-        assert rows_to_list(res) == [[0, 0, 2, 1, -3], [0, 0, 2, 0, 3], [0, 0, 1, 2, -1],
-                                     [0, 0, 1, 1, 1], [0, 1, 0, 0, 0], [0, 2, 0, 0, 0]], list(res)
+        rows_list = rows_to_list(res)
+        assert rows_list == [[0, 0, 2, 1, -3], [0, 0, 2, 0, 3], [0, 0, 1, 2, -1],
+                             [0, 0, 1, 1, 1], [0, 1, 0, 0, 0], [0, 2, 0, 0, 0]], rows_list
 
     @require("2050")
     def tuple_query_mixed_order_columns_test4(self):
@@ -515,8 +518,9 @@ class TestCQL(Tester):
 
         self.tuple_query_mixed_order_columns_prepare(session, 'DESC', 'ASC', 'ASC', 'DESC')
         res = session.execute("SELECT * FROM foo WHERE a=0 AND (b, c, d, e) > (0, 1, 1, 0);")
-        assert rows_to_list(res) == [[0, 2, 0, 0, 0], [0, 1, 0, 0, 0], [0, 0, 1, 1, 1],
-                                     [0, 0, 1, 2, -1], [0, 0, 2, 0, 3], [0, 0, 2, 1, -3]], list(res)
+        rows_list = rows_to_list(res)
+        assert rows_list == [[0, 2, 0, 0, 0], [0, 1, 0, 0, 0], [0, 0, 1, 1, 1],
+                             [0, 0, 1, 2, -1], [0, 0, 2, 0, 3], [0, 0, 2, 1, -3]], rows_list
 
     @require("2050")
     def tuple_query_mixed_order_columns_test5(self):
@@ -529,8 +533,9 @@ class TestCQL(Tester):
 
         self.tuple_query_mixed_order_columns_prepare(session, 'DESC', 'DESC', 'DESC', 'DESC')
         res = session.execute("SELECT * FROM foo WHERE a=0 AND (b, c, d, e) > (0, 1, 1, 0);")
-        assert rows_to_list(res) == [[0, 2, 0, 0, 0], [0, 1, 0, 0, 0], [0, 0, 2, 1, -3],
-                                     [0, 0, 2, 0, 3], [0, 0, 1, 2, -1], [0, 0, 1, 1, 1]], list(res)
+        rows_list = rows_to_list(res)
+        assert rows_list == [[0, 2, 0, 0, 0], [0, 1, 0, 0, 0], [0, 0, 2, 1, -3],
+                             [0, 0, 2, 0, 3], [0, 0, 1, 2, -1], [0, 0, 1, 1, 1]], rows_list
 
     def tuple_query_mixed_order_columns_test6(self):
         """CASSANDRA-7281: SELECT on tuple relations are broken for mixed ASC/DESC clustering order
@@ -540,8 +545,9 @@ class TestCQL(Tester):
 
         self.tuple_query_mixed_order_columns_prepare(session, 'ASC', 'ASC', 'ASC', 'ASC')
         res = session.execute("SELECT * FROM foo WHERE a=0 AND (b, c, d, e) > (0, 1, 1, 0);")
-        assert rows_to_list(res) == [[0, 0, 1, 1, 1], [0, 0, 1, 2, -1], [0, 0, 2, 0, 3],
-                                     [0, 0, 2, 1, -3], [0, 1, 0, 0, 0], [0, 2, 0, 0, 0]], list(res)
+        rows_list = rows_to_list(res)
+        assert rows_list == [[0, 0, 1, 1, 1], [0, 0, 1, 2, -1], [0, 0, 2, 0, 3],
+                             [0, 0, 2, 1, -3], [0, 1, 0, 0, 0], [0, 2, 0, 0, 0]], rows_list
 
     @require("2050")
     def tuple_query_mixed_order_columns_test7(self):
@@ -554,8 +560,9 @@ class TestCQL(Tester):
 
         self.tuple_query_mixed_order_columns_prepare(session, 'DESC', 'ASC', 'DESC', 'ASC')
         res = session.execute("SELECT * FROM foo WHERE a=0 AND (b, c, d, e) <= (0, 1, 1, 0);")
-        assert rows_to_list(res) == [[0, 0, 0, 0, 0], [0, 0, 1, 1, -1], [0, 0, 1, 1, 0],
-                                     [0, 0, 1, 0, 2], [0, -1, 2, 2, 2]], list(res)
+        rows_list = rows_to_list(res)
+        assert rows_list == [[0, 0, 0, 0, 0], [0, 0, 1, 1, -1], [0, 0, 1, 1, 0],
+                             [0, 0, 1, 0, 2], [0, -1, 2, 2, 2]], rows_list
 
     @require("2050")
     def tuple_query_mixed_order_columns_test8(self):
@@ -568,8 +575,9 @@ class TestCQL(Tester):
 
         self.tuple_query_mixed_order_columns_prepare(session, 'ASC', 'DESC', 'DESC', 'ASC')
         res = session.execute("SELECT * FROM foo WHERE a=0 AND (b, c, d, e) <= (0, 1, 1, 0);")
-        assert rows_to_list(res) == [[0, -1, 2, 2, 2], [0, 0, 1, 1, -1], [0, 0, 1, 1, 0],
-                                     [0, 0, 1, 0, 2], [0, 0, 0, 0, 0]], list(res)
+        rows_list = rows_to_list(res)
+        assert rows_list == [[0, -1, 2, 2, 2], [0, 0, 1, 1, -1], [0, 0, 1, 1, 0],
+                             [0, 0, 1, 0, 2], [0, 0, 0, 0, 0]], rows_list
 
     @require("2050")
     def tuple_query_mixed_order_columns_test9(self):
@@ -582,8 +590,9 @@ class TestCQL(Tester):
 
         self.tuple_query_mixed_order_columns_prepare(session, 'DESC', 'ASC', 'DESC', 'DESC')
         res = session.execute("SELECT * FROM foo WHERE a=0 AND (b, c, d, e) <= (0, 1, 1, 0);")
-        assert rows_to_list(res) == [[0, 0, 0, 0, 0], [0, 0, 1, 1, 0], [0, 0, 1, 1, -1],
-                                     [0, 0, 1, 0, 2], [0, -1, 2, 2, 2]], list(res)
+        rows_list = rows_to_list(res)
+        assert rows_list == [[0, 0, 0, 0, 0], [0, 0, 1, 1, 0], [0, 0, 1, 1, -1],
+                             [0, 0, 1, 0, 2], [0, -1, 2, 2, 2]], rows_list
 
     @require("64")
     def simple_tuple_query_test(self):
