@@ -26,6 +26,8 @@ from dtest import Tester, debug
 from dtest import canReuseCluster
 from dtest import freshCluster
 
+from scylla_tools import CassandraCluster
+
 from thrift_bindings.v22.ttypes import CfDef
 from thrift_bindings.v22.ttypes import Column
 from thrift_bindings.v22.ttypes import ColumnOrSuperColumn
@@ -61,6 +63,9 @@ class TestCQL(Tester):
         start_rpc = kwargs.pop('start_rpc', False)
         if start_rpc:
             cluster.set_configuration_options(values={'start_rpc': True})
+
+        enable_sstables_mc_format = kwargs.pop('enable_sstables_mc_format', False)
+        cluster.set_configuration_options(values={'enable_sstables_mc_format': enable_sstables_mc_format})
 
         if not cluster.nodelist():
             cluster.populate(nodes).start()
@@ -5000,6 +5005,196 @@ class TestCQL(Tester):
         assert rows_to_list(res) == [['k']], list(res)
 
         assert_invalid(session, "ALTER TABLE test ADD v list<text>", expected=InvalidRequest)
+
+
+    def mc_prepare_test_table(self, nodes, keyspace_name, table_name, dataset, data_amount,
+                              columns=['"ID"', '"Ck1"', '"cK2"', '"Columnfamily_for_mc_sstables_column1"'],
+                              keys_amount=3, rf=4):
+        session = self.prepare(create_keyspace=False, nodes=nodes, rf=4, enable_sstables_mc_format=True)
+        session.consistency_level = 'QUORUM'
+        self.create_ks(session=session, name=keyspace_name, rf=rf)
+        session.execute('USE {}'.format(keyspace_name))
+        columns_desc = ' int, '.join(columns)
+        keys_desc = ', '.join(columns[:keys_amount])
+        query = 'CREATE TABLE {table_name} ({columns_desc} int, PRIMARY KEY ({keys_desc}))'.format(**locals())
+        debug('Create table: "{}"'.format(query))
+        session.execute(query=query)
+
+        query = session.prepare('INSERT INTO {} ({}) VALUES ({})'.format(table_name, ', '.join(columns), ', '.join(['?' for _ in columns])))
+        debug('Insert data into {}.{}'.format(keyspace_name, table_name))
+        execute_concurrent_with_args(session, query, dataset)
+
+        self.mc_validate_data(session=session, table_name=table_name, data_amount=data_amount, dataset=dataset,
+                              columns=columns, keys_columns_amount=2)
+        return session
+
+    def mc_migrate_scylla_to_cassandra(self, keyspace_name, table_name, dataset, data_amount, 
+                                       columns=['"ID"', '"Ck1"', '"cK2"', '"Columnfamily_for_mc_sstables_column1"'],
+                                       keys_columns_amount=3):
+        cc = None
+        try:
+            cc = CassandraCluster(cassandra_version='3.11.3')
+            cassandra_node1 = cc.run_migration(scylla_cluster=self.cluster, scylla_test_path=self.test_path)
+            cassandra_session = self.patient_cql_connection(cassandra_node1)
+            cassandra_session.execute('USE {}'.format(keyspace_name))
+
+            self.mc_validate_data(session=cassandra_session, table_name=table_name, data_amount=data_amount, dataset=dataset,
+                                  columns=columns, keys_columns_amount=keys_columns_amount)
+        finally:
+            if cc:
+                cc.tearDown()
+
+    def mc_sstables_case_sensitive_insert_test(self):
+        """
+        Test how the mc SSTAbles files format works when the column names are case sensitive
+        1. Create the table with case sensitive column names
+        2. Insert data
+        3. Validate data
+        4. Migrate the data to Cassandra cluster and validate
+        """
+        keyspace_name = '"Keyspace_for_mc_sstables"'
+        table_name = '"Columnfamily_For_Mc_Sstables"'
+        data_amount = 10
+        dataset = [(i, i, i, random.randint(124571, 236283618))
+                       for i in xrange(0, data_amount)]
+
+        self.mc_prepare_test_table(nodes=4, keyspace_name=keyspace_name, table_name=table_name,
+                                   dataset=dataset, data_amount=data_amount)
+
+        # Create Cassandra cluster, migrate the Scylla data and validate the migrated data
+        self.mc_migrate_scylla_to_cassandra(keyspace_name=keyspace_name, table_name=table_name, dataset=dataset,
+                                            data_amount=data_amount)
+
+    def mc_sstables_case_sensitive_update_value_test(self):
+        """
+        Test how the mc SSTAbles files format works when the column names are case sensitive
+        1. Create the table with case sensitive column names
+        2. Insert data
+        3. Validate data
+        4. Update data in the non-PK column
+        5. Validate data
+        6. Migrate the data to Cassandra cluster and validate
+        """
+        keyspace_name = '"Keyspace_for_mc_sstables"'
+        table_name = '"Columnfamily_For_Mc_Sstables"'
+        data_amount = 10
+        dataset = [(i, i, i, random.randint(124571, 23628361))
+                           for i in xrange(0, data_amount)]
+
+        session = self.mc_prepare_test_table(nodes=4, keyspace_name=keyspace_name, table_name=table_name,
+                                   dataset=dataset, data_amount=data_amount)
+
+
+        debug('Run update')
+        for i, row_data in enumerate(dataset):
+            new_value = random.randint(23628361, 456283616)
+            dataset[i] = (row_data[0], row_data[1], row_data[2], new_value)
+            session.execute(query='UPDATE {table_name} SET "Columnfamily_for_mc_sstables_column1"={new_value} WHERE "ID"={row_data[0]} ' \
+                'AND "Ck1"={row_data[1]} AND "cK2"={row_data[2]}'.format(**locals()))
+
+        self.mc_validate_data(session=session, table_name=table_name, data_amount=data_amount, dataset=dataset)
+
+        # Update non-PK column to NULL with TTL
+        for i, row_data in enumerate(dataset[:2]):
+            new_value = 'NULL'
+            dataset[i] = (row_data[0], row_data[1], row_data[2], None)
+            session.execute(query='UPDATE {table_name} USING TTL 5 SET "Columnfamily_for_mc_sstables_column1"={new_value} '
+                                  'WHERE "ID"={row_data[0]} AND "Ck1"={row_data[1]} AND "cK2"={row_data[2]}'.format(**locals()))
+        time.sleep(5)
+        self.mc_validate_data(session=session, table_name=table_name, data_amount=data_amount, dataset=dataset)
+
+        # Create Cassandra cluster, migrate the Scylla data and validate the migrated data
+        self.mc_migrate_scylla_to_cassandra(keyspace_name=keyspace_name, table_name=table_name, dataset=dataset,
+                                            data_amount=data_amount)
+
+    def mc_sstables_case_sensitive_delete_value_test(self):
+        """
+        Test how the mc SSTAbles files format works when the column names are case sensitive
+        1. Create the table with case sensitive column names
+        2. Insert data
+        3. Validate data
+        4. Delete part of rows
+        5. Validate data
+        6. Migrate the data to Cassandra cluster and validate
+        """
+        keyspace_name = '"Keyspace_for_mc_sstables"'
+        table_name = '"Columnfamily_For_Mc_Sstables"'
+        data_amount = 10
+        dataset = [(i, i, i, random.randint(124571, 236283618))
+                       for i in xrange(0, data_amount)]
+
+        session = self.mc_prepare_test_table(nodes=4, keyspace_name=keyspace_name, table_name=table_name,
+                                   dataset=dataset, data_amount=data_amount)
+
+        debug('Run delete')
+        for i in xrange(2, 5):
+            row = dataset[i]
+            session.execute(query='DELETE FROM {table_name} WHERE "ID"={row[0]} AND "Ck1"={row[1]} AND'
+                                  ' "cK2"={row[2]}'.format(**locals()))
+            del dataset[i]
+        data_amount = data_amount - 3
+
+        self.mc_validate_data(session=session, table_name=table_name, data_amount=data_amount, dataset=dataset)
+
+        # Create Cassandra cluster, migrate the Scylla data and validate the migrated data
+        self.mc_migrate_scylla_to_cassandra(keyspace_name=keyspace_name, table_name=table_name, dataset=dataset,
+                                            data_amount=data_amount)
+
+    def mc_sstables_case_sensitive_add_column_test(self):
+        """
+        Test how the mc SSTAbles files format works when the column names are case sensitive
+        1. Create the table with case sensitive column names
+        2. Insert data
+        3. Validate data
+        4. Add new column with case sensitive name
+        5. Validate data
+        6. Migrate the data to Cassandra cluster and validate
+        """
+        keyspace_name = 'keyspace_for_mc_sstables'
+        table_name = 'columnfamily_for_mc_sstables'
+        data_amount = 10
+        dataset = [(i, i+1, i+2) for i in xrange(0, data_amount)]
+        columns = ['id', 'ck1', 'ck2']
+        keys_columns_amount = 2
+
+        session = self.mc_prepare_test_table(nodes=4, keyspace_name=keyspace_name, table_name=table_name, columns=columns,
+                                   keys_amount=keys_columns_amount, dataset=dataset, data_amount=data_amount)
+
+        # Add new columns with case sensitive name
+        new_column_name = '"Columnfamily_for_mc_sstables_column1"'
+        columns.append(new_column_name)
+        debug('Add ''{}'' column'.format(new_column_name))
+        session.execute(query='ALTER TABLE {table_name} ADD {new_column_name} int'.format(**locals()))
+
+        for i, _ in enumerate(dataset):
+            dataset[i] += (random.randint(10, 50),)
+        debug('Insert data in the new column')
+        query = session.prepare('INSERT INTO {} ({}) VALUES (?, ?, ?, ?)'.format(table_name, ', '.join(columns)))
+        execute_concurrent_with_args(session, query, dataset)
+
+        self.mc_validate_data(session=session, table_name=table_name, data_amount=data_amount, dataset=dataset,
+                              columns=columns, keys_columns_amount=keys_columns_amount)
+
+        # Create Cassandra cluster, migrate the Scylla data and validate the migrated data
+        self.mc_migrate_scylla_to_cassandra(keyspace_name=keyspace_name, table_name=table_name, dataset=dataset,
+                                            data_amount=data_amount, columns=columns, keys_columns_amount=keys_columns_amount)
+
+    def mc_validate_data(self, session, table_name, data_amount, dataset,
+                         columns=['"ID"', '"Ck1"', '"cK2"', '"Columnfamily_for_mc_sstables_column1"'],
+                         keys_columns_amount=3):
+        res = list(session.execute('select count(*) from {}'.format(table_name)))
+        self.assertEqual(res[0].count, data_amount)
+
+        assert_all(session=session, query='select {} from {}'.format(', '.join(columns), table_name),
+                   expected=[list(dc) for dc in dataset],
+                   cl=ConsistencyLevel.QUORUM, ignore_order=True)
+
+        for row in dataset:
+            where_clause = ' and '.join('{}={}'.format(column, row[i]) for i, column in enumerate(columns[:keys_columns_amount]))
+            assert_one(session=session,
+                       query='select {} from {} where {}'.format(columns[-1], table_name, where_clause),
+                       expected=[row[-1]])
+
 
 class CQLAdditionalTests(Tester):
 
