@@ -774,7 +774,6 @@ class TestCQL(Tester):
         res = list(session.execute("SELECT v FROM test WHERE k = 0 AND c >= 2 AND c < 6 ORDER BY c DESC LIMIT 2"))
         assert len(res) == 2 and res[0][0] == 5 and res[len(res) - 1][0] == 4, list(res)
 
-    @require("2566")
     def in_clause_wide_rows_test(self):
         """ Check IN support for 'wide rows' in SELECT statement """
         session = self.prepare()
