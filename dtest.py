@@ -253,9 +253,10 @@ class Tester(TestCase):
         self.allow_log_errors = False
         self.cluster_id_allocator = cluster_id_allocator
         self.cluster_options = kwargs.pop('cluster_options', None)
+        self.cassandra_version = kwargs.pop('cassandra_version', None)
         super(Tester, self).__init__(*argv, **kwargs)
 
-    def _get_cluster(self, name='test'):
+    def _get_cluster(self, name='test', version=None):
         if self._preserve_cluster and hasattr(self, 'cluster'):
             return self.cluster
         # we can not work /tmp
@@ -269,7 +270,8 @@ class Tester(TestCase):
         if sys.platform == "cygwin":
             self.test_path = subprocess.Popen(["cygpath", "-m", self.test_path], stdout=subprocess.PIPE, stderr=subprocess.STDOUT).communicate()[0].rstrip()
         debug("cluster ccm directory: " + self.test_path)
-        version = os.environ.get('CASSANDRA_VERSION')
+        if not version:
+            version = os.environ.get('CASSANDRA_VERSION')
         cdir = CASSANDRA_DIR
 
         if version:
@@ -427,7 +429,7 @@ class Tester(TestCase):
                 # after a restart, /tmp will be emptied so we'll get an IOError when loading the old cluster here
                 pass
 
-        self.cluster = self._get_cluster()
+        self.cluster = self._get_cluster(version=self.cassandra_version)
 
         if not self._preserve_cluster:
             if not self._check_clean():
