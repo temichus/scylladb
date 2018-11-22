@@ -1,3 +1,8 @@
+# Configure locale:
+export LC_ALL=en_US.UTF-8
+export LANG=en_US.UTF-8
+export LANGUAGE=en_US.UTF-8
+
 CCM_DIR=`pwd`/../scylla-ccm
 export PATH=$CCM_DIR:$PATH
 export PERL5LIB=$CCM_DIR
