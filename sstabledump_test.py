@@ -159,22 +159,22 @@ class SSTableDumpAllDatatypes(CqlshPrepare, SSTableDump):
         q = list()
         r = dict()
         format_val = {'b': lambda v: int(v),
-                      'c': lambda v: bytearray.fromhex(v),
-                      'd': lambda v: json.loads(v),
+                      'c': lambda v: bytearray.fromhex(v[:2] if type(v) == type(str()) else str(v)[2:]),
+                      'd': lambda v: json.loads(v) if type(v) == type(str()) else v,
                       'e': lambda v: Decimal(v),
                       'f': lambda v: float(v),
                       'g': lambda v: float(v),
                       'i': lambda v: int(v),
                       'j': lambda v: v.encode('utf-8'),
-                      'k': lambda v: (parse(v).replace(tzinfo=tzutc()) - timedelta(hours=3)),
+                      'k': lambda v: (parse(v).replace(tzinfo=tzutc())),
                       'l': lambda v: uuid.UUID(v),
                       'm': lambda v: uuid.UUID(v),
                       'o': lambda v: int(v),
                       'p': lambda v: p.append((int(v))),
                       'q': lambda v: q.extend(v),
                       'r': lambda x, y: r.update(
-                          {(parse(x).replace(tzinfo=tzutc()) - timedelta(hours=3)): str(y)}),
-                      's': lambda v: tuple([json.loads(val) if i != 1 else val for i, val in enumerate(v.split(':'))]),
+                          {(parse(x).replace(tzinfo=tzutc())): str(y)}),
+                      's': lambda v: tuple([json.loads(val) if i != 1 else val for i, val in enumerate(v.split(':'))]) if type(v) == type(str()) else tuple(v),
                       }
 
         for item in data[0]['rows'][0]['cells']:
