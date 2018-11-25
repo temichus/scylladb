@@ -5015,9 +5015,9 @@ class TestCQL(Tester):
         assert_invalid(session, "ALTER TABLE test ADD v list<text>", expected=InvalidRequest)
 
 
-    def mc_prepare_test_table(self, nodes, keyspace_name, table_name, dataset, data_amount,
-                              columns=['"ID"', '"Ck1"', '"cK2"', '"Columnfamily_for_mc_sstables_column1"'],
-                              keys_amount=3, rf=4):
+    def mc_prepare_table(self, nodes, keyspace_name, table_name, dataset, data_amount,
+                         columns=['"ID"', '"Ck1"', '"cK2"', '"Columnfamily_for_mc_sstables_column1"'],
+                         keys_amount=3, rf=4):
         session = self.prepare(create_keyspace=False, nodes=nodes, rf=4, enable_sstables_mc_format=True)
         session.consistency_level = 'QUORUM'
         self.create_ks(session=session, name=keyspace_name, rf=rf)
@@ -5066,8 +5066,8 @@ class TestCQL(Tester):
         dataset = [(i, i, i, random.randint(124571, 236283618))
                        for i in xrange(0, data_amount)]
 
-        self.mc_prepare_test_table(nodes=4, keyspace_name=keyspace_name, table_name=table_name,
-                                   dataset=dataset, data_amount=data_amount)
+        self.mc_prepare_table(nodes=4, keyspace_name=keyspace_name, table_name=table_name,
+                              dataset=dataset, data_amount=data_amount)
 
         # Create Cassandra cluster, migrate the Scylla data and validate the migrated data
         self.mc_migrate_scylla_to_cassandra(keyspace_name=keyspace_name, table_name=table_name, dataset=dataset,
@@ -5089,8 +5089,8 @@ class TestCQL(Tester):
         dataset = [(i, i, i, random.randint(124571, 23628361))
                            for i in xrange(0, data_amount)]
 
-        session = self.mc_prepare_test_table(nodes=4, keyspace_name=keyspace_name, table_name=table_name,
-                                   dataset=dataset, data_amount=data_amount)
+        session = self.mc_prepare_table(nodes=4, keyspace_name=keyspace_name, table_name=table_name,
+                                        dataset=dataset, data_amount=data_amount)
 
 
         debug('Run update')
@@ -5131,8 +5131,8 @@ class TestCQL(Tester):
         dataset = [(i, i, i, random.randint(124571, 236283618))
                        for i in xrange(0, data_amount)]
 
-        session = self.mc_prepare_test_table(nodes=4, keyspace_name=keyspace_name, table_name=table_name,
-                                   dataset=dataset, data_amount=data_amount)
+        session = self.mc_prepare_table(nodes=4, keyspace_name=keyspace_name, table_name=table_name,
+                                        dataset=dataset, data_amount=data_amount)
 
         debug('Run delete')
         for i in xrange(2, 5):
@@ -5165,8 +5165,8 @@ class TestCQL(Tester):
         columns = ['id', 'ck1', 'ck2']
         keys_columns_amount = 2
 
-        session = self.mc_prepare_test_table(nodes=4, keyspace_name=keyspace_name, table_name=table_name, columns=columns,
-                                   keys_amount=keys_columns_amount, dataset=dataset, data_amount=data_amount)
+        session = self.mc_prepare_table(nodes=4, keyspace_name=keyspace_name, table_name=table_name, columns=columns,
+                                        keys_amount=keys_columns_amount, dataset=dataset, data_amount=data_amount)
 
         # Add new columns with case sensitive name
         new_column_name = '"Columnfamily_for_mc_sstables_column1"'
