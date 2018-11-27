@@ -871,8 +871,8 @@ def wait_for_view(cluster, session, ks, view, raise_exception=True):
         return len([status for status in result  if status[0] == 'SUCCESS']) >= live_nodes_amount
 
     attempts = 40
-    live_nodes_amount = len([node for node in cluster.nodelist() if node.is_live()])
     while attempts > 0:
+        live_nodes_amount = len([node for node in cluster.nodelist() if node.is_live()])
         if _view_build_finished(live_nodes_amount):
             return
         time.sleep(3)
