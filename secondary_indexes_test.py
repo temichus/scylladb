@@ -811,7 +811,6 @@ class TestSecondaryIndexes(Tester):
             assert_row_count(session, table_name=get_index_view_name(index_name), expected=num_rows - delete_num,
                              consistency_level=ConsistencyLevel.ALL)
 
-    @flaky_with_tear_down
     def test_stop_node_during_index_build(self):
         """
         Stop one node during index building and read data by index
