@@ -14,6 +14,7 @@ from copy import deepcopy
 from threading import Thread
 import datetime
 from tools import rows_to_list
+from uuid import UUID
 
 
 def build_insert_params(keys, n, c1_values, c2_values):
@@ -863,17 +864,29 @@ def index_is_built(cluster, session, ks_name, table_name, index_name, raise_exce
     return len(list(session.execute(
         "SELECT * FROM system_schema.indexes WHERE keyspace_name = '{0}' and table_name ='{1}' AND index_name='{2}'".format(ks_name, table_name, index_name)))) == 1
 
+# wait_for_view waits for the given materialized view to have been built on
+# all *living* nodes.
+# In this implementation, nodes which are not alive may or may not have
+# finished building the view when wait_for_view returns. This was a deliberate
+# implementation choice - we also know the state of the build for dead nodes,
+# but waiting only for live nodes makes it easier to write tests which check
+# how view building and dead nodes interact.
 def wait_for_view(cluster, session, ks, view, raise_exception=True):
     debug("Waiting for view {}.{} to finish building...".format(ks, view))
 
-    def _view_build_finished(live_nodes_amount):
-        result = rows_to_list(session.execute(view_built_status_query(ks, view)))
-        return len([status for status in result  if status[0] == 'SUCCESS']) >= live_nodes_amount
+    def _view_build_finished_on_live_nodes():
+        done=set()
+        for entry in rows_to_list(session.execute(view_built_status_query(ks, view, 'host_id,status'))):
+            if entry[1] == 'SUCCESS':
+                done.add(entry[0])
+        for node in cluster.nodelist():
+            if node.is_live() and not (UUID(node.hostid()) in done):
+                return False
+        return True
 
     attempts = 40
     while attempts > 0:
-        live_nodes_amount = len([node for node in cluster.nodelist() if node.is_live()])
-        if _view_build_finished(live_nodes_amount):
+        if _view_build_finished_on_live_nodes():
             return
         time.sleep(3)
         attempts -= 1
