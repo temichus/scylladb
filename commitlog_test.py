@@ -189,10 +189,9 @@ class TestCommitLog(Tester):
         cf_id = [s for s in os.listdir(os.path.join(data_dir, "test")) if s.startswith("users")][0]
         cf_data_dir = glob.glob("{data_dir}/test/{cf_id}".format(**locals()))[0]
         cf_data_dir_files = os.listdir(cf_data_dir)
-        if "backups" in cf_data_dir_files:
-            cf_data_dir_files.remove("backups")
-        if "upload" in cf_data_dir_files:
-            cf_data_dir_files.remove("upload")
+        for special_dir in ["backups", "upload", "staging"]:
+            if special_dir in cf_data_dir_files:
+                cf_data_dir_files.remove(special_dir)
         self.assertEqual(0, len(cf_data_dir_files))
 
         debug("Verify commit log was replayed on startup")
