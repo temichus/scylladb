@@ -110,7 +110,7 @@ def assert_row_count_from_every_node(session, table_name, expected, nodes_list, 
     query = "SELECT count(*) FROM {0}.{1};".format(session.keyspace, table_name)
     failed_nodes = []
     for node in nodes_list:
-        if node.status != 'UP':
+        if not node.is_live():
             continue
         res = node.run_cqlsh(query, return_output=True)
         count = 0
