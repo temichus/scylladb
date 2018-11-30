@@ -1,0 +1,296 @@
+import os
+import re
+
+from cassandra.concurrent import execute_concurrent_with_args
+
+from dtest import Tester, debug
+
+
+def human_size(size, units=['bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB']):
+    """ Returns a human readable string reprentation of bytes"""
+    if size < 1024.0:
+        size = float("{:.2f}".format(size))
+        return "{:g} {}".format(size, units[0])
+    else:
+        return human_size(size / 1024.0, units[1:])
+
+
+class TestNodetoolListSnapshots(Tester):
+    """Validate nodetool listshapshot command
+
+    See https://docs.scylladb.com/operating-scylla/nodetool-commands/listsnapshots
+
+    Extends:
+        Tester
+    """
+    def __init__(self, *args, **kwargs):
+        super(TestNodetoolListSnapshots, self).__init__(*args, **kwargs)
+
+    def prepare_cluster(self):
+        """Create and populate cluster for tests
+
+        """
+
+        # create and start cluster with one node
+        debug('Create and start cluster')
+        self.cluster.populate(1).start()
+
+    def insert_rows(self, session, ks, cf, start, end):
+        """Insert data to scylladb
+
+        taken from snapshot_test
+
+        Arguments:
+            session {session} -- opened session to scylla cluster
+            ks {str} -- keyspace name
+            cf {str} -- column family name
+            start {int} -- key field value start
+            end {int} -- key field value end
+        """
+        insert_statement = session.prepare("INSERT INTO {}.{} (key, val) VALUES (?, 'asdf')".format(ks, cf))
+        args = [(r,) for r in range(start, end)]
+        execute_concurrent_with_args(session, insert_statement, args, concurrency=20)
+
+    def create_snapshot(self, node, ks, cf=None):
+        """Create snapshot on node for ks.cf
+
+        Arguments:
+            node {node.Node} -- instance of node
+            ks {str} -- keyspace name to build snapshot for
+
+        Keyword Arguments:
+            cf {str} -- cf name to build snapshot for (default: {None})
+        """
+        debug('Create snapshot for {} on node {}'.format(ks, node.address()))
+        snapshot_cmd = 'snapshot {} -cf {}'.format(ks, cf) if cf else 'snapshot {}'.format(ks)
+        node.nodetool(snapshot_cmd)
+
+    def count_snapshot_disk_size(self, node):
+        """Build dictionary with main info about snapshots
+
+        Build the dictionary with main info about snapshots
+        on provided node. Return dict has next structure:
+        { keyspacename :
+            (<column family name>, <snapshot name>): {
+                'uuid': <uuid of column family>
+                'snapshot_name': {
+                    'path': <full path to snapshot dir of cf
+                    'size': human readable filesize as sum of *.db hardlink files under path
+                }
+            }
+
+        Arguments:
+            node {node.Node} -- instance of Node in cluster under test
+
+        Returns:
+            [dict] -- Structure as dict with info about snapshots on node
+        """
+        data_dir = os.path.join(node.get_path(), 'data')
+
+        # build dict keys of all keyspaces
+        snapshots = {
+            ks_dir: {} for ks_dir in os.listdir(data_dir)
+            if os.path.isdir(os.path.join(data_dir, ks_dir))
+        }
+
+        for ks in snapshots.keys():
+            # build keyspace path name and go through each keyspace
+            # and find all cf
+            for path, dirs, files in os.walk(os.path.join(data_dir, ks)):
+                if '/snapshots/' not in path:
+                    continue
+
+                p = path.split('/')
+                snapshot_id = p[-1]
+                cf_name = p[-3].split('-')
+                disk_size = sum(
+                    [os.path.getsize(os.path.join(path, f))
+                        for f in files
+                        if 'manifest.json' not in f]
+                    )
+                debug('Snapshot ks:{} cf:{} name:{} size is {}, human size is {}'.format(
+                    ks,
+                    cf_name[0],
+                    snapshot_id,
+                    disk_size,
+                    human_size(disk_size)))
+
+                # update the dict with data
+                snapshots[ks].update({
+                    (cf_name[0], snapshot_id): {
+                        'uuid': cf_name[1],
+                        snapshot_id: {
+                            'path': path,
+                            'size': human_size(disk_size)
+                        }
+                    }
+                })
+
+        return snapshots
+
+    def parse_output_listsnapshots(self, output):
+        """parse output of command listsnapshots
+
+        Example of listsnapshots stdout:
+        $ nodetool listsnapshots
+
+        Snapshot Details:
+        Snapshot Name  Keyspace   Column Family  True Size   Size on Disk
+
+        5487138454987  my_ks1     my_cf1    0 bytes     308.66 MB
+        2157384283120  my_ks2     my_cf2    0 bytes     107.21 MB
+        4824891793663  my_ks3     my_cf3    0 bytes      41.69 MB
+
+        Arguments:
+            output {string} -- result of command output
+        """
+
+        output_regexp = re.compile('^(?P<snsh_name>[\w]+)\s+(?P<ks>[\w]+)\s+(?P<cf>[\w]+)\s+(?P<true_size>[0-9.]+)\s\w+\s+(?P<size_on_disk>[0-9.]+\s+\w+)\s+$', re.MULTILINE)
+        debug('Output of nodetool listsnapshots:\n{}'.format(output))
+        return output_regexp.findall(output)
+
+    def compare_filesize_and_output(self, node, output):
+        """Compare results of counted snapshot size and listsnapshots output
+
+        Get ks, cf, snapshot name, size on disk from stdout of listsnapshots
+        and find and compare in dict of snapshot sructure returned by
+        count_snapshot_disk_size method and compare counted results with got
+        results.
+
+        if size are equal for each snapshot return true, otherwise false
+
+        Arguments:
+            node {node.Node} -- instace of node to work on
+            output {string} -- stdout of nodetool listsnapshots
+
+        Returns:
+            [bool] -- result of validate for each snapshot
+        """
+        listsnaps = self.parse_output_listsnapshots(output)
+        snapshots = self.count_snapshot_disk_size(node)
+        return all([snapshots[ks][(cf, snsh_id)][snsh_id]['size'] == ondisk
+                    for snsh_id, ks, cf, _, ondisk in listsnaps])
+
+    def populate_keyspaces(self, session, kses, cfes):
+        """Fill provided keyspaces with tables and
+        simple data
+
+        Create tables from cfes if not exists for each keyspace in kses
+        and insert simple value to each table
+
+        Arguments:
+            session {session} -- open session to scylladb cluster
+            kses {list} -- list of keyspaces to populate
+            cfes {list} -- list of column families to create
+        """
+        for ks in kses:
+            self.create_ks(session, ks, 1)
+            for cf in cfes:
+                session.execute('CREATE TABLE IF NOT EXISTS {}.{} (key int PRIMARY KEY, val text);'.format(ks, cf))
+                session.execute('INSERT INTO {}.{} (key, val) VALUES (1, \'asdf\');'.format(ks, cf))
+
+    def test_no_snapshots(self):
+        """Validate that after creating,  cluster have
+        not any snapshot on node and command is not stopped with exception
+        """
+        self.prepare_cluster()
+        node = self.cluster.nodelist()[0]
+
+        results, errors = node.nodetool('listsnapshots')
+        self.assertFalse(errors)
+        self.assertTrue('There are no snapshots' in results)
+        self.assertTrue(self.compare_filesize_and_output(node, results))
+
+    def test_one_ks_one_snapshot(self):
+        """
+        Validate that listsnapshots correclty count and display
+        information about snapshot for 1 created ks
+        """
+        ks = ['my_ks']
+        cf = ['my_cf']
+
+        self.prepare_cluster()
+        node = self.cluster.nodelist()[0]
+
+        session = self.patient_cql_connection(node)
+        self.populate_keyspaces(session, ks, cf)
+        self.create_snapshot(node, ks[0], cf[0])
+
+        results, errors = node.nodetool('listsnapshots')
+
+        # asserts there is no errors in stderr
+        self.assertFalse(errors)
+        # assert that all snapshot size and names are valid
+        self.assertTrue(self.compare_filesize_and_output(node, results))
+
+    def test_snapshots_of_system_ks(self):
+        """
+        validate that listsnapshots command correctly display data for
+        snapshots of system keyspace only
+        """
+        self.prepare_cluster()
+        node = self.cluster.nodelist()[0]
+
+        self.create_snapshot(node, 'system')
+
+        results, errors = node.nodetool('listsnapshots')
+
+        # asserts there is no errors in stderr
+        self.assertFalse(errors)
+        # assert that all snapshot size and names are valid
+        self.assertTrue(self.compare_filesize_and_output(node, results))
+
+    def test_snapshot_for_several_kses(self):
+        """
+        Validate the correctness of listsnapshots command if
+        snapshots were created for each custom keyspace
+        """
+        self.prepare_cluster()
+        kses = ['my_ks1', 'my_ks2', 'my_ks3']
+        cfes = ['my_cf1', 'my_cf2', 'my_cf3']
+        node = self.cluster.nodelist()[0]
+
+        session = self.patient_cql_connection(node)
+        self.populate_keyspaces(session, kses, cfes)
+
+        for ks in kses:
+            self.create_snapshot(node, ks)
+
+        results, errors = node.nodetool('listsnapshots')
+
+        # asserts there is no errors in stderr
+        self.assertFalse(errors)
+        # assert that all snapshot size and names are valid
+        self.assertTrue(self.compare_filesize_and_output(node, results))
+
+    def test_several_snapshots_for_several_kses(self):
+        """
+        validate the correctness of stdout for listsnapshots command
+        if several snapshots were done for several kses
+        """
+
+        self.prepare_cluster()
+        kses = ['my_ks1', 'my_ks2', 'my_ks3']
+        cfes = ['my_cf1', 'my_cf2', 'my_cf3']
+        node = self.cluster.nodelist()[0]
+
+        session = self.patient_cql_connection(node)
+        self.populate_keyspaces(session, kses, cfes)
+
+        for ks in kses:
+            self.create_snapshot(node, ks)
+
+        debug('Fill with 10k records')
+        for ks in kses:
+            for cf in cfes:
+                self.insert_rows(session, ks, cf, 2, 10000)
+
+        for ks in kses:
+            self.create_snapshot(node, ks)
+
+        results, errors = node.nodetool('listsnapshots')
+
+        # asserts there is no errors in stderr
+        self.assertFalse(errors)
+        # assert that all snapshot size and names are valid
+        self.assertTrue(self.compare_filesize_and_output(node, results))
