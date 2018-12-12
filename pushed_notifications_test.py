@@ -154,24 +154,39 @@ class TestPushedNotifications(Tester):
         @jira_ticket CASSANDRA-7816
         Restarting a node should generate exactly one DOWN and one UP notification
         """
-
-        self.cluster.populate(2).start()
+        self.cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2 = self.cluster.nodelist()
 
         waiter = NotificationWaiter(self, node1, ["STATUS_CHANGE", "TOPOLOGY_CHANGE"])
 
+        # need to block for up to 2 notifications (NEW_NODE and UP) so that these notifications
+        # don't confuse the state below.
+        debug("Waiting for unwanted notifications...")
+        waiter.wait_for_notifications(timeout=30, num_notifications=2)
+        waiter.clear_notifications()
+
+        # On versions prior to 2.2, an additional NEW_NODE notification is sent when a node
+        # is restarted. This bug was fixed in CASSANDRA-11038 (see also CASSANDRA-11360)
+        version = self.cluster.cassandra_version()
+        debug("Version={}".format(version))
+        expected_notifications = 2 if version >= '2.2' else 3
         for i in range(5):
             debug("Restarting second node...")
             node2.stop(wait_other_notice=True)
             node2.start(wait_other_notice=True)
-            debug("Waiting for notifications from {}".format(waiter.address,))
-            notifications = waiter.wait_for_notifications(timeout=60.0, num_notifications=3)
-            self.assertEquals(3, len(notifications))
+            debug("Waiting for notifications from {}".format(waiter.address))
+            notifications = waiter.wait_for_notifications(timeout=60.0, num_notifications=expected_notifications)
+            assert expected_notifications, len(notifications) == notifications
             for notification in notifications:
-                self.assertEquals(self.get_ip_from_node(node2), notification["address"][0])
-            self.assertEquals("DOWN", notifications[0]["change_type"])
-            self.assertEquals("UP", notifications[1]["change_type"])
-            self.assertEquals("NEW_NODE", notifications[2]["change_type"])
+                assert self.get_ip_from_node(node2) == notification["address"][0]
+            assert "DOWN" == notifications[0]["change_type"]
+            if version >= '2.2':
+                assert "UP" == notifications[1]["change_type"]
+            else:
+                # pre 2.2, we'll receive both a NEW_NODE and an UP notification,
+                # but the order is not guaranteed
+                assert {"NEW_NODE", "UP"} == set([n["change_type"] for n in notifications[1:]])
+
             waiter.clear_notifications()
 
     def restart_node_localhost_test(self):
