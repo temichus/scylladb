@@ -29,28 +29,32 @@ class ReadAmplificationTest(Tester):
         Check total bytes read during streaming on repair corresponds to data size
         """
         cluster = self.cluster
+        cluster.set_configuration_options(values={'hinted_handoff_enabled': False, 'compaction_enforce_min_threshold': True})
         debug("Starting cluster..")
-        cluster.populate(4).start(wait_for_binary_proto=True)
+        cluster.populate(4).start(wait_for_binary_proto=True,wait_other_notice=True)
         nodes = cluster.nodelist()
+
+        session = self.patient_cql_connection(nodes[0])
+        self.create_ks(session, 'ks', 3)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        scylla_tools.insert_c1c2(session, keys=xrange(1,100), consistency=ConsistencyLevel.ALL)
 
         debug("Stop node2")
         nodes[1].stop(wait_other_notice=True)
 
-        debug("Run stress write")
-        cnt = 1000000
-        size = KBYTE
-        resp = nodes[0].stress_object(stress_options=['write', 'n={}'.format(cnt), 'cl=QUORUM',
-                                                      '-schema', 'replication(factor=3)',
-                                                      '-col', 'size=FIXED({}) n=FIXED(1)'.format(size),
-                                                      '-pop', 'seq=1..{}'.format(cnt)])
-        self.assertIsInstance(resp, dict, 'Stress error: {}'.format(resp))
-        self.assertAlmostEqual(int(resp['Total partitions:write']), cnt, delta=500)
+        cnt = 500000
+        size = 2 * KBYTE
+        c = 'a' * 1024  * 1 # 1KB
+        cs = [c] * cnt
+        debug("Insert data")
+        scylla_tools.insert_c1c2(session, keys=xrange(1,cnt+1), consistency=ConsistencyLevel.QUORUM, c1_values=cs,
+                              c2_values=cs)
 
         debug("Start node2")
-        nodes[1].start(wait_other_notice=True)
+        nodes[1].start(wait_other_notice=True,wait_for_binary_proto=True)
 
         debug("Start node2 repair")
-        thr = threading.Thread(target=lambda: nodes[1].nodetool("repair -local keyspace1 standard1"))
+        thr = threading.Thread(target=lambda: nodes[1].nodetool("repair -local ks cf"))
         thr.start()
 
         debug("Verify there is no read amplification in repair streaming")
