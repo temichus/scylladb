@@ -670,7 +670,7 @@ class TestNodetool(Tester):
                          "SStable count should be 1")
 
     def _describering_val(self, v):
-        vals = re.findall('^\s*start_token:(-?\d+), end_token:(-?\d+), endpoints:\[([\d\.,]+)\], rpc_endpoints:\[([\d\.,]+)\], endpoint_details:\[(.*)\]\s*$', v, re.MULTILINE)
+        vals = re.findall('^\s*start_token:(-?\d+), end_token:(-?\d+), endpoints:\[([\d\., ]+)\], rpc_endpoints:\[([\d\., ]+)\], endpoint_details:\[(.*)\]\s*$', v, re.MULTILINE)
         heads = ['start_token', 'end_token', 'endpoints', 'rpc_endpoints']
         res = {}
         self.assertTrue(vals, "wrong format of token range: " + v)
@@ -1250,10 +1250,12 @@ class TestNodetool(Tester):
         self.run_cluster(nodes=1)
         self.assertRegexpMatches(self.nodetool_version(), "ReleaseVersion: 3\.\d+\.\d+", "Wrong version")
 
-    def run_cluster(self, nodes=2):
+    def run_cluster(self, nodes=2, configuration=None):
         self.cluster_started = False
         cluster = self.cluster
-        cluster.populate(nodes).start(wait_for_binary_proto=True)
+        if configuration is not None:
+            cluster.set_configuration_options(values=configuration)
+        cluster.populate(nodes).start(wait_other_notice=True,wait_for_binary_proto=True)
         self.cluster_started = True
         return cluster.nodelist()
 
@@ -1474,7 +1476,7 @@ class TestNodetool(Tester):
                 debug("Test call flow:\n" + self.print_time(self.concurrent_part(op)))
 
     def concurrent_repair_test(self):
-        tst = [{"operations": [{"func": self.run_cluster}, {"func": self.concurrent_stress, "delay": 5}, {"func": self.repair, "time": 300, "delay": 10}],
+        tst = [{"operations": [{"func": self.run_cluster, "block": True}, {"func": self.concurrent_stress, "delay": 5}, {"func": self.repair, "time": 300, "delay": 10}],
                 "recurrent": [{"func": self.verify_all_api, "block": True}, {"func": self.verify_info, "time": 20, "delay": 10}]},
                {"operations": [{"func": self.concurrent_stress, "delay": 5}]},
                {"operations": [{"func": self.add_node, "time": 300}, {"func": self.repair, "time": 300}],
@@ -1510,10 +1512,10 @@ class TestNodetool(Tester):
         start 2 nodes
         call rebuild
         """
-        self.ignore_log_patterns = ["migration_task - Can't send migration request: node"]
-        tst = [{"operations": [{"func": self.run_cluster, "args": [[2, 2]], "block": True}, {"func": self.stop, "delay": 5, "args": [[2, 3]]}],
+        self.ignore_log_patterns = ["migration_task - Can't send migration request: node", "No schema agreement from live replicas after"]
+        tst = [{"operations": [{"func": self.run_cluster, "args": [[2, 2], {'hinted_handoff_enabled': False, 'compaction_enforce_min_threshold': True}], "block": True}, {"func": self.stop, "delay": 5, "args": [ [2, 3]]}],
                 "recurrent":[{"func": self.verify_all_api, "block": True}, {"func": self.verify_info, "time": 20, "delay": 10, "args": [None, 'dc1', 'RAC1']}]},
-               {"operations": [{"func": self.concurrent_stress, "delay": 5, "args": [None, {"duration": "1m"}]}],
+               {"operations": [{"func": self.concurrent_stress, "delay": 15, "args": [None, {"cl":"ONE","duration": "1m", "opt": ["-schema","replication(strategy=NetworkTopologyStrategy, dc1=1,dc2=1)","-rate","threads=10"]}]}],
                 "recurrent": [{"func": self.verify_info, "time": 20, "delay": 10, "args": [None, 'dc1', 'RAC1']}]},
                {"operations": [{"func": self.start, "delay": 5, "args": [[2, 3], {"wait_for_binary_proto": True}]}],
                 "recurrent": [{"func": self.verify_info, "time": 20, "delay": 10, "args": [None, 'dc1', 'RAC1']}]},
@@ -1531,18 +1533,20 @@ class TestNodetool(Tester):
         run load
         call drain
         """
-        self.ignore_log_patterns = ["migration_task - Can't send migration request: node"]
+        self.ignore_log_patterns = ["migration_task - Can't send migration request: node", "Connection has been closed"]
         tst = [{"operations": [{"func": self.run_cluster}],
                 "recurrent": [{"func": self.verify_all_api, "block": True}, {"func": self.verify_info, "time": 20, "delay": 10}]},
-               {"operations": [{"func": self.concurrent_stress, "delay": 5, "args": [None, {"duration": "1m"}]}],
+               {"operations": [{"func": self.concurrent_stress, "delay": 5, "args": [None, {"duration": "1m","opt": ["-schema","replication(strategy=SimpleStrategy, replication_factor=2)","-rate","threads=10"]}]}],
                 "recurrent": [{"func": self.verify_info, "time": 20, "delay": 10}]},
-               {"operations": [{"func": self.concurrent_stress, "delay": 5, "args": [None, {"duration": "1m"}]}, {"func": self.drain, "delay": 5, "args": [1]}],
+               {"operations": [{"func": self.concurrent_stress, "delay": 5, "args": [None, {"cl":"ONE", "duration": "2m"}]}, {"func": self.drain, "delay": 90, "args": [1]}],
                 "recurrent": self. queries_method_list}]
         self.general_concurrent(tst)
 
-    @staticmethod
-    def stress(node, opr, times=10000, duration=None, col=None, pop=None, opt=None):
-        cmd = [opr, 'cl=ALL']
+    def stress(self, node, opr, times=10000, duration=None, col=None, pop=None, opt=None, cl=None):
+        cmd = [opr]
+        if cl is None:
+            cl = 'ALL'
+        cmd += ['cl=' + cl]
         if opt is None:
             opt = []
         if duration:
@@ -1557,13 +1561,19 @@ class TestNodetool(Tester):
             cmd += opt
         ret = node.stress_object(cmd)
         if type(ret) == type(str()):
-            raise Exception('Error running cassandra-stress: {}'.format(ret))
+            for line in ret.splitlines():
+                error = True
+                for p in self.ignore_log_patterns:
+                    if p in line:
+                        error = False
+                if error:
+                    raise Exception('Error running cassandra-stress: {}'.format(ret))
         return ret
 
-    def stress_write(self, node, times=10000, duration=None, col=None, pop=None, opt=None):
+    def stress_write(self, node, times=10000, duration=None, col=None, pop=None, opt=None, cl=None):
         if opt is None:
             opt = []
-        return self.stress(node, 'write', times=times, duration=duration, col=col, pop=pop, opt=opt)
+        return self.stress(node, 'write', times=times, duration=duration, col=col, pop=pop, opt=opt, cl=cl)
 
     def stress_mixed(self, node, times=10000, duration=None, col=None, pop=None, opt=None):
         if opt is None:
