@@ -112,7 +112,8 @@ class ReshardingTest(Tester):
 
     def _run_stress(self, op_cnt, stress_cmd):
         res = self.node.stress_object(stress_cmd)
-        self.assertIsInstance(res, dict, 'failed to run stress test')
+        if not isinstance(res,dict):
+             raise Exception('Error running cassandra-stress: {}'.format(res))
         self.assertEquals(res['total errors'], 0)
         self.assertGreaterEqual(res['total partitions'], op_cnt)
 
