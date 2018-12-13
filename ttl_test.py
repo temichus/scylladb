@@ -14,8 +14,9 @@ from assertions import (
     assert_unavailable,
     assert_invalid
 )
-from dtest import Tester, canReuseCluster
+from dtest import Tester, canReuseCluster, debug
 from tools import since
+from scylla_tools import drop_table
 
 
 @since('2.0')
@@ -23,15 +24,16 @@ from tools import since
 class TestTTL(Tester):
     """ Test Time To Live Feature """
 
-    def setUp(self):
-        super(TestTTL, self).setUp()
-        self.cluster.populate(1).start()
-        [node1] = self.cluster.nodelist()
+    def prepare(self, default_time_to_live=None, create_table_statement=None, nodes=1, rf=1, configuration_options=None):
+        if configuration_options:
+            self.cluster.set_configuration_options(values=configuration_options)
+        self.cluster.populate(nodes).start()
+        node1 = self.cluster.nodelist()[0]
         self.session1 = self.patient_cql_connection(node1)
-        self.create_ks(self.session1, 'ks', 1)
+        self.create_ks(self.session1, 'ks', rf=rf)
 
-    def prepare(self, default_time_to_live=None, create_table_statement=None):
-        self.session1.execute("DROP TABLE IF EXISTS ttl_table;")
+        drop_table(session=self.session1, table_name='ttl_table', if_exists=True)
+
         if create_table_statement is None:
             query = """
                 CREATE TABLE ttl_table (
@@ -351,7 +353,8 @@ class TestTTL(Tester):
         self.prepare()
 
         if self._preserve_cluster:
-            self.session1.execute("DROP TABLE IF EXISTS session")
+            drop_table(session=self.session1, table_name='session', if_exists=True)
+
         self.session1.execute("CREATE TABLE session (id text, usr text, valid int, PRIMARY KEY (id))")
 
         self.session1.execute("insert into session (id, usr) values ('abc', 'abc')")
@@ -380,7 +383,7 @@ class TestTTL(Tester):
         self.prepare()
 
         if self._preserve_cluster:
-            self.session1.execute("DROP TABLE IF EXISTS session")
+            drop_table(session=self.session1, table_name='session', if_exists=True)
 
         self.session1.execute("CREATE TABLE session (id text, usr text, valid int, PRIMARY KEY (id))")
 
@@ -419,6 +422,75 @@ class TestTTL(Tester):
         self.smart_sleep(start_time, 10)
         assert_row_count(self.session1, 'session', 0)
 
+    def insert_few_rows(self, start, end, table_name, ttl=None):
+        for i in xrange(start, end + 1):
+            statement = 'INSERT INTO %s (key, col1, col2, col3) VALUES (%d, %d, %d, %d)' % (table_name, i, i, i, i)
+            if ttl:
+                statement = '{} USING TTL {}'.format(statement, ttl)
+            self.session1.execute(statement)
+
+    def execute_statement(self, action, ttl, start_key_value, end_key_value, table_name):
+        # debug('{action} rows {start_key_value}-{end_key_value} using TTL {ttl}'.format(**locals()))
+        start_time = time.time()
+        # TODO: add UPDATE action
+        if action == 'INSERT':
+            self.insert_few_rows(start=start_key_value, end=end_key_value, ttl=ttl, table_name=table_name)
+        return start_time
+
+    def overlaped_rows_ttls_test(self):
+        """ Test when different ttls are applyed  to the same rows
+            Perform the test for different compaction strategies
+        """
+
+        self.prepare(nodes=4, rf=3, configuration_options={'enable_sstables_mc_format': True})
+
+        strategies = ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy',
+                      'TimeWindowCompactionStrategy']
+        table_name = 'ttl_table'
+        for strategy in strategies:
+            debug('Run with {}'.format(strategy))
+            drop_table(session=self.session1, table_name=table_name, if_exists=True)
+
+            self.session1.execute('CREATE TABLE %s (key int, col1 int, col2 int, col3 int, PRIMARY KEY (key, col1)) ' \
+                                  'WITH compaction = {\'class\': \'%s\'}' % (table_name, strategy))
+
+            # debug('Insert 20 rows with default TTL')
+            rows = 20
+            self.insert_few_rows(start=1, end=rows, table_name=table_name)
+            assert_row_count(self.session1, 'ttl_table', rows)
+
+            ttls = [13, 20, 25, 30]
+            # steps: dictionary with test steps. Keys -it's TTL value
+            # Update rows with key 5-10 with TTL 20
+            ttl = ttls[1]
+            steps = {
+                      ttl: {'expected_result': [[i] for i in xrange(1, 21) if i not in [5, 6, 7, 8, 10]],
+                      'start_time': self.execute_statement(action='INSERT', ttl=ttl, start_key_value=5, end_key_value=10, table_name=table_name)
+                     }
+                    }
+
+            # Update rows with key 9-13 with TTL 25
+            ttl = ttls[2]
+            steps[ttl] = {'expected_result': [[i] for i in xrange(1, 21) if i < 5 or i > 10],
+                          'start_time': self.execute_statement(action='INSERT', ttl=ttl, start_key_value=9, end_key_value=13, table_name=table_name)
+                         }
+
+            # Update rows with key 10-11 with TTL 13
+            ttl = ttls[0]
+            steps[ttl] = {'expected_result': [[i] for i in xrange(1, 21) if i != 10],
+                          'start_time': self.execute_statement(action='INSERT', ttl=ttl, start_key_value=10, end_key_value=11, table_name=table_name)
+                         }
+
+            # Update rows with key 10-11 with TTL 13
+            ttl = ttls[3]
+            steps[ttl] = {'expected_result': [[i] for i in xrange(1, 21) if i < 5 or i > 15],
+                          'start_time': self.execute_statement(action='INSERT', ttl=ttl, start_key_value=11, end_key_value=15, table_name=table_name)
+                         }
+
+            for ttl in ttls:
+                self.smart_sleep(steps[ttl]['start_time'], ttl+1)
+                assert_all(session=self.session1, query='select key from {}'.format(table_name),
+                           expected=steps[ttl]['expected_result'], cl=ConsistencyLevel.QUORUM, ignore_order=True)
 
 @canReuseCluster
 class TestDistributedTTL(Tester):
@@ -433,7 +505,7 @@ class TestDistributedTTL(Tester):
         self.create_ks(self.session1, 'ks', 2)
 
     def prepare(self, default_time_to_live=None):
-        self.session1.execute("DROP TABLE IF EXISTS ttl_table;")
+        drop_table(session=self.session1, table_name='ttl_table', if_exists=True)
         query = """
             CREATE TABLE ttl_table (
                 key int primary key,

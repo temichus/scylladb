@@ -150,6 +150,9 @@ def query_c1c2_concurrent(session, keys, consistency=ConsistencyLevel.QUORUM, to
         check_c1c2_result_one(success, list(result), tolerate_missing, must_be_missing, c1, c2),
         results, c1_values, c2_values)
 
+def drop_table(session, table_name, if_exists=False):
+    session.execute("DROP TABLE {} {}".format('IF EXISTS' if if_exists else '', table_name))
+
 def scylla_mode(modes):
     """
         Run the decorated tests if they are executed on correct mode
