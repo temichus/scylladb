@@ -231,15 +231,25 @@ class TestUpdateClusterLayout(Tester):
 
         node2.start()
         node2.watch_log_for("JOINING: sleeping .* ms for pending range setup")
+
+        failed_to_detect = False
         try:
             node3.start(wait_other_notice=True, wait_for_binary_proto=True)
             # lets check that it detected there was another bootstrapping in progress
-            node3.watch_log_for("Checking bootstrapping/leaving/moving nodes: .* sleep 1 second and check again .*")
-            node3.watch_log_for("Checking bootstrapping/leaving/moving nodes: ok")
+            try:
+                node3.watch_log_for("Checking bootstrapping/leaving/moving nodes: .* sleep 1 second and check again .*", timeout=5)
+                debug('Node3 noticed other node was booting')
+            except:
+                debug('Node3 did not notice other node was booting')
+                failed_to_detect = True
         except:
             # if the node was not allowed to boot check reason
-            node3.watch_log_for("Other bootstrapping/leaving/moving nodes detected, cannot bootstrap while consistent_rangemovement is true")
+            node3.watch_log_for("Other bootstrapping/leaving/moving nodes detected, cannot bootstrap while consistent_rangemovement is true", timeout=5)
+            debug("Node 3 detected other node was booting and gave up booting")
+        if failed_to_detect:
+            self.assertTrue(False, "Node3 did not notice other node was booting")
 
+        debug("Check node2 started successfully")
         node2.watch_log_for("Starting listening for CQL clients")
         session = self.patient_exclusive_cql_connection(node2)
         session.execute("use ks;")
