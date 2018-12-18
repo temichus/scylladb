@@ -12,6 +12,7 @@ from datetime import datetime as dt
 
 
 class CompactionAdditionalTest(Tester):
+    _multiprocess_can_split_ = False
 
     def compaction_delete_with_smp_change_test(self):
         """
