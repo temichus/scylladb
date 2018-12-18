@@ -20,22 +20,39 @@ Usage
 -----
 
 The tests are run by nosetests. The only thing the framework needs to know is
-the location of the (compiled) sources for Cassandra. There are two options:
+the location of the (compiled) sources for Scylla. This is done by pointing
+the `CASSANDRA_DIR` to the path of the Scylla repository:
 
-Use existing sources:
+    CASSANDRA_DIR=~/path/to/scylla nosetests
 
-    CASSANDRA_DIR=~/path/to/cassandra nosetests
+To target a Scylla executable compiled in a specific mode include the full path
+to the build dir:
 
-Use ccm ability to download/compile released sources from archives.apache.org:
+    CASSANDRA_DIR=~/path/to/scylla/build/debug nosetests
 
-    CASSANDRA_VERSION=1.0.0 nosetests
+The shell script `scylla_dtest-env.sh` will set this automatically for you to a
+value that works in most deployments, it assumes the Scylla sources are next to
+the `scylla-dtest` repository, in a directory called `scylla`. To use this
+script just source it:
+
+    source ./scylla_dtest-env.sh
+
+Note that for the dtests to work the Scylla repository has to contain a
+directory called `resources` that contains a symlink to a local clone of the
+[scylla-tools-java](https://github.com/scylla/scylla-tools-java) repository.
+The name of the symlink has to be `cassandra`. Create it like this:
+
+    cd ~/path/to/scylla
+    mkdir resources
+    cd resources
+    ln -s ~/path/to/scylla-tools-java cassandra
 
 A convenient option if tests are regularly run against the same existing
 directory is to set a `default_dir` in `~/.cassandra-dtest`. Create the file and
 set it to something like:
 
     [main]
-    default_dir=~/path/to/cassandra
+    default_dir=~/path/to/scylla
 
 The tests will use this directory by default, avoiding the need for any
 environment variable (that still will have precedence if given though).
