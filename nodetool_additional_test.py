@@ -799,7 +799,7 @@ class TestNodetool(Tester):
         cluster = self.cluster
         cluster.populate(2).start(wait_for_binary_proto=True)
         node = cluster.nodelist()[0]
-        strs = self.stress_write(node, 10000, duration='10s')
+        strs = self.stress_write(node, 10000, duration='10s',pop='seq=1..10000',opt=["-rate threads=10"])
         res = self._get_cfhistogram(node, "keyspace1", "standard1")
 
         self.assertMapEqual(res, "ks", "keyspace1", "wrong keysyapce")
@@ -812,7 +812,7 @@ class TestNodetool(Tester):
                 if v != "Max":
                     self.assertMapLess(res["vals"][v], "Write Latency", ltnc * 1000, "unexpected write latency")
 
-        strs = self.stress_mixed(node, 10000, duration='10s')
+        strs = self.stress_mixed(node, 10000, duration='10s',pop='seq=1..10000',opt=["-rate threads=10"])
         res = self._get_cfhistogram(node, "keyspace1", "standard1")
         self.verify_cfhistograms(res=res, ltype='mixed')
         if 'latency max:read' in strs:
@@ -1563,9 +1563,10 @@ class TestNodetool(Tester):
         if type(ret) == type(str()):
             for line in ret.splitlines():
                 error = True
-                for p in self.ignore_log_patterns:
-                    if p in line:
-                        error = False
+                if hasattr(self, 'ignore_log_patterns'):
+                   for p in self.ignore_log_patterns:
+                       if p in line:
+                           error = False
                 if error:
                     raise Exception('Error running cassandra-stress: {}'.format(ret))
         return ret
