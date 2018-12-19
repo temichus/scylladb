@@ -39,7 +39,7 @@ script just source it:
 
 Note that for the dtests to work the Scylla repository has to contain a
 directory called `resources` that contains a symlink to a local clone of the
-[scylla-tools-java](https://github.com/scylla/scylla-tools-java) repository.
+[scylla-tools-java](https://github.com/scylladb/scylla-tools-java) repository.
 The name of the symlink has to be `cassandra`. Create it like this:
 
     cd ~/path/to/scylla
