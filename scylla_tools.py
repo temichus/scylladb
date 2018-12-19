@@ -1052,7 +1052,9 @@ class CassandraCluster(object):
             for ks, tables in self.folders_tree.iteritems():
                 for table in tables:
                     debug('Start data migration from Scylla to Cassandra for {}.{} table'.format(ks, table))
-                    node.nodetool("refresh -- {} {}".format(ks, table))
+                    # If the keyspace/table names are case sensitive, we have to use double quotes. And nodetool refresh
+                    # can't recognize it. So we need to remove double quotes to be able to run the refresh
+                    node.nodetool("refresh -- {} {}".format(ks.replace('"', ''), table.replace('"', '')))
 
     def run_migration(self, scylla_cluster, scylla_test_path, keyspace_name=None, table_name=None, nodes='ALL'):
         self.scylla_cluster = scylla_cluster
