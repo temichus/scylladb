@@ -6,6 +6,7 @@ from cassandra import ConsistencyLevel
 from cassandra.concurrent import execute_concurrent_with_args, execute_concurrent
 from cassandra.query import SimpleStatement
 from ccmlib import common
+from ccmlib.node import NodetoolError
 import re
 from dtest import debug, Tester
 import random, string
@@ -880,8 +881,16 @@ def wait_for_view(cluster, session, ks, view, raise_exception=True):
             if entry[1] == 'SUCCESS':
                 done.add(entry[0])
         for node in cluster.nodelist():
-            if node.is_live() and not (UUID(node.hostid()) in done):
-                return False
+            try:
+                if node.is_live() and not (UUID(node.hostid()) in done):
+                    return False
+            except NodetoolError:
+                # If we decomissioned a node with "nodetool decommission"
+                # the code above may temporarily think that node.is_alive()
+                # is still true, but node.hostid(), which calls nodetool,
+                # can fail with an exception. In this case we just need to
+                # consider this node non-live.
+                pass
         return True
 
     attempts = 40
