@@ -972,7 +972,7 @@ class CassandraCluster(object):
         #Set up Cassandra cluster
         self.tester.setUp()
         self.cluster = self.tester.cluster
-        self.cluster.set_configuration_options(values=config_options, batch_commitlog=False)
+        self.cluster.set_configuration_options(values=config_options)
         debug("Starting a Cassandra cluster of {} node(s) with options {}...".format(nodes, config_options))
         self.cluster.populate(nodes)
         self.cluster.start(wait_for_binary_proto=True, wait_other_notice=True)
