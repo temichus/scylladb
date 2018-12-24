@@ -1386,7 +1386,6 @@ def prepare(self, user_table=False, rf=3, options={}, keyspace_name='ks', nodes=
     cluster = self.cluster
     populate = nodes if isinstance(nodes, list) else [nodes, 0]
     cluster.populate(populate, use_vnodes=True)
-    options['experimental'] = True
     if options:
         cluster.set_configuration_options(values=options)
     if not jvm_args:

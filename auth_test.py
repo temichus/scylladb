@@ -627,7 +627,7 @@ class TestAuth(Tester):
 
         **Expected Result:** SKIPPED
         """
-        self.prepare(experimental=True)
+        self.prepare()
 
         cassandra = self.get_session(user='cassandra', password='cassandra')
         cassandra.execute("CREATE USER cathy WITH PASSWORD '12345'")
@@ -1967,15 +1967,13 @@ class TestAuth(Tester):
         else:
             self.fail('Session should not be created')
 
-    def prepare(self, nodes=1, permissions_validity=0, experimental=False, enable_auth=True, wait_for_superuser=False):
+    def prepare(self, nodes=1, permissions_validity=0, enable_auth=True, wait_for_superuser=False):
         config = {'permissions_validity_in_ms': permissions_validity,
                   'permissions_update_interval_in_ms': int(permissions_validity / 2)}
         auth_conf = {'authenticator': 'org.apache.cassandra.auth.PasswordAuthenticator',
                      'authorizer': 'org.apache.cassandra.auth.CassandraAuthorizer'}
         if enable_auth:
             config.update(auth_conf)
-        if experimental:
-            config.update({'experimental': True})
         self.cluster.set_configuration_options(values=config)
         self.cluster.populate(nodes).start()
 

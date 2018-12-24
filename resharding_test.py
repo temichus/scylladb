@@ -32,7 +32,7 @@ class ReshardingTest(Tester):
         super(ReshardingTest, self).setUp()
         cluster = self.cluster
         cluster = cluster.populate(self.nodes)
-        cluster.set_configuration_options(values={'experimental': True, 'murmur3_partitioner_ignore_msb_bits': self.murmur3})
+        cluster.set_configuration_options(values={'murmur3_partitioner_ignore_msb_bits': self.murmur3})
         cluster.start(wait_for_binary_proto=True, wait_other_notice=True, jvm_args=['--smp', self.smp, '--memory', self.mem])
         self.node = cluster.nodelist()[0]
 

@@ -83,7 +83,6 @@ class TestMaterializedViews(Tester):
         cluster = self.cluster
         populate = nodes if isinstance(nodes, list) else [nodes, 0]
         cluster.populate(populate)
-        options['experimental'] = True
         self.rf = sum([v for v in rf.itervalues()]) if isinstance(rf, dict) else rf
         if options:
             cluster.set_configuration_options(values=options)
@@ -432,6 +431,7 @@ class TestMaterializedViews(Tester):
         """
         self._parallel_updates_inserts(records=2000, nodes=3, rf=3, mvs_amount=10)
 
+    # TODO: update non-key column
     def _parallel_updates_inserts(self, records, nodes, rf, mvs_amount):
         def _assert_rows_count(expected_rows=None, by_node=False):
             names_list = [tm.table_name] + tm.materialized_views.keys() if expected_rows else tm.materialized_views.keys()
@@ -3384,7 +3384,6 @@ class TestMaterializedViewsConsistency(Tester):
 
     def prepare(self, user_table=False, options={}):
         cluster = self.cluster
-        options['experimental'] = True
         if options:
             cluster.set_configuration_options(values=options)
         cluster.populate(3).start()

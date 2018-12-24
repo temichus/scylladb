@@ -163,7 +163,6 @@ class TestConcurrentSchemaChanges(Tester):
         create alters across multiple threads concurrently
         """
         cluster = self.cluster
-        cluster.set_configuration_options(values={'experimental': True})
         cluster.populate(3).start()
 
         node1, node2, node3 = cluster.nodelist()
@@ -201,7 +200,6 @@ class TestConcurrentSchemaChanges(Tester):
         create indexes across multiple threads concurrently
         """
         cluster = self.cluster
-        cluster.set_configuration_options(values={'experimental': True})
         cluster.populate(2).start()
 
         node1, node2 = cluster.nodelist()
@@ -253,7 +251,6 @@ class TestConcurrentSchemaChanges(Tester):
         create materialized views across multiple threads concurrently
         """
         cluster = self.cluster
-        cluster.set_configuration_options(values={'experimental': True})
         cluster.populate(3).start()
         node1, node2, node3 = cluster.nodelist()
         session = self.cql_connection(node1)

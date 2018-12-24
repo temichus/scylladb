@@ -27,7 +27,6 @@ def build_doc_context(tester, test_name, prepare=True, connection=None, nodes=No
     if prepare:
         if connection or nodes:
             raise RuntimeError("Cannot auto prepare doctest context when connection or nodes are provided.")
-        tester.cluster.set_configuration_options(values={'experimental': True})
         tester.cluster.populate(1).start()
         nodes = tester.cluster.nodelist()
         connection = tester.patient_cql_connection(nodes[0])

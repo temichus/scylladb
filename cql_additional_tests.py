@@ -58,7 +58,7 @@ class TestCQL(Tester):
             cluster.set_configuration_options(values={'row_cache_size_in_mb': 100})
 
         if experimental:
-            cluster.set_configuration_options(values={'experimental': True})
+            cluster.set_configuration_options(values={'experimental': experimental})
 
         start_rpc = kwargs.pop('start_rpc', False)
         if start_rpc:
