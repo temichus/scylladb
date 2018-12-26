@@ -1378,6 +1378,8 @@ class JsonFullRowInsertSelect(Tester):
             """
         run_func_docstring(tester=self, test_func=self.simple_schema_test)
 
+    # Issue #4015: Insert using JSON: not clear message when primary key omitted from the column list and omitted from the JSON data
+    @require('#4015')
     def pkey_requirement_test(self):
         """
         Create schema:
