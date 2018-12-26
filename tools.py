@@ -372,7 +372,6 @@ def require(require_pattern, broken_in=None):
 
 def run_query_with_data_processing(session, query, consistency_level=ConsistencyLevel.ONE, session_timeout=120,
                              group=False, groupby_column=None, restrict_column=None, restrict_value=None):
-    debug(query)
     result = list(session.execute(SimpleStatement(query, consistency_level=consistency_level), timeout=session_timeout))
     if result:
         if restrict_column:
