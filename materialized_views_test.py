@@ -61,6 +61,14 @@ class TestMaterializedViews(Tester):
         """
         return self.eventually(lambda: assert_none(*args))
 
+    def stop_cluster(self):
+        # Currently, (See issues #4019 and #3966), shutdown may hang for up
+        # 5 minutes (the timeout set in storage_proxy::send_to_endpoint())
+        # while a view build step is stuck trying to communicate with another
+        # node we previously killed. So we need to increase stop()'s timeout to
+        # be more than 5 minutes (=300 seconds).
+        self.cluster.stop(wait_seconds=360)
+
     def prepare(self, user_table=False, rf=1, options={}, nodes=3, fetch_size=None, jvm_args=[], **kwargs):
         """
 
@@ -1898,7 +1906,7 @@ class TestMaterializedViews(Tester):
         wait_for_view_build_start(session, "ks", "t_by_v")
 
         debug("Stop the cluster. Interrupt the MV build process.")
-        self.cluster.stop()
+        self.stop_cluster()
 
         debug("Ensure view building didn't finish.")
         have_finished = 0
@@ -1967,7 +1975,7 @@ class TestMaterializedViews(Tester):
         debug("Stop the cluster. Interrupt the MV build process.")
         # Our views build quickly, so instead of having to insert lots of data and
         # risk the test taking too long, just force the cluster down
-        self.cluster.stop()
+        self.stop_cluster()
 
         debug("Ensure view building didn't finish.")
         have_finished = 0
@@ -3134,7 +3142,7 @@ class TestMaterializedViews(Tester):
         session.execute('DROP TABLE ks.users')
 
         debug("Restarting cluster")
-        self.cluster.stop()
+        self.stop_cluster()
         self.cluster.start()
 
     @require("#3295")
