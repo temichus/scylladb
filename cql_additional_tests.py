@@ -50,15 +50,14 @@ class TestCQL(Tester):
     def prepare(self, ordered=False, create_keyspace=True, use_cache=False, nodes=1, rf=1, protocol_version=None, experimental=False, **kwargs):
         cluster = self.cluster
 
-        if (ordered):
+        if ordered:
             cluster.set_configuration_options(values={'enable_deprecated_partitioners': True})
             cluster.set_partitioner("org.apache.cassandra.dht.ByteOrderedPartitioner")
 
         if (use_cache):
             cluster.set_configuration_options(values={'row_cache_size_in_mb': 100})
 
-        if experimental:
-            cluster.set_configuration_options(values={'experimental': True})
+        cluster.set_configuration_options(values={'experimental': experimental})
 
         start_rpc = kwargs.pop('start_rpc', False)
         if start_rpc:
@@ -2102,6 +2101,7 @@ class TestCQL(Tester):
 
     @freshCluster()
     @skip('indexes')
+    @require('#3574')
     def composite_index_with_pk_test(self):
 
         session = self.prepare(ordered=True)
@@ -2756,7 +2756,11 @@ class TestCQL(Tester):
         assert rows_to_list(res) == [], list(res)
 
     def allow_filtering_test(self):
-        session = self.prepare(experimental=True)
+        """
+        test queries with multiple restrictions.
+        see where 'allow_filtering' is optional and when it is required.
+        """
+        session = self.prepare()
 
         session.execute("""
             CREATE TABLE test (
@@ -2785,6 +2789,13 @@ class TestCQL(Tester):
         for q in queries:
             assert_invalid(session, q)
             session.execute(q + " ALLOW FILTERING")
+
+    def allow_filtering_secondary_indexes_test(self):
+        """
+                test queries with multiple restrictions + secondary indexes.
+                see where 'allow_filtering' is optional and when it is required.
+        """
+        session = self.prepare()
 
         session.execute("""
             CREATE TABLE indexed (
@@ -5204,6 +5215,178 @@ class TestCQL(Tester):
                        expected=[row[-1]])
 
 
+    def allow_filtering_with_mv_test(self):
+        """
+                test queries with multiple restrictions + materialized view.
+                see where 'allow_filtering' is optional and when it is required.
+        """
+        session = self.prepare()
+
+        session.execute(
+            ("CREATE TABLE users (username varchar, password varchar, gender varchar, "
+             "session_token varchar, state varchar, birth_year bigint, "
+             "PRIMARY KEY (username));")
+        )
+
+        # create a materialized view
+        session.execute("CREATE MATERIALIZED VIEW users_by_state AS "
+                         "SELECT * FROM users WHERE STATE IS NOT NULL AND username IS NOT NULL "
+                         "PRIMARY KEY (state, username)")
+
+        insert_stmt = "INSERT INTO users (username, password, gender, state, birth_year) VALUES "
+        session.execute(insert_stmt + "('user1', 'ch@ngem3a', 'f', 'TX', 1968);")
+        session.execute(insert_stmt + "('user2', 'ch@ngem3b', 'm', 'CA', 1971);")
+        session.execute(insert_stmt + "('user3', 'ch@ngem3c', 'f', 'FL', 1978);")
+        session.execute(insert_stmt + "('user4', 'ch@ngem3d', 'm', 'TX', 1974);")
+
+        assert_all(session,
+                   "SELECT count(*) FROM users WHERE username = 'user1'",
+                   [[1]])
+
+        assert_all(session,
+                   "SELECT count(*) FROM users_by_state WHERE username = 'user1' ALLOW FILTERING",
+                   [[1]])
+
+        assert_all(session,
+                   "SELECT count(*) FROM users_by_state WHERE state = 'TX' AND username = 'user1' ALLOW FILTERING",
+                   [[1]])
+
+        assert_invalid(session, "SELECT * FROM users_by_state where username = 'user1'")
+
+
+    def partition_key_allow_filtering_test(self):
+        """
+        Filtering with unrestricted parts of partition keys
+        @jira_ticket CASSANDRA-11031
+        """
+        session = self.prepare()
+
+        session.execute("""
+            CREATE TABLE IF NOT EXISTS test_filter (
+                k1 int,
+                k2 int,
+                ck1 int,
+                v int,
+                PRIMARY KEY ((k1, k2), ck1)
+            )
+        """)
+        for k1 in [0,1]:
+            for k2 in [0,1]:
+                for ck1 in range(4):
+                    session.execute("INSERT INTO test_filter (k1, k2, ck1, v) VALUES ({}, {}, {}, 0)".format(k1, k2, ck1))
+
+        # session.execute("INSERT INTO test_filter (k1, k2, ck1, v) VALUES (0, 0, 0, 0)")
+        # session.execute("INSERT INTO test_filter (k1, k2, ck1, v) VALUES (0, 0, 1, 0)")
+        # session.execute("INSERT INTO test_filter (k1, k2, ck1, v) VALUES (0, 0, 2, 0)")
+        # session.execute("INSERT INTO test_filter (k1, k2, ck1, v) VALUES (0, 0, 3, 0)")
+        # session.execute("INSERT INTO test_filter (k1, k2, ck1, v) VALUES (0, 1, 0, 0)")
+        # session.execute("INSERT INTO test_filter (k1, k2, ck1, v) VALUES (0, 1, 1, 0)")
+        # session.execute("INSERT INTO test_filter (k1, k2, ck1, v) VALUES (0, 1, 2, 0)")
+        # session.execute("INSERT INTO test_filter (k1, k2, ck1, v) VALUES (0, 1, 3, 0)")
+        # session.execute("INSERT INTO test_filter (k1, k2, ck1, v) VALUES (1, 0, 0, 0)")
+        # session.execute("INSERT INTO test_filter (k1, k2, ck1, v) VALUES (1, 0, 1, 0)")
+        # session.execute("INSERT INTO test_filter (k1, k2, ck1, v) VALUES (1, 0, 2, 0)")
+        # session.execute("INSERT INTO test_filter (k1, k2, ck1, v) VALUES (1, 0, 3, 0)")
+        # session.execute("INSERT INTO test_filter (k1, k2, ck1, v) VALUES (1, 1, 0, 0)")
+        # session.execute("INSERT INTO test_filter (k1, k2, ck1, v) VALUES (1, 1, 1, 0)")
+        # session.execute("INSERT INTO test_filter (k1, k2, ck1, v) VALUES (1, 1, 2, 0)")
+        # session.execute("INSERT INTO test_filter (k1, k2, ck1, v) VALUES (1, 1, 3, 0)")
+
+        # select test
+        assert_all(session,
+                   "SELECT * FROM test_filter WHERE k1 = 0 ALLOW FILTERING",
+                   [[0, 0, 0, 0],
+                    [0, 0, 1, 0],
+                    [0, 0, 2, 0],
+                    [0, 0, 3, 0],
+                    [0, 1, 0, 0],
+                    [0, 1, 1, 0],
+                    [0, 1, 2, 0],
+                    [0, 1, 3, 0]],
+                   ignore_order=True)
+
+        assert_all(session,
+                   "SELECT * FROM test_filter WHERE k1 <= 1 AND k2 >= 1 ALLOW FILTERING",
+                   [[0, 1, 0, 0],
+                    [0, 1, 1, 0],
+                    [0, 1, 2, 0],
+                    [0, 1, 3, 0],
+                    [1, 1, 0, 0],
+                    [1, 1, 1, 0],
+                    [1, 1, 2, 0],
+                    [1, 1, 3, 0]],
+                   ignore_order=True)
+
+        assert_none(session, "SELECT * FROM test_filter WHERE k1 = 2 ALLOW FILTERING")
+        assert_none(session, "SELECT * FROM test_filter WHERE k1 <=0 AND k2 > 1 ALLOW FILTERING")
+
+        assert_all(session,
+                   "SELECT * FROM test_filter WHERE k2 <= 0 ALLOW FILTERING",
+                   [[0, 0, 0, 0],
+                    [0, 0, 1, 0],
+                    [0, 0, 2, 0],
+                    [0, 0, 3, 0],
+                    [1, 0, 0, 0],
+                    [1, 0, 1, 0],
+                    [1, 0, 2, 0],
+                    [1, 0, 3, 0]],
+                   ignore_order=True)
+
+        assert_all(session,
+                   "SELECT * FROM test_filter WHERE k1 <= 0 AND k2 = 0 ALLOW FILTERING",
+                   [[0, 0, 0, 0],
+                    [0, 0, 1, 0],
+                    [0, 0, 2, 0],
+                    [0, 0, 3, 0]])
+
+        assert_all(session,
+                   "SELECT * FROM test_filter WHERE k2 = 1 ALLOW FILTERING",
+                   [[0, 1, 0, 0],
+                    [0, 1, 1, 0],
+                    [0, 1, 2, 0],
+                    [0, 1, 3, 0],
+                    [1, 1, 0, 0],
+                    [1, 1, 1, 0],
+                    [1, 1, 2, 0],
+                    [1, 1, 3, 0]],
+                   ignore_order=True)
+
+        assert_none(session, "SELECT * FROM test_filter WHERE k2 = 2 ALLOW FILTERING")
+
+        # filtering on both Partition Key and Clustering key
+        assert_all(session,
+                   "SELECT * FROM test_filter WHERE k1 = 0 AND ck1=0 ALLOW FILTERING",
+                   [[0, 0, 0, 0],
+                    [0, 1, 0, 0]],
+                   ignore_order=True)
+
+        assert_all(session,
+                   "SELECT * FROM test_filter WHERE k1 = 0 AND k2=1 AND ck1=0 ALLOW FILTERING",
+                   [[0, 1, 0, 0]])
+
+        # count(*) test
+        assert_all(session,
+                   "SELECT count(*) FROM test_filter WHERE k2 = 0 ALLOW FILTERING",
+                   [[8]])
+
+        assert_all(session,
+                   "SELECT count(*) FROM test_filter WHERE k2 = 1 ALLOW FILTERING",
+                   [[8]])
+
+        assert_all(session,
+                   "SELECT count(*) FROM test_filter WHERE k2 = 2 ALLOW FILTERING",
+                   [[0]])
+
+        # test invalid query
+        assert_invalid(session, "SELECT * FROM test_filter WHERE k1 = 0")
+
+        assert_invalid(session, "SELECT * FROM test_filter WHERE k1 = 0 AND k2 > 0")
+
+        assert_invalid(session, "SELECT * FROM test_filter WHERE k1 >= 0 AND k2 in (0,1,2)")
+
+        assert_invalid(session, "SELECT * FROM test_filter WHERE k2 > 0")
+
+
 class CQLAdditionalTests(Tester):
 
     def prepare(self):
@@ -5562,3 +5745,4 @@ class CQLAdditionalTests(Tester):
         debug("Check created tables in KEYSPACE `veraminetest` after restart")
         out, err = nodes[0].run_cqlsh(cmds='USE veraminetest; DESCRIBE TABLES', show_output=True, return_output=True)
         assert len(out.split()) == 112, 'created 100+ tables'
+
