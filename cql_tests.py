@@ -17,6 +17,7 @@ from thrift_bindings.v22.ttypes import (CfDef, Column, ColumnOrSuperColumn,
                                         Mutation)
 from thrift_tests import get_thrift_client
 from tools import debug, require, rows_to_list, since, new_node
+from nose.plugins.attrib import attr
 
 
 class CQLTester(Tester):
@@ -161,6 +162,7 @@ class StorageProxyCQLTester(CQLTester):
 
         session.execute("DROP USER user1")
 
+    @attr('next-gating')
     def statements_test(self):
         """
         INSERT, UPDATE, SELECT, SELECT COUNT, DELETE statements

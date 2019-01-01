@@ -13,11 +13,14 @@ from ccmlib.node import NodetoolError
 from dtest import Tester, debug
 from tools import require, rows_to_list, safe_mkdtemp
 from nose import tools
+from nose.plugins.attrib import attr
+
 
 
 @tools.nottest
 class MigrationTestBase(Tester):
 
+    @attr('next-gating')
     def migrate_sstable_without_compression_test(self):
         self._run_basic_migration_test("without_compression", {'key': 'abc', 'c1': None, 'c2': 'cde'})
 

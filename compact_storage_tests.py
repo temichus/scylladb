@@ -3,6 +3,7 @@ import distutils.dir_util
 import re
 
 from dtest import Tester, debug
+from nose.plugins.attrib import attr
 
 
 class TestCompactStorage(Tester):
@@ -49,7 +50,7 @@ class TestCompactStorage(Tester):
     def read_cassandra_wide_row_data_test(self):
         self.load_and_read_from_sstables("cassandra_compact_storage_wide_partition",self.row_size - 100);
 
-
+    @attr('next-gating')
     def wide_row_test(self):
         cluster = self.cluster
         cluster.populate(1).start(wait_for_binary_proto=True);

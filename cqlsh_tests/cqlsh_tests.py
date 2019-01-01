@@ -21,6 +21,7 @@ from ccmlib import common
 from cqlsh_tools import monkeypatch_driver, unmonkeypatch_driver
 from dtest import Tester, debug
 from tools import create_c1c2_table, insert_c1c2, rows_to_list, require, new_node
+from nose.plugins.attrib import attr
 
 
 class TestCqlsh(Tester):
@@ -1137,6 +1138,7 @@ CREATE TABLE int_checks.values (
     val4 tinyint
 """)
 
+    @attr('next-gating')
     def datetime_values_test(self):
         """ Tests for CASSANDRA-9399, check tables with date and time values"""
         self.cluster.populate(1)

@@ -854,6 +854,7 @@ class TestMaterializedViews(Tester):
                                               session, query.format(mv.mv_name),
                                               consistency_level=ConsistencyLevel.ALL, session_timeout=120)
 
+    @attr('next-gating')
     def create_test(self):
         """Test the materialized view creation"""
 

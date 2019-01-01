@@ -4,6 +4,8 @@ import re
 from cassandra.concurrent import execute_concurrent_with_args
 
 from dtest import Tester, debug
+from nose.plugins.attrib import attr
+
 
 
 def human_size(size, units=['bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB']):
@@ -240,6 +242,7 @@ class TestNodetoolListSnapshots(Tester):
         # assert that all snapshot size and names are valid
         self.assertTrue(self.compare_filesize_and_output(node, results))
 
+    @attr('next-gating')
     def test_snapshot_for_several_kses(self):
         """
         Validate the correctness of listsnapshots command if

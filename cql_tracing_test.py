@@ -12,6 +12,7 @@ import random
 import threading
 import time
 import re
+from nose.plugins.attrib import attr
 
 
 class TestCqlTracing(Tester):
@@ -88,6 +89,7 @@ class TestCqlTracing(Tester):
         self.assertIn('Request complete ', out)
         self.assertIn(" Frodo |  Baggins", out)
 
+    @attr('next-gating')
     def tracing_simple_test(self):
         """
         Test tracing using the default tracing class. See trace().

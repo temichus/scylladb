@@ -12,6 +12,7 @@ from cassandra.query import SimpleStatement
 
 from dtest import Tester, debug
 from scylla_tools import insert_c1c2, query_c1c2_concurrent, get_sstables_files
+from nose.plugins.attrib import attr
 
 
 class TestBackupRestore(Tester):
@@ -477,6 +478,7 @@ class TestBackupRestore(Tester):
         # should not change after a compaction
         self.assertEqual(backups1_files, backups2_files, "backup contents changed after a compaction")
 
+    @attr('next-gating')
     def restore_snapshot_from_cassandra_test(self):
         """
         Check that we can restore snapshot files that have been created by cassandra

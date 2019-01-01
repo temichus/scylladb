@@ -2,6 +2,7 @@ from dtest import Tester, debug
 from tools import (create_c1c2_table, insert_c1c2, query_c1c2,
                    new_node, no_vnodes)
 from cassandra import ConsistencyLevel
+from nose.plugins.attrib import attr
 
 
 class TestBootstrapConsistency(Tester):
@@ -46,6 +47,7 @@ class TestBootstrapConsistency(Tester):
         for n in xrange(30, 1000):
             query_c1c2(n2session, n, ConsistencyLevel.ALL)
 
+    @attr('next-gating')
     def consistent_reads_after_bootstrap_test(self):
         debug("Creating a ring")
         cluster = self.cluster
