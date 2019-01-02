@@ -14,6 +14,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import random
 import commands
+import re
 
 
 
@@ -47,6 +48,21 @@ class RepairAdditionalBase(Tester):
         if restart:
             for node in stopped_nodes:
                 node.start(wait_other_notice=True)
+
+    def check_repair_tx_rx_rows(self, node_to_check, expected_tx_row_nr, expected_rx_row_nr):
+        tx = 0
+        rx = 0
+        for line in node_to_check.grep_log("stats: ranges_nr"):
+            line = line[0]
+            debug(line)
+            kv = re.findall("tx_row_nr=\d*", line)[0].split('=')
+            debug(kv)
+            tx += int(kv[1])
+            kv = re.findall("rx_row_nr=\d*", line)[0].split('=')
+            debug(kv)
+            rx += int(kv[1])
+        self.assertEqual(tx, expected_tx_row_nr)
+        self.assertEqual(rx, expected_rx_row_nr)
 
     def _repair(self, node, options=[]):
         return node.repair(options)
@@ -1779,6 +1795,419 @@ class RepairAdditionalBase(Tester):
         self.cluster.flush()
         checking_keys_num('After Abort', less_than_num=keys_unit * 3)
 
+    def _repair_one_missing_row_test(self, same_shard_count=True, more_options=[]):
+        """
+        Insert 999 keys on node1 and node2
+        Insert another 1 key on node1 only
+        Repair on node2
+        Make sure node2 receives 1 row from node1 and send 0 row to node1
+        """
+        debug("Starting cluster...")
+        # Disable hinted handoff so it doesn't do what we expect repair to do
+        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        self.cluster.populate(2)
+        node1, node2 = self.cluster.nodelist()
+        if not same_shard_count:
+            node1.set_smp(2)
+            node2.set_smp(3)
+            debug("Set node1.smp=2, node2.smp=3");
+        self.cluster.start(wait_for_binary_proto=True, wait_other_notice=True)
+
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 2)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+
+        nr_rows = 10000
+        # Add nr_rows -1  keys on node 1 and node2
+        insert_c1c2(session, keys=xrange(0, nr_rows - 1), consistency=ConsistencyLevel.ALL)
+
+        # Insert 1 more keys on node1
+        debug("Adding data only on node 1...")
+        node2.flush()
+        node2.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node1)
+        session.set_keyspace('ks')
+        insert_c1c2(session, keys=range(nr_rows - 1, nr_rows), consistency=ConsistencyLevel.ONE)
+
+        # Bring up Node 2
+        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+
+        debug("starting repair...")
+        info = self._repair(node2,more_options + ['ks'])
+        debug(info[0])
+        debug(info[1])
+
+        # Node 1 is expected to receive 1 data row from node1
+        self.check_repair_tx_rx_rows(node2, expected_tx_row_nr=0, expected_rx_row_nr=1)
+
+        debug("Check rows on node 1...")
+        # Check that all nodes have all data
+        self.check_rows_on_node(node1, nr_rows)
+        debug("Check rows on node 2...")
+        self.check_rows_on_node(node2, nr_rows)
+        debug("Check rows done")
+
+    def _repair_one_deleted_row_test(self, same_shard_count=True, more_options=[]):
+        """
+        Insert 1000 keys on node1 and node2
+        Delete 1 key on node1 only
+        Repair on node2
+        Make sure node2 receives 1 row (tombstone) from node1 and send 0 key to node1
+        """
+        debug("Starting cluster...")
+        # Disable hinted handoff so it doesn't do what we expect repair to do
+        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        # Create a cluster of 2 nodes, and a keyspace with RF=3 on all nodes
+        # (disable read repair, as we want to test the full repair).
+        self.cluster.populate(2)
+        node1, node2 = self.cluster.nodelist()
+        if not same_shard_count:
+            node1.set_smp(2)
+            node2.set_smp(3)
+            debug("Set node1.smp=2, node2.smp=3");
+        self.cluster.start(wait_for_binary_proto=True, wait_other_notice=True)
+
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 2)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+
+        nr_rows = 10000
+        # Add nr_rows keys on node 1 and node2
+        insert_c1c2(session, keys=xrange(0, nr_rows), consistency=ConsistencyLevel.ALL)
+
+        # Insert 1 more keys on node1
+        debug("Delete data only on node 1...")
+        node2.flush()
+        node2.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node1)
+        session.set_keyspace('ks')
+        query = SimpleStatement("DELETE FROM cf WHERE key ='key1'", consistency_level=ConsistencyLevel.ONE)
+        session.execute(query)
+
+        # Bring up Node 2
+        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+
+        debug("starting repair...")
+        info = self._repair(node2,more_options + ['ks'])
+        debug(info[0])
+        debug(info[1])
+
+        # Node 2 is expected to receive 1 tombstone row from node1
+        self.check_repair_tx_rx_rows(node2, expected_tx_row_nr=0, expected_rx_row_nr=1)
+
+        # Check that all nodes have all data
+        debug("Check rows on node 1...")
+        self.check_rows_on_node(node1, nr_rows)
+        debug("Check rows on node 2...")
+        self.check_rows_on_node(node2, nr_rows)
+        debug("Check rows done")
+
+    def _repair_disjoint_row_2nodes_test(self, same_shard_count=True, more_options=[]):
+        """
+        RF = 2. On each of 2 replicas, insert completely different data.
+        Confirm that repairing a single of these nodes brings all the data
+        to all three replicas.
+        Make sure node2 sends 1000 rows and receives 1000 rows
+        """
+        debug("Starting cluster...")
+        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+
+        self.cluster.populate(2)
+        node1, node2 = self.cluster.nodelist()
+        if not same_shard_count:
+            node1.set_smp(2)
+            node2.set_smp(3)
+            debug("Set node1.smp=2, node2.smp=3");
+        self.cluster.start(wait_for_binary_proto=True, wait_other_notice=True)
+
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 2)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+
+        # Insert 1000 keys *only* on node 1, another 1000 keys *only* on node 2,
+        debug("Adding data only on node 1...")
+        node2.flush()
+        node2.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node1)
+        session.set_keyspace('ks')
+        insert_c1c2(session, keys=range(0, 1000), consistency=ConsistencyLevel.ONE)
+        self.cluster.flush()
+
+        debug("Adding data only on node 2...")
+        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+        node1.flush()
+        node1.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node2)
+        session.set_keyspace('ks')
+        insert_c1c2(session, keys=range(1000, 2000), consistency=ConsistencyLevel.ONE)
+
+        # Bring up all 2 nodes, each should have different data
+        node1.start(wait_other_notice=True, wait_for_binary_proto=True)
+
+        # Run repair on (arbitrarily), node 2
+        debug("starting repair...")
+        info = self._repair(node2,more_options + ['ks'])
+        debug(info[0])
+        debug(info[1])
+
+        # Check repair synced the correct number of rows
+        self.check_repair_tx_rx_rows(node2, expected_tx_row_nr=1000, expected_rx_row_nr=1000)
+
+        # Check that all nodes have all data
+        debug("Check rows on node 1...")
+        self.check_rows_on_node(node1, 2000)
+        debug("Check rows on node 2...")
+        self.check_rows_on_node(node2, 2000)
+        debug("Check rows done")
+
+
+    def _repair_disjoint_row_3nodes_test(self, same_shard_count=True, more_options=[]):
+        '''
+        RF = 3. On each of 3 replicas, insert completely different data.
+        Confirm that repairing a single of these nodes brings all the data
+        to all three replicas.
+        Make sure node3 sends 4000 rows and receives 2000 rows
+        '''
+        debug("Starting cluster...")
+        # Disable hinted handoff so it doesn't do what we expect repair to do
+        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        self.cluster.populate(3)
+        node1, node2, node3 = self.cluster.nodelist()
+        if not same_shard_count:
+            node1.set_smp(2)
+            node2.set_smp(2)
+            node3.set_smp(3)
+            debug("Set node1.smp=2, node2.smp=2, node3.smp=3");
+        self.cluster.start(wait_for_binary_proto=True, wait_other_notice=True)
+
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 3)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+
+        # Insert 1000 keys *only* on node 1, another 1000 keys *only* on node 2,
+        # another 1000 *only on node 3:
+        debug("Adding data only on node 1...")
+        node2.flush()
+        node2.stop(wait_other_notice=True)
+        node3.flush()
+        node3.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node1)
+        session.set_keyspace('ks')
+        insert_c1c2(session, keys=range(1000, 2000), consistency=ConsistencyLevel.ONE)
+        self.cluster.flush()
+        debug("Adding data only on node 2...")
+        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+        node1.flush()
+        node1.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node2)
+        session.set_keyspace('ks')
+        insert_c1c2(session, keys=range(2000, 3000), consistency=ConsistencyLevel.ONE)
+        debug("Adding data only on node 3...")
+        node3.start(wait_other_notice=True, wait_for_binary_proto=True)
+        node2.flush()
+        node2.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node3)
+        session.set_keyspace('ks')
+        insert_c1c2(session, keys=range(3000, 4000), consistency=ConsistencyLevel.ONE)
+
+        # Bring up all 3 nodes, each should have different data
+        node1.start(wait_other_notice=True, wait_for_binary_proto=True)
+        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+
+        debug("starting repair...")
+        info = self._repair(node3, more_options + ['ks'])
+        debug(info[0])
+        debug(info[1])
+
+        # Check repair synced the correct number of rows
+        self.check_repair_tx_rx_rows(node3, expected_tx_row_nr=4000, expected_rx_row_nr=2000)
+
+        # Check that all nodes have all data
+        debug("Check rows on node 1...")
+        self.check_rows_on_node(node1, 3000)
+        debug("Check rows on node 2...")
+        self.check_rows_on_node(node2, 3000)
+        debug("Check rows on node 3...")
+        self.check_rows_on_node(node3, 3000)
+        debug("Check rows done")
+
+    def _repair_joint_row_3nodes_same_key_same_value_test(self, same_shard_count=True, more_options=[]):
+        '''
+        Create data as follows
+
+        Insert 10 to 15 to node 1
+        Insert 25 to 30 to node 2
+        Insert 15 to 20 into node 1 and node 3
+        Insert 20 to 25 into node 2 and node 3
+
+        So that
+
+        Node 1 has range 10 20
+        Node 2 has range 20 30
+        Node 3 has range 15 25
+
+        and
+
+        Range 15 to 20 on node 1 and node 3 has the same key and value
+        Range 20 to 25 on node 2 and node 3 has the same key and value
+
+        That is
+
+        Node1   10 15
+        Node1,3 15 20
+        Node2,3 20 25
+        Node2   25 30
+
+        Node3 will rx 5 rows (10 to 15) from node1 and rx 5 rows (25 to 30)
+        from node2, tx 10 rows (20 to 25 and 25 to 30) to node 1 and tx 10
+        rows (10 to 15 and 15 to 20) to node2
+        '''
+        debug("Starting 3 node cluster...")
+        # Disable hinted handoff so it doesn't do what we expect repair to do
+        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        self.cluster.populate(3)
+        node1, node2, node3 = self.cluster.nodelist()
+        if not same_shard_count:
+            node1.set_smp(2)
+            node2.set_smp(2)
+            node3.set_smp(3)
+            debug("Set node1.smp=2, node2.smp=2, node3.smp=3");
+        self.cluster.start(wait_for_binary_proto=True, wait_other_notice=True)
+
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 3)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+
+        debug("Adding data only on node 1...")
+        node2.flush()
+        node2.stop(wait_other_notice=True)
+        node3.flush()
+        node3.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node1)
+        session.set_keyspace('ks')
+        insert_c1c2(session, keys=range(10, 15), consistency=ConsistencyLevel.ONE)
+        self.cluster.flush()
+
+        debug("Adding data only on node 2...")
+        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+        node1.flush()
+        node1.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node2)
+        session.set_keyspace('ks')
+        insert_c1c2(session, keys=range(25, 30), consistency=ConsistencyLevel.ONE)
+
+        debug("Adding data only on node 2 3...")
+        node3.start(wait_other_notice=True, wait_for_binary_proto=True)
+        session = self.patient_cql_connection(node3)
+        session.set_keyspace('ks')
+        insert_c1c2(session, keys=range(20, 25), consistency=ConsistencyLevel.TWO)
+
+        debug("Adding data only on node 1 3...")
+        node2.flush()
+        node2.stop(wait_other_notice=True)
+        node1.start(wait_other_notice=True, wait_for_binary_proto=True)
+        session = self.patient_cql_connection(node1)
+        session.set_keyspace('ks')
+        insert_c1c2(session, keys=range(15, 20), consistency=ConsistencyLevel.TWO)
+
+        # Bring up all 3 nodes, each should have different data
+        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+
+        debug("starting repair...")
+        info = self._repair(node3, more_options + ['ks'])
+        debug(info[0])
+        debug(info[1])
+
+        # Check repair synced the correct number of rows
+        self.check_repair_tx_rx_rows(node3, expected_tx_row_nr=20, expected_rx_row_nr=10)
+
+        # Check that all nodes have all data
+        debug("Check rows on node 1...")
+        self.check_rows_on_node(node1, 20)
+        debug("Check rows on node 2...")
+        self.check_rows_on_node(node2, 20)
+        debug("Check rows on node 3...")
+        self.check_rows_on_node(node3, 20)
+        debug("Check rows done")
+
+    def _repair_joint_row_3nodes_same_key_diff_value_test(self, same_shard_count=True, more_options=[]):
+        '''
+        Create data as follows
+
+        node1 10 20
+        node2 20 30
+        node3 15 25
+
+        Since the value is different for the overlap ranges, range 15 to 20
+        on node 1 and node 3 will have different hashes, range 20 to 25 on node
+        2 and node 3 will have different hashes. Node 3 will rx 10 rows (range
+        10 to 20) from node 1 and rx 10 rows (range 20 to 30) from node 2, tx 20
+        rows (range 15 to 25 from node 3 and range 20 to 30 from node 2) to
+        node1 and tx 20 rows (range 10 to 20 from node 1 and range 15 to 25
+        from node2) to node 2.
+        '''
+
+        debug("Starting 3 node cluster...")
+        # Disable hinted handoff so it doesn't do what we expect repair to do
+        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        self.cluster.populate(3)
+        node1, node2, node3 = self.cluster.nodelist()
+        if not same_shard_count:
+            node1.set_smp(2)
+            node2.set_smp(2)
+            node3.set_smp(3)
+            debug("Set node1.smp=2, node2.smp=2, node3.smp=3");
+        self.cluster.start(wait_for_binary_proto=True, wait_other_notice=True)
+
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 3)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+
+        debug("Adding data only on node 1...")
+        node2.flush()
+        node2.stop(wait_other_notice=True)
+        node3.flush()
+        node3.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node1)
+        session.set_keyspace('ks')
+        insert_c1c2(session, keys=range(10, 20), consistency=ConsistencyLevel.ONE)
+        self.cluster.flush()
+        debug("Adding data only on node 2...")
+        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+        node1.flush()
+        node1.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node2)
+        session.set_keyspace('ks')
+        insert_c1c2(session, keys=range(20, 30), consistency=ConsistencyLevel.ONE)
+        debug("Adding data only on node 3...")
+        node3.start(wait_other_notice=True, wait_for_binary_proto=True)
+        node2.flush()
+        node2.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node3)
+        session.set_keyspace('ks')
+        insert_c1c2(session, keys=range(15, 25), consistency=ConsistencyLevel.ONE)
+
+        # Bring up all 3 nodes, each should have different data
+        node1.start(wait_other_notice=True, wait_for_binary_proto=True)
+        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+
+        debug("starting repair...")
+        info = self._repair(node3, more_options + ['ks'])
+        debug(info[0])
+        debug(info[1])
+
+        # Check repair synced the correct number of rows
+        self.check_repair_tx_rx_rows(node3, expected_tx_row_nr=40, expected_rx_row_nr=20)
+
+        # Check that all nodes have all data
+        debug("Check rows on node 1...")
+        self.check_rows_on_node(node1, 20)
+        debug("Check rows on node 2...")
+        self.check_rows_on_node(node2, 20)
+        debug("Check rows on node 3...")
+        self.check_rows_on_node(node3, 20)
+        debug("Check rows done")
+
     @skip('unimplemented')
     def _repair_of_cluster_all_nodes_are_out_of_sync(self):
         """
@@ -2079,3 +2508,39 @@ class RepairAdditionalTest(RepairAdditionalBase):
 
     def repair_abort_test(self):
        return RepairAdditionalBase._repair_abort_test(self)
+
+    def repair_one_missing_row_test(self):
+       return RepairAdditionalBase._repair_one_missing_row_test(self)
+
+    def repair_one_deleted_row_test(self):
+       return RepairAdditionalBase._repair_one_deleted_row_test(self)
+
+    def repair_disjoint_row_2nodes_test(self):
+       return RepairAdditionalBase._repair_disjoint_row_2nodes_test(self)
+
+    def repair_disjoint_row_3nodes_test(self):
+       return RepairAdditionalBase._repair_disjoint_row_3nodes_test(self)
+
+    def repair_joint_row_3nodes_1_test(self):
+       return RepairAdditionalBase._repair_joint_row_3nodes_same_key_same_value_test(self)
+
+    def repair_joint_row_3nodes_2_test(self):
+       return RepairAdditionalBase._repair_joint_row_3nodes_same_key_diff_value_test(self)
+
+    def repair_one_missing_row_diff_shard_count_test(self):
+       return RepairAdditionalBase._repair_one_missing_row_test(self, same_shard_count=False)
+
+    def repair_one_deleted_row_diff_shard_count_test(self):
+       return RepairAdditionalBase._repair_one_deleted_row_test(self, same_shard_count=False)
+
+    def repair_disjoint_row_2nodes_diff_shard_count_test(self):
+       return RepairAdditionalBase._repair_disjoint_row_2nodes_test(self, same_shard_count=False)
+
+    def repair_disjoint_row_3nodes_diff_shard_count_test(self):
+       return RepairAdditionalBase._repair_disjoint_row_3nodes_test(self, same_shard_count=False)
+
+    def repair_joint_row_3nodes_1_diff_shard_count_test(self):
+       return RepairAdditionalBase._repair_joint_row_3nodes_same_key_same_value_test(self, same_shard_count=False)
+
+    def repair_joint_row_3nodes_2_diff_shard_count_test(self):
+       return RepairAdditionalBase._repair_joint_row_3nodes_same_key_diff_value_test(self, same_shard_count=False)
