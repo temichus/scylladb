@@ -19,6 +19,18 @@ def assert_unavailable(fun, *args):
         assert False, "Expecting unavailable exception but no exception was raised"
 
 
+def assert_invalid_case_insensitive_matching(session, query, matching=None, expected=InvalidRequest):
+    try:
+        res = session.execute(query)
+        assert False, "Expecting query to be invalid: got %s" % res
+    except AssertionError as e:
+        raise e
+    except expected as e:
+        msg = str(e).upper()
+        if matching is not None:
+            assert re.search(matching.upper(), msg), "Error message does not contain " + matching + " (error = " + msg + ")"
+
+
 def assert_invalid(session, query, matching=None, expected=InvalidRequest):
     try:
         res = session.execute(query)

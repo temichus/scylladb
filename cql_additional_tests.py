@@ -19,8 +19,9 @@ from cassandra.protocol import SyntaxException
 from cassandra.query import SimpleStatement
 from cassandra.query import UNSET_VALUE
 from cassandra.util import sortedset
+from cassandra.cluster import ResultSet
 
-from assertions import assert_all, assert_invalid, assert_none, assert_one
+from assertions import assert_all, assert_invalid, assert_none, assert_one, assert_invalid_case_insensitive_matching
 
 from dtest import Tester, debug
 from dtest import canReuseCluster
@@ -43,6 +44,7 @@ from tools import since
 from nose.tools import assert_equal
 from unittest import skip
 
+MSG_ALLOW_FILTERING = "ALLOW FILTERING"
 
 @canReuseCluster
 class TestCQL(Tester):
@@ -54,7 +56,7 @@ class TestCQL(Tester):
             cluster.set_configuration_options(values={'enable_deprecated_partitioners': True})
             cluster.set_partitioner("org.apache.cassandra.dht.ByteOrderedPartitioner")
 
-        if (use_cache):
+        if use_cache:
             cluster.set_configuration_options(values={'row_cache_size_in_mb': 100})
 
         cluster.set_configuration_options(values={'experimental': experimental})
@@ -2100,7 +2102,6 @@ class TestCQL(Tester):
         assert len(res) == 2, res
 
     @freshCluster()
-    @skip('indexes')
     @require('#3574')
     def composite_index_with_pk_test(self):
 
@@ -2780,15 +2781,15 @@ class TestCQL(Tester):
                    "SELECT * FROM test WHERE k = 1 AND c > 2",
                    "SELECT * FROM test WHERE k = 1 AND c = 2"]
         for q in queries:
-            session.execute(q)
-            session.execute(q + " ALLOW FILTERING")
+            self._assert_valid_query(session=session, query=q)
+            self._assert_valid_query(session=session, query=q + " ALLOW FILTERING")
 
         # Require filtering, allowed only with ALLOW FILTERING
         queries = ["SELECT * FROM test WHERE c = 2",
                    "SELECT * FROM test WHERE c > 2 AND c <= 4"]
         for q in queries:
-            assert_invalid(session, q)
-            session.execute(q + " ALLOW FILTERING")
+            self._assert_valid_query(session=session, query=q + " ALLOW FILTERING")
+            self._assert_invalid_filtering(session=session, query=q)
 
     def allow_filtering_secondary_indexes_test(self):
         """
@@ -2814,14 +2815,14 @@ class TestCQL(Tester):
         queries = ["SELECT * FROM indexed WHERE k = 1",
                    "SELECT * FROM indexed WHERE a = 20"]
         for q in queries:
-            session.execute(q)
-            session.execute(q + " ALLOW FILTERING")
+            self._assert_valid_query(session=session, query=q)
+            self._assert_valid_query(session=session, query=q + " ALLOW FILTERING")
 
         # Require filtering, allowed only with ALLOW FILTERING
         queries = ["SELECT * FROM indexed WHERE a = 20 AND b = 200"]
         for q in queries:
-            assert_invalid(session, q)
-            session.execute(q + " ALLOW FILTERING")
+            self._assert_invalid_filtering(session=session, query=q)
+            self._assert_valid_query(session=session, query=q + " ALLOW FILTERING")
 
     def range_with_deletes_test(self):
         session = self.prepare()
@@ -5214,7 +5215,6 @@ class TestCQL(Tester):
                        query='select {} from {} where {}'.format(columns[-1], table_name, where_clause),
                        expected=[row[-1]])
 
-
     def allow_filtering_with_mv_test(self):
         """
                 test queries with multiple restrictions + materialized view.
@@ -5251,8 +5251,7 @@ class TestCQL(Tester):
                    "SELECT count(*) FROM users_by_state WHERE state = 'TX' AND username = 'user1' ALLOW FILTERING",
                    [[1]])
 
-        assert_invalid(session, "SELECT * FROM users_by_state where username = 'user1'")
-
+        self._assert_invalid_filtering(session, "SELECT * FROM users_by_state where username = 'user1'")
 
     def partition_key_allow_filtering_test(self):
         """
@@ -5275,22 +5274,22 @@ class TestCQL(Tester):
                 for ck1 in range(4):
                     session.execute("INSERT INTO test_filter (k1, k2, ck1, v) VALUES ({}, {}, {}, 0)".format(k1, k2, ck1))
 
-        # session.execute("INSERT INTO test_filter (k1, k2, ck1, v) VALUES (0, 0, 0, 0)")
-        # session.execute("INSERT INTO test_filter (k1, k2, ck1, v) VALUES (0, 0, 1, 0)")
-        # session.execute("INSERT INTO test_filter (k1, k2, ck1, v) VALUES (0, 0, 2, 0)")
-        # session.execute("INSERT INTO test_filter (k1, k2, ck1, v) VALUES (0, 0, 3, 0)")
-        # session.execute("INSERT INTO test_filter (k1, k2, ck1, v) VALUES (0, 1, 0, 0)")
-        # session.execute("INSERT INTO test_filter (k1, k2, ck1, v) VALUES (0, 1, 1, 0)")
-        # session.execute("INSERT INTO test_filter (k1, k2, ck1, v) VALUES (0, 1, 2, 0)")
-        # session.execute("INSERT INTO test_filter (k1, k2, ck1, v) VALUES (0, 1, 3, 0)")
-        # session.execute("INSERT INTO test_filter (k1, k2, ck1, v) VALUES (1, 0, 0, 0)")
-        # session.execute("INSERT INTO test_filter (k1, k2, ck1, v) VALUES (1, 0, 1, 0)")
-        # session.execute("INSERT INTO test_filter (k1, k2, ck1, v) VALUES (1, 0, 2, 0)")
-        # session.execute("INSERT INTO test_filter (k1, k2, ck1, v) VALUES (1, 0, 3, 0)")
-        # session.execute("INSERT INTO test_filter (k1, k2, ck1, v) VALUES (1, 1, 0, 0)")
-        # session.execute("INSERT INTO test_filter (k1, k2, ck1, v) VALUES (1, 1, 1, 0)")
-        # session.execute("INSERT INTO test_filter (k1, k2, ck1, v) VALUES (1, 1, 2, 0)")
-        # session.execute("INSERT INTO test_filter (k1, k2, ck1, v) VALUES (1, 1, 3, 0)")
+        # (0, 0, 0, 0)
+        # (0, 0, 1, 0)
+        # (0, 0, 2, 0)
+        # (0, 0, 3, 0)
+        # (0, 1, 0, 0)
+        # (0, 1, 1, 0)
+        # (0, 1, 2, 0)
+        # (0, 1, 3, 0)
+        # (1, 0, 0, 0)
+        # (1, 0, 1, 0)
+        # (1, 0, 2, 0)
+        # (1, 0, 3, 0)
+        # (1, 1, 0, 0)
+        # (1, 1, 1, 0)
+        # (1, 1, 2, 0)
+        # (1, 1, 3, 0)
 
         # select test
         assert_all(session,
@@ -5378,13 +5377,24 @@ class TestCQL(Tester):
                    [[0]])
 
         # test invalid query
-        assert_invalid(session, "SELECT * FROM test_filter WHERE k1 = 0")
+        self._assert_invalid_filtering(session, "SELECT * FROM test_filter WHERE k1 = 0")
 
-        assert_invalid(session, "SELECT * FROM test_filter WHERE k1 = 0 AND k2 > 0")
+        self._assert_invalid_filtering(session, "SELECT * FROM test_filter WHERE k1 = 0 AND k2 > 0")
 
-        assert_invalid(session, "SELECT * FROM test_filter WHERE k1 >= 0 AND k2 in (0,1,2)")
+        self._assert_invalid_filtering(session, "SELECT * FROM test_filter WHERE k1 >= 0 AND k2 in (0,1,2)")
 
-        assert_invalid(session, "SELECT * FROM test_filter WHERE k2 > 0")
+        self._assert_invalid_filtering(session, "SELECT * FROM test_filter WHERE k2 > 0")
+
+    def _assert_invalid_filtering(self, session, query):
+        assert_invalid_case_insensitive_matching(session=session, query=query, matching=MSG_ALLOW_FILTERING)
+
+    def _assert_valid_query(self, session, query):
+        try:
+            res = session.execute(query)
+            self.assertTrue(type(res) == ResultSet)
+        except AssertionError as e:
+            debug("CQL query validation failed: {} - {}".format(query,e))
+            raise e
 
 
 class CQLAdditionalTests(Tester):
@@ -5745,4 +5755,5 @@ class CQLAdditionalTests(Tester):
         debug("Check created tables in KEYSPACE `veraminetest` after restart")
         out, err = nodes[0].run_cqlsh(cmds='USE veraminetest; DESCRIBE TABLES', show_output=True, return_output=True)
         assert len(out.split()) == 112, 'created 100+ tables'
+
 
