@@ -6,6 +6,7 @@ from cassandra import ConsistencyLevel
 from cassandra.concurrent import execute_concurrent_with_args, execute_concurrent
 from cassandra.query import SimpleStatement
 from ccmlib import common
+from ccmlib.node import NodetoolError
 import re
 from dtest import debug, Tester
 import random, string
@@ -148,6 +149,9 @@ def query_c1c2_concurrent(session, keys, consistency=ConsistencyLevel.QUORUM, to
     map(lambda (success, result), c1, c2:
         check_c1c2_result_one(success, list(result), tolerate_missing, must_be_missing, c1, c2),
         results, c1_values, c2_values)
+
+def drop_table(session, table_name, if_exists=False):
+    session.execute("DROP TABLE {} {}".format('IF EXISTS' if if_exists else '', table_name))
 
 def scylla_mode(modes):
     """
@@ -880,8 +884,16 @@ def wait_for_view(cluster, session, ks, view, raise_exception=True):
             if entry[1] == 'SUCCESS':
                 done.add(entry[0])
         for node in cluster.nodelist():
-            if node.is_live() and not (UUID(node.hostid()) in done):
-                return False
+            try:
+                if node.is_live() and not (UUID(node.hostid()) in done):
+                    return False
+            except NodetoolError:
+                # If we decomissioned a node with "nodetool decommission"
+                # the code above may temporarily think that node.is_alive()
+                # is still true, but node.hostid(), which calls nodetool,
+                # can fail with an exception. In this case we just need to
+                # consider this node non-live.
+                pass
         return True
 
     attempts = 40
@@ -963,7 +975,7 @@ class CassandraCluster(object):
         #Set up Cassandra cluster
         self.tester.setUp()
         self.cluster = self.tester.cluster
-        self.cluster.set_configuration_options(values=config_options, batch_commitlog=False)
+        self.cluster.set_configuration_options(values=config_options)
         debug("Starting a Cassandra cluster of {} node(s) with options {}...".format(nodes, config_options))
         self.cluster.populate(nodes)
         self.cluster.start(wait_for_binary_proto=True, wait_other_notice=True)
@@ -1052,7 +1064,9 @@ class CassandraCluster(object):
             for ks, tables in self.folders_tree.iteritems():
                 for table in tables:
                     debug('Start data migration from Scylla to Cassandra for {}.{} table'.format(ks, table))
-                    node.nodetool("refresh -- {} {}".format(ks, table))
+                    # If the keyspace/table names are case sensitive, we have to use double quotes. And nodetool refresh
+                    # can't recognize it. So we need to remove double quotes to be able to run the refresh
+                    node.nodetool("refresh -- {} {}".format(ks.replace('"', ''), table.replace('"', '')))
 
     def run_migration(self, scylla_cluster, scylla_test_path, keyspace_name=None, table_name=None, nodes='ALL'):
         self.scylla_cluster = scylla_cluster

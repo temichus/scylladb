@@ -21,7 +21,7 @@ from tools import debug, require, rows_to_list, since, new_node
 
 class CQLTester(Tester):
 
-    def prepare(self, ordered=False, create_keyspace=True, use_cache=False, nodes=1, rf=1, protocol_version=None, user=None, password=None, experimental=False, **kwargs):
+    def prepare(self, ordered=False, create_keyspace=True, use_cache=False, nodes=1, rf=1, protocol_version=None, user=None, password=None, **kwargs):
         cluster = self.cluster
 
         if (ordered):
@@ -33,9 +33,6 @@ class CQLTester(Tester):
         start_rpc = kwargs.pop('start_rpc', False)
         if start_rpc:
             cluster.set_configuration_options(values={'start_rpc': True})
-
-        if experimental:
-            cluster.set_configuration_options(values={'experimental': True})
 
         if user:
             config = {'authenticator': 'org.apache.cassandra.auth.PasswordAuthenticator',

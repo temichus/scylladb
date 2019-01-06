@@ -85,7 +85,6 @@ class TestSchema(Tester):
 
     def prepare(self):
         cluster = self.cluster
-        cluster.set_configuration_options(values={'experimental': True})
         cluster.populate(1).start()
         time.sleep(.5)
         nodes = cluster.nodelist()
