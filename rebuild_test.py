@@ -25,7 +25,6 @@ class TestRebuild(Tester):
         ]
         Tester.__init__(self, *args, **kwargs)
 
-    @skip("unable to find class 'org.apache.cassandra.locator.PropertyFileSnitch")
     def simple_rebuild_test(self):
         """
         @jira_ticket CASSANDRA-9119
@@ -36,7 +35,7 @@ class TestRebuild(Tester):
         keys = 1000
 
         cluster = self.cluster
-        cluster.set_configuration_options(values={'endpoint_snitch': 'org.apache.cassandra.locator.PropertyFileSnitch'})
+        cluster.set_configuration_options(values={'endpoint_snitch': 'GossipingPropertyFileSnitch'})
         node1 = cluster.create_node('node1', False,
                                     ('127.0.0.1', 9160),
                                     ('127.0.0.1', 7000),
