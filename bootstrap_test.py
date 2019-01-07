@@ -14,6 +14,7 @@ from dtest import Tester, debug
 from tools import (InterruptBootstrap, KillOnBootstrap, new_node, query_c1c2,
                    since)
 from scylla_tools import scylla_mode
+from nose.plugins.attrib import attr
 
 
 class TestBootstrap(Tester):
@@ -198,6 +199,7 @@ class TestBootstrap(Tester):
         assert len(rows) == 1
         assert rows[0][0] == 'COMPLETED', rows[0][0]
 
+    @attr('next-gating')
     def manual_bootstrap_test(self):
         """Test adding a new node and bootstrappig it manually. No auto_bootstrap.
            This test also verify that all data are OK after the addition of the new node.

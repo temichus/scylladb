@@ -7,6 +7,7 @@ import random
 from assertions import assert_none, assert_one
 from dtest import Tester, debug
 from tools import since
+from nose.plugins.attrib import attr
 
 
 class TestCompaction(Tester):
@@ -149,6 +150,7 @@ class TestCompaction(Tester):
 
         self.assertLess(final_value, initial_value)
 
+    @attr('next-gating')
     def sstable_deletion_test(self):
         """
         Test that sstables are deleted properly when able after compaction.

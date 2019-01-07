@@ -1,4 +1,5 @@
 from dtest import Tester
+from nose.plugins.attrib import attr
 
 
 class TestSimpleBootShutdown(Tester):
@@ -87,6 +88,7 @@ class TestSimpleBootShutdown(Tester):
 
         assert len(res) == 0, res
 
+    @attr('next-gating')
     def boot_create_keyspace_table_insert_shutdown_commitlog_replay_select_test(self):
         cluster = self.prepare()
         cluster.populate(1).start()

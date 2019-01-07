@@ -6,6 +6,7 @@ from dtest import canReuseCluster
 from tools import require
 
 from cqlsh_tests.cqlsh_copy_tests import CqlshPrepare
+from nose.plugins.attrib import attr
 
 @canReuseCluster
 class CQLCastTest(CqlshPrepare):
@@ -66,6 +67,7 @@ class CQLCastTest(CqlshPrepare):
         test_from = ['decimal']
         self._test_run(test_from, TestData.POSITIVE_VALUES)
 
+    @attr('next-gating')
     def cast_date_test(self):
         """Function performs positive tests CAST scalar function for date type"""
         test_from = ['date']

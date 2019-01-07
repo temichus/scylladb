@@ -3,6 +3,8 @@ from dtest import Tester
 import math
 
 from unittest import skip
+from nose.plugins.attrib import attr
+
 
 # Those are ideal values according to c* specifications
 # they should pass
@@ -241,6 +243,7 @@ class TestLimits(Tester):
 
         session.execute("""DROP TABLE STUFF""")
 
+    @attr('next-gating')
     def max_batch_size_test(self):
         cluster = self.prepare()
         cluster.populate(1).start()

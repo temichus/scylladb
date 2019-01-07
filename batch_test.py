@@ -16,6 +16,7 @@ from dtest import Tester
 from tools import debug
 from tools import since
 from tools import require
+from nose.plugins.attrib import attr
 
 
 class TestBatch(Tester):
@@ -291,6 +292,7 @@ class TestBatch(Tester):
             APPLY BATCH
         """, ConsistencyLevel.ONE, received_responses=0)
 
+    @attr('next-gating')
     def acknowledged_by_batchlog_set_when_batchlog_write_succeeds_test(self):
         """ Test that acknowledged_by_batchlog is True if batchlog can be written """
         session = self.prepare(nodes=3, compression=False)

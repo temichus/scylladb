@@ -20,6 +20,7 @@ from thrift_bindings.v22 import Cassandra
 from thrift_bindings.v22.Cassandra import ColumnParent, KeyRange, SlicePredicate, SliceRange
 
 from paging_test import PageFetcher
+from nose.plugins.attrib import attr
 
 
 def get_thrift_client(host, port):
@@ -993,6 +994,7 @@ class TestConsistency(Tester):
                 'TRUNCATE cf', consistency_level=ConsistencyLevel.QUORUM)
             session.execute(truncate_statement)
 
+    @attr('next-gating')
     def quorum_available_during_failure_test(self):
         CL = ConsistencyLevel.QUORUM
         RF = 3

@@ -9,6 +9,7 @@ from cassandra import ConsistencyLevel
 from assertions import assert_none
 
 from datetime import datetime as dt
+from nose.plugins.attrib import attr
 
 
 class CompactionAdditionalTest(Tester):
@@ -337,6 +338,7 @@ class CompactionAdditionalStrategyTests(Tester):
             raise RuntimeError("Unexpected format of file name: '%s'" % file)
         shutil.copy(file, os.path.join(os.path.dirname(file), '-'.join(sstable_split_parts)))
 
+    @attr('next-gating')
     def compaction_removes_ttld_data_after_gc_period_test(self):
         """
         Test that compaction removes TTLd data after gc_period

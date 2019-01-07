@@ -1,4 +1,5 @@
 import time
+from nose.plugins.attrib import attr
 
 from cassandra.query import SimpleStatement
 
@@ -88,6 +89,7 @@ class ClusteringKeyFilterTest(Tester):
         result = self.select(node1, query)
         self.check_result(result, 'key1', ['a'])
 
+    @attr('next-gating')
     def check_composite_test(self):
         node1 = self.start_cluster_and_get_node1()
 

@@ -20,6 +20,7 @@ from dtest import Tester, debug
 from tools import since, new_node, require
 
 from unittest import skip
+from nose.plugins.attrib import attr
 
 
 class TestAuth(Tester):
@@ -787,6 +788,7 @@ class TestAuth(Tester):
         cathy.execute("GRANT SELECT ON cf TO bob")
         bob.execute("SELECT * FROM ks.cf")
 
+    @attr('next-gating')
     def grant_revoke_auth_test(self):
         """
         Originally from dtest.
@@ -1559,6 +1561,7 @@ class TestAuth(Tester):
         """
         raise NotImplementedError
 
+    @attr('next-gating')
     def all_authorization_operations_test(self):
         """
         **Description:** Test all authorization operations, actions and applied objects.

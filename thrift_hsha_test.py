@@ -1,6 +1,6 @@
 import glob
 import os
-import pycassa
+# import pycassa
 import shlex
 import subprocess
 import sys

@@ -1,10 +1,12 @@
 from dtest import Tester, debug
 from cassandra import ConsistencyLevel
 from tools import insert_c1c2, new_node
+from nose.plugins.attrib import attr
 
 
 class TestCleanup(Tester):
 
+    @attr('next-gating')
     def cleanup_test(self):
         cluster = self.cluster
         cluster.populate(1).start(wait_for_binary_proto=True)

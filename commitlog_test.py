@@ -16,6 +16,7 @@ from ccmlib.node import Node, TimeoutError
 from assertions import assert_almost_equal, assert_none, assert_one
 from dtest import Tester, debug
 from tools import since, rows_to_list
+from nose.plugins.attrib import attr
 
 
 class TestCommitLog(Tester):
@@ -208,6 +209,7 @@ class TestCommitLog(Tester):
         self.assertItemsEqual(rows_to_list(res),
                               [[u'gandalf', 1955, u'male', u'p@$$', u'WA']])
 
+    @attr('next-gating')
     def test_commitlog_replay_with_alter_table(self):
         """
         Test commit log replay with alter table

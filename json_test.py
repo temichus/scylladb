@@ -9,6 +9,8 @@ from distutils.version import LooseVersion
 from ccmlib.common import is_win
 from dtest import Tester
 from tools import since, require
+from nose.plugins.attrib import attr
+
 
 
 def build_doc_context(tester, test_name, prepare=True, connection=None, nodes=None):
@@ -1013,6 +1015,7 @@ class FromJsonInsertTests(Tester):
     Tests using fromJson within INSERT statements.
     """
 
+    @attr('next-gating')
     def basic_data_types_test(self):
         """
         Create a table with the primitive types:

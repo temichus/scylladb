@@ -5,6 +5,7 @@ from dtest import Tester, debug
 import glob
 from tools import create_c1c2_table, insert_c1c2, query_c1c2, delete_c1c2
 import time
+from nose.plugins.attrib import attr
 
 class TestHintedHandoff(Tester):
     def hintedhandoff_rebalance_test(self):
@@ -125,6 +126,7 @@ class TestHintedHandoff(Tester):
         assert self.__check_hints_dir_present(node_from=node1, node_to=node3, must_be_present=False) and \
                self.__check_hints_dir_present(node_from=node2, node_to=node3, must_be_present=False)
 
+    @attr('next-gating')
     def hintedhandoff_basic_check_test(self):
         """
         A basic test:

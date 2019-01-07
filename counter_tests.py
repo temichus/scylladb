@@ -14,6 +14,7 @@ from cassandra.query import UNSET_VALUE
 
 from assertions import assert_invalid, assert_one
 from tools import rows_to_list, since, require, new_node
+from nose.plugins.attrib import attr
 
 
 class TestCounters(Tester):
@@ -205,6 +206,7 @@ class TestCounters(Tester):
             self.assertEqual(counter_one_actual, counter_dict[counter_id]['counter_one'])
             self.assertEqual(counter_two_actual, counter_dict[counter_id]['counter_two'])
 
+    @attr('next-gating')
     def multi_counter_update_test(self):
         """
         Test for singlular update statements that will affect multiple counters.

@@ -42,6 +42,7 @@ from tools import rows_to_list
 from tools import since
 
 from nose.tools import assert_equal
+from nose.plugins.attrib import attr
 from unittest import skip
 
 MSG_ALLOW_FILTERING = "ALLOW FILTERING"
@@ -5641,6 +5642,7 @@ class CQLAdditionalTests(Tester):
         num_rows = int(re.search(regex, out).group(1))
         self.assertEqual(num_rows, 10)
 
+    @attr('next-gating')
     def select_all_data_and_filter_explicitly_test(self):
         # https://github.com/scylladb/scylla/issues/2272
         cluster = self.prepare()

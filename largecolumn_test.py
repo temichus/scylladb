@@ -1,6 +1,8 @@
 from dtest import Tester, debug
 from unittest import skip
 from tools import since
+from nose.plugins.attrib import attr
+
 
 
 class TestLargeColumn(Tester):
@@ -59,6 +61,7 @@ class TestLargeColumn(Tester):
         diff = int(afterStress) - int(beforeStress)
         assert diff < LARGE_COLUMN_SIZE, diff
 
+    @attr('next-gating')
     def large_columns_mixed_workload_stress_test(self):
         """
         See https://github.com/scylladb/scylla/issues/1574

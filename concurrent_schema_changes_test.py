@@ -13,6 +13,7 @@ from cassandra.concurrent import execute_concurrent
 
 from dtest import Tester, debug
 from tools import since
+from nose.plugins.attrib import attr
 
 
 def wait(delay=2):
@@ -535,6 +536,7 @@ class TestConcurrentSchemaChanges(Tester):
         wait(2)
         self.validate_schema_consistent(node1)
 
+    @attr('next-gating')
     def load_test(self):
         """
         apply schema changes while the cluster is under load.
