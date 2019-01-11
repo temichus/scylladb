@@ -1932,6 +1932,47 @@ class TestMaterializedViews(Tester):
         debug("Verify all data")
         assert_row_count(session, 't_by_v', rows, consistency_level=ConsistencyLevel.ALL)
 
+    def do_not_finish_view_building_with_hints_test(self):
+        """Test that in presence of view update hints, view building will not be marked as finished"""
+
+        session = self.prepare(options={'hinted_handoff_enabled': False, 'shadow_round_ms': 1000})
+        node1, node2, node3 = self.cluster.nodelist()
+
+        self.allow_log_errors = True
+        session.execute("CREATE TABLE t (id int PRIMARY KEY, v int, v2 text, v3 decimal)")
+
+        rows = 200000
+        debug("Inserting initial data")
+        insert_stmt = session.prepare("INSERT INTO t (id, v, v2, v3) VALUES (?, ?, ?, ?)")
+        for i in xrange(rows):
+            session.execute(insert_stmt, (i, i, 'a', 3.0))
+
+        debug("Create a MV")
+        # Don't wait for schema agreement, or we risk view building concluding too soon
+        session.cluster.max_schema_agreement_wait = 0
+        session.execute(("CREATE MATERIALIZED VIEW t_by_v AS SELECT * FROM t "
+                         "WHERE v IS NOT NULL AND id IS NOT NULL PRIMARY KEY (v, id)"))
+
+        node2.stop()
+        node3.stop()
+
+        wait_for_view_build_start(session, "ks", "t_by_v")
+
+        debug("Ensure view building didn't finish.")
+        for _ in range(10):
+            self._ensure_view_building_did_not_finish(1)
+            time.sleep(1)
+
+        debug("Restart the cluster")
+        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+        node3.start(wait_other_notice=True, wait_for_binary_proto=True)
+
+        debug("Wait and ensure the MV build resumed.")
+        wait_for_view(cluster=self.cluster, session=session, ks="ks", view="t_by_v")
+
+        debug("Verify all data")
+        assert_row_count(session, 't_by_v', rows, consistency_level=ConsistencyLevel.ALL)
+
     def interrupt_build_process_with_resharding_low_to_half_test(self):
         """Test that an interrupted MV build process is resumed, with resharding 1 -> cpu_count() / 2"""
         self._do_resharding_test('1', str(cpu_count() / 2))
