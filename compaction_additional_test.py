@@ -129,7 +129,7 @@ class CompactionAdditionalTest(Tester):
             insert_c1c2(session, n=num_of_keys, consistency=consistency, ks=key_space)
             node.flush()
 
-    @run_with_params(timestamp_resolution=["MICROSECONDS", "MILLISECONDS"])
+    @run_with_params(timestamp_resolution=["MILLISECONDS"])  # Commenting out "MICROSECONDS" options for now.
     def compact_data_by_time_window_test(self, timestamp_resolution):
         """
         1. Create TABLE with compaction_window_size of 1 MINUTES
