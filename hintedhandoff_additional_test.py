@@ -318,7 +318,7 @@ class TestHintedHandoff(Tester):
         if not hh_enabled_value is None:
             hh_enabled = hh_enabled_value
 
-        return ['--hinted-handoff-enabled', hh_enabled, '--experimental', 'true']
+        return ['--hinted-handoff-enabled', hh_enabled]
 
     def __start_cluster_with_hints(self, num, custom_args=[], hh_enabled_value=None):
         cluster = self.cluster
