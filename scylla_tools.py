@@ -966,6 +966,7 @@ class CassandraCluster(object):
         self.scylla_schema_ddl = None
         self.ddl_obj = None
         self.folders_tree = None
+        self.scylla_cluster = None
         debug('\n=============== Create Cassandra cluster ====================\n')
 
     def create_and_start_cluster(self, nodes=1, config_options=None):
@@ -1054,7 +1055,6 @@ class CassandraCluster(object):
     def create_test_schema(self, node):
         for ks, cmds in self.scylla_schema_ddl.iteritems():
             debug('Create keyspace {} with all entities'.format(ks))
-            debug('Run commands: {}'.format('\n'.join(cmd for cmd in cmds)))
             out = node.run_cqlsh(cmds=';'.join(cmd for cmd in cmds), return_output=True)
             if out[1]:
                 debug('Create test schema failure: {}'.format(out[1]))
@@ -1068,6 +1068,9 @@ class CassandraCluster(object):
                     # can't recognize it. So we need to remove double quotes to be able to run the refresh
                     node.nodetool("refresh -- {} {}".format(ks.replace('"', ''), table.replace('"', '')))
 
+        for node in nodes:
+            node.flush()
+
     def run_migration(self, scylla_cluster, scylla_test_path, keyspace_name=None, table_name=None, nodes='ALL'):
         self.scylla_cluster = scylla_cluster
         if not self.scylla_cluster:
@@ -1077,6 +1080,9 @@ class CassandraCluster(object):
 
         # Node(s) for Scylla cluster
         nodes_list = self.scylla_cluster.nodes.values() if nodes == 'ALL' else [self.scylla_cluster.nodes.values()[0]]
+        for node in nodes_list:
+            node.flush()
+        self.scylla_cluster.stop(wait_other_notice=True)
 
         self.copy_scylla_test_data_to_tmp(scylla_test_path=scylla_test_path, keyspace_name=keyspace_name,
                                           table_name=table_name, nodes=nodes_list)
@@ -1093,10 +1099,11 @@ class CassandraCluster(object):
 
     def tearDown(self):
         debug('Remove temporary folder with Scylla data')
-        if os.path.exists(self.scylla_data_tmp_folder):
+        if self.scylla_data_tmp_folder and os.path.exists(self.scylla_data_tmp_folder):
             shutil.rmtree(self.scylla_data_tmp_folder)
         debug('Stopping Cassandra cluster')
-        self.cluster.stop(wait_other_notice=True)
+        if self.cluster:
+            self.cluster.stop(wait_other_notice=True)
 
 class SchemaDDL(object):
     """Class provides interface to fetch schema DDL"""

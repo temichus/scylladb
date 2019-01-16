@@ -1,16 +1,25 @@
+import json
 import os
+import random
 import re
 import shutil
+import string
+import tempfile
 import time
 import uuid
 import subprocess
 import glob
 import datetime
+from unittest import skip
 
+from cassandra import ConsistencyLevel
 from cassandra.query import SimpleStatement
+
+from assertions import assert_one
 from ccmlib.node import NodetoolError
 
 from dtest import Tester, debug
+from scylla_tools import CassandraCluster, drop_table
 from tools import require, rows_to_list, safe_mkdtemp
 from nose import tools
 from nose.plugins.attrib import attr
@@ -618,6 +627,252 @@ class TestMigration(MigrationTestBase):
         if self.version == '2_2_x':
             self.skipTest('issue #3395 - Migration from Cassandra 2_2_X fails for "lb" files')
         super(TestMigration, self).migrate_sstable_with_variant_data_types_test()
+
+@skip('not run every build')
+@attr('long','compare-cassandra')
+class TTLWithMigrate(Tester):
+    """ Test Time To Live Feature with Migration"""
+
+    def prepare(self, default_time_to_live=None, create_table_statement=None, nodes=1, rf=1, configuration_options=None):
+        if configuration_options:
+            self.cluster.set_configuration_options(values=configuration_options)
+        self.cluster.populate(nodes).start()
+        node1 = self.cluster.nodelist()[0]
+        self.session1 = self.patient_cql_connection(node1)
+        self.create_ks(self.session1, 'ks', rf=rf)
+
+        drop_table(session=self.session1, table_name='ttl_table', if_exists=True)
+
+        if create_table_statement is None:
+            query = """
+                CREATE TABLE ttl_table (
+                    key int primary key,
+                    col1 int,
+                    col2 int,
+                    col3 int,
+                )
+            """
+        else:
+            query = create_table_statement
+        if default_time_to_live:
+            query += " WITH default_time_to_live = {};".format(default_time_to_live)
+
+        self.session1.execute(query)
+
+    def big_table_with_ttls_test(self):
+        """
+        Test validates migration from Scylla to Cassandra of large partition table with TTLs.
+         - Create the big table with different kind of columns, create 100 partitions with 1000 rows each partition and 1 partition with 100000 rows.
+         - Run updates/removes on all columns
+         - Take dump
+         - Migrate data to Cassandra
+         - Take dump
+         - Compare dumps
+        """
+        self.prepare(nodes=4, rf=3, configuration_options={'enable_sstables_mc_format': True})
+        keyspace_name = 'ks'
+        table_name = 'cf'
+        int_columns = 99
+        stmt = 'create table {} (pk int, ck int, {}, clist list<int>, cset set<text>, cmap map<int, text>, ' \
+               'PRIMARY KEY(pk, ck))'.format(table_name, ', '.join('c%d int' % i for i in xrange(1, int_columns)))
+        self.session1.execute(stmt)
+
+        def create_update_command(ttl, column_expr, pk, ck, table_name=table_name):
+            return 'update {table_name} USING TTL {ttl} set {column_expr} where pk={pk} and ck={ck}'.format(**locals())
+
+
+        # Prefill
+        partitions = 100
+        rows_in_partition = 1000
+        debug('Create {} partitions with {} rows'.format(partitions, rows_in_partition))
+        for i in xrange(1, partitions+1):
+            for k in xrange(1, rows_in_partition+1):
+                str = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(10))
+                stmt = 'insert into {table_name} (pk, ck, {columns}, clist, cset, cmap) values ({ilist}, {klist}, {int_values}, ' \
+                       '[{ilist}, {klist}], ' \
+                       '{open}{set_value}{close}, {map_value})'.format(table_name=table_name,
+                    columns=', '.join('c%d' % l for l in xrange(1, int_columns)),
+                    int_values=', '.join('%d' % l for l in xrange(1, int_columns)), ilist=i, klist=k, open='{\'',
+                    set_value=str, close='\'}', map_value='{%d: \'%s\'}' % (k, str)
+                )
+                self.session1.execute(stmt)
+
+        big_partition = partitions + 1
+        big_partition_rows = 100000
+        debug('Create partition where pk = {} with {} rows'.format(big_partition, big_partition_rows))
+        for k in xrange(1, big_partition_rows+1):
+            str = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(10))
+            stmt = 'insert into {table_name} (pk, ck, {columns}, clist, cset, cmap) values ({ilist}, {klist}, {int_values}, ' \
+                   '[{ilist}, {klist}], ' \
+                   '{open}{set_value}{close}, {map_value})'.format(table_name=table_name,
+                columns=', '.join('c%d' % l for l in xrange(1, int_columns)),
+                int_values=', '.join('%d' % l for l in xrange(1, int_columns)), ilist=big_partition, klist=k, open='{\'',
+                set_value=str, close='\'}', map_value='{%d: \'%s\'}' % (k, str)
+            )
+            self.session1.execute(stmt)
+
+        node1 = self.cluster.nodelist()[0]
+        self.cluster.flush()
+
+        debug('Run updates')
+        ttl_boundaries = [1800, 3600]
+
+        for _ in xrange(1, big_partition+1):
+            # Update int columns
+            stmts = [create_update_command(ttl=random.randint(ttl_boundaries[0], ttl_boundaries[1]),
+                                           column_expr='c%d = %d' % (random.randint(1, int_columns-1), random.randint(0, 500000)),
+                                           pk=random.randint(1, partitions), ck=random.randint(1, rows_in_partition))]
+            # Update big partition
+            stmts.append(create_update_command(ttl=random.randint(ttl_boundaries[0], ttl_boundaries[1]),
+                                           column_expr='c%d = %d' % (random.randint(1, int_columns-1), random.randint(0, 500000)),
+                                           pk=big_partition, ck=random.randint(1, big_partition_rows)))
+
+            # Delete int value
+            stmts.append(create_update_command(ttl=random.randint(ttl_boundaries[0], ttl_boundaries[1]),
+                                               column_expr='c%d = NULL' % (random.randint(1, int_columns - 1)),
+                                               pk=random.randint(1, partitions), ck=random.randint(1, rows_in_partition)))
+            # Delete int value in big partition
+            stmts.append(create_update_command(ttl=random.randint(ttl_boundaries[0], ttl_boundaries[1]),
+                                           column_expr='c%d = NULL' % (random.randint(1, int_columns-1)),
+                                           pk=big_partition, ck=random.randint(1, big_partition_rows)))
+            # Update collection columns
+            str = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(10))
+            # APPEND to set column - small partitions
+            stmts.append(create_update_command(ttl=random.randint(ttl_boundaries[0], ttl_boundaries[1]),
+                                           column_expr='cset = cset+{\'%s\'}' % (str),
+                                           pk=random.randint(1, partitions), ck=random.randint(1, rows_in_partition)))
+            # APPEND to set column - Big partition
+            stmts.append(create_update_command(ttl=random.randint(ttl_boundaries[0], ttl_boundaries[1]),
+                                           column_expr='cset = cset+{\'%s\'}' % (str),
+                                           pk=big_partition, ck=random.randint(1, big_partition_rows)))
+            # APPEND to list column - small partitions
+            stmts.append(create_update_command(ttl=random.randint(ttl_boundaries[0], ttl_boundaries[1]),
+                                           column_expr='clist = clist+[%d]' % (random.randint(0, 500000)),
+                                           pk=random.randint(1, partitions), ck=random.randint(1, rows_in_partition)))
+            # APPEND to list column - Big partition
+            stmts.append(create_update_command(ttl=random.randint(ttl_boundaries[0], ttl_boundaries[1]),
+                                           column_expr='clist = clist+[%d]' % (random.randint(0, 500000)),
+                                           pk=big_partition, ck=random.randint(1, big_partition_rows)))
+            # APPEND to map column - small partitions
+            stmts.append(create_update_command(ttl=random.randint(ttl_boundaries[0], ttl_boundaries[1]),
+                                               column_expr='cmap = cmap+{%d: \'%s\'}' % (random.randint(0, 500000), str),
+                                               pk=random.randint(1, partitions), ck=random.randint(1, rows_in_partition)))
+            # APPEND to map column - Big partition
+            stmts.append(create_update_command(ttl=random.randint(ttl_boundaries[0], ttl_boundaries[1]),
+                                               column_expr='cmap = cmap+{%d: \'%s\'}' % (random.randint(0, 500000), str),
+                                               pk=big_partition, ck=random.randint(1, big_partition_rows)))
+            # OVERWRITE set column - small partitions
+            stmts.append(create_update_command(ttl=random.randint(ttl_boundaries[0], ttl_boundaries[1]),
+                                           column_expr='cset = {\'%s\'}' % (str),
+                                           pk=random.randint(1, partitions), ck=random.randint(1, rows_in_partition)))
+            # OVERWRITE set column - Big partition
+            stmts.append(create_update_command(ttl=random.randint(ttl_boundaries[0], ttl_boundaries[1]),
+                                           column_expr='cset = {\'%s\'}' % (str),
+                                           pk=big_partition, ck=random.randint(1, big_partition_rows)))
+            # OVERWRITE list column - small partitions
+            stmts.append(create_update_command(ttl=random.randint(ttl_boundaries[0], ttl_boundaries[1]),
+                                           column_expr='clist = [%d]' % (random.randint(0, 500000)),
+                                           pk=random.randint(1, partitions), ck=random.randint(1, rows_in_partition)))
+            # OVERWRITE list column - Big partition
+            stmts.append(create_update_command(ttl=random.randint(ttl_boundaries[0], ttl_boundaries[1]),
+                                           column_expr='clist = [%d]' % (random.randint(0, 500000)),
+                                           pk=big_partition, ck=random.randint(1, big_partition_rows)))
+            # OVERWRITE map column - small partitions
+            stmts.append(create_update_command(ttl=random.randint(ttl_boundaries[0], ttl_boundaries[1]),
+                                               column_expr='cmap = {%d: \'%s\'}' % (random.randint(0, 500000), str),
+                                               pk=random.randint(1, partitions),
+                                               ck=random.randint(1, rows_in_partition)))
+            # OVERWRITE map column - Big partition
+            stmts.append(create_update_command(ttl=random.randint(ttl_boundaries[0], ttl_boundaries[1]),
+                                               column_expr='cmap = {%d: \'%s\'}' % (random.randint(0, 500000), str),
+                                               pk=big_partition, ck=random.randint(1, big_partition_rows)))
+
+            for stmt in stmts:
+                self.session1.execute(stmt)
+
+        scylla_data_json, scylla_json_path = self._dump_data(cluster=self.cluster, node=node1, node_owner='Scylla')
+
+        count_query = 'select count(*) from {}.{} where pk = {}'.format(keyspace_name, table_name, big_partition)
+        scylla_big_partition_count = list(self.session1.execute(count_query, timeout=120))[0][0]
+        self.assertTrue(scylla_big_partition_count == big_partition_rows,
+                        msg='Expected {big_partition_rows} rows in the big partition, but received '
+                            '{scylla_big_partition_count}'.format(**locals()))
+
+        # Create Cassandra cluster, migrate the data and take the dump
+        cassandra_data_json, cassandra_json_path = self.migrate_to_cassandra(keyspace_name=keyspace_name, table_name=table_name,
+                                                                scylla_big_partition_count=scylla_big_partition_count,
+                                                                count_query=count_query)
+
+        self.assertTrue(len(scylla_data_json) == len(cassandra_data_json),
+                        msg='Lengths of Scylla and Cassandra dumps are not same. '
+                            'Length of Scylla dump is {}, Length of Cassandra dump is {}. '
+                            'Please, check and compare {} and {} files'.format(
+                                                             len(scylla_data_json), len(cassandra_data_json),
+                                                             scylla_json_path, cassandra_json_path)
+                        )
+        self.assertTrue(scylla_data_json == cassandra_data_json, msg='Data dumps is not same in Scylla and Cassandra. '
+                                                                     'Please, check and compare {} and {} files'.format(
+                                                                        scylla_json_path, cassandra_json_path)
+                       )
+        os.unlink(scylla_json_path)
+        os.unlink(cassandra_json_path)
+
+    def migrate_to_cassandra(self, keyspace_name, table_name, take_dump=True, scylla_big_partition_count=None, count_query=''):
+        cc = None
+        cassandra_data_json, cassandra_json_path = '', ''
+        try:
+            cc = CassandraCluster(cassandra_version='3.11.3')
+            cassandra_node1 = cc.run_migration(scylla_cluster=self.cluster, scylla_test_path=self.test_path,
+                                               keyspace_name=keyspace_name, table_name=table_name)
+            if take_dump:
+                cassandra_data_json, cassandra_json_path = self._dump_data(cluster=cc.cluster, node=cassandra_node1,
+                                                                       node_owner='Cassandra')
+
+            # We want to validate the rows amount in the large partition.
+            # But the count query fails on timeout in Cassandra. Comment meanwhile
+            # Error in the log: org.apache.cassandra.service.DigestMismatchException: Mismatch for key DecoratedKey
+            # https://stackoverflow.com/questions/39765813/datastax-mismatch-for-key-issue
+            # if scylla_big_partition_count is not None:
+            #     cassandra_session = self.patient_cql_connection(cassandra_node1, keyspace=keyspace_name)
+            #     assert_one(cassandra_session, count_query, [scylla_big_partition_count], cl=ConsistencyLevel.ALL, timeout=300)
+        except Exception as e:
+            debug('Failure: {}'.format(e.message))
+            self.assertTrue(False, e.message)
+        finally:
+            if cc:
+                cc.tearDown()
+
+        return cassandra_data_json, cassandra_json_path
+
+    def _dump_data(self, cluster, node, node_owner, keyspace_name='ks', table_name='cf'):
+        debug('Flush data to the disk before dump')
+        cluster.flush()
+        debug('Run sstabledump')
+        data_json = ''
+        data_json_path = tempfile.mktemp(suffix='.schema.json', prefix=node_owner)
+        with open(data_json_path, 'a') as fdw:
+            node.run_sstable2json(out_file=fdw, keyspace=keyspace_name, column_families=[table_name])
+
+        debug('{} sstabledump saved into {}'.format(node_owner, data_json_path))
+
+        with open(data_json_path, 'r') as fdr:
+            dump = fdr.readlines()
+        # Why the "position" info is removing:
+        # On disk the partitions are sorted in order of this hashed key.
+        # The output of the position key is just referring to where in the sstable's data file its located
+        # (decompressed byte offset).
+        # This value is meaningless but may be different after migration in Cassandra then in Scylla
+        #TODO: add mechanism to order the dump by pk and ck columns
+        data_json = json.dumps(''.join([line for line in dump if '"position"' not in line]), sort_keys=True)
+
+        # Re-write the file with data without "position"
+        os.remove(data_json_path)
+        with open(data_json_path, 'a') as fdw:
+            for line in data_json.split('\\n'):
+                fdw.write(line.replace('\\"', '"') + '\n')
+
+        return data_json, data_json_path
+
 
 versions = ['2_1_x', '2_2_x']
 for version in versions:

@@ -343,7 +343,8 @@ class Tester(TestCase):
                     if e.errno != errno.ENOENT:  # ENOENT = no such file or directory
                         raise
 
-            os.rmdir(self.test_path)
+            if os.path.exists(self.test_path):
+                os.rmdir(self.test_path)
         if os.path.exists(LAST_TEST_DIR):
             os.remove(LAST_TEST_DIR)
 
