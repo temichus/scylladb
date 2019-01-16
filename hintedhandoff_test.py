@@ -74,7 +74,7 @@ class TestHintedHandoffConfig(Tester):
         """
         Test various nodetool commands
         """
-        node1, node2 = self._start_two_node_cluster({'hinted_handoff_enabled': True})
+        node1, node2 = self._start_two_node_cluster()
 
         for node in node1, node2:
             res = self._launch_nodetool_cmd(node, 'statushandoff')
@@ -112,7 +112,7 @@ class TestHintedHandoffConfig(Tester):
         """
         Test global hinted handoff enabled
         """
-        node1, node2 = self._start_two_node_cluster({'hinted_handoff_enabled': True})
+        node1, node2 = self._start_two_node_cluster()
 
         for node in node1, node2:
             res = self._launch_nodetool_cmd(node, 'statushandoff')
@@ -124,8 +124,7 @@ class TestHintedHandoffConfig(Tester):
         """
         Test global hinted handoff enabled with the dc disabled
         """
-        node1, node2 = self._start_two_node_cluster({'hinted_handoff_enabled': True,
-                                                     'hinted_handoff_disabled_datacenters': ['dc1']})
+        node1, node2 = self._start_two_node_cluster({'hinted_handoff_disabled_datacenters': ['dc1']})
 
         for node in node1, node2:
             res = self._launch_nodetool_cmd(node, 'statushandoff')
@@ -137,8 +136,7 @@ class TestHintedHandoffConfig(Tester):
         """
         Test global hinted handoff enabled with the dc disabled first and then re-enabled
         """
-        node1, node2 = self._start_two_node_cluster({'hinted_handoff_enabled': True,
-                                                     'hinted_handoff_disabled_datacenters': ['dc1']})
+        node1, node2 = self._start_two_node_cluster({'hinted_handoff_disabled_datacenters': ['dc1']})
 
         for node in node1, node2:
             res = self._launch_nodetool_cmd(node, 'statushandoff')
