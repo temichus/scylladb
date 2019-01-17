@@ -4,7 +4,7 @@
 #
 # scripts/setup-virtualenv --virtualenv-root=PATH --python=PATH
 
-CASSANDRA_DRIVER_VERSION='3.7.1'
+CASSANDRA_DRIVER_VERSION='3.15.0'
 THRIFT_VERSION='0.9.3'
 
 PROGRAM=$(basename $0)
