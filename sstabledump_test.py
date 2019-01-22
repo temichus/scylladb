@@ -173,7 +173,7 @@ class SSTableDumpAllDatatypes(CqlshPrepare, SSTableDump):
                       'p': lambda v: p.append((int(v))),
                       'q': lambda v: q.extend(v),
                       'r': lambda x, y: r.update(
-                          {(parse(x).replace(tzinfo=tzutc())): str(y)}),
+                          {(parse(x).replace(tzinfo=tzutc()) - timedelta(hours=3)): str(y)}),
                       's': lambda v: tuple([json.loads(val) if i != 1 else val for i, val in enumerate(v.split(':'))]) if type(v) == type(str()) else tuple(v),
                       }
 
