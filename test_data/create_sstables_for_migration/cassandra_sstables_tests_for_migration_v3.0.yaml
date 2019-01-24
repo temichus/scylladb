@@ -1,0 +1,265 @@
+to_check_consistency:
+  cmds: [["cqlsh", "CREATE KEYSPACE ks WITH replication={'class':'SimpleStrategy', 'replication_factor':1}"],
+         ["cqlsh", "CREATE COLUMNFAMILY ks.cf (p1 text, r1 int, PRIMARY KEY (p1)) WITH read_repair_chance=0.000000"],
+         ["cqlsh", "INSERT INTO ks.cf (p1, r1) VALUES ('key1', 1)"],
+         ["nodetool", "flush"],
+         ["subfolder", "1"],
+         ["cqlsh", "INSERT INTO ks.cf (p1, r1) VALUES ('key1', 2)"],
+         ["nodetool", "flush"],
+         ["subfolder", "2"],
+         ["cqlsh", "DROP KEYSPACE ks"],
+         ["delete folder"]
+        ]
+  keyspace_name: 'ks'
+  table_name: 'cf'
+
+with_cell_tombstone:
+  cmds: [["cqlsh", "CREATE KEYSPACE ks WITH replication={'class':'SimpleStrategy', 'replication_factor':1}"],
+          ["cqlsh", "CREATE COLUMNFAMILY ks.cf (key varchar PRIMARY KEY, c2 text, c1 text) WITH comment='test cf' AND compression = {} AND read_repair_chance=0.000000"],
+          ["cqlsh", "INSERT INTO ks.cf (key, c1, c2) VALUES ('a', 'abc', 'cde')"],
+          ["nodetool", "flush"],
+          ["cqlsh", "DELETE c2 FROM ks.cf where key = 'a'"],
+          ["nodetool", "flush"],
+          ["subfolder", ""],
+          ["cqlsh", "DROP KEYSPACE ks"],
+          ["delete folder"]
+         ]
+  keyspace_name: 'ks'
+  table_name: 'cf'
+
+
+with_collection_list:
+  cmds: [["cqlsh", "CREATE KEYSPACE ks WITH replication={'class':'SimpleStrategy', 'replication_factor':1}"],
+          ["cqlsh", "CREATE COLUMNFAMILY ks.cf (key varchar PRIMARY KEY, messages list<text>) WITH comment='test cf' AND compression = {} AND read_repair_chance=0.000000"],
+          ["cqlsh", "INSERT INTO ks.cf (key, messages) VALUES ( 'a', ['scylladb', 'scylla', 'hello world', 'test'])"],
+          ["nodetool", "flush"],
+          ["subfolder", ""],
+          ["cqlsh", "DROP KEYSPACE ks"],
+          ["delete folder"]
+        ]
+  keyspace_name: 'ks'
+  table_name: 'cf'
+
+
+with_collection_map:
+  cmds: [["cqlsh", "CREATE KEYSPACE ks WITH replication={'class':'SimpleStrategy', 'replication_factor':1}"],
+          ["cqlsh", "CREATE COLUMNFAMILY ks.cf (key varchar PRIMARY KEY, messages map<varchar, text>) WITH comment='test cf' AND compression = {} AND read_repair_chance=0.000000"],
+          ["cqlsh", "INSERT INTO ks.cf (key, messages) VALUES ( 'a', { 'a':'value1', 'b':'value2' })"],
+          ["nodetool", "flush"],
+          ["subfolder", ""],
+          ["cqlsh", "DROP KEYSPACE ks"],
+          ["delete folder"]
+         ]
+  keyspace_name: 'ks'
+  table_name: 'cf'
+
+
+with_collection_set:
+  cmds: [["cqlsh", "CREATE KEYSPACE ks WITH replication={'class':'SimpleStrategy', 'replication_factor':1}"],
+          ["cqlsh", "CREATE COLUMNFAMILY ks.cf (key varchar PRIMARY KEY, messages set<text>) WITH comment='test cf' AND compression = {} AND read_repair_chance=0.000000"],
+          ["cqlsh", "INSERT INTO ks.cf (key, messages) VALUES ( 'a', {'hello world', 'scylla', 'scylladb', 'test'})"],
+          ["nodetool", "flush"],
+          ["subfolder", ""],
+          ["cqlsh", "DROP KEYSPACE ks"],
+          ["delete folder"]
+         ]
+  keyspace_name: 'ks'
+  table_name: 'cf'
+
+with_compact_storage:
+  cmds: [["cqlsh", "CREATE KEYSPACE ks WITH replication={'class':'SimpleStrategy', 'replication_factor':1}"],
+         ["cqlsh", "CREATE COLUMNFAMILY ks.cf (key varchar PRIMARY KEY, c2 text, c1 text) WITH comment='test cf' AND compression = {} AND read_repair_chance=0.000000 AND COMPACT STORAGE"],
+         ["cqlsh", "INSERT INTO ks.cf (key, c1, c2) VALUES ('a', 'abc', 'cde')"],
+         ["nodetool", "flush"],
+         ["subfolder", ""],
+         ["cqlsh", "DROP KEYSPACE ks"],
+         ["delete folder"]
+        ]
+  keyspace_name: 'ks'
+  table_name: 'cf'
+
+
+with_expired_ttl:
+ cmds: [["cqlsh", "CREATE KEYSPACE ks WITH replication={'class':'SimpleStrategy', 'replication_factor':1}"],
+        ["cqlsh", "CREATE COLUMNFAMILY ks.cf (key varchar PRIMARY KEY, c2 text, c1 text) WITH comment='test cf' AND compression = {} AND read_repair_chance=0.000000"],
+        ["cqlsh", "INSERT INTO ks.cf (key, c1, c2) VALUES ('a', 'abc', 'cde') USING TTL 1"],
+        ["cqlsh", "INSERT INTO ks.cf (key, c1, c2) VALUES ('B', 'abc', 'cde') USING TTL 1"],
+        ["cqlsh", "INSERT INTO ks.cf (key, c1, c2) VALUES ('C', 'abc', 'cde') USING TTL 1"],
+        ["wait", "3"],
+        ["nodetool", "flush"],
+        ["subfolder", ""],
+        ["cqlsh", "DROP KEYSPACE ks"],
+        ["delete folder"]
+       ]
+ keyspace_name: 'ks'
+ table_name: 'cf'
+
+with_frozen_collection_map:
+ cmds: [["cqlsh", "CREATE KEYSPACE ks WITH replication={'class':'SimpleStrategy', 'replication_factor':1}"],
+          ["cqlsh", "CREATE COLUMNFAMILY ks.cf (key varchar PRIMARY KEY, messages frozen<map<varchar, text>>) WITH comment='test ks.cf' AND compression = {} AND read_repair_chance=0.000000"],
+          ["cqlsh", "INSERT INTO ks.cf (key, messages) VALUES ( 'a', { 'a':'value1', 'b':'value2' })"],
+          ["cqlsh", "INSERT INTO ks.cf (key, messages) VALUES ( 'b', { 'a':'value1', 'b':'value2' })"],
+          ["nodetool", "flush"],
+          ["subfolder", ""],
+          ["cqlsh", "DROP KEYSPACE ks"],
+          ["delete folder"]
+         ]
+ keyspace_name: 'ks'
+ table_name: 'cf'
+
+
+with_lz4_compression:
+ cmds: [["cqlsh", "CREATE KEYSPACE ks WITH replication={'class':'SimpleStrategy', 'replication_factor':1}"],
+          ["cqlsh", "CREATE COLUMNFAMILY ks.cf (key varchar PRIMARY KEY, c2 text, c1 text) WITH comment='test cf' AND compression = { 'sstable_compression':'LZ4Compressor' } AND read_repair_chance=0.000000"],
+          ["cqlsh", "INSERT INTO ks.cf (key, c1, c2) VALUES ('a', 'abc', 'cde')"],
+          ["nodetool", "flush"],
+          ["subfolder", ""],
+          ["cqlsh", "DROP KEYSPACE ks"],
+          ["delete folder"]
+         ]
+ keyspace_name: 'ks'
+ table_name: 'cf'
+
+
+with_overlapping_tombstones:
+ cmds: [["cqlsh", "CREATE KEYSPACE ks WITH replication={'class':'SimpleStrategy', 'replication_factor':1}"],
+          ["cqlsh", "create COLUMNFAMILY  ks.cf (pk text, ck1 text, ck2 text, data text, primary key(pk, ck1, ck2))"],
+          ["cqlsh", "insert into ks.cf (pk, ck1, ck2, data) values('pk', 'aaa', 'bbb', 'ccc')"],
+          ["cqlsh", "insert into ks.cf (pk, ck1, ck2, data) values('pk', 'aaa', 'ccc', 'ddd')"],
+          ["cqlsh", "insert into ks.cf (pk, ck1, ck2, data) values('pk', 'aaa', 'ddd', 'eee')"],
+          ["cqlsh", "insert into ks.cf (pk, ck1, ck2, data) values('pk', 'bbb', 'aaa', 'fff')"],
+          ["cqlsh", "delete from ks.cf where pk='pk' and ck1='aaa'"],
+          ["cqlsh", "delete from ks.cf where pk='pk' and ck1='aaa' and ck2='bbb'"],
+          ["nodetool", "flush"],
+          ["subfolder", ""],
+          ["cqlsh", "DROP KEYSPACE ks"],
+          ["delete folder"]
+         ]
+ keyspace_name: 'ks'
+ table_name: 'cf'
+
+
+with_range_tombstone:
+ cmds: [["cqlsh", "CREATE KEYSPACE ks WITH replication={'class':'SimpleStrategy', 'replication_factor':1}"],
+          ["cqlsh", "CREATE COLUMNFAMILY ks.cf (key varchar PRIMARY KEY, c2 text, c1 text) WITH comment='test cf' AND compression = {} AND read_repair_chance=0.000000"],
+          ["cqlsh", "INSERT INTO ks.cf (key, c1, c2) VALUES ('a', 'abc', 'cde')"],
+          ["cqlsh", "INSERT INTO ks.cf (key, c1, c2) VALUES ('b', 'abc', 'cde')"],
+          ["cqlsh", "INSERT INTO ks.cf (key, c1, c2) VALUES ('c', 'abc', 'cde')"],
+          ["nodetool", "flush"],
+          ["cqlsh", "DELETE FROM ks.cf WHERE key IN ('a', 'b')"],
+          ["nodetool", "flush"],
+          ["subfolder", ""],
+          ["cqlsh", "DROP KEYSPACE ks"],
+          ["delete folder"]
+         ]
+ keyspace_name: 'ks'
+ table_name: 'cf'
+
+
+with_row_tombstone:
+ cmds: [["cqlsh", "CREATE KEYSPACE ks WITH replication={'class':'SimpleStrategy', 'replication_factor':1}"],
+          ["cqlsh", "CREATE COLUMNFAMILY ks.cf (key varchar PRIMARY KEY, c2 text, c1 text) WITH comment='test cf' AND compression = {} AND read_repair_chance=0.000000"],
+          ["cqlsh", "INSERT INTO ks.cf (key, c1, c2) VALUES ('a', 'abc', 'cde')"],
+          ["cqlsh", "INSERT INTO ks.cf (key, c1, c2) VALUES ('b', 'abc', 'cde')"],
+          ["cqlsh", "INSERT INTO ks.cf (key, c1, c2) VALUES ('c', 'abc', 'cde')"],
+          ["cqlsh", "DELETE FROM ks.cf WHERE key = 'a'"],
+          ["cqlsh", "DELETE FROM ks.cf WHERE key = 'b'"],
+          ["cqlsh", "DELETE FROM ks.cf WHERE key = 'c'"],
+          ["nodetool", "flush"],
+          ["wait", "3"],
+          ["subfolder", ""],
+          ["cqlsh", "DROP KEYSPACE ks"],
+          ["delete folder"]
+         ]
+ keyspace_name: 'ks'
+ table_name: 'cf'
+
+
+with_static_cell:
+ cmds: [["cqlsh", "CREATE KEYSPACE ks WITH replication={'class':'SimpleStrategy', 'replication_factor':1}"],
+          ["cqlsh", "CREATE COLUMNFAMILY ks.cf (key varchar, s text STATIC, i int, PRIMARY KEY (key, i)) WITH comment='test cf' AND read_repair_chance=0.000000"],
+          ["cqlsh", "INSERT INTO ks.cf (key, s, i) VALUES ('k', 'old', 0)"],
+          ["cqlsh", "INSERT INTO ks.cf (key, s, i) VALUES ('k', 'new', 1)"],
+          ["nodetool", "flush"],
+          ["subfolder", ""],
+          ["cqlsh", "DROP KEYSPACE ks"],
+          ["delete folder"]
+         ]
+ keyspace_name: 'ks'
+ table_name: 'cf'
+
+
+with_user_types:
+ cmds: [["cqlsh", "CREATE KEYSPACE ks WITH replication={'class':'SimpleStrategy', 'replication_factor':1}"],
+          ["cqlsh", "create type ks.ut1 (f1 text, f2 text)"],
+          ["cqlsh", "create type ks.ut2 (f1 text, f2 frozen<ut1>)"],
+          ["cqlsh", "create table ks.cf (id uuid primary key, c frozen<ut2>)"],
+          ["cqlsh", "insert into ks.cf (id, c) values(62c36092-82a1-3a00-93d1-46196ee77202, {f1: 'a', f2: {f1: 'b', f2: 'c'}})"],
+          ["cqlsh", "insert into ks.cf (id, c) values(62c36092-82a1-3a00-93d1-46196ee77242, {f1: 'x', f2: {f1: 'y', f2: 'z'}})"],
+          ["nodetool", "flush"],
+          ["subfolder", ""],
+          ["cqlsh", "DROP KEYSPACE ks"],
+          ["delete folder"]
+         ]
+ keyspace_name: 'ks'
+ table_name: 'cf'
+
+
+with_wide_rows:
+ cmds: [["cqlsh", "CREATE KEYSPACE ks WITH replication={'class':'SimpleStrategy', 'replication_factor':1}"],
+          ["cqlsh", "CREATE COLUMNFAMILY ks.cf (key varchar, c varchar, v varchar, PRIMARY KEY(key, c)) WITH comment='test cf' AND compression = {} AND read_repair_chance=0.000000"],
+          ["cqlsh", "INSERT INTO ks.cf (key, c, v) VALUES ('a', 'a', 'b')"],
+          ["cqlsh", "INSERT INTO ks.cf (key, c, v) VALUES ('b', 'a', 'a')"],
+          ["cqlsh", "INSERT INTO ks.cf (key, c, v) VALUES ('b', 'b', 'b')"],
+          ["nodetool", "flush"],
+          ["subfolder", ""],
+          ["cqlsh", "DROP KEYSPACE ks"],
+          ["delete folder"]
+         ]
+ keyspace_name: 'ks'
+ table_name: 'cf'
+
+
+without_compression:
+ cmds: [["cqlsh", "CREATE KEYSPACE ks WITH replication={'class':'SimpleStrategy', 'replication_factor':1}"],
+          ["cqlsh", "CREATE COLUMNFAMILY ks.cf (key varchar PRIMARY KEY, c2 text, c1 text) WITH comment='test cf' AND compression = {} AND read_repair_chance=0.000000"],
+          ["cqlsh", "INSERT INTO ks.cf (key, c2) VALUES ('abc', 'cde')"],
+          ["nodetool", "flush"],
+          ["subfolder", ""],
+          ["cqlsh", "DROP KEYSPACE ks"],
+          ["delete folder"]
+         ]
+ keyspace_name: 'ks'
+ table_name: 'cf'
+
+with_counter:
+ cmds: [["cqlsh", "CREATE KEYSPACE ks WITH replication={'class':'SimpleStrategy', 'replication_factor':1}"],
+          ["cqlsh", "CREATE TABLE ks.cf (first_name varchar, last_name varchar, cnt counter, PRIMARY KEY(first_name, last_name))"],
+          ["cqlsh", "UPDATE ks.cf SET cnt = cnt + 1 WHERE first_name='albert' AND last_name='einstein'"],
+          ["cqlsh", "UPDATE ks.cf SET cnt = cnt + 2 WHERE first_name='thomas' AND last_name='edison'"],
+          ["nodetool", "flush"],
+          ["cqlsh", "UPDATE ks.cf SET cnt = cnt + 10 WHERE first_name='albert' AND last_name='einstein'"],
+          ["cqlsh", "UPDATE ks.cf SET cnt = cnt + 3 WHERE first_name='marie' AND last_name='curie'"],
+          ["cqlsh", "UPDATE ks.cf SET cnt = cnt - 5 WHERE first_name='albert' AND last_name='einstein'"],
+          ["nodetool", "flush"],
+          ["subfolder", ""],
+          ["cqlsh", "DROP KEYSPACE ks"],
+          ["delete folder"]
+         ]
+ keyspace_name: 'ks'
+ table_name: 'cf'
+
+
+with_variant_data_types:
+ cmds: [["cqlsh", "CREATE KEYSPACE ks WITH replication={'class':'SimpleStrategy', 'replication_factor':1}"],
+          ["cqlsh", "CREATE COLUMNFAMILY ks.cf (aascii ascii,abigint bigint,ablob blob,aboolean boolean,adouble double,adecimal decimal,afloat float,ainet inet,aint int,atext text,atimestamp timestamp,atimeuuid timeuuid,auuid uuid,avarchar varchar,avarint varint,alist list<int>,amap map<int,int>,aset set<int>, PRIMARY KEY (aascii, abigint)) WITH comment='test cf' AND read_repair_chance=0.000000"],
+          ["cqlsh", "INSERT INTO ks.cf (aascii, abigint, ablob, aboolean, adouble, adecimal, afloat, ainet, aint, atext, atimestamp, atimeuuid, auuid, avarchar, avarint, alist, amap, aset) VALUES ('tzach', 1999, textAsBlob('\x00\x00\x00\x00\x00\x00\x00\x03'), True, 10.10, 10, 11.11, '204.202.130.223', 17, 'text', '2016-08-30 07:01:00+0000', e23f450f-53a6-11e2-7f7f-7f7f7f7f7f7f, 123e4567-e89b-12d3-a456-426655440000, 'tzachvarchar', 17, [1, 2, 3], {1: 2}, {1, 2, 3, 4})"],
+          ["cqlsh", "INSERT INTO ks.cf (aascii, abigint, ablob, aboolean, adouble, adecimal, afloat, ainet, aint, atext, atimestamp, atimeuuid, auuid, avarchar, avarint, alist, amap, aset) VALUES ('tzach', 2000, textAsBlob('\x00\x00\x00\x00\x00\x00\x00\x03'), True, 10.10, 10, 11.11, '204.202.130.223', 17, 'text', '2016-08-30 07:01:00+0000', e23f450f-53a6-11e2-7f7f-7f7f7f7f7f7f, 123e4567-e89b-12d3-a456-426655440000, 'tzachvarchar', 17, [1, 2, 3], {1: 2}, {1, 2, 3, 4})"],
+          ["cqlsh", "INSERT INTO ks.cf (aascii, abigint, ablob, aboolean, adouble, adecimal, afloat, ainet, aint, atext, atimestamp, atimeuuid, auuid, avarchar, avarint, alist, amap, aset) VALUES ('livyatan', 2001, textAsBlob('\x00\x00\x00\x00\x00\x00\x00\x03'), True, 10.10, 10, 11.11, '204.202.130.223', 17, 'text', '2016-08-30 07:01:00+0000', e23f450f-53a6-11e2-7f7f-7f7f7f7f7f7f, 123e4567-e89b-12d3-a456-426655440000, 'tzachvarchar', 17, [1, 2, 3], {1: 2}, {1, 2, 3, 4})"],
+          ["nodetool", "flush"],
+          ["subfolder", ""],
+          ["cqlsh", "DROP KEYSPACE ks"],
+          ["delete folder"]
+         ]
+ keyspace_name: 'ks'
+ table_name: 'cf'
