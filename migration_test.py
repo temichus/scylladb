@@ -401,7 +401,7 @@ class MigrationTestBase(Tester):
         statement = SimpleStatement(query)
         s = self.patient_cql_connection(node, 'ks')
         result = list(s.execute(statement))
-        self.assertEqual(result[0].count, expected_number_of_rows, len(result))
+        self.assertEqual(result[0].count, expected_number_of_rows, str(len(result)))
 
     def get_all_rows_for_check(self, node1):
         debug("Checking rows content on node1...")
@@ -619,7 +619,8 @@ class TestMigration(MigrationTestBase):
             self.skipTest('issue #3395 - Migration from Cassandra 2_2_X fails for "lb" files')
         super(TestMigration, self).migrate_sstable_with_variant_data_types_test()
 
-versions = ['2_1_x', '2_2_x']
+
+versions = ['2_1_x', '2_2_x','3_0_mc']
 for version in versions:
     cls_name = ('TestMigration_with_' + version)
     vars()[cls_name] = type(cls_name, (TestMigration,), {'version': version, '__test__': True})
