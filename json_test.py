@@ -667,7 +667,7 @@ class FromJsonUpdateTests(Tester):
             ...     col2 = fromJson('"0x0012"'),
             ...     col3 = fromJson('"127.0.0.2"'),
             ...     col4 = fromJson('"blarg2"'),
-            ...     col5 = fromJson('"2011-02-02 23:05:00.000"'),
+            ...     col5 = fromJson('"2011-02-02 21:05:00.000+0000"'),
             ...     col6 = fromJson('"efe0922a-8638-11e4-b2ac-b4b6763e9d6f"'),
             ...     col7 = fromJson('"05dd0249-25b4-4dec-ba27-54f8730f3c03"'),
             ...     col8 = fromJson('"bleh2"'),
@@ -1045,7 +1045,7 @@ class FromJsonInsertTests(Tester):
             >>> cqlsh('''
             ... INSERT INTO primitive_type_test (key1, col1, col2, col3, col4, col5, col6, col7, col8, col9, col10, col11, col12, col13, col14, col15)
             ...   VALUES (fromJson('"test"'), fromJson('"bar"'), fromJson('"0x0011"'), fromJson('"127.0.0.1"'), fromJson('"blarg"'),
-            ...    fromJson('"2011-02-02 21:05:00.000"'), fromJson('"0ad6dfb6-7a6e-11e4-bc39-b4b6763e9d6f"'), fromJson('"bdf5e8ac-a75e-4321-9ac8-938fc9576c4a"'),
+            ...    fromJson('"2011-02-02 21:05:00.000+0200"'), fromJson('"0ad6dfb6-7a6e-11e4-bc39-b4b6763e9d6f"'), fromJson('"bdf5e8ac-a75e-4321-9ac8-938fc9576c4a"'),
             ...    fromJson('"bleh"'), fromJson('-9223372036854775808'), fromJson('1234.45678'), fromJson('9.87123121222E7'), fromJson('9.8712312E7'),
             ...    fromJson('-2147483648'), fromJson('2147483648'), fromJson('true'))
             ... ''')
