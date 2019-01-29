@@ -7,6 +7,7 @@ import time
 import uuid
 
 from cassandra.concurrent import execute_concurrent_with_args
+from threading import Thread
 
 from dtest import Tester, debug
 from tools import safe_mkdtemp, replace_in_file, require
@@ -199,6 +200,143 @@ class TestSnapshot(SnapshotTester):
     @require('#1470')
     def restore_snapshot_with_alter_table_drop_column_test(self):
         self.restore_snapshot_with_alter_table(drop=True)
+
+    def test_nodetool_snapshot_race_condition_with_compaction_under_stress(self):
+        # Cover Issue #4051 https://github.com/scylladb/scylla/issues/4051
+        def run_stress(node):
+            debug('Start stress command')
+            results, errors = node.stress(['write', 'duration=5m', '-mode', 'cql3', 'native', '-rate', 'threads=100', '-pop', 'seq=1..100000000', '-log', 'interval=5'],
+                                          capture_output=True)
+            debug('Stress results:\n' + ''.join(results + errors))
+            self.assertFalse(errors, "Some errors during stress %s" % errors)
+
+        cluster = self.cluster
+        cluster.populate(1).start()
+        node1 = cluster.nodelist()[0]
+
+        # Start stress in thread
+        stress_run_th = Thread(target=run_stress, args=(node1, ))
+        stress_run_th.start()
+
+        # wait for 2,5min (150s) while db populated with data
+        time.sleep(150)
+
+        # run several snapshot commands
+        for i in range(2):
+            time.sleep(60)
+            results, errors = node1.nodetool('snapshot')
+            debug(results + errors)
+            self.assertNotIn(
+                'failed: filesystem error: link failed: No such file or directory',
+                ' '.join(results + errors)
+            )
+            # Check that no other errors occured during snapshot command
+            self.assertFalse(errors, "Some errors in creating snapshot: %s" % errors)
+
+        # wait stress command completion.
+        stress_run_th.join()
+
+    def test_nodetool_snapshot_race_condition_with_compaction_after_node_start(self):
+
+        cluster = self.cluster
+        cluster.populate(1).start()
+        node1 = cluster.nodelist()[0]
+
+        debug('Run stress command')
+        results, errors = node1.stress(['write', 'n=1000000', '-rate', 'threads=10'],
+                                       capture_output=True)
+        debug('Stress results:\n' + ''.join(results + errors))
+        self.assertFalse(errors, "Some errors during stress %s" % errors)
+
+        debug('Stoping node..')
+        node1.stop()
+        debug('Node has been stopped')
+
+        debug('Starting node...')
+        node1.start()
+        debug('Node has been started')
+
+        debug('Create snapshot right after start')
+        result, errors = node1.nodetool('snapshot')
+        debug(result + errors)
+        self.assertNotIn(
+            'failed: filesystem error: link failed: No such file or directory',
+            ' '.join(results + errors)
+        )
+        # Check that no other errors occured during snapshot command
+        self.assertFalse(errors, "Some errors in creating snapshot: %s" % errors)
+
+    def test_nodetool_snapshot_race_condition_with_compaction_during_node_start(self):
+
+        def run_node_start_in_thread(node):
+            debug('Starting node...')
+            node.start()
+            debug('Node has been started')
+
+        cluster = self.cluster
+        cluster.populate(1).start()
+        node1 = cluster.nodelist()[0]
+
+        debug('Run stress command')
+        results, errors = node1.stress(['write', 'n=1000000', '-rate', 'threads=10'],
+                                       capture_output=True)
+        debug('Stress results:\n' + ''.join(results + errors))
+        self.assertFalse(errors, "Some errors during stress %s" % errors)
+
+        debug('Stoping node..')
+        node1.stop()
+        debug('Node has been stopped')
+
+        debug('Starting node in separate thread')
+        node_start_thread = Thread(target=run_node_start_in_thread, args=(node1, ))
+        node_start_thread.start()
+        debug('Thread is starting...')
+        time.sleep(2)
+
+        debug('Create snapshot during node start')
+        result, errors = node1.nodetool('snapshot')
+        debug(result + errors)
+        self.assertNotIn(
+            'failed: filesystem error: link failed: No such file or directory',
+            ' '.join(results + errors)
+        )
+        # Check that no other errors occured during snapshot command
+        self.assertFalse(errors, "Some errors in creating snapshot: %s" % errors)
+
+        node_start_thread.join()
+
+    def test_nodetool_snapshot_during_major_compaction(self):
+
+        def run_compaction(node):
+            debug('Start compaction by command')
+            node.compact()
+            debug('Compaction done')
+
+        cluster = self.cluster
+        cluster.populate(1).start()
+        node1 = cluster.nodelist()[0]
+
+        debug('Run stress command')
+        results, errors = node1.stress(['write', 'n=1000000', '-rate', 'threads=10'],
+                                       capture_output=True)
+        debug('Stress results:\n' + ''.join(results + errors))
+        self.assertFalse(errors, "Some errors during stress %s" % errors)
+        self.assertTrue(node1.is_live())
+
+        compaction_thread = Thread(target=run_compaction, args=(node1, ))
+        compaction_thread.start()
+        time.sleep(0.5)
+        debug('Create snapshot right after start')
+        result, errors = node1.nodetool('snapshot')
+        debug(result + errors)
+        self.assertNotIn(
+            'failed: filesystem error: link failed: No such file or directory',
+            ' '.join(results + errors)
+        )
+        # Check that no other errors occured during snapshot command
+        self.assertFalse(errors, "Some errors in creating snapshot: %s" % errors)
+
+        compaction_thread.join()
 
 
 class TestArchiveCommitlog(SnapshotTester):
