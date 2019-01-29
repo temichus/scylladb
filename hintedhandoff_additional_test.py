@@ -305,6 +305,38 @@ class TestHintedHandoff(Tester):
         query_c1c2(session, 0, ConsistencyLevel.ONE, must_be_missing=True)
 
 
+    def hintedhandoff_retransmit_test(self):
+        """
+        Test sending consistency. There should be no discarded hints.
+        Validates the fix of scylladb/scylla#4122.
+        """
+        self.__start_cluster_with_hints(num=3, custom_args=["--memory", "512M", "--smp", "2"])
+
+        node1, node2, node3 = self.cluster.nodelist()
+
+        debug("Stopping node2...")
+        node2.stop(wait_other_notice=True)
+
+        # Make node2 slower than others in order to trigger hints generation
+        debug("Starting node2 with \"trace\" log level...")
+        node2.start(wait_for_binary_proto=True, jvm_args=self.__jvm_args(node2) + ["--logger-log-level", "hints_manager=trace"])
+
+        debug("starting a stress...")
+        stress_cmd = ['write', 'duration=4m', 'no-warmup', 'cl=ONE', '-rate', 'threads=300', '-schema', 'replication(factor=3)']
+        node1.stress_object(stress_cmd, ignore_errors=True)
+        debug("stress finished")
+
+        for node in [node1, node2, node3]:
+            debug("checking {}".format(node.name))
+            res = self.get_node_metrics(self.get_ip_from_node(node), metrics=["scylla_hints_manager_discarded"])
+            debug("checking that scylla_hints_manager_discarded is present")
+            assert "scylla_hints_manager_discarded" in res
+            debug("checking that scylla_hints_manager_discarded is zero")
+            if res["scylla_hints_manager_discarded"] != 0:
+                debug("{}: scylla_hints_manager_discarded = {}".format(node.name, res["scylla_hints_manager_discarded"]))
+                self.assertEqual(res["scylla_hints_manager_discarded"], 0, "There were discarded hints")
+
+
 ########################################################################################################################
     @property
     def __hint_flush_threshold(self):
