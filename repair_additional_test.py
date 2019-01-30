@@ -1706,6 +1706,17 @@ class RepairAdditionalBase(Tester):
         time.sleep(10)  # see CASSANDRA-4373
         debug("starting repair...")
 
+        try:
+            # RANGE_TOMBSTONES_FEATURE is a feature supported long time ago
+            node3.watch_log_for("Feature RANGE_TOMBSTONES is enabled", timeout=3)
+            node3.watch_log_for("Feature ROW_LEVEL_REPAIR is enabled", timeout=1)
+            debug("Feature ROW_LEVEL_REPAIR is enabled")
+            repair_uses_stream = False
+        except Exception as ex:
+            repair_uses_stream = True
+
+        debug("Check streaming for repair={}".format(repair_uses_stream))
+
         def checking_keys_num(prefix='', less_than_num=None):
             rows = 3 * keys_unit
             for node_to_check in self.cluster.nodes.values():
@@ -1724,7 +1735,7 @@ class RepairAdditionalBase(Tester):
                 for node in stopped_nodes:
                     node.start(wait_other_notice=True)
 
-        def repair_thread(more_options):
+        def repair_thread(more_options, repair_uses_stream):
             try:
                 debug('Start repair')
                 info = self._repair(node3, more_options)
@@ -1732,23 +1743,29 @@ class RepairAdditionalBase(Tester):
                 debug(info[1])
             except Exception as ex:
                 debug(ex)
-                output = commands.getoutput('curl http://%s:10000/stream_manager/' % self.get_ip_from_node(node3))
-                assert 'repair-' not in output
+                if repair_uses_stream:
+                    output = commands.getoutput('curl http://%s:10000/stream_manager/' % self.get_ip_from_node(node3))
+                    assert 'repair-' not in output
                 checking_keys_num('After Repair Exception')
 
         checking_keys_num('Before Repair')
-        thread1 = threading.Thread(target=repair_thread, args=(['ks'], ))
+        thread1 = threading.Thread(target=repair_thread, args=(['ks'], repair_uses_stream))
         thread1.start()
 
-        found_repair_sessions = False
-        for i in range(600):
-            output = commands.getoutput('curl http://%s:10000/stream_manager/' % self.get_ip_from_node(node3))
-            if 'repair-' in output:
-                debug('Found repair stream sessions')
-                found_repair_sessions = True
-                break
-            time.sleep(0.01)
-        assert found_repair_sessions, 'repair stream sessions must exist before abort'
+        if repair_uses_stream:
+            found_repair_sessions = False
+            for i in range(600):
+                output = commands.getoutput('curl http://%s:10000/stream_manager/' % self.get_ip_from_node(node3))
+                if 'repair-' in output:
+                    debug('Found repair stream sessions')
+                    found_repair_sessions = True
+                    break
+                time.sleep(0.01)
+            assert found_repair_sessions, 'repair stream sessions must exist before abort'
+        else:
+            debug("Wait for Repair to start")
+            node3.watch_log_for("Repair 5 out of", timeout=200)
+            debug("Repair has started")
 
         debug('Abort repair sessions')
         url = "http://%s:10000/storage_service/force_terminate_repair" % self.get_ip_from_node(node3)
