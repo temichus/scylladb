@@ -266,45 +266,6 @@ class TestSnapshot(SnapshotTester):
         # Check that no other errors occured during snapshot command
         self.assertFalse(errors, "Some errors in creating snapshot: %s" % errors)
 
-    def test_nodetool_snapshot_race_condition_with_compaction_during_node_start(self):
-
-        def run_node_start_in_thread(node):
-            debug('Starting node...')
-            node.start()
-            debug('Node has been started')
-
-        cluster = self.cluster
-        cluster.populate(1).start()
-        node1 = cluster.nodelist()[0]
-
-        debug('Run stress command')
-        results, errors = node1.stress(['write', 'n=1000000', '-rate', 'threads=10'],
-                                       capture_output=True)
-        debug('Stress results:\n' + ''.join(results + errors))
-        self.assertFalse(errors, "Some errors during stress %s" % errors)
-
-        debug('Stoping node..')
-        node1.stop()
-        debug('Node has been stopped')
-
-        debug('Starting node in separate thread')
-        node_start_thread = Thread(target=run_node_start_in_thread, args=(node1, ))
-        node_start_thread.start()
-        debug('Thread is starting...')
-        time.sleep(2)
-
-        debug('Create snapshot during node start')
-        result, errors = node1.nodetool('snapshot')
-        debug(result + errors)
-        self.assertNotIn(
-            'failed: filesystem error: link failed: No such file or directory',
-            ' '.join(results + errors)
-        )
-        # Check that no other errors occured during snapshot command
-        self.assertFalse(errors, "Some errors in creating snapshot: %s" % errors)
-
-        node_start_thread.join()
-
     def test_nodetool_snapshot_during_major_compaction(self):
 
         def run_compaction(node):
