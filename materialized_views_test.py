@@ -793,8 +793,6 @@ class TestMaterializedViews(Tester):
             - After 40 seconds (before the table prefill is finished) drop the MV
             - Test that the view does not exist in the system schema and base table has 1000000 rows
         """
-        # Allowed error is mutation_write_timeout_exception
-        self.allow_log_errors = True
         prefill = 1000000
 
         def _create_mvs(delay=0):
@@ -824,7 +822,7 @@ class TestMaterializedViews(Tester):
         assert_none(session, 'select * from system_schema.views', cl=ConsistencyLevel.ALL)
         assert_row_count(session, tm.table_name, prefill, consistency_level=ConsistencyLevel.QUORUM)
 
-        self._check_errors(node=self.cluster.nodelist()[0], exclude_errors=['mutation_write_timeout_exception'])
+        self._check_errors(node=self.cluster.nodelist()[0], exclude_errors=['mutation_write_timeout_exception', 'no_such_column_family'])
 
     def fetch_mv_after_recreate_test(self):
         """ Validate it's allowed to fetch from MV after it is dropped and recreated
