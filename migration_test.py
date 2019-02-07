@@ -39,6 +39,25 @@ class MigrationTestBase(Tester):
     def migrate_sstable_with_compact_storage_test(self):
         self._run_basic_migration_test('with_compact_storage', {'key': 'a', 'c1': 'abc', 'c2': 'cde'}, compact_storage=True)
 
+    def migrate_sstable_with_compact_storage_and_composite_key_test(self):
+        """
+        Test that we can migrate a cassandra sstable with compact storage and clustering key
+        """
+        node1 = self.start_cluster_and_get_node1()
+
+        query = 'CREATE COLUMNFAMILY  ks.cf (pk varchar, ck1 text, v1 text, PRIMARY KEY (pk, ck1)) WITH COMPACT STORAGE'
+        self.create_ks_and_cf(node1, None, None, compact_storage=True, query=query)
+
+        self.load_migrated_tables(node1, 'with_compact_storage_and_composite_key')
+
+        self.check_number_of_rows(node1, 1)
+
+        result = self.get_all_rows_for_check(node1)
+
+        self.assertEqual(result[0].pk, 'a', "check partition key")
+        self.assertEqual(result[0].ck1, 'b', "check clustering key")
+        self.assertEqual(result[0].v1, 'abc', "check value")
+
     def migrate_sstable_with_expired_ttl_test(self):
         # Data inserted in c* with the following query: INSERT INTO ks.cf (key, c1, c2) VALUES ('a', 'abc', 'cde') USING TTL 1;
         # Expect no keys because the only one inserted is expired.
@@ -113,7 +132,7 @@ class MigrationTestBase(Tester):
         node1 = self.start_cluster_and_get_node1()
 
         query = 'CREATE COLUMNFAMILY ks.cf (key varchar, s text STATIC, i int, PRIMARY KEY (key, i)) WITH comment=\'test cf\' AND read_repair_chance=0.000000'
-        self.create_ks_and_cf(node1, None, None, False, query=query)
+        self.create_ks_and_cf(node1, None, None, False, query=query )
 
         self.load_migrated_tables(node1, 'with_static_cell')
 
@@ -874,6 +893,7 @@ class TTLWithMigrate(Tester):
         return data_json, data_json_path
 
 versions = ['2_1_x', '2_2_x','3_0_mc']
+
 for version in versions:
     cls_name = ('TestMigration_with_' + version)
     vars()[cls_name] = type(cls_name, (TestMigration,), {'version': version, '__test__': True})

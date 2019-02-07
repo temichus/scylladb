@@ -78,6 +78,17 @@ with_compact_storage:
   keyspace_name: 'ks'
   table_name: 'cf'
 
+with_compact_storage_and_composite_key:
+  cmds: [["cqlsh", "CREATE KEYSPACE ks WITH replication={'class':'SimpleStrategy', 'replication_factor':1}"],
+         ["cqlsh", "CREATE COLUMNFAMILY ks.cf (pk varchar, ck1 text, v1 text, PRIMARY KEY (pk, ck1)) WITH comment='test cf' AND compression = {} AND read_repair_chance=0.000000 AND COMPACT STORAGE"],
+         ["cqlsh", "INSERT INTO ks.cf (pk, ck1, v1) VALUES ('a', 'b',  'abc')"],
+         ["nodetool", "flush"],
+         ["subfolder", ""],
+         ["cqlsh", "DROP KEYSPACE ks"],
+         ["delete folder"]
+        ]
+  keyspace_name: 'ks'
+  table_name: 'cf'
 
 with_expired_ttl:
  cmds: [["cqlsh", "CREATE KEYSPACE ks WITH replication={'class':'SimpleStrategy', 'replication_factor':1}"],
