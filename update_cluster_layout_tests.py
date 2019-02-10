@@ -3,6 +3,7 @@ import time
 import os
 import re
 from datetime import datetime
+import Queue
 
 from cassandra import Unavailable, ConsistencyLevel, WriteTimeout, OperationTimedOut
 from cassandra.policies import FallthroughRetryPolicy
@@ -1642,7 +1643,7 @@ class TestLargeScaleCluster(Tester):
         Cluster starts with a starting_size=3 and grow to node_count=50 during a c-s write in the background (low load)
         and c-s read after adding all nodes to make sure all data was written successfully.
         In addition, while adding each node inserting 100 keys and verifying that all keys were written.
-        E.Result: All nodes (50) were added and c-s read successfully read all keys (200,000).
+        E.Result: All nodes (50) were added and c-s read successfully read all keys (n=300,000).
         """
         starting_size = 3
         cluster = self.cluster
@@ -1650,27 +1651,34 @@ class TestLargeScaleCluster(Tester):
         self.allow_log_errors = True
 
         # Disable hinted handoff and set batch commit log so this doesn't
-        # interfer with the test (this must be after the populate)
+        # interfere with the test (this must be after the populate)
         cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
         cluster.populate(starting_size).start()
         node2 = cluster.nodelist()[1]
 
-        event = threading.Event()
+        queue = Queue.Queue()
+
+        n = '300000'
 
         def run():
+            thread_err = None
             try:
-                node2.stress(['write', 'cl=QUORUM', 'n=300000', 'no-warmup',
-                              '-pop seq=1..300000', '-rate threads=2 limit=100/s'])
+                node2.stress(['write', 'cl=QUORUM',  'n=%s' % n, 'no-warmup',
+                              '-pop seq=1..%s' % n, '-rate threads=2 limit=100/s'])
 
+            except Exception as ex:
+                thread_err = ex
             finally:
-                event.set()
-                pass
+                queue.put(thread_err)
 
         t = threading.Thread(target=run)
         t.setDaemon(True)
         t.start()
 
         self.add_multi_nodes(starting_size, node_count=50, rf=1)
-        event.wait()
+        err = queue.get(block=True)
 
-        node2.stress(['read', 'cl=QUORUM', 'n=300000', 'no-warmup', '-pop seq=1..300000'])
+        if isinstance(err, Exception):
+            raise err
+
+        node2.stress(['read', 'cl=QUORUM', 'n=%s' % n, 'no-warmup', '-pop seq=1..%s' % n])
