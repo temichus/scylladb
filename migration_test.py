@@ -46,20 +46,9 @@ class MigrationTestBase(Tester):
         if self.version == '2_2_x':
             self.skipTest('issue #3395 - Migration from Cassandra 2_2_X fails for "lb" files')
 
-        node1 = self.start_cluster_and_get_node1()
-
         query = 'CREATE COLUMNFAMILY  ks.cf (pk varchar, ck1 text, v1 text, PRIMARY KEY (pk, ck1)) WITH COMPACT STORAGE'
-        self.create_ks_and_cf(node1, None, None, compact_storage=True, query=query)
-
-        self.load_migrated_tables(node1, 'with_compact_storage_and_composite_key')
-
-        self.check_number_of_rows(node1, 1)
-
-        result = self.get_all_rows_for_check(node1)
-
-        self.assertEqual(result[0].pk, 'a', "check partition key")
-        self.assertEqual(result[0].ck1, 'b', "check clustering key")
-        self.assertEqual(result[0].v1, 'abc', "check value")
+        self._run_basic_migration_test('with_compact_storage_and_composite_key', {'pk': 'a', 'ck1': 'b', 'v1': 'abc'},
+                                       compact_storage=True, query=query)
 
     def migrate_sstable_with_expired_ttl_test(self):
         # Data inserted in c* with the following query: INSERT INTO ks.cf (key, c1, c2) VALUES ('a', 'abc', 'cde') USING TTL 1;
@@ -432,7 +421,7 @@ class MigrationTestBase(Tester):
         statement = SimpleStatement(query)
         s = self.patient_cql_connection(node, 'ks')
         result = list(s.execute(statement))
-        self.assertEqual(result[0].count, expected_number_of_rows, str(len(result)))
+        self.assertEqual(result[0].count, expected_number_of_rows, str(result))
 
     def get_all_rows_for_check(self, node1):
         debug("Checking rows content on node1...")
@@ -441,9 +430,11 @@ class MigrationTestBase(Tester):
         s = self.patient_cql_connection(node1, 'ks')
         return list(s.execute(statement))
 
-    def _run_basic_migration_test(self, migrated_files_dir, row_content, compression=None, compact_storage=False, sleep=0):
+    def _run_basic_migration_test(self, migrated_files_dir, row_content, compression=None, compact_storage=False, sleep=0, query=None):
         node1 = self.start_cluster_and_get_node1()
-        self.create_ks_and_cf(node1, columns={'c1': 'text', 'c2': 'text'}, compression=compression, compact_storage=compact_storage)
+
+        self.create_ks_and_cf(node1, columns={'c1': 'text', 'c2': 'text'}, compression=compression,
+                                  compact_storage=compact_storage, query=query)
         self.load_migrated_tables(node1, migrated_files_dir)
 
         time.sleep(sleep)
@@ -455,9 +446,11 @@ class MigrationTestBase(Tester):
 
         if row_content is not None:
             result = self.get_all_rows_for_check(node1)
-            self.assertEqual(result[0].key, row_content['key'], "check partition key")
-            self.assertEqual(result[0].c1, row_content['c1'], "check column c1")
-            self.assertEqual(result[0].c2, row_content['c2'], "check column c2")
+            for k, error_string in [('key', 'check partition key'), ('c1', 'check column c1'),
+                                    ('c2', 'check column c2'), ('pk', 'check partition key'),
+                                    ('ck', 'check clustering key'), ('v1', 'check column v1')]:
+                if k in row_content:
+                    self.assertEqual(getattr(result[0], k), row_content[k], error_string)
 
     def _run_migration_test_for_collection(self, migration_dir_name, collection_type, collection_content):
         node1 = self.start_cluster_and_get_node1()
