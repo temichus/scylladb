@@ -75,14 +75,16 @@ class TestPreparedStatements(Tester):
         session1.execute("CREATE TABLE IF NOT EXISTS mytable (a int PRIMARY KEY, b int)")
 
         client1_insert_statement = session1.prepare("INSERT INTO mytable (a, b) VALUES (?, ?)")
-        for i in range(10):
+        num_rows = 10
+
+        for i in range(num_rows):
             session1.execute(client1_insert_statement, (i, 0))
 
         client1_query_statement = session1.prepare("SELECT * FROM mytable")
-        self.assertEqual(10, len(list(session1.execute(client1_query_statement))))
+        self.assertEqual(num_rows, len(list(session1.execute(client1_query_statement))))
 
         client2_query_statement = session2.prepare("SELECT * FROM mytable")
-        self.assertEqual(10, len(list(session2.execute(client2_query_statement))))
+        self.assertEqual(num_rows, len(list(session2.execute(client2_query_statement))))
 
         session1.execute("ALTER TABLE mytable ADD c int")
         session1.execute("ALTER TABLE mytable DROP b")
