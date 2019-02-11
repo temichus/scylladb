@@ -1458,7 +1458,7 @@ class TestNodetool(Tester):
         tst is an object of the form
 
         tst = [{"operations": [{"func": self.run_cluster}, {"func": self.concurrent_stress, "delay": 5}, {"func": self.repair, "time": 300, "delay": 10}],
-                "recurrent": [{"func": self.verify_info, "time": 20, "delay": 10}]},
+                "recurrent": [{"func": self.verify_info, "time": 25, "delay": 10}]},
                {"operations": [{"func": self.concurrent_stress, "delay": 5}]},
                {"operations": [{"func": self.add_node, "time": 300}, {"func": self.repair, "time": 300}],
                 "recurrent": [{"func": self.verify_info, "time": 40}, {"func": self.verify_status, "time": 25}, {"func": self.verify_netstats, "time": 26}]}]
@@ -1477,7 +1477,7 @@ class TestNodetool(Tester):
 
     def concurrent_repair_test(self):
         tst = [{"operations": [{"func": self.run_cluster, "block": True}, {"func": self.concurrent_stress, "delay": 5}, {"func": self.repair, "time": 300, "delay": 10}],
-                "recurrent": [{"func": self.verify_all_api, "block": True}, {"func": self.verify_info, "time": 20, "delay": 10}]},
+                "recurrent": [{"func": self.verify_all_api, "block": True}, {"func": self.verify_info, "time": 25, "delay": 10}]},
                {"operations": [{"func": self.concurrent_stress, "delay": 5}]},
                {"operations": [{"func": self.add_node, "time": 300}, {"func": self.repair, "time": 300}],
                 "recurrent": [{"func": self.verify_info, "time": 40}, {"func": self.verify_status, "time": 25}, {"func": self.verify_netstats, "time": 26}]}]
@@ -1514,11 +1514,11 @@ class TestNodetool(Tester):
         """
         self.ignore_log_patterns = ["migration_task - Can't send migration request: node", "No schema agreement from live replicas after"]
         tst = [{"operations": [{"func": self.run_cluster, "args": [[2, 2], {'hinted_handoff_enabled': False, 'compaction_enforce_min_threshold': True}], "block": True}, {"func": self.stop, "delay": 5, "args": [ [2, 3]]}],
-                "recurrent":[{"func": self.verify_all_api, "block": True}, {"func": self.verify_info, "time": 20, "delay": 10, "args": [None, 'dc1', 'RAC1']}]},
+                "recurrent":[{"func": self.verify_all_api, "block": True}, {"func": self.verify_info, "time": 25, "delay": 10, "args": [None, 'dc1', 'RAC1']}]},
                {"operations": [{"func": self.concurrent_stress, "delay": 15, "args": [None, {"cl":"ONE","duration": "1m", "opt": ["-schema","replication(strategy=NetworkTopologyStrategy, dc1=1,dc2=1)","-rate","threads=10"]}]}],
-                "recurrent": [{"func": self.verify_info, "time": 20, "delay": 10, "args": [None, 'dc1', 'RAC1']}]},
+                "recurrent": [{"func": self.verify_info, "time": 25, "delay": 10, "args": [None, 'dc1', 'RAC1']}]},
                {"operations": [{"func": self.start, "delay": 5, "args": [[2, 3], {"wait_for_binary_proto": True}]}],
-                "recurrent": [{"func": self.verify_info, "time": 20, "delay": 10, "args": [None, 'dc1', 'RAC1']}]},
+                "recurrent": [{"func": self.verify_info, "time": 25, "delay": 10, "args": [None, 'dc1', 'RAC1']}]},
                {"operations": [{"func": self.rebuild, "time": 300, "args": [2, "dc1"]}],
                 "recurrent":self.multi_dc_queries_method_list}]
         self.general_concurrent(tst)
@@ -1535,9 +1535,9 @@ class TestNodetool(Tester):
         """
         self.ignore_log_patterns = ["migration_task - Can't send migration request: node", "Connection has been closed"]
         tst = [{"operations": [{"func": self.run_cluster}],
-                "recurrent": [{"func": self.verify_all_api, "block": True}, {"func": self.verify_info, "time": 20, "delay": 10}]},
+                "recurrent": [{"func": self.verify_all_api, "block": True}, {"func": self.verify_info, "time": 25, "delay": 10}]},
                {"operations": [{"func": self.concurrent_stress, "delay": 5, "args": [None, {"duration": "1m","opt": ["-schema","replication(strategy=SimpleStrategy, replication_factor=2)","-rate","threads=10"]}]}],
-                "recurrent": [{"func": self.verify_info, "time": 20, "delay": 10}]},
+                "recurrent": [{"func": self.verify_info, "time": 25, "delay": 10}]},
                {"operations": [{"func": self.concurrent_stress, "delay": 5, "args": [None, {"cl":"ONE", "duration": "2m"}]}, {"func": self.drain, "delay": 90, "args": [1]}],
                 "recurrent": self. queries_method_list}]
         self.general_concurrent(tst)
