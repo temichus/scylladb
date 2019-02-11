@@ -65,6 +65,8 @@ class TestPreparedStatements(Tester):
 
         session1 = self.patient_cql_connection(node1)
         session2 = self.patient_cql_connection(node1)
+
+        # create key space and table
         session1.execute("""
              CREATE KEYSPACE IF NOT EXISTS %s
              WITH replication = { 'class': 'SimpleStrategy', 'replication_factor': '1' }
@@ -74,26 +76,31 @@ class TestPreparedStatements(Tester):
         session2.set_keyspace(KEYSPACE)
         session1.execute("CREATE TABLE IF NOT EXISTS mytable (a int PRIMARY KEY, b int)")
 
+        # insert data
         client1_insert_statement = session1.prepare("INSERT INTO mytable (a, b) VALUES (?, ?)")
         num_rows = 10
 
         for i in range(num_rows):
             session1.execute(client1_insert_statement, (i, 0))
 
-        client1_query_statement = session1.prepare("SELECT * FROM mytable")
-        self.assertEqual(num_rows, len(list(session1.execute(client1_query_statement))))
+        # check rows, and save prepared queries
+        query_statements = []
+        for session in [session1, session2]:
+            query_statement = session.prepare("SELECT * FROM mytable")
+            rows = list(session.execute(query_statement))
+            self.assertEqual(num_rows, len(rows))
+            for row in rows:
+                self.assertTrue(hasattr(row, 'b'), "row missing b column")
 
-        client2_query_statement = session2.prepare("SELECT * FROM mytable")
-        self.assertEqual(num_rows, len(list(session2.execute(client2_query_statement))))
+            query_statements += [(session, query_statement)]
 
+        # alter the table
         session1.execute("ALTER TABLE mytable ADD c int")
         session1.execute("ALTER TABLE mytable DROP b")
 
-        for row in list(session1.execute(client1_query_statement)):
-            self.assertTrue(hasattr(row, 'c'), "row missing c column")
-            self.assertTrue(not hasattr(row, 'b'), "row shouldn't have b column")
-
-        for row in list(session2.execute(client2_query_statement)):
-            self.assertTrue(hasattr(row, 'c'), "row missing c column")
-            self.assertTrue(not hasattr(row, 'b'), "row shouldn't have b column")
+        # run the prepared queries again to check they got the update of the table
+        for session, query_statement in query_statements:
+            for row in list(session.execute(query_statement)):
+                self.assertTrue(hasattr(row, 'c'), "row missing c column")
+                self.assertTrue(not hasattr(row, 'b'), "row shouldn't have b column")
 
