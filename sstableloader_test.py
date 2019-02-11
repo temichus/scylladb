@@ -92,7 +92,7 @@ class TestSSTableLoader(MigrationTestBase):
             self.migrate_sstable_with_old_format_counter_helper()
 
 
-versions = ['2_1_x', '2_2_x', '3_0_x']
+versions = ['2_1_x', '2_2_x', '3_0_x', '3_0_mc']
 for version in versions:
     for prepared in ['-nx', '']:
         cls_name = ('TestMigration_with_{0}{1}'.format(version, '' if prepared else '_prepared'))
