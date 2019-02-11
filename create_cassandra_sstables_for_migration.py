@@ -15,7 +15,7 @@ Example:
 python ./create_cassandra_sstables_for_migration.py -v 2.1.20 -s ./cassandra-sstables/migration/2_1_x -d test_data/create_sstables_for_migration/cassandra_sstables_tests_for_migration_v3.0.yaml
 python ./create_cassandra_sstables_for_migration.py -v 2.2.13 -s ./cassandra-sstables/migration/2_2_x -d test_data/create_sstables_for_migration/cassandra_sstables_tests_for_migration_v3.0.yaml
 python ./create_cassandra_sstables_for_migration.py -v 3.11.3 -s ./cassandra-sstables/migration/3_0_mc -d test_data/create_sstables_for_migration/cassandra_sstables_tests_for_migration_v3.0.yaml
-
+CQLSH_NO_BUNDLED=TRUE python ./create_cassandra_sstables_for_migration.py -v 3.0.6 -s ./cassandra-sstables/migration/3_0_x -d test_data/create_sstables_for_migration/cassandra_sstables_tests_for_migration_v3.0.yaml
 
 
 Output is Cassandra sstables, that will be saved under folder, that passed in the second parameter.
