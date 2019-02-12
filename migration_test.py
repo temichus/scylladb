@@ -399,7 +399,7 @@ class MigrationTestBase(Tester):
 
         query = "CREATE TABLE ks.cf (pk int PRIMARY KEY, cnt COUNTER);"
         self.create_ks_and_cf(node1, None, None, False, query=query)
-        self.load_migrated_tables(node1, 'with_old_format_counter')
+        self.load_migrated_tables(node1, 'with_old_format_counter', extra_args=['--ignore-dropped-counter-data'])
 
         debug("Checking counters data...")
         rows = self.get_all_rows_for_check(node1)
@@ -600,7 +600,7 @@ class TestMigration(MigrationTestBase):
             debug("Copying data/system_traces created by Cassandra...")
             self.recursive_copy_to(os.path.join(cassandra_dir, 'system_traces'), os.path.join(scylla_dir, 'system_traces'))
 
-    def load_migrated_tables(self, node, migrated_files_dir, ks='ks', cf='cf'):
+    def load_migrated_tables(self, node, migrated_files_dir, ks='ks', cf='cf', extra_args=None):
         cassandra_sstable_dir = self.get_cassandra_sstable_dir(self.version, migrated_files_dir)
         debug("cassandra sstable dir is {}".format(cassandra_sstable_dir))
 
