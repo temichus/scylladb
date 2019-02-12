@@ -3,9 +3,9 @@ import time
 import uuid
 import os
 import sys
-import threading
 import shutil
 import re
+from concurrent.futures import ThreadPoolExecutor
 
 from dtest import Tester, debug
 from cassandra import ConsistencyLevel, InvalidRequest, Unauthorized
@@ -323,30 +323,22 @@ class TestCounters(Tester):
         nb_increment = 500
         nb_counter = 2
 
-        class ThreadedQuery(threading.Thread):
+        def run(connection):
+            for i in xrange(0, nb_increment):
+                for c in xrange(0, nb_counter):
+                    query = SimpleStatement("UPDATE cf SET c = c + 1 WHERE key = 'counter%i'" % c,
+                                            consistency_level=ConsistencyLevel.QUORUM)
+                    connection.execute(query)
 
-            def __init__(self, connection):
-                threading.Thread.__init__(self)
-                self.connection = connection
-
-            def run(self):
-                nb_increment = 500
-                nb_counter = 2
-                for i in xrange(0, nb_increment):
-                    for c in xrange(0, nb_counter):
-                        query = SimpleStatement("UPDATE cf SET c = c + 1 WHERE key = 'counter%i'" % c,
-                                                consistency_level=ConsistencyLevel.QUORUM)
-                        self.connection.execute(query)
 
         threads = []
         num_threads = 200
+        executor = ThreadPoolExecutor(max_workers=num_threads)
         for x in range(num_threads):
             conn = sessions[x % len(nodes)]
-            threads.append(ThreadedQuery(conn))
+            threads.append(executor.submit(run, conn))
         for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
+            t.result()
 
         conn = sessions[1 % len(nodes)]
         keys = ",".join(["'counter%i'" % c for c in xrange(0, nb_counter)])
@@ -385,36 +377,26 @@ class TestCounters(Tester):
         nb_increment = 500
         nb_counter = 2
 
-        class ThreadedQuery(threading.Thread):
-
-            def __init__(self, connection, decrement):
-                threading.Thread.__init__(self)
-                self.connection = connection
-                self.decrement = decrement
-
-            def run(self):
-                nb_increment = 500
-                nb_counter = 2
-                for i in xrange(0, nb_increment):
-                    for c in xrange(0, nb_counter):
-                        if self.decrement:
-                            query = SimpleStatement("UPDATE cf SET c = c - 1 WHERE key = 'counter%i'" % c,
-                                                    consistency_level=ConsistencyLevel.QUORUM)
-                        else:
-                            query = SimpleStatement("UPDATE cf SET c = c + 1 WHERE key = 'counter%i'" % c,
-                                                    consistency_level=ConsistencyLevel.QUORUM)
-                        self.connection.execute(query)
+        def run(connection, decrement):
+            for i in xrange(0, nb_increment):
+                for c in xrange(0, nb_counter):
+                    if decrement:
+                        query = SimpleStatement("UPDATE cf SET c = c - 1 WHERE key = 'counter%i'" % c,
+                                                consistency_level=ConsistencyLevel.QUORUM)
+                    else:
+                        query = SimpleStatement("UPDATE cf SET c = c + 1 WHERE key = 'counter%i'" % c,
+                                                consistency_level=ConsistencyLevel.QUORUM)
+                    connection.execute(query)
 
         threads = []
         num_threads = 600
+        executor = ThreadPoolExecutor(max_workers=num_threads)
         for x in range(num_threads):
             conn = sessions[x % len(nodes)]
             decrement = (x % len(nodes)) == 0
-            threads.append(ThreadedQuery(conn, decrement))
+            threads.append(executor.submit(run, conn, decrement))
         for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
+            t.result()
 
         conn = sessions[1 % len(nodes)]
         keys = ",".join(["'counter%i'" % c for c in xrange(0, nb_counter)])

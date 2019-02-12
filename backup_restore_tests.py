@@ -2,9 +2,9 @@ import os
 import random
 import re
 import shutil
-import threading
 import time
-from Queue import Queue
+from concurrent.futures import ThreadPoolExecutor
+
 from tools import new_node
 
 from cassandra import ConsistencyLevel
@@ -713,24 +713,18 @@ class TestBackupRestore(Tester):
         return None
 
     def start_nodetool_and_kill_node(self, node, cmd):
-        def run(name, q):
-            global snapshot_failed
-
-            debug("Starting nodetool {}...".format(cmd))
+        def run():
             try:
-                q.put(True)
+                debug("Starting nodetool {}...".format(cmd))
                 node.nodetool(cmd)
                 debug("nodetool {} done".format(cmd))
             except:
                 debug("nodetool {} killed".format(cmd))
 
-        queue = Queue()
-        nodetool_thread = threading.Thread(target=run, args=("nodetool-thread", queue))
-        nodetool_thread.start()
+        executor = ThreadPoolExecutor(max_workers=1)
+        nodetool_thread = executor.submit(run)
         random.seed()
         wait_time = random.random()
-
-        queue.get(block=True)
 
         debug("Wait for {} seconds".format(wait_time))
         time.sleep(wait_time)
@@ -738,7 +732,7 @@ class TestBackupRestore(Tester):
         debug("Killing a node...")
         node.stop(gently=False)
 
-        nodetool_thread.join()
+        nodetool_thread.result()
 
     def check_rows_on_node(self, node_to_check, rows, found=None, missings=None, c1_values=None, c2_values=None):
         s = self.patient_cql_connection(node_to_check, 'ks')

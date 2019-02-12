@@ -1,5 +1,5 @@
 import time
-import threading
+from concurrent.futures import ThreadPoolExecutor
 
 from dtest import Tester
 from tools import require
@@ -51,20 +51,18 @@ class TestMetadata(Tester):
             node1.stress(['write', 'no-warmup', 'n=30000', '-schema', 'replication(factor=2)', 'compression=LZ4Compressor', '-rate', 'threads=5', '-pop', 'seq=1..30000'])
             node1.flush()
 
-        thread = threading.Thread(target=self.force_compact)
-        thread.start()
+        executor = ThreadPoolExecutor(max_workers=3)
+        thread = executor.submit(self.force_compact)
         time.sleep(1)
 
-        thread2 = threading.Thread(target=self.force_repair)
-        thread2.start()
+        thread2 = executor.submit(self.force_repair)
         time.sleep(5)
 
-        thread3 = threading.Thread(target=self.do_read)
-        thread3.start()
+        thread3 = executor.submit(self.do_read)
         time.sleep(5)
 
         node1.nodetool("resetlocalschema")
 
-        thread.join()
-        thread2.join()
-        thread3.join()
+        thread.result()
+        thread2.result()
+        thread3.result()

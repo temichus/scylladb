@@ -10,9 +10,9 @@ from ccmlib.node import NodetoolError
 import time
 import tempfile
 import os
-import threading
+from concurrent.futures import ThreadPoolExecutor
+
 import random
-import datetime
 import commands
 
 
@@ -1092,15 +1092,14 @@ class RepairAdditionalBase(Tester):
         node2.start(wait_other_notice=True, wait_for_binary_proto=True)
 
         # Run repair on all three nods in parallel
-        thread1 = threading.Thread(target=lambda: node1.repair(more_options + ['ks']))
-        thread2 = threading.Thread(target=lambda: node2.repair(more_options + ['ks']))
-        thread3 = threading.Thread(target=lambda: node3.repair(more_options + ['ks']))
-        thread1.start()
-        thread2.start()
-        thread3.start()
-        thread1.join()
-        thread2.join()
-        thread3.join()
+        executor = ThreadPoolExecutor(max_workers=3)
+        thread1 = executor.submit(lambda: node1.repair(more_options + ['ks']))
+        thread2 = executor.submit(lambda: node2.repair(more_options + ['ks']))
+        thread3 = executor.submit(lambda: node3.repair(more_options + ['ks']))
+
+        thread1.result()
+        thread2.result()
+        thread3.result()
 
         # Check that all nodes have all data
         self.check_rows_on_node(node1, 3000)
@@ -1217,15 +1216,17 @@ class RepairAdditionalBase(Tester):
                 debug(info[1])
             except (NodetoolError):
                 pass
-        thread1 = threading.Thread(target=do_repair)
-        thread1.start()
+
+        executor = ThreadPoolExecutor(max_workers=1)
+        thread1 = executor.submit(do_repair)
+
         node1.watch_log_for("starting user-requested repair")
         time.sleep(random.uniform(0.0, 0.5))
         if kill_master:
             node1.stop(wait_other_notice=True)
         else:
             node2.stop(wait_other_notice=True)
-        thread1.join()
+        thread1.result()
 
         # Check that we can still read from the unkilled node normally.
         # We expect to see at least 1000 partitions - potentially up to
@@ -1295,11 +1296,12 @@ class RepairAdditionalBase(Tester):
                 debug(info[1])
             except (NodetoolError):
                 pass
-        thread1 = threading.Thread(target=do_repair)
-        thread1.start()
+        executor = ThreadPoolExecutor(max_workers=1)
+        thread1 = executor.submit(do_repair)
+
         node1.watch_log_for("starting user-requested repair")
         node1.stop(wait_other_notice=True)
-        thread1.join()
+        thread1.result()
 
         # We don't want to see any assertion failures like in isue #699 :-(
         match = node1.grep_log("Assertion .* failed.")
@@ -1343,8 +1345,8 @@ class RepairAdditionalBase(Tester):
                 debug(info[1])
             except (NodetoolError):
                 pass
-        thread1 = threading.Thread(target=do_repair)
-        thread1.start()
+        executor = ThreadPoolExecutor(max_workers=1)
+        thread1 = executor.submit(do_repair)
 
         # In parallel with the repair, for as long as it doesn't finish,
         # we write more data to both nodes
@@ -1356,7 +1358,7 @@ class RepairAdditionalBase(Tester):
             count = count + 1000
             insert_c1c2(session, keys=range(prev_count, count), consistency=ConsistencyLevel.TWO)
         debug("wrote %d partitions in parallel with repair" % (count - original_count))
-        thread1.join()
+        thread1.result()
 
         # Check that all nodes have all data
         self.check_rows_on_node(node1, count)
@@ -1749,8 +1751,8 @@ class RepairAdditionalBase(Tester):
                 checking_keys_num('After Repair Exception')
 
         checking_keys_num('Before Repair')
-        thread1 = threading.Thread(target=repair_thread, args=(['ks'], repair_uses_stream))
-        thread1.start()
+        executor = ThreadPoolExecutor(max_workers=1)
+        thread1 = executor.submit(repair_thread, ['ks'], repair_uses_stream)
 
         if repair_uses_stream:
             found_repair_sessions = False
@@ -1770,7 +1772,7 @@ class RepairAdditionalBase(Tester):
         debug('Abort repair sessions')
         url = "http://%s:10000/storage_service/force_terminate_repair" % self.get_ip_from_node(node3)
         commands.getoutput('curl -X POST  --header "Accept: application/json" %s' % url)
-        thread1.join(timeout=120)
+        thread1.result(timeout=120)
 
         debug('Sleep 10 seconds')
         time.sleep(10)
