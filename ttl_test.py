@@ -1,5 +1,8 @@
 import time
 from collections import OrderedDict
+
+from datetime import datetime
+
 from tools import require
 
 from cassandra import ConsistencyLevel
@@ -50,6 +53,10 @@ class TestTTL(Tester):
 
         self.session1.execute(query)
 
+    @staticmethod
+    def format_float_time_to_readable(float_time=None):
+        return datetime.fromtimestamp(float_time if float_time else time.time()).strftime('%Y-%m-%d %H:%M:%S.%f')
+
     def smart_sleep(self, start_time, time_to_wait):
         """ Function that sleep smartly based on the start_time.
             Useful when tests are slower than expected.
@@ -63,6 +70,26 @@ class TestTTL(Tester):
 
         if real_time_to_wait > 0:
             time.sleep(real_time_to_wait)
+
+    # Temporary function - to debug the github.com/scylladb/scylla-dtest/issues/824 issue
+    def smart_sleep_with_print(self, start_time, time_to_wait):
+        """ Function that sleep smartly based on the start_time.
+            Useful when tests are slower than expected.
+
+            start_time: The start time of the timed operations
+            time_to_wait: The time to wait in seconds from the start_time
+        """
+
+        now = time.time()
+        debug('Start action time is {}'.format(self.format_float_time_to_readable(start_time)))
+        debug('Start to wait at: {}'.format(self.format_float_time_to_readable(now)))
+        real_time_to_wait = time_to_wait - (now - start_time)
+
+        if real_time_to_wait > 0:
+            time.sleep(real_time_to_wait)
+        stop_time = time.time()
+        debug('Stop to wait at: {}'.format(self.format_float_time_to_readable(stop_time)))
+        debug('   Waiting time is {}'.format(stop_time-start_time))
 
     def default_ttl_test(self):
         """ Test default_time_to_live specified on a table """
@@ -432,9 +459,13 @@ class TestTTL(Tester):
     def execute_statement(self, action, ttl, start_key_value, end_key_value, table_name):
         # debug('{action} rows {start_key_value}-{end_key_value} using TTL {ttl}'.format(**locals()))
         start_time = time.time()
+        readble_start_time = self.format_float_time_to_readable(start_time)
+        debug('{action} rows with keys from {start_key_value} to {end_key_value} with TTL {ttl} started at '
+              '{readble_start_time}'.format(**locals()))
         # TODO: add UPDATE action
         if action == 'INSERT':
             self.insert_few_rows(start=start_key_value, end=end_key_value, ttl=ttl, table_name=table_name)
+        debug('{} has been finished at {}'.format(action, self.format_float_time_to_readable()))
         return start_time
 
     def overlaped_rows_ttls_test(self):
@@ -448,7 +479,7 @@ class TestTTL(Tester):
                       'TimeWindowCompactionStrategy']
         table_name = 'ttl_table'
         for strategy in strategies:
-            debug('Run with {}'.format(strategy))
+            debug('================  Run with {} ==============='.format(strategy))
             drop_table(session=self.session1, table_name=table_name, if_exists=True)
 
             self.session1.execute('CREATE TABLE %s (key int, col1 int, col2 int, col3 int, PRIMARY KEY (key, col1)) ' \
@@ -481,14 +512,15 @@ class TestTTL(Tester):
                           'start_time': self.execute_statement(action='INSERT', ttl=ttl, start_key_value=10, end_key_value=11, table_name=table_name)
                          }
 
-            # Update rows with key 10-11 with TTL 13
+            # Update rows with key 11-15 with TTL 30
             ttl = ttls[3]
             steps[ttl] = {'expected_result': [[i] for i in xrange(1, 21) if i < 5 or i > 15],
                           'start_time': self.execute_statement(action='INSERT', ttl=ttl, start_key_value=11, end_key_value=15, table_name=table_name)
                          }
 
             for ttl in ttls:
-                self.smart_sleep(steps[ttl]['start_time'], ttl+1)
+                debug('*******Assert records with TTL {}'.format(ttl))
+                self.smart_sleep_with_print(steps[ttl]['start_time'], ttl+1)
                 assert_all(session=self.session1, query='select key from {}'.format(table_name),
                            expected=steps[ttl]['expected_result'], cl=ConsistencyLevel.QUORUM, ignore_order=True)
 
