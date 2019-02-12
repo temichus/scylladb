@@ -1,6 +1,7 @@
 import random
-import threading
 import uuid
+import concurrent.futures
+from concurrent.futures import ThreadPoolExecutor
 
 from cassandra import ConsistencyLevel
 from cassandra.query import SimpleStatement
@@ -58,23 +59,16 @@ class DeleteInsertTest(Tester):
         # Verify that all of group2 is back, 20 times, in parallel
         # querying across all nodes:
 
-        class ThreadedQuery(threading.Thread):
+        def run_query(connection):
+            query = SimpleStatement("SELECT * FROM delete_insert_search_test.test WHERE group = 'group2'", consistency_level=ConsistencyLevel.LOCAL_QUORUM)
+            rows = connection.execute(query)
+            assert len(rows) == len(deleted)
 
-            def __init__(self, connection):
-                threading.Thread.__init__(self)
-                self.connection = connection
-
-            def run(self):
-                session = self.connection
-                query = SimpleStatement("SELECT * FROM delete_insert_search_test.test WHERE group = 'group2'", consistency_level=ConsistencyLevel.LOCAL_QUORUM)
-                rows = session.execute(query)
-                assert len(rows) == len(deleted)
-
+        max_workers = 20
+        executor = ThreadPoolExecutor(max_workers=max_workers)
         threads = []
-        for x in range(20):
+        for x in range(max_workers):
             conn = self.cql_connection(random.choice(cluster.nodelist()))
-            threads.append(ThreadedQuery(conn))
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
+            threads.append(executor.submit(run_query, conn))
+
+        concurrent.futures.wait(threads, return_when=concurrent.futures.ALL_COMPLETED)

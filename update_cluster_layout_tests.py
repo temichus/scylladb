@@ -1,9 +1,8 @@
-import threading
 import time
 import os
 import re
 from datetime import datetime
-import Queue
+from concurrent.futures import ThreadPoolExecutor
 
 from cassandra import Unavailable, ConsistencyLevel, WriteTimeout, OperationTimedOut
 from cassandra.policies import FallthroughRetryPolicy
@@ -424,7 +423,6 @@ class TestUpdateClusterLayout(Tester):
                                            None,
                                            None,
                                            binary_interface=(cluster.get_node_ip(i), 9042))
-            event = threading.Event()
             failed = None
 
             def run():
@@ -451,22 +449,19 @@ class TestUpdateClusterLayout(Tester):
                     tfailed = str(datetime.now())
                     failed = "Server side exception not thrown  driver side exception thrown OperationTimeout %s %s %s"\
                              % (e, tbefore, tfailed)
-                finally:
-                    event.set()
 
-            t = threading.Thread(target=run)
-            t.setDaemon(True)
+            executor = ThreadPoolExecutor(max_workers=1)
 
             debug("Start Node %d" % i)
             new_node.start(jvm_args=['--logger-log-level','stream_session=debug'])
             new_node.watch_log_for("JOINING: Starting to bootstrap")
-            t.start()
+            t = executor.submit(run)
             new_node.watch_log_for("Beginning stream session")
             debug("Stop Node %d" % i)
             new_node.stop(gently=False)
             for node in [node1, node2, node3]:
                 self.wait_for_nodes_status(node, ['UN', 'UN', 'UN'])
-            event.wait()
+            t.result()
             self.assertTrue(failed is None, failed)
 
             # Sleep 1 second to make sure other nodes knows this node is joining through gossip
@@ -503,7 +498,6 @@ class TestUpdateClusterLayout(Tester):
 
         # create a new node and adding it - we cannot do this more then once
         a_new_node = new_node(cluster, data_center='dc1')
-        event = threading.Event()
         failed = before = None
 
         def run():
@@ -530,23 +524,20 @@ class TestUpdateClusterLayout(Tester):
                 tfailed = str(datetime.now())
                 failed = "Server side exception not thrown driver side exception thrown OperationTimeout %s %s %s" %\
                          (e, before, failed)
-            finally:
-                event.set()
 
-        t = threading.Thread(target=run)
-        t.setDaemon(True)
+        executor = ThreadPoolExecutor(max_workers=1)
 
         debug("Start Node")
         a_new_node.start(jvm_args=['--logger-log-level','stream_session=debug'])
         a_new_node.watch_log_for("JOINING: Starting to bootstrap")
         time.sleep(1)
-        t.start()
+        t = executor.submit(run)
         time.sleep(1)
         a_new_node.watch_log_for("Beginning stream session")
         self.wait_for_nodes_status(node1, [['UN', 'UJ', 'UN'], ['UN', 'UN', 'UN']])
         debug("Stop Node")
         a_new_node.stop(gently=False)
-        event.wait()
+        t.result()
         self.assertTrue(failed is None, failed)
 
         self.wait_for_nodes_status(node1, [['UN', 'UN'], ['UN', 'DN', 'UN']])
@@ -577,24 +568,11 @@ class TestUpdateClusterLayout(Tester):
 
         insert_c1c2(session, keys=range(2000), consistency=consistency)
 
-        event = threading.Event()
-
-        def run():
-            try:
-                insert_c1c2(session, keys=range(2000, 4000), consistency=consistency)
-            finally:
-                event.set()
-                pass
-
-        t = threading.Thread(target=run)
-        t.setDaemon(True)
-
         node4 = new_node(cluster)
         node4.start(jvm_args=['--logger-log-level','stream_session=debug'])
         node4.watch_log_for("Beginning stream session")
-        t.start()
+        insert_c1c2(session, keys=range(2000, 4000), consistency=consistency)
 
-        event.wait()
         query = SimpleStatement("SELECT * FROM cf", consistency_level=consistency)
         result = list(session.execute(query))
         self.assertEqual(len(result), 4000, len(result))
@@ -633,10 +611,7 @@ class TestUpdateClusterLayout(Tester):
 
         insert_c1c2(session, keys=range(4000), consistency=consistency)
 
-        event = threading.Event()
-
         def run():
-            try:
                 query = SimpleStatement("DROP KEYSPACE ks")
                 result = list(session.execute(query))
 
@@ -646,22 +621,18 @@ class TestUpdateClusterLayout(Tester):
                     insert = SimpleStatement("insert into ks1.cf1 (key,c1,c2) values ('%d','%d','%d')" % (i, i, i),
                                              consistency_level=consistency)
                     session.execute(insert)
-            finally:
-                event.set()
-                pass
 
-        t = threading.Thread(target=run)
-        t.setDaemon(True)
+        executor = ThreadPoolExecutor(max_workers=1)
 
         node4 = new_node(cluster)
         node4.start(jvm_args=['--logger-log-level','stream_session=debug'])
         node4.watch_log_for("Beginning stream session")
-        t.start()
+        t = executor.submit(run)
 
         node4.watch_log_for("Starting listening for CQL clients")
         session = self.patient_cql_connection(node4)
 
-        event.wait()
+        t.result()
         query = SimpleStatement("SELECT * FROM ks1.cf1", consistency_level=consistency)
         result = list(session.execute(query))
         self.assertEqual(len(result), 100, len(result))
@@ -689,26 +660,19 @@ class TestUpdateClusterLayout(Tester):
 
         insert_c1c2(session, keys=range(2000), consistency=consistency)
 
-        event = threading.Event()
-
         def run():
-            try:
-                for i in xrange(1, 100):
-                    query = SimpleStatement("SELECT * FROM cf", consistency_level=consistency)
-                    result = list(session.execute(query))
-                    self.assertEqual(len(result), 2000, len(result))
-                    time.sleep(0.01)
-            finally:
-                event.set()
-                pass
+            for i in xrange(1, 100):
+                query = SimpleStatement("SELECT * FROM cf", consistency_level=consistency)
+                result = list(session.execute(query))
+                self.assertEqual(len(result), 2000, len(result))
+                time.sleep(0.01)
 
-        t = threading.Thread(target=run)
-        t.setDaemon(True)
+        executor = ThreadPoolExecutor(max_workers=1)
 
         node4 = new_node(cluster)
         node4.start(jvm_args=['--logger-log-level','stream_session=debug'])
         node4.watch_log_for("Beginning stream session")
-        t.start()
+        t = executor.submit(run)
 
         node4.watch_log_for("Starting listening for CQL clients")
 
@@ -719,7 +683,7 @@ class TestUpdateClusterLayout(Tester):
         for k in xrange(0, 2000):
             query_c1c2(session, k, consistency)
 
-        event.wait()
+        t.result()
 
     def simple_add_new_node_while_query_info_1_test(self):
         self._simple_add_new_node_while_query_info(1)
@@ -853,14 +817,13 @@ class TestUpdateClusterLayout(Tester):
             except Exception:
                 pass
 
-        t = threading.Thread(target=run)
-        t.setDaemon(True)
-        t.start()
+        executor = ThreadPoolExecutor(max_workers=1)
+        executor.submit(run)
 
         # check node2 has started decommission
         node2.watch_log_for("Beginning stream session")
 
-        debug("Stop node2 ");
+        debug("Stop node2 ")
         node2.stop(gently=False)
 
         # starting node2 - it should reconnect and run as is
@@ -905,9 +868,8 @@ class TestUpdateClusterLayout(Tester):
             except Exception:
                 pass
 
-        t = threading.Thread(target=run)
-        t.setDaemon(True)
-        t.start()
+        executor = ThreadPoolExecutor(max_workers=1)
+        executor.submit(run)
 
         # check node2 has started decommission
         node2.watch_log_for("Beginning stream session")
@@ -984,27 +946,19 @@ class TestUpdateClusterLayout(Tester):
 
         insert_c1c2(session, keys=range(2000), consistency=consistency)
 
-        event = threading.Event()
-
         def run():
-            try:
-                insert_c1c2(session, keys=range(2000, 4000), consistency=consistency)
+            insert_c1c2(session, keys=range(2000, 4000), consistency=consistency)
 
-                query = SimpleStatement("SELECT * FROM cf", consistency_level=consistency)
-                result = list(session.execute(query))
-                self.assertEqual(len(result), 4000, len(result))
+            query = SimpleStatement("SELECT * FROM cf", consistency_level=consistency)
+            result = list(session.execute(query))
+            self.assertEqual(len(result), 4000, len(result))
 
-            finally:
-                event.set()
-                pass
-
-        t = threading.Thread(target=run)
-        t.setDaemon(True)
-        t.start()
+        executor = ThreadPoolExecutor(max_workers=1)
+        t = executor.submit(run)
 
         node2.decommission()
 
-        event.wait()
+        t.result()
         node2.stop()
         query = SimpleStatement("SELECT * FROM cf", consistency_level=consistency)
         result = list(session.execute(query))
@@ -1041,22 +995,15 @@ class TestUpdateClusterLayout(Tester):
 
         insert_c1c2(session, keys=range(2000), consistency=consistency)
 
-        event = threading.Event()
-
         def run():
-            try:
-                for i in xrange(1, 100):
-                    query = SimpleStatement("SELECT * FROM cf", consistency_level=consistency)
-                    result = list(session.execute(query))
-                    self.assertEqual(len(result), 2000, len(result))
-                    time.sleep(0.01)
-            finally:
-                event.set()
-                pass
+            for i in xrange(1, 100):
+                query = SimpleStatement("SELECT * FROM cf", consistency_level=consistency)
+                result = list(session.execute(query))
+                self.assertEqual(len(result), 2000, len(result))
+                time.sleep(0.01)
 
-        t = threading.Thread(target=run)
-        t.setDaemon(True)
-        t.start()
+        executor = ThreadPoolExecutor(max_workers=1)
+        t = executor.submit(run)
 
         node2.decommission()
 
@@ -1072,7 +1019,7 @@ class TestUpdateClusterLayout(Tester):
         for k in xrange(0, 2000):
             query_c1c2(session, k, consistency)
 
-        event.wait()
+        t.result()
 
     def simple_decommission_node_while_query_info_1_test(self):
         self._simple_decommission_node_while_query_info(1)
@@ -1173,42 +1120,36 @@ class TestUpdateClusterLayout(Tester):
 
         insert_c1c2(session, keys=range(4000), consistency=consistency)
 
-        event = threading.Event()
-
         def run():
-            try:
-                self.create_ks(session, 'ks1', rf)
-                self.create_cf(session, 'cf1', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
-                for i in xrange(0, 1000):
-                    insert = SimpleStatement("insert into ks1.cf1 (key,c1,c2) values ('%d','%d','%d')" % (i, i, i),
-                                             consistency_level=consistency)
-                    session.execute(insert)
-            finally:
-                event.set()
-                pass
+            self.create_ks(session, 'ks1', rf)
+            self.create_cf(session, 'cf1', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+            for i in xrange(0, 1000):
+                insert = SimpleStatement("insert into ks1.cf1 (key,c1,c2) values ('%d','%d','%d')" % (i, i, i),
+                                         consistency_level=consistency)
+                session.execute(insert)
 
-        t = threading.Thread(target=run)
-        t.setDaemon(True)
+        executor = ThreadPoolExecutor(max_workers=1)
+
 
         # Create table and insert data before bootstrapping of the new node
         if when == "before":
-            t.start()
+            t = executor.submit(run)
 
         node4 = new_node(cluster)
         node4.start(jvm_args=['--logger-log-level','stream_session=debug'])
         node4.watch_log_for("Beginning stream session")
         # Create table and insert data during bootstrapping of the new node
         if when == "during":
-            t.start()
+            t = executor.submit(run)
 
         node4.watch_log_for("Starting listening for CQL clients")
         session = self.patient_cql_connection(node4)
 
         # Create table and insert data after bootstrapping of the new node
         if when == "after":
-            t.start()
+            t = executor.submit(run)
 
-        event.wait()
+        t.result()
         query = SimpleStatement("SELECT * FROM ks1.cf1", consistency_level=consistency)
         result = list(session.execute(query))
         self.assertEqual(len(result), 1000, len(result))
@@ -1514,43 +1455,29 @@ class TestUpdateClusterLayout(Tester):
         nb_increment = 500
         nb_counter = 2
 
-        class ThreadedQuery(threading.Thread):
-            nb_increment = 500
-            nb_counter = 2
-
-            def __init__(self, connection, decrement, *args, **kwargs):
-                super(ThreadedQuery, self).__init__(*args, **kwargs)
-                self.connection = connection
-                self.decrement = decrement
-                self._return = dict.fromkeys([i for i in xrange(nb_counter)], 0)
-
-            def run(self):
-                for i in xrange(0, nb_increment):
-                    for c in xrange(0, nb_counter):
-                        if self.decrement:
-                            query = SimpleStatement("UPDATE cf SET c = c - 1 WHERE key = 'counter%i'" % c,
-                                                    consistency_level=ConsistencyLevel.ONE)
-                        else:
-                            query = SimpleStatement("UPDATE cf SET c = c + 1 WHERE key = 'counter%i'" % c,
-                                                    consistency_level=ConsistencyLevel.ONE)
-                        try:
-                            self.connection.execute(query)
-                            if self.decrement:
-                                self._return[c] -= 1
-                            else:
-                                self._return[c] += 1
-                            time.sleep(0.01)
-                        except Exception as e:
-                            assert False, str(e)
-                            time.sleep(1)
-
-            def join(self, *args, **kwargs):
-                super(ThreadedQuery, self).join(*args, **kwargs)
-                return self._return
+        def run(connection, decrement):
+            _return = dict.fromkeys([i for i in xrange(nb_counter)], 0)
+            for i in xrange(0, nb_increment):
+                for c in xrange(0, nb_counter):
+                    if decrement:
+                        query = SimpleStatement("UPDATE cf SET c = c - 1 WHERE key = 'counter%i'" % c,
+                                                consistency_level=ConsistencyLevel.ONE)
+                    else:
+                        query = SimpleStatement("UPDATE cf SET c = c + 1 WHERE key = 'counter%i'" % c,
+                                                consistency_level=ConsistencyLevel.ONE)
+                    connection.execute(query)
+                    if decrement:
+                        _return[c] -= 1
+                    else:
+                        _return[c] += 1
+                    time.sleep(0.01)
+            return _return
 
         result = dict.fromkeys([i for i in xrange(nb_counter)], 0)
 
         num_threads = 120
+
+        executor = ThreadPoolExecutor(max_workers=num_threads)
 
         # stop and restart one node for a while
         nodes[2].stop()
@@ -1559,11 +1486,10 @@ class TestUpdateClusterLayout(Tester):
         for x in range(num_threads):
             conn = self.patient_cql_connection(nodes[x % (len(nodes) - 1)], 'ks')
             decrement = (x % len(nodes)) == 0
-            threads.append(ThreadedQuery(conn, decrement))
-            threads[-1].start()
+            threads.append(executor.submit(run, conn, decrement))
 
         for t in threads:
-            t_result = t.join()
+            t_result = t.result()
             result = {k: result.get(k, 0) + t_result.get(k, 0) for k in set(result)}
 
         nodes[2].start(wait_other_notice=True, wait_for_binary_proto=True)
@@ -1575,11 +1501,10 @@ class TestUpdateClusterLayout(Tester):
         for x in range(num_threads):
             conn = self.patient_cql_connection(nodes[2], 'ks')
             decrement = (x % len(nodes)) == 0
-            threads.append(ThreadedQuery(conn, decrement))
-            threads[-1].start()
+            threads.append(executor.submit(run, conn, decrement))
 
         for t in threads:
-            t_result = t.join()
+            t_result = t.result()
             result = {k: result.get(k, 0) + t_result.get(k, 0) for k in set(result)}
 
         nodes[0].start(wait_other_notice=True, wait_for_binary_proto=True)
@@ -1656,29 +1581,16 @@ class TestLargeScaleCluster(Tester):
         cluster.populate(starting_size).start()
         node2 = cluster.nodelist()[1]
 
-        queue = Queue.Queue()
-
         n = '300000'
 
         def run():
-            thread_err = None
-            try:
-                node2.stress(['write', 'cl=QUORUM',  'n=%s' % n, 'no-warmup',
-                              '-pop seq=1..%s' % n, '-rate threads=2 limit=100/s'])
+            node2.stress(['write', 'cl=QUORUM',  'n=%s' % n, 'no-warmup',
+                          '-pop seq=1..%s' % n, '-rate threads=2 limit=100/s'])
 
-            except Exception as ex:
-                thread_err = ex
-            finally:
-                queue.put(thread_err)
-
-        t = threading.Thread(target=run)
-        t.setDaemon(True)
-        t.start()
+        executor = ThreadPoolExecutor(max_workers=1)
+        t = executor.submit(run)
 
         self.add_multi_nodes(starting_size, node_count=50, rf=1)
-        err = queue.get(block=True)
-
-        if isinstance(err, Exception):
-            raise err
+        t.result()
 
         node2.stress(['read', 'cl=QUORUM', 'n=%s' % n, 'no-warmup', '-pop seq=1..%s' % n])
