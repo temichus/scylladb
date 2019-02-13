@@ -838,7 +838,7 @@ class TTLWithMigrate(Tester):
         try:
             cc = CassandraCluster(cassandra_version='3.11.3')
             cassandra_node1 = cc.run_migration(scylla_cluster=self.cluster, scylla_test_path=self.test_path,
-                                               keyspace_name=keyspace_name, table_name=table_name)
+                                               keyspace_names_list=[keyspace_name], table_names=[table_name])
             if take_dump:
                 cassandra_data_json, cassandra_json_path = self._dump_data(cluster=cc.cluster, node=cassandra_node1,
                                                                        node_owner='Cassandra')
@@ -850,9 +850,8 @@ class TTLWithMigrate(Tester):
             # if scylla_big_partition_count is not None:
             #     cassandra_session = self.patient_cql_connection(cassandra_node1, keyspace=keyspace_name)
             #     assert_one(cassandra_session, count_query, [scylla_big_partition_count], cl=ConsistencyLevel.ALL, timeout=300)
-        except Exception as e:
-            debug('Failure: {}'.format(e.message))
-            self.assertTrue(False, e.message)
+        except:
+            raise
         finally:
             if cc:
                 cc.tearDown()

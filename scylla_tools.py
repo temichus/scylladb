@@ -979,15 +979,21 @@ class CassandraCluster(object):
         self.cluster.set_configuration_options(values=config_options)
         debug("Starting a Cassandra cluster of {} node(s) with options {}...".format(nodes, config_options))
         self.cluster.populate(nodes)
-        self.cluster.start(wait_for_binary_proto=True, wait_other_notice=True)
+        try:
+            self.cluster.start(wait_for_binary_proto=True, wait_other_notice=True)
+        except:
+            raise
         self.test_path = self.tester.test_path
         return self.cluster.nodelist()[0]
 
-    def get_scylla_test_schema_ddl(self):
-        self.ddl_obj = SchemaDDL(node=self.scylla_cluster.nodelist()[0])
+    def get_scylla_test_schema_ddl(self, keyspace_names_list=None, table_names_list=None, get_system_keyspaces=None):
+        self.ddl_obj = SchemaDDL(node=self.scylla_cluster.nodelist()[0],
+                                 keyspace_names_list=keyspace_names_list,
+                                 table_names_list=table_names_list,
+                                 get_system_keyspaces=get_system_keyspaces)
         self.scylla_schema_ddl = self.ddl_obj.get_schemas_ddl()
 
-    def convert_to_list(self, obj, func_for_empty):
+    def create_entites_list(self, obj, func_for_empty):
         """
         :param obj: the object should be converted to list if not empty
         :type obj: any
@@ -996,6 +1002,7 @@ class CassandraCluster(object):
         :type  func_for_empty: list
         :return:
         """
+        out = obj
         if obj and not isinstance(obj, list):
             out = [obj]
         if not obj:
@@ -1005,18 +1012,18 @@ class CassandraCluster(object):
                 out = func_for_empty[0]()
         return out
 
-    def create_data_folders_tree(self, keyspace_names=None, table_names=None):
+    def create_data_folders_tree(self, keyspace_names_list=None, table_names_list=None):
         """
         create dictionary with keyspace(s) and their table(s) that its data will be migrated
         """
         self.folders_tree = {}
-        keyspace_names = self.convert_to_list(obj=keyspace_names, func_for_empty=[self.ddl_obj.get_keyspaces, None])
+        keyspace_names_list = self.create_entites_list(obj=keyspace_names_list, func_for_empty=[self.ddl_obj.get_keyspaces, None])
 
-        for keyspace_name in keyspace_names:
+        for keyspace_name in keyspace_names_list:
             self.folders_tree[keyspace_name] = []
-            table_names = self.convert_to_list(obj=table_names, func_for_empty=[self.ddl_obj.get_entity_list,
+            table_names_list = self.create_entites_list(obj=table_names_list, func_for_empty=[self.ddl_obj.get_entity_list,
                                 "select table_name from system_schema.tables where keyspace_name='{}'".format(keyspace_name.replace('"', ''))])
-            for table_name in table_names:
+            for table_name in table_names_list:
                 self.folders_tree[keyspace_name].append(table_name)
 
     def get_table_folder(self, base_path, node, keyspace_name, table_name, create=False):
@@ -1030,12 +1037,12 @@ class CassandraCluster(object):
             the_folder = get_cf_dir(ks_dir, table_name)
         return the_folder
 
-    def copy_scylla_test_data_to_tmp(self, scylla_test_path, keyspace_name=None, table_name=None, nodes=None):
+    def copy_scylla_test_data_to_tmp(self, scylla_test_path, keyspace_names_list=None, table_names_list=None, nodes=None):
         self.scylla_cluster.flush()
-        self.create_data_folders_tree(keyspace_name, table_name)
-        debug("Create test folder under /tmp")
+        self.create_data_folders_tree(keyspace_names_list, table_names_list)
         self.scylla_data_tmp_folder = os.path.join('/tmp', scylla_test_path.split('/')[-1])
         os.makedirs(self.scylla_data_tmp_folder)
+        debug("Create {} test folder".format(self.scylla_data_tmp_folder))
         self.copy_table_data_all_nodes(from_base_path=scylla_test_path, to_base_path=self.scylla_data_tmp_folder,
                                        create_to_folder=True, nodes=nodes)
 
@@ -1071,23 +1078,21 @@ class CassandraCluster(object):
         for node in nodes:
             node.flush()
 
-    def run_migration(self, scylla_cluster, scylla_test_path, keyspace_name=None, table_name=None, nodes='ALL'):
+    def run_migration(self, scylla_cluster, scylla_test_path, keyspace_names_list=None, table_names=None, nodes='ALL'):
         self.scylla_cluster = scylla_cluster
         if not self.scylla_cluster:
             debug('Missed Scylla cluster. Migration can''t be run')
             return
-        self.get_scylla_test_schema_ddl()
+        self.get_scylla_test_schema_ddl(keyspace_names_list=keyspace_names_list, table_names_list=table_names)
 
         # Node(s) for Scylla cluster
         nodes_list = self.scylla_cluster.nodes.values() if nodes == 'ALL' else [self.scylla_cluster.nodes.values()[0]]
-        for node in nodes_list:
-            node.flush()
-        self.scylla_cluster.stop(wait_other_notice=True)
 
-        self.copy_scylla_test_data_to_tmp(scylla_test_path=scylla_test_path, keyspace_name=keyspace_name,
-                                          table_name=table_name, nodes=nodes_list)
+        self.copy_scylla_test_data_to_tmp(scylla_test_path=scylla_test_path, keyspace_names_list=keyspace_names_list,
+                                          table_names_list=table_names, nodes=nodes_list)
 
-        node1 = self.create_and_start_cluster(nodes=len(self.scylla_cluster.nodes.values()), config_options={'hinted_handoff_enabled': False})
+        node1 = self.create_and_start_cluster(nodes=len(self.scylla_cluster.nodes.values()),
+                                              config_options={'hinted_handoff_enabled': False})
 
         # Node(s) for Cassandra cluster
         nodes_list = self.cluster.nodelist() if nodes == 'ALL' else [node1]
@@ -1107,26 +1112,49 @@ class CassandraCluster(object):
 
 class SchemaDDL(object):
     """Class provides interface to fetch schema DDL"""
-    def __init__(self, node, keyspace='', table_name='', system_keyspaces=False):
+    def __init__(self, node, keyspace_names_list='', table_names_list='', get_system_keyspaces=False):
+        """
+        :param node: node object to run the statements on
+        :param keyspace_names_list: keyspace name to receive the DDL schema for
+        :param table_name: table name or list of table names, for those (this) table/s the DDLs will be received.
+                           In case DDl of all keyspace entites need to be created - remain it None
+        :param get_system_keyspaces:
+        """
         self.node = node
-        self.system_keyspaces = system_keyspaces
-        self.keyspaces = keyspace
-        self.table_name = table_name
+        self.get_system_keyspaces = get_system_keyspaces
+        self.keyspace_names_list = keyspace_names_list
+        self.table_names_list = table_names_list
+
+    @property
+    def keyspace_names_list(self):
+        return self._keyspace_names_list
+
+    @keyspace_names_list.setter
+    def keyspace_names_list(self, value):
+        self._keyspace_names_list = self.get_keyspaces() if not value else \
+            [self.wrap_case_sensitive_string(ks) for ks in value]
 
     def get_schemas_ddl(self):
         test_ddl = {}
-        self.keyspaces = self.get_keyspaces() if not self.keyspaces else \
-                         [self.keyspaces] if not isinstance(self.keyspaces, list) else self.keyspaces
         keyspace = ''
-        for keyspace_name in self.keyspaces:
-            if self.table_name:
-                entities = self.table_name
-                keyspace = keyspace_name
-            else:
-                entities = keyspace_name
-            ks_ddl = self.get_ddl(entities=entities, type='KEYSPACE', keyspace=keyspace)
+        for keyspace_name in self._keyspace_names_list:
+            ks_ddl = self.get_ddl(entities=keyspace_name, type='KEYSPACE', keyspace=keyspace)
+            # The view of the secondary indexes shouldn't be created explicitly.
+            # It'll be created automatically during secondary indexes creation
             test_ddl[keyspace_name] = self.remove_view_of_indexes(keyspace=keyspace_name, ks_ddl=ks_ddl)
+
+            # If self.table_names_list is not None, just the tables in the list should be remain in the DDL
+            if self.table_names_list:
+                test_ddl[keyspace_name] = self.remain_expected_tables_only(keyspace=keyspace_name, ks_ddl=ks_ddl)
         return test_ddl
+
+    def remain_expected_tables_only(self, keyspace, ks_ddl):
+        if self.table_names_list:
+            for table_name in self.table_names_list:
+                for cmd in ks_ddl:
+                    if ' {}.{} '.format(keyspace, table_name) not in cmd and 'KEYSPACE {} '.format(keyspace) not in cmd:
+                        ks_ddl.remove(cmd)
+        return ks_ddl
 
     def remove_view_of_indexes(self, keyspace, ks_ddl):
         indexes = self.get_entity_list(cmd="select index_name from system_schema.indexes where keyspace_name='{}'".format(keyspace))
@@ -1149,23 +1177,27 @@ class SchemaDDL(object):
 
     def get_entity_list(self, cmd):
         out = self.node.run_cqlsh(cmds=cmd, return_output=True)
-        return [self.is_case_sensitive(entity.strip()) for entity in out[0].split('\n')[3:-3]]
+        if [i for i in out if 'error' in i]:
+            assert False, 'Failed to run command "{cmd}". Error: {out}'.format(cmd=cmd, out=out)
+        return [self.wrap_case_sensitive_string(entity.strip()) for entity in out[0].split('\n')[3:-3]]
 
     def get_keyspaces(self):
+        if hasattr(self,'_keyspace_names_list') and self._keyspace_names_list:
+            return self._keyspace_names_list
         out = self.node.run_cqlsh(cmds='select keyspace_name from system_schema.keyspaces', return_output=True)
         keyspaces = []
         for ks in out[0].split('\n')[3:-3]:
-            if not self.system_keyspaces and 'system' in ks:
+            if not self.get_system_keyspaces and 'system' in ks:
                 continue
-            keyspaces.append(self.is_case_sensitive(ks.strip()))
+            keyspaces.append(self.wrap_case_sensitive_string(ks.strip()))
         return keyspaces
-
-    def is_case_sensitive(self, string):
-        for l in string:
-            if l.isupper():
-                return self.wrap_case_sensitive_string(string=string)
-        return string
 
     @staticmethod
     def wrap_case_sensitive_string(string):
-        return '"{}"'.format(string)
+        if '"' in string:
+            return string
+
+        for l in string:
+            if l.isupper():
+                return '"{}"'.format(string)
+        return string
