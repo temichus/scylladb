@@ -1,7 +1,6 @@
-import threading
 import time
 from dtest import Tester, debug
-
+from concurrent.futures import ThreadPoolExecutor
 
 class HeatWeightedLB(Tester):
     _multiprocess_can_split_ = False
@@ -75,6 +74,8 @@ class HeatWeightedLB(Tester):
                     self.assertGreaterEqual(metrics[key][2][i]['val'], metrics[key][2][i - 1]['val'])
 
     def run_read_thread(self):
+        executor = ThreadPoolExecutor(max_workers=1)
+
         def run_read():
             debug('Run stress read')
             resp = self.node1.stress_object(
@@ -83,9 +84,7 @@ class HeatWeightedLB(Tester):
             if not resp or 'total partitions:read' not in resp:
                 raise Exception('Error running stress test: {}'.format(resp))
 
-        thr = threading.Thread(target=run_read)
-        thr.start()
-        return thr
+        return executor.submit(run_read)
 
     def run_heat_weighted_load_balancing(self, cl):
         """
@@ -115,7 +114,7 @@ class HeatWeightedLB(Tester):
         self.verify_metrics(metrics)
 
         debug('Wait for stress read finish')
-        thr.join()
+        thr.result()
         debug('Restart node {}'.format(self.node2.name))
         self.node2.stop(wait_other_notice=True)
         self.node2.start(wait_other_notice=True, wait_for_binary_proto=True)
@@ -125,7 +124,7 @@ class HeatWeightedLB(Tester):
         self.verify_metrics(metrics, cached=False)
 
         debug('Wait for stress read finish')
-        thr.join()
+        thr.result()
 
     def heat_weighted_load_balancing_cl_ONE_test(self):
         self.run_heat_weighted_load_balancing('ONE')

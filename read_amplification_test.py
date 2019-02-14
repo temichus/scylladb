@@ -1,6 +1,6 @@
-import threading
 import math
 import time
+from concurrent.futures import ThreadPoolExecutor
 from cassandra.query import SimpleStatement
 from cassandra import ConsistencyLevel
 from dtest import Tester, debug
@@ -54,20 +54,27 @@ class ReadAmplificationTest(Tester):
         nodes[1].start(wait_other_notice=True,wait_for_binary_proto=True)
 
         debug("Start node2 repair")
-        thr = threading.Thread(target=lambda: nodes[1].nodetool("repair -local ks cf"))
-        thr.start()
+        executor = ThreadPoolExecutor(max_workers=1)
+
+        def repair():
+            nodes[1].nodetool("repair -local ks cf")
+
+        thr = executor.submit(repair)
 
         debug("Verify there is no read amplification in repair streaming")
         node_ips = [cluster.get_node_ip(node_ind) for node_ind in xrange(1, len(nodes) + 1)]
         amplification_rate = 3
         max_val = {}
         metric_names = ['scylla_streaming_total_incoming_bytes', 'scylla_streaming_total_outgoing_bytes']
-        while thr.is_alive():
+        while thr.running():
             bytes_total = self.get_metrics(metric_names, node_ips)
             for param in bytes_total:
                 self.assertLess(bytes_total[param], size * cnt * amplification_rate)
                 max_val[param] = bytes_total[param] if param not in max_val else max(max_val[param], bytes_total[param])
-            thr.join(3)
+            time.sleep(3)
+
+        thr.result()
+
         for key in max_val:
             debug('{}: {}(+{}%)'.format(
                 key, max_val[key], int(math.fabs(max_val[key] - (cnt * size)) * 100 / (cnt * size))))
@@ -130,16 +137,18 @@ class ReadAmplificationTest(Tester):
 
         debug('Start reading')
         thr_target = run_read if read_type == PARTITION_READ else run_scan_read
-        thr = threading.Thread(target=thr_target)
-        thr.start()
+        executor = ThreadPoolExecutor(max_workers=1)
+        thr = executor.submit(thr_target)
 
         debug('Metrics during read')
         total_read_bytes = 0
-        while thr.is_alive() or total_read_bytes == 0:
+        while thr.running() or total_read_bytes == 0:
             io_bytes_read = self.get_metrics(metric_names, [node_ip])
             total_read_bytes = get_total_read_bytes(io_bytes_read, io_bytes_before)
             debug(io_bytes_read)
-            thr.join(wait_interval)
+            time.sleep(wait_interval)
+
+        thr.result()
 
         debug('Metrics after read')
         io_bytes_after = self.get_metrics(metric_names, [node_ip])
