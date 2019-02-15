@@ -1,3 +1,4 @@
+import itertools
 import os
 import random
 import re
@@ -95,6 +96,34 @@ class TestBootstrap(Tester):
         debug("before={}, after={} + {}={}".format(data_total_size_node1, data_total_size_node1_after, data_total_size_node2_after, data_total_size_node1_after+data_total_size_node2_after));
         assert_almost_equal(data_total_size_node1, data_total_size_node1_after + data_total_size_node2_after, error=0.3)
         assert_almost_equal(data_total_size_node1_after, data_total_size_node1_after, error=0.3)
+
+    def schema_is_pulled_before_schema_is_declared_complete_test(self):
+        """Test that bootstrapping node does a schema pull, before claiming to have a complete schema."""
+
+        cluster = self.cluster
+        cluster.populate(1)
+        cluster.start(wait_for_binary_proto=True)
+
+        node1 = cluster.nodelist()[0]
+
+        node2 = new_node(cluster)
+        node2.start(wait_for_binary_proto=True)
+
+        messages = [
+            "Pulling schema from {}(:[0-9]+)?".format(node1.address()),
+            "Schema merge with {}(:[0-9]+)? completed".format(node1.address()),
+            "JOINING: schema complete, ready to bootstrap",
+        ]
+
+        matches = node2.watch_log_for(messages)
+
+        # watch_log_for() should already ensure this, but just to be sure...
+        self.assertEquals(len(messages), len(matches))
+
+        # Make sure the order of the matching log lines is exactly that of in `messages`.
+        for msg_re, match in itertools.izip(messages, matches):
+            log_line, match_obj = match
+            self.assertTrue(re.search(msg_re, log_line) is not None)
 
     def read_from_bootstrapped_node_test(self):
         """Test bootstrapped node sees existing data, eg. CASSANDRA-6648"""
