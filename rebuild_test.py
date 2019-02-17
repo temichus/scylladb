@@ -5,7 +5,7 @@ from unittest import skip
 from cassandra import ConsistencyLevel
 from ccmlib.node import NodetoolError
 
-from dtest import Tester
+from dtest import Tester, debug
 from tools import insert_c1c2, query_c1c2
 
 
@@ -74,14 +74,18 @@ class TestRebuild(Tester):
         session.execute('USE ks')
 
         self.rebuild_errors = 0
+        self.unexpected_errors = 0
 
         # rebuild dc2 from dc1
         def rebuild():
             try:
                 node2.nodetool('rebuild dc1')
             except NodetoolError as e:
-                if 'Node is still rebuilding' in e.message:
+                if 'rebuild is in progress' in e.message:
                     self.rebuild_errors += 1
+                else:
+                    debug('Unexpected rebuild failure {}'.format(e.message))
+                    self.unexpected_errors += 1
 
         cmd1 = Thread(target=rebuild)
         cmd1.start()
@@ -89,10 +93,7 @@ class TestRebuild(Tester):
         # concurrent rebuild should not be allowed (CASSANDRA-9119)
         # (following sleep is needed to avoid conflict in 'nodetool()' method setting up env.)
         time.sleep(.1)
-        try:
-            node2.nodetool('rebuild dc1')
-        except NodetoolError:
-            self.rebuild_errors += 1
+        rebuild()
 
         cmd1.join()
 
@@ -100,6 +101,8 @@ class TestRebuild(Tester):
         # usually it will be the one in the main thread,
         # but occasionally it wins the race with the one in the secondary thread,
         # so we check that one succeeded and the other failed
+        self.assertEqual(self.unexpected_errors, 0,
+                         msg='unexpected rebuild errors encountered.')
         self.assertEqual(self.rebuild_errors, 1,
                          msg='concurrent rebuild should not be allowed, but one rebuild command should have succeeded.')
 
