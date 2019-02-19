@@ -16,6 +16,7 @@ from threading import Thread
 import datetime
 from tools import rows_to_list
 from uuid import UUID
+from concurrent.futures import ThreadPoolExecutor
 
 
 def build_insert_params(keys, n, c1_values, c2_values):
@@ -459,7 +460,7 @@ class TableManager(object):
         data_array = [data_array[i] for i in [c.split(' ')[1] for c in self.columns_list[1:]]]
         return data_array
 
-    def update_table(self, set_clause, where_filter, using_clause=None, consistency_level=None, queue=None,
+    def update_table(self, set_clause, where_filter, using_clause=None, consistency_level=None,
                      delay=0, update_columns_exclude=None):
         """
         :param set_clause: which columns should by updated with wich value
@@ -474,8 +475,6 @@ class TableManager(object):
         :type using_clause: dict
         :param consistency_level:
         :type consistency_level:
-        :param queue: If the function is called from thread and want to save the output. Queue object
-        :type queue: Queue.Queue
         :param delay: delay before start, in seconds. Default: 0
         :type delay: int
         :param update_columns_exclude: list with column names that should by excluded from set clause: [name1, name2]
@@ -503,8 +502,6 @@ class TableManager(object):
                                    using='' if not using_clause else using_str,
                                    set_clause=set_str, filter=filter_str)
             self.session.execute(statement)
-            if queue:
-                queue.put_nowait((set_dict, filter_str))
             return (set_dict, filter_str)
         return (None, None)
 
@@ -824,32 +821,32 @@ class MaterializedViewManager(object):
         #TODO: handle filter
         return 'SELECT COUNT(*) FROM {my_name}{where_clause}'.format(my_name=self.mv_name, where_clause=filter or '')
 
-def managed_thread(proc_functions, queue=None):
+
+def run_in_parallel(functions_list):
     """
-    Function starts threads and run functions defined in the proc_functions variable. Save results of the functions if asked
-    :param proc_functions: variable holds list of dictionaries with threads definitions. Expected structure:
-                           [{'func': <function pointer - the function will be runs from the thread>,
-                             'args': (arg1, arg2, arg3), - explicit function arguments by order in the function
-                             'kwargs': {<arg name1>: value, <arg name2>: value} - function arguments by name
-                            }, - first thread definition
-                            {{'func': <function pointer, 'args': (), 'kwargs': {}} - second thread, no arguments
-                           ]
-    :param proc_functions: list
-    :param queue: queue pointer
-    :param queue: Queue.Queue
-    :return: results of all treads if queue is not None
-    :rtype: list | None
+        Runs the functions that are passed in proc_functions in parallel using threads.
+        :param functions_list: variable holds list of dictionaries with threads definitions. Expected structure:
+                               [{'func': <function pointer - the function will be runs from the thread>,
+                                 'args': (arg1, arg2, arg3), - explicit function arguments by order in the function
+                                 'kwargs': {<arg name1>: value, <arg name2>: value} - function arguments by name
+                                }, - first thread definition
+                                {{'func': <function pointer, 'args': (), 'kwargs': {}} - second thread, no arguments
+                               ]
+        :param functions_list: list
+        :return: list of functions' return values
+        :rtype: list
     """
     debug('Threads start at {}'.format(datetime.datetime.now()))
-    threads = [Thread(target=func['func'], args=func['args'] if 'args' in func else [],
-                      kwargs=func['kwargs'] if 'kwargs' in func else {})
-               for func in proc_functions]
-    _ = [t.start() for t in threads]
-    _ = [t.join() for t in threads]
-    debug('Threads finished at {}'.format(datetime.datetime.now()))
-    if queue:
-        results = [queue.get() for _ in threads]
-        return results
+    pool = ThreadPoolExecutor(max_workers=len(functions_list))
+    tasks = []
+    for func in functions_list:
+        args = func['args'] if 'args' in func else []
+        kwargs = func['kwargs'] if 'kwargs' in func else {}
+        tasks.append(pool.submit(func['func'], *args, **kwargs))
+    results = [task.result() for task in tasks]
+    debug("'{}' threads finished at {}".format(len(results), datetime.datetime.now()))
+    return results
+
 
 def view_built_status_query(ks='', view='', select_column='status'):
     query = "SELECT {} FROM system_distributed.view_build_status".format(select_column)

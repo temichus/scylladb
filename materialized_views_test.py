@@ -18,7 +18,7 @@ from assertions import assert_all, assert_one, assert_invalid, assert_unavailabl
     assert_two_queries_equal_ignore_order
 from dtest import Tester, debug, flaky_with_tear_down
 from tools import since, new_node, require, rows_to_list, run_query_with_data_processing
-from scylla_tools import TableManager, MaterializedViewManager, flush_by_node, managed_thread, remove_node, wait_for_view, \
+from scylla_tools import TableManager, MaterializedViewManager, flush_by_node, run_in_parallel, remove_node, wait_for_view, \
                             wait_for_view_build_start
 from cassandra.cluster import NoHostAvailable
 
@@ -216,7 +216,7 @@ class TestMaterializedViews(Tester):
         if double_failure and len(self.cluster.nodelist()) > 2:
             proc_functions.append({'func': self._node_action_with_delay, 'args': (node_action, self.cluster.nodelist()[2]),
                                    'kwargs': {'delay': delay}})
-        managed_thread(proc_functions)
+        run_in_parallel(proc_functions)
 
         self.eventually(lambda: self._validate_cs_results(node1, exclude_errors, node_action, double_failure, by_node=False))
 
@@ -235,7 +235,7 @@ class TestMaterializedViews(Tester):
                                                           'ops(insert=3,read1=1,read2=1,read3=1)', '-mode cql3  native', '-rate threads=10'
                                                            ], True]},
                           {'func': self._stop_few_nodes, 'kwargs': {'delay': 30, 'by_dc_name': 'dc2'}}]
-        managed_thread(proc_functions)
+        run_in_parallel(proc_functions)
 
         self.allow_log_errors = True
         self.eventually(lambda: self._validate_cs_results(node1_dc1, exclude_errors=['mutation_write_timeout_exception'], node_action='', double_failure=True))
@@ -362,7 +362,7 @@ class TestMaterializedViews(Tester):
                                    (session, tm, tm.column_names_list[-1], mv.mv_where_restriction.keys()[0], mv_restrict_value, [100, 200]),
                            'kwargs':  {'delay': 5, 'inserts': more_inserts} if change == 'insert' else {'delay': 5, 'updates': 200}}]
 
-        managed_thread(proc_functions)
+        run_in_parallel(proc_functions)
         self.cluster.flush()
 
         # Validate data
@@ -474,7 +474,7 @@ class TestMaterializedViews(Tester):
                           , {'func': tm.select_all_mvs, 'kwargs': {'reads': 2000, 'by_id': True}}
                          ]
 
-        managed_thread(proc_functions)
+        run_in_parallel(proc_functions)
         flush_by_node(self.cluster)
         time.sleep(180)
 
@@ -632,7 +632,7 @@ class TestMaterializedViews(Tester):
         session.cluster.max_schema_agreement_wait = 0
 
         proc_functions = [change_func, {'func': self._create_mvs_by_one_column, 'args': (tm, mvs)}]
-        managed_thread(proc_functions)
+        run_in_parallel(proc_functions)
 
         self.allow_log_errors = fail
 
@@ -713,7 +713,7 @@ class TestMaterializedViews(Tester):
                            'kwargs': {'same_id': False, 'ids': [0 for _ in xrange(0, 1001)],
                                       'updates': 1000}},
                           {'func': tm.multiple_deletes, 'args': ({'id': [0 for _ in xrange(0, 1001)]},)}]
-        managed_thread(proc_functions)
+        run_in_parallel(proc_functions)
 
         self.cluster.flush()
 
@@ -750,7 +750,7 @@ class TestMaterializedViews(Tester):
             proc_functions.append({'func': self._multi_mvs_on_different_base_tables, 'args': (s,),
                            'kwargs': {'tables': tables, 'mvs': mvs, 'prefill_start': prefill_start,
                                       'increase_rows': increase_rows, 'populated_table': populated_table}})
-        managed_thread(proc_functions)
+        run_in_parallel(proc_functions)
 
     def _multi_mvs_on_different_base_tables(self, session, tables, mvs, prefill_start, increase_rows, populated_table):
         def _prefill_base_tables():
@@ -816,7 +816,7 @@ class TestMaterializedViews(Tester):
         proc_functions = [{'func': self.add_mv_records, 'args': (tm,), 'kwargs': {'inserts': prefill, 'delay': 0}},
                           {'func': _drop_mv, 'kwargs': {'delay': 40}}
                          ]
-        managed_thread(proc_functions)
+        run_in_parallel(proc_functions)
         self.cluster.flush()
 
         assert_none(session, 'select * from system_schema.views', cl=ConsistencyLevel.ALL)
@@ -1226,12 +1226,11 @@ class TestMaterializedViews(Tester):
 
         # Run update base table and add new node in the parallel
         update_to = 5000
-        q = TQueue()
-        proc_functions = [{'func': self._add_new_node, 'args': (), 'kwargs': {'queue': q}},
+        proc_functions = [{'func': self._add_new_node, 'args': (), 'kwargs': {}},
                           {'func': tm.update_table, 'args': ({'by type': {'int': update_to}},
                                              {'by name': {'id': {'operator': 'in', 'value': [i for i in xrange(100, 5000)]}}}),
-                                              'kwargs': {'queue': q, 'delay': 5}}]
-        results = managed_thread(proc_functions, q)
+                                              'kwargs': {'delay': 5}}]
+        results = run_in_parallel(proc_functions)
 
         # Receive the results
         new_node_session = set_clause = None
@@ -1254,7 +1253,7 @@ class TestMaterializedViews(Tester):
                                  group=True, groupby_column1=select, groupby_column2=select)
 
     def _add_new_node(self, data_center='dc1', wait_for_binary_proto=True, jvm_args=None,
-                      configuration_options=None, queue=None, delay=0, new_node_index=None):
+                      configuration_options=None, delay=0, new_node_index=None):
         time.sleep(delay)
         node = new_node(self.cluster, data_center=data_center, new_node_index=new_node_index)
         if configuration_options:
@@ -1263,8 +1262,6 @@ class TestMaterializedViews(Tester):
         node.start(wait_for_binary_proto=wait_for_binary_proto, jvm_args=jvm_args)
         session = self.patient_exclusive_cql_connection(node)
         debug("Finish join at {}".format(time.strftime("%H:%M:%S")))
-        if queue:
-            queue.put_nowait((session))
         return session
 
     def add_dc_after_mv_simple_replication_test(self):
