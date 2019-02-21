@@ -1369,7 +1369,7 @@ class RepairAdditionalBase(Tester):
         original_count = 20000
         count = original_count
         session = self.patient_cql_connection(node1, 'ks')
-        while thread1.is_alive():
+        while not thread1.done():
             prev_count = count
             count = count + 1000
             insert_c1c2(session, keys=range(prev_count, count), consistency=ConsistencyLevel.TWO)

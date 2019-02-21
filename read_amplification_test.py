@@ -66,7 +66,7 @@ class ReadAmplificationTest(Tester):
         amplification_rate = 3
         max_val = {}
         metric_names = ['scylla_streaming_total_incoming_bytes', 'scylla_streaming_total_outgoing_bytes']
-        while thr.running():
+        while not thr.done():
             bytes_total = self.get_metrics(metric_names, node_ips)
             for param in bytes_total:
                 self.assertLess(bytes_total[param], size * cnt * amplification_rate)
@@ -142,7 +142,7 @@ class ReadAmplificationTest(Tester):
 
         debug('Metrics during read')
         total_read_bytes = 0
-        while thr.running() or total_read_bytes == 0:
+        while (not thr.done()) or total_read_bytes == 0:
             io_bytes_read = self.get_metrics(metric_names, [node_ip])
             total_read_bytes = get_total_read_bytes(io_bytes_read, io_bytes_before)
             debug(io_bytes_read)
