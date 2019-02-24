@@ -141,6 +141,13 @@ class TestSSTableGenerationAndLoading(Tester):
 
             os.system("mv {path}/snapshots/*{comp} {path}/".format(**locals()))
 
+        # Finally, verify that the data is still there after renaming
+        # all components back.
+        node1.start()
+        session = self.patient_cql_connection(node1)
+        new_rows = list(session.execute("SELECT * FROM %s" % (stress_table,)))
+        self.assertEquals(original_rows, new_rows)
+
     def sstableloader_compression_none_to_none_test(self):
         self.load_sstable_with_configuration(None, None)
 
