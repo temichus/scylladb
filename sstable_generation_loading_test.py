@@ -118,21 +118,28 @@ class TestSSTableGenerationAndLoading(Tester):
 
         node1.stop()
         time.sleep(1)
+        os.system('rm -rf %s/snapshots' % path)
+        os.system('mkdir %s/snapshots' % path)
 
-        os.system('rm %s/*Index.db' % path)
-        os.system('rm %s/*Filter.db' % path)
-        os.system('rm %s/*Statistics.db' % path)
-        os.system('rm %s/*Digest.*' % path)
+        # For each of these component files, verify that if it's removed
+        # then the sstable is is detected is malformed but the data
+        # file is not lost
+        comps = ['Index.db', 'Filter.db', 'Statistics.db', 'Digest.*']
+        for comp in comps:
+            os.system("mv {path}/*{comp} {path}/snapshots/".format(**locals()))
 
-        node1.start()
+            node1.start()
+            node1.watch_log_for("malformed_sstable_exception", timeout=10)
+            node1.stop(wait=False, gently=False)
+            time.sleep(1)
 
-        time.sleep(10)
+            data_found = 0
+            for fname in os.listdir(path):
+                if fname.endswith('Data.db'):
+                    data_found += 1
+            assert data_found > 0, "After removing %s, the data file was deleted!" % comp
 
-        data_found = 0
-        for fname in os.listdir(path):
-            if fname.endswith('Data.db'):
-                data_found += 1
-        assert data_found > 0, "After removing index, filter, stats, and digest files, the data file was deleted!"
+            os.system("mv {path}/snapshots/*{comp} {path}/".format(**locals()))
 
     def sstableloader_compression_none_to_none_test(self):
         self.load_sstable_with_configuration(None, None)
