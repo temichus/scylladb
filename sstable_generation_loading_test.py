@@ -91,6 +91,12 @@ class TestSSTableGenerationAndLoading(Tester):
         # Makinge sure the cluster is ready to accept the subsequent
         # stress connection. This was an issue on Windows.
         node1.stress(['write', 'n=10000', '-rate', 'threads=8'])
+
+        # Query existing data and keep in original_rows
+        session = self.patient_cql_connection(node1)
+        stress_table = 'keyspace1.standard1'
+        original_rows = list(session.execute("SELECT * FROM %s" % (stress_table,)))
+
         node1.flush()
         node1.compact()
         node1.stop()
@@ -101,20 +107,46 @@ class TestSSTableGenerationAndLoading(Tester):
             if x.startswith("standard1"):
                 path = os.path.join(basepath, x)
 
-        os.system('rm %s/*Index.db' % path)
-        os.system('rm %s/*Filter.db' % path)
-        os.system('rm %s/*Statistics.db' % path)
-        os.system('rm %s/*Digest.sha1' % path)
+        # Verify that Summary can be regenerated
+        # and that the data is still there
+        os.system('rm %s/*Summary.db' % path)
 
         node1.start()
+        session = self.patient_cql_connection(node1)
+        new_rows = list(session.execute("SELECT * FROM %s" % (stress_table,)))
+        self.assertEquals(original_rows, new_rows)
 
-        time.sleep(10)
+        node1.stop()
+        time.sleep(1)
+        os.system('rm -rf %s/snapshots' % path)
+        os.system('mkdir %s/snapshots' % path)
 
-        data_found = 0
-        for fname in os.listdir(path):
-            if fname.endswith('Data.db'):
-                data_found += 1
-        assert data_found > 0, "After removing index, filter, stats, and digest files, the data file was deleted!"
+        # For each of these component files, verify that if it's removed
+        # then the sstable is is detected is malformed but the data
+        # file is not lost
+        comps = ['Index.db', 'Filter.db', 'Statistics.db', 'Digest.*']
+        for comp in comps:
+            os.system("mv {path}/*{comp} {path}/snapshots/".format(**locals()))
+
+            node1.start()
+            node1.watch_log_for("malformed_sstable_exception", timeout=10)
+            node1.stop(wait=False, gently=False)
+            time.sleep(1)
+
+            data_found = 0
+            for fname in os.listdir(path):
+                if fname.endswith('Data.db'):
+                    data_found += 1
+            assert data_found > 0, "After removing %s, the data file was deleted!" % comp
+
+            os.system("mv {path}/snapshots/*{comp} {path}/".format(**locals()))
+
+        # Finally, verify that the data is still there after renaming
+        # all components back.
+        node1.start()
+        session = self.patient_cql_connection(node1)
+        new_rows = list(session.execute("SELECT * FROM %s" % (stress_table,)))
+        self.assertEquals(original_rows, new_rows)
 
     def sstableloader_compression_none_to_none_test(self):
         self.load_sstable_with_configuration(None, None)
