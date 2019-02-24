@@ -2163,6 +2163,7 @@ class TestCQL(Tester):
             assert_invalid(session, "SELECT content FROM blogs WHERE time1 = 1 AND time2 > 0 AND author='foo'")
 
     @freshCluster()
+    @attr('next-gating')
     def limit_bugs_test(self):
         """ Test for LIMIT bugs from 4579 """
 
@@ -2825,6 +2826,7 @@ class TestCQL(Tester):
             self._assert_invalid_filtering(session=session, query=q)
             self._assert_valid_query(session=session, query=q + " ALLOW FILTERING")
 
+    @attr('next-gating')
     def range_with_deletes_test(self):
         session = self.prepare()
 
