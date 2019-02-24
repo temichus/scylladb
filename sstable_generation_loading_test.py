@@ -122,7 +122,7 @@ class TestSSTableGenerationAndLoading(Tester):
         os.system('rm %s/*Index.db' % path)
         os.system('rm %s/*Filter.db' % path)
         os.system('rm %s/*Statistics.db' % path)
-        os.system('rm %s/*Digest.sha1' % path)
+        os.system('rm %s/*Digest.*' % path)
 
         node1.start()
 
