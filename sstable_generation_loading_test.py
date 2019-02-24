@@ -91,6 +91,12 @@ class TestSSTableGenerationAndLoading(Tester):
         # Makinge sure the cluster is ready to accept the subsequent
         # stress connection. This was an issue on Windows.
         node1.stress(['write', 'n=10000', '-rate', 'threads=8'])
+
+        # Query existing data and keep in original_rows
+        session = self.patient_cql_connection(node1)
+        stress_table = 'keyspace1.standard1'
+        original_rows = list(session.execute("SELECT * FROM %s" % (stress_table,)))
+
         node1.flush()
         node1.compact()
         node1.stop()
@@ -100,6 +106,18 @@ class TestSSTableGenerationAndLoading(Tester):
         for x in os.listdir(basepath):
             if x.startswith("standard1"):
                 path = os.path.join(basepath, x)
+
+        # Verify that Summary can be regenerated
+        # and that the data is still there
+        os.system('rm %s/*Summary.db' % path)
+
+        node1.start()
+        session = self.patient_cql_connection(node1)
+        new_rows = list(session.execute("SELECT * FROM %s" % (stress_table,)))
+        self.assertEquals(original_rows, new_rows)
+
+        node1.stop()
+        time.sleep(1)
 
         os.system('rm %s/*Index.db' % path)
         os.system('rm %s/*Filter.db' % path)
