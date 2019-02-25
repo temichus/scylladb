@@ -147,8 +147,10 @@ class TestCommitLog(Tester):
 
         self._change_commitlog_perms(0)
 
-        with open(os.devnull, 'w') as devnull:
-            self.node1.stress(['write', 'n=1M', '-col', 'size=FIXED(1000)', '-rate', 'threads=25'], stdout=devnull, stderr=subprocess.STDOUT)
+        try:
+            self.node1.stress(['write', 'n=10K', '-col', 'size=FIXED(1000)', '-rate', 'threads=25'])
+        except:
+            debug("Stress failed as expected")
 
     def test_commitlog_replay_on_startup(self):
         """ Test commit log replay """
@@ -326,13 +328,14 @@ class TestCommitLog(Tester):
         # Scylla: Unknown option commitlog_compression
         self._segment_size_test(5, compressed=True)
 
+    expected_log_message = 'commitlog - Exception in segment reservation\: storage_io_error \(Storage I/O error\: 13\: filesystem error: open failed: Permission denied'
+
     def stop_failure_policy_test(self):
         """ Test the stop commitlog failure policy (default one) """
         self.prepare()
 
         self._provoke_commitlog_failure()
-        failure = self.node1.grep_log("\[shard 0\] commitlog - Exception in segment reservation\: "
-                                      "storage_io_error \(Storage I/O error\: 13\: Permission denied\)")
+        failure = self.node1.grep_log(self.expected_log_message)
         debug(failure)
         self.assertTrue(failure, "Cannot find the commitlog failure message in logs")
         self.assertTrue(self.node1.is_running(), "Node1 should still be running")
@@ -349,6 +352,7 @@ class TestCommitLog(Tester):
               "SELECT * FROM test;"
             """)
 
+    @skip('unsupported since scylladb/scylla#2246')
     def stop_commit_failure_policy_test(self):
         """ Test the stop_commit commitlog failure policy """
         self.prepare(configuration={
@@ -360,8 +364,7 @@ class TestCommitLog(Tester):
         """)
 
         self._provoke_commitlog_failure()
-        failure = self.node1.grep_log("\[shard 0\] commitlog - Exception in segment reservation\: "
-                                      "storage_io_error \(Storage I/O error\: 13\: Permission denied\)")
+        failure = self.node1.grep_log(self.expected_log_message)
         debug(failure)
         self.assertTrue(failure, "Cannot find the commitlog failure message in logs")
         self.assertTrue(self.node1.is_running(), "Node1 should still be running")
@@ -379,7 +382,7 @@ class TestCommitLog(Tester):
             [2, 2]
         )
 
-    @skip('scylladb/scylla#2231,2246')
+    @skip('unsupported since scylladb/scylla#2246')
     def die_failure_policy_test(self):
         """ Test the die commitlog failure policy """
         self.prepare(configuration={
@@ -387,13 +390,12 @@ class TestCommitLog(Tester):
         })
 
         self._provoke_commitlog_failure()
-        failure = self.node1.grep_log("\[shard 0\] commitlog - Exception in segment reservation\: "
-                                      "storage_io_error \(Storage I/O error\: 13\: Permission denied\)")
+        failure = self.node1.grep_log(self.expected_log_message)
         debug(failure)
         self.assertTrue(failure, "Cannot find the commitlog failure message in logs")
         self.assertFalse(self.node1.is_running(), "Node1 should not be running")
 
-    @skip('scylladb/scylla2232, 2246')
+    @skip('unsupported since scylladb/scylla#2246')
     def ignore_failure_policy_test(self):
         """ Test the ignore commitlog failure policy """
         self.prepare(configuration={
@@ -401,8 +403,7 @@ class TestCommitLog(Tester):
         })
 
         self._provoke_commitlog_failure()
-        failure = self.node1.grep_log("\[shard 0\] commitlog - Exception in segment reservation\: "
-                                      "storage_io_error \(Storage I/O error\: 13\: Permission denied\)")
+        failure = self.node1.grep_log(self.expected_log_message)
         self.assertTrue(failure, "Cannot find the commitlog failure message in logs")
         self.assertTrue(self.node1.is_running(), "Node1 should still be running")
 
