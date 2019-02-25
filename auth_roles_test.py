@@ -10,6 +10,7 @@ from auth_test import data_resource_creator_permissions, role_creator_permission
 from dtest import Tester
 from assertions import assert_one, assert_all, assert_invalid
 from tools import since
+from tools import require
 
 # Second value is superuser status
 # Third value is login status, See #7653 for explanation.
@@ -130,6 +131,8 @@ class TestAuthRoles(Tester):
                        "User mike does not have sufficient privileges to perform the requested operation",
                        Unauthorized)
 
+    # Issue: Creating user-defined function (UDF) #2204
+    @require('#2204')
     def creator_of_db_resource_granted_all_permissions_test(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -362,6 +365,8 @@ class TestAuthRoles(Tester):
                        "mike has no MODIFY permission on <table ks.cf> or any of its parents",
                        Unauthorized)
 
+    # Issue: Creating user-defined function (UDF) #2204
+    @require('#2204')
     def filter_granted_permissions_by_resource_type_test(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -751,6 +756,8 @@ class TestAuthRoles(Tester):
                                              ["mike", True]])
 
     # UDF permissions tests TODO move to separate fixture & refactor this + auth_test.py
+    # Issue: Creating user-defined function (UDF) #2204
+    @require('#2204')
     def grant_revoke_udf_permissions_test(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -790,6 +797,8 @@ class TestAuthRoles(Tester):
         cassandra.execute("REVOKE EXECUTE PERMISSION ON ALL FUNCTIONS FROM mike")
         self.assert_no_permissions(cassandra, "LIST ALL PERMISSIONS OF mike")
 
+    # Issue: Creating user-defined function (UDF) #2204
+    @require('#2204')
     def grant_revoke_are_idempotent_test(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -806,6 +815,8 @@ class TestAuthRoles(Tester):
         cassandra.execute("REVOKE EXECUTE ON FUNCTION ks.plus_one(int) FROM mike")
         self.assert_no_permissions(cassandra, "LIST ALL PERMISSIONS OF mike")
 
+    # Issue: Creating user-defined function (UDF) #2204
+    @require('#2204')
     def function_resource_hierarchy_permissions_test(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -859,6 +870,8 @@ class TestAuthRoles(Tester):
         mike.execute(select_one)
         mike.execute(select_two)
 
+    # Issue: Creating user-defined function (UDF) #2204
+    @require('#2204')
     def udf_permissions_validation_test(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -919,6 +932,8 @@ class TestAuthRoles(Tester):
         cassandra.execute("GRANT CREATE ON ALL FUNCTIONS IN KEYSPACE ks TO mike")
         mike.execute(cql)
 
+    # Issue: Creating user-defined function (UDF) #2204
+    @require('#2204')
     def drop_role_cleans_up_udf_permissions_test(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -940,6 +955,8 @@ class TestAuthRoles(Tester):
         cassandra.execute("CREATE ROLE mike WITH PASSWORD = '12345' AND LOGIN = true")
         self.assert_no_permissions(cassandra, "LIST ALL PERMISSIONS OF mike")
 
+    # Issue: Creating user-defined function (UDF) #2204
+    @require('#2204')
     def drop_function_and_keyspace_cleans_up_udf_permissions_test(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -963,6 +980,8 @@ class TestAuthRoles(Tester):
         cassandra.execute("DROP KEYSPACE ks")
         self.assert_no_permissions(cassandra, "LIST ALL PERMISSIONS OF mike")
 
+    # Issue: Creating user-defined function (UDF) #2204
+    @require('#2204')
     def udf_with_overloads_permissions_test(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -1000,6 +1019,8 @@ class TestAuthRoles(Tester):
         cassandra.execute("DROP FUNCTION ks.plus_one(int)")
         self.assert_no_permissions(cassandra, "LIST ALL PERMISSIONS OF mike")
 
+    # Issue: Creating user-defined function (UDF) #2204
+    @require('#2204')
     def drop_keyspace_cleans_up_function_level_permissions_test(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -1030,6 +1051,8 @@ class TestAuthRoles(Tester):
     def udf_permissions_in_delete_test(self):
         self.verify_udf_permissions("DELETE FROM ks.t1 WHERE k = ks.plus_one(0)")
 
+    # Issue: Creating user-defined function (UDF) #2204
+    @require('#2204')
     def verify_udf_permissions(self, cql):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -1047,6 +1070,8 @@ class TestAuthRoles(Tester):
         cassandra.execute("GRANT EXECUTE ON FUNCTION ks.plus_one(int) TO mike")
         return mike.execute(cql)
 
+    # Issue: Creating user-defined function (UDF) #2204
+    @require('#2204')
     def inheritence_of_udf_permissions_test(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -1119,6 +1144,8 @@ class TestAuthRoles(Tester):
                        "Resource type RoleResource does not support any of the requested permissions",
                        SyntaxException)
 
+    # Issue: Creating user-defined function (UDF) #2204
+    @require('#2204')
     def aggregate_function_permissions_test(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
