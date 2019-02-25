@@ -5,9 +5,7 @@ import traceback
 import random
 from functools import partial
 from multiprocessing import Process, Queue, cpu_count
-from Queue import Queue as TQueue
 from unittest import skip, skipIf
-
 from cassandra import ConsistencyLevel, WriteFailure
 from cassandra.cluster import Cluster
 from cassandra.query import SimpleStatement
@@ -30,6 +28,7 @@ from nose.plugins.attrib import attr
 # for multiple data directory changes and CASSANDRA-10421 for compaction logging that must be
 # written.
 MIGRATION_WAIT = 5
+
 
 class TestMaterializedViews(Tester):
     """
@@ -403,14 +402,14 @@ class TestMaterializedViews(Tester):
                                                       'id': {'operator': '=', 'value': id}}})
         debug('Updates were finished')
 
-    def _add_few_nodes(self, nodes, data_center, delay=0, queue=None):
+    def _add_few_nodes(self, nodes, data_center, delay=0):
         if delay:
             debug('Sleep for {} seconds'.format(delay))
             time.sleep(delay)
 
         for i in xrange(0, nodes):
             debug('Bootstrapping {0} node in {1}'.format(i+1, data_center))
-            self._add_new_node(data_center=data_center, queue=None)
+            self._add_new_node(data_center=data_center)
 
     def hundred_mv_concurrent_test(self):
         """
