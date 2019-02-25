@@ -1,4 +1,5 @@
 auth_test.py
+auth_roles_test.py
 backup_restore_tests.py
 batch_test.py
 bootstrap_test.py:TestBootstrap.killed_wiped_node_cannot_join_test
