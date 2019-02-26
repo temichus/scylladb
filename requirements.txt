@@ -1,5 +1,6 @@
 blist
-git+https://github.com/scylladb/scylla-ccm
+git+https://github.com/datastax/python-driver.git@cassandra-test
+git+https://github.com/pcmanus/ccm.git
 cql
 decorator
 enum34
