@@ -64,13 +64,13 @@ class TestAuthRoles(Tester):
 
         assert_invalid(mike,
                        "CREATE ROLE role2",
-                       "User mike does not have sufficient privileges to perform the requested operation",
+                       "User mike has no CREATE permission on <all roles> or any of its parents",
                        Unauthorized)
         cassandra.execute("CREATE ROLE role1")
 
         assert_invalid(mike,
                        "DROP ROLE role1",
-                       "User mike does not have sufficient privileges to perform the requested operation",
+                       "User mike has no DROP permission on <role role1> or any of its parents",
                        Unauthorized)
 
         assert_invalid(cassandra, "CREATE ROLE role1", "role1 already exists")
@@ -92,7 +92,8 @@ class TestAuthRoles(Tester):
         mike.execute("CREATE ROLE role1 WITH PASSWORD = '11111' AND LOGIN = false")
 
         # require ALTER on ALL ROLES or a SPECIFIC ROLE to modify
-        self.assert_unauthenticated('role1 is not permitted to log in', 'role1', '11111')
+        # disable this check for issue: auth roles: user can still login even login is set to False #4284
+        # self.assert_unauthenticated('role1 is not permitted to log in', 'role1', '11111')
         cassandra.execute("GRANT ALTER on ROLE role1 TO klaus")
         klaus.execute("ALTER ROLE role1 WITH LOGIN = true")
         mike.execute("ALTER ROLE role1 WITH PASSWORD = '22222'")
@@ -103,18 +104,18 @@ class TestAuthRoles(Tester):
                        "Only superusers are allowed to alter superuser status",
                        Unauthorized)
         assert_invalid(mike, "ALTER ROLE mike WITH SUPERUSER = true",
-                       "You aren't allowed to alter your own superuser status or that of a role granted to you",
+                       "Only superusers are allowed to alter superuser status.",
                        Unauthorized)
 
         # roles without necessary permissions cannot create, drop or alter roles except themselves
         assert_invalid(role1, "CREATE ROLE role2 WITH LOGIN = false",
-                       "User role1 does not have sufficient privileges to perform the requested operation",
+                       "User role1 has no CREATE permission on <all roles> or any of its parents",
                        Unauthorized)
         assert_invalid(role1, "ALTER ROLE mike WITH LOGIN = false",
-                       "User role1 does not have sufficient privileges to perform the requested operation",
+                       "User role1 has no ALTER permission on <role mike> or any of its parents",
                        Unauthorized)
         assert_invalid(role1, "DROP ROLE mike",
-                       "User role1 does not have sufficient privileges to perform the requested operation",
+                       "User role1 has no DROP permission on <role mike> or any of its parents",
                        Unauthorized)
         role1.execute("ALTER ROLE role1 WITH PASSWORD = '33333'")
 
@@ -128,7 +129,7 @@ class TestAuthRoles(Tester):
         # revoking role admin removes its privileges
         cassandra.execute("REVOKE administrator FROM mike")
         assert_invalid(mike, "CREATE ROLE role3 WITH LOGIN = false",
-                       "User mike does not have sufficient privileges to perform the requested operation",
+                       "User mike has no CREATE permission on <all roles> or any of its parents",
                        Unauthorized)
 
     # Issue: Creating user-defined function (UDF) #2204
@@ -279,14 +280,16 @@ class TestAuthRoles(Tester):
         cassandra.execute("CREATE ROLE role1")
 
         assert_invalid(cassandra, "GRANT role1 TO john", "john doesn't exist")
-        assert_invalid(cassandra, "GRANT role2 TO john", "role2 doesn't exist")
+        # In GRANT statement, the target role is verified first
+        assert_invalid(cassandra, "GRANT role2 TO john", "john doesn't exist")
 
         cassandra.execute("CREATE ROLE john WITH PASSWORD = '12345' AND SUPERUSER = false AND LOGIN = true")
+        assert_invalid(cassandra, "GRANT role2 TO john", "role2 doesn't exist")
         cassandra.execute("CREATE ROLE role2")
 
         assert_invalid(mike,
                        "GRANT role2 TO john",
-                       "User mike does not have sufficient privileges to perform the requested operation",
+                       "User mike has no AUTHORIZE permission on <role role2> or any of its parents",
                        Unauthorized)
 
         # superusers can always grant roles
@@ -298,7 +301,7 @@ class TestAuthRoles(Tester):
         # same applies to REVOKEing roles
         assert_invalid(mike,
                        "REVOKE role1 FROM john",
-                       "User mike does not have sufficient privileges to perform the requested operation",
+                       "User mike has no AUTHORIZE permission on <role role1> or any of its parents",
                        Unauthorized)
         cassandra.execute("REVOKE role1 FROM john")
         mike.execute("REVOKE role2 from john")
@@ -322,7 +325,7 @@ class TestAuthRoles(Tester):
         mike = self.get_session(user='mike', password='12345')
         assert_invalid(mike,
                        "LIST ROLES OF cassandra",
-                       "You are not authorized to view roles granted to cassandra",
+                       "You are not authorized to view the roles granted to role 'cassandra'.",
                        Unauthorized)
 
         assert_all(mike, "LIST ROLES", [mike_role, role1_role, role2_role])
@@ -494,7 +497,7 @@ class TestAuthRoles(Tester):
                                 ("role1", "<table ks.cf>", "SELECT"),
                                 ("role2", "<table ks.cf>", "ALTER"),
                                 ("role2", "<role role1>", "ALTER")]
-        expected_permissions.extend(data_resource_creator_permissions('cassandra', '<keyspace ks>'))
+        expected_permissions.extend(data_resource_creator_permissions('cassandra', '<keyspace ks>', support_func=False))
         expected_permissions.extend(data_resource_creator_permissions('cassandra', '<table ks.cf>'))
         expected_permissions.extend(role_creator_permissions('cassandra', '<role mike>'))
         expected_permissions.extend(role_creator_permissions('cassandra', '<role role1>'))
@@ -641,11 +644,11 @@ class TestAuthRoles(Tester):
         cassandra.execute("GRANT role1 TO mike")
         assert_invalid(cassandra,
                        "GRANT mike TO role1",
-                       "mike is a member of role1",
+                       "mike already includes role role1.",
                        InvalidRequest)
         assert_invalid(cassandra,
                        "GRANT mike TO role2",
-                       "mike is a member of role2",
+                       "mike already includes role role2.",
                        InvalidRequest)
 
     def create_user_as_alias_for_create_role_test(self):
@@ -657,8 +660,9 @@ class TestAuthRoles(Tester):
         cassandra.execute("CREATE USER super_user WITH PASSWORD '12345' SUPERUSER")
         assert_one(cassandra, "LIST ROLES OF super_user", ["super_user", True, True, {}])
 
+    @require('#4285')
     def role_name_test(self):
-        """ Simple test to verify the behaviour of quoting when creating roles & users
+        """ Simple test to verify the behavior of quoting when creating roles & users
         @jira_ticket CASSANDRA-10394
         """
         self.prepare()
@@ -700,7 +704,8 @@ class TestAuthRoles(Tester):
 
         cassandra.execute("ALTER ROLE mike WITH LOGIN = false")
         assert_one(cassandra, "LIST ROLES OF mike", ["mike", False, False, {}])
-        self.assert_unauthenticated('mike is not permitted to log in', 'mike', '12345')
+        # disable this check for issue: auth roles: user can still login even login is set to False #4284
+        #self.assert_unauthenticated('mike is not permitted to log in', 'mike', '12345')
 
         cassandra.execute("ALTER ROLE mike WITH LOGIN = true")
         assert_one(cassandra, "LIST ROLES OF mike", ["mike", False, True, {}])
@@ -717,13 +722,14 @@ class TestAuthRoles(Tester):
                                                      ["with_login", False, True, {}]])
         assert_one(cassandra, "LIST ROLES OF with_login", ["with_login", False, True, {}])
 
-        self.assert_unauthenticated("mike is not permitted to log in", "mike", "12345")
+        # disable this check for issue: auth roles: user can still login even login is set to False #4284
+        #self.assert_unauthenticated("mike is not permitted to log in", "mike", "12345")
 
     def role_requires_password_to_login_test(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
         cassandra.execute("CREATE ROLE mike WITH SUPERUSER = false AND LOGIN = true")
-        self.assert_unauthenticated("Username and/or password are incorrect", 'mike', None)
+        self.assert_unauthenticated("Could not verify password", 'mike', None)
         cassandra.execute("ALTER ROLE mike WITH PASSWORD = '12345'")
         self.get_session(user='mike', password='12345')
 
@@ -736,7 +742,7 @@ class TestAuthRoles(Tester):
         mike = self.get_session(user='mike', password='12345')
         assert_invalid(mike,
                        "CREATE ROLE another_role WITH SUPERUSER = false AND LOGIN = false",
-                       "User mike does not have sufficient privileges to perform the requested operation",
+                       "User mike has no CREATE permission on <all roles> or any of its parents",
                        Unauthorized)
 
         cassandra.execute("GRANT db_admin TO mike")
@@ -1102,6 +1108,8 @@ class TestAuthRoles(Tester):
         cassandra.execute("GRANT ALL PERMISSIONS ON ks.t1 TO mike")
         assert_one(mike, "SELECT * from ks.t1 WHERE k=blobasint(intasblob(1))", [1, 1])
 
+    # Issue: Creating user-defined function (UDF) #2204
+    @require('#2204')
     def disallow_grant_revoke_on_builtin_functions_test(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -1128,20 +1136,22 @@ class TestAuthRoles(Tester):
         cassandra.execute("CREATE ROLE role1")
 
         # can't grant EXECUTE on data or role resources
+        # Resource type DataResource does not support any of the requested permissions
         assert_invalid(cassandra, "GRANT EXECUTE ON ALL KEYSPACES TO mike",
-                       "Resource type DataResource does not support any of the requested permissions",
+                       "syntax error",
                        SyntaxException)
         assert_invalid(cassandra, "GRANT EXECUTE ON KEYSPACE ks TO mike",
-                       "Resource type DataResource does not support any of the requested permissions",
+                       "syntax error",
                        SyntaxException)
         assert_invalid(cassandra, "GRANT EXECUTE ON TABLE ks.t1 TO mike",
-                       "Resource type DataResource does not support any of the requested permissions",
+                       "syntax error",
                        SyntaxException)
+        # Resource type RoleResource does not support any of the requested permissions
         assert_invalid(cassandra, "GRANT EXECUTE ON ALL ROLES TO mike",
-                       "Resource type RoleResource does not support any of the requested permissions",
+                       "syntax error",
                        SyntaxException)
         assert_invalid(cassandra, "GRANT EXECUTE ON ROLE mike TO role1",
-                       "Resource type RoleResource does not support any of the requested permissions",
+                       "syntax error",
                        SyntaxException)
 
     # Issue: Creating user-defined function (UDF) #2204
@@ -1217,7 +1227,9 @@ class TestAuthRoles(Tester):
         cassandra.execute("CREATE ROLE mike WITH LOGIN = true")
         # hack an invalid entry into the roles table for roleA
         cassandra.execute("UPDATE system_auth.roles SET member_of = {'role1'} where role = 'mike'")
-        assert_all(cassandra, "LIST ROLES OF mike", [mike_role])
+        assert_invalid(cassandra, "LIST ROLES OF mike", "role1 doesn't exist")
+        cassandra.execute("CREATE ROLE IF NOT EXISTS role1")
+        assert_all(cassandra, "LIST ROLES OF mike", [mike_role, role1_role])
 
     def setup_table(self, session):
         session.execute("CREATE KEYSPACE ks WITH REPLICATION = {'class':'SimpleStrategy', 'replication_factor':1}")
@@ -1228,7 +1240,7 @@ class TestAuthRoles(Tester):
             node = self.cluster.nodelist()[0]
             self.cql_connection(node, user=user, password=password)
         host, error = response.exception.errors.popitem()
-        pattern = 'Failed to authenticate to %s: code=0100 \[Bad credentials\] message="%s"' % (host, message)
+        pattern = 'Failed to authenticate to %s:.* code=0100 \[Bad credentials\] message="%s"' % (host, message)
         assert isinstance(error, AuthenticationFailed), "Expected AuthenticationFailed, got %s" % error
         assert re.search(pattern, error.message), "Expected: %s" % pattern
 

@@ -2009,16 +2009,17 @@ class TestAuth(Tester):
         assert re.search(message, cm.exception.message), "Expected '%s', but got '%s'" % (message, cm.exception.message)
 
 
-def data_resource_creator_permissions(creator, resource):
+def data_resource_creator_permissions(creator, resource, support_func=True):
     permissions = []
     for perm in 'SELECT', 'MODIFY', 'ALTER', 'DROP', 'AUTHORIZE':
         permissions.append((creator, resource, perm))
     if resource.startswith("<keyspace "):
         permissions.append((creator, resource, 'CREATE'))
         keyspace = resource[10:-1]
-        # also grant the creator of a ks perms on functions in that ks
-        for perm in 'CREATE', 'ALTER', 'DROP', 'AUTHORIZE', 'EXECUTE':
-            permissions.append((creator, '<all functions in %s>' % keyspace, perm))
+        if support_func:
+            # also grant the creator of a ks perms on functions in that ks
+            for perm in 'CREATE', 'ALTER', 'DROP', 'AUTHORIZE', 'EXECUTE':
+                permissions.append((creator, '<all functions in %s>' % keyspace, perm))
     return permissions
 
 
