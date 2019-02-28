@@ -919,13 +919,13 @@ def wait_for_view_build_start(session, ks, view, seconds_to_wait = 20):
         if time.time() - start > seconds_to_wait:
             raise Exception("View building didn't start in {} seconds".format(seconds_to_wait))
 
-def check_errors_all_nodes(nodes, exclude_errors, search_str='Error'):
+def check_errors_all_nodes(nodes, exclude_errors, search_str=None):
     errors = None
     for node in nodes:
         errors = check_errors(node=node, exclude_errors=exclude_errors, search_str=search_str)
     return  errors
 
-def check_errors(node, exclude_errors, search_str='Error'):
+def check_errors(node, exclude_errors, search_str=None):
     errors = node.grep_log_for_errors(distinct_errors=True, search_str=search_str)
 
     if exclude_errors:

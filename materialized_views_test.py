@@ -286,7 +286,7 @@ class TestMaterializedViews(Tester):
         self._add_dc_during_mv_change('insert', 3, 4, start_prefill=1000, more_inserts=300000)
 
     def _check_errors(self, node, exclude_errors):
-        errors = node.grep_log_for_errors(distinct_errors=True, search_str='Error')
+        errors = node.grep_log_for_errors(distinct_errors=True)
 
         if exclude_errors:
             for ee in exclude_errors:
