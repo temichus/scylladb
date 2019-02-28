@@ -115,6 +115,26 @@ class TestSSTableLoader(MigrationTestBase):
         # Expect success with sstableloader --ignore-dropped-counter-data
         self.load_migrated_tables(node1, 'with_old_format_counter', extra_args=['--ignore-dropped-counter-data'])
 
+    def load_migrated_table_with_counter(self):
+        """
+        Test migration of old data with counter, using the default (--ignore-dropped-counter-data isn't passed)
+        """
+
+        if self.version == '2_1_x':
+            self.skipTest('Test only relevant to new counter')
+
+        self.allow_log_errors = False
+        cluster = self.cluster
+        self.populate_cluster(cluster)
+        node1 = self.cluster.nodelist()[0]
+        node1.set_configuration_options()
+        self.start_cluster(cluster)
+
+        query = "CREATE TABLE ks.cf (pk int PRIMARY KEY, cnt COUNTER);"
+        self.create_ks_and_cf(node1, None, None, False, query=query)
+
+        self.load_migrated_tables(node1, 'with_counter')
+
 versions = ['2_1_x', '2_2_x', '3_0_x', '3_0_mc']
 for version in versions:
     for prepared in ['-nx', '']:
