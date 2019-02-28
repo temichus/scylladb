@@ -41,7 +41,7 @@ from functools import wraps
 
 os.environ['LOCALE'] = 'C'
 
-LOG_SAVED_DIR = "logs"
+LOG_SAVED_DIR = os.environ.get('LOG_SAVED_DIR', "logs")
 try:
     os.mkdir(LOG_SAVED_DIR)
 except OSError:
