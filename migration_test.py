@@ -351,7 +351,7 @@ class MigrationTestBase(Tester):
     def migrate_sstable_with_old_format_counter_test(self):
         self.migrate_sstable_with_old_format_counter_helper()
 
-    def migrate_sstable_with_counter_test(self):
+    def migrate_sstable_with_counter_test_expect_fail(self):
         """
         https://github.com/scylladb/scylla/issues/2119
         CREATE KEYSPACE ks WITH replication={'class':'SimpleStrategy', 'replication_factor':1};
@@ -375,6 +375,30 @@ class MigrationTestBase(Tester):
         self.create_ks_and_cf(node1, None, None, False, query=query)
         expected_message = 'Direct loading non-Scylla SSTables containing counters is not supported.'
         self.load_migrated_tables_expect_fail(node1, 'with_counter', message=expected_message)
+
+    def migrate_sstable_with_counter_test(self):
+        """
+        https://github.com/scylladb/scylla/issues/2119
+        CREATE KEYSPACE ks WITH replication={'class':'SimpleStrategy', 'replication_factor':1};
+        CREATE TABLE ks.cf (first_name varchar, last_name varchar, cnt counter, PRIMARY KEY(first_name, last_name));
+        UPDATE ks.cf SET cnt = cnt + 1 WHERE first_name='albert' AND last_name='einstein';
+        UPDATE ks.cf SETcnt = cnt + 2 WHERE first_name='thomas' AND last_name='edison';
+        flush
+        UPDATE ks.cf SET cnt = cnt + 10 WHERE first_name='albert' AND last_name='einstein';
+        UPDATE ks.cf SET cnt = cnt + 3 WHERE first_name='marie' AND last_name='curie';
+        UPDATE ks.cf SET cnt = cnt - 5 WHERE first_name='albert' AND last_name='einstein';
+        flush
+        """
+        cluster = self.cluster
+        self.populate_cluster(cluster, extra_values={'enable_dangerous_direct_import_of_cassandra_counters': True})
+        node1 = self.cluster.nodelist()[0]
+        node1.set_configuration_options()
+        self.start_cluster(cluster)
+
+        query = "CREATE TABLE ks.cf " \
+                "(first_name varchar, last_name varchar, cnt counter, PRIMARY KEY(first_name, last_name));"
+        self.create_ks_and_cf(node1, None, None, False, query=query)
+        self.load_migrated_tables(node1, 'with_counter')
 
     # ######################## Helper functions ####################################
 
@@ -495,10 +519,13 @@ class MigrationTestBase(Tester):
                                                               migrated_files_dir)
 
 
-    def populate_cluster(self, cluster):
+    def populate_cluster(self, cluster, extra_values=None):
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfere with the test (this must be after the populate)
-        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        values = {'hinted_handoff_enabled': False}
+        if extra_values:
+            values.update(extra_values)
+        cluster.set_configuration_options(values, batch_commitlog=True)
         debug("Starting a cluster of one node...")
         cluster.populate(1)
 
