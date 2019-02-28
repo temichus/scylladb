@@ -373,7 +373,7 @@ class MigrationTestBase(Tester):
         query = "CREATE TABLE ks.cf " \
                 "(first_name varchar, last_name varchar, cnt counter, PRIMARY KEY(first_name, last_name));"
         self.create_ks_and_cf(node1, None, None, False, query=query)
-        expected_message = 'Loading non-Scylla SSTables containing counters is not supported.'
+        expected_message = 'Direct loading non-Scylla SSTables containing counters is not supported.'
         self.load_migrated_tables_expect_fail(node1, 'with_counter', message=expected_message)
 
     # ######################## Helper functions ####################################
