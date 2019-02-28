@@ -44,6 +44,7 @@ class TestSSTableLoader(MigrationTestBase):
         stdout, stderr = p.communicate()
         exit_status = p.wait()
         if stderr:
+            debug("sstableloader command: %s" % args)
             debug("=== sstableloader stderr ===")
             debug(stderr)
             debug("====")
@@ -89,17 +90,7 @@ class TestSSTableLoader(MigrationTestBase):
                 raise Exception("sstableloader command '%s' failed; exit status: %d'; stdout: %s; stderr: %s" %
                             (" ".join(args), exit_status, stdout, stderr))
 
-    def load_migrated_tables_with_old_counter_test(self):
-        """
-        Test migration of old data with counter, while using --ignore-dropped-counter-data
-        """
-
-        if self.version == '2_1_x':
-            self.migrate_sstable_with_old_format_counter_helper()
-        else:
-            self.skipTest('Test only relevant to old counter')
-
-    def load_migrated_table_with_old_counter_default(self):
+    def load_migrated_table_with_old_counter(self):
         """
         Test migration of old data with counter, using the default (--ignore-dropped-counter-data isn't passed)
         """
@@ -121,6 +112,8 @@ class TestSSTableLoader(MigrationTestBase):
         expected_message = "Local counter shard found. Data loss may occur"
         self.load_migrated_tables_expect_fail(node1, 'with_old_format_counter', message=expected_message)
 
+        # Expect success with sstableloader --ignore-dropped-counter-data
+        self.load_migrated_tables(node1, 'with_old_format_counter', extra_args=['--ignore-dropped-counter-data'])
 
 versions = ['2_1_x', '2_2_x', '3_0_x', '3_0_mc']
 for version in versions:
