@@ -862,12 +862,7 @@ class TestSecondaryIndexes(Tester):
         # Perform action on second node
         self._node_action_with_delay(node_action, node2)
 
-        index_is_built(self.cluster, session, ks_name=keyspace_name, table_name=table_name, index_name=index_name)
-
-        # Validate the data using filtering by index with cl=QUORUM because expected that may be partually missed data on the replicas
-        self.validate_index_data(session, cl=ConsistencyLevel.QUORUM, num_rows=num_rows, table_name=table_name,
-                                 index_column=index_column)
-
+        # Index will not finish building, because view building underneath is paused until updates can be sent.
         if node_action == 'add':
             assert True
 
@@ -879,9 +874,6 @@ class TestSecondaryIndexes(Tester):
             debug('Start node {}'.format(node2.name))
             node2.start(wait_for_binary_proto=True)
 
-        # Wait for index data update
-        time.sleep(30)
-
         # Validate the data using filtering by index with cl=ONE
         self.validate_index_data(session, cl=ConsistencyLevel.ONE, num_rows=num_rows, table_name=table_name,
                                  index_column=index_column)
@@ -890,7 +882,8 @@ class TestSecondaryIndexes(Tester):
         assert_row_count_from_every_node(session, table_name=view_name, expected=num_rows,
                                          nodes_list=self.cluster.nodelist())
         self.allow_log_errors = check_errors(self.cluster.nodelist()[0],
-                                             ['Can\'t send migration request: node {} is down'.format(node2_ip)],
+                                             ['Can\'t send migration request: node {} is down'.format(node2_ip),
+                                              'Error applying view update to {}: exceptions::unavailable_exception (Cannot achieve consistency level for cl ONE. Requires 1, alive 0)'.format(node2_ip)],
                                              search_str='ERROR')
 
     def test_stop_node_after_index_build(self):
@@ -957,10 +950,15 @@ class TestSecondaryIndexes(Tester):
                                              search_str='ERROR')
 
     def validate_index_data(self, session, cl, num_rows, table_name, index_column):
-        debug('Verify data with {} consistency level'.format(ConsistencyLevel.value_to_name[cl]))
-        for i in xrange(num_rows):
-            assert_all(session, 'select key from {} where {} = {}'.format(table_name, index_column, i + num_rows),
-                       expected=[[i]], cl=cl)
+        for delay_factor in range(5):
+            try:
+                debug('Verify data with {} consistency level'.format(ConsistencyLevel.value_to_name[cl]))
+                for i in xrange(num_rows):
+                    assert_all(session, 'select key from {} where {} = {}'.format(table_name, index_column, i + num_rows),
+                               expected=[[i]], cl=cl)
+                return
+            except:
+                time.sleep(2**delay_factor)
 
     def _node_action_with_delay(self, action, node=None, delay=0, wait=True, wait_other_notice=False, gently=True):
         """
