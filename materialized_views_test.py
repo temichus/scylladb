@@ -636,13 +636,14 @@ class TestMaterializedViews(Tester):
         self.allow_log_errors = fail
 
         try:
-            for mv_name in tm.materialized_views.iterkeys():
-                wait_for_view(cluster=self.cluster, session=session, ks=tm.keyspace, view=mv_name)
+            if change_type not in ['stop node', 'restart node']:
+                for mv_name in tm.materialized_views.iterkeys():
+                    wait_for_view(cluster=self.cluster, session=session, ks=tm.keyspace, view=mv_name)
 
-            self._validate_data_in_mvs(tm=tm, session=session, table_expected_rows=rows_after_test, mv_expected_rows=rows_after_test,
-                                       node_action=change_type.split(' ')[0])
+                self._validate_data_in_mvs(tm=tm, session=session, table_expected_rows=rows_after_test, mv_expected_rows=rows_after_test,
+                                           node_action=change_type.split(' ')[0])
 
-            if change_type == 'restart node':
+            if change_type in ['stop node', 'restart node']:
                 self.cluster.nodelist()[1].start()
                 for mv_name in tm.materialized_views.iterkeys():
                     wait_for_view(cluster=self.cluster, session=session, ks=tm.keyspace, view=mv_name)
@@ -656,7 +657,7 @@ class TestMaterializedViews(Tester):
                 assert True
 
         self._check_errors(self.cluster.nodelist()[0], exclude_errors=['migration_task - Can''t send migration request',
-                                                                       'mutation_write_timeout_exception'])
+                                                                       'mutation_write_timeout_exception', 'Error applying view update to'])
         assert True
 
     def _restart_node(self, node, delay=0):
