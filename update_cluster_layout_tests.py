@@ -1593,4 +1593,4 @@ class TestLargeScaleCluster(Tester):
         self.add_multi_nodes(starting_size, node_count=50, rf=1)
         t.result()
 
-        node2.stress(['read', 'cl=QUORUM', 'n=%s' % n, 'no-warmup', '-pop seq=1..%s' % n])
+        node2.stress(['read', 'cl=QUORUM', 'n=%s' % n, 'no-warmup', '-pop seq=1..%s' % n, '-rate threads=20'])
