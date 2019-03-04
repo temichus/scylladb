@@ -16,6 +16,36 @@ A few tests still require the deprecated python CQL over thrift driver.
  * [Python Driver](http://datastax.github.io/python-driver/installation.html)
  * [CQL over Thrift Driver](http://code.google.com/a/apache-extras.org/p/cassandra-dbapi2/)
 
+
+Setup using virtualenv
+----------------------
+
+Using `virtualenv` is recommended in order to not pollute your global python installation with the dtest requirements. It also makes it very easy to switch between the different ccm versions (or other package versions) when changing release branches.
+To setup a `virtualenv` follow the below instructions:
+
+```bash
+# Create the virtualenv.
+virtualenv env
+
+# Start using the virtualenv, you should now see `(env)` in you bash prompt.
+source ./env/bin/activate
+
+# General dependencies.
+pip install -r ./requirements.txt
+
+# Install Scylla CCM, using pip ensures it will be installed *into* the
+# virtualenv (setup.py does a global install by default).
+cd /path/to/scylla-ccm
+pip install .
+```
+
+To get rid of the virtual environment just delete the directory (`env` in the above example) it was created in.
+
+To deactivate the virtual environment close the terminal and start a new one (there is no `deactivate` script unfortunately).
+
+To start using the virtual environment in a new terminal just source the `bin/activate` script, like above.
+
+
 Usage
 -----
 
