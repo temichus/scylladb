@@ -19,6 +19,7 @@ import requests
 import datetime
 import inspect
 from unittest import TestCase
+import signal
 
 import psutil
 from cassandra import ConsistencyLevel
@@ -245,6 +246,7 @@ def make_execution_profile(retry_policy=FlakyRetryPolicy(), consistency_level=Co
 
 class Tester(TestCase):
     _multiprocess_can_split_ = True
+    waitkilltime = 180.0 # enlarge the time nose-mutliprocess will wait until killing the process, so we'll have time to copy logs and cleanup cluster
 
     def __init__(self, *argv, **kwargs):
         # if False, then scan the log of each node for errors after every test.
@@ -254,6 +256,7 @@ class Tester(TestCase):
         self.cluster_id_allocator = cluster_id_allocator
         self.cluster_options = kwargs.pop('cluster_options', None)
         self.cassandra_version = kwargs.pop('cassandra_version', None)
+        self._did_timeout = False
         super(Tester, self).__init__(*argv, **kwargs)
 
     def _get_cluster(self, name='test', version=None):
@@ -396,6 +399,7 @@ class Tester(TestCase):
     def setUp(self):
         global CURRENT_TEST
         CURRENT_TEST = self.id() + self._testMethodName
+        self.nose_signal = signal.signal(signal.SIGILL, self._timeout_handler)
 
         # On Windows, forcefully terminate any leftover previously running cassandra processes. This is a temporary
         # workaround until we can determine the cause of intermittent hung-open tests and file-handles.
@@ -732,6 +736,23 @@ class Tester(TestCase):
                     self._cleanup_cluster()
                 elif self._preserve_cluster and failed:
                     self._cleanup_cluster()
+            signal.signal(signal.SIGILL, self.nose_signal)
+
+    def _timeout_handler(self, signum, frame):
+        if not self._did_timeout:
+            self._did_timeout = True
+            debug("got timeout signal, copying logs and clean cluster")
+            try:
+                self.copy_logs()
+
+                if not self._preserve_cluster:
+                    self._cleanup_cluster()
+
+            except Exception as e:
+                print "Error in timeout saving log:", str(e)
+            finally:
+
+                self.nose_signal(signum, frame)
 
     def go(self, func):
         runner = Runner(func)
