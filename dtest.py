@@ -436,6 +436,10 @@ class Tester(TestCase):
 
         self.cluster = self._get_cluster(version=self.cassandra_version)
 
+        annotate =  os.path.join(self.cluster.get_path(), 'current_test')
+        with open(annotate, 'a') as f:
+            f.write(CURRENT_TEST + '\n')
+
         if not self._preserve_cluster:
             if not self._check_clean():
                 self._force_clean()
