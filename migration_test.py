@@ -43,9 +43,6 @@ class MigrationTestBase(Tester):
         """
         Test that we can migrate a cassandra sstable with compact storage and clustering key
         """
-        if self.version == '2_2_x':
-            self.skipTest('issue #3395 - Migration from Cassandra 2_2_X fails for "lb" files')
-
         query = 'CREATE COLUMNFAMILY  ks.cf (pk varchar, ck1 text, v1 text, PRIMARY KEY (pk, ck1)) WITH COMPACT STORAGE'
         self._run_basic_migration_test('with_compact_storage_and_composite_key', {'pk': 'a', 'ck1': 'b', 'v1': 'abc'},
                                        compact_storage=True, query=query)
@@ -351,7 +348,7 @@ class MigrationTestBase(Tester):
     def migrate_sstable_with_old_format_counter_test(self):
         self.migrate_sstable_with_old_format_counter_helper()
 
-    def migrate_sstable_with_counter_test(self):
+    def migrate_sstable_with_counter_test_expect_fail(self):
         """
         https://github.com/scylladb/scylla/issues/2119
         CREATE KEYSPACE ks WITH replication={'class':'SimpleStrategy', 'replication_factor':1};
@@ -373,8 +370,32 @@ class MigrationTestBase(Tester):
         query = "CREATE TABLE ks.cf " \
                 "(first_name varchar, last_name varchar, cnt counter, PRIMARY KEY(first_name, last_name));"
         self.create_ks_and_cf(node1, None, None, False, query=query)
-        expected_message = 'Loading non-Scylla SSTables containing counters is not supported.'
+        expected_message = 'Direct loading non-Scylla SSTables containing counters is not supported.'
         self.load_migrated_tables_expect_fail(node1, 'with_counter', message=expected_message)
+
+    def migrate_sstable_with_counter_test(self):
+        """
+        https://github.com/scylladb/scylla/issues/2119
+        CREATE KEYSPACE ks WITH replication={'class':'SimpleStrategy', 'replication_factor':1};
+        CREATE TABLE ks.cf (first_name varchar, last_name varchar, cnt counter, PRIMARY KEY(first_name, last_name));
+        UPDATE ks.cf SET cnt = cnt + 1 WHERE first_name='albert' AND last_name='einstein';
+        UPDATE ks.cf SETcnt = cnt + 2 WHERE first_name='thomas' AND last_name='edison';
+        flush
+        UPDATE ks.cf SET cnt = cnt + 10 WHERE first_name='albert' AND last_name='einstein';
+        UPDATE ks.cf SET cnt = cnt + 3 WHERE first_name='marie' AND last_name='curie';
+        UPDATE ks.cf SET cnt = cnt - 5 WHERE first_name='albert' AND last_name='einstein';
+        flush
+        """
+        cluster = self.cluster
+        self.populate_cluster(cluster, extra_values={'enable_dangerous_direct_import_of_cassandra_counters': True})
+        node1 = self.cluster.nodelist()[0]
+        node1.set_configuration_options()
+        self.start_cluster(cluster)
+
+        query = "CREATE TABLE ks.cf " \
+                "(first_name varchar, last_name varchar, cnt counter, PRIMARY KEY(first_name, last_name));"
+        self.create_ks_and_cf(node1, None, None, False, query=query)
+        self.load_migrated_tables(node1, 'with_counter')
 
     # ######################## Helper functions ####################################
 
@@ -495,10 +516,13 @@ class MigrationTestBase(Tester):
                                                               migrated_files_dir)
 
 
-    def populate_cluster(self, cluster):
+    def populate_cluster(self, cluster, extra_values=None):
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfere with the test (this must be after the populate)
-        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        values = {'hinted_handoff_enabled': False}
+        if extra_values:
+            values.update(extra_values)
+        cluster.set_configuration_options(values, batch_commitlog=True)
         debug("Starting a cluster of one node...")
         cluster.populate(1)
 
@@ -634,13 +658,9 @@ class TestMigration(MigrationTestBase):
                 assert message in str(error), error
 
     def migrate_sstable_with_counter_test(self):
-        if self.version == '2_2_x':
-            self.skipTest('issue #3395 - Migration from Cassandra 2_2_X fails for "lb" files')
         super(TestMigration, self).migrate_sstable_with_counter_test()
 
     def migrate_sstable_with_variant_data_types_test(self):
-        if self.version == '2_2_x':
-            self.skipTest('issue #3395 - Migration from Cassandra 2_2_X fails for "lb" files')
         super(TestMigration, self).migrate_sstable_with_variant_data_types_test()
 
 @skip('not run every build')
