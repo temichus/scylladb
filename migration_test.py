@@ -43,9 +43,6 @@ class MigrationTestBase(Tester):
         """
         Test that we can migrate a cassandra sstable with compact storage and clustering key
         """
-        if self.version == '2_2_x':
-            self.skipTest('issue #3395 - Migration from Cassandra 2_2_X fails for "lb" files')
-
         query = 'CREATE COLUMNFAMILY  ks.cf (pk varchar, ck1 text, v1 text, PRIMARY KEY (pk, ck1)) WITH COMPACT STORAGE'
         self._run_basic_migration_test('with_compact_storage_and_composite_key', {'pk': 'a', 'ck1': 'b', 'v1': 'abc'},
                                        compact_storage=True, query=query)
