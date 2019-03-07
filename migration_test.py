@@ -661,8 +661,6 @@ class TestMigration(MigrationTestBase):
                 assert message in str(error), error
 
     def migrate_sstable_with_counter_test(self):
-        if self.version == '2_2_x':
-            self.skipTest('issue #3395 - Migration from Cassandra 2_2_X fails for "lb" files')
         super(TestMigration, self).migrate_sstable_with_counter_test()
 
     def migrate_sstable_with_variant_data_types_test(self):
