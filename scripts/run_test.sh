@@ -73,7 +73,6 @@ fi
 if [[ ! -d ${SCYLLA_DBUILD_SO_DIR} ]]; then
     echo "scylla was built with dbuild, and SCYLLA_DBUILD_SO_DIR wasn't supplied or exists"
     cd ${SCYLLA_DIR}
-    ./dbuild
     ./tools/toolchain/dbuild -it -v ${DTEST_DIR}/scripts/dbuild_collect_so.sh:/bin/dbuild_collect_so.sh -- dbuild_collect_so.sh build/release/scylla dynamic_libs/
     cd -
 fi
