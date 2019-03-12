@@ -48,7 +48,7 @@ try:
 except OSError:
     pass
 
-LAST_LOG = os.path.join(LOG_SAVED_DIR, "last")
+LAST_LOG = "last"
 
 LAST_TEST_DIR = 'last_test_dir'
 
@@ -471,14 +471,9 @@ class Tester(TestCase):
         self.connections = []
         self.runners = []
 
-    def copy_logs(self, directory=None, name=None):
+    def copy_logs(self, directory=LOG_SAVED_DIR, name=LAST_LOG):
         """Copy the current cluster's log files somewhere, by default to LOG_SAVED_DIR with a name of 'last'"""
-        if directory is None:
-            directory = LOG_SAVED_DIR
-        if name is None:
-            name = LAST_LOG
-        else:
-            name = os.path.join(directory, name)
+        name = os.path.join(directory, name)
         if not os.path.exists(directory):
             os.mkdir(directory)
         logs = [(node.name, node.logfilename(), node.debuglogfilename()) for node in self.cluster.nodes.values()]
