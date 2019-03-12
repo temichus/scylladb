@@ -73,6 +73,9 @@ REUSE_CLUSTER = os.environ.get('REUSE_CLUSTER', '').lower() in ('yes', 'true')
 SILENCE_DRIVER_ON_SHUTDOWN = os.environ.get('SILENCE_DRIVER_ON_SHUTDOWN', 'true').lower() in ('yes', 'true')
 IGNORE_REQUIRE = os.environ.get('IGNORE_REQUIRE', '').lower() in ('yes', 'true')
 NOSE_PROCESSES = os.environ.get('NOSE_PROCESSES', 0)
+KEEP_CORES = os.environ.get('KEEP_CORES', 'true').lower() in ('yes', 'true')
+DTEST_CORE_COMPRESS_TOOL = os.environ.get('DTEST_CORE_COMPRESS_TOOL', 'gzip')
+DTEST_CORE_COMPRESS_EXT = os.environ.get('DTEST_CORE_COMPRESS_EXT', 'gz')
 
 CURRENT_TEST = ""
 
@@ -471,21 +474,62 @@ class Tester(TestCase):
         self.connections = []
         self.runners = []
 
-    def copy_logs(self, directory=LOG_SAVED_DIR, name=LAST_LOG):
+    def find_cores(self):
+        cores = []
+        nodes = []
+        for node in self.cluster.nodelist():
+            try:
+                pids = node.all_pids
+                if not pids:
+                    pids = [node.pid]
+            except AttributeError:
+                pids = [node.pid]
+            nodes += [(node.name, pids)]
+        for f in os.listdir('.'):
+            if not f.endswith('.core'):
+                continue
+            for n, pids in nodes:
+                """Look for this cluster's coredumps"""
+                for p in pids:
+                    if f.find(".{}.".format(p)) >= 0:
+                        cores += [(n, os.path.join(os.getcwd(), f))]
+        # returns empty list if no core files found
+        return cores
+
+    def copy_logs(self, directory=LOG_SAVED_DIR, name=LAST_LOG, cores=None):
         """Copy the current cluster's log files somewhere, by default to LOG_SAVED_DIR with a name of 'last'"""
         name = os.path.join(directory, name)
         if not os.path.exists(directory):
             os.mkdir(directory)
+        basedir = str(int(time.time() * 1000)) + '_' + self.id()
+        logdir = os.path.join(directory, basedir)
+        os.mkdir(logdir)
+
         logs = [(node.name, node.logfilename(), node.debuglogfilename()) for node in self.cluster.nodes.values()]
         if len(logs) is not 0:
-            basedir = str(int(time.time() * 1000)) + '_' + self.id()
-            logdir = os.path.join(directory, basedir)
-            os.mkdir(logdir)
             for n, log, debuglog in logs:
                 if os.path.exists(log):
                     shutil.copyfile(log, os.path.join(logdir, n + ".log"))
                 if os.path.exists(debuglog):
                     shutil.copyfile(debuglog, os.path.join(logdir, n + "_debug.log"))
+
+        if cores is None and KEEP_CORES:
+            cores = self.find_cores()
+        if cores:
+            for n, src in cores:
+                dst = os.path.join(logdir, "{}-{}".format(n, os.path.basename(src)))
+                print("Moving core file {} to {}".format(src, dst))
+                try:
+                    if DTEST_CORE_COMPRESS_TOOL == '':
+                        cmd = "mv {} {}".format(src, dst)
+                        shutil.move(src, dst)
+                    else:
+                        cmd = "{} < {} > {}.{} && rm {}".format(DTEST_CORE_COMPRESS_TOOL, src, dst, DTEST_CORE_COMPRESS_EXT, src)
+                        subprocess.check_call(cmd, shell=True)
+                except Exception as e:
+                    print("`{}` failed: {}. Keeping directory.".format(cmd, e))
+
+        if os.path.exists(logdir):
             if os.path.exists(name):
                 os.unlink(name)
             if not is_win():
@@ -715,6 +759,7 @@ class Tester(TestCase):
                 pass
 
         failed = sys.exc_info() != (None, None, None)
+        found_cores = None
         try:
             for node in self.cluster.nodelist():
                 if not self.allow_log_errors:
@@ -723,11 +768,15 @@ class Tester(TestCase):
                     if len(errors) is not 0:
                         failed = True
                         raise AssertionError('Unexpected error in %s node log: %s' % (node.name, errors))
+            found_cores = self.find_cores()
+            if found_cores:
+                print("Core file(s) found.{}".format("" if failed else " Marking test as failed."))
+                failed = True
         finally:
             try:
                 if failed or KEEP_LOGS:
                     # means the test failed. Save the logs for inspection.
-                    self.copy_logs()
+                    self.copy_logs(cores=found_cores)
             except Exception as e:
                 print "Error saving log:", str(e)
             finally:
