@@ -438,7 +438,7 @@ class Tester(TestCase):
 
         annotate =  os.path.join(self.cluster.get_path(), 'current_test')
         with open(annotate, 'a') as f:
-            f.write(CURRENT_TEST + '\n')
+            f.write(self.id() + '\n')
 
         if not self._preserve_cluster:
             if not self._check_clean():
