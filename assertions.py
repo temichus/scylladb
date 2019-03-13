@@ -186,3 +186,8 @@ def assert_expected_error(func, expected_error, args, kwargs):
             assert True
         else:
             raise
+
+def assert_equal_more_with_deviation(actual, expect, deviation_perc):
+    deviation_high = (expect * (100 + deviation_perc))/100
+    assert expect <= actual < deviation_high, 'Expect that result will be between %d and %d, but received ' \
+                                                           '%d' % (expect, deviation_high, actual)
