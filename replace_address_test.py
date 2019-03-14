@@ -109,6 +109,24 @@ class TestReplaceAddress(Tester):
         debug(checkCollision)
         self.assertEqual(len(checkCollision), 1)
 
+    def shutdown_all_and_replace_node_test(self):
+        debug("Starting cluster with 3 nodes.")
+        cluster = self.cluster
+        cluster.populate(3).start()
+        node1, node2, node3 = cluster.nodelist()
+
+        node1.stop()
+        node2.stop()
+        node3.stop()
+
+        node1.start(wait_for_binary_proto=True)
+        node2.start(wait_for_binary_proto=True)
+
+        debug("Starting node 4 to replace node 3")
+        node4 = new_node(cluster, bootstrap=True, token=None, remote_debug_port='0', data_center=None)
+
+        node4.start(wait_for_binary_proto=True, replace_address=self.cluster.get_node_ip(3))
+
     def replace_active_node_test(self):
 
         debug("Starting cluster with 3 nodes.")
