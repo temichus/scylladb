@@ -1905,4 +1905,4 @@ class CqlLoginTest(Tester):
             return_output=True,
             cqlsh_options=['-u', 'cassandra', '-p', 'cassandra'])
         self.assertEqual([x for x in cqlsh_stdout.split() if x], ['ks1table'])
-        self.assertIn('authentication failed', cqlsh_stderr)
+        self.assertIn('Username and/or password are incorrect', cqlsh_stderr)

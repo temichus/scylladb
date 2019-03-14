@@ -729,7 +729,7 @@ class TestAuthRoles(Tester):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
         cassandra.execute("CREATE ROLE mike WITH SUPERUSER = false AND LOGIN = true")
-        self.assert_unauthenticated("Could not verify password", 'mike', None)
+        self.assert_unauthenticated("Username and/or password are incorrect", 'mike', None)
         cassandra.execute("ALTER ROLE mike WITH PASSWORD = '12345'")
         self.get_session(user='mike', password='12345')
 
