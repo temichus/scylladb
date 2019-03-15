@@ -1255,7 +1255,8 @@ class TestAuthRoles(Tester):
         # default user setup is delayed by 10 seconds to reduce log spam
 
         if nodes == 1:
-            self.cluster.nodelist()[0].watch_log_for("Created default superuser")
+            self.cluster.nodelist()[0].watch_log_for(
+                ["Created default superuser role", "Created default superuser authentication record"])
         else:
             # can' just watch for log - the line will appear in just one of the nodes' logs
             # only one test uses more than 1 node, though, so some sleep is fine.
