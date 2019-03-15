@@ -397,6 +397,38 @@ class MigrationTestBase(Tester):
         self.create_ks_and_cf(node1, None, None, False, query=query)
         self.load_migrated_tables(node1, 'with_counter')
 
+    def migrate_sstable_with_wrong_partitioner_test_expect_fail(self):
+        """
+        https://github.com/scylladb/scylla/issues/4331
+        Partitioner: org.apache.cassandra.dht.RandomPartitioner
+        CREATE KEYSPACE ks
+            WITH replication={
+                'class':'SimpleStrategy', 'replication_factor':1
+            };
+        CREATE TABLE ks.cf ( pk INT, ck INT, v INT, PRIMARY KEY(pk, ck))
+            WITH compression = { 'sstable_compression' : '' };
+        INSERT INTO ks.cf(pk, ck, s, val) VALUES(1, 10, 100);
+        INSERT INTO ks.cf(pk, ck, s, val) VALUES(2, 20, 200);
+        INSERT INTO ks.cf(pk, ck, s, val) VALUES(3, 30, 300);
+        flush
+        """
+        cluster = self.cluster
+        self.populate_cluster(cluster)
+        node1 = self.cluster.nodelist()[0]
+        node1.set_configuration_options()
+        self.start_cluster(cluster)
+
+        query = "CREATE TABLE ks.cf (pk INT, ck INT, v INT, PRIMARY KEY(pk, ck))" + \
+                " WITH compression = { 'sstable_compression' : '' }"
+        self.create_ks_and_cf(node1, None, None, False, query=query)
+        expected_message = "uses org.apache.cassandra.dht.RandomPartitioner" + \
+                           " partitioner which is different than" + \
+                           " org.apache.cassandra.dht.Murmur3Partitioner" + \
+                           " partitioner used by the database"
+        self.load_migrated_tables_expect_fail(node1,
+                                              'with_wrong_partitioner',
+                                              message=expected_message)
+
     # ######################## Helper functions ####################################
 
     def migrate_sstable_with_old_format_counter_helper(self):
