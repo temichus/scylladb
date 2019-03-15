@@ -829,12 +829,12 @@ class Tester(TestCase):
     def shortDescription(self):
         return None
 
-    def wait_for_any_log(self, nodes, pattern, timeout):
+    def wait_for_any_log(self, nodes, patterns, timeout):
         """
         Look for a pattern in the system.log of any in a given list
         of nodes.
         :param nodes: The list of nodes whose logs to scan
-        :param pattern: The target pattern
+        :param patterns: The target pattern (a string, or a list of strings)
         :param timeout: How long to wait for the pattern. Note that
                         strictly speaking, timeout is not really a timeout,
                         but a maximum number of attempts. This implies that
@@ -844,9 +844,14 @@ class Tester(TestCase):
         """
         for _ in range(timeout):
             for node in nodes:
-                found = node.grep_log(pattern)
-                if found:
-                    return node
+                try:
+                    found = node.watch_log_for(patterns, timeout=0)
+
+                    if found:
+                        return node
+                except TimeoutError:
+                    pass
+
             time.sleep(1)
 
         raise TimeoutError(time.strftime("%d %b %Y %H:%M:%S", time.gmtime()) +
