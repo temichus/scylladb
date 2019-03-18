@@ -36,16 +36,17 @@ class TestMaterializedViews(Tester):
     @jira_ticket CASSANDRA-6477
     """
 
-    def eventually(self, fun, trials=30, sleep_time_s=1):
+    def eventually(self, fun, trials=7):
         """
-        Runs a function until it succeeds or the trial limit is reached
+        Runs a function until it succeeds or the trial limit is reached,
+        with exponential wait
         """
         assert trials > 0
         for i in range(trials - 1):
             try:
                 return fun()
             except:
-                time.sleep(sleep_time_s)
+                time.sleep(2**i)
         return fun()
 
     def eventually_assert_one(self, *args):
