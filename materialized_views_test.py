@@ -174,7 +174,6 @@ class TestMaterializedViews(Tester):
         """
         self._run_node_failure_during_mv_stress_insert(rf=3, nodes=3, node_action='remove', exclude_errors=['mutation_write_timeout_exception'])
 
-    @flaky_with_tear_down
     def double_node_failure_during_mv_insert_4_nodes_test(self):
         """ Test stopping 2 nodes during MV inserts
             Test starts with a starting size 4 and stops 2 nodes during inserts into base table that cause to update materialized view as well
@@ -201,20 +200,22 @@ class TestMaterializedViews(Tester):
 
         node1 = self.cluster.nodelist()[0]
         n = 1000000
-        stdout, stderr = node1.stress(stress_options=['write', 'cl=QUORUM', 'n={}'.format(n), "-mode cql3 native", "-rate threads=10", "-pop seq=1..{}".format(n)],
+        stdout, stderr = node1.stress(stress_options=['write', 'cl=QUORUM', 'n={}'.format(n),
+                                                      "-schema replication(factor=3)", "-mode cql3 native",
+                                                      "-rate threads=10", "-pop seq=1..{}".format(n)],
                                     capture_output=True)
         self.assertFalse(stderr, 'Run c-s failed: {}'.format(stderr))
 
         proc_functions = [
-            {'func': node1.stress, 'args': [['user', 'profile={}'.format(mv_profile), 'cl=QUORUM', 'duration={}'.format(duration),
+            {'func': node1.stress, 'args': [['user', 'profile={}'.format(mv_profile), 'cl=ONE', 'duration={}'.format(duration),
                                              'ops(insert=1,read1=1,read2=1,read3=1)', '-mode cql3  native', '-rate threads=10'], True]},
-            {'func': node1.stress, 'args': [['mixed', "cl=QUORUM", "duration=10m",
+            {'func': node1.stress, 'args': [['mixed', "cl=ONE", "duration=10m", "-schema replication(factor=3)",
                                              "-mode cql3 native", "-rate threads=10", "-pop seq=1..{}".format(n), "-log interval=5"], True]},
             {'func': self._node_action_with_delay, 'args': (node_action, self.cluster.nodelist()[1]), 'kwargs': {'delay': delay}}
         ]
         if double_failure and len(self.cluster.nodelist()) > 2:
             proc_functions.append({'func': self._node_action_with_delay, 'args': (node_action, self.cluster.nodelist()[2]),
-                                   'kwargs': {'delay': delay}})
+                                   'kwargs': {'delay': delay+10}})
         run_in_parallel(proc_functions)
 
         self.eventually(lambda: self._validate_cs_results(node1, exclude_errors, node_action, double_failure, by_node=False))
