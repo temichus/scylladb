@@ -73,17 +73,35 @@ fi
 if [[ ! -d ${SCYLLA_DBUILD_SO_DIR} ]]; then
     echo "scylla was built with dbuild, and SCYLLA_DBUILD_SO_DIR wasn't supplied or exists"
     cd ${SCYLLA_DIR}
-    ./tools/toolchain/dbuild -it -v ${DTEST_DIR}/scripts/dbuild_collect_so.sh:/bin/dbuild_collect_so.sh -- dbuild_collect_so.sh build/release/scylla dynamic_libs/
+    set +e
+    ./tools/toolchain/dbuild -v ${DTEST_DIR}/scripts/dbuild_collect_so.sh:/bin/dbuild_collect_so.sh -- dbuild_collect_so.sh build/`basename ${CASSANDRA_DIR}`/scylla dynamic_libs/
+    set -e
     cd -
 fi
 
+if [[ ! -d ${HOME}/.dtest ]]; then
+    mkdir -p ${HOME}/.dtest
+fi
+if [[ ! -d ${HOME}/.ccm ]]; then
+    mkdir -p ${HOME}/.ccm
+fi
+
+# if in jenkins also mount the workspace into docker
+if [[ -d ${WORKSPACE} ]]; then
+WORKSPACE_MNT="-v ${WORKSPACE}:${WORKSPACE}"
+else
+WORKSPACE_MNT=""
+fi
+
 docker run --rm=true \
+    ${WORKSPACE_MNT} \
     -v ${DTEST_DIR}:${DTEST_DIR} \
     -v ${SCYLLA_DIR}:${SCYLLA_DIR} \
     -v ${TOOLS_JAVA_DIR}:${TOOLS_JAVA_DIR} \
     -v ${JMX_DIR}:${JMX_DIR} \
     -v ${CCM_DIR}:${CCM_DIR} \
     -e CASSANDRA_DIR \
+    -e HOME \
     -e SCYLLA_DBUILD_SO_DIR \
     -e KEEP_TEST_DIR \
     -e DEBUG \
@@ -97,4 +115,5 @@ docker run --rm=true \
     --tmpfs ${HOME}/.local \
     -v ${HOME}/.dtest:${HOME}/.dtest \
     -v ${HOME}/.ccm:${HOME}/.ccm \
-    docker.io/scylladb/scylla-dtest:latest bash -c "pip install --user -e  ${CCM_DIR} ; nosetests -v -s $*"
+    --network=bridge --privileged \
+    docker.io/scylladb/scylla-dtest:latest bash -c "sudo pip install -e  ${CCM_DIR} ; nosetests -v -s $*"
