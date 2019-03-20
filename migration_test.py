@@ -421,13 +421,9 @@ class MigrationTestBase(Tester):
         query = "CREATE TABLE ks.cf (pk INT, ck INT, v INT, PRIMARY KEY(pk, ck))" + \
                 " WITH compression = { 'sstable_compression' : '' }"
         self.create_ks_and_cf(node1, None, None, False, query=query)
-        expected_message = "uses org.apache.cassandra.dht.RandomPartitioner" + \
-                           " partitioner which is different than" + \
-                           " org.apache.cassandra.dht.Murmur3Partitioner" + \
-                           " partitioner used by the database"
         self.load_migrated_tables_expect_fail(node1,
                                               'with_wrong_partitioner',
-                                              message=expected_message)
+                                              message=self.get_wrong_partitioner_error_message())
 
     # ######################## Helper functions ####################################
 
@@ -656,7 +652,8 @@ class TestMigration(MigrationTestBase):
             debug("Copying data/system_traces created by Cassandra...")
             self.recursive_copy_to(os.path.join(cassandra_dir, 'system_traces'), os.path.join(scylla_dir, 'system_traces'))
 
-    def load_migrated_tables(self, node, migrated_files_dir, ks='ks', cf='cf', extra_args=None):
+    def load_migrated_tables(self, node, migrated_files_dir, ks='ks', cf='cf', extra_args=None,
+                             partitioner='org.apache.cassandra.dht.Murmur3Partitioner'):
         cassandra_sstable_dir = self.get_cassandra_sstable_dir(self.version, migrated_files_dir)
         debug("cassandra sstable dir is {}".format(cassandra_sstable_dir))
 
@@ -694,6 +691,13 @@ class TestMigration(MigrationTestBase):
 
     def migrate_sstable_with_variant_data_types_test(self):
         super(TestMigration, self).migrate_sstable_with_variant_data_types_test()
+
+    def get_wrong_partitioner_error_message(self):
+        return "uses org.apache.cassandra.dht.RandomPartitioner" + \
+               " partitioner which is different than" + \
+               " org.apache.cassandra.dht.Murmur3Partitioner" + \
+               " partitioner used by the database"
+
 
 @skip('not run every build')
 @attr('long','compare-cassandra')
