@@ -11,6 +11,7 @@ from dtest import Tester
 from assertions import assert_one, assert_all, assert_invalid
 from tools import since
 from tools import require
+from nose.plugins.attrib import attr
 
 # Second value is superuser status
 # Third value is login status, See #7653 for explanation.
@@ -77,6 +78,7 @@ class TestAuthRoles(Tester):
         cassandra.execute("DROP ROLE role1")
         assert_invalid(cassandra, "DROP ROLE role1", "role1 doesn't exist")
 
+    @attr('next-gating')
     def role_admin_validation_test(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -339,6 +341,7 @@ class TestAuthRoles(Tester):
         cassandra.execute("GRANT DESCRIBE ON ALL ROLES TO mike")
         assert_all(mike, "LIST ROLES", [cassandra_role, mike_role, role1_role, role2_role])
 
+    @attr('next-gating')
     def grant_revoke_permissions_test(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -725,6 +728,7 @@ class TestAuthRoles(Tester):
         # disable this check for issue: auth roles: user can still login even login is set to False #4284
         #self.assert_unauthenticated("mike is not permitted to log in", "mike", "12345")
 
+    @attr('next-gating')
     def role_requires_password_to_login_test(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
