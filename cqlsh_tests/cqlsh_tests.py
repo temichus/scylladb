@@ -237,6 +237,7 @@ class TestCqlsh(Tester):
         self.assertEquals(output.count(' ⠊⠀⠉⠁⠝⠀⠑⠁⠞⠀⠛⠇⠁⠎⠎⠀⠁⠝⠙⠀⠊⠞⠀⠙⠕⠑⠎⠝⠞⠀⠓⠥⠗⠞⠀⠍⠑'), 16)
         self.assertEquals(output.count('᚛᚛ᚉᚑᚅᚔᚉᚉᚔᚋ ᚔᚈᚔ ᚍᚂᚐᚅᚑ ᚅᚔᚋᚌᚓᚅᚐ᚜'), 2)
 
+    @attr('next-gating')
     def eat_glass_test(self):
 
         self.cluster.populate(1)
@@ -1891,6 +1892,7 @@ class CqlLoginTest(Tester):
                       "cqlsh stderr output: {}".format(expected_error,
                                                        '\n'.join(err_lines)))
 
+    @attr('next-gating')
     def login_allows_bad_pass_and_continued_use_test(self):
         self.create_ks(self.session, 'ks1', 1)
         self.create_cf(self.session, 'ks1table')
