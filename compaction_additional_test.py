@@ -15,6 +15,7 @@ from nose.plugins.attrib import attr
 class CompactionAdditionalTest(Tester):
     _multiprocess_can_split_ = False
 
+    @attr('next-gating')
     def compaction_delete_with_smp_change_test(self):
         """
         Test that data is not resurected when shared sstables
