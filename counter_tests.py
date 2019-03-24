@@ -787,6 +787,7 @@ class TestCountersOnMultipleNodes(Tester):
         self.node2.decommission()
         self.node2.stop()
 
+    @attr('next-gating')
     def counter_consistency_node_repair_test(self):
         """
         Cluster: 3 nodes, keyspace RF=3
