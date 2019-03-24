@@ -1,6 +1,7 @@
 import time
 from dtest import Tester, debug
 from concurrent.futures import ThreadPoolExecutor
+from nose.plugins.attrib import attr
 
 class HeatWeightedLB(Tester):
     _multiprocess_can_split_ = False
@@ -135,5 +136,6 @@ class HeatWeightedLB(Tester):
     def heat_weighted_load_balancing_cl_ANY_test(self):
         self.run_heat_weighted_load_balancing('ANY')
 
+    @attr('next-gating')
     def heat_weighted_load_balancing_cl_QUORUM_test(self):
         self.run_heat_weighted_load_balancing('QUORUM')
