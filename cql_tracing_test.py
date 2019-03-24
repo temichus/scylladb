@@ -14,7 +14,7 @@ import time
 import re
 from nose.plugins.attrib import attr
 
-
+@attr('next-gating')
 class TestCqlTracing(Tester):
     """
     Test that the default implementation for tracing works.
@@ -97,6 +97,7 @@ class TestCqlTracing(Tester):
         session = self.prepare()
         self.trace(session)
 
+    @attr('next-gating')
     def tracing_shutdown_test(self):
         """
         Check tracing functionality when Node is being shut down:
