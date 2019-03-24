@@ -18,7 +18,8 @@ class TestSSTableLoader(MigrationTestBase):
         kwargs['cluster_options'] = {'start_rpc': 'true'}
         Tester.__init__(self, *args, **kwargs)
 
-    def load_migrated_tables(self, node, migrated_files_dir, extra_args=None):
+    def load_migrated_tables(self, node, migrated_files_dir, extra_args=None,
+                             partitioner='org.apache.cassandra.dht.Murmur3Partitioner'):
         cassandra_sstable_dir = self.get_cassandra_sstable_dir(self.version, migrated_files_dir)
         debug("cassandra sstable dir is {}".format(cassandra_sstable_dir))
 
@@ -34,7 +35,7 @@ class TestSSTableLoader(MigrationTestBase):
         self.copy_files_to(cassandra_sstable_dir, dir)
 
         ip = node.address()
-        args = [node.get_tool('sstableloader'), '-v', '-d', ip, dir]
+        args = [node.get_tool('sstableloader'), '-v', '-pt', partitioner, '-d', ip, dir]
         if self.prepared:
             args.append(self.prepared)
         if extra_args:
@@ -89,6 +90,39 @@ class TestSSTableLoader(MigrationTestBase):
             else:
                 raise Exception("sstableloader command '%s' failed; exit status: %d'; stdout: %s; stderr: %s" %
                             (" ".join(args), exit_status, stdout, stderr))
+
+    def get_wrong_partitioner_error_message(self):
+        return "partitioner org.apache.cassandra.dht.RandomPartitioner" + \
+               " does not match system partitioner" + \
+               " org.apache.cassandra.dht.Murmur3Partitioner"
+
+    def migrate_sstable_with_wrong_partitioner_test(self):
+        """
+        https://github.com/scylladb/scylla/issues/4331
+        Partitioner: org.apache.cassandra.dht.RandomPartitioner
+        CREATE KEYSPACE ks
+            WITH replication={
+                'class':'SimpleStrategy', 'replication_factor':1
+            };
+        CREATE TABLE ks.cf ( pk INT, ck INT, v INT, PRIMARY KEY(pk, ck))
+            WITH compression = { 'sstable_compression' : '' };
+        INSERT INTO ks.cf(pk, ck, s, val) VALUES(1, 10, 100);
+        INSERT INTO ks.cf(pk, ck, s, val) VALUES(2, 20, 200);
+        INSERT INTO ks.cf(pk, ck, s, val) VALUES(3, 30, 300);
+        flush
+        """
+        cluster = self.cluster
+        self.populate_cluster(cluster)
+        node1 = self.cluster.nodelist()[0]
+        node1.set_configuration_options()
+        self.start_cluster(cluster)
+
+        query = "CREATE TABLE ks.cf (pk INT, ck INT, v INT, PRIMARY KEY(pk, ck))" + \
+                " WITH compression = { 'sstable_compression' : '' }"
+        self.create_ks_and_cf(node1, None, None, False, query=query)
+        self.load_migrated_tables(node1,
+                                  'with_wrong_partitioner',
+                                  partitioner='org.apache.cassandra.dht.RandomPartitioner')
 
     def load_migrated_table_with_old_counter(self):
         """
