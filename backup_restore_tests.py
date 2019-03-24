@@ -328,6 +328,7 @@ class TestBackupRestore(Tester):
         debug("Checking rows on node1...")
         self.check_rows_on_node(node1, num_keys, found=keys, c1_values=c1_values, c2_values=c2_values)
 
+    @attr('next-gating')
     def restore_snapshot_using_old_token_ownership_test(self):
         """
         Check that we can restore snapshot files that use a non updated token ownership
@@ -406,6 +407,7 @@ class TestBackupRestore(Tester):
         debug("Check that we may query ks.cf on node1...")
         session.execute(SimpleStatement("SELECT COUNT(*) FROM ks.cf"))
 
+    @attr('next-gating')
     def incremental_backup_test(self):
         """
         Check that incremetal backup works as expected
