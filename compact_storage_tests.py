@@ -47,6 +47,7 @@ class TestCompactStorage(Tester):
         self.load_and_read_from_sstables("scylla_compact_storage_wide_partition_old_format",self.row_size - 200);
 
 
+    @attr('next-gating')
     def read_cassandra_wide_row_data_test(self):
         self.load_and_read_from_sstables("cassandra_compact_storage_wide_partition",self.row_size - 100);
 
