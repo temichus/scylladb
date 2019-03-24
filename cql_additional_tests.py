@@ -2633,6 +2633,7 @@ class TestCQL(Tester):
         res = session.execute("SELECT * FROM test WHERE k = true")
         assert rows_to_list(res) == [[True, False]], list(res)
 
+    @attr('next-gating')
     def multiordering_test(self):
         session = self.prepare()
         session.execute("""
@@ -2758,6 +2759,7 @@ class TestCQL(Tester):
         res = session.execute("SELECT v1, v2 FROM test WHERE k IN (0, 1, 2)")
         assert rows_to_list(res) == [], list(res)
 
+    @attr('next-gating')
     def allow_filtering_test(self):
         """
         test queries with multiple restrictions.
@@ -5527,6 +5529,7 @@ class CQLAdditionalTests(Tester):
             assert(e.message == "Not implemented: LIST")
             assert(e.code == 0000)
 
+    @attr('next-gating')
     def limit_date_value_out_of_range_test(self):
         # positive case for scylladb/scylla#1694
         cluster = self.prepare()
