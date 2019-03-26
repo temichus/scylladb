@@ -1,6 +1,7 @@
 import time
 
 from dtest import Tester
+from nose.plugins.attrib import attr
 from tools import since, rows_to_list
 from assertions import assert_invalid
 from cassandra.concurrent import execute_concurrent
@@ -16,6 +17,7 @@ class TestSchema(Tester):
 
         assert_invalid(session, "ALTER TABLE cf DROP c1", "Cannot drop columns from a")
 
+    @attr('next-gating')
     def drop_column_compaction_test(self):
         session = self.prepare()
         session.execute("USE ks")
@@ -42,6 +44,7 @@ class TestSchema(Tester):
         rows = session.execute("SELECT c1 FROM ks.cf")
         self.assertEqual([[None], [None], [None], [4]], sorted(rows_to_list(rows)))
 
+    @attr('next-gating')
     def drop_column_queries_test(self):
         session = self.prepare()
 
