@@ -7,6 +7,7 @@ from assertions import assert_invalid
 from cassandra import Unauthorized, ConsistencyLevel
 from cassandra.query import SimpleStatement
 from unittest import skip
+from nose.plugins.attrib import attr
 
 
 def listify(item):
@@ -211,6 +212,7 @@ class TestUserTypes(Tester):
         rows = list(session.execute(stmt))
         self.assertEqual(0, len(rows))
 
+    @attr('next-gating')
     def test_nested_user_types(self):
         """Tests user types within user types"""
         cluster = self.cluster
