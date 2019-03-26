@@ -10,6 +10,7 @@ from cassandra.concurrent import execute_concurrent_with_args
 from threading import Thread
 
 from dtest import Tester, debug
+from nose.plugins.attrib import attr
 from tools import safe_mkdtemp, replace_in_file, require
 
 
@@ -85,12 +86,14 @@ class TestSnapshot(SnapshotTester):
     def __init__(self, *args, **kwargs):
         SnapshotTester.__init__(self, *args, **kwargs)
 
+    @attr('next-gating')
     def test_basic_snapshot_and_restore_with_sstableloader(self):
         """
         Test basic snapshot and restore using an sstable loader.
         """
         self.basic_snapshot_and_restore(use_sstableloader=True)
 
+    @attr('next-gating')
     def test_basic_snapshot_and_restore_with_refresh(self):
         """
         Test basic snapshot and restore without an sstable loader.
