@@ -11,6 +11,7 @@ from decimal import Decimal
 from tempfile import NamedTemporaryFile
 from uuid import uuid1, uuid4
 from unittest import skip
+from nose.plugins.attrib import attr
 
 from cassandra.concurrent import execute_concurrent_with_args
 from cassandra.util import SortedSet
@@ -1003,6 +1004,7 @@ class CqlshCopyTest(CqlshPrepare):
 
         self.assertCsvResultEqual(self.tempfile.name, results)
 
+    @attr('next-gating')
     def test_all_datatypes_round_trip(self):
         """
         Test that a table containing all CQL datatypes successfully round-trips
