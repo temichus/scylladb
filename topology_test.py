@@ -1,4 +1,5 @@
 from dtest import Tester
+from nose.plugins.attrib import attr
 from tools import insert_c1c2, query_c1c2, no_vnodes, debug
 from assertions import assert_almost_equal
 
@@ -204,6 +205,7 @@ class TestTopology(Tester):
 
     # Scylla suports this
     #@since('3.0')
+    @attr('next-gating')
     def crash_during_decommission_test(self):
         """
         If a node crashes whilst another node is being decommissioned,
