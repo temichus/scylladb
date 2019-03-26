@@ -1,6 +1,7 @@
 import time
 from collections import namedtuple
 from unittest import skip
+from nose.plugins.attrib import attr
 
 from cassandra import ConsistencyLevel
 from cassandra.query import SimpleStatement
@@ -116,6 +117,7 @@ class TestRepair(Tester):
     def simple_sequential_repair_test(self, ):
         self._simple_repair(sequential=True)
 
+    @attr('next-gating')
     def simple_parallel_repair_test(self, ):
         self._simple_repair(sequential=False)
 
