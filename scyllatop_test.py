@@ -8,6 +8,7 @@ import signal
 import os
 
 from dtest import Tester, debug
+from nose.plugins.attrib import attr
 
 
 class TestScyllaTop(Tester):
@@ -63,6 +64,7 @@ class TestScyllaTop(Tester):
         assert p.returncode == 0, err
         assert len(out) > 0, 'Output should not be empty'
 
+    @attr('next-gating')
     def default_start_test(self):
         """
         Common usage, start scyllatop without options
