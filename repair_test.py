@@ -42,7 +42,7 @@ class TestRepair(Tester):
 
         if restart:
             for node in stopped_nodes:
-                node.start(wait_other_notice=True)
+                node.start(wait_other_notice=True, wait_for_binary_proto=True)
 
     @since('2.2.1')
     @skip('Scylla does not support anticompaction.')

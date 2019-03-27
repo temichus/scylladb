@@ -1751,7 +1751,7 @@ class RepairAdditionalBase(Tester):
                     assert len(result) <= less_than_num
 
                 for node in stopped_nodes:
-                    node.start(wait_other_notice=True)
+                    node.start(wait_other_notice=True, wait_for_binary_proto=True)
 
         def repair_thread(more_options, repair_uses_stream):
             try:
