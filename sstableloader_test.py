@@ -132,7 +132,6 @@ class TestSSTableLoader(MigrationTestBase):
         if not self.version == '2_1_x':
             self.skipTest('Test only relevant to old counter')
 
-        self.allow_log_errors = True
         cluster = self.cluster
         self.populate_cluster(cluster)
         node1 = self.cluster.nodelist()[0]

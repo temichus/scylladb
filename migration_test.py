@@ -668,7 +668,8 @@ class TestMigration(MigrationTestBase):
         node.nodetool("refresh -- {} {}".format(ks, cf))
 
     def load_migrated_tables_expect_fail(self, node, migrated_files_dir, message=None, ks='ks', cf='cf'):
-        self.allow_log_errors = True
+        if message:
+            self.ignore_log_patterns = [message]
         cassandra_sstable_dir = self.get_cassandra_sstable_dir(self.version, migrated_files_dir)
         debug("cassandra sstable dir is {}".format(cassandra_sstable_dir))
 
