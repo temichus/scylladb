@@ -200,7 +200,7 @@ class TestMaterializedViews(Tester):
         mv_profile = os.path.abspath(os.path.join("test_data", 'cassandra-mv-profile', 'cs_mv_profile.yaml'))
 
         node1 = self.cluster.nodelist()[0]
-        n = 1000000
+        n = 10000
         stdout, stderr = node1.stress(stress_options=['write', 'cl=QUORUM', 'n={}'.format(n),
                                                       "-schema replication(factor=3)", "-mode cql3 native",
                                                       "-rate threads=10", "-pop seq=1..{}".format(n)],
@@ -210,7 +210,7 @@ class TestMaterializedViews(Tester):
         proc_functions = [
             {'func': node1.stress, 'args': [['user', 'profile={}'.format(mv_profile), 'cl=ONE', 'duration={}'.format(duration),
                                              'ops(insert=1,read1=1,read2=1,read3=1)', '-mode cql3  native', '-rate threads=10'], True]},
-            {'func': node1.stress, 'args': [['mixed', "cl=ONE", "duration=10m", "-schema replication(factor=3)",
+            {'func': node1.stress, 'args': [['mixed', "cl=ONE", "duration={}".format(duration), "-schema replication(factor=3)",
                                              "-mode cql3 native", "-rate threads=10", "-pop seq=1..{}".format(n), "-log interval=5"], True]},
             {'func': self._node_action_with_delay, 'args': (node_action, self.cluster.nodelist()[1]), 'kwargs': {'delay': delay}}
         ]
