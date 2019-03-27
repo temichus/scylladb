@@ -1751,7 +1751,7 @@ class RepairAdditionalBase(Tester):
                     assert len(result) <= less_than_num
 
                 for node in stopped_nodes:
-                    node.start(wait_other_notice=True)
+                    node.start(wait_other_notice=True, wait_for_binary_proto=True)
 
         def repair_thread(more_options, repair_uses_stream):
             try:
@@ -1764,7 +1764,6 @@ class RepairAdditionalBase(Tester):
                 if repair_uses_stream:
                     output = commands.getoutput('curl http://%s:10000/stream_manager/' % self.get_ip_from_node(node3))
                     assert 'repair-' not in output
-                checking_keys_num('After Repair Exception')
 
         checking_keys_num('Before Repair')
         executor = ThreadPoolExecutor(max_workers=1)
