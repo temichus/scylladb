@@ -1857,7 +1857,7 @@ class CqlLoginTest(Tester):
             ''',
             return_output=True,
             cqlsh_options=['-u', 'cassandra', '-p', 'cassandra'])
-        self.assertIn('authentication failed', err)
+        self.assertIn('Username and/or password are incorrect', err)
 
     def login_authenticates_correct_user_test(self):
         self.create_ks(self.session, 'ks1', 1)
