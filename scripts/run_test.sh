@@ -93,7 +93,7 @@ else
 WORKSPACE_MNT=""
 fi
 
-docker run --rm=true \
+docker_cmd="docker run --rm=true \
     ${WORKSPACE_MNT} \
     -v ${DTEST_DIR}:${DTEST_DIR} \
     -v ${SCYLLA_DIR}:${SCYLLA_DIR} \
@@ -116,4 +116,6 @@ docker run --rm=true \
     -v ${HOME}/.dtest:${HOME}/.dtest \
     -v ${HOME}/.ccm:${HOME}/.ccm \
     --network=bridge --privileged \
-    docker.io/scylladb/scylla-dtest:latest bash -c "sudo pip install -e  ${CCM_DIR} ; nosetests -v -s $*"
+    docker.io/scylladb/scylla-dtest:latest bash -c 'sudo pip install -e ${CCM_DIR} ; nosetests -v -s $*'"
+echo "Running Docker: $docker_cmd"
+eval $docker_cmd
