@@ -100,6 +100,7 @@ docker_cmd="docker run --rm=true \
     -e HOME \
     -e SCYLLA_DBUILD_SO_DIR \
     -e SCYLLA_EXT_OPTS \
+    -e LC_ALL=en_US.UTF-8 \
     -e PRINT_DEBUG \
     -e DEBUG \
     -e TRACE \
