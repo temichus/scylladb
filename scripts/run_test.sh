@@ -39,10 +39,6 @@ export CCM_DIR=${CCM_DIR:-`pwd`/../scylla-ccm}
 export SCYLLA_DBUILD_SO_DIR=${SCYLLA_DBUILD_SO_DIR:-${SCYLLA_DIR}/dynamic_libs}
 export SCYLLA_EXT_OPTS=${SCYLLA_EXT_OPTS:-"--smp 1 --memory 512M"}
 
-export DEBUG=${DEBUG:-true}
-export KEEP_TEST_DIR=${KEEP_TEST_DIR:-true}
-export PRINT_DEBUG=${PRINT_DEBUG:-true}
-
 if [[ ! -d ${SCYLLA_DIR} ]]; then
     echo -e "\e[31m\$SCYLLA_DIR = $SCYLLA_DIR doesn't exist\e[0m"
     echo "${help_text}"
@@ -93,7 +89,7 @@ else
 WORKSPACE_MNT=""
 fi
 
-docker run --rm=true \
+docker_cmd="docker run --rm=true \
     ${WORKSPACE_MNT} \
     -v ${DTEST_DIR}:${DTEST_DIR} \
     -v ${SCYLLA_DIR}:${SCYLLA_DIR} \
@@ -103,9 +99,14 @@ docker run --rm=true \
     -e CASSANDRA_DIR \
     -e HOME \
     -e SCYLLA_DBUILD_SO_DIR \
-    -e KEEP_TEST_DIR \
-    -e DEBUG \
     -e SCYLLA_EXT_OPTS \
+    -e LC_ALL=en_US.UTF-8 \
+    -e PRINT_DEBUG \
+    -e DEBUG \
+    -e TRACE \
+    -e KEEP_LOGS \
+    -e KEEP_TEST_DIR \
+    -e KEEP_CORES \
     -e NOSE_PROCESSES \
     -w ${DTEST_DIR} \
     -v /etc/passwd:/etc/passwd:ro \
@@ -116,4 +117,6 @@ docker run --rm=true \
     -v ${HOME}/.dtest:${HOME}/.dtest \
     -v ${HOME}/.ccm:${HOME}/.ccm \
     --network=bridge --privileged \
-    docker.io/scylladb/scylla-dtest:latest bash -c "sudo pip install -e  ${CCM_DIR} ; nosetests -v -s $*"
+    docker.io/scylladb/scylla-dtest:latest bash -c 'sudo pip install -e ${CCM_DIR} ; nosetests -v -s $*'"
+echo "Running Docker: $docker_cmd"
+eval $docker_cmd
