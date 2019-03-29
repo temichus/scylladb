@@ -855,7 +855,7 @@ class Tester(TestCase):
             time.sleep(1)
 
         raise TimeoutError(time.strftime("%d %b %Y %H:%M:%S", time.gmtime()) +
-                           " Unable to find :" + pattern + " in any node log within " + str(timeout) + "s")
+                           (" Unable to find :%s in any node log within " % patterns) + str(timeout) + "s")
 
     def _prometheus_get(self, ip, port='9180'):
         prometheus_url = 'http://{}:{}/metrics'.format(ip, port)
