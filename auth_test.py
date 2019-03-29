@@ -1981,9 +1981,14 @@ class TestAuth(Tester):
         self.cluster.populate(nodes).start()
 
         if enable_auth or wait_for_superuser:
+            expected_entries = ['Created default superuser role']
+
+            if enable_auth:
+                expected_entries.append('Created default superuser authentication record')
+
             n = self.wait_for_any_log(
                 self.cluster.nodelist(),
-                ['Created default superuser role', 'Created default superuser authentication record'],
+                expected_entries,
                 10)
 
             debug("Default role created by " + n.name)
