@@ -39,10 +39,6 @@ export CCM_DIR=${CCM_DIR:-`pwd`/../scylla-ccm}
 export SCYLLA_DBUILD_SO_DIR=${SCYLLA_DBUILD_SO_DIR:-${SCYLLA_DIR}/dynamic_libs}
 export SCYLLA_EXT_OPTS=${SCYLLA_EXT_OPTS:-"--smp 1 --memory 512M"}
 
-export DEBUG=${DEBUG:-true}
-export KEEP_TEST_DIR=${KEEP_TEST_DIR:-true}
-export PRINT_DEBUG=${PRINT_DEBUG:-true}
-
 if [[ ! -d ${SCYLLA_DIR} ]]; then
     echo -e "\e[31m\$SCYLLA_DIR = $SCYLLA_DIR doesn't exist\e[0m"
     echo "${help_text}"
@@ -103,9 +99,13 @@ docker_cmd="docker run --rm=true \
     -e CASSANDRA_DIR \
     -e HOME \
     -e SCYLLA_DBUILD_SO_DIR \
-    -e KEEP_TEST_DIR \
-    -e DEBUG \
     -e SCYLLA_EXT_OPTS \
+    -e PRINT_DEBUG \
+    -e DEBUG \
+    -e TRACE \
+    -e KEEP_LOGS \
+    -e KEEP_TEST_DIR \
+    -e KEEP_CORES \
     -e NOSE_PROCESSES \
     -w ${DTEST_DIR} \
     -v /etc/passwd:/etc/passwd:ro \
