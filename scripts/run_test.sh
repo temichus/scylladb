@@ -97,6 +97,7 @@ docker_cmd="docker run --rm=true \
     -v ${JMX_DIR}:${JMX_DIR} \
     -v ${CCM_DIR}:${CCM_DIR} \
     -e CASSANDRA_DIR \
+    -e LOG_SAVED_DIR \
     -e HOME \
     -e SCYLLA_DBUILD_SO_DIR \
     -e SCYLLA_EXT_OPTS \
