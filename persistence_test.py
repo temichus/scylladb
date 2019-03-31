@@ -1,6 +1,7 @@
 import time
 
 from dtest import Tester
+from nose.plugins.attrib import attr
 
 
 class PersistenceTest(Tester):
@@ -35,6 +36,7 @@ class PersistenceTest(Tester):
                      "-schema", "replication(factor=1)", "-col", "n=fixed(1)",
                      "size=fixed(%s)" % size, "-rate", "threads=1"])
 
+    @attr('next-gating')
     def test_persist_simple(self):
         """
         1) Create a 1 node cluster.

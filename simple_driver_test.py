@@ -3,8 +3,9 @@ import time
 from ccmlib.scylla_cluster import ScyllaCluster
 
 from dtest import Tester
+from nose.plugins.attrib import attr
 
-
+@attr('next-gating')
 class TestSimple(Tester):
 
     __test__ = False

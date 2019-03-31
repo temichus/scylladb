@@ -200,6 +200,7 @@ class ToJsonSelectTests(Tester):
     Tests using toJson with a SELECT statement
     """
 
+    @attr('next-gating')
     def basic_data_types_test(self):
         """
 
@@ -631,6 +632,7 @@ class FromJsonUpdateTests(Tester):
     Tests using fromJson within UPDATE statements.
     """
 
+    @attr('next-gating')
     def basic_data_types_test(self):
         """
         Create a table with the primitive types:
@@ -852,6 +854,7 @@ class FromJsonUpdateTests(Tester):
         """
         run_func_docstring(tester=self, test_func=self.complex_data_types_test)
 
+    @attr('next-gating')
     def collection_update_test(self):
         """
         Setup schema, add a row:

@@ -62,6 +62,7 @@ class TestBatch(Tester):
             APPLY BATCH
             """, matching=err)
 
+    @attr('next-gating')
     def replay_after_schema_change_test(self):
         """ Test that logged batch is replayed after schema was changed on the node """
         ring_delay_sec = 5

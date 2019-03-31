@@ -688,6 +688,7 @@ class TestMigration(MigrationTestBase):
             if message:
                 assert message in str(error), error
 
+    @attr('next-gating')
     def migrate_sstable_with_counter_test(self):
         super(TestMigration, self).migrate_sstable_with_counter_test()
 

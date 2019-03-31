@@ -7,6 +7,7 @@ from datahelp import create_rows
 from paging_test import PageFetcher, BasePagingTester, PageAssertionMixin
 from scylla_tools import scylla_mode
 from dtest import debug
+from nose.plugins.attrib import attr
 
 
 class TestAggregatePaging(BasePagingTester, PageAssertionMixin):
@@ -72,6 +73,7 @@ class TestAggregatePaging(BasePagingTester, PageAssertionMixin):
         self.assertEqual(pf.num_results_all(), [1])
         self.assertEqual(pf.all_data(), [{u'count': 1234}])
 
+    @attr('next-gating')
     def test_paged_count_with_clustering_key(self):
         self._test_paged_count_with_clustering_key('asc')
 
@@ -172,6 +174,7 @@ class TestLargePaging(TestPagingSavedQueryStateBase, PageAssertionMixin):
         if validate_metrics:
             self.assert_nodes_metrics(({'lookups': pf.requested_pages - 1}, {}))
 
+    @attr('next-gating')
     def test_large_page_range_queries(self):
         self.session.execute("CREATE TABLE %s (pk text, ck text, v text, PRIMARY KEY(pk, ck))" % self.CF_NAME)
 
@@ -184,6 +187,7 @@ class TestLargePaging(TestPagingSavedQueryStateBase, PageAssertionMixin):
         self.fill_data(data=data, data_size=64 * 1024, keys=['pk', 'ck'], vals=['v'])
         self.validate_data(query="select * from %s" % self.CF_NAME, fetch_size=1000, row_cnt=1000)
 
+    @attr('next-gating')
     def test_large_page_range_queries_static_columns(self):
         self.session.execute("CREATE TABLE %s (pk text, ck text, s text static, v text, PRIMARY KEY(pk, ck))" %
                              self.CF_NAME)
@@ -299,6 +303,7 @@ class TestPagingSavedQueryStateSingularRanges(TestPagingSavedQueryStateBase):
         self.assertEqual(pf.requested_pages, 2)
         self.assert_nodes_metrics(({'lookups': pf.requested_pages - 1}, {}))
 
+    @attr('next-gating')
     def test_two_partitions(self):
         """
         Test that when the coordinator throws away parts of the results

@@ -7,7 +7,7 @@ from migration_test import MigrationTestBase
 from dtest import Tester, debug
 from tools import safe_mkdtemp
 # from nose import tools
-
+from nose.plugins.attrib import attr
 
 # @tools.istest
 class TestSSTableLoader(MigrationTestBase):
@@ -96,6 +96,7 @@ class TestSSTableLoader(MigrationTestBase):
                " does not match system partitioner" + \
                " org.apache.cassandra.dht.Murmur3Partitioner"
 
+    @attr('next-gating')
     def migrate_sstable_with_wrong_partitioner_test(self):
         """
         https://github.com/scylladb/scylla/issues/4331
@@ -124,6 +125,7 @@ class TestSSTableLoader(MigrationTestBase):
                                   'with_wrong_partitioner',
                                   partitioner='org.apache.cassandra.dht.RandomPartitioner')
 
+    @attr('next-gating')
     def load_migrated_table_with_old_counter(self):
         """
         Test migration of old data with counter, using the default (--ignore-dropped-counter-data isn't passed)
@@ -148,6 +150,7 @@ class TestSSTableLoader(MigrationTestBase):
         # Expect success with sstableloader --ignore-dropped-counter-data
         self.load_migrated_tables(node1, 'with_old_format_counter', extra_args=['--ignore-dropped-counter-data'])
 
+    @attr('next-gating')
     def load_migrated_table_with_counter(self):
         """
         Test migration of old data with counter, using the default (--ignore-dropped-counter-data isn't passed)

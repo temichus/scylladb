@@ -20,6 +20,7 @@ class ClusteringKeyFilterTest(Tester):
         # FIXME: min threshold == 999 is another way to disable minor compaction for this test. Use enabled property instead once it's available
         return "\'class\':\'" + strategy + "\', \'min_threshold\' : \'999\'"
 
+    @attr('next-gating')
     def check_consistence_after_row_tombstone_test(self):
         node1 = self.start_cluster_and_get_node1()
 
@@ -45,6 +46,7 @@ class ClusteringKeyFilterTest(Tester):
         result = self.select(node1, query)
         self.check_result(result, 'key1', ['a'])
 
+    @attr('next-gating')
     def check_non_composite_test(self):
         node1 = self.start_cluster_and_get_node1()
 

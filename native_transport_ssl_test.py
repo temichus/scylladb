@@ -6,6 +6,7 @@ from cassandra.cluster import NoHostAvailable
 from dtest import Tester
 from tools import generate_ssl_stores, putget, since
 from unittest import skip
+from nose.plugins.attrib import attr
 from ccmlib import common
 
 
@@ -14,6 +15,7 @@ class NativeTransportSSL(Tester):
     Native transport integration tests, specifically for ssl and port configurations.
     """
 
+    @attr('next-gating')
     def connect_to_ssl_test(self):
         """
         Connecting to SSL enabled native transport port should only be possible using SSL enabled client

@@ -675,6 +675,7 @@ class TestAccuracy(TestHelper):
         self._run_test_function_in_parallel(
             TestAccuracy.Validation.validate_users, self.nodes, self.rf.values(), combinations)
 
+    @attr('next-gating')
     def test_simple_strategy_counters(self):
         """
         Test for a single datacenter, counters table.
@@ -913,6 +914,7 @@ class TestConsistency(Tester):
         assert_none(
             session, "SELECT * FROM t WHERE id = 0 LIMIT 1", cl=ConsistencyLevel.QUORUM)
 
+    @attr('next-gating')
     def readrepair_test(self):
         cluster = self.cluster
         cluster.set_configuration_options(

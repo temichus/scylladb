@@ -1,5 +1,6 @@
 from time import sleep
 from unittest import skip
+from nose.plugins.attrib import attr
 
 from cassandra import ConsistencyLevel, ReadTimeout, Unavailable, ReadFailure
 from cassandra.query import SimpleStatement
@@ -127,6 +128,7 @@ class TestReplaceAddress(Tester):
 
         node4.start(wait_for_binary_proto=True, replace_address=self.cluster.get_node_ip(3))
 
+    @attr('next-gating')
     def replace_active_node_test(self):
 
         debug("Starting cluster with 3 nodes.")

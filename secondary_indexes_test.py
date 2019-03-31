@@ -4,6 +4,7 @@ import re
 import time
 import uuid
 from unittest import skip
+from nose.plugins.attrib import attr
 
 from dtest import Tester, debug, flaky_with_tear_down
 from tools import since, require, rows_to_list, new_node
@@ -811,6 +812,7 @@ class TestSecondaryIndexes(Tester):
             assert_row_count(session, table_name=get_index_view_name(index_name), expected=num_rows - delete_num,
                              consistency_level=ConsistencyLevel.ALL)
 
+    @attr('next-gating')
     def test_stop_node_during_index_build(self):
         """
         Stop one node during index building and read data by index

@@ -886,6 +886,7 @@ class TestAuth(Tester):
         self.assertUnauthorized("User cathy has no SELECT permission on <table ks.cf> or any of its parents",
                                 cathy, "SELECT * FROM ks.cf")
 
+    @attr('next-gating')
     def permissions_caching_test(self):
         """
         Originally from dtest.

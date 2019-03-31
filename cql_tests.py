@@ -267,6 +267,7 @@ class MiscellaneousCQLTester(CQLTester):
                             "first 65535 elements will be returned to the "
                             "client. Please see http://cassandra.apache.org/doc/cql3/CQL.html#collections for more details.")
 
+    @attr('next-gating')
     def cql3_insert_thrift_test(self):
         """ Check that we can insert from thrift into a CQL3 table (#4377) """
         session = self.prepare(start_rpc=True)
@@ -405,6 +406,7 @@ class MiscellaneousCQLTester(CQLTester):
 
 
 class TruncateTester(CQLTester):
+    @attr('next-gating')
     def truncate_after_restart_test(self):
         session = self.prepare(nodes=1, create_keyspace=False)
 

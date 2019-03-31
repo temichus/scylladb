@@ -2,6 +2,7 @@
 
 from dtest import Tester, debug
 from unittest import skip
+from nose.plugins.attrib import attr
 
 from tools import insert_c1c2, query_c1c2
 from cassandra import ConsistencyLevel
@@ -2448,6 +2449,7 @@ class RepairAdditionalTest(RepairAdditionalBase):
     def repair_partition_delete_test(self):
        return RepairAdditionalBase._repair_partition_delete_test(self)
 
+    @attr('next-gating')
     def repair_ttl_update_test(self):
        return RepairAdditionalBase._repair_ttl_update_test(self)
 
@@ -2487,6 +2489,7 @@ class RepairAdditionalTest(RepairAdditionalBase):
     def repair_kill_3_test(self):
        return RepairAdditionalBase._repair_kill_3_test(self)
 
+    @attr('next-gating')
     def repair_during_update_test(self, more_options=[]):
        return RepairAdditionalBase._repair_during_update_test(self,more_options)
 

@@ -1,6 +1,7 @@
 import time
 from threading import Thread
 from unittest import skip
+from nose.plugins.attrib import attr
 
 from cassandra import ConsistencyLevel
 from ccmlib.node import NodetoolError
@@ -25,6 +26,7 @@ class TestRebuild(Tester):
         ]
         Tester.__init__(self, *args, **kwargs)
 
+    @attr('next-gating')
     def simple_rebuild_test(self):
         """
         @jira_ticket CASSANDRA-9119

@@ -1,4 +1,5 @@
 from dtest import Tester, debug
+from nose.plugins.attrib import attr
 import datetime
 import random
 
@@ -27,6 +28,7 @@ class TestWideRows(Tester):
     def __init__(self, *args, **kwargs):
         Tester.__init__(self, *args, **kwargs)
 
+    @attr('next-gating')
     def test_wide_rows(self):
         self.write_wide_rows()
 

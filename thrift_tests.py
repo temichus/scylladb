@@ -23,6 +23,7 @@ from thrift_bindings.v22.Cassandra import (CfDef, Column, ColumnDef,
 from tools import since
 from assertions import assert_one, assert_none
 from unittest import skip
+from nose.plugins.attrib import attr
 
 
 def get_thrift_client(host='127.0.0.1', port=9160):
@@ -2475,6 +2476,7 @@ class TestCompactStorageThriftAccesses(ThriftTester):
     Test thrift access to compact storage column families.
     """
 
+    @attr('next-gating')
     def test_get(self):
         node1, = self.cluster.nodelist()
         session = self.patient_cql_connection(node1)

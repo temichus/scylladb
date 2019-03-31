@@ -2,6 +2,7 @@ import os
 import distutils.dir_util
 
 from dtest import Tester, debug
+from nose.plugins.attrib import attr
 
 
 class TestPartitioner(Tester):
@@ -47,6 +48,7 @@ class TestPartitioner(Tester):
 
         self.assertEqual(len(result), 30, len(result))
 
+    @attr('next-gating')
     def murmur3_partitioner_test(self):
         self.run_cluster("org.apache.cassandra.dht.Murmur3Partitioner",
                          "cassandra.3.nodes.30.rows.256.murmur3.partitioner")

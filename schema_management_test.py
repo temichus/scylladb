@@ -2,6 +2,7 @@
 
 from dtest import Tester
 from unittest import skip
+from nose.plugins.attrib import attr
 from tools import debug, rows_to_list
 from cassandra import ConsistencyLevel
 from cassandra.query import SimpleStatement
@@ -223,6 +224,7 @@ class SchemaManagementTest(Tester):
         rows = session.execute(SimpleStatement("SELECT * FROM cf", consistency_level = ConsistencyLevel.ALL))
         assert rows_to_list(rows) == [], "Expected an empty result set, got %s" % (rows)
 
+    @attr('next-gating')
     def test_writes_schema_recreated_while_node_down(self):
         self.cluster.set_configuration_options(values={ 'ring_delay_ms': 1000 })
         self.cluster.populate(2)

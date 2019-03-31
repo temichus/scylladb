@@ -9,6 +9,7 @@ from dateutil.tz import tzutc
 from decimal import Decimal
 import pprint
 from dtest import Tester, debug
+from nose.plugins.attrib import attr
 from tools import rows_to_list
 from cqlsh_tests.cqlsh_copy_tests import CqlshPrepare
 
@@ -49,9 +50,9 @@ class SSTableDump(Tester):
         symmetric_diff = set(src) ^ set(dst)
         self.assertEquals(len(symmetric_diff), 0)
 
-
 class SSTableDumpTests(SSTableDump):
 
+    @attr('next-gating')
     def sstabledump_basic_test(self):
         """
         Populate data, run sstabledump, extract data from json
@@ -81,6 +82,7 @@ class SSTableDumpTests(SSTableDump):
         json_values = self._fetch_data_from_json(data_json)
         self._compare_data(values_list, json_values)
 
+    @attr('next-gating')
     def sstabledump_counter_basic_test(self):
         """
         Populate counter data, run sstabledump, extract data from json
@@ -123,9 +125,9 @@ class SSTableDumpTests(SSTableDump):
         res = [tuple(item) for item in res]
         return res
 
-
 class SSTableDumpAllDatatypes(CqlshPrepare, SSTableDump):
 
+    @attr('next-gating')
     def sstabledump_all_datatypes_test(self):
         cluster = self.cluster
         cluster.populate(1).start()

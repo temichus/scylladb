@@ -2,14 +2,12 @@ from dtest import Tester, debug
 from tools import generate_ssl_stores, putget
 from nose.plugins.attrib import attr
 
-
-
+@attr('next-gating')
 class TestInternodeSSL(Tester):
 
     def __init__(self, *args, **kwargs):
         Tester.__init__(self, *args, **kwargs)
 
-    @attr('next-gating')
     def putget_with_internode_ssl_test(self):
         """
         Simple putget test with internode ssl enabled
