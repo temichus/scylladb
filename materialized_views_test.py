@@ -581,7 +581,6 @@ class TestMaterializedViews(Tester):
         """ Create 10 materialized views in parallel with removing a node """
         self._mv_populating_from_existing_data_during_changes_test('remove node', nodes=4, rf=3, mvs=10, prefill=40000, fail=False)
 
-    @attr('next-gating')
     def mv_populating_from_existing_data_during_node_stop_test(self):
         """ Create 10 materialized views in parallel with stopping a node """
         self._mv_populating_from_existing_data_during_changes_test('stop node', nodes=4, rf=3, mvs=10, prefill=40000, fail=False)
