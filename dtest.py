@@ -513,21 +513,22 @@ class Tester(TestCase):
                 if os.path.exists(debuglog):
                     shutil.copyfile(debuglog, os.path.join(logdir, n + "_debug.log"))
 
-        if cores is None and KEEP_CORES:
-            cores = self.find_cores()
-        if cores:
-            for n, src in cores:
-                dst = os.path.join(logdir, "{}-{}".format(n, os.path.basename(src)))
-                print("Moving core file {} to {}".format(src, dst))
-                try:
-                    if DTEST_CORE_COMPRESS_TOOL == '':
-                        cmd = "mv {} {}".format(src, dst)
-                        shutil.move(src, dst)
-                    else:
-                        cmd = "{} < {} > {}.{} && rm {}".format(DTEST_CORE_COMPRESS_TOOL, src, dst, DTEST_CORE_COMPRESS_EXT, src)
-                        subprocess.check_call(cmd, shell=True)
-                except Exception as e:
-                    print("`{}` failed: {}. Keeping directory.".format(cmd, e))
+        if KEEP_CORES:
+            if cores is None:
+                cores = self.find_cores()
+            if cores:
+                for n, src in cores:
+                    dst = os.path.join(logdir, "{}-{}".format(n, os.path.basename(src)))
+                    print("Moving core file {} to {}".format(src, dst))
+                    try:
+                        if DTEST_CORE_COMPRESS_TOOL == '':
+                            cmd = "mv {} {}".format(src, dst)
+                            shutil.move(src, dst)
+                        else:
+                            cmd = "{} < {} > {}.{} && rm {}".format(DTEST_CORE_COMPRESS_TOOL, src, dst, DTEST_CORE_COMPRESS_EXT, src)
+                            subprocess.check_call(cmd, shell=True)
+                    except Exception as e:
+                        print("`{}` failed: {}. Keeping directory.".format(cmd, e))
 
         if os.path.exists(logdir):
             if os.path.exists(name):
