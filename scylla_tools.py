@@ -893,12 +893,11 @@ def wait_for_view(cluster, session, ks, view, raise_exception=True):
                 pass
         return True
 
-    attempts = 40
-    while attempts > 0:
+    # wait for up to 5 minutes for view building to finish
+    for trial in range(60):
         if _view_build_finished_on_live_nodes():
             return
-        time.sleep(3)
-        attempts -= 1
+        time.sleep(5)
 
     error_msg = "View {}.{} not built".format(ks, view)
     if raise_exception:
