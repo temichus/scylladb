@@ -167,7 +167,6 @@ class TestMaterializedViews(Tester):
         """
         self._run_node_failure_during_mv_stress_insert(rf=3, nodes=4, node_action='decommission', exclude_errors=['mutation_write_timeout_exception'])
 
-    @attr('next-gating')
     def remove_node_during_mv_insert_3_nodes_test(self):
         """ Test removing node during MV inserts
             Test starts with a starting size 3 and removes one node during inserts into base table that cause to update materialized view as well
