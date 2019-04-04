@@ -667,7 +667,7 @@ class TestCountersOnMultipleNodes(Tester):
         cluster = self.cluster
         cluster.set_configuration_options(values={'experimental': True, 'hinted_handoff_enabled': False})
         cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
-        cluster.populate(3).start()
+        cluster.populate(3).start(wait_other_notice=True, wait_for_binary_proto=True)
         self.node1, self.node2, self.node3 = cluster.nodelist()
 
     def tearDown(self):
@@ -850,7 +850,7 @@ class TestCountersStress(Tester):
         cluster = self.cluster
         cluster.set_configuration_options(values={'experimental': True})
         cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
-        cluster.populate(3).start()
+        cluster.populate(3).start(wait_other_notice=True, wait_for_binary_proto=True)
         self.node = cluster.nodelist()[0]
 
     def counter_stress_test(self):
