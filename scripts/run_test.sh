@@ -118,6 +118,6 @@ docker_cmd="docker run --rm=true \
     -v ${HOME}/.dtest:${HOME}/.dtest \
     -v ${HOME}/.ccm:${HOME}/.ccm \
     --network=bridge --privileged \
-    docker.io/scylladb/scylla-dtest:latest bash -c 'sudo pip install -e ${CCM_DIR} ; nosetests -v -s $*'"
+    docker.io/scylladb/scylla-dtest:latest bash -c 'sudo pip install -e ${CCM_DIR} ; bash -c \"${INSTALL_CASSANDRA}\"; nosetests -v -s $*'"
 echo "Running Docker: $docker_cmd"
 eval $docker_cmd
