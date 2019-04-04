@@ -1,7 +1,9 @@
 from ccmlib.node import NodetoolError
 from dtest import Tester, debug
 
+from concurrent.futures import ThreadPoolExecutor
 import os
+import time
 
 
 class TestNodetool(Tester):
@@ -57,3 +59,53 @@ class TestNodetool(Tester):
                     rack = "rack{}".format(i % 2)
                     self.assertTrue(line.endswith(rack),
                                     "Expected rack {} for {} but got {}".format(rack, node.address(), line.rsplit(None, 1)[-1]))
+
+    def _background_workload(self, node):
+        debug('start write workload in background...')
+        cs_result, cs_err = node.stress(['write', 'duration=180s', 'no-warmup', '-schema', 'replication(factor=3)', '-rate', 'threads=10', '-log', 'interval=10'],
+                                         capture_output=True)
+        debug('background workload finished')
+        debug(cs_result)
+        debug(cs_err)
+        return cs_result
+
+    def _remove_seed(self, method='kill'):
+        """
+        We have a old issue (scylla/issues/2090), cassandra-stress will exit if
+        seed node is decomission or killed. This new subtest is used to reproduce it.
+        """
+        self.cluster.populate(4).start(wait_for_binary_proto=True, wait_other_notice=True)
+        node1, node2 = self.cluster.nodelist()[0:2]
+
+        executor = ThreadPoolExecutor(max_workers=1)
+        t = executor.submit(self._background_workload, node1)
+
+        time.sleep(60)
+        if method == 'kill':
+            debug('start to kill node1 ...')
+            node1.stop(gently=False)
+            debug('node1 has been killed')
+        elif method == 'decommission':
+            debug('start to decommission node1 ...')
+            node1.decommission()
+            debug('decommission node1 finished')
+        else:
+            raise Exception('Unknown method: %s' % method)
+
+        out, err = node2.nodetool('status', capture_output=True)
+        debug(out)
+        cs_result = t.result()
+
+        self.assertTrue('END' in cs_result.split()[-1], "Stress doesn't complete successfully")
+
+    def test_decommission_seed(self):
+        """
+        Test if cassandra-stress works well when seed node is decommission.
+        """
+        self._remove_seed(method='decommission')
+
+    def test_kill_seed(self):
+        """
+        Test if cassandra-stress works well when seed node is killed.
+        """
+        self._remove_seed(method='kill')
