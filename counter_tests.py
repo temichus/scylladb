@@ -694,7 +694,7 @@ class TestCountersOnMultipleNodes(Tester):
 
         debug("Update counter data")
         for i in range(self._start_row, self._row_cnt):
-            session.execute("UPDATE Test.cf SET cnt = cnt + {} WHERE pk = {};".format(i, i))
+            session.execute(SimpleStatement("UPDATE Test.cf SET cnt = cnt + {} WHERE pk = {};".format(i, i),consistency_level=ConsistencyLevel.ALL))
             session.execute("UPDATE Test.cf SET cnt = cnt - 1 WHERE pk = {};".format(i))
             session.execute("UPDATE Test.cf SET cnt = cnt + 1 WHERE pk = {};".format(i))
 
@@ -722,7 +722,7 @@ class TestCountersOnMultipleNodes(Tester):
         self.assertEquals(len(rows), expected_row_count)
 
         for node in (self.node1, self.node2):
-            node.start(wait_other_notice=True)
+            node.start(wait_other_notice=True,wait_for_binary_proto=True)
 
     def _verify_data_rebuild(self):
         for node in (self.node1, self.node2):
