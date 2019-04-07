@@ -3307,6 +3307,53 @@ class TestMaterializedViews(Tester):
         for row in returned_rows:
             self.assertEquals(int(row.username[4:]), 1500 - 2*int(row.state[2:]))
 
+    def virtual_columns_schema_test(self):
+        """
+        Test that virtual columns in materialized views are correctly
+        propagated between nodes as part of the schema. Reproduces issue #4339.
+        """
+        # Create a cluster of two nodes.
+        cluster = self.cluster
+        cluster.populate([2, 0])
+        cluster.start(wait_other_notice=True, wait_for_binary_proto=True)
+        [node1, node2] = self.cluster.nodelist()
+        # Create a keyspace and base table, while the two nodes are alive
+        session = self.patient_cql_connection(node1)
+        self.rf = 2
+        self.create_ks(session, 'ks', self.rf)
+        session.execute(
+                ("CREATE TABLE tab (a INT, b INT, c INT,"
+                 "PRIMARY KEY (a));")
+            )
+        # Wait for both nodes to know about the base table
+        session.cluster.control_connection.wait_for_schema_agreement()
+        # stop the second node, and create a materialized view which only
+        # the first node will know about:
+        node2.stop(wait_other_notice=True)
+        session.execute(
+            ("CREATE MATERIALIZED VIEW mv AS "
+            "SELECT a,b FROM tab WHERE a IS NOT NULL AND b IS NOT NULL "
+            "PRIMARY KEY (a)"))
+        # Because the above materialized views has the same key columns
+        # as the base table and an unselected column (c), it will have c
+        # as a "virtual column", and should be listed in the
+        # "view_virtual_columns" system table.
+        result1 = list(session.execute(
+            ("SELECT * FROM system_schema.view_virtual_columns "
+             "WHERE keyspace_name='ks' ALLOW FILTERING")))
+        debug(result1)
+        self.assertEqual(len(result1), 1, "expecting one virtual column")
+        # Start the dead node. It should copy the missing schema tables
+        # from the live node, including the view_virtual_columns table.
+        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+        session2 = self.patient_exclusive_cql_connection(node2)
+        result2 = list(session2.execute(
+            ("SELECT * FROM system_schema.view_virtual_columns "
+             "WHERE keyspace_name='ks' ALLOW FILTERING")))
+        debug(result2)
+        self.assertEqual(len(result2), 1, "expecting one virtual column")
+        self.assertEqual(result1, result2, "expecting same results on both nodes")
+
 
 # For read verification
 class MutationPresence(Enum):
