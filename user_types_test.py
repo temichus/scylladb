@@ -8,6 +8,8 @@ from cassandra import Unauthorized, ConsistencyLevel
 from cassandra.query import SimpleStatement
 from unittest import skip
 from nose.plugins.attrib import attr
+from textwrap import dedent
+from assertions import assert_all
 
 
 def listify(item):
@@ -791,3 +793,191 @@ class TestUserTypes(Tester):
         session.execute("CREATE TYPE udt (first text, second int)")
         session.execute("CREATE TABLE table1 (id uuid PRIMARY KEY, x frozen<udt>);")
         session.execute("DROP KEYSPACE IF EXISTS ks;")
+
+    def test_complex_data_types(self):
+        """"
+        This test was adapted from json_test.py (test_complex_data_types).
+        Test user defined types, with complex format using the cql driver
+        """
+        cluster = self.cluster
+        cluster.populate(1).start()
+        node1 = cluster.nodelist()[0]
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'user_types', 1)
+
+        stmt_lst = [
+            "CREATE TYPE t_todo_item (label text, details text)",
+            "CREATE TYPE t_todo_list (name text, todo_list list<frozen<t_todo_item>>)",
+            dedent("""
+            CREATE TYPE t_kitchen_sink
+            (
+            item1 ascii,
+            item2 blob,
+            item3 inet,
+            item4 text,
+            item5 timestamp,
+            item6 timeuuid,
+            item7 uuid,
+            item8 varchar,
+            item9 bigint,
+            item10 decimal,
+            item11 double,
+            item12 float,
+            item13 int,
+            item14 varint,
+            item15 boolean,
+            item16 list<int>
+            )
+            """),
+            dedent("""
+            CREATE TABLE complex_types
+            (
+            key1 text PRIMARY KEY,
+            mylist list<text>,
+            myset set<uuid>,
+            mymap map<text, int>,
+            mytuple frozen<tuple<text, int, uuid, boolean>>,
+            myudt frozen<t_kitchen_sink>,
+            mytodolists list<frozen<t_todo_list>>,
+            many_sinks list<frozen<t_kitchen_sink>>,
+            named_sinks map<text, frozen<t_kitchen_sink>>
+            )
+            """),
+            dedent("""
+            INSERT INTO complex_types (key1, mylist, myset, mymap, mytuple, myudt, mytodolists, many_sinks, named_sinks)
+            VALUES (
+            'row1', ['five', 'six', 'seven', 'eight'],
+            {4b66458a-2a19-41d3-af25-6faef4dea9fe,
+            080fdd90-ae74-41d6-9883-635625d3b069,
+            6cd7fab5-eacc-45c3-8414-6ad0177651d6
+            },
+            {'one': 1, 'two': 2, 'three': 3, 'four': 4},
+            ('hey', 10, 16e69fba-a656-4932-8a01-6782a34505d9, true),
+            {item1: 'heyimascii', item2: 0x0011, item3: '127.0.0.1', item4: 'whatev', item5: '2011-02-03 04:05+0000',
+            item6: 0ad6dfb6-7a6e-11e4-bc39-b4b6763e9d6f, item7: bdf5e8ac-a75e-4321-9ac8-938fc9576c4a,
+            item8: 'bleh',  item9: -9223372036854775808, item10: 1234.45678, item11: 98712312.1222,
+            item12: 98712312.5252, item13: -2147483648,
+            item14: 2147483647,
+            item15: false,
+            item16: [1,3,5,7,11,13]
+            },
+            [{name: 'stuff to do!', todo_list:
+            [
+            {label: 'buy groceries', details: 'bread and milk'},
+            {label: 'pick up car from shop', details: '$325 due'},
+            {label: 'call dave', details: 'for some reason'}
+            ]},
+            {name: 'more stuff to do!', todo_list:
+            [
+            {label: 'buy new car', details: 'the old one is getting expensive'},
+            {label: 'price insurance', details: 'current cost is $95/mo'}
+            ]}],
+            [
+            {
+            item1: 'asdf', item2: 0x0012, item3: '127.0.0.2', item4: 'whatev1', item5: '2012-02-03 04:05+0000',
+            item6: d05a10c8-7c12-11e4-949d-b4b6763e9d6f, item7: f90b04b1-f9ad-4ffa-b869-a7d894ce6003,
+            item8: 'tyru', item9: -9223372036854771111, item10: 4321.45678, item11: 10012312.1222,
+            item12: 40012312.5252, item13: -1147483648, item14: 2047483648,item15: true, item16: [1,1,2,3,5,8]
+            },
+            {item1: 'fdsa', item2: 0x0013, item3: '127.0.0.3', item4: 'whatev2', item5: '2013-02-03 04:05+0000',
+            item6: d8ac38c8-7c12-11e4-8955-b4b6763e9d6f, item7: e3e84f21-f28c-4e0f-80e0-068a640ae53a,
+            item8: 'uytr', item9: -3333372036854775808, item10: 1234.12321, item11: 20012312.1222,
+            item12: 50012312.5252, item13: -1547483648, item14: 1947483648, item15: false, item16: [3,6,9,12,15]
+            },
+            {item1: 'zxcv', item2: 0x0014, item3: '127.0.0.4', item4: 'whatev3', item5: '2014-02-03 04:05+0000',
+            item6: de30838a-7c12-11e4-a907-b4b6763e9d6f, item7: f9381f0e-9467-4d4c-9315-eb9f0232487b,
+            item8: 'fghj', item9: -2239372036854775808, item10: 5555.55555, item11: 30012312.1222,
+            item12: 60012312.5252, item13: 2147483647, item14: 1347483648, item15: true, item16: [0,1,0,1,2,0]
+            }],
+            {
+            'namedsink1':
+            {item1: 'asdf', item2: 0x0012, item3: '127.0.0.2', item4: 'whatev1',item5: '2012-02-03 04:05+0000',
+            item6: d05a10c8-7c12-11e4-949d-b4b6763e9d6f, item7: f90b04b1-f9ad-4ffa-b869-a7d894ce6003,
+            item8: 'tyru', item9: -9223372036854771111, item10: 4321.45678, item11: 10012312.1222,
+            item12: 40012312.5252, item13: -1147483648, item14: 2047483648, item15: true, item16: [1,1,2,3,5,8]},
+            'namedsink2':
+            {item1: 'fdsa', item2: 0x0013, item3: '127.0.0.3', item4: 'whatev2', item5: '2013-02-03 04:05+0000',
+            item6: d8ac38c8-7c12-11e4-8955-b4b6763e9d6f, item7: e3e84f21-f28c-4e0f-80e0-068a640ae53a,
+            item8: 'uytr', item9: -3333372036854775808, item10: 1234.12321, item11: 20012312.1222,
+            item12: 50012312.5252, item13: -1547483648, item14: 1947483648, item15: false, item16: [3,6,9,12,15]},
+            'namedsink3':
+            {item1: 'zxcv', item2: 0x0014, item3: '127.0.0.4', item4: 'whatev3', item5: '2014-02-03 04:05+0000',
+            item6: de30838a-7c12-11e4-a907-b4b6763e9d6f, item7: f9381f0e-9467-4d4c-9315-eb9f0232487b,
+            item8: 'fghj', item9: -2239372036854775808, item10: 5555.55555, item11: 30012312.1222,
+            item12: 60012312.5252, item13: 2147483647, item14: 1347483648, item15: true, item16: [0,1,0,1,2,0]}
+            })
+            """)
+        ]
+
+        # EXECUTE CREATE + INSERT COMMANDS HERE
+        for stmt in stmt_lst:
+            session.execute(stmt)
+
+        select_lst = [
+            "SELECT mylist from complex_types where key1 = 'row1'",
+            "SELECT myset from complex_types where key1 = 'row1'",
+            "SELECT mymap from complex_types where key1 = 'row1'",
+            "SELECT mytuple from complex_types where key1 = 'row1'",
+            "SELECT myudt from complex_types where key1 = 'row1'",
+            "SELECT mytodolists from complex_types where key1 = 'row1'",
+            "SELECT many_sinks from complex_types where key1 = 'row1'",
+            "SELECT named_sinks from complex_types where key1 = 'row1'"
+        ]
+
+        expected_lst = [
+            '[[[u\'five\', u\'six\', u\'seven\', u\'eight\']]]',
+            '[[SortedSet([UUID(\'080fdd90-ae74-41d6-9883-635625d3b069\'), '
+            'UUID(\'4b66458a-2a19-41d3-af25-6faef4dea9fe\'), '
+            'UUID(\'6cd7fab5-eacc-45c3-8414-6ad0177651d6\')])]]',
+            '[[OrderedMapSerializedKey([(u\'four\', 4), (u\'one\', 1), (u\'three\', 3), (u\'two\', 2)])]]',
+            '[[(u\'hey\', 10, UUID(\'16e69fba-a656-4932-8a01-6782a34505d9\'), True)]]',
+            "[[t_kitchen_sink(item1='heyimascii', item2='\\x00\\x11', item3='127.0.0.1', item4=u'whatev', "
+            "item5=datetime.datetime(2011, 2, 3, 4, 5), item6=UUID('0ad6dfb6-7a6e-11e4-bc39-b4b6763e9d6f'), "
+            "item7=UUID('bdf5e8ac-a75e-4321-9ac8-938fc9576c4a'), item8=u'bleh', item9=-9223372036854775808, "
+            "item10=Decimal('1234.45678'), item11=98712312.1222, item12=98712312.0, item13=-2147483648, "
+            "item14=2147483647, item15=False, item16=[1, 3, 5, 7, 11, 13])]]",
+            "[[[t_todo_list(name=u'stuff to do!', todo_list=[t_todo_item(label=u'buy groceries', "
+            "details=u'bread and milk'), t_todo_item(label=u'pick up car from shop', details=u'$325 due'), "
+            "t_todo_item(label=u'call dave', details=u'for some reason')]), t_todo_list(name=u'more stuff to do!', "
+            "todo_list=[t_todo_item(label=u'buy new car', details=u'the old one is getting expensive'), "
+            "t_todo_item(label=u'price insurance', details=u'current cost is $95/mo')])]]]",
+            "[[[t_kitchen_sink(item1='asdf', item2='\\x00\\x12', item3='127.0.0.2', item4=u'whatev1', "
+            "item5=datetime.datetime(2012, 2, 3, 4, 5), item6=UUID('d05a10c8-7c12-11e4-949d-b4b6763e9d6f'), "
+            "item7=UUID('f90b04b1-f9ad-4ffa-b869-a7d894ce6003'), item8=u'tyru', item9=-9223372036854771111, "
+            "item10=Decimal('4321.45678'), item11=10012312.1222, item12=40012312.0, item13=-1147483648, "
+            "item14=2047483648, item15=True, item16=[1, 1, 2, 3, 5, 8]), t_kitchen_sink(item1='fdsa', "
+            "item2='\\x00\\x13', item3='127.0.0.3', item4=u'whatev2', item5=datetime.datetime(2013, 2, 3, 4, 5), "
+            "item6=UUID('d8ac38c8-7c12-11e4-8955-b4b6763e9d6f'), item7=UUID('e3e84f21-f28c-4e0f-80e0-068a640ae53a'), "
+            "item8=u'uytr', item9=-3333372036854775808, item10=Decimal('1234.12321'), item11=20012312.1222, "
+            "item12=50012312.0, item13=-1547483648, item14=1947483648, item15=False, item16=[3, 6, 9, 12, 15]), "
+            "t_kitchen_sink(item1='zxcv', item2='\\x00\\x14', item3='127.0.0.4', item4=u'whatev3', "
+            "item5=datetime.datetime(2014, 2, 3, 4, 5), item6=UUID('de30838a-7c12-11e4-a907-b4b6763e9d6f'), "
+            "item7=UUID('f9381f0e-9467-4d4c-9315-eb9f0232487b'), item8=u'fghj', item9=-2239372036854775808, "
+            "item10=Decimal('5555.55555'), item11=30012312.1222, item12=60012312.0, item13=2147483647, "
+            "item14=1347483648, item15=True, item16=[0, 1, 0, 1, 2, 0])]]]",
+            "[[OrderedMapSerializedKey([(u'namedsink1', t_kitchen_sink(item1='asdf', item2='\\x00\\x12', "
+            "item3='127.0.0.2', item4=u'whatev1', item5=datetime.datetime(2012, 2, 3, 4, 5), "
+            "item6=UUID('d05a10c8-7c12-11e4-949d-b4b6763e9d6f'), item7=UUID('f90b04b1-f9ad-4ffa-b869-a7d894ce6003'), "
+            "item8=u'tyru', item9=-9223372036854771111, item10=Decimal('4321.45678'), item11=10012312.1222, "
+            "item12=40012312.0, item13=-1147483648, item14=2047483648, item15=True, item16=[1, 1, 2, 3, 5, 8])), "
+            "(u'namedsink2', t_kitchen_sink(item1='fdsa', item2='\\x00\\x13', item3='127.0.0.3', item4=u'whatev2', "
+            "item5=datetime.datetime(2013, 2, 3, 4, 5), item6=UUID('d8ac38c8-7c12-11e4-8955-b4b6763e9d6f'), "
+            "item7=UUID('e3e84f21-f28c-4e0f-80e0-068a640ae53a'), item8=u'uytr', item9=-3333372036854775808, "
+            "item10=Decimal('1234.12321'), item11=20012312.1222, item12=50012312.0, item13=-1547483648, "
+            "item14=1947483648, item15=False, item16=[3, 6, 9, 12, 15])), "
+            "(u'namedsink3', t_kitchen_sink(item1='zxcv', item2='\\x00\\x14', item3='127.0.0.4', item4=u'whatev3', "
+            "item5=datetime.datetime(2014, 2, 3, 4, 5), item6=UUID('de30838a-7c12-11e4-a907-b4b6763e9d6f'), "
+            "item7=UUID('f9381f0e-9467-4d4c-9315-eb9f0232487b'), item8=u'fghj', item9=-2239372036854775808, "
+            "item10=Decimal('5555.55555'), item11=30012312.1222, item12=60012312.0, item13=2147483647, "
+            "item14=1347483648, item15=True, item16=[0, 1, 0, 1, 2, 0]))])]]"
+        ]
+
+        # EXECUTE SELECTS AND COMPARE WITH EXPECTED RESULTS
+        for i in xrange(0, len(select_lst)):
+            assert_all(session=session, query=select_lst[i], expected=expected_lst[i], result_as_string=True)
+
+        # EXECUTE UPDATE AND COMPARE WITH EXPECTED RESULT
+        session.execute("UPDATE complex_types SET mylist = ['nine', 'ten', 'eleven'] WHERE key1 = 'row1'")
+        expected_res = "[[[u\'nine\', u\'ten\', u\'eleven\']]]"
+        after_update_query = "SELECT mylist from complex_types"
+        assert_all(session=session, query=after_update_query, expected=expected_res, result_as_string=True)
