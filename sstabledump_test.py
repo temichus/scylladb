@@ -5,7 +5,6 @@ import math
 import uuid
 from datetime import timedelta
 from dateutil.parser import parse
-from dateutil.tz import tzutc
 from decimal import Decimal
 import pprint
 from dtest import Tester, debug
@@ -168,14 +167,14 @@ class SSTableDumpAllDatatypes(CqlshPrepare, SSTableDump):
                       'g': lambda v: float(v),
                       'i': lambda v: int(v),
                       'j': lambda v: v.encode('utf-8'),
-                      'k': lambda v: (parse(v).replace(tzinfo=tzutc())),
+                      'k': lambda v: (parse(v)),
                       'l': lambda v: uuid.UUID(v),
                       'm': lambda v: uuid.UUID(v),
                       'o': lambda v: int(v),
                       'p': lambda v: p.append((int(v))),
                       'q': lambda v: q.extend(v),
                       'r': lambda x, y: r.update(
-                          {(parse(x).replace(tzinfo=tzutc())): str(y)}),
+                          {(parse(x)): str(y)}),
                       's': lambda v: tuple([json.loads(val) if i != 1 else val for i, val in enumerate(v.split(':'))]) if type(v) == type(str()) else tuple(v),
                       }
 
