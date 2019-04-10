@@ -1979,7 +1979,7 @@ class TestAuth(Tester):
         if enable_auth:
             config.update(auth_conf)
         self.cluster.set_configuration_options(values=config)
-        self.cluster.populate(nodes).start()
+        self.cluster.populate(nodes).start(wait_other_notice=True, wait_for_binary_proto=True)
 
         if enable_auth or wait_for_superuser:
             expected_entries = ['Created default superuser role']
