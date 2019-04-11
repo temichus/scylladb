@@ -157,7 +157,6 @@ class TestMaterializedViews(Tester):
         """
         self._run_node_failure_during_mv_stress_insert(rf=3, nodes=4, node_action='remove', exclude_errors=['mutation_write_timeout_exception'])
 
-    @require('#3382')
     def decommission_node_during_mv_insert_4_nodes_test(self):
         """ Test removing node during MV inserts
             Test starts with a starting size 4 and removes one node during inserts into base table that cause to update materialized view as well
@@ -277,7 +276,7 @@ class TestMaterializedViews(Tester):
             if (by_dc_name and node.data_center == by_dc_name) or (by_node_names and node.name in by_node_names):
                 self._node_action_with_delay('stop', node, wait=wait, wait_other_notice=wait_other_notice, gently=gently)
 
-    @require('#3382')
+    @require('#4423')
     def add_dc_during_mv_insert_test(self):
         """ Test expand cluster - add new DC during MV inserts
             Test starts with a starting size: one DCs with 4 nodes, and add new 2 nodes of second DC during inserts into base
@@ -1504,7 +1503,6 @@ class TestMaterializedViews(Tester):
         assert_invalid(session, "CREATE INDEX ON t_by_v (v2)",
                        "Secondary indexes are not supported on materialized views")
 
-    @require('#2367')
     # Restriction validation is allowed in S* but fails. Should be disable to be compatible with C*
     def restriction_on_non_mv_pk_test(self):
         """
@@ -1530,7 +1528,7 @@ class TestMaterializedViews(Tester):
                                'view creation (got restrictions on: {})'.format(next(mv.mv_where_restriction.iterkeys()))
             assert e.message == expected_error, '\nExpected error: {0}.\n Received error: {1}'.format(expected_error, e.message)
 
-    @require('#3140')
+    @require('#4426')
     def ttl_remove_with_non_mv_column_test(self):
         """
             Pre-condition:
@@ -2684,8 +2682,6 @@ class TestMaterializedViews(Tester):
         for i in xrange(prefill):
             assert_one(session, 'select {0} from {1} where id={2}'.format(mv_pk_column, tm.table_name, i), [2])
 
-    @require('#3275')
-    # issue 3275, which activates the view write path for streaming due to repair
     def simple_repair_test(self):
         """
         Test that a materialized view are consistent after a simple repair.
@@ -2742,8 +2738,6 @@ class TestMaterializedViews(Tester):
                 cl=ConsistencyLevel.ONE
             )
 
-    @require('#3275')
-    # issue #3275, which activates the view write path for streaming due to repair
     def base_replica_repair_test(self):
         self._base_replica_repair_test()
 
@@ -2849,8 +2843,6 @@ class TestMaterializedViews(Tester):
             debug('Start {}'.format(node.name))
             node.start(wait_other_notice=True, wait_for_binary_proto=True)
 
-    @require('#3275')
-    # issue #3275, which activates the view write path for streaming due to repair
     def complex_repair_test(self):
         """
         Test that a materialized view are consistent after a more complex repair.
@@ -2938,8 +2930,6 @@ class TestMaterializedViews(Tester):
         assert_two_queries_equal(session2, table_statement, session2, mv_statement,
                                  consistency_level=ConsistencyLevel.ONE, session_timeout=120)
 
-    @require('#3275')
-    # issue #3275, which activates the view write path for streaming due to repair
     def really_complex_repair_test(self):
         """
         Test that a materialized view are consistent after a more complex repair.
