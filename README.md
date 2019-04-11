@@ -49,16 +49,36 @@ To start using the virtual environment in a new terminal just source the `bin/ac
 Usage
 -----
 
-The tests are run by nosetests. The only thing the framework needs to know is
+The tests are run by nosetests. There are a few settings that are
+required to run the tests reliably:
+
+The environment variable NOSE_PROCESSES must be set to 1, or maybe
+greater (not tested). With the default of 0 tests are unreliable and
+after awhile start failing with "Cluster was not allocated".
+
+Fixing the need for NOSE_PROCESSES=1 is tracked by
+https://github.com/scylladb/scylla-dtest/issues/942.
+
+The corresponding --process=1 option doesn't seem to work. Fixing that
+is tracked by https://github.com/scylladb/scylla-dtest/issues/943.
+
+The command line --process-timeout must be set to a value much higher
+than the default of 10 or many tests fail with TimedOutException. A
+value of 7200 seems to work for all next-gating tests.
+
+The only thing the framework needs to know is
 the location of the (compiled) sources for Scylla. This is done by pointing
 the `CASSANDRA_DIR` to the path of the Scylla repository:
 
-    CASSANDRA_DIR=~/path/to/scylla nosetests
+    CASSANDRA_DIR=~/path/to/scylla nosetests --process-timeout=7200
 
 To target a Scylla executable compiled in a specific mode include the full path
 to the build dir:
 
-    CASSANDRA_DIR=~/path/to/scylla/build/debug nosetests
+    CASSANDRA_DIR=~/path/to/scylla/build/debug nosetests --process-timeout=7200
+
+To run the same tests that are used to validate changes into master,
+use `-a next-gating`.
 
 The shell script `scylla_dtest-env.sh` will set this automatically for you to a
 value that works in most deployments, it assumes the Scylla sources are next to
