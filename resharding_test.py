@@ -162,7 +162,7 @@ class ReshardingTest(Tester):
         # Verify data files number after resharding and compaction
         self._verify_number_of_data_files(data_files_num_before=data_files_num_before, reshard_to=reshard_to)
 
-        stress_cmd = ['read', 'n={}'.format(op_cnt), 'no-warmup', '-rate', 'threads=16', '-errors ignore']
+        stress_cmd = ['read', 'n={}'.format(op_cnt), 'no-warmup', '-rate', 'threads=4', '-errors ignore']
         self._verify_data(op_cnt, stress_cmd)
         self._verify_row_number('standard1', op_cnt)
 

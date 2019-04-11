@@ -96,6 +96,7 @@ class HeatWeightedLB(Tester):
         cluster.set_configuration_options(values={'enable_keyspace_column_family_metrics': True})
         cluster.populate(3).start(wait_for_binary_proto=True,wait_other_notice=True)
         self.node1, self.node2, self.node3 = cluster.nodelist()
+        self.ignore_log_patterns = [r'sstable inactive read queue overloaded']
 
         debug('Run stress write')
         resp = self.node1.stress_object(
