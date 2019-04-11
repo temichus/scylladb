@@ -657,9 +657,9 @@ class TestMaterializedViews(Tester):
             else:
                 assert True
 
-        self._check_errors(self.cluster.nodelist()[0], exclude_errors=['migration_task - Can''t send migration request',
+        for node in self.cluster.nodelist():
+            self._check_errors(node, exclude_errors=['migration_task - Can''t send migration request',
                                                                        'mutation_write_timeout_exception', 'Error applying view update to'])
-        assert True
 
     def _restart_node(self, node, delay=0):
         time.sleep(delay)
