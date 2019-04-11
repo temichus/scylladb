@@ -879,7 +879,7 @@ class Tester(TestCase):
     def shortDescription(self):
         return None
 
-    def wait_for_any_log(self, nodes, patterns, timeout):
+    def wait_for_any_log(self, nodes, patterns, timeout, dispersed=False):
         """
         Look for a pattern in the system.log of any in a given list
         of nodes.
@@ -890,19 +890,36 @@ class Tester(TestCase):
                         but a maximum number of attempts. This implies that
                         the all the grepping takes no time at all, so it is
                         somewhat inaccurate, but probably close enough.
-        :return: The first node in whose log the pattern was found
+        :return: The first node in whose log the pattern was found, if not dispersed.
+                 Otherwise, if dispersed=True, return a list of all nodes with the any of the patterns.
         """
-        for _ in range(timeout):
-            for node in nodes:
-                try:
-                    found = node.watch_log_for(patterns, timeout=0)
 
-                    if found:
-                        return node
-                except TimeoutError:
-                    pass
-
-            time.sleep(1)
+        if dispersed:
+            remaining = patterns
+            ret = []
+            for _ in range(timeout):
+                for node in nodes:
+                    for p in remaining:
+                        try:
+                            if node.watch_log_for(p, timeout=0):
+                                remaining.remove(p)
+                                if node not in ret:
+                                    ret.append(node)
+                        except TimeoutError:
+                            pass
+                if not remaining:
+                    return ret
+                time.sleep(1)
+        else:
+            for _ in range(timeout):
+                for node in nodes:
+                    try:
+                        found = node.watch_log_for(patterns, timeout=0)
+                        if found:
+                            return node
+                    except TimeoutError:
+                        pass
+                time.sleep(1)
 
         raise TimeoutError(time.strftime("%d %b %Y %H:%M:%S", time.gmtime()) +
                            (" Unable to find :%s in any node log within " % patterns) + str(timeout) + "s")

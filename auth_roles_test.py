@@ -7,7 +7,7 @@ from cassandra import AuthenticationFailed, Unauthorized, InvalidRequest
 from cassandra.cluster import NoHostAvailable
 from cassandra.protocol import SyntaxException
 from auth_test import data_resource_creator_permissions, role_creator_permissions, function_resource_creator_permissions
-from dtest import Tester
+from dtest import Tester, debug
 from assertions import assert_one, assert_all, assert_invalid
 from tools import since
 from tools import require
@@ -1255,16 +1255,21 @@ class TestAuthRoles(Tester):
                   'permissions_validity_in_ms': 0,
                   'roles_validity_in_ms': roles_expiry}
         self.cluster.set_configuration_options(values=config)
-        self.cluster.populate(nodes).start(no_wait=True)
-        # default user setup is delayed by 10 seconds to reduce log spam
+        self.cluster.populate(nodes).start(wait_other_notice=True, wait_for_binary_proto=True)
 
-        if nodes == 1:
-            self.cluster.nodelist()[0].watch_log_for(
-                ["Created default superuser role", "Created default superuser authentication record"])
+        found = self.wait_for_any_log(
+            self.cluster.nodelist(),
+            ["Created default superuser role", "Created default superuser authentication record"],
+            10,
+            dispersed=True)
+
+        if isinstance(found, list):
+            nodes = []
+            for n in found:
+                nodes.append(n.name)
         else:
-            # can' just watch for log - the line will appear in just one of the nodes' logs
-            # only one test uses more than 1 node, though, so some sleep is fine.
-            time.sleep(15)
+            nodes = found.name
+        debug("Default role created by {}".format(nodes))
 
     def get_session(self, node_idx=0, user=None, password=None):
         node = self.cluster.nodelist()[node_idx]

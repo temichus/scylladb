@@ -1987,12 +1987,19 @@ class TestAuth(Tester):
             if enable_auth:
                 expected_entries.append('Created default superuser authentication record')
 
-            n = self.wait_for_any_log(
+            found = self.wait_for_any_log(
                 self.cluster.nodelist(),
                 expected_entries,
-                10)
+                10,
+                dispersed=True)
 
-            debug("Default role created by " + n.name)
+        if isinstance(found, list):
+            nodes = []
+            for n in found:
+                nodes.append(n.name)
+        else:
+            nodes = found.name
+        debug("Default role created by {}".format(nodes))
 
     def get_session(self, node_idx=0, user=None, password=None, exclusive=True):
         node = self.cluster.nodelist()[node_idx]
