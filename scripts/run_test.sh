@@ -114,10 +114,10 @@ docker_cmd="docker run --rm=true \
     -v /etc/group:/etc/group:ro \
     -u $(id -u ${USER}):$(id -g ${USER}) \
     --tmpfs ${HOME}/.cache \
-    --tmpfs ${HOME}/.local \
+    -v ${HOME}/.local:${HOME}/.local \
     -v ${HOME}/.dtest:${HOME}/.dtest \
     -v ${HOME}/.ccm:${HOME}/.ccm \
     --network=bridge --privileged \
-    docker.io/scylladb/scylla-dtest:latest bash -c 'sudo pip install -e ${CCM_DIR} ; bash -c \"${INSTALL_CASSANDRA}\"; nosetests -v -s $*'"
+    docker.io/scylladb/scylla-dtest:latest bash -c 'pip install --user -e ${CCM_DIR} ; export PATH=\$PATH:\${HOME}/.local/bin ; bash -c \"${INSTALL_CASSANDRA}\"; nosetests -v -s $*'"
 echo "Running Docker: $docker_cmd"
 eval $docker_cmd
