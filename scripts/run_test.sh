@@ -81,6 +81,9 @@ fi
 if [[ ! -d ${HOME}/.ccm ]]; then
     mkdir -p ${HOME}/.ccm
 fi
+if [[ ! -d ${HOME}/.local ]]; then
+    mkdir -p ${HOME}/.local/lib
+fi
 
 # if in jenkins also mount the workspace into docker
 if [[ -d ${WORKSPACE} ]]; then
