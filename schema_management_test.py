@@ -196,7 +196,7 @@ class SchemaManagementTest(Tester):
 
 
     def test_reads_schema_recreated_while_node_down(self):
-        self.cluster.set_configuration_options(values={ 'ring_delay_ms': 1000 })
+        self.cluster.set_configuration_options(values={ 'ring_delay_ms': 5000 })
         self.cluster.populate(2)
         self.cluster.start(wait_other_notice=True)
 
@@ -226,7 +226,7 @@ class SchemaManagementTest(Tester):
 
     @attr('next-gating')
     def test_writes_schema_recreated_while_node_down(self):
-        self.cluster.set_configuration_options(values={ 'ring_delay_ms': 1000 })
+        self.cluster.set_configuration_options(values={ 'ring_delay_ms': 5000 })
         self.cluster.populate(2)
         self.cluster.start(wait_other_notice=True)
 
