@@ -1528,7 +1528,6 @@ class TestMaterializedViews(Tester):
                                'view creation (got restrictions on: {})'.format(next(mv.mv_where_restriction.iterkeys()))
             assert e.message == expected_error, '\nExpected error: {0}.\n Received error: {1}'.format(expected_error, e.message)
 
-    @require('#4426')
     def ttl_remove_with_non_mv_column_test(self):
         """
             Pre-condition:
@@ -1539,35 +1538,43 @@ class TestMaterializedViews(Tester):
             Expected result: the record exists in both base table and materialized view
         """
         session = self.prepare()
-        tm = TableManager(session, self.cluster,
-                          columns={'int': {'amount': 2, 'frozen': False, 'value length': {'min': 1, 'max': 10000}}
-                                  }, pk_columns={}, cl_columns={}
-                          )
-        tm.create_table()
+        session.execute('USE ks')
+        table_name = 'base'
+        mv_name = 'mv'
+        # Create base table
+        query = 'CREATE TABLE %s (p int, c int, v int, PRIMARY KEY (p, c))' % table_name
+        debug(query)
+        session.execute(query)
 
         # Create materialized view
-        mv = MaterializedViewManager(tm)
-        mv.create_materialized_view(mv_columns={'int': {'amount': 1}}, mv_pk_column={'type': 'int'})
+        query = 'CREATE MATERIALIZED VIEW %s AS SELECT p, c FROM base WHERE p IS NOT NULL ' \
+                        'AND c IS NOT NULL PRIMARY KEY (c, p)' % mv_name
+        debug(query)
+        session.execute(query)
+        wait_for_view(cluster=self.cluster, session=session, ks='ks', view=mv_name)
 
         # Pre-fill table
-        prefill = 2
+        prefill = 1
         ttl = 60
-        tm.prefill_table(prefill, using={'ttl': ttl})
+        query = 'INSERT INTO %s (p, c) VALUES (0, 0) USING TTL %d' % (table_name, ttl)
+        debug(query)
+        session.execute(query)
 
         # Check if a record was saved in both table and materialized view
-        self._assert_count_table_mv(session, tm.table_name, prefill, mv.mv_name, prefill)
+        self._assert_count_table_mv(session, table_name, prefill, mv_name, prefill)
 
-        # Run update base table - remove TTL from whole record
+        # Run update base table - remove TTL from whole record by removing TTL from non-MV column
+        query = 'UPDATE %s USING TTL 0 SET v = 0 WHERE p = 0 and c = 0' % table_name
+        debug(query)
+        session.execute(query)
 
-        tm.update_table({'by type': {'int': 0}}, {'by name': tm.get_value_for_filter()}, using_clause={'ttl': 0},
-                        update_columns_exclude=mv.mv_columns_list)
-        self._assert_count_table_mv(session, tm.table_name, prefill, mv.mv_name, prefill)
+        self._assert_count_table_mv(session, table_name, prefill, mv_name, prefill)
 
         # Wait for more than TTL time
         time.sleep(ttl+5)
 
         # Check if the record still exists in the both table and materialized view
-        self._assert_count_table_mv(session, tm.table_name, prefill-1, mv.mv_name, prefill-1)
+        self._assert_count_table_mv(session, table_name, prefill, mv_name, prefill)
 
     def ttl_set_with_non_mv_column_updated_test(self):
         """
