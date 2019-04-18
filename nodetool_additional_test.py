@@ -4,6 +4,7 @@ import stat
 import sys
 import time
 import urllib2
+import shutil
 from threading import Thread
 from unittest import skip
 from binascii import hexlify
@@ -1192,6 +1193,75 @@ class TestNodetool(Tester):
         finally:
             self._change_data_perms(node, 'data', stat.S_IWRITE | stat.S_IREAD | stat.S_IEXEC)
             node.mark_log_for_errors()
+
+    def _nodetool_refresh_expect_fail(self, node, ks='keyspace1', cf='standard1', expected_error=None, debug_message='', ignore_log_error=True):
+        if expected_error and ignore_log_error:
+            if not hasattr(self, 'ignore_log_patterns'):
+                self.ignore_log_patterns = []
+            self.ignore_log_patterns.append(expected_error)
+
+        cmd = "refresh -- {} {}".format(ks, cf)
+        msg = "Running 'nodetool {}' to load migrated sstables".format(cmd)
+        if debug_message:
+            msg = "{} - {}".format(msg, debug_message)
+        debug(msg)
+        try:
+            node.nodetool(cmd)
+            assert False, 'nodetool succeeded unexpectedly!'
+        except NodetoolError as error:
+            if expected_error:
+                assert re.search(expected_error, str(error)), "/{}/ not found in '{}'".format(expected_error, error)
+
+    def nodetool_refresh_with_wrong_upload_modes_test(self):
+        """
+        Test that nodetool refresh with different wrong modes:
+            when upload folder is not writable
+            when upload sstables are not readable
+            when upload directory has symlink
+        """
+        self.run_cluster(nodes=1)
+        node = self.cluster.nodelist()[0]
+        self.stress_write(node)
+        node.flush()
+        ks = 'keyspace1'
+        cf = 'standard1'
+        ks_dir = os.path.join(node.get_path(), 'data', ks)
+        cf_dir = None
+        for f in os.listdir(ks_dir):
+            if f.startswith(cf):
+                cf_dir = os.path.join(ks_dir, f)
+                break
+        assert cf_dir, "column family '{}' not found".format(cf)
+        upload_dir = os.path.join(cf_dir, 'upload')
+        for f in os.listdir(cf_dir):
+            pathname = os.path.join(cf_dir, f)
+            mode = os.lstat(pathname).st_mode
+            if stat.S_ISREG(mode):
+                shutil.copy2(pathname, os.path.join(upload_dir, f))
+
+        debug("Testing loading sstables in a dir with no write permission. nodetool expected to fail...")
+        os.chmod(upload_dir, 0o555)
+        self._nodetool_refresh_expect_fail(node,
+            expected_error=r'Directory cannot be accessed .* write',
+            debug_message='dir with no write permission')
+        os.chmod(upload_dir, 0o755)
+
+        debug("Testing loading sstables with no read permission. nodetool expected to fail...")
+        for f in os.listdir(upload_dir):
+            os.chmod(os.path.join(upload_dir, f), 0o044)
+        self._nodetool_refresh_expect_fail(node,
+            expected_error=r'File cannot be accessed for read',
+            debug_message='files with no read permission')
+        for f in os.listdir(upload_dir):
+            os.chmod(os.path.join(upload_dir, f), 0o644)
+
+        debug("Testing loading sstables in a dir with symlink. nodetool expected to fail...")
+        symlink_path = os.path.join(upload_dir, 'test_symlink')
+        os.symlink('broken', symlink_path)
+        self._nodetool_refresh_expect_fail(node,
+            expected_error=r'Must be either a regular file or a directory',
+            debug_message='with symlink')
+        os.remove(symlink_path)
 
     def proxyhistograms(self, node=None):
         if node is None:
