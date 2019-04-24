@@ -92,7 +92,7 @@ else
 WORKSPACE_MNT=""
 fi
 
-docker_cmd="docker run --rm=true \
+docker_cmd="docker run --detach=true \
     ${WORKSPACE_MNT} \
     -v ${DTEST_DIR}:${DTEST_DIR} \
     -v ${SCYLLA_DIR}:${SCYLLA_DIR} \
@@ -123,4 +123,33 @@ docker_cmd="docker run --rm=true \
     --network=bridge --privileged \
     docker.io/scylladb/scylla-dtest:latest bash -c 'pip install --user -e ${CCM_DIR} ; export PATH=\$PATH:\${HOME}/.local/bin ; bash -c \"${INSTALL_CASSANDRA}\"; nosetests -v -s $*'"
 echo "Running Docker: $docker_cmd"
-eval $docker_cmd
+container=$(eval $docker_cmd)
+
+
+kill_it() {
+    if [[ -n "$container" ]]; then
+        docker rm -f "$container" > /dev/null
+        container=
+    fi
+}
+
+trap kill_it SIGTERM SIGINT SIGHUP EXIT
+
+docker logs "$container" -f
+
+if [[ -n "$container" ]]; then
+    exitcode="$(docker wait "$container")"
+else
+    exitcode=99
+fi
+
+echo "Docker exitcode: $exitcode"
+
+kill_it
+
+trap - SIGTERM SIGINT SIGHUP EXIT
+
+# after "docker kill", docker wait will not print anything
+[[ -z "$exitcode" ]] && exitcode=1
+
+exit "$exitcode"
