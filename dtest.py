@@ -370,7 +370,7 @@ class Tester(TestCase):
         if isScylla(cdir):
             for proc in psutil.process_iter():
                 try:
-                    if 'scylla' in proc.name() and any(self.cluster.ipprefix in cmd for cmd in proc.cmdline()):
+                    if ('scylla' in proc.name() or 'scylla' in proc.cmdline()[0]) and any(self.cluster.ipprefix in cmd for cmd in proc.cmdline()):
                         return False
                 except Exception:
                     pass
@@ -384,7 +384,7 @@ class Tester(TestCase):
         if isScylla(cdir):
             for proc in psutil.process_iter():
                 try:
-                    if 'scylla' in proc.name() and any(self.cluster.ipprefix in cmd for cmd in proc.cmdline()):
+                    if ('scylla' in proc.name() or 'scylla' in proc.cmdline()[0]) and any(self.cluster.ipprefix in cmd for cmd in proc.cmdline()):
                         debug("proc %s killed - cluster %s" % (proc.pid, self.cluster.ipprefix))
                         try:
                             proc.kill()
