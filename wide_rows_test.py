@@ -30,9 +30,12 @@ class TestWideRows(Tester):
 
     def __init__(self, *args, **kwargs):
         Tester.__init__(self, *args, **kwargs)
-
+        self.compaction_strategy = self.compaction_strategy \
+                                    if hasattr(self, 'compaction_strategy') else 'LeveledCompactionStrategy'
+        self.compaction_option = "compaction = {'class': '%s'}" % self.compaction_strategy
 
     def prepare_cluster(self, nodes=1, version=None, keyspace_name='wide_rows', rf=1, options_dict=None):
+        debug('Run test with %s compaction strategy' % self.compaction_strategy)
         debug('Start cluster with %d nodes' % nodes)
         cluster = self.cluster
         if version:
@@ -56,7 +59,7 @@ class TestWideRows(Tester):
         # Simple timeline:  user -> {date: value, ...}
         debug('Create Table....')
         session.execute('CREATE TABLE user_events (userid text, event timestamp, value text, '
-                        'PRIMARY KEY (userid, event));')
+                        'PRIMARY KEY (userid, event)) WITH %s' % self.compaction_option)
         date = datetime.datetime.now()
         # Create a large timeline for each of a group of users:
         for user in ('ryan', 'cathy', 'mallen', 'joaquin', 'erin', 'ham'):
@@ -89,7 +92,8 @@ class TestWideRows(Tester):
         """
         session = self.prepare_cluster(options_dict={'column_index_size_in_kb': 1}) # reduce column_index_size_in_kb
                                                                                 # value to force column index creation
-        create_table_query = 'CREATE TABLE test_table (row varchar, name varchar, value int, PRIMARY KEY (row, name));'
+        create_table_query = 'CREATE TABLE test_table (row varchar, name varchar, value int, PRIMARY KEY (row, name)) ' \
+                             'WITH %s' % self.compaction_option
         session.execute(create_table_query)
 
         # Now insert 100,000 columns to row 'row0'
@@ -326,7 +330,8 @@ class TestWideRows(Tester):
         debug('Create table {} with large partition'.format(table_name))
         one_blob_size = 1024  # 1K value in the blob column
         create_table_query = 'CREATE TABLE IF NOT EXISTS %s (userid text, event timestamp, value blob, ' \
-                             'PRIMARY KEY (userid, event)) with compression = { }' % table_name
+                             'PRIMARY KEY (userid, event)) with compression = { } and %s' % (table_name,
+                                                                                             self.compaction_option)
         session.execute(create_table_query)
 
         date = datetime.datetime.now()
@@ -346,7 +351,9 @@ class TestWideRows(Tester):
         # one_blob_size = 1024 * 10 # 10K value in the one column
         long_text_columns = ', '.join(['value%d blob' % i for i in xrange(columns_num)])
         create_table_query = 'CREATE TABLE IF NOT EXISTS %s (userid text, event timestamp, %s, ' \
-                             'PRIMARY KEY (userid, event)) with compression = { }' % (table_name, long_text_columns)
+                             'PRIMARY KEY (userid, event)) with compression = { } and %s' % (table_name,
+                                                                                             long_text_columns,
+                                                                                             self.compaction_option)
         session.execute(create_table_query)
 
         date = datetime.datetime.now()
@@ -357,8 +364,8 @@ class TestWideRows(Tester):
             event = (date + datetime.timedelta(k)).strftime("%Y-%m-%d")
             for i in xrange(columns_num):
                 out = session.execute(
-                    "UPDATE {table_name} SET value{i} = textAsBlob('{value}') WHERE userid='{user}' and event='{event}'".format(
-                        **locals()))
+                    "UPDATE {table_name} SET value{i} = textAsBlob('{value}') WHERE userid='{user}' and event='{event}'"
+                        .format(**locals()))
 
         return columns_num*one_blob_size # aproximately row size
 
@@ -473,3 +480,13 @@ class TestWideRows(Tester):
         for file in files:
             data_size[file] = os.path.getsize(file)
         return data_size
+
+
+# LeveledCompactionStrategy is default compaction strategy. Will be run first by default
+strategies = ['SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy',
+              'TimeWindowCompactionStrategy']
+
+for strategy in strategies:
+    cls_name = ('TestWideRows' + '_with_' + strategy)
+    vars()[cls_name] = type(cls_name, (TestWideRows,), {'compaction_strategy': strategy, '__test__': True})
+    
