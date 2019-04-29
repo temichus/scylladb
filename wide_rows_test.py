@@ -338,6 +338,7 @@ class TestWideRows(Tester):
         return mark_log_by_node
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def test_wide_rows(self):
         self.write_wide_rows()
 

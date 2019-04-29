@@ -118,6 +118,7 @@ class TestRepair(Tester):
         self._simple_repair(sequential=True)
 
     @attr('next-gating')
+    # @attr('dtest-debug') - https://github.com/scylladb/scylla/issues/4384
     def simple_parallel_repair_test(self, ):
         self._simple_repair(sequential=False)
 

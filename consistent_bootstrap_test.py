@@ -48,6 +48,7 @@ class TestBootstrapConsistency(Tester):
             query_c1c2(n2session, n, ConsistencyLevel.ALL)
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def consistent_reads_after_bootstrap_test(self):
         debug("Creating a ring")
         cluster = self.cluster

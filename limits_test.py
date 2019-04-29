@@ -244,6 +244,7 @@ class TestLimits(Tester):
         session.execute("""DROP TABLE STUFF""")
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def max_batch_size_test(self):
         cluster = self.prepare()
         cluster.populate(1).start()

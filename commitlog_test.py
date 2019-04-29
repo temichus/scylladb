@@ -153,6 +153,7 @@ class TestCommitLog(Tester):
             debug("Stress failed as expected")
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def test_commitlog_replay_on_startup(self):
         """ Test commit log replay """
         node1 = self.node1
@@ -213,6 +214,7 @@ class TestCommitLog(Tester):
                               [[u'gandalf', 1955, u'male', u'p@$$', u'WA']])
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def test_commitlog_replay_with_alter_table(self):
         """
         Test commit log replay with alter table
@@ -332,6 +334,7 @@ class TestCommitLog(Tester):
     expected_log_message = 'commitlog - Exception in segment reservation\: storage_io_error \(Storage I/O error\: 13\: filesystem error: open failed: Permission denied'
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def stop_failure_policy_test(self):
         """ Test the stop commitlog failure policy (default one) """
         self.prepare()

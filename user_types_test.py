@@ -215,6 +215,7 @@ class TestUserTypes(Tester):
         self.assertEqual(0, len(rows))
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def test_nested_user_types(self):
         """Tests user types within user types"""
         cluster = self.cluster

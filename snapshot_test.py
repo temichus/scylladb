@@ -87,6 +87,7 @@ class TestSnapshot(SnapshotTester):
         SnapshotTester.__init__(self, *args, **kwargs)
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def test_basic_snapshot_and_restore_with_sstableloader(self):
         """
         Test basic snapshot and restore using an sstable loader.
@@ -94,6 +95,7 @@ class TestSnapshot(SnapshotTester):
         self.basic_snapshot_and_restore(use_sstableloader=True)
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def test_basic_snapshot_and_restore_with_refresh(self):
         """
         Test basic snapshot and restore without an sstable loader.

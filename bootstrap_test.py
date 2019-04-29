@@ -229,6 +229,7 @@ class TestBootstrap(Tester):
         assert rows[0][0] == 'COMPLETED', rows[0][0]
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def manual_bootstrap_test(self):
         """Test adding a new node and bootstrappig it manually. No auto_bootstrap.
            This test also verify that all data are OK after the addition of the new node.

@@ -65,6 +65,7 @@ class TestScyllaTop(Tester):
         assert len(out) > 0, 'Output should not be empty'
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def default_start_test(self):
         """
         Common usage, start scyllatop without options

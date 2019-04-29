@@ -49,6 +49,7 @@ class TestPartitioner(Tester):
         self.assertEqual(len(result), 30, len(result))
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def murmur3_partitioner_test(self):
         self.run_cluster("org.apache.cassandra.dht.Murmur3Partitioner",
                          "cassandra.3.nodes.30.rows.256.murmur3.partitioner")

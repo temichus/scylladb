@@ -6,6 +6,7 @@ from nose.plugins.attrib import attr
 class TestCFID(Tester):
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def cfid_test(self):
         """ Test through adding/dropping cf's that the path to sstables for each cf are unique and formatted correctly """
         cluster = self.cluster

@@ -81,6 +81,7 @@ class TestHintedHandoff(Tester):
         assert resp['total partitions:read'] == op_cnt
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def hintedhandoff_removenode_test(self):
         """
         Test hints draining when node is removed (nodetool removenode) from the cluster.
@@ -128,6 +129,7 @@ class TestHintedHandoff(Tester):
                self.__check_hints_dir_present(node_from=node2, node_to=node3, must_be_present=False)
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def hintedhandoff_basic_check_test(self):
         """
         A basic test:

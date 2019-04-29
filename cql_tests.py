@@ -163,6 +163,7 @@ class StorageProxyCQLTester(CQLTester):
         session.execute("DROP USER user1")
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def statements_test(self):
         """
         INSERT, UPDATE, SELECT, SELECT COUNT, DELETE statements
@@ -268,6 +269,7 @@ class MiscellaneousCQLTester(CQLTester):
                             "client. Please see http://cassandra.apache.org/doc/cql3/CQL.html#collections for more details.")
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def cql3_insert_thrift_test(self):
         """ Check that we can insert from thrift into a CQL3 table (#4377) """
         session = self.prepare(start_rpc=True)
@@ -407,6 +409,7 @@ class MiscellaneousCQLTester(CQLTester):
 
 class TruncateTester(CQLTester):
     @attr('next-gating')
+    @attr('dtest-debug')
     def truncate_after_restart_test(self):
         session = self.prepare(nodes=1, create_keyspace=False)
 

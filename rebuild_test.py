@@ -27,6 +27,7 @@ class TestRebuild(Tester):
         Tester.__init__(self, *args, **kwargs)
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def simple_rebuild_test(self):
         """
         @jira_ticket CASSANDRA-9119

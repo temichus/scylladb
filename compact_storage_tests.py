@@ -48,10 +48,12 @@ class TestCompactStorage(Tester):
 
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def read_cassandra_wide_row_data_test(self):
         self.load_and_read_from_sstables("cassandra_compact_storage_wide_partition",self.row_size - 100);
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def wide_row_test(self):
         cluster = self.cluster
         cluster.populate(1).start(wait_for_binary_proto=True);

@@ -16,6 +16,7 @@ class NativeTransportSSL(Tester):
     """
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def connect_to_ssl_test(self):
         """
         Connecting to SSL enabled native transport port should only be possible using SSL enabled client

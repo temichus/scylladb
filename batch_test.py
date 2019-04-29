@@ -64,6 +64,7 @@ class TestBatch(Tester):
             """, matching=err)
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def replay_after_schema_change_test(self):
         """ Test that logged batch is replayed after schema was changed on the node """
         ring_delay_sec = 5
@@ -295,6 +296,7 @@ class TestBatch(Tester):
         """, ConsistencyLevel.ONE, received_responses=0)
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def acknowledged_by_batchlog_set_when_batchlog_write_succeeds_test(self):
         """ Test that acknowledged_by_batchlog is True if batchlog can be written """
         session = self.prepare(nodes=3, compression=False)

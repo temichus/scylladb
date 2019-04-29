@@ -151,6 +151,7 @@ class TestCompaction(Tester):
         self.assertLess(final_value, initial_value)
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def sstable_deletion_test(self):
         """
         Test that sstables are deleted properly when able after compaction.

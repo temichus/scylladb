@@ -201,6 +201,7 @@ class ToJsonSelectTests(Tester):
     """
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def basic_data_types_test(self):
         """
 
@@ -632,6 +633,7 @@ class FromJsonUpdateTests(Tester):
     """
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def basic_data_types_test(self):
         """
         Create a table with the primitive types:
@@ -853,6 +855,7 @@ class FromJsonUpdateTests(Tester):
         run_func_docstring(tester=self, test_func=self.complex_data_types_test)
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def collection_update_test(self):
         """
         Setup schema, add a row:
@@ -1015,6 +1018,7 @@ class FromJsonInsertTests(Tester):
     """
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def basic_data_types_test(self):
         """
         Create a table with the primitive types:

@@ -2477,6 +2477,7 @@ class TestCompactStorageThriftAccesses(ThriftTester):
     """
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def test_get(self):
         node1, = self.cluster.nodelist()
         session = self.patient_cql_connection(node1)

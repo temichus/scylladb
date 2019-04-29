@@ -243,6 +243,7 @@ class TestNodetoolListSnapshots(Tester):
         self.assertTrue(self.compare_filesize_and_output(node, results))
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def test_snapshot_for_several_kses(self):
         """
         Validate the correctness of listsnapshots command if

@@ -6,6 +6,7 @@ from dtest import Tester
 from nose.plugins.attrib import attr
 
 @attr('next-gating')
+@attr('dtest-debug')
 class TestSimple(Tester):
 
     __test__ = False

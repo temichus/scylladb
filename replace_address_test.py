@@ -130,6 +130,7 @@ class TestReplaceAddress(Tester):
         node4.start(wait_for_binary_proto=True, replace_address=self.cluster.get_node_ip(3))
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def replace_active_node_test(self):
 
         debug("Starting cluster with 3 nodes.")

@@ -21,6 +21,7 @@ class ClusteringKeyFilterTest(Tester):
         return "\'class\':\'" + strategy + "\', \'min_threshold\' : \'999\'"
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def check_consistence_after_row_tombstone_test(self):
         node1 = self.start_cluster_and_get_node1()
 
@@ -47,6 +48,7 @@ class ClusteringKeyFilterTest(Tester):
         self.check_result(result, 'key1', ['a'])
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def check_non_composite_test(self):
         node1 = self.start_cluster_and_get_node1()
 
@@ -92,6 +94,7 @@ class ClusteringKeyFilterTest(Tester):
         self.check_result(result, 'key1', ['a'])
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def check_composite_test(self):
         node1 = self.start_cluster_and_get_node1()
 
