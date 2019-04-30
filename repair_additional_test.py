@@ -203,7 +203,7 @@ class RepairAdditionalBase(Tester):
         # node2, and see if node2 gets the new table, and all its data.
         node2.start(wait_other_notice=True, wait_for_binary_proto=True)
         time.sleep(10)  # see CASSANDRA-4373
-        debug("starting repair on node1...")
+        debug("starting repair on node2...")
         info = self._repair(node2,['ks'])
         debug(info[0])
         debug(info[1])
@@ -2431,9 +2431,11 @@ class RepairAdditionalTest(RepairAdditionalBase):
     def repair_disjoint_data_test(self, more_options=[]):
         return RepairAdditionalBase._repair_disjoint_data_test(self,more_options)
 
+    @attr('next-gating')
     def repair_schema_test(self):
         return RepairAdditionalBase._repair_schema_test(self)
 
+    @attr('next-gating')
     def repair_schema_2_test(self):
         return RepairAdditionalBase._repair_schema_2_test(self)
 
