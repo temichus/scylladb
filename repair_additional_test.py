@@ -2489,7 +2489,8 @@ class RepairAdditionalTest(RepairAdditionalBase):
     def repair_kill_3_test(self):
        return RepairAdditionalBase._repair_kill_3_test(self)
 
-    @attr('next-gating')
+    # @attr('next-gating')
+    # removed from next-gating due to https://github.com/scylladb/scylla/issues/4394
     def repair_during_update_test(self, more_options=[]):
        return RepairAdditionalBase._repair_during_update_test(self,more_options)
 
