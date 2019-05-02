@@ -248,6 +248,20 @@ class RandomClusterIdAllocator(ClusterIdAllocator):
                 return id
             except OSError as e:
                 if e.errno == errno.EEXIST:
+                    try:
+                        os.stat(link)
+                    except OSError as e2:
+                        if e2.errno == errno.ENOENT:
+                            # If the link target does not exist, recycle the ID
+                            # Note: may race with other instances doing the same
+                            tmp_link = "link.{}".format(os.getpid())
+                            try:
+                                os.rename(link, tmp_link)
+                            except OSError as e3:
+                                if e2.errno != errno.ENOENT:
+                                    debug("Could not rename {}: {}".format(link, e3))
+                            else:
+                                os.remove(tmp_link)
                     continue
                 raise Exception("Exception while allocating cluster ID {}: {}".format(id, e))
         raise Exception("Could not allocate cluster ID after {} retries".format(self._retries))
