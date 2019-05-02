@@ -286,7 +286,7 @@ class TestCommitLog(Tester):
 
         debug("Verify commitlog was replayed on startup")
         node1.start()
-        node1.watch_log_for("Starting listening for CQL clients")
+        node1.watch_log_for("Log replay complete")
         replays = node1.grep_log(" (\d+) replayed mutations")
         self.assertGreater(len(replays), 0)
         replayed_mutations = 0
