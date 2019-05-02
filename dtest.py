@@ -20,6 +20,7 @@ import datetime
 import inspect
 from unittest import TestCase
 import signal
+import random
 
 import psutil
 from cassandra import ConsistencyLevel
@@ -73,6 +74,7 @@ REUSE_CLUSTER = os.environ.get('REUSE_CLUSTER', '').lower() in ('yes', 'true')
 SILENCE_DRIVER_ON_SHUTDOWN = os.environ.get('SILENCE_DRIVER_ON_SHUTDOWN', 'true').lower() in ('yes', 'true')
 IGNORE_REQUIRE = os.environ.get('IGNORE_REQUIRE', '').lower() in ('yes', 'true')
 NOSE_PROCESSES = os.environ.get('NOSE_PROCESSES', 0)
+CLUSTER_ID_ALLOCATOR = os.environ.get('CLUSTER_ID_ALLOCATOR', '')
 KEEP_CORES = os.environ.get('KEEP_CORES', 'true').lower() in ('yes', 'true')
 DTEST_CORE_COMPRESS_TOOL = os.environ.get('DTEST_CORE_COMPRESS_TOOL', 'gzip')
 DTEST_CORE_COMPRESS_EXT = os.environ.get('DTEST_CORE_COMPRESS_EXT', 'gz')
@@ -187,7 +189,7 @@ class Runner(threading.Thread):
 
 
 class ClusterIdAllocator:
-    def alloc(self):
+    def alloc(self, cluster_dir):
         fail
 
     def free(self, id):
@@ -197,7 +199,7 @@ class ClusterIdAllocator:
 class SingleClusterIdAllocator(ClusterIdAllocator):
     _allocated = False
 
-    def alloc(self):
+    def alloc(self, cluster_dir):
         if not self._allocated:
             self._allocated = True
             return 0
@@ -219,7 +221,7 @@ class MultiProcessClusterIdAllocator(ClusterIdAllocator):
             self._id.put(id)
         self._lock = Lock()
 
-    def alloc(self):
+    def alloc(self, cluster_dir):
         with self._lock:
             id = self._id.get()
             return id
@@ -228,18 +230,61 @@ class MultiProcessClusterIdAllocator(ClusterIdAllocator):
         with self._lock:
             self._id.put(id)
 
+class RandomClusterIdAllocator(ClusterIdAllocator):
+    def __init__(self):
+        self._range = range(1, 255)
+        self._retries = 10
+        self._links = {}
+
+    def alloc(self, cluster_dir):
+        dirname = os.path.dirname(cluster_dir)
+        basename = os.path.basename(cluster_dir)
+        for id in random.sample(self._range, self._retries):
+            try:
+                link = os.path.join(dirname, str(id))
+                os.symlink(basename, link)
+                self._links[id] = link
+                debug("Allocated cluster ID {}: {}".format(id, cluster_dir))
+                return id
+            except OSError as e:
+                if e.errno == errno.EEXIST:
+                    continue
+                raise Exception("Exception while allocating cluster ID {}: {}".format(id, e))
+        raise Exception("Could not allocate cluster ID after {} retries".format(self._retries))
+
+    def free(self, id):
+        link = self._links.pop(id, None)
+        debug("Freeing cluster ID {}: link {}".format(id, link))
+        if not link:
+            raise AssertionError("No link found for ID {}".format(id))
+        try:
+            os.remove(link)
+        except OSError as e:
+            warning("Could not remove link {}: {}".format(link, e))
 
 def parallel_tests():
     return NOSE_PROCESSES > 0
 
-
 if parallel_tests():
     debug("going to run tests in parallel")
-    cluster_id_allocator = MultiProcessClusterIdAllocator()
+    if not CLUSTER_ID_ALLOCATOR:
+        CLUSTER_ID_ALLOCATOR = 'random'
 else:
     debug("going to run tests sequentially")
-    cluster_id_allocator = SingleClusterIdAllocator()
+    if not CLUSTER_ID_ALLOCATOR:
+        CLUSTER_ID_ALLOCATOR = 'single'
 
+if CLUSTER_ID_ALLOCATOR == 'random':
+    debug("using the RandomClusterIdAllocator")
+    cluster_id_allocator = RandomClusterIdAllocator()
+elif CLUSTER_ID_ALLOCATOR == 'multiprocess':
+    debug("using the MultiProcessClusterIdAllocator")
+    cluster_id_allocator = MultiProcessClusterIdAllocator()
+elif CLUSTER_ID_ALLOCATOR == 'single':
+    debug("using the SingleClusterIdAllocator")
+    cluster_id_allocator = SingleClusterIdAllocator()
+else:
+    raise AssertionError("Unsupported CLUSTER_ID_ALLOCATOR={}".format(CLUSTER_ID_ALLOCATOR))
 
 def make_execution_profile(retry_policy=FlakyRetryPolicy(), consistency_level=ConsistencyLevel.ONE, **kwargs):
     return ExecutionProfile(retry_policy=retry_policy,
@@ -297,7 +342,7 @@ class Tester(TestCase):
         if OFFHEAP_MEMTABLES:
             cluster.set_configuration_options(values={'memtable_allocation_type': 'offheap_objects'})
 
-        id = self.cluster_id_allocator.alloc()
+        id = self.cluster_id_allocator.alloc(self.test_path)
         cluster.set_id(id)
         cluster.set_ipprefix("127.0.%d." % id)
 
