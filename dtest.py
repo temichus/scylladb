@@ -790,17 +790,14 @@ class Tester(TestCase):
     def _timeout_handler(self, signum, frame):
         if not self._did_timeout:
             self._did_timeout = True
-            debug("got timeout signal, copying logs and clean cluster")
+            print "got timeout signal, copying logs and clean cluster in %s" % self.id()
             try:
                 self.copy_logs()
-
                 if not self._preserve_cluster:
                     self._cleanup_cluster()
-
             except Exception as e:
                 print "Error in timeout saving log:", str(e)
             finally:
-
                 self.nose_signal(signum, frame)
 
     def go(self, func):
