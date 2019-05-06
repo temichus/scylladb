@@ -953,7 +953,7 @@ class TestSecondaryIndexes(Tester):
                                              search_str='ERROR')
 
     def validate_index_data(self, session, cl, num_rows, table_name, index_column):
-        for delay_factor in range(5):
+        for _ in range(60):
             try:
                 debug('Verify data with {} consistency level'.format(ConsistencyLevel.value_to_name[cl]))
                 for i in xrange(num_rows):
@@ -961,7 +961,7 @@ class TestSecondaryIndexes(Tester):
                                expected=[[i]], cl=cl)
                 return
             except:
-                time.sleep(2**delay_factor)
+                time.sleep(1)
 
     def _node_action_with_delay(self, action, node=None, delay=0, wait=True, wait_other_notice=False, gently=True):
         """
