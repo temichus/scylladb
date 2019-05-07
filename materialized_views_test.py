@@ -1169,7 +1169,7 @@ class TestMaterializedViews(Tester):
 
         debug("Reading 1k from view")
         for i in xrange(1000):
-            assert_one(session, "SELECT * FROM t_by_v WHERE v = {}".format(-i), [-i, i])
+            self.eventually_assert_one(session, "SELECT * FROM t_by_v WHERE v = {}".format(-i), [-i, i])
 
         debug("Reading 1k from base")
         for i in xrange(1000):
@@ -1187,7 +1187,7 @@ class TestMaterializedViews(Tester):
 
         debug("Verifying data from new node in view")
         for i in xrange(1000):
-            assert_one(session2, "SELECT * FROM ks.t_by_v WHERE v = {}".format(-i), [-i, i])
+            self.eventually_assert_one(session2, "SELECT * FROM ks.t_by_v WHERE v = {}".format(-i), [-i, i])
 
         debug("Inserting 100 into base")
         for i in xrange(1000, 1100):
@@ -1195,7 +1195,7 @@ class TestMaterializedViews(Tester):
 
         debug("Verify 100 in view")
         for i in xrange(1000, 1100):
-            assert_one(session, "SELECT * FROM t_by_v WHERE v = {}".format(-i), [-i, i])
+            self.eventually_assert_one(session, "SELECT * FROM t_by_v WHERE v = {}".format(-i), [-i, i])
 
         self._check_errors(node=self.cluster.nodelist()[0], exclude_errors='migration_task - Can''t send migration request')
 
