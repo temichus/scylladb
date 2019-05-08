@@ -3,6 +3,7 @@ import random
 import re
 import time
 import uuid
+from collections import defaultdict
 from unittest import skip
 from nose.plugins.attrib import attr
 
@@ -11,7 +12,7 @@ from tools import since, require, rows_to_list, new_node
 from assertions import assert_all, assert_invalid, assert_one, assert_row_count, assert_none, assert_expected_error, \
                         assert_row_count_from_every_node, assert_row_count_in_select
 from scylla_tools import index_is_built, get_index_view_name, view_built_status_query, check_errors, \
-                         wait_for_view_build_start, remove_node, check_errors_all_nodes
+                         wait_for_view_build_start, remove_node, check_errors_all_nodes, generate_random_text
 
 from cassandra import ConsistencyLevel, InvalidRequest, WriteFailure
 from cassandra.concurrent import (execute_concurrent,
@@ -1359,6 +1360,121 @@ class TestPreJoinCallback(Tester):
 
         self._base_test(write_survey_and_join)
 
+class TestLocalIndexes(Tester):
+
+    def config_keyspace(self, session, ks_name, table_name, index, columns=None, ks_create=True,
+                        global_index_name=None):
+        if ks_create:
+            self.create_ks(session, ks_name, 1)
+        session.execute('USE {}'.format(ks_name))
+        self.create_cf(session, '{0}.{1}'.format(ks_name, table_name), key_type='text', columns=columns)
+        create_and_build_index(create_index_func=self.create_local_index, cluster=self.cluster,
+                               session=session, ks_name=ks_name, table_name=table_name,
+                               index_column=index['index_column'], index_name=index['index_name'],
+                               pk_name=index['pk_name'])
+
+        if global_index_name:
+            create_and_build_index(create_index_func=self.create_index, cluster=self.cluster,
+                                   session=session, ks_name=ks_name, table_name=table_name,
+                                   index_column=index['index_column'], index_name=global_index_name)
+
+    def simple_local_index_test(self):
+        """
+        - Create table with 3 columns
+        - Create local index on "v" column and partition key "key"
+        - Filter data by key and local index and validate result
+        """
+        session = prepare(self, nodes=4, rf=3)
+
+        ks_name = 'ks'
+        table_name = 'cf'
+        index = {'index_name': 'v_local_key', 'index_column': 'v', 'pk_name': 'key'}
+
+        self.config_keyspace(session, ks_name, table_name, index, ks_create=False)
+
+        data = {
+                'Tel Aviv': [{'c': generate_random_text(), 'v': 'Dizzengof'},
+                             {'c': generate_random_text(), 'v': 'Arlozorov'}],
+                'Washington': [{'c': generate_random_text(), 'v': 'Southgate'},
+                               {'c': generate_random_text(), 'v': '11th'},
+                               {'c': generate_random_text(), 'v': '10th'}],
+                'London': [{'c': generate_random_text(), 'v': 'Geneva'},
+                           {'c': generate_random_text(), 'v': 'Moorland'}],
+                'Vancouver': [{'c': generate_random_text(), 'v': '12th Ave'},
+                              {'c': generate_random_text(), 'v': '16th Ave'}]
+               }
+
+        for key, row_columns in data.items():
+            for columns_data in row_columns:
+                query = "INSERT INTO {table_name} (key, c, v) VALUES ('{key}', '{c}', '{v}')".\
+                        format(table_name=table_name, key=key, c=columns_data['c'], v=columns_data['v'])
+                session.execute(query)
+
+        for key, indexes in data.items():
+            for columns_data in indexes:
+                ck = columns_data['c']
+                index_value = columns_data['v']
+                query = "SELECT key, c, v FROM {table_name} WHERE key='{key}' AND v='{index_value}'".format(**locals())
+                assert_all(session=session, query=query, expected=[[key, ck, index_value]], cl=ConsistencyLevel.QUORUM,
+                           num_attempts=30)
+
+    def global_local_index_on_same_column_test(self):
+        """
+        - Create table with 3 columns
+        - Create local index on "v" column and partition key "key"
+        - Create global index on "v" column
+        - Filter data by key and local index and validate result
+        - Filter data by global index and validate result
+        """
+        session = prepare(self, nodes=4, rf=3)
+
+        ks_name = 'ks'
+        table_name = 'cf'
+        index = {'index_name': 'v_local_key', 'index_column': 'v', 'pk_name': 'key'}
+
+        self.config_keyspace(session, ks_name, table_name, index, ks_create=False, global_index_name='v_global_key')
+
+        local_data = {'Tel Aviv': [{'c': generate_random_text(), 'v': 'Dizzengof'},
+                                   {'c': generate_random_text(), 'v': 'Geneva'}],
+                      'Washington': [{'c': generate_random_text(), 'v': 'Southgate'},
+                                      {'c': generate_random_text(), 'v': 'Dizzengof'},
+                                      {'c': generate_random_text(), 'v': '10th'}],
+                      'London': [{'c': generate_random_text(), 'v': 'Geneva'},
+                                  {'c': generate_random_text(), 'v': 'Moorland'}],
+                      'Vancouver': [{'c': generate_random_text(), 'v': '12th Ave'},
+                                   {'c': generate_random_text(), 'v': 'Geneva'}]
+                     }
+
+        # Dictionary for filter by global index
+        global_data = defaultdict(list)
+        for key, indexes in local_data.items():
+            for columns_data in indexes:
+                global_data[columns_data['v']].append({'pk': key, 'c': columns_data['c']})
+
+        # Insert data
+        for key, columns in local_data.items():
+            for columns_data in columns:
+                query = "INSERT INTO {table_name} (key, c, v) VALUES ('{key}', '{c}', '{v}')".\
+                        format(table_name=table_name, key=key, c=columns_data['c'], v=columns_data['v'])
+                session.execute(query)
+
+        # Filter by local index
+        for key, columns in local_data.items():
+            for columns_data in columns:
+                ck = columns_data['c']
+                index_value = columns_data['v']
+                query = "SELECT key, c, v FROM {table_name} WHERE key='{key}' AND v='{index_value}'".format(**locals())
+                assert_all(session=session, query=query, expected=[[key, ck, index_value]], cl=ConsistencyLevel.QUORUM,
+                       ignore_order=True, num_attempts=30)
+
+        # Filter by global index
+        for index_value, columns in global_data.items():
+            expected_result = [[row['pk'], row['c']] for row in columns]
+            query = "SELECT key, c FROM {table_name} WHERE v='{index_value}'".format(**locals())
+            assert_all(session=session, query=query, expected=expected_result, cl=ConsistencyLevel.QUORUM,
+                       ignore_order=True, num_attempts=30)
+
+
 def assert_bootstrap_state(tester, node, expected_bootstrap_state):
     """
     Assert that a node is on a given bootstrap state
@@ -1372,8 +1488,15 @@ def assert_bootstrap_state(tester, node, expected_bootstrap_state):
     # assert_one(session, "SELECT bootstrapped FROM system.local WHERE key='local'", [expected_bootstrap_state])
     assert_all(session, "SELECT bootstrapped FROM system.local WHERE key='local'", [expected_bootstrap_state])
 
-def create_and_build_index(create_index_func, cluster, session, ks_name, table_name, index_column, index_name, compaction=None):
-    create_index_func(session, table_name, index_column, index_name, compaction)
+def create_and_build_index(create_index_func, cluster, session, ks_name, table_name, index_column, index_name,
+                           pk_name=None, compaction=None):
+    if not pk_name:
+        create_index_func(session=session, table_name=table_name, index_column=index_column,
+                          index_name=index_name, compaction=compaction)
+    else:
+        create_index_func(session=session, table_name=table_name, index_column=index_column,
+                          index_name=index_name, compaction=compaction, pk_name=pk_name)
+
     index_is_built(cluster, session, ks_name, table_name, index_name)
 
 def prepare(self, user_table=False, rf=3, options={}, keyspace_name='ks', nodes=3, use_vnodes=False,

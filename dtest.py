@@ -866,6 +866,15 @@ class Tester(TestCase):
             session.execute('ALTER MATERIALIZED VIEW {}_index WITH compaction={}'.format(index_name, {'class': compaction}))
         debug('Index {} has been created'.format(index_name))
 
+    def create_local_index(self, session, table_name, pk_name, index_column, index_name=None, compaction=None):
+        query = "CREATE INDEX {index_name} ON {table_name} (({pk_name}), {index_column});".format(**locals())
+        debug('Create index: {}'.format(query))
+        session.execute(query)
+        if compaction:
+            # Update appropriate to index materialized view with compaction storage
+            session.execute('ALTER MATERIALIZED VIEW {}_index WITH compaction={}'.format(index_name, {'class': compaction}))
+        debug('Index {} has been created'.format(index_name))
+
     @classmethod
     def tearDownClass(cls):
         reset_environment_vars()

@@ -151,6 +151,9 @@ def query_c1c2_concurrent(session, keys, consistency=ConsistencyLevel.QUORUM, to
         check_c1c2_result_one(success, list(result), tolerate_missing, must_be_missing, c1, c2),
         results, c1_values, c2_values)
 
+def generate_random_text(length=10):
+    return ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(length))
+
 def drop_table(session, table_name, if_exists=False):
     session.execute("DROP TABLE {} {}".format('IF EXISTS' if if_exists else '', table_name))
 
