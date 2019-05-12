@@ -461,15 +461,16 @@ class TestTTL(Tester):
 
     def execute_statement(self, action, ttl, start_key_value, end_key_value, table_name):
         # debug('{action} rows {start_key_value}-{end_key_value} using TTL {ttl}'.format(**locals()))
-        start_time = time.time()
-        readble_start_time = self.format_float_time_to_readable(start_time)
+        readble_start_time = self.format_float_time_to_readable()
         debug('{action} rows with keys from {start_key_value} to {end_key_value} with TTL {ttl} started at '
               '{readble_start_time}'.format(**locals()))
         # TODO: add UPDATE action
         if action == 'INSERT':
             self.insert_few_rows(start=start_key_value, end=end_key_value, ttl=ttl, table_name=table_name)
-        debug('{} has been finished at {}'.format(action, self.format_float_time_to_readable()))
-        return start_time
+        execute_time = time.time()
+        readble_execute_time = self.format_float_time_to_readable(execute_time)
+        debug('{} has been finished at {}'.format(action, readble_execute_time))
+        return execute_time
 
     def overlaped_rows_ttls_test(self):
         """ Test when different ttls are applyed  to the same rows
@@ -499,31 +500,31 @@ class TestTTL(Tester):
             ttl = ttls[1]
             steps = {
                       ttl: {'expected_result': [[i] for i in xrange(1, 21) if i not in [5, 6, 7, 8, 10]],
-                      'start_time': self.execute_statement(action='INSERT', ttl=ttl, start_key_value=5, end_key_value=10, table_name=table_name)
+                      'execute_time': self.execute_statement(action='INSERT', ttl=ttl, start_key_value=5, end_key_value=10, table_name=table_name)
                      }
                     }
 
             # Update rows with key 9-13 with TTL 25
             ttl = ttls[2]
             steps[ttl] = {'expected_result': [[i] for i in xrange(1, 21) if i < 5 or i > 10],
-                          'start_time': self.execute_statement(action='INSERT', ttl=ttl, start_key_value=9, end_key_value=13, table_name=table_name)
+                          'execute_time': self.execute_statement(action='INSERT', ttl=ttl, start_key_value=9, end_key_value=13, table_name=table_name)
                          }
 
             # Update rows with key 10-11 with TTL 13
             ttl = ttls[0]
             steps[ttl] = {'expected_result': [[i] for i in xrange(1, 21) if i != 10],
-                          'start_time': self.execute_statement(action='INSERT', ttl=ttl, start_key_value=10, end_key_value=11, table_name=table_name)
+                          'execute_time': self.execute_statement(action='INSERT', ttl=ttl, start_key_value=10, end_key_value=11, table_name=table_name)
                          }
 
             # Update rows with key 11-15 with TTL 30
             ttl = ttls[3]
             steps[ttl] = {'expected_result': [[i] for i in xrange(1, 21) if i < 5 or i > 15],
-                          'start_time': self.execute_statement(action='INSERT', ttl=ttl, start_key_value=11, end_key_value=15, table_name=table_name)
+                          'execute_time': self.execute_statement(action='INSERT', ttl=ttl, start_key_value=11, end_key_value=15, table_name=table_name)
                          }
 
             for ttl in ttls:
                 debug('*******Assert records with TTL {}'.format(ttl))
-                self.smart_sleep_with_print(steps[ttl]['start_time'], ttl+1)
+                self.smart_sleep_with_print(steps[ttl]['execute_time'], ttl+2)
                 assert_all(session=self.session1, query='select key from {}'.format(table_name),
                            expected=steps[ttl]['expected_result'], cl=ConsistencyLevel.QUORUM, ignore_order=True)
 
