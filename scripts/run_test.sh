@@ -112,6 +112,7 @@ docker_cmd="docker run --detach=true \
     -e KEEP_TEST_DIR \
     -e KEEP_CORES \
     -e NOSE_PROCESSES \
+    -e CLUSTER_ID_ALLOCATOR \
     -w ${DTEST_DIR} \
     -v /etc/passwd:/etc/passwd:ro \
     -v /etc/group:/etc/group:ro \
