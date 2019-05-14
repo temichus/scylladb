@@ -112,6 +112,10 @@ def debug(msg, add_timestamp=True):
     if PRINT_DEBUG:
         print msg
 
+def info(msg, add_timestamp=True):
+    LOG.info(CURRENT_TEST + ' - ' + str(msg))
+    msg = '{0}{1}'.format('{} '.format(datetime.datetime.now()) if add_timestamp else '', msg)
+    print msg
 
 def retry_till_success(fun, *args, **kwargs):
     timeout = kwargs.pop('timeout', 60)
@@ -308,7 +312,6 @@ def make_execution_profile(retry_policy=FlakyRetryPolicy(), consistency_level=Co
 
 class Tester(TestCase):
     _multiprocess_can_split_ = True
-    waitkilltime = 180.0 # enlarge the time nose-mutliprocess will wait until killing the process, so we'll have time to copy logs and cleanup cluster
 
     def __init__(self, *argv, **kwargs):
         # if False, then scan the log of each node for errors after every test.
@@ -318,7 +321,7 @@ class Tester(TestCase):
         self.cluster_id_allocator = cluster_id_allocator
         self.cluster_options = kwargs.pop('cluster_options', None)
         self.cassandra_version = kwargs.pop('cassandra_version', None)
-        self._did_timeout = False
+        self._handling_timeout = False
         super(Tester, self).__init__(*argv, **kwargs)
 
     def _get_cluster(self, name='test', version=None):
@@ -380,7 +383,7 @@ class Tester(TestCase):
         self.var_debug(cluster)
         self.var_trace(cluster)
 
-    def _cleanup_cluster(self):
+    def _cleanup_cluster(self, remove=True):
         if SILENCE_DRIVER_ON_SHUTDOWN:
             # driver logging is very verbose when nodes start going down -- bump up the level
             logging.getLogger('cassandra').setLevel(logging.CRITICAL)
@@ -394,22 +397,23 @@ class Tester(TestCase):
             if RECORD_COVERAGE:
                 self.cluster.stop(gently=True)
 
-            # Cleanup everything:
-            debug("removing ccm cluster " + self.cluster.name + " at: " + self.test_path)
-            self.cluster.remove()
+            if remove:
+                # Cleanup everything:
+                debug("removing ccm cluster " + self.cluster.name + " at: " + self.test_path)
+                self.cluster.remove()
 
-            debug("clearing ssl stores from [{0}] directory".format(self.test_path))
-            for filename in ('keystore.jks', 'truststore.jks', 'ccm_node.cer', 'ccm_node.pem', 'ccm_node.key', 'trust.pem'):
-                try:
-                    os.remove(os.path.join(self.test_path, filename))
-                except OSError as e:
-                    # once we port to py3, which has better reporting for exceptions raised while
-                    # handling other excpetions, we should just assert e.errno == errno.ENOENT
-                    if e.errno != errno.ENOENT:  # ENOENT = no such file or directory
-                        raise
+                debug("clearing ssl stores from [{0}] directory".format(self.test_path))
+                for filename in ('keystore.jks', 'truststore.jks', 'ccm_node.cer', 'ccm_node.pem', 'ccm_node.key', 'trust.pem'):
+                    try:
+                        os.remove(os.path.join(self.test_path, filename))
+                    except OSError as e:
+                        # once we port to py3, which has better reporting for exceptions raised while
+                        # handling other excpetions, we should just assert e.errno == errno.ENOENT
+                        if e.errno != errno.ENOENT:  # ENOENT = no such file or directory
+                            raise
 
-            if os.path.exists(self.test_path):
-                os.rmdir(self.test_path)
+                if os.path.exists(self.test_path):
+                    os.rmdir(self.test_path)
         if os.path.exists(LAST_TEST_DIR):
             os.remove(LAST_TEST_DIR)
 
@@ -847,17 +851,20 @@ class Tester(TestCase):
             signal.signal(signal.SIGILL, self.nose_signal)
 
     def _timeout_handler(self, signum, frame):
-        if not self._did_timeout:
-            self._did_timeout = True
-            print "got timeout signal, copying logs and clean cluster in %s" % self.id()
+        if not self._handling_timeout:
+            self._handling_timeout = True
+            info("got timeout signal, copying logs and clean cluster in %s" % self.id())
             try:
                 self.copy_logs()
                 if not self._preserve_cluster:
-                    self._cleanup_cluster()
+                    self._cleanup_cluster(remove=False)
             except Exception as e:
-                print "Error in timeout saving log:", str(e)
+                warning("Error in timeout saving log:", str(e))
             finally:
                 self.nose_signal(signum, frame)
+                self._handling_timeout = False
+        else:
+            warning("got nested timeout signal in %s" % self.id())
 
     def go(self, func):
         runner = Runner(func)
