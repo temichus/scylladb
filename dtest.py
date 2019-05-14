@@ -232,7 +232,7 @@ class MultiProcessClusterIdAllocator(ClusterIdAllocator):
 
 class RandomClusterIdAllocator(ClusterIdAllocator):
     def __init__(self):
-        self._range = range(1, 255)
+        self._range = list(range(1, 100))
         self._retries = 10
         self._links = {}
 
