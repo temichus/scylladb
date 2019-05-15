@@ -301,9 +301,15 @@ class TestMaterializedViews(Tester):
             debug('Sleep for {} seconds'.format(delay))
             time.sleep(delay)
 
-        for node in self.cluster.nodelist():
+        other_nodes = self.cluster.nodelist()
+        stop_nodes = []
+        for node in other_nodes:
             if (by_dc_name and node.data_center == by_dc_name) or (by_node_names and node.name in by_node_names):
-                self._node_action_with_delay('stop', node, wait=wait, wait_other_notice=wait_other_notice, gently=gently)
+                stop_nodes.append(node)
+                other_nodes.remove(node) 
+
+        for node in stop_nodes:
+            self._node_action_with_delay('stop', node, wait=wait, wait_other_notice=wait_other_notice, other_nodes=other_nodes, gently=gently)
 
     @require('#4423')
     def add_dc_during_mv_insert_test(self):
