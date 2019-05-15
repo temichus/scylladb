@@ -702,8 +702,8 @@ class TestMigration(MigrationTestBase):
                " partitioner used by the database"
 
 
-@skip('not run every build')
-@attr('long','compare-cassandra')
+# @skip('not run every build')
+# @attr('long','compare-cassandra')
 class TTLWithMigrate(Tester):
     """ Test Time To Live Feature with Migration"""
 
@@ -743,7 +743,7 @@ class TTLWithMigrate(Tester):
          - Take dump
          - Compare dumps
         """
-        self.prepare(nodes=4, rf=3, configuration_options={'enable_sstables_mc_format': True})
+        self.prepare(nodes=4, rf=3)
         keyspace_name = 'ks'
         table_name = 'cf'
         int_columns = 99

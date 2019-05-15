@@ -477,7 +477,7 @@ class TestTTL(Tester):
             Perform the test for different compaction strategies
         """
 
-        self.prepare(nodes=4, rf=3, configuration_options={'enable_sstables_mc_format': True})
+        self.prepare(nodes=4, rf=3)
 
         strategies = ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy',
                       'TimeWindowCompactionStrategy']

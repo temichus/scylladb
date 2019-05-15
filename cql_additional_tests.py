@@ -66,9 +66,6 @@ class TestCQL(Tester):
         if start_rpc:
             cluster.set_configuration_options(values={'start_rpc': True})
 
-        enable_sstables_mc_format = kwargs.pop('enable_sstables_mc_format', False)
-        cluster.set_configuration_options(values={'enable_sstables_mc_format': enable_sstables_mc_format})
-
         if not cluster.nodelist():
             cluster.populate(nodes).start()
         node1 = cluster.nodelist()[0]
@@ -5035,7 +5032,7 @@ class TestCQL(Tester):
     def mc_prepare_table(self, nodes, keyspace_name, table_name, dataset, data_amount,
                          columns=['"ID"', '"Ck1"', '"cK2"', '"Columnfamily_for_mc_sstables_column1"'],
                          keys_amount=3, rf=4):
-        session = self.prepare(create_keyspace=False, nodes=nodes, rf=4, enable_sstables_mc_format=True)
+        session = self.prepare(create_keyspace=False, nodes=nodes, rf=4)
         session.consistency_level = 'QUORUM'
         self.create_ks(session=session, name=keyspace_name, rf=rf)
         session.execute('USE {}'.format(keyspace_name))
