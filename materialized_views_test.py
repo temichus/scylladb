@@ -195,7 +195,7 @@ class TestMaterializedViews(Tester):
                                                        exclude_errors=['mutation_write_timeout_exception'])
 
     def _run_node_failure_during_mv_stress_insert(self, rf, nodes, node_action, delay=30, duration='1m', double_failure=False, exclude_errors=None):
-        self.prepare(rf=rf, nodes=nodes)
+        session = self.prepare(rf=rf, nodes=nodes)
         mv_profile = os.path.abspath(os.path.join("test_data", 'cassandra-mv-profile', 'cs_mv_profile.yaml'))
 
         node1 = self.cluster.nodelist()[0]
@@ -205,6 +205,7 @@ class TestMaterializedViews(Tester):
                                                       "-rate threads=10", "-pop seq=1..{}".format(n)],
                                     capture_output=True)
         self.assertFalse(stderr, 'Run c-s failed: {}'.format(stderr))
+        nodes_to_start = None
 
         proc_functions = [
             {'func': node1.stress, 'args': [['user', 'profile={}'.format(mv_profile), 'cl=ONE', 'duration={}'.format(duration),
@@ -216,29 +217,56 @@ class TestMaterializedViews(Tester):
         if double_failure and len(self.cluster.nodelist()) > 2:
             proc_functions.append({'func': self._node_action_with_delay, 'args': (node_action, self.cluster.nodelist()[2]),
                                    'kwargs': {'delay': delay+10}})
+            nodes_to_start = [self.cluster.nodelist()[1], self.cluster.nodelist()[2]]
         run_in_parallel(proc_functions)
 
-        self.eventually(lambda: self._validate_cs_results(node1, exclude_errors, node_action, double_failure, by_node=False))
+        # Index will not finish building, because view building underneath is paused until updates can be sent.
+        if node_action == 'stop':
+            if not nodes_to_start:
+                nodes_to_start = [self.cluster.nodelist()[1]]
+            self._start_nodes(nodes_to_start)
+
+        wait_for_view(cluster=self.cluster, session=session, ks='mview', view='users_by_first_name')
+        wait_for_view(cluster=self.cluster, session=session, ks='mview', view='users_by_last_name')
+
+        if node_action != 'remove':
+            self.eventually(lambda: self._validate_cs_results(node1, exclude_errors, node_action, double_failure,
+                                                          by_node=False, cl=ConsistencyLevel.ALL))
+
+        self.eventually(lambda: self._validate_cs_results(node1, exclude_errors, node_action, double_failure,
+                                                          by_node=False))
 
     def multidc_dc_failure_during_mv_insert_test(self):
         """ Test stopping all DC nodes during MV inserts
-            Test starts with a starting size: two DCs with 2 nodes each, and stops 2 nodes of second DC during inserts into base
+            Test starts with a starting size: two DCs with 2 nodes each, and stops 2 nodes of second DC during inserts
+            into base
             table that cause to update materialized view as well (using cs_mv_profile.yaml profile).
             Validate the log has no errors.
             Issue #2783: there are mutation_write_timeout_exception in case starting size 4 and more
         """
-        self.prepare(rf={'dc1': 2, 'dc2': 1}, nodes=[3, 3])
+        session = self.prepare(rf={'dc1': 2, 'dc2': 1}, nodes=[3, 3])
         mv_profile = os.path.abspath(os.path.join("test_data", 'cassandra-mv-profile', 'cs_mv_multidc_profile.yaml'))
 
         node1_dc1 = [node for node in self.cluster.nodelist() if node.data_center == 'dc1'][0]
-        proc_functions = [{'func': node1_dc1.stress, 'args': [['user', 'profile={}'.format(mv_profile), 'cl=QUORUM', 'duration=2m',
-                                                          'ops(insert=3,read1=1,read2=1,read3=1)', '-mode cql3  native', '-rate threads=10'
+        proc_functions = [{'func': node1_dc1.stress, 'args': [['user', 'profile={}'.format(mv_profile), 'cl=QUORUM',
+                                                               'duration=2m', 'ops(insert=3,read1=1,read2=1,read3=1)',
+                                                               '-mode cql3  native', '-rate threads=10'
                                                            ], True]},
                           {'func': self._stop_few_nodes, 'kwargs': {'delay': 30, 'by_dc_name': 'dc2'}}]
         run_in_parallel(proc_functions)
 
+        # Index will not finish building, because view building underneath is paused until updates can be sent.
+        for node in self.cluster.nodelist():
+            if node.data_center == 'dc2':
+                debug('Start node {}'.format(node.name))
+                node.start(wait_for_binary_proto=True)
+
+        wait_for_view(cluster=self.cluster, session=session, ks='mview', view='users_by_first_name')
+        wait_for_view(cluster=self.cluster, session=session, ks='mview', view='users_by_last_name')
+
         self.allow_log_errors = True
-        self.eventually(lambda: self._validate_cs_results(node1_dc1, exclude_errors=['mutation_write_timeout_exception'], node_action='', double_failure=True))
+        self.eventually(lambda: self._validate_cs_results(node1_dc1, exclude_errors=['mutation_write_timeout_exception'],
+                                                          node_action='', double_failure=True))
 
     def _node_action_with_delay(self, action, node, delay=0, wait=True, wait_other_notice=True, gently=True):
         """
@@ -641,7 +669,8 @@ class TestMaterializedViews(Tester):
                 for mv_name in tm.materialized_views.iterkeys():
                     wait_for_view(cluster=self.cluster, session=session, ks=tm.keyspace, view=mv_name)
 
-                self._validate_data_in_mvs(tm=tm, session=session, table_expected_rows=rows_after_test, mv_expected_rows=rows_after_test,
+                self._validate_data_in_mvs(tm=tm, session=session, table_expected_rows=rows_after_test,
+                                           mv_expected_rows=rows_after_test,
                                            node_action=change_type.split(' ')[0])
 
             if change_type in ['stop node', 'restart node']:
@@ -649,7 +678,8 @@ class TestMaterializedViews(Tester):
                 for mv_name in tm.materialized_views.iterkeys():
                     wait_for_view(cluster=self.cluster, session=session, ks=tm.keyspace, view=mv_name)
 
-                self._validate_data_in_mvs(tm=tm, session=session, table_expected_rows=rows_after_test, mv_expected_rows=rows_after_test,
+                self._validate_data_in_mvs(tm=tm, session=session, table_expected_rows=rows_after_test,
+                                           mv_expected_rows=rows_after_test,
                                            consistency_level=ConsistencyLevel.ALL)
         except Exception:
             if not fail:
@@ -2766,7 +2796,7 @@ class TestMaterializedViews(Tester):
         session.execute("CREATE TABLE t (id int PRIMARY KEY, v int, v2 text, v3 decimal)")
         session.execute(("CREATE MATERIALIZED VIEW t_by_v AS SELECT * FROM t "
                          "WHERE v IS NOT NULL AND id IS NOT NULL PRIMARY KEY (v, id)"))
-
+        wait_for_view(cluster=self.cluster, session=session, ks="ks", view="t_by_v")
         session.cluster.control_connection.wait_for_schema_agreement()
 
         debug('Write initial data')
@@ -2875,7 +2905,7 @@ class TestMaterializedViews(Tester):
                         "WITH gc_grace_seconds = 5")
         session.execute(("CREATE MATERIALIZED VIEW ks.t_by_v AS SELECT * FROM t "
                          "WHERE v IS NOT NULL AND id IS NOT NULL PRIMARY KEY (v, id)"))
-
+        wait_for_view(cluster=self.cluster, session=session, ks="ks", view="t_by_v")
         session.cluster.control_connection.wait_for_schema_agreement()
 
         self._stop_nodes([node2, node3])
@@ -2951,7 +2981,7 @@ class TestMaterializedViews(Tester):
         session.execute(("CREATE MATERIALIZED VIEW ks.t_by_v AS SELECT * FROM t "
                          "WHERE v IS NOT NULL AND id IS NOT NULL AND v IS NOT NULL AND "
                          "v2 IS NOT NULL PRIMARY KEY (v2, v, id)"))
-
+        wait_for_view(cluster=self.cluster, session=session, ks="ks", view="t_by_v")
         session.cluster.control_connection.wait_for_schema_agreement()
 
         debug('Shutdown node2 and node3')
