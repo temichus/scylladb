@@ -203,7 +203,7 @@ class TestCommitLog(Tester):
         self.assertTrue(node1.is_running(), "node is not running")
         node1.watch_log_for("Log replay complete")
         # Here we verify there was more than 0 replayed mutations
-        zero_replays = node1.grep_log(" 0 replayed mutations")
+        zero_replays = node1.grep_log(" 0 replayed mutations", filter_expr='DEBUG')
         self.assertEqual(0, len(zero_replays))
 
         debug("Make query and ensure data is present")
@@ -287,7 +287,7 @@ class TestCommitLog(Tester):
         debug("Verify commitlog was replayed on startup")
         node1.start()
         node1.watch_log_for("Log replay complete")
-        replays = node1.grep_log(" (\d+) replayed mutations")
+        replays = node1.grep_log(" (\d+) replayed mutations", filter_expr='DEBUG')
         self.assertGreater(len(replays), 0)
         replayed_mutations = 0
         for line, m in replays:
@@ -675,7 +675,7 @@ class TestCommitLog(Tester):
         node1.start()
         node1.watch_log_for("Log replay complete")
         # Here we verify there was more than 0 replayed mutations
-        zero_replays = node1.grep_log(" 0 replayed mutations")
+        zero_replays = node1.grep_log(" 0 replayed mutations", filter_expr='DEBUG')
         self.assertEqual(0, len(zero_replays))
 
         debug("Make query and ensure data is present as expected")
