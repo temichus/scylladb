@@ -465,7 +465,6 @@ class Tester(TestCase):
     def setUp(self):
         global CURRENT_TEST
         CURRENT_TEST = self.id() + self._testMethodName
-        self.nose_signal = signal.signal(signal.SIGILL, self._timeout_handler)
 
         # On Windows, forcefully terminate any leftover previously running cassandra processes. This is a temporary
         # workaround until we can determine the cause of intermittent hung-open tests and file-handles.
@@ -848,23 +847,6 @@ class Tester(TestCase):
                     self._cleanup_cluster()
                 elif self._preserve_cluster and failed:
                     self._cleanup_cluster()
-            signal.signal(signal.SIGILL, self.nose_signal)
-
-    def _timeout_handler(self, signum, frame):
-        if not self._handling_timeout:
-            self._handling_timeout = True
-            info("got timeout signal, copying logs and clean cluster in %s" % self.id())
-            try:
-                self.copy_logs()
-                if not self._preserve_cluster:
-                    self._cleanup_cluster(remove=False)
-            except Exception as e:
-                warning("Error in timeout saving log:", str(e))
-            finally:
-                self.nose_signal(signum, frame)
-                self._handling_timeout = False
-        else:
-            warning("got nested timeout signal in %s" % self.id())
 
     def go(self, func):
         runner = Runner(func)
