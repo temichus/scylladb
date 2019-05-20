@@ -1,5 +1,6 @@
 import sys
 import time
+import os
 from unittest import skipIf
 from unittest import skip
 
@@ -554,3 +555,38 @@ class TestBatch(Tester):
         node.start(wait_other_notice=True, wait_for_binary_proto=True)
         debug('Upgrading sstables')
         node.nodetool('upgradesstables -a')
+
+
+    def _base_batchlog_manager_issue(self, rack_names):
+        cluster = self.cluster
+        cluster.set_configuration_options(values={'endpoint_snitch': 'org.apache.cassandra.locator.GossipingPropertyFileSnitch'})
+
+        for i, node in enumerate(cluster.nodelist()):
+            with open(os.path.join(node.get_conf_dir(), 'cassandra-rackdc.properties'), 'w') as snitch_file:
+                rack_name = rack_names[i % len(rack_names)]
+                for line in ["dc={}".format(node.data_center), "rack={}".format(rack_name)]:
+                    snitch_file.write(line + os.linesep)
+
+        debug('Restart scylla cluster to enable rack setup ...')
+        cluster.stop()
+        cluster.start(wait_for_binary_proto=True)
+
+        node.stress(["user", "no-warmup", "profile=/tmp/complex_schema.yaml", "ops(insert=1)", "cl=ALL",
+                     "duration=5s", "-mode", "cql3", "native", "-rate", "threads=100", "-pop", "seq=1..500"])
+
+        for node in cluster.nodelist():
+            self.assertEqual(0, len(node.grep_log('unknown endpoint')))
+            self.assertEqual(0, len(node.grep_log('fail to connect: connect: Invalid argument')))
+
+    def test_batchlog_manager_issue(self):
+        """
+        This subtest is used to reproduce batchlog manager issue(scylla/issues/3229)
+        """
+        cluster = self.cluster
+        cluster.populate([4])
+
+        # To reproduce the bug we depend on how hash table hashes its elements,
+        # this depends on an implementation and the elements itself.
+        # Here we try with multiple cases.
+        for rack_names in [['rc', 'rc2', 'rc3', 'rc4'], ['1a', '1b', '1c', '1d'], ['rc1', 'rc2', 'rc3', 'rc4']]:
+            self._base_batchlog_manager_issue(rack_names)
