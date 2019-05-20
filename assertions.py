@@ -191,3 +191,7 @@ def assert_equal_more_with_deviation(actual, expect, deviation_perc):
     deviation_high = (expect * (100 + deviation_perc))/100
     assert expect <= actual < deviation_high, 'Expect that result will be between %d and %d, but received ' \
                                                            '%d' % (expect, deviation_high, actual)
+
+def assert_less_equal_lists(actual_list, expected_list, msg=None):
+    standardMsg = msg or '{actual_list} not less than or equal to {expected_list}'.format(**locals())
+    assert set(actual_list) <= set(expected_list), standardMsg
