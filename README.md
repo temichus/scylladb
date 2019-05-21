@@ -123,12 +123,66 @@ set it to something like:
 The tests will use this directory by default, avoiding the need for any
 environment variable (that still will have precedence if given though).
 
+To run a specific test in a test file concatenate class and test:
+
+    nosetests -v <file>.py:<class>.<test>
+
 To run the same tests that are used to validate changes into master,
 use `-a next-gating`.
 
 Note: To run the upgrade tests, you have must both JDK7 and JDK8 installed. Paths
 to these installations should be defined in the environment variables
 JAVA7_HOME and JAVA8_HOME, respectively.
+
+See more information about dtest here: [Scylla-DTEST](https://github.com/scylladb/scylla/wiki/Scylla-DTEST)
+
+Common Optional Environment Variables
+-------------------------------------
+
+To print additional test debug messages, use:
+
+    PRINT_DEBUG=true
+
+To set scylla/cassandra default log-level to DEBUG/TRACE, use:
+
+    DEBUG=true
+     or
+    TRACE=true
+
+To (re)use a directory for saving the system-under-test nodes' logs, use:
+
+    LOG_SAVED_DIR=<logs_dir>
+
+To keep logs of all tests in `$LOG_SAVED_DIR`, rather than just those that failed, use:
+
+    KEEP_LOGS=true
+
+To keep all test cluster directories (under `$HOME/.dtest/`), use:
+
+    KEEP_TEST_DIR=true
+
+> See also "Test Directories" below.
+
+To change Scylla CPU and memory configuration:
+
+    SCYLLA_EXT_OPTS="--smp 2 --memory 1G"
+
+Test Directories
+----------------
+Each test directory is given a temporary name, e.g. `dtest-IouAlot`,
+under which the test cluster is created as `test`.
+
+The test directory holds:
+* `cluster.conf`: The cluster ccm configuration file.
+* `current_test`: A file holding the name of the current test.
+* `node<n>/`: Cluster node directories, each containing a complete node hierarchy, including:
+    * `node.conf`: The node ccm configuration file. 
+    * `cassandra.pid`: Containing the process ID of the running scylla process. 
+    * `scylla-jmx.pid`: Containing the process ID of the running scylla-jmx java-management interface process. 
+    * `bin/`: A directory containing the scylal and scylla-jmx binaries as well as other scripts.
+    * `conf/`: Containing the node configuration files, `scylla.yaml` in particular.
+    * `commitlogs/`, `data/`, `hints/`, `view_hints/`: The database (meta)data directories.
+    * `logs/`: Containing the node logs: `system.log` and `system.log.jmx`.
 
 Installation Instructions
 -------------------------
