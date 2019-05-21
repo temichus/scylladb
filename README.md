@@ -96,9 +96,6 @@ to the build dir:
 
     CASSANDRA_DIR=~/path/to/scylla/build/debug nosetests --process-timeout=7200
 
-To run the same tests that are used to validate changes into master,
-use `-a next-gating`.
-
 The shell script `scylla_dtest-env.sh` will set this automatically for you to a
 value that works in most deployments, it assumes the Scylla sources are next to
 the `scylla-dtest` repository, in a directory called `scylla`. To use this
@@ -126,16 +123,10 @@ set it to something like:
 The tests will use this directory by default, avoiding the need for any
 environment variable (that still will have precedence if given though).
 
-Existing tests are probably the best place to start to look at how to write
-tests.
+To run the same tests that are used to validate changes into master,
+use `-a next-gating`.
 
-Each test spawns a new fresh cluster and tears it down after the test, unless
-`REUSE_CLUSTER` is set to true. Then some tests will share cassandra instances. If a
-test fails, the logs for the node are saved in a `logs/<timestamp>` directory
-for analysis (it's not perfect but has been good enough so far, I'm open to
-better suggestions).
-
-To run the upgrade tests, you have must both JDK7 and JDK8 installed. Paths
+Note: To run the upgrade tests, you have must both JDK7 and JDK8 installed. Paths
 to these installations should be defined in the environment variables
 JAVA7_HOME and JAVA8_HOME, respectively.
 
@@ -146,6 +137,15 @@ See more detailed instructions in the included [INSTALL file](https://github.com
 
 Writing Tests
 -------------
+
+Existing tests are probably the best place to start to look at how to write
+tests.
+
+Each test spawns a new fresh cluster and tears it down after the test, unless
+`REUSE_CLUSTER` is set to true. Then some tests will share cassandra instances. If a
+test fails, the logs for the node are saved in a `logs/<timestamp>` directory
+for analysis (it's not perfect but has been good enough so far, I'm open to
+better suggestions).
 
 - Most of the time when you start a cluster with `cluster.start()`, you'll want to pass in `wait_for_binary_proto=True` so the call blocks until the cluster is ready to accept CQL connections. We tried setting this to `True` by default once, but the problems caused there (e.g. when it waited the full timeout time on a node that was deliberately down) were more unpleasant and more difficult to debug than the problems caused by having it `False` by default.
 - If you're using JMX via [the `jmxutils` module](jmxutils.py), make sure to call `remove_perf_disable_shared_mem` on the node or nodes you want to query with JMX _before starting the nodes_. `remove_perf_disable_shared_mem` disables a JVM option that's incompatible with JMX (see [this JMX ticket](https://github.com/rhuss/jolokia/issues/198)). It works by performing a string replacement in the node's Cassandra startup script, so changes will only propagate to the node at startup time.
