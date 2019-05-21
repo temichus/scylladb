@@ -216,3 +216,28 @@ better suggestions).
 - If you're using JMX via [the `jmxutils` module](jmxutils.py), make sure to call `remove_perf_disable_shared_mem` on the node or nodes you want to query with JMX _before starting the nodes_. `remove_perf_disable_shared_mem` disables a JVM option that's incompatible with JMX (see [this JMX ticket](https://github.com/rhuss/jolokia/issues/198)). It works by performing a string replacement in the node's Cassandra startup script, so changes will only propagate to the node at startup time.
 
 If you'd like to know what to expect during a code review, please see the included [CONTRIBUTING file](CONTRIBUTING.md).
+
+Saving Coredumps
+----------------
+
+By default, dtest.py looks for coredump files when the test finishes,
+and if found, they are copied to the test logs directory under `logs/<timestamp>_test_name`.
+
+Note that modern linux systems use `coredumpctl` and therefore will not dump core files.
+To use this feature, run the following command to instruct the kernel to dump core files in the current working directory:
+
+    sudo /sbin/sysctl kernel.core_pattern="%e.%p.%t.core"
+
+The coredump file are compressed by default.
+To change the compression tool and/or compressed core file extension, use:
+
+    DTEST_CORE_COMPRESS_TOOL=lz4
+    DTEST_CORE_COMPRESS_EXT=lz4
+
+To disable coredump compression, set:
+
+    DTEST_CORE_COMPRESS_TOOL=""
+
+To disable coredump collection altogether, set:
+
+    KEEP_CORES=false
