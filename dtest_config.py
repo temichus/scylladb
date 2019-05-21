@@ -1,8 +1,9 @@
 import subprocess
 import os
+from pkg_resources import parse_version
+
 import ccmlib.repository
 import ccmlib.scylla_repository
-
 from ccmlib.common import is_win, get_version_from_build, get_scylla_full_version, scylla_extract_install_dir_and_mode, \
     isScylla
 
@@ -92,6 +93,9 @@ class DTestConfig:
         else:
             return False
 
+    @property
+    def is_enterprise(self):
+        return parse_version(self.get_version_from_build()) > parse_version("2018.1")
 
 # Determine the location of the libjemalloc jar so that we can specify it
 # through environment variables when start Cassandra.  This reduces startup

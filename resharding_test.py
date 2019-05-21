@@ -2,6 +2,7 @@ import re
 import time
 import multiprocessing
 import tempfile
+import logging
 
 import pytest
 from flaky import flaky
@@ -14,11 +15,12 @@ from tools.tables_view_manager import TableManager, MaterializedViewManager
 from scylla_tools import get_sstables_files, get_node_cf_dir
 from tools.assertions import assert_one, assert_two_queries_equal, assert_none
 from cassandra import ConsistencyLevel
-import logging
+from tools.marks import enterprise_only_param
 
 logger = logging.getLogger(__name__)
 
 TESTED_STRATEGIES = ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'TimeWindowCompactionStrategy']
+ENTERPRISE_TESTED_STRATEGIES = ['IncrementalCompactionStrategy']
 MURMUR3 = 15
 
 
@@ -202,6 +204,9 @@ class TestReshardingSingleNodeGating(ReshardingBase):
 @pytest.mark.parametrize("node_count,compaction_strategy,murmur3", [
     (1, strategy, MURMUR3)
     for strategy in TESTED_STRATEGIES
+] + [
+    enterprise_only_param(1, strategy, MURMUR3)
+    for strategy in ENTERPRISE_TESTED_STRATEGIES
 ])
 class TestReshardingTombstonesSingleNode(Tester):
     SMP = 2
@@ -331,6 +336,10 @@ class TestReshardingTombstonesSingleNode(Tester):
     (node_count, strategy, MURMUR3)
     for node_count in [1, 4]
     for strategy in TESTED_STRATEGIES
+] + [
+    enterprise_only_param(node_count, strategy, MURMUR3)
+    for node_count in [1, 4]
+    for strategy in ENTERPRISE_TESTED_STRATEGIES
 ])
 class TestReshardingVariants(ReshardingBase):
     def test_resharding_by_murmur3_increase(self, node_count, compaction_strategy, murmur3):

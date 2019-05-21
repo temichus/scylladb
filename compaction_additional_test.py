@@ -28,11 +28,14 @@ from tools.data import insert_c1c2, delete_c1c2, run_in_parallel, create_c1c2_ta
 from tools.files import copy_files_to, get_node_cf_dir, get_sstables_files, get_list_of_sstables
 from tools.misc import ImmutableMapping
 from tools.stress import fill_data_by_cs
+from tools.marks import enterprise_only_param
 
 logger = logging.getLogger(__name__)
 
 
 def generate_ids(val):
+    if hasattr(val, 'marks'):  # it's a pytest ParameterSet
+        return f"{val.values[0]['class']}"
     return f"{val['class']}"
 
 
@@ -66,11 +69,8 @@ class CompactionAdditionalTester(Tester):
         return seconds * 1000 * 1000
 
 
-@pytest.mark.dtest_full
-@pytest.mark.single_node
-class TestCompactionAdditional(CompactionAdditionalTester):
-
-    strategies = [
+def get_strategies_upgrade_options():
+    _strategies = [
         # Expect sstables are more than min_threshold in level 0
         {'class': 'LeveledCompactionStrategy', 'sstable_size_in_mb': 1, 'min_threshold': 2},
         # Expect sstables are generated in multiple minutes for TimeWindowCompactionStrategy
@@ -79,7 +79,26 @@ class TestCompactionAdditional(CompactionAdditionalTester):
         # Expect there are more sstables than min_threshold in same bucket
         {'class': 'SizeTieredCompactionStrategy', 'bucket_high': 1.5, 'bucket_low': 0.5,
          'min_sstable_size': 1, 'min_threshold': 2},
-        {'class': 'DateTieredCompactionStrategy'}]
+        # DateTieredCompactionStrategy is deprecated
+        # {'class': 'DateTieredCompactionStrategy'},
+        # disabling for now, until we can figure when reshaping is expected in this case
+        # scylladb/scylla#9944 would help with that
+        # {'class': 'IncrementalCompactionStrategy'}
+    ]
+
+    output = []
+    for pair in itertools.product(_strategies, _strategies):
+        if pair[0]['class'] == 'IncrementalCompactionStrategy' or \
+           pair[1]['class'] == 'IncrementalCompactionStrategy':
+            output.append(enterprise_only_param(*pair))
+        else:
+            output.append(pair)
+    return output
+
+
+@pytest.mark.dtest_full
+@pytest.mark.single_node
+class TestCompactionAdditional(CompactionAdditionalTester):
 
     @pytest.mark.next_gating
     @pytest.mark.dtest_debug
@@ -435,7 +454,7 @@ class TestCompactionAdditional(CompactionAdditionalTester):
         logger.debug(f"Purge SUCCEEDED, original files are not there {sstables_files2}")
 
     @pytest.mark.single_node
-    @pytest.mark.parametrize("strategy1,strategy2", itertools.product(strategies, strategies), ids=generate_ids)
+    @pytest.mark.parametrize("strategy1,strategy2", get_strategies_upgrade_options(), ids=generate_ids)
     def test_refresh_and_restart_after_compaction_strategy_change(self, strategy1, strategy2):
         """
         This test tries to loade backup sstable by refresh and restart after changing the compaction strange.
@@ -841,7 +860,11 @@ class TestCompactionAdditionalStrategy(CompactionAdditionalTester):
         dtest_setup_overrides.cluster_options = ImmutableMapping({'start_rpc': 'true'})
         return dtest_setup_overrides
 
-    @pytest.fixture(params=['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy', 'TimeWindowCompactionStrategy'], autouse=True)
+    @pytest.fixture(params=['LeveledCompactionStrategy',
+                            'SizeTieredCompactionStrategy',
+                            'DateTieredCompactionStrategy',
+                            'TimeWindowCompactionStrategy',
+                            enterprise_only_param('IncrementalCompactionStrategy')], autouse=True)
     def fixture_set_cs(self, request):
         self.strategy = request.param
 

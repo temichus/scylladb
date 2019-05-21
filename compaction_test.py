@@ -12,13 +12,15 @@ from dtest_class import Tester, create_ks, is_autocompaction_enabled
 from tools.data import create_c1c2_table, insert_c1c2, chunks_list
 from tools.misc import ImmutableMapping
 from dtest_setup_overrides import DTestSetupOverrides
+from tools.marks import enterprise_only_param
 
 logger = logging.getLogger(__file__)
 
 
 @pytest.mark.dtest_full
 @pytest.mark.single_node
-@pytest.mark.parametrize('strategy', ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'TimeWindowCompactionStrategy'])
+@pytest.mark.parametrize('strategy', ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'TimeWindowCompactionStrategy',
+                                      enterprise_only_param('IncrementalCompactionStrategy')])
 class TestCompaction(Tester):
     strategy = None
 
@@ -293,46 +295,50 @@ class TestCompaction(Tester):
 
         assert float(threshold) >= float(avgthroughput)
 
-    def test_compaction_strategy_switching(self):
+    @pytest.mark.parametrize("strategies", argvalues=(
+        ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'TimeWindowCompactionStrategy'],
+        enterprise_only_param(['IncrementalCompactionStrategy'])), ids=("oss", "enterprise"))
+    def test_compaction_strategy_switching(self, strategies):
         """Ensure that switching strategies does not result in problems.
         Insert data, switch strategies, then check against data loss.
         """
-        strategies = ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy',
-                      'TimeWindowCompactionStrategy']
+        # clone the list, so we can remove self.strategy out of it
+        strategies = strategies[:]
 
         if self.strategy in strategies:
             strategies.remove(self.strategy)
-            cluster = self.cluster
-            cluster.populate(1).start(wait_for_binary_proto=True)
-            [node1] = cluster.nodelist()
 
-            for strat in strategies:
-                session = self.patient_cql_connection(node1)
-                create_ks(session, 'ks', 1)
+        cluster = self.cluster
+        cluster.populate(1).start(wait_for_binary_proto=True)
+        [node1] = cluster.nodelist()
 
-                session.execute("create table ks.cf (key int PRIMARY KEY, val int) with gc_grace_seconds = 0 "
-                                "and compaction= {'class':'" + self.strategy + "'};")
+        for strat in strategies:
+            session = self.patient_cql_connection(node1)
+            create_ks(session, 'ks', 1)
 
-                for x in range(0, 100):
-                    session.execute('insert into ks.cf (key, val) values (' + str(x) + ',1)')
+            session.execute("create table ks.cf (key int PRIMARY KEY, val int) with gc_grace_seconds = 0 "
+                            "and compaction= {'class':'" + self.strategy + "'};")
 
-                node1.flush()
+            for x in range(0, 100):
+                session.execute('insert into ks.cf (key, val) values (' + str(x) + ',1)')
 
-                for x in range(0, 10):
-                    session.execute('delete from cf where key = ' + str(x))
+            node1.flush()
 
-                session.execute("alter table ks.cf with compaction = {'class':'" + strat + "'};")
+            for x in range(0, 10):
+                session.execute('delete from cf where key = ' + str(x))
 
-                for x in range(11, 100):
-                    assert_one(session, "select * from ks.cf where key =" + str(x), [x, 1])
+            session.execute("alter table ks.cf with compaction = {'class':'" + strat + "'};")
 
-                for x in range(0, 10):
-                    assert_none(session, 'select * from cf where key = ' + str(x))
+            for x in range(11, 100):
+                assert_one(session, "select * from ks.cf where key =" + str(x), [x, 1])
 
-                node1.flush()
-                cluster.clear()
-                time.sleep(5)
-                cluster.start(wait_for_binary_proto=True)
+            for x in range(0, 10):
+                assert_none(session, 'select * from cf where key = ' + str(x))
+
+            node1.flush()
+            cluster.clear()
+            time.sleep(5)
+            cluster.start(wait_for_binary_proto=True)
 
     def test_large_compaction_warning(self):
         """

@@ -12,7 +12,7 @@ def get_version(cassandra_dir, scylla_version):
     return parse_version(dtest_config.get_version_from_build())
 
 
-def enterprise_only_param(param):
-    return pytest.param(param, marks=pytest.mark.skipif("get_version(config.getvalue('--cassandra-dir'), "
-                                                        "config.getvalue('--scylla-version')) < parse_version('2018.1')",
-                                                        reason=f"'{param}' is supported only in enterprise version"))
+def enterprise_only_param(*param):
+    return pytest.param(*param, marks=pytest.mark.skipif("get_version(config.getvalue('--cassandra-dir'), "
+                                                         "config.getvalue('--scylla-version')) < parse_version('2018.1')",
+                                                         reason=f"'{param}' is supported only in enterprise version"))

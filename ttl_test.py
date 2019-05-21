@@ -21,7 +21,7 @@ from tools.assertions import (
 )
 from dtest_class import Tester, create_ks
 from tools.data import drop_table
-
+from tools.marks import enterprise_only_param
 
 logger = logging.getLogger(__name__)
 
@@ -573,15 +573,15 @@ class TestTTL(Tester):
         logger.debug('{} has been finished at {}'.format(action, readble_execute_time))
         return execute_time
 
-    def test_overlaped_rows_ttls(self):
+    @pytest.mark.parametrize("strategies", argvalues=(
+        ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'TimeWindowCompactionStrategy'],
+        enterprise_only_param('IncrementalCompactionStrategy')), ids=("oss", "enterprise"))
+    def test_overlaped_rows_ttls(self, strategies):
         """ Test when different ttls are applyed  to the same rows
             Perform the test for different compaction strategies
         """
 
         self.prepare(nodes=4, rf=3)
-
-        strategies = ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy',
-                      'TimeWindowCompactionStrategy']
         table_name = 'ttl_table'
         for strategy in strategies:
             logger.debug('================  Run with {} ==============='.format(strategy))

@@ -31,6 +31,20 @@ OVERSIZE_LENGTH = 66536
 
 
 class SecondaryIndexesHelpers:
+    compaction_strategy = None
+
+    @pytest.fixture(autouse=True)
+    def random_compaction_strategy(self, dtest_config):
+        if not SecondaryIndexesHelpers.compaction_strategy:
+            strategies = ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy',
+                          'TimeWindowCompactionStrategy']
+
+            if dtest_config.is_enterprise:
+                strategies += ['IncrementalCompactionStrategy']
+
+            SecondaryIndexesHelpers.compaction_strategy = strategies[random.randint(0, len(strategies) - 1)]
+            logger.debug('Randomly selected %s as compaction strategy for base table',
+                         SecondaryIndexesHelpers.compaction_strategy)
 
     @staticmethod
     def assert_bootstrap_state(tester, node, expected_bootstrap_state):
@@ -63,10 +77,6 @@ class SecondaryIndexesHelpers:
         """
         Prepare environment for test
         """
-        strategies = ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy',
-                      'TimeWindowCompactionStrategy']
-        self.compaction_strategy = strategies[random.randint(0, len(strategies) - 1)]
-        logger.debug('Randomly selected %s as compaction strategy for base table' % self.compaction_strategy)
         cluster = self.cluster
         populate = nodes if isinstance(nodes, list) else [nodes, 0]
         cluster.populate(populate, use_vnodes=True)
