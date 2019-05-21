@@ -680,6 +680,7 @@ class TestCountersOnMultipleNodes(Tester):
             session.execute("UPDATE Test.cf SET cnt = cnt + 1 WHERE pk = {};".format(i))
 
         self._verify_data(row_cnt)
+        super(TestCountersOnMultipleNodes, self).tearDown()
 
     def _populate_data(self, rf=2):
         session = self.patient_cql_connection(self.node1)
