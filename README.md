@@ -184,6 +184,17 @@ The test directory holds:
     * `commitlogs/`, `data/`, `hints/`, `view_hints/`: The database (meta)data directories.
     * `logs/`: Containing the node logs: `system.log` and `system.log.jmx`.
 
+scylla_tests
+------------
+
+The file `scylla_tests` in the root of this repository holds the list of stable
+tests that are run regularly on scylla master and release branches.
+
+The file lists either complete test files (e.g. `auth_test.py`),
+in which case, nosetests runs all test cases in the file (unless skipped
+with the `@skip()` directive), or individual test cases, using the
+`<file>:<class>.<test>` notation.
+
 Installation Instructions
 -------------------------
 
