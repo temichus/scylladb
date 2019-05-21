@@ -11,11 +11,30 @@ The tests are run using nosetests.
 These tests require the datastax python driver.
 A few tests still require the deprecated python CQL over thrift driver.
 
+Installing docker is required for running tests in the scylla-dtest docker container.
+
  * [ccm](https://github.com/pcmanus/ccm)
  * [nosetests](http://readthedocs.org/docs/nose/en/latest/)
  * [Python Driver](http://datastax.github.io/python-driver/installation.html)
  * [CQL over Thrift Driver](http://code.google.com/a/apache-extras.org/p/cassandra-dbapi2/)
+ * [docker](https://docs.docker.com/install/linux/docker-ce/fedora/)
 
+Running using docker
+--------------------
+
+Use `scripts/run_test.sh` to run the distributed tests in the `scylla-dtest` docker container.
+
+Optional values can be set via environment variables:
+    SCYLLA_DIR, TOOLS_JAVA_DIR, JMX_DIR, DTEST_DIR, CCM_DIR, SCYLLA_DBUILD_SO_DIR, SCYLLA_EXT_OPTS, NOSE_PROCESSES
+
+The script pulls the latest `docker.io/scylladb/scylla-dtest` image (and if that fails, it builds it)
+and the it runs nosetests in a docker container based on this image.
+
+This method requires _no_ setup of a virtualenv.
+
+For example:
+
+    CASSANDRA_DIR=../scylla ./scripts/run_test.sh <file>:<class>.<test>
 
 Setup using virtualenv
 ----------------------
