@@ -11,11 +11,30 @@ The tests are run using nosetests.
 These tests require the datastax python driver.
 A few tests still require the deprecated python CQL over thrift driver.
 
+Installing docker is required for running tests in the scylla-dtest docker container.
+
  * [ccm](https://github.com/pcmanus/ccm)
  * [nosetests](http://readthedocs.org/docs/nose/en/latest/)
  * [Python Driver](http://datastax.github.io/python-driver/installation.html)
  * [CQL over Thrift Driver](http://code.google.com/a/apache-extras.org/p/cassandra-dbapi2/)
+ * [docker](https://docs.docker.com/install/linux/docker-ce/fedora/)
 
+Running using docker
+--------------------
+
+Use `scripts/run_test.sh` to run the distributed tests in the `scylla-dtest` docker container.
+
+Optional values can be set via environment variables:
+    SCYLLA_DIR, TOOLS_JAVA_DIR, JMX_DIR, DTEST_DIR, CCM_DIR, SCYLLA_DBUILD_SO_DIR, SCYLLA_EXT_OPTS, NOSE_PROCESSES
+
+The script pulls the latest `docker.io/scylladb/scylla-dtest` image (and if that fails, it builds it)
+and the it runs nosetests in a docker container based on this image.
+
+This method requires _no_ setup of a virtualenv.
+
+For example:
+
+    CASSANDRA_DIR=../scylla ./scripts/run_test.sh <file>:<class>.<test>
 
 Setup using virtualenv
 ----------------------
@@ -77,9 +96,6 @@ to the build dir:
 
     CASSANDRA_DIR=~/path/to/scylla/build/debug nosetests --process-timeout=7200
 
-To run the same tests that are used to validate changes into master,
-use `-a next-gating`.
-
 The shell script `scylla_dtest-env.sh` will set this automatically for you to a
 value that works in most deployments, it assumes the Scylla sources are next to
 the `scylla-dtest` repository, in a directory called `scylla`. To use this
@@ -107,18 +123,77 @@ set it to something like:
 The tests will use this directory by default, avoiding the need for any
 environment variable (that still will have precedence if given though).
 
-Existing tests are probably the best place to start to look at how to write
-tests.
+To run a specific test in a test file concatenate class and test:
 
-Each test spawns a new fresh cluster and tears it down after the test, unless
-`REUSE_CLUSTER` is set to true. Then some tests will share cassandra instances. If a
-test fails, the logs for the node are saved in a `logs/<timestamp>` directory
-for analysis (it's not perfect but has been good enough so far, I'm open to
-better suggestions).
+    nosetests -v <file>.py:<class>.<test>
 
-To run the upgrade tests, you have must both JDK7 and JDK8 installed. Paths
+To run the same tests that are used to validate changes into master,
+use `-a next-gating`.
+
+Note: To run the upgrade tests, you have must both JDK7 and JDK8 installed. Paths
 to these installations should be defined in the environment variables
 JAVA7_HOME and JAVA8_HOME, respectively.
+
+See more information about dtest here: [Scylla-DTEST](https://github.com/scylladb/scylla/wiki/Scylla-DTEST)
+
+Common Optional Environment Variables
+-------------------------------------
+
+To print additional test debug messages, use:
+
+    PRINT_DEBUG=true
+
+To set scylla/cassandra default log-level to DEBUG/TRACE, use:
+
+    DEBUG=true
+     or
+    TRACE=true
+
+To (re)use a directory for saving the system-under-test nodes' logs, use:
+
+    LOG_SAVED_DIR=<logs_dir>
+
+To keep logs of all tests in `$LOG_SAVED_DIR`, rather than just those that failed, use:
+
+    KEEP_LOGS=true
+
+To keep all test cluster directories (under `$HOME/.dtest/`), use:
+
+    KEEP_TEST_DIR=true
+
+> See also "Test Directories" below.
+
+To change Scylla CPU and memory configuration:
+
+    SCYLLA_EXT_OPTS="--smp 2 --memory 1G"
+
+Test Directories
+----------------
+Each test directory is given a temporary name, e.g. `dtest-IouAlot`,
+under which the test cluster is created as `test`.
+
+The test directory holds:
+* `cluster.conf`: The cluster ccm configuration file.
+* `current_test`: A file holding the name of the current test.
+* `node<n>/`: Cluster node directories, each containing a complete node hierarchy, including:
+    * `node.conf`: The node ccm configuration file. 
+    * `cassandra.pid`: Containing the process ID of the running scylla process. 
+    * `scylla-jmx.pid`: Containing the process ID of the running scylla-jmx java-management interface process. 
+    * `bin/`: A directory containing the scylal and scylla-jmx binaries as well as other scripts.
+    * `conf/`: Containing the node configuration files, `scylla.yaml` in particular.
+    * `commitlogs/`, `data/`, `hints/`, `view_hints/`: The database (meta)data directories.
+    * `logs/`: Containing the node logs: `system.log` and `system.log.jmx`.
+
+scylla_tests
+------------
+
+The file `scylla_tests` in the root of this repository holds the list of stable
+tests that are run regularly on scylla master and release branches.
+
+The file lists either complete test files (e.g. `auth_test.py`),
+in which case, nosetests runs all test cases in the file (unless skipped
+with the `@skip()` directive), or individual test cases, using the
+`<file>:<class>.<test>` notation.
 
 Installation Instructions
 -------------------------
@@ -128,7 +203,41 @@ See more detailed instructions in the included [INSTALL file](https://github.com
 Writing Tests
 -------------
 
+Existing tests are probably the best place to start to look at how to write
+tests.
+
+Each test spawns a new fresh cluster and tears it down after the test, unless
+`REUSE_CLUSTER` is set to true. Then some tests will share cassandra instances. If a
+test fails, the logs for the node are saved in a `logs/<timestamp>` directory
+for analysis (it's not perfect but has been good enough so far, I'm open to
+better suggestions).
+
 - Most of the time when you start a cluster with `cluster.start()`, you'll want to pass in `wait_for_binary_proto=True` so the call blocks until the cluster is ready to accept CQL connections. We tried setting this to `True` by default once, but the problems caused there (e.g. when it waited the full timeout time on a node that was deliberately down) were more unpleasant and more difficult to debug than the problems caused by having it `False` by default.
 - If you're using JMX via [the `jmxutils` module](jmxutils.py), make sure to call `remove_perf_disable_shared_mem` on the node or nodes you want to query with JMX _before starting the nodes_. `remove_perf_disable_shared_mem` disables a JVM option that's incompatible with JMX (see [this JMX ticket](https://github.com/rhuss/jolokia/issues/198)). It works by performing a string replacement in the node's Cassandra startup script, so changes will only propagate to the node at startup time.
 
 If you'd like to know what to expect during a code review, please see the included [CONTRIBUTING file](CONTRIBUTING.md).
+
+Saving Coredumps
+----------------
+
+By default, dtest.py looks for coredump files when the test finishes,
+and if found, they are copied to the test logs directory under `logs/<timestamp>_test_name`.
+
+Note that modern linux systems use `coredumpctl` and therefore will not dump core files.
+To use this feature, run the following command to instruct the kernel to dump core files in the current working directory:
+
+    sudo /sbin/sysctl kernel.core_pattern="%e.%p.%t.core"
+
+The coredump file are compressed by default.
+To change the compression tool and/or compressed core file extension, use:
+
+    DTEST_CORE_COMPRESS_TOOL=lz4
+    DTEST_CORE_COMPRESS_EXT=lz4
+
+To disable coredump compression, set:
+
+    DTEST_CORE_COMPRESS_TOOL=""
+
+To disable coredump collection altogether, set:
+
+    KEEP_CORES=false
