@@ -133,6 +133,65 @@ def retry_till_success(fun, *args, **kwargs):
                 time.sleep(0.25)
 
 
+def forever_wait_for(func, step=1, text=None, **kwargs):
+    """
+    Wait indefinitely until func evaluates to True.
+
+    This is similar to avocado.utils.wait.wait(), but there's no
+    timeout, we'll just keep waiting for it.
+
+    :param func: Function to evaluate.
+    :param step: Amount of time to sleep before another try.
+    :param text: Text to log, for debugging purposes.
+    :param kwargs: Keyword arguments to func
+    :return: Return value of func.
+    """
+    ok = False
+    start_time = time.time()
+    while not ok:
+        ok = func(**kwargs)
+        time.sleep(step)
+        time_elapsed = time.time() - start_time
+        if text is not None:
+            debug('%s (%s s)'.format(text, time_elapsed))
+    return ok
+
+
+class WaitTimeoutExpired(Exception):
+    pass
+
+
+def wait_for(func, step=1, text=None, timeout=None, throw_exc=False, **kwargs):
+    """
+    Wrapper function to wait with timeout option.
+    If timeout received, avocado 'wait_for' method will be used.
+    Otherwise the below function will be called.
+
+    :param func: Function to evaluate.
+    :param step: Time to sleep between attempts in seconds
+    :param text: Text to print while waiting, for debug purposes
+    :param timeout: Timeout in seconds
+    :param throw_exc: Raise exception if timeout expired, but func result is not True
+    :param kwargs: Keyword arguments to func
+    :return: Return value of func.
+    """
+    if not timeout:
+        return forever_wait_for(func, step, text, **kwargs)
+    time.sleep(step)
+    if kwargs:
+        def func_wrap():
+            return func(**kwargs)
+        res = wait_for(func_wrap, timeout=timeout, step=step, text=text)
+    else:
+        res = wait_for(func, timeout=timeout, step=step, text=text)
+    if res is not True:
+        err = 'Wait for: {}: timeout - {} seconds - expired'.format(text, timeout)
+        debug(err)
+        if throw_exc:
+            raise WaitTimeoutExpired(err)
+    return res
+
+
 class FlakyRetryPolicy(RetryPolicy):
     """
     A retry policy that retries 5 times
@@ -342,8 +401,13 @@ class Tester(TestCase):
             version = os.environ.get('CASSANDRA_VERSION')
         cdir = CASSANDRA_DIR
 
+        scylla_version = os.environ.get('SCYLLA_VERSION', None)
+
         if version:
             cluster = Cluster(self.test_path, name, cassandra_version=version)
+        elif scylla_version:
+            cluster = ScyllaCluster(self.test_path, name, cassandra_version=scylla_version,
+                                    force_wait_for_cluster_start=parallel_tests())
         else:
             if isScylla(cdir):
                 cluster = ScyllaCluster(self.test_path, name, cassandra_dir=cdir, install_dir=cdir,
