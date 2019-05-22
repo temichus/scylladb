@@ -243,9 +243,12 @@ class Runner(threading.Thread):
             if self.__sleep:
                 time.sleep(self.__sleep)
 
-    def stop(self):
+    def stop(self, timeout=None):
         self.__stopped = True
-        self.join()
+        try:
+            self.join(timeout)
+        except Exception as e:
+            self.__error = e
         if self.__error is not None:
             raise self.__error
 
@@ -882,7 +885,7 @@ class Tester(TestCase):
 
         for runner in self.runners:
             try:
-                runner.stop()
+                runner.stop(timeout=300)
             except:
                 pass
 
