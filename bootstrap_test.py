@@ -95,7 +95,7 @@ class TestBootstrap(Tester):
 
         debug("before={}, after={} + {}={}".format(data_total_size_node1, data_total_size_node1_after, data_total_size_node2_after, data_total_size_node1_after+data_total_size_node2_after));
         assert_almost_equal(data_total_size_node1, data_total_size_node1_after + data_total_size_node2_after, error=0.3)
-        assert_almost_equal(data_total_size_node1_after, data_total_size_node1_after, error=0.3)
+        assert_almost_equal(data_total_size_node1_after, data_total_size_node2_after, error=0.3)
 
     def schema_is_pulled_before_schema_is_declared_complete_test(self):
         """Test that bootstrapping node does a schema pull, before claiming to have a complete schema."""
