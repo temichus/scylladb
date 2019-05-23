@@ -83,13 +83,14 @@ CURRENT_TEST = ""
 
 logging.basicConfig(filename=os.path.join(LOG_SAVED_DIR, "dtest.log"),
                     filemode='w',
-                    format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
-                    datefmt='%H:%M:%S',
-                    level=logging.WARNING)
+                    format='%(asctime)s,%(msecs)03d %(process)-7d %(name)-30s %(levelname)-8s | %(message)s',
+                    datefmt='%Y-%m-%d %H:%M:%S',
+                    level=logging.DEBUG)
 
 LOG = logging.getLogger('dtest')
 # set python-driver log level to WARN by default for dtest
-logging.getLogger('cassandra').setLevel(logging.DEBUG)
+logging.getLogger('cassandra').setLevel(logging.WARNING)
+logging.getLogger('urllib3').setLevel(logging.WARNING)
 
 # copy the initial environment variables so we can reset them later:
 initial_environment = copy.deepcopy(os.environ)

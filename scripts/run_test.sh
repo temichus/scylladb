@@ -122,7 +122,7 @@ docker_cmd="docker run --detach=true \
     -v ${HOME}/.dtest:${HOME}/.dtest \
     -v ${HOME}/.ccm:${HOME}/.ccm \
     --network=bridge --privileged \
-    docker.io/scylladb/scylla-dtest:latest bash -c 'pip install --user -e ${CCM_DIR} ; export PATH=\$PATH:\${HOME}/.local/bin ; bash -c \"${INSTALL_CASSANDRA}\"; nosetests -v -s $*'"
+    docker.io/scylladb/scylla-dtest:latest bash -c 'pip install --user -e ${CCM_DIR} ; export PATH=\$PATH:\${HOME}/.local/bin ; bash -c \"${INSTALL_CASSANDRA}\"; nosetests --nologcapture -v -s $*'"
 echo "Running Docker: $docker_cmd"
 container=$(eval $docker_cmd)
 
