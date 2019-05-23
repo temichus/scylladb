@@ -497,8 +497,7 @@ class Tester(TestCase):
             os.remove(LAST_TEST_DIR)
 
         if not self._preserve_cluster:
-            if not self._check_clean():
-                self._force_clean()
+            self._force_clean()
 
         # cluster.id may be equal to 0
         # so test it is not None
@@ -515,22 +514,7 @@ class Tester(TestCase):
         else:
             node.set_install_dir(install_dir=cdir)
 
-    def _check_clean(self):
-        version = os.environ.get('CASSANDRA_VERSION')
-        cdir = CASSANDRA_DIR
-
-        if isScylla(cdir):
-            for proc in psutil.process_iter():
-                try:
-                    if ('scylla' in proc.name() or 'scylla' in proc.cmdline()[0]) and any(self.cluster.ipprefix in cmd for cmd in proc.cmdline()):
-                        return False
-                except Exception:
-                    pass
-        return True
-
     def _force_clean(self):
-        debug("force_clean called")
-        version = os.environ.get('CASSANDRA_VERSION')
         cdir = CASSANDRA_DIR
 
         if isScylla(cdir):
@@ -591,8 +575,7 @@ class Tester(TestCase):
             f.write(self.id() + '\n')
 
         if not self._preserve_cluster:
-            if not self._check_clean():
-                self._force_clean()
+            self._force_clean()
 
         if RECORD_COVERAGE:
             self.__setup_jacoco()
