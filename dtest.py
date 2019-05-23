@@ -564,6 +564,7 @@ class Tester(TestCase):
                 pass
 
         self.cluster = self._get_cluster(version=self.cassandra_version)
+        self.addCleanup(self.cleanUpCluster)
 
         annotate =  os.path.join(self.cluster.get_path(), 'current_test')
         with open(annotate, 'a') as f:
@@ -885,6 +886,9 @@ class Tester(TestCase):
             except:
                 pass
 
+    def cleanUpCluster(self):
+        if not hasattr(self, 'cluster') or not self.cluster:
+            return
         failed = sys.exc_info() != (None, None, None)
         found_cores = None
         try:
@@ -911,6 +915,7 @@ class Tester(TestCase):
                     self._cleanup_cluster()
                 elif self._preserve_cluster and failed:
                     self._cleanup_cluster()
+                    self.cluster = None
 
     def go(self, func):
         runner = Runner(func)
