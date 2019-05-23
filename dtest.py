@@ -945,9 +945,7 @@ class Tester(TestCase):
             except Exception as e:
                 print "Error saving log:", str(e)
             finally:
-                if not self._preserve_cluster:
-                    self._cleanup_cluster()
-                elif self._preserve_cluster and failed:
+                if failed or not self._preserve_cluster:
                     self._cleanup_cluster()
                     self.cluster = None
 
