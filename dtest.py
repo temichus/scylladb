@@ -222,17 +222,20 @@ class FlakyRetryPolicy(RetryPolicy):
 
 class Runner(threading.Thread):
 
-    def __init__(self, func):
+    def __init__(self, func, sleep=1.0):
         threading.Thread.__init__(self)
         self.__func = func
         self.__error = None
         self.__stopped = False
+        self.__sleep = sleep
         self.daemon = True
 
     def run(self):
         i = 0
+        debug("Runner: running {}".format(self.__func))
         while True:
             if self.__stopped:
+                debug("Runner: stopped {}".format(self.__func))
                 return
             try:
                 self.__func(i)
@@ -240,10 +243,16 @@ class Runner(threading.Thread):
                 self.__error = e
                 return
             i = i + 1
+            if self.__sleep:
+                time.sleep(self.__sleep)
 
-    def stop(self):
+    def stop(self, timeout=None):
+        debug("Runner: stopping {} (timeout={})".format(self.__func, timeout))
         self.__stopped = True
-        self.join()
+        try:
+            self.join(timeout)
+        except Exception as e:
+            self.__error = e
         if self.__error is not None:
             raise self.__error
 
@@ -449,6 +458,7 @@ class Tester(TestCase):
         self.var_trace(cluster)
 
     def _cleanup_cluster(self, remove=True):
+        debug("_cleanup_cluster")
         if SILENCE_DRIVER_ON_SHUTDOWN:
             # driver logging is very verbose when nodes start going down -- bump up the level
             logging.getLogger('cassandra').setLevel(logging.CRITICAL)
@@ -565,6 +575,7 @@ class Tester(TestCase):
                 pass
 
         self.cluster = self._get_cluster(version=self.cassandra_version)
+        self.addCleanup(self.cleanUpCluster)
 
         annotate =  os.path.join(self.cluster.get_path(), 'current_test')
         with open(annotate, 'a') as f:
@@ -875,20 +886,25 @@ class Tester(TestCase):
                 pass
 
     def tearDown(self):
+        debug("tearDown")
         reset_environment_vars()
+
+        for runner in self.runners:
+            try:
+                runner.stop(timeout=300)
+            except:
+                pass
 
         for con in self.connections:
             con.cluster.shutdown()
 
-        for runner in self.runners:
-            try:
-                runner.stop()
-            except:
-                pass
-
+    def cleanUpCluster(self):
+        if not hasattr(self, 'cluster') or not self.cluster:
+            return
         failed = sys.exc_info() != (None, None, None)
         found_cores = None
         try:
+            debug("tearDown: looking for errors in logs")
             for node in self.cluster.nodelist():
                 if not self.allow_log_errors:
                     errors = list(self.__filter_errors(
@@ -904,6 +920,7 @@ class Tester(TestCase):
             try:
                 if failed or KEEP_LOGS:
                     # means the test failed. Save the logs for inspection.
+                    debug("tearDown: copying logs")
                     self.copy_logs(cores=found_cores)
             except Exception as e:
                 print "Error saving log:", str(e)
@@ -912,6 +929,7 @@ class Tester(TestCase):
                     self._cleanup_cluster()
                 elif self._preserve_cluster and failed:
                     self._cleanup_cluster()
+                    self.cluster = None
 
     def go(self, func):
         runner = Runner(func)
