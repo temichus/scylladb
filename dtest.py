@@ -877,14 +877,14 @@ class Tester(TestCase):
     def tearDown(self):
         reset_environment_vars()
 
-        for con in self.connections:
-            con.cluster.shutdown()
-
         for runner in self.runners:
             try:
                 runner.stop()
             except:
                 pass
+
+        for con in self.connections:
+            con.cluster.shutdown()
 
     def cleanUpCluster(self):
         if not hasattr(self, 'cluster') or not self.cluster:
