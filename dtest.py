@@ -231,8 +231,10 @@ class Runner(threading.Thread):
 
     def run(self):
         i = 0
+        debug("Runner: running {}".format(self.__func))
         while True:
             if self.__stopped:
+                debug("Runner: stopped {}".format(self.__func))
                 return
             try:
                 self.__func(i)
@@ -244,6 +246,7 @@ class Runner(threading.Thread):
                 time.sleep(self.__sleep)
 
     def stop(self, timeout=None):
+        debug("Runner: stopping {} (timeout={})".format(self.__func, timeout))
         self.__stopped = True
         try:
             self.join(timeout)
