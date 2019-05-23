@@ -221,11 +221,12 @@ class FlakyRetryPolicy(RetryPolicy):
 
 class Runner(threading.Thread):
 
-    def __init__(self, func):
+    def __init__(self, func, sleep=1.0):
         threading.Thread.__init__(self)
         self.__func = func
         self.__error = None
         self.__stopped = False
+        self.__sleep = sleep
         self.daemon = True
 
     def run(self):
@@ -239,6 +240,8 @@ class Runner(threading.Thread):
                 self.__error = e
                 return
             i = i + 1
+            if self.__sleep:
+                time.sleep(self.__sleep)
 
     def stop(self):
         self.__stopped = True
