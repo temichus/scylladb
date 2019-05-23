@@ -457,6 +457,7 @@ class Tester(TestCase):
         self.var_trace(cluster)
 
     def _cleanup_cluster(self, remove=True):
+        debug("_cleanup_cluster")
         if SILENCE_DRIVER_ON_SHUTDOWN:
             # driver logging is very verbose when nodes start going down -- bump up the level
             logging.getLogger('cassandra').setLevel(logging.CRITICAL)
@@ -884,6 +885,7 @@ class Tester(TestCase):
                 pass
 
     def tearDown(self):
+        debug("tearDown")
         reset_environment_vars()
 
         for runner in self.runners:
@@ -901,6 +903,7 @@ class Tester(TestCase):
         failed = sys.exc_info() != (None, None, None)
         found_cores = None
         try:
+            debug("tearDown: looking for errors in logs")
             for node in self.cluster.nodelist():
                 if not self.allow_log_errors:
                     errors = list(self.__filter_errors(
@@ -916,6 +919,7 @@ class Tester(TestCase):
             try:
                 if failed or KEEP_LOGS:
                     # means the test failed. Save the logs for inspection.
+                    debug("tearDown: copying logs")
                     self.copy_logs(cores=found_cores)
             except Exception as e:
                 print "Error saving log:", str(e)
