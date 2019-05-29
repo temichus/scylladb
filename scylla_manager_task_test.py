@@ -1,0 +1,73 @@
+# coding: utf-8
+import datetime
+from cassandra import ConsistencyLevel
+from cassandra.query import SimpleStatement
+
+from dtest import Tester, debug
+from dtest_scylla_manager import ScyllaManagerTool
+
+
+class ScyllaManagerTaskTest(Tester):
+    __test__ = True
+
+
+    def _initiate_cluster(self):
+        debug("Starting cluster...")
+        # Start a cluster of three nodes, and create a keyspace with RF=3, and
+        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        self.cluster.populate(3).start(wait_for_binary_proto=False, wait_other_notice=False)
+        node1 = self.cluster.nodelist()[0]
+        return node1
+
+    def _initiate_cluster_with_data(self):
+        debug("Inserting data to cluster...")
+        node1 = self._initiate_cluster()
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 3)
+
+        session.execute(
+            "CREATE TABLE cf (name text, pet text, age int, PRIMARY KEY ((name), pet)) WITH compression = {} AND read_repair_chance = 0.0;")
+
+        query = SimpleStatement("INSERT INTO cf (name, pet, age) VALUES ('nadav', 'kitty', 5)",
+                                consistency_level=ConsistencyLevel.ALL)
+        session.execute(query)
+        query = SimpleStatement("INSERT INTO cf (name, pet, age) VALUES ('nadav', 'adamdami', 1)",
+                                consistency_level=ConsistencyLevel.ALL)
+        session.execute(query)
+
+    def test_task_next_run(self):
+        self._initiate_cluster()
+        node1, node2, node3 = self.cluster.nodelist()
+
+        debug("Create Manager Tool instance to run scylla-manager operations")
+        manager_tool = ScyllaManagerTool(scylla_manager=self.cluster._scylla_manager)
+        cluster_name =  "cluster1"
+        debug("Add a cluster to scylla-manager, named: {}".format(cluster_name))
+        mgr_cluster = manager_tool.add_cluster(node=node1, name=cluster_name)
+
+        # Test health-check task values
+        debug("Test cluster Health-Check task")
+        healthcheck_task = mgr_cluster.get_healthcheck_task()
+        next_run = healthcheck_task.next_run
+        list_next_run = next_run.split()
+
+        debug("Health-check task next run is: {}".format(next_run))
+        now = datetime.datetime.now()
+        assert len(list_next_run) == 6
+        assert int(list_next_run[0]) == now.day
+        assert list_next_run[5] == '(+15s)'
+
+        # Test repair task values
+        debug("Test repair task")
+        repair_task = mgr_cluster.repair_task_list[0]
+        mgr_cluster.get_healthcheck_task()
+        debug("repair task status is: {}".format(repair_task.status))
+        next_run = repair_task.next_run
+        list_next_run = next_run.split()
+
+        debug("Repair task next run is: {}".format(next_run))
+        now = datetime.datetime.now()
+        assert len(list_next_run) == 6
+        assert int(list_next_run[0]) in [now.day+1, 1] # repair starts the next day of the month
+        assert list_next_run[5] == '(+7d)'
+
