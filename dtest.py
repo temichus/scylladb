@@ -496,7 +496,11 @@ class Tester(TestCase):
             if not self._check_clean():
                 self._force_clean()
 
-        self.cluster_id_allocator.free(self.cluster.id)
+        # cluster.id may be equal to 0
+        # so test it is not None
+        if self.cluster.id is not None:
+            self.cluster_id_allocator.free(self.cluster.id)
+            self.cluster.id = None
 
     def set_node_to_current_version(self, node):
         version = os.environ.get('CASSANDRA_VERSION')
@@ -574,8 +578,9 @@ class Tester(TestCase):
                 # after a restart, /tmp will be emptied so we'll get an IOError when loading the old cluster here
                 pass
 
-        self.cluster = self._get_cluster(version=self.cassandra_version)
-        self.addCleanup(self.cleanUpCluster)
+        if not hasattr(self, 'cluster') or self.cluster is None:
+            self.cluster = self._get_cluster(version=self.cassandra_version)
+            self.addCleanup(self.cleanUpCluster)
 
         annotate =  os.path.join(self.cluster.get_path(), 'current_test')
         with open(annotate, 'a') as f:
