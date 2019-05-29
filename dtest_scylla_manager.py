@@ -503,7 +503,7 @@ class ManagerCluster(ScyllaManagerBase):
         ScyllaManagerBase.__init__(self, id=cluster_id, scylla_manager=scylla_manager)
         self.client_encrypt = client_encrypt
 
-    def create_repair_task(self, node=None, token_ranges=None, keyspace=None):
+    def create_repair_task(self, node=None, token_ranges=None, keyspace=None, with_hosts=None):
         cmd = "repair -c {}".format(self.id)
         if node:
             cmd += " --host {} ".format(node.address())
@@ -511,6 +511,8 @@ class ManagerCluster(ScyllaManagerBase):
             cmd += " --token-ranges {} ".format(token_ranges)
         if keyspace:
             cmd += " --keyspace {} ".format(keyspace)
+        if with_hosts:
+            cmd += " --with-hosts {} ".format(with_hosts.address())
 
         debug("Repair command to execute is: {}".format(cmd))
         stdout, stderr = self.sctool.run(list_cmd=cmd.split(), parse_table_res=False)
