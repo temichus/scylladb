@@ -807,7 +807,7 @@ class Tester(TestCase):
     # We default to UTF8Type because it's simpler to use in tests
     def create_cf(self, session, name, key_type="varchar", speculative_retry=None, read_repair=None, compression=None,
                   gc_grace=None, columns=None, validation="UTF8Type", compaction=None, compact_storage=False,
-                  default_ttl=None):
+                  default_ttl=None, dclocal_read_repair_chance=None):
 
         additional_columns = ""
         if columns is not None:
@@ -833,6 +833,8 @@ class Tester(TestCase):
             query = '%s AND default_time_to_live=%d' % (query, default_ttl)
         if speculative_retry is not None:
             query = '%s AND speculative_retry=\'%s\'' % (query, speculative_retry)
+        if dclocal_read_repair_chance is not None:
+            query = '%s AND dclocal_read_repair_chance=\'%s\'' % (query, dclocal_read_repair_chance)
         if compaction is not None:
             query = '%s AND compaction=%s' % (query, compaction)
         if compact_storage:

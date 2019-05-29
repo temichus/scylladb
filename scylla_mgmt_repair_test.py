@@ -5,8 +5,10 @@ from dtest import Tester, debug
 from unittest import skip
 
 from tools import insert_c1c2, query_c1c2
+from assertions import assert_row_count
 from cassandra import ConsistencyLevel
 from cassandra.query import SimpleStatement
+from cassandra.concurrent import execute_concurrent_with_args
 from ccmlib.node import NodetoolError
 import time
 import tempfile
@@ -43,11 +45,14 @@ class ScyllaMgmtRepairTest(RepairAdditionalBase):
     def repair_partition_delete_test(self):
        return RepairAdditionalBase._repair_partition_delete_test(self)
 
+    def config_and_create_cluster(self, nodes):
+        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        self.cluster.populate(nodes).start(wait_for_binary_proto=False, wait_other_notice=False)
+
     def _initiate_cluster_with_data(self):
         debug("Starting cluster and inserting data...")
+        self.config_and_create_cluster(nodes=3)
         # Start a cluster of three nodes, and create a keyspace with RF=3, and
-        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
-        self.cluster.populate(3).start(wait_for_binary_proto=False, wait_other_notice=False)
         node1, node2, node3 = self.cluster.nodelist()
 
         session = self.patient_cql_connection(node1)
@@ -193,3 +198,73 @@ class ScyllaMgmtRepairTest(RepairAdditionalBase):
         debug("Check for the eventual total number of keys to be: {}".format(eventual_total_num_of_keys))
         self.check_rows_on_node(node1, eventual_total_num_of_keys)
         self.check_rows_on_node(node2, eventual_total_num_of_keys)
+
+    def test_manager_repair_multi_cfs(self):
+        """
+        Test parameter "_K"  - the repair all tables in the keyspace. We start two nodes and a
+        keyspace with RF=2.
+        """
+        # Start a cluster of two nodes, and create a keyspace ks with RF=2,
+        # and a table cf. Hinted handoff and read repair are disabled so
+        # they don't fix the problems which repair is supposed to fix.
+        self.config_and_create_cluster(nodes=2)
+        node1, node2 = self.cluster.nodelist()
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 2)
+
+        # Create 4 tables
+        for i in xrange(1, 5):
+            self.create_cf(session, 'cf%d' % i, read_repair=0.0, columns={'c1': 'text', 'c2': 'text'},
+                           dclocal_read_repair_chance=0.0, speculative_retry='NONE')
+
+        num_of_keys = 10
+        # Data for all tables. Will be used to validate the repaired data
+        data_range = {}
+        for i in xrange(1, 5):
+            data_range['cf%d' % i] = range(i*i, i*i+num_of_keys)
+
+        node2.flush()
+        node2.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node1, 'ks')
+
+        debug("Adding data only on node 1...")
+        for cf_name, cf_range in data_range.items():
+            statement = session.prepare("INSERT INTO %s (key, c1, c2) VALUES (?, 'value1', 'value2')" % cf_name)
+            statement.consistency_level = ConsistencyLevel.ONE
+            execute_concurrent_with_args(session, statement, [['k{}'.format(k)] for k in cf_range])
+
+        self.cluster.flush()
+
+        debug("Start node 2...")
+        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+
+        session_node2 = self.exclusive_cql_connection(node2, 'ks')
+
+        debug('Stop node1')
+        node1.stop(wait_other_notice=True)
+
+        # Validate the node2 has no data
+        for cf_name, cf_range in data_range.items():
+            assert_row_count(session=session_node2, table_name=cf_name, expected=0)
+
+        debug("Start node1...")
+        node1.start(wait_other_notice=True, wait_for_binary_proto=True)
+
+        manager_tool = ScyllaManagerTool(scylla_manager=self.cluster._scylla_manager)
+        cluster_name = "cluster1"
+        debug("Add a cluster to scylla-manager, named: {}".format(cluster_name))
+        mgr_cluster = manager_tool.add_cluster(node=node1, name=cluster_name)
+
+        debug("Run repair on node 2")
+        mgr_task = mgr_cluster.create_repair_task(node=node2, keyspace='ks')
+
+        sleep = 600
+        debug('Sleep {} seconds, waiting for repair task to run.'.format(sleep))
+        time.sleep(sleep)
+        debug("repair task status is: {}".format(mgr_task.status))
+
+        debug('Stop node1')
+        node1.stop(wait_other_notice=True)
+
+        for cf_name, cf_range in data_range.items():
+            assert_row_count(session=session_node2, table_name=cf_name, expected=num_of_keys)
