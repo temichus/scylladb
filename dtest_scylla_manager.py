@@ -142,7 +142,8 @@ class ScyllaManagerTool(ScyllaManagerBase):
         ip_addr_attr = 'public_ip_address'
         return [[n, getattr(n, ip_addr_attr)] for n in db_cluster.nodes]
 
-    def add_cluster(self, name, node=None, db_cluster=None, client_encrypt=None, user=None, create_user=None, single_node=False):
+    def add_cluster(self, name, node=None, db_cluster=None, client_encrypt=None, user=None, create_user=None,
+                    single_node=False, by_name=False):
         """
         :param name: cluster name
         :param node: cluster node IP
@@ -183,7 +184,8 @@ class ScyllaManagerTool(ScyllaManagerBase):
         # stderr, stdout = node.cluster.sctool(["version"])
         # debug("Scylla-manager version is:".format(stdout))
 
-        list_cluster_add_cmd = ["cluster", "add", "--host", node.address(), "--name", name]
+        host = node.hostname if by_name and node.hostname else node.address()
+        list_cluster_add_cmd = ["cluster", "add", "--host", host, "--name", name]
         # node.cluster.sctool(cluster_add_cmd)
         # cluster_add_cmd = "cluster add --host {} --name {}".format(node.address(), name)
         # cluster_add_cmd = "version"
