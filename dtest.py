@@ -496,7 +496,11 @@ class Tester(TestCase):
             if not self._check_clean():
                 self._force_clean()
 
-        self.cluster_id_allocator.free(self.cluster.id)
+        # cluster.id may be equal to 0
+        # so test it is not None
+        if self.cluster.id is not None:
+            self.cluster_id_allocator.free(self.cluster.id)
+            self.cluster.id = None
 
     def set_node_to_current_version(self, node):
         version = os.environ.get('CASSANDRA_VERSION')
