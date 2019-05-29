@@ -27,3 +27,31 @@ class ManagerHealthCheckTest(Tester):
         healthcheck_task = manager_cluster.get_healthcheck_task()
         assert default_interval in healthcheck_task.next_run
         assert TaskStatus.ERROR.value not in healthcheck_task.status
+
+    def update_health_check_task_test(self):
+        """
+            ver: 1.4
+            verify that auto generated health check task can be updated
+        """
+        self.create_2_nodes_cluster()
+        manager_cluster = self.get_manager_cluster()
+        healthcheck_task = manager_cluster.get_healthcheck_task()
+
+        healthcheck_task.update(interval='60m')
+        assert TaskStatus.ERROR.value not in healthcheck_task.status
+
+        healthcheck_task.update(num_retries='2')
+        assert TaskStatus.ERROR.value not in healthcheck_task.status
+        assert '+1h' in healthcheck_task.next_run
+
+        healthcheck_task.update(start_time='now+35s')
+        assert TaskStatus.ERROR.value not in healthcheck_task.status
+
+        # TODO: wait for yaron to fix the wait_for_status
+        # healthcheck_task.wait_for_status(list_status=[TaskStatus.DONE], timeout=60, step=3)
+
+        healthcheck_task.update(enabled='false')
+        assert TaskStatus.ERROR.value not in healthcheck_task.status
+
+
+

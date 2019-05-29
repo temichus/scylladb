@@ -85,8 +85,9 @@ class ScyllaManagerBase(object):
         self.sctool = SCTool(scylla_manager=scylla_manager)
         self.scylla_manager=scylla_manager
 
-    def get_property(self, parsed_table, column_name):
-        return self.sctool.get_table_value(parsed_table=parsed_table, column_name=column_name, identifier=self.id)
+    def get_property(self, parsed_table, column_name, is_search_substring=False):
+        return self.sctool.get_table_value(parsed_table=parsed_table, column_name=column_name, identifier=self.id,
+                                           is_search_substring=is_search_substring)
 
 
 class ScyllaManagerTool(ScyllaManagerBase):
@@ -293,6 +294,7 @@ class SCTool(object):
         :param parsed_table:
         :param column_name:
         :param identifier:
+        :param is_search_substring:
         :return:
         """
 
@@ -357,6 +359,30 @@ class ManagerTask(ScyllaManagerBase):
             cmd += ' --{}={}'.format(k, v)
         return cmd
 
+    def update(self, **kwargs):
+        """
+          -e, --enabled string      enabled (default "true")
+          -h, --help                help for update
+          -i, --interval string     task schedule interval e.g. 3d2h10m, valid units are d, h, m, s (default "0")
+          -r, --num-retries int     task schedule number of retries (default 3)
+          -s, --start-date string   task start date in RFC3339 form or now[+duration], e.g. now+3d2h10m, valid units are d, h, m, s (default "now")
+
+        :param kwargs:
+        :return:
+        """
+
+        cmd_mapping = {'enabled': '--enabled',
+                       'interval': '--interval',
+                       'num_retries': '--num-retries',
+                       'start_time': '--start-date'}
+        cmd_arguments = []
+        for k, v in kwargs.items():
+            cmd_arguments.append("{0}={1}".format(cmd_mapping[k], v))
+
+        cmd = "task update {0.id} -c {0.cluster_id} {update_arguments}".format(self, update_arguments=" ".join(cmd_arguments))
+        stdout, _ = self.sctool.run(list_cmd=cmd.split(), is_verify_errorless_result=True)
+        return stdout
+
     @property
     def history(self):
         """
@@ -395,9 +421,9 @@ class ManagerTask(ScyllaManagerBase):
         """
         Gets the task's status
         """
-        cmd = "task list -c {}".format(self.cluster_id)
+        cmd = "task list -a -c {}".format(self.cluster_id)
         stdout, stderr = self.sctool.run(list_cmd=cmd.split(), is_verify_errorless_result=True)
-        return self.get_property(parsed_table=stdout, column_name='status')
+        return self.get_property(parsed_table=stdout, column_name='status', is_search_substring=True)
 
         # expecting output of:
         # ╭─────────────────────────────────────────────┬───────────────────────────────┬──────┬────────────┬────────╮
