@@ -578,8 +578,9 @@ class Tester(TestCase):
                 # after a restart, /tmp will be emptied so we'll get an IOError when loading the old cluster here
                 pass
 
-        self.cluster = self._get_cluster(version=self.cassandra_version)
-        self.addCleanup(self.cleanUpCluster)
+        if not hasattr(self, 'cluster') or self.cluster is None:
+            self.cluster = self._get_cluster(version=self.cassandra_version)
+            self.addCleanup(self.cleanUpCluster)
 
         annotate =  os.path.join(self.cluster.get_path(), 'current_test')
         with open(annotate, 'a') as f:
