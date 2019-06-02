@@ -162,7 +162,7 @@ class WaitTimeoutExpired(Exception):
     pass
 
 
-def wait_for(func, step=1, text=None, timeout=None, throw_exc=False, **kwargs):
+def wait_for(func, step=1, text=None, timeout=None, throw_exc=True, **kwargs):
     """
     Wrapper function to wait with timeout option.
     If timeout received, avocado 'wait_for' method will be used.
@@ -178,19 +178,20 @@ def wait_for(func, step=1, text=None, timeout=None, throw_exc=False, **kwargs):
     """
     if not timeout:
         return forever_wait_for(func, step, text, **kwargs)
-    time.sleep(step)
-    if kwargs:
-        def func_wrap():
-            return func(**kwargs)
-        res = wait_for(func_wrap, timeout=timeout, step=step, text=text)
-    else:
-        res = wait_for(func, timeout=timeout, step=step, text=text)
-    if res is not True:
-        err = 'Wait for: {}: timeout - {} seconds - expired'.format(text, timeout)
-        debug(err)
-        if throw_exc:
-            raise WaitTimeoutExpired(err)
-    return res
+    ok = False
+    start_time = time.time()
+    while not ok:
+        time.sleep(step)
+        ok = func(**kwargs)
+        time_elapsed = time.time() - start_time
+        if text is not None:
+            debug('({} ({} s)'.format(text, time_elapsed))
+        if time_elapsed > timeout:
+            err = 'Wait for: {}: timeout - {} seconds - expired'.format(text, timeout)
+            debug(err)
+            if throw_exc:
+                raise WaitTimeoutExpired(err)
+    return ok
 
 
 class FlakyRetryPolicy(RetryPolicy):
