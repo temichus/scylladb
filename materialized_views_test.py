@@ -321,7 +321,7 @@ class TestMaterializedViews(Tester):
         else:
             self.allow_log_errors = True
 
-    def _validate_cs_results(self, node, exclude_errors, node_action, double_failure, cl=None):
+    def _validate_cs_results(self, node, exclude_errors, node_action, double_failure, cl=None, num_attempts=1):
         self._check_errors(node, exclude_errors)
         session = self.patient_exclusive_cql_connection(node)
         session.execute('USE mview')
@@ -337,10 +337,8 @@ class TestMaterializedViews(Tester):
             debug('Try to select rows count from mview.users table. Failed with error: {}'.format(e.message))
             raise
 
-        assert_row_count(session, 'users_by_first_name', exp_res, consistency_level=cl, num_attempts=20)
-        assert_row_count(session, 'users_by_last_name', exp_res, consistency_level=cl, num_attempts=20)
-
-        assert True
+        assert_row_count(session, 'users_by_first_name', exp_res, consistency_level=cl, num_attempts=num_attempts)
+        assert_row_count(session, 'users_by_last_name', exp_res, consistency_level=cl, num_attempts=num_attempts)
 
     @flaky_with_tear_down
     def add_dc_during_mv_update_test(self):
