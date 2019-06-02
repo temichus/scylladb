@@ -1,6 +1,6 @@
 # coding: utf-8
 # import smgr
-from dtest_scylla_manager import HostStatus, HostRestStatus, ScyllaManagerTool
+from dtest_scylla_manager import HostStatus, HostRestStatus, ScyllaManagerTool, TaskStatus
 from dtest import Tester, debug
 from unittest import skip
 
@@ -85,6 +85,8 @@ class ScyllaMgmtRepairTest(RepairAdditionalBase):
 
         debug("Test cluster Repair task")
         mgr_task = mgr_cluster.create_repair_task()
+        task_final_status = mgr_task.wait_and_get_final_status()
+        assert task_final_status == TaskStatus.DONE, 'Task: {} final status is: {}.'.format(mgr_task.id, str(mgr_task.status))
 
         debug("Test cluster Health-Check task")
         healthcheck_task = mgr_cluster.get_healthcheck_task()
@@ -157,15 +159,10 @@ class ScyllaMgmtRepairTest(RepairAdditionalBase):
         debug("Run partitioner-range repair on node 1")
         mgr_task = mgr_cluster.create_repair_task(node=node1, token_ranges='pr', keyspace='ks')
 
-        sleep = 600
-        debug('Sleep {} seconds, waiting for repair task to run.'.format(sleep))
-        time.sleep(sleep)
-        debug("repair task status is: {}".format(mgr_task.status))
-        # info = node1.repair(['-pr', 'ks'])
-        # debug(info[0])
-        # debug(info[1])
+        task_final_status = mgr_task.wait_and_get_final_status()
+        assert task_final_status == TaskStatus.DONE, 'Task: {} final status is: {}.'.format(mgr_task.id, str(mgr_task.status))
 
-        # We expect "-pr" repair to have repared only half of the ranges
+        # We expect "-pr" repair to have repaired only half of the ranges
         # (those for which node 1 is their primary replica), so both nodes
         # should now have around 1.5 * keys-number partitions. We don't know the exact
         # number, but given the assumed random distribution of tokens and keys,
@@ -190,11 +187,9 @@ class ScyllaMgmtRepairTest(RepairAdditionalBase):
         debug("Run partioner-range repair on node 2")
         mgr_task2 = mgr_cluster.create_repair_task(node=node2, token_ranges='pr', keyspace='ks')
 
-        sleep = 600
-        debug('Sleep {} seconds, waiting for repair task to run.'.format(sleep))
-        time.sleep(sleep)
-        debug("repair task status is: {}".format(mgr_task2.status))
-
+        task_final_status = mgr_task2.wait_and_get_final_status()
+        assert task_final_status == TaskStatus.DONE, 'Task: {} final status is: {}.'.format(mgr_task2.id,
+                                                                                            str(mgr_task.status))
         debug("Check for the eventual total number of keys to be: {}".format(eventual_total_num_of_keys))
         self.check_rows_on_node(node1, eventual_total_num_of_keys)
         self.check_rows_on_node(node2, eventual_total_num_of_keys)
