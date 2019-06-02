@@ -229,10 +229,6 @@ class TestMaterializedViews(Tester):
         wait_for_view(cluster=self.cluster, session=session, ks='mview', view='users_by_first_name')
         wait_for_view(cluster=self.cluster, session=session, ks='mview', view='users_by_last_name')
 
-        if node_action != 'remove':
-            self.eventually(lambda: self._validate_cs_results(node1, exclude_errors, node_action, double_failure,
-                                                              cl=ConsistencyLevel.ALL))
-
         self.eventually(lambda: self._validate_cs_results(node1, exclude_errors, node_action, double_failure))
 
     def multidc_dc_failure_during_mv_insert_test(self):
@@ -668,15 +664,14 @@ class TestMaterializedViews(Tester):
                 self._validate_data_in_mvs(tm=tm, session=session, table_expected_rows=rows_after_test,
                                            mv_expected_rows=rows_after_test,
                                            node_action=change_type.split(' ')[0])
-
-            if change_type in ['stop node', 'restart node']:
+            else:
                 self.cluster.nodelist()[1].start()
                 for mv_name in tm.materialized_views.iterkeys():
                     wait_for_view(cluster=self.cluster, session=session, ks=tm.keyspace, view=mv_name)
 
                 self._validate_data_in_mvs(tm=tm, session=session, table_expected_rows=rows_after_test,
                                            mv_expected_rows=rows_after_test,
-                                           consistency_level=ConsistencyLevel.ALL)
+                                           node_action=change_type.split(' ')[0])
         except Exception:
             if not fail:
                 raise
@@ -697,11 +692,11 @@ class TestMaterializedViews(Tester):
 
     def set_consistency_level(self, node_action, double_failure=None, cl=None):
         # Set CL as:
-        #      - for double failure - ONE
-        #      - for stop node action - QUORUM
+        #      - for double_failure - ALL
+        #      - for stop/restart/decommission node action - QUORUM
         #      - if RF more then active nodes amount - QUORUM
         #      - for remove node action - ALL
-        cl = cl or (ConsistencyLevel.ONE if double_failure else ConsistencyLevel.QUORUM
+        cl = cl or (ConsistencyLevel.ALL if double_failure else ConsistencyLevel.QUORUM
                     if node_action in ['stop', 'restart', 'decommission'] or self.rf > len(self.cluster.nodelist()) else ConsistencyLevel.ALL)
         debug('Query will run with consistency level {}'.format(cl))
         return cl
