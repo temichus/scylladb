@@ -231,10 +231,9 @@ class TestMaterializedViews(Tester):
 
         if node_action != 'remove':
             self.eventually(lambda: self._validate_cs_results(node1, exclude_errors, node_action, double_failure,
-                                                          by_node=False, cl=ConsistencyLevel.ALL))
+                                                              cl=ConsistencyLevel.ALL))
 
-        self.eventually(lambda: self._validate_cs_results(node1, exclude_errors, node_action, double_failure,
-                                                          by_node=False))
+        self.eventually(lambda: self._validate_cs_results(node1, exclude_errors, node_action, double_failure))
 
     def multidc_dc_failure_during_mv_insert_test(self):
         """ Test stopping all DC nodes during MV inserts
@@ -326,7 +325,7 @@ class TestMaterializedViews(Tester):
         else:
             self.allow_log_errors = True
 
-    def _validate_cs_results(self, node, exclude_errors, node_action, double_failure, by_node=False, cl=None):
+    def _validate_cs_results(self, node, exclude_errors, node_action, double_failure, cl=None):
         self._check_errors(node, exclude_errors)
         session = self.patient_exclusive_cql_connection(node)
         session.execute('USE mview')
@@ -344,9 +343,6 @@ class TestMaterializedViews(Tester):
 
         assert_row_count(session, 'users_by_first_name', exp_res, consistency_level=cl, num_attempts=20)
         assert_row_count(session, 'users_by_last_name', exp_res, consistency_level=cl, num_attempts=20)
-        if by_node:
-            assert_row_count_from_every_node(session, 'users_by_first_name', exp_res, nodes_list=self.cluster.nodelist(), num_attempts=20)
-            assert_row_count_from_every_node(session, 'users_by_last_name', exp_res, nodes_list=self.cluster.nodelist(), num_attempts=20)
 
         assert True
 
