@@ -8,8 +8,6 @@ from dtest_scylla_manager import ScyllaManagerTool
 
 
 class ScyllaManagerTaskTest(Tester):
-    __test__ = True
-
 
     def _initiate_cluster(self):
         debug("Starting cluster...")
@@ -25,8 +23,12 @@ class ScyllaManagerTaskTest(Tester):
         session = self.patient_cql_connection(node1)
         self.create_ks(session, 'ks', 3)
 
-        session.execute(
-            "CREATE TABLE cf (name text, pet text, age int, PRIMARY KEY ((name), pet)) WITH compression = {} AND read_repair_chance = 0.0;")
+        session.execute("""CREATE TABLE cf (
+        name text,
+        pet text,
+        age int, 
+        PRIMARY KEY ((name), pet)
+        ) WITH compression = {} AND read_repair_chance = 0.0;""")
 
         query = SimpleStatement("INSERT INTO cf (name, pet, age) VALUES ('nadav', 'kitty', 5)",
                                 consistency_level=ConsistencyLevel.ALL)
@@ -41,7 +43,7 @@ class ScyllaManagerTaskTest(Tester):
 
         debug("Create Manager Tool instance to run scylla-manager operations")
         manager_tool = ScyllaManagerTool(scylla_manager=self.cluster._scylla_manager)
-        cluster_name =  "cluster1"
+        cluster_name = "cluster1"
         debug("Add a cluster to scylla-manager, named: {}".format(cluster_name))
         mgr_cluster = manager_tool.add_cluster(node=node1, name=cluster_name)
 
@@ -54,7 +56,7 @@ class ScyllaManagerTaskTest(Tester):
         debug("Health-check task next run is: {}".format(next_run))
         now = datetime.datetime.now()
         assert len(list_next_run) == 6
-        assert int(list_next_run[0]) == now.day
+        assert int(list_next_run[0]) in [now.day, now.day+1, 1]
         assert list_next_run[5] == '(+15s)'
 
         # Test repair task values
@@ -68,6 +70,6 @@ class ScyllaManagerTaskTest(Tester):
         debug("Repair task next run is: {}".format(next_run))
         now = datetime.datetime.now()
         assert len(list_next_run) == 6
-        assert int(list_next_run[0]) in [now.day+1, 1] # repair starts the next day of the month
+        assert int(list_next_run[0]) in [now.day+1, 1]  # repair starts the next day of the month
         assert list_next_run[5] == '(+7d)'
 

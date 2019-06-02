@@ -1,8 +1,12 @@
 # coding: utf-8
 # ccm clusters
+import os
+
 import time
+import yaml
 from enum import Enum
 
+from ccmlib import common
 from dtest import debug, wait_for
 
 
@@ -64,6 +68,7 @@ class TaskStatus(Enum):
     def from_str(cls, output_str):
         try:
             output_str = output_str.upper()
+            output_str = output_str if len(output_str) == 1 else output_str.split()[0]
             return getattr(cls, output_str)
         except AttributeError:
             raise ScyllaManagerError("Could not recognize returned task status: {}".format(output_str))
@@ -83,7 +88,7 @@ class ScyllaManagerBase(object):
     def __init__(self, id, scylla_manager):
         self.id = id
         self.sctool = SCTool(scylla_manager=scylla_manager)
-        self.scylla_manager=scylla_manager
+        self.scylla_manager = scylla_manager
 
     def get_property(self, parsed_table, column_name, is_search_substring=False):
         return self.sctool.get_table_value(parsed_table=parsed_table, column_name=column_name, identifier=self.id,
@@ -115,6 +120,14 @@ class ScyllaManagerTool(ScyllaManagerBase):
         """
         cmd = "cluster list"
         return self.sctool.run(list_cmd=cmd.split(), is_verify_errorless_result=True)
+
+    @property
+    def parsed_cluster_list(self):
+        """
+        Gets the Manager's Cluster list
+        """
+        stdout, stderr = self.cluster_list
+        return self.sctool.get_table_complete_column(parsed_table=stdout, column_name="name")
 
     def get_cluster(self, cluster_name):
         """
@@ -199,7 +212,8 @@ class ScyllaManagerTool(ScyllaManagerBase):
     def upgrade(self, scylla_mgmt_upgrade_to_repo):
         raise ScyllaManagerError("Not converted from SCT to Dtest code")
         # manager_from_version = self.version
-        # debug('Running Manager upgrade from: {} to version in repo: {}'.format(manager_from_version, scylla_mgmt_upgrade_to_repo))
+        # debug('Running Manager upgrade from: {} to version in repo: {}'.format(
+        #     manager_from_version, scylla_mgmt_upgrade_to_repo))
         # self.manager_node.upgrade_mgmt(scylla_mgmt_repo=scylla_mgmt_upgrade_to_repo)
         # new_manager_version = self.version
         # debug('The Manager version after upgrade is: {}'.format(new_manager_version))
@@ -208,11 +222,36 @@ class ScyllaManagerTool(ScyllaManagerBase):
     def rollback_upgrade(self, manager_node):
         raise NotImplementedError
 
+    def config_high_perf(self, dir=None, segment_tokens_max=100, poll_interval=50):
+        poll_interval = str(poll_interval)+'ms'
+        segments_per_repair = '100'
+        conf_file = os.path.join(self.scylla_manager._get_path(), common.SCYLLAMANAGER_CONF)
+        with open(conf_file, 'r') as f:
+            data = yaml.load(f)
+        if 'segment_tokens_max' in data:
+            del data['segment_tokens_max']
+        data['segment_tokens_max'] = segment_tokens_max
+        if 'poll_interval' in data:
+            del data['poll_interval']
+        data['poll_interval'] = poll_interval
+        if 'repair' in data and 'segments_per_repair' in data['repair']:
+            del data['repair']['segments_per_repair']
+            data['repair']['segments_per_repair'] = segments_per_repair
+        with open(conf_file, 'w') as f:
+            yaml.safe_dump(data, f, default_flow_style=False)
+        with open(conf_file, 'r') as f:
+            debug(msg="scylla-manager updated yaml is: {}".format(f.read()))
+        self.scylla_manager.stop(gently=True)
+        self.scylla_manager.start()
+        time.sleep(2)
+
+
+
 
 class SCTool(object):
 
     def __init__(self, scylla_manager):
-        self.scylla_manager=scylla_manager
+        self.scylla_manager = scylla_manager
 
 
     def run(self, list_cmd, is_verify_errorless_result=False, parse_table_res=True, is_multiple_tables=False):
@@ -329,6 +368,17 @@ class SCTool(object):
         debug("{} {} value is:{}".format(identifier, column_name, ret_val))
         return ret_val
 
+    def get_table_complete_column(self, parsed_table, column_name):
+
+        column_titles = [title.upper() for title in
+                         parsed_table[0]]  # get all table column titles capital (for comparison)
+        if column_name and column_name.upper() not in column_titles:
+            raise ScyllaManagerError("Column name: {} not found in table: {}".format(column_name, parsed_table))
+
+        column_name_index = column_titles.index(column_name.upper())
+        column_values = [row[column_name_index] for row in parsed_table[1:]]
+        return column_values
+
     def _is_found_in_table(self, parsed_table, identifier, is_search_substring=False):
         full_rows_list = []
         for row in parsed_table:
@@ -337,6 +387,7 @@ class SCTool(object):
             return any(identifier in cur_str for cur_str in full_rows_list)
 
         return identifier in full_rows_list
+
 
 class ManagerTask(ScyllaManagerBase):
 
@@ -391,7 +442,7 @@ class ManagerTask(ScyllaManagerBase):
         Gets the task's history table
         """
         # ╭──────────────────────────────────────┬────────────────────────┬────────────────────────┬──────────┬───────╮
-        # │ id                                   │ start time             │ end time               │ duration │ status│                                                                                                                                                                  │
+        # │ id                                   │ start time             │ end time               │ duration │ status│
         # ├──────────────────────────────────────┼────────────────────────┼────────────────────────┼──────────┼───────┤
         # │ e4f70414-ebe7-11e8-82c4-12c0dad619c2 │ 19 Nov 18 10:43:04 UTC │ 19 Nov 18 10:43:04 UTC │ 0s       │ NEW   │
         # │ 7f564891-ebe6-11e8-82c3-12c0dad619c2 │ 19 Nov 18 10:33:04 UTC │ 19 Nov 18 10:33:04 UTC │ 0s       │ NEW   │
@@ -425,7 +476,8 @@ class ManagerTask(ScyllaManagerBase):
         """
         cmd = "task list -a -c {}".format(self.cluster_id)
         stdout, stderr = self.sctool.run(list_cmd=cmd.split(), is_verify_errorless_result=True)
-        return self.get_property(parsed_table=stdout, column_name='status', is_search_substring=True)
+        str_status = self.get_property(parsed_table=stdout, column_name='status')
+        return TaskStatus.from_str(str_status)
 
         # expecting output of:
         # ╭─────────────────────────────────────────────┬───────────────────────────────┬──────┬────────────┬────────╮
@@ -461,7 +513,7 @@ class ManagerTask(ScyllaManagerBase):
         progress = "N/A"
         for task_property in stdout:
             if task_property[0].startswith("Progress"):
-                progress = task_property[0].split(':')[1]
+                progress = task_property[0].split()[1]
                 break
         return progress
 
@@ -480,16 +532,16 @@ class ManagerTask(ScyllaManagerBase):
             # * print the progress to log in cases needed for failures/performance analysis.
             ###
             progress = self.progress
+            debug("Task {} progress is: {}".format(self.id, progress))
         return self.status in list_status
 
-    def wait_for_status(self, list_status, check_task_progress=True, timeout=3600, step=120):
+    def wait_for_status(self, list_status, check_task_progress=True, timeout=600, step=20):
         text = "Waiting until task: {} reaches status of: {}".format(self.id, list_status)
-        is_status_reached = wait_for(func=self.is_status_in_list, step=step,
-                                          text=text, list_status=list_status, check_task_progress=check_task_progress,
-                                          timeout=timeout)
+        is_status_reached = wait_for(func=self.is_status_in_list, step=step, text=text, list_status=list_status,
+                                     check_task_progress=check_task_progress, timeout=timeout)
         return is_status_reached
 
-    def wait_and_get_final_status(self, timeout=3600, step=120):
+    def wait_and_get_final_status(self, timeout=600, step=20):
         """
         1) Wait for task to reach a 'final' status. meaning one of: done/error/stopped
         2) return the final status.
@@ -503,6 +555,7 @@ class ManagerTask(ScyllaManagerBase):
             raise ScyllaManagerError("Unexpected result on waiting for task {} status".format(self.id))
         return self.status
 
+
 class RepairTask(ManagerTask):
     def __init__(self, task_id, cluster_id, scylla_manager):
         ManagerTask.__init__(self, task_id=task_id, cluster_id=cluster_id, scylla_manager=scylla_manager)
@@ -515,13 +568,16 @@ class RepairTask(ManagerTask):
     def continue_repair(self):
         self.start(use_continue=True)
 
+
 class HealthcheckTask(ManagerTask):
     def __init__(self, task_id, cluster_id, scylla_manager):
         ManagerTask.__init__(self, task_id=task_id, cluster_id=cluster_id, scylla_manager=scylla_manager)
 
+
 class RestTask(ManagerTask):
     def __init__(self, task_id, cluster_id, scylla_manager):
         ManagerTask.__init__(self, task_id=task_id, cluster_id=cluster_id, scylla_manager=scylla_manager)
+
 
 class ManagerCluster(ScyllaManagerBase):
 

@@ -4,6 +4,7 @@ from dtest_scylla_manager import HostStatus, HostRestStatus, ScyllaManagerTool, 
 from dtest import Tester, debug
 from unittest import skip
 
+from dtest_scylla_manager import TaskStatus
 from tools import insert_c1c2, query_c1c2
 from assertions import assert_row_count
 from cassandra import ConsistencyLevel
@@ -251,12 +252,9 @@ class ScyllaMgmtRepairTest(RepairAdditionalBase):
         mgr_cluster = manager_tool.add_cluster(node=node1, name=cluster_name)
 
         debug("Run repair on node 2")
-        mgr_task = mgr_cluster.create_repair_task(node=node2, keyspace='ks')
+        repair_task = mgr_cluster.create_repair_task(node=node2, keyspace='ks')
 
-        sleep = 600
-        debug('Sleep {} seconds, waiting for repair task to run.'.format(sleep))
-        time.sleep(sleep)
-        debug("repair task status is: {}".format(mgr_task.status))
+        repair_task.wait_for_status(list_status=[TaskStatus.DONE.value], timeout=300, step=10)
 
         debug('Stop node1')
         node1.stop(wait_other_notice=True)
@@ -321,12 +319,9 @@ class ScyllaMgmtRepairTest(RepairAdditionalBase):
         mgr_cluster = manager_tool.add_cluster(node=node1, name=cluster_name)
 
         debug("Run repair on node 2")
-        mgr_task = mgr_cluster.create_repair_task(node=node2)
+        repair_task = mgr_cluster.create_repair_task(node=node2)
 
-        sleep = 600
-        debug('Sleep {} seconds, waiting for repair task to run.'.format(sleep))
-        time.sleep(sleep)
-        debug("repair task status is: {}".format(mgr_task.status))
+        repair_task.wait_for_status(list_status=[TaskStatus.DONE.value], timeout=300, step=10)
 
         debug('Stop node1')
         node1.stop(wait_other_notice=True)
