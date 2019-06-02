@@ -45,7 +45,8 @@ class TestMaterializedViews(Tester):
         for i in range(trials - 1):
             try:
                 return fun()
-            except:
+            except Exception as e:
+                debug("{} [{}/{}]: {}: will retry in {} second(s)".format(fun.__name__, i+1, trials, e, 2**i))
                 time.sleep(2**i)
         return fun()
 
