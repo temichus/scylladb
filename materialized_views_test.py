@@ -205,25 +205,26 @@ class TestMaterializedViews(Tester):
                                                       "-rate threads=10", "-pop seq=1..{}".format(n)],
                                     capture_output=True)
         self.assertFalse(stderr, 'Run c-s failed: {}'.format(stderr))
-        nodes_to_start = None
+
+        other_nodes = self.cluster.nodelist()
+        nodes_to_start = [ other_nodes.pop(1) ]
+        if double_failure and len(self.cluster.nodelist()) > 2:
+            nodes_to_start.append(other_nodes.pop(1))
 
         proc_functions = [
             {'func': node1.stress, 'args': [['user', 'profile={}'.format(mv_profile), 'cl=ONE', 'duration={}'.format(duration),
                                              'ops(insert=1,read1=1,read2=1,read3=1)', '-mode cql3  native', '-rate threads=10'], True]},
             {'func': node1.stress, 'args': [['mixed', "cl=ONE", "duration={}".format(duration), "-schema replication(factor=3)",
                                              "-mode cql3 native", "-rate threads=10", "-pop seq=1..{}".format(n), "-log interval=5"], True]},
-            {'func': self._node_action_with_delay, 'args': (node_action, self.cluster.nodelist()[1]), 'kwargs': {'delay': delay}}
+            {'func': self._node_action_with_delay, 'args': (node_action, nodes_to_start[0]), 'kwargs': {'delay': delay, 'other_nodes': other_nodes}}
         ]
         if double_failure and len(self.cluster.nodelist()) > 2:
-            proc_functions.append({'func': self._node_action_with_delay, 'args': (node_action, self.cluster.nodelist()[2]),
+            proc_functions.append({'func': self._node_action_with_delay, 'args': (node_action, nodes_to_start[1]),
                                    'kwargs': {'delay': delay+10}})
-            nodes_to_start = [self.cluster.nodelist()[1], self.cluster.nodelist()[2]]
         run_in_parallel(proc_functions)
 
         # Index will not finish building, because view building underneath is paused until updates can be sent.
         if node_action == 'stop':
-            if not nodes_to_start:
-                nodes_to_start = [self.cluster.nodelist()[1]]
             self._start_nodes(nodes_to_start)
 
         wait_for_view(cluster=self.cluster, session=session, ks='mview', view='users_by_first_name')
@@ -268,7 +269,7 @@ class TestMaterializedViews(Tester):
         self.eventually(lambda: self._validate_cs_results(node1_dc1, exclude_errors=['mutation_write_timeout_exception'],
                                                           node_action='', double_failure=True))
 
-    def _node_action_with_delay(self, action, node, delay=0, wait=True, wait_other_notice=True, gently=True):
+    def _node_action_with_delay(self, action, node, delay=0, wait=True, wait_other_notice=True, other_nodes=None, gently=True):
         """
         :param action: expected values: stop, remove
         :param action: str
@@ -282,9 +283,9 @@ class TestMaterializedViews(Tester):
 
         debug('START: {0} node {1}'.format(action, node.name))
         if action == 'stop':
-            node.stop(wait=wait, wait_other_notice=wait_other_notice, gently=gently)
+            node.stop(wait=wait, wait_other_notice=wait_other_notice, other_nodes=other_nodes, gently=gently)
         elif action == 'remove':
-            remove_node(self.cluster, node, wait_other_notice=wait_other_notice)
+            remove_node(self.cluster, node, wait_other_notice=wait_other_notice, other_nodes=other_nodes)
         else:
             new_node_index = len(self.cluster.nodelist()) + 1
             node.nodetool(action)
@@ -300,9 +301,15 @@ class TestMaterializedViews(Tester):
             debug('Sleep for {} seconds'.format(delay))
             time.sleep(delay)
 
-        for node in self.cluster.nodelist():
+        other_nodes = self.cluster.nodelist()
+        stop_nodes = []
+        for node in other_nodes:
             if (by_dc_name and node.data_center == by_dc_name) or (by_node_names and node.name in by_node_names):
-                self._node_action_with_delay('stop', node, wait=wait, wait_other_notice=wait_other_notice, gently=gently)
+                stop_nodes.append(node)
+                other_nodes.remove(node) 
+
+        for node in stop_nodes:
+            self._node_action_with_delay('stop', node, wait=wait, wait_other_notice=wait_other_notice, other_nodes=other_nodes, gently=gently)
 
     @require('#4423')
     def add_dc_during_mv_insert_test(self):
