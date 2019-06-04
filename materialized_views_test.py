@@ -3308,38 +3308,56 @@ class TestMaterializedViews(Tester):
             self.assertTrue(base_entry, "Both base {} and view entry {} should exist.".format(base_entry, view_entry))
             self.assertTrue(view_entry, "Both base {} and view entry {} should exist.".format(base_entry, view_entry))
 
-    def write_to_hinted_handoff_for_views_test(self):
+    def _write_to_hinted_handoff_for_views(self, double_failure):
         """
         Test that view updates are stored as hints in data/view_pending_updates directory
         and that reading data from a view is consistent after updates stored as hints.
         """
-        session = self.prepare(user_table=True, rf=1, nodes=3, options={'hinted_handoff_enabled': True})
+        session = self.prepare(user_table=True, rf=3, nodes=3, options={'hinted_handoff_enabled': True})
         node1, node2, node3 = self.cluster.nodelist()
-        session.execute('USE ks')
+        ks = 'ks'
+        session.execute('USE {}'.format(ks))
 
         for i in xrange(500):
             session.execute(SimpleStatement("INSERT INTO users (username, password, gender, birth_year) VALUES"
-                            "('Jane{}', 'Doe', 'F', 1980)".format(i), consistency_level=ConsistencyLevel.ANY))
+                            "('Jane{}', 'Doe', 'F', 1980)".format(i), consistency_level=ConsistencyLevel.ALL))
+        self.cluster.flush()
 
-        node2.stop(wait=True)
-        node3.stop(wait=True)
+        node2.stop(wait=True, wait_other_notice=True)
+        if double_failure:
+            node3.stop(wait=True, wait_other_notice=True)
 
-        for i in xrange(500):
+        num_updates = 500
+        for i in xrange(num_updates):
             session.execute(SimpleStatement("UPDATE users SET state = 'CA{}' WHERE username = 'Jane{}'".format(i, 1500 - 2*i),
                                             consistency_level=ConsistencyLevel.ANY))
-        node2.start(wait_for_binary_proto=True)
-        node3.start(wait_for_binary_proto=True)
+        node2.start(wait_for_binary_proto=True, wait_other_notice=True)
+        if double_failure:
+            node3.start(wait_for_binary_proto=True, wait_other_notice=True)
+        view = 'users_by_state'
+        # Wait until the view is built.
+        # Note that it won't wait until all the data is propagated from hinted handoff
+        wait_for_view(cluster=self.cluster, session=session, ks=ks, view=view)
+        total_wait = 60
+        sleep_time = 5
         returned_rows = []
-        for _ in xrange(10):
-            returned_rows = [row for row in session.execute(SimpleStatement("SELECT * FROM users_by_state", consistency_level=ConsistencyLevel.ONE))]
-            if len(returned_rows) == 500:
+        for _ in xrange(total_wait / sleep_time):
+            returned_rows = [row for row in session.execute(SimpleStatement("SELECT * FROM {}".format(view), consistency_level=ConsistencyLevel.ALL))]
+            if len(returned_rows) == num_updates:
                 break
             else:
-                time.sleep(1)
+                debug("Expected {} rows, got {}. Will retry in {} second(s)".format(num_updates, len(returned_rows), sleep_time))
+                time.sleep(sleep_time)
 
-        self.assertEquals(len(returned_rows), 500)
+        self.assertEquals(len(returned_rows), num_updates)
         for row in returned_rows:
             self.assertEquals(int(row.username[4:]), 1500 - 2*int(row.state[2:]))
+
+    def write_to_hinted_handoff_for_views_test(self):
+        self._write_to_hinted_handoff_for_views(double_failure=False)
+
+    def write_to_hinted_handoff_for_views_double_failure_test(self):
+        self._write_to_hinted_handoff_for_views(double_failure=True)
 
     def virtual_columns_schema_test(self):
         """
