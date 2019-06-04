@@ -34,16 +34,25 @@ class TestRebuild(Tester):
         Test rebuild from other dc works as expected.
         """
 
+        def _add_node(i, dc):
+            cluster = self.cluster
+            ipformat = cluster.ipprefix + "%d"
+            node = cluster.create_node(name='node%s' % i,
+                                        auto_bootstrap=False,
+                                        thrift_interface=(ipformat % i, 9160),
+                                        storage_interface=(ipformat % i, 7000),
+                                        jmx_port=str(7000 + i * 100 + cluster.id),
+                                        remote_debug_port=str(2000 + i * 100),
+                                        initial_token=None,
+                                        binary_interface=(ipformat % i, 9042))
+            cluster.add(node, True, data_center=dc)
+            return node
+
         keys = 1000
 
         cluster = self.cluster
         cluster.set_configuration_options(values={'endpoint_snitch': 'GossipingPropertyFileSnitch'})
-        node1 = cluster.create_node('node1', False,
-                                    ('127.0.0.1', 9160),
-                                    ('127.0.0.1', 7000),
-                                    '7100', '2000', None,
-                                    binary_interface=('127.0.0.1', 9042))
-        cluster.add(node1, True, data_center='dc1')
+        node1 = _add_node(1, 'dc1')
 
         # start node in dc1
         node1.start(wait_for_binary_proto=True)
@@ -60,12 +69,7 @@ class TestRebuild(Tester):
         session.shutdown()
 
         # Bootstraping a new node in dc2 with auto_bootstrap: false
-        node2 = cluster.create_node('node2', False,
-                                    ('127.0.0.2', 9160),
-                                    ('127.0.0.2', 7000),
-                                    '7200', '2001', None,
-                                    binary_interface=('127.0.0.2', 9042))
-        cluster.add(node2, False, data_center='dc2')
+        node2 = _add_node(2, 'dc2')
         node2.start(wait_other_notice=True, wait_for_binary_proto=True)
 
         # wait for snitch to reload
