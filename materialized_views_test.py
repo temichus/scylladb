@@ -3308,7 +3308,7 @@ class TestMaterializedViews(Tester):
             self.assertTrue(base_entry, "Both base {} and view entry {} should exist.".format(base_entry, view_entry))
             self.assertTrue(view_entry, "Both base {} and view entry {} should exist.".format(base_entry, view_entry))
 
-    def write_to_hinted_handoff_for_views_test(self):
+    def _write_to_hinted_handoff_for_views(self, double_failure):
         """
         Test that view updates are stored as hints in data/view_pending_updates directory
         and that reading data from a view is consistent after updates stored as hints.
@@ -3324,14 +3324,16 @@ class TestMaterializedViews(Tester):
         self.cluster.flush()
 
         node2.stop(wait=True, wait_other_notice=True)
-        node3.stop(wait=True, wait_other_notice=True)
+        if double_failure:
+            node3.stop(wait=True, wait_other_notice=True)
 
         num_updates = 500
         for i in xrange(num_updates):
             session.execute(SimpleStatement("UPDATE users SET state = 'CA{}' WHERE username = 'Jane{}'".format(i, 1500 - 2*i),
                                             consistency_level=ConsistencyLevel.ANY))
         node2.start(wait_for_binary_proto=True, wait_other_notice=True)
-        node3.start(wait_for_binary_proto=True, wait_other_notice=True)
+        if double_failure:
+            node3.start(wait_for_binary_proto=True, wait_other_notice=True)
         view = 'users_by_state'
         # Wait until the view is built.
         # Note that it won't wait until all the data is propagated from hinted handoff
@@ -3350,6 +3352,12 @@ class TestMaterializedViews(Tester):
         self.assertEquals(len(returned_rows), num_updates)
         for row in returned_rows:
             self.assertEquals(int(row.username[4:]), 1500 - 2*int(row.state[2:]))
+
+    def write_to_hinted_handoff_for_views_test(self):
+        self._write_to_hinted_handoff_for_views(double_failure=False)
+
+    def write_to_hinted_handoff_for_views_double_failure_test(self):
+        self._write_to_hinted_handoff_for_views(double_failure=True)
 
     def virtual_columns_schema_test(self):
         """
