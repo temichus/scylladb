@@ -1175,7 +1175,6 @@ class retrying(object):
         self.tear_down_on_failure = tear_down_on_failure
 
     def __call__(self, func):
-        @wraps(func)
         def inner(*args, **kwargs):
             func_args = inspect.getargspec(func)
             num_attempts = self.num_attempts
@@ -1186,21 +1185,21 @@ class retrying(object):
                     num_attempts_position = default_args.index('num_attempts')
                     num_attempts = func_args.defaults[num_attempts_position]
 
-            for i in xrange(num_attempts):
+            for i in xrange(num_attempts - 1):
                 try:
                     if self.message:
-                        debug("%s [try #%s]" % (self.message, i))
+                        debug("trying {} [{}/{}] ({})".format(func.__name__, i+1, num_attempts, self.message))
                     return func(*args, **kwargs)
                 except self.allowed_exceptions as e:
-                    debug("retrying: %r" % e)
-                    time.sleep(self.sleep_time)
-                    if i == num_attempts - 1:
-                        debug("Number of retries exceeded!")
-                        raise
                     if self.tear_down_on_failure:
                         args[0].allow_log_errors = True
                         args[0].tearDown()
                         args[0].setUp()
+                    debug("{} [{}/{}]: {}: will retry in {} second(s)".format(func.__name__, i+1, num_attempts, e, self.sleep_time))
+                    time.sleep(self.sleep_time)
+            if self.message:
+                debug("trying {} [last try] ({})".format(func.__name__, self.message))
+            return func(*args, **kwargs)
 
         return inner
 

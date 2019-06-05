@@ -45,7 +45,8 @@ class TestMaterializedViews(Tester):
         for i in range(trials - 1):
             try:
                 return fun()
-            except:
+            except Exception as e:
+                debug("{} [{}/{}]: {}: will retry in {} second(s)".format(fun.__name__, i+1, trials, e, 2**i))
                 time.sleep(2**i)
         return fun()
 
@@ -230,12 +231,7 @@ class TestMaterializedViews(Tester):
         wait_for_view(cluster=self.cluster, session=session, ks='mview', view='users_by_first_name')
         wait_for_view(cluster=self.cluster, session=session, ks='mview', view='users_by_last_name')
 
-        if node_action != 'remove':
-            self.eventually(lambda: self._validate_cs_results(node1, exclude_errors, node_action, double_failure,
-                                                          by_node=False, cl=ConsistencyLevel.ALL))
-
-        self.eventually(lambda: self._validate_cs_results(node1, exclude_errors, node_action, double_failure,
-                                                          by_node=False))
+        self.eventually(lambda: self._validate_cs_results(node1, exclude_errors, node_action, double_failure))
 
     def multidc_dc_failure_during_mv_insert_test(self):
         """ Test stopping all DC nodes during MV inserts
@@ -333,7 +329,7 @@ class TestMaterializedViews(Tester):
         else:
             self.allow_log_errors = True
 
-    def _validate_cs_results(self, node, exclude_errors, node_action, double_failure, by_node=False, cl=None):
+    def _validate_cs_results(self, node, exclude_errors, node_action, double_failure, cl=None, num_attempts=1):
         self._check_errors(node, exclude_errors)
         session = self.patient_exclusive_cql_connection(node)
         session.execute('USE mview')
@@ -349,13 +345,8 @@ class TestMaterializedViews(Tester):
             debug('Try to select rows count from mview.users table. Failed with error: {}'.format(e.message))
             raise
 
-        assert_row_count(session, 'users_by_first_name', exp_res, consistency_level=cl, num_attempts=20)
-        assert_row_count(session, 'users_by_last_name', exp_res, consistency_level=cl, num_attempts=20)
-        if by_node:
-            assert_row_count_from_every_node(session, 'users_by_first_name', exp_res, nodes_list=self.cluster.nodelist(), num_attempts=20)
-            assert_row_count_from_every_node(session, 'users_by_last_name', exp_res, nodes_list=self.cluster.nodelist(), num_attempts=20)
-
-        assert True
+        assert_row_count(session, 'users_by_first_name', exp_res, consistency_level=cl, num_attempts=num_attempts)
+        assert_row_count(session, 'users_by_last_name', exp_res, consistency_level=cl, num_attempts=num_attempts)
 
     @flaky_with_tear_down
     def add_dc_during_mv_update_test(self):
@@ -679,15 +670,14 @@ class TestMaterializedViews(Tester):
                 self._validate_data_in_mvs(tm=tm, session=session, table_expected_rows=rows_after_test,
                                            mv_expected_rows=rows_after_test,
                                            node_action=change_type.split(' ')[0])
-
-            if change_type in ['stop node', 'restart node']:
+            else:
                 self.cluster.nodelist()[1].start()
                 for mv_name in tm.materialized_views.iterkeys():
                     wait_for_view(cluster=self.cluster, session=session, ks=tm.keyspace, view=mv_name)
 
                 self._validate_data_in_mvs(tm=tm, session=session, table_expected_rows=rows_after_test,
                                            mv_expected_rows=rows_after_test,
-                                           consistency_level=ConsistencyLevel.ALL)
+                                           node_action=change_type.split(' ')[0])
         except Exception:
             if not fail:
                 raise
@@ -708,11 +698,11 @@ class TestMaterializedViews(Tester):
 
     def set_consistency_level(self, node_action, double_failure=None, cl=None):
         # Set CL as:
-        #      - for double failure - ONE
-        #      - for stop node action - QUORUM
+        #      - for double_failure - ALL
+        #      - for stop/restart/decommission node action - QUORUM
         #      - if RF more then active nodes amount - QUORUM
         #      - for remove node action - ALL
-        cl = cl or (ConsistencyLevel.ONE if double_failure else ConsistencyLevel.QUORUM
+        cl = cl or (ConsistencyLevel.ALL if double_failure else ConsistencyLevel.QUORUM
                     if node_action in ['stop', 'restart', 'decommission'] or self.rf > len(self.cluster.nodelist()) else ConsistencyLevel.ALL)
         debug('Query will run with consistency level {}'.format(cl))
         return cl
