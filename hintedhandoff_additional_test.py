@@ -311,7 +311,7 @@ class TestHintedHandoff(Tester):
         Test sending consistency. There should be no discarded hints.
         Validates the fix of scylladb/scylla#4122.
         """
-        self.__start_cluster_with_hints(num=3, custom_args=["--memory", "512M", "--smp", "2"])
+        self.__start_cluster_with_hints(num=3)
 
         node1, node2, node3 = self.cluster.nodelist()
 
