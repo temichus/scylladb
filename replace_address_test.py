@@ -7,7 +7,7 @@ from cassandra.query import SimpleStatement
 
 from ccmlib.node import NodeError
 from dtest import DISABLE_VNODES, Tester, debug
-from tools import InterruptBootstrap, since, new_node
+from tools import InterruptBootstrap, since, new_node, require
 
 
 class NodeUnavailable(Exception):
