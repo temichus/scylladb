@@ -165,6 +165,10 @@ def scylla_mode(modes):
    ."""
     NO_SKIP = os.environ.get('SKIP', '').lower() in ('no', 'false')
     cdir = os.environ.get('CASSANDRA_DIR')
+    version = os.environ.get('SCYLLA_VERSION')
+    if version:
+        return unittest.skipIf(not 'relocate' in modes, 'Test disabled for scylla relocate')
+
     idir, mode = common.scylla_extract_install_dir_and_mode(cdir)
     return unittest.skipIf(common.isScylla(cdir) and not NO_SKIP and modes.find(mode) == -1, 'Test disabled for scylla %s' % mode)
 

@@ -586,7 +586,20 @@ class MigrationTestBase(Tester):
     def recursive_copy_to(self, from_dir, to_dir):
         shutil.copytree(from_dir, to_dir)
 
-#
+    def get_sstable_version(self,  cf_dir, assert_only_one_version=True):
+        file_list = os.listdir(cf_dir)
+        debug("{}".format(file_list))
+        sstable_version_regex = re.compile(r'(\w+)-\d+-(.+)\.(db|txt|sha1|crc32)')
+
+        sstable_versions = list(
+            set([sstable_version_regex.search(f).group(1) for f in file_list if sstable_version_regex.search(f)]))
+
+        if assert_only_one_version:
+            self.assertEqual(len(sstable_versions), 1, sstable_versions)
+        if sstable_versions:
+            return sstable_versions[0]
+#       else:
+            return None
 # Dtest created to test migration of data from C* to Scylla
 #
 
@@ -702,6 +715,44 @@ class TestMigration(MigrationTestBase):
                " partitioner which is different than" + \
                " org.apache.cassandra.dht.Murmur3Partitioner" + \
                " partitioner used by the database"
+
+
+
+@tools.nottest
+class TestMigrationUpgradeSSTables(TestMigration):
+
+    @skip('test isn\'t relevant when using nodetool upgradesstables')
+    def migrate_sstable_with_row_tombstone_test(self):
+        # since the row tombstone data doesn't create files on disk
+        pass
+
+    @skip('test isn\'t relevant when using nodetool upgradesstables')
+    def migrate_sstable_to_check_consistency_test(self):
+        # since this test load multiple versions, that conflicts with version created upgradesstables
+        pass
+
+    @skip('test isn\'t relevant when using nodetool upgradesstables')
+    def migrate_sstable_with_expired_ttl_test(self):
+        # since expired ttl data doens't create files on disk
+        pass
+
+    def load_migrated_tables(self, node, migrated_files_dir, ks='ks', cf='cf'):
+        super(TestMigrationUpgradeSSTables, self).load_migrated_tables(node, migrated_files_dir, ks='ks', cf='cf')
+
+        ks_dir = os.path.join(self.test_path, 'test', 'node1', 'data', ks)
+        cf_dir = self.get_cf_dir(ks_dir, cf)
+        debug("Column family directory is {}".format(cf_dir))
+
+        before_sstable_version = self.get_sstable_version(cf_dir, assert_only_one_version=False)
+
+        debug("Running 'nodetool upgradesstables'")
+        node.nodetool("upgradesstables -a")
+
+        after_sstable_version = self.get_sstable_version(cf_dir)
+
+        # check that sstable version was upgraded, or if that version equals latest version `mc`
+        self.assertTrue(after_sstable_version > before_sstable_version or before_sstable_version == after_sstable_version == 'mc',
+                        "upgradesstable failed to upgrade sstables [before_version={} after_version={}]".format(before_sstable_version, after_sstable_version))
 
 
 # @skip('not run every build')
@@ -948,8 +999,11 @@ class TTLWithMigrate(Tester):
 
         return data_json, data_json_path
 
-versions = ['2_1_x', '2_2_x','3_0_mc']
 
+versions = ['2_1_x', '2_2_x', '3_0_mc']
 for version in versions:
     cls_name = ('TestMigration_with_' + version)
     vars()[cls_name] = type(cls_name, (TestMigration,), {'version': version, '__test__': True})
+
+    cls_name = ('TestMigrationUpgradeSSTables_with_' + version)
+    vars()[cls_name] = type(cls_name, (TestMigrationUpgradeSSTables,), {'version': version, '__test__': True})
