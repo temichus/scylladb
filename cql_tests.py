@@ -9,7 +9,7 @@ from cassandra.policies import FallthroughRetryPolicy
 from cassandra.protocol import ProtocolException
 from cassandra.query import SimpleStatement
 
-from assertions import assert_invalid, assert_one, assert_unavailable
+from assertions import assert_invalid, assert_one, assert_unavailable, assert_all
 from dtest import Tester, canReuseCluster, freshCluster
 from thrift_bindings.v22.ttypes import \
     ConsistencyLevel as ThriftConsistencyLevel
@@ -17,6 +17,7 @@ from thrift_bindings.v22.ttypes import (CfDef, Column, ColumnOrSuperColumn,
                                         Mutation)
 from thrift_tests import get_thrift_client
 from tools import debug, require, rows_to_list, since, new_node
+from scylla_tools import get_entity_id, get_truncated_time_from_system_local, get_truncated_time_from_system_truncated
 from nose.plugins.attrib import attr
 
 
@@ -408,25 +409,118 @@ class MiscellaneousCQLTester(CQLTester):
 
 
 class TruncateTester(CQLTester):
+
+    @staticmethod
+    def create_schema(session, rf=1):
+        session.execute("CREATE KEYSPACE ks WITH replication = { 'class':'SimpleStrategy', 'replication_factor':%d} "
+                        "AND DURABLE_WRITES = true" % rf)
+        session.execute("CREATE TABLE ks.test1 (k int PRIMARY KEY, v1 int)")
+
+    @staticmethod
+    def insert_data(conn, data=None):
+        if not data:
+            data = list([i, i] for i in xrange(0, 30))
+
+        for (x, y) in data:
+            conn.execute("INSERT INTO ks.test1 (k, v1) VALUES (%d, %d)" % (x, y))
+        return data
+
+    def validate_truncated_entries_for_table(self, keyspace_name, table_name, prev_truncated_time=None):
+        truncated_time_per_node = []
+        for node in self.cluster.nodelist():
+            if node.status == 'DOWN':
+                continue
+            session = self.patient_exclusive_cql_connection(node=node)
+            id = get_entity_id(session=session, table_or_view='table', keyspace_name=keyspace_name,
+                               entity_name=table_name)
+
+            # validate truncation entries in the system.truncated table - expected entry
+            truncated_time = get_truncated_time_from_system_truncated(session=session, table_id=id)
+            self.assertTrue(truncated_time, msg='Expected truncated entry in the system.truncated table, '
+                                                'but it\'s not found')
+            truncated_time_per_node.append({node.name: truncated_time})
+
+            # validate truncation entries in the system.local table - not expected entry
+            truncated_time = get_truncated_time_from_system_local(session=session)
+            self.assertTrue(truncated_time == [[None]],
+                            msg='Not expected truncated entry in the system.local table, '
+                                'but it\'s found')
+
+        if prev_truncated_time:
+            self.assertTrue(prev_truncated_time == truncated_time_per_node)
+
+        return truncated_time_per_node
+
+    def truncate_before_restart_test(self):
+        """
+        Truncate table and then restart the node. Validate that truncated en
+        """
+        session = self.prepare(nodes=3, create_keyspace=False)
+
+        self.create_schema(session=session, rf=3)
+
+        data = self.insert_data(conn=session)
+
+        select_query = "SELECT * FROM ks.test1"
+        assert_all(session=session, query=select_query, expected=data, cl=ConsistencyLevel.QUORUM, ignore_order=True)
+
+        session.execute("TRUNCATE ks.test1")
+        assert_all(session=session, query=select_query, expected=[], cl=ConsistencyLevel.ALL)
+
+        truncated_time_per_node = self.validate_truncated_entries_for_table(keyspace_name='ks', table_name='test1')
+
+        node2 = self.cluster.nodelist()[1]
+        node2.stop(wait_other_notice=True)
+        node2.start(wait_for_binary_proto=True, wait_other_notice=True)
+
+        session = self.patient_exclusive_cql_connection(node2)
+        assert_all(session=session, query=select_query, expected=[], cl=ConsistencyLevel.ALL)
+
+        self.validate_truncated_entries_for_table(keyspace_name='ks', table_name='test1',
+                                                  prev_truncated_time=truncated_time_per_node)
+
+    def truncate_twice_test(self):
+        """
+        Truncate table and then restart the node. Validate that truncated en
+        """
+        session = self.prepare(nodes=3, create_keyspace=False)
+
+        self.create_schema(session=session, rf=3)
+
+        data = self.insert_data(conn=session)
+
+        select_query = "SELECT * FROM ks.test1"
+        assert_all(session=session, query=select_query, expected=data, cl=ConsistencyLevel.QUORUM, ignore_order=True)
+
+        debug('Truncate first time')
+        session.execute("TRUNCATE ks.test1")
+        assert_all(session=session, query=select_query, expected=[], cl=ConsistencyLevel.ALL)
+
+        truncated_time_per_node = self.validate_truncated_entries_for_table(keyspace_name='ks', table_name='test1')
+
+        time.sleep(60)
+        debug('Truncate second time')
+        session.execute("TRUNCATE ks.test1")
+        assert_all(session=session, query=select_query, expected=[], cl=ConsistencyLevel.ALL)
+
+        sec_truncated_time_per_node = self.validate_truncated_entries_for_table(keyspace_name='ks', table_name='test1')
+
+        self.assertTrue(truncated_time_per_node < sec_truncated_time_per_node)
+
     @attr('next-gating')
     @attr('dtest-debug')
     def truncate_after_restart_test(self):
         session = self.prepare(nodes=1, create_keyspace=False)
 
-        session.execute("CREATE KEYSPACE ks WITH replication = { 'class':'SimpleStrategy', 'replication_factor':1} AND DURABLE_WRITES = true")
-        session.execute("CREATE TABLE ks.test1 (k int PRIMARY KEY, v1 int)")
+        self.create_schema(session=session, rf=1)
 
         node2 = new_node(self.cluster, bootstrap=True)
         node2.start(wait_for_binary_proto=True)
 
-        data = list([i, i] for i in xrange(0, 30))
-        def insert_data(conn):
-            for (x, y) in data:
-                conn.execute("INSERT INTO ks.test1 (k, v1) VALUES (%d, %d)" % (x, y))
+        data = self.insert_data(conn=session)
 
-        insert_data(session)
-        res = sorted(session.execute("SELECT * FROM ks.test1"))
-        assert rows_to_list(res) == data, rows_to_list(res)
+        select_query = "SELECT * FROM ks.test1"
+        assert_all(session=session, query=select_query, expected=data, cl=ConsistencyLevel.QUORUM, ignore_order=True)
 
         node2.stop(wait_other_notice=True)
         node2.start(wait_for_binary_proto=True)
@@ -434,10 +528,9 @@ class TruncateTester(CQLTester):
         # Many connections to exercise many shards
         conns = [self.patient_exclusive_cql_connection(node2) for i in xrange(0, 3)]
         for conn in conns:
-            insert_data(conn)
+            self.insert_data(conn=conn, data=data)
             conn.execute("TRUNCATE ks.test1")
-            res = conn.execute(SimpleStatement("SELECT * FROM ks.test1", consistency_level=ConsistencyLevel.ALL))
-            assert rows_to_list(res) == [], res
+            assert_all(session=conn, query=select_query, expected=[], cl=ConsistencyLevel.ALL)
 
 
 @since('3.0')
