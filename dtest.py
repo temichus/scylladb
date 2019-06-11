@@ -290,7 +290,7 @@ class MultiProcessClusterIdAllocator(ClusterIdAllocator):
 
     def __init__(self):
         self._id = Queue()
-        for id in range(0, 99):
+        for id in range(1, 100):
             self._id.put(id)
         self._lock = Lock()
 
