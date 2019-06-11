@@ -299,7 +299,7 @@ class TestMaterializedViews(Tester):
 
         other_nodes = self.cluster.nodelist()
         stop_nodes = []
-        for node in other_nodes:
+        for node in self.cluster.nodelist():
             if (by_dc_name and node.data_center == by_dc_name) or (by_node_names and node.name in by_node_names):
                 stop_nodes.append(node)
                 other_nodes.remove(node) 
