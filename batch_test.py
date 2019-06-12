@@ -571,7 +571,8 @@ class TestBatch(Tester):
         cluster.stop()
         cluster.start(wait_for_binary_proto=True)
 
-        node.stress(["user", "no-warmup", "profile=/tmp/complex_schema.yaml", "ops(insert=1)", "cl=ALL",
+        node.stress(["user", "no-warmup", "profile=%s" % os.path.realpath('test_data/batch-test/complex_schema.yaml'), "ops(insert=1)", "cl=ALL",
+        #node.stress(["user", "no-warmup", "profile=/tmp/complex_schema.yaml", "ops(insert=1)", "cl=ALL",
                      "duration=5s", "-mode", "cql3", "native", "-rate", "threads=100", "-pop", "seq=1..500"])
 
         for node in cluster.nodelist():
