@@ -225,6 +225,7 @@ class SchemaManagementTest(Tester):
         assert rows_to_list(rows) == [], "Expected an empty result set, got %s" % (rows)
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def test_writes_schema_recreated_while_node_down(self):
         self.cluster.set_configuration_options(values={ 'ring_delay_ms': 5000 })
         self.cluster.populate(2)

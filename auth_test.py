@@ -789,6 +789,7 @@ class TestAuth(Tester):
         bob.execute("SELECT * FROM ks.cf")
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def grant_revoke_auth_test(self):
         """
         Originally from dtest.
@@ -1563,6 +1564,7 @@ class TestAuth(Tester):
         raise NotImplementedError
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def all_authorization_operations_test(self):
         """
         **Description:** Test all authorization operations, actions and applied objects.

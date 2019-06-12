@@ -814,6 +814,7 @@ class TestSecondaryIndexes(Tester):
                              consistency_level=ConsistencyLevel.ALL)
 
     @attr('next-gating')
+    # @attr('dtest-debug') - https://github.com/scylladb/scylla/issues/4384
     def test_stop_node_during_index_build(self):
         """
         Stop one node during index building and read data by index

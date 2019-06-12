@@ -16,6 +16,7 @@ class CompactionAdditionalTest(Tester):
     _multiprocess_can_split_ = False
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def compaction_delete_with_smp_change_test(self):
         """
         Test that data is not resurected when shared sstables
@@ -340,6 +341,7 @@ class CompactionAdditionalStrategyTests(Tester):
         shutil.copy(file, os.path.join(os.path.dirname(file), '-'.join(sstable_split_parts)))
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def compaction_removes_ttld_data_after_gc_period_test(self):
         """
         Test that compaction removes TTLd data after gc_period

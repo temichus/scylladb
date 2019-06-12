@@ -52,6 +52,7 @@ class SSTableDump(Tester):
 class SSTableDumpTests(SSTableDump):
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def sstabledump_basic_test(self):
         """
         Populate data, run sstabledump, extract data from json
@@ -82,6 +83,7 @@ class SSTableDumpTests(SSTableDump):
         self._compare_data(values_list, json_values)
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def sstabledump_counter_basic_test(self):
         """
         Populate counter data, run sstabledump, extract data from json
@@ -127,6 +129,7 @@ class SSTableDumpTests(SSTableDump):
 class SSTableDumpAllDatatypes(CqlshPrepare, SSTableDump):
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def sstabledump_all_datatypes_test(self):
         cluster = self.cluster
         cluster.populate(1).start()

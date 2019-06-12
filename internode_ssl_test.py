@@ -3,6 +3,7 @@ from tools import generate_ssl_stores, putget
 from nose.plugins.attrib import attr
 
 @attr('next-gating')
+@attr('dtest-debug')
 class TestInternodeSSL(Tester):
 
     def __init__(self, *args, **kwargs):

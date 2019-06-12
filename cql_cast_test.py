@@ -68,6 +68,7 @@ class CQLCastTest(CqlshPrepare):
         self._test_run(test_from, TestData.POSITIVE_VALUES)
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def cast_date_test(self):
         """Function performs positive tests CAST scalar function for date type"""
         test_from = ['date']

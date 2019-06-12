@@ -329,6 +329,7 @@ class TestBackupRestore(Tester):
         self.check_rows_on_node(node1, num_keys, found=keys, c1_values=c1_values, c2_values=c2_values)
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def restore_snapshot_using_old_token_ownership_test(self):
         """
         Check that we can restore snapshot files that use a non updated token ownership
@@ -408,6 +409,7 @@ class TestBackupRestore(Tester):
         session.execute(SimpleStatement("SELECT COUNT(*) FROM ks.cf"))
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def incremental_backup_test(self):
         """
         Check that incremetal backup works as expected
@@ -481,6 +483,7 @@ class TestBackupRestore(Tester):
         self.assertEqual(backups1_files, backups2_files, "backup contents changed after a compaction")
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def restore_snapshot_from_cassandra_test(self):
         """
         Check that we can restore snapshot files that have been created by cassandra

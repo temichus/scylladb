@@ -143,6 +143,7 @@ class TestTTL(Tester):
         assert_row_count(self.session1, 'ttl_table', 1)
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def removing_default_ttl_does_not_affect_existing_rows_test(self):
         """ Test that removing a default_time_to_live doesn't affect the existings rows """
 
@@ -248,6 +249,7 @@ class TestTTL(Tester):
         assert_all(self.session1, "SELECT * FROM ttl_table;", [[1, 42, None, None]])
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def remove_column_ttl_with_default_ttl_test(self):
         """
         Test that we cannot remove a column ttl when a default ttl is set.
@@ -628,6 +630,7 @@ class TestDistributedTTL(Tester):
         self.assertLessEqual(abs(ttl_session1[0][0] - ttl_session2[0][0]), 1)
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def ttl_is_respected_on_repair_test(self):
         """ Test that ttl is respected on repair """
 

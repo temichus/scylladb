@@ -2432,6 +2432,7 @@ class RepairAdditionalTest(RepairAdditionalBase):
         return RepairAdditionalBase._repair_disjoint_data_test(self,more_options)
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def repair_schema_test(self):
         return RepairAdditionalBase._repair_schema_test(self)
 
@@ -2452,6 +2453,7 @@ class RepairAdditionalTest(RepairAdditionalBase):
        return RepairAdditionalBase._repair_partition_delete_test(self)
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def repair_ttl_update_test(self):
        return RepairAdditionalBase._repair_ttl_update_test(self)
 

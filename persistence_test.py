@@ -37,6 +37,7 @@ class PersistenceTest(Tester):
                      "size=fixed(%s)" % size, "-rate", "threads=1"])
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def test_persist_simple(self):
         """
         1) Create a 1 node cluster.

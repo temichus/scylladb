@@ -15,6 +15,7 @@ import re
 from nose.plugins.attrib import attr
 
 @attr('next-gating')
+@attr('dtest-debug')
 class TestCqlTracing(Tester):
     """
     Test that the default implementation for tracing works.
@@ -90,6 +91,7 @@ class TestCqlTracing(Tester):
         self.assertIn(" Frodo |  Baggins", out)
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def tracing_simple_test(self):
         """
         Test tracing using the default tracing class. See trace().
@@ -98,6 +100,7 @@ class TestCqlTracing(Tester):
         self.trace(session)
 
     @attr('next-gating')
+    # @attr('dtest-debug') - https://github.com/scylladb/scylla/issues/4384
     def tracing_shutdown_test(self):
         """
         Check tracing functionality when Node is being shut down:

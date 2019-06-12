@@ -881,6 +881,7 @@ class TestMaterializedViews(Tester):
                                               consistency_level=ConsistencyLevel.ALL, session_timeout=120)
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def create_test(self):
         """Test the materialized view creation"""
 

@@ -207,6 +207,7 @@ class TestCounters(Tester):
             self.assertEqual(counter_two_actual, counter_dict[counter_id]['counter_two'])
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def multi_counter_update_test(self):
         """
         Test for singlular update statements that will affect multiple counters.
@@ -766,6 +767,7 @@ class TestCountersOnMultipleNodes(Tester):
         self.node2.stop(wait_other_notice=True)
         self.node1.nodetool("removenode %s" % node2_hostid)
 
+    @attr('dtest-debug')
     def counter_consistency_node_add_test(self):
         """
         Cluster: 3 nodes, keyspace RF=2

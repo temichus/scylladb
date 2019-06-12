@@ -18,6 +18,7 @@ class TestSchema(Tester):
         assert_invalid(session, "ALTER TABLE cf DROP c1", "Cannot drop columns from a")
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def drop_column_compaction_test(self):
         session = self.prepare()
         session.execute("USE ks")
@@ -45,6 +46,7 @@ class TestSchema(Tester):
         self.assertEqual([[None], [None], [None], [4]], sorted(rows_to_list(rows)))
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def drop_column_queries_test(self):
         session = self.prepare()
 

@@ -382,6 +382,7 @@ class TestConcurrentSchemaChanges(Tester):
         self.make_schema_changes(session, namespace='ns1')
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def changes_to_different_nodes_test(self):
         debug("changes_to_different_nodes_test()")
         cluster = self.cluster
@@ -492,6 +493,7 @@ class TestConcurrentSchemaChanges(Tester):
         self.validate_schema_consistent(node1)
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def snapshot_test(self):
         debug("snapshot_test()")
         cluster = self.cluster

@@ -206,6 +206,7 @@ class TestTopology(Tester):
     # Scylla suports this
     #@since('3.0')
     @attr('next-gating')
+    @attr('dtest-debug')
     def crash_during_decommission_test(self):
         """
         If a node crashes whilst another node is being decommissioned,

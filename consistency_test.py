@@ -676,6 +676,7 @@ class TestAccuracy(TestHelper):
             TestAccuracy.Validation.validate_users, self.nodes, self.rf.values(), combinations)
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def test_simple_strategy_counters(self):
         """
         Test for a single datacenter, counters table.
@@ -915,6 +916,7 @@ class TestConsistency(Tester):
             session, "SELECT * FROM t WHERE id = 0 LIMIT 1", cl=ConsistencyLevel.QUORUM)
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def readrepair_test(self):
         cluster = self.cluster
         cluster.set_configuration_options(
@@ -997,6 +999,7 @@ class TestConsistency(Tester):
             session.execute(truncate_statement)
 
     @attr('next-gating')
+    # @attr('dtest-debug') - https://github.com/scylladb/scylla/issues/4384
     def quorum_available_during_failure_test(self):
         CL = ConsistencyLevel.QUORUM
         RF = 3

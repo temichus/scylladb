@@ -2161,6 +2161,7 @@ class TestCQL(Tester):
 
     @freshCluster()
     @attr('next-gating')
+    @attr('dtest-debug')
     def limit_bugs_test(self):
         """ Test for LIMIT bugs from 4579 """
 
@@ -2631,6 +2632,7 @@ class TestCQL(Tester):
         assert rows_to_list(res) == [[True, False]], list(res)
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def multiordering_test(self):
         session = self.prepare()
         session.execute("""
@@ -2757,6 +2759,7 @@ class TestCQL(Tester):
         assert rows_to_list(res) == [], list(res)
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def allow_filtering_test(self):
         """
         test queries with multiple restrictions.
@@ -2826,6 +2829,7 @@ class TestCQL(Tester):
             self._assert_valid_query(session=session, query=q + " ALLOW FILTERING")
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def range_with_deletes_test(self):
         session = self.prepare()
 
@@ -5527,6 +5531,7 @@ class CQLAdditionalTests(Tester):
             assert(e.code == 0000)
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def limit_date_value_out_of_range_test(self):
         # positive case for scylladb/scylla#1694
         cluster = self.prepare()
@@ -5648,6 +5653,7 @@ class CQLAdditionalTests(Tester):
         self.assertEqual(num_rows, 10)
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def select_all_data_and_filter_explicitly_test(self):
         # https://github.com/scylladb/scylla/issues/2272
         cluster = self.prepare()

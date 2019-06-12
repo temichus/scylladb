@@ -6,6 +6,7 @@ from nose.plugins.attrib import attr
 class TestMultiDCPutGet(Tester):
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def putget_2dc_rf1_test(self):
         """ Simple put-get test for 2 DC with one node each (RF=1) [catches #3539] """
         cluster = self.cluster

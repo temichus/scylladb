@@ -62,6 +62,7 @@ class TestLargeColumn(Tester):
         assert diff < LARGE_COLUMN_SIZE, diff
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def large_columns_mixed_workload_stress_test(self):
         """
         See https://github.com/scylladb/scylla/issues/1574

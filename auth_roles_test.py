@@ -79,6 +79,7 @@ class TestAuthRoles(Tester):
         assert_invalid(cassandra, "DROP ROLE role1", "role1 doesn't exist")
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def role_admin_validation_test(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -342,6 +343,7 @@ class TestAuthRoles(Tester):
         assert_all(mike, "LIST ROLES", [cassandra_role, mike_role, role1_role, role2_role])
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def grant_revoke_permissions_test(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -729,6 +731,7 @@ class TestAuthRoles(Tester):
         #self.assert_unauthenticated("mike is not permitted to log in", "mike", "12345")
 
     @attr('next-gating')
+    @attr('dtest-debug')
     def role_requires_password_to_login_test(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
