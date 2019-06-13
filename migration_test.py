@@ -745,8 +745,8 @@ class TestMigrationUpgradeSSTables(TestMigration):
 
         before_sstable_version = self.get_sstable_version(cf_dir, assert_only_one_version=False)
 
-        debug("Running 'nodetool upgradesstables'")
-        node.nodetool("upgradesstables -a")
+        debug("Running 'nodetool upgradesstables {} {}'".format(ks, cf))
+        node.nodetool("upgradesstables {} {}".format(ks, cf))
 
         after_sstable_version = self.get_sstable_version(cf_dir)
 
