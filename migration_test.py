@@ -919,14 +919,19 @@ class TTLWithMigrate(Tester):
 
         return cassandra_data_json, cassandra_json_path
 
-    def _dump_data(self, cluster, node, node_owner, keyspace_name='ks', table_name='cf', compaction=False):
-        mark = node.mark_log()
+    def _dump_data(self, cluster, node, node_owner, keyspace_name='ks', table_name='cf', compaction=True):
+        if compaction:
+            if node.is_scylla() or node.get_cassandra_version() < '2.2':
+                log_file = 'system.log'
+            else:
+                log_file = 'debug.log'
+            mark = node.mark_log(filename=log_file)
         debug('Flush data to the disk before dump')
         cluster.flush()
         if compaction:
             debug('Compacting sstables')
             node.nodetool('compact {} {}'.format(keyspace_name, table_name))
-            node.watch_log_for('Compacted', from_mark=mark)
+            node.watch_log_for('Compacted', from_mark=mark, filename=log_file)
         debug('Run sstabledump')
         data_json = ''
         data_json_path = tempfile.mktemp(suffix='.schema.json', prefix=node_owner)
