@@ -709,10 +709,10 @@ class TestMigration(MigrationTestBase):
 class TTLWithMigrate(Tester):
     """ Test Time To Live Feature with Migration"""
 
-    def prepare(self, default_time_to_live=None, create_table_statement=None, nodes=1, rf=1, configuration_options=None):
+    def prepare(self, default_time_to_live=None, create_table_statement=None, nodes=1, rf=1, configuration_options=None, custom_args=None):
         if configuration_options:
             self.cluster.set_configuration_options(values=configuration_options)
-        self.cluster.populate(nodes).start()
+        self.cluster.populate(nodes).start(jvm_args=custom_args)
         node1 = self.cluster.nodelist()[0]
         self.session1 = self.patient_cql_connection(node1)
         self.create_ks(self.session1, 'ks', rf=rf)
@@ -745,7 +745,7 @@ class TTLWithMigrate(Tester):
          - Take dump
          - Compare dumps
         """
-        self.prepare(nodes=4, rf=3)
+        self.prepare(nodes=4, rf=3, custom_args=["--smp", "1", "--memory", "512M"])
         keyspace_name = 'ks'
         table_name = 'cf'
         int_columns = 99
@@ -758,7 +758,7 @@ class TTLWithMigrate(Tester):
 
 
         # Prefill
-        partitions = 100
+        partitions = 10
         rows_in_partition = 1000
         debug('Create {} partitions with {} rows'.format(partitions, rows_in_partition))
         for i in xrange(1, partitions+1):
@@ -866,7 +866,7 @@ class TTLWithMigrate(Tester):
             for stmt in stmts:
                 self.session1.execute(stmt)
 
-        scylla_data_json, scylla_json_path = self._dump_data(cluster=self.cluster, node=node1, node_owner='Scylla')
+        scylla_data_json, scylla_json_path = self._dump_data(cluster=self.cluster, node=node1, node_owner='Scylla', compaction=True)
 
         count_query = 'select count(*) from {}.{} where pk = {}'.format(keyspace_name, table_name, big_partition)
         scylla_big_partition_count = list(self.session1.execute(count_query, timeout=120))[0][0]
@@ -919,9 +919,14 @@ class TTLWithMigrate(Tester):
 
         return cassandra_data_json, cassandra_json_path
 
-    def _dump_data(self, cluster, node, node_owner, keyspace_name='ks', table_name='cf'):
+    def _dump_data(self, cluster, node, node_owner, keyspace_name='ks', table_name='cf', compaction=False):
+        mark = node.mark_log()
         debug('Flush data to the disk before dump')
         cluster.flush()
+        if compaction:
+            debug('Compacting sstables')
+            node.nodetool('compact {} {}'.format(keyspace_name, table_name))
+            node.watch_log_for('Compacted', from_mark=mark)
         debug('Run sstabledump')
         data_json = ''
         data_json_path = tempfile.mktemp(suffix='.schema.json', prefix=node_owner)
