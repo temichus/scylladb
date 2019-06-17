@@ -10,6 +10,7 @@ from assertions import assert_invalid
 from datahelp import create_rows, flatten_into_set, parse_data_into_dicts
 from dtest import Tester, run_scenarios
 from tools import require, since, rows_to_list
+from collections import Counter
 
 
 class Page(object):
@@ -996,6 +997,102 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
                                    [2, None],
                                    [4, None]])
 
+    def test_per_partition_limit_paging(self):
+        """
+        Test paging with per partition limit queries.
+        It tests per partition limits with:
+        * filter
+        * limit
+        * order by
+
+        each one with and without paging.
+
+        @jira_ticket CASSANDRA-11535
+        implements scylla #2202
+        """
+        def is_per_partition_result_correct(result, per_partition_limit):
+            result_count = Counter(row[0] for row in result)
+
+            return any(val > per_partition_limit for val in result_count.values())
+
+        def query_and_compare_results(query, expected_result, per_partition_limit, page_size=None, ignore_order=True):
+            query_addition = 'PER PARTITION LIMIT {}'.format(per_partition_limit)
+            if ignore_order:
+                assert_test = self.assertEqualIgnoreOrder
+            else:
+                assert_test = self.assertEqual
+            if page_size:
+                future = session.execute_async(
+                    SimpleStatement(query.format(query_addition), fetch_size=page_size, consistency_level=CL.ALL)
+                )
+                pf = PageFetcher(future)
+                pf.request_all()
+                res = rows_to_list(pf.all_data())
+                if callable(expected_result):
+                    self.assertTrue(expected_result(res))
+                else:
+                    assert_test(res, expected_result)
+            else:
+                res = rows_to_list(session.execute(query.format(query_addition)))
+                if callable(expected_result):
+                    self.assertTrue(expected_result(res))
+                else:
+                    assert_test(res, expected_result)
+            is_per_partition_result_correct(res, per_partition_limit)
+
+        session = self.prepare(row_factory=tuple_factory)
+        self.create_ks(session, 'test_paging_with_per_partition_limit', 2)
+        session.execute("CREATE TABLE test (a int, b int, c int, PRIMARY KEY (a, b))")
+
+        for i in range(5):
+            for j in range(5):
+                session.execute("INSERT INTO test (a, b, c) VALUES ({}, {}, {})".format(i, j, j))
+
+        # CREATING QUERIES X EXPECTED DATA
+        query_and_results = []
+        query_and_results.append({'query': "SELECT * FROM test {}",
+                                  'expected_result': [[0, 0, 0], [0, 1, 1], [1, 0, 0], [1, 1, 1], [2, 0, 0],
+                                                    [2, 1, 1], [3, 0, 0], [3, 1, 1], [4, 0, 0], [4, 1, 1]],
+                                  'per_partition_limit': 2,
+                                  'ignore_order': True})
+        query_and_results.append({'query': "SELECT * FROM test WHERE a IN (1,2,3) {}",
+                                  'expected_result': [[1, 0, 0], [1, 1, 1], [1, 2, 2], [2, 0, 0], [2, 1, 1],
+                                                     [2, 2, 2], [3, 0, 0], [3, 1, 1], [3, 2, 2]],
+                                  'per_partition_limit': 3,
+                                  'ignore_order': True})
+        query_and_results.append({'query': "SELECT * FROM test WHERE a = 1 {}",
+                                  'expected_result': [[1, 0, 0], [1, 1, 1], [1, 2, 2], [1, 3, 3]],
+                                  'per_partition_limit': 4,
+                                  'ignore_order': True})
+        query_and_results.append({'query': "SELECT * FROM test WHERE a = 1 ORDER BY b DESC {}",
+                                  'expected_result': [[1, 4, 4], [1, 3, 3], [1, 2, 2], [1, 1, 1]],
+                                  'per_partition_limit': 4,
+                                  'ignore_order': False})
+        query_and_results.append({'query': "SELECT * FROM test WHERE a = 1 {} LIMIT 3",
+                                  'expected_result': [[1, 0, 0], [1, 1, 1], [1, 2, 2]],
+                                  'per_partition_limit': 4,
+                                  'ignore_order': True})
+        query_and_results.append({'query': "SELECT * FROM test WHERE a = 1 AND b > 1 {}",
+                                  'expected_result': [[1, 2, 2], [1, 3, 3]],
+                                  'per_partition_limit': 2,
+                                  'ignore_order': True})
+        query_and_results.append({'query': "SELECT * FROM test WHERE a = 1 AND b > 1 ORDER BY b DESC {}",
+                                  'expected_result': [[1, 4, 4], [1, 3, 3]],
+                                  'per_partition_limit': 2,
+                                  'ignore_order': False})
+        query_and_results.append({'query': "SELECT * FROM test {} LIMIT 6",
+                                  'expected_result': lambda result: len(result) == 6,
+                                  'per_partition_limit': 2,
+                                  'ignore_order': True})
+        query_and_results.append({'query': "SELECT * FROM test {} LIMIT 5",
+                                  'expected_result': lambda result: len(result) == 5,
+                                  'per_partition_limit': 2,
+                                  'ignore_order': True})
+        # EXECUTING CMDS
+        for query_and_result in query_and_results:
+            for page_size in (None, 2, 3, 4, 5, 15, 16, 17, 100):
+                query_and_result["page_size"] = page_size
+                query_and_compare_results(**query_and_result)
 
 @since('2.0')
 class TestPagingDatasetChanges(BasePagingTester, PageAssertionMixin):
