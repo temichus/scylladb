@@ -29,6 +29,7 @@ clients = (
 class TestWideRows(Tester):
     _multiprocess_can_split_ = False
     BLOB_SIZE_10k = 1024 * 10
+    BLOB_SIZE_1MB = 1024 * 1024
     KEYSPACE_NAME = 'wide_row'
     TABLE_NAME = 'user_events'
 
@@ -106,8 +107,7 @@ class TestWideRows(Tester):
                                                                                              self.compaction_option)
         session.execute(create_table_query)
 
-    def create_large_row_data(self, session, table_name, rows_num, columns_num,
-                              one_blob_size, start_row_index):
+    def create_large_row_data(self, session, table_name, rows_num, columns_num, one_blob_size, start_row_index):
         expected_rows = {}
         expected_row_size = columns_num * one_blob_size  # aproximately row size
 
@@ -115,7 +115,34 @@ class TestWideRows(Tester):
         debug('Prefill table {} with {} rows'.format(table_name, rows_num))
         for k in xrange(start_row_index, start_row_index+rows_num):
             user = 'user%d' % k
-            value = 'a' * one_blob_size # 10K value in the one column
+            value = 'a' * one_blob_size  # 10K value in the one column
+            event = (date + datetime.timedelta(k)).strftime("%Y-%m-%d")
+            for i in xrange(columns_num):
+                out = session.execute(
+                    "UPDATE {table_name} SET value{i} = textAsBlob('{value}') WHERE userid='{user}' and event='{event}'"
+                    .format(**locals()))
+            expected_rows['{}.{}'.format(user, event)] = expected_row_size
+
+        return expected_rows
+
+    def create_large_cell_table(self, session, table_name, columns_num):
+        debug('Create table 1 with large cell')
+        long_text_columns = ', '.join(['value%d blob' % i for i in xrange(columns_num)])
+        create_table_query = 'CREATE TABLE IF NOT EXISTS %s (userid text, event text, %s, ' \
+                             'PRIMARY KEY (userid, event)) with compression = { } and %s' % (table_name,
+                                                                                             long_text_columns,
+                                                                                             self.compaction_option)
+        session.execute(create_table_query)
+
+    def create_large_cell_data(self, session, table_name, rows_num, columns_num, one_blob_size, start_row_index):
+        expected_rows = {}
+        expected_row_size = columns_num * one_blob_size  # aproximately row size
+
+        date = datetime.datetime.now()
+        debug('Prefill table {} with {} rows'.format(table_name, rows_num))
+        for k in xrange(start_row_index, start_row_index + rows_num):
+            user = 'user%d' % k
+            value = 'a' * one_blob_size  # 10K value in the one column
             event = (date + datetime.timedelta(k)).strftime("%Y-%m-%d")
             for i in xrange(columns_num):
                 out = session.execute(
@@ -150,7 +177,8 @@ class TestWideRows(Tester):
             if node.status == 'UP':
                 session = self.patient_exclusive_cql_connection(node=node, keyspace=keyspace_name)
                 # Get large partition/row details from system.large_partitions/large_rows tables
-                clustering_key = 'clustering_key, ' if entity_type == 'row' else ''
+                clustering_key = 'clustering_key, ' if entity_type in ('row', 'cell') else ''
+                # clustering_key = 'clustering_key, ' if entity_type == 'row' else 'cell, ' if entity_type == 'cell' else ''
                 query = 'select sstable_name, partition_key, {clustering_key}{entity_type}_size ' \
                         'from system.large_{entity_type}s ' \
                         'where keyspace_name=\'{keyspace_name}\' and table_name=\'{table_name}\''.format(**locals())
@@ -965,10 +993,265 @@ class TestWideRows(Tester):
                                    keyspace_name=self.KEYSPACE_NAME,
                                    table_name=view_name)
 
+    def test_large_cell_detector(self):
+        """
+        Create table with a large cell. Validate that it's reported in the
+        system.large_cells table and there are warning in the log
+        """
+        columns_num = 1
+        rows_num = 1
+        entity_type = 'cell'
+
+        session = self.prepare_cluster(nodes=3, rf=3)
+
+        self.create_large_cell_table(session=session, table_name=self.TABLE_NAME, columns_num=columns_num)
+        expected_rows_data_size = self.create_large_cell_data(session=session,
+                                                              table_name=self.TABLE_NAME,
+                                                              rows_num=rows_num,
+                                                              columns_num=columns_num,
+                                                              one_blob_size=self.BLOB_SIZE_1MB,
+                                                              start_row_index=0)
+        self.cluster.flush()
+
+        debug('Run full compaction')
+        self.cluster.nodetool('compact {} {}'.format(self.KEYSPACE_NAME, self.TABLE_NAME))
+
+        cluster_state = self.validate_system_table(entity_type=entity_type, keyspace_name=self.KEYSPACE_NAME,
+                                                   table_name=self.TABLE_NAME,
+                                                   expected_entity_number=columns_num,
+                                                   expected_entity_data_size=expected_rows_data_size)
+        self.validate_log_warnings(cluster_state=cluster_state, entity_type=entity_type,
+                                   keyspace_name=self.KEYSPACE_NAME,
+                                   table_name=self.TABLE_NAME)
+
+    def test_multiple_large_cells_detector(self):
+        """
+        Create table with 10 large cells. Validate that it's reported in the
+        system.large_cells table and there are warning in the log
+        """
+        columns_num = 1
+        rows_num = 10
+        entity_type = 'cell'
+
+        session = self.prepare_cluster(nodes=3, rf=3)
+
+        self.create_large_cell_table(session=session, table_name=self.TABLE_NAME, columns_num=columns_num)
+        expected_rows_data_size = self.create_large_cell_data(session=session,
+                                                              table_name=self.TABLE_NAME,
+                                                              rows_num=rows_num,
+                                                              columns_num=columns_num,
+                                                              one_blob_size=self.BLOB_SIZE_1MB,
+                                                              start_row_index=0)
+        self.cluster.flush()
+
+        debug('Run full compaction')
+        self.cluster.nodetool('compact {} {}'.format(self.KEYSPACE_NAME, self.TABLE_NAME))
+
+        cluster_state = self.validate_system_table(entity_type=entity_type, keyspace_name=self.KEYSPACE_NAME,
+                                                   table_name=self.TABLE_NAME,
+                                                   expected_entity_number=rows_num,
+                                                   expected_entity_data_size=expected_rows_data_size)
+        self.validate_log_warnings(cluster_state=cluster_state, entity_type=entity_type,
+                                   keyspace_name=self.KEYSPACE_NAME,
+                                   table_name=self.TABLE_NAME)
+
+    def test_large_cell_in_materialized_view(self):
+        """
+         Create table with one large cell. Create materialized view on the table.
+         Validate that just large cell is reported in the system.large_cells table and there are warning in the
+         log for both base table and materialized view
+        """
+        rows_num = 1
+        columns_num = 1
+        entity_type = 'cell'
+        view_name = '%s_view' % self.TABLE_NAME
+
+        session = self.prepare_cluster(nodes=3, rf=3)
+
+        self.create_large_cell_table(session=session, table_name=self.TABLE_NAME, columns_num=columns_num)
+        # Insert large row
+        expected_cells_data_size = self.create_large_cell_data(session=session,
+                                                              table_name=self.TABLE_NAME,
+                                                              columns_num=columns_num,
+                                                              rows_num=rows_num,
+                                                              one_blob_size=self.BLOB_SIZE_1MB,
+                                                              start_row_index=0)
+
+        session.execute('create materialized view %s as select * from %s '
+                        'where userid is not null and event is not null primary key (userid, event)' %
+                        (view_name, self.TABLE_NAME))
+        wait_for_view(cluster=self.cluster, session=session, ks=self.KEYSPACE_NAME, view=view_name)
+        self.cluster.flush()
+
+        debug('Run full compaction')
+        self.cluster.nodetool('compact {} {}'.format(self.KEYSPACE_NAME, self.TABLE_NAME))
+        self.cluster.nodetool('compact {} {}'.format(self.KEYSPACE_NAME, view_name))
+
+        # Validate base table
+        cluster_state = self.validate_system_table(entity_type=entity_type, keyspace_name=self.KEYSPACE_NAME,
+                                                   table_name=self.TABLE_NAME,
+                                                   expected_entity_number=rows_num,
+                                                   expected_entity_data_size=expected_cells_data_size)
+        self.validate_log_warnings(cluster_state=cluster_state, entity_type=entity_type,
+                                   keyspace_name=self.KEYSPACE_NAME,
+                                   table_name=self.TABLE_NAME)
+
+        # Validate view
+        cluster_state = self.validate_system_table(entity_type=entity_type, keyspace_name=self.KEYSPACE_NAME,
+                                                   table_name=view_name,
+                                                   expected_entity_number=rows_num,
+                                                   expected_entity_data_size=expected_cells_data_size)
+        self.validate_log_warnings(cluster_state=cluster_state, entity_type=entity_type,
+                                   keyspace_name=self.KEYSPACE_NAME,
+                                   table_name=view_name)
+
+    def test_large_cell_detector_with_ttl_on_row(self):
+        """
+        Create table with large cells. Validate that it's reported in the
+        system.large_cells table and there are warning in the log
+        """
+        rows_num = 2
+        columns_num = 1
+        entity_type = 'cell'
+
+        session = self.prepare_cluster(nodes=3, rf=3)
+
+        self.create_large_cell_table(session=session, table_name=self.TABLE_NAME, columns_num=columns_num)
+        expected_cells_data_size = self.create_large_cell_data(session=session,
+                                                               table_name=self.TABLE_NAME,
+                                                               columns_num=columns_num,
+                                                               rows_num=rows_num,
+                                                               one_blob_size=self.BLOB_SIZE_1MB,
+                                                               start_row_index=0)
+        self.cluster.flush()
+
+        debug('Run full compaction')
+        self.cluster.nodetool('compact {} {}'.format(self.KEYSPACE_NAME, self.TABLE_NAME))
+
+        cluster_state = self.validate_system_table(entity_type=entity_type, keyspace_name=self.KEYSPACE_NAME,
+                                                   table_name=self.TABLE_NAME,
+                                                   expected_entity_number=rows_num,
+                                                   expected_entity_data_size=expected_cells_data_size)
+        self.validate_log_warnings(cluster_state=cluster_state, entity_type=entity_type,
+                                   keyspace_name=self.KEYSPACE_NAME,
+                                   table_name=self.TABLE_NAME)
+
+        expected_cells_data_size = self.set_ttl_on_few_large_rows(session=session,
+                                                                  keyspace_name=self.KEYSPACE_NAME,
+                                                                  table_name=self.TABLE_NAME,
+                                                                  rows_num=rows_num,
+                                                                  columns_num=columns_num,
+                                                                  expected_rows=expected_cells_data_size)
+
+        debug('Run full compaction')
+        self.cluster.nodetool('compact {} {}'.format(self.KEYSPACE_NAME, self.TABLE_NAME))
+
+        mark_logs = self.mark_log_on_all_nodes()
+
+        cluster_state = self.validate_system_table(entity_type=entity_type, keyspace_name=self.KEYSPACE_NAME,
+                                                   table_name=self.TABLE_NAME,
+                                                   expected_entity_number=rows_num - 1,
+                                                   expected_entity_data_size=expected_cells_data_size)
+        self.validate_log_warnings(cluster_state=cluster_state, entity_type=entity_type,
+                                   keyspace_name=self.KEYSPACE_NAME,
+                                   table_name=self.TABLE_NAME,
+                                   marked_logs_dict=mark_logs,
+                                   expect_warning=False)
+
+    def test_large_cell_detector_with_small_cells(self):
+        """
+        Create table with one large cell and few small cells. Validate that just large cell is reported in the
+        system.large_cells table and there are warning in the log
+        """
+        rows_num = 1
+        columns_num = 1
+        entity_type = 'cell'
+        session = self.prepare_cluster(nodes=3, rf=3, options_dict={'compaction_large_cell_warning_threshold_mb': 2})
+
+        self.create_large_cell_table(session=session, table_name=self.TABLE_NAME, columns_num=columns_num)
+        # Insert large row
+        expected_cells_data_size = self.create_large_cell_data(session=session,
+                                                               table_name=self.TABLE_NAME,
+                                                               columns_num=columns_num,
+                                                               rows_num=rows_num,
+                                                               one_blob_size=self.BLOB_SIZE_1MB * 2,
+                                                               start_row_index=0)
+
+        # Insert small cells
+        maximum_primary_key_value = rows_num - 1
+        self.create_large_cell_data(session=session,
+                                    table_name=self.TABLE_NAME,
+                                    one_blob_size=self.BLOB_SIZE_1MB,
+                                    columns_num=columns_num,
+                                    rows_num=10,
+                                    start_row_index=rows_num)
+
+        self.cluster.flush()
+
+        debug('Run full compaction')
+        self.cluster.nodetool('compact {} {}'.format(self.KEYSPACE_NAME, self.TABLE_NAME))
+
+        cluster_state = self.validate_system_table(entity_type=entity_type, keyspace_name=self.KEYSPACE_NAME,
+                                                   table_name=self.TABLE_NAME,
+                                                   expected_entity_number=rows_num,
+                                                   expected_entity_data_size=expected_cells_data_size,
+                                                   pk_max_index=maximum_primary_key_value)
+        self.validate_log_warnings(cluster_state=cluster_state, entity_type=entity_type,
+                                   keyspace_name=self.KEYSPACE_NAME,
+                                   table_name=self.TABLE_NAME)
+
+    def test_large_cell_detector_with_node_stop(self):
+        """
+        Create table with one large cell when one node is stopped and validate that cell is reported in the
+        system.large_cells table and there are warning in the log
+        """
+        rows_number = 1
+        entity_type = 'cell'
+        columns_num = 1
+
+        session = self.prepare_cluster(nodes=4, rf=3)
+
+        node2 = self.cluster.nodelist()[1]
+        debug('Stop {}'.format(node2.name))
+        node2.stop(wait_other_notice=True)
+
+        self.create_large_cell_table(session=session, table_name=self.TABLE_NAME, columns_num=columns_num)
+        expected_cells_data_size = self.create_large_cell_data(session=session,
+                                                               table_name=self.TABLE_NAME,
+                                                               columns_num=columns_num,
+                                                               rows_num=rows_number,
+                                                               one_blob_size=self.BLOB_SIZE_1MB,
+                                                               start_row_index=0)
+        self.cluster.flush()
+
+        debug('Run full compaction')
+        self.cluster.nodetool('compact {} {}'.format(self.KEYSPACE_NAME, self.TABLE_NAME))
+
+        cluster_state = self.validate_system_table(entity_type=entity_type, keyspace_name=self.KEYSPACE_NAME,
+                                                   table_name=self.TABLE_NAME,
+                                                   expected_entity_number=rows_number,
+                                                   expected_entity_data_size=expected_cells_data_size)
+        self.validate_log_warnings(cluster_state=cluster_state, entity_type=entity_type,
+                                   keyspace_name=self.KEYSPACE_NAME,
+                                   table_name=self.TABLE_NAME)
+
+        debug('Start {}'.format(node2.name))
+        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+        self.cluster.flush()
+
+        debug('Run full compaction')
+        self.cluster.nodetool('compact {} {}'.format(self.KEYSPACE_NAME, self.TABLE_NAME))
+
+        cluster_state = self.validate_system_table(entity_type=entity_type, keyspace_name=self.KEYSPACE_NAME,
+                                                   table_name=self.TABLE_NAME,
+                                                   expected_entity_number=rows_number,
+                                                   expected_entity_data_size=expected_cells_data_size)
+        self.validate_log_warnings(cluster_state=cluster_state, entity_type=entity_type,
+                                   keyspace_name=self.KEYSPACE_NAME,
+                                   table_name=self.TABLE_NAME)
 
 # LeveledCompactionStrategy is default compaction strategy. Will be run first by default
-strategies = ['SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy',
-              'TimeWindowCompactionStrategy']
+strategies = ['SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy', 'TimeWindowCompactionStrategy']
 
 for strategy in strategies:
     cls_name = ('TestWideRows' + '_with_' + strategy)
