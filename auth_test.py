@@ -1725,7 +1725,7 @@ class TestAuth(Tester):
         self.assertEquals(2, session.cluster.metadata.keyspaces['system_auth'].replication_strategy.replication_factor)
 
         node3 = new_node(self.cluster, bootstrap=False)
-        node3.start()
+        node3.start(wait_for_binary_proto=True)
 
         session = self.get_session(user='cassandra', password='cassandra')
         self.assertEquals(2, session.cluster.metadata.keyspaces['system_auth'].replication_strategy.replication_factor)
