@@ -907,6 +907,8 @@ class Tester(TestCase):
         for con in self.connections:
             con.cluster.shutdown()
 
+        self.cleanUpCluster()
+
     def cleanUpCluster(self):
         if not hasattr(self, 'cluster') or not self.cluster:
             return
