@@ -1108,6 +1108,7 @@ class CassandraCluster(object):
         debug('Stopping Cassandra cluster')
         if self.cluster:
             self.cluster.stop(wait_other_notice=True)
+        self.tester.tearDown()
 
 class SchemaDDL(object):
     """Class provides interface to fetch schema DDL"""
