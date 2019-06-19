@@ -414,15 +414,19 @@ class Tester(TestCase):
         scylla_version = os.environ.get('SCYLLA_VERSION', None)
 
         if version:
+            debug("Starting Cassandra cluster version {}".format(version))
             cluster = Cluster(self.test_path, name, cassandra_version=version)
         elif scylla_version:
+            debug("Starting Scylla cluster version {}".format(scylla_version))
             cluster = ScyllaCluster(self.test_path, name, cassandra_version=scylla_version,
                                     force_wait_for_cluster_start=parallel_tests())
         else:
             if isScylla(cdir):
+                debug("Starting Scylla cluster from directory {}".format(cdir))
                 cluster = ScyllaCluster(self.test_path, name, cassandra_dir=cdir, install_dir=cdir,
                                         force_wait_for_cluster_start=parallel_tests())
             else:
+                debug("Starting Cassandra cluster from directory {}".format(cdir))
                 cluster = Cluster(self.test_path, name, cassandra_dir=cdir)
 
         if DISABLE_VNODES:
