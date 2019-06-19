@@ -113,6 +113,8 @@ docker_cmd="docker run --detach=true \
     -e KEEP_CORES \
     -e NOSE_PROCESSES \
     -e CLUSTER_ID_ALLOCATOR \
+    -e NODE_TOTAL \
+    -e NODE_INDEX \
     -w ${DTEST_DIR} \
     -v /etc/passwd:/etc/passwd:ro \
     -v /etc/group:/etc/group:ro \

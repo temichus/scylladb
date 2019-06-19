@@ -8,3 +8,4 @@ nose_xunitmp==0.4.0
 python-dateutil==2.8.0
 requests==2.21.0
 urwid==2.0.1
+nose-parallel==0.3.1
