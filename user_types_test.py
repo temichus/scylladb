@@ -221,7 +221,7 @@ class TestUserTypes(Tester):
         cluster = self.cluster
         cluster.populate(3).start()
         node1, node2, node3 = cluster.nodelist()
-        session = self.patient_cql_connection(node1)
+        session = self.patient_cql_connection(node1, consistency_level=ConsistencyLevel.LOCAL_QUORUM)
         self.create_ks(session, 'user_types', 2)
 
         stmt = """
