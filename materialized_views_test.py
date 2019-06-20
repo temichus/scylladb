@@ -221,7 +221,7 @@ class TestMaterializedViews(Tester):
         ]
         if double_failure and len(self.cluster.nodelist()) > 2:
             proc_functions.append({'func': self._node_action_with_delay, 'args': (node_action, nodes_to_start[1]),
-                                   'kwargs': {'delay': delay+10}})
+                                   'kwargs': {'delay': delay+10, 'other_nodes': other_nodes}})
         run_in_parallel(proc_functions)
 
         # Index will not finish building, because view building underneath is paused until updates can be sent.
