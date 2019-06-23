@@ -630,7 +630,6 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
 
         self.assertEqualIgnoreOrder(pf.all_data(), expected_data)
 
-    @skip('Scylla does not support secondary indexes')
     def test_paging_using_secondary_indexes(self):
         session = self.prepare()
         self.create_ks(session, 'test_paging_size', 2)
@@ -869,8 +868,6 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
                 if "s2" in selector:
                     self.assertEqual([42] * 10, [r.s2 for r in results])
 
-    @since('2.0.6')
-    @skip('Scylla does not support secondary indexes')
     def test_paging_using_secondary_indexes_with_static_cols(self):
         session = self.prepare()
         self.create_ks(session, 'test_paging_size', 2)
@@ -1561,12 +1558,10 @@ class TestPagingWithDeletions(BasePagingTester, PageAssertionMixin):
         self.check_all_paging_results(expected_data, 7,
                                       [25, 25, 25, 25, 25, 25, 25])
 
-    @require('6237')
     def test_multiple_row_deletions(self):
         """Test multiple row deletions.
            This test should be finished when CASSANDRA-6237 is done.
         """
-        self.skipTest("Feature In Development")
         self.session = self.prepare()
         expected_data = self.setup_data()
 
@@ -1684,6 +1679,7 @@ class TestPagingWithDeletions(BasePagingTester, PageAssertionMixin):
         time.sleep(5)
         self.check_all_paging_results([], 0, [])
 
+    @skip("test doesn't behave as expected - tombstone_failure_threshold supported ?")
     def test_failure_threshold_deletions(self):
         """Test that paging throws a failure in case of tombstone threshold """
         self.allow_log_errors = True
