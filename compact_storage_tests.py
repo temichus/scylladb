@@ -6,6 +6,7 @@ from dtest import Tester, debug
 from nose.plugins.attrib import attr
 
 
+@attr('dtest-full')
 class TestCompactStorage(Tester):
     row_size=1000
 

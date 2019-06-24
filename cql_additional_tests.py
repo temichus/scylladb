@@ -47,6 +47,7 @@ from unittest import skip
 MSG_ALLOW_FILTERING = "ALLOW FILTERING"
 
 
+@attr('dtest-full')
 class TestCQL(Tester):
 
     def prepare(self, ordered=False, create_keyspace=True, use_cache=False, nodes=1, rf=1, protocol_version=None, experimental=False, **kwargs):
@@ -5392,6 +5393,7 @@ class TestCQL(Tester):
             raise e
 
 
+@attr('dtest-full')
 class CQLAdditionalTests(Tester):
 
     def prepare(self):

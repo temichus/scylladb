@@ -3,10 +3,12 @@ import time
 from cassandra import Unavailable, ConsistencyLevel
 from cassandra.query import SimpleStatement
 from ccmlib.scylla_cluster import ScyllaCluster
+from nose.plugins.attrib import attr
 
 from dtest import Tester, debug
 
 
+@attr('dtest-full')
 class TestSimpleCluster(Tester):
 
     __scylla_args__ = []

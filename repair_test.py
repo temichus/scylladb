@@ -12,6 +12,7 @@ from tools import insert_c1c2, no_vnodes, query_c1c2, since
 from ccmlib.scylla_cluster import ScyllaCluster
 
 
+@attr('dtest-full')
 class TestRepair(Tester):
 
     def check_repair_logs(self):
@@ -399,6 +400,7 @@ RepairTableContents = namedtuple('RepairTableContents',
 
 @since('2.2')
 @skip('Scylla does not have repair system tables')
+@attr('dtest-full')
 class TestRepairDataSystemTable(Tester):
     """
     @jira_ticket CASSANDRA-5839

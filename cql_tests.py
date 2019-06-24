@@ -22,6 +22,7 @@ from scylla_tools import get_entity_id, get_truncated_time_from_system_local, ge
 from nose.plugins.attrib import attr
 
 
+@attr('dtest-full')
 class CQLTester(Tester):
 
     def prepare(self, ordered=False, create_keyspace=True, use_cache=False, nodes=1, rf=1, protocol_version=None, user=None, password=None, **kwargs):
@@ -55,6 +56,7 @@ class CQLTester(Tester):
         return session
 
 
+@attr('dtest-full')
 class StorageProxyCQLTester(CQLTester):
     """
     Each CQL statement is exercised at least once in order to
@@ -230,6 +232,7 @@ class StorageProxyCQLTester(CQLTester):
         session.execute(query)
 
 
+@attr('dtest-full')
 class MiscellaneousCQLTester(CQLTester):
     """
     CQL tests that cannot be performed as Java unit tests, see CASSANDRA-9160. Please consider
@@ -406,6 +409,7 @@ class MiscellaneousCQLTester(CQLTester):
         assert len(res) == 2, res
 
 
+@attr('dtest-full')
 class TruncateTester(CQLTester):
 
     @staticmethod
@@ -533,6 +537,7 @@ class TruncateTester(CQLTester):
 
 @since('3.0')
 @require("7392")
+@attr('dtest-full')
 class AbortedQueriesTester(CQLTester):
     """
     @jira_ticket CASSANDRA-7392

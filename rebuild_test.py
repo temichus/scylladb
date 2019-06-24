@@ -10,6 +10,7 @@ from dtest import Tester, debug
 from tools import insert_c1c2, query_c1c2
 
 
+@attr('dtest-full')
 class TestRebuild(Tester):
 
     def __init__(self, *args, **kwargs):

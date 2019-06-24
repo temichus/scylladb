@@ -154,6 +154,7 @@ class TestCommitLog(Tester):
 
     @attr('next-gating')
     @attr('dtest-debug')
+    @attr('dtest-full')
     def test_commitlog_replay_on_startup(self):
         """ Test commit log replay """
         node1 = self.node1
@@ -215,6 +216,7 @@ class TestCommitLog(Tester):
 
     @attr('next-gating')
     @attr('dtest-debug')
+    @attr('dtest-full')
     def test_commitlog_replay_with_alter_table(self):
         """
         Test commit log replay with alter table
@@ -335,6 +337,7 @@ class TestCommitLog(Tester):
 
     @attr('next-gating')
     @attr('dtest-debug')
+    @attr('dtest-full')
     def stop_failure_policy_test(self):
         """ Test the stop commitlog failure policy (default one) """
         self.prepare()

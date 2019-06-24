@@ -30,6 +30,7 @@ from nose.plugins.attrib import attr
 MIGRATION_WAIT = 5
 
 
+@attr('dtest-full')
 class TestMaterializedViews(Tester):
     """
     Test materialized views implementation.
@@ -3516,6 +3517,7 @@ def thread_session(ip, queue, start, end, rows, num_partitions):
 
 @since('3.0')
 @skipIf(sys.platform == 'win32', 'Bug in python on Windows: https://bugs.python.org/issue10128')
+@attr('dtest-full')
 class TestMaterializedViewsConsistency(Tester):
 
     def prepare(self, user_table=False, options={}):

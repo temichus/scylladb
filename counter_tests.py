@@ -17,6 +17,7 @@ from tools import rows_to_list, since, require, new_node
 from nose.plugins.attrib import attr
 
 
+@attr('dtest-full')
 class TestCounters(Tester):
 
     def simple_increment_test(self):
@@ -652,6 +653,7 @@ class TestCounters(Tester):
             self.assertEqual(rows_to_list(row)[0][0], 5)
 
 
+@attr('dtest-full')
 class TestCountersOnMultipleNodes(Tester):
 
     def __init__(self, *argv, **kwargs):
@@ -842,6 +844,7 @@ class TestCountersOnMultipleNodes(Tester):
         self._verify_data_rebuild()
 
 
+@attr('dtest-full')
 class TestCountersStress(Tester):
 
     def __init__(self, *argv, **kwargs):

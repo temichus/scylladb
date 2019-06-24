@@ -49,6 +49,8 @@ class SSTableDump(Tester):
         symmetric_diff = set(src) ^ set(dst)
         self.assertEquals(len(symmetric_diff), 0)
 
+
+@attr('dtest-full')
 class SSTableDumpTests(SSTableDump):
 
     @attr('next-gating')
@@ -126,6 +128,8 @@ class SSTableDumpTests(SSTableDump):
         res = [tuple(item) for item in res]
         return res
 
+
+@attr('dtest-full')
 class SSTableDumpAllDatatypes(CqlshPrepare, SSTableDump):
 
     @attr('next-gating')

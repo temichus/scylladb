@@ -20,6 +20,7 @@ from tools import require
 from nose.plugins.attrib import attr
 
 
+@attr('dtest-full')
 class TestBatch(Tester):
 
     @require(10711)

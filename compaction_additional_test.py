@@ -14,6 +14,7 @@ from nose.plugins.attrib import attr
 import sstable_tools.statistics
 
 
+@attr('dtest-full')
 class CompactionAdditionalTest(Tester):
     _multiprocess_can_split_ = False
 
@@ -285,6 +286,7 @@ class CompactionAdditionalTest(Tester):
         debug("Purge SUCCEEDED, original files are not there {}".format(sstables_files2))
 
 
+@attr('dtest-full')
 class CompactionAdditionalStrategyTests(Tester):
     __test__ = False
 

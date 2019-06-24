@@ -56,6 +56,8 @@ class TestBootstrap(Tester):
         cluster.stop()
         debug("done")
 
+
+    @attr('dtest-full')
     def simple_bootstrap_test(self):
         cluster = self.cluster
         tokens = cluster.balanced_tokens(2)
@@ -137,6 +139,7 @@ class TestBootstrap(Tester):
             log_line, match_obj = match
             self.assertTrue(re.search(msg_re, log_line) is not None)
 
+    @attr('dtest-full')
     def read_from_bootstrapped_node_test(self):
         """Test bootstrapped node sees existing data, eg. CASSANDRA-6648"""
         cluster = self.cluster
@@ -242,6 +245,7 @@ class TestBootstrap(Tester):
 
     @attr('next-gating')
     @attr('dtest-debug')
+    @attr('dtest-full')
     def manual_bootstrap_test(self):
         """Test adding a new node and bootstrappig it manually. No auto_bootstrap.
            This test also verify that all data are OK after the addition of the new node.
@@ -269,6 +273,7 @@ class TestBootstrap(Tester):
         self.assertEquals(original_rows, current_rows)
 
     @scylla_mode('release')
+    @attr('dtest-full')
     def local_quorum_bootstrap_test(self):
         """Test that CL local_quorum works while a node is bootstrapping. CASSANDRA-8058"""
 
@@ -325,9 +330,11 @@ class TestBootstrap(Tester):
         failure = regex.search(output)
         self.assertIsNone(failure, "Error during stress while bootstrapping")
 
+    @attr('dtest-full')
     def shutdown_wiped_node_cannot_join_test(self):
         self._wiped_node_cannot_join_test(gently=True)
 
+    @attr('dtest-full')
     def killed_wiped_node_cannot_join_test(self):
         self._wiped_node_cannot_join_test(gently=False)
 

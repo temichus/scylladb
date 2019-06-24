@@ -50,6 +50,7 @@ class UTC(datetime.tzinfo):
         return datetime.timedelta(0)
 
 
+@attr('dtest-full')
 class CqlshPrepare(Tester):
 
     def prepare(self, nodes=1, partitioner="murmur3", configuration_options=None):
@@ -192,6 +193,7 @@ class CqlshPrepare(Tester):
                      )
 
 
+@attr('dtest-full')
 class CqlshCopyTest(CqlshPrepare):
     """
     Tests the COPY TO and COPY FROM features in cqlsh.

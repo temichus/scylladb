@@ -7,6 +7,8 @@ from tools import debug, rows_to_list
 from cassandra import ConsistencyLevel
 from cassandra.query import SimpleStatement
 
+
+@attr('dtest-full')
 class SchemaManagementTest(Tester):
 
     def test_prepared_statements_work_after_node_restart_after_altering_schema_without_changing_columns(self):

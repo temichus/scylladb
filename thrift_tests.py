@@ -43,7 +43,6 @@ pid_fname = "system_test.pid"
 def pid():
     return int(open(pid_fname).read())
 
-
 class BaseTester(Tester):
     client = None
     extra_args = []
@@ -88,6 +87,7 @@ class BaseTester(Tester):
         self.define_schema()
 
 
+@attr('dtest-full')
 class ThriftTester(BaseTester):
 
     def open_client(self):
@@ -386,7 +386,7 @@ def _big_multi_slice(key='abc'):
 
 _MULTI_SLICE_COLUMNS = [Column('a', '1', 0), Column('b', '2', 0), Column('c', '3', 0), Column('e', '5', 0), Column('f', '6', 0)]
 
-
+@attr('dtest-full')
 class TestMutations(ThriftTester):
 
     def test_insert(self):
@@ -2424,7 +2424,7 @@ class TestMutations(ThriftTester):
              for result in _big_multi_slice('abc')]
         assert L == _MULTI_SLICE_COLUMNS, L
 
-
+@attr('dtest-full')
 class TestTruncate(ThriftTester):
 
     def test_truncate(self):
@@ -2443,6 +2443,7 @@ class TestTruncate(ThriftTester):
         #assert _big_slice('key1', ColumnParent('Super1', 'sc1')) == []
 
 
+@attr('dtest-full')
 class TestCQLAccesses(ThriftTester):
 
     @skip("Not supported yet. See #2037")
@@ -2470,6 +2471,7 @@ class TestCQLAccesses(ThriftTester):
         assert_none(session, "SELECT * FROM t")
 
 
+@attr('dtest-full')
 class TestCompactStorageThriftAccesses(ThriftTester):
 
     """
@@ -2493,6 +2495,7 @@ class TestCompactStorageThriftAccesses(ThriftTester):
         _assert_column('cs1', _i32(i), 'v', _i32(i), 0)
 
 
+@attr('dtest-full')
 class TestResultKeyOrder(ThriftTester):
 
     def __init__(self, *args, **kwargs):
@@ -2517,6 +2520,7 @@ class TestResultKeyOrder(ThriftTester):
         assert result[4].key == 'key2'
 
 
+@attr('dtest-full')
 class TestWrappingRangeQueries(ThriftTester):
 
     """
@@ -2597,6 +2601,8 @@ class TestWrappingRangeQueries(ThriftTester):
         test_range('c', 0, 'e', -1, 2, [])
         test_range('b', -1, 'a', 1, 10, ['b', 'a'])
 
+
+@attr('dtest-full')
 class TestServerShutdown(ThriftTester):
 
     """

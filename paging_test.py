@@ -12,6 +12,8 @@ from dtest import Tester, run_scenarios
 from tools import require, since, rows_to_list
 from collections import Counter
 
+from nose.plugins.attrib import attr
+
 
 class Page(object):
     data = None
@@ -190,6 +192,7 @@ class BasePagingTester(Tester):
 
 
 @since('2.0')
+@attr('dtest-full')
 class TestPagingSize(BasePagingTester, PageAssertionMixin):
     """
     Basic tests relating to page size (relative to results set)
@@ -330,6 +333,7 @@ class TestPagingSize(BasePagingTester, PageAssertionMixin):
 
 
 @since('2.0')
+@attr('dtest-full')
 class TestPagingWithModifiers(BasePagingTester, PageAssertionMixin):
     """
     Tests concerned with paging when CQL modifiers (such as order, limit, allow filtering) are used.
@@ -575,6 +579,7 @@ class TestPagingWithModifiers(BasePagingTester, PageAssertionMixin):
 
 
 @since('2.0')
+@attr('dtest-full')
 class TestPagingData(BasePagingTester, PageAssertionMixin):
 
     def test_paging_a_single_wide_row(self):
@@ -1091,7 +1096,9 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
                 query_and_result["page_size"] = page_size
                 query_and_compare_results(**query_and_result)
 
+
 @since('2.0')
+@attr('dtest-full')
 class TestPagingDatasetChanges(BasePagingTester, PageAssertionMixin):
     """
     Tests concerned with paging when the queried dataset changes while pages are being retrieved.
@@ -1311,6 +1318,7 @@ class TestPagingDatasetChanges(BasePagingTester, PageAssertionMixin):
 
 
 @since('2.0')
+@attr('dtest-full')
 class TestPagingQueryIsolation(BasePagingTester, PageAssertionMixin):
     """
     Tests concerned with isolation of paged queries (queries can't affect each other).
@@ -1399,6 +1407,7 @@ class TestPagingQueryIsolation(BasePagingTester, PageAssertionMixin):
 
 
 @since('2.0')
+@attr('dtest-full')
 class TestPagingWithDeletions(BasePagingTester, PageAssertionMixin):
     """
     Tests concerned with paging when deletions occur.

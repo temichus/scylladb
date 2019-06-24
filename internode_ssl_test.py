@@ -4,6 +4,7 @@ from nose.plugins.attrib import attr
 
 @attr('next-gating')
 @attr('dtest-debug')
+@attr('dtest-full')
 class TestInternodeSSL(Tester):
 
     def __init__(self, *args, **kwargs):

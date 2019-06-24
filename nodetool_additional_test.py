@@ -10,7 +10,7 @@ from unittest import skip
 from binascii import hexlify
 
 import yaml
-
+from nose.plugins.attrib import attr
 from ccmlib.node import NodetoolError
 
 from dtest import Tester
@@ -19,6 +19,7 @@ from tools import new_node
 from tools import no_vnodes, rows_to_list, require
 
 
+@attr('dtest-full')
 class TestNodetool(Tester):
 
     def __init__(self, *args, **kwargs):

@@ -25,6 +25,7 @@ from cassandra.query import BatchStatement, SimpleStatement
 LONG_TEXT_LENGTH = 8193
 OVERSIZE_LENGTH = 66536
 
+
 class SecondaryIndexesHelpers(object):
 
     @staticmethod
@@ -218,6 +219,8 @@ class SecondaryIndexesHelpers(object):
             except:
                 time.sleep(1)
 
+
+@attr('dtest-full')
 class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
     INDEX_TYPE = 'global'
 
@@ -1161,6 +1164,8 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
                                              ['Can\'t send migration request: node {} is down'.format(node2_ip)],
                                              search_str='ERROR')
 
+
+@attr('dtest-full')
 class TestSecondaryIndexesOnCollections(Tester, SecondaryIndexesHelpers):
     INDEX_TYPE = 'global'
     def __init__(self, *args, **kwargs):
@@ -1369,6 +1374,7 @@ class TestSecondaryIndexesOnCollections(Tester, SecondaryIndexesHelpers):
                 self.assertTrue(log_entry['unshared_uuid2'] in db_uuids.values())
 
 @skip('Not relevant for Scylla')
+@attr('dtest-full')
 class TestUpgradeSecondaryIndexes(Tester):
 
     @since('2.1', max_version='2.1.x')
@@ -1435,6 +1441,7 @@ class TestUpgradeSecondaryIndexes(Tester):
 
 
 @skip('Not relevant for Scylla')
+@attr('dtest-full')
 class TestPreJoinCallback(Tester):
 
     def __init__(self, *args, **kwargs):
@@ -1531,6 +1538,8 @@ class TestPreJoinCallback(Tester):
 
         self._base_test(write_survey_and_join)
 
+
+@attr('dtest-full')
 class TestLocalIndexes(Tester, SecondaryIndexesHelpers):
     INDEX_TYPE = 'local'
 

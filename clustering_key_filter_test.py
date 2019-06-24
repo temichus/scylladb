@@ -9,6 +9,7 @@ from dtest import Tester, debug
 # start_cluster_and_get_node1() starts Scylla with --enable-cache set to 0.
 
 
+@attr('dtest-full')
 class ClusteringKeyFilterTest(Tester):
     # Check that a row tombstone is not discarded when its sstable doesn't contain clustering range specified in the query.
 

@@ -3,6 +3,8 @@ import random
 import re
 import subprocess
 
+from nose.plugins.attrib import attr
+
 from ccmlib import common
 from dtest import Tester, debug
 from tools import since
@@ -10,6 +12,7 @@ from nose.tools import nottest
 from unittest import skip
 
 
+@attr('dtest-full')
 class TestOfflineTools(Tester):
     """
     Test cassandra offline tools.

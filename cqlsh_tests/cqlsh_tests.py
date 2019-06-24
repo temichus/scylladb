@@ -24,6 +24,7 @@ from tools import create_c1c2_table, insert_c1c2, rows_to_list, require, new_nod
 from nose.plugins.attrib import attr
 
 
+@attr('dtest-full')
 class TestCqlsh(Tester):
 
     def __init__(self, *args, **kwargs):
@@ -1453,6 +1454,7 @@ Unlogged batch covering 2 partitions detected against table [client_warnings.tes
         return p.communicate()
 
 
+@attr('dtest-full')
 class CqlshSmokeTest(Tester):
     """
     Tests simple use cases for clqsh.
@@ -1816,6 +1818,7 @@ class CqlshSmokeTest(Tester):
         return [table.name for table in self.session.cluster.metadata.keyspaces[keyspace].tables.values()]
 
 
+@attr('dtest-full')
 class CqlLoginTest(Tester):
     """
     Tests login which requires password authenticator

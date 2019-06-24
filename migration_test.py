@@ -27,6 +27,7 @@ from nose.plugins.attrib import attr
 
 
 @tools.nottest
+@attr('dtest-full')
 class MigrationTestBase(Tester):
 
     @attr('dtest-debug')
@@ -606,6 +607,7 @@ class MigrationTestBase(Tester):
 
 
 @tools.nottest
+@attr('dtest-full')
 class TestMigration(MigrationTestBase):
 
     def __init__(self, *args, **kwargs):
@@ -720,6 +722,7 @@ class TestMigration(MigrationTestBase):
 
 
 @tools.nottest
+@attr('dtest-full')
 class TestMigrationUpgradeSSTables(TestMigration):
 
     @skip('test isn\'t relevant when using nodetool upgradesstables')
@@ -759,6 +762,7 @@ class TestMigrationUpgradeSSTables(TestMigration):
 
 # @skip('not run every build')
 # @attr('long','compare-cassandra')
+@attr('dtest-full')
 class TTLWithMigrate(Tester):
     """ Test Time To Live Feature with Migration"""
 

@@ -24,6 +24,8 @@ clients = (
     "Emacs"
 )
 
+
+@attr('dtest-full')
 class TestWideRows(Tester):
     _multiprocess_can_split_ = False
     BLOB_SIZE_10k = 1024 * 10

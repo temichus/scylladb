@@ -24,6 +24,7 @@ from scylla_tools import drop_table
 
 
 @since('2.0')
+@attr('dtest-full')
 class TestTTL(Tester):
     """ Test Time To Live Feature """
 
@@ -530,6 +531,7 @@ class TestTTL(Tester):
                            expected=steps[ttl]['expected_result'], cl=ConsistencyLevel.QUORUM, ignore_order=True)
 
 
+@attr('dtest-full')
 class TestDistributedTTL(Tester):
 
     """ Test Time To Live Feature in a distributed environment """
