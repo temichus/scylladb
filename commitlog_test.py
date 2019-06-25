@@ -331,7 +331,7 @@ class TestCommitLog(Tester):
         # Scylla: Unknown option commitlog_compression
         self._segment_size_test(5, compressed=True)
 
-    expected_log_message = 'commitlog - Exception in segment reservation\: storage_io_error \(Storage I/O error\: 13\: filesystem error: open failed: Permission denied'
+    expected_log_message = 'commitlog - Exception in segment reservation: storage_io_error \(Storage I/O error: 13: filesystem error: open failed'
 
     @attr('next-gating')
     @attr('dtest-debug')

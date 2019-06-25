@@ -1171,7 +1171,7 @@ class TestNodetool(Tester):
         enablegossip and enablebinary pass
         refresh failed with permission denied
         """
-        error_to_track = "Found exception\: storage_io_error \(Storage I\/O error\: 13\: Permission denied"
+        error_to_track = re.compile("storage_io_error \(Storage I/O error: 13:")
         self.run_cluster()
         node = self.cluster.nodelist()[0]
         self.stress_write(node, duration='10s')
@@ -1191,7 +1191,7 @@ class TestNodetool(Tester):
                 node.nodetool("refresh keyspace1 standard1")
                 self.fail("refresh should be with Permission denied")
             except NodetoolError as e:
-                self.assertTrue("Storage I/O error: 13" in e.message,
+                self.assertTrue(error_to_track.search(e.message),
                                 'expected error not found in log')
         finally:
             self._change_data_perms(node, 'data', stat.S_IWRITE | stat.S_IREAD | stat.S_IEXEC)
