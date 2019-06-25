@@ -51,7 +51,7 @@ cql_tests.py
 cql_tracing_test.py
 cqlsh_tests/cqlsh_tests.py
 cqlsh_tests/cqlsh_copy_tests.py
-heat_weighted_load_balancing.py
+heat_weighted_load_balancing_test.py
 internode_ssl_test.py
 json_test.py
 largecolumn_test.py
@@ -78,7 +78,7 @@ resharding_test.py
 schema_management_test.py
 schema_test.py
 secondary_indexes_test.py
-simple_boot_shutdown.py
+simple_boot_shutdown_test.py
 simple_cluster_driver_test.py
 simple_driver_test.py
 snapshot_test.py:TestSnapshot
