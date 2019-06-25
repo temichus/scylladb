@@ -10,7 +10,7 @@ from cassandra.protocol import ProtocolException
 from cassandra.query import SimpleStatement
 
 from assertions import assert_invalid, assert_one, assert_unavailable
-from dtest import Tester, canReuseCluster, freshCluster
+from dtest import Tester
 from thrift_bindings.v22.ttypes import \
     ConsistencyLevel as ThriftConsistencyLevel
 from thrift_bindings.v22.ttypes import (CfDef, Column, ColumnOrSuperColumn,
@@ -53,7 +53,6 @@ class CQLTester(Tester):
         return session
 
 
-@canReuseCluster
 class StorageProxyCQLTester(CQLTester):
     """
     Each CQL statement is exercised at least once in order to
@@ -229,7 +228,6 @@ class StorageProxyCQLTester(CQLTester):
         session.execute(query)
 
 
-@canReuseCluster
 class MiscellaneousCQLTester(CQLTester):
     """
     CQL tests that cannot be performed as Java unit tests, see CASSANDRA-9160. Please consider
@@ -379,7 +377,6 @@ class MiscellaneousCQLTester(CQLTester):
         result = list(session.execute(explicit_prepared.bind(None)))
         self.assertEqual(result, [(0, 0, 0, None)])
 
-    @freshCluster()
     def range_slice_test(self):
         """ Test a regression from #1337 """
 

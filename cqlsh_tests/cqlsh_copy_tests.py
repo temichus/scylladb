@@ -21,7 +21,7 @@ from cqlsh_tools import (DummyColorMap, assert_csvs_items_equal, csv_rows,
                          monkeypatch_driver, random_list,
                          strip_timezone_if_time_string, unmonkeypatch_driver,
                          write_rows_to_csv)
-from dtest import Tester, canReuseCluster, freshCluster, debug, warning
+from dtest import Tester, debug, warning
 from tools import rows_to_list, require
 
 DEFAULT_FLOAT_PRECISION = 5  # magic number copied from cqlsh script
@@ -192,7 +192,6 @@ class CqlshPrepare(Tester):
                      )
 
 
-@canReuseCluster
 class CqlshCopyTest(CqlshPrepare):
     """
     Tests the COPY TO and COPY FROM features in cqlsh.
@@ -1118,19 +1117,15 @@ class CqlshCopyTest(CqlshPrepare):
         new_results = list(self.session.execute("SELECT * FROM testcopyto"))
         self.assertEqual(results, new_results)
 
-    @freshCluster()
     def test_round_trip_murmur3(self):
         self._test_round_trip(nodes=3, partitioner="murmur3")
 
-    @freshCluster()
     def test_round_trip_random(self):
         self._test_round_trip(nodes=3, partitioner="random")
 
-    @freshCluster()
     def test_round_trip_byte_ordered(self):
         self._test_round_trip(nodes=3, partitioner="byte")
 
-    @freshCluster()
     def test_source_copy_round_trip(self):
         """
         Like test_round_trip, but uses the SOURCE command to execute the
@@ -1222,7 +1217,6 @@ class CqlshCopyTest(CqlshPrepare):
                                                                             .format(stress_table))))
 
     @require('#2386')
-    @freshCluster()
     def test_bulk_round_trip_default(self):
         """
         Test bulk import with default stress import (one row per operation)
@@ -1232,7 +1226,6 @@ class CqlshCopyTest(CqlshPrepare):
         self._test_bulk_round_trip(nodes=3, partitioner="murmur3", num_operations=100000)
 
     @require('#2386')
-    @freshCluster()
     def test_bulk_round_trip_blogposts(self):
         """
         Test bulk import with a user profile that inserts 10 rows per operation
@@ -1244,7 +1237,6 @@ class CqlshCopyTest(CqlshPrepare):
                                    stress_table='stresscql.blogposts', page_timeout=60)
 
     @require('#2386')
-    @freshCluster()
     def test_bulk_round_trip_with_timeouts(self):
         """
         Test bulk import with very short read and write timeout values, this should exercise the
@@ -1257,7 +1249,6 @@ class CqlshCopyTest(CqlshPrepare):
                                                           'write_request_timeout_in_ms': '200'})
 
     @require('#2386')
-    @freshCluster()
     def test_copy_to_with_more_failures_than_max_attempts(self):
         """
         Test exporting rows with failure injection by setting the environment variable CQLSH_COPY_TEST_FAILURES,
@@ -1290,7 +1281,6 @@ class CqlshCopyTest(CqlshPrepare):
         self.assertTrue(len(open(self.tempfile.name).readlines()) < num_records)
 
     @require('#2386')
-    @freshCluster()
     def test_copy_to_with_fewer_failures_than_max_attempts(self):
         """
         Test exporting rows with failure injection by setting the environment variable CQLSH_COPY_TEST_FAILURES,
@@ -1321,7 +1311,6 @@ class CqlshCopyTest(CqlshPrepare):
         self.assertNotIn('some records might be missing', err)
         self.assertEqual(num_records, len(open(self.tempfile.name).readlines()))
 
-    @freshCluster()
     def test_copy_to_with_child_process_crashing(self):
         """
         Test exporting rows with failure injection by setting the environment variable CQLSH_COPY_TEST_FAILURES,
@@ -1354,7 +1343,6 @@ class CqlshCopyTest(CqlshPrepare):
         self.assertTrue(len(open(self.tempfile.name).readlines()) < num_records)
 
     @require('#2386')
-    @freshCluster()
     def test_copy_from_with_more_failures_than_max_attempts(self):
         """
         Test importing rows with failure injection by setting the environment variable CQLSH_COPY_TEST_FAILURES,
@@ -1392,7 +1380,6 @@ class CqlshCopyTest(CqlshPrepare):
         self.assertTrue(num_records_imported < num_records)
 
     @require('#2386')
-    @freshCluster()
     def test_copy_from_with_fewer_failures_than_max_attempts(self):
         """
         Test importing rows with failure injection by setting the environment variable CQLSH_COPY_TEST_FAILURES,
@@ -1430,7 +1417,6 @@ class CqlshCopyTest(CqlshPrepare):
         self.assertEquals(num_records, num_records_imported)
 
     @require('#2386')
-    @freshCluster()
     def test_copy_from_with_child_process_crashing(self):
         """
         Test importing rows with failure injection by setting the environment variable CQLSH_COPY_TEST_FAILURES,
