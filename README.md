@@ -43,8 +43,8 @@ Using `virtualenv` is recommended in order to not pollute your global python ins
 To setup a `virtualenv` follow the below instructions:
 
 ```bash
-# Create the virtualenv.
-virtualenv env
+# Create the virtualenv (dtests require python2)
+python2 -m virtualenv env
 
 # Start using the virtualenv, you should now see `(env)` in you bash prompt.
 source ./env/bin/activate
