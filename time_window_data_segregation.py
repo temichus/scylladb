@@ -3,17 +3,21 @@ import cassandra.concurrent
 import dtest
 import os
 import sstable_tools.statistics
-import time
 import tools
 
 
-def to_seconds(micros):
+def micros_to_seconds(micros):
     return int(micros/(1000 * 1000))
+
+
+def seconds_to_micros(seconds):
+    return seconds * 1000 * 1000
 
 
 class TestTimeWindowDataSegregation(dtest.Tester):
     keyspace_name = "ks"
     table_name = "test"
+    window_size = 1
 
     def _get_time_window_in_seconds(self, statistics_file):
         with open(statistics_file, 'rb') as f:
@@ -23,7 +27,7 @@ class TestTimeWindowDataSegregation(dtest.Tester):
         min_timestamp = metadata['Stats']['min_timestamp']
         max_timestamp = metadata['Stats']['max_timestamp']
 
-        return to_seconds(max_timestamp - min_timestamp)
+        return micros_to_seconds(max_timestamp - min_timestamp)
 
     def _check_sstable_timestamps(self, node):
         ks_path = os.path.join(node.get_path(), 'data', self.keyspace_name)
@@ -44,8 +48,7 @@ class TestTimeWindowDataSegregation(dtest.Tester):
 
         for sf in statistics_files:
             tw = self._get_time_window_in_seconds(sf)
-            print("{} => {}".format(sf, tw))
-            #self.assertTrue(tw <= 60)
+            self.assertTrue(tw <= 1.5 * self.window_size * 60)
 
 
     def test_streaming(self):
@@ -63,32 +66,26 @@ class TestTimeWindowDataSegregation(dtest.Tester):
                 "WITH compaction = {{"
                     "'class': 'TimeWindowCompactionStrategy',"
                     "'compaction_window_unit': 'MINUTES',"
-                    "'compaction_window_size': 1}}".format(self.keyspace_name, self.table_name))
+                    "'compaction_window_size': {}}}".format(self.keyspace_name, self.table_name, self.window_size))
 
-        insert_statement = session.prepare("INSERT INTO {}.{} (pk, ck, v) VALUES (?, ?, ?)".format(self.keyspace_name, self.table_name))
+        insert_statement = session.prepare("INSERT INTO {}.{} (pk, ck, v) VALUES (?, ?, ?) USING TIMESTAMP ?".format(self.keyspace_name, self.table_name))
 
-        for i in range(2 * 60):
-            start = time.time()
+        for i in range(20 * 60):
             cassandra.concurrent.execute_concurrent_with_args(session, insert_statement, [
-                (0, i, 0),
-                (1, i, 0),
-                (2, i, 0),
-                (3, i, 0),
-                (4, i, 0),
-                (5, i, 0),
-                (6, i, 0),
-                (7, i, 0),
-                (8, i, 0),
-                (9, i, 0),
+                (0, i, 0, seconds_to_micros(i)),
+                (1, i, 0, seconds_to_micros(i)),
+                (2, i, 0, seconds_to_micros(i)),
+                (3, i, 0, seconds_to_micros(i)),
+                (4, i, 0, seconds_to_micros(i)),
+                (5, i, 0, seconds_to_micros(i)),
+                (6, i, 0, seconds_to_micros(i)),
+                (7, i, 0, seconds_to_micros(i)),
+                (8, i, 0, seconds_to_micros(i)),
+                (9, i, 0, seconds_to_micros(i)),
             ])
 
-            if i % 10 == 0:
+            if i % 60 == 0:
                 node1.flush()
-
-            end = time.time()
-            diff = end - start
-            if diff < 1.0:
-                time.sleep(1.0 - diff)
 
         self._check_sstable_timestamps(node1)
 
