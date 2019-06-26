@@ -306,6 +306,7 @@ class TestSnapshot(SnapshotTester):
         compaction_thread.join()
 
 
+@attr('dtest-full')
 class TestArchiveCommitlog(SnapshotTester):
 
     """

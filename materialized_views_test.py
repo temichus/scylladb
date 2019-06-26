@@ -438,6 +438,7 @@ class TestMaterializedViews(Tester):
             debug('Bootstrapping {0} node in {1}'.format(i+1, data_center))
             self._add_new_node(data_center=data_center)
 
+    @attr('dtest-heavy')
     def hundred_mv_concurrent_test(self):
         """
         Performance and functional test.
@@ -606,6 +607,7 @@ class TestMaterializedViews(Tester):
         """ Create 10 materialized views in parallel with removing a node """
         self._mv_populating_from_existing_data_during_changes_test('remove node', nodes=4, rf=3, mvs=10, prefill=40000, fail=False)
 
+    @attr('dtest-heavy')
     def mv_populating_from_existing_data_during_node_stop_test(self):
         """ Create 10 materialized views in parallel with stopping a node """
         self._mv_populating_from_existing_data_during_changes_test('stop node', nodes=4, rf=3, mvs=10, prefill=40000, fail=False)
@@ -614,6 +616,7 @@ class TestMaterializedViews(Tester):
         """ Create 10 materialized views in parallel with a node decommission """
         self._mv_populating_from_existing_data_during_changes_test('decommission', nodes=4, rf=3, mvs=10, prefill=40000, fail=False)
 
+    @attr('dtest-heavy')
     def mv_populating_from_existing_data_during_node_restart_test(self):
         """ Create 10 materialized views in parallel with a node restart """
         self._mv_populating_from_existing_data_during_changes_test('restart node', nodes=4, rf=3, mvs=10, prefill=40000, fail=False)
@@ -813,6 +816,7 @@ class TestMaterializedViews(Tester):
                                        consistency_level=ConsistencyLevel.ALL)
             prefill = prefill + increase_rows
 
+    @attr('dtest-heavy')
     def drop_mv_during_base_table_writes_test(self):
         """ Test drop a view during base table writes: the view is created on empty base table and dropped during table prefill
             Test scenario:
@@ -1925,6 +1929,7 @@ class TestMaterializedViews(Tester):
             # instead of just warning.
             debug("View building finished too soon! nodes finished = {}, all build processes = {}".format(have_finished, all_started_view_build_processes))
 
+    @attr('dtest-heavy')
     def interrupt_build_process_test(self):
         """Test that an interrupted MV build process is resumed as it should"""
 

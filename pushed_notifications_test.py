@@ -75,13 +75,13 @@ class NotificationWaiter(object):
         self.event.clear()
 
 
+@attr('dtest-full')
 class TestPushedNotifications(Tester):
     """
     Tests for pushed native protocol notification from Cassandra.
     """
 
     @no_vnodes()
-    @attr('dtest-full')
     def move_single_node_test(self):
         """
         @jira_ticket CASSANDRA-8516
@@ -151,7 +151,6 @@ class TestPushedNotifications(Tester):
             notifications = waiter.wait_for_notifications(30.0)
             self.assertEquals(1 if waiter.node is node1 else 0, len(notifications))
 
-    @attr('dtest-full')
     def restart_node_test(self):
         """
         @jira_ticket CASSANDRA-7816
@@ -273,6 +272,7 @@ class TestPushedNotifications(Tester):
         self.assertDictContainsSubset({'change_type': u'DROPPED', 'target_type': u'KEYSPACE'}, notifications[13])
 
 
+@attr('dtest-full')
 class TestVariousNotifications(Tester):
     """
     Tests for various notifications/messages from Cassandra.

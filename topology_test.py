@@ -12,7 +12,7 @@ from ccmlib.node import NodeError
 from cassandra import ConsistencyLevel
 from threading import Thread
 
-
+@attr('dtest-full')
 class TestTopology(Tester):
 
     @skip('Does not work, skipping after allowing it on scylla_tests and will investigate later')
@@ -53,7 +53,6 @@ class TestTopology(Tester):
         time.sleep(10)
 
     @no_vnodes()
-    @attr('dtest-full')
     def movement_test(self):
         cluster = self.cluster
 
@@ -91,7 +90,6 @@ class TestTopology(Tester):
         assert_almost_equal(sizes[1], sizes[2])
 
     @no_vnodes()
-    @attr('dtest-full')
     def decommission_test(self):
         cluster = self.cluster
 
@@ -127,7 +125,6 @@ class TestTopology(Tester):
         assert_almost_equal(sizes[2], init_size)
 
     @no_vnodes()
-    @attr('dtest-full')
     def move_single_node_test(self):
         """ Test moving a node in a single-node cluster (#4200) """
         cluster = self.cluster
@@ -164,7 +161,6 @@ class TestTopology(Tester):
     # Scylla suports this feature
     # @since('3.0')
     @no_vnodes()
-    @attr('dtest-full')
     def decommissioned_node_cant_rejoin_test(self):
         '''
         @jira_ticket CASSANDRA-8801
@@ -214,7 +210,6 @@ class TestTopology(Tester):
     #@since('3.0')
     @attr('next-gating')
     @attr('dtest-debug')
-    @attr('dtest-full')
     def crash_during_decommission_test(self):
         """
         If a node crashes whilst another node is being decommissioned,

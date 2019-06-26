@@ -1,10 +1,11 @@
 from nose.tools import assert_true, assert_false
+from nose.plugins.attrib import attr
 from dtest import Tester
 
 import time
 import tools
 
-
+@attr('dtest-full')
 class TestBypassCache(Tester):
     '''
     Test that will verify if the select statement will skip cache during its read

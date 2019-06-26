@@ -11,7 +11,7 @@ from assertions import assert_one, assert_two_queries_equal
 from cassandra import ConsistencyLevel
 
 
-@attr('dtest-full')
+@attr('dtest-full', 'dtest-heavy')
 class ReshardingTest(Tester):
     DEFAULT_MURMUR3_PARTITIONER = 12
     DEFAULT_SMP = '2'

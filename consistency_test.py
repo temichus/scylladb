@@ -216,6 +216,7 @@ class TestHelper(Tester):
         return res[0][0] if res else 0
 
 
+@attr('dtest-full')
 class TestAvailability(TestHelper):
 
     """
@@ -300,7 +301,6 @@ class TestAvailability(TestHelper):
             assert_unavailable(
                 self.query_user, session, end, age, read_cl, check_ret)
 
-    @attr('dtest-full')
     def test_simple_strategy(self):
         """
         Test for a single datacenter, using simple replication strategy.
@@ -353,7 +353,6 @@ class TestAvailability(TestHelper):
 
         self._test_simple_strategy(combinations)
 
-    @attr('dtest-full')
     def test_network_topology_strategy(self):
         """
         Test for multiple datacenters, using network topology replication strategy.
@@ -407,6 +406,7 @@ class TestAvailability(TestHelper):
         self._test_network_topology_strategy(combinations)
 
 
+@attr('dtest-full')
 class TestAccuracy(TestHelper):
 
     """
@@ -574,7 +574,6 @@ class TestAccuracy(TestHelper):
             traceback.print_exception(*exceptions_queue.get())
             assert False, "Look for an exception above"
 
-    @attr('dtest-full')
     def test_simple_strategy_users(self):
         """
         Test for a single datacenter, users table, only the each quorum reads.
@@ -627,7 +626,6 @@ class TestAccuracy(TestHelper):
         self._run_test_function_in_parallel(
             TestAccuracy.Validation.validate_users, [self.nodes], [self.rf], combinations)
 
-    @attr('dtest-full')
     def test_network_topology_strategy_users(self):
         """
         Test for multiple datacenters, users table.
@@ -686,7 +684,6 @@ class TestAccuracy(TestHelper):
 
     @attr('next-gating')
     @attr('dtest-debug')
-    @attr('dtest-full')
     def test_simple_strategy_counters(self):
         """
         Test for a single datacenter, counters table.
@@ -737,7 +734,6 @@ class TestAccuracy(TestHelper):
         self._run_test_function_in_parallel(
             TestAccuracy.Validation.validate_counters, [self.nodes], [self.rf], combinations)
 
-    @attr('dtest-full')
     def test_network_topology_strategy_counters(self):
         """
         Test for multiple datacenters, counters table.
@@ -790,8 +786,8 @@ class TestAccuracy(TestHelper):
             TestAccuracy.Validation.validate_counters, self.nodes, self.rf.values(), combinations),
 
 
+@attr('dtest-full')
 class TestConsistency(Tester):
-    @attr('dtest-full')
     def short_read_test(self):
         """
         @jira_ticket CASSANDRA-9460
@@ -839,7 +835,6 @@ class TestConsistency(Tester):
                 'TRUNCATE cf', consistency_level=ConsistencyLevel.QUORUM)
             session.execute(truncate_statement)
 
-    @attr('dtest-full')
     def short_read_delete_test(self):
         """ Test short reads ultimately leaving no columns alive [#4000] """
         cluster = self.cluster
@@ -878,7 +873,6 @@ class TestConsistency(Tester):
         res = list(session.execute(query))
         assert len(res) == 0, res
 
-    @attr('dtest-full')
     def short_read_quorum_delete_test(self):
         """
         @jira_ticket CASSANDRA-8933
@@ -932,7 +926,6 @@ class TestConsistency(Tester):
 
     @attr('next-gating')
     @attr('dtest-debug')
-    @attr('dtest-full')
     def readrepair_test(self):
         cluster = self.cluster
         cluster.set_configuration_options(
@@ -967,7 +960,6 @@ class TestConsistency(Tester):
         for n in xrange(0, 10000):
             query_c1c2(session, n, ConsistencyLevel.ONE)
 
-    @attr('dtest-full')
     def short_read_reversed_test(self):
         """
         @jira_ticket CASSANDRA-9460
@@ -1017,7 +1009,6 @@ class TestConsistency(Tester):
 
     @attr('next-gating')
     @attr('dtest-debug') # https://github.com/scylladb/scylla/issues/4384
-    @attr('dtest-full')
     def quorum_available_during_failure_test(self):
         CL = ConsistencyLevel.QUORUM
         RF = 3
@@ -1066,7 +1057,6 @@ class TestConsistency(Tester):
 
         to_stop.start(wait_other_notice=True)
 
-    @attr('dtest-full')
     def data_query_digest_test(self):
         debug('Create cluster')
         cluster = self.cluster

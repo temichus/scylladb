@@ -5763,6 +5763,7 @@ class CQLAdditionalTests(Tester):
         assert len(out.split()) == 112, 'created 100+ tables'
 
 
+@attr('dtest-full')
 class MultiColumnRestrictionSimpleTests(Tester):
 
     INSERT_COLUMNS = 'key,clmn_int,clmn_text,clmn_timestamp,clmn_bool,clmn_ascii,clmn_uuid,clmn_blob'
@@ -6124,6 +6125,7 @@ class MultiColumnRestrictionSimpleTests(Tester):
                    expected=[], ignore_order=True)
 
 
+@attr('dtest-full')
 class MultiColumnRestrictionCollectionTests(Tester):
     TABLE_NAME = 'cf'
     TEST_DATA = [[0, "[0, 1, 2]", "[textAsBlob('t1'), textAsBlob('t2')]",

@@ -1022,6 +1022,7 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
         """
         self._node_action_during_index_build(node_action='stop', nodes=4, rf=3, num_rows=100000)
 
+    @attr('dtest-heavy')
     def test_remove_node_during_index_build(self):
         """
         Remove one node during index building and read data by index

@@ -2534,20 +2534,26 @@ class RepairAdditionalTest(RepairAdditionalBase):
     def repair_joint_row_3nodes_2_test(self):
        return RepairAdditionalBase._repair_joint_row_3nodes_same_key_diff_value_test(self)
 
+    @attr('dtest-heavy')
     def repair_one_missing_row_diff_shard_count_test(self):
        return RepairAdditionalBase._repair_one_missing_row_test(self, same_shard_count=False)
 
+    @attr('dtest-heavy')
     def repair_one_deleted_row_diff_shard_count_test(self):
        return RepairAdditionalBase._repair_one_deleted_row_test(self, same_shard_count=False)
 
+    @attr('dtest-heavy')
     def repair_disjoint_row_2nodes_diff_shard_count_test(self):
        return RepairAdditionalBase._repair_disjoint_row_2nodes_test(self, same_shard_count=False)
 
+    @attr('dtest-heavy')
     def repair_disjoint_row_3nodes_diff_shard_count_test(self):
        return RepairAdditionalBase._repair_disjoint_row_3nodes_test(self, same_shard_count=False)
 
+    @attr('dtest-heavy')
     def repair_joint_row_3nodes_1_diff_shard_count_test(self):
        return RepairAdditionalBase._repair_joint_row_3nodes_same_key_same_value_test(self, same_shard_count=False)
 
+    @attr('dtest-heavy')
     def repair_joint_row_3nodes_2_diff_shard_count_test(self):
        return RepairAdditionalBase._repair_joint_row_3nodes_same_key_diff_value_test(self, same_shard_count=False)

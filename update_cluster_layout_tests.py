@@ -17,7 +17,7 @@ from tools import require
 import scylla_tools
 import collections
 
-
+@attr('dtest-full')
 class TestUpdateClusterLayout(Tester):
 
     def check_rows_on_node(self, node_to_check, rows, found=None, missings=None, restart=True, ks='ks', cf='cf',
@@ -72,7 +72,6 @@ class TestUpdateClusterLayout(Tester):
                     else:
                         node.watch_log_for_alive(other_node)
 
-    @attr('dtest-full')
     def simple_add_node_1_test(self):
         """
         Test bootstrapped node streams all data
@@ -196,7 +195,6 @@ class TestUpdateClusterLayout(Tester):
         """
         self._iterative_add_decommission(node_count=3, iterations=2, rf=2)
 
-    @attr('dtest-full')
     def simple_add_two_nodes_in_parallel_test(self):
         """
         Test bootstrapped node streams all data
@@ -308,7 +306,6 @@ class TestUpdateClusterLayout(Tester):
         # Wait 5 minutes more in the test to wait for the stream to fail
         node4.watch_log_for("Stream failed", timeout=900)
 
-    @attr('dtest-full')
     def simple_kill_new_node_while_bootstrapping_test(self):
         """
         Test bootstrapped node streams all data
@@ -473,7 +470,6 @@ class TestUpdateClusterLayout(Tester):
             time.sleep(1)
         session.execute("SELECT * FROM cf")
 
-    @attr('dtest-full')
     def simple_kill_new_node_while_bootstrapping_with_parallel_writes_in_multidc_test(self):
         """
         Test bootstrapped node streams all data
@@ -592,7 +588,6 @@ class TestUpdateClusterLayout(Tester):
     def simple_add_new_node_while_adding_info_2_test(self):
         self._simple_add_new_node_while_adding_info(2)
 
-    @attr('dtest-full')
     def simple_add_new_node_while_schema_changes_test(self):
         """
         Test bootstrapped node streams all data
@@ -692,15 +687,12 @@ class TestUpdateClusterLayout(Tester):
 
         t.result()
 
-    @attr('dtest-full')
     def simple_add_new_node_while_query_info_1_test(self):
         self._simple_add_new_node_while_query_info(1)
 
-    @attr('dtest-full')
     def simple_add_new_node_while_query_info_2_test(self):
         self._simple_add_new_node_while_query_info(2)
 
-    @attr('dtest-full')
     def simple_decommission_node_1_test(self):
         """
         Test decommissioned node streams all data
@@ -732,7 +724,6 @@ class TestUpdateClusterLayout(Tester):
 
         self.check_rows_on_node(node1, 1000, restart=False)
 
-    @attr('dtest-full')
     def simple_decommission_node_2_test(self):
         """
         Test that on decommission row cache entries of non owned transfered range are invalidated
@@ -798,7 +789,6 @@ class TestUpdateClusterLayout(Tester):
         result = list(session_node1.execute("SELECT * FROM ks.cf"))
         self.assertEqual(len(result), 0, "expected 0 lines got %d" % len(result))
 
-    @attr('dtest-full')
     def simple_kill_node_while_decommissioning_test(self):
         """
         Test a decommissioning node killed is able to rejoin the cluster with data
@@ -978,11 +968,9 @@ class TestUpdateClusterLayout(Tester):
         for k in xrange(0, 4000):
             query_c1c2(session, k, consistency)
 
-    @attr('dtest-full')
     def simple_decommission_node_while_adding_info_1_test(self):
         self._simple_decommission_node_while_adding_info(1)
 
-    @attr('dtest-full')
     def simple_decommission_node_while_adding_info_2_test(self):
         self._simple_decommission_node_while_adding_info(2)
 
@@ -1035,15 +1023,12 @@ class TestUpdateClusterLayout(Tester):
 
         t.result()
 
-    @attr('dtest-full')
     def simple_decommission_node_while_query_info_1_test(self):
         self._simple_decommission_node_while_query_info(1)
 
-    @attr('dtest-full')
     def simple_decommission_node_while_query_info_2_test(self):
         self._simple_decommission_node_while_query_info(2)
 
-    @attr('dtest-full')
     def simple_removenode_1_test(self):
         """
         Test removenode with rf>1 (no data should be lost)
@@ -1078,7 +1063,6 @@ class TestUpdateClusterLayout(Tester):
         self.assertEqual(len(result), 100, len(result))
         insert_c1c2(session, keys=range(120), consistency=ConsistencyLevel.TWO)
 
-    @attr('dtest-full')
     def simple_removenode_2_test(self):
         """
         Test removenode when rf=1 (data will be lost)
@@ -1451,7 +1435,6 @@ class TestUpdateClusterLayout(Tester):
         debug("Check rows on node1")
         self.check_rows_on_node(node1, nr_rows, ks='keyspace1', cf='standard1', counter_column='cn')
 
-    @attr('dtest-full')
     def increment_decrement_counters_in_threads_nodes_restarted_test(self):
         """
         increment/decrement 2 counters(2 inc vs 1 dec) * 1000 times * 120 threads
@@ -1548,6 +1531,7 @@ class TestUpdateClusterLayout(Tester):
                 c, result[c], res[c][1])
 
 
+@attr('dtest-full', 'dtest-long', 'dtest-heavy')
 class TestLargeScaleCluster(Tester):
     _multiprocess_can_split_ = False
 
@@ -1584,7 +1568,6 @@ class TestLargeScaleCluster(Tester):
             self.assertEqual(len(result), i * 100 + 1000, "data loss after increasing size to %d expecting %d rows %d" %
                              (len(cluster.nodelist()), i * 100 + 1000, len(result)))
 
-    @attr('dtest-full')
     def add_50_nodes_test(self):
         """
         Test large scale cluster (50 nodes cluster).

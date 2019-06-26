@@ -11,6 +11,7 @@ from nose.plugins.attrib import attr
 from unittest import skip
 
 
+@attr('dtest-full')
 class TestCompaction(Tester):
 
     __test__ = False
@@ -60,7 +61,6 @@ class TestCompaction(Tester):
 
 
     @since('2.2.X')
-    @attr('dtest-full')
     def compaction_delete_test(self):
         """
         Test that executing a delete properly tombstones a row.
@@ -70,7 +70,6 @@ class TestCompaction(Tester):
 
 
     @since('2.2.X')
-    @attr('dtest-full')
     def compaction_delete_2_test(self):
         """
         Test that executing a delete properly tombstones a row.
@@ -157,7 +156,6 @@ class TestCompaction(Tester):
 
     @attr('next-gating')
     @attr('dtest-debug')
-    @attr('dtest-full')
     def sstable_deletion_test(self):
         """
         Test that sstables are deleted properly when able after compaction.
@@ -273,7 +271,6 @@ class TestCompaction(Tester):
 
         self.assertGreaterEqual(float(threshold), float(avgthroughput))
 
-    @attr('dtest-full')
     def compaction_strategy_switching_test(self):
         """Ensure that switching strategies does not result in problems.
         Insert data, switch strategies, then check against data loss.
@@ -424,7 +421,6 @@ class TestCompaction(Tester):
         self.assertTrue(len(node.grep_log('Compacting.+to_disable', filename=log_file)) > 0,
                         'Found no log items for {0}'.format(self.strategy))
 
-    @attr('dtest-full')
     def disable_autocompaction_alter_test(self):
         """
         Make sure we can enable compaction using an alter-statement
