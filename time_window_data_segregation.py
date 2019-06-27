@@ -55,7 +55,6 @@ class TestTimeWindowDataSegregation(dtest.Tester):
         cluster = self.cluster
         cluster.populate(1)
         cluster.start(wait_for_binary_proto=True)
-        cluster.set_configuration_options(values={'logger-log-level': 'stream_session=trace'})
 
         node1 = cluster.nodelist()[0]
 
