@@ -47,6 +47,7 @@ class TestTimeWindowDataSegregation(dtest.Tester):
 
         for sf in statistics_files:
             tw = self._get_time_window_in_seconds(sf)
+            # Allow an error margin of a half-window.
             self.assertTrue(tw <= 1.5 * self.window_size * 60)
 
 
@@ -68,18 +69,27 @@ class TestTimeWindowDataSegregation(dtest.Tester):
 
         insert_statement = session.prepare("INSERT INTO {}.{} (pk, ck, v) VALUES (?, ?, ?) USING TIMESTAMP ?".format(self.keyspace_name, self.table_name))
 
+        # Simulate a write process across 20 minutes.
+        # We use `USING TIMESTAMP` to distribute the writes evenly
+        # across the entire range, simulating a write every second (to
+        # several partitions).
         for t in range(20 * 60):
             cassandra.concurrent.execute_concurrent_with_args(
                     session,
                     insert_statement,
                     [(pk, t, 0, seconds_to_micros(t)) for pk in range(10)])
 
+            # Flush every half minute to ensure each sstable contains at
+            # max a single window.
             if t % 30 == 0:
                 node1.flush()
 
+        # Not really relevant to the test, just for sanity.
         self._check_sstable_timestamps(node1)
 
         node2 = tools.new_node(cluster)
         node2.start(wait_for_binary_proto=True)
 
+        # After streaming the new node should also have at max one
+        # window per sstable.
         self._check_sstable_timestamps(node2)
