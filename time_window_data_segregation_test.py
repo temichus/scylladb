@@ -74,7 +74,7 @@ class TestTimeWindowDataSegregation(dtest.Tester):
                     insert_statement,
                     [(pk, t, 0, seconds_to_micros(t)) for pk in range(10)])
 
-            if t % 60 == 0:
+            if t % 30 == 0:
                 node1.flush()
 
         self._check_sstable_timestamps(node1)
