@@ -68,21 +68,13 @@ class TestTimeWindowDataSegregation(dtest.Tester):
 
         insert_statement = session.prepare("INSERT INTO {}.{} (pk, ck, v) VALUES (?, ?, ?) USING TIMESTAMP ?".format(self.keyspace_name, self.table_name))
 
-        for i in range(20 * 60):
-            cassandra.concurrent.execute_concurrent_with_args(session, insert_statement, [
-                (0, i, 0, seconds_to_micros(i)),
-                (1, i, 0, seconds_to_micros(i)),
-                (2, i, 0, seconds_to_micros(i)),
-                (3, i, 0, seconds_to_micros(i)),
-                (4, i, 0, seconds_to_micros(i)),
-                (5, i, 0, seconds_to_micros(i)),
-                (6, i, 0, seconds_to_micros(i)),
-                (7, i, 0, seconds_to_micros(i)),
-                (8, i, 0, seconds_to_micros(i)),
-                (9, i, 0, seconds_to_micros(i)),
-            ])
+        for t in range(20 * 60):
+            cassandra.concurrent.execute_concurrent_with_args(
+                    session,
+                    insert_statement,
+                    [(pk, t, 0, seconds_to_micros(t)) for pk in range(10)])
 
-            if i % 60 == 0:
+            if t % 60 == 0:
                 node1.flush()
 
         self._check_sstable_timestamps(node1)
