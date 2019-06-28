@@ -1,4 +1,3 @@
-import cassandra
 import cassandra.concurrent
 import dtest
 import os
