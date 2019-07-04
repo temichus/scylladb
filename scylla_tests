@@ -122,3 +122,4 @@ hintedhandoff_additional_test.py
 scyllatop_test.py
 cleanup_test.py
 listsnapshots_test.py
+bypass_cache_test.py
