@@ -25,12 +25,12 @@ class TestNodetool(Tester):
         kwargs['cluster_options'] = {'start_rpc': 'true'}
         super(TestNodetool, self).__init__(*args, **kwargs)
         self.width = 160
-        self.multi_dc_queries_method_list = [{"func": self.verify_info, "time": 40, "args": [None, 'dc1', 'RAC1']},
-                                             {"func": self.verify_status, "time": 25}, {"func": self.verify_netstats, "time": 26},
+        self.multi_dc_queries_method_list = [{"func": self.verify_info, "time": 60, "args": [None, 'dc1', 'RAC1']},
+                                             {"func": self.verify_status, "time": 25}, {"func": self.verify_netstats, "time": 40},
                                              {"func": self.verify_cfhistograms, "time": 25}, {"func": self.verify_cfstats, "time": 25, "args": [None, "keyspace1"]},
                                              {"func": self.verify_describering, "time": 25}, {"func": self.verify_decribecluster, "time": 25}]
-        self.queries_method_list = [{"func": self.verify_info, "time": 40},
-                                    {"func": self.verify_status, "time": 25}, {"func": self.verify_netstats, "time": 26},
+        self.queries_method_list = [{"func": self.verify_info, "time": 60},
+                                    {"func": self.verify_status, "time": 25}, {"func": self.verify_netstats, "time": 40},
                                     {"func": self.verify_cfhistograms, "time": 25}, {"func": self.verify_cfstats, "time": 25, "args": [None, "keyspace1"]},
                                     {"func": self.verify_describering, "time": 25}, {"func": self.verify_decribecluster, "time": 25}]
         self.reserved_names = ['view_pending_updates']
@@ -1004,7 +1004,7 @@ class TestNodetool(Tester):
         self.assertIn("Token", ni)
         time.sleep(10)
         ni = self.nodetool_info(node)
-        self.assertMapBetween(ni, "Uptime (seconds)", uptime + 10, uptime + 30)
+        self.assertMapBetween(ni, "Uptime (seconds)", uptime + 10, uptime + 40)
 
     def verify_status(self, node=None):
         if node is None:
@@ -1529,10 +1529,10 @@ class TestNodetool(Tester):
         tst is an object of the form
 
         tst = [{"operations": [{"func": self.run_cluster}, {"func": self.concurrent_stress, "delay": 5}, {"func": self.repair, "time": 300, "delay": 10}],
-                "recurrent": [{"func": self.verify_info, "time": 25, "delay": 10}]},
+                "recurrent": [{"func": self.verify_info, "time": 60, "delay": 10}]},
                {"operations": [{"func": self.concurrent_stress, "delay": 5}]},
                {"operations": [{"func": self.add_node, "time": 300}, {"func": self.repair, "time": 300}],
-                "recurrent": [{"func": self.verify_info, "time": 40}, {"func": self.verify_status, "time": 25}, {"func": self.verify_netstats, "time": 26}]}]
+                "recurrent": [{"func": self.verify_info, "time": 90}, {"func": self.verify_status, "time": 25}, {"func": self.verify_netstats, "time": 26}]}]
 
         operation and recurrent are list of objects
         {"func" the function name, "time": when present check the operation time,
@@ -1548,10 +1548,10 @@ class TestNodetool(Tester):
 
     def concurrent_repair_test(self):
         tst = [{"operations": [{"func": self.run_cluster, "block": True}, {"func": self.concurrent_stress, "delay": 5}, {"func": self.repair, "time": 300, "delay": 10}],
-                "recurrent": [{"func": self.verify_all_api, "block": True}, {"func": self.verify_info, "time": 25, "delay": 10}]},
+                "recurrent": [{"func": self.verify_all_api, "block": True}, {"func": self.verify_info, "time": 60, "delay": 10}]},
                {"operations": [{"func": self.concurrent_stress, "delay": 5}]},
                {"operations": [{"func": self.add_node, "time": 300}, {"func": self.repair, "time": 300}],
-                "recurrent": [{"func": self.verify_info, "time": 40}, {"func": self.verify_status, "time": 25}, {"func": self.verify_netstats, "time": 26}]}]
+                "recurrent": [{"func": self.verify_info, "time": 90}, {"func": self.verify_status, "time": 25}, {"func": self.verify_netstats, "time": 26}]}]
         self.general_concurrent(tst)
 
     def rebuild(self, node=None, dc=""):
@@ -1585,11 +1585,11 @@ class TestNodetool(Tester):
         """
         self.ignore_log_patterns = ["migration_task - Can't send migration request: node", "No schema agreement from live replicas after"]
         tst = [{"operations": [{"func": self.run_cluster, "args": [[2, 2], {'hinted_handoff_enabled': False, 'compaction_enforce_min_threshold': True}], "block": True}, {"func": self.stop, "delay": 5, "args": [ [2, 3]]}],
-                "recurrent":[{"func": self.verify_all_api, "block": True}, {"func": self.verify_info, "time": 25, "delay": 10, "args": [None, 'dc1', 'RAC1']}]},
+                "recurrent":[{"func": self.verify_all_api, "block": True}, {"func": self.verify_info, "time": 60, "delay": 10, "args": [None, 'dc1', 'RAC1']}]},
                {"operations": [{"func": self.concurrent_stress, "delay": 15, "args": [None, {"cl":"ONE","duration": "1m", "opt": ["-schema","replication(strategy=NetworkTopologyStrategy, dc1=1,dc2=1)","-rate","threads=10"]}]}],
-                "recurrent": [{"func": self.verify_info, "time": 25, "delay": 10, "args": [None, 'dc1', 'RAC1']}]},
+                "recurrent": [{"func": self.verify_info, "time": 60, "delay": 10, "args": [None, 'dc1', 'RAC1']}]},
                {"operations": [{"func": self.start, "delay": 5, "args": [[2, 3], {"wait_for_binary_proto": True}]}],
-                "recurrent": [{"func": self.verify_info, "time": 25, "delay": 10, "args": [None, 'dc1', 'RAC1']}]},
+                "recurrent": [{"func": self.verify_info, "time": 60, "delay": 10, "args": [None, 'dc1', 'RAC1']}]},
                {"operations": [{"func": self.rebuild, "time": 300, "args": [2, "dc1"]}],
                 "recurrent":self.multi_dc_queries_method_list}]
         self.general_concurrent(tst)
@@ -1606,9 +1606,9 @@ class TestNodetool(Tester):
         """
         self.ignore_log_patterns = ["migration_task - Can't send migration request: node", "Connection has been closed"]
         tst = [{"operations": [{"func": self.run_cluster}],
-                "recurrent": [{"func": self.verify_all_api, "block": True}, {"func": self.verify_info, "time": 25, "delay": 10}]},
+                "recurrent": [{"func": self.verify_all_api, "block": True}, {"func": self.verify_info, "time": 60, "delay": 10}]},
                {"operations": [{"func": self.concurrent_stress, "delay": 5, "args": [None, {"duration": "1m","opt": ["-schema","replication(strategy=SimpleStrategy, replication_factor=2)","-rate","threads=10"]}]}],
-                "recurrent": [{"func": self.verify_info, "time": 25, "delay": 10}]},
+                "recurrent": [{"func": self.verify_info, "time": 60, "delay": 10}]},
                {"operations": [{"func": self.concurrent_stress, "delay": 5, "args": [None, {"cl":"ONE", "duration": "2m"}]}, {"func": self.drain, "delay": 90, "args": [1]}],
                 "recurrent": self. queries_method_list}]
         self.general_concurrent(tst)
