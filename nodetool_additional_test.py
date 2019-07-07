@@ -1152,9 +1152,10 @@ class TestNodetool(Tester):
         debug('Add new node')
         node2 = new_node(cluster)
         node2.start(wait_for_binary_proto=False)
-        node2.watch_log_for('streaming')
+        node2.watch_log_for('Executing streaming plan')
         debug('Run and check netstats')
         stats = self.netstats(node)
+        debug(stats)
         self.assertEquals(len(stats["streams"]), 1)
 
     def _change_data_perms(self, node, folder, mod):
