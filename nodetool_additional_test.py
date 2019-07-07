@@ -1148,7 +1148,7 @@ class TestNodetool(Tester):
         cluster.populate(2).start(wait_for_binary_proto=True)
         node = cluster.nodelist()[0]
         debug('Run stress write test')
-        self.stress_write(node, times=1000000, pop='seq=1..3000000000', opt=["-rate threads=10"])
+        self.stress_write(node, duration='10s', pop='seq=1..3000000000', opt=["-rate threads=10"])
         debug('Add new node')
         node2 = new_node(cluster)
         node2.start(wait_for_binary_proto=False)
@@ -1172,7 +1172,7 @@ class TestNodetool(Tester):
         error_to_track = "Found exception\: storage_io_error \(Storage I\/O error\: 13\: Permission denied"
         self.run_cluster()
         node = self.cluster.nodelist()[0]
-        self.stress_write(node)
+        self.stress_write(node, duration='10s')
         try:
             self._change_data_perms(node, 'data', 644)
             output = node.nodetool("enablebinary", True)
@@ -1222,7 +1222,7 @@ class TestNodetool(Tester):
         """
         self.run_cluster(nodes=1)
         node = self.cluster.nodelist()[0]
-        self.stress_write(node)
+        self.stress_write(node, duration='10s')
         node.flush()
         ks = 'keyspace1'
         cf = 'standard1'
