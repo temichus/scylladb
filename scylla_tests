@@ -2,12 +2,7 @@ auth_test.py
 auth_roles_test.py
 backup_restore_tests.py
 batch_test.py
-bootstrap_test.py:TestBootstrap.killed_wiped_node_cannot_join_test
-bootstrap_test.py:TestBootstrap.local_quorum_bootstrap_test
-bootstrap_test.py:TestBootstrap.manual_bootstrap_test
-bootstrap_test.py:TestBootstrap.read_from_bootstrapped_node_test
-bootstrap_test.py:TestBootstrap.shutdown_wiped_node_cannot_join_test
-bootstrap_test.py:TestBootstrap.simple_bootstrap_test
+bootstrap_test.py
 cfid_test.py
 clustering_key_filter_test.py
 commitlog_test.py:TestCommitLog.test_commitlog_replay_on_startup
