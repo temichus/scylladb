@@ -595,6 +595,8 @@ class MigrationTestBase(Tester):
             set([sstable_version_regex.search(f).group(1) for f in file_list if sstable_version_regex.search(f)]))
 
         if assert_only_one_version:
+            if len(sstable_versions) != 1:
+                print('Expected only one version, got {}. File list: {}'.format(sstable_versions, file_list))
             self.assertEqual(len(sstable_versions), 1, sstable_versions)
         if sstable_versions:
             return sstable_versions[0]
