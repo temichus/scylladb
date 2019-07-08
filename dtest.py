@@ -844,22 +844,25 @@ class Tester(TestCase):
         time.sleep(0.2)
 
     def create_index(self, session, table_name, index_column, index_name=None, compaction=None):
-        index_column = [index_column] if isinstance(index_column, str) else index_column
-        query = "CREATE INDEX {0} ON {1} ({2});".format(index_name, table_name, ', '.join([i for i in index_column]))
-        debug('Create index: {}'.format(query))
-        session.execute(query)
-        if compaction:
-            # Update appropriate to index materialized view with compaction storage
-            session.execute('ALTER MATERIALIZED VIEW {}_index WITH compaction={}'.format(index_name, {'class': compaction}))
-        debug('Index {} has been created'.format(index_name))
+        query = "CREATE INDEX {index_name} ON {table_name} ({index_column})"
+        self._index_creation(session=session, query=query, table_name=table_name, index_column=index_column,
+                             index_name=index_name, compaction=compaction)
 
     def create_local_index(self, session, table_name, pk_name, index_column, index_name=None, compaction=None):
-        query = "CREATE INDEX {index_name} ON {table_name} (({pk_name}), {index_column});".format(**locals())
+        query = "CREATE INDEX {index_name} ON {table_name} ((%s), {index_column})" % pk_name
+        self._index_creation(session=session, query=query, table_name=table_name, index_column=index_column,
+                             index_name=index_name, compaction=compaction)
+
+    def _index_creation(self, session, query, table_name, index_column, index_name=None, compaction=None):
+        index_column = [index_column] if isinstance(index_column, str) else index_column
+        index_column = ', '.join([i for i in index_column])
+        query = query.format(**locals())
         debug('Create index: {}'.format(query))
         session.execute(query)
         if compaction:
             # Update appropriate to index materialized view with compaction storage
-            session.execute('ALTER MATERIALIZED VIEW {}_index WITH compaction={}'.format(index_name, {'class': compaction}))
+            session.execute(
+                'ALTER MATERIALIZED VIEW {}_index WITH compaction={}'.format(index_name, {'class': compaction}))
         debug('Index {} has been created'.format(index_name))
 
     @classmethod

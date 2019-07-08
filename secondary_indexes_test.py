@@ -12,8 +12,9 @@ from tools import since, require, rows_to_list, new_node
 from assertions import assert_all, assert_invalid, assert_one, assert_row_count, assert_none, assert_expected_error, \
                         assert_row_count_from_every_node, assert_row_count_in_select
 from scylla_tools import index_is_built, get_index_view_name, view_built_status_query, check_errors, \
-                         wait_for_view_build_start, remove_node, check_errors_all_nodes, generate_random_text
-from scylla_tools import get_entity_id, get_truncated_time_from_system_local, get_truncated_time_from_system_truncated
+                         get_entity_id, get_truncated_time_from_system_local, get_truncated_time_from_system_truncated, \
+                         wait_for_view_build_start, remove_node, check_errors_all_nodes, generate_random_text, \
+                         get_view_id, wait_for_schema_agreement
 
 from cassandra import ConsistencyLevel, InvalidRequest, WriteFailure
 from cassandra.concurrent import (execute_concurrent,
@@ -21,10 +22,204 @@ from cassandra.concurrent import (execute_concurrent,
 from cassandra.protocol import ConfigurationException
 from cassandra.query import BatchStatement, SimpleStatement
 
+LONG_TEXT_LENGTH = 8193
+OVERSIZE_LENGTH = 66536
 
-class TestSecondaryIndexes(Tester):
-    LONG_TEXT_LENGTH = 8193
-    OVERSIZE_LENGTH = 66536
+class SecondaryIndexesHelpers(object):
+
+    @staticmethod
+    def assert_bootstrap_state(tester, node, expected_bootstrap_state):
+        """
+        Assert that a node is on a given bootstrap state
+        @param tester The dtest.Tester object to fetch the exclusive connection to the node
+        @param node The node to check bootstrap state
+        @param expected_bootstrap_state Bootstrap state to expect
+        Examples:
+        assert_bootstrap_state(self, node3, 'COMPLETED')
+        """
+        session = tester.patient_exclusive_cql_connection(node)
+        assert_all(session, "SELECT bootstrapped FROM system.local WHERE key='local'", [expected_bootstrap_state])
+
+    @staticmethod
+    def create_and_build_index(create_index_func, cluster, session, ks_name, table_name, index_column, index_name,
+                               pk_name=None, compaction=None):
+        if not pk_name:
+            create_index_func(session=session, table_name=table_name, index_column=index_column,
+                              index_name=index_name, compaction=compaction)
+        else:
+            create_index_func(session=session, table_name=table_name, index_column=index_column,
+                              index_name=index_name, compaction=compaction, pk_name=pk_name)
+
+        return index_is_built(cluster, session, ks_name, table_name, index_name)
+
+    @staticmethod
+    def prepare(self, user_table=False, rf=3, options={}, keyspace_name='ks', nodes=3, use_vnodes=False,
+                fetch_size=None, jvm_args=[], session_node=1, **kwargs):
+        """
+        Prepare environment for test
+        """
+        strategies = ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy',
+                      'TimeWindowCompactionStrategy']
+        self.compaction_strategy = strategies[random.randint(0, len(strategies)-1)]
+        debug('Randomly selected %s as compaction strategy for base table' % self.compaction_strategy)
+        cluster = self.cluster
+        populate = nodes if isinstance(nodes, list) else [nodes, 0]
+        cluster.populate(populate, use_vnodes=True)
+        if options:
+            cluster.set_configuration_options(values=options)
+        if not jvm_args:
+            jvm_args = ['--smp', '2', '--memory', '1G']
+        cluster.start(jvm_args=jvm_args)
+        if '--smp' in jvm_args:
+            debug('The cluster has been started with SMP {}'.format(jvm_args[jvm_args.index('--smp')+1]))
+        node1 = cluster.nodelist()[session_node-1]
+
+        session = self.patient_cql_connection(node1, **kwargs)
+        if fetch_size:
+            session.default_fetch_size = fetch_size
+        self.create_ks(session, keyspace_name, rf)
+
+        if user_table:
+            columns = {"password": "varchar", "gender": "varchar", "session_token": "varchar", "state": "varchar",
+                       "birth_year": "bigint"}
+            self.create_cf(session, 'users', columns=columns, compaction={'class': self.compaction_strategy})
+
+        return session
+
+    @staticmethod
+    def insert_row_with_long_value(self, create_table_cql, create_index_cql, insert_cql, session, column_name,
+                                   value_length, expect_message):
+
+        """ Validate two variations of the supplied insert statement, first
+        as it is and then again transformed into a conditional statement
+        """
+        table_name = "table_" + str(int(round(time.time() * 1000)))
+        session.execute(create_table_cql % (table_name, {'class': self.compaction_strategy}))
+        session.execute(create_index_cql % table_name)
+        value = "X" * value_length
+        self.assert_request(self, session, insert_cql % table_name, value, table_name, column_name, value_length,
+                            expect_message)
+
+    @staticmethod
+    def assert_request(self, session, insert_cql, value, table_name, column_name, value_length, expect_message):
+        """ Perform two executions of the supplied statement, as a
+        single statement and again as part of a batch
+        """
+        prepared = session.prepare(insert_cql)
+        self.execute_and_assert(self, lambda: session.execute(prepared, [value]), insert_cql, table_name, column_name,
+                                session, value_length, expect_message)
+        batch = BatchStatement()
+        batch.add(prepared, [value])
+        self.execute_and_assert(self, lambda: session.execute(batch), insert_cql, table_name, column_name, session,
+                                value_length, expect_message)
+
+    @staticmethod
+    def execute_and_assert(self, operation, cql_string, table_name, column_name, session, value_length, expect_message):
+        try:
+            operation()
+            res_length = 0
+            if self.INDEX_TYPE == 'local':
+                stmt = 'select {0} from {1} where a=0 and {0}=\'{2}\''.format(column_name, table_name,
+                                                                              "X" * value_length)
+            elif self.INDEX_TYPE == 'global':
+                stmt = 'select {0} from {1}'.format(column_name, table_name)
+
+            result = list(session.execute(stmt))
+            if result:
+                res_length = len(list(result[0])[0])
+            if value_length == OVERSIZE_LENGTH:
+                assert_success = False
+                assert_fail = "Expecting query %s to be invalid" % cql_string
+            else:
+                assert_success = (value_length == res_length)
+                assert_fail = "Expecting value length is {0}, received {1}".format(value_length, res_length)
+            assert assert_success, assert_fail
+        except AssertionError as e:
+            raise e
+        except WriteFailure:
+            if not expect_message:
+                raise
+
+            error_found=False
+            for node in self.cluster.nodelist():
+                if node.grep_log(expr=expect_message):
+                    error_found = True
+                    break
+            if expect_message and not error_found:
+                self.assertFalse(False,
+                                 'Expected that failure reason is "{}", but the message wasn\'t found in the log'.
+                                 format(expect_message))
+        except Exception as e:
+            if (expect_message and expect_message not in e.message) or not expect_message:
+                raise e
+
+    @staticmethod
+    def drain_and_restart_node(self, node, keyspace_name):
+        node.nodetool('drain')
+        node.stop()
+        self.cluster.start()
+        return self.patient_cql_connection(node, keyspace=keyspace_name)
+
+    @staticmethod
+    def node_action_with_delay(self, action, node=None, delay=0, wait=True, wait_other_notice=False, gently=True):
+        """
+        :param action: expected values: stop, remove
+        :param action: str
+        """
+        if action not in ['stop', 'remove', 'decommission', 'add']:
+            assert False, 'Unsupported node action'
+
+        if delay:
+            debug('Sleep for {} seconds'.format(delay))
+            time.sleep(delay)
+
+        debug('START: {0} node {1}'.format(action, node.name))
+        if action == 'stop':
+            node.stop(wait=wait, wait_other_notice=wait_other_notice, gently=gently)
+        elif action == 'remove':
+            remove_node(cluster=self.cluster, node=node)
+        elif action == 'add':
+            self.add_new_node(self=self)
+        else:
+            node.nodetool(action)
+            if action == 'decommission':
+                node.stop(wait=wait, wait_other_notice=wait_other_notice, gently=gently)
+        debug('FINISH: {0} node {1}'.format(action, node.name))
+
+    @staticmethod
+    def add_new_node(self, data_center='dc1', wait_for_binary_proto=True, jvm_args=None,
+                     configuration_options=None, queue=None, delay=0, node_index=None):
+        time.sleep(delay)
+        node = new_node(self.cluster, data_center=data_center, new_node_index=node_index)
+        if configuration_options:
+            node.set_configuration_options(values=configuration_options)  # CASSANDRA-11670
+        debug("Start join at {}".format(time.strftime("%H:%M:%S")))
+        node.start(wait_for_binary_proto=wait_for_binary_proto, jvm_args=jvm_args)
+        session = self.patient_exclusive_cql_connection(node)
+        debug("Finish join at {}".format(time.strftime("%H:%M:%S")))
+        if queue:
+            queue.put_nowait((session))
+        return session
+
+    @staticmethod
+    def validate_index_data(self, session, cl, num_rows, table_name, index_column):
+        if self.INDEX_TYPE == 'local':
+            stmt = 'select key from {} where key = {} and  {} = {}'
+        elif self.INDEX_TYPE == 'global':
+            stmt = 'select key from {} where {} = {}'
+
+        debug('Verify data with {} consistency level'.format(ConsistencyLevel.value_to_name[cl]))
+        for _ in range(60):
+            try:
+                for i in xrange(num_rows):
+                    assert_all(session, stmt.format(table_name, index_column, i, i + num_rows),
+                               expected=[[i]], cl=cl)
+                return
+            except:
+                time.sleep(1)
+
+class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
+    INDEX_TYPE = 'global'
 
     @staticmethod
     def _index_sstables_files(node, keyspace, table, index):
@@ -41,27 +236,35 @@ class TestSecondaryIndexes(Tester):
             self.create_ks(session, ks_name, 1)
         self.create_cf(session, '{0}.{1}'.format(ks_name, table_name), key_type='text', columns={'col1': 'text'},
                         compaction = {'class': self.compaction_strategy})
-        create_and_build_index(self.create_index, self.cluster, session, ks_name, table_name,
-                               index['index_column'], index['index_name'], compaction=self.compaction_strategy)
+        self.assertTrue(self.create_and_build_index(self.create_index, self.cluster, session, ks_name, table_name,
+                               index['index_column'], index['index_name'], compaction=self.compaction_strategy),
+                        msg='Index %s is not built' % index['index_name'])
 
     @flaky_with_tear_down
     def test_query_data_created_before_index(self):
         """
         Create the index on the populated table and read the data that was inserted before index
         """
-        session = prepare(self, user_table=True, nodes=4, rf=3)
+        session = self.prepare(self, user_table=True, nodes=4, rf=3)
 
         # insert data
         session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user1', 'ch@ngem3a', 'f', 'TX', 1968);")
         session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user2', 'ch@ngem3b', 'm', 'CA', 1971);")
 
         # create index
-        create_and_build_index(self.create_index, self.cluster, session, ks_name='ks', table_name='users',
-                               index_column='gender', index_name='gender_key', compaction=self.compaction_strategy)
-        create_and_build_index(self.create_index, self.cluster, session, ks_name='ks', table_name='users',
-                               index_column='state', index_name='state_key', compaction=self.compaction_strategy)
-        create_and_build_index(self.create_index, self.cluster, session, ks_name='ks', table_name='users',
-                               index_column='birth_year', index_name='birth_year_key', compaction=self.compaction_strategy)
+        self.assertTrue(self.create_and_build_index(self.create_index, self.cluster, session, ks_name='ks',
+                                                    table_name='users', index_column='gender', index_name='gender_key',
+                                                    compaction=self.compaction_strategy),
+                        msg='Index %s is not built' % 'gender_key')
+
+        self.assertTrue(self.create_and_build_index(self.create_index, self.cluster, session, ks_name='ks',
+                                                    table_name='users', index_column='state', index_name='state_key',
+                                                    compaction=self.compaction_strategy),
+                        msg='Index %s is not built' % 'state_key')
+        self.assertTrue(self.create_and_build_index(self.create_index, self.cluster, session, ks_name='ks',
+                                                    table_name='users', index_column='birth_year',
+                                                    index_name='birth_year_key', compaction=self.compaction_strategy),
+                        msg='Index %s is not built' % 'birth_year_key')
 
         # insert data
         session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user3', 'ch@ngem3c', 'f', 'FL', 1978);")
@@ -75,7 +278,7 @@ class TestSecondaryIndexes(Tester):
         """
         Filter data by primary key and secondary index
         """
-        session = prepare(self, user_table=True, nodes=4, rf=3)
+        session = self.prepare(self, user_table=True, nodes=4, rf=3)
 
         # insert data
         session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user1', 'ch@ngem3a', 'f', 'TX', 1968);")
@@ -84,8 +287,10 @@ class TestSecondaryIndexes(Tester):
         session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user4', 'ch@ngem3d', 'm', 'TX', 1974);")
 
         # create index
-        create_and_build_index(self.create_index, self.cluster, session, ks_name='ks', table_name='users',
-                               index_column='gender', index_name='gender_key', compaction=self.compaction_strategy)
+        self.assertTrue(self.create_and_build_index(self.create_index, self.cluster, session, ks_name='ks',
+                                                    table_name='users', index_column='gender', index_name='gender_key',
+                                                    compaction=self.compaction_strategy),
+                        msg='Index %s is not built' % 'gender_key')
 
         assert_all(session, "select count(*) from users", expected=[[4]], cl=ConsistencyLevel.QUORUM)
         assert_all(session, "select count(*) from users where gender='f'", expected=[[2]], cl=ConsistencyLevel.QUORUM)
@@ -104,8 +309,9 @@ class TestSecondaryIndexes(Tester):
         index_column = 'v'
         index_name = 'v_inx'
 
-        session = prepare(self, nodes=4, rf=3)
-        self.create_cf(session, '{0}.{1}'.format(ks_name, table_name), key_type='text', compaction={'class': self.compaction_strategy})
+        session = self.prepare(self, nodes=4, rf=3)
+        self.create_cf(session, '{0}.{1}'.format(ks_name, table_name), key_type='text',
+                       compaction={'class': self.compaction_strategy})
 
         # insert data
         session.execute("INSERT INTO {} (key, c, v) VALUES ('user1', 'ch@ngem3a', 'f')".format(table_name))
@@ -114,13 +320,17 @@ class TestSecondaryIndexes(Tester):
         session.execute("INSERT INTO {} (key, c, v) VALUES ('user4', 'ch@ngem3d', 'm')".format(table_name))
 
         # create index
-        create_and_build_index(self.create_index, self.cluster, session, ks_name=ks_name, table_name=table_name,
-                               index_column=index_column, index_name=index_name, compaction=self.compaction_strategy)
+        self.assertTrue(self.create_and_build_index(self.create_index, self.cluster, session, ks_name=ks_name,
+                                                    table_name=table_name, index_column=index_column,
+                                                    index_name=index_name, compaction=self.compaction_strategy),
+                        msg='Index %s is not built' % index_name)
 
         assert_all(session, "select count(*) from {}".format(table_name), expected=[[4]], cl=ConsistencyLevel.QUORUM)
-        assert_all(session, "select count(*) from {} where v='f'".format(table_name), expected=[[2]], cl=ConsistencyLevel.QUORUM)
+        assert_all(session, "select count(*) from {} where v='f'".format(table_name), expected=[[2]],
+                   cl=ConsistencyLevel.QUORUM)
         assert_all(session, "select count(*) from {} where key='user2' and c='ch@ngem3b' and v='m'".format(table_name),
                    expected=[[1]], cl=ConsistencyLevel.ALL)
+
         assert_all(session, "select count(*) from {} where KEY='user1' and c='ch@ngem3a' and v='m'".format(table_name),
                    expected=[[0]], cl=ConsistencyLevel.QUORUM)
 
@@ -128,7 +338,7 @@ class TestSecondaryIndexes(Tester):
         """
         Checks that low-cardinality secondary index subqueries are executed concurrently
         """
-        session = prepare(self, nodes=4, rf=3)
+        session = self.prepare(self, nodes=4, rf=3)
 
         ks_name = 'ks'
         table_name = 'cf'
@@ -140,27 +350,36 @@ class TestSecondaryIndexes(Tester):
         for i in range(num_rows):
             indexed_value = i % (num_rows / 3)
             # use the same indexed value three times
-            session.execute("INSERT INTO {0}.{1} (key, col1) VALUES ('{2}', '{3}');".format(ks_name, table_name, i, indexed_value))
+            session.execute("INSERT INTO {0}.{1} (key, col1) VALUES ('{2}', '{3}');".format(ks_name, table_name, i,
+                                                                                            indexed_value))
 
         self.cluster.flush()
 
-        assert_all(session, "SELECT count(*) FROM {0}.{1} WHERE {2}='1'".format(ks_name, table_name, index['index_column']),
+        assert_all(session, "SELECT count(*) FROM {0}.{1} WHERE {2}='1'".format(ks_name, table_name,
+                                                                                index['index_column']),
                    expected=[[3]], cl=ConsistencyLevel.QUORUM, num_attempts=20)
-        assert_all(session, "SELECT count(*) FROM {0}.{1} WHERE {2}='1' LIMIT 100".format(ks_name, table_name, index['index_column']),
+        assert_all(session, "SELECT count(*) FROM {0}.{1} WHERE {2}='1' LIMIT 100".format(ks_name, table_name,
+                                                                                          index['index_column']),
                    expected=[[3]], cl=ConsistencyLevel.QUORUM, num_attempts=20)
-        assert_all(session, "SELECT count(*) FROM {0}.{1} WHERE {2}='1' LIMIT 3".format(ks_name, table_name, index['index_column']),
+        assert_all(session, "SELECT count(*) FROM {0}.{1} WHERE {2}='1' LIMIT 3".format(ks_name, table_name,
+                                                                                        index['index_column']),
                    expected=[[3]], cl=ConsistencyLevel.QUORUM, num_attempts=20)
 
         for limit in (1, 2):
-            assert_row_count_in_select(session, query="select * from {0}.{1} WHERE {2}='1' LIMIT {3}".format(ks_name, table_name, index['index_column'], limit),
-                                       num_rows_expected=limit, consistency_level=ConsistencyLevel.QUORUM, num_attempts=20)
+            assert_row_count_in_select(session,
+                                       query="select * from {0}.{1} WHERE {2}='1' LIMIT {3}".format(ks_name,
+                                                                                                    table_name,
+                                                                                                index['index_column'],
+                                                                                                    limit),
+                                       num_rows_expected=limit, consistency_level=ConsistencyLevel.QUORUM,
+                                       num_attempts=20)
 
     def test_insert_data_after_recreating_ks(self):
         """
         Data inserted immediately after dropping and recreating a keyspace with an indexed column familiy is not included
         in the index.
         """
-        session = prepare(self, nodes=4, rf=3)
+        session = self.prepare(self, nodes=4, rf=3)
 
         ks_name = 'ks'
         table_name = 'cf'
@@ -179,7 +398,7 @@ class TestSecondaryIndexes(Tester):
             for r in range(10):
                 session.execute("INSERT INTO {0}.{1} (key, col1) VALUES ('{2}','asdf');".format(ks_name, table_name, r))
 
-            self.wait_for_schema_agreement(session)
+            wait_for_schema_agreement(session)
             time.sleep(30)
             assert_all(session, "select count(*) from {0}.{1} WHERE col1='asdf'".format(ks_name, table_name),
                        expected=[[10]], cl=ConsistencyLevel.QUORUM)
@@ -188,7 +407,7 @@ class TestSecondaryIndexes(Tester):
         """
         Data inserted immediately after dropping and recreating an indexed column family is not included in the index.
         """
-        session = prepare(self, nodes=4, rf=3)
+        session = self.prepare(self, nodes=4, rf=3)
 
         ks_name = 'ks'
         table_name = 'cf'
@@ -209,11 +428,13 @@ class TestSecondaryIndexes(Tester):
             self.config_keyspace(session, ks_name, table_name, index, ks_create=False)
 
             for r in range(10):
-                session.execute("INSERT INTO {0}.{1} (key, {3}) VALUES ('{2}','asdf');".format(ks_name, table_name, r, index['index_column']))
+                session.execute("INSERT INTO {0}.{1} (key, {3}) VALUES ('{2}','asdf');".format(ks_name, table_name, r,
+                                                                                               index['index_column']))
 
-            self.wait_for_schema_agreement(session)
+            wait_for_schema_agreement(session)
             time.sleep(30)
-            assert_all(session, "select count(*) from {0}.{1} WHERE {2}='asdf'".format(ks_name, table_name, index['index_column']),
+            assert_all(session, "select count(*) from {0}.{1} WHERE {2}='asdf'".format(ks_name, table_name,
+                                                                                       index['index_column']),
                        expected=[[10]], cl=ConsistencyLevel.QUORUM)
 
     # @require('3501')
@@ -222,109 +443,53 @@ class TestSecondaryIndexes(Tester):
         Reject inserts & updates where values of any indexed column is > 64k
         """
         expect_message = 'Key size too large'
-        self._validate_long_indexed_values(self.OVERSIZE_LENGTH, expect_message)
+        self._validate_long_indexed_values(OVERSIZE_LENGTH, expect_message)
 
     # @require('3501')
     def test_long_indexed_values(self):
         """
         Correct inserts & updates where values of any indexed column is long and up to 64k
         """
-        self._validate_long_indexed_values(self.LONG_TEXT_LENGTH, expect_message=None)
+        self._validate_long_indexed_values(LONG_TEXT_LENGTH, expect_message=None)
 
     def _validate_long_indexed_values(self, value_length, expect_message):
-        session = prepare(self, nodes=4, rf=3)
-        test = 'oversize' if value_length == self.OVERSIZE_LENGTH else 'long'
+        session = self.prepare(self, nodes=4, rf=3)
+        test = 'oversize' if value_length == OVERSIZE_LENGTH else 'long'
 
         debug('Insert {} value into non-PK column'.format(test))
-        self.insert_row_with_long_value("CREATE TABLE %s(a int, b int, c varchar, PRIMARY KEY (a)) WITH compaction = %s",
+        self.insert_row_with_long_value(self,
+                                       "CREATE TABLE %s(a int, b int, c varchar, PRIMARY KEY (a)) WITH compaction = %s",
                                         "CREATE INDEX ON %s(c)",
                                         "INSERT INTO %s (a, b, c) VALUES (0, 0, ?)",
-                                        session, column_name='c', value_length=value_length, expect_message=expect_message)
+                                        session, column_name='c', value_length=value_length,
+                                        expect_message=expect_message)
 
         debug('Insert {} value into clustering key column'.format(test))
-        self.insert_row_with_long_value("CREATE TABLE %s(a int, b text, c int, PRIMARY KEY (a, b)) WITH compaction = %s",
+        self.insert_row_with_long_value(self,
+                                       "CREATE TABLE %s(a int, b text, c int, PRIMARY KEY (a, b)) WITH compaction = %s",
                                         "CREATE INDEX ON %s(b)",
                                         "INSERT INTO %s (a, b, c) VALUES (0, ?, 0)",
-                                        session, column_name='b', value_length=value_length, expect_message=expect_message)
+                                        session, column_name='b', value_length=value_length,
+                                        expect_message=expect_message)
 
         debug('Insert {} value into partition key column'.format(test))
-        self.insert_row_with_long_value("CREATE TABLE %s(a text, b int, c int, PRIMARY KEY ((a, b))) WITH compaction = %s",
+        self.insert_row_with_long_value(self,
+                                     "CREATE TABLE %s(a text, b int, c int, PRIMARY KEY ((a, b))) WITH compaction = %s",
                                         "CREATE INDEX ON %s(a)",
                                         "INSERT INTO %s (a, b, c) VALUES (?, 0, 0)",
-                                        session, column_name='a', value_length=value_length, expect_message=expect_message)
+                                        session, column_name='a', value_length=value_length,
+                                        expect_message=expect_message)
 
         debug('Table with compact storage. Insert {} value into non-PK column'.format(test))
-        self.insert_row_with_long_value("CREATE TABLE %s(a int, b text, PRIMARY KEY (a)) WITH COMPACT STORAGE and compaction = %s",
+        self.insert_row_with_long_value(self,
+                                        "CREATE TABLE %s(a int, b text, PRIMARY KEY (a)) WITH COMPACT STORAGE and "
+                                            "compaction = %s",
                                         "CREATE INDEX ON %s(b)",
                                         "INSERT INTO %s (a, b) VALUES (0, ?)",
-                                        session, column_name='b', value_length=value_length, expect_message=expect_message)
+                                        session, column_name='b', value_length=value_length,
+                                        expect_message=expect_message)
 
         self.allow_log_errors = check_errors_all_nodes(self.cluster.nodelist(), exclude_errors=expect_message)
-
-    def insert_row_with_long_value(self, create_table_cql, create_index_cql, insert_cql, session, column_name,
-                                   value_length, expect_message):
-        """ Validate two variations of the supplied insert statement, first
-        as it is and then again transformed into a conditional statement
-        """
-        table_name = "table_" + str(int(round(time.time() * 1000)))
-        session.execute(create_table_cql % (table_name, {'class': self.compaction_strategy}))
-        session.execute(create_index_cql % table_name)
-        value = "X" * value_length
-        self._assert_request(session, insert_cql % table_name, value, table_name, column_name, value_length, expect_message)
-
-    def _assert_request(self, session, insert_cql, value, table_name, column_name, value_length, expect_message):
-        """ Perform two executions of the supplied statement, as a
-        single statement and again as part of a batch
-        """
-        prepared = session.prepare(insert_cql)
-        self._execute_and_assert(lambda: session.execute(prepared, [value]), insert_cql, table_name, column_name, session,
-                                 value_length, expect_message)
-        batch = BatchStatement()
-        batch.add(prepared, [value])
-        self._execute_and_assert(lambda: session.execute(batch), insert_cql, table_name, column_name, session, value_length,
-                                 expect_message)
-
-    def _execute_and_assert(self, operation, cql_string, table_name, column_name, session, value_length, expect_message):
-        try:
-            operation()
-            res_length = 0
-            result = list(session.execute('select {0} from {1}'.format(column_name, table_name)))
-            if result:
-                res_length = len(list(result[0])[0])
-            if value_length == self.OVERSIZE_LENGTH:
-                assert_success = False
-                assert_fail = "Expecting query %s to be invalid" % cql_string
-            else:
-                assert_success = (value_length == res_length)
-                assert_fail = "Expecting value length is {0}, received {1}".format(value_length, res_length)
-            assert assert_success, assert_fail
-        except AssertionError as e:
-            raise e
-        except WriteFailure:
-            if not expect_message:
-                raise
-            if expect_message and not self.cluster.nodelist()[0].grep_log(expr=expect_message):
-                self.assertFalse(False, 'Expected that failure reason is "{}", but the message wasn\'t found in the log'.format(expect_message))
-        except Exception as e:
-            if (expect_message and expect_message not in e.message) or not expect_message:
-                raise e
-
-    def wait_for_schema_agreement(self, session):
-        rows = list(session.execute("SELECT schema_version FROM system.local"))
-        local_version = rows[0]
-
-        all_match = True
-        rows = list(session.execute("SELECT schema_version FROM system.peers"))
-        for peer_version in rows:
-            if peer_version != local_version:
-                all_match = False
-                break
-
-        if all_match:
-            return
-        else:
-            time.sleep(1)
-            self.wait_for_schema_agreement(session)
 
     @skip('Not relevant for Scylla - manual index rebuild is not supported')
     def test_manual_rebuild_index(self):
@@ -452,7 +617,7 @@ class TestSecondaryIndexes(Tester):
         index_name = 'idx'
         index_column = '"C0"'
 
-        session = prepare(self, nodes=4, rf=3, keyspace_name=keyspace_name)
+        session = self.prepare(self, nodes=4, rf=3, keyspace_name=keyspace_name)
         node = self.cluster.nodelist()[0]
 
         # Create some thousands of rows to guarantee a long index building
@@ -463,10 +628,8 @@ class TestSecondaryIndexes(Tester):
         self.create_index(session, table_name, index_column, index_name, compaction=self.compaction_strategy)
 
         # Get view ID
-        res = session.execute('select id from system_schema.views where keyspace_name=\'{0}\' and view_name=\'{1}\''
-                              .format(keyspace_name, get_index_view_name(index_name)))
-        assert res, 'Secondary index view named {} has not built'.format(get_index_view_name(index_name))
-        view_id = rows_to_list(res)[0][0]
+        index_view_name = get_index_view_name(index_name)
+        view_id = get_view_id(session=session, keyspace_name=keyspace_name, view_name=index_view_name)
         debug('View ID: {}'.format(view_id))
 
         session.execute('DROP INDEX {}'.format(index_name))
@@ -474,26 +637,20 @@ class TestSecondaryIndexes(Tester):
         self.cluster.wait_for_compactions()
 
         # Check that the index is not marked as built nor queryable
-        assert_none(session, view_built_status_query(ks=keyspace_name, view=get_index_view_name(index_name)))
+        assert_none(session, view_built_status_query(ks=keyspace_name, view=index_view_name))
         assert_invalid(session, 'SELECT * FROM {0} WHERE {1} = 0x00'.format(table_name, index_column),
                        matching='use ALLOW FILTERING', expected=Exception)
 
         # Restart the node to trigger any eventual unexpected index rebuild
-        session = self._drain_node(node, keyspace_name)
+        session = self.drain_and_restart_node(self, node, keyspace_name)
 
         # The index should remain not built nor queryable after restart
-        assert_none(session, view_built_status_query(ks=keyspace_name, view=get_index_view_name(index_name)))
+        assert_none(session, view_built_status_query(ks=keyspace_name, view=index_view_name))
         assert_invalid(session, 'SELECT * FROM {0} WHERE {1} = 0x00'.format(table_name, index_column),
                        matching='use ALLOW FILTERING', expected=Exception)
 
         self.allow_log_errors = check_errors(node, ['Can\'t find a column family with UUID {}'.format(view_id),
                                                     'mutation_write_failure_exception'], search_str='ERROR')
-
-    def _drain_node(self, node, keyspace_name):
-        node.nodetool('drain')
-        node.stop()
-        self.cluster.start()
-        return self.patient_cql_connection(node, keyspace=keyspace_name)
 
     def test_multi_index_filtering_query(self):
         """
@@ -503,14 +660,15 @@ class TestSecondaryIndexes(Tester):
         table_name = 'tbl'
         index_names = {'ix_tbl_c0': 'c0', 'ix_tbl_c1': 'c1'}
 
-        session = prepare(self, nodes=4, rf=3, keyspace_name=keyspace_name)
+        session = self.prepare(self, nodes=4, rf=3, keyspace_name=keyspace_name)
 
         self.create_cf(session, table_name, key_type='uuid', columns={'c0': 'text', 'c1': 'text', 'c2': 'text'},
                        compaction={'class': self.compaction_strategy})
 
         for name, column in index_names.iteritems():
-            create_and_build_index(self.create_index, self.cluster, session, keyspace_name, table_name, column, name,
-                                   compaction=self.compaction_strategy)
+            self.assertTrue(self.create_and_build_index(self.create_index, self.cluster, session, keyspace_name,
+                                                        table_name, column, name, compaction=self.compaction_strategy),
+                            msg='Index %s is not built' % name)
 
         smt = "INSERT INTO {0} (key, c0, c1, c2) values (uuid(), '{1}', '{2}', '{3}')"
         session.execute(smt.format(table_name, 'a', 'b', 'c'))
@@ -565,14 +723,15 @@ class TestSecondaryIndexes(Tester):
         table_name = 'tbl'
         index_names = {'ix_tbl_c0': 'c0', 'ix_tbl_c1': 'c1'}
 
-        session = prepare(self, nodes=4, rf=3, keyspace_name=keyspace_name)
+        session = self.prepare(self, nodes=4, rf=3, keyspace_name=keyspace_name)
 
         self.create_cf(session, table_name, key_type='uuid', columns={'c0': 'text', 'c1': 'text', 'c2': 'text'},
                        compaction={'class': self.compaction_strategy})
 
         for name, column in index_names.iteritems():
-            create_and_build_index(self.create_index, self.cluster, session, keyspace_name, table_name, column, name,
-                                   compaction=self.compaction_strategy)
+            self.assertTrue(self.create_and_build_index(self.create_index, self.cluster, session, keyspace_name,
+                                                        table_name, column, name, compaction=self.compaction_strategy),
+                        msg='Index %s is not built' % name)
 
         create_data()
 
@@ -602,7 +761,6 @@ class TestSecondaryIndexes(Tester):
         debug('Insert data after truncate')
         create_data()
         validate_truncated_entries_for_table_and_views()
-
 
     @skip('Not relevant. No index information in the query trace')
     def test_only_coordinator_chooses_index_for_query(self):
@@ -694,19 +852,22 @@ class TestSecondaryIndexes(Tester):
         tables = {'compact_table': True, 'regular_table': False}
         index_column = 'b'
 
-        session = prepare(self, nodes=1, rf=1, keyspace_name=keyspace_name, use_vnodes=True)
+        session = self.prepare(self, nodes=1, rf=1, keyspace_name=keyspace_name, use_vnodes=True)
 
         for table_name, compact_storage in tables.iteritems():
             self.create_cf(session, table_name, key_type='int', columns={'b': 'int'}, compact_storage=compact_storage,
                            compaction={'class': self.compaction_strategy})
-            create_and_build_index(self.create_index, self.cluster, session, keyspace_name, table_name, index_column,
-                                   get_index_view_name(table_name), compaction=self.compaction_strategy)
+            self.assertTrue(self.create_and_build_index(self.create_index, self.cluster, session, keyspace_name,
+                                                        table_name, index_column, get_index_view_name(table_name),
+                                                        compaction=self.compaction_strategy),
+                            msg='Index %s is not built' % get_index_view_name(table_name))
 
         insert_args = [(i, i % 2) for i in xrange(100)]
         for table in tables:
             debug('Perform the test for {} table'.format(table))
             execute_concurrent_with_args(session,
-                                         session.prepare("INSERT INTO {}.{} (key, {}) VALUES (?, ?)".format(keyspace_name, table, index_column)),
+                                         session.prepare("INSERT INTO {}.{} (key, {}) VALUES (?, ?)".
+                                                         format(keyspace_name, table, index_column)),
                                          insert_args)
             res = session.execute("SELECT * FROM {}.{} WHERE {} = 0".format(keyspace_name, table, index_column))
             self.assertEqual(len(rows_to_list(res)), 50)
@@ -719,10 +880,11 @@ class TestSecondaryIndexes(Tester):
         table_name = 'cf'
         index_columns = {'b': 'int', 'c': 'int'}
 
-        session = prepare(self, nodes=1, rf=1, keyspace_name=keyspace_name)
+        session = self.prepare(self, nodes=1, rf=1, keyspace_name=keyspace_name)
 
         # try to create index on 2 columns
-        self.create_cf(session, table_name, key_type='int', columns=index_columns, compaction={'class': self.compaction_strategy})
+        self.create_cf(session, table_name, key_type='int', columns=index_columns,
+                       compaction={'class': self.compaction_strategy})
         assert_expected_error(func=self.create_index, expected_error='Only CUSTOM indexes support multiple columns',
                               args=(session, table_name, index_columns),
                               kwargs={'index_name': 'two_columns_index', 'compaction':self.compaction_strategy})
@@ -730,7 +892,8 @@ class TestSecondaryIndexes(Tester):
         # try to create index on 6 columns
         table_name = 'cf_6columns'
         index_columns = {'b': 'int', 'c': 'int', 'd': 'int', 'e': 'int', 'f': 'int', 'g': 'int'}
-        self.create_cf(session, table_name, key_type='int', columns=index_columns, compaction={'class': self.compaction_strategy})
+        self.create_cf(session, table_name, key_type='int', columns=index_columns,
+                       compaction={'class': self.compaction_strategy})
         assert_expected_error(func=self.create_index, expected_error='Only CUSTOM indexes support multiple columns',
                               args=(session, table_name, index_columns),
                               kwargs={'index_name': 'six_columns_index', 'compaction':self.compaction_strategy})
@@ -743,15 +906,16 @@ class TestSecondaryIndexes(Tester):
         select_query = 'select * from {} where {} = {}'
         mv_query = 'select key, {} from {}'.format(index_column, get_index_view_name(index_name))
 
-        session = prepare(self, nodes=1, rf=1, keyspace_name=keyspace_name)
+        session = self.prepare(self, nodes=1, rf=1, keyspace_name=keyspace_name)
 
         self.create_cf(session, table_name, key_type='int', columns={'b': 'int', 'c': 'int'},
                        compaction={'class':self.compaction_strategy})
         session.execute("INSERT INTO {} (key, b, c) VALUES (0, 1, 2)".format(table_name))
         assert_all(session, select_query.format(table_name, 'key', 0), [[0, 1, 2]], cl=ConsistencyLevel.ALL)
 
-        create_and_build_index(self.create_index, self.cluster, session, keyspace_name, table_name, index_column,
-                               index_name, compaction=self.compaction_strategy)
+        self.assertTrue(self.create_and_build_index(self.create_index, self.cluster, session, keyspace_name, table_name,
+                                                    index_column, index_name, compaction=self.compaction_strategy),
+                        msg='Index %s is not built' % index_name)
         assert_all(session, select_query.format(table_name, index_column, 1), [[0, 1, 2]], cl=ConsistencyLevel.ALL)
         return session, keyspace_name, table_name, index_column, index_name, select_query, mv_query
 
@@ -796,56 +960,56 @@ class TestSecondaryIndexes(Tester):
         assert_all(session, mv_query, [[0, 1]], cl=ConsistencyLevel.ALL)
 
     def test_delete_indexed_rows(self):
-            """
-            Delete rows from indexed table and read data by index
-            """
-            keyspace_name = 'ks'
-            table_name = 'cf'
-            index_name = 'b_index'
-            index_column = 'b'
+        """
+        Delete rows from indexed table and read data by index
+        """
+        keyspace_name = 'ks'
+        table_name = 'cf'
+        index_name = 'b_index'
+        index_column = 'b'
 
-            session = prepare(self, nodes=4, rf=3, keyspace_name=keyspace_name, session_node=3)
+        session = self.prepare(self, nodes=4, rf=3, keyspace_name=keyspace_name, session_node=3)
 
-            self.create_cf(session, table_name, key_type='int', columns={'b': 'int'},
-                           compaction={'class': self.compaction_strategy})
-            create_and_build_index(self.create_index, self.cluster, session, ks_name=keyspace_name,
-                                   table_name=table_name,
-                                   index_column=index_column, index_name=index_name,
-                                   compaction=self.compaction_strategy)
+        self.create_cf(session, table_name, key_type='int', columns={'b': 'int'},
+                       compaction={'class': self.compaction_strategy})
+        self.assertTrue(self.create_and_build_index(self.create_index, self.cluster, session, ks_name=keyspace_name,
+                               table_name=table_name, index_column=index_column, index_name=index_name,
+                               compaction=self.compaction_strategy),
+                        msg='Index %s is not built' % index_name)
 
-            num_rows = 100
-            for i in range(num_rows):
-                indexed_value = i + 100
-                session.execute(
-                    "INSERT INTO {}.{} (key, b) VALUES ({}, {})".format(keyspace_name, table_name, i, indexed_value))
+        num_rows = 100
+        for i in range(num_rows):
+            indexed_value = i + 100
+            session.execute(
+                "INSERT INTO {}.{} (key, b) VALUES ({}, {})".format(keyspace_name, table_name, i, indexed_value))
 
-            self.cluster.flush()
+        self.cluster.flush()
 
-            # Delete 10 rows by index
-            debug('Delete 10 rows by index')
-            start_key, delete_num = 30, 10
-            rows_for_delete = list(range(start_key, start_key + delete_num))
-            for i in rows_for_delete:
-                session.execute("DELETE FROM {} WHERE key = {}".format(table_name, i))
-            time.sleep(30)
+        # Delete 10 rows by index
+        debug('Delete 10 rows by index')
+        start_key, delete_num = 30, 10
+        rows_for_delete = list(range(start_key, start_key + delete_num))
+        for i in rows_for_delete:
+            session.execute("DELETE FROM {} WHERE key = {}".format(table_name, i))
+        time.sleep(30)
 
-            # Valudate the data in not in table
-            assert_row_count(session, table_name=table_name, expected=num_rows - delete_num,
-                             consistency_level=ConsistencyLevel.ALL)
-            query = 'select key, b from {} where {}={}'
-            for i in list(range(num_rows)):
-                if i in rows_for_delete:
-                    assert_none(session, query=query.format(table_name, 'key', i), cl=ConsistencyLevel.ALL)
-                    assert_none(session, query=query.format(table_name, index_column, i + 100), cl=ConsistencyLevel.ALL)
-                else:
-                    res = [[i, i + 100]]
-                    assert_all(session, query=query.format(table_name, 'key', i), expected=res, cl=ConsistencyLevel.ALL)
-                    assert_all(session, query=query.format(table_name, index_column, i + 100), expected=res,
-                               cl=ConsistencyLevel.ALL)
+        # Valudate the data in not in table
+        assert_row_count(session, table_name=table_name, expected=num_rows - delete_num,
+                         consistency_level=ConsistencyLevel.ALL)
+        query = 'select key, b from {} where {}={}'
+        for i in list(range(num_rows)):
+            if i in rows_for_delete:
+                assert_none(session, query=query.format(table_name, 'key', i), cl=ConsistencyLevel.ALL)
+                assert_none(session, query=query.format(table_name, index_column, i + 100), cl=ConsistencyLevel.ALL)
+            else:
+                res = [[i, i + 100]]
+                assert_all(session, query=query.format(table_name, 'key', i), expected=res, cl=ConsistencyLevel.ALL)
+                assert_all(session, query=query.format(table_name, index_column, i + 100), expected=res,
+                           cl=ConsistencyLevel.ALL)
 
-            # Valudate the data in not in table and SI materialized view
-            assert_row_count(session, table_name=get_index_view_name(index_name), expected=num_rows - delete_num,
-                             consistency_level=ConsistencyLevel.ALL)
+        # Valudate the data in not in table and SI materialized view
+        assert_row_count(session, table_name=get_index_view_name(index_name), expected=num_rows - delete_num,
+                         consistency_level=ConsistencyLevel.ALL)
 
     # @attr('next-gating') - https://github.com/scylladb/scylla/issues/4724
     # @attr('dtest-debug') - https://github.com/scylladb/scylla/issues/4384
@@ -880,11 +1044,12 @@ class TestSecondaryIndexes(Tester):
         index_column = 'b'
         view_name = get_index_view_name(index_name)
 
-        session = prepare(self, nodes=nodes, rf=rf, keyspace_name=keyspace_name, session_node=3)
+        session = self.prepare(self, nodes=nodes, rf=rf, keyspace_name=keyspace_name, session_node=3)
         node2 = self.cluster.nodelist()[1]
         node2_ip = list(node2.network_interfaces['binary'])[0]
 
-        self.create_cf(session, table_name, key_type='int', columns={'b': 'int'}, compaction={'class': self.compaction_strategy})
+        self.create_cf(session, table_name, key_type='int', columns={'b': 'int'},
+                       compaction={'class': self.compaction_strategy})
 
         statement = session.prepare("INSERT INTO {}.{} (key, b) VALUES (?, ?)".format(keyspace_name, table_name))
         statement.consistency_level = ConsistencyLevel.QUORUM
@@ -898,7 +1063,7 @@ class TestSecondaryIndexes(Tester):
         wait_for_view_build_start(session, ks=keyspace_name, view=view_name)
 
         # Perform action on second node
-        self._node_action_with_delay(node_action, node2)
+        self.node_action_with_delay(self, node_action, node2)
 
         # Index will not finish building, because view building underneath is paused until updates can be sent.
         if node_action == 'add':
@@ -906,7 +1071,7 @@ class TestSecondaryIndexes(Tester):
 
         if node_action in ['remove', 'decommission']:
             debug('Add new node')
-            session = self._add_new_node(node_index=nodes+1)
+            session = self.add_new_node(self, node_index=nodes + 1)
             session.execute('USE {}'.format(keyspace_name))
         elif node_action == 'stop':
             debug('Start node {}'.format(node2.name))
@@ -915,7 +1080,7 @@ class TestSecondaryIndexes(Tester):
         index_is_built(self.cluster, session, ks_name=keyspace_name, table_name=table_name, index_name=index_name)
 
         # Validate the data using filtering by index with cl=ONE
-        self.validate_index_data(session, cl=ConsistencyLevel.ONE, num_rows=num_rows, table_name=table_name,
+        self.validate_index_data(self, session, cl=ConsistencyLevel.ONE, num_rows=num_rows, table_name=table_name,
                                  index_column=index_column)
 
         # Validate view rows
@@ -923,8 +1088,11 @@ class TestSecondaryIndexes(Tester):
                                          nodes_list=self.cluster.nodelist())
         self.allow_log_errors = check_errors(self.cluster.nodelist()[0],
                                              ['Can\'t send migration request: node {} is down'.format(node2_ip),
-                                              'Error applying view update to {}: exceptions::unavailable_exception (Cannot achieve consistency level for cl ONE. Requires 1, alive 0)'.format(node2_ip),
-                                              'Operation timed out for ks.b_index_index - received only 0 responses from 1 CL=ONE.'],
+                                              'Error applying view update to {}: exceptions::unavailable_exception '
+                                              '(Cannot achieve consistency level for cl ONE. Requires 1, alive 0)'
+                                                    .format(node2_ip),
+                                              'Operation timed out for ks.b_index_index - received only 0 responses '
+                                              'from 1 CL=ONE.'],
                                              search_str='ERROR')
 
     def test_stop_node_after_index_build(self):
@@ -958,11 +1126,12 @@ class TestSecondaryIndexes(Tester):
         index_column = 'b'
         view_name = get_index_view_name(index_name)
 
-        session = prepare(self, nodes=nodes, rf=rf, keyspace_name=keyspace_name, session_node=3)
+        session = self.prepare(self, nodes=nodes, rf=rf, keyspace_name=keyspace_name, session_node=3)
         node2 = self.cluster.nodelist()[1]
         node2_ip = list(node2.network_interfaces['binary'])[0]
 
-        self.create_cf(session, table_name, key_type='int', columns={'b': 'int'}, compaction={'class': self.compaction_strategy})
+        self.create_cf(session, table_name, key_type='int', columns={'b': 'int'},
+                       compaction={'class': self.compaction_strategy})
 
         statement = session.prepare("INSERT INTO {}.{} (key, b) VALUES (?, ?)".format(keyspace_name, table_name))
         statement.consistency_level = ConsistencyLevel.QUORUM
@@ -972,14 +1141,16 @@ class TestSecondaryIndexes(Tester):
         self.cluster.flush()
 
         # Create index and wait while the index is built
-        create_and_build_index(self.create_index, self.cluster, session, ks_name=keyspace_name, table_name=table_name,
-                               index_name=index_name, index_column=index_column, compaction=self.compaction_strategy)
+        self.assertTrue(self.create_and_build_index(self.create_index, self.cluster, session, ks_name=keyspace_name,
+                                    table_name=table_name, index_name=index_name, index_column=index_column,
+                                    compaction=self.compaction_strategy),
+                        msg='Index %s is not built' % index_name)
 
         # Perform action on second node
-        self._node_action_with_delay(node_action, node=node2)
+        self.node_action_with_delay(self, node_action, node=node2)
 
         # Validate the data using filtering by index
-        self.validate_index_data(session, cl=ConsistencyLevel.ONE, num_rows=num_rows, table_name=table_name,
+        self.validate_index_data(self, session, cl=ConsistencyLevel.ONE, num_rows=num_rows, table_name=table_name,
                                  index_column=index_column)
 
         # Validate view rows
@@ -990,58 +1161,8 @@ class TestSecondaryIndexes(Tester):
                                              ['Can\'t send migration request: node {} is down'.format(node2_ip)],
                                              search_str='ERROR')
 
-    def validate_index_data(self, session, cl, num_rows, table_name, index_column):
-        for _ in range(60):
-            try:
-                debug('Verify data with {} consistency level'.format(ConsistencyLevel.value_to_name[cl]))
-                for i in xrange(num_rows):
-                    assert_all(session, 'select key from {} where {} = {}'.format(table_name, index_column, i + num_rows),
-                               expected=[[i]], cl=cl)
-                return
-            except:
-                time.sleep(1)
-
-    def _node_action_with_delay(self, action, node=None, delay=0, wait=True, wait_other_notice=False, gently=True):
-        """
-        :param action: expected values: stop, remove
-        :param action: str
-        """
-        if action not in ['stop', 'remove', 'decommission', 'add']:
-            assert False, 'Unsupported node action'
-
-        if delay:
-            debug('Sleep for {} seconds'.format(delay))
-            time.sleep(delay)
-
-        debug('START: {0} node {1}'.format(action, node.name))
-        if action == 'stop':
-            node.stop(wait=wait, wait_other_notice=wait_other_notice, gently=gently)
-        elif action == 'remove':
-            remove_node(cluster=self.cluster, node=node)
-        elif action == 'add':
-            self._add_new_node()
-        else:
-            node.nodetool(action)
-            if action == 'decommission':
-                node.stop(wait=wait, wait_other_notice=wait_other_notice, gently=gently)
-        debug('FINISH: {0} node {1}'.format(action, node.name))
-
-    def _add_new_node(self, data_center='dc1', wait_for_binary_proto=True, jvm_args=None,
-                      configuration_options=None, queue=None, delay=0, node_index=None):
-        time.sleep(delay)
-        node = new_node(self.cluster, data_center=data_center, new_node_index=node_index)
-        if configuration_options:
-            node.set_configuration_options(values=configuration_options)  # CASSANDRA-11670
-        debug("Start join at {}".format(time.strftime("%H:%M:%S")))
-        node.start(wait_for_binary_proto=wait_for_binary_proto, jvm_args=jvm_args)
-        session = self.patient_exclusive_cql_connection(node)
-        debug("Finish join at {}".format(time.strftime("%H:%M:%S")))
-        if queue:
-            queue.put_nowait((session))
-        return session
-
-class TestSecondaryIndexesOnCollections(Tester):
-
+class TestSecondaryIndexesOnCollections(Tester, SecondaryIndexesHelpers):
+    INDEX_TYPE = 'global'
     def __init__(self, *args, **kwargs):
         Tester.__init__(self, *args, **kwargs)
 
@@ -1053,7 +1174,7 @@ class TestSecondaryIndexesOnCollections(Tester):
         table_name = 'simple_with_tuple'
         index_columns = {'single_tuple': '({0})', 'double_tuple': '({0},{0})', 'triple_tuple': '({0},{0},{0})',
                          'nested_one': '({0},({0},{0}))'}
-        session = prepare(self, nodes=1, rf=1, keyspace_name=keyspace_name)
+        session = self.prepare(self, nodes=1, rf=1, keyspace_name=keyspace_name)
 
         self.create_cf(session, table_name, key_type='uuid', columns={'normal_col': 'int', 'single_tuple': 'tuple<int>',
                                                                       'double_tuple': 'tuple<int, int>',
@@ -1078,8 +1199,9 @@ class TestSecondaryIndexesOnCollections(Tester):
         assert_invalid(session, stmt, matching='use ALLOW FILTERING', expected=Exception)
 
         for index_column in index_columns.iterkeys():
-            create_and_build_index(self.create_index, self.cluster, session, keyspace_name, table_name, index_column,
-                                   'idx_' + index_column, compaction=self.compaction_strategy)
+            self.assertTrue(self.create_and_build_index(self.create_index, self.cluster, session, keyspace_name, table_name,
+                                        index_column, 'idx_' + index_column, compaction=self.compaction_strategy),
+                            msg='Index %s is not built' % 'idx_' + index_column)
 
         select_cmd = "select * from {} where {} = {}"
         # check if indexes work on existing data
@@ -1109,7 +1231,8 @@ class TestSecondaryIndexesOnCollections(Tester):
             for index_column, template in index_columns.iteritems():
                 rows = session.execute(select_cmd.format(table_name, index_column, template.format(n)))
                 for row in rows:
-                    session.execute("update {} set {} = {} where key = {}".format(table_name, index_column, template.format(-999), row.key))
+                    session.execute("update {} set {} = {} where key = {}".format(table_name, index_column,
+                                                                                  template.format(-999), row.key))
 
         for n in range(5):
             _validate_data(expected_rows=0, format_value=n)
@@ -1138,7 +1261,7 @@ class TestSecondaryIndexesOnCollections(Tester):
         index_name = 'user_uuids'
         index_column = 'uuids'
         index_column_type = {'list': 'list<uuid>', 'map': 'map<uuid, uuid>', 'set': 'set<uuid>'}
-        session = prepare(self, nodes=1, rf=1, keyspace_name=keyspace_name)
+        session = self.prepare(self, nodes=1, rf=1, keyspace_name=keyspace_name)
 
         self.create_cf(session, table_name, key_type='uuid', columns={'email': 'text', 'uuids': index_column_type[type]}
                        , compaction={'class': self.compaction_strategy})
@@ -1146,11 +1269,13 @@ class TestSecondaryIndexesOnCollections(Tester):
         select_cmd = "SELECT * from {} where {} contains {}"
 
         # no index present yet, make sure there's an error trying to query column
-        assert_invalid(session, select_cmd.format(table_name, index_column, uuid.uuid4()), matching='use ALLOW FILTERING', expected=Exception)
+        assert_invalid(session, select_cmd.format(table_name, index_column, uuid.uuid4()),
+                       matching='use ALLOW FILTERING', expected=Exception)
 
         # add index and query again (even though there are no rows in the table yet)
-        create_and_build_index(self.create_index, self.cluster, session, keyspace_name, table_name, index_column,
-                               index_name, compaction=self.compaction_strategy)
+        self.assertTrue(self.create_and_build_index(self.create_index, self.cluster, session, keyspace_name, table_name, index_column,
+                               index_name, compaction=self.compaction_strategy),
+                        msg='Index %s is not built' % index_name)
 
         self.assertEqual(0, len(list(session.execute(select_cmd.format(table_name, index_column, uuid.uuid4())))))
 
@@ -1164,7 +1289,9 @@ class TestSecondaryIndexesOnCollections(Tester):
         _id = uuid.uuid4()
         index_value = {'set': '{{{id}}}', 'list': '[{id}]', 'map': '{{{id}:{user_id}}}'}
         session.execute("UPDATE {} set {} = {} where key = {}".format(table_name, index_column,
-                                                                      index_value[type].format(id=_id, user_id=user1_uuid), user1_uuid))
+                                                                      index_value[type].format(id=_id,
+                                                                                               user_id=user1_uuid),
+                                                                      user1_uuid))
         time.sleep(5)
 
         self.assertEqual(1, len(list(session.execute(select_cmd.format(table_name, index_column, _id)))))
@@ -1173,15 +1300,19 @@ class TestSecondaryIndexesOnCollections(Tester):
         shared_uuid = uuid.uuid4()  # this uuid will be on all records
 
         log = []
-        index_value = {'set': '{{{s_uuid}, {u_uuid1}}}', 'list': '[{s_uuid}, {u_uuid1}]', 'map': '{{{u_uuid1}:{u_uuid2}, {s_uuid}:{s_uuid}}}'}
+        index_value = {'set': '{{{s_uuid}, {u_uuid1}}}', 'list': '[{s_uuid}, {u_uuid1}]',
+                       'map': '{{{u_uuid1}:{u_uuid2}, {s_uuid}:{s_uuid}}}'}
         for i in range(50000):
             user_uuid = uuid.uuid4()
             unshared_uuid1 = uuid.uuid4()
             unshared_uuid2 = uuid.uuid4()
 
             # give each record a unique email address using the int index
-            session.execute("INSERT INTO {table_name} (key, email, uuids) values ({key}, '{prefix}@example.com', {index_value})"
-                            .format(table_name=table_name, key=user_uuid, prefix=i, index_value=index_value[type].format(s_uuid=shared_uuid, u_uuid1=unshared_uuid1, u_uuid2=unshared_uuid2)))
+            session.execute("INSERT INTO {table_name} (key, email, uuids) values ({key}, '{prefix}@example.com',"
+                            " {index_value})".format(table_name=table_name, key=user_uuid, prefix=i,
+                                                     index_value=index_value[type].format(s_uuid=shared_uuid,
+                                                                                          u_uuid1=unshared_uuid1,
+                                                                                          u_uuid2=unshared_uuid2)))
 
             log.append({'user_id': user_uuid, 'email': str(i) + '@example.com', 'unshared_uuid1': unshared_uuid1})
             if type == 'map':
@@ -1210,14 +1341,17 @@ class TestSecondaryIndexesOnCollections(Tester):
             index_name_new = 'user_uuids_values'
 
             assert_expected_error(func=self.create_index,
-                                  expected_error='Index {} is a duplicate of existing index {}'.format(index_name_new, index_name),
+                                  expected_error='Index {} is a duplicate of existing index {}'.format(index_name_new,
+                                                                                                       index_name),
                                   args=(session, table_name, index_column), kwargs={'index_name': 'index_name_new'})
 
             debug('Drop index {}'.format(index_name))
             session.execute("DROP INDEX {}".format(index_name))
 
             # add index on values (will index rows added prior)
-            create_and_build_index(self.create_index, self.cluster, session, keyspace_name, table_name, index_column, index_name_new)
+            self.assertTrue(self.create_and_build_index(self.create_index, self.cluster, session, keyspace_name,
+                                                        table_name, index_column, index_name_new),
+                            msg='Index %s is not built' % index_name_new)
 
             # shuffle the log in-place, and double-check a slice of records by querying the secondary index
             random.shuffle(log)
@@ -1361,10 +1495,10 @@ class TestPreJoinCallback(Tester):
             node2 = new_node(cluster)
             node2.set_configuration_options(values={'initial_token': token, 'streaming_socket_timeout_in_ms': 1000})
             node2.start(wait_other_notice=False, wait_for_binary_proto=True)
-            assert_bootstrap_state(self, node2, 'IN_PROGRESS')
+            self.assert_bootstrap_state(self, node2, 'IN_PROGRESS')
 
             node2.nodetool("bootstrap resume")
-            assert_bootstrap_state(self, node2, 'COMPLETED')
+            self.assert_bootstrap_state(self, node2, 'COMPLETED')
             self.assertTrue(node2.grep_log('Executing pre-join post-bootstrap tasks'))
 
         self._base_test(resume)
@@ -1397,7 +1531,8 @@ class TestPreJoinCallback(Tester):
 
         self._base_test(write_survey_and_join)
 
-class TestLocalIndexes(Tester):
+class TestLocalIndexes(Tester, SecondaryIndexesHelpers):
+    INDEX_TYPE = 'local'
 
     def config_keyspace(self, session, ks_name, table_name, index, columns=None, ks_create=True,
                         global_index_name=None):
@@ -1405,23 +1540,25 @@ class TestLocalIndexes(Tester):
             self.create_ks(session, ks_name, 1)
         session.execute('USE {}'.format(ks_name))
         self.create_cf(session, '{0}.{1}'.format(ks_name, table_name), key_type='text', columns=columns)
-        create_and_build_index(create_index_func=self.create_local_index, cluster=self.cluster,
+        self.assertTrue(self.create_and_build_index(create_index_func=self.create_local_index, cluster=self.cluster,
                                session=session, ks_name=ks_name, table_name=table_name,
                                index_column=index['index_column'], index_name=index['index_name'],
-                               pk_name=index['pk_name'])
+                               pk_name=index['pk_name']),
+                        msg='Index %s is not built' % index['index_name'])
 
         if global_index_name:
-            create_and_build_index(create_index_func=self.create_index, cluster=self.cluster,
+            self.assertTrue(self.create_and_build_index(create_index_func=self.create_index, cluster=self.cluster,
                                    session=session, ks_name=ks_name, table_name=table_name,
-                                   index_column=index['index_column'], index_name=global_index_name)
+                                   index_column=index['index_column'], index_name=global_index_name),
+                            msg='Index %s is not built' % global_index_name)
 
-    def simple_local_index_test(self):
+    def test_simple_local_index(self):
         """
         - Create table with 3 columns
         - Create local index on "v" column and partition key "key"
         - Filter data by key and local index and validate result
         """
-        session = prepare(self, nodes=4, rf=3)
+        session = self.prepare(self, nodes=4, rf=3)
 
         ks_name = 'ks'
         table_name = 'cf'
@@ -1455,7 +1592,7 @@ class TestLocalIndexes(Tester):
                 assert_all(session=session, query=query, expected=[[key, ck, index_value]], cl=ConsistencyLevel.QUORUM,
                            num_attempts=30)
 
-    def global_local_index_on_same_column_test(self):
+    def test_global_local_index_on_same_column(self):
         """
         - Create table with 3 columns
         - Create local index on "v" column and partition key "key"
@@ -1463,7 +1600,7 @@ class TestLocalIndexes(Tester):
         - Filter data by key and local index and validate result
         - Filter data by global index and validate result
         """
-        session = prepare(self, nodes=4, rf=3)
+        session = self.prepare(self, nodes=4, rf=3)
 
         ks_name = 'ks'
         table_name = 'cf'
@@ -1511,60 +1648,509 @@ class TestLocalIndexes(Tester):
             assert_all(session=session, query=query, expected=expected_result, cl=ConsistencyLevel.QUORUM,
                        ignore_order=True, num_attempts=30)
 
+    def test_query_data_created_before_local_index(self):
+        """
+        Create the index on the populated table and read the data that was inserted before index
+        """
+        session = self.prepare(self, user_table=True, nodes=4, rf=3)
 
-def assert_bootstrap_state(tester, node, expected_bootstrap_state):
-    """
-    Assert that a node is on a given bootstrap state
-    @param tester The dtest.Tester object to fetch the exclusive connection to the node
-    @param node The node to check bootstrap state
-    @param expected_bootstrap_state Bootstrap state to expect
-    Examples:
-    assert_bootstrap_state(self, node3, 'COMPLETED')
-    """
-    session = tester.patient_exclusive_cql_connection(node)
-    # assert_one(session, "SELECT bootstrapped FROM system.local WHERE key='local'", [expected_bootstrap_state])
-    assert_all(session, "SELECT bootstrapped FROM system.local WHERE key='local'", [expected_bootstrap_state])
+        # insert data
+        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) "
+                        "VALUES ('user1', 'ch@ngem3a', 'f', 'TX', 1968);")
+        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) "
+                        "VALUES ('user2', 'ch@ngem3b', 'm', 'CA', 1971);")
 
-def create_and_build_index(create_index_func, cluster, session, ks_name, table_name, index_column, index_name,
-                           pk_name=None, compaction=None):
-    if not pk_name:
-        create_index_func(session=session, table_name=table_name, index_column=index_column,
-                          index_name=index_name, compaction=compaction)
-    else:
-        create_index_func(session=session, table_name=table_name, index_column=index_column,
-                          index_name=index_name, compaction=compaction, pk_name=pk_name)
+        # create index
+        self.assertTrue(self.create_and_build_index(self.create_local_index, self.cluster, session, ks_name='ks', table_name='users',
+                               index_column='gender', index_name='gender_key', pk_name='key',
+                               compaction=self.compaction_strategy),
+                        msg='Index %s is not built' % 'gender_key')
+        self.assertTrue(self.create_and_build_index(self.create_local_index, self.cluster, session, ks_name='ks', table_name='users',
+                               index_column='state', index_name='state_key', pk_name='key',
+                               compaction=self.compaction_strategy),
+                        msg='Index %s is not built' % 'state_key')
+        self.assertTrue(self.create_and_build_index(self.create_local_index, self.cluster, session, ks_name='ks', table_name='users',
+                               index_column='birth_year', index_name='birth_year_key', pk_name='key',
+                               compaction=self.compaction_strategy),
+                        msg='Index %s is not built' % 'birth_year_key')
 
-    index_is_built(cluster, session, ks_name, table_name, index_name)
+        # insert data
+        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) "
+                        "VALUES ('user3', 'ch@ngem3c', 'f', 'FL', 1978);")
+        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) "
+                        "VALUES ('user4', 'ch@ngem3d', 'm', 'TX', 1974);")
 
-def prepare(self, user_table=False, rf=3, options={}, keyspace_name='ks', nodes=3, use_vnodes=False,
-            fetch_size=None, jvm_args=[], session_node=1, **kwargs):
-    """
-    Prepare environment for test
-    """
-    strategies = ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy',
-                  'TimeWindowCompactionStrategy']
-    self.compaction_strategy = strategies[random.randint(0, len(strategies)-1)]
-    cluster = self.cluster
-    populate = nodes if isinstance(nodes, list) else [nodes, 0]
-    cluster.populate(populate, use_vnodes=True)
-    if options:
-        cluster.set_configuration_options(values=options)
-    if not jvm_args:
-        jvm_args = ['--smp', '2', '--memory', '1G']
-    cluster.start(jvm_args=jvm_args)
-    node1 = cluster.nodelist()[session_node-1]
+        assert_all(session, "select count(*) from users", expected=[[4]], cl=ConsistencyLevel.QUORUM)
+        assert_all(session, "select count(*) from users where key='user4' and state='TX'", expected=[[1]],
+                   cl=ConsistencyLevel.QUORUM)
+        assert_all(session, "select count(*) from users where key='user2' and state='CA'", expected=[[1]],
+                   cl=ConsistencyLevel.QUORUM)
 
-    session = self.patient_cql_connection(node1, **kwargs)
-    if fetch_size:
-        session.default_fetch_size = fetch_size
-    self.create_ks(session, keyspace_name, rf)
+    def test_query_data_by_ck_and_local_index(self):
+        """
+        Filter data by primary and clustering keys and secondary index
+        """
+        ks_name = 'ks'
+        table_name = 'cf'
+        index_column = 'v'
+        index_name = 'v_inx'
 
-    if user_table:
-        columns = {"password": "varchar", "gender": "varchar", "session_token": "varchar", "state": "varchar",
-                   "birth_year": "bigint"}
-        self.create_cf(session, 'users', columns=columns, compaction={'class': self.compaction_strategy})
+        session = self.prepare(self, nodes=4, rf=3)
+        self.create_cf(session, '{0}.{1}'.format(ks_name, table_name), key_type='text',
+                       compaction={'class': self.compaction_strategy})
 
-    return session
+        # insert data
+        session.execute("INSERT INTO {} (key, c, v) VALUES ('user1', 'ch@ngem3a', 'f')".format(table_name))
+        session.execute("INSERT INTO {} (key, c, v) VALUES ('user2', 'ch@ngem3b', 'm')".format(table_name))
+        session.execute("INSERT INTO {} (key, c, v) VALUES ('user3', 'ch@ngem3c', 'f')".format(table_name))
+        session.execute("INSERT INTO {} (key, c, v) VALUES ('user4', 'ch@ngem3d', 'm')".format(table_name))
+
+        # create index
+        self.assertTrue(self.create_and_build_index(self.create_local_index, self.cluster, session, ks_name=ks_name,
+                                                    table_name=table_name, index_column=index_column,
+                                                    index_name=index_name, pk_name='key',
+                                                    compaction=self.compaction_strategy),
+                        msg='Index %s is not built' % index_name)
+
+        assert_all(session, "select count(*) from {}".format(table_name), expected=[[4]], cl=ConsistencyLevel.QUORUM)
+        assert_all(session, "select count(*) from {} where key='user2' and c='ch@ngem3b' and v='m'".format(table_name),
+                   expected=[[1]], cl=ConsistencyLevel.ALL)
+        assert_all(session, "select count(*) from {} where KEY='user1' and c='ch@ngem3a' and v='m'".format(table_name),
+                    expected = [[0]], cl=ConsistencyLevel.QUORUM)
+
+    def test_insert_data_after_recreating_ks_with_local_index(self):
+        """
+        Data inserted immediately after dropping and recreating a keyspace with an indexed column familiy is not included
+        in the index.
+        """
+        session = self.prepare(self, nodes=4, rf=3)
+
+        ks_name = 'ks'
+        table_name = 'cf'
+        index = {'index_name': 'v_ind', 'index_column': 'v',  'pk_name': 'key'}
+        self.config_keyspace(session, ks_name, table_name, index, ks_create=False)
+
+        for i in range(10):
+            debug("round %s" % i)
+            try:
+                session.execute("DROP KEYSPACE {}".format(ks_name))
+            except ConfigurationException:
+                pass
+
+            self.config_keyspace(session, ks_name, table_name, index)
+
+            for r in range(10):
+                session.execute("INSERT INTO {0}.{1} (key, c, v) VALUES ('{2}', '{3}','asdf');".format(ks_name,
+                                                                                table_name, r, generate_random_text()))
+
+            wait_for_schema_agreement(session)
+            time.sleep(30)
+            for r in range(10):
+                assert_all(session,
+                           "select count(*) from {0}.{1} WHERE key='{2}' and v='asdf'".format(ks_name, table_name, r),
+                           expected=[[1]], cl=ConsistencyLevel.QUORUM)
+
+    def test_oversize_local_indexed_values(self):
+        """
+        Reject inserts & updates where values of any indexed column is > 64k
+        """
+        expect_message = 'Key size too large'
+        self._validate_long_indexed_values(OVERSIZE_LENGTH, expect_message)
+
+
+    def test_long_local_indexed_values(self):
+        """
+        Correct inserts & updates where values of any indexed column is long and up to 64k
+        """
+        self._validate_long_indexed_values(LONG_TEXT_LENGTH, expect_message=None)
+
+    def _validate_long_indexed_values(self, value_length, expect_message):
+        session = self.prepare(self, nodes=4, rf=3)
+        test = 'oversize' if value_length == OVERSIZE_LENGTH else 'long'
+
+        debug('Insert {} value into non-PK column'.format(test))
+        self.insert_row_with_long_value(self,
+            "CREATE TABLE %s(a int, b int, c varchar, PRIMARY KEY (a)) WITH compaction = %s",
+            "CREATE INDEX ON %s ((a), c)",
+            "INSERT INTO %s (a, b, c) VALUES (0, 0, ?)",
+            session, column_name='c', value_length=value_length, expect_message=expect_message)
+
+        debug('Insert {} value into clustering key column'.format(test))
+        self.insert_row_with_long_value(self,
+            "CREATE TABLE %s(a int, b text, c int, PRIMARY KEY (a, b)) WITH compaction = %s",
+            "CREATE INDEX ON %s ((a), b)",
+            "INSERT INTO %s (a, b, c) VALUES (0, ?, 0)",
+            session, column_name='b', value_length=value_length, expect_message=expect_message)
+
+        debug('Table with compact storage. Insert {} value into non-PK column'.format(test))
+        self.insert_row_with_long_value(self,
+            "CREATE TABLE %s(a int, b text, PRIMARY KEY (a)) WITH COMPACT STORAGE and compaction = %s",
+            "CREATE INDEX ON %s ((a), b)",
+            "INSERT INTO %s (a, b) VALUES (0, ?)",
+            session, column_name='b', value_length=value_length, expect_message=expect_message)
+
+        self.allow_log_errors = check_errors_all_nodes(self.cluster.nodelist(), exclude_errors=expect_message)
+
+    def test_drop_local_index_while_building(self):
+        """
+        Asserts that indexes deleted before they have been completely build are invalidated and not built after restart
+        """
+        keyspace_name = 'keyspace1'
+        table_name = 'standard1'
+        index_name = 'idx'
+        index_column = '"C0"'
+
+        session = self.prepare(self, nodes=4, rf=3, keyspace_name=keyspace_name)
+        node = self.cluster.nodelist()[0]
+
+        # Create some thousands of rows to guarantee a long index building
+        node.stress(['write', 'n=50K', 'no-warmup', '-schema', 'replication(factor=3)',
+                     'compaction(strategy={})'.format(self.compaction_strategy)])
+
+        # Create a local index and immediately drop it, without waiting for index building
+        self.create_local_index(session=session, table_name=table_name, index_column=index_column,
+                                index_name=index_name, pk_name='key', compaction=self.compaction_strategy)
+
+        # Get view ID
+        index_view_name = get_index_view_name(index_name)
+        view_id = get_view_id(session=session, keyspace_name=keyspace_name, view_name=index_view_name)
+        debug('View ID: {}'.format(view_id))
+
+        session.execute('DROP INDEX {}'.format(index_name))
+
+        self.cluster.wait_for_compactions()
+
+        # Check that the index is not marked as built nor queryable
+        assert_none(session, view_built_status_query(ks=keyspace_name, view=index_view_name))
+        assert_invalid(session, 'SELECT * FROM {0} WHERE {1} = 0x00'.format(table_name, index_column),
+                       matching='use ALLOW FILTERING', expected=Exception)
+
+        # Restart the node to trigger any eventual unexpected index rebuild
+        session = self.drain_and_restart_node(self, node, keyspace_name)
+
+        # The index should remain not built nor queryable after restart
+        assert_none(session, view_built_status_query(ks=keyspace_name, view=index_view_name))
+        assert_invalid(session, 'SELECT * FROM {0} WHERE {1} = 0x00'.format(table_name, index_column),
+                       matching='use ALLOW FILTERING', expected=Exception)
+
+        self.allow_log_errors = check_errors(node, ['Can\'t find a column family with UUID {}'.format(view_id),
+                                                    'mutation_write_failure_exception'], search_str='ERROR')
+
+    def test_truncate_base_with_local_index(self):
+        """
+        asserts that truncating base table will result in truncating secondary index as well
+        """
+        def select_by_index(expected_count):
+            smt = "SELECT count(*) FROM {0} WHERE {1} = '{2}' and key = {3}"
+            for data in data_set:
+                assert_all(session, smt.format(table_name, index_column, data[1], data[0]), expected=[[expected_count]],
+                           cl=ConsistencyLevel.QUORUM)
+
+        keyspace_name = 'ks'
+        table_name = 'tbl'
+        index_name = 'ix_tbl_c0'
+        index_column = 'c0'
+        pk_name = 'key'
+
+        session = self.prepare(self, nodes=4, rf=3, keyspace_name=keyspace_name)
+
+        self.create_cf(session, table_name, key_type='int', columns={'c0': 'text', 'c1': 'text', 'c2': 'text'},
+                       compaction={'class': self.compaction_strategy})
+
+        self.assertTrue(self.create_and_build_index(self.create_local_index, self.cluster, session, keyspace_name,
+                                                    table_name, index_column, index_name, pk_name=pk_name,
+                                                    compaction=self.compaction_strategy),
+                        msg='Index %s is not built' % index_name)
+
+        data_set = [[0, 'a', 'b'], [1, 'a', 'b'], [2, 'q', 'b'], [3, 'a', 'e'], [4, 'a', 'e']]
+        smt = "INSERT INTO {table_name} (key, c0, c1) values ({pk}, '{c0}', '{c1}')"
+        for data in data_set:
+            session.execute(smt.format(table_name=table_name, pk=data[0], c0=data[1], c1=data[2]))
+
+        # ensure sstables are created and will be dropped
+        self.cluster.flush()
+
+        # ensure data is loaded into cache and the cache will be cleared
+        select_by_index(1)
+        assert_row_count(session, "tbl", 5)
+
+        session.execute("TRUNCATE table tbl")
+        assert_row_count(session, "tbl", 0)
+
+        # check that index queries are also truncated
+        select_by_index(0)
+
+    def test_multi_column_local_index(self):
+        """
+        Test that impossible to create secondary index on the few columns and valid error message is received
+        """
+        keyspace_name = 'ks'
+        table_name = 'cf'
+        index_columns = {'b': 'int', 'c': 'int'}
+
+        session = self.prepare(self, nodes=1, rf=1, keyspace_name=keyspace_name)
+
+        # try to create index on 2 columns
+        self.create_cf(session, table_name, key_type='int', columns=index_columns,
+                       compaction={'class': self.compaction_strategy})
+        assert_expected_error(func=self.create_local_index,
+                              expected_error='Only CUSTOM indexes support multiple columns',
+                              args=(session, table_name, 'key', index_columns.keys()),
+                              kwargs={'index_name': 'two_columns_index', 'compaction':self.compaction_strategy})
+
+        # try to create index on 6 columns
+        table_name = 'cf_6columns'
+        index_columns = {'b': 'int', 'c': 'int', 'd': 'int', 'e': 'int', 'f': 'int', 'g': 'int'}
+        self.create_cf(session, table_name, key_type='int', columns=index_columns, compaction={'class': self.compaction_strategy})
+        assert_expected_error(func=self.create_local_index, expected_error='Only CUSTOM indexes support multiple columns',
+                              args=(session, table_name, 'key', index_columns),
+                              kwargs={'index_name': 'six_columns_index', 'compaction':self.compaction_strategy})
+
+    def _prepare_for_ttl(self):
+        keyspace_name = 'ks'
+        table_name = 'cf'
+        index_column = 'b'
+        index_name = '{}_inx'.format(index_column)
+        select_query = 'select * from {} where {} key = 0'
+        mv_query = 'select key, {} from {}'.format(index_column, get_index_view_name(index_name))
+
+        session = self.prepare(self, nodes=1, rf=1, keyspace_name=keyspace_name)
+
+        self.create_cf(session, table_name, key_type='int', columns={'b': 'int', 'c': 'int'},
+                       compaction={'class':self.compaction_strategy})
+        session.execute("INSERT INTO {} (key, b, c) VALUES (0, 1, 2)".format(table_name))
+        assert_all(session, select_query.format(table_name, ''), [[0, 1, 2]], cl=ConsistencyLevel.ALL)
+
+        self.assertTrue(self.create_and_build_index(self.create_local_index, self.cluster, session, keyspace_name,
+                                                    table_name, index_column, index_name, pk_name='key',
+                                                    compaction=self.compaction_strategy),
+                        msg='Index %s is not built' % index_name)
+        assert_all(session, select_query.format(table_name, '%s = %d and' % (index_column, 1)), [[0, 1, 2]], cl=ConsistencyLevel.ALL)
+        return session, keyspace_name, table_name, index_column, index_name, select_query, mv_query
+
+    def test_ttl_local_index_column(self):
+        """
+        Verify SI with default_time_to_live can be deleted properly using expired livenessInfo
+        """
+        session, keyspace_name, table_name, index_column, index_name, select_query, mv_query = self._prepare_for_ttl()
+
+        ttl = 60
+        debug('Update index column with TTL {}'.format(ttl))
+        session.execute("UPDATE {} USING TTL {} SET {}=3 WHERE key=0".format(table_name, ttl, index_column))
+        assert_all(session, select_query.format(table_name, '%s = %d and' % (index_column, 3)), [[0, 3, 2]],
+                   cl=ConsistencyLevel.ALL)
+        assert_none(session, select_query.format(table_name, '%s = %d and' % (index_column, 1)),
+                    cl=ConsistencyLevel.ALL)
+        assert_all(session, mv_query, [[0, 3]], cl=ConsistencyLevel.ALL)
+
+        time.sleep(ttl+5)
+        # Validate that no record is returned when filtered by index
+        assert_all(session, select_query.format(table_name, ''), [[0, None, 2]], cl=ConsistencyLevel.ALL)
+        assert_none(session, select_query.format(table_name, '%s = %d and' % (index_column, 3)),
+                    cl=ConsistencyLevel.ALL)
+        assert_none(session, select_query.format(table_name, '%s = %d and' % (index_column, 1)),
+                    cl=ConsistencyLevel.ALL)
+        assert_none(session, mv_query, cl=ConsistencyLevel.ALL)
+
+    def test_delete_local_indexed_rows(self):
+            """
+            Delete rows from indexed table and read data by index
+            """
+            keyspace_name = 'ks'
+            table_name = 'cf'
+            index_name = 'b_index'
+            index_column = 'b'
+
+            session = self.prepare(self, nodes=4, rf=3, keyspace_name=keyspace_name, session_node=3)
+
+            self.create_cf(session, table_name, key_type='int', columns={'b': 'int'},
+                           compaction={'class': self.compaction_strategy})
+            self.assertTrue(self.create_and_build_index(self.create_local_index, self.cluster, session,
+                                                        ks_name=keyspace_name, table_name=table_name,
+                                                        index_column=index_column, index_name=index_name, pk_name='key',
+                                                        compaction=self.compaction_strategy),
+                            msg='Index %s is not built' % index_name)
+
+            num_rows = 100
+            for i in range(num_rows):
+                indexed_value = i + 100
+                session.execute(
+                    "INSERT INTO {}.{} (key, b) VALUES ({}, {})".format(keyspace_name, table_name, i, indexed_value))
+
+            self.cluster.flush()
+
+            # Delete 10 rows by index
+            debug('Delete 10 rows by index')
+            start_key, delete_num = 30, 10
+            rows_for_delete = list(range(start_key, start_key + delete_num))
+            for i in rows_for_delete:
+                session.execute("DELETE FROM {} WHERE key = {}".format(table_name, i))
+            time.sleep(30)
+
+            # Valudate the data in not in table
+            assert_row_count(session, table_name=table_name, expected=num_rows - delete_num,
+                             consistency_level=ConsistencyLevel.ALL)
+            query = 'select key, b from {} where key={} and {}={}'
+            for i in list(range(num_rows)):
+                if i in rows_for_delete:
+                    assert_none(session, query=query.format(table_name, i, index_column, i + 100),
+                                cl=ConsistencyLevel.ALL)
+                else:
+                    res = [[i, i + 100]]
+                    assert_all(session, query=query.format(table_name, i, index_column, i + 100), expected=res,
+                               cl=ConsistencyLevel.ALL)
+
+            # Valudate the data in not in table and SI materialized view
+            assert_row_count(session, table_name=get_index_view_name(index_name), expected=num_rows - delete_num,
+                             consistency_level=ConsistencyLevel.ALL)
+
+    @attr('next-gating')
+    # @attr('dtest-debug') - https://github.com/scylladb/scylla/issues/4384
+    def test_stop_node_during_local_index_build(self):
+        """
+        Stop one node during index building and read data by index
+        """
+        self._node_action_during_index_build(node_action='stop', nodes=4, rf=3, num_rows=100000)
+
+    def test_remove_node_during_local_index_build(self):
+        """
+        Remove one node during index building and read data by index
+        """
+        self._node_action_during_index_build(node_action='remove', nodes=4, rf=3, num_rows=100000)
+
+    def test_decommission_node_during_local_index_build(self):
+        """
+        Decommission one node during index building and read data by index
+        """
+        self._node_action_during_index_build(node_action='decommission', nodes=4, rf=3, num_rows=100000)
+
+    def test_add_node_during_local_index_build(self):
+        """
+        Add one node during index building and read data by index
+        """
+        self._node_action_during_index_build(node_action='add', nodes=3, rf=3, num_rows=100000)
+
+    def _node_action_during_index_build(self, node_action, nodes, rf, num_rows):
+        keyspace_name = 'ks'
+        table_name = 'cf'
+        index_name = 'b_index'
+        index_column = 'b'
+        view_name = get_index_view_name(index_name)
+
+        session = self.prepare(self, nodes=nodes, rf=rf, keyspace_name=keyspace_name, session_node=3)
+        node2 = self.cluster.nodelist()[1]
+        node2_ip = list(node2.network_interfaces['binary'])[0]
+
+        self.create_cf(session, table_name, key_type='int', columns={'b': 'int'}, compaction={'class': self.compaction_strategy})
+
+        statement = session.prepare("INSERT INTO {}.{} (key, b) VALUES (?, ?)".format(keyspace_name, table_name))
+        statement.consistency_level = ConsistencyLevel.QUORUM
+
+        execute_concurrent_with_args(session, statement,
+                                     map(lambda k: [k] + [k+num_rows], [k for k in xrange(0, num_rows)]))
+        self.cluster.flush()
+
+        # Create index and wait while the build is starting
+        self.create_local_index(session, table_name, 'key', index_column, index_name,
+                                compaction=self.compaction_strategy)
+        wait_for_view_build_start(session, ks=keyspace_name, view=view_name)
+
+        # Perform action on second node
+        self.node_action_with_delay(self, node_action, node2)
+
+        # Index will not finish building, because view building underneath is paused until updates can be sent.
+        if node_action == 'add':
+            assert True
+
+        if node_action in ['remove', 'decommission']:
+            debug('Add new node')
+            session = self.add_new_node(self, node_index=nodes + 1)
+            session.execute('USE {}'.format(keyspace_name))
+        elif node_action == 'stop':
+            debug('Start node {}'.format(node2.name))
+            node2.start(wait_for_binary_proto=True)
+
+        # Validate the data using filtering by index with cl=ONE
+        self.validate_index_data(self, session, cl=ConsistencyLevel.ONE, num_rows=num_rows, table_name=table_name,
+                                 index_column=index_column)
+
+        # Validate view rows
+        assert_row_count_from_every_node(session, table_name=view_name, expected=num_rows,
+                                         nodes_list=self.cluster.nodelist())
+        self.allow_log_errors = check_errors(self.cluster.nodelist()[0],
+                                             ['Can\'t send migration request: node {} is down'.format(node2_ip),
+                                              'Error applying view update to {}: exceptions::unavailable_exception '
+                                              '(Cannot achieve consistency level for cl ONE. Requires 1, alive 0)'.
+                                                    format(node2_ip),
+                                              'Operation timed out for ks.b_index_index - received only 0 responses '
+                                              'from 1 CL=ONE.'],
+                                             search_str='ERROR')
+
+    def test_stop_node_after_local_index_build(self):
+        """
+        Stop one node after index building and read data by index
+        """
+        self._node_action_after_index_build(node_action='stop', nodes=4, rf=3, num_rows=1000)
+
+    def test_remove_node_after_local_index_build(self):
+        """
+        Remove one node after index building and read data by index
+        """
+        self._node_action_after_index_build(node_action='remove', nodes=4, rf=3, num_rows=1000)
+
+    def test_decommission_node_after_local_index_build(self):
+        """
+        Decommission one node after index building and read data by index
+        """
+        self._node_action_after_index_build(node_action='decommission', nodes=4, rf=3, num_rows=1000)
+
+    def test_add_node_after_local_index_build(self):
+        """
+        Decommission one node after index building and read data by index
+        """
+        self._node_action_after_index_build(node_action='add', nodes=3, rf=3, num_rows=1000)
+
+    def _node_action_after_index_build(self, node_action, nodes, rf, num_rows):
+        keyspace_name = 'ks'
+        table_name = 'cf'
+        index_name = 'b_index'
+        index_column = 'b'
+        view_name = get_index_view_name(index_name)
+
+        session = self.prepare(self, nodes=nodes, rf=rf, keyspace_name=keyspace_name, session_node=3)
+        node2 = self.cluster.nodelist()[1]
+        node2_ip = list(node2.network_interfaces['binary'])[0]
+
+        self.create_cf(session, table_name, key_type='int', columns={'b': 'int'}, compaction={'class': self.compaction_strategy})
+
+        statement = session.prepare("INSERT INTO {}.{} (key, b) VALUES (?, ?)".format(keyspace_name, table_name))
+        statement.consistency_level = ConsistencyLevel.QUORUM
+
+        execute_concurrent_with_args(session, statement,
+                                     map(lambda k: [k] + [k + num_rows], [k for k in xrange(0, num_rows)]))
+        self.cluster.flush()
+
+        # Create index and wait while the index is built
+        self.assertTrue(self.create_and_build_index(self.create_local_index, self.cluster, session,
+                                                    ks_name=keyspace_name, table_name=table_name, index_name=index_name,
+                                                    index_column=index_column, pk_name='key',
+                                                    compaction=self.compaction_strategy),
+                        msg='Index %s is not built' % index_name)
+
+        # Perform action on second node
+        self.node_action_with_delay(self, node_action, node=node2)
+
+        # Validate the data using filtering by index
+        self.validate_index_data(self, session, cl=ConsistencyLevel.ONE, num_rows=num_rows, table_name=table_name,
+                                 index_column=index_column)
+
+        # Validate view rows
+        assert_row_count_from_every_node(session, table_name=view_name, expected=num_rows,
+                                         nodes_list=self.cluster.nodelist())
+
+        self.allow_log_errors = check_errors(self.cluster.nodelist()[0],
+                                             ['Can\'t send migration request: node {} is down'.format(node2_ip)],
+                                             search_str='ERROR')
 
 class DtestTimeoutError(Exception):
     pass
