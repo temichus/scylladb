@@ -1268,8 +1268,8 @@ class TestNodetool(Tester):
         if node is None:
             node = self.cluster.nodelist()[0]
         out = node.nodetool("proxyhistograms", True)[0]
-        histogram = re.findall("^\s*([^\s]+)\s+(\d+\.\d+)\s+(\d+\.\d+)\s+([^\s]+)\s*$", out, re.MULTILINE)
-        return {m[0]: self._list2dic(m[1:], ["Read Latency", "Write Latency", "Range Latency"]) for m in histogram}
+        histogram = re.findall("^\s*([^\s]+)\s+(\d+\.\d+)\s+(\d+\.\d+)\s+([^\s]+)\s+([^\s]+)\s+([^\s]+)\s+([^\s]+)\s*$", out, re.MULTILINE)
+        return {m[0]: self._list2dic(m[1:], ["Read Latency", "Write Latency", "Range Latency", "CAS Read", "CAS Write", "View Write"]) for m in histogram}
 
     def _verify_proxyhistogram(self, res):
         for latency_type in ("Read Latency", "Write Latency", "Range Latency"):
@@ -1282,7 +1282,6 @@ class TestNodetool(Tester):
                                                                                           v, cur))
                 cur = latency_val
 
-    @require('#2167')
     def proxyhistograms_test(self):
         """
         This test the `nodetool proxyhistograms` command
