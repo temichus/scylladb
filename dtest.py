@@ -462,12 +462,12 @@ class Tester(TestCase):
         self.var_trace(cluster)
 
     def _cleanup_cluster(self, remove=True):
-        debug("_cleanup_cluster")
         if SILENCE_DRIVER_ON_SHUTDOWN:
             # driver logging is very verbose when nodes start going down -- bump up the level
             logging.getLogger('cassandra').setLevel(logging.CRITICAL)
 
         if KEEP_TEST_DIR:
+            debug("{}stopping ccm cluster {} at: {}".format("gently " if RECORD_COVERAGE else "", self.cluster.name, self.test_path))
             self.cluster.stop(gently=RECORD_COVERAGE)
         else:
             # when recording coverage the jvm has to exit normally
@@ -481,7 +481,7 @@ class Tester(TestCase):
                 debug("removing ccm cluster " + self.cluster.name + " at: " + self.test_path)
                 self.cluster.remove()
 
-                debug("clearing ssl stores from [{0}] directory".format(self.test_path))
+                # debug("clearing ssl stores from [{0}] directory".format(self.test_path))
                 for filename in ('keystore.jks', 'truststore.jks', 'ccm_node.cer', 'ccm_node.pem', 'ccm_node.key', 'trust.pem'):
                     try:
                         os.remove(os.path.join(self.test_path, filename))
@@ -497,8 +497,7 @@ class Tester(TestCase):
             os.remove(LAST_TEST_DIR)
 
         if not self._preserve_cluster:
-            if not self._check_clean():
-                self._force_clean()
+            self._force_clean()
 
         # cluster.id may be equal to 0
         # so test it is not None
@@ -515,22 +514,7 @@ class Tester(TestCase):
         else:
             node.set_install_dir(install_dir=cdir)
 
-    def _check_clean(self):
-        version = os.environ.get('CASSANDRA_VERSION')
-        cdir = CASSANDRA_DIR
-
-        if isScylla(cdir):
-            for proc in psutil.process_iter():
-                try:
-                    if ('scylla' in proc.name() or 'scylla' in proc.cmdline()[0]) and any(self.cluster.ipprefix in cmd for cmd in proc.cmdline()):
-                        return False
-                except Exception:
-                    pass
-        return True
-
     def _force_clean(self):
-        debug("force_clean called")
-        version = os.environ.get('CASSANDRA_VERSION')
         cdir = CASSANDRA_DIR
 
         if isScylla(cdir):
@@ -591,8 +575,7 @@ class Tester(TestCase):
             f.write(self.id() + '\n')
 
         if not self._preserve_cluster:
-            if not self._check_clean():
-                self._force_clean()
+            self._force_clean()
 
         if RECORD_COVERAGE:
             self.__setup_jacoco()
@@ -904,7 +887,6 @@ class Tester(TestCase):
                 pass
 
     def tearDown(self):
-        debug("tearDown")
         reset_environment_vars()
 
         for runner in self.runners:
@@ -922,9 +904,10 @@ class Tester(TestCase):
         if not hasattr(self, 'cluster') or not self.cluster:
             return
         failed = sys.exc_info() != (None, None, None)
+        if failed:
+            debug("Test failed")
         found_cores = None
         try:
-            debug("tearDown: looking for errors in logs")
             for node in self.cluster.nodelist():
                 if not self.allow_log_errors:
                     errors = list(self.__filter_errors(
@@ -939,15 +922,11 @@ class Tester(TestCase):
         finally:
             try:
                 if failed or KEEP_LOGS:
-                    # means the test failed. Save the logs for inspection.
-                    debug("tearDown: copying logs")
                     self.copy_logs(cores=found_cores)
             except Exception as e:
                 print "Error saving log:", str(e)
             finally:
-                if not self._preserve_cluster:
-                    self._cleanup_cluster()
-                elif self._preserve_cluster and failed:
+                if failed or not self._preserve_cluster:
                     self._cleanup_cluster()
                     self.cluster = None
 
