@@ -291,6 +291,7 @@ class TestUpdateClusterLayout(Tester):
         node4 = new_node(cluster)
         node4.start(jvm_args=['--logger-log-level','stream_session=debug'], no_wait=True)
         node4.watch_log_for("JOINING: Starting to bootstrap")
+        node4.watch_log_for("Beginning stream session|sync data for keyspace=ks, status=started")
 
         self.ignore_log_patterns += [r'Repair .* status=failed: mandatory neighbor={} is not alive'.format(node2.address())]
 
@@ -300,7 +301,7 @@ class TestUpdateClusterLayout(Tester):
         debug("Look for Stream/Startup failed in node 4...")
         # The keep alive timer expires in 10 minutes.
         # Wait 5 minutes more in the test to wait for the stream to fail
-        node4.watch_log_for("Stream failed|Startup failed", timeout=300)
+        node4.watch_log_for("Stream failed|Startup failed|sync data for keyspace=ks, status=failed", timeout=300)
 
     def simple_kill_new_node_while_bootstrapping_test(self):
         """
@@ -337,7 +338,7 @@ class TestUpdateClusterLayout(Tester):
             debug("Start Node %d" % i)
             new_node.start(jvm_args=['--logger-log-level','stream_session=debug'], no_wait=True)
             new_node.watch_log_for("JOINING: Starting to bootstrap")
-            new_node.watch_log_for("JOINING: Starting to bootstrap")
+            new_node.watch_log_for("Beginning stream session|sync data for keyspace=ks, status=started")
             debug("Stop Node %d" % i)
             new_node.stop(gently=False)
 
@@ -439,6 +440,7 @@ class TestUpdateClusterLayout(Tester):
             new_node.watch_log_for("JOINING: Starting to bootstrap")
             t = executor.submit(run)
             new_node.watch_log_for("JOINING: Starting to bootstrap")
+            new_node.watch_log_for("Beginning stream session|sync data for keyspace=ks, status=started")
             debug("Stop Node %d" % i)
             new_node.stop(gently=False)
             for node in [node1, node2, node3]:
@@ -515,6 +517,7 @@ class TestUpdateClusterLayout(Tester):
         t = executor.submit(run)
         time.sleep(1)
         a_new_node.watch_log_for("JOINING: Starting to bootstrap")
+        a_new_node.watch_log_for("Beginning stream session|sync data for keyspace=ks, status=started")
         self.wait_for_nodes_status(node1, [['UN', 'UJ', 'UN'], ['UN', 'UN', 'UN']])
         debug("Stop Node")
         a_new_node.stop(gently=False)
@@ -551,6 +554,7 @@ class TestUpdateClusterLayout(Tester):
         node4 = new_node(cluster)
         node4.start(jvm_args=['--logger-log-level','stream_session=debug'], no_wait=True)
         node4.watch_log_for("JOINING: Starting to bootstrap")
+        node4.watch_log_for("Beginning stream session|sync data for keyspace=ks, status=started")
         insert_c1c2(session, keys=range(2000, 4000), consistency=consistency)
 
         query = SimpleStatement("SELECT * FROM cf", consistency_level=consistency)
@@ -606,6 +610,7 @@ class TestUpdateClusterLayout(Tester):
         node4 = new_node(cluster)
         node4.start(jvm_args=['--logger-log-level','stream_session=debug'], no_wait=True)
         node4.watch_log_for("JOINING: Starting to bootstrap")
+        node4.watch_log_for("Beginning stream session|sync data for keyspace=ks, status=started")
         t = executor.submit(run)
 
         node4.watch_log_for("Starting listening for CQL clients")
@@ -650,6 +655,7 @@ class TestUpdateClusterLayout(Tester):
         node4 = new_node(cluster)
         node4.start(jvm_args=['--logger-log-level','stream_session=debug'], no_wait=True)
         node4.watch_log_for("JOINING: Starting to bootstrap")
+        node4.watch_log_for("Beginning stream session|sync data for keyspace=ks, status=started")
         t = executor.submit(run)
 
         node4.watch_log_for("Starting listening for CQL clients")
@@ -801,6 +807,7 @@ class TestUpdateClusterLayout(Tester):
 
         # check node2 has started decommission
         node2.watch_log_for("DECOMMISSIONING: unbootstrap starts")
+        node2.watch_log_for("Beginning stream session|sync data for keyspace=ks, status=started")
 
         self.ignore_log_patterns += ["Failed to handle STREAM_MUTATION_FRAGMENTS.*peer={}".format(node2.address())]
 
@@ -853,6 +860,7 @@ class TestUpdateClusterLayout(Tester):
 
         # check node2 has started decommission
         node2.watch_log_for("DECOMMISSIONING: unbootstrap starts")
+        node2.watch_log_for("Beginning stream session|sync data for keyspace=ks, status=started")
 
         node1.stop(gently=False)
 
@@ -1116,6 +1124,7 @@ class TestUpdateClusterLayout(Tester):
         node4 = new_node(cluster)
         node4.start(jvm_args=['--logger-log-level','stream_session=debug'], no_wait=True)
         node4.watch_log_for("JOINING: Starting to bootstrap")
+        node4.watch_log_for("Beginning stream session|sync data for keyspace=ks, status=started")
         # Create table and insert data during bootstrapping of the new node
         if when == "during":
             t = executor.submit(run)
@@ -1202,6 +1211,7 @@ class TestUpdateClusterLayout(Tester):
         node4 = new_node(cluster)
         node4.start(jvm_args=['--logger-log-level','stream_session=debug'], no_wait=True)
         node4.watch_log_for("JOINING: Starting to bootstrap")
+        node4.watch_log_for("Beginning stream session|sync data for keyspace=ks, status=started")
 
         debug("Stop node 4 ...")
         node4.stop()
