@@ -131,7 +131,6 @@ class SLATests(Tester):
                           expected_effective_slas_list=[],
                           entity=role)
 
-    @require('#830')
     def sla_named_empty_test(self):
         """
         Create SLA with 100 shares
@@ -139,32 +138,26 @@ class SLATests(Tester):
         session = self.prepare()
 
         sl = self.create_service_level(session=session, name='empty', service_shares=100)
-        # TODO: what is expected result?
+
         self.validate_sla(service_level=sl, expected_slas_list=[sl], expected_attached_slas_list=[],
                           expected_attached_all_slas_list=[], expected_effective_slas_list=[])
 
-    @require('#830')
     def user_named_empty_test(self):
         """
         Create SLA with 100 shares
         """
-        # TODO: this test should be in the auth module?
         session = self.prepare()
-
         sl = self.create_user(session=session, name='empty')
-        # TODO: what is expected result?
 
-    @require('#830')
     def sla_role_named_empty_test(self):
         """
         Create SLA with 100 shares and create a role that attach to SLA
         """
         session = self.prepare()
 
-        sl = ServiceLevel(session=session, name='sla1', service_shares=100)
+        sl = ServiceLevel(session=session, name='empty', service_shares=100)
         role = Role(session=session, name='empty')
         self.create_entity_with_service_level(entity=role, service_level=sl)
-        # TODO: what is expected result?
         self.validate_sla(service_level=sl,
                           expected_slas_list=[sl],
                           expected_attached_slas_list=[role],
