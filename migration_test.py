@@ -29,7 +29,6 @@ from nose.plugins.attrib import attr
 @tools.nottest
 class MigrationTestBase(Tester):
 
-    @attr('next-gating')
     @attr('dtest-debug')
     def migrate_sstable_without_compression_test(self):
         self._run_basic_migration_test("without_compression", {'key': 'abc', 'c1': None, 'c2': 'cde'})
