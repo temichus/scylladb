@@ -9,6 +9,8 @@ fedora_packages=(
     python2-six python3-six
     python2-requests python3-requests
     python2-psutil python3-psutil
+    python2-cassandra-driver python3-cassandra-driver python-cassandra-driver-doc
+
 )
 
 if [ "$ID" = "fedora" ]; then
