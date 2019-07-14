@@ -748,6 +748,7 @@ class TestMigrationUpgradeSSTables(TestMigration):
 
         debug("Running 'nodetool upgradesstables {} {}'".format(ks, cf))
         node.nodetool("upgradesstables {} {}".format(ks, cf))
+        node.flush()
 
         after_sstable_version = self.get_sstable_version(cf_dir)
 
