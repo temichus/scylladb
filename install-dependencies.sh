@@ -7,6 +7,7 @@ fedora_packages=(
     python-devel
     python2-pyyaml python3-pyyaml
     python2-six python3-six
+    python2-requests python3-requests
 )
 
 if [ "$ID" = "fedora" ]; then
