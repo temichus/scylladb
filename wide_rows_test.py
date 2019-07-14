@@ -1,9 +1,13 @@
+import datetime
+import time
+import random
 from collections import defaultdict
+
+from nose.plugins.attrib import attr
+from nose.tools import nottest
+
 from assertions import assert_equal_more_with_deviation, assert_less_equal_lists
 from dtest import Tester, debug
-from nose.plugins.attrib import attr
-import datetime, time
-import random
 from scylla_tools import wait_for_view
 
 status_messages = (
@@ -25,7 +29,7 @@ clients = (
 )
 
 
-@attr('dtest-full')
+@nottest
 class TestWideRows(Tester):
     _multiprocess_can_split_ = False
     BLOB_SIZE_10k = 1024 * 10
@@ -35,8 +39,6 @@ class TestWideRows(Tester):
 
     def __init__(self, *args, **kwargs):
         Tester.__init__(self, *args, **kwargs)
-        self.compaction_strategy = self.compaction_strategy \
-            if hasattr(self, 'compaction_strategy') else 'LeveledCompactionStrategy'
         self.compaction_option = "compaction = {'class': '%s'}" % self.compaction_strategy
 
     def prepare_cluster(self, nodes=1, version=None, keyspace_name=KEYSPACE_NAME, rf=1, options_dict=None):
@@ -47,7 +49,7 @@ class TestWideRows(Tester):
             self.cluster.set_install_dir(version=version)
         if options_dict:
             cluster.set_configuration_options(values=options_dict)
-        cluster.populate(nodes).start()
+        cluster.populate(nodes).start(wait_for_binary_proto=True)
         node1 = cluster.nodelist()[0]
 
         session = self.patient_cql_connection(node1)
@@ -80,10 +82,9 @@ class TestWideRows(Tester):
                                                                                              self.compaction_option)
         session.execute(create_table_query)
 
-    def create_large_partition_data(self, session, table_name, partition_rows, partitions_num,
+    def create_large_partition_data(self, session, table_name, partition_rows, partitions_num, one_blob_size,
                                     start_partition_index):
-        one_blob_size = 1024  # 1K value in the blob column
-        expected_row_size = (one_blob_size + 8 + 8) * partition_rows # aproximately partition size
+        expected_row_size = (one_blob_size + 8 + 8) * partition_rows  # aproximately partition size
         expected_rows = {}
 
         date = datetime.datetime.now()
@@ -93,13 +94,13 @@ class TestWideRows(Tester):
             for i in range(partition_rows):
                 date_str = (date + datetime.timedelta(i)).strftime("%Y-%m-%d")
                 value = 'a' * one_blob_size  # 1K value in the blob column
-                session.execute("UPDATE %s SET value = textAsBlob('%s') WHERE userid='%s' and event='%s'" \
+                session.execute("UPDATE %s SET value = textAsBlob('%s') WHERE userid='%s' and event='%s'"
                                 % (table_name, value, user, date_str))
                 expected_rows[user] = expected_row_size
         return expected_rows
 
-    def create_large_row_table(self, session, table_name, columns_num):
-        debug('Create table {} with large rows'.format(table_name))
+    def create_large_row_table(self, session, table_name, columns_num, entity_type='row'):
+        debug('Create table {} with large {}s'.format(table_name, entity_type))
         long_text_columns = ', '.join(['value%d blob' % i for i in xrange(columns_num)])
         create_table_query = 'CREATE TABLE IF NOT EXISTS %s (userid text, event text, %s, ' \
                              'PRIMARY KEY (userid, event)) with compression = { } and %s' % (table_name,
@@ -109,45 +110,18 @@ class TestWideRows(Tester):
 
     def create_large_row_data(self, session, table_name, rows_num, columns_num, one_blob_size, start_row_index):
         expected_rows = {}
-        expected_row_size = columns_num * one_blob_size  # aproximately row size
-
-        date = datetime.datetime.now()
-        debug('Prefill table {} with {} rows'.format(table_name, rows_num))
-        for k in xrange(start_row_index, start_row_index+rows_num):
-            user = 'user%d' % k
-            value = 'a' * one_blob_size  # 10K value in the one column
-            event = (date + datetime.timedelta(k)).strftime("%Y-%m-%d")
-            for i in xrange(columns_num):
-                out = session.execute(
-                    "UPDATE {table_name} SET value{i} = textAsBlob('{value}') WHERE userid='{user}' and event='{event}'"
-                    .format(**locals()))
-            expected_rows['{}.{}'.format(user, event)] = expected_row_size
-
-        return expected_rows
-
-    def create_large_cell_table(self, session, table_name, columns_num):
-        debug('Create table 1 with large cell')
-        long_text_columns = ', '.join(['value%d blob' % i for i in xrange(columns_num)])
-        create_table_query = 'CREATE TABLE IF NOT EXISTS %s (userid text, event text, %s, ' \
-                             'PRIMARY KEY (userid, event)) with compression = { } and %s' % (table_name,
-                                                                                             long_text_columns,
-                                                                                             self.compaction_option)
-        session.execute(create_table_query)
-
-    def create_large_cell_data(self, session, table_name, rows_num, columns_num, one_blob_size, start_row_index):
-        expected_rows = {}
-        expected_row_size = columns_num * one_blob_size  # aproximately row size
+        expected_row_size = columns_num * one_blob_size  # approximately row size
 
         date = datetime.datetime.now()
         debug('Prefill table {} with {} rows'.format(table_name, rows_num))
         for k in xrange(start_row_index, start_row_index + rows_num):
             user = 'user%d' % k
-            value = 'a' * one_blob_size  # 10K value in the one column
+            value = 'a' * one_blob_size
             event = (date + datetime.timedelta(k)).strftime("%Y-%m-%d")
             for i in xrange(columns_num):
                 out = session.execute(
                     "UPDATE {table_name} SET value{i} = textAsBlob('{value}') WHERE userid='{user}' and event='{event}'"
-                        .format(**locals()))
+                    .format(**locals()))
             expected_rows['{}.{}'.format(user, event)] = expected_row_size
 
         return expected_rows
@@ -174,11 +148,11 @@ class TestWideRows(Tester):
             entities = set()
             sstables_set = set()
             sstables_on_disk = set()
+            key_appearance = defaultdict(int)
             if node.status == 'UP':
                 session = self.patient_exclusive_cql_connection(node=node, keyspace=keyspace_name)
                 # Get large partition/row details from system.large_partitions/large_rows tables
                 clustering_key = 'clustering_key, ' if entity_type in ('row', 'cell') else ''
-                # clustering_key = 'clustering_key, ' if entity_type == 'row' else 'cell, ' if entity_type == 'cell' else ''
                 query = 'select sstable_name, partition_key, {clustering_key}{entity_type}_size ' \
                         'from system.large_{entity_type}s ' \
                         'where keyspace_name=\'{keyspace_name}\' and table_name=\'{table_name}\''.format(**locals())
@@ -186,6 +160,8 @@ class TestWideRows(Tester):
 
                 for row in result:
                     key = row[1] if len(row) == 3 else '{}.{}'.format(row[1], row[2])
+                    if entity_type == 'cell':
+                        key_appearance[key] += 1
                     entities.add(key)
                     entity_info[key] += row[-1]
                     sstables_set.add(row[0])
@@ -199,19 +175,25 @@ class TestWideRows(Tester):
 
             cluster_state[node.name] = {'info_from_system_table': {'partition_keys': entities,
                                                                    'partition_size': entity_info,
-                                                                   'sstables': sstables_set},
-                                        'sstables_from_disk' : sstables_on_disk,
+                                                                   'sstables': sstables_set,
+                                                                   'key_appearance': key_appearance},
+                                        'sstables_from_disk': sstables_on_disk,
                                         'node_status': node.status
-                                       }
+                                        }
 
         return cluster_state
 
     def validate_entities_recognized_as_large(self, entity_type, cluster_state, expected_entity_number):
         large_primary_keys = set()
+        key_appearance = 0
         for node_info in cluster_state.values():
             large_primary_keys.update(node_info['info_from_system_table']['partition_keys'])
+            key_appearance = sum(node_info['info_from_system_table']['key_appearance'].values())
 
-        actual_large_entities = len(large_primary_keys)
+        if entity_type == 'cell':
+            actual_large_entities = key_appearance
+        else:
+            actual_large_entities = len(large_primary_keys)
         self.assertEqual(actual_large_entities, expected_entity_number,
                          msg='Expected find {expected_entity_number} large {entity_type}s, reported in the '
                              'system.large_{entity_type}s, but there are {actual_large_entities}'.format(**locals()))
@@ -253,8 +235,8 @@ class TestWideRows(Tester):
             sstables_from_disk = sorted(list(node_info['sstables_from_disk']))
 
             assert_less_equal_lists(sstables_from_system, sstables_from_disk,
-                         msg='Expected sstables on the node {node_name}: {sstables_from_disk}; '
-                             'Actual sstables: {sstables_from_system}'.format(**locals()))
+                                    msg='Expected sstables on the node {node_name}: {sstables_from_disk}; '
+                                        'Actual sstables: {sstables_from_system}'.format(**locals()))
 
     def validate_system_table(self, entity_type, keyspace_name, table_name, expected_entity_number,
                                     expected_entity_data_size, pk_max_index=None):
@@ -334,6 +316,7 @@ class TestWideRows(Tester):
         self.cluster.flush()
         debug('Wait %d sec while the TTLed rows expiration' % ttl)
         time.sleep(ttl + 5)
+        self.cluster.nodetool('compact {} {}'.format(self.KEYSPACE_NAME, self.TABLE_NAME))
         expected_partitions.pop(userid)
 
         return expected_partitions
@@ -358,6 +341,7 @@ class TestWideRows(Tester):
         self.cluster.flush()
         debug('Wait %d sec while the TTLed rows expiration' % ttl)
         time.sleep(ttl + 5)
+        self.cluster.nodetool('compact {} {}'.format(self.KEYSPACE_NAME, self.TABLE_NAME))
         expected_rows.pop('{}.{}'.format(userid, event))
         return expected_rows
 
@@ -367,6 +351,21 @@ class TestWideRows(Tester):
             mark_log_by_node[node.name] = node.mark_log()
         return mark_log_by_node
 
+    def trigger_compaction_by_data_write_and_flush(self, session, entity_type, index):
+        row_number = 2
+        size = 1
+
+        if entity_type == 'partition':
+            func = self.create_large_partition_data
+        else:
+            func = self.create_large_row_data
+
+        for i in xrange(5):
+            func(session, self.TABLE_NAME, row_number, 1, size, index)
+            self.cluster.flush()
+            time.sleep(0.5)
+        return row_number
+
     @attr('next-gating')
     @attr('dtest-debug')
     def test_wide_rows(self):
@@ -374,7 +373,8 @@ class TestWideRows(Tester):
 
     def write_wide_rows(self, version=None):
         session = self.prepare_cluster(version=version,
-                                       options_dict={'compaction_large_partition_warning_threshold_mb': 1, 'compaction_large_row_warning_threshold_mb': 1})
+                                       options_dict={'compaction_large_partition_warning_threshold_mb': 1,
+                                                     'compaction_large_row_warning_threshold_mb': 1})
         # Simple timeline:  user -> {date: value, ...}
         debug('Create Table....')
         session.execute('CREATE TABLE user_events (userid text, event timestamp, value text, '
@@ -407,9 +407,9 @@ class TestWideRows(Tester):
         read columns from that row and ensure that all data is
         returned. See CASSANDRA-5225.
         """
-        session = self.prepare_cluster(options_dict={'column_index_size_in_kb': 1}) # reduce column_index_size_in_kb
+        session = self.prepare_cluster(options_dict={'column_index_size_in_kb': 1})  # reduce column_index_size_in_kb
         # value to force column index creation
-        create_table_query = 'CREATE TABLE test_table (row varchar, name varchar, value int, PRIMARY KEY (row, name)) ' \
+        create_table_query = 'CREATE TABLE test_table (row varchar, name varchar, value int, PRIMARY KEY (row, name)) '\
                              'WITH %s' % self.compaction_option
         session.execute(create_table_query)
 
@@ -442,6 +442,7 @@ class TestWideRows(Tester):
         """
         entity_type = 'partition'
         partition_num = 1
+        extra_partitions = 0
 
         session = self.prepare_cluster(nodes=4, rf=3,
                                        options_dict={'compaction_large_partition_warning_threshold_mb': 1})
@@ -455,12 +456,12 @@ class TestWideRows(Tester):
                                                                         table_name=self.TABLE_NAME,
                                                                         partition_rows=60000,
                                                                         partitions_num=partition_num,
+                                                                        one_blob_size=1024,
                                                                         start_partition_index=0)
 
         self.cluster.flush()
 
-        debug('Run full compaction')
-        self.cluster.nodetool('compact {} {}'.format(self.KEYSPACE_NAME, self.TABLE_NAME))
+        extra_partitions += self.trigger_compaction_by_data_write_and_flush(session, entity_type, partition_num)
 
         cluster_state = self.validate_system_table(entity_type=entity_type, keyspace_name=self.KEYSPACE_NAME,
                                                    table_name=self.TABLE_NAME,
@@ -475,8 +476,8 @@ class TestWideRows(Tester):
 
         self.cluster.flush()
 
-        debug('Run full compaction')
-        self.cluster.nodetool('compact {} {}'.format(self.KEYSPACE_NAME, self.TABLE_NAME))
+        extra_partitions += self.trigger_compaction_by_data_write_and_flush(session, entity_type, partition_num +
+                                                                            extra_partitions)
 
         cluster_state = self.validate_system_table(entity_type=entity_type, keyspace_name=self.KEYSPACE_NAME,
                                                    table_name=self.TABLE_NAME,
@@ -491,12 +492,12 @@ class TestWideRows(Tester):
         Create table with 10 large partition and validate that partition is reported in the system.large_partitions
         table and there are warning in the log
         """
-        partition_rows = 60000
-        partition_num = 10
+        partition_rows = 15000
+        partition_num = 5
         entity_type = 'partition'
 
         session = self.prepare_cluster(nodes=4, rf=3,
-                                       options_dict={'compaction_large_partition_warning_threshold_mb': 4})
+                                       options_dict={'compaction_large_partition_warning_threshold_mb': 1})
 
         pk_max_index = None
         self.create_large_partition_table(session=session, table_name=self.TABLE_NAME)
@@ -504,11 +505,11 @@ class TestWideRows(Tester):
                                                                         table_name=self.TABLE_NAME,
                                                                         partition_rows=partition_rows,
                                                                         partitions_num=partition_num,
+                                                                        one_blob_size=1024,
                                                                         start_partition_index=0)
         self.cluster.flush()
 
-        debug('Run full compaction')
-        self.cluster.nodetool('compact {} {}'.format(self.KEYSPACE_NAME, self.TABLE_NAME))
+        self.trigger_compaction_by_data_write_and_flush(session, entity_type, partition_num)
 
         cluster_state = self.validate_system_table(entity_type=entity_type, keyspace_name=self.KEYSPACE_NAME,
                                                    table_name=self.TABLE_NAME,
@@ -526,6 +527,7 @@ class TestWideRows(Tester):
         """
         partition_rows = 60000
         partition_num = 1
+        small_partition_num = 10
         entity_type = 'partition'
 
         session = self.prepare_cluster(nodes=4, rf=3,
@@ -536,24 +538,25 @@ class TestWideRows(Tester):
                                                                         table_name=self.TABLE_NAME,
                                                                         partition_rows=partition_rows,
                                                                         partitions_num=partition_num,
+                                                                        one_blob_size=1024,
                                                                         start_partition_index=0)
 
         pk_max_index = partition_num - 1
         self.create_large_partition_data(session=session,
                                          table_name=self.TABLE_NAME,
                                          partition_rows=4000,
-                                         partitions_num=10,
+                                         partitions_num=small_partition_num,
+                                         one_blob_size=1024,
                                          start_partition_index=partition_num+1)
         self.cluster.flush()
 
-        debug('Run full compaction')
-        self.cluster.nodetool('compact {} {}'.format(self.KEYSPACE_NAME, self.TABLE_NAME))
+        self.trigger_compaction_by_data_write_and_flush(session, entity_type, partition_num + small_partition_num)
 
         cluster_state = self.validate_system_table(entity_type=entity_type, keyspace_name=self.KEYSPACE_NAME,
-                                                    table_name=self.TABLE_NAME,
-                                                    expected_entity_number=partition_num,
-                                                    expected_entity_data_size=expected_partition_data_size,
-                                                    pk_max_index=pk_max_index)
+                                                   table_name=self.TABLE_NAME,
+                                                   expected_entity_number=partition_num,
+                                                   expected_entity_data_size=expected_partition_data_size,
+                                                   pk_max_index=pk_max_index)
         self.validate_log_warnings(cluster_state=cluster_state, entity_type=entity_type,
                                    keyspace_name=self.KEYSPACE_NAME,
                                    table_name=self.TABLE_NAME)
@@ -565,6 +568,7 @@ class TestWideRows(Tester):
         """
         partition_rows = 60000
         partition_num = 1
+        extra_partitions = 0
         entity_type = 'partition'
 
         session = self.prepare_cluster(nodes=4, rf=3,
@@ -575,12 +579,12 @@ class TestWideRows(Tester):
                                                                         table_name=self.TABLE_NAME,
                                                                         partition_rows=partition_rows,
                                                                         partitions_num=partition_num,
+                                                                        one_blob_size=1024,
                                                                         start_partition_index=0)
 
         self.cluster.flush()
 
-        debug('Run full compaction')
-        self.cluster.nodetool('compact {} {}'.format(self.KEYSPACE_NAME, self.TABLE_NAME))
+        extra_partitions += self.trigger_compaction_by_data_write_and_flush(session, entity_type, partition_num)
 
         cluster_state = self.validate_system_table(entity_type=entity_type, keyspace_name=self.KEYSPACE_NAME,
                                                    table_name=self.TABLE_NAME,
@@ -592,11 +596,12 @@ class TestWideRows(Tester):
 
         expected_partitions = self.set_ttl_on_few_rows_in_partition(session=session,
                                                                     keyspace_name=self.KEYSPACE_NAME,
-                                                                    table_name=self.TABLE_NAME, partition_num=partition_num,
+                                                                    table_name=self.TABLE_NAME,
+                                                                    partition_num=partition_num,
                                                                     expected_partitions=expected_partition_data_size,
                                                                     ttl_rows_amount=partition_rows-1000)
-        debug('Run full compaction')
-        self.cluster.nodetool('compact {} {}'.format(self.KEYSPACE_NAME, self.TABLE_NAME))
+        extra_partitions += self.trigger_compaction_by_data_write_and_flush(session, entity_type, partition_num + 
+                                                                           extra_partitions)
 
         mark_logs = self.mark_log_on_all_nodes()
 
@@ -616,6 +621,7 @@ class TestWideRows(Tester):
         """
         partition_rows = 60000
         partition_num = 1
+        extra_partitions = 0
         entity_type = 'partition'
 
         session = self.prepare_cluster(nodes=4, rf=3,
@@ -626,12 +632,12 @@ class TestWideRows(Tester):
                                                                         table_name=self.TABLE_NAME,
                                                                         partition_rows=partition_rows,
                                                                         partitions_num=partition_num,
+                                                                        one_blob_size=1024,
                                                                         start_partition_index=0)
 
         self.cluster.flush()
 
-        debug('Run full compaction')
-        self.cluster.nodetool('compact {} {}'.format(self.KEYSPACE_NAME, self.TABLE_NAME))
+        extra_partitions += self.trigger_compaction_by_data_write_and_flush(session, entity_type, partition_num)
 
         cluster_state = self.validate_system_table(entity_type=entity_type, keyspace_name=self.KEYSPACE_NAME,
                                                    table_name=self.TABLE_NAME,
@@ -647,8 +653,8 @@ class TestWideRows(Tester):
                                                                     partition_num=partition_num,
                                                                     expected_partitions=expected_partition_data_size,
                                                                     ttl_rows_amount=partition_rows)
-        debug('Run full compaction')
-        self.cluster.nodetool('compact {} {}'.format(self.KEYSPACE_NAME, self.TABLE_NAME))
+        extra_partitions += self.trigger_compaction_by_data_write_and_flush(session, entity_type, partition_num + 
+                                                                            extra_partitions)
 
         mark_logs = self.mark_log_on_all_nodes()
 
@@ -666,11 +672,12 @@ class TestWideRows(Tester):
         Create table with one large row when one node is stopped and validate that row is reported in the
         system.large_rows table and there are warning in the log
         """
-        rows_number = 70
+        rows_number = 5
         entity_type = 'row'
-        columns_num = 200
+        columns_num = 15
+        extra_rows = 0
 
-        session = self.prepare_cluster(nodes=4, rf=3,
+        session = self.prepare_cluster(nodes=2, rf=2,
                                        options_dict={'compaction_large_row_warning_threshold_mb': 1})
 
         node2 = self.cluster.nodelist()[1]
@@ -682,12 +689,10 @@ class TestWideRows(Tester):
                                                              table_name=self.TABLE_NAME,
                                                              columns_num=columns_num,
                                                              rows_num=rows_number,
-                                                             one_blob_size=self.BLOB_SIZE_10k,
+                                                             one_blob_size=self.BLOB_SIZE_10k * 10,
                                                              start_row_index=0)
         self.cluster.flush()
-
-        debug('Run full compaction')
-        self.cluster.nodetool('compact {} {}'.format(self.KEYSPACE_NAME, self.TABLE_NAME))
+        extra_rows += self.trigger_compaction_by_data_write_and_flush(session, entity_type, rows_number)
 
         cluster_state = self.validate_system_table(entity_type=entity_type, keyspace_name=self.KEYSPACE_NAME,
                                                    table_name=self.TABLE_NAME,
@@ -699,10 +704,8 @@ class TestWideRows(Tester):
 
         debug('Start {}'.format(node2.name))
         node2.start(wait_other_notice=True, wait_for_binary_proto=True)
-        self.cluster.flush()
-
-        debug('Run full compaction')
-        self.cluster.nodetool('compact {} {}'.format(self.KEYSPACE_NAME, self.TABLE_NAME))
+        # self.cluster.flush()
+        # extra_rows += self.trigger_compaction_by_data_write_and_flush(session, entity_type, rows_number + extra_rows)
 
         cluster_state = self.validate_system_table(entity_type=entity_type, keyspace_name=self.KEYSPACE_NAME,
                                                    table_name=self.TABLE_NAME,
@@ -712,13 +715,13 @@ class TestWideRows(Tester):
                                    keyspace_name=self.KEYSPACE_NAME,
                                    table_name=self.TABLE_NAME)
 
-    def test_large_row_detector(self):
+    def test_simple_large_row_detector(self):
         """
         Create table with large rows. Validate that it's reported in the
         system.large_rows table and there are warning in the log
         """
-        columns_num = 200
-        rows_number=65
+        columns_num = 14
+        rows_number = 5
         entity_type = 'row'
 
         session = self.prepare_cluster(nodes=3, rf=3,
@@ -729,13 +732,12 @@ class TestWideRows(Tester):
                                                              table_name=self.TABLE_NAME,
                                                              columns_num=columns_num,
                                                              rows_num=rows_number,
-                                                             one_blob_size=self.BLOB_SIZE_10k,
+                                                             one_blob_size=self.BLOB_SIZE_10k * 10,
                                                              start_row_index=0)
 
         self.cluster.flush()
 
-        debug('Run full compaction')
-        self.cluster.nodetool('compact {} {}'.format(self.KEYSPACE_NAME, self.TABLE_NAME))
+        self.trigger_compaction_by_data_write_and_flush(session, entity_type, rows_number)
 
         cluster_state = self.validate_system_table(entity_type=entity_type, keyspace_name=self.KEYSPACE_NAME,
                                                    table_name=self.TABLE_NAME,
@@ -750,8 +752,9 @@ class TestWideRows(Tester):
         Create table with large rows. Validate that it's reported in the
         system.large_rows table and there are warning in the log
         """
-        rows_num = 2
-        columns_num = 200
+        rows_number = 2
+        columns_num = 20
+        extra_rows = 0
         entity_type = 'row'
 
         session = self.prepare_cluster(nodes=3, rf=3,
@@ -761,17 +764,16 @@ class TestWideRows(Tester):
         expected_rows_data_size = self.create_large_row_data(session=session,
                                                              table_name=self.TABLE_NAME,
                                                              columns_num=columns_num,
-                                                             rows_num=rows_num,
-                                                             one_blob_size=self.BLOB_SIZE_10k,
+                                                             rows_num=rows_number,
+                                                             one_blob_size=self.BLOB_SIZE_10k * 10,
                                                              start_row_index=0)
         self.cluster.flush()
 
-        debug('Run full compaction')
-        self.cluster.nodetool('compact {} {}'.format(self.KEYSPACE_NAME, self.TABLE_NAME))
+        extra_rows += self.trigger_compaction_by_data_write_and_flush(session, entity_type, rows_number)
 
         cluster_state = self.validate_system_table(entity_type=entity_type, keyspace_name=self.KEYSPACE_NAME,
                                                    table_name=self.TABLE_NAME,
-                                                   expected_entity_number=rows_num,
+                                                   expected_entity_number=rows_number,
                                                    expected_entity_data_size=expected_rows_data_size)
         self.validate_log_warnings(cluster_state=cluster_state, entity_type=entity_type,
                                    keyspace_name=self.KEYSPACE_NAME,
@@ -780,18 +782,17 @@ class TestWideRows(Tester):
         expected_rows_data_size = self.set_ttl_on_few_large_rows(session=session,
                                                                  keyspace_name=self.KEYSPACE_NAME,
                                                                  table_name=self.TABLE_NAME,
-                                                                 rows_num=rows_num,
+                                                                 rows_num=rows_number,
                                                                  columns_num=columns_num,
                                                                  expected_rows=expected_rows_data_size)
 
-        debug('Run full compaction')
-        self.cluster.nodetool('compact {} {}'.format(self.KEYSPACE_NAME, self.TABLE_NAME))
+        extra_rows += self.trigger_compaction_by_data_write_and_flush(session, entity_type, rows_number + extra_rows)
 
         mark_logs = self.mark_log_on_all_nodes()
 
         cluster_state = self.validate_system_table(entity_type=entity_type, keyspace_name=self.KEYSPACE_NAME,
                                                    table_name=self.TABLE_NAME,
-                                                   expected_entity_number=rows_num-1,
+                                                   expected_entity_number=rows_number - 1,
                                                    expected_entity_data_size=expected_rows_data_size)
         self.validate_log_warnings(cluster_state=cluster_state, entity_type=entity_type,
                                    keyspace_name=self.KEYSPACE_NAME,
@@ -804,8 +805,9 @@ class TestWideRows(Tester):
         Create table with one large row and small rows. Validate that just large row is reported in the
         system.large_rows table and there are warning in the log
         """
-        rows_num = 1
-        columns_num = 200
+        small_rows_number = 10
+        rows_number = 1
+        columns_num = 12
         entity_type = 'row'
 
         session = self.prepare_cluster(nodes=3, rf=3,
@@ -816,27 +818,26 @@ class TestWideRows(Tester):
         expected_rows_data_size = self.create_large_row_data(session=session,
                                                              table_name=self.TABLE_NAME,
                                                              columns_num=columns_num,
-                                                             rows_num=rows_num,
-                                                             one_blob_size=self.BLOB_SIZE_10k,
+                                                             rows_num=rows_number,
+                                                             one_blob_size=self.BLOB_SIZE_10k * 10,
                                                              start_row_index=0)
 
         # Insert small rows
-        maximum_primary_key_value = rows_num - 1
+        maximum_primary_key_value = rows_number - 1
         self.create_large_row_data(session=session,
                                    table_name=self.TABLE_NAME,
                                    one_blob_size=10,
                                    columns_num=columns_num,
-                                   rows_num=10,
-                                   start_row_index=rows_num)
+                                   rows_num=small_rows_number,
+                                   start_row_index=rows_number)
 
         self.cluster.flush()
 
-        debug('Run full compaction')
-        self.cluster.nodetool('compact {} {}'.format(self.KEYSPACE_NAME, self.TABLE_NAME))
+        self.trigger_compaction_by_data_write_and_flush(session, entity_type, rows_number + small_rows_number)
 
         cluster_state = self.validate_system_table(entity_type=entity_type, keyspace_name=self.KEYSPACE_NAME,
                                                    table_name=self.TABLE_NAME,
-                                                   expected_entity_number=rows_num,
+                                                   expected_entity_number=rows_number,
                                                    expected_entity_data_size=expected_rows_data_size,
                                                    pk_max_index=maximum_primary_key_value)
         self.validate_log_warnings(cluster_state=cluster_state, entity_type=entity_type,
@@ -854,6 +855,7 @@ class TestWideRows(Tester):
         self.create_large_partition_data(session=session, table_name=self.TABLE_NAME,
                                          partition_rows=600,
                                          partitions_num=1,
+                                         one_blob_size=1024,
                                          start_partition_index=0)
         self.cluster.flush()
 
@@ -898,7 +900,7 @@ class TestWideRows(Tester):
          Validate that just large row is reported in the system.large_rows table and there are warning in the log for
          both base table and materialized view
         """
-        rows_num = 1
+        rows_number = 1
         columns_num = 200
         entity_type = 'row'
         view_name = '%s_view' % self.TABLE_NAME
@@ -911,7 +913,7 @@ class TestWideRows(Tester):
         expected_rows_data_size = self.create_large_row_data(session=session,
                                                              table_name=self.TABLE_NAME,
                                                              columns_num=columns_num,
-                                                             rows_num=rows_num,
+                                                             rows_num=rows_number,
                                                              one_blob_size=self.BLOB_SIZE_10k,
                                                              start_row_index=0)
 
@@ -921,14 +923,12 @@ class TestWideRows(Tester):
         wait_for_view(cluster=self.cluster, session=session, ks=self.KEYSPACE_NAME, view=view_name)
         self.cluster.flush()
 
-        debug('Run full compaction')
-        self.cluster.nodetool('compact {} {}'.format(self.KEYSPACE_NAME, self.TABLE_NAME))
-        self.cluster.nodetool('compact {} {}'.format(self.KEYSPACE_NAME, view_name))
+        self.trigger_compaction_by_data_write_and_flush(session, entity_type, rows_number)
 
         # Validate base table
         cluster_state = self.validate_system_table(entity_type=entity_type, keyspace_name=self.KEYSPACE_NAME,
                                                    table_name=self.TABLE_NAME,
-                                                   expected_entity_number=rows_num,
+                                                   expected_entity_number=rows_number,
                                                    expected_entity_data_size=expected_rows_data_size)
         self.validate_log_warnings(cluster_state=cluster_state, entity_type=entity_type,
                                    keyspace_name=self.KEYSPACE_NAME,
@@ -937,7 +937,7 @@ class TestWideRows(Tester):
         # Validate view
         cluster_state = self.validate_system_table(entity_type=entity_type, keyspace_name=self.KEYSPACE_NAME,
                                                    table_name=view_name,
-                                                   expected_entity_number=rows_num,
+                                                   expected_entity_number=rows_number,
                                                    expected_entity_data_size=expected_rows_data_size)
         self.validate_log_warnings(cluster_state=cluster_state, entity_type=entity_type,
                                    keyspace_name=self.KEYSPACE_NAME,
@@ -949,19 +949,20 @@ class TestWideRows(Tester):
          Validate that just large row is reported in the system.large_rows table and there are warning in the log for
          both base table and materialized view
         """
-        partition_rows = 60000
+        partition_rows = 15000
         partition_num = 1
         entity_type = 'partition'
         view_name = '%s_view' % self.TABLE_NAME
 
         session = self.prepare_cluster(nodes=4, rf=3,
-                                       options_dict={'compaction_large_partition_warning_threshold_mb': 4})
+                                       options_dict={'compaction_large_partition_warning_threshold_mb': 1})
 
         self.create_large_partition_table(session=session, table_name=self.TABLE_NAME)
         expected_partition_data_size = self.create_large_partition_data(session=session,
                                                                         table_name=self.TABLE_NAME,
                                                                         partition_rows=partition_rows,
                                                                         partitions_num=partition_num,
+                                                                        one_blob_size=1024,
                                                                         start_partition_index=0)
 
         session.execute('create materialized view %s as select * from %s '
@@ -970,10 +971,8 @@ class TestWideRows(Tester):
         wait_for_view(cluster=self.cluster, session=session, ks=self.KEYSPACE_NAME, view=view_name)
 
         self.cluster.flush()
-
-        debug('Run full compaction')
         self.cluster.nodetool('compact {} {}'.format(self.KEYSPACE_NAME, self.TABLE_NAME))
-        self.cluster.nodetool('compact {} {}'.format(self.KEYSPACE_NAME, view_name))
+        # self.trigger_compaction_by_data_write_and_flush(session, entity_type, partition_num)
 
         # Validate base table
         cluster_state = self.validate_system_table(entity_type=entity_type, keyspace_name=self.KEYSPACE_NAME,
@@ -993,63 +992,137 @@ class TestWideRows(Tester):
                                    keyspace_name=self.KEYSPACE_NAME,
                                    table_name=view_name)
 
-    def test_large_cell_detector(self):
+    def test_large_cell_detector_with_small_cells(self):
         """
-        Create table with a large cell. Validate that it's reported in the
+        Create table with one large cell and few small cells. Validate that just large cell is reported in the
         system.large_cells table and there are warning in the log
         """
-        columns_num = 1
-        rows_num = 1
+        rows_number = 10
+        columns_num = 3
+        entity_type = 'cell'
+        session = self.prepare_cluster(nodes=3, rf=3)
+
+        self.create_large_row_table(session=session, table_name=self.TABLE_NAME, columns_num=columns_num,
+                                    entity_type=entity_type)
+        # Insert large row
+        expected_cells_data_size = self.create_large_row_data(session=session,
+                                                              table_name=self.TABLE_NAME,
+                                                              columns_num=columns_num,
+                                                              rows_num=rows_number,
+                                                              one_blob_size=self.BLOB_SIZE_1MB,
+                                                              start_row_index=0)
+
+        # Insert small cells
+        maximum_primary_key_value = rows_number - 1
+        self.create_large_row_data(session=session,
+                                   table_name=self.TABLE_NAME,
+                                   one_blob_size=self.BLOB_SIZE_10k,
+                                   columns_num=columns_num,
+                                   rows_num=rows_number,
+                                   start_row_index=rows_number)
+
+        self.cluster.flush()
+
+        self.trigger_compaction_by_data_write_and_flush(session, entity_type, rows_number + rows_number)
+
+        cluster_state = self.validate_system_table(entity_type=entity_type, keyspace_name=self.KEYSPACE_NAME,
+                                                   table_name=self.TABLE_NAME,
+                                                   expected_entity_number=columns_num * rows_number,
+                                                   expected_entity_data_size=expected_cells_data_size,
+                                                   pk_max_index=maximum_primary_key_value)
+        self.validate_log_warnings(cluster_state=cluster_state, entity_type=entity_type,
+                                   keyspace_name=self.KEYSPACE_NAME,
+                                   table_name=self.TABLE_NAME)
+
+
+    def test_multiple_rows_with_large_cells_detector(self):
+        """
+        Create table with 10 large cells. Validate that it's reported in the
+        system.large_cells table and there are warning in the log
+        """
+        columns_num = 3
+        rows_number = 10
         entity_type = 'cell'
 
         session = self.prepare_cluster(nodes=3, rf=3)
 
-        self.create_large_cell_table(session=session, table_name=self.TABLE_NAME, columns_num=columns_num)
-        expected_rows_data_size = self.create_large_cell_data(session=session,
-                                                              table_name=self.TABLE_NAME,
-                                                              rows_num=rows_num,
-                                                              columns_num=columns_num,
-                                                              one_blob_size=self.BLOB_SIZE_1MB,
-                                                              start_row_index=0)
+        self.create_large_row_table(session=session, table_name=self.TABLE_NAME, columns_num=columns_num,
+                                    entity_type=entity_type)
+        expected_rows_data_size = self.create_large_row_data(session=session,
+                                                             table_name=self.TABLE_NAME,
+                                                             rows_num=rows_number,
+                                                             columns_num=columns_num,
+                                                             one_blob_size=self.BLOB_SIZE_1MB,
+                                                             start_row_index=0)
         self.cluster.flush()
 
-        debug('Run full compaction')
-        self.cluster.nodetool('compact {} {}'.format(self.KEYSPACE_NAME, self.TABLE_NAME))
+        self.trigger_compaction_by_data_write_and_flush(session, entity_type, rows_number)
 
         cluster_state = self.validate_system_table(entity_type=entity_type, keyspace_name=self.KEYSPACE_NAME,
                                                    table_name=self.TABLE_NAME,
-                                                   expected_entity_number=columns_num,
+                                                   expected_entity_number=columns_num * rows_number,
                                                    expected_entity_data_size=expected_rows_data_size)
         self.validate_log_warnings(cluster_state=cluster_state, entity_type=entity_type,
                                    keyspace_name=self.KEYSPACE_NAME,
                                    table_name=self.TABLE_NAME)
 
-    def test_multiple_large_cells_detector(self):
+    def test_multiple_columns_with_large_cells_detector(self):
         """
-        Create table with 10 large cells. Validate that it's reported in the
-        system.large_cells table and there are warning in the log
+        Create table with 10 large cells and 5 rows (total of 50 large cell warnings). Validate that they are
+        reported in the system.large_cells table and there are warning in the log
         """
-        columns_num = 1
-        rows_num = 10
+        columns_num = 10
+        rows_number = 5
         entity_type = 'cell'
 
         session = self.prepare_cluster(nodes=3, rf=3)
 
-        self.create_large_cell_table(session=session, table_name=self.TABLE_NAME, columns_num=columns_num)
-        expected_rows_data_size = self.create_large_cell_data(session=session,
-                                                              table_name=self.TABLE_NAME,
-                                                              rows_num=rows_num,
-                                                              columns_num=columns_num,
-                                                              one_blob_size=self.BLOB_SIZE_1MB,
-                                                              start_row_index=0)
+        self.create_large_row_table(session=session, table_name=self.TABLE_NAME, columns_num=columns_num,
+                                    entity_type=entity_type)
+        expected_rows_data_size = self.create_large_row_data(session=session,
+                                                             table_name=self.TABLE_NAME,
+                                                             rows_num=rows_number,
+                                                             columns_num=columns_num,
+                                                             one_blob_size=self.BLOB_SIZE_1MB,
+                                                             start_row_index=0)
         self.cluster.flush()
 
-        debug('Run full compaction')
-        self.cluster.nodetool('compact {} {}'.format(self.KEYSPACE_NAME, self.TABLE_NAME))
+        self.trigger_compaction_by_data_write_and_flush(session, entity_type, rows_number)
 
         cluster_state = self.validate_system_table(entity_type=entity_type, keyspace_name=self.KEYSPACE_NAME,
                                                    table_name=self.TABLE_NAME,
-                                                   expected_entity_number=rows_num,
+                                                   expected_entity_number=columns_num * rows_number,
+                                                   expected_entity_data_size=expected_rows_data_size)
+        self.validate_log_warnings(cluster_state=cluster_state, entity_type=entity_type,
+                                   keyspace_name=self.KEYSPACE_NAME,
+                                   table_name=self.TABLE_NAME)
+
+    def test_multiple_rows_and_columns_with_large_cells_detector(self):
+        """
+        Create table with 5 large cells on 10 rows. Validate that it's reported in the
+        system.large_cells table and there are warning in the log
+        """
+        columns_num = 5
+        rows_number = 10
+        entity_type = 'cell'
+
+        session = self.prepare_cluster(nodes=3, rf=3)
+
+        self.create_large_row_table(session=session, table_name=self.TABLE_NAME, columns_num=columns_num,
+                                    entity_type=entity_type)
+        expected_rows_data_size = self.create_large_row_data(session=session,
+                                                             table_name=self.TABLE_NAME,
+                                                             rows_num=rows_number,
+                                                             columns_num=columns_num,
+                                                             one_blob_size=self.BLOB_SIZE_1MB,
+                                                             start_row_index=0)
+        self.cluster.flush()
+
+        self.trigger_compaction_by_data_write_and_flush(session, entity_type, rows_number)
+
+        cluster_state = self.validate_system_table(entity_type=entity_type, keyspace_name=self.KEYSPACE_NAME,
+                                                   table_name=self.TABLE_NAME,
+                                                   expected_entity_number=columns_num * rows_number,
                                                    expected_entity_data_size=expected_rows_data_size)
         self.validate_log_warnings(cluster_state=cluster_state, entity_type=entity_type,
                                    keyspace_name=self.KEYSPACE_NAME,
@@ -1061,19 +1134,20 @@ class TestWideRows(Tester):
          Validate that just large cell is reported in the system.large_cells table and there are warning in the
          log for both base table and materialized view
         """
-        rows_num = 1
-        columns_num = 1
+        rows_number = 10
+        columns_num = 10
         entity_type = 'cell'
         view_name = '%s_view' % self.TABLE_NAME
 
         session = self.prepare_cluster(nodes=3, rf=3)
 
-        self.create_large_cell_table(session=session, table_name=self.TABLE_NAME, columns_num=columns_num)
+        self.create_large_row_table(session=session, table_name=self.TABLE_NAME, columns_num=columns_num,
+                                    entity_type=entity_type)
         # Insert large row
-        expected_cells_data_size = self.create_large_cell_data(session=session,
+        expected_cells_data_size = self.create_large_row_data(session=session,
                                                               table_name=self.TABLE_NAME,
                                                               columns_num=columns_num,
-                                                              rows_num=rows_num,
+                                                              rows_num=rows_number,
                                                               one_blob_size=self.BLOB_SIZE_1MB,
                                                               start_row_index=0)
 
@@ -1083,14 +1157,12 @@ class TestWideRows(Tester):
         wait_for_view(cluster=self.cluster, session=session, ks=self.KEYSPACE_NAME, view=view_name)
         self.cluster.flush()
 
-        debug('Run full compaction')
-        self.cluster.nodetool('compact {} {}'.format(self.KEYSPACE_NAME, self.TABLE_NAME))
-        self.cluster.nodetool('compact {} {}'.format(self.KEYSPACE_NAME, view_name))
+        self.trigger_compaction_by_data_write_and_flush(session, entity_type, rows_number)
 
         # Validate base table
         cluster_state = self.validate_system_table(entity_type=entity_type, keyspace_name=self.KEYSPACE_NAME,
                                                    table_name=self.TABLE_NAME,
-                                                   expected_entity_number=rows_num,
+                                                   expected_entity_number=columns_num * rows_number,
                                                    expected_entity_data_size=expected_cells_data_size)
         self.validate_log_warnings(cluster_state=cluster_state, entity_type=entity_type,
                                    keyspace_name=self.KEYSPACE_NAME,
@@ -1099,7 +1171,7 @@ class TestWideRows(Tester):
         # Validate view
         cluster_state = self.validate_system_table(entity_type=entity_type, keyspace_name=self.KEYSPACE_NAME,
                                                    table_name=view_name,
-                                                   expected_entity_number=rows_num,
+                                                   expected_entity_number=columns_num * rows_number,
                                                    expected_entity_data_size=expected_cells_data_size)
         self.validate_log_warnings(cluster_state=cluster_state, entity_type=entity_type,
                                    keyspace_name=self.KEYSPACE_NAME,
@@ -1108,29 +1180,32 @@ class TestWideRows(Tester):
     def test_large_cell_detector_with_ttl_on_row(self):
         """
         Create table with large cells. Validate that it's reported in the
-        system.large_cells table and there are warning in the log
+        system.large_cells table and there are warning in the log.
+        After that, we create more data, setting TTL to some of them and wait for the TTL timeout and then
+        verify they are not reported anymore.
         """
-        rows_num = 2
-        columns_num = 1
+        rows_number = 10
+        columns_num = 6
+        extra_rows = 0
         entity_type = 'cell'
 
         session = self.prepare_cluster(nodes=3, rf=3)
 
-        self.create_large_cell_table(session=session, table_name=self.TABLE_NAME, columns_num=columns_num)
-        expected_cells_data_size = self.create_large_cell_data(session=session,
-                                                               table_name=self.TABLE_NAME,
-                                                               columns_num=columns_num,
-                                                               rows_num=rows_num,
-                                                               one_blob_size=self.BLOB_SIZE_1MB,
-                                                               start_row_index=0)
+        self.create_large_row_table(session=session, table_name=self.TABLE_NAME, columns_num=columns_num,
+                                    entity_type=entity_type)
+        expected_cells_data_size = self.create_large_row_data(session=session,
+                                                              table_name=self.TABLE_NAME,
+                                                              columns_num=columns_num,
+                                                              rows_num=rows_number,
+                                                              one_blob_size=self.BLOB_SIZE_1MB,
+                                                              start_row_index=0)
         self.cluster.flush()
 
-        debug('Run full compaction')
-        self.cluster.nodetool('compact {} {}'.format(self.KEYSPACE_NAME, self.TABLE_NAME))
+        extra_rows += self.trigger_compaction_by_data_write_and_flush(session, entity_type, rows_number)
 
         cluster_state = self.validate_system_table(entity_type=entity_type, keyspace_name=self.KEYSPACE_NAME,
                                                    table_name=self.TABLE_NAME,
-                                                   expected_entity_number=rows_num,
+                                                   expected_entity_number=columns_num * rows_number,
                                                    expected_entity_data_size=expected_cells_data_size)
         self.validate_log_warnings(cluster_state=cluster_state, entity_type=entity_type,
                                    keyspace_name=self.KEYSPACE_NAME,
@@ -1139,18 +1214,17 @@ class TestWideRows(Tester):
         expected_cells_data_size = self.set_ttl_on_few_large_rows(session=session,
                                                                   keyspace_name=self.KEYSPACE_NAME,
                                                                   table_name=self.TABLE_NAME,
-                                                                  rows_num=rows_num,
+                                                                  rows_num=rows_number,
                                                                   columns_num=columns_num,
                                                                   expected_rows=expected_cells_data_size)
 
-        debug('Run full compaction')
-        self.cluster.nodetool('compact {} {}'.format(self.KEYSPACE_NAME, self.TABLE_NAME))
+        extra_rows += self.trigger_compaction_by_data_write_and_flush(session, entity_type, rows_number + extra_rows)
 
         mark_logs = self.mark_log_on_all_nodes()
 
         cluster_state = self.validate_system_table(entity_type=entity_type, keyspace_name=self.KEYSPACE_NAME,
                                                    table_name=self.TABLE_NAME,
-                                                   expected_entity_number=rows_num - 1,
+                                                   expected_entity_number=columns_num * rows_number - columns_num,
                                                    expected_entity_data_size=expected_cells_data_size)
         self.validate_log_warnings(cluster_state=cluster_state, entity_type=entity_type,
                                    keyspace_name=self.KEYSPACE_NAME,
@@ -1158,100 +1232,275 @@ class TestWideRows(Tester):
                                    marked_logs_dict=mark_logs,
                                    expect_warning=False)
 
-    def test_large_cell_detector_with_small_cells(self):
+    def test_large_cell_after_threshold_change(self):
         """
-        Create table with one large cell and few small cells. Validate that just large cell is reported in the
-        system.large_cells table and there are warning in the log
+        Create table with ten large cells and few smaller cells after threshold changing. Validate that just cell
+        bigger than the new threshold is reported in the system.large_cells table and there are warning in the log
         """
-        rows_num = 1
-        columns_num = 1
+        small_rows = 20
+        rows_number = 10
+        columns_num = 3
+        extra_rows = 0
         entity_type = 'cell'
         session = self.prepare_cluster(nodes=3, rf=3, options_dict={'compaction_large_cell_warning_threshold_mb': 2})
 
-        self.create_large_cell_table(session=session, table_name=self.TABLE_NAME, columns_num=columns_num)
-        # Insert large row
-        expected_cells_data_size = self.create_large_cell_data(session=session,
-                                                               table_name=self.TABLE_NAME,
-                                                               columns_num=columns_num,
-                                                               rows_num=rows_num,
-                                                               one_blob_size=self.BLOB_SIZE_1MB * 2,
-                                                               start_row_index=0)
-
+        self.create_large_row_table(session=session, table_name=self.TABLE_NAME, columns_num=columns_num,
+                                    entity_type=entity_type)
         # Insert small cells
-        maximum_primary_key_value = rows_num - 1
-        self.create_large_cell_data(session=session,
-                                    table_name=self.TABLE_NAME,
-                                    one_blob_size=self.BLOB_SIZE_1MB,
-                                    columns_num=columns_num,
-                                    rows_num=10,
-                                    start_row_index=rows_num)
+        maximum_primary_key_value = rows_number - 1
+        self.create_large_row_data(session=session,
+                                   table_name=self.TABLE_NAME,
+                                   one_blob_size=self.BLOB_SIZE_1MB,
+                                   columns_num=columns_num,
+                                   rows_num=small_rows,
+                                   start_row_index=0)
 
         self.cluster.flush()
 
-        debug('Run full compaction')
-        self.cluster.nodetool('compact {} {}'.format(self.KEYSPACE_NAME, self.TABLE_NAME))
+        extra_rows += self.trigger_compaction_by_data_write_and_flush(session, entity_type, small_rows)
+
+        # this will validate that no alerts were triggered so far
+        self.validate_system_table(entity_type=entity_type, keyspace_name=self.KEYSPACE_NAME,
+                                   table_name=self.TABLE_NAME,
+                                   expected_entity_number=0,
+                                   expected_entity_data_size=0,
+                                   pk_max_index=0)
+
+        # Insert large row
+        expected_cells_data_size = self.create_large_row_data(session=session,
+                                                              table_name=self.TABLE_NAME,
+                                                              columns_num=columns_num,
+                                                              rows_num=rows_number,
+                                                              one_blob_size=self.BLOB_SIZE_1MB * 2,
+                                                              start_row_index=small_rows + extra_rows)
+
+        # Insert small cells
+        maximum_primary_key_value = small_rows + rows_number + extra_rows - 1
+        self.create_large_row_data(session=session,
+                                   table_name=self.TABLE_NAME,
+                                   one_blob_size=self.BLOB_SIZE_1MB,
+                                   columns_num=columns_num,
+                                   rows_num=rows_number,
+                                   start_row_index=rows_number + small_rows + extra_rows)
+
+        self.cluster.flush()
+
+        extra_rows += self.trigger_compaction_by_data_write_and_flush(session, entity_type, rows_number + rows_number +
+                                                                      small_rows + extra_rows)
 
         cluster_state = self.validate_system_table(entity_type=entity_type, keyspace_name=self.KEYSPACE_NAME,
                                                    table_name=self.TABLE_NAME,
-                                                   expected_entity_number=rows_num,
+                                                   expected_entity_number=columns_num * rows_number,
                                                    expected_entity_data_size=expected_cells_data_size,
                                                    pk_max_index=maximum_primary_key_value)
         self.validate_log_warnings(cluster_state=cluster_state, entity_type=entity_type,
                                    keyspace_name=self.KEYSPACE_NAME,
                                    table_name=self.TABLE_NAME)
 
-    def test_large_cell_detector_with_node_stop(self):
+    def test_large_cell_and_then_increase_threshold(self):
         """
-        Create table with one large cell when one node is stopped and validate that cell is reported in the
-        system.large_cells table and there are warning in the log
+        Create table with one large cell and few smaller cells after threshold changing. Validate that just cell
+        bigger than the new threshold is reported in the system.large_cells table and there are warning in the log
         """
-        rows_number = 1
+        small_rows = 10
+        rows_number = 5
+        columns_num = 3
+        extra_rows = 0
         entity_type = 'cell'
-        columns_num = 1
+        session = self.prepare_cluster(nodes=3, rf=3)
 
-        session = self.prepare_cluster(nodes=4, rf=3)
+        self.create_large_row_table(session=session, table_name=self.TABLE_NAME, columns_num=columns_num,
+                                    entity_type=entity_type)
+        # Insert large cells that after increasing the threshold should disappear
+        maximum_primary_key_value = rows_number - 1
+        expected_cells_data_size = self.create_large_row_data(session=session,
+                                                              table_name=self.TABLE_NAME,
+                                                              one_blob_size=self.BLOB_SIZE_1MB,
+                                                              columns_num=columns_num,
+                                                              rows_num=rows_number,
+                                                              start_row_index=0)
 
-        node2 = self.cluster.nodelist()[1]
-        debug('Stop {}'.format(node2.name))
-        node2.stop(wait_other_notice=True)
-
-        self.create_large_cell_table(session=session, table_name=self.TABLE_NAME, columns_num=columns_num)
-        expected_cells_data_size = self.create_large_cell_data(session=session,
-                                                               table_name=self.TABLE_NAME,
-                                                               columns_num=columns_num,
-                                                               rows_num=rows_number,
-                                                               one_blob_size=self.BLOB_SIZE_1MB,
-                                                               start_row_index=0)
         self.cluster.flush()
+        extra_rows += self.trigger_compaction_by_data_write_and_flush(session, entity_type, rows_number)
 
-        debug('Run full compaction')
-        self.cluster.nodetool('compact {} {}'.format(self.KEYSPACE_NAME, self.TABLE_NAME))
-
+        # this will validate that no alerts were triggered so far
         cluster_state = self.validate_system_table(entity_type=entity_type, keyspace_name=self.KEYSPACE_NAME,
                                                    table_name=self.TABLE_NAME,
-                                                   expected_entity_number=rows_number,
-                                                   expected_entity_data_size=expected_cells_data_size)
+                                                   expected_entity_number=columns_num * rows_number,
+                                                   expected_entity_data_size=expected_cells_data_size,
+                                                   pk_max_index=maximum_primary_key_value)
         self.validate_log_warnings(cluster_state=cluster_state, entity_type=entity_type,
                                    keyspace_name=self.KEYSPACE_NAME,
                                    table_name=self.TABLE_NAME)
 
-        debug('Start {}'.format(node2.name))
-        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
-        self.cluster.flush()
+        # Increase the threshold and see the large cell warnings disappear
+        debug('increasing warning threshold to 2mb')
+        self.cluster.set_configuration_options({'compaction_large_cell_warning_threshold_mb': 2})
 
-        debug('Run full compaction')
+        # To apply threshold change, nodes must be restarted
+        for node in self.cluster.nodelist():
+            debug('restarting node {} to have threshold change to take effect'.format(node.name))
+            node.stop()
+            node.start(wait_other_notice=True, wait_for_binary_proto=True)
+
+        self.cluster.flush()
+        extra_rows += self.trigger_compaction_by_data_write_and_flush(session, entity_type, rows_number + extra_rows)
+
+        # Insert what small cells (or what is not enough for triggering large cell warnings
+        self.create_large_row_data(session=session,
+                                   table_name=self.TABLE_NAME,
+                                   one_blob_size=self.BLOB_SIZE_1MB,
+                                   columns_num=columns_num,
+                                   rows_num=small_rows,
+                                   start_row_index=rows_number + extra_rows)
+
+        self.cluster.flush()
+        extra_rows += self.trigger_compaction_by_data_write_and_flush(session, entity_type, rows_number + small_rows +
+                                                                      extra_rows)
+
+        # Now we expect that the previous warnings will be removed
+        self.validate_system_table(entity_type=entity_type, keyspace_name=self.KEYSPACE_NAME,
+                                   table_name=self.TABLE_NAME,
+                                   expected_entity_number=0,
+                                   expected_entity_data_size=0,
+                                   pk_max_index=0)
+
+    def test_large_cell_detector_with_full_compaction(self):
+        """
+        Create table with one large cell and few small cells. Validate that just large cell is reported in the
+        system.large_cells table and there are warning in the log with running full compaction
+        """
+        rows_num = 10
+        columns_num = 10
+        entity_type = 'cell'
+        session = self.prepare_cluster(nodes=3, rf=3)
+
+        self.create_large_row_table(session=session, table_name=self.TABLE_NAME, columns_num=columns_num,
+                                    entity_type=entity_type)
+        # Insert large row
+        expected_cells_data_size = self.create_large_row_data(session=session,
+                                                              table_name=self.TABLE_NAME,
+                                                              columns_num=columns_num,
+                                                              rows_num=rows_num,
+                                                              one_blob_size=self.BLOB_SIZE_1MB,
+                                                              start_row_index=0)
+
+        # Insert small cells
+        maximum_primary_key_value = rows_num - 1
+        self.create_large_row_data(session=session,
+                                   table_name=self.TABLE_NAME,
+                                   one_blob_size=self.BLOB_SIZE_1MB / 2,
+                                   columns_num=columns_num,
+                                   rows_num=rows_num,
+                                   start_row_index=rows_num)
+
+        self.cluster.flush()
         self.cluster.nodetool('compact {} {}'.format(self.KEYSPACE_NAME, self.TABLE_NAME))
 
         cluster_state = self.validate_system_table(entity_type=entity_type, keyspace_name=self.KEYSPACE_NAME,
                                                    table_name=self.TABLE_NAME,
-                                                   expected_entity_number=rows_number,
-                                                   expected_entity_data_size=expected_cells_data_size)
+                                                   expected_entity_number=columns_num * rows_num,
+                                                   expected_entity_data_size=expected_cells_data_size,
+                                                   pk_max_index=maximum_primary_key_value)
         self.validate_log_warnings(cluster_state=cluster_state, entity_type=entity_type,
                                    keyspace_name=self.KEYSPACE_NAME,
                                    table_name=self.TABLE_NAME)
 
-# LeveledCompactionStrategy is default compaction strategy. Will be run first by default
-strategies = ['SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy', 'TimeWindowCompactionStrategy']
+    def test_large_row_detector_with_full_compaction(self):
+        """
+        Create table with one large row and small rows. Validate that just large row is reported in the
+        system.large_rows table and there are warning in the log with running full compaction
+        """
+        rows_num = 1
+        columns_num = 15
+        small_row_num = 10
+        entity_type = 'row'
+
+        session = self.prepare_cluster(nodes=3, rf=3,
+                                       options_dict={'compaction_large_row_warning_threshold_mb': 1})
+
+        self.create_large_row_table(session=session, table_name=self.TABLE_NAME, columns_num=columns_num)
+        # Insert large row
+        expected_rows_data_size = self.create_large_row_data(session=session,
+                                                             table_name=self.TABLE_NAME,
+                                                             columns_num=columns_num,
+                                                             rows_num=rows_num,
+                                                             one_blob_size=self.BLOB_SIZE_10k * 10,
+                                                             start_row_index=0)
+
+        # Insert small rows
+        maximum_primary_key_value = rows_num - 1
+        self.create_large_row_data(session=session,
+                                   table_name=self.TABLE_NAME,
+                                   one_blob_size=10,
+                                   columns_num=columns_num,
+                                   rows_num=small_row_num,
+                                   start_row_index=rows_num)
+
+        self.cluster.flush()
+        self.cluster.nodetool('compact {} {}'.format(self.KEYSPACE_NAME, self.TABLE_NAME))
+
+        cluster_state = self.validate_system_table(entity_type=entity_type, keyspace_name=self.KEYSPACE_NAME,
+                                                   table_name=self.TABLE_NAME,
+                                                   expected_entity_number=rows_num,
+                                                   expected_entity_data_size=expected_rows_data_size,
+                                                   pk_max_index=maximum_primary_key_value)
+        self.validate_log_warnings(cluster_state=cluster_state, entity_type=entity_type,
+                                   keyspace_name=self.KEYSPACE_NAME,
+                                   table_name=self.TABLE_NAME)
+
+    def test_large_partition_detector_with_full_compaction(self):
+        """
+        Create table with one large partition and one small partition and validate that partition is reported in
+        the system.large_partitions table and there are warning in the log with running full compaction
+        """
+        partition_rows = 60000
+        partition_num = 1
+        entity_type = 'partition'
+
+        session = self.prepare_cluster(nodes=4, rf=3,
+                                       options_dict={'compaction_large_partition_warning_threshold_mb': 4})
+
+        self.create_large_partition_table(session=session, table_name=self.TABLE_NAME)
+        expected_partition_data_size = self.create_large_partition_data(session=session,
+                                                                        table_name=self.TABLE_NAME,
+                                                                        partition_rows=partition_rows,
+                                                                        partitions_num=partition_num,
+                                                                        one_blob_size=1024,
+                                                                        start_partition_index=0)
+
+        pk_max_index = partition_num - 1
+        self.create_large_partition_data(session=session,
+                                         table_name=self.TABLE_NAME,
+                                         partition_rows=4000,
+                                         partitions_num=10,
+                                         one_blob_size=1024,
+                                         start_partition_index=partition_num+1)
+        self.cluster.flush()
+        self.cluster.nodetool('compact {} {}'.format(self.KEYSPACE_NAME, self.TABLE_NAME))
+
+        # adding more data and running flush again to give time to the compaction of the large partition to finish
+        self.create_large_partition_data(session=session,
+                                         table_name=self.TABLE_NAME,
+                                         partition_rows=4000,
+                                         partitions_num=10,
+                                         one_blob_size=1024,
+                                         start_partition_index=partition_num + partition_num + 1)
+        self.cluster.flush()
+        self.cluster.nodetool('compact {} {}'.format(self.KEYSPACE_NAME, self.TABLE_NAME))
+
+        cluster_state = self.validate_system_table(entity_type=entity_type, keyspace_name=self.KEYSPACE_NAME,
+                                                   table_name=self.TABLE_NAME,
+                                                   expected_entity_number=partition_num,
+                                                   expected_entity_data_size=expected_partition_data_size,
+                                                   pk_max_index=pk_max_index)
+        self.validate_log_warnings(cluster_state=cluster_state, entity_type=entity_type,
+                                   keyspace_name=self.KEYSPACE_NAME,
+                                   table_name=self.TABLE_NAME)
+
+
+strategies = ['SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy', 'TimeWindowCompactionStrategy',
+              'LeveledCompactionStrategy']
 
 for strategy in strategies:
     cls_name = ('TestWideRows' + '_with_' + strategy)
