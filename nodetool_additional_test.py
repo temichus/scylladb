@@ -1148,7 +1148,7 @@ class TestNodetool(Tester):
         cluster.populate(2).start(wait_for_binary_proto=True)
         node = cluster.nodelist()[0]
         debug('Run stress write test')
-        self.stress_write(node, duration='10s', pop='seq=1..3000000000', opt=["-rate threads=10"])
+        self.stress_write(node, times=1000000, pop='seq=1..3000000000', opt=["-rate threads=10"])
         debug('Add new node')
         node2 = new_node(cluster)
         node2.start(wait_for_binary_proto=False)
