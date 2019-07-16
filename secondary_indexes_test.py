@@ -71,7 +71,6 @@ class TestSecondaryIndexes(Tester):
         assert_all(session, "select count(*) from users where state='TX'", expected=[[2]], cl=ConsistencyLevel.QUORUM)
         assert_all(session, "select count(*) from users where state='CA'", expected=[[1]], cl=ConsistencyLevel.QUORUM)
 
-    @require('#3539')
     def test_query_data_by_pk_and_index(self):
         """
         Filter data by primary key and secondary index
@@ -90,11 +89,12 @@ class TestSecondaryIndexes(Tester):
 
         assert_all(session, "select count(*) from users", expected=[[4]], cl=ConsistencyLevel.QUORUM)
         assert_all(session, "select count(*) from users where gender='f'", expected=[[2]], cl=ConsistencyLevel.QUORUM)
-        assert_all(session, "select * from users where KEY='user2' and gender='m'", expected=[['user2', 'ch@ngem3b', 'm', 'CA', 1971]],
+        assert_all(session, "select KEY, password, gender, state, birth_year from users where KEY='user2' "
+                            "and gender='m'", expected=[['user2', 'ch@ngem3b', 'm', 'CA', 1971]],
                    cl=ConsistencyLevel.ALL)
-        assert_none(session, "select count(*) from users where KEY='user1' and gender='m'", cl=ConsistencyLevel.QUORUM)
+        assert_all(session, "select count(*) from users where KEY='user1' and gender='m'", expected=[[0]],
+                   cl=ConsistencyLevel.QUORUM)
 
-    @require('#3539')
     def test_query_data_by_ck_and_index(self):
         """
         Filter data by primary and clustering keys and secondary index
@@ -121,8 +121,8 @@ class TestSecondaryIndexes(Tester):
         assert_all(session, "select count(*) from {} where v='f'".format(table_name), expected=[[2]], cl=ConsistencyLevel.QUORUM)
         assert_all(session, "select count(*) from {} where key='user2' and c='ch@ngem3b' and v='m'".format(table_name),
                    expected=[[1]], cl=ConsistencyLevel.ALL)
-        assert_none(session, "select count(*) from {} where KEY='user1' and c='ch@ngem3a' and gender='m'".format(table_name),
-                    cl=ConsistencyLevel.QUORUM)
+        assert_all(session, "select count(*) from {} where KEY='user1' and c='ch@ngem3a' and v='m'".format(table_name),
+                   expected=[[0]], cl=ConsistencyLevel.QUORUM)
 
     def test_low_cardinality_indexes(self):
         """
