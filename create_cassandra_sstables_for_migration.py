@@ -62,7 +62,7 @@ def main(args):
         print('Test data folder: {}'.format(data_folder))
 
         with open(tests_def, 'r') as stream:
-            tests = yaml.load(stream)
+            tests = yaml.safe_load(stream)
 
         for test, desc in tests.iteritems():
             print test
