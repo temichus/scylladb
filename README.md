@@ -241,3 +241,17 @@ To disable coredump compression, set:
 To disable coredump collection altogether, set:
 
     KEEP_CORES=false
+
+Uploading docker images
+-----------------------
+   
+when doing changes to requirements.txt, or any other change to docker image, it can be uploaded like this:
+
+```bash
+export DTEST_DOCKER_IMAGE=scylladb/scylla-dtest:fedora-29-$(date +'%Y%m%d')
+docker build . -t ${DTEST_DOCKER_IMAGE}
+docker push ${DTEST_DOCKER_IMAGE}
+echo "${DTEST_DOCKER_IMAGE}" > scripts/image
+```
+
+**Note:** you'll need permissions on the scylladb dockerhub organization for uploading images
