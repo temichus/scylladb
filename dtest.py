@@ -595,7 +595,7 @@ class Tester(TestCase):
             })
 
         # if tests are running in parallel do not use last test info
-        if not parallel_tests():
+        if not (parallel_tests() or CLUSTER_ID_ALLOCATOR == 'random'):
             with open(LAST_TEST_DIR, 'w') as f:
                 f.write(self.test_path + '\n')
                 f.write(self.cluster.name)

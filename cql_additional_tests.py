@@ -6,6 +6,7 @@ import re
 import struct
 import time
 import os
+import traceback
 
 from collections import OrderedDict, defaultdict
 from collections import namedtuple
@@ -5056,8 +5057,12 @@ class TestCQL(Tester):
         except:
             raise
         finally:
-            if cc:
-                cc.tearDown()
+            try:
+                if cc:
+                    cc.tearDown()
+            except Exception as ex:
+                debug(ex)
+                traceback.print_exc()
 
     def mc_sstables_case_sensitive_insert_test(self):
         """
