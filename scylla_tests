@@ -32,8 +32,7 @@ paging_additional_test.py
 paging_test.py
 partitioner_tests.py
 persistence_test.py
-pushed_notifications_test.py:TestPushedNotifications.move_single_node_test
-pushed_notifications_test.py:TestPushedNotifications.restart_node_test
+pushed_notifications_test.py
 range_ghost_test.py
 read_amplification_test.py
 rebuild_test.py
