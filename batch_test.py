@@ -560,7 +560,10 @@ class TestBatch(Tester):
 
 
     def _base_batchlog_manager_issue(self, rack_names):
+        if not self.cluster:
+            self.cluster = self._get_cluster(version=self.cassandra_version)
         cluster = self.cluster
+        cluster.populate([4])
         cluster.set_configuration_options(values={'endpoint_snitch': 'org.apache.cassandra.locator.GossipingPropertyFileSnitch'})
 
         for i, node in enumerate(cluster.nodelist()):
@@ -570,23 +573,28 @@ class TestBatch(Tester):
                     snitch_file.write(line + os.linesep)
 
         debug('Restart scylla cluster to enable rack setup ...')
-        cluster.stop()
         cluster.start(wait_for_binary_proto=True)
 
+        debug('Running stress ...')
         node.stress(["user", "no-warmup", "profile=%s" % os.path.realpath('test_data/batch-test/complex_schema.yaml'), "ops(insert=1)", "cl=ALL",
         #node.stress(["user", "no-warmup", "profile=/tmp/complex_schema.yaml", "ops(insert=1)", "cl=ALL",
                      "duration=5s", "-mode", "cql3", "native", "-rate", "threads=100", "-pop", "seq=1..500"])
 
+        debug('Stopping cluster ...')
+        cluster.stop()
+
+        debug('Verifying logs ...')
         for node in cluster.nodelist():
             self.assertEqual(0, len(node.grep_log('unknown endpoint')))
             self.assertEqual(0, len(node.grep_log('fail to connect: connect: Invalid argument')))
+
+        self._cleanup_cluster()
+        self.cluster = None
 
     def test_batchlog_manager_issue(self):
         """
         This subtest is used to reproduce batchlog manager issue(scylla/issues/3229)
         """
-        cluster = self.cluster
-        cluster.populate([4])
 
         # To reproduce the bug we depend on how hash table hashes its elements,
         # this depends on an implementation and the elements itself.
