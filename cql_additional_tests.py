@@ -5769,4 +5769,161 @@ class CQLAdditionalTests(Tester):
         out, err = nodes[0].run_cqlsh(cmds='USE veraminetest; DESCRIBE TABLES', show_output=True, return_output=True)
         assert len(out.split()) == 112, 'created 100+ tables'
 
+@canReuseCluster
+class MultiColumnRestrictionTests(Tester):
 
+    INSERT_COLUMNS = 'key, clmn_int, clmn_text, clmn_timestamp, clmn_bool, clmn_ascii, clmn_uuid, clmn_blob'
+    SELECT_COLUMNS = INSERT_COLUMNS.replace('clmn_timestamp', 'cast(clmn_timestamp as text)')
+    SELECT_COLUMNS = SELECT_COLUMNS.replace('clmn_uuid', 'cast(clmn_uuid as text)')
+
+    TEST_DATA = [[0, 0, 'text1', 12345674987, True, '045asciitext', 'de5cba0d-41a2-4f39-8834-35130d8b5d86', 'c'*10],
+                 [1, 0, 'text2', 63873478378, False, 'abcdefj', 'fa80080c-a4c5-46d6-afe4-5e184fec35ae', 'b'*10],
+                 [2, 2, 'text3', 398793781719, True, '354dsfsd', 'de5cba0d-41a2-4f39-8834-35130d8b5d86', 'b'*10],
+                 [3, 3, 'text4', 398793781719, False, '897dfjka9', 'fa80080c-a4c5-46d6-afe4-5e184fec35ae', 'a'*10]
+                ]
+
+    EXPECTED_DATA = [[0, 0, 'text1', '1970-05-23T21:21:14.987000', True, '045asciitext',
+                      'de5cba0d-41a2-4f39-8834-35130d8b5d86', 'c'*10],
+                     [1, 0, 'text2', '1972-01-10T06:37:58.378000', False, 'abcdefj',
+                      'fa80080c-a4c5-46d6-afe4-5e184fec35ae', 'b'*10],
+                     [2, 2, 'text3', '1982-08-21T16:03:01.719000', True, '354dsfsd',
+                      'de5cba0d-41a2-4f39-8834-35130d8b5d86', 'b'*10],
+                     [3, 3, 'text4', '1982-08-21T16:03:01.719000', False, '897dfjka9',
+                      'fa80080c-a4c5-46d6-afe4-5e184fec35ae', 'a'*10]
+                    ]
+
+    def prepare(self, create_keyspace=True, use_cache=False, nodes=1, rf=1, protocol_version=None, **kwargs):
+        cluster = self.cluster
+
+        if use_cache:
+            cluster.set_configuration_options(values={'row_cache_size_in_mb': 100})
+
+        start_rpc = kwargs.pop('start_rpc', False)
+        if start_rpc:
+            cluster.set_configuration_options(values={'start_rpc': True})
+
+        if not cluster.nodelist():
+            cluster.populate(nodes).start()
+        node1 = cluster.nodelist()[0]
+        time.sleep(0.2)
+
+        session = self.patient_cql_connection(node1, protocol_version=protocol_version)
+        if create_keyspace:
+            if self._preserve_cluster:
+                session.execute("DROP KEYSPACE IF EXISTS ks")
+            self.create_ks(session, 'ks', rf)
+        return session
+
+    def create_8_simple_columns_table(self, session, table_name='cf', add_ck=False):
+        query = 'CREATE COLUMNFAMILY {table_name} (key int, clmn_int int, clmn_text varchar, clmn_timestamp timestamp, ' \
+                'clmn_bool boolean, clmn_ascii ascii, clmn_uuid uuid, clmn_blob blob, PRIMARY KEY(key{ck}))'.\
+            format(table_name=table_name, ck=', clmn_int' if add_ck else '')
+
+        debug(query)
+        session.execute(query)
+
+    def insert_data_in_8_simple_columns_table(self, session, insert_columns, insert_data=TEST_DATA, table_name='cf'):
+        debug('Insert data')
+        for data in insert_data:
+            stmt = 'INSERT INTO {table_name}({columns}) ' \
+                   'VALUES({data[0]},{data[1]},\'{data[2]}\',\'{data[3]}\',{data[4]},\'{data[5]}\',' \
+                   '{data[6]},textAsBlob(\'{data[7]}\'))'.format(table_name=table_name,
+                                                                 columns=insert_columns,
+                                                                 data=data)
+            session.execute(stmt)
+
+    def filter_by_one_non_indexed_simple_columns_test(self):
+        session = self.prepare(nodes=3, rf=3)
+        table_name = 'cf'
+        self.create_8_simple_columns_table(session=session)
+
+        self.insert_data_in_8_simple_columns_table(session=session, insert_columns=self.INSERT_COLUMNS)
+
+        select_stmt = 'select {select_columns} from {table_name} '.format(select_columns=self.SELECT_COLUMNS,
+                                                                         table_name=table_name)
+
+        debug('Filter by integer non-indexed column')
+        assert_all(session=session, query=select_stmt + 'where clmn_int = 0 ALLOW FILTERING',
+                   expected=self.EXPECTED_DATA[:2], ignore_order=True, cl=ConsistencyLevel.QUORUM)
+
+        debug('Filter by text non-indexed column')
+        assert_all(session=session, query=select_stmt + 'where clmn_text = \'text3\' ALLOW FILTERING',
+                   expected=[self.EXPECTED_DATA[2]], ignore_order=True, cl=ConsistencyLevel.QUORUM)
+
+        debug('Filter by timestamp non-indexed column')
+        assert_all(session=session, query=select_stmt + 'where clmn_timestamp = 398793781719 ALLOW FILTERING',
+                   expected=self.EXPECTED_DATA[2:], ignore_order=True, cl=ConsistencyLevel.QUORUM)
+
+        debug('Filter by boolean non-indexed column')
+        assert_all(session=session, query=select_stmt + 'where clmn_bool = True ALLOW FILTERING',
+                   expected=[self.EXPECTED_DATA[0], self.EXPECTED_DATA[2]], ignore_order=True,
+                   cl=ConsistencyLevel.QUORUM)
+
+        debug('Filter by ascii non-indexed column')
+        assert_all(session=session, query=select_stmt + 'where clmn_ascii = \'abcdefj\' ALLOW FILTERING',
+                   expected=[self.EXPECTED_DATA[1]], ignore_order=True,
+                   cl=ConsistencyLevel.QUORUM)
+
+        debug('Filter by uuid non-indexed column')
+        assert_all(session=session,
+                   query=select_stmt + 'where clmn_uuid = de5cba0d-41a2-4f39-8834-35130d8b5d86 '
+                                       'ALLOW FILTERING',
+                   expected=[self.EXPECTED_DATA[0], self.EXPECTED_DATA[2]], ignore_order=True,
+                   cl=ConsistencyLevel.QUORUM)
+
+        debug('Filter by blob non-indexed column')
+        assert_all(session=session,
+                   query=select_stmt + ' where clmn_blob = textAsBlob(\'{}\') ALLOW FILTERING'.format('b'*10),
+                   expected=self.EXPECTED_DATA[1:3], ignore_order=True,
+                   cl=ConsistencyLevel.QUORUM)
+
+    def filter_by_three_non_indexed_simple_columns_test(self):
+        session = self.prepare(nodes=3, rf=3)
+        table_name = 'cf'
+        self.create_8_simple_columns_table(session=session)
+
+        self.insert_data_in_8_simple_columns_table(session=session, insert_columns=self.INSERT_COLUMNS)
+
+        select_stmt = 'select {select_columns} from {table_name} '.format(select_columns=self.SELECT_COLUMNS,
+                                                                         table_name=table_name)
+
+        debug('Filter by integer & uuid & timestamp non-indexed columns')
+        assert_all(session=session, query=select_stmt + 'where clmn_int = 2 and '
+                                                        'clmn_uuid = de5cba0d-41a2-4f39-8834-35130d8b5d86 '
+                                                        'and clmn_timestamp = 398793781719 ALLOW FILTERING',
+                   expected=[self.EXPECTED_DATA[2]], ignore_order=True, cl=ConsistencyLevel.QUORUM)
+
+        debug('Filter by ascii & text & blob non-indexed columns')
+        assert_all(session=session, query=select_stmt + 'where clmn_ascii = \'897dfjka9\' and '
+                                                        'clmn_text = \'text4\' '
+                                                        'and clmn_blob = textAsBlob(\'{}\') ALLOW FILTERING'.format('a'*10),
+                   expected=[self.EXPECTED_DATA[3]], ignore_order=True, cl=ConsistencyLevel.QUORUM)
+
+    def filter_by_pk_ck_and_non_indexed_simple_columns_test(self):
+        session = self.prepare(nodes=3, rf=3)
+        table_name = 'cf'
+        self.create_8_simple_columns_table(session=session, add_ck=True)
+
+        self.insert_data_in_8_simple_columns_table(session=session, insert_columns=self.INSERT_COLUMNS)
+
+        select_stmt = 'select {select_columns} from {table_name} '.format(select_columns=self.SELECT_COLUMNS,
+                                                                         table_name=table_name)
+
+        debug('Filter by PK and one non-indexed column')
+        assert_all(session=session, query=select_stmt + 'where key = 0 and clmn_timestamp = 12345674987 ALLOW FILTERING',
+                   expected=[self.EXPECTED_DATA[0]], ignore_order=True, cl=ConsistencyLevel.QUORUM)
+
+        debug('Filter by PK, CK and one non-indexed column')
+        assert_all(session=session, query=select_stmt + 'where key = 0 and clmn_int = 0 and clmn_timestamp = 12345674987 '
+                                                        'ALLOW FILTERING',
+                   expected=[self.EXPECTED_DATA[0]], ignore_order=True, cl=ConsistencyLevel.QUORUM)
+
+        debug('Filter by PK and two non-indexed column')
+        assert_all(session=session, query=select_stmt + 'where key = 0 and clmn_timestamp = 12345674987 and '
+                                                        'clmn_bool = True ALLOW FILTERING',
+                   expected=[self.EXPECTED_DATA[0]], ignore_order=True, cl=ConsistencyLevel.QUORUM)
+
+        debug('Filter by PK, CK and two non-indexed column')
+        assert_all(session=session, query=select_stmt + 'where key = 0 and clmn_int = 0 and clmn_timestamp = 12345674987 '
+                                                    'and clmn_uuid=de5cba0d-41a2-4f39-8834-35130d8b5d86 ALLOW FILTERING',
+                   expected=[self.EXPECTED_DATA[0]], ignore_order=True, cl=ConsistencyLevel.QUORUM)
