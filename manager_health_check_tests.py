@@ -1,7 +1,9 @@
 # coding: utf-8
+from datetime import datetime, timedelta
+
 from dtest_scylla_manager import TaskStatus, ScyllaManagerTool
 from dtest import Tester, debug
-from datetime import datetime, timedelta
+from nose.plugins.attrib import attr
 
 
 class ManagerHealthCheckTest(Tester):
@@ -17,6 +19,7 @@ class ManagerHealthCheckTest(Tester):
         manager_cluster = manager_tool.add_cluster(node=self.cluster.nodelist()[0], name=cluster_name)
         return manager_cluster
 
+    @attr('scylla-manager')
     def auto_gen_health_check_task_test(self):
         """
             ver: 1.4
@@ -29,6 +32,7 @@ class ManagerHealthCheckTest(Tester):
         assert default_interval in healthcheck_task.next_run
         assert TaskStatus.ERROR.value not in healthcheck_task.status
 
+    @attr('scylla-manager')
     def update_health_check_task_test(self):
         """
             ver: 1.4
@@ -39,15 +43,15 @@ class ManagerHealthCheckTest(Tester):
         healthcheck_task = manager_cluster.get_healthcheck_task()
 
         healthcheck_task.update(interval='60m')
-        assert TaskStatus.ERROR.value not in healthcheck_task.status
+        assert healthcheck_task.status != TaskStatus.ERROR, "Task interval update failed"
         assert '+1h' in healthcheck_task.next_run, "The interval of the task did not change to the requested interval"
 
         healthcheck_task.update(num_retries='2')
-        assert TaskStatus.ERROR.value not in healthcheck_task.status
+        assert healthcheck_task.status != TaskStatus.ERROR, "Task num-retries update failed"
 
         time_to_start_task = 35
         healthcheck_task.update(start_time='now+{}s'.format(time_to_start_task))
-        assert TaskStatus.ERROR.value not in healthcheck_task.status
+        assert healthcheck_task.status != TaskStatus.ERROR, "Task start-time update failed"
 
         now = datetime.now()
         list_next_run = healthcheck_task.next_run.split()
@@ -59,14 +63,5 @@ class ManagerHealthCheckTest(Tester):
                                          timeout=time_to_start_task*2, step=time_to_start_task/2)
 
         healthcheck_task.update(enabled='false')
-        assert TaskStatus.ERROR.value not in healthcheck_task.status
-
-    def healthcheck_while_one_node_down_test(self):
-        self.create_x_nodes_cluster(node_amount=3)
-        manager_cluster = self.get_manager_cluster()
-
-        node = self.cluster.nodelist()[-1]
-        node.stop()
-        healthcheck_task = manager_cluster.get_healthcheck_task()
-        healthcheck_task.start()
-        a=1
+        assert healthcheck_task.status != TaskStatus.ERROR, "Task enabled update failed"
+        assert healthcheck_task.is_task_disabled(), "The healthcheck test was not disabled"

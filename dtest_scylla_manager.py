@@ -7,7 +7,7 @@ import yaml
 from enum import Enum
 
 from ccmlib import common
-from dtest import debug, wait_for
+from dtest import warning, debug, wait_for
 
 
 class ScyllaManagerError(Exception):
@@ -73,6 +73,10 @@ class TaskStatus(Enum):
         except AttributeError:
             raise ScyllaManagerError("Could not recognize returned task status: {}".format(output_str))
 
+    @classmethod
+    def all_members(cls):
+        return cls._member_map_.values()
+
 
 class MgrUtils(object):
 
@@ -90,8 +94,9 @@ class ScyllaManagerBase(object):
         self.sctool = SCTool(scylla_manager=scylla_manager)
         self.scylla_manager = scylla_manager
 
-    def get_property(self, parsed_table, column_name, is_search_substring=False):
-        return self.sctool.get_table_value(parsed_table=parsed_table, column_name=column_name, identifier=self.id,
+    def get_property(self, parsed_table, column_name, is_search_substring=False, identifier=None):
+        identifier = identifier or self.id
+        return self.sctool.get_table_value(parsed_table=parsed_table, column_name=column_name, identifier=identifier,
                                            is_search_substring=is_search_substring)
 
 
@@ -111,7 +116,7 @@ class ScyllaManagerTool(ScyllaManagerBase):
     @property
     def version(self):
         cmd = "version"
-        return self.sctool.run(list_cmd=[cmd], is_verify_errorless_result=True)
+        return self.sctool.run(cmd=cmd, is_verify_errorless_result=True)
 
     @property
     def cluster_list(self):
@@ -119,7 +124,7 @@ class ScyllaManagerTool(ScyllaManagerBase):
         Gets the Manager's Cluster list
         """
         cmd = "cluster list"
-        return self.sctool.run(list_cmd=cmd.split(), is_verify_errorless_result=True)
+        return self.sctool.run(cmd=cmd, is_verify_errorless_result=True)
 
     @property
     def parsed_cluster_list(self):
@@ -193,16 +198,9 @@ class ScyllaManagerTool(ScyllaManagerBase):
         node = node or self._get_cluster_hosts_ip(db_cluster=db_cluster)[0] #TODO: adjust  _get_cluster_hosts_ip()
         user = user or self.DEFAULT_USER
         ssh_user = create_user or 'scylla-manager'
-
-        # stderr, stdout = node.cluster.sctool(["version"])
-        # debug("Scylla-manager version is:".format(stdout))
-
-        host = node.hostname if by_name and node.hostname else node.address()
-        list_cluster_add_cmd = ["cluster", "add", "--host", host, "--name", name]
-        # node.cluster.sctool(cluster_add_cmd)
-        # cluster_add_cmd = "cluster add --host {} --name {}".format(node.address(), name)
-        # cluster_add_cmd = "version"
-        res_cluster_add, stderr = self.sctool.run(list_cmd=list_cluster_add_cmd)
+        host = node.address()
+        cluster_add_cmd = "cluster add --host {host} --name {name}".format(**locals())
+        res_cluster_add, stderr = self.sctool.run(cmd=cluster_add_cmd)
         if not res_cluster_add or 'Cluster added' not in stderr:
             raise ScyllaManagerError("Encountered an error on 'sctool cluster add' command response: {}".format(res_cluster_add))
         # cluster_id = res_cluster_add.stdout.split('\n')[0]  # return ManagerCluster instance with the manager's new cluster-id
@@ -246,15 +244,13 @@ class ScyllaManagerTool(ScyllaManagerBase):
         time.sleep(2)
 
 
-
-
 class SCTool(object):
 
     def __init__(self, scylla_manager):
         self.scylla_manager = scylla_manager
 
-
-    def run(self, list_cmd, is_verify_errorless_result=False, parse_table_res=True, is_multiple_tables=False):
+    def run(self, cmd, is_verify_errorless_result=False, parse_table_res=True, is_multiple_tables=False):
+        list_cmd = cmd.split()
         debug("Issuing: 'sctool {}'".format(list_cmd))
         try:
             stdout, stderr = self.scylla_manager.sctool(cmd=list_cmd)
@@ -397,14 +393,13 @@ class ManagerTask(ScyllaManagerBase):
 
     def stop(self):
         cmd = "task stop {} -c {}".format(self.id, self.cluster_id)
-        res = self.sctool.run(list_cmd=cmd.split(), is_verify_errorless_result=True)
+        res = self.sctool.run(cmd=cmd, is_verify_errorless_result=True)
         return self.wait_and_get_final_status(timeout=30, step=3)
 
     def start(self, cmd=None):
         cmd = cmd or "task start {} -c {}".format(self.id, self.cluster_id)
-        res = self.sctool.run(list_cmd=cmd.split(), is_verify_errorless_result=True)
-        list_all_task_status = [s for s in TaskStatus.__dict__ if not s.startswith("__")]
-        list_expected_task_status = [status for status in list_all_task_status if status != TaskStatus.STOPPED]
+        res = self.sctool.run(cmd=cmd, is_verify_errorless_result=True)
+        list_expected_task_status = [status for status in TaskStatus.all_members() if status != TaskStatus.STOPPED]
         return self.wait_for_status(list_status=list_expected_task_status, timeout=30, step=3)
 
     def _add_kwargs_to_cmd(self, cmd, **kwargs):
@@ -433,7 +428,7 @@ class ManagerTask(ScyllaManagerBase):
             cmd_arguments.append("{0}={1}".format(cmd_mapping[k], v))
 
         cmd = "task update {0.id} -c {0.cluster_id} {update_arguments}".format(self, update_arguments=" ".join(cmd_arguments))
-        stdout, _ = self.sctool.run(list_cmd=cmd.split(), is_verify_errorless_result=True)
+        stdout, _ = self.sctool.run(cmd=cmd, is_verify_errorless_result=True)
         return stdout
 
     @property
@@ -451,7 +446,7 @@ class ManagerTask(ScyllaManagerBase):
         # │ 4e741c3d-ebe2-11e8-82c0-12c0dad619c2 │ 19 Nov 18 10:03:04 UTC │ 19 Nov 18 10:03:04 UTC │ 0s       │ NEW   │
         # ╰──────────────────────────────────────┴────────────────────────┴────────────────────────┴──────────┴───────╯
         cmd = "task history {} -c {}".format(self.id, self.cluster_id)
-        stdout, stderr = self.sctool.run(list_cmd=cmd.split(), is_verify_errorless_result=True)
+        stdout, stderr = self.sctool.run(cmd=cmd, is_verify_errorless_result=True)
         return stdout  # or can be specified like: self.get_property(parsed_table=res, column_name='status')
 
     @property
@@ -466,7 +461,7 @@ class ManagerTask(ScyllaManagerBase):
         # │ repair/22b68423-4332-443d-b8b4-713005ea6049      │ 19 Nov 18 00:00:00 UTC (+7d)  │ 3    │            │ NEW    │
         # ╰──────────────────────────────────────────────────┴───────────────────────────────┴──────┴────────────┴────────╯
         cmd = "task list -c {}".format(self.cluster_id)
-        stdout, stderr = self.sctool.run(list_cmd=cmd.split(), is_verify_errorless_result=True)
+        stdout, stderr = self.sctool.run(cmd=cmd, is_verify_errorless_result=True)
         return self.get_property(parsed_table=stdout, column_name='next run')
 
     @property
@@ -475,8 +470,8 @@ class ManagerTask(ScyllaManagerBase):
         Gets the task's status
         """
         cmd = "task list -a -c {}".format(self.cluster_id)
-        stdout, stderr = self.sctool.run(list_cmd=cmd.split(), is_verify_errorless_result=True)
-        str_status = self.get_property(parsed_table=stdout, column_name='status')
+        stdout, stderr = self.sctool.run(cmd=cmd, is_verify_errorless_result=True)
+        str_status = self.get_property(parsed_table=stdout, column_name='status', is_search_substring=True)
         return TaskStatus.from_str(str_status)
 
         # expecting output of:
@@ -495,7 +490,7 @@ class ManagerTask(ScyllaManagerBase):
         if self.status in [TaskStatus.NEW, TaskStatus.STARTING]:
             return " 0%"
         cmd = "task progress {} -c {}".format(self.id, self.cluster_id)
-        stdout, stderr = self.sctool.run(list_cmd=cmd.split())
+        stdout, stderr = self.sctool.run(cmd=cmd)
         # expecting output of:
         #  Status:           RUNNING
         #  Start time:       26 Mar 19 19:40:21 UTC
@@ -555,6 +550,18 @@ class ManagerTask(ScyllaManagerBase):
             raise ScyllaManagerError("Unexpected result on waiting for task {} status".format(self.id))
         return self.status
 
+    def is_task_disabled(self):
+        try:
+            cmd = "task list -a -c {}".format(self.cluster_id)
+            stdout, stderr = self.sctool.run(cmd=cmd, is_verify_errorless_result=True)
+            self.get_property(
+                parsed_table=stdout, column_name='status', is_search_substring=False, identifier="*" + self.id)
+            return True
+        except ScyllaManagerError as err:
+            if "Encountered an error retrieving sctool table value" in err.args[0]:
+                return False
+            raise err
+
 
 class RepairTask(ManagerTask):
     def __init__(self, task_id, cluster_id, scylla_manager):
@@ -587,21 +594,39 @@ class ManagerCluster(ScyllaManagerBase):
         ScyllaManagerBase.__init__(self, id=cluster_id, scylla_manager=scylla_manager)
         self.client_encrypt = client_encrypt
 
-    def create_repair_task(self, node=None, token_ranges=None, keyspace=None, with_hosts=None):
+    def create_repair_task(self, node=None, dc_list=None, token_ranges=None, keyspace=None, with_hosts=None,
+                           interval=None, num_retries=None, fail_fast=None):
+        # the interval string:
+        # Amount of time after which a successfully completed task would be run again. Supported time units include:
+        #
+        # d - days,
+        # h - hours,
+        # m - minutes,
+        # s - seconds.
         cmd = "repair -c {}".format(self.id)
-        if node:
+        if node is not None:
             cmd += " --host {} ".format(node.address())
-        if token_ranges:
+        if dc_list is not None:
+            dc_names = ','.join([dc_name for dc_name in dc_list])
+            cmd += " --dc {} ".format(dc_names)
+        if token_ranges is not None:
             cmd += " --token-ranges {} ".format(token_ranges)
-        if keyspace:
+        if keyspace is not None:
             cmd += " --keyspace {} ".format(keyspace)
-        if with_hosts:
-            cmd += " --with-hosts {} ".format(with_hosts.address())
+        if with_hosts is not None:
+            host_addresses = ','.join([host.address() for host in with_hosts])
+            cmd += " --with-hosts {} ".format(host_addresses)
+        if interval is not None:
+            cmd += " --interval {}".format(interval)
+        if num_retries is not None:
+            cmd += " --num-retries {}".format(num_retries)
+        if fail_fast is not None:
+            cmd += " --fail-fast"
 
         debug("Repair command to execute is: {}".format(cmd))
-        stdout, stderr = self.sctool.run(list_cmd=cmd.split(), parse_table_res=False)
+        stdout, stderr = self.sctool.run(cmd=cmd, parse_table_res=False)
         if not stdout:
-            raise ScyllaManagerError("Unknown failure for sctool {} command".format(cmd))
+            raise ScyllaManagerError("Unknown failure for sctool '{}' command".format(cmd))
 
         if "no matching units found" in stderr:
             raise ScyllaManagerError("Manager cannot run repair where no keyspace exists.")
@@ -622,7 +647,7 @@ class ManagerCluster(ScyllaManagerBase):
         """
 
         cmd = "cluster delete -c {}".format(self.id)
-        stdout, stderr = self.sctool.run(list_cmd=cmd.split(), is_verify_errorless_result=True)
+        stdout, stderr = self.sctool.run(cmd=cmd, is_verify_errorless_result=True)
         return stdout
 
     def update(self, name=None, host=None, ssh_identity_file=None, ssh_user=None, client_encrypt=None):
@@ -649,7 +674,7 @@ class ManagerCluster(ScyllaManagerBase):
             cmd += " --ssh-identity-file {}".format(ssh_identity_file)
         if ssh_user:
             cmd += " --ssh-user {}".format(ssh_user)
-        stdout, stderr = self.sctool.run(list_cmd=cmd.split(), is_verify_errorless_result=True)
+        stdout, stderr = self.sctool.run(cmd=cmd, is_verify_errorless_result=True)
         return stdout
 
     @property
@@ -658,7 +683,7 @@ class ManagerCluster(ScyllaManagerBase):
         Gets the Manager's Cluster list
         """
         cmd = "cluster list"
-        stdout, stderr = self.sctool.run(list_cmd=cmd.split(), is_verify_errorless_result=True)
+        stdout, stderr = self.sctool.run(cmd=cmd, is_verify_errorless_result=True)
         return stdout
 
     @property
@@ -689,7 +714,7 @@ class ManagerCluster(ScyllaManagerBase):
 
     def _get_task_list(self):
         cmd = "task list -c {}".format(self.id)
-        stdout, stderr = self.sctool.run(list_cmd=cmd.split(), is_verify_errorless_result=True)
+        stdout, stderr = self.sctool.run(cmd=cmd, is_verify_errorless_result=True)
         return stdout
 
     @property
@@ -740,7 +765,7 @@ class ManagerCluster(ScyllaManagerBase):
         # 19:43:56 [107.23.100.82] [stdout] │ UP (151ms) │ OFF │ UP (80ms) │ 34.219.6.187 │
         # 19:43:56 [107.23.100.82] [stdout] ╰────────────┴─────┴───────────┴──────────────╯
         cmd = "status -c {}".format(self.id)
-        dict_status_tables, stderr = self.sctool.run(list_cmd=cmd.split(), is_verify_errorless_result=True, is_multiple_tables=True)
+        dict_status_tables, stderr = self.sctool.run(cmd=cmd, is_verify_errorless_result=True, is_multiple_tables=True)
 
         dict_hosts_health = {}
         for dc_name, hosts_table in dict_status_tables.items():

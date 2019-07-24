@@ -21,8 +21,7 @@ class TestScyllaManagerClusterMgmt(Tester):
         try:
             manager_tool.add_cluster(node=node1, name=cluster_name)
         except ScyllaManagerError as err:
-            if "connection refused" not in err.args[0].lower():
-                assert False, "Received an irrelevant ScyllaManagerError when trying to add an offline cluster"
+            assert "connection refused" in err.args[0].lower(), "Received an irrelevant ScyllaManagerError when trying to add an offline cluster"
             return
         assert False, "Expected to fail when adding an offline cluster to the manager, but didn't"
 
@@ -42,24 +41,6 @@ class TestScyllaManagerClusterMgmt(Tester):
 
         debug(manager_tool.cluster_list)
         expected_list = [cluster_name1, cluster_name2]
-        assert sorted(manager_tool.parsed_cluster_list) == sorted(expected_list), \
-            """The list of clusters managed by the manager differ from the expected list:
-            Expected:{}
-            In actuality:{}""".format(expected_list, manager_tool.parsed_cluster_list)
-
-    def add_scylla_cluster_using_dns_name_test(self):
-        self.cluster.populate(3).start(wait_for_binary_proto=False, wait_other_notice=False)
-        node1, node2, node3 = self.cluster.nodelist()
-
-        manager_tool = ScyllaManagerTool(scylla_manager=self.cluster._scylla_manager)
-
-        cluster_name1 = "cluster1"
-        debug("Add a cluster to scylla-manager, named: {}".format(cluster_name1))
-        node1.hostname = socket.gethostname()
-        manager_tool.add_cluster(node=node1, name=cluster_name1, by_name=True)
-
-        debug(manager_tool.cluster_list)
-        expected_list = [cluster_name1]
         assert sorted(manager_tool.parsed_cluster_list) == sorted(expected_list), \
             """The list of clusters managed by the manager differ from the expected list:
             Expected:{}

@@ -194,7 +194,7 @@ with the `@skip()` directive), or individual test cases, using the
 Installation Instructions
 -------------------------
 
-See more detailed instructions in the included [INSTALL file](https://github.com/riptano/cassandra-dtest/blob/master/INSTALL.md).
+See more detailed instructions in the included [INSTALL file](./INSTALL.md).
 
 Writing Tests
 -------------

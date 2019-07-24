@@ -2,6 +2,7 @@
 import datetime
 from cassandra import ConsistencyLevel
 from cassandra.query import SimpleStatement
+from nose.plugins.attrib import attr
 
 from dtest import Tester, debug
 from dtest_scylla_manager import ScyllaManagerTool
@@ -37,6 +38,7 @@ class ScyllaManagerTaskTest(Tester):
                                 consistency_level=ConsistencyLevel.ALL)
         session.execute(query)
 
+    @attr('scylla-manager')
     def test_task_next_run(self):
         self._initiate_cluster()
         node1, node2, node3 = self.cluster.nodelist()
