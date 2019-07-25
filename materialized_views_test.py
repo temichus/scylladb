@@ -307,7 +307,6 @@ class TestMaterializedViews(Tester):
         for node in stop_nodes:
             self._node_action_with_delay('stop', node, wait=wait, wait_other_notice=wait_other_notice, other_nodes=other_nodes, gently=gently)
 
-    @require('#4423')
     def add_dc_during_mv_insert_test(self):
         """ Test expand cluster - add new DC during MV inserts
             Test starts with a starting size: one DCs with 4 nodes, and add new 2 nodes of second DC during inserts into base
