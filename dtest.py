@@ -917,8 +917,8 @@ class Tester(TestCase):
                         raise AssertionError('Unexpected error in %s node log: %s' % (node.name, errors))
             found_cores = self.find_cores()
             if found_cores:
-                print("Core file(s) found.{}".format("" if failed else " Marking test as failed."))
                 failed = True
+                raise AssertionError("Core file(s) found.{}".format("" if failed else " Marking test as failed."))
         finally:
             try:
                 if failed or KEEP_LOGS:
