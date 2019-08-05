@@ -24,8 +24,6 @@ from cassandra.cluster import ResultSet
 from assertions import assert_all, assert_invalid, assert_none, assert_one, assert_invalid_case_insensitive_matching
 
 from dtest import Tester, debug
-from dtest import canReuseCluster
-from dtest import freshCluster
 
 from scylla_tools import CassandraCluster
 
@@ -48,7 +46,7 @@ from unittest import skip
 
 MSG_ALLOW_FILTERING = "ALLOW FILTERING"
 
-@canReuseCluster
+
 class TestCQL(Tester):
 
     def prepare(self, ordered=False, create_keyspace=True, use_cache=False, nodes=1, rf=1, protocol_version=None, experimental=False, **kwargs):
@@ -388,7 +386,6 @@ class TestCQL(Tester):
 
         assert_invalid(session, "CREATE TABLE test (key text, key2 text, c int, d text, PRIMARY KEY (key, key2)) WITH COMPACT STORAGE")
 
-    @freshCluster()
     def limit_ranges_test(self):
         """
         Validate LIMIT option for 'range queries' in SELECT statements.
@@ -1476,7 +1473,6 @@ class TestCQL(Tester):
         res = session.execute("SELECT * FROM users WHERE KEY='user1'")
         assert rows_to_list(res) == [], list(res)
 
-    @freshCluster()
     def undefined_column_handling_test(self):
         session = self.prepare(ordered=True)
 
@@ -1498,7 +1494,6 @@ class TestCQL(Tester):
         res = session.execute("SELECT v2 FROM test WHERE k = 1")
         assert rows_to_list(res) == [[None]], list(res)
 
-    @freshCluster()
     def range_tombstones_test(self):
         """ Test deletion by 'composite prefix' (range tombstones) """
         cluster = self.cluster
@@ -2021,7 +2016,6 @@ class TestCQL(Tester):
         res = session.execute("SELECT * FROM test")
         assert rows_to_list(res) == [[2, 2, None, None]], list(res)
 
-    @freshCluster()
     def only_pk_test(self):
         """ Check table with only a PK (#4361) """
         session = self.prepare(ordered=True)
@@ -2073,7 +2067,6 @@ class TestCQL(Tester):
         session.execute("INSERT INTO test (k, t) VALUES (0, '2011-02-03')")
         assert_invalid(session, "INSERT INTO test (k, t) VALUES (0, '2011-42-42')")
 
-    @freshCluster()
     def range_slice_test(self):
         """ Test a regression from #1337 """
 
@@ -2100,7 +2093,6 @@ class TestCQL(Tester):
         res = list(session.execute("SELECT * FROM test"))
         assert len(res) == 2, res
 
-    @freshCluster()
     @require('#3574')
     def composite_index_with_pk_test(self):
 
@@ -2160,7 +2152,6 @@ class TestCQL(Tester):
             assert_invalid(session, "SELECT content FROM blogs WHERE time1 = 1 AND time2 = 1 AND author='foo'")
             assert_invalid(session, "SELECT content FROM blogs WHERE time1 = 1 AND time2 > 0 AND author='foo'")
 
-    @freshCluster()
     @attr('next-gating')
     @attr('dtest-debug')
     def limit_bugs_test(self):
@@ -2246,7 +2237,6 @@ class TestCQL(Tester):
         assert_invalid(session, "SELECT * FROM compositetest WHERE ctime>=12345679 AND key='key3' AND ctime<=12345680 LIMIT 3;")
         assert_invalid(session, "SELECT * FROM compositetest WHERE ctime=12345679  AND key='key3' AND ctime<=12345680 LIMIT 3")
 
-    @freshCluster()
     def order_by_multikey_test(self):
         """ Test for #4612 bug and more generaly order by when multiple C* rows are queried """
 
@@ -2276,7 +2266,6 @@ class TestCQL(Tester):
         assert_invalid(session, "SELECT col1 FROM test ORDER BY col1;")
         assert_invalid(session, "SELECT col1 FROM test WHERE my_id > 'key1' ORDER BY col1;")
 
-    @freshCluster()
     @skip("unconfigured table schema_keyspaces")
     def create_alter_options_test(self):
         session = self.prepare(create_keyspace=False)
@@ -2710,7 +2699,6 @@ class TestCQL(Tester):
         res = session.execute("SELECT l1, l2 FROM test WHERE k = 0")
         self.assertItemsEqual(rows_to_list(res), [[[1, 24, 3], [4, 42, 6]]])
 
-    @freshCluster()
     @skip('indexes')
     def composite_index_collections_test(self):
         session = self.prepare(ordered=True)
@@ -2736,7 +2724,6 @@ class TestCQL(Tester):
         res = session.execute("SELECT blog_id, content FROM blogs WHERE author='foo'")
         assert rows_to_list(res) == [[1, set(['bar1', 'bar2'])], [1, set(['bar2', 'bar3'])], [2, set(['baz'])]], list(res)
 
-    @freshCluster()
     def truncate_clean_cache_test(self):
         session = self.prepare(ordered=True, use_cache=True)
 
@@ -3539,7 +3526,6 @@ class TestCQL(Tester):
             assert_invalid(session, "DELETE FROM test2 WHERE k = 0 AND i > 0 IF EXISTS")
             assert_invalid(session, "DELETE FROM test2 WHERE k = 0 AND i > 0 IF v = 'foo'")
 
-    @freshCluster()
     def range_key_ordered_test(self):
         session = self.prepare(ordered=True)
 
@@ -3741,7 +3727,6 @@ class TestCQL(Tester):
         session.execute("INSERT INTO test(k) VALUES (0)")
         assert_one(session, "SELECT dateOf(t) FROM test WHERE k=0", [None])
 
-    @freshCluster()
     @skip("Not implemented: LWT")
     def cas_simple_test(self):
         session = self.prepare(nodes=3, rf=3)

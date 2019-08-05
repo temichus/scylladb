@@ -17,14 +17,13 @@ from assertions import (
     assert_unavailable,
     assert_invalid
 )
-from dtest import Tester, canReuseCluster, debug
+from dtest import Tester, debug
 from nose.plugins.attrib import attr
 from tools import since
 from scylla_tools import drop_table
 
 
 @since('2.0')
-@canReuseCluster
 class TestTTL(Tester):
     """ Test Time To Live Feature """
 
@@ -530,7 +529,7 @@ class TestTTL(Tester):
                 assert_all(session=self.session1, query='select key from {}'.format(table_name),
                            expected=steps[ttl]['expected_result'], cl=ConsistencyLevel.QUORUM, ignore_order=True)
 
-@canReuseCluster
+
 class TestDistributedTTL(Tester):
 
     """ Test Time To Live Feature in a distributed environment """
