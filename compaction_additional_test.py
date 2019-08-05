@@ -386,7 +386,7 @@ class CompactionAdditionalStrategyTests(Tester):
 
         numfound = jsoninfo.count("partition")
 
-        self.assertEqual(numfound, 1)
+        self.assertEqual(numfound, 1, "Error: expected 1 partition but found {}:\n{}".format(numfound, jsoninfo))
 
 
 strategies = ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy',
