@@ -44,6 +44,18 @@ class TestBootstrap(Tester):
             return initial_value
         return -1
 
+    @attr('next-gating')
+    @attr('dtest-debug')
+    def start_stop_test(self):
+        debug("populating cluster with one node")
+        cluster = self.cluster
+        cluster.populate(1)
+        debug("starting cluster")
+        cluster.start()
+        debug("stopping cluster")
+        cluster.stop()
+        debug("done")
+
     def simple_bootstrap_test(self):
         cluster = self.cluster
         tokens = cluster.balanced_tokens(2)

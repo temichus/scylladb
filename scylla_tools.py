@@ -952,6 +952,23 @@ def copy_files_to(from_dir, to_dir, files_only=False):
             continue
         shutil.copy2(os.path.join(from_dir, f), os.path.join(to_dir, f))
 
+def get_entity_id(session, table_or_view, keyspace_name, entity_name):
+    system_table = table_or_view + 's'
+    query = "SELECT id FROM system_schema.{system_table} WHERE keyspace_name='{keyspace_name}' " \
+            "and {table_or_view}_name='{entity_name}'".format(**locals())
+    entity_id = rows_to_list(session.execute(query))
+    return entity_id[0][0]
+
+def get_truncated_time_from_system_local(session):
+    query = "SELECT truncated_at FROM system.local"
+    truncated_time = rows_to_list(session.execute(query))
+    return truncated_time
+
+def get_truncated_time_from_system_truncated(session, table_id):
+    query = "SELECT truncated_at FROM system.truncated WHERE table_uuid={}".format(table_id)
+    truncated_time = rows_to_list(session.execute(query))
+    return truncated_time[0]
+
 
 class CassandraCluster(object):
     """Class provides interface to create Cassandra cluster and migrate the data from Scylla"""

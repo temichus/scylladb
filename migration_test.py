@@ -29,7 +29,6 @@ from nose.plugins.attrib import attr
 @tools.nottest
 class MigrationTestBase(Tester):
 
-    @attr('next-gating')
     @attr('dtest-debug')
     def migrate_sstable_without_compression_test(self):
         self._run_basic_migration_test("without_compression", {'key': 'abc', 'c1': None, 'c2': 'cde'})
@@ -595,6 +594,8 @@ class MigrationTestBase(Tester):
             set([sstable_version_regex.search(f).group(1) for f in file_list if sstable_version_regex.search(f)]))
 
         if assert_only_one_version:
+            if len(sstable_versions) != 1:
+                print('Expected only one version, got {}. File list: {}'.format(sstable_versions, file_list))
             self.assertEqual(len(sstable_versions), 1, sstable_versions)
         if sstable_versions:
             return sstable_versions[0]
@@ -747,6 +748,7 @@ class TestMigrationUpgradeSSTables(TestMigration):
 
         debug("Running 'nodetool upgradesstables {} {}'".format(ks, cf))
         node.nodetool("upgradesstables {} {}".format(ks, cf))
+        node.flush()
 
         after_sstable_version = self.get_sstable_version(cf_dir)
 

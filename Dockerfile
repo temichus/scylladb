@@ -1,4 +1,4 @@
-FROM docker.io/scylladb/scylla-toolchain:fedora-29-20190212
+FROM docker.io/scylladb/scylla-toolchain:fedora-29-20190405
 
 RUN sudo dnf -y install redhat-rpm-config python-devel
 

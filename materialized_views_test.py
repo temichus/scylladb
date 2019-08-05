@@ -307,7 +307,6 @@ class TestMaterializedViews(Tester):
         for node in stop_nodes:
             self._node_action_with_delay('stop', node, wait=wait, wait_other_notice=wait_other_notice, other_nodes=other_nodes, gently=gently)
 
-    @require('#4423')
     def add_dc_during_mv_insert_test(self):
         """ Test expand cluster - add new DC during MV inserts
             Test starts with a starting size: one DCs with 4 nodes, and add new 2 nodes of second DC during inserts into base
@@ -555,6 +554,7 @@ class TestMaterializedViews(Tester):
 
         self._validate_data_in_mvs(tm=tm, session=session, table_expected_rows=prefill, mv_expected_rows=prefill,
                                    consistency_level=ConsistencyLevel.ALL)
+        self.ignore_log_patterns = [r'Error applying view update to .*: std::_Nested_exception<no_such_column_family>']
 
     def mv_populating_from_existing_data_with_restriction_test(self):
         session = self.prepare(rf=3, nodes=4)

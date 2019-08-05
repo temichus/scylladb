@@ -17,18 +17,8 @@ Script to run dtest from within docker
     ./scripts/run_test.sh
 "
 
-# once we upload to dockerhub we won't need to build it ontop each worker
-if result=$(docker pull docker.io/scylladb/scylla-dtest) ; then
-     echo "using image downloaded from docker.io"
-else
-    if result=$(docker build . -t docker.io/scylladb/scylla-dtest); then
-        echo "Docker image is already successfully built..."
-    else
-        rc=$?
-        echo ${result}
-        exit ${rc}
-    fi
-fi
+here="$(realpath $(dirname "$0"))"
+DOCKER_IMAGE="$(<"$here/image")"
 
 export SCYLLA_DIR=${SCYLLA_DIR:-`pwd`/../scylla}
 export CASSANDRA_DIR=${CASSANDRA_DIR:-${SCYLLA_DIR}}
@@ -124,7 +114,7 @@ docker_cmd="docker run --detach=true \
     -v ${HOME}/.dtest:${HOME}/.dtest \
     -v ${HOME}/.ccm:${HOME}/.ccm \
     --network=bridge --privileged \
-    docker.io/scylladb/scylla-dtest:latest bash -c 'pip install --user -e ${CCM_DIR} ; export PATH=\$PATH:\${HOME}/.local/bin ; bash -c \"${INSTALL_CASSANDRA}\"; nosetests --nologcapture -v -s $*'"
+    ${DOCKER_IMAGE} bash -c 'pip install --user -e ${CCM_DIR} ; export PATH=\$PATH:\${HOME}/.local/bin ; bash -c \"${INSTALL_CASSANDRA}\"; nosetests --nologcapture -v -s $*'"
 echo "Running Docker: $docker_cmd"
 container=$(eval $docker_cmd)
 

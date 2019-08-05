@@ -13,7 +13,7 @@ A few tests still require the deprecated python CQL over thrift driver.
 
 Installing docker is required for running tests in the scylla-dtest docker container.
 
- * [ccm](https://github.com/pcmanus/ccm)
+ * [ccm](https://github.com/scylladb/scylla-ccm)
  * [nosetests](http://readthedocs.org/docs/nose/en/latest/)
  * [Python Driver](http://datastax.github.io/python-driver/installation.html)
  * [CQL over Thrift Driver](http://code.google.com/a/apache-extras.org/p/cassandra-dbapi2/)
@@ -43,8 +43,8 @@ Using `virtualenv` is recommended in order to not pollute your global python ins
 To setup a `virtualenv` follow the below instructions:
 
 ```bash
-# Create the virtualenv.
-virtualenv env
+# Create the virtualenv (dtests require python2)
+python2 -m virtualenv env
 
 # Start using the virtualenv, you should now see `(env)` in you bash prompt.
 source ./env/bin/activate
@@ -241,3 +241,17 @@ To disable coredump compression, set:
 To disable coredump collection altogether, set:
 
     KEEP_CORES=false
+
+Uploading docker images
+-----------------------
+   
+when doing changes to requirements.txt, or any other change to docker image, it can be uploaded like this:
+
+```bash
+export DTEST_DOCKER_IMAGE=scylladb/scylla-dtest:fedora-29-$(date +'%Y%m%d')
+docker build . -t ${DTEST_DOCKER_IMAGE}
+docker push ${DTEST_DOCKER_IMAGE}
+echo "${DTEST_DOCKER_IMAGE}" > scripts/image
+```
+
+**Note:** you'll need permissions on the scylladb dockerhub organization for uploading images

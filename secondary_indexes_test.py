@@ -13,6 +13,7 @@ from assertions import assert_all, assert_invalid, assert_one, assert_row_count,
                         assert_row_count_from_every_node, assert_row_count_in_select
 from scylla_tools import index_is_built, get_index_view_name, view_built_status_query, check_errors, \
                          wait_for_view_build_start, remove_node, check_errors_all_nodes, generate_random_text
+from scylla_tools import get_entity_id, get_truncated_time_from_system_local, get_truncated_time_from_system_truncated
 
 from cassandra import ConsistencyLevel, InvalidRequest, WriteFailure
 from cassandra.concurrent import (execute_concurrent,
@@ -70,7 +71,6 @@ class TestSecondaryIndexes(Tester):
         assert_all(session, "select count(*) from users where state='TX'", expected=[[2]], cl=ConsistencyLevel.QUORUM)
         assert_all(session, "select count(*) from users where state='CA'", expected=[[1]], cl=ConsistencyLevel.QUORUM)
 
-    @require('#3539')
     def test_query_data_by_pk_and_index(self):
         """
         Filter data by primary key and secondary index
@@ -89,11 +89,12 @@ class TestSecondaryIndexes(Tester):
 
         assert_all(session, "select count(*) from users", expected=[[4]], cl=ConsistencyLevel.QUORUM)
         assert_all(session, "select count(*) from users where gender='f'", expected=[[2]], cl=ConsistencyLevel.QUORUM)
-        assert_all(session, "select * from users where KEY='user2' and gender='m'", expected=[['user2', 'ch@ngem3b', 'm', 'CA', 1971]],
+        assert_all(session, "select KEY, password, gender, state, birth_year from users where KEY='user2' "
+                            "and gender='m'", expected=[['user2', 'ch@ngem3b', 'm', 'CA', 1971]],
                    cl=ConsistencyLevel.ALL)
-        assert_none(session, "select count(*) from users where KEY='user1' and gender='m'", cl=ConsistencyLevel.QUORUM)
+        assert_all(session, "select count(*) from users where KEY='user1' and gender='m'", expected=[[0]],
+                   cl=ConsistencyLevel.QUORUM)
 
-    @require('#3539')
     def test_query_data_by_ck_and_index(self):
         """
         Filter data by primary and clustering keys and secondary index
@@ -120,8 +121,8 @@ class TestSecondaryIndexes(Tester):
         assert_all(session, "select count(*) from {} where v='f'".format(table_name), expected=[[2]], cl=ConsistencyLevel.QUORUM)
         assert_all(session, "select count(*) from {} where key='user2' and c='ch@ngem3b' and v='m'".format(table_name),
                    expected=[[1]], cl=ConsistencyLevel.ALL)
-        assert_none(session, "select count(*) from {} where KEY='user1' and c='ch@ngem3a' and gender='m'".format(table_name),
-                    cl=ConsistencyLevel.QUORUM)
+        assert_all(session, "select count(*) from {} where KEY='user1' and c='ch@ngem3a' and v='m'".format(table_name),
+                   expected=[[0]], cl=ConsistencyLevel.QUORUM)
 
     def test_low_cardinality_indexes(self):
         """
@@ -532,6 +533,34 @@ class TestSecondaryIndexes(Tester):
         """
         asserts that truncating base table will result in truncating secondary index as well
         """
+        def create_data():
+            smt = "INSERT INTO {0} (key, c0, c1) values (uuid(), '{1}', '{2}')"
+            session.execute(smt.format(table_name, 'a', 'b'))
+            session.execute(smt.format(table_name, 'a', 'b'))
+            session.execute(smt.format(table_name, 'q', 'b'))
+            session.execute(smt.format(table_name, 'a', 'e'))
+            session.execute(smt.format(table_name, 'a', 'e'))
+
+        def validate_truncated_entries_for_table_and_views():
+            for node in self.cluster.nodelist():
+                node_session = self.patient_exclusive_cql_connection(node=node)
+                for name in [table_name] + [index_name + '_index' for index_name in index_names.keys()]:
+                    table_or_view = 'table' if name == table_name else 'view'
+                    id = get_entity_id(session=node_session, table_or_view=table_or_view, keyspace_name=keyspace_name,
+                                       entity_name=name)
+
+                    # validate truncation entries in the system.truncated table - expected entry
+                    truncated_time = get_truncated_time_from_system_truncated(session=node_session, table_id=id)
+                    # debug('{} : {}'.format(id, truncated_time))
+                    self.assertTrue(truncated_time, msg='Expected truncated entry in the system.truncated table, '
+                                                        'but it\'s not found')
+
+                    # validate truncation entries in the system.local table - not expected entry
+                    truncated_time = get_truncated_time_from_system_local(session=node_session)
+                    self.assertTrue(truncated_time == [[None]],
+                                    msg='Not expected truncated entry in the system.local table, '
+                                        'but it\'s found')
+
         keyspace_name = 'ks'
         table_name = 'tbl'
         index_names = {'ix_tbl_c0': 'c0', 'ix_tbl_c1': 'c1'}
@@ -545,12 +574,7 @@ class TestSecondaryIndexes(Tester):
             create_and_build_index(self.create_index, self.cluster, session, keyspace_name, table_name, column, name,
                                    compaction=self.compaction_strategy)
 
-        smt = "INSERT INTO {0} (key, c0, c1) values (uuid(), '{1}', '{2}')"
-        session.execute(smt.format(table_name, 'a', 'b'))
-        session.execute(smt.format(table_name, 'a', 'b'))
-        session.execute(smt.format(table_name, 'q', 'b'))
-        session.execute(smt.format(table_name, 'a', 'e'))
-        session.execute(smt.format(table_name, 'a', 'e'))
+        create_data()
 
         # ensure sstables are created and will be dropped
         self.cluster.flush()
@@ -558,7 +582,8 @@ class TestSecondaryIndexes(Tester):
         smt = "SELECT count(*) FROM {0} WHERE {1} = '{2}'"
 
         # ensure data is loaded into cache and the cache will be cleared
-        assert_all(session, smt.format(table_name, index_names['ix_tbl_c0'], 'a'), expected=[[4]], cl=ConsistencyLevel.QUORUM)
+        assert_all(session, smt.format(table_name, index_names['ix_tbl_c0'], 'a'), expected=[[4]],
+                   cl=ConsistencyLevel.QUORUM)
 
         assert_row_count(session, "tbl", 5)
 
@@ -566,9 +591,18 @@ class TestSecondaryIndexes(Tester):
         assert_row_count(session, "tbl", 0)
 
         # check that index queries are also truncated
-        assert_all(session, smt.format(table_name, index_names['ix_tbl_c0'], 'a'), expected=[[0]], cl=ConsistencyLevel.QUORUM)
+        assert_all(session, smt.format(table_name, index_names['ix_tbl_c0'], 'a'), expected=[[0]],
+                   cl=ConsistencyLevel.QUORUM)
 
-        assert_all(session, smt.format(table_name, index_names['ix_tbl_c1'], 'b'), expected=[[0]], cl=ConsistencyLevel.QUORUM)
+        assert_all(session, smt.format(table_name, index_names['ix_tbl_c1'], 'b'), expected=[[0]],
+                   cl=ConsistencyLevel.QUORUM)
+
+        validate_truncated_entries_for_table_and_views()
+
+        debug('Insert data after truncate')
+        create_data()
+        validate_truncated_entries_for_table_and_views()
+
 
     @skip('Not relevant. No index information in the query trace')
     def test_only_coordinator_chooses_index_for_query(self):
@@ -813,7 +847,7 @@ class TestSecondaryIndexes(Tester):
             assert_row_count(session, table_name=get_index_view_name(index_name), expected=num_rows - delete_num,
                              consistency_level=ConsistencyLevel.ALL)
 
-    @attr('next-gating')
+    # @attr('next-gating') - https://github.com/scylladb/scylla/issues/4724
     # @attr('dtest-debug') - https://github.com/scylladb/scylla/issues/4384
     def test_stop_node_during_index_build(self):
         """
@@ -877,6 +911,8 @@ class TestSecondaryIndexes(Tester):
         elif node_action == 'stop':
             debug('Start node {}'.format(node2.name))
             node2.start(wait_for_binary_proto=True)
+
+        index_is_built(self.cluster, session, ks_name=keyspace_name, table_name=table_name, index_name=index_name)
 
         # Validate the data using filtering by index with cl=ONE
         self.validate_index_data(session, cl=ConsistencyLevel.ONE, num_rows=num_rows, table_name=table_name,

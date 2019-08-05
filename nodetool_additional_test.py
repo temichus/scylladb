@@ -25,12 +25,12 @@ class TestNodetool(Tester):
         kwargs['cluster_options'] = {'start_rpc': 'true'}
         super(TestNodetool, self).__init__(*args, **kwargs)
         self.width = 160
-        self.multi_dc_queries_method_list = [{"func": self.verify_info, "time": 40, "args": [None, 'dc1', 'RAC1']},
-                                             {"func": self.verify_status, "time": 25}, {"func": self.verify_netstats, "time": 26},
+        self.multi_dc_queries_method_list = [{"func": self.verify_info, "time": 60, "args": [None, 'dc1', 'RAC1']},
+                                             {"func": self.verify_status, "time": 25}, {"func": self.verify_netstats, "time": 40},
                                              {"func": self.verify_cfhistograms, "time": 25}, {"func": self.verify_cfstats, "time": 25, "args": [None, "keyspace1"]},
                                              {"func": self.verify_describering, "time": 25}, {"func": self.verify_decribecluster, "time": 25}]
-        self.queries_method_list = [{"func": self.verify_info, "time": 40},
-                                    {"func": self.verify_status, "time": 25}, {"func": self.verify_netstats, "time": 26},
+        self.queries_method_list = [{"func": self.verify_info, "time": 60},
+                                    {"func": self.verify_status, "time": 25}, {"func": self.verify_netstats, "time": 40},
                                     {"func": self.verify_cfhistograms, "time": 25}, {"func": self.verify_cfstats, "time": 25, "args": [None, "keyspace1"]},
                                     {"func": self.verify_describering, "time": 25}, {"func": self.verify_decribecluster, "time": 25}]
         self.reserved_names = ['view_pending_updates']
@@ -843,7 +843,7 @@ class TestNodetool(Tester):
     @staticmethod
     def describecluster(node):
         out = node.nodetool('describecluster', True)[0]
-        return yaml.load(out.replace('\t', "  "))
+        return yaml.safe_load(out.replace('\t', "  "))
 
     def verify_decribecluster(self, node=None):
         node = self.get_node(node)
@@ -887,6 +887,8 @@ class TestNodetool(Tester):
     @staticmethod
     def _sql_val(val):
         try:
+            if val.startswith('0x'):
+                return val;
             return "'" + val + "'"
         except:
             return str(val)
@@ -1004,7 +1006,7 @@ class TestNodetool(Tester):
         self.assertIn("Token", ni)
         time.sleep(10)
         ni = self.nodetool_info(node)
-        self.assertMapBetween(ni, "Uptime (seconds)", uptime + 10, uptime + 30)
+        self.assertMapBetween(ni, "Uptime (seconds)", uptime + 10, uptime + 40)
 
     def verify_status(self, node=None):
         if node is None:
@@ -1152,9 +1154,10 @@ class TestNodetool(Tester):
         debug('Add new node')
         node2 = new_node(cluster)
         node2.start(wait_for_binary_proto=False)
-        node2.watch_log_for('streaming')
+        node2.watch_log_for('Executing streaming plan')
         debug('Run and check netstats')
         stats = self.netstats(node)
+        debug(stats)
         self.assertEquals(len(stats["streams"]), 1)
 
     def _change_data_perms(self, node, folder, mod):
@@ -1168,10 +1171,10 @@ class TestNodetool(Tester):
         enablegossip and enablebinary pass
         refresh failed with permission denied
         """
-        error_to_track = "Found exception\: storage_io_error \(Storage I\/O error\: 13\: Permission denied"
+        error_to_track = re.compile("storage_io_error \(Storage I/O error: 13:")
         self.run_cluster()
         node = self.cluster.nodelist()[0]
-        self.stress_write(node)
+        self.stress_write(node, duration='10s')
         try:
             self._change_data_perms(node, 'data', 644)
             output = node.nodetool("enablebinary", True)
@@ -1188,7 +1191,7 @@ class TestNodetool(Tester):
                 node.nodetool("refresh keyspace1 standard1")
                 self.fail("refresh should be with Permission denied")
             except NodetoolError as e:
-                self.assertTrue("Storage I/O error: 13" in e.message,
+                self.assertTrue(error_to_track.search(e.message),
                                 'expected error not found in log')
         finally:
             self._change_data_perms(node, 'data', stat.S_IWRITE | stat.S_IREAD | stat.S_IEXEC)
@@ -1221,7 +1224,7 @@ class TestNodetool(Tester):
         """
         self.run_cluster(nodes=1)
         node = self.cluster.nodelist()[0]
-        self.stress_write(node)
+        self.stress_write(node, duration='10s')
         node.flush()
         ks = 'keyspace1'
         cf = 'standard1'
@@ -1267,8 +1270,8 @@ class TestNodetool(Tester):
         if node is None:
             node = self.cluster.nodelist()[0]
         out = node.nodetool("proxyhistograms", True)[0]
-        histogram = re.findall("^\s*([^\s]+)\s+(\d+\.\d+)\s+(\d+\.\d+)\s+([^\s]+)\s*$", out, re.MULTILINE)
-        return {m[0]: self._list2dic(m[1:], ["Read Latency", "Write Latency", "Range Latency"]) for m in histogram}
+        histogram = re.findall("^\s*([^\s]+)\s+(\d+\.\d+)\s+(\d+\.\d+)\s+([^\s]+)\s+([^\s]+)\s+([^\s]+)\s+([^\s]+)\s*$", out, re.MULTILINE)
+        return {m[0]: self._list2dic(m[1:], ["Read Latency", "Write Latency", "Range Latency", "CAS Read", "CAS Write", "View Write"]) for m in histogram}
 
     def _verify_proxyhistogram(self, res):
         for latency_type in ("Read Latency", "Write Latency", "Range Latency"):
@@ -1281,7 +1284,6 @@ class TestNodetool(Tester):
                                                                                           v, cur))
                 cur = latency_val
 
-    @require('#2167')
     def proxyhistograms_test(self):
         """
         This test the `nodetool proxyhistograms` command
@@ -1528,10 +1530,10 @@ class TestNodetool(Tester):
         tst is an object of the form
 
         tst = [{"operations": [{"func": self.run_cluster}, {"func": self.concurrent_stress, "delay": 5}, {"func": self.repair, "time": 300, "delay": 10}],
-                "recurrent": [{"func": self.verify_info, "time": 25, "delay": 10}]},
+                "recurrent": [{"func": self.verify_info, "time": 60, "delay": 10}]},
                {"operations": [{"func": self.concurrent_stress, "delay": 5}]},
                {"operations": [{"func": self.add_node, "time": 300}, {"func": self.repair, "time": 300}],
-                "recurrent": [{"func": self.verify_info, "time": 40}, {"func": self.verify_status, "time": 25}, {"func": self.verify_netstats, "time": 26}]}]
+                "recurrent": [{"func": self.verify_info, "time": 90}, {"func": self.verify_status, "time": 25}, {"func": self.verify_netstats, "time": 26}]}]
 
         operation and recurrent are list of objects
         {"func" the function name, "time": when present check the operation time,
@@ -1547,10 +1549,10 @@ class TestNodetool(Tester):
 
     def concurrent_repair_test(self):
         tst = [{"operations": [{"func": self.run_cluster, "block": True}, {"func": self.concurrent_stress, "delay": 5}, {"func": self.repair, "time": 300, "delay": 10}],
-                "recurrent": [{"func": self.verify_all_api, "block": True}, {"func": self.verify_info, "time": 25, "delay": 10}]},
+                "recurrent": [{"func": self.verify_all_api, "block": True}, {"func": self.verify_info, "time": 60, "delay": 10}]},
                {"operations": [{"func": self.concurrent_stress, "delay": 5}]},
                {"operations": [{"func": self.add_node, "time": 300}, {"func": self.repair, "time": 300}],
-                "recurrent": [{"func": self.verify_info, "time": 40}, {"func": self.verify_status, "time": 25}, {"func": self.verify_netstats, "time": 26}]}]
+                "recurrent": [{"func": self.verify_info, "time": 90}, {"func": self.verify_status, "time": 25}, {"func": self.verify_netstats, "time": 26}]}]
         self.general_concurrent(tst)
 
     def rebuild(self, node=None, dc=""):
@@ -1584,11 +1586,11 @@ class TestNodetool(Tester):
         """
         self.ignore_log_patterns = ["migration_task - Can't send migration request: node", "No schema agreement from live replicas after"]
         tst = [{"operations": [{"func": self.run_cluster, "args": [[2, 2], {'hinted_handoff_enabled': False, 'compaction_enforce_min_threshold': True}], "block": True}, {"func": self.stop, "delay": 5, "args": [ [2, 3]]}],
-                "recurrent":[{"func": self.verify_all_api, "block": True}, {"func": self.verify_info, "time": 25, "delay": 10, "args": [None, 'dc1', 'RAC1']}]},
+                "recurrent":[{"func": self.verify_all_api, "block": True}, {"func": self.verify_info, "time": 60, "delay": 10, "args": [None, 'dc1', 'RAC1']}]},
                {"operations": [{"func": self.concurrent_stress, "delay": 15, "args": [None, {"cl":"ONE","duration": "1m", "opt": ["-schema","replication(strategy=NetworkTopologyStrategy, dc1=1,dc2=1)","-rate","threads=10"]}]}],
-                "recurrent": [{"func": self.verify_info, "time": 25, "delay": 10, "args": [None, 'dc1', 'RAC1']}]},
+                "recurrent": [{"func": self.verify_info, "time": 60, "delay": 10, "args": [None, 'dc1', 'RAC1']}]},
                {"operations": [{"func": self.start, "delay": 5, "args": [[2, 3], {"wait_for_binary_proto": True}]}],
-                "recurrent": [{"func": self.verify_info, "time": 25, "delay": 10, "args": [None, 'dc1', 'RAC1']}]},
+                "recurrent": [{"func": self.verify_info, "time": 60, "delay": 10, "args": [None, 'dc1', 'RAC1']}]},
                {"operations": [{"func": self.rebuild, "time": 300, "args": [2, "dc1"]}],
                 "recurrent":self.multi_dc_queries_method_list}]
         self.general_concurrent(tst)
@@ -1605,9 +1607,9 @@ class TestNodetool(Tester):
         """
         self.ignore_log_patterns = ["migration_task - Can't send migration request: node", "Connection has been closed"]
         tst = [{"operations": [{"func": self.run_cluster}],
-                "recurrent": [{"func": self.verify_all_api, "block": True}, {"func": self.verify_info, "time": 25, "delay": 10}]},
+                "recurrent": [{"func": self.verify_all_api, "block": True}, {"func": self.verify_info, "time": 60, "delay": 10}]},
                {"operations": [{"func": self.concurrent_stress, "delay": 5, "args": [None, {"duration": "1m","opt": ["-schema","replication(strategy=SimpleStrategy, replication_factor=2)","-rate","threads=10"]}]}],
-                "recurrent": [{"func": self.verify_info, "time": 25, "delay": 10}]},
+                "recurrent": [{"func": self.verify_info, "time": 60, "delay": 10}]},
                {"operations": [{"func": self.concurrent_stress, "delay": 5, "args": [None, {"cl":"ONE", "duration": "2m"}]}, {"func": self.drain, "delay": 90, "args": [1]}],
                 "recurrent": self. queries_method_list}]
         self.general_concurrent(tst)
@@ -1650,3 +1652,40 @@ class TestNodetool(Tester):
         if opt is None:
             opt = []
         return self.stress(node, 'mixed', times=times, duration=duration, col=col, pop=pop, opt=opt)
+
+    def get_sstable_test(self):
+        """
+        get sstables get a keyspace, table and a key and return the sstables that contain that key
+        
+        Start a cluster
+        Add create a keyspace/table
+        insert a value
+        do nodetool flush
+        get nodetool sstables and validate that we get
+        an sstable, return with a different value and validate that
+        we get no sstables.
+        Testing perform on int, blob and text keys
+        """
+
+        cluster = self.run_cluster(nodes=1)
+        node = cluster[0]
+        session = self.patient_cql_connection(node)
+        self.create_table(session, {"ks1": {"tables": {"tbl1": {"col1": "int", "col2": "text", "key": "col1"}}}})
+        self.populate_data(session, {"ks1": {"tbl1": [{"col1": 4, "col2": "abc"}]}})
+        self.create_table(session, {"ks2": {"tables": {"tbl2": {"col1": "blob", "col2": "text", "key": "col1"}}}})
+        self.populate_data(session, {"ks2": {"tbl2": [{"col1": "0x39303138374b4d343830", "col2": "abc"}]}})
+        self.create_table(session, {"ks3": {"tables": {"tbl3": {"col1": "text", "col2": "text", "key": "col1"}}}})
+        self.populate_data(session, {"ks3": {"tbl3": [{"col1": "keytest", "col2": "abc"}]}})
+        node.nodetool("flush")
+        out = node.nodetool("getsstables ks1 tbl1 4", True)[0]
+        self.assertTrue("ks1/tbl1" in out, "key was not found in the sstable")
+        out = node.nodetool("getsstables ks1 tbl1 5", True)[0]
+        self.assertEqual("", out, "unexpected sstable return for the key")
+        out = node.nodetool("getsstables ks2 tbl2 39303138374b4d343830", True)[0]
+        self.assertTrue("ks2/tbl2" in out, "key was not found in the sstable")
+        out = node.nodetool("getsstables ks2 tbl2 39303138374b4d343831", True)[0]
+        self.assertEqual("", out, "unexpected sstable return for the key")
+        out = node.nodetool("getsstables ks3 tbl3 keytest", True)[0]
+        self.assertTrue("ks3/tbl3" in out, "key was not found in the sstable")
+        out = node.nodetool("getsstables ks3 tbl3 keytest1", True)[0]
+        self.assertEqual("", out, "unexpected sstable return for the key")
