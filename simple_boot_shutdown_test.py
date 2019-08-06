@@ -2,6 +2,7 @@ from dtest import Tester
 from nose.plugins.attrib import attr
 
 
+@attr('dtest-full')
 class TestSimpleBootShutdown(Tester):
 
     def prepare(self):

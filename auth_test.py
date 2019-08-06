@@ -23,6 +23,7 @@ from unittest import skip
 from nose.plugins.attrib import attr
 
 
+@attr('dtest-full')
 class TestAuth(Tester):
     """
     Original Class of dtest

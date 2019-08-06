@@ -2,13 +2,13 @@
 
 from nose.tools import assert_equal
 from dtest import debug
-from dtest import canReuseCluster
 from tools import require
 
 from cqlsh_tests.cqlsh_copy_tests import CqlshPrepare
 from nose.plugins.attrib import attr
 
-@canReuseCluster
+
+@attr('dtest-full')
 class CQLCastTest(CqlshPrepare):
     """ Class provides interface for CAST scalar function """
 

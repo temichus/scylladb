@@ -10,7 +10,8 @@ from cassandra.protocol import ProtocolException
 from cassandra.query import SimpleStatement
 
 from assertions import assert_invalid, assert_one, assert_unavailable, assert_all
-from dtest import Tester, canReuseCluster, freshCluster
+from dtest import Tester
+
 from thrift_bindings.v22.ttypes import \
     ConsistencyLevel as ThriftConsistencyLevel
 from thrift_bindings.v22.ttypes import (CfDef, Column, ColumnOrSuperColumn,
@@ -21,6 +22,7 @@ from scylla_tools import get_entity_id, get_truncated_time_from_system_local, ge
 from nose.plugins.attrib import attr
 
 
+@attr('dtest-full')
 class CQLTester(Tester):
 
     def prepare(self, ordered=False, create_keyspace=True, use_cache=False, nodes=1, rf=1, protocol_version=None, user=None, password=None, **kwargs):
@@ -54,7 +56,7 @@ class CQLTester(Tester):
         return session
 
 
-@canReuseCluster
+@attr('dtest-full')
 class StorageProxyCQLTester(CQLTester):
     """
     Each CQL statement is exercised at least once in order to
@@ -230,7 +232,7 @@ class StorageProxyCQLTester(CQLTester):
         session.execute(query)
 
 
-@canReuseCluster
+@attr('dtest-full')
 class MiscellaneousCQLTester(CQLTester):
     """
     CQL tests that cannot be performed as Java unit tests, see CASSANDRA-9160. Please consider
@@ -380,7 +382,6 @@ class MiscellaneousCQLTester(CQLTester):
         result = list(session.execute(explicit_prepared.bind(None)))
         self.assertEqual(result, [(0, 0, 0, None)])
 
-    @freshCluster()
     def range_slice_test(self):
         """ Test a regression from #1337 """
 
@@ -408,6 +409,7 @@ class MiscellaneousCQLTester(CQLTester):
         assert len(res) == 2, res
 
 
+@attr('dtest-full')
 class TruncateTester(CQLTester):
 
     @staticmethod
@@ -535,6 +537,7 @@ class TruncateTester(CQLTester):
 
 @since('3.0')
 @require("7392")
+@attr('dtest-full')
 class AbortedQueriesTester(CQLTester):
     """
     @jira_ticket CASSANDRA-7392

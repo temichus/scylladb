@@ -13,7 +13,7 @@ A few tests still require the deprecated python CQL over thrift driver.
 
 Installing docker is required for running tests in the scylla-dtest docker container.
 
- * [ccm](https://github.com/pcmanus/ccm)
+ * [ccm](https://github.com/scylladb/scylla-ccm)
  * [nosetests](http://readthedocs.org/docs/nose/en/latest/)
  * [Python Driver](http://datastax.github.io/python-driver/installation.html)
  * [CQL over Thrift Driver](http://code.google.com/a/apache-extras.org/p/cassandra-dbapi2/)

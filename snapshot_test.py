@@ -78,6 +78,7 @@ class SnapshotTester(Tester):
         node.nodetool("refresh %s %s" % (ks, cf))
 
 
+@attr('dtest-full')
 class TestSnapshot(SnapshotTester):
 
     """

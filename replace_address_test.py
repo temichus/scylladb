@@ -14,6 +14,7 @@ class NodeUnavailable(Exception):
     pass
 
 
+@attr('dtest-full')
 class TestReplaceAddress(Tester):
 
     def __init__(self, *args, **kwargs):

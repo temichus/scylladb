@@ -24,6 +24,7 @@ def wait(delay=2):
 
 
 # @require(10699)
+@attr('dtest-full')
 class TestConcurrentSchemaChanges(Tester):
 
     def __init__(self, *argv, **kwargs):

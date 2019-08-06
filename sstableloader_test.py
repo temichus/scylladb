@@ -10,6 +10,7 @@ from tools import safe_mkdtemp
 from nose.plugins.attrib import attr
 
 # @tools.istest
+@attr('dtest-full')
 class TestSSTableLoader(MigrationTestBase):
 
     __test__ = False

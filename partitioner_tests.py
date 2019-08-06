@@ -5,6 +5,7 @@ from dtest import Tester, debug
 from nose.plugins.attrib import attr
 
 
+@attr('dtest-full')
 class TestPartitioner(Tester):
     _multiprocess_can_split_ = False
 

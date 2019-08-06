@@ -3,10 +3,12 @@ import time
 from cassandra import Unavailable, ConsistencyLevel
 from cassandra.query import SimpleStatement
 from ccmlib.scylla_cluster import ScyllaCluster
+from nose.plugins.attrib import attr
 
-from dtest import Tester, debug, freshCluster
+from dtest import Tester, debug
 
 
+@attr('dtest-full')
 class TestSimpleCluster(Tester):
 
     __scylla_args__ = []
@@ -21,7 +23,6 @@ class TestSimpleCluster(Tester):
         cluster = self.cluster
         return cluster
 
-    @freshCluster()
     def simple_create_insert_select_test(self):
         cluster = self.prepare()
         jvm_args = []
@@ -147,7 +148,6 @@ class TestSimpleCluster(Tester):
         """)
         return cluster
 
-    @freshCluster()
     def simple_rf_3_consistency_level_tests(self):
         cluster = self.prepare_cluster(3)
         node1, node2, node3 = cluster.nodelist()
@@ -190,7 +190,6 @@ class TestSimpleCluster(Tester):
 
         # should add additional tests once a node can be entered back into a cluster
 
-    @freshCluster()
     def simple_rf_1_consistency_level_tests(self):
         cluster = self.prepare_cluster(1)
         node1, node2, node3 = cluster.nodelist()
@@ -258,7 +257,6 @@ class TestSimpleCluster(Tester):
             except Exception as ex:
                 assert("Expected cassandra.Unavilable exception received %s" % ex)
 
-    @freshCluster()
     def simple_rf_1_query_tests(self):
         cluster = self.prepare_cluster(1)
 
@@ -282,7 +280,6 @@ class TestSimpleCluster(Tester):
         self.simple_query_validate(session3, "node 3", len(keys), "SELECT * FROM ks.test1", read_cls_pass, read_cls_fail, True)
         self.simple_query_validate(session3, "node 3", 10, "SELECT * FROM ks.test1 where k in (1,10,20,30,40,50,60,70,80,90) ", read_cls_pass, read_cls_fail, True)
 
-    @freshCluster()
     def simple_rf_3_query_tests(self):
         cluster = self.prepare_cluster(3)
 

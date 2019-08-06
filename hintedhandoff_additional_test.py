@@ -7,6 +7,8 @@ from tools import create_c1c2_table, insert_c1c2, query_c1c2, delete_c1c2
 import time
 from nose.plugins.attrib import attr
 
+
+@attr('dtest-full')
 class TestHintedHandoff(Tester):
     def hintedhandoff_rebalance_test(self):
         """

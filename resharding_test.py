@@ -2,12 +2,16 @@ import os
 import glob
 import re
 import time
+
+from nose.plugins.attrib import attr
 from dtest import Tester, debug, flaky
 from tools import rows_to_list, require
 from scylla_tools import TableManager, MaterializedViewManager
 from assertions import assert_one, assert_two_queries_equal
 from cassandra import ConsistencyLevel
 
+
+@attr('dtest-full')
 class ReshardingTest(Tester):
     DEFAULT_MURMUR3_PARTITIONER = 12
     DEFAULT_SMP = '2'

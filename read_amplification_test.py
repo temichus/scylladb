@@ -1,5 +1,7 @@
 import math
 import time
+
+from nose.plugins.attrib import attr
 from concurrent.futures import ThreadPoolExecutor
 from cassandra.query import SimpleStatement
 from cassandra import ConsistencyLevel
@@ -12,6 +14,7 @@ SCAN_READ = 'scan'
 KBYTE = 1024
 
 
+@attr('dtest-full')
 class ReadAmplificationTest(Tester):
 
     def get_metrics(self, metric_names, node_ips=[]):

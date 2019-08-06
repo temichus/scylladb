@@ -16,6 +16,7 @@ from nose.plugins.attrib import attr
 
 @attr('next-gating')
 @attr('dtest-debug')
+@attr('dtest-full')
 class TestCqlTracing(Tester):
     """
     Test that the default implementation for tracing works.

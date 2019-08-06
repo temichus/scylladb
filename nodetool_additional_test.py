@@ -10,7 +10,7 @@ from unittest import skip
 from binascii import hexlify
 
 import yaml
-
+from nose.plugins.attrib import attr
 from ccmlib.node import NodetoolError
 
 from dtest import Tester
@@ -19,6 +19,7 @@ from tools import new_node
 from tools import no_vnodes, rows_to_list, require
 
 
+@attr('dtest-full')
 class TestNodetool(Tester):
 
     def __init__(self, *args, **kwargs):
@@ -887,6 +888,8 @@ class TestNodetool(Tester):
     @staticmethod
     def _sql_val(val):
         try:
+            if val.startswith('0x'):
+                return val;
             return "'" + val + "'"
         except:
             return str(val)
@@ -1169,7 +1172,7 @@ class TestNodetool(Tester):
         enablegossip and enablebinary pass
         refresh failed with permission denied
         """
-        error_to_track = "Found exception\: storage_io_error \(Storage I\/O error\: 13\: Permission denied"
+        error_to_track = re.compile("storage_io_error \(Storage I/O error: 13:")
         self.run_cluster()
         node = self.cluster.nodelist()[0]
         self.stress_write(node, duration='10s')
@@ -1189,7 +1192,7 @@ class TestNodetool(Tester):
                 node.nodetool("refresh keyspace1 standard1")
                 self.fail("refresh should be with Permission denied")
             except NodetoolError as e:
-                self.assertTrue("Storage I/O error: 13" in e.message,
+                self.assertTrue(error_to_track.search(e.message),
                                 'expected error not found in log')
         finally:
             self._change_data_perms(node, 'data', stat.S_IWRITE | stat.S_IREAD | stat.S_IEXEC)
@@ -1650,3 +1653,40 @@ class TestNodetool(Tester):
         if opt is None:
             opt = []
         return self.stress(node, 'mixed', times=times, duration=duration, col=col, pop=pop, opt=opt)
+
+    def get_sstable_test(self):
+        """
+        get sstables get a keyspace, table and a key and return the sstables that contain that key
+        
+        Start a cluster
+        Add create a keyspace/table
+        insert a value
+        do nodetool flush
+        get nodetool sstables and validate that we get
+        an sstable, return with a different value and validate that
+        we get no sstables.
+        Testing perform on int, blob and text keys
+        """
+
+        cluster = self.run_cluster(nodes=1)
+        node = cluster[0]
+        session = self.patient_cql_connection(node)
+        self.create_table(session, {"ks1": {"tables": {"tbl1": {"col1": "int", "col2": "text", "key": "col1"}}}})
+        self.populate_data(session, {"ks1": {"tbl1": [{"col1": 4, "col2": "abc"}]}})
+        self.create_table(session, {"ks2": {"tables": {"tbl2": {"col1": "blob", "col2": "text", "key": "col1"}}}})
+        self.populate_data(session, {"ks2": {"tbl2": [{"col1": "0x39303138374b4d343830", "col2": "abc"}]}})
+        self.create_table(session, {"ks3": {"tables": {"tbl3": {"col1": "text", "col2": "text", "key": "col1"}}}})
+        self.populate_data(session, {"ks3": {"tbl3": [{"col1": "keytest", "col2": "abc"}]}})
+        node.nodetool("flush")
+        out = node.nodetool("getsstables ks1 tbl1 4", True)[0]
+        self.assertTrue("ks1/tbl1" in out, "key was not found in the sstable")
+        out = node.nodetool("getsstables ks1 tbl1 5", True)[0]
+        self.assertEqual("", out, "unexpected sstable return for the key")
+        out = node.nodetool("getsstables ks2 tbl2 39303138374b4d343830", True)[0]
+        self.assertTrue("ks2/tbl2" in out, "key was not found in the sstable")
+        out = node.nodetool("getsstables ks2 tbl2 39303138374b4d343831", True)[0]
+        self.assertEqual("", out, "unexpected sstable return for the key")
+        out = node.nodetool("getsstables ks3 tbl3 keytest", True)[0]
+        self.assertTrue("ks3/tbl3" in out, "key was not found in the sstable")
+        out = node.nodetool("getsstables ks3 tbl3 keytest1", True)[0]
+        self.assertEqual("", out, "unexpected sstable return for the key")

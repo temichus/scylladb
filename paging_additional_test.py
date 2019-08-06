@@ -10,6 +10,7 @@ from dtest import debug
 from nose.plugins.attrib import attr
 
 
+@attr('dtest-full')
 class TestAggregatePaging(BasePagingTester, PageAssertionMixin):
     """
     Basic aggregation tests using paging
@@ -82,6 +83,7 @@ class TestAggregatePaging(BasePagingTester, PageAssertionMixin):
         self._test_paged_count_with_clustering_key('desc')
 
 
+@attr('dtest-full')
 class TestPagingSavedQueryStateBase(BasePagingTester):
     LOOKUPS = 'querier_cache_lookups'
     MISSES = 'querier_cache_misses'
@@ -138,6 +140,7 @@ class TestPagingSavedQueryStateBase(BasePagingTester):
         self.assertEqual(len(matched), len(expected_metrics))
 
 
+@attr('dtest-full')
 class TestLargePaging(TestPagingSavedQueryStateBase, PageAssertionMixin):
     """
     Tests for queries attempting to fetch large pages
@@ -231,6 +234,7 @@ class TestLargePaging(TestPagingSavedQueryStateBase, PageAssertionMixin):
                            validate_metrics=True)
 
 
+@attr('dtest-full')
 class TestPagingSavedQueryStateSingularRanges(TestPagingSavedQueryStateBase):
     """
     Tests concerned with querier-reuse during paging.

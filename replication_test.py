@@ -5,6 +5,7 @@ from cassandra import ConsistencyLevel
 from cassandra.query import SimpleStatement
 from collections import defaultdict
 from unittest import skip
+from nose.plugins.attrib import attr
 
 from dtest import Tester, debug, PRINT_DEBUG
 from tools import no_vnodes, since, require
@@ -42,6 +43,7 @@ murmur3_hashes = {
 
 
 @no_vnodes()
+@attr('dtest-full')
 class ReplicationTest(Tester):
     """This test suite looks at how data is replicated across a cluster
     and who the coordinator, replicas and forwarders involved are.
@@ -254,6 +256,7 @@ class ReplicationTest(Tester):
         self.assertEqual(len(forwarders_used), 3)
 
 
+@attr('dtest-full')
 class SnitchConfigurationUpdateTest(Tester):
     """
     Test to reproduce CASSANDRA-10238, wherein changing snitch properties to change racks without a restart

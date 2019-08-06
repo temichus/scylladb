@@ -5,8 +5,10 @@ import time
 
 from dtest import Tester, debug
 from ccmlib import common as ccmcommon
+from nose.plugins.attrib import attr
 
 
+@attr('dtest-full')
 class TestSSTableGenerationAndLoading(Tester):
 
     def __init__(self, *argv, **kwargs):

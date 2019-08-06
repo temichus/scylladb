@@ -10,6 +10,7 @@ from nose.plugins.attrib import attr
 from ccmlib import common
 
 
+@attr('dtest-full')
 class NativeTransportSSL(Tester):
     """
     Native transport integration tests, specifically for ssl and port configurations.

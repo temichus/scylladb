@@ -4,7 +4,7 @@ from tools import since
 from nose.plugins.attrib import attr
 
 
-
+@attr('dtest-full')
 class TestLargeColumn(Tester):
     """
     Check that inserting and reading large columns to the database doesn't cause off heap memory usage

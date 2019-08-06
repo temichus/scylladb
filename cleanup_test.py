@@ -4,6 +4,7 @@ from tools import insert_c1c2, new_node
 from nose.plugins.attrib import attr
 
 
+@attr('dtest-full')
 class TestCleanup(Tester):
 
     @attr('next-gating')

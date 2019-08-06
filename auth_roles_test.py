@@ -21,6 +21,7 @@ role2_role = ['role2', False, False, {}]
 cassandra_role = ['cassandra', True, True, {}]
 
 
+@attr('dtest-full')
 @since('2.2')
 class TestAuthRoles(Tester):
 

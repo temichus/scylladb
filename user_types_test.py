@@ -32,7 +32,7 @@ def listify(item):
 
     return decoded
 
-
+@attr('dtest-full')
 class TestUserTypes(Tester):
 
     def __init__(self, *args, **kwargs):

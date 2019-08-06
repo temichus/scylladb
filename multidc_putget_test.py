@@ -3,6 +3,7 @@ from tools import putget
 from nose.plugins.attrib import attr
 
 
+@attr('dtest-full')
 class TestMultiDCPutGet(Tester):
 
     @attr('next-gating')

@@ -24,8 +24,6 @@ from cassandra.cluster import ResultSet
 from assertions import assert_all, assert_invalid, assert_none, assert_one, assert_invalid_case_insensitive_matching
 
 from dtest import Tester, debug
-from dtest import canReuseCluster
-from dtest import freshCluster
 
 from scylla_tools import CassandraCluster
 
@@ -40,6 +38,7 @@ from thrift_tests import get_thrift_client
 from tools import require
 from tools import rows_to_list
 from tools import since
+from scylla_tools import wait_for_view
 
 from nose.tools import assert_equal
 from nose.plugins.attrib import attr
@@ -47,7 +46,8 @@ from unittest import skip
 
 MSG_ALLOW_FILTERING = "ALLOW FILTERING"
 
-@canReuseCluster
+
+@attr('dtest-full')
 class TestCQL(Tester):
 
     def prepare(self, ordered=False, create_keyspace=True, use_cache=False, nodes=1, rf=1, protocol_version=None, experimental=False, **kwargs):
@@ -387,7 +387,6 @@ class TestCQL(Tester):
 
         assert_invalid(session, "CREATE TABLE test (key text, key2 text, c int, d text, PRIMARY KEY (key, key2)) WITH COMPACT STORAGE")
 
-    @freshCluster()
     def limit_ranges_test(self):
         """
         Validate LIMIT option for 'range queries' in SELECT statements.
@@ -1475,7 +1474,6 @@ class TestCQL(Tester):
         res = session.execute("SELECT * FROM users WHERE KEY='user1'")
         assert rows_to_list(res) == [], list(res)
 
-    @freshCluster()
     def undefined_column_handling_test(self):
         session = self.prepare(ordered=True)
 
@@ -1497,7 +1495,6 @@ class TestCQL(Tester):
         res = session.execute("SELECT v2 FROM test WHERE k = 1")
         assert rows_to_list(res) == [[None]], list(res)
 
-    @freshCluster()
     def range_tombstones_test(self):
         """ Test deletion by 'composite prefix' (range tombstones) """
         cluster = self.cluster
@@ -2020,7 +2017,6 @@ class TestCQL(Tester):
         res = session.execute("SELECT * FROM test")
         assert rows_to_list(res) == [[2, 2, None, None]], list(res)
 
-    @freshCluster()
     def only_pk_test(self):
         """ Check table with only a PK (#4361) """
         session = self.prepare(ordered=True)
@@ -2072,7 +2068,6 @@ class TestCQL(Tester):
         session.execute("INSERT INTO test (k, t) VALUES (0, '2011-02-03')")
         assert_invalid(session, "INSERT INTO test (k, t) VALUES (0, '2011-42-42')")
 
-    @freshCluster()
     def range_slice_test(self):
         """ Test a regression from #1337 """
 
@@ -2099,7 +2094,6 @@ class TestCQL(Tester):
         res = list(session.execute("SELECT * FROM test"))
         assert len(res) == 2, res
 
-    @freshCluster()
     @require('#3574')
     def composite_index_with_pk_test(self):
 
@@ -2159,7 +2153,6 @@ class TestCQL(Tester):
             assert_invalid(session, "SELECT content FROM blogs WHERE time1 = 1 AND time2 = 1 AND author='foo'")
             assert_invalid(session, "SELECT content FROM blogs WHERE time1 = 1 AND time2 > 0 AND author='foo'")
 
-    @freshCluster()
     @attr('next-gating')
     @attr('dtest-debug')
     def limit_bugs_test(self):
@@ -2245,7 +2238,6 @@ class TestCQL(Tester):
         assert_invalid(session, "SELECT * FROM compositetest WHERE ctime>=12345679 AND key='key3' AND ctime<=12345680 LIMIT 3;")
         assert_invalid(session, "SELECT * FROM compositetest WHERE ctime=12345679  AND key='key3' AND ctime<=12345680 LIMIT 3")
 
-    @freshCluster()
     def order_by_multikey_test(self):
         """ Test for #4612 bug and more generaly order by when multiple C* rows are queried """
 
@@ -2275,7 +2267,6 @@ class TestCQL(Tester):
         assert_invalid(session, "SELECT col1 FROM test ORDER BY col1;")
         assert_invalid(session, "SELECT col1 FROM test WHERE my_id > 'key1' ORDER BY col1;")
 
-    @freshCluster()
     @skip("unconfigured table schema_keyspaces")
     def create_alter_options_test(self):
         session = self.prepare(create_keyspace=False)
@@ -2709,7 +2700,6 @@ class TestCQL(Tester):
         res = session.execute("SELECT l1, l2 FROM test WHERE k = 0")
         self.assertItemsEqual(rows_to_list(res), [[[1, 24, 3], [4, 42, 6]]])
 
-    @freshCluster()
     @skip('indexes')
     def composite_index_collections_test(self):
         session = self.prepare(ordered=True)
@@ -2735,7 +2725,6 @@ class TestCQL(Tester):
         res = session.execute("SELECT blog_id, content FROM blogs WHERE author='foo'")
         assert rows_to_list(res) == [[1, set(['bar1', 'bar2'])], [1, set(['bar2', 'bar3'])], [2, set(['baz'])]], list(res)
 
-    @freshCluster()
     def truncate_clean_cache_test(self):
         session = self.prepare(ordered=True, use_cache=True)
 
@@ -3538,7 +3527,6 @@ class TestCQL(Tester):
             assert_invalid(session, "DELETE FROM test2 WHERE k = 0 AND i > 0 IF EXISTS")
             assert_invalid(session, "DELETE FROM test2 WHERE k = 0 AND i > 0 IF v = 'foo'")
 
-    @freshCluster()
     def range_key_ordered_test(self):
         session = self.prepare(ordered=True)
 
@@ -3740,7 +3728,6 @@ class TestCQL(Tester):
         session.execute("INSERT INTO test(k) VALUES (0)")
         assert_one(session, "SELECT dateOf(t) FROM test WHERE k=0", [None])
 
-    @freshCluster()
     @skip("Not implemented: LWT")
     def cas_simple_test(self):
         session = self.prepare(nodes=3, rf=3)
@@ -5406,6 +5393,7 @@ class TestCQL(Tester):
             raise e
 
 
+@attr('dtest-full')
 class CQLAdditionalTests(Tester):
 
     def prepare(self):
@@ -5769,4 +5757,545 @@ class CQLAdditionalTests(Tester):
         out, err = nodes[0].run_cqlsh(cmds='USE veraminetest; DESCRIBE TABLES', show_output=True, return_output=True)
         assert len(out.split()) == 112, 'created 100+ tables'
 
+@canReuseCluster
+class MultiColumnRestrictionSimpleTests(Tester):
 
+    INSERT_COLUMNS = 'key,clmn_int,clmn_text,clmn_timestamp,clmn_bool,clmn_ascii,clmn_uuid,clmn_blob'
+    INSERT_2COLUMNS = 'key,clmn_int'
+    SELECT_COLUMNS = INSERT_COLUMNS.replace('clmn_timestamp', 'cast(clmn_timestamp as text)')
+    SELECT_COLUMNS = SELECT_COLUMNS.replace('clmn_uuid', 'cast(clmn_uuid as text)')
+
+    TEST_DATA = [[0, 0, 'text1', 12345674987, True, '045asciitext', 'de5cba0d-41a2-4f39-8834-35130d8b5d86', 'c'*10],
+                 [1, 0, 'text2', 63873478378, False, 'abcdefj', 'fa80080c-a4c5-46d6-afe4-5e184fec35ae', 'b'*10],
+                 [2, 2, 'text3', 398793781719, True, '354dsfsd', 'de5cba0d-41a2-4f39-8834-35130d8b5d86', 'b'*10],
+                 [3, 3, 'text4', 398793781719, False, '897dfjka9', 'fa80080c-a4c5-46d6-afe4-5e184fec35ae', 'a'*10],
+                 [4, 4]
+                ]
+
+    EXPECTED_DATA = [[0, 0, 'text1', '1970-05-23T21:21:14.987000', True, '045asciitext',
+                      'de5cba0d-41a2-4f39-8834-35130d8b5d86', 'c'*10],
+                     [1, 0, 'text2', '1972-01-10T06:37:58.378000', False, 'abcdefj',
+                      'fa80080c-a4c5-46d6-afe4-5e184fec35ae', 'b'*10],
+                     [2, 2, 'text3', '1982-08-21T16:03:01.719000', True, '354dsfsd',
+                      'de5cba0d-41a2-4f39-8834-35130d8b5d86', 'b'*10],
+                     [3, 3, 'text4', '1982-08-21T16:03:01.719000', False, '897dfjka9',
+                      'fa80080c-a4c5-46d6-afe4-5e184fec35ae', 'a'*10],
+                     [4, 4, None, None, None, None, None, None]
+                    ]
+    TABLE_NAME = 'cf'
+    MV_NAME = 'cf_mv'
+
+    def prepare(self, create_keyspace=True, use_cache=False, nodes=1, rf=1, protocol_version=None):
+        cluster = self.cluster
+
+        if use_cache:
+            cluster.set_configuration_options(values={'row_cache_size_in_mb': 100})
+
+        if not cluster.nodelist():
+            cluster.populate(nodes).start()
+        node1 = cluster.nodelist()[0]
+        time.sleep(0.2)
+
+        session = self.patient_cql_connection(node1, protocol_version=protocol_version)
+        if create_keyspace:
+            if self._preserve_cluster:
+                session.execute("DROP KEYSPACE IF EXISTS ks")
+            self.create_ks(session, 'ks', rf)
+        return session
+
+    def create_8_columns_table(self, session, table_name=TABLE_NAME, add_ck=False):
+        query = 'CREATE COLUMNFAMILY {table_name} (key int, clmn_int int, clmn_text varchar, clmn_timestamp timestamp, ' \
+                'clmn_bool boolean, clmn_ascii ascii, clmn_uuid uuid, clmn_blob blob, PRIMARY KEY(key{ck}))'.\
+            format(table_name=table_name, ck=', clmn_int' if add_ck else '')
+
+        debug(query)
+        session.execute(query)
+
+    def create_materialized_view(self, session, view_column, view_name=MV_NAME, table_name=TABLE_NAME,
+                                 table_with_ck=True):
+        query = 'CREATE MATERIALIZED VIEW {view_name} as SELECT * FROM {table_name} '\
+                'WHERE key IS NOT NULL {ck}and {view_column} IS NOT NULL PRIMARY KEY (key{ckey}, {view_column})' \
+                        .format(view_name=view_name, table_name=table_name,
+                         ck='AND clmn_int IS NOT NULL ' if table_with_ck else '',
+                         ckey=', clmn_int' if table_with_ck else '',
+                         view_column=view_column)
+        debug(query)
+        session.execute(query)
+        wait_for_view(cluster=self.cluster, session=session, ks='ks', view=view_name)
+
+    def insert_data_in_8_columns_table(self, session, insert_data=TEST_DATA, table_name=TABLE_NAME):
+        debug('Insert data')
+        for data in insert_data:
+            if len(data) == 2:
+                data_str = '{data[0]},{data[1]}'.format(data=data)
+                insert_columns = self.INSERT_2COLUMNS
+            elif len(data) == 8:
+                data_str = '{data[0]},{data[1]},\'{data[2]}\',\'{data[3]}\',{data[4]},\'{data[5]}\',' \
+                            '{data[6]},textAsBlob(\'{data[7]}\')'.format(data=data)
+                insert_columns = self.INSERT_COLUMNS
+            else:
+                assert False, 'Expected data set with 2 or 8, but received {}'.format(len(data))
+
+            stmt = 'INSERT INTO {table_name}({columns}) VALUES({data_str})'.format(table_name=table_name,
+                                                                                   columns=insert_columns,
+                                                                                   data_str=data_str)
+            session.execute(stmt)
+
+    def filter_by_one_non_indexed_columns_test(self):
+        session = self.prepare()
+        self.create_8_columns_table(session=session)
+
+        self.insert_data_in_8_columns_table(session=session)
+
+        select_stmt = 'select {select_columns} from {table_name} '.format(select_columns=self.SELECT_COLUMNS,
+                                                                         table_name=self.TABLE_NAME)
+
+        debug('Filter by integer non-indexed column')
+        assert_all(session=session, query=select_stmt + 'where clmn_int = 0 ALLOW FILTERING',
+                   expected=self.EXPECTED_DATA[:2], ignore_order=True)
+
+        debug('Filter by text non-indexed column')
+        assert_all(session=session, query=select_stmt + 'where clmn_text = \'text3\' ALLOW FILTERING',
+                   expected=[self.EXPECTED_DATA[2]], ignore_order=True)
+
+        debug('Filter by timestamp non-indexed column')
+        assert_all(session=session, query=select_stmt + 'where clmn_timestamp = 398793781719 ALLOW FILTERING',
+                   expected=self.EXPECTED_DATA[2:4], ignore_order=True)
+
+        debug('Filter by boolean non-indexed column')
+        assert_all(session=session, query=select_stmt + 'where clmn_bool = True ALLOW FILTERING',
+                   expected=[self.EXPECTED_DATA[0], self.EXPECTED_DATA[2]], ignore_order=True,
+                   cl=ConsistencyLevel.QUORUM)
+
+        debug('Filter by ascii non-indexed column')
+        assert_all(session=session, query=select_stmt + 'where clmn_ascii = \'abcdefj\' ALLOW FILTERING',
+                   expected=[self.EXPECTED_DATA[1]], ignore_order=True,
+                   cl=ConsistencyLevel.QUORUM)
+
+        debug('Filter by uuid non-indexed column')
+        assert_all(session=session,
+                   query=select_stmt + 'where clmn_uuid = de5cba0d-41a2-4f39-8834-35130d8b5d86 '
+                                       'ALLOW FILTERING',
+                   expected=[self.EXPECTED_DATA[0], self.EXPECTED_DATA[2]], ignore_order=True,
+                   cl=ConsistencyLevel.QUORUM)
+
+        debug('Filter by blob non-indexed column')
+        assert_all(session=session,
+                   query=select_stmt + ' where clmn_blob = textAsBlob(\'{}\') ALLOW FILTERING'.format('b'*10),
+                   expected=self.EXPECTED_DATA[1:3], ignore_order=True,
+                   cl=ConsistencyLevel.QUORUM)
+
+    def filter_by_three_non_indexed_columns_test(self):
+        session = self.prepare()
+        self.create_8_columns_table(session=session)
+
+        self.insert_data_in_8_columns_table(session=session)
+
+        select_stmt = 'select {select_columns} from {table_name} '.format(select_columns=self.SELECT_COLUMNS,
+                                                                         table_name=self.TABLE_NAME)
+
+        debug('Filter by integer & uuid & timestamp non-indexed columns')
+        assert_all(session=session, query=select_stmt + 'where clmn_int = 2 and '
+                                                        'clmn_uuid = de5cba0d-41a2-4f39-8834-35130d8b5d86 '
+                                                        'and clmn_timestamp = 398793781719 ALLOW FILTERING',
+                   expected=[self.EXPECTED_DATA[2]], ignore_order=True)
+
+        debug('Filter by ascii & text & blob non-indexed columns')
+        assert_all(session=session, query=select_stmt + 'where clmn_ascii = \'897dfjka9\' and '
+                                                        'clmn_text = \'text4\' '
+                                                        'and clmn_blob = textAsBlob(\'{}\') ALLOW FILTERING'.format('a'*10),
+                   expected=[self.EXPECTED_DATA[3]], ignore_order=True)
+
+    def filter_by_pk_ck_and_non_indexed_columns_test(self):
+        session = self.prepare()
+        self.create_8_columns_table(session=session, add_ck=True)
+
+        self.insert_data_in_8_columns_table(session=session)
+
+        select_stmt = 'select {select_columns} from {table_name} '.format(select_columns=self.SELECT_COLUMNS,
+                                                                         table_name=self.TABLE_NAME)
+
+        debug('Filter by PK and one non-indexed column')
+        assert_all(session=session, query=select_stmt + 'where key = 0 and clmn_timestamp = 12345674987 ALLOW FILTERING',
+                   expected=[self.EXPECTED_DATA[0]], ignore_order=True)
+
+        debug('Filter by PK, CK and one non-indexed column')
+        assert_all(session=session, query=select_stmt + 'where key = 0 and clmn_int = 0 and clmn_timestamp = 12345674987 '
+                                                        'ALLOW FILTERING',
+                   expected=[self.EXPECTED_DATA[0]], ignore_order=True)
+
+        debug('Filter by PK and two non-indexed column')
+        assert_all(session=session, query=select_stmt + 'where key = 0 and clmn_timestamp = 12345674987 and '
+                                                        'clmn_bool = True ALLOW FILTERING',
+                   expected=[self.EXPECTED_DATA[0]], ignore_order=True)
+
+        debug('Filter by PK, CK and two non-indexed column')
+        assert_all(session=session, query=select_stmt + 'where key = 0 and clmn_int = 0 and clmn_timestamp = 12345674987 '
+                                                    'and clmn_uuid=de5cba0d-41a2-4f39-8834-35130d8b5d86 ALLOW FILTERING',
+                   expected=[self.EXPECTED_DATA[0]], ignore_order=True)
+
+    def filter_by_pk_ck_globalSI_and_non_indexed_columns_test(self):
+        session = self.prepare()
+        self.create_8_columns_table(session=session, add_ck=True)
+
+        self.create_index(session=session, table_name=self.TABLE_NAME, index_column='clmn_text', index_name='global_idx')
+
+        self.insert_data_in_8_columns_table(session=session)
+
+        select_stmt = 'select {select_columns} from {table_name} '.format(select_columns=self.SELECT_COLUMNS,
+                                                                         table_name=self.TABLE_NAME)
+
+        debug('Filter by PK, SI and one non-indexed column')
+        assert_all(session=session, query=select_stmt + 'where key = 1 and clmn_text = \'text2\' and '
+                                                        'clmn_timestamp = 63873478378 ALLOW FILTERING',
+                   expected=[self.EXPECTED_DATA[1]], ignore_order=True)
+
+        debug('Filter by PK, CK, SI and one non-indexed column')
+        assert_all(session=session, query=select_stmt + 'where key = 1 and clmn_int = 0 and clmn_text = \'text2\' and '
+                                                        'clmn_timestamp = 63873478378 ALLOW FILTERING',
+                   expected=[self.EXPECTED_DATA[1]], ignore_order=True)
+
+        debug('Filter by PK, SI and two non-indexed column')
+        assert_all(session=session, query=select_stmt + 'where key = 1 and clmn_text = \'text2\' and '
+                                                        'clmn_uuid = fa80080c-a4c5-46d6-afe4-5e184fec35ae and '
+                                                        'clmn_timestamp = 63873478378 ALLOW FILTERING',
+                   expected=[self.EXPECTED_DATA[1]], ignore_order=True)
+
+        debug('Filter by PK, CK, SI and two non-indexed column')
+        assert_all(session=session, query=select_stmt + 'where key = 1 and clmn_int = 0 and clmn_text = \'text2\' and '
+                                                        'clmn_bool = False and clmn_timestamp = 63873478378 '
+                                                        'ALLOW FILTERING',
+                   expected=[self.EXPECTED_DATA[1]], ignore_order=True)
+
+    def filter_by_pk_ck_localSI_and_non_indexed_columns_test(self):
+        session = self.prepare()
+        self.create_8_columns_table(session=session, add_ck=True)
+
+        self.create_local_index(session=session, table_name=self.TABLE_NAME, pk_name='key', index_column='clmn_text',
+                                index_name='global_idx')
+
+        self.insert_data_in_8_columns_table(session=session)
+
+        select_stmt = 'select {select_columns} from {table_name} '.format(select_columns=self.SELECT_COLUMNS,
+                                                                         table_name=self.TABLE_NAME)
+
+        debug('Filter by PK, SI and one non-indexed column')
+        assert_all(session=session, query=select_stmt + 'where key = 1 and clmn_text = \'text2\' and '
+                                                        'clmn_timestamp = 63873478378 ALLOW FILTERING',
+                   expected=[self.EXPECTED_DATA[1]], ignore_order=True)
+
+        debug('Filter by PK, CK, SI and one non-indexed column')
+        assert_all(session=session, query=select_stmt + 'where key = 1 and clmn_int = 0 and clmn_text = \'text2\' and '
+                                                        'clmn_timestamp = 63873478378 ALLOW FILTERING',
+                   expected=[self.EXPECTED_DATA[1]], ignore_order=True)
+
+        debug('Filter by PK, SI and two non-indexed column')
+        assert_all(session=session, query=select_stmt + 'where key = 1 and clmn_text = \'text2\' and '
+                                                        'clmn_uuid = fa80080c-a4c5-46d6-afe4-5e184fec35ae and '
+                                                        'clmn_timestamp = 63873478378 ALLOW FILTERING',
+                   expected=[self.EXPECTED_DATA[1]], ignore_order=True)
+
+        debug('Filter by PK, CK, SI and two non-indexed column')
+        assert_all(session=session, query=select_stmt + 'where key = 1 and clmn_int = 0 and clmn_text = \'text2\' and '
+                                                        'clmn_bool = False and clmn_timestamp = 63873478378 '
+                                                        'ALLOW FILTERING',
+                   expected=[self.EXPECTED_DATA[1]], ignore_order=True)
+
+    def filter_by_two_non_indexed_columns_with_operator_test(self):
+        session = self.prepare()
+        self.create_8_columns_table(session=session)
+
+        self.insert_data_in_8_columns_table(session=session)
+
+        select_stmt = 'select {select_columns} from {table_name} '.format(select_columns=self.SELECT_COLUMNS,
+                                                                         table_name=self.TABLE_NAME)
+
+        debug('Filter by integer & uuid non-indexed columns with "=<" operator')
+        assert_all(session=session, query=select_stmt + 'where clmn_int < 2 and '
+                                                        'clmn_uuid <= fa80080c-a4c5-46d6-afe4-5e184fec35ae '
+                                                        'ALLOW FILTERING',
+                   expected=self.EXPECTED_DATA[:2], ignore_order=True)
+
+    def filter_by_pk_ck_globalSI_and_non_indexed_columns_with_operator_test(self):
+        session = self.prepare()
+        self.create_8_columns_table(session=session, add_ck=True)
+
+        self.create_index(session=session, table_name=self.TABLE_NAME, index_column='clmn_text', index_name='global_idx')
+
+        self.insert_data_in_8_columns_table(session=session, insert_data=self.TEST_DATA[:4])
+
+        select_stmt = 'select {select_columns} from {table_name} '.format(select_columns=self.SELECT_COLUMNS,
+                                                                         table_name=self.TABLE_NAME)
+
+        debug('Filter by PK, CK, SI and one non-indexed column')
+        assert_all(session=session, query=select_stmt + 'where key > 1 and clmn_int < 5 and clmn_text >= \'text2\' and '
+                                                        'clmn_timestamp > 63873478378 ALLOW FILTERING',
+                   expected=self.EXPECTED_DATA[2:4], ignore_order=True)
+
+    def filter_by_pk_ck_localSI_and_non_indexed_columns_with_operator_test(self):
+        session = self.prepare()
+        self.create_8_columns_table(session=session, add_ck=True)
+
+        self.create_local_index(session=session, table_name=self.TABLE_NAME, pk_name='key', index_column='clmn_text',
+                                index_name='local_idx')
+
+        self.insert_data_in_8_columns_table(session=session, insert_data=self.TEST_DATA[:4])
+
+        select_stmt = 'select {select_columns} from {table_name} '.format(select_columns=self.SELECT_COLUMNS,
+                                                                         table_name=self.TABLE_NAME)
+
+        debug('Filter by PK, CK, SI and one non-indexed column')
+        assert_all(session=session, query=select_stmt + 'where key > 1 and clmn_int < 5 and clmn_text >= \'text2\' and '
+                                                        'clmn_timestamp > 63873478378 ALLOW FILTERING',
+                   expected=self.EXPECTED_DATA[2:4], ignore_order=True)
+
+    # In Cassandra filtering by null still not supported. They mean to do that in 4.x version
+    # https://issues.apache.org/jira/browse/CASSANDRA-10715
+    @require('#4776')
+    def filter_by_pk_ck_localSI_and_empty_non_indexed_columns_test(self):
+        session = self.prepare()
+        self.create_8_columns_table(session=session, add_ck=True)
+
+        self.create_local_index(session=session, table_name=self.TABLE_NAME, pk_name='key', index_column='clmn_text',
+                                index_name='local_idx')
+
+        self.insert_data_in_8_columns_table(session=session, insert_data=[self.TEST_DATA[4]])
+
+        select_stmt = 'select {select_columns} from {table_name} '.format(select_columns=self.SELECT_COLUMNS,
+                                                                         table_name=self.TABLE_NAME)
+
+        debug('Filter by one empty non-indexed column')
+        assert_all(session=session, query=select_stmt + 'where clmn_text = null ALLOW FILTERING',
+                   expected=[self.EXPECTED_DATA[4]], ignore_order=True)
+
+    def filter_by_non_indexed_columns_from_mv_test(self):
+        session = self.prepare()
+        self.create_8_columns_table(session=session, add_ck=True)
+        self.create_materialized_view(session=session, view_column='clmn_text')
+        self.insert_data_in_8_columns_table(session=session)
+
+        select_stmt = 'select {select_columns} from {table_name} '.format(select_columns=self.SELECT_COLUMNS,
+                                                                         table_name=self.MV_NAME)
+
+        # Issue #4776
+        # debug('Filter by one empty non-indexed column')
+        # assert_all(session=session, query=select_stmt + 'where clmn_text = \'\' ALLOW FILTERING',
+        #            expected=[self.EXPECTED_DATA[4]], ignore_order=True)
+
+        debug('Filter by one non-indexed column')
+        assert_all(session=session, query=select_stmt + 'where clmn_text = \'text1\' ALLOW FILTERING',
+                   expected=[self.EXPECTED_DATA[0]], ignore_order=True)
+
+        debug('Filter by PK, CK, SI and two non-indexed column with "less-more" operator')
+        assert_all(session=session, query=select_stmt + 'where key > 1 and clmn_int < 5 '
+                                                        'and clmn_uuid = fa80080c-a4c5-46d6-afe4-5e184fec35ae and '
+                                                        'clmn_blob = textAsBlob(\'{}\') ALLOW FILTERING'.format('a'*10),
+                   expected=[self.EXPECTED_DATA[3]], ignore_order=True)
+
+    def empty_data_set_result_test(self):
+        session = self.prepare()
+        self.create_8_columns_table(session=session, add_ck=True)
+        self.create_materialized_view(session=session, view_column='clmn_text')
+        self.insert_data_in_8_columns_table(session=session, insert_data=self.TEST_DATA[:4])
+
+        select_stmt = 'select {select_columns} from {table_name} '.format(select_columns=self.SELECT_COLUMNS,
+                                                                          table_name=self.TABLE_NAME)
+
+        debug('Filter by PK, CK, SI and one non-indexed column')
+        assert_all(session=session, query=select_stmt + 'where key > 1 and clmn_int < 5 and clmn_text <= \'text2\' and '
+                                                        'clmn_timestamp < 63873478378 ALLOW FILTERING',
+                   expected=[], ignore_order=True)
+
+        debug('Filter by PK, CK, SI and two non-indexed column')
+        assert_all(session=session, query=select_stmt + 'where key > 1 and clmn_int < 5 '
+                                                        'and clmn_uuid = null and clmn_blob = null ALLOW FILTERING',
+                   expected=[], ignore_order=True)
+
+        select_stmt = 'select {select_columns} from {table_name} '.format(select_columns=self.SELECT_COLUMNS,
+                                                                          table_name=self.MV_NAME)
+        debug('Filter by PK, CK, SI and one non-indexed column')
+        assert_all(session=session, query=select_stmt + 'where key > 1 and clmn_int < 5 and clmn_text <= \'text2\' and '
+                                                        'clmn_timestamp < 63873478378 ALLOW FILTERING',
+                   expected=[], ignore_order=True)
+
+@canReuseCluster
+class MultiColumnRestrictionCollectionTests(Tester):
+    TABLE_NAME = 'cf'
+    TEST_DATA = [[0, "[0, 1, 2]", "[textAsBlob('t1'), textAsBlob('t2')]",
+                  "{de5cba0d-41a2-4f39-8834-35130d8b5d86, fa80080c-a4c5-46d6-afe4-5e184fec35ae}",
+                  "{'t3', 't4', 't5'}",
+                  "{'a': True, 'b': True, 'c': False}",
+                  "{'a': f34f6a76-b383-11e9-a2a3-2a2ae2dbcce4, 'c': f34f6cec-b383-11e9-a2a3-2a2ae2dbcce4}",
+                  "[5, 6]", "['f1', 'f2']", "{7, 9}", "{'f3', 'f4', 'f5'}", "{'fa': 'b', 'fc': 'd'}",
+                  "{'fa': 1, 'fb': 2, 'fc':3}"
+                 ],
+
+                 [1, "[3, 4, 5]", "[textAsBlob('t3'), textAsBlob('t4')]",
+                  "{8e4fe826-b383-11e9-a2a3-2a2ae2dbcce4, 8e4fea9c-b383-11e9-a2a3-2a2ae2dbcce4}",
+                  "{'t5', 't6', 't7'}", "{'a1': False, 'c1': False}",
+                  "{'a1': 26a8e352-b384-11e9-a2a3-2a2ae2dbcce4, 'b1': 26a8e5be-b384-11e9-a2a3-2a2ae2dbcce4, 'c1': 26a8e712-b384-11e9-a2a3-2a2ae2dbcce4}",
+                  "[7, 8]", "['f3', 'f4']", "{9, 10}", "{'f6', 'f7', 'f8'}",
+                  "{'f1': 'c', 'f2': 'e'}", "{'f1': 1, 'f2': 2, 'f3': 3}"
+                 ]
+                ]
+    INSERT_COLUMNS = 'id, list_int, list_blob, set_uuid, set_text, map_bool, map_uuid, f_list_int, f_list_text, ' \
+                     'f_set_int, f_set_text, f_map_text, f_map_int'
+
+    def prepare(self, create_keyspace=True, use_cache=False, nodes=1, rf=1, protocol_version=None):
+        cluster = self.cluster
+
+        if use_cache:
+            cluster.set_configuration_options(values={'row_cache_size_in_mb': 100})
+
+        if not cluster.nodelist():
+            cluster.populate(nodes).start()
+        node1 = cluster.nodelist()[0]
+        time.sleep(0.2)
+
+        session = self.patient_cql_connection(node1, protocol_version=protocol_version)
+        if create_keyspace:
+            if self._preserve_cluster:
+                session.execute("DROP KEYSPACE IF EXISTS ks")
+            self.create_ks(session, 'ks', rf)
+        return session
+
+    def create_all_collections_table(self, session):
+        stmt = 'CREATE TABLE {0} (id int PRIMARY KEY, list_int list<int>, list_blob list<blob>, ' \
+                    'set_uuid set<uuid>, set_text set<text>, map_bool map<text, boolean>, ' \
+                    'map_uuid map<text, uuid>, f_list_int frozen<list<int>>, f_list_text frozen<list<text>>, ' \
+                    'f_set_int frozen<set<int>>, f_set_text frozen<set<text>>,f_map_text frozen<map<text, text>>, ' \
+                    'f_map_int frozen<map<text, int>>)'.format(self.TABLE_NAME)
+        debug(stmt)
+        session.execute(stmt)
+
+    def insert_data_in_all_collections_columns_table(self, session, insert_data=TEST_DATA):
+        debug('Insert data')
+        for data in insert_data:
+            data_str = '{data[0]},{data[1]},{data[2]},{data[3]},{data[4]},{data[5]},{data[6]},{data[7]},{data[8]},' \
+                        '{data[9]},{data[10]},{data[11]},{data[12]}'.format(data=data)
+
+            stmt = 'INSERT INTO {table_name}({columns}) VALUES({data_str})'.format(table_name=self.TABLE_NAME,
+                                                                                   columns=self.INSERT_COLUMNS,
+                                                                                   data_str=data_str)
+
+            session.execute(stmt)
+
+    def filter_by_one_non_indexed_collection_column_test(self):
+        session = self.prepare()
+        self.create_all_collections_table(session=session)
+
+        self.insert_data_in_all_collections_columns_table(session=session)
+
+        select_stmt = 'select id from {table_name} '.format(table_name=self.TABLE_NAME)
+
+        debug('Filter by list of integer non-indexed column')
+        assert_all(session=session, query=select_stmt + 'where list_int CONTAINS 4 ALLOW FILTERING',
+                   expected=[[1]], ignore_order=True)
+
+        debug('Filter by list of blob non-indexed column')
+        assert_all(session=session, query=select_stmt + 'where list_blob CONTAINS textAsBlob(\'t1\') ALLOW FILTERING',
+                   expected=[[0]], ignore_order=True)
+
+        debug('Filter by set of uuid non-indexed column')
+        assert_all(session=session, query=select_stmt + 'where set_uuid CONTAINS 8e4fe826-b383-11e9-a2a3-2a2ae2dbcce4'
+                                                        ' ALLOW FILTERING',
+                   expected=[[1]], ignore_order=True)
+
+        debug('Filter by set of text non-indexed column')
+        assert_all(session=session, query=select_stmt + 'where set_text CONTAINS \'t5\' ALLOW FILTERING',
+                   expected=[[0], [1]], ignore_order=True)
+
+        debug('Filter by map <text, boolean> non-indexed column')
+        assert_all(session=session, query=select_stmt + 'where map_bool CONTAINS False '
+                                                        'and map_bool CONTAINS KEY \'a1\' ALLOW FILTERING',
+                   expected=[[1]], ignore_order=True)
+
+        debug('Filter by map <text, uuid> non-indexed column')
+        assert_all(session=session, query=select_stmt + 'where map_uuid CONTAINS f34f6a76-b383-11e9-a2a3-2a2ae2dbcce4 '
+                                                        ' ALLOW FILTERING',
+                   expected=[[0]], ignore_order=True)
+
+        debug('Filter by map <text, uuid> non-indexed column')
+        assert_all(session=session, query=select_stmt + 'where map_uuid CONTAINS KEY \'a1\' ALLOW FILTERING',
+                   expected=[[1]], ignore_order=True)
+
+        debug('Filter by frozen list of integer non-indexed column')
+        assert_all(session=session, query=select_stmt + 'where f_list_int CONTAINS 8 ALLOW FILTERING',
+                   expected=[[1]], ignore_order=True)
+
+        debug('Filter by frozen list of text non-indexed column')
+        assert_all(session=session, query=select_stmt + 'where f_list_text CONTAINS \'f4\' ALLOW FILTERING',
+                   expected=[[1]], ignore_order=True)
+
+        debug('Filter by frozen set of int non-indexed column (EQUAL)')
+        assert_all(session=session, query=select_stmt + 'where f_set_int = {9, 7} '
+                                                        ' ALLOW FILTERING',
+                   expected=[[0]], ignore_order=True)
+
+        debug('Filter by frozen set of int non-indexed column (CONTAINS)')
+        assert_all(session=session, query=select_stmt + 'where f_set_int CONTAINS 9 and f_set_int CONTAINS 10 '
+                                                        ' ALLOW FILTERING',
+                   expected=[[1]], ignore_order=True)
+
+        debug('Filter by frozen set of text non-indexed column')
+        assert_all(session=session, query=select_stmt + 'where f_set_text CONTAINS \'f6\' ALLOW FILTERING',
+                   expected=[[1]], ignore_order=True)
+
+        debug('Filter by frozen map of text non-indexed column (EQUAL)')
+        assert_all(session=session, query=select_stmt + 'where f_map_text = {\'f2\': \'e\', \'f1\': \'c\'} '
+                                                        'ALLOW FILTERING',
+                   expected=[[1]], ignore_order=True)
+
+        debug('Filter by frozen map of text non-indexed column (CONTAINS)')
+        assert_all(session=session, query=select_stmt + 'where f_map_text CONTAINS \'c\' '
+                                                        'ALLOW FILTERING',
+                   expected=[[1]], ignore_order=True)
+
+        debug('Filter by frozen map of text non-indexed column (CONTAINS KEY)')
+        assert_all(session=session, query=select_stmt + 'where f_map_text CONTAINS KEY \'f2\' '
+                                                        'ALLOW FILTERING',
+                   expected=[[1]], ignore_order=True)
+
+        debug('Filter by frozen map of int non-indexed column (CONTAINS)')
+        assert_all(session=session, query=select_stmt + 'where f_map_int CONTAINS 2 '
+                                                        'ALLOW FILTERING',
+                   expected=[[0], [1]], ignore_order=True)
+
+
+    def filter_by_pk_and_two_non_indexed_collection_column_test(self):
+        session = self.prepare()
+        self.create_all_collections_table(session=session)
+
+        self.insert_data_in_all_collections_columns_table(session=session)
+
+        select_stmt = 'select id from {table_name} '.format(table_name=self.TABLE_NAME)
+
+        debug('Filter by PK, map of uusi and frozen set of integer non-indexed column')
+        assert_all(session=session, query=select_stmt + 'where id = 0 and '
+                                                        'map_uuid CONTAINS f34f6a76-b383-11e9-a2a3-2a2ae2dbcce4 '
+                                                        'and f_set_int CONTAINS 9 '
+                                                        'ALLOW FILTERING',
+                   expected=[[0]], ignore_order=True)
+
+        debug('Filter by PK, map of uuid and frozen set of integer non-indexed column')
+        assert_all(session=session, query=select_stmt + 'where id = 1 and '
+                                                        'set_uuid CONTAINS 8e4fe826-b383-11e9-a2a3-2a2ae2dbcce4 '
+                                                        'and f_map_int = {\'f1\': 1, \'f2\': 2, \'f3\': 3} '
+                                                        'ALLOW FILTERING',
+                   expected=[[1]], ignore_order=True)
+
+
+    def empty_data_set_result_test(self):
+        session = self.prepare()
+        self.create_all_collections_table(session=session)
+
+        self.insert_data_in_all_collections_columns_table(session=session)
+
+        select_stmt = 'select id from {table_name} '.format(table_name=self.TABLE_NAME)
+
+        debug('Filter by PK, map of uuid and frozen set of integer non-indexed column')
+        assert_all(session=session, query=select_stmt + 'where id = 0 and '
+                                                        'map_uuid CONTAINS f54f6a76-b383-11e9-a2a3-2a2ae2dbcce4 '
+                                                        'and f_set_int CONTAINS 9 '
+                                                        'ALLOW FILTERING',
+                   expected=[], ignore_order=True)

@@ -15,6 +15,7 @@ from scylla_tools import insert_c1c2, query_c1c2_concurrent, get_sstables_files
 from nose.plugins.attrib import attr
 
 
+@attr('dtest-full')
 class TestBackupRestore(Tester):
 
     def failure_durring_snapshot_no_corrupt_data_test(self):

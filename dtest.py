@@ -844,22 +844,25 @@ class Tester(TestCase):
         time.sleep(0.2)
 
     def create_index(self, session, table_name, index_column, index_name=None, compaction=None):
-        index_column = [index_column] if isinstance(index_column, str) else index_column
-        query = "CREATE INDEX {0} ON {1} ({2});".format(index_name, table_name, ', '.join([i for i in index_column]))
-        debug('Create index: {}'.format(query))
-        session.execute(query)
-        if compaction:
-            # Update appropriate to index materialized view with compaction storage
-            session.execute('ALTER MATERIALIZED VIEW {}_index WITH compaction={}'.format(index_name, {'class': compaction}))
-        debug('Index {} has been created'.format(index_name))
+        query = "CREATE INDEX {index_name} ON {table_name} ({index_column})"
+        self._index_creation(session=session, query=query, table_name=table_name, index_column=index_column,
+                             index_name=index_name, compaction=compaction)
 
     def create_local_index(self, session, table_name, pk_name, index_column, index_name=None, compaction=None):
-        query = "CREATE INDEX {index_name} ON {table_name} (({pk_name}), {index_column});".format(**locals())
+        query = "CREATE INDEX {index_name} ON {table_name} ((%s), {index_column})" % pk_name
+        self._index_creation(session=session, query=query, table_name=table_name, index_column=index_column,
+                             index_name=index_name, compaction=compaction)
+
+    def _index_creation(self, session, query, table_name, index_column, index_name=None, compaction=None):
+        index_column = [index_column] if isinstance(index_column, str) else index_column
+        index_column = ', '.join([i for i in index_column])
+        query = query.format(**locals())
         debug('Create index: {}'.format(query))
         session.execute(query)
         if compaction:
             # Update appropriate to index materialized view with compaction storage
-            session.execute('ALTER MATERIALIZED VIEW {}_index WITH compaction={}'.format(index_name, {'class': compaction}))
+            session.execute(
+                'ALTER MATERIALIZED VIEW {}_index WITH compaction={}'.format(index_name, {'class': compaction}))
         debug('Index {} has been created'.format(index_name))
 
     @classmethod
@@ -917,8 +920,8 @@ class Tester(TestCase):
                         raise AssertionError('Unexpected error in %s node log: %s' % (node.name, errors))
             found_cores = self.find_cores()
             if found_cores:
-                print("Core file(s) found.{}".format("" if failed else " Marking test as failed."))
                 failed = True
+                raise AssertionError("Core file(s) found.{}".format("" if failed else " Marking test as failed."))
         finally:
             try:
                 if failed or KEEP_LOGS:
@@ -1072,30 +1075,6 @@ class Tester(TestCase):
                         metrics_res[metric_name] = val if metric_name not in metrics_res\
                             else metrics_res[metric_name] + val
         return metrics_res
-
-
-def canReuseCluster(Tester):
-    orig_init = Tester.__init__
-    # make copy of original __init__, so we can call it without recursion
-
-    def __init__(self, *args, **kwargs):
-        self._preserve_cluster = REUSE_CLUSTER
-        orig_init(self, *args, **kwargs)  # call the original __init__
-
-    Tester.__init__ = __init__  # set the class' __init__ to the new one
-    return Tester
-
-
-class freshCluster():
-
-    def __call__(self, f):
-        def wrapped(obj):
-            obj._preserve_cluster = False
-            obj.setUp()
-            f(obj)
-        wrapped.__name__ = f.__name__
-        wrapped.__doc__ = f.__doc__
-        return wrapped
 
 
 class MultiError(Exception):

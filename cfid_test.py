@@ -2,7 +2,7 @@ from dtest import Tester
 import os
 from nose.plugins.attrib import attr
 
-
+@attr('dtest-full')
 class TestCFID(Tester):
 
     @attr('next-gating')

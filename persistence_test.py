@@ -4,6 +4,7 @@ from dtest import Tester
 from nose.plugins.attrib import attr
 
 
+@attr('dtest-full')
 class PersistenceTest(Tester):
     """
     Insert data into clusters, then restart them and verify if data persisted.

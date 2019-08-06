@@ -3,6 +3,8 @@ from dtest import Tester, debug
 from concurrent.futures import ThreadPoolExecutor
 from nose.plugins.attrib import attr
 
+
+@attr('dtest-full')
 class HeatWeightedLB(Tester):
     _multiprocess_can_split_ = False
 

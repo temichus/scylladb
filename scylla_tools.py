@@ -863,6 +863,12 @@ def view_built_status_query(ks='', view='', select_column='status'):
 def get_index_view_name(index_name):
     return '{}_index'.format(index_name)
 
+def get_view_id(session, keyspace_name, view_name):
+    res = session.execute('select id from system_schema.views where keyspace_name=\'{0}\' and view_name=\'{1}\''
+                          .format(keyspace_name, view_name))
+    assert res, 'Secondary index view named {} has not built'.format(view_name)
+    return rows_to_list(res)[0][0]
+
 def index_is_built(cluster, session, ks_name, table_name, index_name, raise_exception=True):
     wait_for_view(cluster, session, ks_name, get_index_view_name(index_name), raise_exception=raise_exception)
     return len(list(session.execute(
@@ -920,6 +926,23 @@ def wait_for_view_build_start(session, ks, view, seconds_to_wait = 20):
     while not _check_build_started():
         if time.time() - start > seconds_to_wait:
             raise Exception("View building didn't start in {} seconds".format(seconds_to_wait))
+
+def wait_for_schema_agreement(session):
+    rows = list(session.execute("SELECT schema_version FROM system.local"))
+    local_version = rows[0]
+
+    all_match = True
+    rows = list(session.execute("SELECT schema_version FROM system.peers"))
+    for peer_version in rows:
+        if peer_version != local_version:
+            all_match = False
+            break
+
+    if all_match:
+        return
+    else:
+        time.sleep(1)
+        wait_for_schema_agreement(session)
 
 def check_errors_all_nodes(nodes, exclude_errors, search_str=None):
     errors = None

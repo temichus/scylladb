@@ -5,6 +5,7 @@ from cassandra import ConsistencyLevel
 from nose.plugins.attrib import attr
 
 
+@attr('dtest-full')
 class TestBootstrapConsistency(Tester):
 
     @no_vnodes()

@@ -1,8 +1,10 @@
-from dtest import Tester
-
 import time
 
+from dtest import Tester
+from nose.plugins.attrib import attr
 
+
+@attr('dtest-full')
 class TestRangeGhosts(Tester):
 
     def ghosts_test(self):
