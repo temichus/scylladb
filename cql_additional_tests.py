@@ -5762,7 +5762,7 @@ class CQLAdditionalTests(Tester):
         out, err = nodes[0].run_cqlsh(cmds='USE veraminetest; DESCRIBE TABLES', show_output=True, return_output=True)
         assert len(out.split()) == 112, 'created 100+ tables'
 
-@canReuseCluster
+
 class MultiColumnRestrictionSimpleTests(Tester):
 
     INSERT_COLUMNS = 'key,clmn_int,clmn_text,clmn_timestamp,clmn_bool,clmn_ascii,clmn_uuid,clmn_blob'
@@ -6123,7 +6123,7 @@ class MultiColumnRestrictionSimpleTests(Tester):
                                                         'clmn_timestamp < 63873478378 ALLOW FILTERING',
                    expected=[], ignore_order=True)
 
-@canReuseCluster
+
 class MultiColumnRestrictionCollectionTests(Tester):
     TABLE_NAME = 'cf'
     TEST_DATA = [[0, "[0, 1, 2]", "[textAsBlob('t1'), textAsBlob('t2')]",
