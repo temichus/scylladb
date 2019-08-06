@@ -6,18 +6,15 @@ Tests for [Scylla](http://www.scylladb.com/) clusters.
 Prerequisites
 ------------
 
-An up to date copy of ccm should be installed for starting and stopping Cassandra.
-The tests are run using nosetests.
-These tests require the datastax python driver.
-A few tests still require the deprecated python CQL over thrift driver.
-
-Installing docker is required for running tests in the scylla-dtest docker container.
-
+See [requirements.txt](./requirements.txt). In addition to the packages listed
+therein, the following extra packages are required (not published to PIP):
  * [ccm](https://github.com/scylladb/scylla-ccm)
- * [nosetests](http://readthedocs.org/docs/nose/en/latest/)
- * [Python Driver](http://datastax.github.io/python-driver/installation.html)
- * [CQL over Thrift Driver](http://code.google.com/a/apache-extras.org/p/cassandra-dbapi2/)
- * [docker](https://docs.docker.com/install/linux/docker-ce/fedora/)
+ * [sstable-tools](https://github.com/scylladb/sstable-tools)
+
+For running dtests in `scylla-dtest` docker container,
+[docker](https://docs.docker.com/install/linux/docker-ce/fedora/) is required.
+Note that when using docker, the other prerequisites are _not_ needed on the
+host.
 
 Running using docker
 --------------------
@@ -55,6 +52,11 @@ pip install -r ./requirements.txt
 # Install Scylla CCM, using pip ensures it will be installed *into* the
 # virtualenv (setup.py does a global install by default).
 cd /path/to/scylla-ccm
+pip install .
+
+# Install sstable-tools, using pip ensures it will be installed *into* the
+# virtualenv (setup.py does a global install by default).
+cd /path/to/sstable-tools
 pip install .
 ```
 
