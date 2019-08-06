@@ -950,6 +950,11 @@ class TestCompactionAdditionalStrategy(CompactionAdditionalTester):
             raise RuntimeError("Unexpected format of file name: '%s'" % file)
 
     def _copy_sstable_file(self, file, generation):
+        # filter out scylla component for IncrementalCompactionStrategy
+        # to force a new run-identifier
+        if self.strategy == 'IncrementalCompactionStrategy' and 'Scylla.db' in file:
+            return
+
         sstable_split_parts = os.path.basename(file).split('-')
         if (len(sstable_split_parts) == 5):
             # <= ka format
@@ -959,7 +964,19 @@ class TestCompactionAdditionalStrategy(CompactionAdditionalTester):
             sstable_split_parts[1] = generation
         else:
             raise RuntimeError("Unexpected format of file name: '%s'" % file)
-        shutil.copy(file, os.path.join(os.path.dirname(file), '-'.join(sstable_split_parts)))
+        dest = os.path.join(os.path.dirname(file), '-'.join(sstable_split_parts))
+        if self.strategy != 'IncrementalCompactionStrategy' or not 'TOC.txt' in file:
+            shutil.copy(file, dest)
+        else:
+            w = open(dest, 'w+')
+            r = open(file, 'r')
+            line = r.readline()
+            while line:
+                if not 'Scylla.db' in line:
+                    w.writelines(line)
+                line = r.readline()
+            r.close()
+            w.close()
 
 
 @pytest.mark.dtest_full
