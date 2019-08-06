@@ -1006,6 +1006,7 @@ class TestConsistency(Tester):
             session.execute(truncate_statement)
 
     @attr('next-gating')
+    @attr('dtest-debug') # https://github.com/scylladb/scylla/issues/4384
     def quorum_available_during_failure_test(self):
         CL = ConsistencyLevel.QUORUM
         RF = 3
