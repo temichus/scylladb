@@ -36,7 +36,7 @@ class TestScyllaTop(Tester):
         time.sleep(sleep_time)
         p.send_signal(signal.SIGINT)
         out, err = p.communicate()
-        debug(out)
+        debug(out[0:40] + '...')
         debug('Length of output is %s' % len(out.split()))
         assert p.returncode == 0, err
         assert len(out) > 0, 'Output should not be empty'
@@ -53,7 +53,7 @@ class TestScyllaTop(Tester):
         if not wait:
             return (p, logfile)
         out, err = p.communicate()
-        debug(out)
+        debug(out[0:40] + '...')
         debug('Length of output is %s' % len(out.split()))
         assert p.returncode == 0, err
         assert len(out) > 0, 'Output should not be empty'
@@ -63,15 +63,15 @@ class TestScyllaTop(Tester):
         """
         Test help message of scyllatop tool
         """
-        self.cluster.populate(3).start(wait_for_binary_proto=True)
-        debug("3 nodes started")
+        self.cluster.populate(1).start(wait_for_binary_proto=True)
+        debug("1 nodes started")
 
         (cmd, logfile) = self.get_cli()
         cmd = '%s --help' % cmd
         debug(cmd)
         p = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE)
         out, err = p.communicate()
-        debug(out)
+        debug(out[0:40] + '...')
         assert p.returncode == 0, err
         assert len(out) > 0, 'Output should not be empty'
         os.remove(logfile)
@@ -94,7 +94,7 @@ class TestScyllaTop(Tester):
 
         p.send_signal(signal.SIGINT)
         out, err = p.communicate()
-        debug(out)
+        debug(out[0:40] + '...')
         debug('Length of output is %s' % len(out.split()))
         assert p.returncode == 0, err
         os.remove(logfile)
@@ -113,7 +113,7 @@ class TestScyllaTop(Tester):
         node.stress(['write', 'duration=10s', "no-warmup", '-rate', 'threads=2'])
         debug('Write stress completed')
         out, err = p.communicate()
-        debug(out)
+        debug(out[0:40] + '...')
         debug('Length of output is %s' % len(out.split()))
         assert p.returncode == 0, err
         os.remove(logfile)
