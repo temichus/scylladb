@@ -1373,6 +1373,55 @@ class TestSecondaryIndexesOnCollections(Tester, SecondaryIndexesHelpers):
                 self.assertTrue(shared_uuid in db_uuids)
                 self.assertTrue(log_entry['unshared_uuid2'] in db_uuids.values())
 
+    def test_frozen_list_indexes(self):
+        """
+        Checks that secondary indexes can't be created on frozen list column
+        """
+        self.frozen_collection_indexes_run(type='frozen list')
+
+    def test_frozen_set_indexes(self):
+        """
+        Checks that secondary indexes can't be created on frozen set column
+        """
+        self.frozen_collection_indexes_run(type='frozen set')
+
+    def test_frozen_map_indexes(self):
+        """
+        Checks that secondary indexes can't be created on frozen map column
+        """
+        self.frozen_collection_indexes_run(type='frozen map')
+
+    def frozen_collection_indexes_run(self, type):
+        keyspace_name = 'index_search'
+        table_name = 'users'
+        index_name = 'user_uuids'
+        index_column = 'uuids'
+        index_column_type = {'frozen list': 'frozen<list<uuid>>', 'frozen map': 'frozen<map<uuid, uuid>>',
+                             'frozen set': 'frozen<set<uuid>>'}
+        session = self.prepare(self, nodes=1, rf=1, keyspace_name=keyspace_name)
+
+        self.create_cf(session, table_name, key_type='uuid', columns={'email': 'text', 'uuids': index_column_type[type]}
+                       , compaction={'class': self.compaction_strategy})
+
+        # try to create global index
+        try:
+            self.create_index(session, table_name, index_column, index_name, compaction = self.compaction_strategy)
+            assert False, 'Expected failure during global index creation, but index was created successfully'
+        except InvalidRequest as e:
+            self.assertRegexpMatches(e.message, 'Cannot create index on index_values of frozen<')
+        except Exception:
+            raise Exception
+
+        # try to create local index
+        try:
+            self.create_local_index(session, table_name, 'key', index_column, index_name,
+                                    compaction = self.compaction_strategy)
+            assert False, 'Expected failure during local index creation, but index was created successfully'
+        except InvalidRequest as e:
+            self.assertRegexpMatches(e.message, 'Cannot create index on index_values of frozen<')
+        except Exception:
+            raise Exception
+
 @skip('Not relevant for Scylla')
 @attr('dtest-full')
 class TestUpgradeSecondaryIndexes(Tester):
