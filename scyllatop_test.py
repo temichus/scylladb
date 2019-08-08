@@ -21,7 +21,6 @@ class TestScyllaTop(Tester):
         t = tempfile.mkstemp(prefix='scyllatop.log.')
         os.close(t[0])
         cli += ' -L {} -p http://{}:9180/metrics'.format(t[1], node.address())
-        debug(cli)
         return cli
 
     def interactive_start(self, wait=True, sleep_time=60):
@@ -29,6 +28,7 @@ class TestScyllaTop(Tester):
         Common usage, start scyllatop without options
         """
         cmd = self.get_cli()
+        debug(cmd)
         p = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE)
         if not wait:
             return p
@@ -45,6 +45,7 @@ class TestScyllaTop(Tester):
         Start scyllatop in batch mode
         """
         cmd = "%s -v DEBUG -b -n %s" % (self.get_cli(), n)
+        debug(cmd)
         p = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE)
         if not wait:
             return p
@@ -62,6 +63,7 @@ class TestScyllaTop(Tester):
         debug("3 nodes started")
 
         cmd = '%s --help' % self.get_cli()
+        debug(cmd)
         p = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE)
         out, err = p.communicate()
         debug(out)
