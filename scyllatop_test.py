@@ -76,6 +76,23 @@ class TestScyllaTop(Tester):
         assert len(out) > 0, 'Output should not be empty'
         os.remove(logfile)
 
+    def list_test(self):
+        """
+        Test list message of scyllatop tool
+        """
+        self.cluster.populate(1).start(wait_for_binary_proto=True)
+        debug("1 nodes started")
+
+        (cmd, logfile) = self.get_cli()
+        cmd = '%s --list' % cmd
+        debug(cmd)
+        p = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE)
+        out, err = p.communicate()
+        debug(out[0:40] + '...')
+        assert p.returncode == 0, err
+        assert len(out) > 0, 'Output should not be empty'
+        os.remove(logfile)
+
     @attr('next-gating')
     @attr('dtest-debug')
     def default_start_test(self):
