@@ -20,18 +20,19 @@ class TestScyllaTop(Tester):
         cli = os.path.join(node.get_install_dir(), 'tools/scyllatop/scyllatop.py')
         t = tempfile.mkstemp(prefix='scyllatop.log.')
         os.close(t[0])
-        cli += ' -L {} -p http://{}:9180/metrics'.format(t[1], node.address())
-        return cli
+        logfile = t[1]
+        cli += ' -L {} -p http://{}:9180/metrics'.format(logfile, node.address())
+        return (cli, logfile)
 
     def interactive_start(self, wait=True, sleep_time=60):
         """
         Common usage, start scyllatop without options
         """
-        cmd = self.get_cli()
+        (cmd, logfile) = self.get_cli()
         debug(cmd)
         p = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE)
         if not wait:
-            return p
+            return (p, logfile)
         time.sleep(sleep_time)
         p.send_signal(signal.SIGINT)
         out, err = p.communicate()
@@ -39,21 +40,24 @@ class TestScyllaTop(Tester):
         debug('Length of output is %s' % len(out.split()))
         assert p.returncode == 0, err
         assert len(out) > 0, 'Output should not be empty'
+        os.remove(logfile)
 
     def batch_mode_start(self, wait=True, n=1):
         """
         Start scyllatop in batch mode
         """
-        cmd = "%s -v DEBUG -b -n %s" % (self.get_cli(), n)
+        (cmd, logfile) = self.get_cli()
+        cmd = "%s -v DEBUG -b -n %s" % (cmd, n)
         debug(cmd)
         p = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE)
         if not wait:
-            return p
+            return (p, logfile)
         out, err = p.communicate()
         debug(out)
         debug('Length of output is %s' % len(out.split()))
         assert p.returncode == 0, err
         assert len(out) > 0, 'Output should not be empty'
+        os.remove(logfile)
 
     def help_test(self):
         """
@@ -62,13 +66,15 @@ class TestScyllaTop(Tester):
         self.cluster.populate(3).start(wait_for_binary_proto=True)
         debug("3 nodes started")
 
-        cmd = '%s --help' % self.get_cli()
+        (cmd, logfile) = self.get_cli()
+        cmd = '%s --help' % cmd
         debug(cmd)
         p = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE)
         out, err = p.communicate()
         debug(out)
         assert p.returncode == 0, err
         assert len(out) > 0, 'Output should not be empty'
+        os.remove(logfile)
 
     @attr('next-gating')
     @attr('dtest-debug')
@@ -81,7 +87,7 @@ class TestScyllaTop(Tester):
 
         self.interactive_start()
 
-        p = self.interactive_start(wait=False)
+        (p, logfile) = self.interactive_start(wait=False)
         node = self.cluster.nodelist()[0]
         node.stress(['write', 'duration=60s', "no-warmup", '-rate', 'threads=2'])
         debug('Write stress completed')
@@ -91,6 +97,7 @@ class TestScyllaTop(Tester):
         debug(out)
         debug('Length of output is %s' % len(out.split()))
         assert p.returncode == 0, err
+        os.remove(logfile)
 
     def batch_mode_start_test(self):
         """
@@ -101,7 +108,7 @@ class TestScyllaTop(Tester):
 
         self.batch_mode_start()
 
-        p = self.batch_mode_start(wait=False, n=20)
+        (p, logfile) = self.batch_mode_start(wait=False, n=20)
         node = self.cluster.nodelist()[0]
         node.stress(['write', 'duration=60s', "no-warmup", '-rate', 'threads=2'])
         debug('Write stress completed')
@@ -109,3 +116,4 @@ class TestScyllaTop(Tester):
         debug(out)
         debug('Length of output is %s' % len(out.split()))
         assert p.returncode == 0, err
+        os.remove(logfile)
