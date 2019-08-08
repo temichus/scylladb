@@ -24,7 +24,7 @@ class TestScyllaTop(Tester):
         cli += ' -L {} -p http://{}:9180/metrics -v DEBUG'.format(logfile, node.address())
         return (cli, logfile)
 
-    def interactive_start(self, wait=True, sleep_time=60):
+    def interactive_start(self, wait=True, sleep_time=10):
         """
         Common usage, start scyllatop without options
         """
@@ -89,7 +89,7 @@ class TestScyllaTop(Tester):
 
         (p, logfile) = self.interactive_start(wait=False)
         node = self.cluster.nodelist()[0]
-        node.stress(['write', 'duration=60s', "no-warmup", '-rate', 'threads=2'])
+        node.stress(['write', 'duration=10s', "no-warmup", '-rate', 'threads=2'])
         debug('Write stress completed')
 
         p.send_signal(signal.SIGINT)
@@ -110,7 +110,7 @@ class TestScyllaTop(Tester):
 
         (p, logfile) = self.batch_mode_start(wait=False, n=20)
         node = self.cluster.nodelist()[0]
-        node.stress(['write', 'duration=60s', "no-warmup", '-rate', 'threads=2'])
+        node.stress(['write', 'duration=10s', "no-warmup", '-rate', 'threads=2'])
         debug('Write stress completed')
         out, err = p.communicate()
         debug(out)
