@@ -6,6 +6,7 @@ import subprocess
 import time
 import signal
 import os
+import tempfile
 
 from dtest import Tester, debug
 from nose.plugins.attrib import attr
@@ -17,7 +18,9 @@ class TestScyllaTop(Tester):
     def get_cli(self):
         node = self.cluster.nodelist()[0]
         cli = os.path.join(node.get_install_dir(), 'tools/scyllatop/scyllatop.py')
-        cli += ' -p http://%s:9180/metrics' % node.address()
+        t = tempfile.mkstemp(prefix='scyllatop.log.')
+        os.close(t[0])
+        cli += ' -L {} -p http://{}:9180/metrics'.format(t[1], node.address())
         debug(cli)
         return cli
 
