@@ -1195,7 +1195,7 @@ class TestNodetool(Tester):
                 self.fail("refresh should be with Permission denied")
             except NodetoolError as e:
                 self.assertTrue(error_to_track.search(e.message),
-                                'expected error not found in log')
+                                'expected error not found in nodetool error message: {}'.format(e.message))
         finally:
             self._change_data_perms(node, 'data', stat.S_IWRITE | stat.S_IREAD | stat.S_IEXEC)
             node.mark_log_for_errors()
