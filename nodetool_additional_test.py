@@ -1172,7 +1172,7 @@ class TestNodetool(Tester):
         enablegossip and enablebinary pass
         refresh failed with permission denied
         """
-        error_to_track = re.compile("storage_io_error \(Storage I/O error: 13:")
+        error_to_track = re.compile("Storage I/O error: 13|Permission denied")
         self.run_cluster()
         node = self.cluster.nodelist()[0]
         self.stress_write(node, duration='10s')
