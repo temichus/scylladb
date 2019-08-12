@@ -1176,6 +1176,8 @@ class TestNodetool(Tester):
         self.run_cluster()
         node = self.cluster.nodelist()[0]
         self.stress_write(node, duration='10s')
+        node.flush()
+        node.compact()
         try:
             self._change_data_perms(node, 'data', 644)
             output = node.nodetool("enablebinary", True)
