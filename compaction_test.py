@@ -57,7 +57,7 @@ class TestCompaction(Tester):
 
         numfound = jsoninfo.count("marked_deleted")
 
-        self.assertEqual(numfound, 10)
+        self.assertEqual(numfound, 10, "Error: expected {} deleted partitions but found {}:\n{}".format(10, numfound, jsoninfo))
 
 
     @since('2.2.X')
@@ -97,7 +97,7 @@ class TestCompaction(Tester):
 
         numfound = jsoninfo.count("marked_deleted")
 
-        self.assertEqual(numfound, 10)
+        self.assertEqual(numfound, 10, "Error: expected {} deleted partitions but found {}:\n{}".format(10, numfound, jsoninfo))
 
         time.sleep(31)
 
@@ -117,7 +117,7 @@ class TestCompaction(Tester):
 
         numfound = jsoninfo.count("marked_deleted")
 
-        self.assertEqual(numfound, 0)
+        self.assertEqual(numfound, 0, "Error: expected {} deleted partitions but found {}:\n{}".format(0, numfound, jsoninfo))
 
     def data_size_test(self):
         """
