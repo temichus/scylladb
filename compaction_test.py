@@ -33,13 +33,15 @@ class TestCompaction(Tester):
         session = self.patient_cql_connection(node1)
         self.create_ks(session, 'ks', 1)
 
+        gc_grace_seconds = 60
         session.execute("create table ks.cf (key int PRIMARY KEY, val int) "
-                        "with compaction = {'class':'" + self.strategy + "'} and gc_grace_seconds = 30;")
+                        "with compaction = {{'class':'{}'}} and gc_grace_seconds = {};".format(self.strategy, gc_grace_seconds))
 
         for x in range(0, 100):
             session.execute('insert into cf (key, val) values (' + str(x) + ',1)')
 
         node1.flush()
+        self.tombstone_expiry_time = time.time() + gc_grace_seconds
         for x in range(0, 10):
             session.execute('delete from cf where key = ' + str(x))
 
@@ -97,9 +99,13 @@ class TestCompaction(Tester):
 
         numfound = jsoninfo.count("marked_deleted")
 
+        time_to_expire = self.tombstone_expiry_time - time.time()
+        debug("Time left to expire: {}".format(time_to_expire))
+        self.assertTrue(time_to_expire > 0, "Error: missed tombstone expiration time: {} >= {}".format(time.time(), self.tombstone_expiry_time))
+
         self.assertEqual(numfound, 10, "Error: expected {} deleted partitions but found {}:\n{}".format(10, numfound, jsoninfo))
 
-        time.sleep(31)
+        time.sleep(time_to_expire + 1)
 
         # check that after gc_period compaction removes tombstones
         # force an update so that compact will have something to do
