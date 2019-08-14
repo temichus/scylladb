@@ -116,7 +116,7 @@ def check_c1c2_result_one(success, rows, tolerate_missing, must_be_missing, c1_v
         assert False, "Query failed {}".format(rows)
 
     if not tolerate_missing:
-        assert len(rows) == 1
+        assert len(rows) == 1, 'Wrong length, %s' % len(rows)
         res = rows[0]
         assert len(res) == 2 and res[0] == c1_value and res[1] == c2_value, res
 
@@ -124,8 +124,8 @@ def check_c1c2_result_one(success, rows, tolerate_missing, must_be_missing, c1_v
         assert len(rows) == 0
 
 
-def query_c1c2(session, key, consistency=ConsistencyLevel.QUORUM, tolerate_missing=False, must_be_missing=False, c1_value='value1', c2_value='value2'):
-    query = SimpleStatement('SELECT c1, c2 FROM cf WHERE key=\'k%d\'' % key, consistency_level=consistency)
+def query_c1c2(session, key, consistency=ConsistencyLevel.QUORUM, tolerate_missing=False, must_be_missing=False, c1_value='value1', c2_value='value2', ks="ks", cf="cf"):
+    query = SimpleStatement('SELECT c1, c2 FROM %s.%s WHERE key=\'k%d\'' % (ks, cf, key), consistency_level=consistency)
     rows = list(session.execute(query))
     check_c1c2_result_one(True, rows, tolerate_missing, must_be_missing, c1_value, c2_value)
 
