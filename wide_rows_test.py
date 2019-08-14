@@ -1499,8 +1499,8 @@ class TestWideRows(Tester):
                                    table_name=self.TABLE_NAME)
 
 
-strategies = ['SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy', 'TimeWindowCompactionStrategy',
-              'LeveledCompactionStrategy']
+# removed DateTieredCompactionStrategy because it is not widely used and will shorten runtime by 25%
+strategies = ['SizeTieredCompactionStrategy', 'TimeWindowCompactionStrategy', 'LeveledCompactionStrategy']
 
 for strategy in strategies:
     cls_name = ('TestWideRows' + '_with_' + strategy)
