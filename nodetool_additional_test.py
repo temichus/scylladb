@@ -1172,10 +1172,12 @@ class TestNodetool(Tester):
         enablegossip and enablebinary pass
         refresh failed with permission denied
         """
-        error_to_track = re.compile("storage_io_error \(Storage I/O error: 13:")
+        error_to_track = re.compile("Storage I/O error: 13|Permission denied")
         self.run_cluster()
         node = self.cluster.nodelist()[0]
         self.stress_write(node, duration='10s')
+        node.flush()
+        node.compact()
         try:
             self._change_data_perms(node, 'data', 644)
             output = node.nodetool("enablebinary", True)
@@ -1193,7 +1195,7 @@ class TestNodetool(Tester):
                 self.fail("refresh should be with Permission denied")
             except NodetoolError as e:
                 self.assertTrue(error_to_track.search(e.message),
-                                'expected error not found in log')
+                                'expected error not found in nodetool error message: {}'.format(e.message))
         finally:
             self._change_data_perms(node, 'data', stat.S_IWRITE | stat.S_IREAD | stat.S_IEXEC)
             node.mark_log_for_errors()
