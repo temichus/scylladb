@@ -1175,7 +1175,7 @@ class TestNodetool(Tester):
         error_to_track = re.compile("Storage I/O error: 13|Permission denied")
         self.run_cluster()
         node = self.cluster.nodelist()[0]
-        self.stress_write(node, duration='10s')
+        self.stress_write(node, times=10000)
         node.flush()
         node.compact()
         node.nodetool("refresh keyspace1 standard1")
@@ -1228,7 +1228,7 @@ class TestNodetool(Tester):
         """
         self.run_cluster(nodes=1)
         node = self.cluster.nodelist()[0]
-        self.stress_write(node, duration='10s')
+        self.stress_write(node, times=10000)
         node.flush()
         ks = 'keyspace1'
         cf = 'standard1'
