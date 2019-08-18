@@ -1178,6 +1178,7 @@ class TestNodetool(Tester):
         self.stress_write(node, duration='10s')
         node.flush()
         node.compact()
+        node.nodetool("refresh keyspace1 standard1")
         try:
             self._change_data_perms(node, 'data', 644)
             output = node.nodetool("enablebinary", True)
