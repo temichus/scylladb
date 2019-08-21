@@ -115,7 +115,7 @@ class TestTopPartitions(Tester):
             node.nodetool(cmd)
         return cm.exception
 
-    def run_toppartition_for(self, node, ks, cf, duration, optional_params=''):
+    def run_toppartition_for(self, node, ks, cf, duration=5000, optional_params=''):
         cmd = self.toppartitions_cmd_template.format(**locals())
 
         try:
@@ -253,15 +253,13 @@ class TestTopPartitions(Tester):
         3. assert results
         """
         node, session = self.prepare_cluster_with_ks_cf_c1c2(ks='ks', cf='cf')
-        futures = []
+
         with ThreadPoolExecutor(max_workers=2) as executor:
-            ft = executor.submit(self.run_operations_c1c2, session, mode="write")
-            futures.append(ft)
-            ft = executor.submit(self.run_operations_c1c2, session, mode="read", read_only=True)
-            futures.append(ft)
-            toppartion_results = self.run_toppartition_for(node, ks='ks', cf='cf', duration=2000)
-            for ft in futures:
-                self.verify_thread_execution(ft)
+            ft = executor.submit(self.run_toppartition_for, node, ks='ks', cf='cf')
+            self.run_operations_c1c2(session, mode="write")
+            self.run_operations_c1c2(session, mode="read", read_only=True)
+            self.verify_thread_execution(ft)
+            toppartion_results = ft.result()
 
         expected_toppartition_key_count = [("k0", "1")]
 
@@ -285,9 +283,10 @@ class TestTopPartitions(Tester):
         node, session = self.prepare_cluster_with_ks_cf_c1c2(ks='ks', cf='cf')
 
         with ThreadPoolExecutor(max_workers=1) as executor:
-            ft = executor.submit(self.run_operations_c1c2, session, mode="write")
-            toppartion_results = self.run_toppartition_for(node, ks='ks', cf='cf', duration=3000)
+            ft = executor.submit(self.run_toppartition_for, node, ks='ks', cf='cf')
+            self.run_operations_c1c2(session, mode="write")
             self.verify_thread_execution(ft)
+            toppartion_results = ft.result()
 
         expected_write_toppartition_key_count = [("k0", "1")]
         self.verifySamplesPresentInResult(["WRITES", "READS"], toppartion_results)
@@ -309,9 +308,10 @@ class TestTopPartitions(Tester):
 
         node, session = self.prepare_cluster_with_ks_cf_c1c2(ks='ks', cf='cf')
         with ThreadPoolExecutor(max_workers=1) as executor:
-            ft = executor.submit(self.run_operations_c1c2, session, mode="read")
-            toppartion_results = self.run_toppartition_for(node, ks='ks', cf='cf', duration=2000)
+            ft = executor.submit(self.run_toppartition_for, node, ks='ks', cf='cf')
+            self.run_operations_c1c2(session, mode="read")
             self.verify_thread_execution(ft)
+            toppartion_results = ft.result()
 
         expected_read_toppartition_key_count = [("k0", "1")]
         self.verifySamplesPresentInResult(["WRITES", "READS"], toppartion_results)
@@ -332,9 +332,10 @@ class TestTopPartitions(Tester):
         """
         node, session = self.prepare_cluster_with_ks_cf_c1c2(ks='ks', cf='cf')
         with ThreadPoolExecutor(max_workers=1) as executor:
-            ft = executor.submit(self.run_operations_c1c2, session, mode="write", w_keys=10)
-            toppartion_results = self.run_toppartition_for(node, ks='ks', cf='cf', duration=2000)
+            ft = executor.submit(self.run_toppartition_for, node, ks='ks', cf='cf')
+            self.run_operations_c1c2(session, mode="write", w_keys=10)
             self.verify_thread_execution(ft)
+            toppartion_results = ft.result()
 
         expected_write_toppartition_key_count = [("k{}".format(i), "1") for i in range(10)]
         self.verifySamplesPresentInResult(["WRITES", "READS"], toppartion_results)
@@ -355,9 +356,11 @@ class TestTopPartitions(Tester):
         """
         node, session = self.prepare_cluster_with_ks_cf_c1c2(ks='ks', cf='cf')
         with ThreadPoolExecutor(max_workers=1) as executor:
-            ft = executor.submit(self.run_operations_c1c2, session, mode="read", r_keys=10, w_keys=10)
-            toppartion_results = self.run_toppartition_for(node, ks='ks', cf='cf', duration=2000)
+            ft = executor.submit(self.run_toppartition_for, node, ks='ks', cf='cf')
+            self.run_operations_c1c2(session, mode="read", r_keys=10, w_keys=10)
+
             self.verify_thread_execution(ft)
+            toppartion_results = ft.result()
 
         expected_read_toppartitions_keys_count = [("k{}".format(i), "1") for i in range(10)]
         self.verifySamplesPresentInResult(["WRITES", "READS"], toppartion_results)
@@ -378,9 +381,11 @@ class TestTopPartitions(Tester):
         """
         node, session = self.prepare_cluster_with_ks_cf_c1c2(ks='ks', cf='cf')
         with ThreadPoolExecutor(max_workers=1) as executor:
-            ft = executor.submit(self.run_operations_c1c2, session, mode="write", w_num=10)
-            toppartion_results = self.run_toppartition_for(node, ks='ks', cf='cf', duration=3000)
+            ft = executor.submit(self.run_toppartition_for, node, ks='ks', cf='cf')
+            self.run_operations_c1c2(session, mode="write", w_num=10)
+
             self.verify_thread_execution(ft)
+            toppartion_results = ft.result()
 
         expected_write_toppartition_key_count = [("k0", "10")]
         self.verifySamplesPresentInResult(["WRITES", "READS"], toppartion_results)
@@ -401,9 +406,11 @@ class TestTopPartitions(Tester):
         """
         node, session = self.prepare_cluster_with_ks_cf_c1c2(ks='ks', cf='cf')
         with ThreadPoolExecutor(max_workers=1) as executor:
-            ft = executor.submit(self.run_operations_c1c2, session, mode="read", r_num=10)
-            toppartion_results = self.run_toppartition_for(node, ks='ks', cf='cf', duration=3000)
+            ft = executor.submit(self.run_toppartition_for, node, ks='ks', cf='cf')
+            self.run_operations_c1c2(session, mode="read", r_num=10)
+
             self.verify_thread_execution(ft)
+            toppartion_results = ft.result()
 
         expected_read_toppartition_key_count = [("k0", "10")]
         self.verifySamplesPresentInResult(["WRITES", "READS"], toppartion_results)
@@ -425,10 +432,11 @@ class TestTopPartitions(Tester):
         """
         node, session = self.prepare_cluster_with_ks_cf_c1c2(ks='ks', cf='cf')
         with ThreadPoolExecutor(max_workers=1) as executor:
-            ft = executor.submit(self.run_operations_c1c2, session, mode="write", w_keys=10)
-            toppartion_results = self.run_toppartition_for(node, ks='ks', cf='cf', duration=3000,
-                                                           optional_params='-k 5')
+            ft = executor.submit(self.run_toppartition_for, node, ks='ks', cf='cf', optional_params='-k 5')
+            self.run_operations_c1c2(session, mode="write", w_keys=10)
+
             self.verify_thread_execution(ft)
+            toppartion_results = ft.result()
 
         expected_write_toppartition_key_count = [("k{}".format(i), "1") for i in range(5)]
 
@@ -451,10 +459,11 @@ class TestTopPartitions(Tester):
         """
         node, session = self.prepare_cluster_with_ks_cf_c1c2(ks='ks', cf='cf')
         with ThreadPoolExecutor(max_workers=1) as executor:
-            ft = executor.submit(self.run_operations_c1c2, session, mode="read", r_keys=10, w_keys=10)
-            toppartion_results = self.run_toppartition_for(node, ks='ks', cf='cf', duration=3000,
-                                                           optional_params='-k 5')
+            ft = executor.submit(self.run_toppartition_for, node, ks='ks', cf='cf', optional_params='-k 5')
+            self.run_operations_c1c2(session, mode="read", r_keys=10, w_keys=10)
+
             self.verify_thread_execution(ft)
+            toppartion_results = ft.result()
 
         expected_read_toppartition_key_count = [("k{}".format(i), "1") for i in range(5)]
         self.verifySamplesPresentInResult(["WRITES", "READS"], toppartion_results)
@@ -476,15 +485,17 @@ class TestTopPartitions(Tester):
         node, session = self.prepare_cluster_with_ks_cf_c1c2(ks='ks', cf='cf')
         futures = []
         range_of_write_keys = [15, 5, 3]  # write to key ranges k0-k14, k0-k4, k0-k2
-        with ThreadPoolExecutor(max_workers=3) as executor:
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            ft_top = executor.submit(self.run_toppartition_for, node, ks='ks', cf='cf', optional_params='-k 3 -a writes')
+            futures.append(ft_top)
+            time.sleep(1)
             for keys in range_of_write_keys:
                 ft = executor.submit(self.run_operations_c1c2, session, mode="write", w_keys=keys)
                 futures.append(ft)
 
-            toppartion_results = self.run_toppartition_for(node, ks='ks', cf='cf', duration=3000,
-                                                           optional_params='-k 3 -a writes')
             for ft in futures:
                 self.verify_thread_execution(ft)
+            toppartion_results = ft_top.result()
 
         expected_write_toppartition_key_count = [("k{}".format(i), "3") for i in range(3)]
         self.verifySamplesPresentInResult(["WRITES"], toppartion_results)
@@ -505,15 +516,20 @@ class TestTopPartitions(Tester):
         node, session = self.prepare_cluster_with_ks_cf_c1c2(ks='ks', cf='cf')
         futures = []
         range_of_read_keys = [5, 3]
-        with ThreadPoolExecutor(max_workers=1) as executor:
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            ft_top = executor.submit(self.run_toppartition_for, node, ks='ks', cf='cf', optional_params='-k 3 -a reads')
+            futures.append(ft_top)
+            time.sleep(1)
             ft = executor.submit(self.run_operations_c1c2, session, mode="read", w_keys=15, r_keys=15)
             futures.append(ft)
             for keys in range_of_read_keys:
                 ft = executor.submit(self.run_operations_c1c2, session, mode="read", r_keys=keys, read_only=True)
                 futures.append(ft)
 
-            toppartion_results = self.run_toppartition_for(node, ks='ks', cf='cf', duration=3000, optional_params='-k 3 -a reads')
-            self.verify_thread_execution(ft)
+            for ft in futures:
+                self.verify_thread_execution(ft)
+
+            toppartion_results = ft_top.result()
 
         expected_read_toppartition_key_count = [("k{}".format(i), "3") for i in range(3)]
         self.verifySamplesPresentInResult(["READS"], toppartion_results)
@@ -533,7 +549,10 @@ class TestTopPartitions(Tester):
         node, session = self.prepare_cluster_with_ks_cf_c1c2(ks='ks', cf='cf')
         futures = []
         top_write_keys = [{"key": 9, "write_num": 10}, {"key": 15, "write_num": 15}]
-        with ThreadPoolExecutor(max_workers=3) as executor:
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            ft_top = executor.submit(self.run_toppartition_for, node, ks='ks', cf='cf', optional_params='-a writes -s 15')
+            futures.append(ft_top)
+            time.sleep(1)
             ft = executor.submit(self.run_operations_c1c2, session, mode="write", w_keys=20)
             futures.append(ft)
             for top_write in top_write_keys:
@@ -543,9 +562,9 @@ class TestTopPartitions(Tester):
                                      w_num=top_write["write_num"])
                 futures.append(ft)
 
-            toppartion_results = self.run_toppartition_for(node, ks='ks', cf='cf', duration=3000, optional_params='-a writes -s 15')
             for ft in futures:
                 self.verify_thread_execution(ft)
+            toppartion_results = ft_top.result()
 
         expected_write_toppartition_key_count = [("k15", '16'), ("k9", "11")]
         for i in range(8):
@@ -568,7 +587,10 @@ class TestTopPartitions(Tester):
         node, session = self.prepare_cluster_with_ks_cf_c1c2(ks='ks', cf='cf')
         futures = []
         top_read_keys = [{"key": 19, "read_num": 20}, {"key": 9, "read_num": 10}]
-        with ThreadPoolExecutor(max_workers=3) as executor:
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            ft_top = executor.submit(self.run_toppartition_for, node, ks='ks', cf='cf', optional_params='-a reads -s 12')
+            futures.append(ft_top)
+            time.sleep(1)
             ft = executor.submit(self.run_operations_c1c2, session, mode="read", w_keys=20, r_keys=20)
             futures.append(ft)
             for top_read in top_read_keys:
@@ -578,9 +600,9 @@ class TestTopPartitions(Tester):
                                      r_num=top_read["read_num"],
                                      read_only=True)
                 futures.append(ft)
-            toppartion_results = self.run_toppartition_for(node, ks='ks', cf='cf', duration=3000, optional_params='-a reads -s 12')
             for ft in futures:
                 self.verify_thread_execution(ft)
+            toppartion_results = ft_top.result()
 
         expected_write_toppartition_key_count = [("k19", '21'), ("k9", "11")]
         for i in range(8):
@@ -683,13 +705,18 @@ class TestTopPartitions(Tester):
                 session.execute('INSERT INTO keyspace1.columnfamily1 (key1, key2, ckey, val) VALUES (1, 1, {0}, \'asdf{0}\');'.format(i))
 
         node, session = self.prepare_cluster_with_ks_cf_complex_primary_key(ks='keyspace1', cf='columnfamily1')
-
-        with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = []
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            ft_top = executor.submit(self.run_toppartition_for, node, ks='keyspace1', cf='columnfamily1')
+            futures.append(ft_top)
+            time.sleep(1)
             ft1 = executor.submit(write_1_op_for_10_partitions, session)
+            futures.append(ft1)
             ft2 = executor.submit(write_into_one_partition_to_different_rows, session)
-            toppartition_result = self.run_toppartition_for(node, ks='keyspace1', cf='columnfamily1', duration=3000)
-            self.verify_thread_execution(ft1)
-            self.verify_thread_execution(ft2)
+            futures.append(ft2)
+            for ft in futures:
+                self.verify_thread_execution(ft)
+            toppartition_result = ft_top.result()
 
         expected_write_toppartition_results = [("1:1", "11"), ("1:0", "1")]
         for i in range(2, 10):
@@ -723,13 +750,18 @@ class TestTopPartitions(Tester):
                 session.execute('INSERT INTO keyspace1.columnfamily1 (key1, key2, ckey, val) VALUES (1, 50, {0}, \'test{0}\');'.format(i))
 
         node, session = self.prepare_cluster_with_ks_cf_complex_primary_key(ks='keyspace1', cf='columnfamily1')
-
-        with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = []
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            ft_top = executor.submit(self.run_toppartition_for, node, ks='keyspace1', cf='columnfamily1', duration=10000, optional_params='-k 1')
+            futures.append(ft_top)
+            time.sleep(1)
             ft1 = executor.submit(write_into_1000_partitions_to_10_rows, session)
+            futures.append(ft1)
             ft2 = executor.submit(write_into_one_partition_to_1000_rows, session)
-            toppartition_result = self.run_toppartition_for(node, ks='keyspace1', cf='columnfamily1', duration=10000, optional_params='-k 1')
-            self.verify_thread_execution(ft1)
-            self.verify_thread_execution(ft2)
+            futures.append(ft2)
+            for ft in futures:
+                self.verify_thread_execution(ft)
+            toppartition_result = ft_top.result()
 
         expected_write_toppartition = [("1:50", "1010")]
 
@@ -782,9 +814,10 @@ class TestTopPartitions(Tester):
 
             self.verify_thread_execution(future)
 
-        expected_average_top_partition_keys = ['1500:1501', '1500:1500', '1500:1499', '1500:1502',
-                                               '1501:1500', '1501:1499', '1501:1501',
-                                               '1499:1500', '1499:1499', '1499:1501']
+        expected_average_top_partition_keys = ['1500:1501', '1500:1500', '1500:1499', '1500:1502', '1500:1498',
+                                               '1501:1500', '1501:1499', '1501:1501', '1501:1498', '1501:1502',
+                                               '1499:1500', '1499:1499', '1499:1501', '1499:1498', '1499:1502',
+                                               '1498:1500', '1498:1499', '1498:1501', '1498:1498', '1498:1502']
 
         for actual_results in top_5_write_partitions_keys_results:
             self.verfityPartitionKeyInTopPartitionList(actual_partition_keys=actual_results,
@@ -839,9 +872,10 @@ class TestTopPartitions(Tester):
 
             self.verify_thread_execution(future)
 
-        expected_average_top_partition_keys = ['1500:1501', '1500:1500', '1500:1499', '1500:1502',
-                                               '1501:1500', '1501:1499', '1501:1501',
-                                               '1499:1500', '1499:1499', '1499:1501']
+        expected_average_top_partition_keys = ['1500:1501', '1500:1500', '1500:1499', '1500:1502', '1500:1498',
+                                               '1501:1500', '1501:1499', '1501:1501', '1501:1498', '1501:1502',
+                                               '1499:1500', '1499:1499', '1499:1501', '1499:1498', '1499:1502',
+                                               '1498:1500', '1498:1499', '1498:1501', '1498:1498', '1498:1502']
 
         for actual_results in top_5_read_partitions_keys_results:
             self.verfityPartitionKeyInTopPartitionList(actual_partition_keys=actual_results,
