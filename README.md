@@ -9,7 +9,6 @@ Prerequisites
 See [requirements.txt](./requirements.txt). In addition to the packages listed
 therein, the following extra packages are required (not published to PIP):
  * [ccm](https://github.com/scylladb/scylla-ccm)
- * [sstable-tools](https://github.com/scylladb/sstable-tools)
 
 For running dtests in `scylla-dtest` docker container,
 [docker](https://docs.docker.com/install/linux/docker-ce/fedora/) is required.
@@ -52,11 +51,6 @@ pip install -r ./requirements.txt
 # Install Scylla CCM, using pip ensures it will be installed *into* the
 # virtualenv (setup.py does a global install by default).
 cd /path/to/scylla-ccm
-pip install .
-
-# Install sstable-tools, using pip ensures it will be installed *into* the
-# virtualenv (setup.py does a global install by default).
-cd /path/to/sstable-tools
 pip install .
 ```
 
