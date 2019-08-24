@@ -2554,7 +2554,7 @@ class TestCQL(UpgradeTester):
             cursor.execute(insert_statement, (0, 0, 0))
 
             select_statement = cursor.prepare("SELECT * FROM test WHERE k=? AND c IN ?")
-            in_values = list(range(10000))
+            in_values = list(range(100))
 
             # try to fetch one existing row and 9999 non-existing rows
             rows = list(cursor.execute(select_statement, [0, in_values]))
@@ -2568,7 +2568,8 @@ class TestCQL(UpgradeTester):
             execute_concurrent_with_args(cursor, insert_statement, args)
 
             rows = list(cursor.execute(select_statement, [0, in_values]))
-            self.assertEqual(len(clustering_values), len(rows))
+            expected_rows = [v for v in clustering_values if v <= 100]
+            self.assertEqual(len(expected_rows), len(rows))
 
     def timeuuid_test(self):
         cursor = self.prepare()

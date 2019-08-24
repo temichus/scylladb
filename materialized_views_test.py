@@ -1266,10 +1266,11 @@ class TestMaterializedViews(Tester):
 
         # Run update base table and add new node in the parallel
         update_to = 5000
-        proc_functions = [{'func': self._add_new_node, 'args': (), 'kwargs': {}},
-                          {'func': tm.update_table, 'args': ({'by type': {'int': update_to}},
-                                             {'by name': {'id': {'operator': 'in', 'value': [i for i in xrange(100, 5000)]}}}),
-                                              'kwargs': {'delay': 5}}]
+        proc_functions = ([{'func': self._add_new_node, 'args': (), 'kwargs': {}}]
+                          + [{'func': tm.update_table, 'args': ({'by type': {'int': update_to}},
+                                             {'by name': {'id': {'operator': 'in', 'value': [i for i in xrange(start, start + 100)]}}}),
+                                              'kwargs': {'delay': 5}}
+                             for start in range(100, 4900, 100)])
         results = run_in_parallel(proc_functions)
 
         # Receive the results

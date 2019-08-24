@@ -771,7 +771,8 @@ class TestUpdateClusterLayout(Tester):
         result = list(session_node1.execute("SELECT * FROM ks.cf limit 2000;"))
         self.assertEqual(len(result), 1000, "expected 1000 lines got %d" % len(result))
 
-        session_node1.execute("DELETE from ks.cf where key in (\'k%s\');" % "\',\'k".join(str(x) for x in range(1000)))
+        for i in range(0, 1000, 100):
+            session_node1.execute("DELETE from ks.cf where key in (\'k%s\');" % "\',\'k".join(str(x) for x in range(i, i+100)))
 
         result = list(session_node1.execute("SELECT * FROM ks.cf limit 2000;"))
         self.assertEqual(len(result), 0, "expected 0 lines got %d %s" % (len(result), result))
