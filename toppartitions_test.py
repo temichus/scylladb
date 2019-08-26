@@ -244,6 +244,7 @@ class TestTopPartitions(Tester):
         stdout = self.run_toppartition_for(node, ks='keyspace1', cf='columnfamily1', duration=500)
         self.verify_empty_result(stdout)
 
+    @require('scylladb/scylla-dtest#1090')
     def test_writes_reads_samples_for_1_partition_with_1_op(self):
         """Validate that only one 1 writen/read
 
