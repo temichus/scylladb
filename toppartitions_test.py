@@ -269,6 +269,7 @@ class TestTopPartitions(Tester):
         self.verifyTopPartitionCounterForSample(actual_results=toppartion_results['READS'],
                                                 expected_results=expected_toppartition_key_count)
 
+    @require('scylladb/scylla-dtest#1090')
     def test_writes_sample_for_1_partition_with_1_op_and_empty_reads_sample(self):
         """ validate that for upon write operations,
         toppartitions results for read sampler is empty
@@ -295,6 +296,7 @@ class TestTopPartitions(Tester):
         self.verifyTopPartitionCounterForSample(actual_results=toppartion_results['READS'],
                                                 expected_results=[])
 
+    @require('scylladb/scylla-dtest#1090')
     def test_reads_sample_for_1_partition_with_1_op_and_empty_writes_sample(self):
         """ validate that for upon read operations,
         toppartitions results for read sampler is empty
@@ -320,6 +322,7 @@ class TestTopPartitions(Tester):
         self.verifyTopPartitionCounterForSample(actual_results=toppartion_results['WRITES'],
                                                 expected_results=[])
 
+    @require('scylladb/scylla-dtest#1090')
     def test_writes_sample_for_10_partitions_with_1_op_and_empty_reads_sample(self):
         """ validate that write operations is correctly counted
         for 10 partitions
@@ -344,6 +347,7 @@ class TestTopPartitions(Tester):
         self.verifyTopPartitionCounterForSample(actual_results=toppartion_results["READS"],
                                                 expected_results=[])
 
+    @require('scylladb/scylla-dtest#1090')
     def test_reads_sample_for_10_partitions_with_1_op_and_empty_writes_sample(self):
         """ validate that read operations is correctly counted
         for 10 partitions
@@ -369,6 +373,7 @@ class TestTopPartitions(Tester):
         self.verifyTopPartitionCounterForSample(actual_results=toppartion_results["WRITES"],
                                                 expected_results=[])
 
+    @require('scylladb/scylla-dtest#1090')
     def test_writes_sample_for_1_partition_with_10_ops_and_empty_read_sample(self):
         """Validate count of operations correctly counted
         for 1 partition
@@ -394,6 +399,7 @@ class TestTopPartitions(Tester):
         self.verifyTopPartitionCounterForSample(actual_results=toppartion_results["READS"],
                                                 expected_results=[])
 
+    @require('scylladb/scylla-dtest#1090')
     def test_reads_sample_for_1_partition_with_10_ops_and_empty_write_sample(self):
         """Validate count of operations correctly counted
         for 1 partition
@@ -419,6 +425,7 @@ class TestTopPartitions(Tester):
         self.verifyTopPartitionCounterForSample(actual_results=toppartion_results["WRITES"],
                                                 expected_results=[])
 
+    @require('scylladb/scylla-dtest#1090')
     def test_top_5_paritions_write_with_1_op_and_empty_read_sample(self):
         """validate only top 5 partions displayed
 
@@ -446,6 +453,7 @@ class TestTopPartitions(Tester):
         self.verifyTopPartitionCounterForSample(actual_results=toppartion_results["READS"],
                                                 expected_results=[])
 
+    @require('scylladb/scylla-dtest#1090')
     def test_top_5_paritions_read_with_1_op_and_empty_write_sample(self):
         """validate only top 5 partions displayed
 
@@ -536,6 +544,7 @@ class TestTopPartitions(Tester):
         self.verifyTopPartitionCounterForSample(actual_results=toppartion_results["READS"],
                                                 expected_results=expected_read_toppartition_key_count)
 
+    @require('scylladb/scylla-dtest#1090')
     def test_param_sampler_writes_and_capacity_size(self):
         """validate result include only write samples with
         capacity size equal to parameter
@@ -574,6 +583,7 @@ class TestTopPartitions(Tester):
         self.verifyTopPartitionCounterForSample(actual_results=toppartion_results["WRITES"],
                                                 expected_results=expected_write_toppartition_key_count)
 
+    @require('scylladb/scylla-dtest#1090')
     def test_param_sampler_read_and_capacity_size(self):
         """validate result include only read samples with
         capacity size equal to parameter
@@ -771,6 +781,7 @@ class TestTopPartitions(Tester):
         self.verifyTopPartitionCounterForSample(actual_results=toppartition_result["READS"],
                                                 expected_results=[])
 
+    @require('scylladb/scylla-dtest#1090')  # Note: could be flaky for other reasons as well, please update if needed
     def test_write_by_gause_key_distribution_for_compound_primary_key_and_large_rows_number(self):
         """validate that top write partitions with compound partition key (p_key, p_key1) and large number of rows
         per partition are correlate to guas key disribution
