@@ -1,7 +1,7 @@
 from dtest import Tester
 from ccmlib.node import NodetoolError
 from scylla_tools import insert_c1c2_no_prepared, query_c1c2
-from tools import create_c1c2_table
+from tools import create_c1c2_table, require
 
 import time
 import re
