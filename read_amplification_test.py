@@ -31,6 +31,15 @@ class ReadAmplificationTest(Tester):
         """
         Check total bytes read during streaming on repair corresponds to data size
         """
+        self.no_read_amplification_on_repair(with_mv=False)
+
+    def no_read_amplification_on_repair_with_mv_test(self):
+        """
+        Check total bytes read during streaming on repair corresponds to data size
+        """
+        self.no_read_amplification_on_repair(with_mv=True)
+
+    def no_read_amplification_on_repair(self, with_mv):
         cluster = self.cluster
         cluster.set_configuration_options(values={'hinted_handoff_enabled': False, 'compaction_enforce_min_threshold': True})
         debug("Starting cluster..")
@@ -40,6 +49,13 @@ class ReadAmplificationTest(Tester):
         session = self.patient_cql_connection(nodes[0])
         self.create_ks(session, 'ks', 3)
         self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        if with_mv:
+            statement = "CREATE MATERIALIZED VIEW ks.cf_mv AS SELECT * FROM ks.cf " \
+                        "WHERE key is not null and c1 is not null PRIMARY KEY (c1, key)"
+            debug(statement)
+            session.execute(statement)
+            session.execute('ALTER MATERIALIZED VIEW ks.cf_mv WITH read_repair_chance=0.0')
+
         scylla_tools.insert_c1c2(session, keys=xrange(1,100), consistency=ConsistencyLevel.ALL)
 
         debug("Stop node2")
