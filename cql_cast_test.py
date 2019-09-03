@@ -269,7 +269,7 @@ class CQLCastTest(CqlshPrepare):
 
                             actual_result = actual_result.split('\n')[3].strip() \
                                     if not compare_error and actual_result else err if compare_error else ''
-                            assert_equal(actual_result, str(exp_result), "casting from type %s to type %s" % (from_type, to_type))
+                            assert_equal(actual_result, str(exp_result), "casting from type {} to type {}: expected {} but got {}".format(from_type, to_type, exp_result, actual_result))
 
     def is_commented(self, exclude, ttype):
         return True if not exclude and ttype.startswith('#') else False
