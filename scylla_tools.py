@@ -1103,7 +1103,7 @@ class CassandraCluster(object):
             debug('Create keyspace {} with all entities'.format(ks))
             out = node.run_cqlsh(cmds=';'.join(cmd for cmd in cmds), return_output=True)
             if out[1]:
-                debug('Create test schema failure: {}'.format(out[1]))
+                raise Exception('Create test schema failure: {}'.format(out[1]))
 
     def migrate_data_to_cassandra(self, nodes):
         for node in nodes:
