@@ -1,7 +1,9 @@
 import time
 import uuid
 import re
-from dtest import Tester
+from concurrent.futures import ThreadPoolExecutor
+
+from dtest import Tester, debug
 from tools import since, require
 from assertions import assert_invalid
 from cassandra import Unauthorized, ConsistencyLevel
@@ -9,7 +11,8 @@ from cassandra.query import SimpleStatement
 from unittest import skip
 from nose.plugins.attrib import attr
 from textwrap import dedent
-from assertions import assert_all
+from assertions import assert_all, assert_row_count
+from scylla_tools import wait_for_view
 
 
 def listify(item):
@@ -982,3 +985,176 @@ class TestUserTypes(Tester):
         expected_res = "[[[u\'nine\', u\'ten\', u\'eleven\']]]"
         after_update_query = "SELECT mylist from complex_types"
         assert_all(session=session, query=after_update_query, expected=expected_res, result_as_string=True)
+
+    def test_add_udt_to_another_data_types(self):
+        """"
+        Test user defined types, with complex format.
+        Alter user defined type with another  user defined type
+        """
+        rows_num = 2000
+        self.cluster.populate(3).start()
+        session = self.patient_cql_connection(self.cluster.nodelist()[0])
+        keyspace_name = 'abcinfo'
+        self.create_ks(session, keyspace_name, 1)
+
+        debug('Create user_refs type' )
+        session.execute('create type if not exists user_refs (id text, alt_name text, firstname text,'
+                        'lastname text, email text)')
+
+        debug('Create obs_entity type')
+        session.execute('create type if not exists obs_entity (entity_id text, version int, entity_type text,'
+                        'type text, service text, user_refs frozen<user_refs>)')
+
+        debug('Create other_entity type')
+        session.execute("create type if not exists other_entity (other_entity_id text, version int, "
+                        "entities frozen<set<text>>,type text)")
+
+        debug('Create entity table')
+        session.execute('create table if not exists entity(entity_id text, other_entity_id text,'
+                        'entity_type text, type text, service text, entity_info frozen < obs_entity >,'
+                        'import_timestamp timestamp, import_timestamp_day timestamp, primary key(entity_id)'
+                        ') with compact storage and '
+                        'compaction = {\'class\': \'org.apache.cassandra.db.compaction.LeveledCompactionStrategy\'}'
+                        'and bloom_filter_fp_chance = 0.01')
+
+        debug('Create index on entity(service)')
+        session.execute('create index if not exists on entity(service)')
+
+        debug('Create index on entity(type)')
+        session.execute('create index if not exists on entity(type)')
+
+        debug('Create entity_by_type materialized view')
+        session.execute('create materialized view if not exists entity_by_type as select * from entity where '
+                        'type is not null primary key(type, entity_id)')
+        wait_for_view(cluster=self.cluster, session=session, ks=keyspace_name, view='entity_by_type')
+
+        debug('Create entity_by_unique_id materialized view')
+        session.execute('create materialized view if not exists entity_by_unique_id as select * '
+                        'from entity where other_entity_id is not null primary key(other_entity_id, entity_id)')
+        wait_for_view(cluster=self.cluster, session=session, ks=keyspace_name, view='entity_by_unique_id')
+
+        debug('Create entity_rel table')
+        session.execute("create table if not exists entity_rel (src_entity_id text, src_entity frozen<obs_entity>, "
+                        "dest_entity_id text, dest_entity frozen<obs_entity>, service text, rel_type text, "
+                        "deleted boolean, primary key ((src_entity_id), dest_entity_id, rel_type, service)) "
+                        "with compaction = {'class': 'org.apache.cassandra.db.compaction.LeveledCompactionStrategy'} "
+                        "and bloom_filter_fp_chance = 0.01")
+
+        debug('Create index on entity_rel(dest_entity_id)')
+        session.execute('create index if not exists on entity_rel(dest_entity_id)')
+
+        debug('Create index on entity_rel(service)')
+        session.execute('create index if not exists on entity_rel(service)')
+
+        debug('Create index on entity_rel(rel_type)')
+        session.execute('create index if not exists on entity_rel(rel_type)')
+
+        def insert_into_entity(rows=rows_num, altered_type=False):
+            for i in xrange(rows):
+                stmt = "insert into abcinfo.entity (entity_id, entity_info, entity_type, import_timestamp, " \
+                       "import_timestamp_day, other_entity_id, service, type) values " \
+                       "('text{i}', ('entity_id{i}', {i}, 'entity_type{i}', 'type{i}', 'service{i}', " \
+                       "('id{i}', 'alt_name{i}', 'firstname{i}', 'lastname{i}', 'email{i}'{new_type}){new_type}), " \
+                       "'entity_type{i}', 1234568979, 45621313131, 'other_entity_id{i}', 'service{i}', 'type{i}')".\
+                    format(i=i, new_type=', (%d, {%d, %d})' % (i, i, i) if altered_type else '')
+                session.execute(stmt)
+
+        def insert_into_entity_rel(rows=rows_num, altered_type=False):
+            for i in xrange(rows):
+                stmt = "insert into abcinfo.entity_rel (src_entity_id, src_entity, dest_entity_id, dest_entity, " \
+                       "service, rel_type, deleted) values " \
+                       "('text{i}', ('entity_id{i}', {i}, 'entity_type{i}', 'type{i}', 'service{i}', " \
+                       "('id{i}', 'alt_name{i}', 'firstname{i}', 'lastname{i}', 'email{i}'{new_type}){new_type}), " \
+                       "'dest_entity_id{i}', ('entity_id{i}', {i}, 'entity_type{i}', 'type{i}', 'service{i}', " \
+                       "('id{i}', 'alt_name{i}', 'firstname{i}', 'lastname{i}', 'email{i}'{new_type}){new_type}), " \
+                       "'service{i}', 'rel_type{i}', True)".\
+                    format(i=i, new_type=', (%d, {%d, %d})' % (i, i, i) if altered_type else '')
+                session.execute(stmt)
+
+        debug('Start insert into entity')
+        entity_run_executer = ThreadPoolExecutor()
+        entity_run_executer.submit(insert_into_entity)
+
+        debug('Start insert into entity_rel')
+        entity_rel_run_executer = ThreadPoolExecutor()
+        entity_rel_run_executer.submit(insert_into_entity_rel)
+
+        debug('Create priority_refs type')
+        session.execute('create type if not exists priority_refs (priority int, description set<int>)')
+
+        debug('Alter obs_entity type')
+        session.execute('alter type obs_entity add priority_refs frozen<priority_refs>')
+
+        debug('Alter user_refs type')
+        session.execute('alter type user_refs add priority_refs frozen<priority_refs>')
+
+        insert_into_entity(rows=10, altered_type=True)
+        insert_into_entity_rel(rows=10, altered_type=True)
+
+        assert_row_count(session=session, table_name='entity', expected=rows_num,
+                         consistency_level=ConsistencyLevel.QUORUM)
+
+        assert_row_count(session=session, table_name='entity_rel', expected=rows_num,
+                         consistency_level=ConsistencyLevel.QUORUM)
+
+        assert_row_count(session=session, table_name='entity_by_type', expected=rows_num,
+                         consistency_level=ConsistencyLevel.QUORUM)
+
+        assert_row_count(session=session, table_name='entity_by_unique_id', expected=rows_num,
+                         consistency_level=ConsistencyLevel.QUORUM)
+
+    def test_alter_inner_udt_by_another_udt(self):
+        """"
+        - Create 3 user defined type: type 1 references to type 2 and type 3 references to type 1
+        - Create new UDT
+        - Alter type 1&2 with new UDT.
+        - Create table with column of type 3
+        - Insert into table
+        """
+        rows_num = 10
+        self.cluster.populate(3).start()
+        session = self.patient_cql_connection(self.cluster.nodelist()[0])
+        keyspace_name = 'abcinfo'
+        self.create_ks(session, keyspace_name, 1)
+
+        debug('Create user_refs type' )
+        session.execute('create type if not exists user_refs (id text, alt_name text)')
+
+        debug('Create obs_entity type')
+        session.execute('create type if not exists obs_entity (entity_id text, user_refs frozen<user_refs>)')
+
+        debug('Create some_entity type')
+        session.execute("create type if not exists some_entity (e_struct frozen<obs_entity>)")
+
+        debug('Create priority_refs type')
+        session.execute('create type if not exists priority_refs (priority int, description set<int>)')
+
+        debug('Alter obs_entity type')
+        session.execute('alter type obs_entity add priority_refs frozen<priority_refs>')
+
+        debug('Alter user_refs type')
+        session.execute('alter type user_refs add priority_refs frozen<priority_refs>')
+
+        debug('Create entity table')
+        session.execute('create table if not exists entity(entity_id text, type text, entity_info frozen < some_entity >,'
+                        ' primary key(entity_id)) with compact storage and '
+                        'compaction = {\'class\': \'org.apache.cassandra.db.compaction.LeveledCompactionStrategy\'}'
+                        'and bloom_filter_fp_chance = 0.01')
+
+        debug('Create entity_by_type materialized view')
+        session.execute('create materialized view if not exists entity_by_type as select * from entity where '
+                        'type is not null primary key(type, entity_id)')
+        wait_for_view(cluster=self.cluster, session=session, ks=keyspace_name, view='entity_by_type')
+
+        for i in xrange(rows_num):
+            new_type = '(%d, {%d, %d})' % (i, i, i)
+            stmt = "insert into entity (entity_id, type, entity_info) values " \
+                   "('text{i}', 'type{i}', (('entity_id{i}', " \
+                   "('id{i}', 'alt_name{i}', {new_type}), {new_type})))".format(i=i, new_type=new_type)
+            session.execute(stmt)
+
+        assert_row_count(session=session, table_name='entity', expected=rows_num,
+                         consistency_level=ConsistencyLevel.QUORUM)
+
+        assert_row_count(session=session, table_name='entity_by_type', expected=rows_num,
+                         consistency_level=ConsistencyLevel.QUORUM)
