@@ -3,6 +3,7 @@ import sys, os
 import time
 import traceback
 import random
+import re
 from functools import partial
 from multiprocessing import Process, Queue, cpu_count
 from unittest import skip, skipIf
@@ -321,8 +322,13 @@ class TestMaterializedViews(Tester):
         errors = node.grep_log_for_errors(distinct_errors=True)
 
         if exclude_errors:
-            for ee in exclude_errors:
-                errors = [error for error in list(errors) if ee not in error]
+            if isinstance(exclude_errors, str):
+                expr = re.compile(exclude_errors)
+            elif isinstance(exclude_errors, list):
+                expr = re.compile('|'.join(exclude_errors))
+            elif isinstance(exclude_errors, re._pattern_type):
+                expr = exclude_errors
+            errors = [error for error in list(errors) if not expr.search(error)]
 
         if errors:
             assert False, '\n'.join(list(errors))
