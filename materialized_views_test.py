@@ -696,7 +696,9 @@ class TestMaterializedViews(Tester):
 
         for node in self.cluster.nodelist():
             self._check_errors(node, exclude_errors=['migration_task - Can''t send migration request',
-                                                                       'mutation_write_timeout_exception', 'Error applying view update to'])
+                                                     'mutation_write_timeout_exception',
+                                                     'Error applying view update to',
+                                                     'view - Failed to update materialized view bookkeeping.*seastar::no_sharded_instance_exception.*continuing anyway'])
 
     def _restart_node(self, node, delay=0):
         time.sleep(delay)
