@@ -57,6 +57,20 @@ class TestBootstrap(Tester):
         cluster.stop()
         debug("done")
 
+    @attr('next-gating')
+    @attr('dtest-debug')
+    def start_stop_test_node(self):
+        debug("populating cluster with three nodes")
+        cluster = self.cluster
+        cluster.populate(3)
+        debug("starting cluster")
+        cluster.start()
+        debug("stopping node")
+        node1 = cluster.nodelist()[0]
+        node1.stop(wait_other_notice=True, wait_seconds=10)
+        debug("stopping cluster")
+        cluster.stop()
+        debug("done")
 
     @attr('dtest-full')
     def simple_bootstrap_test(self):
