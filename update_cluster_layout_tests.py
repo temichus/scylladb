@@ -525,7 +525,7 @@ class TestUpdateClusterLayout(Tester):
             except (OperationTimedOut) as e:
                 tfailed = str(datetime.now())
                 failed = "Server side exception not thrown driver side exception thrown OperationTimeout %s %s %s" %\
-                         (e, before, failed)
+                         (e, before, tfailed)
 
         executor = ThreadPoolExecutor(max_workers=1)
 
