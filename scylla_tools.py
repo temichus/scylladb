@@ -165,9 +165,12 @@ def scylla_mode(modes):
    ."""
     NO_SKIP = os.environ.get('SKIP', '').lower() in ('no', 'false')
     cdir = os.environ.get('CASSANDRA_DIR')
-    idir, mode = common.scylla_extract_install_dir_and_mode(cdir)
-    return unittest.skipIf(common.isScylla(cdir) and not NO_SKIP and modes.find(mode) == -1, 'Test disabled for scylla %s' % mode)
-
+    version = os.environ.get('SCYLLA_VERSION')
+    if version:
+        mode = 'reloc'
+    else:
+        idir, mode = common.scylla_extract_install_dir_and_mode(cdir)
+    return unittest.skipIf((cdir and common.isScylla(cdir)) and not NO_SKIP and modes.find(mode) == -1, 'Test disabled for scylla %s' % mode)
 
 def get_sstables_files(cf_dir, f_type=''):
     """
