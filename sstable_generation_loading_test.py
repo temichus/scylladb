@@ -130,8 +130,9 @@ class TestSSTableGenerationAndLoading(Tester):
         for comp in comps:
             os.system("mv {path}/*{comp} {path}/snapshots/".format(**locals()))
 
+            mark = node1.mark_log()
             node1.start()
-            node1.watch_log_for("malformed_sstable_exception", timeout=10)
+            node1.watch_log_for("malformed_sstable_exception", timeout=10, from_mark=mark)
             node1.stop(wait=False, gently=False)
             time.sleep(1)
 
