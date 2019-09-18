@@ -106,9 +106,11 @@ if [[ -z ${SCYLLA_VERSION} ]]; then
     fi
 
     DOCKER_COMMAND_PARAMS="
+    -v ${SCYLLA_ROOT_DIR}:${SCYLLA_ROOT_DIR} \
     -v ${CASSANDRA_DIR}:${CASSANDRA_DIR} \
     -v ${TOOLS_JAVA_DIR}:${TOOLS_JAVA_DIR} \
     -v ${JMX_DIR}:${JMX_DIR} \
+    -e SCYLLA_JMX_DIR=${JMX_DIR} \
     -e SCYLLA_DBUILD_SO_DIR \
     -e CASSANDRA_DIR \
     "
