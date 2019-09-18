@@ -792,6 +792,7 @@ class TTLWithMigrate(Tester):
 
         self.session1.execute(query)
 
+    @attr('next-gating')
     def big_table_with_ttls_test(self):
         """
         Test validates migration from Scylla to Cassandra of large partition table with TTLs.
