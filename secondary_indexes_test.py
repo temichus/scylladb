@@ -10,7 +10,7 @@ from nose.plugins.attrib import attr
 from dtest import Tester, debug, flaky_with_tear_down
 from tools import since, require, rows_to_list, new_node
 from assertions import assert_all, assert_invalid, assert_one, assert_row_count, assert_none, assert_expected_error, \
-                        assert_row_count_from_every_node, assert_row_count_in_select
+                        assert_row_count_in_select
 from scylla_tools import index_is_built, get_index_view_name, view_built_status_query, check_errors, \
                          get_entity_id, get_truncated_time_from_system_local, get_truncated_time_from_system_truncated, \
                          wait_for_view_build_start, remove_node, check_errors_all_nodes, generate_random_text, \
@@ -1088,8 +1088,9 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
                                  index_column=index_column)
 
         # Validate view rows
-        assert_row_count_from_every_node(session, table_name=view_name, expected=num_rows,
-                                         nodes_list=self.cluster.nodelist())
+        assert_row_count_in_select(session=session, query="SELECT * FROM {}".format(view_name),
+                                   num_rows_expected=num_rows, consistency_level=ConsistencyLevel.QUORUM)
+
         self.allow_log_errors = check_errors(self.cluster.nodelist()[0],
                                              ['Can\'t send migration request: node {} is down'.format(node2_ip),
                                               'Error applying view update to {}: exceptions::unavailable_exception (Cannot achieve consistency level for cl ONE. Requires 1, alive 0)'.format(node2_ip),
@@ -1156,8 +1157,8 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
                                  index_column=index_column)
 
         # Validate view rows
-        assert_row_count_from_every_node(session, table_name=view_name, expected=num_rows,
-                                         nodes_list=self.cluster.nodelist())
+        assert_row_count_in_select(session=session, query="SELECT * FROM {}".format(view_name),
+                                   num_rows_expected=num_rows, consistency_level=ConsistencyLevel.QUORUM)
 
         self.allow_log_errors = check_errors(self.cluster.nodelist()[0],
                                              ['Can\'t send migration request: node {} is down'.format(node2_ip)],
@@ -2132,8 +2133,9 @@ class TestLocalIndexes(Tester, SecondaryIndexesHelpers):
                                  index_column=index_column)
 
         # Validate view rows
-        assert_row_count_from_every_node(session, table_name=view_name, expected=num_rows,
-                                         nodes_list=self.cluster.nodelist())
+        assert_row_count_in_select(session=session, query="SELECT * FROM {}".format(view_name),
+                                   num_rows_expected=num_rows, consistency_level=ConsistencyLevel.QUORUM)
+
         self.allow_log_errors = check_errors(self.cluster.nodelist()[0],
                                              ['Can\'t send migration request: node {} is down'.format(node2_ip),
                                               'Error applying view update to {}: exceptions::unavailable_exception (Cannot achieve consistency level for cl ONE. Requires 1, alive 0)'.format(node2_ip),
@@ -2199,8 +2201,8 @@ class TestLocalIndexes(Tester, SecondaryIndexesHelpers):
                                  index_column=index_column)
 
         # Validate view rows
-        assert_row_count_from_every_node(session, table_name=view_name, expected=num_rows,
-                                         nodes_list=self.cluster.nodelist())
+        assert_row_count_in_select(session=session, query="SELECT * FROM {}".format(view_name),
+                                   num_rows_expected=num_rows, consistency_level=ConsistencyLevel.QUORUM)
 
         self.allow_log_errors = check_errors(self.cluster.nodelist()[0],
                                              ['Can\'t send migration request: node {} is down'.format(node2_ip)],

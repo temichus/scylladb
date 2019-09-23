@@ -114,36 +114,6 @@ def assert_row_count_in_select(session, query, num_rows_expected, consistency_le
     assert count == num_rows_expected, "Expected a row count of {} in query \"{}\", but got {}".format(
             num_rows_expected, query, count)
 
-@retry_with_func_attempts
-def assert_row_count_from_every_node(session, table_name, expected, nodes_list, num_attempts=1):
-    """
-    Function to validate the row count expected in table_name running from every node
-    :param num_attempts: defines how many time try to assert data in case failure. Used in retry_with_func_attempts decorator
-    """
-
-    query = "SELECT count(*) FROM {0}.{1};".format(session.keyspace, table_name)
-    failed_nodes = []
-    for node in nodes_list:
-        if not node.is_live():
-            continue
-        res = node.run_cqlsh(query, return_output=True)
-        count = 0
-        try:
-            count = res[0].split('\n')[3].lstrip()
-            count = int(count)
-            if count != expected:
-                failed_nodes.append('Node: {0}, actual count: {1}'.format(node.name, count))
-        except TypeError:
-            failed_nodes.append('Query "{2}" run failed. Node: {0}, query result: {3}. Error message: {1}'.format
-                                (node.name, count, query, res))
-        except Exception as e:
-            failed_nodes.append('Query "{2}" run failed. Node: {0}, query result: {3}. Error message: {1}'.format
-                                (node.name, e.message, query, res))
-
-    if failed_nodes:
-        assert not failed_nodes, 'Expected a row count of {0} in table "{1}", but got:\n {2}'.format \
-                            (expected, table_name,'\n '.join(msg for msg in failed_nodes))
-
 def assert_crc_check_chance_equal(session, table, expected, ks="ks", view=False):
     """
     driver still doesn't support top-level crc_check_chance property,

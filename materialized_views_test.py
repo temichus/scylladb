@@ -13,8 +13,8 @@ from cassandra.query import SimpleStatement
 from enum import Enum  # Remove when switching to py3
 
 from assertions import assert_all, assert_one, assert_invalid, assert_unavailable, assert_none, \
-    assert_crc_check_chance_equal, assert_row_count, assert_two_queries_equal, assert_row_count_from_every_node, \
-    assert_two_queries_equal_ignore_order
+    assert_crc_check_chance_equal, assert_row_count, assert_two_queries_equal, \
+    assert_two_queries_equal_ignore_order, assert_row_count_in_select
 from dtest import Tester, debug, flaky_with_tear_down
 from tools import since, new_node, require, rows_to_list, run_query_with_data_processing
 from scylla_tools import TableManager, MaterializedViewManager, flush_by_node, run_in_parallel, remove_node, wait_for_view, \
@@ -466,15 +466,13 @@ class TestMaterializedViews(Tester):
 
     # TODO: update non-key column
     def _parallel_updates_inserts(self, records, nodes, rf, mvs_amount):
-        def _assert_rows_count(expected_rows=None, by_node=False):
+        def _assert_rows_count(expected_rows=None):
             names_list = [tm.table_name] + tm.materialized_views.keys() if expected_rows else tm.materialized_views.keys()
             for name in names_list:
-                debug(name)
                 if expected_rows:
-                    if by_node:
-                        assert_row_count_from_every_node(session, name, expected_rows, nodes_list=self.cluster.nodelist())
-                    else:
-                        assert_row_count(session, name, expected_rows, consistency_level=ConsistencyLevel.ALL)
+                    assert_row_count_in_select(session=session, query="SELECT * FROM {}".format(name),
+                                               num_rows_expected=expected_rows,
+                                               consistency_level=ConsistencyLevel.QUORUM)
                 else:
                     assert_two_queries_equal(session, 'select count(*) from {}'.format(tm.table_name),
                                              session, 'select count(*) from {}'.format(name))
@@ -512,7 +510,7 @@ class TestMaterializedViews(Tester):
         time.sleep(180)
 
         # Validate count on every node
-        self.eventually(lambda: _assert_rows_count(records*2, by_node=True))
+        self.eventually(lambda: _assert_rows_count(records*2))
 
         # Validate data
         query_template = 'select {clmn} from {tbl}'
