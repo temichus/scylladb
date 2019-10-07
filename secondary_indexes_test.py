@@ -1093,6 +1093,7 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
         self.allow_log_errors = check_errors(self.cluster.nodelist()[0],
                                              ['Can\'t send migration request: node {} is down'.format(node2_ip),
                                               'Error applying view update to {}: exceptions::unavailable_exception (Cannot achieve consistency level for cl ONE. Requires 1, alive 0)'.format(node2_ip),
+                                              'Error applying view update to {}: exceptions::mutation_write_timeout_exception (Operation timed out for {}.{}_index - received only 0 responses from 1 CL=ONE.)'.format(node2_ip, keyspace_name, index_name),
                                               'Operation timed out for ks.b_index_index - received only 0 responses from 1 CL=ONE.'],
                                              search_str='ERROR')
 
