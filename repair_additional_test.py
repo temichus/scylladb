@@ -2708,6 +2708,7 @@ class RepairAdditionalTest(RepairAdditionalBase):
     def repair_option_pr_test(self):
        return RepairAdditionalBase._repair_option_pr_test(self)
 
+    @attr('dtest-debug')
     def repair_option_pr_dc_host_test(self):
        return RepairAdditionalBase._repair_option_pr_dc_host_test(self)
 
