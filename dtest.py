@@ -391,6 +391,8 @@ class Tester(TestCase):
         self.cluster_options = kwargs.pop('cluster_options', None)
         self.cassandra_version = kwargs.pop('cassandra_version', None)
         self._handling_timeout = False
+        self.connections = []
+        self.runners = []
         super(Tester, self).__init__(*argv, **kwargs)
 
     def _get_cluster(self, name='test', version=None):
@@ -601,8 +603,6 @@ class Tester(TestCase):
                 f.write(self.cluster.name)
 
         self.modify_log(self.cluster)
-        self.connections = []
-        self.runners = []
 
     def find_cores(self):
         cores = []
