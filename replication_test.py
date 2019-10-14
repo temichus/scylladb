@@ -3,12 +3,13 @@ import re
 import time
 from cassandra import ConsistencyLevel
 from cassandra.query import SimpleStatement
-from collections import defaultdict
+from cassandra.util import OrderedMapSerializedKey
+from collections import defaultdict, OrderedDict
 from unittest import skip
 from nose.plugins.attrib import attr
 
 from dtest import Tester, debug, PRINT_DEBUG
-from tools import no_vnodes, since, require
+from tools import no_vnodes, since, require, rows_to_list
 
 TRACE_DETERMINE_REPLICAS = re.compile('Determining replicas for mutation')
 TRACE_SEND_MESSAGE = re.compile('Sending message to /([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)')
@@ -718,3 +719,98 @@ class SnitchConfigurationUpdateTest(Tester):
         mark = node.mark_log()
         node.start()
         node.watch_log_for(expected_error, from_mark=mark, timeout=10)
+
+class TestRFAutoExpand(Tester):
+    """
+    Test for #4210 (or CASSANDRA-14303).
+
+    This tests the UX feature of expanding replication factor when using
+    NetworkTopologyStrategy, e.g. when
+    {'class': 'NetworkTopologyStrategy', 'replication_factor': 3}
+    is used for the replication option, it will be expanded to
+    {'class': 'NetworkTopologyStrategy', dc1: 3, dc2: 3, ... }
+    where dc1, dc2, ... are the datacenters known to the node
+    at the moment of creating the keyspace.
+    """
+
+    def test_rf_expand(self):
+        self.cluster.populate([1, 1, 1]).start(
+            wait_for_binary_proto=True,
+            wait_other_notice=True)
+        session = self.patient_cql_connection(self.cluster.nodelist()[0])
+
+        self.create_ks(session, 'test_simple', {'replication_factor': 1})
+
+        # simple expansion to all dcs
+        res = session.execute(
+            "SELECT replication FROM system_schema.keyspaces "
+            "WHERE keyspace_name = 'test_simple'")
+        self.assertItemsEqual(
+            rows_to_list(res),
+            [[mk_replication({'dc1': 1, 'dc2': 1, 'dc3': 1})]])
+
+        self.create_ks(session, 'test_manual', {'replication_factor': 1, 'dc3': 3})
+
+        # expand, but respect factors specified manually
+        res = session.execute(
+            "SELECT replication FROM system_schema.keyspaces "
+            "WHERE keyspace_name = 'test_manual'")
+        self.assertItemsEqual(
+            rows_to_list(res),
+            [[mk_replication({'dc1': 1, 'dc2': 1, 'dc3': 3})]])
+
+        # expansion doesn't change existing replication factors
+        session.execute(
+            "ALTER KEYSPACE test_manual WITH replication = "
+            "{'class': 'NetworkTopologyStrategy', 'replication_factor': 2}")
+        res = session.execute(
+            "SELECT replication FROM system_schema.keyspaces "
+            "WHERE keyspace_name = 'test_manual'")
+        self.assertItemsEqual(
+            rows_to_list(res),
+            [[mk_replication({'dc1': 1, 'dc2': 1, 'dc3': 3})]])
+
+        self.create_ks(session, 'test_switch', 3)
+
+        # expand when directly switching from SimpleStrategy
+        # to NetworkTopologyStrategy
+        session.execute(
+            "ALTER KEYSPACE test_switch WITH replication = "
+            "{'class': 'NetworkTopologyStrategy'}")
+        res = session.execute(
+            "SELECT replication FROM system_schema.keyspaces WHERE "
+            "keyspace_name = 'test_switch'")
+        self.assertItemsEqual(
+            rows_to_list(res),
+            [[mk_replication({'dc1': 3, 'dc2': 3, 'dc3': 3})]])
+
+        self.create_ks(session, 'test_switch_2', 3)
+
+        # don't expand when switching from SimpleStrategy
+        # to NTS with manually specified DCs
+        session.execute(
+            "ALTER KEYSPACE test_switch_2 WITH replication = "
+            "{'class': 'NetworkTopologyStrategy', 'dc1': 2}")
+        res = session.execute(
+            "SELECT replication FROM system_schema.keyspaces WHERE "
+            "keyspace_name = 'test_switch_2'")
+        self.assertItemsEqual(
+            rows_to_list(res),
+            [[mk_replication({'dc1': 2})]])
+
+        # expand non-specified factors
+        session.execute(
+            "ALTER KEYSPACE test_switch_2 WITH replication = "
+            "{'class': 'NetworkTopologyStrategy', 'replication_factor': 3}")
+        res = session.execute(
+            "SELECT replication FROM system_schema.keyspaces WHERE "
+            "keyspace_name = 'test_switch_2'")
+        self.assertItemsEqual(
+            rows_to_list(res),
+            [[mk_replication({'dc1': 2, 'dc2': 3, 'dc3': 3})]])
+
+
+def mk_replication(dcs):
+    return OrderedDict(
+        [(u'class', u'org.apache.cassandra.locator.NetworkTopologyStrategy')] +
+        [(str(k), str(v)) for k, v in dcs.items()])
