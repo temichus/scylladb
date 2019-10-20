@@ -1205,18 +1205,18 @@ class TestConsistency(Tester):
         session1.execute(SimpleStatement("insert into ks.cf1 (p, r) values (3, 3)", consistency_level=ConsistencyLevel.ALL))
 
         debug('Updating node1')
-        node2.stop()
+        node2.stop(wait_other_notice=True)
         session1.execute(SimpleStatement("delete from ks.cf1 where p = 1", consistency_level=ConsistencyLevel.ONE))
 
         debug('Updating node2')
-        node2.start()
         node1.stop()
+        node2.start(wait_for_binary_proto=True)
 
         session2 = self.patient_cql_connection(node2)
         session2.execute(SimpleStatement("delete from ks.cf1 where p = 2", consistency_level=ConsistencyLevel.ONE))
 
         debug('Querying whole cluster')
-        node1.start(wait_other_notice=True)
+        node1.start(wait_other_notice=True, wait_for_binary_proto=True)
         debug('Node 1 started')
 
         query = SimpleStatement('select r from ks.cf1 limit 1', consistency_level=ConsistencyLevel.ALL, fetch_size=0)
@@ -1245,18 +1245,18 @@ class TestConsistency(Tester):
         session1.execute(SimpleStatement("insert into ks.cf1 (p, r) values (4, 4)", consistency_level=ConsistencyLevel.ALL))
 
         debug('Updating node1')
-        node2.stop()
+        node2.stop(wait_other_notice=True)
         session1.execute(SimpleStatement("delete from ks.cf1 where p = 1", consistency_level=ConsistencyLevel.ONE))
 
         debug('Updating node2')
-        node2.start()
         node1.stop()
+        node2.start(wait_for_binary_proto=True)
 
         session2 = self.patient_cql_connection(node2)
         session2.execute(SimpleStatement("delete from ks.cf1 where p = 2", consistency_level=ConsistencyLevel.ONE))
 
         debug('Querying whole cluster')
-        node1.start(wait_other_notice=True)
+        node1.start(wait_other_notice=True, wait_for_binary_proto=True)
         debug('Node 1 started')
 
         future = session2.execute_async(
@@ -1289,18 +1289,18 @@ class TestConsistency(Tester):
         session1.execute(SimpleStatement("insert into ks.cf1 (p, c, r) values (4, '1', '4')", consistency_level=ConsistencyLevel.ALL))
 
         debug('Updating node1')
-        node2.stop()
+        node2.stop(wait_other_notice=True)
         session1.execute(SimpleStatement("delete from ks.cf1 where p = 1", consistency_level=ConsistencyLevel.ONE))
 
         debug('Updating node2')
-        node2.start()
         node1.stop()
+        node2.start(wait_for_binary_proto=True)
 
         session2 = self.patient_cql_connection(node2)
         session2.execute(SimpleStatement("delete from ks.cf1 where p = 2", consistency_level=ConsistencyLevel.ONE))
 
         debug('Querying whole cluster')
-        node1.start(wait_other_notice=True)
+        node1.start(wait_other_notice=True, wait_for_binary_proto=True)
         debug('Node 1 started')
 
         host, port = node2.network_interfaces['thrift']
