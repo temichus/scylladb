@@ -112,7 +112,7 @@ class TestSimpleBootShutdown(Tester):
         node1.flush()
         node1.stop(gently=False)
 
-        node1.start(update_pid=True)
+        node1.start(update_pid=True, wait_for_binary_proto=True)
         session = self.patient_cql_connection(node1, 'ks')
         # Select
         res = list(session.execute("""

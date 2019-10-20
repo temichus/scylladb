@@ -159,7 +159,7 @@ class TestCommitLog(Tester):
         """ Test commit log replay """
         node1 = self.node1
         node1.set_configuration_options(batch_commitlog=True)
-        node1.start()
+        node1.start(wait_for_binary_proto=True)
 
         debug("Insert data")
         session = self.patient_cql_connection(node1)
@@ -201,7 +201,7 @@ class TestCommitLog(Tester):
         self.assertEqual(0, len(cf_data_dir_files))
 
         debug("Verify commit log was replayed on startup")
-        node1.start()
+        node1.start(wait_for_binary_proto=False)
         self.assertTrue(node1.is_running(), "node is not running")
         node1.watch_log_for("Log replay complete")
         # Here we verify there was more than 0 replayed mutations
@@ -226,7 +226,7 @@ class TestCommitLog(Tester):
 
         node1 = self.node1
         node1.set_configuration_options(batch_commitlog=True, values={'experimental': True})
-        node1.start()
+        node1.start(wait_for_binary_proto=True)
 
         debug("Create table")
         session = self.patient_cql_connection(node1)
@@ -288,7 +288,7 @@ class TestCommitLog(Tester):
         self.assertTrue(len(commitlog_files) > 0)
 
         debug("Verify commitlog was replayed on startup")
-        node1.start()
+        node1.start(wait_for_binary_proto=False)
         node1.watch_log_for("Log replay complete")
         replays = node1.grep_log(" (\d+) replayed mutations", filter_expr='DEBUG')
         self.assertGreater(len(replays), 0)
