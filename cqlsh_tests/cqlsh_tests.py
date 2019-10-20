@@ -1789,8 +1789,8 @@ class CqlshSmokeTest(Tester):
         self.allow_log_errors = True
 
         for i in range(3):
-            new_node(self.cluster, bootstrap=False).start()
-        time.sleep(60)
+            new_node(self.cluster, bootstrap=False)
+        self.cluster.start()
         self.cluster.nodelist()[0].stress(['write', 'n=1K', '-rate', 'threads=8'])
 
         ks1_stdout, ks1_stderr = self.node1.run_cqlsh('select * from keyspace1.standard1 LIMIT 10;', return_output=True)
