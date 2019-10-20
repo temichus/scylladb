@@ -429,9 +429,7 @@ class TestConcurrentSchemaChanges(Tester):
         wait(2)
         node2.stop()
         wait(2)
-        node1.start()
-        node2.start()
-        wait(20)
+        cluster.start(wait_other_notice=True, wait_for_binary_proto=True)
         self.validate_schema_consistent(node1)
 
     def changes_while_node_toggle_test(self):
@@ -457,9 +455,7 @@ class TestConcurrentSchemaChanges(Tester):
         wait(2)
         node2.stop()
         wait(2)
-        node1.start()
-        node2.start()
-        wait(20)
+        cluster.start(wait_other_notice=True, wait_for_binary_proto=True)
         self.validate_schema_consistent(node1)
 
     def decommission_node_test(self):
@@ -470,11 +466,10 @@ class TestConcurrentSchemaChanges(Tester):
         cluster.populate(1)
         # create and add a new node, I must not be a seed, otherwise
         # we get schema disagreement issues for awhile after decommissioning it.
-        node2 = new_node(cluster)
+        new_node(cluster)
 
+        cluster.start()
         node1, node2 = cluster.nodelist()
-        node1.start(wait_for_binary_proto=True)
-        node2.start(wait_for_binary_proto=True)
         wait(2)
 
         session = self.patient_cql_connection(node1)
@@ -488,9 +483,8 @@ class TestConcurrentSchemaChanges(Tester):
 
         # create and add a new node
         node3 = new_node(cluster)
-        node3.start(wait_for_binary_proto=True)
+        node3.start(wait_other_notice=True, wait_for_binary_proto=True)
 
-        wait(30)
         self.validate_schema_consistent(node1)
 
     @attr('next-gating')
