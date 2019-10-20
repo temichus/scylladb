@@ -36,7 +36,7 @@ class TestSSTableGenerationAndLoading(Tester):
             session.execute("insert into ks.test  (pk, ck, v) values (0, 'ck_%d', %d)" % (i, i))
 
         node1.stop()
-        node1.start()
+        node1.start(wait_for_binary_proto=True)
 
         session = self.patient_cql_connection(node1)
 
@@ -113,7 +113,7 @@ class TestSSTableGenerationAndLoading(Tester):
         # and that the data is still there
         os.system('rm %s/*Summary.db' % path)
 
-        node1.start()
+        node1.start(wait_for_binary_proto=True)
         session = self.patient_cql_connection(node1)
         new_rows = list(session.execute("SELECT * FROM %s" % (stress_table,)))
         self.assertEquals(original_rows, new_rows)
@@ -146,7 +146,7 @@ class TestSSTableGenerationAndLoading(Tester):
 
         # Finally, verify that the data is still there after renaming
         # all components back.
-        node1.start()
+        node1.start(wait_for_binary_proto=True)
         session = self.patient_cql_connection(node1)
         new_rows = list(session.execute("SELECT * FROM %s" % (stress_table,)))
         self.assertEquals(original_rows, new_rows)
