@@ -249,7 +249,7 @@ class TestSnapshot(SnapshotTester):
         node1 = cluster.nodelist()[0]
 
         debug('Run stress command')
-        results, errors = node1.stress(['write', 'n=1000000', '-rate', 'threads=10'],
+        results, errors = node1.stress(['write', 'n=10000', '-rate', 'threads=10'],
                                        capture_output=True)
         debug('Stress results:\n' + ''.join(results + errors))
         self.assertFalse(errors, "Some errors during stress %s" % errors)
@@ -259,7 +259,7 @@ class TestSnapshot(SnapshotTester):
         debug('Node has been stopped')
 
         debug('Starting node...')
-        node1.start()
+        node1.start(wait_for_binary_proto=True)
         debug('Node has been started')
 
         debug('Create snapshot right after start')
