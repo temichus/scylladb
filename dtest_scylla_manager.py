@@ -8,6 +8,7 @@ from enum import Enum
 
 from ccmlib import common
 from dtest import warning, debug, wait_for
+from distutils.version import LooseVersion
 
 
 class ScyllaManagerError(Exception):

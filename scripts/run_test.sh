@@ -79,6 +79,8 @@ export SCYLLA_EXT_OPTS=${SCYLLA_EXT_OPTS:-"--smp 1 --memory 512M"}
 
 mkdir -p ${HOME}/.dtest
 mkdir -p ${HOME}/.ccm
+mkdir -p ${HOME}/.certs
+mkdir -p ${HOME}/.config
 mkdir -p ${HOME}/.local/lib
 
 function check_directory_exists()
@@ -149,6 +151,7 @@ docker_cmd="docker run --detach=true \
     -e CLUSTER_ID_ALLOCATOR \
     -e NODE_TOTAL \
     -e NODE_INDEX \
+    -e SCYLLA_MANAGER_PACKAGE \
     -w ${DTEST_DIR} \
     -v /etc/passwd:/etc/passwd:ro \
     -v /etc/group:/etc/group:ro \
@@ -157,6 +160,8 @@ docker_cmd="docker run --detach=true \
     -v ${HOME}/.local:${HOME}/.local \
     -v ${HOME}/.dtest:${HOME}/.dtest \
     -v ${HOME}/.ccm:${HOME}/.ccm \
+    -v ${HOME}/.certs:${HOME}/.certs \
+    -v ${HOME}/.config:${HOME}/.config \
     --network=bridge --privileged \
     ${DOCKER_IMAGE} bash -c 'pip install --user -e ${CCM_DIR} ; export PATH=\$PATH:\${HOME}/.local/bin ; bash -c \"${INSTALL_CASSANDRA}\"; nosetests --nologcapture -v -s $*'"
 echo "Running Docker: $docker_cmd"
