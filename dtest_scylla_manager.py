@@ -201,6 +201,10 @@ class ScyllaManagerTool(ScyllaManagerBase):
         ssh_user = create_user or 'scylla-manager'
         host = node.address()
         cluster_add_cmd = "cluster add --host {host} --name {name}".format(**locals())
+        versions, _ = self.version
+        client_version = versions[0][0].split()[2]
+        if LooseVersion(client_version) >= LooseVersion('2.0'):
+            cluster_add_cmd += " --auth-token {}".format(node.scylla_manager.auth_token)
         res_cluster_add, stderr = self.sctool.run(cmd=cluster_add_cmd)
         if not res_cluster_add or 'Cluster added' not in stderr:
             raise ScyllaManagerError("Encountered an error on 'sctool cluster add' command response: {}".format(res_cluster_add))

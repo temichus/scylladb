@@ -2,12 +2,15 @@ import socket
 from time import sleep
 from datetime import datetime, timedelta
 
+from nose.plugins.attrib import attr
+
 from dtest_scylla_manager import ScyllaManagerTool, ScyllaManagerError, TaskStatus, HostStatus
 from dtest import Tester, debug
 
 
 class TestScyllaManagerClusterMgmt(Tester):
 
+    @attr('scylla-manager')
     def adding_cluster_while_its_down_test(self):
         self.cluster.populate(3).start()
         node1, node2, node3 = self.cluster.nodelist()
@@ -25,6 +28,7 @@ class TestScyllaManagerClusterMgmt(Tester):
             return
         assert False, "Expected to fail when adding an offline cluster to the manager, but didn't"
 
+    @attr('scylla-manager')
     def add_more_than_one_scylla_cluster_test(self):
         self.cluster.populate(3).start(wait_for_binary_proto=False, wait_other_notice=False)
         node1, node2, node3 = self.cluster.nodelist()
@@ -63,6 +67,7 @@ class TestScyllaManagerClusterMgmt(Tester):
             sleep(step)
         return False
 
+    @attr('scylla-manager')
     def removing_managed_driver_during_repair_test(self):
         self.cluster.populate(3).start()
         node1, node2, node3 = self.cluster.nodelist()
@@ -84,7 +89,8 @@ class TestScyllaManagerClusterMgmt(Tester):
         assert repair_ending_message_results, "Stopping the repair through the manager did not stop the repair " \
                                               "in the cluster"
 
-    def removing_node_from_managed_cluster(self):
+    @attr('scylla-manager')
+    def removing_node_from_managed_cluster_test(self):
         self.cluster.populate(3).start()
         node1, node2, node3 = self.cluster.nodelist()
 

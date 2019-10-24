@@ -30,7 +30,7 @@ class ManagerHealthCheckTest(Tester):
         manager_cluster = self.get_manager_cluster()
         healthcheck_task = manager_cluster.get_healthcheck_task()
         assert default_interval in healthcheck_task.next_run
-        assert TaskStatus.ERROR.value not in healthcheck_task.status
+        assert TaskStatus.ERROR.value not in healthcheck_task.status.value
 
     @attr('scylla-manager')
     def update_health_check_task_test(self):

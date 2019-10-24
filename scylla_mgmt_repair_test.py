@@ -755,15 +755,17 @@ class TestScyllaMgmtRepair(RepairAdditionalBase):
         debug("Stopping the node used for the repair, "
               "expecting the repair task (that uses fail-fast) to reach the status of 'ERROR' soon after")
         repair_task_fail_fast.wait_for_status(list_status=[TaskStatus.RUNNING], timeout=300, step=10)
+        debug("task {} has reached the status of RUNNING,"
+              " shutting down the host with which the task is using to repair".format(repair_task_fail_fast.id))
         node1.stop(wait_other_notice=True)
-        repair_task_fail_fast.wait_for_status(list_status=[TaskStatus.ERROR], timeout=30, step=5)
+        repair_task_fail_fast.wait_for_status(list_status=[TaskStatus.ERROR], timeout=40, step=3)
 
         node1.start(wait_for_binary_proto=False, wait_other_notice=False)
 
         repair_task = mgr_cluster.create_repair_task(node=node2, token_ranges='all', keyspace=self.KEYSPACE_NAME,
                                                      with_hosts=[node1])
         debug("Stopping the node used for the repair. Since The repair does not use the 'fail-fast' flag,"
-              " the is not expected to reach the 'ERROR' status soon")
+              " the new task, {}, is not expected to reach the 'ERROR' status soon".format(repair_task.id))
         repair_task.wait_for_status(list_status=[TaskStatus.RUNNING], timeout=300, step=10)
         node1.stop(wait_other_notice=True)
         try:

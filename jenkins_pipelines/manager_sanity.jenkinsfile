@@ -1,0 +1,90 @@
+pipeline {
+    agent {
+        label {
+            label "gce-sct-builders"
+        }
+    }
+     parameters {
+
+        string(defaultValue: 'unstable/master:380',
+               description: 'Scylla relocatable packages build to be used',
+               name: 'scylla_version')
+
+        string(defaultValue: 'git@github.com:scylladb/scylla-dtest.git',
+               description: 'dtest git repo',
+               name: 'dtest_repo')
+
+        string(defaultValue: 'master',
+               description: 'dtest git branch',
+               name: 'dtest_branch')
+
+        string(defaultValue: 'git@github.com:scylladb/scylla-ccm.git',
+               description: 'ccm git repo',
+               name: 'ccm_repo')
+
+        string(defaultValue: 'master',
+               description: 'ccm git branch',
+               name: 'ccm_branch')
+
+        string(defaultValue: '',
+               description: 'manager build path',
+               name: 'scylla_manager_package')
+
+        string(defaultValue: '720',
+               description: 'timeout for jenkins job in minutes',
+               name: 'timeout')
+    }
+    options {
+        timestamps()
+        disableConcurrentBuilds()
+        timeout([time: params.timeout, unit: "MINUTES"])
+        buildDiscarder(logRotator(numToKeepStr: '20'))
+    }
+    stages {
+        stage('Checkout') {
+           steps {
+              dir('scylla-dtest') {
+                  git(url: params.dtest_repo,
+                        credentialsId:'b8a774da-0e46-4c91-9f74-09caebaea261',
+                        branch: params.dtest_branch)
+
+                  dir("scylla-ccm") {
+                    git(url: params.ccm_repo,
+                        credentialsId:'b8a774da-0e46-4c91-9f74-09caebaea261',
+                        branch: params.ccm_branch)
+                  }
+              }
+           }
+        }
+        stage('Run dtest Tests') {
+            steps {
+                script {
+                    wrap([$class: 'BuildUser']) {
+                        dir('scylla-dtest') {
+
+                            sh """
+                            #!/bin/bash
+                            set -xe
+                            env
+
+                            export SCYLLA_VERSION="${params.scylla_version}"
+                            export CCM_DIR=\$(pwd)"/scylla-ccm"
+                            export PRINT_DEBUG=True
+                            export DEBUG=True
+                            export KEEP_TEST_DIR=True
+                            export SCYLLA_MANAGER_PACKAGE="${params.scylla_manager_package}"
+
+                            export HOME=\$(pwd)/tmp_dtest_run
+                            mkdir -p \$HOME
+
+                            echo "start test ......."
+                            ./scripts/run_test.sh -a scylla-manager
+                            echo "end test ....."
+                            """
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

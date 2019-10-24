@@ -77,9 +77,11 @@ export CCM_DIR=${CCM_DIR:-`pwd`/../scylla-ccm}
 export SCYLLA_DBUILD_SO_DIR=$( realpath ${SCYLLA_DBUILD_SO_DIR:-${CASSANDRA_DIR}/dynamic_libs} )
 export SCYLLA_EXT_OPTS=${SCYLLA_EXT_OPTS:-"--smp 1 --memory 512M"}
 
+
 mkdir -p ${HOME}/.dtest
 mkdir -p ${HOME}/.ccm
 mkdir -p ${HOME}/.certs
+chmod 0700 ${HOME}/.certs
 mkdir -p ${HOME}/.config
 mkdir -p ${HOME}/.local/lib
 
