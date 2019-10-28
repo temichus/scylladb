@@ -19,4 +19,6 @@ if [[ ! -d "${OUTPUT_DIR}" ]]; then
   echo "creating output dir [${OUTPUT_DIR}]"
   mkdir ${OUTPUT_DIR}
 fi
-ldd ${SCYLLA_BIN} | sed 's/^.*\s\(.*\)\s(.*)/\1/' | xargs -i cp {} ${OUTPUT_DIR}
+for i in $(ldd ${SCYLLA_BIN} | sed 's/^.*\s\(.*\)\s(.*)/\1/'); do
+  cp "$i" ${OUTPUT_DIR} || [[ "$i" = linux-vdso.so.* ]]
+done

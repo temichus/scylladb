@@ -102,9 +102,7 @@ if [[ -z ${SCYLLA_VERSION} ]]; then
 
     if [[ ! -d ${SCYLLA_DBUILD_SO_DIR} ]]; then
         echo "scylla was built with dbuild, and SCYLLA_DBUILD_SO_DIR wasn't supplied or exists"
-        set +e
         ${SCYLLA_ROOT_DIR}/tools/toolchain/dbuild -v ${CASSANDRA_DIR}:${CASSANDRA_DIR} -v ${DTEST_DIR}/scripts/dbuild_collect_so.sh:/bin/dbuild_collect_so.sh -- dbuild_collect_so.sh ${CASSANDRA_DIR}/scylla ${SCYLLA_DBUILD_SO_DIR}
-        set -e
     fi
 
     DOCKER_COMMAND_PARAMS="
