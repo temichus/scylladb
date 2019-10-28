@@ -1,5 +1,6 @@
 import time
 import uuid
+import random
 from unittest import skip
 
 from cassandra import ConsistencyLevel as CL
@@ -174,8 +175,8 @@ class PageFetcher(object):
 class PageAssertionMixin(object):
     """Can be added to subclasses of unittest.Tester"""
 
-    def assertEqualIgnoreOrder(self, actual, expected):
-        return self.assertItemsEqual(actual, expected)
+    def assertEqualIgnoreOrder(self, actual, expected, msg):
+        return self.assertItemsEqual(actual, expected, msg if msg else None)
 
     def assertIsSubsetOf(self, subset, superset):
         assert flatten_into_set(subset).issubset(flatten_into_set(superset))
@@ -191,7 +192,6 @@ class BasePagingTester(Tester):
         return session
 
 
-@since('2.0')
 @attr('dtest-full')
 class TestPagingSize(BasePagingTester, PageAssertionMixin):
     """
@@ -332,7 +332,6 @@ class TestPagingSize(BasePagingTester, PageAssertionMixin):
         self.assertEqualIgnoreOrder(pf.all_data(), expected_data)
 
 
-@since('2.0')
 @attr('dtest-full')
 class TestPagingWithModifiers(BasePagingTester, PageAssertionMixin):
     """
@@ -578,7 +577,6 @@ class TestPagingWithModifiers(BasePagingTester, PageAssertionMixin):
         )
 
 
-@since('2.0')
 @attr('dtest-full')
 class TestPagingData(BasePagingTester, PageAssertionMixin):
 
@@ -681,7 +679,6 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
         assert_invalid(session, "select * from paging_test where col_1=1 and col_2 IN (1, 2) order by col_3 desc;", expected=InvalidRequest)
         assert_invalid(session, "select * from paging_test where col_2 IN (1, 2) and col_1=1 order by col_3 desc;", expected=InvalidRequest)
 
-    @since('2.0.6')
     def static_columns_paging_test(self):
         """
         Exercises paging with static columns to detect bugs
@@ -955,7 +952,6 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
                                    [4, None, 1],
                                    [3, None, 1]])
 
-    @since('2.1')
     def test_paging_with_empty_row_and_empty_static_columns(self):
         """
         test paging when the rows and the static columns are empty
@@ -1097,7 +1093,6 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
                 query_and_compare_results(**query_and_result)
 
 
-@since('2.0')
 @attr('dtest-full')
 class TestPagingDatasetChanges(BasePagingTester, PageAssertionMixin):
     """
@@ -1317,7 +1312,6 @@ class TestPagingDatasetChanges(BasePagingTester, PageAssertionMixin):
         # TODO: can we resume the node and expect to get more results from the result set or is it done?
 
 
-@since('2.0')
 @attr('dtest-full')
 class TestPagingQueryIsolation(BasePagingTester, PageAssertionMixin):
     """
@@ -1406,7 +1400,6 @@ class TestPagingQueryIsolation(BasePagingTester, PageAssertionMixin):
         self.assertEqualIgnoreOrder(flatten_into_set(page_fetchers[10].all_data()), flatten_into_set(expected_data[:50000]))
 
 
-@since('2.0')
 @attr('dtest-full')
 class TestPagingWithDeletions(BasePagingTester, PageAssertionMixin):
     """
@@ -1756,3 +1749,248 @@ class TestPagingWithDeletions(BasePagingTester, PageAssertionMixin):
             # finish paging
             fetcher.request_all()
             self.assertEqual([2, 2], fetcher.num_results_all())
+
+@attr('dtest-full')
+class TestPagingWithIndexingAndAggregation(BasePagingTester, PageAssertionMixin):
+    """
+    Tests concerned with paging when deletions occur.
+    """
+    data = """
+             | id | mybool | sometext | someint |
+             +----+--------+----------+---------+
+         *100| 1  | 1      | [random] | [random]
+         *300| 2  | 0      | [random] | [random]
+         *500| 3  | 1      | [random] | [random]
+         *400| 4  | 0      | [random] | [random]
+            """
+
+    def create_table(self, session):
+        self.create_ks(session, 'test_paging_size', 2)
+        session.execute("CREATE TABLE paging_test (id int, mybool boolean, sometext text, someint int, "
+                        "PRIMARY KEY (id, sometext) )")
+    
+    def create_and_insert_data(self, data, session, table_name='paging_test', cl=CL.ALL):
+        def random_txt(text):
+            return unicode(uuid.uuid4())
+
+        def bool_from_str_int(text):
+            return bool(int(text))
+
+        def random_integer(int):
+            return random.randint(-2147483648, 2147483647)
+
+        all_data = create_rows(
+            data, session, table_name, cl=cl,
+            format_funcs={'id': int, 'mybool': bool_from_str_int, 'sometext': random_txt,
+                          'someint': random_integer}
+        )
+        return all_data
+    
+    def execute_query_and_compare_results(self, session, query, expected_data, assert_msg=''):
+        future = session.execute_async(
+            SimpleStatement(query, fetch_size=40, consistency_level=CL.ALL)
+        )
+        pf = PageFetcher(future).request_all()
+        self.assertEqual(pf.pagecount(), 1, 'Expected 1 page but received {}'.format(pf.pagecount()))
+        self.assertEqual(pf.num_results_all(), [1], 'Expected 1 single result, but received {}'.format(
+            pf.num_results_all()))
+        self.assertEqualIgnoreOrder(expected_data, pf.all_data(), assert_msg)
+
+    def test_filter_indexed_column(self):
+        session = self.prepare()
+        self.create_table(session)
+
+        session.execute("CREATE INDEX ON paging_test(mybool)")
+        all_data = self.create_and_insert_data(self.data, session)
+        list_mybool_is_true = [entry for entry in all_data if entry[u'mybool'] is True]
+
+        # count group function
+        query_count = "select count(someint) from paging_test where mybool = true"
+        expected_count_data = [{u'system.count(someint)': len(list_mybool_is_true)}]
+        self.execute_query_and_compare_results(session=session, query=query_count, expected_data=expected_count_data,
+                                               assert_msg='count(someint) returned wrong value')
+
+        # min group function
+        query_min = "select min(someint) from paging_test where mybool = true"
+        expected_min_data = [{u'system.min(someint)': min([item['someint'] for item in list_mybool_is_true])}]
+        self.execute_query_and_compare_results(session=session, query=query_min, expected_data=expected_min_data,
+                                               assert_msg='min(someint) returned wrong value')
+
+        # max group function
+        query_max = "select max(someint) from paging_test where mybool = true"
+        expected_max_data = [{u'system.max(someint)': max([item['someint'] for item in list_mybool_is_true])}]
+        self.execute_query_and_compare_results(session=session, query=query_max, expected_data=expected_max_data,
+                                               assert_msg='max(someint) returned wrong value')
+
+        # # sum group function
+        query_sum = "select sum(someint) from paging_test where mybool = true"
+        expected_sum_data = [{u'system.sum(someint)': sum([item['someint'] for item in list_mybool_is_true])}]
+        self.execute_query_and_compare_results(session=session, query=query_sum, expected_data=expected_sum_data,
+                                               assert_msg='sum(someint) returned wrong value')
+
+    def test_filter_non_indexed_column(self):
+        session = self.prepare()
+        self.create_table(session)
+
+        all_data = self.create_and_insert_data(self.data, session)
+        list_mybool_is_true = [entry for entry in all_data if entry[u'mybool'] is True]
+
+        # count group function
+        query_count = "select count(someint) from paging_test where mybool = true ALLOW FILTERING"
+        expected_count_data = [{u'system.count(someint)': len(list_mybool_is_true)}]
+        self.execute_query_and_compare_results(session=session, query=query_count, expected_data=expected_count_data,
+                                               assert_msg='count(someint) returned wrong value')
+
+        # min group function
+        query_min = "select min(someint) from paging_test where mybool = true ALLOW FILTERING"
+        expected_min_data = [{u'system.min(someint)': min([item['someint'] for item in list_mybool_is_true])}]
+        self.execute_query_and_compare_results(session=session, query=query_min, expected_data=expected_min_data,
+                                               assert_msg='min(someint) returned wrong value')
+
+        # max group function
+        query_max = "select max(someint) from paging_test where mybool = true ALLOW FILTERING"
+        expected_max_data = [{u'system.max(someint)': max([item['someint'] for item in list_mybool_is_true])}]
+        self.execute_query_and_compare_results(session=session, query=query_max, expected_data=expected_max_data,
+                                               assert_msg='max(someint) returned wrong value')
+
+        # # sum group function
+        query_sum = "select sum(someint) from paging_test where mybool = true ALLOW FILTERING"
+        expected_sum_data = [{u'system.sum(someint)': sum([item['someint'] for item in list_mybool_is_true])}]
+        self.execute_query_and_compare_results(session=session, query=query_sum, expected_data=expected_sum_data,
+                                               assert_msg='sum(someint) returned wrong value')
+
+    def test_group_pk_column_index_filter(self):
+        session = self.prepare()
+        self.create_table(session)
+
+        session.execute("CREATE INDEX ON paging_test(mybool)")
+        all_data = self.create_and_insert_data(self.data, session)
+        list_mybool_is_true = [entry for entry in all_data if entry[u'mybool'] is True]
+
+        # count group function
+        query_count = "select count(id) from paging_test where mybool = true"
+        expected_count_data = [{u'system.count(id)': len(list_mybool_is_true)}]
+        self.execute_query_and_compare_results(session=session, query=query_count, expected_data=expected_count_data,
+                                               assert_msg='count(id) returned wrong value')
+
+        # min group function
+        query_min = "select min(id) from paging_test where mybool = true"
+        expected_min_data = [{u'system.min(id)': min([item['id'] for item in list_mybool_is_true])}]
+        self.execute_query_and_compare_results(session=session, query=query_min, expected_data=expected_min_data,
+                                               assert_msg='min(id) returned wrong value')
+
+        # max group function
+        query_max = "select max(id) from paging_test where mybool = true"
+        expected_max_data = [{u'system.max(id)': max([item['id'] for item in list_mybool_is_true])}]
+        self.execute_query_and_compare_results(session=session, query=query_max, expected_data=expected_max_data,
+                                               assert_msg='max(id) returned wrong value')
+
+    def test_group_pk_column_non_index_filter(self):
+        session = self.prepare()
+
+        self.create_table(session)
+    
+        all_data = self.create_and_insert_data(self.data, session)
+        list_mybool_is_true = [entry for entry in all_data if entry[u'mybool'] is True]
+
+        # count group function
+        query_count = "select count(id) from paging_test where mybool = true ALLOW FILTERING"
+        expected_count_data = [{u'system.count(id)': len(list_mybool_is_true)}]
+        self.execute_query_and_compare_results(session=session, query=query_count, expected_data=expected_count_data,
+                                               assert_msg='count(id) returned wrong value')
+
+        # min group function
+        query_min = "select min(id) from paging_test where mybool = true ALLOW FILTERING"
+        expected_min_data = [{u'system.min(id)': min([item['id'] for item in list_mybool_is_true])}]
+        self.execute_query_and_compare_results(session=session, query=query_min, expected_data=expected_min_data,
+                                               assert_msg='min(id) returned wrong value')
+
+        # max group function
+        query_max = "select max(id) from paging_test where mybool = true ALLOW FILTERING"
+        expected_max_data = [{u'system.max(id)': max([item['id'] for item in list_mybool_is_true])}]
+        self.execute_query_and_compare_results(session=session, query=query_max, expected_data=expected_max_data,
+                                               assert_msg='max(id) returned wrong value')
+
+    def test_group_ck_column_index_filter(self):
+        session = self.prepare()
+        self.create_table(session)
+
+        session.execute("CREATE INDEX ON paging_test(mybool)")
+        all_data = self.create_and_insert_data(self.data, session)
+        list_mybool_is_true = [entry for entry in all_data if entry[u'mybool'] is True]
+
+        # count group function
+        query_count = "select count(sometext) from paging_test where mybool = true"
+        expected_count_data = [{u'system.count(sometext)': len(list_mybool_is_true)}]
+        self.execute_query_and_compare_results(session=session, query=query_count, expected_data=expected_count_data,
+                                               assert_msg='count(sometext) returned wrong value')
+
+        # min group function
+        query_min = "select min(sometext) from paging_test where mybool = true"
+        expected_min_data = [{u'system.min(sometext)': min([item['sometext'] for item in list_mybool_is_true])}]
+        self.execute_query_and_compare_results(session=session, query=query_min, expected_data=expected_min_data,
+                                               assert_msg='min(sometext) returned wrong value')
+
+        # max group function
+        query_max = "select max(sometext) from paging_test where mybool = true"
+        expected_max_data = [{u'system.max(sometext)': max([item['sometext'] for item in list_mybool_is_true])}]
+        self.execute_query_and_compare_results(session=session, query=query_max, expected_data=expected_max_data,
+                                               assert_msg='max(sometext) returned wrong value')
+
+    def test_group_ck_column_non_index_filter(self):
+        session = self.prepare()
+
+        self.create_table(session)
+
+        all_data = self.create_and_insert_data(self.data, session)
+        list_mybool_is_true = [entry for entry in all_data if entry[u'mybool'] is True]
+
+        # count group function
+        query_count = "select count(sometext) from paging_test where mybool = true ALLOW FILTERING"
+        expected_count_data = [{u'system.count(sometext)': len(list_mybool_is_true)}]
+        self.execute_query_and_compare_results(session=session, query=query_count, expected_data=expected_count_data,
+                                               assert_msg='count(sometext) returned wrong value')
+
+        # min group function
+        query_min = "select min(sometext) from paging_test where mybool = true ALLOW FILTERING"
+        expected_min_data = [{u'system.min(sometext)': min([item['sometext'] for item in list_mybool_is_true])}]
+        self.execute_query_and_compare_results(session=session, query=query_min, expected_data=expected_min_data,
+                                               assert_msg='min(sometext) returned wrong value')
+
+        # max group function
+        query_max = "select max(sometext) from paging_test where mybool = true ALLOW FILTERING"
+        expected_max_data = [{u'system.max(sometext)': max([item['sometext'] for item in list_mybool_is_true])}]
+        self.execute_query_and_compare_results(session=session, query=query_max, expected_data=expected_max_data,
+                                               assert_msg='max(sometext) returned wrong value')
+
+    def test_filter_pk_column(self):
+        session = self.prepare()
+        self.create_table(session)
+
+        session.execute("CREATE INDEX ON paging_test(mybool)")
+        all_data = self.create_and_insert_data(self.data, session)
+        list_mybool_is_true = [entry for entry in all_data if entry[u'id'] == 2]
+
+        # count group function
+        query_count = "select count(someint) from paging_test where id = 2"
+        expected_count_data = [{u'system.count(someint)': len(list_mybool_is_true)}]
+        self.execute_query_and_compare_results(session=session, query=query_count, expected_data=expected_count_data,
+                                               assert_msg='count(someint) returned wrong value')
+
+        # min group function
+        query_min = "select min(someint) from paging_test where id = 2"
+        expected_min_data = [{u'system.min(someint)': min([item['someint'] for item in list_mybool_is_true])}]
+        self.execute_query_and_compare_results(session=session, query=query_min, expected_data=expected_min_data,
+                                               assert_msg='min(someint) returned wrong value')
+
+        # max group function
+        query_max = "select max(someint) from paging_test where id = 2"
+        expected_max_data = [{u'system.max(someint)': max([item['someint'] for item in list_mybool_is_true])}]
+        self.execute_query_and_compare_results(session=session, query=query_max, expected_data=expected_max_data,
+                                               assert_msg='max(someint) returned wrong value')
+
+        # # sum group function
+        query_sum = "select sum(someint) from paging_test where id = 2"
+        expected_sum_data = [{u'system.sum(someint)': sum([item['someint'] for item in list_mybool_is_true])}]
+        self.execute_query_and_compare_results(session=session, query=query_sum, expected_data=expected_sum_data,
+                                               assert_msg='sum(someint) returned wrong value')
