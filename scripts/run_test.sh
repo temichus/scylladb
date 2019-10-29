@@ -74,7 +74,7 @@ export TOOLS_JAVA_DIR=${TOOLS_JAVA_DIR:-`pwd`/../scylla-tools-java}
 export JMX_DIR=${JMX_DIR:-`pwd`/../scylla-jmx}
 export DTEST_DIR=${DTEST_DIR:-`pwd`}
 export CCM_DIR=${CCM_DIR:-`pwd`/../scylla-ccm}
-export SCYLLA_DBUILD_SO_DIR=${SCYLLA_DBUILD_SO_DIR:-${CASSANDRA_DIR}/dynamic_libs}
+export SCYLLA_DBUILD_SO_DIR=$( realpath ${SCYLLA_DBUILD_SO_DIR:-${CASSANDRA_DIR}/dynamic_libs} )
 export SCYLLA_EXT_OPTS=${SCYLLA_EXT_OPTS:-"--smp 1 --memory 512M"}
 
 mkdir -p ${HOME}/.dtest
