@@ -100,9 +100,10 @@ if [[ -z ${SCYLLA_VERSION} ]]; then
     check_directory_exists TOOLS_JAVA_DIR
     check_directory_exists JMX_DIR
 
-    if [[ ! -d ${SCYLLA_DBUILD_SO_DIR} ]]; then
-        echo "scylla was built with dbuild, and SCYLLA_DBUILD_SO_DIR wasn't supplied or exists"
+    if [[ ! -d ${SCYLLA_DBUILD_SO_DIR} ]] || diff -q ${SCYLLA_ROOT_DIR}/tools/toolchain/image ${SCYLLA_DBUILD_SO_DIR}/image ]]; then
+        echo "scylla was built with dbuild, and SCYLLA_DBUILD_SO_DIR wasn't supplied, does not exist, or is outdated"
         ${SCYLLA_ROOT_DIR}/tools/toolchain/dbuild -v ${CASSANDRA_DIR}:${CASSANDRA_DIR} -v ${DTEST_DIR}/scripts/dbuild_collect_so.sh:/bin/dbuild_collect_so.sh -- dbuild_collect_so.sh ${CASSANDRA_DIR}/scylla ${SCYLLA_DBUILD_SO_DIR}
+        cp ${SCYLLA_ROOT_DIR}/tools/toolchain/image ${SCYLLA_DBUILD_SO_DIR}
     fi
 
     DOCKER_COMMAND_PARAMS="
