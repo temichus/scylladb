@@ -152,17 +152,21 @@ class TestCqlTracing(Tester):
 
         session = self.patient_cql_connection(node1)
 
-        def run(name, q):
+        def run(name, q, additional_keys):
             try:
                 q.put(True)
-                debug("Populating a table with {} more keys...".format(30 * num_keys))
-                insert_c1c2_no_prepared(session, keys=range(num_keys, num_keys + 30 * num_keys), consistency=ConsistencyLevel.ONE)
-                debug("insertion of {} keys is done".format(30 * num_keys))
+                debug("Populating a table with {} more keys...".format(additional_keys))
+                insert_c1c2_no_prepared(session, keys=range(num_keys, num_keys + additional_keys), consistency=ConsistencyLevel.ONE)
+                debug("insertion of {} keys is done".format(additional_keys))
             except:
                 debug("insertions was killed")
 
         queue = Queue()
-        insert_thread = threading.Thread(target=run, args=("insert-thread", queue))
+        if node1.grep_log('WARNING: debug mode.'):
+            additional_keys = 2 * num_keys
+        else:
+            additional_keys = 30 * num_keys
+        insert_thread = threading.Thread(target=run, args=("insert-thread", queue, additional_keys))
         insert_thread.start()
         queue.get(block=True)
 
@@ -174,6 +178,7 @@ class TestCqlTracing(Tester):
         debug("Stopping node2...")
         node2.stop(wait_other_notice=True)
 
+        debug("Waiting for insert-thread to complete...")
         insert_thread.join()
 
         debug("Checking log of node2 for assertions...")
