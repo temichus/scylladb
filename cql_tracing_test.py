@@ -128,6 +128,7 @@ class TestCqlTracing(Tester):
         num_keys = 500
         debug("Populating a table with {} keys...".format(num_keys))
         insert_c1c2_no_prepared(session, keys=range(num_keys), consistency=ConsistencyLevel.ONE)
+        node1.nodetool('flush')
 
         debug("Stopping node1...")
         node1.stop(wait_other_notice=True)
