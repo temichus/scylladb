@@ -22,3 +22,4 @@ fi
 for i in $(ldd ${SCYLLA_BIN} | sed 's/^.*\s\(.*\)\s(.*)/\1/'); do
   cp "$i" ${OUTPUT_DIR} || [[ "$i" = linux-vdso.so.* ]]
 done
+cp $(which patchelf) ${OUTPUT_DIR}
