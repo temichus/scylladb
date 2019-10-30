@@ -5476,8 +5476,15 @@ class CQLAdditionalTests(Tester):
         try:
             session.execute(c)
         except Exception, e:
-            assert(e.message == "Not implemented: LWT")
-            assert(e.code == 0000)
+            if e.message != "Paxos is currently disabled. Start Scylla with --experimental=on to enable.":
+                assert e.code == 0000 and e.message == "Not implemented: LWT", e
+                return
+            debug("Restart node with experimental=on and retry...")
+            node.stop()
+            node.start(wait_for_binary_proto=True, jvm_args=['--experimental', 'on'])
+
+            session = self.patient_cql_connection(node)
+            session.execute(c)
 
     @require('876')
     def grant_test(self):
