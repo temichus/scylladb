@@ -5455,6 +5455,8 @@ class CQLAdditionalTests(Tester):
             assert(e.message == "Indexes are not supported yet")
             assert(e.code == 0000)
 
+    @attr('next-gating')
+    @attr('dtest-debug')
     def lightweight_transaction_test(self):
         cluster = self.prepare()
         node = cluster.nodelist()[0]
@@ -5470,14 +5472,34 @@ class CQLAdditionalTests(Tester):
             )"""
         session.execute(c)
 
+        row = [u'bcanet', u'benoit@scylladb.com', u'Benoit Canet']
+
         c = """INSERT INTO USERS (login, email, name)
-            values ('bcanet', 'benoit@scylladb.com', 'Benoit Canet')
-            IF NOT EXISTS"""
+            values ('{}', '{}', '{}')
+            IF NOT EXISTS""".format(row[0], row[1], row[2])
         try:
             session.execute(c)
         except Exception, e:
-            assert(e.message == "Not implemented: LWT")
-            assert(e.code == 0000)
+            if e.message != "Paxos is currently disabled. Start Scylla with --experimental=on to enable.":
+                assert e.code == 0000 and e.message == "Not implemented: LWT", e
+                return
+            debug("Restart node with experimental=on and retry...")
+            node.stop()
+            node.start(wait_for_binary_proto=True, jvm_args=['--experimental', 'on'])
+
+            session = self.patient_cql_connection(node)
+            session.execute(c)
+
+        debug("Make sure the row is not updated if it exists...")
+        c = """INSERT INTO ks.users (login, email, name)
+            values ('bcanet', 'disabled@scylladb.com', 'disabled')
+            IF NOT EXISTS"""
+        session.execute(c)
+
+        debug("Verify content...")
+        res = rows_to_list(session.execute("SELECT * FROM ks.users"))
+        assert len(res) == 1, res
+        assert res[0] == row, res[0]
 
     @require('876')
     def grant_test(self):
