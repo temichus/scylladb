@@ -5455,6 +5455,8 @@ class CQLAdditionalTests(Tester):
             assert(e.message == "Indexes are not supported yet")
             assert(e.code == 0000)
 
+    @attr('next-gating')
+    @attr('dtest-debug')
     def lightweight_transaction_test(self):
         cluster = self.prepare()
         node = cluster.nodelist()[0]
