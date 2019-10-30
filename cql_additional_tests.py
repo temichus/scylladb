@@ -5486,6 +5486,12 @@ class CQLAdditionalTests(Tester):
             session = self.patient_cql_connection(node)
             session.execute(c)
 
+        debug("Make sure the row is not updated if it exists...")
+        c = """INSERT INTO ks.users (login, email, name)
+            values ('bcanet', 'disabled@scylladb.com', 'disabled')
+            IF NOT EXISTS"""
+        session.execute(c)
+
     @require('876')
     def grant_test(self):
         cluster = self.prepare()
