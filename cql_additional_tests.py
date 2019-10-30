@@ -5470,9 +5470,11 @@ class CQLAdditionalTests(Tester):
             )"""
         session.execute(c)
 
+        row = [u'bcanet', u'benoit@scylladb.com', u'Benoit Canet']
+
         c = """INSERT INTO USERS (login, email, name)
-            values ('bcanet', 'benoit@scylladb.com', 'Benoit Canet')
-            IF NOT EXISTS"""
+            values ('{}', '{}', '{}')
+            IF NOT EXISTS""".format(row[0], row[1], row[2])
         try:
             session.execute(c)
         except Exception, e:
@@ -5491,6 +5493,11 @@ class CQLAdditionalTests(Tester):
             values ('bcanet', 'disabled@scylladb.com', 'disabled')
             IF NOT EXISTS"""
         session.execute(c)
+
+        debug("Verify content...")
+        res = rows_to_list(session.execute("SELECT * FROM ks.users"))
+        assert len(res) == 1, res
+        assert res[0] == row, res[0]
 
     @require('876')
     def grant_test(self):
