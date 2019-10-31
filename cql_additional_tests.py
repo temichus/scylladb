@@ -5474,7 +5474,7 @@ class CQLAdditionalTests(Tester):
 
         row = [u'bcanet', u'benoit@scylladb.com', u'Benoit Canet']
 
-        c = """INSERT INTO USERS (login, email, name)
+        c = """INSERT INTO ks.users (login, email, name)
             values ('{}', '{}', '{}')
             IF NOT EXISTS""".format(row[0], row[1], row[2])
         try:
