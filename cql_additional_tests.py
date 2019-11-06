@@ -2954,8 +2954,9 @@ class TestCQL(Tester):
         execute_concurrent_with_args(session, insert_statement, args)
 
         rows = list(session.execute(select_statement, [0, in_values]))
-        expected_rows = [v for v in clustering_values if v <= 100]
-        self.assertEqual(len(expected_rows), len(rows))
+        expected_rows = [v for v in clustering_values if v in in_values]
+        self.assertEqual(len(expected_rows), len(rows),
+                         msg="expected_rows={} rows={}".format(expected_rows, rows))
 
     @since('1.2.1')
     def timeuuid_test(self):
