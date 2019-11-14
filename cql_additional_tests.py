@@ -4789,6 +4789,13 @@ class TestCQL(Tester):
         # We shouldn't allow static when there is not clustering columns
         assert_invalid(session, "ALTER TABLE foo ADD bar2 text static")
 
+    def alter_with_multiple_columns_test(self):
+        session = self.prepare(experimental=True)
+
+        session.execute("CREATE TABLE foo (bar int, PRIMARY KEY (bar))")
+        session.execute("ALTER TABLE foo ADD (c text, d int)")
+        session.execute("INSERT INTO foo (bar, c, d) VALUES (1, 'hello', 100)")
+
     def drop_and_readd_collection_test(self):
         """
         @jira_ticket CASSANDRA-6276
