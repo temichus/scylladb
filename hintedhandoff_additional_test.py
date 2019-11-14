@@ -108,6 +108,7 @@ class TestHintedHandoff(Tester):
         self.create_ks(session, 'ks', 1)
         create_c1c2_table(self, session)
 
+        node3_addr = node3.address()
         node3_hid = node3.hostid()
 
         debug("Stopping node3...")
@@ -117,10 +118,13 @@ class TestHintedHandoff(Tester):
         insert_c1c2(session, n=100, consistency=ConsistencyLevel.ANY)
 
         debug("Removing node3...")
+        from_mark = node1.mark_log()
         node1.removenode(node3_hid)
 
-        debug("Waiting {}s for hints to be sent...".format(self.__hint_flush_threshold))
-        time.sleep(self.__hint_flush_threshold)
+        timeout = self.__hint_flush_threshold * 2
+        debug("Waiting {}s for hints to be sent...".format(timeout))
+        msg = 'hints_manager - Draining for {}: end'.format(node3_addr)
+        node1.watch_log_for(msg, from_mark=from_mark, timeout=timeout)
 
         debug("Reading the data...")
         for x in xrange(0, 100):
@@ -355,7 +359,7 @@ class TestHintedHandoff(Tester):
         if not hh_enabled_value is None:
             hh_enabled = hh_enabled_value
 
-        return ['--hinted-handoff-enabled', hh_enabled]
+        return ['--hinted-handoff-enabled', hh_enabled, '--logger-log-level', 'hints_manager=trace']
 
     def __start_cluster_with_hints(self, num, custom_args=[], hh_enabled_value=None):
         cluster = self.cluster
