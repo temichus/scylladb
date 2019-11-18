@@ -368,7 +368,7 @@ Uploading docker images
 when doing changes to requirements.txt, or any other change to docker image, it can be uploaded like this:
 
 ```bash
-export DTEST_DOCKER_IMAGE=scylladb/scylla-dtest:fedora-29-py3-$(date +'%Y%m%d')
+export DTEST_DOCKER_IMAGE=scylladb/scylla-dtest:fedora-29-pytest-$(date +'%Y%m%d')
 docker build . -t ${DTEST_DOCKER_IMAGE}
 docker push ${DTEST_DOCKER_IMAGE}
 echo "${DTEST_DOCKER_IMAGE}" > scripts/image

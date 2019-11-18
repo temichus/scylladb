@@ -37,8 +37,16 @@ repos:
         language: system
         types: [python]
 
-#    -   id: pylint
-#        name: pylint
-#        entry: pylint -j 2 -E
-#        language: system
-#        types: [python]
+    -   id: pylint
+        name: pylint
+        entry: pylint -j 2 -E
+        files: >
+            (?x)^(
+                tools/.*|
+                conftest.py|
+                dtest_class.py|
+                dtest_setup.py|
+                bootstrap_test.py
+            )$
+        language: system
+        types: [python]

@@ -395,10 +395,7 @@ def make_execution_profile(retry_policy=FlakyRetryPolicy(), consistency_level=Co
                             **kwargs)
 
 
-PRESERVED_CLUSTER = None
-
-
-class Tester(TestCase):
+class NoseTester(TestCase):
     _multiprocess_can_split_ = True
 
     def __init__(self, *argv, **kwargs):
@@ -1535,7 +1532,7 @@ class Tester(TestCase):
 
 
 @attr('reuse-cluster')
-class TesterReuseCluster(Tester):
+class TesterReuseCluster(NoseTester):
     _multiprocess_can_split_ = not REUSE_CLUSTER
 
 

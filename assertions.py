@@ -2,7 +2,6 @@ import re
 from cassandra import InvalidRequest, Unavailable, ConsistencyLevel, WriteFailure, WriteTimeout, ReadFailure, ReadTimeout
 from cassandra.query import SimpleStatement
 from tools import rows_to_list, run_query_with_data_processing
-import time
 from dtest import retry_with_func_attempts
 
 

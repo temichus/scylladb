@@ -1,3 +1,5 @@
+# our old tools.py file, would need to remove or use the new ones
+
 import fileinput
 import functools
 import os
@@ -7,7 +9,6 @@ import subprocess
 import sys
 import tempfile
 import time
-import unittest
 import random
 import string
 from itertools import groupby
@@ -15,16 +16,17 @@ from pkg_resources import parse_version
 from threading import Thread
 from uuid import uuid1, uuid4
 import errno
+import logging
+import glob
+import distutils.dir_util
 
 from cassandra import ConsistencyLevel
 from cassandra.concurrent import execute_concurrent_with_args
 from cassandra.query import SimpleStatement
-from nose.plugins.attrib import attr
 
 from ccmlib.scylla_node import ScyllaNode
-from dtest import CASSANDRA_DIR, DISABLE_VNODES, IGNORE_REQUIRE, debug, make_execution_profile
-import glob
-import distutils.dir_util
+
+logger = logging.getLogger(__name__)
 
 
 def rows_to_list(rows):
@@ -229,28 +231,28 @@ def generate_ssl_stores(base_dir, passphrase='cassandra'):
     """
 
     if os.path.exists(os.path.join(base_dir, 'keystore.jks')):
-        debug("keystores already exists - skipping generation of ssl keystores")
+        logger.debug("keystores already exists - skipping generation of ssl keystores")
         return
 
-    debug("generating keystore.jks in [{0}]".format(base_dir))
+    logger.debug("generating keystore.jks in [{0}]".format(base_dir))
     subprocess.check_call(['keytool', '-genkeypair', '-alias', 'ccm_node', '-keyalg', 'RSA', '-validity', '365',
                            '-keystore', os.path.join(base_dir, 'keystore.jks'), '-storepass', passphrase,
                            '-dname', 'cn=Cassandra Node,ou=CCMnode,o=DataStax,c=US', '-keypass', passphrase])
-    debug("exporting cert from keystore.jks in [{0}]".format(base_dir))
+    logger.debug("exporting cert from keystore.jks in [{0}]".format(base_dir))
     subprocess.check_call(['keytool', '-export', '-rfc', '-alias', 'ccm_node',
                            '-keystore', os.path.join(base_dir, 'keystore.jks'),
                            '-file', os.path.join(base_dir, 'ccm_node.cer'), '-storepass', passphrase])
-    debug("importing cert into truststore.jks in [{0}]".format(base_dir))
+    logger.debug("importing cert into truststore.jks in [{0}]".format(base_dir))
     subprocess.check_call(['keytool', '-import', '-file', os.path.join(base_dir, 'ccm_node.cer'),
                            '-alias', 'ccm_node', '-keystore', os.path.join(base_dir, 'truststore.jks'),
                            '-storepass', passphrase, '-noprompt'])
     # Added for scylla: Generate pem format cert/key
-    debug("exporting cert to pks12 from keystore.jks in [{0}]".format(base_dir))
+    logger.debug("exporting cert to pks12 from keystore.jks in [{0}]".format(base_dir))
     subprocess.check_call(['keytool', '-importkeystore', '-srckeystore', os.path.join(base_dir, 'keystore.jks'),
                            '-srcstorepass', passphrase, '-srckeypass', passphrase, '-destkeystore',
                            os.path.join(base_dir, 'ccm_node.p12'), '-deststoretype', 'PKCS12',
                            '-srcalias', 'ccm_node', '-deststorepass', passphrase, '-destkeypass', passphrase])
-    debug("Using openssl to split pks12 in [{0}] to pem format".format(base_dir))
+    logger.debug("Using openssl to split pks12 in [{0}] to pem format".format(base_dir))
     subprocess.check_call(['openssl', 'pkcs12', '-in', os.path.join(base_dir, 'ccm_node.p12'),
                            '-passin', 'pass:{0}'.format(passphrase), '-nokeys',
                            '-out', os.path.join(base_dir, 'ccm_node.pem')])
@@ -263,14 +265,14 @@ def generate_ssl_stores(base_dir, passphrase='cassandra'):
                            '-passin', 'pass:{0}'.format(passphrase),
                            '-out', os.path.join(base_dir, 'ccm_node.key')])
     # And create the trust chain
-    debug("exporting cert to pks12 from truststore.jks in [{0}]".format(base_dir))
+    logger.debug("exporting cert to pks12 from truststore.jks in [{0}]".format(base_dir))
     subprocess.check_call(['keytool', '-importkeystore', '-srckeystore', os.path.join(base_dir, 'truststore.jks'),
                            '-srcstorepass', passphrase, '-destkeystore', os.path.join(base_dir, 'trust.p12'),
                            '-deststoretype', 'PKCS12', '-srcalias', 'ccm_node', '-deststorepass', passphrase])
     subprocess.check_call(['openssl', 'pkcs12', '-in', os.path.join(base_dir, 'trust.p12'),
                            '-passin', 'pass:{0}'.format(passphrase),
                            '-out', os.path.join(base_dir, 'trust.pem')])
-    debug("removing temporary certificates in [{0}]".format(base_dir))
+    logger.debug("removing temporary certificates in [{0}]".format(base_dir))
     for filename in ('ccm_node.p12', 'ccm_node.tmp', 'trust.p12'):
         try:
             os.remove(os.path.join(base_dir, filename))
@@ -330,7 +332,7 @@ class since(object):
     def _maybe_skip(self, obj, version):
         msg = self._skip_msg(version)
         if msg:
-            debug("Marked for skipping: {}. Ignored.".format(msg))
+            logger.debug("Marked for skipping: {}. Ignored.".format(msg))
 
     def _wrap_setUp(self, cls):
         orig_setUp = cls.setUp
@@ -356,71 +358,9 @@ class since(object):
         return self._wrap_function(skippable)
 
 
-def no_vnodes():
-    """Skips the decorated test or test class if using vnodes."""
-    return unittest.skipIf(not DISABLE_VNODES, 'Test disabled for vnodes')
-
-
-def require(require_pattern, broken_in=None):
-    """Skips the decorated class or method, unless the argument
-    'require_pattern' is a case-insensitive regex match for the name of the git
-    branch in the directory from which Cassandra is running. For example, the
-    method defined here:
-
-        @require('compaction-fixes')
-        def compaction_test(self):
-            ...
-
-    will run if Cassandra is running from a directory whose current git branch
-    is named 'compaction-fixes'. If 'require_pattern' were
-    '.*compaction-fixes.*', it would run only when Cassandra is being run from a
-    branch whose name contains 'compaction-fixes'.
-
-    To accommodate current branch-naming conventions, it also will run if the
-    current Cassandra branch matches 'CASSANDRA-{require_pattern}'. This allows
-    users to run tests like:
-
-        @require(4200)
-        class TestNewFeature(self):
-            ...
-
-    on branches named 'CASSANDRA-4200'.
-
-    If neither 'require_pattern' nor 'CASSANDRA-{require_pattern}' is a
-    case-insensitive match for the name of Cassandra's current git branch, the
-    test function or class will be skipped with unittest.skip.
-
-    To run decorated methods as if they were not decorated with @require, set
-    the environment variable IGNORE_REQUIRE to 'yes' or 'true'. To only run
-    methods decorated with require, set IGNORE_REQUIRE to 'yes' or 'true' and
-    run `nosetests` with `-a required`. (This uses the built-in `attrib`
-    plugin.)
-    """
-    tagging_decorator = attr('required')
-    if IGNORE_REQUIRE:
-        return tagging_decorator
-    require_pattern = str(require_pattern)
-    git_branch = ''
-    git_branch = cassandra_git_branch()
-
-    if git_branch:
-        git_branch = git_branch.lower()
-        run_on_branch_patterns = (require_pattern, 'cassandra-{b}'.format(b=require_pattern))
-        # always run the test if the git branch name matches
-        if any(re.match(p, git_branch, re.IGNORECASE) for p in run_on_branch_patterns):
-            return tagging_decorator
-        # if skipping a buggy/flapping test, use since
-        elif broken_in:
-            def tag_and_skip_after_version(decorated):
-                return since('0', broken_in)(tagging_decorator(decorated))
-            return tag_and_skip_after_version
-        # otherwise, skip with a message
-        else:
-            def tag_and_skip(decorated):
-                return unittest.skip('require ' + str(require_pattern))(tagging_decorator(decorated))
-            return tag_and_skip
-    else:
-        return tagging_decorator
+def require(require_pattern):
+    import pytest
+    return pytest.mark.skip('requires ' + str(require_pattern))
 
 
 def run_query_with_data_processing(session, query, consistency_level=ConsistencyLevel.ONE, session_timeout=None,
@@ -442,26 +382,6 @@ def run_query_with_data_processing(session, query, consistency_level=Consistency
         elif restrict_value and restrict_column:
             result = [item for item in result if item[restrict_column_index] in restrict_value]
     return result
-
-
-def cassandra_git_branch(cdir=None):
-    '''Get the name of the git branch at CASSANDRA_DIR.
-    '''
-    cdir = CASSANDRA_DIR if cdir is None else cdir
-    try:
-        p = subprocess.Popen(['git', 'branch'], cwd=cdir,
-                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    except OSError as e:  # e.g. if git isn't available, just give up and return None
-        debug('shelling out to git failed: {}'.format(e))
-        return
-
-    out, err = p.communicate()
-    out = out.decode('utf-8')
-    # fail if git failed
-    if p.returncode != 0:
-        raise RuntimeError('Git printed error: {err}'.format(err=err))
-    [current_branch_line] = [line for line in out.splitlines() if line.startswith('*')]
-    return current_branch_line[1:].strip()
 
 
 def safe_mkdtemp():
@@ -578,11 +498,11 @@ class ColumnType:
         elif data_type.lower() == 'list':
             value = [self.generate_value('int') for _ in range(3)]
         elif data_type.lower() == 'map':
-            value = ''.join(['{\'', self.gen_random_string(5, source=string.letters), '\': ',
+            value = ''.join(['{\'', self.gen_random_string(5, source=string.ascii_letters), '\': ',
                              str(self.generate_value('int')) + '}'])
         elif data_type.lower() == 'udt':
-            value = '{a: \'' + self.gen_random_string(5, source=string.letters) + '\', b: \'' + \
-                    self.gen_random_string(5, source=string.letters) + '\'}'
+            value = '{a: \'' + self.gen_random_string(5, source=string.ascii_letters) + '\', b: \'' + \
+                    self.gen_random_string(5, source=string.ascii_letters) + '\'}'
         elif data_type.lower() == 'set':
             value = '{ ' + str(self.generate_value('int')) + ', ' + str(self.generate_value('int')) + ' }'
         elif data_type.lower() == 'tuple':
@@ -614,7 +534,7 @@ def make_snapshot(node: ScyllaNode, ks: str = None, cf: str = None, cf_param_nam
     :returns: path where all snapshots stored, temp directory
     :rtype: {str}
     """
-    debug("Making snapshot....")
+    logger.debug("Making snapshot....")
     node.flush()
     snapshot_cmd = 'snapshot '
     if ks:
@@ -624,7 +544,7 @@ def make_snapshot(node: ScyllaNode, ks: str = None, cf: str = None, cf_param_nam
         if name:
             snapshot_cmd += f"-t {name}"
 
-    debug("Running snapshot cmd: {snapshot_cmd}".format(snapshot_cmd=snapshot_cmd))
+    logger.debug("Running snapshot cmd: {snapshot_cmd}".format(snapshot_cmd=snapshot_cmd))
     node.nodetool(snapshot_cmd)
     tmpdir = safe_mkdtemp()
     node_dir = node.get_path()
@@ -649,8 +569,8 @@ def make_snapshot(node: ScyllaNode, ks: str = None, cf: str = None, cf_param_nam
         else:
             snapshot_dirs.append('')
 
-    debug(f"snapshot_dir is : {snapshot_dirs}")
-    debug(f"snapshot copy is : {tmpdir}")
+    logger.debug(f"snapshot_dir is : {snapshot_dirs}")
+    logger.debug(f"snapshot copy is : {tmpdir}")
 
     # # Copy files from the snapshot dir to existing temp dir
     for snapshot_dir in snapshot_dirs:
@@ -689,17 +609,17 @@ def get_cf_snapshot_saved_dir(base_snapshot_dir: str, keyspace: str, table: str,
 
 
 def restore_snapshot_with_refresh(snapshot_dir, node, keyspace, table, name=None):
-    debug("Restoring snapshot....")
+    logger.debug("Restoring snapshot....")
     node_dir = node.get_path()
     restore_dir = glob.glob("{node_dir}/data/{keyspace}/{table}-*/upload/".format(**locals()))[0]
     snapshot_dir = get_cf_snapshot_saved_dir(base_snapshot_dir=snapshot_dir, keyspace=keyspace, table=table, name=name)
-    debug("Copying from %s to %s" % (str(snapshot_dir), str(restore_dir)))
+    logger.debug("Copying from %s to %s" % (str(snapshot_dir), str(restore_dir)))
     distutils.dir_util.copy_tree(snapshot_dir, restore_dir)
     node.nodetool("refresh %s %s" % (keyspace, table))
 
 
 def restore_snapshot_with_sstableloader(snapshot_dir, node, keyspace, table, name=None):
-    debug("Restoring snapshot....")
+    logger.debug("Restoring snapshot....")
     snapshot_dir = get_cf_snapshot_saved_dir(snapshot_dir, keyspace, table, name)
     ip = node.address()
     # copy sstables to ks.cf folder to properly load with sstableloader

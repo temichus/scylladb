@@ -1,32 +1,47 @@
 import os
 import random
 import re
-import subprocess
 import tempfile
 import time
 from concurrent.futures.thread import ThreadPoolExecutor
 from psutil import Process
+import subprocess
+import logging
 
 from tools import require
-from assertions import assert_almost_equal, assert_one
+from tools import (InterruptBootstrap, KillOnBootstrap, new_node, query_c1c2,
+                   create_c1c2_table, insert_c1c2)
+
+import pytest
 from cassandra import ConsistencyLevel
 from cassandra.concurrent import execute_concurrent_with_args
 from ccmlib.node import NodeError
-from dtest import Tester, debug
-from unittest import skip
-from tools import (InterruptBootstrap, KillOnBootstrap, new_node, query_c1c2,
-                   since, create_c1c2_table, insert_c1c2)
-from scylla_tools import scylla_mode
-from nose.plugins.attrib import attr
+from dtest_class import create_cf, create_ks
+
+from tools.assertions import (assert_almost_equal,
+                              assert_one)
+from tools.data import query_c1c2
+from tools.intervention import InterruptBootstrap, KillOnBootstrap
+from tools.misc import new_node
+from dtest_setup_overrides import DTestSetupOverrides
+from tools.misc import ImmutableMapping
+from dtest_setup import DTestSetup
+from dtest_class import Tester
+
+logger = logging.getLogger(__name__)
 
 
-@attr('dtest-full')
 class TestBootstrap(Tester):
+    @pytest.fixture(scope='function', autouse=True)
+    def fixture_dtest_setup_overrides(self, dtest_config):
+        dtest_setup_overrides = DTestSetupOverrides()
+        dtest_setup_overrides.cluster_options = ImmutableMapping({'start_rpc': 'true'})
+        return dtest_setup_overrides
 
-    def __init__(self, *args, **kwargs):
-        kwargs['cluster_options'] = {'start_rpc': 'true'}
-        # Ignore these log patterns:
-        self.ignore_log_patterns = [
+    @pytest.fixture(autouse=True)
+    def fixture_add_additional_log_patterns(self, fixture_dtest_setup: DTestSetup):
+        fixture_dtest_setup.allow_log_errors = True
+        fixture_dtest_setup.ignore_log_patterns = (
             # This one occurs when trying to send the migration to a
             # node that hasn't started yet, and when it does, it gets
             # replayed and everything is fine.
@@ -34,11 +49,10 @@ class TestBootstrap(Tester):
             # ignore streaming error during bootstrap
             r'Exception encountered during startup',
             r'Streaming error occurred'
-        ]
-        Tester.__init__(self, *args, **kwargs)
+        )
 
     def get_space_used(self, node, table_name='cf'):
-        output = node.nodetool('cfstats', True)[0]
+        output, _, _ = node.nodetool('cfstats')
         if output.find(table_name) != -1:
             output = output[output.find(table_name):]
             output = output[output.find("Space used (total)"):]
@@ -46,78 +60,82 @@ class TestBootstrap(Tester):
             return initial_value
         return -1
 
-    @attr('next-gating', 'dtest-debug', 'dtest-smoke', 'single_node')
-    def start_stop_test(self):
-        debug("populating cluster with one node")
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
+    @pytest.mark.dtest_smoke
+    @pytest.mark.single_node
+    def test_start_stop(self):
+        logger.info("populating cluster with one node")
         cluster = self.cluster
         cluster.populate(1)
-        debug("starting cluster")
+        logger.info("starting cluster")
         cluster.start(wait_for_binary_proto=True, wait_other_notice=True)
-        debug("stopping cluster")
+        logger.info("stopping cluster")
         cluster.stop()
-        debug("done")
+        logger.info("done")
 
-    @attr('next-gating')
-    @attr('dtest-debug')
-    @attr('dtest-smoke')
-    def start_stop_test_node(self):
-        debug("populating cluster with three nodes")
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
+    @pytest.mark.dtest_smoke
+    def test_start_stop_node(self):
+        logger.info("populating cluster with three nodes")
         cluster = self.cluster
         cluster.populate(3)
-        debug("starting cluster")
+        logger.info("starting cluster")
         cluster.start(wait_for_binary_proto=True, wait_other_notice=True)
-        debug("stopping node")
+        logger.info("stopping node")
         node1 = cluster.nodelist()[0]
         node1.stop(wait_other_notice=True, wait_seconds=10)
-        debug("stopping cluster")
+        logger.info("stopping cluster")
         cluster.stop()
-        debug("done")
+        logger.info("done")
 
-    @attr('next-gating')
-    @attr('dtest-debug')
-    def add_node_test(self):
-        debug("populating cluster with three nodes")
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
+    def test_add_node(self):
+        logger.info("populating cluster with three nodes")
         cluster = self.cluster
         cluster.populate(2)
-        debug("starting cluster")
+        logger.info("starting cluster")
         cluster.start(wait_other_notice=True)
-        debug("adding node3")
+        logger.info("adding node3")
         node3 = cluster.new_node(3)
-        debug("starting node3")
+        logger.info("starting node3")
         node3.start(wait_other_notice=True)
-        debug("stopping cluster")
+        logger.info("stopping cluster")
         cluster.stop()
-        debug("done")
+        logger.info("done")
 
-    @attr('next-gating')
-    @attr('dtest-debug')
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
     def add_detached_node_test(self):
-        debug("populating cluster with three nodes")
+        logger.info("populating cluster with three nodes")
         cluster = self.cluster
         cluster.populate(2)
-        debug("starting cluster")
+        logger.info("starting cluster")
         cluster.start(wait_other_notice=True)
-        debug("adding node3")
+        logger.info("adding node3")
         node3 = cluster.new_node(3, add_node=False)
 
         def stop_node3():
-            debug("stopping node3")
+            logger.info("stopping node3")
             node3.stop()
 
         self.addCleanup(stop_node3)
 
-        debug("starting node3")
+        logger.info("starting node3")
         node3.start(wait_other_notice=True)
-        debug("stopping cluster")
+        logger.info("stopping cluster")
         cluster.stop()
-        debug("done")
+        logger.info("done")
 
-    def simple_bootstrap_test(self):
+    @pytest.mark.dtest_full
+    def test_simple_bootstrap(self):
         cluster = self.cluster
         tokens = cluster.balanced_tokens(2)
         cluster.set_configuration_options(values={'num_tokens': 1})
 
-        debug("[node1, node2] tokens: %r" % (tokens,))
+        logger.info("[node1, node2] tokens: %r" % (tokens,))
 
         keys = 10000
 
@@ -128,8 +146,8 @@ class TestBootstrap(Tester):
         cluster.start(wait_other_notice=True)
 
         session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'ks', 1)
-        self.create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'})
+        create_ks(session, 'ks', 1)
+        create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'})
 
         insert_statement = session.prepare("INSERT INTO ks.cf (key, c1, c2) VALUES (?, 'value1', 'value2')")
         execute_concurrent_with_args(session, insert_statement, [['k%d' % k] for k in range(keys)])
@@ -138,7 +156,7 @@ class TestBootstrap(Tester):
         node1.compact()
 
         data_total_size_node1 = self.get_space_used(node1)
-        debug("before={}".format(data_total_size_node1))
+        logger.info("before={}".format(data_total_size_node1))
 
         # Reads inserted data all during the bootstrap process. We shouldn't
         # get any error
@@ -160,12 +178,12 @@ class TestBootstrap(Tester):
         data_total_size_node1_after = self.get_space_used(node1)
         data_total_size_node2_after = self.get_space_used(node2)
 
-        debug("before={}, after={} + {}={}".format(data_total_size_node1, data_total_size_node1_after,
-                                                   data_total_size_node2_after, data_total_size_node1_after+data_total_size_node2_after))
+        logger.info("before={}, after={} + {}={}".format(data_total_size_node1, data_total_size_node1_after,
+                                                         data_total_size_node2_after, data_total_size_node1_after+data_total_size_node2_after))
         assert_almost_equal(data_total_size_node1, data_total_size_node1_after + data_total_size_node2_after, error=0.3)
         assert_almost_equal(data_total_size_node1_after, data_total_size_node2_after, error=0.3)
 
-    def schema_is_pulled_before_schema_is_declared_complete_test(self):
+    def test_schema_is_pulled_before_schema_is_declared_complete(self):
         """Test that bootstrapping node does a schema pull, before claiming to have a complete schema."""
 
         cluster = self.cluster
@@ -186,14 +204,15 @@ class TestBootstrap(Tester):
         matches = node2.watch_log_for(messages)
 
         # watch_log_for() should already ensure this, but just to be sure...
-        self.assertEquals(len(messages), len(matches))
+        assert len(messages) == len(matches)
 
         # Make sure the order of the matching log lines is exactly that of in `messages`.
         for msg_re, match in zip(messages, matches):
             log_line, match_obj = match
-            self.assertTrue(re.search(msg_re, log_line) is not None)
+            assert re.search(msg_re, log_line) is not None
 
-    def read_from_bootstrapped_node_test(self):
+    @pytest.mark.dtest_full
+    def test_read_from_bootstrapped_node(self):
         """Test bootstrapped node sees existing data, eg. CASSANDRA-6648"""
         cluster = self.cluster
         cluster.populate(3)
@@ -211,9 +230,8 @@ class TestBootstrap(Tester):
 
         session = self.patient_exclusive_cql_connection(node4)
         new_rows = list(session.execute("SELECT * FROM %s" % (stress_table,)))
-        self.assertEquals(original_rows, new_rows)
+        assert original_rows == new_rows
 
-    @since('2.2')
     # new node failed with error:
     #     Startup failed: exceptions::unavailable_exception (Cannot achieve consistency level for cl QUORUM. Requires 2,
     #     alive 1)
@@ -231,8 +249,8 @@ class TestBootstrap(Tester):
     # Also the test start the new node with 2 parameters that are not supported by Scylla:
     # - 'stream_throughput_outbound_megabits_per_sec'
     # - 'streaming_socket_timeout_in_ms are not supported in scylla
-    @skip('fail the bootstrap operation if one of the node is down.')
-    def resumable_bootstrap_test(self):
+    @pytest.mark.skip('fail the bootstrap operation if one of the node is down.')
+    def test_resumable_bootstrap(self):
         """Test resuming bootstrap after data streaming failure"""
 
         cluster = self.cluster
@@ -274,8 +292,8 @@ class TestBootstrap(Tester):
         rows = list(session.execute("SELECT bootstrapped FROM system.local WHERE key='local'"))
         assert rows[0][0] == 'COMPLETED', rows[0][0]
 
-    @skip('Scylla does not support the cassandra.reset_bootstrap_progress option and has no alternative parameter ')
-    def bootstrap_with_reset_bootstrap_state_test(self):
+    @pytest.mark.skip('Scylla does not support the cassandra.reset_bootstrap_progress option and has no alternative parameter ')
+    def test_bootstrap_with_reset_bootstrap_state(self):
         """Test bootstrap with resetting bootstrap progress"""
 
         cluster = self.cluster
@@ -314,9 +332,10 @@ class TestBootstrap(Tester):
         assert len(rows) == 1
         assert rows[0][0] == 'COMPLETED', rows[0][0]
 
-    @attr('next-gating')
-    @attr('dtest-debug')
-    def manual_bootstrap_test(self):
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
+    @pytest.mark.dtest_full
+    def test_manual_bootstrap(self):
         """Test adding a new node and bootstrappig it manually. No auto_bootstrap.
            This test also verify that all data are OK after the addition of the new node.
            eg. CASSANDRA-9022
@@ -340,10 +359,12 @@ class TestBootstrap(Tester):
         node1.cleanup()
 
         current_rows = list(session.execute("SELECT * FROM %s" % stress_table))
-        self.assertEquals(original_rows, current_rows)
+        assert original_rows == current_rows
 
-    @scylla_mode('!debug')
-    def local_quorum_bootstrap_test(self):
+    # @scylla_mode('release')
+    @pytest.mark.dtest_full
+    @pytest.mark.not_debug
+    def test_local_quorum_bootstrap(self):
         """Test that CL local_quorum works while a node is bootstrapping. CASSANDRA-8058"""
 
         cluster = self.cluster
@@ -394,15 +415,17 @@ class TestBootstrap(Tester):
             tmpfile.seek(0)
             output = tmpfile.read()
 
-        debug(output)
+        logger.info(output)
         regex = re.compile("Operation.+error inserting key.+Exception")
-        failure = regex.search(output)
-        self.assertIsNone(failure, "Error during stress while bootstrapping")
+        failure = regex.search(str(output))
+        assert failure is None, "Error during stress while bootstrapping"
 
-    def shutdown_wiped_node_cannot_join_test(self):
+    @pytest.mark.dtest_full
+    def test_shutdown_wiped_node_cannot_join(self):
         self._wiped_node_cannot_join_test(gently=True)
 
-    def killed_wiped_node_cannot_join_test(self):
+    @pytest.mark.dtest_full
+    def test_killed_wiped_node_cannot_join(self):
         self._wiped_node_cannot_join_test(gently=False)
 
     def _wiped_node_cannot_join_test(self, gently):
@@ -436,7 +459,7 @@ class TestBootstrap(Tester):
         node2.stop(gently=gently)
         data_dir = os.path.join(node2.get_path(), 'data')
         commitlog_dir = os.path.join(node2.get_path(), 'commitlogs')
-        debug("Deleting {}".format(data_dir))
+        logger.info("Deleting {}".format(data_dir))
         node2.rmtree(data_dir)
         node2.rmtree(commitlog_dir)
 
@@ -451,7 +474,7 @@ class TestBootstrap(Tester):
             pass
         node2.watch_log_for(expected_error, from_mark=mark)
 
-    def decommissioned_wiped_node_can_join_test(self):
+    def test_decommissioned_wiped_node_can_join(self):
         """
         @jira_ticket CASSANDRA-9765
         Test that if we decommission a node and then wipe its data, it can join the cluster.
@@ -470,7 +493,7 @@ class TestBootstrap(Tester):
         original_rows = list(session.execute("SELECT * FROM {}".format(stress_table,)))
 
         # Add a new node, bootstrap=True ensures that it is not a seed
-        debug("Starting node4")
+        logger.info("Starting node4")
         node4 = new_node(cluster, bootstrap=True)
         node4.start(wait_for_binary_proto=True, wait_other_notice=True)
 
@@ -478,24 +501,24 @@ class TestBootstrap(Tester):
         self.assertEquals(original_rows, list(session.execute("SELECT * FROM {}".format(stress_table,))))
 
         # Decommision the new node and wipe its data
-        debug("Decommissioning node4")
+        logger.info("Decommissioning node4")
         node4.decommission()
-        debug("Stopping node4")
+        logger.info("Stopping node4")
         node4.stop(wait_other_notice=True)
         data_dir = os.path.join(node4.get_path(), 'data')
         commitlog_dir = os.path.join(node4.get_path(), 'commitlogs')
-        debug("Deleting {}".format(data_dir))
+        logger.info("Deleting {}".format(data_dir))
         node4.rmtree(data_dir)
         node4.rmtree(commitlog_dir)
 
         # Now start it, it should be allowed to join
-        debug("Restarting node4")
+        logger.info("Restarting node4")
         mark = node4.mark_log()
         node4.start(wait_other_notice=True)
-        debug("Waiting for node4 to join")
+        logger.info("Waiting for node4 to join")
         node4.watch_log_for("JOINING:", from_mark=mark)
 
-    def failed_bootstap_wiped_node_can_join_test(self):
+    def test_failed_bootstap_wiped_node_can_join(self):
         """
         @jira_ticket CASSANDRA-9765
         Test that if a node fails to bootstrap, it can join the cluster even if the data is wiped.
@@ -523,31 +546,30 @@ class TestBootstrap(Tester):
         t.start()
 
         mark = node1.mark_log()
-        debug("Starting node2")
+        logger.info("Starting node2")
         node2.start(wait_for_binary_proto=False, wait_other_notice=False)
         t.join()
-        self.assertFalse(node2.is_running())
-        debug("node2 killed during bootstrap. Waiting for other nodes to notice...")
+        assert not node2.is_running()
+        logger.info("node2 killed during bootstrap. Waiting for other nodes to notice...")
         node1.watch_log_for("{} has been silent .* removing from gossip".format(node2.address()), from_mark=mark)
 
         # wipe any data for node2
         data_dir = os.path.join(node2.get_path(), 'data')
         commitlog_dir = os.path.join(node2.get_path(), 'commitlogs')
-        debug("Deleting {}".format(data_dir))
+        logger.info("Deleting {}".format(data_dir))
         node2.rmtree(data_dir)
         node2.rmtree(commitlog_dir)
 
         # Now start it again, it should be allowed to join
         mark = node2.mark_log()
-        debug("Restarting node2")
+        logger.info("Restarting node2")
         node2.start(wait_other_notice=True)
         node2.watch_log_for("JOINING:", from_mark=mark)
 
-    @since('2.1.1')
     # In Scylla when one node bootstraps, it will check if there is any node in bootstrap status in gossip.
     # If it finds one, it will stop bootstrap (Asias)
-    @skip('not relevant for Scylla')
-    def simultaneous_bootstrap_test(self):
+    @pytest.mark.skip('not relevant for Scylla')
+    def test_simultaneous_bootstrap(self):
         """
         Attempt to bootstrap two nodes at once, to assert the second bootstrapped node fails, and does not interfere.
 
@@ -581,8 +603,6 @@ class TestBootstrap(Tester):
         stdout, stderr = process.communicate()
         self.assertIn(bootstrap_error, stderr, msg=stderr)
         time.sleep(.5)
-        self.assertFalse(node3.is_running(), msg="Two nodes bootstrapped simultaneously")
-
         node2.watch_log_for("Starting listening for CQL clients")
 
         session = self.patient_exclusive_cql_connection(node2)
@@ -609,34 +629,34 @@ class TestBootstrap(Tester):
         node1 = cluster.nodelist()[0]
         session = self.patient_cql_connection(node1)
 
-        debug("Preparing a KS and a CF...")
+        logger.info("Preparing a KS and a CF...")
         self.create_ks(session, name='ks', rf=rf)
         create_c1c2_table(self, session)
 
-        debug("Populating the data...")
+        logger.info("Populating the data...")
         insert_c1c2(session, n=10000, consistency=ConsistencyLevel.QUORUM)
         # This flush will only be needed on d-test otherwise the test will fail (no data will be written)
         cluster.flush()
 
-        debug("Saving nodes process list")
+        logger.info("Saving nodes process list")
         pid_ls = [node.pid for node in cluster.nodelist()]
         process_ls = []
         for pid in pid_ls:
             process = Process(pid)
             process_ls.append(process)
 
-        debug("Killing all nodes")
+        logger.info("Killing all nodes")
         cluster.stop_nodes(gently=gently, wait_seconds=20)
 
-        debug("Making sure all node processes are down")
+        logger.info("Making sure all node processes are down")
         for process in process_ls:
             self.assertEqual(False, process.is_running(), "Node with the following pid {} didn't stop/exit correctly"
                              .format(process.pid))
 
-        debug("Starting all nodes")
+        logger.info("Starting all nodes")
         cluster.start_nodes(no_wait=False)
 
-        debug("Checking that no data was lost")
+        logger.info("Checking that no data was lost")
         for n in range(10000):
             query_c1c2(session, n, ConsistencyLevel.QUORUM)
 
@@ -675,7 +695,7 @@ class TestBootstrap(Tester):
             f" replica were required but only {replication_factor} acknowledged the write)"
 
         cluster = self.cluster
-        debug(f"Creating new cluster with '{cluster_size}' nodes")
+        logger.info(f"Creating new cluster with '{cluster_size}' nodes")
         cluster.populate(nodes=cluster_size).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2 = cluster.nodelist()
 
@@ -683,37 +703,38 @@ class TestBootstrap(Tester):
                             "-rate", "threads=10", "-log", "interval=5", "-schema",
                             f"replication(factor={replication_factor}) keyspace={ks_name}"]
 
-        debug(f"Executing the following write stress command '{write_stress_cmd}'")
+        logger.info(f"Executing the following write stress command '{write_stress_cmd}'")
         stress_thread = executor.submit(lambda: node1.stress(stress_options=write_stress_cmd, capture_output=True))
 
-        debug("Adding new node")
+        logger.info("Adding new node")
         node3 = cluster.new_node(i=cluster_size + 1, debug=True, auto_bootstrap=True, is_seed=False)
         start_new_node_thread = executor.submit(lambda: node3.start(
             wait_for_binary_proto=True, jvm_args=['--logger-log-level', 'stream_session=debug'], no_wait=True))
         mark_log = node3.mark_log()
 
-        debug(f"Trying to find the following '{bootstrap_msg}' message in logs of node '{node3.name}'")
+        logger.info(f"Trying to find the following '{bootstrap_msg}' message in logs of node '{node3.name}'")
         node3.watch_log_for(exprs=bootstrap_msg, from_mark=mark_log)
-        debug(f"Trying to find the following '{beginning_stream_session_msg}' message in logs of node '{node3.name}'")
+        logger.info(
+            f"Trying to find the following '{beginning_stream_session_msg}' message in logs of node '{node3.name}'")
         node3.watch_log_for(exprs=beginning_stream_session_msg, from_mark=mark_log)
 
         nodes = [node1, node2]
         mark_log_list = [node.mark_log() for node in nodes]
-        debug(f"{'Gracefully' if is_gracefully else 'Force'} killing node'{node3.name}' (PID is '{node3.pid}')")
+        logger.info(f"{'Gracefully' if is_gracefully else 'Force'} killing node'{node3.name}' (PID is '{node3.pid}')")
         node3.stop(wait=True, gently=is_gracefully)
         removing_from_gossip_msg = removing_from_gossip_msg.format(self.get_ip_from_node(node=node3))
         for node, mark_log in zip(nodes, mark_log_list):
-            debug(f"Checking the following message '{removing_from_gossip_msg}' exits in node '{node.name}'")
+            logger.info(f"Checking the following message '{removing_from_gossip_msg}' exits in node '{node.name}'")
             node.watch_log_for(exprs=removing_from_gossip_msg, from_mark=mark_log)
 
         self.assertEquals(first=kill_node_err_msg.format(1 if is_gracefully else -9),
                           second=str(start_new_node_thread.exception()),
                           msg=f"The node '{node3.name}' should be killed by SIGKILL signal")
-        debug("Waiting until stress thread will finish running")
+        logger.info("Waiting until stress thread will finish running")
         stdout, stderr = stress_thread.result()
         if stderr:
-            debug(f"The output from stdout is:\n{stdout}")
-            debug(f"The following errors occurred during the run:\n{stderr}")
+            logger.info(f"The output from stdout is:\n{stdout}")
+            logger.info(f"The following errors occurred during the run:\n{stderr}")
             self.assertNotIn(member=cassandra_err_msg, container=stderr,
                              msg=f"The following message '{cassandra_err_msg}' found in stderr")
 
@@ -749,11 +770,11 @@ class TestBootstrap(Tester):
         start_bootstrap_msg = 'Starting to bootstrap'
 
         node1.watch_log_for(exprs=skip_bootstrap_msg)
-        debug("Verified bootstrap didn't start on node1")
+        logger.info("Verified bootstrap didn't start on node1")
         node2.watch_log_for(exprs=start_bootstrap_msg)
-        debug("Verified bootstrap started on node2")
+        logger.info("Verified bootstrap started on node2")
         node3.watch_log_for(exprs=start_bootstrap_msg)
-        debug("Verified bootstrap started on node3")
+        logger.info("Verified bootstrap started on node3")
 
         session = self.patient_exclusive_cql_connection(node1)
         self.create_ks(session, 'ks', 3)
@@ -764,7 +785,7 @@ class TestBootstrap(Tester):
         node4 = cluster.new_node(4, auto_bootstrap=False)
         node4.start(wait_for_binary_proto=True)
         node4.watch_log_for(exprs=start_bootstrap_msg)
-        debug("Verified bootstrap started on node4")
+        logger.info("Verified bootstrap started on node4")
         for k in range(1000):
             query_c1c2(session, k)
 
@@ -795,9 +816,9 @@ class TestBootstrap(Tester):
         start_bootstrap_msg = 'Starting to bootstrap'
 
         node2.watch_log_for(exprs=skip_bootstrap_msg)
-        debug("Verified bootstrap doesn't start on node2")
+        logger.info("Verified bootstrap doesn't start on node2")
         node3.watch_log_for(exprs=start_bootstrap_msg)
-        debug("Verified bootstrap started on node3")
+        logger.info("Verified bootstrap started on node3")
 
         session = self.patient_exclusive_cql_connection(node2)
         self.create_ks(session, 'ks', 3)
@@ -806,7 +827,7 @@ class TestBootstrap(Tester):
 
         node1.start(wait_for_binary_proto=True)
         node1.watch_log_for(exprs=start_bootstrap_msg)
-        debug("Verified bootstrap started on node2")
+        logger.info("Verified bootstrap started on node2")
         for k in range(1000):
             query_c1c2(session, k)
 
@@ -815,21 +836,21 @@ class TestBootstrap(Tester):
         This test try to stop original seeds after added new node, then try to add more node.
         Expect the seeds duty will be transferred to other nodes.
         """
-        debug("populating cluster with 2 nodes")
+        logger.info("populating cluster with 2 nodes")
         cluster = self.cluster
         cluster.populate(2)
         (node1, node2) = cluster.nodelist()
-        debug("starting init cluster")
+        logger.info("starting init cluster")
         cluster.start(wait_for_binary_proto=True, wait_other_notice=True)
 
-        debug("stopping node1")
+        logger.info("stopping node1")
         node1.stop(wait_other_notice=True, gently=True)
 
         def add_and_start_a_node(n):
             """add a new node to cluster, and start it"""
-            debug(f"adding node{n}")
+            logger.info(f"adding node{n}")
             node = cluster.new_node(n)
-            debug(f"starting node{n}")
+            logger.info(f"starting node{n}")
             node.start(wait_other_notice=True)
             return node
 
@@ -839,19 +860,19 @@ class TestBootstrap(Tester):
             node3 = cluster.new_node(3)
             node3.start(wait_other_notice=True)
         except RuntimeError as e:
-            debug(e)
+            logger.info(e)
             self.assertIn('The process is dead', str(e))
 
-        debug("starting node1 again")
+        logger.info("starting node1 again")
         node1.start(wait_other_notice=True)
 
-        debug("starting node3")
+        logger.info("starting node3")
         node3.start(wait_other_notice=True)
-        debug('removing node1 and node2, `node3` will be on duty')
+        logger.info('removing node1 and node2, `node3` will be on duty')
         node1.decommission()
         node2.decommission()
 
         add_and_start_a_node(4)
-        debug('removing node3, `node4` will be on duty')
+        logger.info('removing node3, `node4` will be on duty')
         node3.decommission()
         add_and_start_a_node(5)

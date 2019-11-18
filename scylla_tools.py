@@ -10,7 +10,7 @@ from cassandra import ConsistencyLevel
 from cassandra.concurrent import execute_concurrent_with_args, execute_concurrent
 from cassandra.query import SimpleStatement
 from ccmlib import common
-from ccmlib.node import NodetoolError
+from ccmlib.node import ToolError
 import re
 from dtest import debug, Tester
 import random
@@ -19,7 +19,7 @@ import itertools
 from copy import deepcopy
 from threading import Thread
 import datetime
-from tools import rows_to_list
+from tools.data import rows_to_list
 from uuid import UUID
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional

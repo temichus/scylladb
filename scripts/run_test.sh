@@ -213,7 +213,7 @@ subcommand="$*"
 if [[ ${subcommand} == *'bash'* ]] || [[ ${subcommand} == *'python'* ]]; then
     CMD=${subcommand}
 else
-    CMD="bash -c 'sudo rsyslogd; pip3 install --user -e ${CCM_DIR} ; export PATH=\$PATH:\${HOME}/.local/bin ; cp -a /.ccm/repo* \${HOME}/.ccm/ ; bash -c \"${INSTALL_CASSANDRA}\"; python3 -m nose --nologcapture -v -s $*'"
+    CMD="bash -c 'sudo rsyslogd; pip3 install --user -e ${CCM_DIR} ; export PATH=\$PATH:\${HOME}/.local/bin ; cp -a /.ccm/repo* \${HOME}/.ccm/ ; bash -c \"${INSTALL_CASSANDRA}\"; python3 -m pytest -v -s $*'"
 fi
 
 docker_cmd="docker run --detach=true \
