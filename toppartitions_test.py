@@ -129,7 +129,7 @@ class TestTopPartitions(Tester):
         except NodetoolError as details:
             self.fail(details)
 
-    def run_operations_c1c2(self, session, mode="write", key=None, keys=None, w_keys=1, r_keys=1, w_num=1, r_num=1,
+    def run_operations_c1c2(self, session, mode="write", keys=None, w_keys=1, r_keys=1, w_num=1, r_num=1,
                             ks='ks', cf='cf', delay=2):
         """Execute operations on cluster for table with c1c2 columns
 
@@ -140,10 +140,9 @@ class TestTopPartitions(Tester):
 
         Keyword Arguments:
             mode {str} -- Define which operations should be run: Write, Read, Write and Read (default: {"write"})
-            key {str} -- Exact Key to write or read without prefix "k"
-            keys {list} -- list of keys to write/read without prefix "k"
-            w_keys {number} -- number of keys to write (default: {1})
-            r_keys {number} -- number of keys to read (default: {1})
+            keys {list} -- list of specified keys to write/read without prefix "k"
+            w_keys {number} -- number of default keys to write (default: {1})
+            r_keys {number} -- number of default keys to read (default: {1})
             w_num {number} -- repeat write operations for keys w_num times (default: {1})
             r_num {number} -- repeat read operatiions for keys r_num times (default: {1})
             ks {str} -- name of keyspace (default: {'ks'})
@@ -153,18 +152,13 @@ class TestTopPartitions(Tester):
         if mode == "write":
             time.sleep(delay)
 
-            if key:
-                insert_c1c2_no_prepared(session,
-                                        keys=[key] * w_num,
-                                        c1_values=list(range(w_num)),
-                                        c2_values=list(range(w_num)),
-                                        ks=ks, cf=cf)
-            elif keys:
+            if keys:
                 insert_c1c2_no_prepared(session,
                                         keys=keys * w_num,
                                         c1_values=list(range(w_num)) * len(keys),
                                         c2_values=list(range(w_num)) * len(keys),
                                         ks=ks, cf=cf)
+            # when exact keys are not provided, write default keys [0-w_keys]
             else:
                 insert_c1c2_no_prepared(session,
                                         keys=list(range(w_keys)) * w_num,
@@ -173,10 +167,10 @@ class TestTopPartitions(Tester):
                                         ks=ks, cf=cf)
         if mode == "read":
             time.sleep(delay)
-            if key:
-                query_c1c2_concurrent(session, keys=[key] * r_num, tolerate_missing=True)
-            elif keys:
+
+            if keys:
                 query_c1c2_concurrent(session, keys=keys * r_num, tolerate_missing=True)
+            # when exact keys are not provided, read default keys [0-r_keys]
             else:
                 query_c1c2_concurrent(session, keys=list(range(r_keys)) * r_num, tolerate_missing=True)
 
@@ -207,10 +201,13 @@ class TestTopPartitions(Tester):
             actual_results {OrderedDict} -- List with results returned by toppartition
             expected_results {list} -- List of tuples with partition key and expected counter
         """
+        result_accurancy = .9  # actual result for counter could be less on 10% from expected
+
         self.assertEqual(len(actual_results["partitions"]), len(expected_results))
         for partition, counter in expected_results:
             self.assertIn(partition, actual_results['partitions'].keys())
-            self.assertGreaterEqual(int(actual_results["partitions"][partition]['count']), 0.9 * int(counter))
+            self.assertGreaterEqual(int(actual_results["partitions"][partition]['count']),
+                                    result_accurancy * int(counter))
 
     def verfityPartitionKeyInTopPartitionList(self, actual_partition_keys, expected_toppartition_keys):
         for actual_key in actual_partition_keys:
@@ -278,13 +275,13 @@ class TestTopPartitions(Tester):
         3. assert results
         """
         node, session = self.prepare_cluster_with_ks_cf_c1c2(ks='ks', cf='cf')
-        self.run_operations_c1c2(session, key='0', mode="write")
+        self.run_operations_c1c2(session, keys=[0], mode="write")
         futures = []
         with ThreadPoolExecutor(max_workers=3) as executor:
             ft_top = executor.submit(self.run_toppartition_for, node, ks='ks', cf='cf')
             futures.append(ft_top)
-            futures.append(executor.submit(self.run_operations_c1c2, session, key='0', w_num=1000, mode="write"))
-            futures.append(executor.submit(self.run_operations_c1c2, session, key='0', r_num=1000, mode="read"))
+            futures.append(executor.submit(self.run_operations_c1c2, session, keys=[0], w_num=1000, mode="write"))
+            futures.append(executor.submit(self.run_operations_c1c2, session, keys=[0], r_num=1000, mode="read"))
             for ft in futures:
                 self.verify_thread_execution(ft)
 
@@ -313,7 +310,7 @@ class TestTopPartitions(Tester):
 
         with ThreadPoolExecutor(max_workers=1) as executor:
             ft = executor.submit(self.run_toppartition_for, node, ks='ks', cf='cf')
-            self.run_operations_c1c2(session, mode="write", key="0", w_num=1000)
+            self.run_operations_c1c2(session, mode="write", keys=[0], w_num=1000)
             self.verify_thread_execution(ft)
             toppartion_results = ft.result()
 
@@ -336,10 +333,10 @@ class TestTopPartitions(Tester):
         """
 
         node, session = self.prepare_cluster_with_ks_cf_c1c2(ks='ks', cf='cf')
-        self.run_operations_c1c2(session, key='0', mode="write")
+        self.run_operations_c1c2(session, keys=[0], mode="write")
         with ThreadPoolExecutor(max_workers=1) as executor:
             ft = executor.submit(self.run_toppartition_for, node, ks='ks', cf='cf')
-            self.run_operations_c1c2(session, key="0", r_num=1000, mode="read")
+            self.run_operations_c1c2(session, keys=[0], r_num=1000, mode="read")
             self.verify_thread_execution(ft)
             toppartion_results = ft.result()
 
@@ -569,15 +566,15 @@ class TestTopPartitions(Tester):
         with ThreadPoolExecutor(max_workers=4) as executor:
             ft_top = executor.submit(self.run_toppartition_for, node, ks='ks', cf='cf', optional_params='-a reads -s 15 -k 3')
             futures.append(ft_top)
-            futures.append(executor.submit(self.run_operations_c1c2, session, mode="read", keys=list(range(0, 20, 2)), r_num=250, delay=1))
-            futures.append(executor.submit(self.run_operations_c1c2, session, mode="read", keys=list(range(1, 20, 2)), r_num=250, delay=1))
-            futures.append(executor.submit(self.run_operations_c1c2, session, mode="read", keys=list(range(6, 20, 6)), r_num=250, delay=1))
+            futures.append(executor.submit(self.run_operations_c1c2, session, mode="read", keys=list(range(0, 20, 2)), r_num=100, delay=1))
+            futures.append(executor.submit(self.run_operations_c1c2, session, mode="read", keys=list(range(1, 20, 2)), r_num=100, delay=1))
+            futures.append(executor.submit(self.run_operations_c1c2, session, mode="read", keys=list(range(6, 20, 6)), r_num=100, delay=1))
 
             for ft in futures:
                 self.verify_thread_execution(ft)
             toppartion_results = ft_top.result()
 
-        expected_write_toppartition_key_count = [("k6", '500'), ("k12", "500"), ("k18", "500")]
+        expected_write_toppartition_key_count = [("k6", '200'), ("k12", "200"), ("k18", "200")]
 
         self.verifySamplesPresentInResult(["READS"], toppartion_results)
         self.verifyTopPartitionCounterForSample(toppartion_results["READS"],
