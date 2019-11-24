@@ -107,6 +107,21 @@ class TestRebuild(Tester):
         for i in range(0, keys):
             query_c1c2(session, i, ConsistencyLevel.ALL)
 
+    def _check_data(self, session, keyspaces, tables, keys, cl=ConsistencyLevel.ALL):
+        debug("Checking data")
+        total = 0
+        errors = 0
+        for ks in keyspaces:
+            for cf in tables:
+                cf_name = '{}.{}'.format(ks, cf)
+                for i in keys:
+                    total += 1
+                    try:
+                        query_c1c2(session, i, cf=cf_name, consistency=cl)
+                    except AssertionError:
+                        errors += 1
+        assert errors == 0, "Found {} errors out of {} keys".format(errors, total)
+
     def rebuild_many_tables_test(self):
         """
         Test rebuilding many tables in same dc works as expected.
@@ -134,14 +149,8 @@ class TestRebuild(Tester):
             create_c1c2_table(self, session, cf=cf, debug_query=False)
             insert_c1c2(session, n=num_keys, cf=cf, consistency=ConsistencyLevel.ALL)
 
-        def _check_data(session, cl=ConsistencyLevel.ALL):
-            debug("Checking data")
-            session.execute('USE {}'.format(ks))
-            for cf in tables:
-                for i in range(0, num_keys):
-                    query_c1c2(session, i, cf=cf, consistency=cl)
-
-        _check_data(session)
+        keys = [i for i in range(0, num_keys)]
+        self._check_data(session, [ks], tables, keys)
         session.shutdown()
 
         debug("Bootstrapping node2 with {auto_bootstrap: false}")
@@ -158,7 +167,7 @@ class TestRebuild(Tester):
         debug("Killing node1")
         node1.stop(gently=False)
 
-        _check_data(session, cl=ConsistencyLevel.ONE)
+        self._check_data(session, [ks], tables, keys, cl=ConsistencyLevel.ONE)
 
     def rebuild_many_keyspaces_test(self):
         """
@@ -192,15 +201,8 @@ class TestRebuild(Tester):
                 create_c1c2_table(self, session, cf=cf_name, debug_query=False)
                 insert_c1c2(session, n=num_keys, cf=cf_name, consistency=ConsistencyLevel.ALL)
 
-        def _check_data(session, cl=ConsistencyLevel.ALL):
-            debug("Checking data")
-            for ks in keyspaces:
-                for cf in tables:
-                    cf_name = '{}.{}'.format(ks, cf)
-                    for i in range(0, num_keys):
-                        query_c1c2(session, i, cf=cf_name, consistency=cl)
-
-        _check_data(session)
+        keys = [i for i in range(0, num_keys)]
+        self._check_data(session, keyspaces, tables, keys)
         session.shutdown()
 
         debug("Bootstrapping node2 with {auto_bootstrap: false}")
@@ -218,4 +220,4 @@ class TestRebuild(Tester):
         debug("Killing node1")
         node1.stop(gently=False)
 
-        _check_data(session, cl=ConsistencyLevel.ONE)
+        self._check_data(session, keyspaces, tables, keys, cl=ConsistencyLevel.ONE)
