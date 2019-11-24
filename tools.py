@@ -32,33 +32,33 @@ def create_c1c2_table(tester, session, cf="cf", read_repair=None):
     tester.create_cf(session, cf, columns={'c1': 'text', 'c2': 'text'}, read_repair=read_repair)
 
 
-def insert_c1c2(session, keys=None, n=None, consistency=ConsistencyLevel.QUORUM):
+def insert_c1c2(session, keys=None, n=None, consistency=ConsistencyLevel.QUORUM, cf="cf"):
     if (keys is None and n is None) or (keys is not None and n is not None):
         raise ValueError("Expected exactly one of 'keys' or 'n' arguments to not be None; "
                          "got keys={keys}, n={n}".format(keys=keys, n=n))
     if n:
         keys = list(range(n))
 
-    statement = session.prepare("INSERT INTO cf (key, c1, c2) VALUES (?, 'value1', 'value2')")
+    statement = session.prepare("INSERT INTO {} (key, c1, c2) VALUES (?, 'value1', 'value2')".format(cf))
     statement.consistency_level = consistency
 
     execute_concurrent_with_args(session, statement, [['k{}'.format(k)] for k in keys])
 
-def delete_c1c2(session, keys=None, n=None, consistency=ConsistencyLevel.QUORUM):
+def delete_c1c2(session, keys=None, n=None, consistency=ConsistencyLevel.QUORUM, cf="cf"):
     if (keys is None and n is None) or (keys is not None and n is not None):
         raise ValueError("Expected exactly one of 'keys' or 'n' arguments to not be None; "
                          "got keys={keys}, n={n}".format(keys=keys, n=n))
     if n:
         keys = list(range(n))
 
-    statement = session.prepare("DELETE FROM cf WHERE key=?")
+    statement = session.prepare("DELETE FROM {} WHERE key=?".format(cf))
     statement.consistency_level = consistency
 
     execute_concurrent_with_args(session, statement, [['k{}'.format(k)] for k in keys])
 
 
-def query_c1c2(session, key, consistency=ConsistencyLevel.QUORUM, tolerate_missing=False, must_be_missing=False):
-    query = SimpleStatement('SELECT c1, c2 FROM cf WHERE key=\'k%d\'' % key, consistency_level=consistency)
+def query_c1c2(session, key, consistency=ConsistencyLevel.QUORUM, tolerate_missing=False, must_be_missing=False, cf="cf"):
+    query = SimpleStatement('SELECT c1, c2 FROM {} WHERE key=\'k{:d}\''.format(cf, key), consistency_level=consistency)
     rows = list(session.execute(query))
     if not tolerate_missing and not must_be_missing:
         assert len(rows) == 1
