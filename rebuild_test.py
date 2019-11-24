@@ -7,7 +7,7 @@ from cassandra import ConsistencyLevel
 from ccmlib.node import NodetoolError
 
 from dtest import Tester, debug
-from tools import insert_c1c2, query_c1c2
+from tools import create_c1c2_table, insert_c1c2, query_c1c2
 
 
 @attr('dtest-full')
@@ -27,7 +27,7 @@ class TestRebuild(Tester):
         ]
         Tester.__init__(self, *args, **kwargs)
 
-    def add_node(self, i, dc):
+    def add_node(self, i, dc='dc1'):
         return self.cluster.new_node(i, debug=True, data_center=dc)
 
     @attr('next-gating')
@@ -106,3 +106,56 @@ class TestRebuild(Tester):
         # check data
         for i in range(0, keys):
             query_c1c2(session, i, ConsistencyLevel.ALL)
+
+    def rebuild_many_tables_test(self):
+        """
+        Test rebuilding many tables in same dc works as expected.
+        """
+
+        num_keys = 100
+        num_tables = 100
+
+        cluster = self.cluster
+        cluster.set_configuration_options(values={'endpoint_snitch': 'GossipingPropertyFileSnitch'})
+        node1 = self.add_node(1)
+
+        # start node in dc1
+        node1.start(wait_for_binary_proto=True)
+
+        # populate data in dc1
+        session = self.patient_exclusive_cql_connection(node1)
+        ks = 'ks'
+        dc = 'dc1'
+        self.create_ks(session, ks, {dc: 1})
+
+        debug("Creating {} tables".format(num_tables))
+        tables = [ 'cf_{:04d}'.format(i) for i in range(0, num_tables) ]
+        for cf in tables:
+            create_c1c2_table(self, session, cf=cf, debug_query=False)
+            insert_c1c2(session, n=num_keys, cf=cf, consistency=ConsistencyLevel.ALL)
+
+        def _check_data(session, cl=ConsistencyLevel.ALL):
+            debug("Checking data")
+            session.execute('USE {}'.format(ks))
+            for cf in tables:
+                for i in range(0, num_keys):
+                    query_c1c2(session, i, cf=cf, consistency=cl)
+
+        _check_data(session)
+        session.shutdown()
+
+        debug("Bootstrapping node2 with {auto_bootstrap: false}")
+        node2 = self.add_node(2)
+        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+
+        debug("Adjusting replication")
+        session = self.patient_exclusive_cql_connection(node2)
+        session.execute("ALTER KEYSPACE {} WITH REPLICATION = {{ 'class':'NetworkTopologyStrategy', '{}':2 }};".format(ks, dc))
+
+        debug("Rebuilding node2")
+        node2.nodetool('rebuild')
+
+        debug("Killing node1")
+        node1.stop(gently=False)
+
+        _check_data(session, cl=ConsistencyLevel.ONE)
