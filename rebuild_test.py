@@ -159,3 +159,63 @@ class TestRebuild(Tester):
         node1.stop(gently=False)
 
         _check_data(session, cl=ConsistencyLevel.ONE)
+
+    def rebuild_many_keyspaces_test(self):
+        """
+        Test rebuilding many keyspaces in same dc works as expected.
+        """
+
+        num_keys = 100
+        num_keyspaces = 50
+        num_tables = 2
+
+        cluster = self.cluster
+        cluster.set_configuration_options(values={'endpoint_snitch': 'GossipingPropertyFileSnitch'})
+        node1 = self.add_node(1)
+
+        # start node in dc1
+        node1.start(wait_for_binary_proto=True)
+
+        # populate data in dc1
+        session = self.patient_exclusive_cql_connection(node1)
+        dc = 'dc1'
+        debug("Creating {} keyspaces".format(num_keyspaces))
+        keyspaces = [ 'ks_{:04d}'.format(i) for i in range(0, num_keyspaces) ]
+        for ks in keyspaces:
+            self.create_ks(session, ks, {dc: 1})
+
+        debug("Creating {} table(s) in each ks".format(num_tables))
+        tables = [ 'cf_{:04d}'.format(i) for i in range(0, num_tables) ]
+        for ks in keyspaces:
+            for cf in tables:
+                cf_name = '{}.{}'.format(ks, cf)
+                create_c1c2_table(self, session, cf=cf_name, debug_query=False)
+                insert_c1c2(session, n=num_keys, cf=cf_name, consistency=ConsistencyLevel.ALL)
+
+        def _check_data(session, cl=ConsistencyLevel.ALL):
+            debug("Checking data")
+            for ks in keyspaces:
+                for cf in tables:
+                    cf_name = '{}.{}'.format(ks, cf)
+                    for i in range(0, num_keys):
+                        query_c1c2(session, i, cf=cf_name, consistency=cl)
+
+        _check_data(session)
+        session.shutdown()
+
+        debug("Bootstrapping node2 with {auto_bootstrap: false}")
+        node2 = self.add_node(2)
+        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+
+        debug("Adjusting replication")
+        session = self.patient_exclusive_cql_connection(node2)
+        for ks in keyspaces:
+            session.execute("ALTER KEYSPACE {} WITH REPLICATION = {{ 'class':'NetworkTopologyStrategy', '{}':2 }};".format(ks, dc))
+
+        debug("Rebuilding node2")
+        node2.nodetool('rebuild')
+
+        debug("Killing node1")
+        node1.stop(gently=False)
+
+        _check_data(session, cl=ConsistencyLevel.ONE)
