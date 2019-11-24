@@ -27,6 +27,9 @@ class TestRebuild(Tester):
         ]
         Tester.__init__(self, *args, **kwargs)
 
+    def add_node(self, i, dc):
+        return self.cluster.new_node(i, debug=True, data_center=dc)
+
     @attr('next-gating')
     @attr('dtest-debug')
     def simple_rebuild_test(self):
@@ -36,14 +39,11 @@ class TestRebuild(Tester):
         Test rebuild from other dc works as expected.
         """
 
-        def _add_node(i, dc):
-            return self.cluster.new_node(i, debug=True, data_center=dc)
-
         keys = 1000
 
         cluster = self.cluster
         cluster.set_configuration_options(values={'endpoint_snitch': 'GossipingPropertyFileSnitch'})
-        node1 = _add_node(1, 'dc1')
+        node1 = self.add_node(1, 'dc1')
 
         # start node in dc1
         node1.start(wait_for_binary_proto=True)
@@ -60,7 +60,7 @@ class TestRebuild(Tester):
         session.shutdown()
 
         # Bootstraping a new node in dc2 with auto_bootstrap: false
-        node2 = _add_node(2, 'dc2')
+        node2 = self.add_node(2, 'dc2')
         node2.start(wait_other_notice=True, wait_for_binary_proto=True)
 
         # wait for snitch to reload
