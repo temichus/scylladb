@@ -18,6 +18,11 @@ class TestScyllaTop(Tester):
     def get_cli(self):
         node = self.cluster.nodelist()[0]
         cli = os.path.join(node.get_install_dir(), 'tools/scyllatop/scyllatop.py')
+
+        if not os.path.exists(cli):
+            # in relocatable packages the path is a bit different
+            cli = os.path.join(node.get_install_dir(), 'scylla/opt/scylladb/scyllatop/scyllatop.py')
+
         t = tempfile.mkstemp(prefix='scyllatop.log.')
         os.close(t[0])
         logfile = t[1]
