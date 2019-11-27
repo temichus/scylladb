@@ -56,6 +56,7 @@ thrift_tests.py
 topology_test.py
 ttl_test.py
 update_cluster_layout_tests.py
+updateable_config_test.py
 user_types_test.py
 wide_rows_test.py
 materialized_views_test.py
