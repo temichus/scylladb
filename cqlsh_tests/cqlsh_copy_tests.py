@@ -231,8 +231,18 @@ class CqlshCopyTest(CqlshPrepare):
         saved_path = list(sys.path)
         cassandra_dir = self.cluster.nodelist()[0].get_install_dir()
 
+        possible_paths = [os.path.join(cassandra_dir, 'scylla-java-tools/pylib'),
+                          os.path.join(cassandra_dir, 'resources/cassandra/pylib')]
+
+        for cqlshlib_path in possible_paths:
+            if os.path.exists(cqlshlib_path):
+                break
+        else:
+            raise AssertionError("didn't found cqlsh in those paths: {}".format(possible_paths))
+
         try:
-            sys.path.append(os.path.join(cassandra_dir, 'resources/cassandra/pylib'))
+            sys.path.append(cqlshlib_path)
+            sys.path.append(os.path.join(cqlshlib_path, 'cqlshlib'))
             import cqlshlib
             yield cqlshlib
         finally:
