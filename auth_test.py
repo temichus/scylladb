@@ -928,8 +928,8 @@ class TestAuth(Tester):
 
             debug("Attempting to verify cache expiry, attempt #{i}".format(i=attempt))
             # grant SELECT to cathy
-            cassandra.execute("GRANT SELECT ON ks.cf TO cathy")
             grant_time = datetime.now()
+            cassandra.execute("GRANT SELECT ON ks.cf TO cathy")
             # selects should still fail after 1 second, but if execution was
             # delayed for some reason such that the cache expired, retry
             time.sleep(1.0)
@@ -938,7 +938,7 @@ class TestAuth(Tester):
                     c.execute("SELECT * FROM ks.cf")
                     # this should still fail, but if the cache has expired while we paused, try again
                     delta = datetime.now() - grant_time
-                    if delta > timedelta(seconds=2):
+                    if delta >= timedelta(seconds=2):
                         # try again
                         cassandra.execute("REVOKE SELECT ON ks.cf FROM cathy")
                         time.sleep(2.5)
