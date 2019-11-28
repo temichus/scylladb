@@ -117,14 +117,20 @@ class TestHintedHandoff(Tester):
         debug("Populating the data...")
         insert_c1c2(session, n=100, consistency=ConsistencyLevel.ANY)
 
+        marks = []
+        for node in [node1, node2]:
+            marks.append((node, node.mark_log()))
+
         debug("Removing node3...")
-        from_mark = node1.mark_log()
         node1.removenode(node3_hid)
 
         timeout = self.__hint_flush_threshold * 2
+        wait_until = time.time() + timeout
         debug("Waiting {}s for hints to be sent...".format(timeout))
-        msg = 'hints_manager - Draining for {}: end'.format(node3_addr)
-        node1.watch_log_for(msg, from_mark=from_mark, timeout=timeout)
+        msg = 'hints_manager - ep_manager\({}\)::sender: exiting'.format(node3_addr)
+        for (node, from_mark) in marks:
+            node_timeout = min(wait_until - time.time(), 1)
+            node.watch_log_for(msg, from_mark=from_mark, timeout=node_timeout)
 
         debug("Reading the data...")
         for x in xrange(0, 100):
