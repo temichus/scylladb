@@ -2205,5 +2205,118 @@ class TestLocalIndexes(Tester, SecondaryIndexesHelpers):
 
         self.check_errors(self.cluster.nodelist()[0], ['Can\'t send migration request: node {} is down'.format(node2_ip)])
 
+
+class TestMultipleSecondaryIndexes(Tester, SecondaryIndexesHelpers):
+    def _prepare_for_multi_index_test(self):
+        session = self.prepare(self, user_table=False, nodes=4, rf=3, keyspace_name='ks')
+        session.consistency_level = 'ONE'
+        session.execute("CREATE TABLE test_table (row varchar PRIMARY KEY, name varchar, value int);")
+        self.assertTrue(
+            self.create_and_build_index(self.create_index, self.cluster, session, 'ks', 'test_table',
+                                        'name', 'name_idx'),
+            msg='Index name_idx is not built')
+        self.assertTrue(
+            self.create_and_build_index(self.create_index, self.cluster, session, 'ks', 'test_table',
+                                        'value', 'value_idx'),
+            msg='Index value_idx is not built')
+        stmt_insert = session.prepare("INSERT INTO test_table (row, name, value) VALUES (?, ?, ?)")
+        for rec in [
+            ['AAA1', 'AAAA', 0],
+            ['AAA2', 'AAAA', 100],
+            ['AAA3', 'XXXX', 0],
+            ['AAA4', 'XXXX', 100],
+            ['AAA5', 'AAAA', 0],
+            ['AAA6', 'AAAA', 100],
+            ['AAA7', 'XXXX', 0],
+            ['AAA8', 'XXXX', 100],
+        ]:
+            session.execute(stmt_insert, rec)
+        self._use_filtering_error_message = \
+            "Cannot execute this query as it might involve data filtering and thus may have unpredictable " \
+            "performance. If you want to execute this query despite the performance unpredictability, " \
+            "use ALLOW FILTERING"
+        return session
+
+    def test_multy_secondary_query_with_no_pk(self):
+        """
+        Test against table with multiple secondary indexes, queries have no primary index field in WHERE clause
+        """
+        session = self._prepare_for_multi_index_test()
+        assert_all(
+            session,
+            "SELECT * FROM test_table WHERE name='AAAA'",
+            expected=[['AAA2', 'AAAA', 100], ['AAA1', 'AAAA', 0], ['AAA6', 'AAAA', 100], ['AAA5', 'AAAA', 0]])
+        assert_all(
+            session,
+            "SELECT * FROM test_table WHERE name='XXXX'",
+            expected=[['AAA7', 'XXXX', 0], ['AAA8', 'XXXX', 100], ['AAA4', 'XXXX', 100], ['AAA3', 'XXXX', 0]])
+        assert_all(
+            session,
+            "SELECT * FROM test_table WHERE value=0",
+            expected=[['AAA7', 'XXXX', 0], ['AAA1', 'AAAA', 0], ['AAA3', 'XXXX', 0], ['AAA5', 'AAAA', 0]])
+        assert_all(
+            session,
+            "SELECT * FROM test_table WHERE value=100",
+            expected=[['AAA2', 'AAAA', 100], ['AAA8', 'XXXX', 100], ['AAA4', 'XXXX', 100], ['AAA6', 'AAAA', 100]])
+        assert_invalid(session,
+                       "SELECT * FROM test_table WHERE name='AAAA' and value=0",
+                       self._use_filtering_error_message
+                       )
+        assert_all(
+            session,
+            "SELECT * FROM test_table WHERE name='AAAA' and value=0 ALLOW FILTERING",
+            expected=[['AAA1', 'AAAA', 0], [u'AAA5', 'AAAA', 0]])
+        assert_invalid(session,
+                       "SELECT * FROM test_table WHERE name='AAAA' and value=100",
+                       self._use_filtering_error_message
+                       )
+        assert_all(
+            session,
+            "SELECT * FROM test_table WHERE name='AAAA' and value=100 ALLOW FILTERING",
+            expected=[['AAA2', 'AAAA', 100], ['AAA6', 'AAAA', 100]])
+        assert_invalid(session,
+                       "SELECT * FROM test_table WHERE name='XXXX' and value=0",
+                       self._use_filtering_error_message
+                       )
+        assert_all(
+            session,
+            "SELECT * FROM test_table WHERE name='XXXX' and value=0 ALLOW FILTERING",
+            expected=[['AAA7', 'XXXX', 0], ['AAA3', 'XXXX', 0]])
+        assert_invalid(session,
+                       "SELECT * FROM test_table WHERE name='XXXX' and value=100",
+                       self._use_filtering_error_message
+                       )
+        assert_all(
+            session,
+            "SELECT * FROM test_table WHERE name='XXXX' and value=100 ALLOW FILTERING",
+            expected=[['AAA8', 'XXXX', 100], ['AAA4', 'XXXX', 100]])
+
+    def test_multy_secondary_query_with_pk(self):
+        """
+        Test against table with multiple secondary indexes, queries have primary index field in WHERE clause
+        """
+        session = self._prepare_for_multi_index_test()
+        assert_invalid(session,
+                       "SELECT * FROM test_table WHERE row='AAA1' and name='AAAA' and value=0",
+                       self._use_filtering_error_message
+                       )
+        assert_all(
+            session,
+            "SELECT * FROM test_table WHERE row='AAA1' and name='AAAA' and value=0 ALLOW FILTERING",
+            expected=[['AAA1', 'AAAA', 0]])
+        assert_all(
+            session,
+            "SELECT * FROM test_table WHERE row='AAA1' and name='AAAA'",
+            expected=[['AAA1', 'AAAA', 0]])
+        assert_all(
+            session,
+            "SELECT * FROM test_table WHERE row='AAA1' and value=0",
+            expected=[['AAA1', 'AAAA', 0]])
+        assert_all(
+            session,
+            "SELECT * FROM test_table WHERE row='AAA1'",
+            expected=[['AAA1', 'AAAA', 0]])
+
+
 class DtestTimeoutError(Exception):
     pass
