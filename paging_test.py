@@ -175,7 +175,7 @@ class PageFetcher(object):
 class PageAssertionMixin(object):
     """Can be added to subclasses of unittest.Tester"""
 
-    def assertEqualIgnoreOrder(self, actual, expected, msg):
+    def assertEqualIgnoreOrder(self, actual, expected, msg=None):
         return self.assertItemsEqual(actual, expected, msg if msg else None)
 
     def assertIsSubsetOf(self, subset, superset):
