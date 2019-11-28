@@ -7,12 +7,100 @@ import time
 import uuid
 
 from cassandra.concurrent import execute_concurrent_with_args
-from threading import Thread
+from threading import Thread, Event
 
 from dtest import Tester, debug
 from nose.plugins.attrib import attr
 from unittest import skip
-from tools import safe_mkdtemp, replace_in_file
+from tools import safe_mkdtemp, replace_in_file, require
+
+from concurrent.futures import ThreadPoolExecutor
+
+
+class SnapshotOperations():
+    """Base snapshot operations for parallel executing
+
+    Have operations for creating keyspaces, tables,
+    populating the tables, run operations in parallel
+    """
+
+    def verify_stderr_empty(self, results):
+        """check that snapshot commands don't have stderr
+
+        Arguments:
+            results {list} -- list of list with future results
+        """
+        for future_result in results:
+            for result in future_result:
+                stdout, stderr = result
+                self.assertFalse(stderr)
+
+    def init_cluster(self):
+        self.cluster.populate(1).start(wait_for_binary_proto=True)
+        node = self.cluster.nodelist()[0]
+        session = self.patient_cql_connection(node)
+
+        return node, session
+
+    def prepare_schemas_and_data(self, session, num_ks=1, num_cf=1, num_rows=1, column_length=10):
+
+        for j in range(num_ks):
+            self.create_ks(session, name="ks{}".format(j), rf=1)
+
+            for j in range(num_cf):
+                self.create_cf(session, "table_cf{}".format(j),
+                               key_type="varchar")
+                st = session.prepare("INSERT INTO table_cf{} (key, c, v) VALUES (?, ?, ?)".format(j))
+                execute_concurrent_with_args(session,
+                                             st,
+                                             map(lambda x, y, z: [str(x), str(y), str(z)],
+                                                 list(range(num_rows)),
+                                                 list(range(num_rows)),
+                                                 ["{}".format(i) * column_length for i in range(num_rows)]))
+
+    def create_snapshot_for_all_keyspaces(self, node, start_process=None):
+        if start_process:
+            start_process.wait()
+
+        stdout, stderr = node.nodetool('snapshot')
+        return [(stdout, stderr)]
+
+    def create_snapshots_per_keyspace_table(self, node, start_process=None, num_ks=1, num_cf=1):
+        if start_process:
+            start_process.wait()
+        results = []
+        for i in range(num_ks):
+            for j in range(num_cf):
+                stdout, stderr = node.nodetool('snapshot ks{}.table_cf{}'.format(i, j))
+
+            results.append((stdout, stderr))
+        return results
+
+    def clear_all_snapshots(self, node, start_process=None):
+        """Clear all snapshots on nde
+
+        :param node: Node were run clear snapshots command
+        :type node: ScyllaNode
+        :param start_process: Flag to start threads at same time, default None
+        :type start_process: Barrier, optional
+        """
+        if start_process:
+            start_process.wait()
+        stdout, stderr = node.nodetool('clearsnapshot')
+        return [(stdout, stderr)]
+
+    def clear_snapshots_per_keyspace(self, node, start_process=None, num_ks=1):
+        if start_process:
+            start_process.wait()
+        results = []
+        for i in range(num_ks):
+            stdout, stderr = node.nodetool('clearsnapshot ks{}'.format(i))
+            results.append((stdout, stderr))
+        return results
+
+    def list_snapshots(self, node):
+        stdout, stderr = node.nodetool('listsnapshots')
+        return [(stdout, stderr)]
 
 
 class SnapshotTester(Tester):
@@ -549,3 +637,225 @@ class TestArchiveCommitlog(SnapshotTester):
             shutil.rmtree(system_col_snapshot_dir)
             debug("removing tmp_commitlog: " + tmp_commitlog)
             shutil.rmtree(tmp_commitlog)
+
+
+@attr('dtest-full', 'single_node')
+class TestParallelSnapshotOperations(Tester, SnapshotOperations):
+
+    def test_parallel_creating_cleaning_one_ks(self):
+        node, session = self.init_cluster()
+        self.prepare_schemas_and_data(session, num_ks=1, num_cf=1, num_rows=1, column_length=10)
+        debug("Keyspaces and columns are created and populated")
+        starter = Event()
+        futures = []
+        results = []
+        self.create_snapshots_per_keyspace_table(node, num_ks=1, num_cf=1)
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            futures.append(pool.submit(self.create_snapshots_per_keyspace_table, node, starter, num_ks=1, num_cf=1))
+            futures.append(pool.submit(self.clear_snapshots_per_keyspace, node, starter, num_ks=1))
+            debug("Start processes")
+            starter.set()
+            for f in futures:
+                results.append(f.result())
+
+        # assert that result of each command has not stderr message
+        self.verify_stderr_empty(results)
+
+    def test_parallel_operations_for_10_ks_1_table_per_ks(self):
+        node, session = self.init_cluster()
+        self.prepare_schemas_and_data(session, num_ks=10, num_cf=1, num_rows=1, column_length=10)
+        debug("Keyspaces and columns are created and populated")
+        starter = Event()
+        futures = []
+        results = []
+        self.create_snapshots_per_keyspace_table(node, num_ks=10, num_cf=1)
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            futures.append(pool.submit(self.create_snapshots_per_keyspace_table, node, starter, num_ks=10, num_cf=1))
+            futures.append(pool.submit(self.clear_snapshots_per_keyspace, node, starter, num_ks=10))
+            debug("Start processes")
+            starter.set()
+
+            for f in futures:
+                results.append(f.result())
+
+        # assert that result of each command has not stderr message
+        self.verify_stderr_empty(results)
+
+    def test_parallel_operations_for_10ks_and_10tables_and_clearallsnapshots(self):
+        node, session = self.init_cluster()
+        self.prepare_schemas_and_data(session, num_ks=10, num_cf=10)
+        debug("Keyspaces and columns are created and populated")
+        starter = Event()
+        futures = []
+        results = []
+        self.create_snapshots_per_keyspace_table(node, num_ks=10, num_cf=10)
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            futures.append(pool.submit(self.create_snapshots_per_keyspace_table, node, starter, num_ks=10, num_cf=10))
+            futures.append(pool.submit(self.clear_snapshots_per_keyspace, node, starter, num_ks=10))
+            futures.append(pool.submit(self.clear_all_snapshots, node, starter))
+            debug("Start processes")
+            starter.set()
+
+            for f in futures:
+                results.append(f.result())
+        # assert that result of each command has not stderr message
+        self.verify_stderr_empty(results)
+
+    def test_parallel_operation_create_clear_for_all_ks(self):
+        node, session = self.init_cluster()
+        self.prepare_schemas_and_data(session, num_ks=10, num_cf=10, num_rows=1, column_length=10)
+        debug("Keyspaces and columns are created and populated")
+        starter = Event()
+        futures = []
+        results = []
+        self.create_snapshot_for_all_keyspaces(node)
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            futures.append(pool.submit(self.create_snapshot_for_all_keyspaces, node, starter))
+            futures.append(pool.submit(self.clear_all_snapshots, node, starter))
+            debug("Start processes")
+            starter.set()
+
+            # run operations in parallel without syncinc start operations
+            futures.append(pool.submit(self.create_snapshot_for_all_keyspaces, node))
+            futures.append(pool.submit(self.clear_all_snapshots, node))
+
+            for f in futures:
+                results.append(f.result())
+
+        # assert that result of each command has not stderr message
+        self.verify_stderr_empty(results)
+
+    def test_parallel_operations_create_clear_per_ks_and_all(self):
+        """Test create snapshots per keyspae and clear all
+
+        Run create snpahosts for each keyspaces and run clearing all snapshots
+        in parallel
+        """
+        node, session = self.init_cluster()
+        self.prepare_schemas_and_data(session, num_ks=10, num_cf=10, num_rows=1, column_length=10)
+        debug("Keyspaces and columns are created and populated")
+        starter = Event()
+        futures = []
+        results = []
+        self.create_snapshot_for_all_keyspaces(node)
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            futures.append(pool.submit(self.create_snapshot_for_all_keyspaces, node, starter))
+            futures.append(pool.submit(self.clear_all_snapshots, node, starter))
+            futures.append(pool.submit(self.create_snapshots_per_keyspace_table, node, starter, num_ks=10, num_cf=10))
+            futures.append(pool.submit(self.clear_snapshots_per_keyspace, node, starter, num_ks=10))
+            starter.set()
+            # run operations in parallel without syncinc start operations
+            futures.append(pool.submit(self.create_snapshot_for_all_keyspaces, node))
+            futures.append(pool.submit(self.clear_all_snapshots, node))
+
+            for f in futures:
+                results.append(f.result())
+
+        # assert that result of each command has not stderr message
+        self.verify_stderr_empty(results)
+
+    @require("5603")
+    def test_parallel_operations_create_list_clear_for_all_ks(self):
+        """Test create/list/clear for all keyspaces
+
+        Verify that parallel operations for snapshots for all
+        keyspaces run without errors
+        """
+        node, session = self.init_cluster()
+        self.prepare_schemas_and_data(session, num_ks=30, num_cf=10, num_rows=10, column_length=10)
+        debug("Keyspaces and columns are created and populated")
+        starter = Event()
+        futures = []
+        results = []
+        self.create_snapshot_for_all_keyspaces(node)
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            futures.append(pool.submit(self.create_snapshot_for_all_keyspaces, node, starter))
+            futures.append(pool.submit(self.clear_all_snapshots, node, starter))
+            futures.append(pool.submit(self.list_snapshots, node))
+            starter.set()
+            # run operations in parallel without syncinc start operations
+            futures.append(pool.submit(self.create_snapshot_for_all_keyspaces, node))
+            futures.append(pool.submit(self.clear_all_snapshots, node))
+            futures.append(pool.submit(self.list_snapshots, node))
+
+            for f in futures:
+                results.append(f.result())
+        # assert that result of each command has not stderr message
+        self.verify_stderr_empty(results)
+
+    @require("5603")
+    def test_parallel_operations_with_large_data_size(self):
+        """Test create/list/clear in parallel, which start not at same time
+
+        Validate that if operations started at same time and
+        another operations started in parallel, doesn't cause
+        any crtitical issues.
+        """
+        node, session = self.init_cluster()
+        self.prepare_schemas_and_data(session, num_ks=15, num_cf=15, num_rows=1000, column_length=1000)
+        debug("Keyspaces and columns are created and populated")
+        starter = Event()
+        futures = []
+        results = []
+        self.create_snapshot_for_all_keyspaces(node)
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            futures.append(pool.submit(self.create_snapshots_per_keyspace_table, node, starter, num_ks=15, num_cf=15))
+            futures.append(pool.submit(self.clear_snapshots_per_keyspace, node, starter, num_ks=15))
+            futures.append(pool.submit(self.create_snapshot_for_all_keyspaces, node))
+            futures.append(pool.submit(self.list_snapshots, node))
+            futures.append(pool.submit(self.clear_all_snapshots, node))
+            starter.set()
+
+            for f in futures:
+                results.append(f.result())
+        self.verify_stderr_empty(results)
+
+    @require("5603")
+    def test_snapshot_parallel_in_complex_mode_creating_listing_clearing(self):
+        """Test varios snapshot operations in parallel
+
+        Verify that snapshot operations (create, list, clear)
+        which running in parallel at same time, are not crashed
+        and not return stderr
+        Additionally run periodically the listsnapsots and clearsnapshot
+        operations
+
+        this test has very long time to run
+        """
+
+        def monitor_lists_snapshots(node, kill):
+            while not kill.is_set():
+                result = self.list_snapshots(node)
+                self.verify_stderr_empty([result])
+                kill.wait(1)
+
+        def clear_snapshots_periodically(node, kill):
+            while not kill.is_set():
+                result = self.clear_all_snapshots(node)
+                self.verify_stderr_empty([result])
+                kill.wait(2)
+
+        node, session = self.init_cluster()
+        self.prepare_schemas_and_data(session, num_ks=15, num_cf=15, num_rows=1000, column_length=1000)
+        debug("all KSes and CFes are created")
+
+        kill = Event()
+        futures = []
+        results = []
+        starter = Event()
+        self.create_snapshot_for_all_keyspaces(node)
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            futures.append(pool.submit(self.create_snapshot_for_all_keyspaces, node, starter))
+            futures.append(pool.submit(self.create_snapshots_per_keyspace_table, node, starter, num_ks=15, num_cf=15))
+            futures.append(pool.submit(self.clear_all_snapshots, node, starter))
+            futures.append(pool.submit(self.create_snapshot_for_all_keyspaces, node, starter))
+            starter.set()
+            monitor = pool.submit(monitor_lists_snapshots, node, kill)
+            clearing_snapshots = pool.submit(clear_snapshots_periodically, node, kill)
+            for f in futures:
+                results.append(f.result())
+            kill.set()
+            monitor.result()
+            clearing_snapshots.result()
+
+        self.verify_stderr_empty(results)
