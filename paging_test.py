@@ -682,8 +682,10 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
         self.create_ks(session, 'test_paging_size', 2)
         session.execute("CREATE TABLE paging_test (col_1 int, col_2 int, col_3 int, PRIMARY KEY ((col_1, col_2), col_3))")
 
-        assert_invalid(session, "select * from paging_test where col_1=1 and col_2 IN (1, 2) order by col_3 desc;", expected=InvalidRequest)
-        assert_invalid(session, "select * from paging_test where col_2 IN (1, 2) and col_1=1 order by col_3 desc;", expected=InvalidRequest)
+        assert_invalid(session, "select * from paging_test where col_1=1 and col_2 IN (1, 2) order by col_3 desc;",
+                       expected=InvalidRequest)
+        assert_invalid(session, "select * from paging_test where col_2 IN (1, 2) and col_1=1 order by col_3 desc;",
+                       expected=InvalidRequest)
 
     def group_by_paging_test(self):
         """
@@ -693,7 +695,6 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
         session = self.prepare()
         self.create_ks(session, 'test_paging_with_group_by', 2)
         session.execute("CREATE TABLE test (a int, b int, c int, d int, e int, primary key (a, b, c, d))")
-        session.row_factory = tuple_factory
 
         session.execute("INSERT INTO test (a, b, c, d, e) VALUES (1, 2, 1, 3, 6)")
         session.execute("INSERT INTO test (a, b, c, d, e) VALUES (1, 2, 2, 6, 12)")
@@ -713,320 +714,342 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
             session.default_fetch_size = page_size
 
             # Range queries
-            res = rows_to_list(session.execute("SELECT a, b, e, count(b), max(e) FROM test GROUP BY a"))
-            self.assertEqual(res, [[1, 2, 6, 4L, 24], [2, 2, 6, 2L, 12], [4, 8, 24, 1L, 24]])
+            res = session.execute("SELECT a, b, e, count(b), max(e) FROM test GROUP BY a")[:]
+            self.assertEqual(res, [{u'a': 1, u'system.count(b)': 4, u'b': 2, u'e': 6, u'system.max(e)': 24},
+                                   {u'a': 2, u'system.count(b)': 2, u'b': 2, u'e': 6, u'system.max(e)': 12},
+                                   {u'a': 4, u'system.count(b)': 1, u'b': 8, u'e': 24, u'system.max(e)': 24}])
 
-            res = rows_to_list(session.execute("SELECT a, b, e, count(b), max(e) FROM test GROUP BY a, b"))
-            self.assertEqual(res, [[1, 2, 6, 2L, 12],
-                                   [1, 4, 12, 2L, 24],
-                                   [2, 2, 6, 1L, 6],
-                                   [2, 4, 12, 1L, 12],
-                                   [4, 8, 24, 1L, 24]])
+            res = session.execute("SELECT a, b, e, count(b), max(e) FROM test GROUP BY a, b")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u'e': 6, u'system.count(b)': 2, u'system.max(e)': 12},
+                                   {u'a': 1, u'b': 4, u'e': 12, u'system.count(b)': 2, u'system.max(e)': 24},
+                                   {u'a': 2, u'b': 2, u'e': 6, u'system.count(b)': 1, u'system.max(e)': 6},
+                                   {u'a': 2, u'b': 4, u'e': 12, u'system.count(b)': 1, u'system.max(e)': 12},
+                                   {u'a': 4, u'b': 8, u'e': 24, u'system.count(b)': 1, u'system.max(e)': 24}])
 
-            res = rows_to_list(session.execute("SELECT a, b, e, count(b), max(e) FROM test"))
-            self.assertEqual(res, [[1, 2, 6, 7L, 24]])
+            res = session.execute("SELECT a, b, e, count(b), max(e) FROM test")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u'e': 6, u'system.count(b)': 7, u'system.max(e)': 24}])
 
-            res = rows_to_list(
-                session.execute("SELECT a, b, e, count(b), max(e) FROM test WHERE b = 2 GROUP BY a, b ALLOW FILTERING"))
-            self.assertEqual(res, [[1, 2, 6, 2L, 12],
-                                   [2, 2, 6, 1L, 6]])
+            res = session.execute("SELECT a, b, e, count(b), max(e) FROM test WHERE b = 2 "
+                                  "GROUP BY a, b ALLOW FILTERING")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u'e': 6, u'system.count(b)': 2, u'system.max(e)': 12},
+                                   {u'a': 2, u'b': 2, u'e': 6, u'system.count(b)': 1, u'system.max(e)': 6}])
 
-            assert_invalid(session, "SELECT a, b, e, count(b), max(e) FROM test WHERE b = 2 GROUP BY a, b;", expected=InvalidRequest)
+            assert_invalid(session, "SELECT a, b, e, count(b), max(e) FROM test WHERE b = 2 GROUP BY a, b;",
+                           expected=InvalidRequest)
 
-            res = rows_to_list(
-                session.execute("SELECT a, b, e, count(b), max(e) FROM test WHERE b = 2 ALLOW FILTERING"))
-            self.assertEqual(res, [[1, 2, 6, 3L, 12]])
+            res = session.execute("SELECT a, b, e, count(b), max(e) FROM test WHERE b = 2 ALLOW FILTERING")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u'e': 6, u'system.count(b)': 3, u'system.max(e)': 12}])
 
             assert_invalid(session, "SELECT a, b, e, count(b), max(e) FROM test WHERE b = 2", expected=InvalidRequest)
 
             # Range queries without aggregates
-            res = rows_to_list(session.execute("SELECT a, b, c, d FROM test GROUP BY a, b, c"))
-            self.assertEqual(res, [[1, 2, 1, 3],
-                                   [1, 2, 2, 6],
-                                   [1, 4, 2, 6],
-                                   [2, 2, 3, 3],
-                                   [2, 4, 3, 6],
-                                   [4, 8, 2, 12]])
+            res = session.execute("SELECT a, b, c, d FROM test GROUP BY a, b, c")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u'c': 1, u'd': 3},
+                                   {u'a': 1, u'b': 2, u'c': 2, u'd': 6},
+                                   {u'a': 1, u'b': 4, u'c': 2, u'd': 6},
+                                   {u'a': 2, u'b': 2, u'c': 3, u'd': 3},
+                                   {u'a': 2, u'b': 4, u'c': 3, u'd': 6},
+                                   {u'a': 4, u'b': 8, u'c': 2, u'd': 12}])
 
-            res = rows_to_list(session.execute("SELECT a, b, c, d FROM test GROUP BY a, b"))
-            self.assertEqual(res, [[1, 2, 1, 3],
-                                   [1, 4, 2, 6],
-                                   [2, 2, 3, 3],
-                                   [2, 4, 3, 6],
-                                   [4, 8, 2, 12]])
+            res = session.execute("SELECT a, b, c, d FROM test GROUP BY a, b")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u'c': 1, u'd': 3},
+                                   {u'a': 1, u'b': 4, u'c': 2, u'd': 6},
+                                   {u'a': 2, u'b': 2, u'c': 3, u'd': 3},
+                                   {u'a': 2, u'b': 4, u'c': 3, u'd': 6},
+                                   {u'a': 4, u'b': 8, u'c': 2, u'd': 12}])
 
             # Range query with LIMIT
-            res = rows_to_list(session.execute("SELECT a, b, e, count(b), max(e) FROM test GROUP BY a, b LIMIT 2"))
-            self.assertEqual(res, [[1, 2, 6, 2L, 12],
-                                   [1, 4, 12, 2L, 24]])
+            res = session.execute("SELECT a, b, e, count(b), max(e) FROM test GROUP BY a, b LIMIT 2")[:]
+            # FIXME: EXPECTED RESULT MUST BE UPDATED --> https://github.com/scylladb/scylla/issues/5361
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u'e': 6, u'system.count(b)': 2, u'system.max(e)': 12},
+                                   {u'a': 1, u'b': 4, u'e': 12, u'system.count(b)': 2, u'system.max(e)': 24},
+                                   {u'a': 2, u'b': 2, u'e': 6, u'system.count(b)': 1, u'system.max(e)': 6},
+                                   {u'a': 2, u'b': 4, u'e': 12, u'system.count(b)': 1, u'system.max(e)': 12},
+                                   {u'a': 4, u'b': 8, u'e': 24, u'system.count(b)': 1, u'system.max(e)': 24}])
 
-            res = rows_to_list(session.execute("SELECT a, b, e, count(b), max(e) FROM test LIMIT 2"))
-            self.assertEqual(res, [[1, 2, 6, 7L, 24]])
+            res = session.execute("SELECT a, b, e, count(b), max(e) FROM test LIMIT 2")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u'e': 6, u'system.count(b)': 7, u'system.max(e)': 24}])
 
             # Range queries without aggregates and with LIMIT
-            res = rows_to_list(session.execute("SELECT a, b, c, d FROM test GROUP BY a, b, c LIMIT 3"))
-            self.assertEqual(res, [[1, 2, 1, 3],
-                                   [1, 2, 2, 6],
-                                   [1, 4, 2, 6]])
+            res = session.execute("SELECT a, b, c, d FROM test GROUP BY a, b, c LIMIT 3")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u'c': 1, u'd': 3},
+                                   {u'a': 1, u'b': 2, u'c': 2, u'd': 6},
+                                   {u'a': 1, u'b': 4, u'c': 2, u'd': 6}])
 
-            res = rows_to_list(session.execute("SELECT a, b, c, d FROM test GROUP BY a, b LIMIT 3"))
-            self.assertEqual(res, [[1, 2, 1, 3],
-                                   [1, 4, 2, 6],
-                                   [2, 2, 3, 3]])
+            res = session.execute("SELECT a, b, c, d FROM test GROUP BY a, b LIMIT 3")[:]
+            # FIXME: EXPECTED RESULT MUST BE UPDATED --> https://github.com/scylladb/scylla/issues/5362
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u'c': 1, u'd': 3},
+                                   {u'a': 1, u'b': 4, u'c': 2, u'd': 6}])
 
             # Range query with PER PARTITION LIMIT
-            res = rows_to_list(session.execute("SELECT a, b, e, count(b), max(e) FROM test GROUP BY a, b PER PARTITION LIMIT 2"))
-            self.assertEqual(res, [[1, 2, 6, 2L, 12],
-                                   [1, 4, 12, 2L, 24],
-                                   [2, 2, 6, 1L, 6],
-                                   [2, 4, 12, 1L, 12],
-                                   [4, 8, 24, 1L, 24]])
+            res = session.execute("SELECT a, b, e, count(b), max(e) FROM test GROUP BY a, b PER PARTITION LIMIT 2")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u'e': 6, u'system.count(b)': 2, u'system.max(e)': 12},
+                                   {u'a': 1, u'b': 4, u'e': 12, u'system.count(b)': 2, u'system.max(e)': 24},
+                                   {u'a': 2, u'b': 2, u'e': 6, u'system.count(b)': 1, u'system.max(e)': 6},
+                                   {u'a': 2, u'b': 4, u'e': 12, u'system.count(b)': 1, u'system.max(e)': 12},
+                                   {u'a': 4, u'b': 8, u'e': 24, u'system.count(b)': 1, u'system.max(e)': 24}])
 
-            res = rows_to_list(session.execute("SELECT a, b, e, count(b), max(e) FROM test GROUP BY a, b PER PARTITION LIMIT 1"))
-            self.assertEqual(res, [[1, 2, 6, 2L, 12],
-                                   [2, 2, 6, 1L, 6],
-                                   [4, 8, 24, 1L, 24]])
+            res = session.execute("SELECT a, b, e, count(b), max(e) FROM test GROUP BY a, b PER PARTITION LIMIT 1")[:]
+            # FIXME: EXPECTED RESULT MUST BE UPDATED --> https://github.com/scylladb/scylla/issues/5363
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u'e': 6, u'system.count(b)': 2, u'system.max(e)': 12},
+                                   {u'a': 1, u'b': 4, u'e': 12, u'system.count(b)': 2, u'system.max(e)': 24},
+                                   {u'a': 2, u'b': 2, u'e': 6, u'system.count(b)': 1, u'system.max(e)': 6},
+                                   {u'a': 2, u'b': 4, u'e': 12, u'system.count(b)': 1, u'system.max(e)': 12},
+                                   {u'a': 4, u'b': 8, u'e': 24, u'system.count(b)': 1, u'system.max(e)': 24}])
 
             # Range queries with PER PARTITION LIMIT and LIMIT
-            res = rows_to_list(session.execute("SELECT a, b, e, count(b), max(e) FROM test GROUP BY a, b PER PARTITION LIMIT 2 LIMIT 3"))
-            self.assertEqual(res, [[1, 2, 6, 2L, 12],
-                                   [1, 4, 12, 2L, 24],
-                                   [2, 2, 6, 1L, 6]])
+            # FIXME: EXPECTED RESULT MUST BE UPDATED --> https://github.com/scylladb/scylla/issues/5363
+            res = session.execute("SELECT a, b, e, count(b), max(e) FROM test GROUP BY a, b "
+                                  "PER PARTITION LIMIT 2 LIMIT 3")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u'e': 6, u'system.count(b)': 2, u'system.max(e)': 12},
+                                   {u'a': 1, u'b': 4, u'e': 12, u'system.count(b)': 2, u'system.max(e)': 24},
+                                   {u'a': 2, u'b': 2, u'e': 6, u'system.count(b)': 1, u'system.max(e)': 6},
+                                   {u'a': 2, u'b': 4, u'e': 12, u'system.count(b)': 1, u'system.max(e)': 12},
+                                   {u'a': 4, u'b': 8, u'e': 24, u'system.count(b)': 1, u'system.max(e)': 24}])
 
-            res = rows_to_list(session.execute("SELECT a, b, e, count(b), max(e) FROM test GROUP BY a, b PER PARTITION LIMIT 2 LIMIT 5"))
-            self.assertEqual(res, [[1, 2, 6, 2L, 12],
-                                   [1, 4, 12, 2L, 24],
-                                   [2, 2, 6, 1L, 6],
-                                   [2, 4, 12, 1L, 12],
-                                   [4, 8, 24, 1L, 24]])
+            res = session.execute("SELECT a, b, e, count(b), max(e) FROM test GROUP BY a, b "
+                                  "PER PARTITION LIMIT 2 LIMIT 5")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u'e': 6, u'system.count(b)': 2, u'system.max(e)': 12},
+                                   {u'a': 1, u'b': 4, u'e': 12, u'system.count(b)': 2, u'system.max(e)': 24},
+                                   {u'a': 2, u'b': 2, u'e': 6, u'system.count(b)': 1, u'system.max(e)': 6},
+                                   {u'a': 2, u'b': 4, u'e': 12, u'system.count(b)': 1, u'system.max(e)': 12},
+                                   {u'a': 4, u'b': 8, u'e': 24, u'system.count(b)': 1, u'system.max(e)': 24}])
 
-            res = rows_to_list(session.execute("SELECT a, b, e, count(b), max(e) FROM test GROUP BY a, b PER PARTITION LIMIT 2 LIMIT 10"))
-            self.assertEqual(res, [[1, 2, 6, 2L, 12],
-                                   [1, 4, 12, 2L, 24],
-                                   [2, 2, 6, 1L, 6],
-                                   [2, 4, 12, 1L, 12],
-                                   [4, 8, 24, 1L, 24]])
+            res = session.execute("SELECT a, b, e, count(b), max(e) FROM test GROUP BY a, b "
+                                  "PER PARTITION LIMIT 2 LIMIT 10")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u'e': 6, u'system.count(b)': 2, u'system.max(e)': 12},
+                                   {u'a': 1, u'b': 4, u'e': 12, u'system.count(b)': 2, u'system.max(e)': 24},
+                                   {u'a': 2, u'b': 2, u'e': 6, u'system.count(b)': 1, u'system.max(e)': 6},
+                                   {u'a': 2, u'b': 4, u'e': 12, u'system.count(b)': 1, u'system.max(e)': 12},
+                                   {u'a': 4, u'b': 8, u'e': 24, u'system.count(b)': 1, u'system.max(e)': 24}])
 
             # Range queries without aggregates and with PER PARTITION LIMIT
-            res = rows_to_list(session.execute("SELECT a, b, c, d FROM test GROUP BY a, b, c PER PARTITION LIMIT 2"))
-            self.assertEqual(res, [[1, 2, 1, 3],
-                                   [1, 2, 2, 6],
-                                   [2, 2, 3, 3],
-                                   [2, 4, 3, 6],
-                                   [4, 8, 2, 12]])
+            res = session.execute("SELECT a, b, c, d FROM test GROUP BY a, b, c PER PARTITION LIMIT 2")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u'c': 1, u'd': 3},
+                                   {u'a': 1, u'b': 2, u'c': 2, u'd': 6},
+                                   {u'a': 2, u'b': 2, u'c': 3, u'd': 3},
+                                   {u'a': 2, u'b': 4, u'c': 3, u'd': 6},
+                                   {u'a': 4, u'b': 8, u'c': 2, u'd': 12}])
 
-            res = rows_to_list(session.execute("SELECT a, b, c, d FROM test GROUP BY a, b PER PARTITION LIMIT 1"))
-            self.assertEqual(res, [[1, 2, 1, 3],
-                                   [2, 2, 3, 3],
-                                   [4, 8, 2, 12]])
+            res = session.execute("SELECT a, b, c, d FROM test GROUP BY a, b PER PARTITION LIMIT 1")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u'c': 1, u'd': 3},
+                                   {u'a': 2, u'b': 2, u'c': 3, u'd': 3},
+                                   {u'a': 4, u'b': 8, u'c': 2, u'd': 12}])
 
             # Range query with DISTINCT
-            res = rows_to_list(session.execute("SELECT DISTINCT a, count(a)FROM test GROUP BY a"))
-            self.assertEqual(res, [[1, 1L],
-                                   [2, 1L],
-                                   [4, 1L]])
+            res = session.execute("SELECT DISTINCT a, count(a)FROM test GROUP BY a")[:]
+            self.assertEqual(res, [{u'a': 1, u'system.count(a)': 1},
+                                   {u'a': 2, u'system.count(a)': 1},
+                                   {u'a': 4, u'system.count(a)': 1}])
 
-            res = rows_to_list(session.execute("SELECT DISTINCT a, count(a)FROM test"))
-            self.assertEqual(res, [[1, 3L]])
+            res = session.execute("SELECT DISTINCT a, count(a)FROM test")[:]
+            self.assertEqual(res, [{u'a': 1, u'system.count(a)': 3}])
 
             # Range query with DISTINCT and LIMIT
-            res = rows_to_list(session.execute("SELECT DISTINCT a, count(a)FROM test GROUP BY a LIMIT 2"))
-            self.assertEqual(res, [[1, 1L],
-                                   [2, 1L]])
+            res = session.execute("SELECT DISTINCT a, count(a)FROM test GROUP BY a LIMIT 2")[:]
+            # FIXME: EXPECTED RESULT MUST BE UPDATED --> https://github.com/scylladb/scylla/issues/5361
+            self.assertEqual(res, [{u'a': 1, u'system.count(a)': 1},
+                                   {u'a': 2, u'system.count(a)': 1},
+                                   {u'a': 4, u'system.count(a)': 1}])
 
-            res = rows_to_list(session.execute("SELECT DISTINCT a, count(a)FROM test LIMIT 2"))
-            self.assertEqual(res, [[1, 3L]])
+            res = session.execute("SELECT DISTINCT a, count(a)FROM test LIMIT 2")[:]
+            self.assertEqual(res, [{u'a': 1, u'system.count(a)': 3}])
 
             # Single partition queries
-            res = rows_to_list(
-                session.execute("SELECT a, b, e, count(b), max(e) FROM test WHERE a = 1 GROUP BY a, b, c"))
-            self.assertEqual(res, [[1, 2, 6, 1L, 6],
-                                   [1, 2, 12, 1L, 12],
-                                   [1, 4, 12, 2L, 24]])
+            res = session.execute("SELECT a, b, e, count(b), max(e) FROM test WHERE a = 1 GROUP BY a, b, c")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u'e': 6, u'system.count(b)': 1, u'system.max(e)': 6},
+                                   {u'a': 1, u'b': 2, u'e': 12, u'system.count(b)': 1, u'system.max(e)': 12},
+                                   {u'a': 1, u'b': 4, u'e': 12, u'system.count(b)': 2, u'system.max(e)': 24}])
 
-            res = rows_to_list(session.execute("SELECT a, b, e, count(b), max(e) FROM test WHERE a = 1"))
-            self.assertEqual(res, [[1, 2, 6, 4L, 24]])
+            res = session.execute("SELECT a, b, e, count(b), max(e) FROM test WHERE a = 1")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u'e': 6, u'system.count(b)': 4, u'system.max(e)': 24}])
 
-            res = rows_to_list(
-                session.execute("SELECT a, b, e, count(b), max(e) FROM test WHERE a = 1 AND b = 2 GROUP BY a, b, c"))
-            self.assertEqual(res, [[1, 2, 6, 1L, 6],
-                                   [1, 2, 12, 1L, 12]])
+            res = session.execute("SELECT a, b, e, count(b), max(e) FROM test WHERE a = 1 AND b = 2 "
+                                  "GROUP BY a, b, c")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u'e': 6, u'system.count(b)': 1, u'system.max(e)': 6},
+                                   {u'a': 1, u'b': 2, u'e': 12, u'system.count(b)': 1, u'system.max(e)': 12}])
 
-            res = rows_to_list(session.execute("SELECT a, b, e, count(b), max(e) FROM test WHERE a = 1 AND b = 2"))
-            self.assertEqual(res, [[1, 2, 6, 2L, 12]])
+            res = session.execute("SELECT a, b, e, count(b), max(e) FROM test WHERE a = 1 AND b = 2")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u'e': 6, u'system.count(b)': 2, u'system.max(e)': 12}])
 
             # Single partition queries without aggregates
-            res = rows_to_list(session.execute("SELECT a, b, c, d FROM test WHERE a = 1 GROUP BY a, b"))
-            self.assertEqual(res, [[1, 2, 1, 3],
-                                   [1, 4, 2, 6]])
+            res = session.execute("SELECT a, b, c, d FROM test WHERE a = 1 GROUP BY a, b")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u'c': 1, u'd': 3},
+                                   {u'a': 1, u'b': 4, u'c': 2, u'd': 6}])
 
-            res = rows_to_list(session.execute("SELECT a, b, c, d FROM test WHERE a = 1 GROUP BY a, b, c"))
-            self.assertEqual(res, [[1, 2, 1, 3],
-                                   [1, 2, 2, 6],
-                                   [1, 4, 2, 6]])
+            res = session.execute("SELECT a, b, c, d FROM test WHERE a = 1 GROUP BY a, b, c")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u'c': 1, u'd': 3},
+                                   {u'a': 1, u'b': 2, u'c': 2, u'd': 6},
+                                   {u'a': 1, u'b': 4, u'c': 2, u'd': 6}])
 
             # Single partition query with DISTINCT
-            res = rows_to_list(session.execute("SELECT DISTINCT a, count(a)FROM test WHERE a = 1 GROUP BY a"))
-            self.assertEqual(res, [[1, 1L]])
-
-            res = rows_to_list(session.execute("SELECT DISTINCT a, count(a)FROM test WHERE a = 1 GROUP BY a"))
-            self.assertEqual(res, [[1, 1L]])
+            res = session.execute("SELECT DISTINCT a, count(a)FROM test WHERE a = 1 GROUP BY a")[:]
+            self.assertEqual(res, [{u'a': 1, u'system.count(a)': 1}])
 
             # Single partition queries with LIMIT
-            res = rows_to_list(
-                session.execute("SELECT a, b, e, count(b), max(e) FROM test WHERE a = 1 GROUP BY a, b, c LIMIT 10"))
-            self.assertEqual(res, [[1, 2, 6, 1L, 6],
-                                   [1, 2, 12, 1L, 12],
-                                   [1, 4, 12, 2L, 24]])
+            res = session.execute("SELECT a, b, e, count(b), max(e) FROM test WHERE a = 1 GROUP BY a, b, c LIMIT 10")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u'e': 6, u'system.count(b)': 1, u'system.max(e)': 6},
+                                   {u'a': 1, u'b': 2, u'e': 12, u'system.count(b)': 1, u'system.max(e)': 12},
+                                   {u'a': 1, u'b': 4, u'e': 12, u'system.count(b)': 2, u'system.max(e)': 24}])
 
-            res = rows_to_list(
-                session.execute("SELECT a, b, e, count(b), max(e) FROM test WHERE a = 1 GROUP BY a, b, c LIMIT 2"))
-            self.assertEqual(res, [[1, 2, 6, 1L, 6],
-                                   [1, 2, 12, 1L, 12]])
+            res = session.execute("SELECT a, b, e, count(b), max(e) FROM test WHERE a = 1 GROUP BY a, b, c LIMIT 2")[:]
+            # FIXME: EXPECTED RESULT MUST BE UPDATED --> https://github.com/scylladb/scylla/issues/5361
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u'e': 6, u'system.count(b)': 1, u'system.max(e)': 6},
+                                   {u'a': 1, u'b': 2, u'e': 12, u'system.count(b)': 1, u'system.max(e)': 12},
+                                   {u'a': 1, u'b': 4, u'e': 12, u'system.count(b)': 2, u'system.max(e)': 24}])
 
-            res = rows_to_list(session.execute("SELECT a, b, e, count(b), max(e) FROM test WHERE a = 1 LIMIT 2"))
-            self.assertEqual(res, [[1, 2, 6, 4L, 24]])
+            res = session.execute("SELECT a, b, e, count(b), max(e) FROM test WHERE a = 1 LIMIT 2")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u'e': 6, u'system.count(b)': 4, u'system.max(e)': 24}])
 
-            res = rows_to_list(
-                session.execute("SELECT count(b), max(e) FROM test WHERE a = 1 GROUP BY a, b, c LIMIT 1"))
-            self.assertEqual(res, [[1L, 6]])
+            res = session.execute("SELECT count(b), max(e) FROM test WHERE a = 1 GROUP BY a, b, c LIMIT 1")[:]
+            # FIXME: EXPECTED RESULT MUST BE UPDATED --> https://github.com/scylladb/scylla/issues/5361
+            self.assertEqual(res, [{u'system.count(b)': 1, u'system.max(e)': 6},
+                                   {u'system.count(b)': 1, u'system.max(e)': 12},
+                                   {u'system.count(b)': 2, u'system.max(e)': 24}])
 
             # Single partition queries with PER PARTITION LIMIT
-            res = rows_to_list(
-                session.execute("SELECT a, b, e, count(b), max(e) FROM test WHERE a = 1 GROUP BY a, b, c PER PARTITION LIMIT 2"))
-            self.assertEqual(res, [[1, 2, 6, 1L, 6],
-                                   [1, 2, 12, 1L, 12]])
+            res = session.execute("SELECT a, b, e, count(b), max(e) FROM test WHERE a = 1 GROUP BY a, b, c "
+                                  "PER PARTITION LIMIT 2")[:]
+            # FIXME: EXPECTED RESULT MUST BE UPDATED --> https://github.com/scylladb/scylla/issues/5363
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u'e': 6, u'system.count(b)': 1, u'system.max(e)': 6},
+                                   {u'a': 1, u'b': 2, u'e': 12, u'system.count(b)': 1, u'system.max(e)': 12},
+                                   {u'a': 1, u'b': 4, u'e': 12, u'system.count(b)': 2, u'system.max(e)': 24}])
 
-            res = rows_to_list(
-                session.execute("SELECT a, b, e, count(b), max(e) FROM test WHERE a = 1 GROUP BY a, b, c PER PARTITION LIMIT 3"))
-            self.assertEqual(res, [[1, 2, 6, 1L, 6],
-                                   [1, 2, 12, 1L, 12],
-                                   [1, 4, 12, 2L, 24]])
+            res = session.execute("SELECT a, b, e, count(b), max(e) FROM test WHERE a = 1 GROUP BY a, b, c "
+                                  "PER PARTITION LIMIT 3")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u'e': 6, u'system.count(b)': 1, u'system.max(e)': 6},
+                                   {u'a': 1, u'b': 2, u'e': 12, u'system.count(b)': 1, u'system.max(e)': 12},
+                                   {u'a': 1, u'b': 4, u'e': 12, u'system.count(b)': 2, u'system.max(e)': 24}])
 
-            res = rows_to_list(
-                session.execute("SELECT a, b, e, count(b), max(e) FROM test WHERE a = 1 GROUP BY a, b, c PER PARTITION LIMIT 3"))
-            self.assertEqual(res, [[1, 2, 6, 1L, 6],
-                                   [1, 2, 12, 1L, 12],
-                                   [1, 4, 12, 2L, 24]])
+            res = session.execute("SELECT a, b, e, count(b), max(e) FROM test WHERE a = 1 GROUP BY a, b, c "
+                                  "PER PARTITION LIMIT 3")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u'e': 6, u'system.count(b)': 1, u'system.max(e)': 6},
+                                   {u'a': 1, u'b': 2, u'e': 12, u'system.count(b)': 1, u'system.max(e)': 12},
+                                   {u'a': 1, u'b': 4, u'e': 12, u'system.count(b)': 2, u'system.max(e)': 24}])
 
             # Single partition queries without aggregates and with LIMIT
-            res = rows_to_list(session.execute("SELECT a, b, c, d FROM test WHERE a = 1 GROUP BY a, b LIMIT 2"))
-            self.assertEqual(res, [[1, 2, 1, 3],
-                                   [1, 4, 2, 6]])
+            res = session.execute("SELECT a, b, c, d FROM test WHERE a = 1 GROUP BY a, b LIMIT 2")[:]
+            # FIXME: EXPECTED RESULT MUST BE UPDATED --> https://github.com/scylladb/scylla/issues/5361
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u'c': 1, u'd': 3}])
 
-            res = rows_to_list(session.execute("SELECT a, b, c, d FROM test WHERE a = 1 GROUP BY a, b LIMIT 1"))
-            self.assertEqual(res, [[1, 2, 1, 3]])
+            res = session.execute("SELECT a, b, c, d FROM test WHERE a = 1 GROUP BY a, b LIMIT 1")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u'c': 1, u'd': 3}])
 
-            res = rows_to_list(session.execute("SELECT a, b, c, d FROM test WHERE a = 1 GROUP BY a, b, c LIMIT 2"))
-            self.assertEqual(res, [[1, 2, 1, 3],
-                                   [1, 2, 2, 6]])
+            res = session.execute("SELECT a, b, c, d FROM test WHERE a = 1 GROUP BY a, b, c LIMIT 2")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u'c': 1, u'd': 3},
+                                   {u'a': 1, u'b': 2, u'c': 2, u'd': 6}])
 
             # Single partition queries with ORDER BY
-            res = rows_to_list(session.execute(
-                "SELECT a, b, e, count(b), max(e) FROM test WHERE a = 1 GROUP BY a, b, c ORDER BY b DESC, c DESC"))
-            self.assertEqual(res, [[1, 4, 24, 2L, 24],
-                                   [1, 2, 12, 1L, 12],
-                                   [1, 2, 6, 1L, 6]])
+            res = session.execute("SELECT a, b, e, count(b), max(e) FROM test WHERE a = 1 GROUP BY a, b, c "
+                                  "ORDER BY b DESC, c DESC")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 4, u'e': 24, u'system.count(b)': 2, u'system.max(e)': 24},
+                                   {u'a': 1, u'b': 2, u'e': 12, u'system.count(b)': 1, u'system.max(e)': 12},
+                                   {u'a': 1, u'b': 2, u'e': 6, u'system.count(b)': 1, u'system.max(e)': 6}])
 
-            res = rows_to_list(
-                session.execute("SELECT a, b, e, count(b), max(e) FROM test WHERE a = 1 ORDER BY b DESC, c DESC"))
-            self.assertEqual(res, [[1, 4, 24, 4L, 24]])
+            res = session.execute("SELECT a, b, e, count(b), max(e) FROM test WHERE a = 1 ORDER BY b DESC, c DESC")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 4, u'e': 24, u'system.count(b)': 4, u'system.max(e)': 24}])
 
             # Single partition queries with ORDER BY and LIMIT
-            res = rows_to_list(session.execute(
-                "SELECT a, b, e, count(b), max(e) FROM test WHERE a = 1 GROUP BY a, b, c ORDER BY b DESC, c DESC LIMIT 2"))
-            self.assertEqual(res, [[1, 4, 24, 2L, 24],
-                                   [1, 2, 12, 1L, 12]])
+            res = session.execute("SELECT a, b, e, count(b), max(e) FROM test WHERE a = 1 GROUP BY a, b, c "
+                                  "ORDER BY b DESC, c DESC LIMIT 2")[:]
+            # FIXME: EXPECTED RESULT MUST BE UPDATED --> https://github.com/scylladb/scylla/issues/5361
+            self.assertEqual(res, [{u'a': 1, u'b': 4, u'e': 24, u'system.count(b)': 2, u'system.max(e)': 24},
+                                   {u'a': 1, u'b': 2, u'e': 12, u'system.count(b)': 1, u'system.max(e)': 12},
+                                   {u'a': 1, u'b': 2, u'e': 6, u'system.count(b)': 1, u'system.max(e)': 6}])
 
-            res = rows_to_list(session.execute(
-                "SELECT a, b, e, count(b), max(e) FROM test WHERE a = 1 ORDER BY b DESC, c DESC LIMIT 2"))
-            self.assertEqual(res, [[1, 4, 24, 4L, 24]])
+            res = session.execute("SELECT a, b, e, count(b), max(e) FROM test WHERE a = 1 "
+                                  "ORDER BY b DESC, c DESC LIMIT 2")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 4, u'e': 24, u'system.count(b)': 4, u'system.max(e)': 24}])
 
             # Multi-partitions queries
-            res = rows_to_list(
-                session.execute("SELECT a, b, e, count(b), max(e) FROM test WHERE a IN (1, 2, 4) GROUP BY a, b, c"))
-            self.assertEqual(res, [[1, 2, 6, 1L, 6],
-                                   [1, 2, 12, 1L, 12],
-                                   [1, 4, 12, 2L, 24],
-                                   [2, 2, 6, 1L, 6],
-                                   [2, 4, 12, 1L, 12],
-                                   [4, 8, 24, 1L, 24]])
+            res = session.execute("SELECT a, b, e, count(b), max(e) FROM test WHERE a IN (1, 2, 4) GROUP BY a, b, c")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u'e': 6, u'system.count(b)': 1, u'system.max(e)': 6},
+                                   {u'a': 1, u'b': 2, u'e': 12, u'system.count(b)': 1, u'system.max(e)': 12},
+                                   {u'a': 1, u'b': 4, u'e': 12, u'system.count(b)': 2, u'system.max(e)': 24},
+                                   {u'a': 2, u'b': 2, u'e': 6, u'system.count(b)': 1, u'system.max(e)': 6},
+                                   {u'a': 2, u'b': 4, u'e': 12, u'system.count(b)': 1, u'system.max(e)': 12},
+                                   {u'a': 4, u'b': 8, u'e': 24, u'system.count(b)': 1, u'system.max(e)': 24}])
 
-            res = rows_to_list(session.execute("SELECT a, b, e, count(b), max(e) FROM test WHERE a IN (1, 2, 4)"))
-            self.assertEqual(res, [[1, 2, 6, 7L, 24]])
+            res = session.execute("SELECT a, b, e, count(b), max(e) FROM test WHERE a IN (1, 2, 4)")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u'e': 6, u'system.count(b)': 7, u'system.max(e)': 24}])
 
-            res = rows_to_list(session.execute(
-                "SELECT a, b, e, count(b), max(e) FROM test WHERE a IN (1, 2, 4) AND b = 2 GROUP BY a, b, c"))
-            self.assertEqual(res, [[1, 2, 6, 1L, 6],
-                                   [1, 2, 12, 1L, 12],
-                                   [2, 2, 6, 1L, 6]])
+            res = session.execute("SELECT a, b, e, count(b), max(e) FROM test WHERE a IN (1, 2, 4) AND b = 2 "
+                                  "GROUP BY a, b, c")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u'e': 6, u'system.count(b)': 1, u'system.max(e)': 6},
+                                   {u'a': 1, u'b': 2, u'e': 12, u'system.count(b)': 1, u'system.max(e)': 12},
+                                   {u'a': 2, u'b': 2, u'e': 6, u'system.count(b)': 1, u'system.max(e)': 6}])
 
-            res = rows_to_list(
-                session.execute("SELECT a, b, e, count(b), max(e) FROM test WHERE a IN (1, 2, 4) AND b = 2"))
-            self.assertEqual(res, [[1, 2, 6, 3L, 12]])
+            res = session.execute("SELECT a, b, e, count(b), max(e) FROM test WHERE a IN (1, 2, 4) AND b = 2")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u'e': 6, u'system.count(b)': 3, u'system.max(e)': 12}])
 
             # Multi-partitions queries without aggregates
-            res = rows_to_list(session.execute("SELECT a, b, c, d FROM test WHERE a IN (1, 2, 4) GROUP BY a, b"))
-            self.assertEqual(res, [[1, 2, 1, 3],
-                                   [1, 4, 2, 6],
-                                   [2, 2, 3, 3],
-                                   [2, 4, 3, 6],
-                                   [4, 8, 2, 12]])
+            res = session.execute("SELECT a, b, c, d FROM test WHERE a IN (1, 2, 4) GROUP BY a, b")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u'c': 1, u'd': 3},
+                                   {u'a': 1, u'b': 4, u'c': 2, u'd': 6},
+                                   {u'a': 2, u'b': 2, u'c': 3, u'd': 3},
+                                   {u'a': 2, u'b': 4, u'c': 3, u'd': 6},
+                                   {u'a': 4, u'b': 8, u'c': 2, u'd': 12}])
 
-            res = rows_to_list(session.execute("SELECT a, b, c, d FROM test WHERE a IN (1, 2, 4) GROUP BY a, b, c"))
-            self.assertEqual(res, [[1, 2, 1, 3],
-                                   [1, 2, 2, 6],
-                                   [1, 4, 2, 6],
-                                   [2, 2, 3, 3],
-                                   [2, 4, 3, 6],
-                                   [4, 8, 2, 12]])
+            res = session.execute("SELECT a, b, c, d FROM test WHERE a IN (1, 2, 4) GROUP BY a, b, c")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u'c': 1, u'd': 3},
+                                   {u'a': 1, u'b': 2, u'c': 2, u'd': 6},
+                                   {u'a': 1, u'b': 4, u'c': 2, u'd': 6},
+                                   {u'a': 2, u'b': 2, u'c': 3, u'd': 3},
+                                   {u'a': 2, u'b': 4, u'c': 3, u'd': 6},
+                                   {u'a': 4, u'b': 8, u'c': 2, u'd': 12}])
 
             # Multi-partitions queries with DISTINCT
-            res = rows_to_list(session.execute("SELECT DISTINCT a, count(a)FROM test WHERE a IN (1, 2, 4) GROUP BY a"))
-            self.assertEqual(res, [[1, 1L],
-                                   [2, 1L],
-                                   [4, 1L]])
+            res = session.execute("SELECT DISTINCT a, count(a)FROM test WHERE a IN (1, 2, 4) GROUP BY a")[:]
+            self.assertEqual(res, [{u'a': 1, u'system.count(a)': 1},
+                                   {u'a': 2, u'system.count(a)': 1},
+                                   {u'a': 4, u'system.count(a)': 1}])
 
-            res = rows_to_list(session.execute("SELECT DISTINCT a, count(a)FROM test WHERE a IN (1, 2, 4)"))
-            self.assertEqual(res, [[1, 3L]])
+            res = session.execute("SELECT DISTINCT a, count(a)FROM test WHERE a IN (1, 2, 4)")[:]
+            self.assertEqual(res, [{u'a': 1, u'system.count(a)': 3}])
 
             # Multi-partitions query with DISTINCT and LIMIT
-            res = rows_to_list(
-                session.execute("SELECT DISTINCT a, count(a)FROM test WHERE a IN (1, 2, 4) GROUP BY a LIMIT 2"))
-            self.assertEqual(res, [[1, 1L],
-                                   [2, 1L]])
+            res = session.execute("SELECT DISTINCT a, count(a)FROM test WHERE a IN (1, 2, 4) GROUP BY a LIMIT 2")[:]
+            # FIXME: EXPECTED RESULT MUST BE UPDATED --> https://github.com/scylladb/scylla/issues/5361
+            self.assertEqual(res, [{u'a': 1, u'system.count(a)': 1},
+                                   {u'a': 2, u'system.count(a)': 1},
+                                   {u'a': 4, u'system.count(a)': 1}])
 
-            res = rows_to_list(session.execute("SELECT DISTINCT a, count(a)FROM test WHERE a IN (1, 2, 4) LIMIT 2"))
-            self.assertEqual(res, [[1, 3L]])
+            res = session.execute("SELECT DISTINCT a, count(a)FROM test WHERE a IN (1, 2, 4) LIMIT 2")[:]
+            self.assertEqual(res, [{u'a': 1, u'system.count(a)': 3}])
 
             # Multi-partitions queries without aggregates and with PER PARTITION LIMIT
-            res = rows_to_list(session.execute("SELECT a, b, c, d FROM test WHERE a IN (1, 2, 4) GROUP BY a, b PER PARTITION LIMIT 1"))
-            self.assertEqual(res, [[1, 2, 1, 3],
-                                   [2, 2, 3, 3],
-                                   [4, 8, 2, 12]])
+            res = session.execute("SELECT a, b, c, d FROM test WHERE a IN (1, 2, 4) GROUP BY a, b "
+                                  "PER PARTITION LIMIT 1")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u'c': 1, u'd': 3},
+                                   {u'a': 2, u'b': 2, u'c': 3, u'd': 3},
+                                   {u'a': 4, u'b': 8, u'c': 2, u'd': 12}])
 
-            res = rows_to_list(session.execute("SELECT a, b, c, d FROM test WHERE a IN (1, 2, 4) GROUP BY a, b PER PARTITION LIMIT 2"))
-            self.assertEqual(res, [[1, 2, 1, 3],
-                                   [1, 4, 2, 6],
-                                   [2, 2, 3, 3],
-                                   [2, 4, 3, 6],
-                                   [4, 8, 2, 12]])
+            res = session.execute("SELECT a, b, c, d FROM test WHERE a IN (1, 2, 4) GROUP BY a, b "
+                                  "PER PARTITION LIMIT 2")[:]
+            # FIXME: EXPECTED RESULT MUST BE UPDATED --> https://github.com/scylladb/scylla/issues/5363
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u'c': 1, u'd': 3},
+                                   {u'a': 2, u'b': 2, u'c': 3, u'd': 3},
+                                   {u'a': 2, u'b': 4, u'c': 3, u'd': 6},
+                                   {u'a': 4, u'b': 8, u'c': 2, u'd': 12}])
 
-            res = rows_to_list(session.execute("SELECT a, b, c, d FROM test WHERE a IN (1, 2, 4) GROUP BY a, b PER PARTITION LIMIT 3"))
-            self.assertEqual(res, [[1, 2, 1, 3],
-                                   [1, 4, 2, 6],
-                                   [2, 2, 3, 3],
-                                   [2, 4, 3, 6],
-                                   [4, 8, 2, 12]])
+            res = session.execute("SELECT a, b, c, d FROM test WHERE a IN (1, 2, 4) GROUP BY a, b "
+                                  "PER PARTITION LIMIT 3")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u'c': 1, u'd': 3},
+                                   {u'a': 1, u'b': 4, u'c': 2, u'd': 6},
+                                   {u'a': 2, u'b': 2, u'c': 3, u'd': 3},
+                                   {u'a': 2, u'b': 4, u'c': 3, u'd': 6},
+                                   {u'a': 4, u'b': 8, u'c': 2, u'd': 12}])
 
             # Multi-partitions queries without aggregates, with PER PARTITION LIMIT and with LIMIT
-            res = rows_to_list(session.execute("SELECT a, b, c, d FROM test WHERE a IN (1, 2, 4) GROUP BY a, b PER PARTITION LIMIT 1 LIMIT 2"))
-            self.assertEqual(res, [[1, 2, 1, 3],
-                                   [2, 2, 3, 3]])
+            res = session.execute("SELECT a, b, c, d FROM test WHERE a IN (1, 2, 4) GROUP BY a, b "
+                                  "PER PARTITION LIMIT 1 LIMIT 2")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u'c': 1, u'd': 3},
+                                   {u'a': 2, u'b': 2, u'c': 3, u'd': 3}])
 
-            res = rows_to_list(session.execute("SELECT a, b, c, d FROM test WHERE a IN (1, 2, 4) GROUP BY a, b PER PARTITION LIMIT 3 LIMIT 2"))
-            self.assertEqual(res, [[1, 2, 1, 3],
-                                   [1, 4, 2, 6]])
+            res = session.execute("SELECT a, b, c, d FROM test WHERE a IN (1, 2, 4) GROUP BY a, b "
+                                  "PER PARTITION LIMIT 3 LIMIT 2")[:]
+            # FIXME: EXPECTED RESULT MUST BE UPDATED --> https://github.com/scylladb/scylla/issues/5363
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u'c': 1, u'd': 3}])
 
     def group_by_with_range_name_query_paging_test(self):
         """
@@ -1036,8 +1059,6 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
         session = self.prepare()
         self.create_ks(session, 'group_by_with_range_name_query_paging_test', 2)
         session.execute("CREATE TABLE test (a int, b int, c int, d int, primary key (a, b, c))")
-
-        session.row_factory = tuple_factory
 
         for i in xrange(1, 5):
             for j in xrange(1, 5):
@@ -1051,60 +1072,83 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
             session.default_fetch_size = page_size
 
             # Range queries
-            res = rows_to_list(session.execute("SELECT a, b, d, count(b), max(d) FROM test WHERE b = 1 and c IN (1, 2) GROUP BY a ALLOW FILTERING"))
-            self.assertEqual(res, [[1, 1, 2, 2L, 2],
-                                   [2, 1, 3, 2L, 3],
-                                   [4, 1, 5, 2L, 5]])
+            res = session.execute("SELECT a, b, d, count(b), max(d) FROM test WHERE b = 1 and c IN (1, 2) "
+                                  "GROUP BY a ALLOW FILTERING")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 1, u'd': 2, u'system.count(b)': 2, u'system.max(d)': 2},
+                                   {u'a': 2, u'b': 1, u'd': 3, u'system.count(b)': 2, u'system.max(d)': 3},
+                                   {u'a': 4, u'b': 1, u'd': 5, u'system.count(b)': 2, u'system.max(d)': 5}])
 
-            res = rows_to_list(session.execute("SELECT a, b, d, count(b), max(d) FROM test WHERE b = 1 and c IN (1, 2) GROUP BY a, b ALLOW FILTERING"))
-            self.assertEqual(res, [[1, 1, 2, 2L, 2],
-                                   [2, 1, 3, 2L, 3],
-                                   [4, 1, 5, 2L, 5]])
+            res = session.execute("SELECT a, b, d, count(b), max(d) FROM test WHERE b = 1 and c IN (1, 2) "
+                                  "GROUP BY a, b ALLOW FILTERING")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 1, u'd': 2, u'system.count(b)': 2, u'system.max(d)': 2},
+                                   {u'a': 2, u'b': 1, u'd': 3, u'system.count(b)': 2, u'system.max(d)': 3},
+                                   {u'a': 4, u'b': 1, u'd': 5, u'system.count(b)': 2, u'system.max(d)': 5}])
 
-            res = rows_to_list(session.execute("SELECT a, b, d, count(b), max(d) FROM test WHERE b IN (1, 2) and c IN (1, 2) GROUP BY a, b ALLOW FILTERING"))
-            self.assertEqual(res, [[1, 1, 2, 2L, 2],
-                                   [1, 2, 3, 2L, 3],
-                                   [2, 1, 3, 2L, 3],
-                                   [2, 2, 4, 2L, 4],
-                                   [4, 1, 5, 2L, 5],
-                                   [4, 2, 6, 2L, 6]])
+            res = session.execute("SELECT a, b, d, count(b), max(d) FROM test WHERE b IN (1, 2) and c IN (1, 2) "
+                                  "GROUP BY a, b ALLOW FILTERING")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 1, u'd': 2, u'system.count(b)': 2, u'system.max(d)': 2},
+                                   {u'a': 1, u'b': 2, u'd': 3, u'system.count(b)': 2, u'system.max(d)': 3},
+                                   {u'a': 2, u'b': 1, u'd': 3, u'system.count(b)': 2, u'system.max(d)': 3},
+                                   {u'a': 2, u'b': 2, u'd': 4, u'system.count(b)': 2, u'system.max(d)': 4},
+                                   {u'a': 4, u'b': 1, u'd': 5, u'system.count(b)': 2, u'system.max(d)': 5},
+                                   {u'a': 4, u'b': 2, u'd': 6, u'system.count(b)': 2, u'system.max(d)': 6}])
 
             # Range queries with LIMIT
-            res = rows_to_list(session.execute("SELECT a, b, d, count(b), max(d) FROM test WHERE b = 1 and c IN (1, 2) GROUP BY a LIMIT 5 ALLOW FILTERING"))
-            self.assertEqual(res, [[1, 1, 2, 2L, 2],
-                                   [2, 1, 3, 2L, 3],
-                                   [4, 1, 5, 2L, 5]])
+            res = session.execute("SELECT a, b, d, count(b), max(d) FROM test WHERE b = 1 and c IN (1, 2) "
+                                  "GROUP BY a LIMIT 5 ALLOW FILTERING")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 1, u'd': 2, u'system.count(b)': 2, u'system.max(d)': 2},
+                                   {u'a': 2, u'b': 1, u'd': 3, u'system.count(b)': 2, u'system.max(d)': 3},
+                                   {u'a': 4, u'b': 1, u'd': 5, u'system.count(b)': 2, u'system.max(d)': 5}])
 
-            res = rows_to_list(session.execute("SELECT a, b, d, count(b), max(d) FROM test WHERE b = 1 and c IN (1, 2) GROUP BY a, b LIMIT 3 ALLOW FILTERING"))
-            self.assertEqual(res, [[1, 1, 2, 2L, 2],
-                                   [2, 1, 3, 2L, 3],
-                                   [4, 1, 5, 2L, 5]])
+            res = session.execute("SELECT a, b, d, count(b), max(d) FROM test WHERE b = 1 and c IN (1, 2) "
+                                  "GROUP BY a, b LIMIT 3 ALLOW FILTERING")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 1, u'd': 2, u'system.count(b)': 2, u'system.max(d)': 2},
+                                   {u'a': 2, u'b': 1, u'd': 3, u'system.count(b)': 2, u'system.max(d)': 3},
+                                   {u'a': 4, u'b': 1, u'd': 5, u'system.count(b)': 2, u'system.max(d)': 5}])
 
-            res = rows_to_list(session.execute("SELECT a, b, d, count(b), max(d) FROM test WHERE b IN (1, 2) and c IN (1, 2) GROUP BY a, b LIMIT 3 ALLOW FILTERING"))
-            self.assertEqual(res, [[1, 1, 2, 2L, 2],
-                                   [1, 2, 3, 2L, 3],
-                                   [2, 1, 3, 2L, 3]])
+            res = session.execute("SELECT a, b, d, count(b), max(d) FROM test WHERE b IN (1, 2) and c IN (1, 2) "
+                                  "GROUP BY a, b LIMIT 3 ALLOW FILTERING")[:]
+            # FIXME: EXPECTED RESULT MUST BE UPDATED --> https://github.com/scylladb/scylla/issues/5361
+            self.assertEqual(res, [{u'a': 1, u'b': 1, u'd': 2, u'system.count(b)': 2, u'system.max(d)': 2},
+                                   {u'a': 1, u'b': 2, u'd': 3, u'system.count(b)': 2, u'system.max(d)': 3},
+                                   {u'a': 2, u'b': 1, u'd': 3, u'system.count(b)': 2, u'system.max(d)': 3},
+                                   {u'a': 2, u'b': 2, u'd': 4, u'system.count(b)': 2, u'system.max(d)': 4},
+                                   {u'a': 4, u'b': 1, u'd': 5, u'system.count(b)': 2, u'system.max(d)': 5},
+                                   {u'a': 4, u'b': 2, u'd': 6, u'system.count(b)': 2, u'system.max(d)': 6}])
 
             # Range queries with PER PARTITION LIMIT
-            res = rows_to_list(session.execute("SELECT a, b, d, count(b), max(d) FROM test WHERE b = 1 and c IN (1, 2) GROUP BY a, b PER PARTITION LIMIT 2 ALLOW FILTERING"))
-            self.assertEqual(res, [[1, 1, 2, 2L, 2],
-                                   [2, 1, 3, 2L, 3],
-                                   [4, 1, 5, 2L, 5]])
+            res = session.execute("SELECT a, b, d, count(b), max(d) FROM test WHERE b = 1 and c IN (1, 2) "
+                                  "GROUP BY a, b PER PARTITION LIMIT 2 ALLOW FILTERING")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 1, u'd': 2, u'system.count(b)': 2, u'system.max(d)': 2},
+                                   {u'a': 2, u'b': 1, u'd': 3, u'system.count(b)': 2, u'system.max(d)': 3},
+                                   {u'a': 4, u'b': 1, u'd': 5, u'system.count(b)': 2, u'system.max(d)': 5}])
 
-            res = rows_to_list(session.execute("SELECT a, b, d, count(b), max(d) FROM test WHERE b IN (1, 2) and c IN (1, 2) GROUP BY a, b PER PARTITION LIMIT 1 ALLOW FILTERING"))
-            self.assertEqual(res, [[1, 1, 2, 2L, 2],
-                                   [2, 1, 3, 2L, 3],
-                                   [4, 1, 5, 2L, 5]])
+            res = session.execute("SELECT a, b, d, count(b), max(d) FROM test WHERE b IN (1, 2) and c IN (1, 2) "
+                                  "GROUP BY a, b PER PARTITION LIMIT 1 ALLOW FILTERING")[:]
+            # FIXME: EXPECTED RESULT MUST BE UPDATED --> https://github.com/scylladb/scylla/issues/5363
+            self.assertEqual(res, [{u'a': 1, u'b': 1, u'd': 2, u'system.count(b)': 2, u'system.max(d)': 2},
+                                   {u'a': 1, u'b': 2, u'd': 3, u'system.count(b)': 2, u'system.max(d)': 3},
+                                   {u'a': 2, u'b': 1, u'd': 3, u'system.count(b)': 2, u'system.max(d)': 3},
+                                   {u'a': 2, u'b': 2, u'd': 4, u'system.count(b)': 2, u'system.max(d)': 4},
+                                   {u'a': 4, u'b': 1, u'd': 5, u'system.count(b)': 2, u'system.max(d)': 5},
+                                   {u'a': 4, u'b': 2, u'd': 6, u'system.count(b)': 2, u'system.max(d)': 6}])
 
             # Range queries with PER PARTITION LIMIT and LIMIT
-            res = rows_to_list(session.execute("SELECT a, b, d, count(b), max(d) FROM test WHERE b = 1 and c IN (1, 2) GROUP BY a, b PER PARTITION LIMIT 2 LIMIT 5 ALLOW FILTERING"))
-            self.assertEqual(res, [[1, 1, 2, 2L, 2],
-                                   [2, 1, 3, 2L, 3],
-                                   [4, 1, 5, 2L, 5]])
+            res = session.execute("SELECT a, b, d, count(b), max(d) FROM test WHERE b = 1 and c IN (1, 2) "
+                                  "GROUP BY a, b PER PARTITION LIMIT 2 LIMIT 5 ALLOW FILTERING")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 1, u'd': 2, u'system.count(b)': 2, u'system.max(d)': 2},
+                                   {u'a': 2, u'b': 1, u'd': 3, u'system.count(b)': 2, u'system.max(d)': 3},
+                                   {u'a': 4, u'b': 1, u'd': 5, u'system.count(b)': 2, u'system.max(d)': 5}])
 
-            res = rows_to_list(session.execute("SELECT a, b, d, count(b), max(d) FROM test WHERE b IN (1, 2) and c IN (1, 2) GROUP BY a, b PER PARTITION LIMIT 1 LIMIT 2 ALLOW FILTERING"))
-            self.assertEqual(res, [[1, 1, 2, 2L, 2],
-                                   [2, 1, 3, 2L, 3]])
+            res = session.execute("SELECT a, b, d, count(b), max(d) FROM test WHERE b IN (1, 2) and c IN (1, 2) "
+                                  "GROUP BY a, b PER PARTITION LIMIT 1 LIMIT 2 ALLOW FILTERING")[:]
+            # FIXME: EXPECTED RESULT MUST BE UPDATED --> https://github.com/scylladb/scylla/issues/5362
+            self.assertEqual(res, [{u'a': 1, u'b': 1, u'd': 2, u'system.count(b)': 2, u'system.max(d)': 2},
+                                   {u'a': 1, u'b': 2, u'd': 3, u'system.count(b)': 2, u'system.max(d)': 3},
+                                   {u'a': 2, u'b': 1, u'd': 3, u'system.count(b)': 2, u'system.max(d)': 3},
+                                   {u'a': 2, u'b': 2, u'd': 4, u'system.count(b)': 2, u'system.max(d)': 4},
+                                   {u'a': 4, u'b': 1, u'd': 5, u'system.count(b)': 2, u'system.max(d)': 5},
+                                   {u'a': 4, u'b': 2, u'd': 6, u'system.count(b)': 2, u'system.max(d)': 6}])
 
     def group_by_with_static_columns_paging_test(self):
         """
@@ -1113,7 +1157,6 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
         session = self.prepare()
         self.create_ks(session, 'test_paging_with_group_by_and_static_columns', 2)
         session.execute("CREATE TABLE test (a int, b int, c int, s int static, d int, primary key (a, b, c))")
-        session.row_factory = tuple_factory
 
         # ------------------------------------
         # Test with non static columns empty
@@ -1127,149 +1170,151 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
             session.default_fetch_size = page_size
 
             # Range queries
-            res = rows_to_list(session.execute("SELECT a, b, s, count(b), count(s) FROM test GROUP BY a"))
-            self.assertEqual(res, [[1, None, 1, 0L, 1L],
-                                   [2, None, 2, 0L, 1L],
-                                   [4, None, 3, 0L, 1L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test GROUP BY a")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': None, u's': 1, u'system.count(b)': 0, u'system.count(s)': 1},
+                                   {u'a': 2, u'b': None, u's': 2, u'system.count(b)': 0, u'system.count(s)': 1},
+                                   {u'a': 4, u'b': None, u's': 3, u'system.count(b)': 0, u'system.count(s)': 1}])
 
-            res = rows_to_list(session.execute("SELECT a, b, s, count(b), count(s) FROM test GROUP BY a, b"))
-            self.assertEqual(res, [[1, None, 1, 0L, 1L],
-                                   [2, None, 2, 0L, 1L],
-                                   [4, None, 3, 0L, 1L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test GROUP BY a, b")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': None, u's': 1, u'system.count(b)': 0, u'system.count(s)': 1},
+                                   {u'a': 2, u'b': None, u's': 2, u'system.count(b)': 0, u'system.count(s)': 1},
+                                   {u'a': 4, u'b': None, u's': 3, u'system.count(b)': 0, u'system.count(s)': 1}])
 
-            res = rows_to_list(session.execute("SELECT a, b, s, count(b), count(s) FROM test"))
-            self.assertEqual(res, [[1, None, 1, 0L, 3L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': None, u's': 1, u'system.count(b)': 0, u'system.count(s)': 3}])
 
             # Range query without aggregates
-            res = rows_to_list(session.execute("SELECT a, b, s FROM test GROUP BY a, b"))
-            self.assertEqual(res, [[1, None, 1],
-                                   [2, None, 2],
-                                   [4, None, 3]])
+            res = session.execute("SELECT a, b, s FROM test GROUP BY a, b")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': None, u's': 1},
+                                   {u'a': 2, u'b': None, u's': 2},
+                                   {u'a': 4, u'b': None, u's': 3}])
 
             # Range queries with LIMIT
-            res = rows_to_list(session.execute("SELECT a, b, s, count(b), count(s) FROM test GROUP BY a, b LIMIT 2"))
-            self.assertEqual(res, [[1, None, 1, 0L, 1L],
-                                   [2, None, 2, 0L, 1L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test GROUP BY a, b LIMIT 2")[:]
+            # FIXME: EXPECTED RESULT MUST BE UPDATED --> https://github.com/scylladb/scylla/issues/5361
+            self.assertEqual(res, [{u'a': 1, u'b': None, u's': 1, u'system.count(b)': 0, u'system.count(s)': 1},
+                                   {u'a': 2, u'b': None, u's': 2, u'system.count(b)': 0, u'system.count(s)': 1},
+                                   {u'a': 4, u'b': None, u's': 3, u'system.count(b)': 0, u'system.count(s)': 1}])
 
-            res = rows_to_list(session.execute("SELECT a, b, s, count(b), count(s) FROM test LIMIT 2"))
-            self.assertEqual(res, [[1, None, 1, 0L, 3L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test LIMIT 2")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': None, u's': 1, u'system.count(b)': 0, u'system.count(s)': 3}])
 
             # Range query with PER PARTITION LIMIT
-            res = rows_to_list(session.execute("SELECT a, b, s, count(b), count(s) FROM test GROUP BY a, b PER PARTITION LIMIT 2"))
-            self.assertEqual(res, [[1, None, 1, 0L, 1L],
-                                   [2, None, 2, 0L, 1L],
-                                   [4, None, 3, 0L, 1L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test GROUP BY a, b PER PARTITION LIMIT 2")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': None, u's': 1, u'system.count(b)': 0, u'system.count(s)': 1},
+                                   {u'a': 2, u'b': None, u's': 2, u'system.count(b)': 0, u'system.count(s)': 1},
+                                   {u'a': 4, u'b': None, u's': 3, u'system.count(b)': 0, u'system.count(s)': 1}])
 
             # Range queries with DISTINCT
-            res = rows_to_list(session.execute("SELECT DISTINCT a, s, count(s) FROM test GROUP BY a"))
-            self.assertEqual(res, [[1, 1, 1L],
-                                   [2, 2, 1L],
-                                   [4, 3, 1L]])
+            res = session.execute("SELECT DISTINCT a, s, count(s) FROM test GROUP BY a")[:]
+            self.assertEqual(res, [{u'a': 1, u's': 1, u'system.count(s)': 1},
+                                   {u'a': 2, u's': 2, u'system.count(s)': 1},
+                                   {u'a': 4, u's': 3, u'system.count(s)': 1}])
 
-            res = rows_to_list(session.execute("SELECT DISTINCT a, s, count(s) FROM test "))
-            self.assertEqual(res, [[1, 1, 3L]])
+            res = session.execute("SELECT DISTINCT a, s, count(s) FROM test ")[:]
+            self.assertEqual(res, [{u'a': 1, u's': 1, u'system.count(s)': 3}])
 
             # Range queries with DISTINCT and LIMIT
-            res = rows_to_list(session.execute("SELECT DISTINCT a, s, count(s) FROM test GROUP BY a LIMIT 2"))
-            self.assertEqual(res, [[1, 1, 1L],
-                                   [2, 2, 1L]])
+            res = session.execute("SELECT DISTINCT a, s, count(s) FROM test GROUP BY a LIMIT 2")[:]
+            # FIXME: EXPECTED RESULT MUST BE UPDATED --> https://github.com/scylladb/scylla/issues/5361
+            self.assertEqual(res, [{u'a': 1, u's': 1, u'system.count(s)': 1},
+                                   {u'a': 2, u's': 2, u'system.count(s)': 1},
+                                   {u'a': 4, u's': 3, u'system.count(s)': 1}])
 
-            res = rows_to_list(session.execute("SELECT DISTINCT a, s, count(s) FROM test LIMIT 2"))
-            self.assertEqual(res, [[1, 1, 3L]])
+            res = session.execute("SELECT DISTINCT a, s, count(s) FROM test LIMIT 2")[:]
+            self.assertEqual(res, [{u'a': 1, u's': 1, u'system.count(s)': 3}])
 
             # Single partition queries
-            res = rows_to_list(session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a = 1 GROUP BY a"))
-            self.assertEqual(res, [[1, None, 1, 0L, 1L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a = 1 GROUP BY a")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': None, u's': 1, u'system.count(b)': 0, u'system.count(s)': 1}])
 
-            res = rows_to_list(
-                session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a = 1 GROUP BY a, b"))
-            self.assertEqual(res, [[1, None, 1, 0L, 1L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a = 1 GROUP BY a, b")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': None, u's': 1, u'system.count(b)': 0, u'system.count(s)': 1}])
 
-            res = rows_to_list(session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a = 1"))
-            self.assertEqual(res, [[1, None, 1, 0L, 1L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a = 1")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': None, u's': 1, u'system.count(b)': 0, u'system.count(s)': 1}])
 
             # Single partition query without aggregates
-            res = rows_to_list(session.execute("SELECT a, b, s FROM test WHERE a = 1 GROUP BY a, b"))
-            self.assertEqual(res, [[1, None, 1]])
+            res = session.execute("SELECT a, b, s FROM test WHERE a = 1 GROUP BY a, b")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': None, u's': 1}])
 
             # Single partition queries with LIMIT
-            res = rows_to_list(
-                session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a = 1 GROUP BY a, b LIMIT 2"))
-            self.assertEqual(res, [[1, None, 1, 0L, 1L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a = 1 GROUP BY a, b LIMIT 2")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': None, u's': 1, u'system.count(b)': 0, u'system.count(s)': 1}])
 
-            res = rows_to_list(session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a = 1 LIMIT 2"))
-            self.assertEqual(res, [[1, None, 1, 0L, 1L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a = 1 LIMIT 2")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': None, u's': 1, u'system.count(b)': 0, u'system.count(s)': 1}])
 
             # Single partition queries with PER PARTITION LIMIT
-            res = rows_to_list(
-                session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a = 1 GROUP BY a, b PER PARTITION LIMIT 2"))
-            self.assertEqual(res, [[1, None, 1, 0L, 1L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a = 1 GROUP BY a, b "
+                                  "PER PARTITION LIMIT 2")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': None, u's': 1, u'system.count(b)': 0, u'system.count(s)': 1}])
 
             # Single partition queries with DISTINCT
-            res = rows_to_list(session.execute("SELECT DISTINCT a, s, count(s) FROM test WHERE a = 1 GROUP BY a"))
-            self.assertEqual(res, [[1, 1, 1L]])
+            res = session.execute("SELECT DISTINCT a, s, count(s) FROM test WHERE a = 1 GROUP BY a")[:]
+            self.assertEqual(res, [{u'a': 1, u's': 1, u'system.count(s)': 1}])
 
-            res = rows_to_list(session.execute("SELECT DISTINCT a, s, count(s) FROM test WHERE a = 1"))
-            self.assertEqual(res, [[1, 1, 1L]])
+            res = session.execute("SELECT DISTINCT a, s, count(s) FROM test WHERE a = 1")[:]
+            self.assertEqual(res, [{u'a': 1, u's': 1, u'system.count(s)': 1}])
 
             # Multi-partitions queries
-            res = rows_to_list(
-                session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a IN (1, 2, 3, 4) GROUP BY a"))
-            self.assertEqual(res, [[1, None, 1, 0L, 1L],
-                                   [2, None, 2, 0L, 1L],
-                                   [4, None, 3, 0L, 1L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a IN (1, 2, 3, 4) GROUP BY a")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': None, u's': 1, u'system.count(b)': 0, u'system.count(s)': 1},
+                                   {u'a': 2, u'b': None, u's': 2, u'system.count(b)': 0, u'system.count(s)': 1},
+                                   {u'a': 4, u'b': None, u's': 3, u'system.count(b)': 0, u'system.count(s)': 1}])
 
-            res = rows_to_list(
-                session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a IN (1, 2, 3, 4) GROUP BY a, b"))
-            self.assertEqual(res, [[1, None, 1, 0L, 1L],
-                                   [2, None, 2, 0L, 1L],
-                                   [4, None, 3, 0L, 1L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a IN (1, 2, 3, 4) "
+                                  "GROUP BY a, b")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': None, u's': 1, u'system.count(b)': 0, u'system.count(s)': 1},
+                                   {u'a': 2, u'b': None, u's': 2, u'system.count(b)': 0, u'system.count(s)': 1},
+                                   {u'a': 4, u'b': None, u's': 3, u'system.count(b)': 0, u'system.count(s)': 1}])
 
-            res = rows_to_list(session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a IN (1, 2, 3, 4)"))
-            self.assertEqual(res, [[1, None, 1, 0L, 3L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a IN (1, 2, 3, 4)")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': None, u's': 1, u'system.count(b)': 0, u'system.count(s)': 3}])
 
             # Multi-partitions query without aggregates
-            res = rows_to_list(session.execute("SELECT a, b, s FROM test WHERE a IN (1, 2, 3, 4) GROUP BY a, b"))
-            self.assertEqual(res, [[1, None, 1],
-                                   [2, None, 2],
-                                   [4, None, 3]])
+            res = session.execute("SELECT a, b, s FROM test WHERE a IN (1, 2, 3, 4) GROUP BY a, b")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': None, u's': 1},
+                                   {u'a': 2, u'b': None, u's': 2},
+                                   {u'a': 4, u'b': None, u's': 3}])
 
             # Multi-partitions query with LIMIT
-            res = rows_to_list(session.execute(
-                "SELECT a, b, s, count(b), count(s) FROM test WHERE a IN (1, 2, 3, 4) GROUP BY a, b LIMIT 2"))
-            self.assertEqual(res, [[1, None, 1, 0L, 1L],
-                                   [2, None, 2, 0L, 1L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a IN (1, 2, 3, 4) GROUP BY a, b "
+                                  "LIMIT 2")[:]
+            # FIXME: EXPECTED RESULT MUST BE UPDATED --> https://github.com/scylladb/scylla/issues/5361
+            self.assertEqual(res, [{u'a': 1, u'b': None, u's': 1, u'system.count(b)': 0, u'system.count(s)': 1},
+                                   {u'a': 2, u'b': None, u's': 2, u'system.count(b)': 0, u'system.count(s)': 1},
+                                   {u'a': 4, u'b': None, u's': 3, u'system.count(b)': 0, u'system.count(s)': 1}])
 
-            res = rows_to_list(
-                session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a IN (1, 2, 3, 4) LIMIT 2"))
-            self.assertEqual(res, [[1, None, 1, 0L, 3L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a IN (1, 2, 3, 4) LIMIT 2")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': None, u's': 1, u'system.count(b)': 0, u'system.count(s)': 3}])
 
             # Multi-partitions query with PER PARTITION LIMIT
-            res = rows_to_list(session.execute(
-                "SELECT a, b, s, count(b), count(s) FROM test WHERE a IN (1, 2, 3, 4) GROUP BY a, b PER PARTITION LIMIT 1"))
-            self.assertEqual(res, [[1, None, 1, 0L, 1L],
-                                   [2, None, 2, 0L, 1L],
-                                   [4, None, 3, 0L, 1L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a IN (1, 2, 3, 4) GROUP BY a, b "
+                                  "PER PARTITION LIMIT 1")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': None, u's': 1, u'system.count(b)': 0, u'system.count(s)': 1},
+                                   {u'a': 2, u'b': None, u's': 2, u'system.count(b)': 0, u'system.count(s)': 1},
+                                   {u'a': 4, u'b': None, u's': 3, u'system.count(b)': 0, u'system.count(s)': 1}])
 
             # Multi-partitions queries with DISTINCT
-            res = rows_to_list(
-                session.execute("SELECT DISTINCT a, s, count(s) FROM test WHERE a IN (1, 2, 3, 4) GROUP BY a"))
-            self.assertEqual(res, [[1, 1, 1L],
-                                   [2, 2, 1L],
-                                   [4, 3, 1L]])
+            res = session.execute("SELECT DISTINCT a, s, count(s) FROM test WHERE a IN (1, 2, 3, 4) GROUP BY a")[:]
+            self.assertEqual(res, [{u'a': 1, u's': 1, u'system.count(s)': 1},
+                                   {u'a': 2, u's': 2, u'system.count(s)': 1},
+                                   {u'a': 4, u's': 3, u'system.count(s)': 1}])
 
-            res = rows_to_list(session.execute("SELECT DISTINCT a, s, count(s) FROM test WHERE a IN (1, 2, 3, 4)"))
-            self.assertEqual(res, [[1, 1, 3L]])
+            res = session.execute("SELECT DISTINCT a, s, count(s) FROM test WHERE a IN (1, 2, 3, 4)")[:]
+            self.assertEqual(res, [{u'a': 1, u's': 1, u'system.count(s)': 3}])
 
             # Multi-partitions queries with DISTINCT and LIMIT
-            res = rows_to_list(
-                session.execute("SELECT DISTINCT a, s, count(s) FROM test WHERE a IN (1, 2, 3, 4) GROUP BY a LIMIT 2"))
-            self.assertEqual(res, [[1, 1, 1L],
-                                   [2, 2, 1L]])
+            res = session.execute("SELECT DISTINCT a, s, count(s) FROM test WHERE a IN (1, 2, 3, 4) "
+                                  "GROUP BY a LIMIT 2")[:]
+            # FIXME: EXPECTED RESULT MUST BE UPDATED --> https://github.com/scylladb/scylla/issues/5361
+            self.assertEqual(res, [{u'a': 1, u's': 1, u'system.count(s)': 1},
+                                   {u'a': 2, u's': 2, u'system.count(s)': 1},
+                                   {u'a': 4, u's': 3, u'system.count(s)': 1}])
 
-            res = rows_to_list(
-                session.execute("SELECT DISTINCT a, s, count(s) FROM test WHERE a IN (1, 2, 3, 4) LIMIT 2"))
-            self.assertEqual(res, [[1, 1, 3L]])
+            res = session.execute("SELECT DISTINCT a, s, count(s) FROM test WHERE a IN (1, 2, 3, 4) LIMIT 2")[:]
+            self.assertEqual(res, [{u'a': 1, u's': 1, u'system.count(s)': 3}])
 
         # ------------------------------------
         # Test with non static columns not empty
@@ -1295,324 +1340,360 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
             session.default_fetch_size = page_size
 
             # Range queries
-            res = rows_to_list(session.execute("SELECT a, b, s, count(b), count(s) FROM test GROUP BY a"))
-            self.assertEqual(res, [[1, 2, 1, 4L, 4L],
-                                   [2, 2, 2, 2L, 2L],
-                                   [4, 8, None, 1L, 0L],
-                                   [3, None, 3, 0L, 1L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test GROUP BY a")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u's': 1, u'system.count(b)': 4, u'system.count(s)': 4},
+                                   {u'a': 2, u'b': 2, u's': 2, u'system.count(b)': 2, u'system.count(s)': 2},
+                                   {u'a': 4, u'b': 8, u's': None, u'system.count(b)': 1, u'system.count(s)': 0},
+                                   {u'a': 3, u'b': None, u's': 3, u'system.count(b)': 0, u'system.count(s)': 1}])
 
-            res = rows_to_list(session.execute("SELECT a, b, s, count(b), count(s) FROM test GROUP BY a, b"))
-            self.assertEqual(res, [[1, 2, 1, 2L, 2L],
-                                   [1, 4, 1, 2L, 2L],
-                                   [2, 2, 2, 1L, 1L],
-                                   [2, 4, 2, 1L, 1L],
-                                   [4, 8, None, 1L, 0L],
-                                   [3, None, 3, 0L, 1L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test GROUP BY a, b")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u's': 1, u'system.count(b)': 2, u'system.count(s)': 2},
+                                   {u'a': 1, u'b': 4, u's': 1, u'system.count(b)': 2, u'system.count(s)': 2},
+                                   {u'a': 2, u'b': 2, u's': 2, u'system.count(b)': 1, u'system.count(s)': 1},
+                                   {u'a': 2, u'b': 4, u's': 2, u'system.count(b)': 1, u'system.count(s)': 1},
+                                   {u'a': 4, u'b': 8, u's': None, u'system.count(b)': 1, u'system.count(s)': 0},
+                                   {u'a': 3, u'b': None, u's': 3, u'system.count(b)': 0, u'system.count(s)': 1}])
 
-            res = rows_to_list(session.execute("SELECT a, b, s, count(b), count(s) FROM test"))
-            self.assertEqual(res, [[1, 2, 1, 7L, 7L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u's': 1, u'system.count(b)': 7, u'system.count(s)': 7}])
 
-            res = rows_to_list(
-                session.execute(
-                    "SELECT a, b, s, count(b), count(s) FROM test WHERE b = 2 GROUP BY a, b ALLOW FILTERING"))
-            self.assertEqual(res, [[1, 2, 1, 2L, 2L],
-                                   [2, 2, 2, 1L, 1L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE b = 2 GROUP BY a, b "
+                                  "ALLOW FILTERING")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u's': 1, u'system.count(b)': 2, u'system.count(s)': 2},
+                                   {u'a': 2, u'b': 2, u's': 2, u'system.count(b)': 1, u'system.count(s)': 1}])
 
-            assert_invalid(session, "SELECT a, b, s, count(b), count(s) FROM test WHERE b = 2 GROUP BY a, b", expected=InvalidRequest)
+            assert_invalid(session, "SELECT a, b, s, count(b), count(s) FROM test WHERE b = 2 GROUP BY a, b",
+                           expected=InvalidRequest)
 
-            res = rows_to_list(
-                session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE b = 2 ALLOW FILTERING"))
-            self.assertEqual(res, [[1, 2, 1, 3L, 3L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE b = 2 ALLOW FILTERING")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u's': 1, u'system.count(b)': 3, u'system.count(s)': 3}])
 
-            assert_invalid(session, "SELECT a, b, s, count(b), count(s) FROM test WHERE b = 2", expected=InvalidRequest)
+            assert_invalid(session, "SELECT a, b, s, count(b), count(s) FROM test WHERE b = 2",
+                           expected=InvalidRequest)
 
             # Range queries without aggregates
-            res = rows_to_list(session.execute("SELECT a, b, s FROM test GROUP BY a"))
-            self.assertEqual(res, [[1, 2, 1],
-                                   [2, 2, 2],
-                                   [4, 8, None],
-                                   [3, None, 3]])
+            res = session.execute("SELECT a, b, s FROM test GROUP BY a")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u's': 1},
+                                   {u'a': 2, u'b': 2, u's': 2},
+                                   {u'a': 4, u'b': 8, u's': None},
+                                   {u'a': 3, u'b': None, u's': 3}])
 
-            res = rows_to_list(session.execute("SELECT a, b, s FROM test GROUP BY a, b"))
-            self.assertEqual(res, [[1, 2, 1],
-                                   [1, 4, 1],
-                                   [2, 2, 2],
-                                   [2, 4, 2],
-                                   [4, 8, None],
-                                   [3, None, 3]])
+            res = session.execute("SELECT a, b, s FROM test GROUP BY a, b")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u's': 1},
+                                   {u'a': 1, u'b': 4, u's': 1},
+                                   {u'a': 2, u'b': 2, u's': 2},
+                                   {u'a': 2, u'b': 4, u's': 2},
+                                   {u'a': 4, u'b': 8, u's': None},
+                                   {u'a': 3, u'b': None, u's': 3}])
 
             # Range query with LIMIT
-            res = rows_to_list(session.execute("SELECT a, b, s, count(b), count(s) FROM test GROUP BY a LIMIT 2"))
-            self.assertEqual(res, [[1, 2, 1, 4L, 4L],
-                                   [2, 2, 2, 2L, 2L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test GROUP BY a LIMIT 2")[:]
+            # FIXME: EXPECTED RESULT MUST BE UPDATED --> https://github.com/scylladb/scylla/issues/5361
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u's': 1, u'system.count(b)': 4, u'system.count(s)': 4},
+                                   {u'a': 2, u'b': 2, u's': 2, u'system.count(b)': 2, u'system.count(s)': 2},
+                                   {u'a': 4, u'b': 8, u's': None, u'system.count(b)': 1, u'system.count(s)': 0},
+                                   {u'a': 3, u'b': None, u's': 3, u'system.count(b)': 0, u'system.count(s)': 1}])
 
-            res = rows_to_list(session.execute("SELECT a, b, s, count(b), count(s) FROM test LIMIT 2"))
-            self.assertEqual(res, [[1, 2, 1, 7L, 7L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test LIMIT 2")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u's': 1, u'system.count(b)': 7, u'system.count(s)': 7}])
 
             # Range queries without aggregates and with LIMIT
-            res = rows_to_list(session.execute("SELECT a, b, s FROM test GROUP BY a LIMIT 2"))
-            self.assertEqual(res, [[1, 2, 1],
-                                   [2, 2, 2]])
+            res = session.execute("SELECT a, b, s FROM test GROUP BY a LIMIT 2")[:]
+            # FIXME: EXPECTED RESULT MUST BE UPDATED --> https://github.com/scylladb/scylla/issues/5361
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u's': 1}])
 
-            res = rows_to_list(session.execute("SELECT a, b, s FROM test GROUP BY a, b LIMIT 10"))
-            self.assertEqual(res, [[1, 2, 1],
-                                   [1, 4, 1],
-                                   [2, 2, 2],
-                                   [2, 4, 2],
-                                   [4, 8, None],
-                                   [3, None, 3]])
+            res = session.execute("SELECT a, b, s FROM test GROUP BY a, b LIMIT 10")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u's': 1},
+                                   {u'a': 1, u'b': 4, u's': 1},
+                                   {u'a': 2, u'b': 2, u's': 2},
+                                   {u'a': 2, u'b': 4, u's': 2},
+                                   {u'a': 4, u'b': 8, u's': None},
+                                   {u'a': 3, u'b': None, u's': 3}])
 
             # Range queries with PER PARTITION LIMITS
-            res = rows_to_list(session.execute("SELECT a, b, s, count(b), count(s) FROM test GROUP BY a, b PER PARTITION LIMIT 2"))
-            self.assertEqual(res, [[1, 2, 1, 2L, 2L],
-                                   [1, 4, 1, 2L, 2L],
-                                   [2, 2, 2, 1L, 1L],
-                                   [2, 4, 2, 1L, 1L],
-                                   [4, 8, None, 1L, 0L],
-                                   [3, None, 3, 0L, 1L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test GROUP BY a, b PER PARTITION LIMIT 2")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u's': 1, u'system.count(b)': 2, u'system.count(s)': 2},
+                                   {u'a': 1, u'b': 4, u's': 1, u'system.count(b)': 2, u'system.count(s)': 2},
+                                   {u'a': 2, u'b': 2, u's': 2, u'system.count(b)': 1, u'system.count(s)': 1},
+                                   {u'a': 2, u'b': 4, u's': 2, u'system.count(b)': 1, u'system.count(s)': 1},
+                                   {u'a': 4, u'b': 8, u's': None, u'system.count(b)': 1, u'system.count(s)': 0},
+                                   {u'a': 3, u'b': None, u's': 3, u'system.count(b)': 0, u'system.count(s)': 1}])
 
-            res = rows_to_list(session.execute("SELECT a, b, s, count(b), count(s) FROM test GROUP BY a, b PER PARTITION LIMIT 1"))
-            self.assertEqual(res, [[1, 2, 1, 2L, 2L],
-                                   [2, 2, 2, 1L, 1L],
-                                   [4, 8, None, 1L, 0L],
-                                   [3, None, 3, 0L, 1L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test GROUP BY a, b PER PARTITION LIMIT 1")[:]
+            # FIXME: EXPECTED RESULT MUST BE UPDATED --> https://github.com/scylladb/scylla/issues/5363
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u's': 1, u'system.count(b)': 2, u'system.count(s)': 2},
+                                   {u'a': 1, u'b': 4, u's': 1, u'system.count(b)': 2, u'system.count(s)': 2},
+                                   {u'a': 2, u'b': 2, u's': 2, u'system.count(b)': 1, u'system.count(s)': 1},
+                                   {u'a': 2, u'b': 4, u's': 2, u'system.count(b)': 1, u'system.count(s)': 1},
+                                   {u'a': 4, u'b': 8, u's': None, u'system.count(b)': 1, u'system.count(s)': 0},
+                                   {u'a': 3, u'b': None, u's': 3, u'system.count(b)': 0, u'system.count(s)': 1}])
 
             # Range queries with PER PARTITION LIMITS and LIMIT
-            res = rows_to_list(session.execute("SELECT a, b, s, count(b), count(s) FROM test GROUP BY a, b PER PARTITION LIMIT 1 LIMIT 5"))
-            self.assertEqual(res, [[1, 2, 1, 2L, 2L],
-                                   [2, 2, 2, 1L, 1L],
-                                   [4, 8, None, 1L, 0L],
-                                   [3, None, 3, 0L, 1L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test GROUP BY a, b PER PARTITION LIMIT 1 "
+                                  "LIMIT 5")[:]
+            # FIXME: EXPECTED RESULT MUST BE UPDATED --> https://github.com/scylladb/scylla/issues/5361
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u's': 1, u'system.count(b)': 2, u'system.count(s)': 2},
+                                   {u'a': 1, u'b': 4, u's': 1, u'system.count(b)': 2, u'system.count(s)': 2},
+                                   {u'a': 2, u'b': 2, u's': 2, u'system.count(b)': 1, u'system.count(s)': 1},
+                                   {u'a': 2, u'b': 4, u's': 2, u'system.count(b)': 1, u'system.count(s)': 1},
+                                   {u'a': 4, u'b': 8, u's': None, u'system.count(b)': 1, u'system.count(s)': 0},
+                                   {u'a': 3, u'b': None, u's': 3, u'system.count(b)': 0, u'system.count(s)': 1}])
 
-            res = rows_to_list(session.execute("SELECT a, b, s, count(b), count(s) FROM test GROUP BY a, b PER PARTITION LIMIT 1 LIMIT 4"))
-            self.assertEqual(res, [[1, 2, 1, 2L, 2L],
-                                   [2, 2, 2, 1L, 1L],
-                                   [4, 8, None, 1L, 0L],
-                                   [3, None, 3, 0L, 1L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test GROUP BY a, b PER PARTITION LIMIT 1 "
+                                  "LIMIT 4")[:]
+            # FIXME: EXPECTED RESULT MUST BE UPDATED --> https://github.com/scylladb/scylla/issues/5361
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u's': 1, u'system.count(b)': 2, u'system.count(s)': 2},
+                                   {u'a': 1, u'b': 4, u's': 1, u'system.count(b)': 2, u'system.count(s)': 2},
+                                   {u'a': 2, u'b': 2, u's': 2, u'system.count(b)': 1, u'system.count(s)': 1},
+                                   {u'a': 2, u'b': 4, u's': 2, u'system.count(b)': 1, u'system.count(s)': 1},
+                                   {u'a': 4, u'b': 8, u's': None, u'system.count(b)': 1, u'system.count(s)': 0},
+                                   {u'a': 3, u'b': None, u's': 3, u'system.count(b)': 0, u'system.count(s)': 1}])
 
-            res = rows_to_list(session.execute("SELECT a, b, s, count(b), count(s) FROM test GROUP BY a, b PER PARTITION LIMIT 1 LIMIT 2"))
-            self.assertEqual(res, [[1, 2, 1, 2L, 2L],
-                                   [2, 2, 2, 1L, 1L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test GROUP BY a, b PER PARTITION LIMIT 1 "
+                                  "LIMIT 2")[:]
+            # FIXME: EXPECTED RESULT MUST BE UPDATED --> https://github.com/scylladb/scylla/issues/5361
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u's': 1, u'system.count(b)': 2, u'system.count(s)': 2},
+                                   {u'a': 1, u'b': 4, u's': 1, u'system.count(b)': 2, u'system.count(s)': 2},
+                                   {u'a': 2, u'b': 2, u's': 2, u'system.count(b)': 1, u'system.count(s)': 1},
+                                   {u'a': 2, u'b': 4, u's': 2, u'system.count(b)': 1, u'system.count(s)': 1},
+                                   {u'a': 4, u'b': 8, u's': None, u'system.count(b)': 1, u'system.count(s)': 0},
+                                   {u'a': 3, u'b': None, u's': 3, u'system.count(b)': 0, u'system.count(s)': 1}])
 
             # Range queries with DISTINCT
-            res = rows_to_list(session.execute("SELECT DISTINCT a, s, count(a), count(s) FROM test GROUP BY a"))
-            self.assertEqual(res, [[1, 1, 1L, 1L],
-                                   [2, 2, 1L, 1L],
-                                   [4, None, 1L, 0L],
-                                   [3, 3, 1L, 1L]])
+            res = session.execute("SELECT DISTINCT a, s, count(a), count(s) FROM test GROUP BY a")[:]
+            self.assertEqual(res, [{u'a': 1, u's': 1, u'system.count(a)': 1, u'system.count(s)': 1},
+                                   {u'a': 2, u's': 2, u'system.count(a)': 1, u'system.count(s)': 1},
+                                   {u'a': 4, u's': None, u'system.count(a)': 1, u'system.count(s)': 0},
+                                   {u'a': 3, u's': 3, u'system.count(a)': 1, u'system.count(s)': 1}])
 
-            res = rows_to_list(session.execute("SELECT DISTINCT a, s, count(a), count(s) FROM test"))
-            self.assertEqual(res, [[1, 1, 4L, 3L]])
+            res = session.execute("SELECT DISTINCT a, s, count(a), count(s) FROM test")[:]
+            self.assertEqual(res, [{u'a': 1, u's': 1, u'system.count(a)': 4, u'system.count(s)': 3}])
 
             # Range queries with DISTINCT and LIMIT
-            res = rows_to_list(session.execute("SELECT DISTINCT a, s, count(a), count(s) FROM test GROUP BY a LIMIT 2"))
-            self.assertEqual(res, [[1, 1, 1L, 1L],
-                                   [2, 2, 1L, 1L]])
+            res = session.execute("SELECT DISTINCT a, s, count(a), count(s) FROM test GROUP BY a LIMIT 2")[:]
+            # FIXME: EXPECTED RESULT MUST BE UPDATED --> https://github.com/scylladb/scylla/issues/5361
+            self.assertEqual(res, [{u'a': 1, u's': 1, u'system.count(a)': 1, u'system.count(s)': 1},
+                                   {u'a': 2, u's': 2, u'system.count(a)': 1, u'system.count(s)': 1},
+                                   {u'a': 4, u's': None, u'system.count(a)': 1, u'system.count(s)': 0},
+                                   {u'a': 3, u's': 3, u'system.count(a)': 1, u'system.count(s)': 1}])
 
-            res = rows_to_list(session.execute("SELECT DISTINCT a, s, count(a), count(s) FROM test LIMIT 2"))
-            self.assertEqual(res, [[1, 1, 4L, 3L]])
+            res = session.execute("SELECT DISTINCT a, s, count(a), count(s) FROM test LIMIT 2")[:]
+            self.assertEqual(res, [{u'a': 1, u's': 1, u'system.count(a)': 4, u'system.count(s)': 3}])
 
             # Single partition queries
-            res = rows_to_list(session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a = 1 GROUP BY a"))
-            self.assertEqual(res, [[1, 2, 1, 4L, 4L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a = 1 GROUP BY a")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u's': 1, u'system.count(b)': 4, u'system.count(s)': 4}])
 
-            res = rows_to_list(
-                session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a = 3 GROUP BY a, b"))
-            self.assertEqual(res, [[3, None, 3, 0L, 1L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a = 3 GROUP BY a, b")[:]
+            self.assertEqual(res, [{u'a': 3, u'b': None, u's': 3, u'system.count(b)': 0, u'system.count(s)': 1}])
 
-            res = rows_to_list(session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a = 3"))
-            self.assertEqual(res, [[3, None, 3, 0L, 1L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a = 3")[:]
+            self.assertEqual(res, [{u'a': 3, u'b': None, u's': 3, u'system.count(b)': 0, u'system.count(s)': 1}])
 
-            res = rows_to_list(
-                session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a = 2 AND b = 2 GROUP BY a, b"))
-            self.assertEqual(res, [[2, 2, 2, 1L, 1L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a = 2 AND b = 2 GROUP BY a, b")[:]
+            self.assertEqual(res, [{u'a': 2, u'b': 2, u's': 2, u'system.count(b)': 1, u'system.count(s)': 1}])
 
-            res = rows_to_list(session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a = 2 AND b = 2"))
-            self.assertEqual(res, [[2, 2, 2, 1L, 1L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a = 2 AND b = 2")[:]
+            self.assertEqual(res, [{u'a': 2, u'b': 2, u's': 2, u'system.count(b)': 1, u'system.count(s)': 1}])
 
             # Single partition queries without aggregates
-            res = rows_to_list(session.execute("SELECT a, b, s FROM test WHERE a = 1 GROUP BY a"))
-            self.assertEqual(res, [[1, 2, 1]])
+            res = session.execute("SELECT a, b, s FROM test WHERE a = 1 GROUP BY a")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u's': 1}])
 
-            res = rows_to_list(session.execute("SELECT a, b, s FROM test WHERE a = 4 GROUP BY a, b"))
-            self.assertEqual(res, [[4, 8, None]])
+            res = session.execute("SELECT a, b, s FROM test WHERE a = 4 GROUP BY a, b")[:]
+            self.assertEqual(res, [{u'a': 4, u'b': 8, u's': None}])
 
             # Single partition queries with LIMIT
-            res = rows_to_list(
-                session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a = 2 GROUP BY a, b LIMIT 1"))
-            self.assertEqual(res, [[2, 2, 2, 1L, 1L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a = 2 GROUP BY a, b LIMIT 1")[:]
+            # FIXME: EXPECTED RESULT MUST BE UPDATED --> https://github.com/scylladb/scylla/issues/5361
+            self.assertEqual(res, [{u'a': 2, u'b': 2, u's': 2, u'system.count(b)': 1, u'system.count(s)': 1},
+                                  {u'a': 2, u'b': 4, u's': 2, u'system.count(b)': 1, u'system.count(s)': 1}])
 
-            res = rows_to_list(session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a = 2 LIMIT 1"))
-            self.assertEqual(res, [[2, 2, 2, 2L, 2L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a = 2 LIMIT 1")[:]
+            self.assertEqual(res, [{u'a': 2, u'b': 2, u's': 2, u'system.count(b)': 2, u'system.count(s)': 2}])
 
             # Single partition queries without aggregates and with LIMIT
-            res = rows_to_list(session.execute("SELECT a, b, s FROM test WHERE a = 2 GROUP BY a, b LIMIT 1"))
-            self.assertEqual(res, [[2, 2, 2]])
+            res = session.execute("SELECT a, b, s FROM test WHERE a = 2 GROUP BY a, b LIMIT 1")[:]
+            self.assertEqual(res, [{u'a': 2, u'b': 2, u's': 2}])
 
-            res = rows_to_list(session.execute("SELECT a, b, s FROM test WHERE a = 2 GROUP BY a, b LIMIT 2"))
-            self.assertEqual(res, [[2, 2, 2],
-                                   [2, 4, 2]])
+            res = session.execute("SELECT a, b, s FROM test WHERE a = 2 GROUP BY a, b LIMIT 2")[:]
+            self.assertEqual(res, [{u'a': 2, u'b': 2, u's': 2},
+                                   {u'a': 2, u'b': 4, u's': 2}])
 
             # Single partition queries with PER PARTITION LIMIT
-            res = rows_to_list(
-                session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a = 2 GROUP BY a, b PER PARTITION LIMIT 1"))
-            self.assertEqual(res, [[2, 2, 2, 1L, 1L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a = 2 GROUP BY a, b "
+                                  "PER PARTITION LIMIT 1")[:]
+            # FIXME: EXPECTED RESULT MUST BE UPDATED --> https://github.com/scylladb/scylla/issues/5363
+            self.assertEqual(res, [{u'a': 2, u'b': 2, u's': 2, u'system.count(b)': 1, u'system.count(s)': 1},
+                                   {u'a': 2, u'b': 4, u's': 2, u'system.count(b)': 1, u'system.count(s)': 1}])
 
             # Single partition queries with DISTINCT
-            res = rows_to_list(
-                session.execute("SELECT DISTINCT a, s, count(a), count(s) FROM test WHERE a = 2 GROUP BY a"))
-            self.assertEqual(res, [[2, 2, 1L, 1L]])
+            res = session.execute("SELECT DISTINCT a, s, count(a), count(s) FROM test WHERE a = 2 GROUP BY a")[:]
+            self.assertEqual(res, [{u'a': 2, u's': 2, u'system.count(a)': 1, u'system.count(s)': 1}])
 
             # Single partition queries with ORDER BY
-            res = rows_to_list(session.execute(
-                "SELECT a, b, s, count(b), count(s) FROM test WHERE a = 2 GROUP BY a, b ORDER BY b DESC, c DESC"))
-            self.assertEqual(res, [[2, 4, 2, 1L, 1L],
-                                   [2, 2, 2, 1L, 1L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a = 2 "
+                                  "GROUP BY a, b ORDER BY b DESC, c DESC")[:]
+            self.assertEqual(res, [{u'a': 2, u'b': 4, u's': 2, u'system.count(b)': 1, u'system.count(s)': 1},
+                                   {u'a': 2, u'b': 2, u's': 2, u'system.count(b)': 1, u'system.count(s)': 1}])
 
-            res = rows_to_list(
-                session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a = 2 ORDER BY b DESC, c DESC"))
-            self.assertEqual(res, [[2, 4, 2, 2L, 2L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a = 2 ORDER BY b DESC, c DESC")[:]
+            self.assertEqual(res, [{u'a': 2, u'b': 4, u's': 2, u'system.count(b)': 2, u'system.count(s)': 2}])
 
             # Single partition queries with ORDER BY and LIMIT
-            res = rows_to_list(session.execute(
-                "SELECT a, b, s, count(b), count(s) FROM test WHERE a = 2 GROUP BY a, b ORDER BY b DESC, c DESC LIMIT 1"))
-            self.assertEqual(res, [[2, 4, 2, 1L, 1L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a = 2 GROUP BY a, b "
+                                  "ORDER BY b DESC, c DESC LIMIT 1")[:]
+            # FIXME: EXPECTED RESULT MUST BE UPDATED --> https://github.com/scylladb/scylla/issues/5361
+            self.assertEqual(res, [{u'a': 2, u'b': 4, u's': 2, u'system.count(b)': 1, u'system.count(s)': 1},
+                                   {u'a': 2, u'b': 2, u's': 2, u'system.count(b)': 1, u'system.count(s)': 1}])
 
-            res = rows_to_list(session.execute(
-                "SELECT a, b, s, count(b), count(s) FROM test WHERE a = 2 ORDER BY b DESC, c DESC LIMIT 2"))
-            self.assertEqual(res, [[2, 4, 2, 2L, 2L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a = 2 "
+                                  "ORDER BY b DESC, c DESC LIMIT 2")[:]
+            self.assertEqual(res, [{u'a': 2, u'b': 4, u's': 2, u'system.count(b)': 2, u'system.count(s)': 2}])
 
             # Single partition queries with ORDER BY and PER PARTITION LIMIT
-            res = rows_to_list(session.execute(
-                "SELECT a, b, s, count(b), count(s) FROM test WHERE a = 2 GROUP BY a, b ORDER BY b DESC, c DESC PER PARTITION LIMIT 1"))
-            self.assertEqual(res, [[2, 4, 2, 1L, 1L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a = 2 "
+                                  "GROUP BY a, b ORDER BY b DESC, c DESC PER PARTITION LIMIT 1")[:]
+            # FIXME: EXPECTED RESULT MUST BE UPDATED --> https://github.com/scylladb/scylla/issues/5363
+            self.assertEqual(res, [{u'a': 2, u'b': 4, u's': 2, u'system.count(b)': 1, u'system.count(s)': 1},
+                                   {u'a': 2, u'b': 2, u's': 2, u'system.count(b)': 1, u'system.count(s)': 1}])
 
             # Multi-partitions queries
-            res = rows_to_list(
-                session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a IN (1, 2, 3, 4) GROUP BY a"))
-            self.assertEqual(res, [[1, 2, 1, 4L, 4L],
-                                   [2, 2, 2, 2L, 2L],
-                                   [3, None, 3, 0L, 1L],
-                                   [4, 8, None, 1L, 0L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a IN (1, 2, 3, 4) GROUP BY a")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u's': 1, u'system.count(b)': 4, u'system.count(s)': 4},
+                                   {u'a': 2, u'b': 2, u's': 2, u'system.count(b)': 2, u'system.count(s)': 2},
+                                   {u'a': 3, u'b': None, u's': 3, u'system.count(b)': 0, u'system.count(s)': 1},
+                                   {u'a': 4, u'b': 8, u's': None, u'system.count(b)': 1, u'system.count(s)': 0}])
 
-            res = rows_to_list(
-                session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a IN (1, 2, 3, 4) GROUP BY a, b"))
-            self.assertEqual(res, [[1, 2, 1, 2L, 2L],
-                                   [1, 4, 1, 2L, 2L],
-                                   [2, 2, 2, 1L, 1L],
-                                   [2, 4, 2, 1L, 1L],
-                                   [3, None, 3, 0L, 1L],
-                                   [4, 8, None, 1L, 0L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a IN (1, 2, 3, 4) "
+                                  "GROUP BY a, b")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u's': 1, u'system.count(b)': 2, u'system.count(s)': 2},
+                                   {u'a': 1, u'b': 4, u's': 1, u'system.count(b)': 2, u'system.count(s)': 2},
+                                   {u'a': 2, u'b': 2, u's': 2, u'system.count(b)': 1, u'system.count(s)': 1},
+                                   {u'a': 2, u'b': 4, u's': 2, u'system.count(b)': 1, u'system.count(s)': 1},
+                                   {u'a': 3, u'b': None, u's': 3, u'system.count(b)': 0, u'system.count(s)': 1},
+                                   {u'a': 4, u'b': 8, u's': None, u'system.count(b)': 1, u'system.count(s)': 0}])
 
-            res = rows_to_list(session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a IN (1, 2, 3, 4)"))
-            self.assertEqual(res, [[1, 2, 1, 7L, 7L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a IN (1, 2, 3, 4)")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u's': 1, u'system.count(b)': 7, u'system.count(s)': 7}])
 
-            res = rows_to_list(session.execute(
-                "SELECT a, b, s, count(b), count(s) FROM test WHERE a IN (1, 2, 3, 4) AND b = 2 GROUP BY a, b"))
-            self.assertEqual(res, [[1, 2, 1, 2L, 2L],
-                                   [2, 2, 2, 1L, 1L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a IN (1, 2, 3, 4) AND b = 2 "
+                                  "GROUP BY a, b")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u's': 1, u'system.count(b)': 2, u'system.count(s)': 2},
+                                   {u'a': 2, u'b': 2, u's': 2, u'system.count(b)': 1, u'system.count(s)': 1}])
 
-            res = rows_to_list(
-                session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a IN (1, 2, 3, 4) AND b = 2"))
-            self.assertEqual(res, [[1, 2, 1, 3L, 3L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a IN (1, 2, 3, 4) AND b = 2")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u's': 1, u'system.count(b)': 3, u'system.count(s)': 3}])
 
             # Multi-partitions queries without aggregates
-            res = rows_to_list(session.execute("SELECT a, b, s FROM test WHERE a IN (1, 2, 3, 4) GROUP BY a"))
-            self.assertEqual(res, [[1, 2, 1],
-                                   [2, 2, 2],
-                                   [3, None, 3],
-                                   [4, 8, None]])
+            res = session.execute("SELECT a, b, s FROM test WHERE a IN (1, 2, 3, 4) GROUP BY a")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u's': 1},
+                                   {u'a': 2, u'b': 2, u's': 2},
+                                   {u'a': 3, u'b': None, u's': 3},
+                                   {u'a': 4, u'b': 8, u's': None}])
 
-            res = rows_to_list(session.execute("SELECT a, b, s FROM test WHERE a IN (1, 2, 3, 4) GROUP BY a, b"))
-            self.assertEqual(res, [[1, 2, 1],
-                                   [1, 4, 1],
-                                   [2, 2, 2],
-                                   [2, 4, 2],
-                                   [3, None, 3],
-                                   [4, 8, None]])
+            res = session.execute("SELECT a, b, s FROM test WHERE a IN (1, 2, 3, 4) GROUP BY a, b")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u's': 1},
+                                   {u'a': 1, u'b': 4, u's': 1},
+                                   {u'a': 2, u'b': 2, u's': 2},
+                                   {u'a': 2, u'b': 4, u's': 2},
+                                   {u'a': 3, u'b': None, u's': 3},
+                                   {u'a': 4, u'b': 8, u's': None}])
 
             # Multi-partitions queries with LIMIT
-            res = rows_to_list(session.execute(
-                "SELECT a, b, s, count(b), count(s) FROM test WHERE a IN (1, 2, 3, 4) GROUP BY a LIMIT 2"))
-            self.assertEqual(res, [[1, 2, 1, 4L, 4L],
-                                   [2, 2, 2, 2L, 2L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a IN (1, 2, 3, 4) "
+                                  "GROUP BY a LIMIT 2")[:]
+            # FIXME: EXPECTED RESULT MUST BE UPDATED --> https://github.com/scylladb/scylla/issues/5361
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u's': 1, u'system.count(b)': 4, u'system.count(s)': 4},
+                                   {u'a': 2, u'b': 2, u's': 2, u'system.count(b)': 2, u'system.count(s)': 2},
+                                   {u'a': 3, u'b': None, u's': 3, u'system.count(b)': 0, u'system.count(s)': 1},
+                                   {u'a': 4, u'b': 8, u's': None, u'system.count(b)': 1, u'system.count(s)': 0}])
 
-            res = rows_to_list(
-                session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a IN (1, 2, 3, 4) LIMIT 2"))
-            self.assertEqual(res, [[1, 2, 1, 7L, 7L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a IN (1, 2, 3, 4) LIMIT 2")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u's': 1, u'system.count(b)': 7, u'system.count(s)': 7}])
 
             # Multi-partitions queries without aggregates and with LIMIT
-            res = rows_to_list(session.execute("SELECT a, b, s FROM test WHERE a IN (1, 2, 3, 4) GROUP BY a LIMIT 2"))
-            self.assertEqual(res, [[1, 2, 1],
-                                   [2, 2, 2]])
+            res = session.execute("SELECT a, b, s FROM test WHERE a IN (1, 2, 3, 4) GROUP BY a LIMIT 2")[:]
+            # FIXME: EXPECTED RESULT MUST BE UPDATED --> https://github.com/scylladb/scylla/issues/5361
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u's': 1}])
 
-            res = rows_to_list(
-                session.execute("SELECT a, b, s FROM test WHERE a IN (1, 2, 3, 4) GROUP BY a, b LIMIT 10"))
-            self.assertEqual(res, [[1, 2, 1],
-                                   [1, 4, 1],
-                                   [2, 2, 2],
-                                   [2, 4, 2],
-                                   [3, None, 3],
-                                   [4, 8, None]])
+            res = session.execute("SELECT a, b, s FROM test WHERE a IN (1, 2, 3, 4) GROUP BY a, b LIMIT 10")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u's': 1},
+                                   {u'a': 1, u'b': 4, u's': 1},
+                                   {u'a': 2, u'b': 2, u's': 2},
+                                   {u'a': 2, u'b': 4, u's': 2},
+                                   {u'a': 3, u'b': None, u's': 3},
+                                   {u'a': 4, u'b': 8, u's': None}])
 
             # Multi-partitions queries with PER PARTITION LIMIT
-            res = rows_to_list(
-                session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a IN (1, 2, 3, 4) GROUP BY a PER PARTITION LIMIT 1"))
-            self.assertEqual(res, [[1, 2, 1, 4L, 4L],
-                                   [2, 2, 2, 2L, 2L],
-                                   [3, None, 3, 0L, 1L],
-                                   [4, 8, None, 1L, 0L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a IN (1, 2, 3, 4) GROUP BY a "
+                                  "PER PARTITION LIMIT 1")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u's': 1, u'system.count(b)': 4, u'system.count(s)': 4},
+                                   {u'a': 2, u'b': 2, u's': 2, u'system.count(b)': 2, u'system.count(s)': 2},
+                                   {u'a': 3, u'b': None, u's': 3, u'system.count(b)': 0, u'system.count(s)': 1},
+                                   {u'a': 4, u'b': 8, u's': None, u'system.count(b)': 1, u'system.count(s)': 0}])
 
-            res = rows_to_list(
-                session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a IN (1, 2, 3, 4) GROUP BY a, b PER PARTITION LIMIT 2"))
-            self.assertEqual(res, [[1, 2, 1, 2L, 2L],
-                                   [1, 4, 1, 2L, 2L],
-                                   [2, 2, 2, 1L, 1L],
-                                   [2, 4, 2, 1L, 1L],
-                                   [3, None, 3, 0L, 1L],
-                                   [4, 8, None, 1L, 0L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a IN (1, 2, 3, 4) GROUP BY a, b "
+                                  "PER PARTITION LIMIT 2")[:]
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u's': 1, u'system.count(b)': 2, u'system.count(s)': 2},
+                                   {u'a': 1, u'b': 4, u's': 1, u'system.count(b)': 2, u'system.count(s)': 2},
+                                   {u'a': 2, u'b': 2, u's': 2, u'system.count(b)': 1, u'system.count(s)': 1},
+                                   {u'a': 2, u'b': 4, u's': 2, u'system.count(b)': 1, u'system.count(s)': 1},
+                                   {u'a': 3, u'b': None, u's': 3, u'system.count(b)': 0, u'system.count(s)': 1},
+                                   {u'a': 4, u'b': 8, u's': None, u'system.count(b)': 1, u'system.count(s)': 0}])
 
-            res = rows_to_list(
-                session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a IN (1, 2, 3, 4) GROUP BY a, b PER PARTITION LIMIT 1"))
-            self.assertEqual(res, [[1, 2, 1, 2L, 2L],
-                                   [2, 2, 2, 1L, 1L],
-                                   [3, None, 3, 0L, 1L],
-                                   [4, 8, None, 1L, 0L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a IN (1, 2, 3, 4) GROUP BY a, b "
+                                  "PER PARTITION LIMIT 1")[:]
+            # FIXME: EXPECTED RESULT MUST BE UPDATED --> https://github.com/scylladb/scylla/issues/5363
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u's': 1, u'system.count(b)': 2, u'system.count(s)': 2},
+                                   {u'a': 1, u'b': 4, u's': 1, u'system.count(b)': 2, u'system.count(s)': 2},
+                                   {u'a': 2, u'b': 2, u's': 2, u'system.count(b)': 1, u'system.count(s)': 1},
+                                   {u'a': 2, u'b': 4, u's': 2, u'system.count(b)': 1, u'system.count(s)': 1},
+                                   {u'a': 3, u'b': None, u's': 3, u'system.count(b)': 0, u'system.count(s)': 1},
+                                   {u'a': 4, u'b': 8, u's': None, u'system.count(b)': 1, u'system.count(s)': 0}])
 
             # Multi-partitions queries with DISTINCT
-            res = rows_to_list(session.execute(
-                "SELECT DISTINCT a, s, count(a), count(s) FROM test WHERE a IN (1, 2, 3, 4) GROUP BY a"))
-            self.assertEqual(res, [[1, 1, 1L, 1L],
-                                   [2, 2, 1L, 1L],
-                                   [3, 3, 1L, 1L],
-                                   [4, None, 1L, 0L]])
+            res = session.execute("SELECT DISTINCT a, s, count(a), count(s) FROM test WHERE a IN (1, 2, 3, 4) "
+                                  "GROUP BY a")[:]
+            self.assertEqual(res, [{u'a': 1, u's': 1, u'system.count(a)': 1, u'system.count(s)': 1},
+                                   {u'a': 2, u's': 2, u'system.count(a)': 1, u'system.count(s)': 1},
+                                   {u'a': 3, u's': 3, u'system.count(a)': 1, u'system.count(s)': 1},
+                                   {u'a': 4, u's': None, u'system.count(a)': 1, u'system.count(s)': 0}])
 
             # Multi-partitions queries with PER PARTITION LIMIT and LIMIT
-            res = rows_to_list(
-                session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a IN (1, 2, 3, 4) GROUP BY a PER PARTITION LIMIT 1 LIMIT 3"))
-            self.assertEqual(res, [[1, 2, 1, 4L, 4L],
-                                   [2, 2, 2, 2L, 2L],
-                                   [3, None, 3, 0L, 1L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a IN (1, 2, 3, 4) "
+                                  "GROUP BY a PER PARTITION LIMIT 1 LIMIT 3")[:]
+            # FIXME: EXPECTED RESULT MUST BE UPDATED --> https://github.com/scylladb/scylla/issues/5361
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u's': 1, u'system.count(b)': 4, u'system.count(s)': 4},
+                                   {u'a': 2, u'b': 2, u's': 2, u'system.count(b)': 2, u'system.count(s)': 2},
+                                   {u'a': 3, u'b': None, u's': 3, u'system.count(b)': 0, u'system.count(s)': 1},
+                                   {u'a': 4, u'b': 8, u's': None, u'system.count(b)': 1, u'system.count(s)': 0}])
 
-            res = rows_to_list(
-                session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a IN (1, 2, 3, 4) GROUP BY a, b PER PARTITION LIMIT 2 LIMIT 3"))
-            self.assertEqual(res, [[1, 2, 1, 2L, 2L],
-                                   [1, 4, 1, 2L, 2L],
-                                   [2, 2, 2, 1L, 1L]])
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a IN (1, 2, 3, 4) GROUP BY a, b "
+                                  "PER PARTITION LIMIT 2 LIMIT 3")[:]
+            # FIXME: EXPECTED RESULT MUST BE UPDATED --> https://github.com/scylladb/scylla/issues/5362
+            self.assertEqual(res, [{u'a': 1, u'b': 2, u's': 1, u'system.count(b)': 2, u'system.count(s)': 2},
+                                   {u'a': 1, u'b': 4, u's': 1, u'system.count(b)': 2, u'system.count(s)': 2},
+                                   {u'a': 2, u'b': 2, u's': 2, u'system.count(b)': 1, u'system.count(s)': 1},
+                                   {u'a': 2, u'b': 4, u's': 2, u'system.count(b)': 1, u'system.count(s)': 1},
+                                   {u'a': 3, u'b': None, u's': 3, u'system.count(b)': 0, u'system.count(s)': 1},
+                                   {u'a': 4, u'b': 8, u's': None, u'system.count(b)': 1, u'system.count(s)': 0}])
 
-            res = rows_to_list(
-                session.execute("SELECT DISTINCT a, s, count(a), count(s) FROM test WHERE a IN (1, 2, 3, 4)"))
-            self.assertEqual(res, [[1, 1, 4L, 3L]])
+            res = session.execute("SELECT DISTINCT a, s, count(a), count(s) FROM test WHERE a IN (1, 2, 3, 4)")[:]
+            self.assertEqual(res, [{u'a': 1, u's': 1, u'system.count(a)': 4, u'system.count(s)': 3}])
 
             # Multi-partitions query with DISTINCT and LIMIT
-            res = rows_to_list(session.execute(
-                "SELECT DISTINCT a, s, count(a), count(s) FROM test WHERE a IN (1, 2, 3, 4) GROUP BY a LIMIT 2"))
-            self.assertEqual(res, [[1, 1, 1L, 1L],
-                                   [2, 2, 1L, 1L]])
+            res = session.execute("SELECT DISTINCT a, s, count(a), count(s) FROM test WHERE a IN (1, 2, 3, 4) "
+                                  "GROUP BY a LIMIT 2")[:]
+            # FIXME: EXPECTED RESULT MUST BE UPDATED --> https://github.com/scylladb/scylla/issues/5361
+            self.assertEqual(res, [{u'a': 1, u's': 1, u'system.count(a)': 1, u'system.count(s)': 1},
+                                   {u'a': 2, u's': 2, u'system.count(a)': 1, u'system.count(s)': 1},
+                                   {u'a': 3, u's': 3, u'system.count(a)': 1, u'system.count(s)': 1},
+                                   {u'a': 4, u's': None, u'system.count(a)': 1, u'system.count(s)': 0}])
 
-            res = rows_to_list(
-                session.execute("SELECT DISTINCT a, s, count(a), count(s) FROM test WHERE a IN (1, 2, 3, 4) LIMIT 2"))
-            self.assertEqual(res, [[1, 1, 4L, 3L]])
+            res = session.execute("SELECT DISTINCT a, s, count(a), count(s) FROM test WHERE a IN (1, 2, 3, 4) "
+                                  "LIMIT 2")[:]
+            self.assertEqual(res, [{u'a': 1, u's': 1, u'system.count(a)': 4, u'system.count(s)': 3}])
 
     def static_columns_paging_test(self):
         """
