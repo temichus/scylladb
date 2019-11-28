@@ -242,6 +242,7 @@ class TestPagingSize(BasePagingTester, PageAssertionMixin):
         self.assertFalse(pf.has_more_pages)
         self.assertEqual(len(expected_data), len(pf.all_data()))
 
+    @attr('next-gating')
     def test_with_more_results_than_page_size(self):
         session = self.prepare()
         self.create_ks(session, 'test_paging_size', 2)
@@ -529,6 +530,7 @@ class TestPagingWithModifiers(BasePagingTester, PageAssertionMixin):
 
         run_scenarios(scenarios, handle_scenario, deferred_exceptions=(AssertionError,))
 
+    @attr('next-gating')
     def test_with_allow_filtering(self):
         session = self.prepare()
         self.create_ks(session, 'test_paging_size', 2)
@@ -606,6 +608,7 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
 
         self.assertEqualIgnoreOrder(pf.all_data(), expected_data)
 
+    @attr('next-gating')
     def test_paging_across_multi_wide_rows(self):
         session = self.prepare()
         self.create_ks(session, 'test_paging_size', 2)
@@ -1212,6 +1215,7 @@ class TestPagingDatasetChanges(BasePagingTester, PageAssertionMixin):
         self.assertEqual(pf.pagecount(), 3)
         self.assertEqual(pf.num_results_all(), [300, 300, 200])
 
+    @attr('next-gating')
     def test_cell_TTL_expiry_during_paging(self):
         session = self.prepare()
         self.create_ks(session, 'test_paging_size', 2)
@@ -1716,6 +1720,7 @@ class TestPagingWithDeletions(BasePagingTester, PageAssertionMixin):
 
         self.assertTrue(failure, "Cannot find tombstone failure threshold error in log")
 
+    @attr('next-gating')
     def test_deletion_with_distinct_paging(self):
         """
         Test that deletion does not affect paging for distinct queries.
