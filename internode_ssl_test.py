@@ -18,6 +18,13 @@ class TestInternodeSSL(Tester):
         """
         self.__putget_with_internode_ssl_test('all', internode_encryption='all')
 
+    def putget_with_internode_rack_ssl_test(self):
+        """
+        Simple putget test with internode ssl enabled
+        with default 'all' internode compression and 'rack' internode encryption.
+        """
+        self.__putget_with_internode_ssl_test('all', internode_encryption='rack')
+
     def putget_with_internode_ssl_without_compression_test(self):
         """
         Simple putget test with internode ssl enabled
@@ -25,6 +32,20 @@ class TestInternodeSSL(Tester):
         @jira_ticket CASSANDRA-9884
         """
         self.__putget_with_internode_ssl_test('none', internode_encryption='none')
+
+    def putget_with_internode_ssl_with_dc_compression_test(self):
+        """
+        Simple putget test with internode ssl enabled
+        with 'dc' internode compression and 'dc' internode encryption.
+        """
+        self.__putget_with_internode_ssl_test('dc', internode_encryption='dc', dcs=2)
+
+    def putget_with_internode_rack_ssl_with_dc_compression_test(self):
+        """
+        Simple putget test with internode ssl enabled
+        with 'dc' internode compression and 'rack' internode encryption.
+        """
+        self.__putget_with_internode_ssl_test('dc', internode_encryption='rack', dcs=2)
 
     def __putget_with_internode_ssl_test(self, internode_compression, internode_encryption='all', dcs=1):
         cluster = self.cluster
