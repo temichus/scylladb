@@ -15,6 +15,7 @@ import os
 import signal
 import requests
 
+from tools import require
 from scylla_tools import check_errors
 
 from dtest import Tester, debug
@@ -70,6 +71,7 @@ class TestUpdateableConfig(Tester):
         self.change_and_verify_config(node1, 'compaction_enforce_min_threshold', False, 'false')
         node1.stress(['mixed', 'n=10000', '-rate', 'threads=8'])
 
+    @require('#5382')
     def test_auto_adjust_flush_quota(self):
         """
         auto_adjust_flush_quota isn't a supported updateable parameter.
@@ -81,6 +83,7 @@ class TestUpdateableConfig(Tester):
         self.change_and_verify_config(node1, 'auto_adjust_flush_quota', True, 'false')
         self.change_and_verify_config(node1, 'auto_adjust_flush_quota', False, 'false')
 
+    @require('#5382')
     def test_auto_bootstrap(self):
         """
         auto_adjust_flush_quota isn't a supported updateable parameter.
@@ -92,6 +95,7 @@ class TestUpdateableConfig(Tester):
         self.change_and_verify_config(node1, 'auto_bootstrap', False, 'true')
         self.change_and_verify_config(node1, 'auto_bootstrap', True, 'true')
 
+    @require('#5384')
     def test_sighup_flood(self):
         self.cluster.populate(1).start(wait_other_notice=True, wait_for_binary_proto=True)
         node1 = self.cluster.nodelist()[0]
