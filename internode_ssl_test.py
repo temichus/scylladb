@@ -26,15 +26,22 @@ class TestInternodeSSL(Tester):
         """
         self.__putget_with_internode_ssl_test('none')
 
-    def __putget_with_internode_ssl_test(self, internode_compression):
+    def __putget_with_internode_ssl_test(self, internode_compression, internode_encryption='all', dcs=1):
         cluster = self.cluster
 
         debug("***using internode ssl***")
         generate_ssl_stores(self.test_path)
         cluster.set_configuration_options({'internode_compression': internode_compression})
-        cluster.enable_internode_ssl(self.test_path)
+        cluster.enable_internode_ssl(self.test_path, internode_encryption=internode_encryption)
 
-        cluster.populate(3).start()
+        if dcs == 1:
+            cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True)
+        elif dcs > 1:
+            cluster.set_configuration_options(values={'endpoint_snitch':
+                                                      'org.apache.cassandra.locator.GossipingPropertyFileSnitch'})
+            cluster.populate([3 for i in range(dcs)]).start(wait_for_binary_proto=True, wait_other_notice=True)
+        else:
+            raise Exception('Invalid parameter dc: %s' % dc)
 
         session = self.patient_cql_connection(cluster.nodelist()[0])
         self.create_ks(session, 'ks', 3)
