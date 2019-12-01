@@ -1764,17 +1764,17 @@ class TestPagingWithIndexingAndAggregation(BasePagingTester, PageAssertionMixin)
     Tests concerned with paging when deletions occur.
     """
     data = """
-             | id | mybool | sometext | someint |
-             +----+--------+----------+---------+
-         *100| 1  | 1      | [random] | [random]
-         *300| 2  | 0      | [random] | [random]
-         *500| 3  | 1      | [random] | [random]
-         *400| 4  | 0      | [random] | [random]
+             | id | mybool | sometext | someint | somebigint |
+             +----+--------+----------+---------+------------+
+         *100| 1  | 1      | [random] | [random]| [random]
+         *300| 2  | 0      | [random] | [random]| [random]
+         *500| 3  | 1      | [random] | [random]| [random]
+         *400| 4  | 0      | [random] | [random]| [random]
             """
 
     def create_table(self, session):
         self.create_ks(session, 'test_paging_size', 2)
-        session.execute("CREATE TABLE paging_test (id int, mybool boolean, sometext text, someint int, "
+        session.execute("CREATE TABLE paging_test (id int, mybool boolean, sometext text, someint int, somebigint bigint, "
                         "PRIMARY KEY (id, sometext) )")
     
     def create_and_insert_data(self, data, session, table_name='paging_test', cl=CL.ALL):
@@ -1784,13 +1784,16 @@ class TestPagingWithIndexingAndAggregation(BasePagingTester, PageAssertionMixin)
         def bool_from_str_int(text):
             return bool(int(text))
 
-        def random_integer(unused_int):
+        def random_int(unused_int):
             return ctypes.c_int(random.getrandbits(32)).value
+
+        def random_bigint(unused_int):
+            return ctypes.c_long(random.getrandbits(64)).value
 
         all_data = create_rows(
             data, session, table_name, cl=cl,
             format_funcs={'id': int, 'mybool': bool_from_str_int, 'sometext': random_txt,
-                          'someint': random_integer}
+                          'someint': random_int, 'somebigint': random_bigint}
         )
         return all_data
     
@@ -1814,39 +1817,44 @@ class TestPagingWithIndexingAndAggregation(BasePagingTester, PageAssertionMixin)
         self._verify_col_func_results(session, filtered_list, query_fmt, col, 'count', len)
         self._verify_col_func_results(session, filtered_list, query_fmt, col, 'min', min)
         self._verify_col_func_results(session, filtered_list, query_fmt, col, 'max', max)
-        if col.endswith('int'):
+        if col.endswith('bigint'):
+            self._verify_col_func_results(session, filtered_list, query_fmt, col, 'sum', lambda l: ctypes.c_long(sum(l)).value)
+        elif col.endswith('int'):
             self._verify_col_func_results(session, filtered_list, query_fmt, col, 'sum', lambda l: ctypes.c_int(sum(l)).value)
 
-    def _create_and_verify_results(self, session, col, filter_func, where_clause, allow_filtering):
+    def _create_and_verify_results(self, session, cols, filter_func, where_clause, allow_filtering):
         all_data = self.create_and_insert_data(self.data, session)
         filtered_list = [entry for entry in all_data if filter_func(entry) is True]
         query_fmt = 'select {}({}) from paging_test where ' + where_clause
         if allow_filtering:
             query_fmt += ' ALLOW FILTERING'
-        self._verify_col_results(session, filtered_list, query_fmt, col)
+        if not isinstance(cols, list):
+            cols = [cols] 
+        for col in cols:
+            self._verify_col_results(session, filtered_list, query_fmt, col)
 
-    def create_and_verify_mybool_results(self, session, col, mybool_val=True, allow_filtering=False):
+    def create_and_verify_mybool_results(self, session, cols, mybool_val=True, allow_filtering=False):
         filter_func = lambda entry: entry[u'mybool'] == mybool_val
         where_clause='mybool = {}'.format('true' if mybool_val else 'false')
-        self._create_and_verify_results(session, col, filter_func, where_clause, allow_filtering=allow_filtering)
+        self._create_and_verify_results(session, cols, filter_func, where_clause, allow_filtering=allow_filtering)
 
-    def create_and_verify_id_results(self, session, col, id_val=2, allow_filtering=False):
+    def create_and_verify_id_results(self, session, cols, id_val=2, allow_filtering=False):
         filter_func = lambda entry: entry[u'id'] == id_val
         where_clause='id = {}'.format(id_val)
-        self._create_and_verify_results(session, col, filter_func, where_clause, allow_filtering=allow_filtering)
+        self._create_and_verify_results(session, cols, filter_func, where_clause, allow_filtering=allow_filtering)
 
     def test_filter_indexed_column(self):
         session = self.prepare()
         self.create_table(session)
 
         session.execute("CREATE INDEX ON paging_test(mybool)")
-        self.create_and_verify_mybool_results(session, 'someint')
+        self.create_and_verify_mybool_results(session, ['someint', 'somebigint'])
 
     def test_filter_non_indexed_column(self):
         session = self.prepare()
         self.create_table(session)
 
-        self.create_and_verify_mybool_results(session, 'someint', allow_filtering=True)
+        self.create_and_verify_mybool_results(session, ['someint', 'somebigint'], allow_filtering=True)
 
     def test_group_pk_column_index_filter(self):
         session = self.prepare()
@@ -1879,4 +1887,4 @@ class TestPagingWithIndexingAndAggregation(BasePagingTester, PageAssertionMixin)
         self.create_table(session)
 
         session.execute("CREATE INDEX ON paging_test(mybool)")
-        self.create_and_verify_id_results(session, 'someint', id_val=2)
+        self.create_and_verify_id_results(session, ['someint', 'somebigint'], id_val=2)
