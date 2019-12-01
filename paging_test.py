@@ -1785,7 +1785,7 @@ class TestPagingWithIndexingAndAggregation(BasePagingTester, PageAssertionMixin)
             return bool(int(text))
 
         def random_integer(unused_int):
-            return random.randint(-2147483648, 2147483647)
+            return ctypes.c_int(random.getrandbits(32)).value
 
         all_data = create_rows(
             data, session, table_name, cl=cl,
