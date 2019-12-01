@@ -5,7 +5,7 @@ from cassandra.query import SimpleStatement
 from ccmlib.node import NodeError
 
 from assertions import assert_invalid
-from dtest import Tester, canReuseCluster, debug
+from dtest import Tester, debug
 from tools import rows_to_list
 
 
@@ -51,7 +51,6 @@ class AuditTester(Tester):
         return session
 
 
-@canReuseCluster
 class CQLAuditTester(AuditTester):
     """
     Make sure CQL statements are audited
