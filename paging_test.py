@@ -1,6 +1,7 @@
 import time
 import uuid
 import random
+import ctypes
 from unittest import skip
 
 from cassandra import ConsistencyLevel as CL
@@ -1831,7 +1832,7 @@ class TestPagingWithIndexingAndAggregation(BasePagingTester, PageAssertionMixin)
 
         # # sum group function
         query_sum = "select sum(someint) from paging_test where mybool = true"
-        expected_sum_data = [{u'system.sum(someint)': sum([item['someint'] for item in list_mybool_is_true])}]
+        expected_sum_data = [{u'system.sum(someint)': ctypes.c_int(sum([item['someint'] for item in list_mybool_is_true])).value}]
         self.execute_query_and_compare_results(session=session, query=query_sum, expected_data=expected_sum_data,
                                                assert_msg='sum(someint) returned wrong value')
 
@@ -1862,7 +1863,7 @@ class TestPagingWithIndexingAndAggregation(BasePagingTester, PageAssertionMixin)
 
         # # sum group function
         query_sum = "select sum(someint) from paging_test where mybool = true ALLOW FILTERING"
-        expected_sum_data = [{u'system.sum(someint)': sum([item['someint'] for item in list_mybool_is_true])}]
+        expected_sum_data = [{u'system.sum(someint)': ctypes.c_int(sum([item['someint'] for item in list_mybool_is_true])).value}]
         self.execute_query_and_compare_results(session=session, query=query_sum, expected_data=expected_sum_data,
                                                assert_msg='sum(someint) returned wrong value')
 
@@ -1998,6 +1999,6 @@ class TestPagingWithIndexingAndAggregation(BasePagingTester, PageAssertionMixin)
 
         # # sum group function
         query_sum = "select sum(someint) from paging_test where id = 2"
-        expected_sum_data = [{u'system.sum(someint)': sum([item['someint'] for item in list_mybool_is_true])}]
+        expected_sum_data = [{u'system.sum(someint)': ctypes.c_int(sum([item['someint'] for item in list_mybool_is_true])).value}]
         self.execute_query_and_compare_results(session=session, query=query_sum, expected_data=expected_sum_data,
                                                assert_msg='sum(someint) returned wrong value')
