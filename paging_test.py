@@ -178,7 +178,7 @@ class PageAssertionMixin(object):
     def assertEqualIgnoreOrder(self, actual, expected, msg=None):
         if msg:
             msg = "{}: expected {} but got {}".format(msg, expected, actual)
-        return self.assertItemsEqual(actual, expected, msg)
+        return self.assertItemsEqual(expected, actual, msg)
 
     def assertIsSubsetOf(self, subset, superset):
         assert flatten_into_set(subset).issubset(flatten_into_set(superset))
