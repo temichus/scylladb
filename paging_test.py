@@ -1777,13 +1777,13 @@ class TestPagingWithIndexingAndAggregation(BasePagingTester, PageAssertionMixin)
                         "PRIMARY KEY (id, sometext) )")
     
     def create_and_insert_data(self, data, session, table_name='paging_test', cl=CL.ALL):
-        def random_txt(text):
+        def random_txt(unused_text):
             return unicode(uuid.uuid4())
 
         def bool_from_str_int(text):
             return bool(int(text))
 
-        def random_integer(int):
+        def random_integer(unused_int):
             return random.randint(-2147483648, 2147483647)
 
         all_data = create_rows(
