@@ -325,8 +325,9 @@ class CompactionAdditionalStrategyTests(Tester):
 
         before_start_count = len(glob.glob(os.path.join(keyspace_dir, 'cf' + '-*', '*-Data.db')))
 
+        from_mark = node1.mark_log()
         node1.start()
-        time.sleep(30)
+        node1.watch_log_for(r'compaction - Compacted [0-9]+ sstables to \[.+/data/ks/cf-.+\]', from_mark=from_mark)
 
         after_start_count = len(glob.glob(os.path.join(keyspace_dir, 'cf' + '-*', '*-Data.db')))
 
