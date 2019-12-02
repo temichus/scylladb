@@ -230,6 +230,10 @@ class TestUpdateClusterLayout(Tester):
                                     None,
                                     binary_interface=(cluster.get_node_ip(i), 9042))
 
+        def stop_node3():
+            node3.stop()
+
+        self.addCleanup(stop_node3)
         node2.start()
         node2.watch_log_for("JOINING: sleeping .* ms for pending range setup")
 
