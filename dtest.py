@@ -53,6 +53,7 @@ LAST_LOG = "last"
 
 LAST_TEST_DIR = 'last_test_dir'
 
+DEFAULT_DIR = './'
 CASSANDRA_DIR = os.environ.get('CASSANDRA_DIR', None)
 
 NO_SKIP = os.environ.get('SKIP', '').lower() in ('no', 'false')
