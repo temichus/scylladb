@@ -53,12 +53,7 @@ LAST_LOG = "last"
 
 LAST_TEST_DIR = 'last_test_dir'
 
-DEFAULT_DIR = './'
-config = ConfigParser.RawConfigParser()
-if len(config.read(os.path.expanduser('~/.cassandra-dtest'))) > 0:
-    if config.has_option('main', 'default_dir'):
-        DEFAULT_DIR = os.path.expanduser(config.get('main', 'default_dir'))
-CASSANDRA_DIR = os.environ.get('CASSANDRA_DIR', DEFAULT_DIR)
+CASSANDRA_DIR = os.environ.get('CASSANDRA_DIR', None)
 
 NO_SKIP = os.environ.get('SKIP', '').lower() in ('no', 'false')
 DEBUG = os.environ.get('DEBUG', '').lower() in ('yes', 'true')
