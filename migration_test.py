@@ -855,8 +855,8 @@ class TTLWithMigrate(Tester):
         node1 = self.cluster.nodelist()[0]
         self.cluster.flush()
 
-        debug('Run updates')
         ttl_boundaries = [1800, 3600]
+        debug('Run updates using TTLs in the {} range'.format(ttl_boundaries))
 
         for _ in xrange(1, big_partition+1):
             # Update int columns
