@@ -845,6 +845,7 @@ class TTLWithMigrate(Tester):
             )
             self.session1.execute(stmt)
 
+        debug('Verifying that big_partition where pk = {} has {} rows'.format(big_partition, big_partition_rows))
         count_query = 'select count(*) from {}.{} where pk = {}'.format(keyspace_name, table_name, big_partition)
         scylla_big_partition_count = list(self.session1.execute(count_query, timeout=120))[0][0]
         self.assertTrue(scylla_big_partition_count == big_partition_rows,
@@ -932,6 +933,7 @@ class TTLWithMigrate(Tester):
 
         scylla_data_json, scylla_json_path = self._dump_data(cluster=self.cluster, node=node1, node_owner='Scylla', compaction=True)
 
+        debug('Verifying that big_partition where pk = {} has {} rows'.format(big_partition, big_partition_rows))
         count_query = 'select count(*) from {}.{} where pk = {}'.format(keyspace_name, table_name, big_partition)
         scylla_big_partition_count = list(self.session1.execute(count_query, timeout=120))[0][0]
         self.assertTrue(scylla_big_partition_count == big_partition_rows,
