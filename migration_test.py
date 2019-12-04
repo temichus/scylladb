@@ -811,7 +811,9 @@ class TTLWithMigrate(Tester):
                'PRIMARY KEY(pk, ck))'.format(table_name, ', '.join('c%d int' % i for i in xrange(1, int_columns)))
         self.session1.execute(stmt)
 
+        min_ttl = 120
         def create_update_command(ttl, column_expr, pk, ck, table_name=table_name):
+            assert ttl > min_ttl, "TTL {} must be greater than {}".format(ttl, min_ttl)
             return 'update {table_name} USING TTL {ttl} set {column_expr} where pk={pk} and ck={ck}'.format(**locals())
 
 
