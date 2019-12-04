@@ -845,6 +845,12 @@ class TTLWithMigrate(Tester):
             )
             self.session1.execute(stmt)
 
+        count_query = 'select count(*) from {}.{} where pk = {}'.format(keyspace_name, table_name, big_partition)
+        scylla_big_partition_count = list(self.session1.execute(count_query, timeout=120))[0][0]
+        self.assertTrue(scylla_big_partition_count == big_partition_rows,
+                        msg='Expected {big_partition_rows} rows in the big partition before update, but received '
+                            '{scylla_big_partition_count}'.format(**locals()))
+
         node1 = self.cluster.nodelist()[0]
         self.cluster.flush()
 
