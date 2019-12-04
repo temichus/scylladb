@@ -796,7 +796,7 @@ class TTLWithMigrate(Tester):
     def big_table_with_ttls_test(self):
         """
         Test validates migration from Scylla to Cassandra of large partition table with TTLs.
-         - Create the big table with different kind of columns, create 100 partitions with 1000 rows each partition and 1 partition with 100000 rows.
+         - Create the big table with different kind of columns, create 10 partitions with 1000 rows each partition and 1 partition with 100000 rows.
          - Run updates/removes on all columns
          - Take dump
          - Migrate data to Cassandra
