@@ -323,15 +323,16 @@ class CompactionAdditionalStrategyTests(Tester):
             for generation_suffix in xrange(10, 40):
                 self._copy_sstable_file(f, "9999%d" % generation_suffix)
 
-        before_start_count = len(glob.glob(os.path.join(keyspace_dir, 'cf' + '-*', '*-Data.db')))
+        before_start_sstables = sorted(glob.glob(os.path.join(keyspace_dir, 'cf' + '-*', '*-Data.db')))
 
         from_mark = node1.mark_log()
         node1.start()
-        node1.watch_log_for(r'compaction - Compacted [0-9]+ sstables to \[.+/data/ks/cf-.+\]', from_mark=from_mark)
+        node1.watch_log_for(r'compaction - (Compacted|Resharded) [0-9]+ sstables to \[.+/data/ks/cf-.+\]', from_mark=from_mark)
 
-        after_start_count = len(glob.glob(os.path.join(keyspace_dir, 'cf' + '-*', '*-Data.db')))
+        after_start_sstables = sorted(glob.glob(os.path.join(keyspace_dir, 'cf' + '-*', '*-Data.db')))
 
-        self.assertNotEqual(before_start_count, after_start_count)
+        self.assertNotEqual(before_start_sstables, after_start_sstables,
+                            "No compaction detected after restarting {}. SSTables in ks/cf: {}".format(node1.name, after_start_sstables))
 
     def _copy_sstable_file(self, file, generation):
         sstable_split_parts = os.path.basename(file).split('-')
