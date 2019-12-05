@@ -81,8 +81,43 @@ The command line --process-timeout must be set to a value much higher
 than the default of 10 or many tests fail with TimedOutException. A
 value of 7200 seems to work for all next-gating tests.
 
-The only thing the framework needs to know is
-the location of the (compiled) sources for Scylla. This is done by pointing
+### Running with relocatable packages
+
+The only thing needed is the location of the (compiled) sources for Scylla. This is done by pointing
+the `SCYLLA_VERSION` to shortname representing the directory in our `s3://downloads.scylladb.com`:
+
+```bash
+SCYLLA_VERSION=unstable/master:201910240141 nosetests  [nose parameters]
+```
+
+Getting the listings or the latest version can be done like that:
+```bash
+LATEST_MASTER_JOB_ID=`aws s3 ls downloads.scylladb.com/relocatable/unstable/master/ | tr -s ' ' | cut -d ' ' -f 3 | tr -d '\/'  | sort -g | tail -n 1`
+LATEST_SCYLA_VERSION=master:${LATEST_MASTER_JOB_ID}
+```
+
+### Running with relocatable packages from compiled tarballs
+
+Taking a relocatable using you own scylla core compiled package
+a tarball that was built by scylla [scripts/create-relocatable-package.py](https://github.com/scylladb/scylla/blob/master/scripts/create-relocatable-package.py)
+see scylla [docs/building-packages.md#scylla-server](https://github.com/scylladb/scylla/blob/master/docs/building-packages.md#scylla-server)
+
+**NOTE:** `~/.ccm/scylla-repository/unstable/master/201910240141` should be deleted, otherwise it would use it as is.
+ccm currently isn't very smart on the way it's caching the versions.
+
+```bash
+SCYLLA_VERSION=unstable/master:201910240141
+SCYLLA_CORE_PACKAGE=../scylla/build/dev/scylla-package.tar.gz
+nosetests [nose parameters]
+```
+
+Also `SCYLLA_JAVA_TOOLS_PACKAGE` or `SCYLLA_JMX_PACKAGE` can be used for replacing other relocatable packages relevant.
+
+All the `*_PACKAGE` environment variables can also point to public available files on http
+
+### Running from the compiled source
+
+The only thing needed is the location of the (compiled) sources for Scylla. This is done by pointing
 the `CASSANDRA_DIR` to the path of the Scylla repository:
 
     CASSANDRA_DIR=~/path/to/scylla nosetests --process-timeout=7200
