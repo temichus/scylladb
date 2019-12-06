@@ -796,7 +796,7 @@ class TTLWithMigrate(Tester):
     def big_table_with_ttls_test(self):
         """
         Test validates migration from Scylla to Cassandra of large partition table with TTLs.
-         - Create the big table with different kind of columns, create 100 partitions with 1000 rows each partition and 1 partition with 100000 rows.
+         - Create the big table with different kind of columns, create 10 partitions with 1000 rows each partition and 1 partition with 100000 rows.
          - Run updates/removes on all columns
          - Take dump
          - Migrate data to Cassandra
@@ -811,7 +811,9 @@ class TTLWithMigrate(Tester):
                'PRIMARY KEY(pk, ck))'.format(table_name, ', '.join('c%d int' % i for i in xrange(1, int_columns)))
         self.session1.execute(stmt)
 
+        min_ttl = 120
         def create_update_command(ttl, column_expr, pk, ck, table_name=table_name):
+            assert ttl > min_ttl, "TTL {} must be greater than {}".format(ttl, min_ttl)
             return 'update {table_name} USING TTL {ttl} set {column_expr} where pk={pk} and ck={ck}'.format(**locals())
 
 
@@ -821,13 +823,13 @@ class TTLWithMigrate(Tester):
         debug('Create {} partitions with {} rows'.format(partitions, rows_in_partition))
         for i in xrange(1, partitions+1):
             for k in xrange(1, rows_in_partition+1):
-                str = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(10))
+                s = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(10))
                 stmt = 'insert into {table_name} (pk, ck, {columns}, clist, cset, cmap) values ({ilist}, {klist}, {int_values}, ' \
                        '[{ilist}, {klist}], ' \
                        '{open}{set_value}{close}, {map_value})'.format(table_name=table_name,
                     columns=', '.join('c%d' % l for l in xrange(1, int_columns)),
                     int_values=', '.join('%d' % l for l in xrange(1, int_columns)), ilist=i, klist=k, open='{\'',
-                    set_value=str, close='\'}', map_value='{%d: \'%s\'}' % (k, str)
+                    set_value=s, close='\'}', map_value='{%d: \'%s\'}' % (k, s)
                 )
                 self.session1.execute(stmt)
 
@@ -835,21 +837,28 @@ class TTLWithMigrate(Tester):
         big_partition_rows = 100000
         debug('Create partition where pk = {} with {} rows'.format(big_partition, big_partition_rows))
         for k in xrange(1, big_partition_rows+1):
-            str = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(10))
+            s = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(10))
             stmt = 'insert into {table_name} (pk, ck, {columns}, clist, cset, cmap) values ({ilist}, {klist}, {int_values}, ' \
                    '[{ilist}, {klist}], ' \
                    '{open}{set_value}{close}, {map_value})'.format(table_name=table_name,
                 columns=', '.join('c%d' % l for l in xrange(1, int_columns)),
                 int_values=', '.join('%d' % l for l in xrange(1, int_columns)), ilist=big_partition, klist=k, open='{\'',
-                set_value=str, close='\'}', map_value='{%d: \'%s\'}' % (k, str)
+                set_value=s, close='\'}', map_value='{%d: \'%s\'}' % (k, s)
             )
             self.session1.execute(stmt)
+
+        debug('Verifying that big_partition where pk = {} has {} rows'.format(big_partition, big_partition_rows))
+        count_query = 'select count(*) from {}.{} where pk = {}'.format(keyspace_name, table_name, big_partition)
+        scylla_big_partition_count = list(self.session1.execute(count_query, timeout=120))[0][0]
+        self.assertTrue(scylla_big_partition_count == big_partition_rows,
+                        msg='Expected {big_partition_rows} rows in the big partition before update, but received '
+                            '{scylla_big_partition_count}'.format(**locals()))
 
         node1 = self.cluster.nodelist()[0]
         self.cluster.flush()
 
-        debug('Run updates')
         ttl_boundaries = [1800, 3600]
+        debug('Run updates using TTLs in the {} range'.format(ttl_boundaries))
 
         for _ in xrange(1, big_partition+1):
             # Update int columns
@@ -870,14 +879,14 @@ class TTLWithMigrate(Tester):
                                            column_expr='c%d = NULL' % (random.randint(1, int_columns-1)),
                                            pk=big_partition, ck=random.randint(1, big_partition_rows)))
             # Update collection columns
-            str = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(10))
+            s = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(10))
             # APPEND to set column - small partitions
             stmts.append(create_update_command(ttl=random.randint(ttl_boundaries[0], ttl_boundaries[1]),
-                                           column_expr='cset = cset+{\'%s\'}' % (str),
+                                           column_expr='cset = cset+{\'%s\'}' % (s),
                                            pk=random.randint(1, partitions), ck=random.randint(1, rows_in_partition)))
             # APPEND to set column - Big partition
             stmts.append(create_update_command(ttl=random.randint(ttl_boundaries[0], ttl_boundaries[1]),
-                                           column_expr='cset = cset+{\'%s\'}' % (str),
+                                           column_expr='cset = cset+{\'%s\'}' % (s),
                                            pk=big_partition, ck=random.randint(1, big_partition_rows)))
             # APPEND to list column - small partitions
             stmts.append(create_update_command(ttl=random.randint(ttl_boundaries[0], ttl_boundaries[1]),
@@ -889,19 +898,19 @@ class TTLWithMigrate(Tester):
                                            pk=big_partition, ck=random.randint(1, big_partition_rows)))
             # APPEND to map column - small partitions
             stmts.append(create_update_command(ttl=random.randint(ttl_boundaries[0], ttl_boundaries[1]),
-                                               column_expr='cmap = cmap+{%d: \'%s\'}' % (random.randint(0, 500000), str),
+                                               column_expr='cmap = cmap+{%d: \'%s\'}' % (random.randint(0, 500000), s),
                                                pk=random.randint(1, partitions), ck=random.randint(1, rows_in_partition)))
             # APPEND to map column - Big partition
             stmts.append(create_update_command(ttl=random.randint(ttl_boundaries[0], ttl_boundaries[1]),
-                                               column_expr='cmap = cmap+{%d: \'%s\'}' % (random.randint(0, 500000), str),
+                                               column_expr='cmap = cmap+{%d: \'%s\'}' % (random.randint(0, 500000), s),
                                                pk=big_partition, ck=random.randint(1, big_partition_rows)))
             # OVERWRITE set column - small partitions
             stmts.append(create_update_command(ttl=random.randint(ttl_boundaries[0], ttl_boundaries[1]),
-                                           column_expr='cset = {\'%s\'}' % (str),
+                                           column_expr='cset = {\'%s\'}' % (s),
                                            pk=random.randint(1, partitions), ck=random.randint(1, rows_in_partition)))
             # OVERWRITE set column - Big partition
             stmts.append(create_update_command(ttl=random.randint(ttl_boundaries[0], ttl_boundaries[1]),
-                                           column_expr='cset = {\'%s\'}' % (str),
+                                           column_expr='cset = {\'%s\'}' % (s),
                                            pk=big_partition, ck=random.randint(1, big_partition_rows)))
             # OVERWRITE list column - small partitions
             stmts.append(create_update_command(ttl=random.randint(ttl_boundaries[0], ttl_boundaries[1]),
@@ -913,12 +922,12 @@ class TTLWithMigrate(Tester):
                                            pk=big_partition, ck=random.randint(1, big_partition_rows)))
             # OVERWRITE map column - small partitions
             stmts.append(create_update_command(ttl=random.randint(ttl_boundaries[0], ttl_boundaries[1]),
-                                               column_expr='cmap = {%d: \'%s\'}' % (random.randint(0, 500000), str),
+                                               column_expr='cmap = {%d: \'%s\'}' % (random.randint(0, 500000), s),
                                                pk=random.randint(1, partitions),
                                                ck=random.randint(1, rows_in_partition)))
             # OVERWRITE map column - Big partition
             stmts.append(create_update_command(ttl=random.randint(ttl_boundaries[0], ttl_boundaries[1]),
-                                               column_expr='cmap = {%d: \'%s\'}' % (random.randint(0, 500000), str),
+                                               column_expr='cmap = {%d: \'%s\'}' % (random.randint(0, 500000), s),
                                                pk=big_partition, ck=random.randint(1, big_partition_rows)))
 
             for stmt in stmts:
@@ -926,6 +935,7 @@ class TTLWithMigrate(Tester):
 
         scylla_data_json, scylla_json_path = self._dump_data(cluster=self.cluster, node=node1, node_owner='Scylla', compaction=True)
 
+        debug('Verifying that big_partition where pk = {} has {} rows'.format(big_partition, big_partition_rows))
         count_query = 'select count(*) from {}.{} where pk = {}'.format(keyspace_name, table_name, big_partition)
         scylla_big_partition_count = list(self.session1.execute(count_query, timeout=120))[0][0]
         self.assertTrue(scylla_big_partition_count == big_partition_rows,
