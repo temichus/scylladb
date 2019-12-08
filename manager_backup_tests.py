@@ -1,9 +1,11 @@
 # coding: utf-8
 
 from datetime import datetime
+import os
 
 from cassandra import ConsistencyLevel
 from nose.plugins.attrib import attr
+from minio import Minio
 
 from dtest_scylla_manager import ScyllaManagerTool, ScyllaManagerError
 from dtest_scylla_manager import TaskStatus
@@ -17,6 +19,17 @@ class TestScyllaMgmtBackup(Tester):
     KEYSPACE_NAME = 'ks'
     DESTINATION_BUCKET = 'backup-bucket'
     FALSE_BUCKET = 'nonexistent_bucket'
+
+    @classmethod
+    def setUpClass(cls):
+        minio_address = os.getenv("AWS_S3_ENDPOINT").replace("http://", '').strip()
+        minio_client = Minio(endpoint=minio_address,
+                             access_key=os.getenv("AWS_ACCESS_KEY_ID"),
+                             secret_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+                             secure=False,
+                             region='us-east-1')
+        if not minio_client.bucket_exists(cls.DESTINATION_BUCKET):
+            minio_client.make_bucket(bucket_name=cls.DESTINATION_BUCKET, location='us-east-1')
 
     def config_and_create_cluster(self, nodes):
         self.cluster.populate(nodes).start(wait_for_binary_proto=False, wait_other_notice=False)
