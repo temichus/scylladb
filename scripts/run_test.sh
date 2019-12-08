@@ -126,6 +126,19 @@ else
     "
 fi
 
+# A link between the dtest docker to the minio docker
+if [[ -z ${MINIO_DOCKER_ID} ]]; then
+    export MINIO_DOCKER_LINK_PARAM=""
+    export DOCKER_NETWORK_PARAM="--network=bridge"  # TODO: Enhancement: replace the bridge with a network
+    # removed the --network=bridge from the docker run command specifically for manager testing,
+    # since docker sometimes does not allow to create a link when this attribute is set (even though it's the default)
+else
+    export MINIO_DOCKER_LINK_PARAM="--link ${MINIO_DOCKER_ID}:minio_server"
+    export DOCKER_NETWORK_PARAM=""
+    export AWS_S3_ENDPOINT="http://minio_server:9000"
+fi
+
+
 # if in jenkins also mount the workspace into docker
 if [[ -d ${WORKSPACE} ]]; then
 WORKSPACE_MNT="-v ${WORKSPACE}:${WORKSPACE}"
@@ -136,6 +149,7 @@ fi
 docker_cmd="docker run --detach=true \
     ${WORKSPACE_MNT} \
     ${DOCKER_COMMAND_PARAMS} \
+    ${MINIO_DOCKER_LINK_PARAM} \
     -v ${DTEST_DIR}:${DTEST_DIR} \
     -v ${CCM_DIR}:${CCM_DIR} \
     -e LOG_SAVED_DIR \
@@ -153,6 +167,9 @@ docker_cmd="docker run --detach=true \
     -e NODE_TOTAL \
     -e NODE_INDEX \
     -e SCYLLA_MANAGER_PACKAGE \
+    -e AWS_S3_ENDPOINT \
+    -e AWS_ACCESS_KEY_ID \
+    -e AWS_SECRET_ACCESS_KEY \
     -w ${DTEST_DIR} \
     -v /etc/passwd:/etc/passwd:ro \
     -v /etc/group:/etc/group:ro \
@@ -163,7 +180,8 @@ docker_cmd="docker run --detach=true \
     -v ${HOME}/.ccm:${HOME}/.ccm \
     -v ${HOME}/.certs:${HOME}/.certs \
     -v ${HOME}/.config:${HOME}/.config \
-    --network=bridge --privileged \
+    ${DOCKER_NETWORK_PARAM} \
+    --privileged \
     ${DOCKER_IMAGE} bash -c 'pip install --user -e ${CCM_DIR} ; export PATH=\$PATH:\${HOME}/.local/bin ; bash -c \"${INSTALL_CASSANDRA}\"; nosetests --nologcapture -v -s $*'"
 echo "Running Docker: $docker_cmd"
 container=$(eval $docker_cmd)
