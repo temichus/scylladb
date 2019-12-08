@@ -10,3 +10,4 @@ requests==2.21.0
 urwid==2.0.1
 nose-parallel==0.3.1
 https://github.com/scylladb/sstable-tools/archive/master.zip
+minio==5.0.5
