@@ -68,3 +68,4 @@ listsnapshots_test.py
 bypass_cache_test.py
 toppartitions_test.py
 like_operator_test.py
+paxos_tests.py

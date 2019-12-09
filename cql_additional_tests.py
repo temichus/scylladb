@@ -3399,9 +3399,8 @@ class TestCQL(Tester):
         session.execute("SELECT dateOf(t) FROM test")
 
     @since('2.0')
-    @skip("Not implemented: LWT")
     def conditional_update_test(self):
-        session = self.prepare()
+        session = self.prepare(experimental=True)
 
         session.execute("""
             CREATE TABLE test (
@@ -3413,11 +3412,11 @@ class TestCQL(Tester):
         """)
 
         # Shouldn't apply
-        assert_one(session, "UPDATE test SET v1 = 3, v2 = 'bar' WHERE k = 0 IF v1 = 4", [False])
-        assert_one(session, "UPDATE test SET v1 = 3, v2 = 'bar' WHERE k = 0 IF EXISTS", [False])
+        assert_one(session, "UPDATE test SET v1 = 3, v2 = 'bar' WHERE k = 0 IF v1 = 4", [False, None])
+        assert_one(session, "UPDATE test SET v1 = 3, v2 = 'bar' WHERE k = 0 IF EXISTS", [False, None, None, None, None])
 
         # Should apply
-        assert_one(session, "INSERT INTO test (k, v1, v2) VALUES (0, 2, 'foo') IF NOT EXISTS", [True])
+        assert_one(session, "INSERT INTO test (k, v1, v2) VALUES (0, 2, 'foo') IF NOT EXISTS", [True, None, None, None, None])
 
         # Shouldn't apply
         assert_one(session, "INSERT INTO test (k, v1, v2) VALUES (0, 5, 'bar') IF NOT EXISTS", [False, 0, 2, 'foo', None])
@@ -3428,8 +3427,8 @@ class TestCQL(Tester):
         assert_one(session, "SELECT * FROM test", [0, 2, 'foo', None])
 
         # Should apply (note: we want v2 before v1 in the statement order to exercise #5786)
-        assert_one(session, "UPDATE test SET v2 = 'bar', v1 = 3 WHERE k = 0 IF v1 = 2", [True])
-        assert_one(session, "UPDATE test SET v2 = 'bar', v1 = 3 WHERE k = 0 IF EXISTS", [True])
+        assert_one(session, "UPDATE test SET v2 = 'bar', v1 = 3 WHERE k = 0 IF v1 = 2", [True, 2])
+        assert_one(session, "UPDATE test SET v2 = 'bar', v1 = 3 WHERE k = 0 IF EXISTS", [True, 0, 3, 'bar', None])
         assert_one(session, "SELECT * FROM test", [0, 3, 'bar', None])
 
         # Shouldn't apply, only one condition is ok
@@ -3437,7 +3436,7 @@ class TestCQL(Tester):
         assert_one(session, "SELECT * FROM test", [0, 3, 'bar', None])
 
         # Should apply
-        assert_one(session, "UPDATE test SET v1 = 5, v2 = 'foobar' WHERE k = 0 IF v1 = 3 AND v2 = 'bar'", [True])
+        assert_one(session, "UPDATE test SET v1 = 5, v2 = 'foobar' WHERE k = 0 IF v1 = 3 AND v2 = 'bar'", [True, 3, 'bar'])
         assert_one(session, "SELECT * FROM test", [0, 5, 'foobar', None])
 
         # Shouldn't apply
@@ -3449,31 +3448,30 @@ class TestCQL(Tester):
         assert_one(session, "SELECT * FROM test", [0, 5, 'foobar', None])
 
         # Should apply
-        assert_one(session, "DELETE v2 FROM test WHERE k = 0 IF v1 = 5", [True])
+        assert_one(session, "DELETE v2 FROM test WHERE k = 0 IF v1 = 5", [True, 5])
         assert_one(session, "SELECT * FROM test", [0, 5, None, None])
 
         # Shouln't apply
         assert_one(session, "DELETE v1 FROM test WHERE k = 0 IF v3 = 4", [False, None])
 
         # Should apply
-        assert_one(session, "DELETE v1 FROM test WHERE k = 0 IF v3 = null", [True])
+        assert_one(session, "DELETE v1 FROM test WHERE k = 0 IF v3 = null", [True, None])
         assert_one(session, "SELECT * FROM test", [0, None, None, None])
 
         # Should apply
-        assert_one(session, "DELETE FROM test WHERE k = 0 IF v1 = null", [True])
+        assert_one(session, "DELETE FROM test WHERE k = 0 IF v1 = null", [True, None])
         assert_none(session, "SELECT * FROM test")
 
         # Shouldn't apply
-        assert_one(session, "UPDATE test SET v1 = 3, v2 = 'bar' WHERE k = 0 IF EXISTS", [False])
+        assert_one(session, "UPDATE test SET v1 = 3, v2 = 'bar' WHERE k = 0 IF EXISTS", [False, None, None, None, None])
 
         if self.cluster.version() > "2.1.1":
             # Should apply
-            assert_one(session, "DELETE FROM test WHERE k = 0 IF v1 IN (null)", [True])
+            assert_one(session, "DELETE FROM test WHERE k = 0 IF v1 IN (null)", [True, None])
 
     @since('2.0.7')
-    @skip("Not implemented: LWT")
     def conditional_delete_test(self):
-        session = self.prepare()
+        session = self.prepare(experimental=True)
 
         session.execute("""
             CREATE TABLE test (
@@ -3482,28 +3480,28 @@ class TestCQL(Tester):
             )
         """)
 
-        assert_one(session, "DELETE FROM test WHERE k=1 IF EXISTS", [False])
+        assert_one(session, "DELETE FROM test WHERE k=1 IF EXISTS", [False, None, None])
 
         session.execute("INSERT INTO test (k, v1) VALUES (1, 2)")
-        assert_one(session, "DELETE FROM test WHERE k=1 IF EXISTS", [True])
+        assert_one(session, "DELETE FROM test WHERE k=1 IF EXISTS", [True, 1, 2])
         assert_none(session, "SELECT * FROM test WHERE k=1")
-        assert_one(session, "DELETE FROM test WHERE k=1 IF EXISTS", [False])
+        assert_one(session, "DELETE FROM test WHERE k=1 IF EXISTS", [False, None, None])
 
         session.execute("UPDATE test USING TTL 1 SET v1=2 WHERE k=1")
         time.sleep(1.5)
-        assert_one(session, "DELETE FROM test WHERE k=1 IF EXISTS", [False])
+        assert_one(session, "DELETE FROM test WHERE k=1 IF EXISTS", [False, None, None])
         assert_none(session, "SELECT * FROM test WHERE k=1")
 
         session.execute("INSERT INTO test (k, v1) VALUES (2, 2) USING TTL 1")
         time.sleep(1.5)
-        assert_one(session, "DELETE FROM test WHERE k=2 IF EXISTS", [False])
+        assert_one(session, "DELETE FROM test WHERE k=2 IF EXISTS", [False, None, None])
         assert_none(session, "SELECT * FROM test WHERE k=2")
 
         session.execute("INSERT INTO test (k, v1) VALUES (3, 2)")
-        assert_one(session, "DELETE v1 FROM test WHERE k=3 IF EXISTS", [True])
+        assert_one(session, "DELETE v1 FROM test WHERE k=3 IF EXISTS", [True, 3, 2])
         assert_one(session, "SELECT * FROM test WHERE k=3", [3, None])
-        assert_one(session, "DELETE v1 FROM test WHERE k=3 IF EXISTS", [True])
-        assert_one(session, "DELETE FROM test WHERE k=3 IF EXISTS", [True])
+        assert_one(session, "DELETE v1 FROM test WHERE k=3 IF EXISTS", [True, 3, None])
+        assert_one(session, "DELETE FROM test WHERE k=3 IF EXISTS", [True, 3, None])
 
         # static columns
         session.execute("""
@@ -3516,10 +3514,10 @@ class TestCQL(Tester):
             )""")
 
         session.execute("INSERT INTO test2 (k, s, i, v) VALUES ('k', 's', 0, 'v')")
-        assert_one(session, "DELETE v FROM test2 WHERE k='k' AND i=0 IF EXISTS", [True])
-        assert_one(session, "DELETE FROM test2 WHERE k='k' AND i=0 IF EXISTS", [True])
-        assert_one(session, "DELETE v FROM test2 WHERE k='k' AND i=0 IF EXISTS", [False])
-        assert_one(session, "DELETE FROM test2 WHERE k='k' AND i=0 IF EXISTS", [False])
+        assert_one(session, "DELETE v FROM test2 WHERE k='k' AND i=0 IF EXISTS", [True, 'k', 0, 's', 'v'])
+        assert_one(session, "DELETE FROM test2 WHERE k='k' AND i=0 IF EXISTS", [True, 'k', 0, 's', None])
+        assert_one(session, "DELETE v FROM test2 WHERE k='k' AND i=0 IF EXISTS", [False, None, None, None, None])
+        assert_one(session, "DELETE FROM test2 WHERE k='k' AND i=0 IF EXISTS", [False, None, None, None, None])
 
         # CASSANDRA-6430
         v = self.cluster.version()
@@ -3731,16 +3729,15 @@ class TestCQL(Tester):
         session.execute("INSERT INTO test(k) VALUES (0)")
         assert_one(session, "SELECT dateOf(t) FROM test WHERE k=0", [None])
 
-    @skip("Not implemented: LWT")
     def cas_simple_test(self):
-        session = self.prepare(nodes=3, rf=3)
+        session = self.prepare(nodes=3, rf=3, experimental=True)
 
         session.execute("CREATE TABLE tkns (tkn int, consumed boolean, PRIMARY KEY (tkn));")
 
         for i in range(1, 10):
             query = SimpleStatement("INSERT INTO tkns (tkn, consumed) VALUES (%i,FALSE);" % i, consistency_level=ConsistencyLevel.QUORUM)
             session.execute(query)
-            assert_one(session, "UPDATE tkns SET consumed = TRUE WHERE tkn = %i IF consumed = FALSE;" % i, [True], cl=ConsistencyLevel.QUORUM)
+            assert_one(session, "UPDATE tkns SET consumed = TRUE WHERE tkn = %i IF consumed = FALSE;" % i, [True, False], cl=ConsistencyLevel.QUORUM)
             assert_one(session, "UPDATE tkns SET consumed = TRUE WHERE tkn = %i IF consumed = FALSE;" % i, [False, True], cl=ConsistencyLevel.QUORUM)
 
     @skip('indexes')
@@ -3759,9 +3756,8 @@ class TestCQL(Tester):
         assert_invalid(session, "SELECT * FROM test WHERE a = 3 AND b IN (1, 3)")
 
     @since('2.0')
-    @skip("Not implemented: LWT")
     def bug_6069_test(self):
-        session = self.prepare()
+        session = self.prepare(experimental=True)
 
         session.execute("""
             CREATE TABLE test (
@@ -3770,7 +3766,7 @@ class TestCQL(Tester):
             )
         """)
 
-        assert_one(session, "INSERT INTO test(k, s) VALUES (0, {1, 2, 3}) IF NOT EXISTS", [True])
+        assert_one(session, "INSERT INTO test(k, s) VALUES (0, {1, 2, 3}) IF NOT EXISTS", [True, None, None])
         assert_one(session, "SELECT * FROM test", [0, {1, 2, 3}])
 
     def bug_6115_test(self):
@@ -3948,9 +3944,8 @@ class TestCQL(Tester):
         assert_all(session, "SELECT * FROM test", [[0, 1, None, 1], [0, 2, None, 2]])
 
     @since('2.0')
-    @skip("Not implemented: LWT")
     def static_columns_cas_test(self):
-        session = self.prepare()
+        session = self.prepare(experimental=True)
 
         session.execute("""
             CREATE TABLE test (
@@ -3966,19 +3961,19 @@ class TestCQL(Tester):
         # is provided, but concerns the CQL3 row targetted by the clustering columns otherwise
         session.execute("INSERT INTO test(id, k, v) VALUES (1, 'foo', 'foo')")
         assert_one(session, "INSERT INTO test(id, k, version) VALUES (1, 'foo', 1) IF NOT EXISTS", [False, 1, 'foo', None, 'foo'])
-        assert_one(session, "INSERT INTO test(id, version) VALUES (1, 1) IF NOT EXISTS", [True])
+        assert_one(session, "INSERT INTO test(id, version) VALUES (1, 1) IF NOT EXISTS", [True, 1, 'foo', None, 'foo'])
         assert_one(session, "SELECT * FROM test", [1, 'foo', 1, 'foo'])
         session.execute("DELETE FROM test WHERE id = 1")
 
         session.execute("INSERT INTO test(id, version) VALUES (0, 0)")
 
-        assert_one(session, "UPDATE test SET v='foo', version=1 WHERE id=0 AND k='k1' IF version = 0", [True])
+        assert_one(session, "UPDATE test SET v='foo', version=1 WHERE id=0 AND k='k1' IF version = 0", [True, 0])
         assert_all(session, "SELECT * FROM test", [[0, 'k1', 1, 'foo']])
 
         assert_one(session, "UPDATE test SET v='bar', version=1 WHERE id=0 AND k='k2' IF version = 0", [False, 1])
         assert_all(session, "SELECT * FROM test", [[0, 'k1', 1, 'foo']])
 
-        assert_one(session, "UPDATE test SET v='bar', version=2 WHERE id=0 AND k='k2' IF version = 1", [True])
+        assert_one(session, "UPDATE test SET v='bar', version=2 WHERE id=0 AND k='k2' IF version = 1", [True, 1])
         assert_all(session, "SELECT * FROM test", [[0, 'k1', 2, 'foo'], [0, 'k2', 2, 'bar']])
 
         # Testing batches
@@ -3989,7 +3984,7 @@ class TestCQL(Tester):
                        UPDATE test SET v='barfoo' WHERE id=0 AND k='k2';
                        UPDATE test SET version=3 WHERE id=0 IF version=1;
                      APPLY BATCH
-                   """, [False, 0, None, 2])
+                   """, [False, 0, 'k1', 2])
 
         assert_one(session,
                    """
@@ -3998,7 +3993,7 @@ class TestCQL(Tester):
                        UPDATE test SET v='barfoo' WHERE id=0 AND k='k2';
                        UPDATE test SET version=3 WHERE id=0 IF version=2;
                      APPLY BATCH
-                   """, [True])
+                   """, [True, 0, 'k1', 2])
         assert_all(session, "SELECT * FROM test", [[0, 'k1', 3, 'foobar'], [0, 'k2', 3, 'barfoo']])
 
         assert_all(session,
@@ -4010,14 +4005,14 @@ class TestCQL(Tester):
                    APPLY BATCH
                    """, [[False, 0, 'k1', 3, 'foobar'], [False, 0, 'k2', 3, 'barfoo']])
 
-        assert_one(session,
+        assert_all(session,
                    """
                      BEGIN BATCH
                        UPDATE test SET version=4 WHERE id=0 IF version=3;
                        UPDATE test SET v='row1' WHERE id=0 AND k='k1' IF v='foobar';
                        UPDATE test SET v='row2' WHERE id=0 AND k='k2' IF v='barfoo';
                      APPLY BATCH
-                   """, [True])
+                   """, [[True, 0, 'k1', 3, 'foobar'], [True, 0, 'k2', 3, 'barfoo']])
         assert_all(session, "SELECT * FROM test", [[0, 'k1', 4, 'row1'], [0, 'k2', 4, 'row2']])
 
         assert_invalid(session,
@@ -4035,7 +4030,7 @@ class TestCQL(Tester):
                        INSERT INTO TEST (id, k, v) VALUES(1, 'k1', 'val1') IF NOT EXISTS;
                        INSERT INTO TEST (id, k, v) VALUES(1, 'k2', 'val2') IF NOT EXISTS;
                      APPLY BATCH
-                   """, [True])
+                   """, [True, None, None, None, None])
         assert_all(session, "SELECT * FROM test WHERE id=1", [[1, 'k1', None, 'val1'], [1, 'k2', None, 'val2']])
 
         assert_one(session,
@@ -4061,7 +4056,7 @@ class TestCQL(Tester):
                        UPDATE test SET v='newVal' WHERE id=1 AND k='k2' IF v='val2';
                        INSERT INTO TEST (id, k, v, version) VALUES(1, 'k3', 'val3', 1) IF NOT EXISTS;
                      APPLY BATCH
-                   """, [True])
+                   """, [True, 1, 'k2', None, 'val2'])
         assert_all(session, "SELECT * FROM test WHERE id=1", [[1, 'k1', 1, 'val1'], [1, 'k2', 1, 'newVal'], [1, 'k3', 1, 'val3']])
 
         if self.cluster.version() >= '2.1':
@@ -4222,15 +4217,14 @@ class TestCQL(Tester):
             assert_one(session, "select count(*) from test where field3 = false limit 1;", [1])
 
     @since('2.0')
-    @skip("Not implemented: LWT")
     def cas_and_ttl_test(self):
-        session = self.prepare()
+        session = self.prepare(experimental=True)
         session.execute("CREATE TABLE test (k int PRIMARY KEY, v int, lock boolean)")
 
         session.execute("INSERT INTO test (k, v, lock) VALUES (0, 0, false)")
         session.execute("UPDATE test USING TTL 1 SET lock=true WHERE k=0")
         time.sleep(2)
-        assert_one(session, "UPDATE test SET v = 1 WHERE k = 0 IF lock = null", [True])
+        assert_one(session, "UPDATE test SET v = 1 WHERE k = 0 IF lock = null", [True, None])
 
     @since('2.1')
     @require('2029')
@@ -4371,14 +4365,13 @@ class TestCQL(Tester):
         assert_all(session, "SELECT * FROM test WHERE k=0 AND c1 = 0 AND c2 IN (2, 0) ORDER BY c1 DESC", [[0, 0, 2], [0, 0, 0]])
 
     @since('2.0')
-    @skip("Not implemented: LWT")
     def cas_and_compact_test(self):
         """
         @jira_ticket CASSANDRA-6813
 
         Test for CAS with compact storage table, and #6813 in particular.
         """
-        session = self.prepare()
+        session = self.prepare(experimental=True)
 
         session.execute("""
             CREATE TABLE lock (
@@ -4390,18 +4383,17 @@ class TestCQL(Tester):
         """)
 
         session.execute("INSERT INTO lock(partition, key, owner) VALUES ('a', 'b', null)")
-        assert_one(session, "UPDATE lock SET owner='z' WHERE partition='a' AND key='b' IF owner=null", [True])
+        assert_one(session, "UPDATE lock SET owner='z' WHERE partition='a' AND key='b' IF owner=null", [True, None])
 
         assert_one(session, "UPDATE lock SET owner='b' WHERE partition='a' AND key='b' IF owner='a'", [False, 'z'])
-        assert_one(session, "UPDATE lock SET owner='b' WHERE partition='a' AND key='b' IF owner='z'", [True])
+        assert_one(session, "UPDATE lock SET owner='b' WHERE partition='a' AND key='b' IF owner='z'", [True, 'z'])
 
-        assert_one(session, "INSERT INTO lock(partition, key, owner) VALUES ('a', 'c', 'x') IF NOT EXISTS", [True])
+        assert_one(session, "INSERT INTO lock(partition, key, owner) VALUES ('a', 'c', 'x') IF NOT EXISTS", [True, None, None, None])
 
     @since('2.0')
-    @skip("Not implemented: LWT")
     def list_item_conditional_test(self):
         # Lists
-        session = self.prepare()
+        session = self.prepare(experimental=True)
 
         frozen_values = (False, True) if self.cluster.version() >= "2.1.3" else (False,)
         for frozen in frozen_values:
@@ -4425,13 +4417,12 @@ class TestCQL(Tester):
             assert_one(session, "DELETE FROM tlist WHERE k=0 IF l[1] = 'foobar'", [False, ['foo', 'bar', 'foobar']])
             assert_one(session, "SELECT * FROM tlist", [0, ['foo', 'bar', 'foobar']])
 
-            assert_one(session, "DELETE FROM tlist WHERE k=0 IF l[1] = 'bar'", [True])
+            assert_one(session, "DELETE FROM tlist WHERE k=0 IF l[1] = 'bar'", [True, ['foo', 'bar', 'foobar']])
             assert_none(session, "SELECT * FROM tlist")
 
     @since('2.0')
-    @skip("Not implemented: LWT")
     def map_item_conditional_test(self):
-        session = self.prepare()
+        session = self.prepare(experimental=True)
 
         frozen_values = (False, True) if self.cluster.version() >= "2.1.3" else (False,)
         for frozen in frozen_values:
@@ -4450,7 +4441,7 @@ class TestCQL(Tester):
             assert_one(session, "DELETE FROM tmap WHERE k=0 IF m['foo'] = null", [False, {'foo': 'bar'}])
             assert_one(session, "SELECT * FROM tmap", [0, {'foo': 'bar'}])
 
-            assert_one(session, "DELETE FROM tmap WHERE k=0 IF m['foo'] = 'bar'", [True])
+            assert_one(session, "DELETE FROM tmap WHERE k=0 IF m['foo'] = 'bar'", [True, {'foo': 'bar'}])
             assert_none(session, "SELECT * FROM tmap")
 
             if self.cluster.version() > "2.1.1":
@@ -4458,7 +4449,7 @@ class TestCQL(Tester):
                 if frozen:
                     assert_invalid(session, "UPDATE tmap set m['foo'] = 'bar', m['bar'] = 'foo' WHERE k = 1 IF m['foo'] IN ('blah', null)")
                 else:
-                    assert_one(session, "UPDATE tmap set m['foo'] = 'bar', m['bar'] = 'foo' WHERE k = 1 IF m['foo'] IN ('blah', null)", [True])
+                    assert_one(session, "UPDATE tmap set m['foo'] = 'bar', m['bar'] = 'foo' WHERE k = 1 IF m['foo'] IN ('blah', null)", [True, None])
 
     @since("2.0")
     def static_with_limit_test(self):
@@ -5410,11 +5401,12 @@ class TestCQL(Tester):
 @attr('dtest-full')
 class CQLAdditionalTests(Tester):
 
-    def prepare(self):
+    def prepare(self, experimental=False):
         """
         Sets up cluster to test against.
         """
         cluster = self.cluster
+        cluster.set_configuration_options(values={'experimental': experimental})
         cluster.populate(1).start()
         return cluster
 
@@ -5466,7 +5458,7 @@ class CQLAdditionalTests(Tester):
     @attr('next-gating')
     @attr('dtest-debug')
     def lightweight_transaction_test(self):
-        cluster = self.prepare()
+        cluster = self.prepare(experimental=True)
         node = cluster.nodelist()[0]
 
         session = self.patient_cql_connection(node)
@@ -5485,18 +5477,7 @@ class CQLAdditionalTests(Tester):
         c = """INSERT INTO ks.users (login, email, name)
             values ('{}', '{}', '{}')
             IF NOT EXISTS""".format(row[0], row[1], row[2])
-        try:
-            session.execute(c)
-        except Exception, e:
-            if e.message != "Paxos is currently disabled. Start Scylla with --experimental-features=lwt to enable.":
-                assert e.code == 0000 and e.message == "Not implemented: LWT", e
-                return
-            debug("Restart node with experimental=on and retry...")
-            node.stop()
-            node.start(wait_for_binary_proto=True, jvm_args=['--experimental', 'on'])
-
-            session = self.patient_cql_connection(node)
-            session.execute(c)
+        session.execute(c)
 
         debug("Make sure the row is not updated if it exists...")
         c = """INSERT INTO ks.users (login, email, name)

@@ -22,6 +22,8 @@ class TestPaxos(Tester):
         if (use_cache):
             cluster.set_configuration_options(values={'row_cache_size_in_mb': 100})
 
+        cluster.set_configuration_options(values={'experimental': True})
+
         cluster.populate(nodes).start()
         node1 = cluster.nodelist()[0]
         time.sleep(0.2)
@@ -78,7 +80,6 @@ class TestPaxos(Tester):
         session.execute("INSERT INTO test (k, v) VALUES (6, 6) IF NOT EXISTS")
 
     def contention_test_multi_iterations(self):
-        self.skipTest("Hanging the build")
         self._contention_test(8, 100)
 
     # Warning, this test will require you to raise the open
