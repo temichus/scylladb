@@ -278,12 +278,17 @@ class SCTool(object):
     def parse_result_table(self, stdout):
         parsed_table = []
         lines = stdout.split('\n')
-        filtered_lines = [line for line in lines if
-                          not (line.startswith('╭') or line.startswith('├') or line.startswith(
-                              '╰'))]  # filter out the dashes lines
-        filtered_lines = [line for line in filtered_lines if line]
+        filtered_lines = [line for line in lines if line]
+        if filtered_lines:
+            if '╭' in stdout:
+                filtered_lines = [line.replace('│', "|") for line in filtered_lines if
+                                  not (line.startswith('╭') or line.startswith('├') or line.startswith(
+                                      '╰'))]  # filter out the dashes lines
+            else:
+                filtered_lines = [line for line in filtered_lines if
+                                  not line.startswith('+')]  # filter out the dashes lines
         for line in filtered_lines:
-            list_line = [s if s else 'EMPTY' for s in line.split("│")]  # filter out spaces and "|" column seperators
+            list_line = [s if s else 'EMPTY' for s in line.split("|")]  # filter out spaces and "|" column seperators
             list_line_no_spaces = [s.split() for s in list_line if s != 'EMPTY']
             list_line_with_multiple_words_join = []
             for words in list_line_no_spaces:
