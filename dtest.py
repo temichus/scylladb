@@ -969,10 +969,10 @@ class Tester(TestCase):
     def __filter_errors(self, errors, patterns=None):
         """Filter errors, removing those that match patterns"""
         if not patterns:
-            if not hasattr(self, 'ignore_log_patterns'):
-                self.ignore_log_patterns = []
-            self.ignore_log_patterns.append(r'.*Compaction for .* deliberately stopped.*')
-            patterns = self.ignore_log_patterns
+            patterns = []
+        if hasattr(self, 'ignore_log_patterns'):
+            patterns += self.ignore_log_patterns
+        patterns.append(r'.*Compaction for .* deliberately stopped.*')
         for e in errors:
             for pattern in patterns:
                 if re.search(pattern, e):
