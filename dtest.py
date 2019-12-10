@@ -994,8 +994,11 @@ class Tester(TestCase):
 
         if errors:
             assert False, '\n'.join(list(errors))
-        else:
-            self.allow_log_errors = True
+
+        if exclude_errors:
+            if not hasattr(self, 'ignore_log_patterns'):
+                self.ignore_log_patterns = []
+            self.ignore_log_patterns = list(set(self.ignore_log_patterns + exclude_errors))
 
     def check_errors_all_nodes(self, nodes=None, exclude_errors=None, search_str=None, regex=False):
         if nodes is None:
