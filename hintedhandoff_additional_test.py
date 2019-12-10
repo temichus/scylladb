@@ -99,8 +99,7 @@ class TestHintedHandoff(Tester):
 
         If hints don't work the rows that were intended for node3 will be missing.
         """
-        shards_count = 2
-        self.__start_cluster_with_hints(num=3, custom_args=["--smp", "{}".format(shards_count)])
+        self.__start_cluster_with_hints(num=3)
 
         [node1, node2, node3] = self.cluster.nodelist()
         session = self.patient_cql_connection(node1)
@@ -129,10 +128,10 @@ class TestHintedHandoff(Tester):
         wait_until = time.time() + timeout
         debug("Waiting {}s for hints to be sent...".format(timeout))
 
-        # We wait twice on each shard because there are two hints managers: one for regular writes and one for views
-        msgs = ['hints_manager - drain_for: finished draining {}'.format(node3_addr)] * (2 * shards_count)
-
         for (node, from_mark) in marks:
+            # We wait twice on each shard because there are two hints managers: one for regular writes and one for views
+            msgs = ['hints_manager - drain_for: finished draining {}'.format(node3_addr)] * (2 * node._smp)
+
             node_timeout = min(wait_until - time.time(), 1)
             node.watch_log_for(msgs, from_mark=from_mark, timeout=node_timeout)
 
