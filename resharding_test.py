@@ -23,7 +23,6 @@ class ReshardingTest(Tester):
     __test__ = False
     def __init__(self, *args, **kwargs):
         super(ReshardingTest, self).__init__(*args, **kwargs)
-        self._multiprocess_can_split_ = False
         self.compaction_strategy = self.compaction_strategy if hasattr(self, 'compaction_strategy') else 'LeveledCompactionStrategy'
         self.smp = self.smp if hasattr(self, 'smp') else self.DEFAULT_SMP
         self.murmur3 = self.murmur3 if hasattr(self, 'murmur3') else self.DEFAULT_MURMUR3_PARTITIONER
