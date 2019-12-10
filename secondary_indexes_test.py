@@ -11,9 +11,9 @@ from dtest import Tester, debug, flaky_with_tear_down
 from tools import since, require, rows_to_list, new_node
 from assertions import assert_all, assert_invalid, assert_one, assert_row_count, assert_none, assert_expected_error, \
                         assert_row_count_in_select
-from scylla_tools import index_is_built, get_index_view_name, view_built_status_query, check_errors, \
+from scylla_tools import index_is_built, get_index_view_name, view_built_status_query, \
                          get_entity_id, get_truncated_time_from_system_local, get_truncated_time_from_system_truncated, \
-                         wait_for_view_build_start, remove_node, check_errors_all_nodes, generate_random_text, \
+                         wait_for_view_build_start, remove_node, generate_random_text, \
                          get_view_id, wait_for_schema_agreement
 
 from cassandra import ConsistencyLevel, InvalidRequest, WriteFailure
@@ -492,7 +492,7 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
                                         session, column_name='b', value_length=value_length,
                                         expect_message=expect_message)
 
-        self.allow_log_errors = check_errors_all_nodes(self.cluster.nodelist(), exclude_errors=expect_message)
+        self.check_errors_all_nodes(exclude_errors=expect_message)
 
     @skip('Not relevant for Scylla - manual index rebuild is not supported')
     def test_manual_rebuild_index(self):
@@ -652,8 +652,9 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
         assert_invalid(session, 'SELECT * FROM {0} WHERE {1} = 0x00'.format(table_name, index_column),
                        matching='use ALLOW FILTERING', expected=Exception)
 
-        self.allow_log_errors = check_errors(node, ['Can\'t find a column family with UUID {}'.format(view_id),
-                                                    'mutation_write_failure_exception'], search_str='ERROR')
+        exclude_errors = ['Can\'t find a column family with UUID {}'.format(view_id),
+                          'mutation_write_failure_exception']
+        self.check_errors(node, exclude_errors=exclude_errors)
 
     def test_multi_index_filtering_query(self):
         """
@@ -1091,12 +1092,11 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
         assert_row_count_in_select(session=session, query="SELECT * FROM {}".format(view_name),
                                    num_rows_expected=num_rows, consistency_level=ConsistencyLevel.QUORUM)
 
-        self.allow_log_errors = check_errors(self.cluster.nodelist()[0],
-                                             ['Can\'t send migration request: node {} is down'.format(node2_ip),
-                                              'Error applying view update to {}: exceptions::unavailable_exception (Cannot achieve consistency level for cl ONE. Requires 1, alive 0)'.format(node2_ip),
-                                              'Error applying view update to {}: exceptions::mutation_write_timeout_exception (Operation timed out for {}.{}_index - received only 0 responses from 1 CL=ONE.)'.format(node2_ip, keyspace_name, index_name),
-                                              'Operation timed out for ks.b_index_index - received only 0 responses from 1 CL=ONE.'],
-                                             search_str='ERROR')
+        exclude_errors = ['Can\'t send migration request: node {} is down'.format(node2_ip),
+                          'Error applying view update to {}: exceptions::unavailable_exception (Cannot achieve consistency level for cl ONE. Requires 1, alive 0)'.format(node2_ip),
+                          'Error applying view update to {}: exceptions::mutation_write_timeout_exception (Operation timed out for {}\.{}_index - received only 0 responses from 1 CL=ONE.)'.format(node2_ip, keyspace_name, index_name),
+                          'Operation timed out for ks.b_index_index - received only 0 responses from 1 CL=ONE.']
+        self.check_errors(self.cluster.nodelist()[0], exclude_errors=exclude_errors)
 
     def test_stop_node_after_index_build(self):
         """
@@ -1160,9 +1160,7 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
         assert_row_count_in_select(session=session, query="SELECT * FROM {}".format(view_name),
                                    num_rows_expected=num_rows, consistency_level=ConsistencyLevel.QUORUM)
 
-        self.allow_log_errors = check_errors(self.cluster.nodelist()[0],
-                                             ['Can\'t send migration request: node {} is down'.format(node2_ip)],
-                                             search_str='ERROR')
+        self.check_errors(self.cluster.nodelist()[0], ['Can\'t send migration request: node {} is down'.format(node2_ip)])
 
 
 @attr('dtest-full')
@@ -1847,7 +1845,7 @@ class TestLocalIndexes(Tester, SecondaryIndexesHelpers):
             "INSERT INTO %s (a, b) VALUES (0, ?)",
             session, column_name='b', value_length=value_length, expect_message=expect_message)
 
-        self.allow_log_errors = check_errors_all_nodes(self.cluster.nodelist(), exclude_errors=expect_message)
+        self.check_errors_all_nodes(self.cluster.nodelist(), exclude_errors=expect_message)
 
     def test_drop_local_index_while_building(self):
         """
@@ -1891,8 +1889,9 @@ class TestLocalIndexes(Tester, SecondaryIndexesHelpers):
         assert_invalid(session, 'SELECT * FROM {0} WHERE {1} = 0x00'.format(table_name, index_column),
                        matching='use ALLOW FILTERING', expected=Exception)
 
-        self.allow_log_errors = check_errors(node, ['Can\'t find a column family with UUID {}'.format(view_id),
-                                                    'mutation_write_failure_exception'], search_str='ERROR')
+        exclude_errors = ['Can\'t find a column family with UUID {}'.format(view_id),
+                          'mutation_write_failure_exception']
+        self.check_errors(node, exclude_errors=exclude_errors)
 
     def test_truncate_base_with_local_index(self):
         """
@@ -2136,11 +2135,10 @@ class TestLocalIndexes(Tester, SecondaryIndexesHelpers):
         assert_row_count_in_select(session=session, query="SELECT * FROM {}".format(view_name),
                                    num_rows_expected=num_rows, consistency_level=ConsistencyLevel.QUORUM)
 
-        self.allow_log_errors = check_errors(self.cluster.nodelist()[0],
-                                             ['Can\'t send migration request: node {} is down'.format(node2_ip),
-                                              'Error applying view update to {}: exceptions::unavailable_exception (Cannot achieve consistency level for cl ONE. Requires 1, alive 0)'.format(node2_ip),
-                                              'Operation timed out for ks.b_index_index - received only 0 responses from 1 CL=ONE.'],
-                                             search_str='ERROR')
+        exclude_errors = ['Can\'t send migration request: node {} is down'.format(node2_ip),
+                          'Error applying view update to {}: exceptions::unavailable_exception (Cannot achieve consistency level for cl ONE. Requires 1, alive 0)'.format(node2_ip),
+                          'Operation timed out for ks.b_index_index - received only 0 responses from 1 CL=ONE.']
+        self.check_errors(self.cluster.nodelist()[0], exclude_errors=exclude_errors)
 
     def test_stop_node_after_local_index_build(self):
         """
@@ -2204,9 +2202,7 @@ class TestLocalIndexes(Tester, SecondaryIndexesHelpers):
         assert_row_count_in_select(session=session, query="SELECT * FROM {}".format(view_name),
                                    num_rows_expected=num_rows, consistency_level=ConsistencyLevel.QUORUM)
 
-        self.allow_log_errors = check_errors(self.cluster.nodelist()[0],
-                                             ['Can\'t send migration request: node {} is down'.format(node2_ip)],
-                                             search_str='ERROR')
+        self.check_errors(self.cluster.nodelist()[0], ['Can\'t send migration request: node {} is down'.format(node2_ip)])
 
 class DtestTimeoutError(Exception):
     pass

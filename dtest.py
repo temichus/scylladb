@@ -966,17 +966,42 @@ class Tester(TestCase):
         else:
             debug("Jacoco agent not found or is not file. Execution will not be recorded.")
 
-    def __filter_errors(self, errors):
-        """Filter errors, removing those that match self.ignore_log_patterns"""
-        if not hasattr(self, 'ignore_log_patterns'):
-            self.ignore_log_patterns = []
-        self.ignore_log_patterns.append(r'.*Compaction for .* deliberately stopped.*')
+    def __filter_errors(self, errors, patterns=None):
+        """Filter errors, removing those that match patterns"""
+        if not patterns:
+            if not hasattr(self, 'ignore_log_patterns'):
+                self.ignore_log_patterns = []
+            self.ignore_log_patterns.append(r'.*Compaction for .* deliberately stopped.*')
+            patterns = self.ignore_log_patterns
         for e in errors:
-            for pattern in self.ignore_log_patterns:
+            for pattern in patterns:
                 if re.search(pattern, e):
                     break
             else:
                 yield e
+
+    def check_errors(self, node, exclude_errors=None, search_str=None, from_mark=None, regex=False):
+        if from_mark != None:
+            node.error_mark = from_mark
+        errors = node.grep_log_for_errors(distinct_errors=True, search_str=search_str)
+
+        if exclude_errors:
+            if not isinstance(exclude_errors, list):
+                exclude_errors = [exclude_errors]
+            if not regex:
+                exclude_errors = [re.escape(ee) for ee in list(exclude_errors)]
+            errors = list(self.__filter_errors(errors, exclude_errors))
+
+        if errors:
+            assert False, '\n'.join(list(errors))
+        else:
+            self.allow_log_errors = True
+
+    def check_errors_all_nodes(self, nodes=None, exclude_errors=None, search_str=None, regex=False):
+        if nodes is None:
+            nodes = self.cluster.nodelist()
+        for node in nodes:
+            self.check_errors(node=node, exclude_errors=exclude_errors, search_str=search_str, regex=regex)
 
     def get_ip_from_node(self, node):
         if node.network_interfaces['binary']:

@@ -318,25 +318,8 @@ class TestMaterializedViews(Tester):
         """
         self._add_dc_during_mv_change('insert', 3, 4, start_prefill=1000, more_inserts=300000)
 
-    def _check_errors(self, node, exclude_errors):
-        errors = node.grep_log_for_errors(distinct_errors=True)
-
-        if exclude_errors:
-            if isinstance(exclude_errors, str):
-                expr = re.compile(exclude_errors)
-            elif isinstance(exclude_errors, list):
-                expr = re.compile('|'.join(exclude_errors))
-            elif isinstance(exclude_errors, re._pattern_type):
-                expr = exclude_errors
-            errors = [error for error in list(errors) if not expr.search(error)]
-
-        if errors:
-            assert False, '\n'.join(list(errors))
-        else:
-            self.allow_log_errors = True
-
     def _validate_cs_results(self, node, exclude_errors, node_action, double_failure, cl=None, num_attempts=1):
-        self._check_errors(node, exclude_errors)
+        self.check_errors(node, exclude_errors)
         session = self.patient_exclusive_cql_connection(node)
         session.execute('USE mview')
         cl = self.set_consistency_level(node_action=node_action, double_failure=double_failure, cl=cl)
@@ -692,11 +675,11 @@ class TestMaterializedViews(Tester):
             else:
                 assert True
 
-        for node in self.cluster.nodelist():
-            self._check_errors(node, exclude_errors=['migration_task - Can''t send migration request',
-                                                     'mutation_write_timeout_exception',
-                                                     'Error applying view update to',
-                                                     'view - Failed to update materialized view bookkeeping.*seastar::no_sharded_instance_exception.*continuing anyway'])
+        exclude_errors=['migration_task - Can''t send migration request',
+                        'mutation_write_timeout_exception',
+                        'Error applying view update to',
+                        'view - Failed to update materialized view bookkeeping.*seastar::no_sharded_instance_exception.*continuing anyway']
+        self.check_errors_all_nodes(exclude_errors=exclude_errors, regex=True)
 
     def _restart_node(self, node, delay=0):
         time.sleep(delay)
@@ -861,7 +844,7 @@ class TestMaterializedViews(Tester):
         assert_none(session, 'select * from system_schema.views', cl=ConsistencyLevel.ALL)
         assert_row_count(session, tm.table_name, prefill, consistency_level=ConsistencyLevel.QUORUM)
 
-        self._check_errors(node=self.cluster.nodelist()[0], exclude_errors=['mutation_write_timeout_exception', 'no_such_column_family'])
+        self.check_errors(node=self.cluster.nodelist()[0], exclude_errors=['mutation_write_timeout_exception', 'no_such_column_family'])
 
     def fetch_mv_after_recreate_test(self):
         """ Validate it's allowed to fetch from MV after it is dropped and recreated
@@ -1236,7 +1219,7 @@ class TestMaterializedViews(Tester):
         for i in xrange(1000, 1100):
             self.eventually_assert_one(session, "SELECT * FROM t_by_v WHERE v = {}".format(-i), [-i, i])
 
-        self._check_errors(node=self.cluster.nodelist()[0], exclude_errors='migration_task - Can''t send migration request')
+        self.check_errors(node=self.cluster.nodelist()[0], exclude_errors='migration_task - Can''t send migration request')
 
     def add_node_during_base_table_update_test(self):
         """ Test expand cluster - add one node during MV updates

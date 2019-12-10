@@ -947,25 +947,6 @@ def wait_for_schema_agreement(session):
         time.sleep(1)
         wait_for_schema_agreement(session)
 
-def check_errors_all_nodes(nodes, exclude_errors, search_str=None):
-    errors = None
-    for node in nodes:
-        errors = check_errors(node=node, exclude_errors=exclude_errors, search_str=search_str)
-    return  errors
-
-def check_errors(node, exclude_errors, search_str=None):
-    errors = node.grep_log_for_errors(distinct_errors=True, search_str=search_str)
-
-    if exclude_errors:
-        for ee in exclude_errors:
-            errors = [error for error in list(errors) if ee not in error]
-
-    if errors:
-        assert False, '\n'.join(list(errors))
-    else:
-        # Set allow_log_errors to True
-        return True
-
 def remove_node(cluster, node, wait_other_notice=True, other_nodes=None):
     hostid = node.hostid()
     cluster.remove(node, wait_other_notice=wait_other_notice, other_nodes=other_nodes)
