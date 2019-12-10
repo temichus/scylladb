@@ -5488,7 +5488,7 @@ class CQLAdditionalTests(Tester):
         try:
             session.execute(c)
         except Exception, e:
-            if e.message != "Paxos is currently disabled. Start Scylla with --experimental=on to enable.":
+            if e.message != "Paxos is currently disabled. Start Scylla with --experimental-features=lwt to enable.":
                 assert e.code == 0000 and e.message == "Not implemented: LWT", e
                 return
             debug("Restart node with experimental=on and retry...")
