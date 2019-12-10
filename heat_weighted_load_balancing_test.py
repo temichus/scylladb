@@ -6,7 +6,6 @@ from nose.plugins.attrib import attr
 
 @attr('dtest-full')
 class HeatWeightedLB(Tester):
-    _multiprocess_can_split_ = False
 
     METRICS = ['scylla_storage_proxy_coordinator_reads_local_node',
                'scylla_storage_proxy_replica_reads',
