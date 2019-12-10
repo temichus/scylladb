@@ -32,7 +32,6 @@ clients = (
 @nottest
 @attr('dtest-full')
 class TestWideRows(Tester):
-    _multiprocess_can_split_ = False
     BLOB_SIZE_10k = 1024 * 10
     BLOB_SIZE_1MB = 1024 * 1024
     KEYSPACE_NAME = 'wide_row'
