@@ -1095,6 +1095,7 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
         exclude_errors = ['Can\'t send migration request: node {} is down'.format(node2_ip),
                           'Error applying view update to {}: exceptions::unavailable_exception (Cannot achieve consistency level for cl ONE. Requires 1, alive 0)'.format(node2_ip),
                           'Error applying view update to {}: exceptions::mutation_write_timeout_exception (Operation timed out for {}.{}_index - received only 0 responses from 1 CL=ONE.)'.format(node2_ip, keyspace_name, index_name),
+                          'Error applying view update to {}: exceptions::mutation_write_failure_exception (Operation failed for {}.{}_index - received 0 responses and 1 failures from 1 CL=ONE.)'.format(node2_ip, keyspace_name, index_name),
                          ]
         self.check_errors(self.cluster.nodelist()[0], exclude_errors=exclude_errors)
 
