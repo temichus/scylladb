@@ -1068,13 +1068,23 @@ class TestUserTypes(Tester):
                     format(i=i, new_type=', (%d, {%d, %d})' % (i, i, i) if altered_type else '')
                 session.execute(stmt)
 
+        runned_thread = []
         debug('Start insert into entity')
         entity_run_executer = ThreadPoolExecutor()
-        entity_run_executer.submit(insert_into_entity)
+        runned_thread.append(entity_run_executer.submit(insert_into_entity))
 
         debug('Start insert into entity_rel')
         entity_rel_run_executer = ThreadPoolExecutor()
-        entity_rel_run_executer.submit(insert_into_entity_rel)
+        runned_thread.append(entity_rel_run_executer.submit(insert_into_entity_rel))
+
+        for t in runned_thread:
+            t.result(60)
+
+        assert_row_count(session=session, table_name='entity', expected=rows_num,
+                         consistency_level=ConsistencyLevel.QUORUM)
+
+        assert_row_count(session=session, table_name='entity_rel', expected=rows_num,
+                         consistency_level=ConsistencyLevel.QUORUM)
 
         debug('Create priority_refs type')
         session.execute('create type if not exists priority_refs (priority int, description set<int>)')
