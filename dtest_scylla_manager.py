@@ -591,6 +591,11 @@ class HealthcheckTask(ManagerTask):
         ManagerTask.__init__(self, task_id=task_id, cluster_id=cluster_id, scylla_manager=scylla_manager)
 
 
+class BackupTask(ManagerTask):
+    def __init__(self, task_id, cluster_id, scylla_manager):
+        ManagerTask.__init__(self, task_id=task_id, cluster_id=cluster_id, scylla_manager=scylla_manager)
+
+
 class RestTask(ManagerTask):
     def __init__(self, task_id, cluster_id, scylla_manager):
         ManagerTask.__init__(self, task_id=task_id, cluster_id=cluster_id, scylla_manager=scylla_manager)
@@ -603,6 +608,29 @@ class ManagerCluster(ScyllaManagerBase):
             raise ScyllaManagerError("Cannot create a Manager Cluster where no 'scylla-manager' parameter is given")
         ScyllaManagerBase.__init__(self, id=cluster_id, scylla_manager=scylla_manager)
         self.client_encrypt = client_encrypt
+
+    def run_backup_command(self, param_dict):
+        arguments = []
+        for arg, value in param_dict.items():
+            if isinstance(value, (str, int)) and value:
+                arguments.append('--{} {}'.format(arg, str(value)))
+            if isinstance(value, bool) and value:
+                arguments.append('--{}'.format(arg))
+            if isinstance(value, list) and value:
+                arguments.append('--{} {}'.format(arg, ','.join(value)))
+
+        command = "backup -c {} ".format(self.id) + ' '.join(arguments)
+        stdout, stderr = self.sctool.run(cmd=command, parse_table_res=False)
+        if not stdout:
+            raise ScyllaManagerError("Unknown failure for sctool '{}' command".format(command))
+
+        if stderr:
+            debug("Encountered an error on '{}' command response".format(command))
+            raise ScyllaManagerError(stderr)
+
+        task_id = stdout.strip()
+        debug("Created task id is: {}".format(task_id))
+        return BackupTask(task_id=task_id, cluster_id=self.id, scylla_manager=self.scylla_manager)
 
     def create_repair_task(self, node=None, dc_list=None, token_ranges=None, keyspace=None, with_hosts=None,
                            interval=None, num_retries=None, fail_fast=None):
