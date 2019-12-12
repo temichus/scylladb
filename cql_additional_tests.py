@@ -3469,6 +3469,31 @@ class TestCQL(Tester):
             # Should apply
             assert_one(session, "DELETE FROM test WHERE k = 0 IF v1 IN (null)", [True, None])
 
+    @since('2.1.1')
+    def non_eq_conditional_update_test(self):
+        session = self.prepare(experimental=True)
+
+        session.execute("""
+            CREATE TABLE test (
+                k int PRIMARY KEY,
+                v1 int,
+                v2 text,
+                v3 int
+            )
+        """)
+
+        # non-EQ conditions
+        session.execute("INSERT INTO test (k, v1, v2) VALUES (0, 2, 'foo')")
+        assert_one(session, "UPDATE test SET v2 = 'bar' WHERE k = 0 IF v1 < 3", [True, 2])
+        assert_one(session, "UPDATE test SET v2 = 'bar' WHERE k = 0 IF v1 <= 3", [True, 2])
+        assert_one(session, "UPDATE test SET v2 = 'bar' WHERE k = 0 IF v1 > 1", [True, 2])
+        assert_one(session, "UPDATE test SET v2 = 'bar' WHERE k = 0 IF v1 >= 1", [True, 2])
+        assert_one(session, "UPDATE test SET v2 = 'bar' WHERE k = 0 IF v1 != 1", [True, 2])
+        assert_one(session, "UPDATE test SET v2 = 'bar' WHERE k = 0 IF v1 != 2", [False, 2])
+        assert_one(session, "UPDATE test SET v2 = 'bar' WHERE k = 0 IF v1 IN (0, 1, 2)", [True, 2])
+        assert_one(session, "UPDATE test SET v2 = 'bar' WHERE k = 0 IF v1 IN (142, 276)", [False, 2])
+        assert_one(session, "UPDATE test SET v2 = 'bar' WHERE k = 0 IF v1 IN ()", [False, 2])
+
     @since('2.0.7')
     def conditional_delete_test(self):
         session = self.prepare(experimental=True)
@@ -4390,6 +4415,75 @@ class TestCQL(Tester):
 
         assert_one(session, "INSERT INTO lock(partition, key, owner) VALUES ('a', 'c', 'x') IF NOT EXISTS", [True, None, None, None])
 
+    @since('2.1.1')
+    def whole_list_conditional_test(self):
+        session = self.prepare(experimental=True)
+
+        session.execute("""
+            CREATE TABLE tlist (
+                k int PRIMARY KEY,
+                l list<text>
+            )""")
+
+        session.execute("""
+            CREATE TABLE frozentlist (
+                k int PRIMARY KEY,
+                l frozen<list<text>>
+            )""")
+
+        for frozen in (False, True):
+            table = "frozentlist" if frozen else "tlist"
+            session.execute("INSERT INTO {}(k, l) VALUES (0, ['foo', 'bar', 'foobar'])".format(table))
+
+            def check_applies(condition):
+                assert_one(session, "UPDATE {} SET l = ['foo', 'bar', 'foobar'] WHERE k=0 IF {}".format(table, condition),
+                           [True, ['foo', 'bar', 'foobar']])
+                assert_one(session, "SELECT * FROM {}".format(table), [0, ['foo', 'bar', 'foobar']])  # read back at default cl.one
+
+            check_applies("l = ['foo', 'bar', 'foobar']")
+            check_applies("l != ['baz']")
+            check_applies("l > ['a']")
+            check_applies("l >= ['a']")
+            check_applies("l < ['z']")
+            check_applies("l <= ['z']")
+            check_applies("l IN (null, ['foo', 'bar', 'foobar'], ['a'])")
+            # multiple conditions
+            check_applies("l > ['aaa', 'bbb'] AND l > ['aaa']")
+            check_applies("l != null AND l IN (['foo', 'bar', 'foobar'])")
+
+            def check_does_not_apply(condition):
+                assert_one(session, "UPDATE {} SET l = ['foo', 'bar', 'foobar'] WHERE k=0 IF {}".format(table, condition),
+                           [False, ['foo', 'bar', 'foobar']])
+                assert_one(session, "SELECT * FROM {}".format((table)), [0, ['foo', 'bar', 'foobar']])  # read back at default cl.one
+
+            # should not apply
+            check_does_not_apply("l = ['baz']")
+            check_does_not_apply("l != ['foo', 'bar', 'foobar']")
+            check_does_not_apply("l > ['z']")
+            check_does_not_apply("l >= ['z']")
+            check_does_not_apply("l < ['a']")
+            check_does_not_apply("l <= ['a']")
+            check_does_not_apply("l IN (['a'], null)")
+            check_does_not_apply("l IN ()")
+            # multiple conditions
+            check_does_not_apply("l IN () AND l IN (['foo', 'bar', 'foobar'])")
+            check_does_not_apply("l > ['zzz'] AND l < ['zzz']")
+
+            def check_invalid(condition, expected=InvalidRequest):
+                assert_invalid(session, "UPDATE {} SET l = ['foo', 'bar', 'foobar'] WHERE k=0 IF {}".format(table, condition), expected=expected)
+                assert_one(session, "SELECT * FROM {}".format(table), [0, ['foo', 'bar', 'foobar']])
+
+            check_invalid("l = [null]")
+            check_invalid("l < null")
+            check_invalid("l <= null")
+            check_invalid("l > null")
+            check_invalid("l >= null")
+            check_invalid("l IN null", expected=SyntaxException)
+            check_invalid("l IN 367", expected=SyntaxException)
+            check_invalid("l CONTAINS KEY 123", expected=SyntaxException)
+            # not supported yet
+            check_invalid("m CONTAINS 'bar'", expected=SyntaxException)
+
     @since('2.0')
     def list_item_conditional_test(self):
         # Lists
@@ -4419,6 +4513,214 @@ class TestCQL(Tester):
 
             assert_one(session, "DELETE FROM tlist WHERE k=0 IF l[1] = 'bar'", [True, ['foo', 'bar', 'foobar']])
             assert_none(session, "SELECT * FROM tlist")
+
+    @since('2.1.1')
+    def expanded_list_item_conditional_test(self):
+        """
+        expanded functionality from CASSANDRA-6839
+        @jira_ticket CASSANDRA-6839
+        """
+        session = self.prepare(experimental=True)
+
+        session.execute("""
+            CREATE TABLE tlist (
+                k int PRIMARY KEY,
+                l list<text>
+            )""")
+
+        session.execute("""
+            CREATE TABLE frozentlist (
+                k int PRIMARY KEY,
+                l frozen<list<text>>
+            )""")
+
+        for frozen in (False, True):
+            table = "frozentlist" if frozen else "tlist"
+            session.execute("INSERT INTO %s(k, l) VALUES (0, ['foo', 'bar', 'foobar'])" % (table,))
+
+            def check_applies(condition):
+                assert_one(session, "UPDATE %s SET l = ['foo', 'bar', 'foobar'] WHERE k=0 IF %s" % (table, condition),
+                           [True, ['foo', 'bar', 'foobar']])
+                assert_one(session, "SELECT * FROM %s" % (table,), [0, ['foo', 'bar', 'foobar']])
+
+            check_applies("l[1] < 'zzz'")
+            check_applies("l[1] <= 'bar'")
+            check_applies("l[1] > 'aaa'")
+            check_applies("l[1] >= 'bar'")
+            check_applies("l[1] != 'xxx'")
+            check_applies("l[1] != null")
+            check_applies("l[1] IN (null, 'xxx', 'bar')")
+            check_applies("l[1] > 'aaa' AND l[1] < 'zzz'")
+            # check beyond end of list
+            check_applies("l[3] = null")
+            check_applies("l[3] IN (null, 'xxx', 'bar')")
+
+            def check_does_not_apply(condition):
+                assert_one(session, "UPDATE %s SET l = ['foo', 'bar', 'foobar'] WHERE k=0 IF %s" % (table, condition), [False, ['foo', 'bar', 'foobar']])
+                assert_one(session, "SELECT * FROM %s" % (table,), [0, ['foo', 'bar', 'foobar']])
+
+            check_does_not_apply("l[1] < 'aaa'")
+            check_does_not_apply("l[1] <= 'aaa'")
+            check_does_not_apply("l[1] > 'zzz'")
+            check_does_not_apply("l[1] >= 'zzz'")
+            check_does_not_apply("l[1] != 'bar'")
+            check_does_not_apply("l[1] IN (null, 'xxx')")
+            check_does_not_apply("l[1] IN ()")
+            check_does_not_apply("l[1] != null AND l[1] IN ()")
+            # check beyond end of list
+            check_does_not_apply("l[3] != null")
+            check_does_not_apply("l[3] = 'xxx'")
+
+            def check_invalid(condition, expected=InvalidRequest):
+                assert_invalid(session, "UPDATE %s SET l = ['foo', 'bar', 'foobar'] WHERE k=0 IF %s" % (table, condition), expected=expected)
+                assert_one(session, "SELECT * FROM %s" % (table,), [0, ['foo', 'bar', 'foobar']])
+
+            check_invalid("l[1] < null")
+            check_invalid("l[1] <= null")
+            check_invalid("l[1] > null")
+            check_invalid("l[1] >= null")
+            check_invalid("l[1] IN null", expected=SyntaxException)
+            check_invalid("l[1] IN 367", expected=SyntaxException)
+            check_invalid("l[1] IN (1, 2, 3)")
+            check_invalid("l[1] CONTAINS 367", expected=SyntaxException)
+            check_invalid("l[1] CONTAINS KEY 367", expected=SyntaxException)
+            check_invalid("l[null] = null")
+
+    @since('2.1.1')
+    def whole_set_conditional_test(self):
+        session = self.prepare(experimental=True)
+
+        session.execute("""
+            CREATE TABLE tset (
+                k int PRIMARY KEY,
+                s set<text>
+            )""")
+
+        session.execute("""
+            CREATE TABLE frozentset (
+                k int PRIMARY KEY,
+                s frozen<set<text>>
+            )""")
+
+        for frozen in (False, True):
+            table = "frozentset" if frozen else "tset"
+            assert_one(session, "INSERT INTO %s(k, s) VALUES (0, {'bar', 'foo'}) IF NOT EXISTS" % (table,), [True, None, None])
+
+            def check_applies(condition):
+                assert_one(session, "UPDATE %s SET s = {'bar', 'foo'} WHERE k=0 IF %s" % (table, condition), [True, set({'bar', 'foo'})])
+                assert_one(session, "SELECT * FROM %s" % (table,), [0, set(['bar', 'foo'])], cl=ConsistencyLevel.QUORUM)
+
+            check_applies("s = {'bar', 'foo'}")
+            check_applies("s = {'foo', 'bar'}")
+            check_applies("s != {'baz'}")
+            check_applies("s > {'a'}")
+            check_applies("s >= {'a'}")
+            check_applies("s < {'z'}")
+            check_applies("s <= {'z'}")
+            check_applies("s IN (null, {'bar', 'foo'}, {'a'})")
+            # multiple conditions
+            check_applies("s > {'a'} AND s < {'z'}")
+            check_applies("s IN (null, {'bar', 'foo'}, {'a'}) AND s IN ({'a'}, {'bar', 'foo'}, null)")
+
+            def check_does_not_apply(condition):
+                assert_one(session, "UPDATE %s SET s = {'bar', 'foo'} WHERE k=0 IF %s" % (table, condition),
+                           [False, set({'bar', 'foo'})])
+                assert_one(session, "SELECT * FROM %s" % (table,), [0, {'bar', 'foo'}], cl=ConsistencyLevel.QUORUM)
+
+            # should not apply
+            check_does_not_apply("s = {'baz'}")
+            check_does_not_apply("s != {'bar', 'foo'}")
+            check_does_not_apply("s > {'z'}")
+            check_does_not_apply("s >= {'z'}")
+            check_does_not_apply("s < {'a'}")
+            check_does_not_apply("s <= {'a'}")
+            check_does_not_apply("s IN ({'a'}, null)")
+            check_does_not_apply("s IN ()")
+            check_does_not_apply("s != null AND s IN ()")
+
+            def check_invalid(condition, expected=InvalidRequest):
+                assert_invalid(session, "UPDATE %s SET s = {'bar', 'foo'} WHERE k=0 IF %s" % (table, condition), expected=expected)
+                assert_one(session, "SELECT * FROM %s" % (table,), [0, {'bar', 'foo'}], cl=ConsistencyLevel.QUORUM)
+
+            check_invalid("s = {null}")
+            check_invalid("s < null")
+            check_invalid("s <= null")
+            check_invalid("s > null")
+            check_invalid("s >= null")
+            check_invalid("s IN null", expected=SyntaxException)
+            check_invalid("s IN 367", expected=SyntaxException)
+            check_invalid("s CONTAINS KEY 123", expected=SyntaxException)
+            # element access is not allow for sets
+            check_invalid("s['foo'] = 'foobar'")
+            # not supported yet
+            check_invalid("m CONTAINS 'bar'", expected=SyntaxException)
+
+    @since('2.1.1')
+    def whole_map_conditional_test(self):
+        session = self.prepare(experimental=True)
+
+        session.execute("""
+            CREATE TABLE tmap (
+                k int PRIMARY KEY,
+                m map<text, text>
+            )""")
+
+        session.execute("""
+            CREATE TABLE frozentmap (
+                k int PRIMARY KEY,
+                m frozen<map<text, text>>
+            )""")
+
+        for frozen in (False, True):
+            debug("Testing {} maps".format("frozen" if frozen else "normal"))
+            table = "frozentmap" if frozen else "tmap"
+            session.execute("INSERT INTO %s(k, m) VALUES (0, {'foo' : 'bar'})" % (table,))
+
+            def check_applies(condition):
+                assert_one(session, "UPDATE %s SET m = {'foo': 'bar'} WHERE k=0 IF %s" % (table, condition),
+                           [True, {'foo': 'bar'}])
+                assert_one(session, "SELECT * FROM %s" % (table,), [0, {'foo': 'bar'}], cl=ConsistencyLevel.QUORUM)
+
+            check_applies("m = {'foo': 'bar'}")
+            check_applies("m > {'a': 'a'}")
+            check_applies("m >= {'a': 'a'}")
+            check_applies("m < {'z': 'z'}")
+            check_applies("m <= {'z': 'z'}")
+            check_applies("m != {'a': 'a'}")
+            check_applies("m IN (null, {'a': 'a'}, {'foo': 'bar'})")
+            # multiple conditions
+            check_applies("m > {'a': 'a'} AND m < {'z': 'z'}")
+            check_applies("m != null AND m IN (null, {'a': 'a'}, {'foo': 'bar'})")
+
+            def check_does_not_apply(condition):
+                assert_one(session, "UPDATE %s SET m = {'foo': 'bar'} WHERE k=0 IF %s" % (table, condition), [False, {'foo': 'bar'}])
+                assert_one(session, "SELECT * FROM %s" % (table,), [0, {'foo': 'bar'}], cl=ConsistencyLevel.QUORUM)
+
+            # should not apply
+            check_does_not_apply("m = {'a': 'a'}")
+            check_does_not_apply("m > {'z': 'z'}")
+            check_does_not_apply("m >= {'z': 'z'}")
+            check_does_not_apply("m < {'a': 'a'}")
+            check_does_not_apply("m <= {'a': 'a'}")
+            check_does_not_apply("m != {'foo': 'bar'}")
+            check_does_not_apply("m IN ({'a': 'a'}, null)")
+            check_does_not_apply("m IN ()")
+            check_does_not_apply("m = null AND m != null")
+
+            def check_invalid(condition, expected=InvalidRequest):
+                assert_invalid(session, "UPDATE %s SET m = {'foo': 'bar'} WHERE k=0 IF %s" % (table, condition), expected=expected)
+                assert_one(session, "SELECT * FROM %s" % (table,), [0, {'foo': 'bar'}], cl=ConsistencyLevel.QUORUM)
+
+            check_invalid("m = {null: null}")
+            check_invalid("m = {'a': null}")
+            check_invalid("m = {null: 'a'}")
+            check_invalid("m < null")
+            check_invalid("m IN null", expected=SyntaxException)
+            # not supported yet
+            check_invalid("m CONTAINS 'bar'", expected=SyntaxException)
+            check_invalid("m CONTAINS KEY 'foo'", expected=SyntaxException)
+            check_invalid("m CONTAINS null", expected=SyntaxException)
+            check_invalid("m CONTAINS KEY null", expected=SyntaxException)
 
     @since('2.0')
     def map_item_conditional_test(self):
@@ -4450,6 +4752,100 @@ class TestCQL(Tester):
                     assert_invalid(session, "UPDATE tmap set m['foo'] = 'bar', m['bar'] = 'foo' WHERE k = 1 IF m['foo'] IN ('blah', null)")
                 else:
                     assert_one(session, "UPDATE tmap set m['foo'] = 'bar', m['bar'] = 'foo' WHERE k = 1 IF m['foo'] IN ('blah', null)", [True, None])
+
+    @since('2.1.1')
+    def expanded_map_item_conditional_test(self):
+        """
+        Expanded functionality from CASSANDRA-6839
+        @jira_ticket CASSANDRA-6839
+        """
+        session = self.prepare(experimental=True)
+
+        session.execute("""
+            CREATE TABLE tmap (
+                k int PRIMARY KEY,
+                m map<text, text>
+            )""")
+
+        session.execute("""
+            CREATE TABLE frozentmap (
+                k int PRIMARY KEY,
+                m frozen<map<text, text>>
+            )""")
+
+        for frozen in (False, True):
+            debug("Testing {} maps".format("frozen" if frozen else "normal"))
+            table = "frozentmap" if frozen else "tmap"
+            session.execute("INSERT INTO %s (k, m) VALUES (0, {'foo' : 'bar'})" % table)
+
+            def check_applies(condition):
+                assert_one(session, "UPDATE %s SET m = {'foo': 'bar'} WHERE k=0 IF %s" % (table, condition),
+                           [True, {'foo': 'bar'}])
+                assert_one(session, "SELECT * FROM {}".format(table), [0, {'foo': 'bar'}], cl=ConsistencyLevel.QUORUM)
+
+            check_applies("m['xxx'] = null")
+            check_applies("m['foo'] < 'zzz'")
+            check_applies("m['foo'] <= 'bar'")
+            check_applies("m['foo'] > 'aaa'")
+            check_applies("m['foo'] >= 'bar'")
+            check_applies("m['foo'] != 'xxx'")
+            check_applies("m['foo'] != null")
+            check_applies("m['foo'] IN (null, 'xxx', 'bar')")
+            check_applies("m['xxx'] IN (null, 'xxx', 'bar')")  # m['xxx'] is not set
+            # multiple conditions
+            check_applies("m['foo'] < 'zzz' AND m['foo'] > 'aaa'")
+
+            def check_does_not_apply(condition):
+                assert_one(session, "UPDATE %s SET m = {'foo': 'bar'} WHERE k=0 IF %s" % (table, condition), [False, {'foo': 'bar'}])
+                assert_one(session, "SELECT * FROM {}".format(table), [0, {'foo': 'bar'}], cl=ConsistencyLevel.QUORUM)
+
+            check_does_not_apply("m['foo'] < 'aaa'")
+            check_does_not_apply("m['foo'] <= 'aaa'")
+            check_does_not_apply("m['foo'] > 'zzz'")
+            check_does_not_apply("m['foo'] >= 'zzz'")
+            check_does_not_apply("m['foo'] != 'bar'")
+            check_does_not_apply("m['xxx'] != null")  # m['xxx'] is not set
+            check_does_not_apply("m['foo'] IN (null, 'xxx')")
+            check_does_not_apply("m['foo'] IN ()")
+            check_does_not_apply("m['foo'] != null AND m['foo'] = null")
+
+            def check_invalid(condition, expected=InvalidRequest):
+                assert_invalid(session, "UPDATE %s SET m = {'foo': 'bar'} WHERE k=0 IF %s" % (table, condition), expected=expected)
+                assert_one(session, "SELECT * FROM {}".format(table), [0, {'foo': 'bar'}])
+
+            check_invalid("m['foo'] < null")
+            check_invalid("m['foo'] <= null")
+            check_invalid("m['foo'] > null")
+            check_invalid("m['foo'] >= null")
+            check_invalid("m['foo'] IN null", expected=SyntaxException)
+            check_invalid("m['foo'] IN 367", expected=SyntaxException)
+            check_invalid("m['foo'] IN (1, 2, 3)")
+            check_invalid("m['foo'] CONTAINS 367", expected=SyntaxException)
+            check_invalid("m['foo'] CONTAINS KEY 367", expected=SyntaxException)
+            check_invalid("m[null] = null")
+
+    @since("2.1.1")
+    def cas_and_list_index_test(self):
+        """
+        @jira_ticket CASSANDRA-7499
+        """
+        session = self.prepare(experimental=True)
+
+        session.execute("""
+            CREATE TABLE test (
+                k int PRIMARY KEY,
+                v text,
+                l list<text>
+            )
+        """)
+
+        session.execute("INSERT INTO test(k, v, l) VALUES(0, 'foobar', ['foi', 'bar'])")
+
+        assert_one(session, "UPDATE test SET l[0] = 'foo' WHERE k = 0 IF v = 'barfoo'", [False, 'foobar'])
+        assert_one(session, "UPDATE test SET l[0] = 'foo' WHERE k = 0 IF v = 'foobar'", [True, 'foobar'])
+
+        # since we write at all, and LWT update (serial), we need to read back at serial (or higher)
+        assert_one(session, "SELECT * FROM test", [0, ['foo', 'bar'], 'foobar'], cl=ConsistencyLevel.QUORUM)
 
     @since("2.0")
     def static_with_limit_test(self):
@@ -6318,3 +6714,281 @@ class MultiColumnRestrictionCollectionTests(Tester):
                                                         'and f_set_int CONTAINS 9 '
                                                         'ALLOW FILTERING',
                    expected=[], ignore_order=True)
+
+class TestLWTWithCQL(Tester):
+    """
+    Validate CQL queries for LWTs for static columns for null and non-existing rows
+    @jira_ticket CASSANDRA-9842
+    """
+
+    def get_lwttester_session(self):
+        node1 = self.cluster.nodelist()[0]
+        session = self.patient_cql_connection(node1)
+        session.execute("""CREATE KEYSPACE IF NOT EXISTS ks WITH REPLICATION={'class':'SimpleStrategy',
+            'replication_factor':1}""")
+        session.execute("USE ks")
+        return session
+
+    def prepare(self, experimental=True):
+        cluster = self.cluster
+
+        cluster.set_configuration_options(values={'experimental': experimental})
+
+        cluster.populate(3)
+        cluster.start(wait_for_binary_proto=True)
+
+        return self.get_lwttester_session()
+
+    def test_lwt_with_static_columns(self):
+        session = self.prepare()
+
+        session.execute("""
+            CREATE TABLE lwt_with_static (a int, b int, s int static, d text, PRIMARY KEY (a, b))
+        """)
+
+        assert_one(session, "UPDATE lwt_with_static SET s = 1 WHERE a = 1 IF s = NULL", [True, None])
+
+        assert_one(session, "SELECT * FROM lwt_with_static", [1, None, 1, None])
+
+        assert_one(session, "UPDATE lwt_with_static SET s = 2 WHERE a = 2 IF EXISTS", [False, None, None, None, None])
+
+        assert_one(session, "SELECT * FROM lwt_with_static WHERE a = 1", [1, None, 1, None])
+
+        assert_one(session, "INSERT INTO lwt_with_static (a, s) VALUES (2, 2) IF NOT EXISTS", [True, None, None, None, None])
+
+        assert_one(session, "SELECT * FROM lwt_with_static WHERE a = 2", [2, None, 2, None])
+
+        assert_one(session, "BEGIN BATCH\n" +
+                   "INSERT INTO lwt_with_static (a, b, d) values (3, 3, 'a');\n" +
+                   "UPDATE lwt_with_static SET s = 3 WHERE a = 3 IF s = null;\n" +
+                   "APPLY BATCH;", [True, None, None, None])
+
+        assert_one(session, "SELECT * FROM lwt_with_static WHERE a = 3", [3, 3, 3, "a"])
+
+        # LWT applies before INSERT
+        assert_one(session, "BEGIN BATCH\n" +
+                   "INSERT INTO lwt_with_static (a, b, d) values (4, 4, 'a');\n" +
+                   "UPDATE lwt_with_static SET s = 4 WHERE a = 4 IF s = null;\n" +
+                   "APPLY BATCH;", [True, None, None, None])
+
+        assert_one(session, "SELECT * FROM lwt_with_static WHERE a = 4", [4, 4, 4, "a"])
+
+    def _validate_non_existing_or_null_values(self, table_name, session):
+        assert_one(session, "UPDATE {} SET s = 1 WHERE a = 1 IF s = NULL".format(table_name), [True, None])
+
+        assert_one(session, "SELECT a, s, d FROM {} WHERE a = 1".format(table_name), [1, 1, None])
+
+        assert_one(session, "UPDATE {} SET s = 2 WHERE a = 2 IF s IN (10,20,NULL)".format(table_name), [True, None])
+
+        assert_one(session, "SELECT a, s, d FROM {} WHERE a = 2".format(table_name), [2, 2, None])
+
+        assert_one(session, "UPDATE {} SET s = 4 WHERE a = 4 IF s != 4".format(table_name), [True, None])
+
+        assert_one(session, "SELECT a, s, d FROM {} WHERE a = 4".format(table_name), [4, 4, None])
+
+    def test_conditional_updates_on_static_columns_with_null_values(self):
+        session = self.prepare()
+
+        table_name = "conditional_updates_on_static_columns_with_null"
+        session.execute("""
+            CREATE TABLE {} (a int, b int, s int static, d text, PRIMARY KEY (a, b))
+        """.format(table_name))
+
+        for i in range(1, 6):
+            session.execute("INSERT INTO {} (a, b) VALUES ({}, {})".format(table_name, i, i))
+
+        self._validate_non_existing_or_null_values(table_name, session)
+
+        assert_one(session, "UPDATE {} SET s = 30 WHERE a = 3 IF s IN (10,20,30)".format(table_name), [False, None])
+
+        assert_one(session, "SELECT * FROM {} WHERE a = 3".format(table_name), [3, 3, None, None])
+
+        for operator in [">", "<", ">=", "<=", "="]:
+            assert_one(session, "UPDATE {} SET s = 50 WHERE a = 5 IF s {} 3".format(table_name, operator), [False, None])
+
+            assert_one(session, "SELECT * FROM {} WHERE a = 5".format(table_name), [5, 5, None, None])
+
+    def test_conditional_updates_on_static_columns_with_non_existing_values(self):
+        session = self.prepare()
+
+        table_name = "conditional_updates_on_static_columns_with_ne"
+        session.execute("""
+            CREATE TABLE {} (a int, b int, s int static, d text, PRIMARY KEY (a, b))
+        """.format(table_name))
+
+        self._validate_non_existing_or_null_values(table_name, session)
+
+        assert_one(session, "UPDATE {} SET s = 30 WHERE a = 3 IF s IN (10,20,30)".format(table_name), [False, None])
+
+        assert_none(session, "SELECT * FROM {} WHERE a = 3".format(table_name))
+
+        for operator in [">", "<", ">=", "<=", "="]:
+            assert_one(session, "UPDATE {} SET s = 50 WHERE a = 5 IF s {} 3".format(table_name, operator), [False, None])
+
+            assert_none(session, "SELECT * FROM {} WHERE a = 5".format(table_name))
+
+    def _validate_non_existing_or_null_values_batch(self, table_name, session):
+        assert_one(session, """
+            BEGIN BATCH
+                INSERT INTO {table_name} (a, b, d) values (2, 2, 'a');
+                UPDATE {table_name} SET s = 2 WHERE a = 2 IF s = null;
+            APPLY BATCH""".format(table_name=table_name), [True, 2, 2, None])
+
+        assert_one(session, "SELECT * FROM {table_name} WHERE a = 2".format(table_name=table_name), [2, 2, 2, "a"])
+
+        assert_one(session, """
+            BEGIN BATCH
+                INSERT INTO {table_name} (a, b, s, d) values (4, 4, 4, 'a')
+                UPDATE {table_name} SET s = 5 WHERE a = 4 IF s = null;
+            APPLY BATCH""".format(table_name=table_name), [True, 4, 4, None])
+
+        assert_one(session, "SELECT * FROM {table_name} WHERE a = 4".format(table_name=table_name), [4, 4, 5, "a"])
+
+        assert_one(session, """
+            BEGIN BATCH
+                INSERT INTO {table_name} (a, b, s, d) values (5, 5, 5, 'a')
+                UPDATE {table_name} SET s = 6 WHERE a = 5 IF s IN (1,2,null)
+            APPLY BATCH""".format(table_name=table_name), [True, 5, 5, None])
+
+        assert_one(session, "SELECT * FROM {table_name} WHERE a = 5".format(table_name=table_name), [5, 5, 6, "a"])
+
+        assert_one(session, """
+            BEGIN BATCH
+                INSERT INTO {table_name} (a, b, s, d) values (7, 7, 7, 'a')
+                UPDATE {table_name} SET s = 8 WHERE a = 7 IF s != 7;
+            APPLY BATCH""".format(table_name=table_name), [True, None, None, None])
+
+        assert_one(session, "SELECT * FROM {table_name} WHERE a = 7".format(table_name=table_name), [7, 7, 8, "a"])
+
+    def test_conditional_updates_on_static_columns_with_null_values_batch(self):
+        session = self.prepare()
+
+        table_name = "lwt_on_static_columns_with_null_batch"
+        session.execute("""
+            CREATE TABLE {table_name} (a int, b int, s int static, d text, PRIMARY KEY (a, b))
+        """.format(table_name=table_name))
+
+        for i in range(1, 7):
+            session.execute("INSERT INTO {table_name} (a, b) VALUES ({i}, {i})".format(table_name=table_name, i=i))
+
+        self._validate_non_existing_or_null_values_batch(table_name, session)
+
+        for operator in [">", "<", ">=", "<=", "="]:
+            assert_one(session, """
+                BEGIN BATCH
+                    INSERT INTO {table_name} (a, b, s, d) values (3, 3, 40, 'a')
+                    UPDATE {table_name} SET s = 30 WHERE a = 3 IF s {operator} 5;
+                APPLY BATCH""".format(table_name=table_name, operator=operator), [False, 3, 3, None])
+
+            assert_one(session, "SELECT * FROM {table_name} WHERE a = 3".format(table_name=table_name), [3, 3, None, None])
+
+        assert_one(session, """
+                BEGIN BATCH
+                    INSERT INTO {table_name} (a, b, s, d) values (6, 6, 70, 'a')
+                    UPDATE {table_name} SET s = 60 WHERE a = 6 IF s IN (1,2,3)
+                APPLY BATCH""".format(table_name=table_name), [False, 6, 6, None])
+
+        assert_one(session, "SELECT * FROM {table_name} WHERE a = 6".format(table_name=table_name), [6, 6, None, None])
+
+    def test_conditional_deletes_on_static_columns_with_null_values(self):
+        session = self.prepare()
+
+        table_name = "conditional_deletes_on_static_with_null"
+        session.execute("""
+            CREATE TABLE {} (a int, b int, s1 int static, s2 int static, v int, PRIMARY KEY (a, b))
+        """.format(table_name))
+
+        for i in range(1, 6):
+            session.execute("INSERT INTO {} (a, b, s1, s2, v) VALUES ({}, {}, {}, null, {})".format(table_name, i, i, i, i))
+
+        assert_one(session, "DELETE s1 FROM {} WHERE a = 1 IF s2 = null".format(table_name), [True, None])
+
+        assert_one(session, "SELECT * FROM {} WHERE a = 1".format(table_name), [1, 1, None, None, 1])
+
+        assert_one(session, "DELETE s1 FROM {} WHERE a = 2 IF s2 IN (10,20,30)".format(table_name), [False, None])
+
+        assert_one(session, "SELECT * FROM {} WHERE a = 2".format(table_name), [2, 2, 2, None, 2])
+
+        assert_one(session, "DELETE s1 FROM {} WHERE a = 3 IF s2 IN (null,20,30)".format(table_name), [True, None])
+
+        assert_one(session, "SELECT * FROM {} WHERE a = 3".format(table_name), [3, 3, None, None, 3])
+
+        assert_one(session, "DELETE s1 FROM {} WHERE a = 4 IF s2 != 4".format(table_name), [True, None])
+
+        assert_one(session, "SELECT * FROM {} WHERE a = 4".format(table_name), [4, 4, None, None, 4])
+
+        for operator in [">", "<", ">=", "<=", "="]:
+            assert_one(session, "DELETE s1 FROM {} WHERE a = 5 IF s2 {} 3".format(table_name, operator), [False, None])
+            assert_one(session, "SELECT * FROM {} WHERE a = 5".format(table_name), [5, 5, 5, None, 5])
+
+    def test_conditional_deletes_on_static_columns_with_null_values_batch(self):
+        session = self.prepare()
+
+        table_name = "conditional_deletes_on_static_with_null_batch"
+        session.execute("""
+            CREATE TABLE {} (a int, b int, s1 int static, s2 int static, v int, PRIMARY KEY (a, b))
+        """.format(table_name))
+
+        assert_one(session, """
+             BEGIN BATCH
+                 INSERT INTO {table_name} (a, b, s1, v) values (2, 2, 2, 2);
+                 DELETE s1 FROM {table_name} WHERE a = 2 IF s2 = null;
+             APPLY BATCH""".format(table_name=table_name), [True, None, None, None])
+
+        assert_one(session, "SELECT * FROM {} WHERE a = 2".format(table_name), [2, 2, None, None, 2])
+
+        for operator in [">", "<", ">=", "<=", "="]:
+            assert_one(session, """
+                BEGIN BATCH
+                    INSERT INTO {table_name} (a, b, s1, v) values (3, 3, 3, 3);
+                    DELETE s1 FROM {table_name} WHERE a = 3 IF s2 {operator} 5;
+                APPLY BATCH""".format(table_name=table_name, operator=operator), [False, None, None, None])
+
+            assert_none(session, "SELECT * FROM {} WHERE a = 3".format(table_name))
+
+        assert_one(session, """
+             BEGIN BATCH
+                 INSERT INTO {table_name} (a, b, s1, v) values (6, 6, 6, 6);
+                 DELETE s1 FROM {table_name} WHERE a = 6 IF s2 IN (1,2,3);
+             APPLY BATCH""".format(table_name=table_name), [False, None, None, None])
+
+        assert_none(session, "SELECT * FROM {} WHERE a = 6".format(table_name))
+
+        assert_one(session, """
+             BEGIN BATCH
+                 INSERT INTO {table_name} (a, b, s1, v) values (4, 4, 4, 4);
+                 DELETE s1 FROM {table_name} WHERE a = 4 IF s2 = null;
+             APPLY BATCH""".format(table_name=table_name), [True, None, None, None])
+
+        assert_one(session, "SELECT * FROM {} WHERE a = 4".format(table_name), [4, 4, None, None, 4])
+
+        assert_one(session, """
+            BEGIN BATCH
+                INSERT INTO {table_name} (a, b, s1, v) VALUES (5, 5, 5, 5);
+                DELETE s1 FROM {table_name} WHERE a = 5 IF s1 IN (1,2,null);
+            APPLY BATCH""".format(table_name=table_name), [True, None, None, None])
+
+        assert_one(session, "SELECT * FROM {} WHERE a = 5".format(table_name), [5, 5, None, None, 5])
+
+        assert_one(session, """
+            BEGIN BATCH
+                INSERT INTO {table_name} (a, b, s1, v) values (7, 7, 7, 7);
+                DELETE s1 FROM {table_name} WHERE a = 7 IF s2 != 7;
+            APPLY BATCH""".format(table_name=table_name), [True, None, None, None])
+
+        assert_one(session, "SELECT * FROM {} WHERE a = 7".format(table_name), [7, 7, None, None, 7])
+
+    def lwt_with_empty_resultset(self):
+        """
+        LWT with unset row.
+        @jira_ticket CASSANDRA-12694
+        """
+        session = self.prepare()
+
+        session.execute("""
+            CREATE TABLE test (pk text, v1 int, v2 text, PRIMARY KEY (pk));
+        """)
+        session.execute("update test set v1 = 100 where pk = 'test1';")
+        node1 = self.cluster.nodelist()[0]
+        self.cluster.flush()
+        assert_one(session, "UPDATE test SET v1 = 100 WHERE pk = 'test1' IF v2 = null;", [True, None])
