@@ -2118,11 +2118,9 @@ class TestLikeOperatorForMV(Tester, BaseOperationsHelper):
                    query="SELECT * FROM building_by_city WHERE city LIKE 'ytr_wq4' ALLOW FILTERING",
                    expected=['ytrewq4', 'qwerty4'])
         assert_none(session,
-                    query="SELECT * FROM building_by_city WHERE city LIKE '' ALLOW FILTERING",
-                    expected=['ytrewq4', 'qwerty4'])
+                    query="SELECT * FROM building_by_city WHERE city LIKE '' ALLOW FILTERING")
         assert_none(session,
-                    query="SELECT * FROM building_by_city WHERE city LIKE 'Y%q_' ALLOW FILTERING"
-                    )
+                    query="SELECT * FROM building_by_city WHERE city LIKE 'Y%q_' ALLOW FILTERING")
 
     def test_filetering_MV_new_column(self):
 
@@ -2160,11 +2158,9 @@ class TestLikeOperatorForMV(Tester, BaseOperationsHelper):
                    query="SELECT * FROM building_by_city WHERE name LIKE 'qw_rty4' ALLOW FILTERING",
                    expected=['ytrewq4', 'qwerty4'])
         assert_none(session,
-                    query="SELECT * FROM building_by_city WHERE name LIKE '' ALLOW FILTERING",
-                    expected=['ytrewq4', 'qwerty4'])
+                    query="SELECT * FROM building_by_city WHERE name LIKE '' ALLOW FILTERING")
         assert_none(session,
-                    query="SELECT * FROM building_by_city WHERE name LIKE 'q%T_' ALLOW FILTERING"
-                    )
+                    query="SELECT * FROM building_by_city WHERE name LIKE 'q%T_' ALLOW FILTERING")
 
 
 class TestIndexFilteringWithLike(Tester, BaseOperationsHelper):
@@ -2201,7 +2197,7 @@ class TestIndexFilteringWithLike(Tester, BaseOperationsHelper):
                    expected=["qwerty2", "ytrewq2"])
         assert_one(session,
                    query="SELECT * FROM buildings WHERE city LIKE 'ytrewq0' ALLOW FILTERING",
-                   expected=["qwerty0", "ytrewqo"])
+                   expected=["qwerty0", "ytrewq0"])
         assert_none(session,
                     query="SELECT * FROM buildings WHERE city LIKE 'Ytrewq_' ALLOW FILTERING")
         assert_none(session,
@@ -2239,10 +2235,8 @@ class TestIndexFilteringWithLike(Tester, BaseOperationsHelper):
                    expected=["qwerty2", "ytrewq2"])
         assert_one(session,
                    query="SELECT * FROM buildings WHERE city LIKE 'ytrewq0' ALLOW FILTERING",
-                   expected=["qwerty0", "ytrewqo"])
+                   expected=["qwerty0", "ytrewq0"])
         assert_none(session,
                     query="SELECT * FROM buildings WHERE city LIKE 'Ytrewq_' ALLOW FILTERING")
         assert_none(session,
                     query="SELECT * FROM buildings WHERE city LIKE '_T%_' ALLOW FILTERING")
-
-
