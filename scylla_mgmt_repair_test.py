@@ -758,7 +758,7 @@ class TestScyllaMgmtRepair(RepairAdditionalBase):
         debug("task {} has reached the status of RUNNING,"
               " shutting down the host with which the task is using to repair".format(repair_task_fail_fast.id))
         node1.stop(wait_other_notice=True)
-        repair_task_fail_fast.wait_for_status(list_status=[TaskStatus.ERROR], timeout=40, step=3)
+        repair_task_fail_fast.wait_for_status(list_status=[TaskStatus.ERROR], timeout=120, step=3)
 
         node1.start(wait_for_binary_proto=False, wait_other_notice=False)
 
@@ -769,7 +769,7 @@ class TestScyllaMgmtRepair(RepairAdditionalBase):
         repair_task.wait_for_status(list_status=[TaskStatus.RUNNING], timeout=300, step=10)
         node1.stop(wait_other_notice=True)
         try:
-            repair_task.wait_for_status(list_status=[TaskStatus.ERROR], timeout=100, step=10)
+            repair_task.wait_for_status(list_status=[TaskStatus.ERROR], timeout=240, step=10)
         except WaitTimeoutExpired:
             pass
         else:
