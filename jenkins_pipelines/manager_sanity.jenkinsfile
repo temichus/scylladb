@@ -6,7 +6,7 @@ pipeline {
     }
      parameters {
 
-        string(defaultValue: 'unstable/master:380',
+        string(defaultValue: 'unstable/master:201910292059',
                description: 'Scylla relocatable packages build to be used',
                name: 'scylla_version')
 
