@@ -5,6 +5,7 @@ import time
 from cassandra import ConsistencyLevel
 from cassandra.query import SimpleStatement
 from nose.plugins.attrib import attr
+from unittest import skip
 
 from dtest_scylla_manager import HostStatus, HostRestStatus, ScyllaManagerTool, ScyllaManagerError
 from dtest import debug, WaitTimeoutExpired
@@ -727,6 +728,7 @@ class TestScyllaMgmtRepair(RepairAdditionalBase):
                                                             tables_and_row_count_dict=
                                                             dict(second_data_range, **{"cf_dc1": []}))
 
+    @skip("Times out in the jenkins job")
     @attr('scylla-manager')
     def test_fail_fast(self):
         """
