@@ -107,7 +107,7 @@ class PageFetcher(object):
 
         return self
 
-    def wait(self, seconds=5):
+    def wait(self, seconds=10):
         """
         Blocks until all *requested* pages have been returned.
 
