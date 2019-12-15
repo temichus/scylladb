@@ -1,7 +1,7 @@
 pipeline {
     agent {
         label {
-            label "gce-sct-builders"
+            label "gce-qavpc"
         }
     }
      parameters {
@@ -31,6 +31,9 @@ pipeline {
         disableConcurrentBuilds()
         timeout([time: params.timeout, unit: "MINUTES"])
         buildDiscarder(logRotator(numToKeepStr: '20'))
+    }
+    environment {
+        NOSE_PROCESSES = "2"
     }
     stages {
         stage('Checkout') {
@@ -67,6 +70,7 @@ pipeline {
                             set -xe
                             env
 
+                            export CLUSTER_ID_ALLOCATOR=random
                             export SCYLLA_VERSION="${params.scylla_version}"
                             export CCM_DIR=\$(pwd)"/scylla-ccm"
                             export PRINT_DEBUG=False
@@ -79,9 +83,16 @@ pipeline {
 
                             export HOME=\$(pwd)/tmp_dtest_run
                             mkdir -p \$HOME
+                            rm -Rf \$(pwd)/tmp_dtest_run
+
+                            export SCYLLA_EXT_OPTS="--smp 2 --memory 1024M"
+                            echo "NOSE_PROCESSES=${NOSE_PROCESSES}"
+
+                            export INSTALL_CASSANDRA='ccm create scylla-tmp --scylla -n 1 --version=${SCYLLA_VERSION}'
 
                             echo "start test ......."
-                            ./scripts/run_test.sh -a scylla-manager --with-xunit --xunit-file="\$HOME/results.xml"  # TODO: Use a different junit module if running with multiple processes
+
+                            ./scripts/run_test.sh -a scylla-manager --with-xunitmp --xunitmp-file="\$HOME/results.xml"  --process-restart --process-timeout=7200
                             echo "end test ....."
                             """
                         }
@@ -97,9 +108,19 @@ pipeline {
                 docker run -v `pwd`/minio_data:/data -w /data busybox sh -c "find . -user root -name '*' | xargs chmod ugo+rw"
                 rm -rf ./minio_data
             """
+
+            // fix the format of reporting
+            sh "sed -i 's/skip=/skipped=/' \$(pwd)/scylla-dtest/tmp_dtest_run/results.xml"
+
             archiveArtifacts artifacts: '**/results.xml', fingerprint: true
             archiveArtifacts artifacts: 'scylla-dtest/logs/**', fingerprint: true
-            junit '**/results.xml'
+
+            xunit thresholds: [failed(unstableThreshold: '1'), skipped()],
+                  tools: [JUnit(pattern: '**/results.xml')]
+
+            sh """
+                rm -Rf \$(pwd)/scylla-dtest/tmp_dtest_run
+            """
         }
     }
 }
