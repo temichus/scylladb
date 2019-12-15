@@ -10,14 +10,6 @@ pipeline {
                description: 'Scylla relocatable packages build to be used',
                name: 'scylla_version')
 
-        string(defaultValue: 'git@github.com:scylladb/scylla-dtest.git',
-               description: 'dtest git repo',
-               name: 'dtest_repo')
-
-        string(defaultValue: 'master',
-               description: 'dtest git branch',
-               name: 'dtest_branch')
-
         string(defaultValue: 'git@github.com:scylladb/scylla-ccm.git',
                description: 'ccm git repo',
                name: 'ccm_repo')
@@ -44,10 +36,7 @@ pipeline {
         stage('Checkout') {
            steps {
               dir('scylla-dtest') {
-                  git(url: params.dtest_repo,
-                        credentialsId:'b8a774da-0e46-4c91-9f74-09caebaea261',
-                        branch: params.dtest_branch)
-
+                  checkout scm
                   dir("scylla-ccm") {
                     git(url: params.ccm_repo,
                         credentialsId:'b8a774da-0e46-4c91-9f74-09caebaea261',
@@ -80,8 +69,8 @@ pipeline {
 
                             export SCYLLA_VERSION="${params.scylla_version}"
                             export CCM_DIR=\$(pwd)"/scylla-ccm"
-                            export PRINT_DEBUG=True
-                            export DEBUG=True
+                            export PRINT_DEBUG=False
+                            export DEBUG=False
                             export KEEP_TEST_DIR=True
                             export SCYLLA_MANAGER_PACKAGE="${params.scylla_manager_package}"
                             export MINIO_DOCKER_ID="${MINIO_DOCKER_ID}"
@@ -105,10 +94,11 @@ pipeline {
         always {
             sh """
                 docker kill ${MINIO_DOCKER_ID}
-                docker run -v `pwd`/data:/data -w /data busybox sh -c "find . -user root -name '*' | xargs chmod ugo+rw"
+                docker run -v `pwd`/minio_data:/data -w /data busybox sh -c "find . -user root -name '*' | xargs chmod ugo+rw"
                 rm -rf ./minio_data
             """
             archiveArtifacts artifacts: '**/results.xml', fingerprint: true
+            archiveArtifacts artifacts: 'scylla-dtest/logs/**', fingerprint: true
             junit '**/results.xml'
         }
     }
