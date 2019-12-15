@@ -37,18 +37,7 @@ class TestRebuild(Tester):
         """
 
         def _add_node(i, dc):
-            cluster = self.cluster
-            ipformat = cluster.ipprefix + "%d"
-            node = cluster.create_node(name='node%s' % i,
-                                        auto_bootstrap=False,
-                                        thrift_interface=(ipformat % i, 9160),
-                                        storage_interface=(ipformat % i, 7000),
-                                        jmx_port=str(7000 + i * 100 + cluster.id),
-                                        remote_debug_port=str(2000 + i * 100),
-                                        initial_token=None,
-                                        binary_interface=(ipformat % i, 9042))
-            cluster.add(node, True, data_center=dc)
-            return node
+            return self.cluster.new_node(i, debug=True, data_center=dc)
 
         keys = 1000
 
