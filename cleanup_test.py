@@ -16,6 +16,8 @@ class TestCleanup(Tester):
         self.create_ks(session, 'ks', 1)
         self.create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'})
         insert_c1c2(session, keys=range(100000), consistency=ConsistencyLevel.ALL)
+        session.shutdown()
+
         node1.stop()
         node1.start(wait_for_binary_proto=True)
         node1.cleanup()
@@ -31,6 +33,8 @@ class TestCleanup(Tester):
         self.create_ks(session, 'ks', 3)
         self.create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'})
         insert_c1c2(session, keys=range(100000), consistency=ConsistencyLevel.ALL)
+        session.shutdown()
+
         node4 = new_node(cluster)
         node4.start(wait_for_binary_proto=True, wait_other_notice=True)
         cluster.flush()
@@ -38,6 +42,7 @@ class TestCleanup(Tester):
         cluster.start(wait_for_binary_proto=True,wait_other_notice=True)
         for node in cluster.nodelist():
             node.cleanup()
+        session = self.patient_cql_connection(node1)
         rows = session.execute("select count(*) from ks.cf;");
         self.assertEqual(rows[0][0],100000)
 
