@@ -1203,7 +1203,6 @@ class TestUpdateClusterLayout(Tester):
                 current_node = line[1:]
         return gossipinfo
 
-    @require('#4501')
     def remove_node_from_gossip_test(self):
         """
         Test a node can be removed from gossip
