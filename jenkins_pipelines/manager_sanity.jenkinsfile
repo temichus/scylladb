@@ -92,7 +92,7 @@ pipeline {
                             mkdir -p \$HOME
 
                             echo "start test ......."
-                            ./scripts/run_test.sh -a scylla-manager
+                            ./scripts/run_test.sh -a scylla-manager --with-xunit --xunit-file="\$HOME/results.xml"  # TODO: Use a different junit module if running with multiple processes
                             echo "end test ....."
                             """
                         }
@@ -108,6 +108,8 @@ pipeline {
                 docker run -v `pwd`/data:/data -w /data busybox sh -c "find . -user root -name '*' | xargs chmod ugo+rw"
                 rm -rf ./minio_data
             """
+            archiveArtifacts artifacts: '**/results.xml', fingerprint: true
+            junit '**/results.xml'
         }
     }
 }
