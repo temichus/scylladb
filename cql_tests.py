@@ -410,6 +410,7 @@ class MiscellaneousCQLTester(CQLTester):
         assert len(res) == 2, res
 
 
+@attr('dtest-full')
 class RangeDeletionTester(CQLTester):
 
     @staticmethod
