@@ -12,7 +12,7 @@ from cassandra.query import SimpleStatement
 from assertions import assert_none, assert_unavailable
 from dtest import DISABLE_VNODES, Tester, debug
 from tools import (create_c1c2_table, insert_c1c2, insert_columns, query_c1c2,
-                   rows_to_list, since)
+                   rows_to_list)
 
 from thrift.protocol import TBinaryProtocol
 from thrift.transport import TSocket, TTransport
@@ -334,7 +334,6 @@ class TestAvailability(TestHelper):
         self._test_simple_strategy(combinations)
 
     @skip('Does not work, skipping after allowing it on scylla_tests and will investigate later')
-    @since("3.0")
     def test_simple_strategy_each_quorum(self):
         """
         @jira_ticket CASSANDRA-10584
@@ -386,7 +385,6 @@ class TestAvailability(TestHelper):
         self._test_network_topology_strategy(combinations)
 
     @skip('Does not work, skipping after allowing it on scylla_tests and will investigate later')
-    @since("3.0")
     def test_network_topology_strategy_each_quorum(self):
         """
         @jira_ticket CASSANDRA-10584
@@ -608,7 +606,6 @@ class TestAccuracy(TestHelper):
             TestAccuracy.Validation.validate_users, [self.nodes], [self.rf], combinations)
 
     @skip('Does not work, skipping after allowing it on scylla_tests and will investigate later')
-    @since("3.0")
     def test_simple_strategy_each_quorum_users(self):
         """
         @jira_ticket CASSANDRA-10584
@@ -663,7 +660,6 @@ class TestAccuracy(TestHelper):
             TestAccuracy.Validation.validate_users, self.nodes, self.rf.values(), combinations),
 
     @skip('Does not work, skipping after allowing it on scylla_tests and will investigate later')
-    @since("3.0")
     def test_network_topology_strategy_each_quorum_users(self):
         """
         @jira_ticket CASSANDRA-10584
@@ -715,7 +711,6 @@ class TestAccuracy(TestHelper):
             TestAccuracy.Validation.validate_counters, [self.nodes], [self.rf], combinations)
 
     @skip('Does not work, skipping after allowing it on scylla_tests and will investigate later')
-    @since("3.0")
     def test_simple_strategy_each_quorum_counters(self):
         """
         @jira_ticket CASSANDRA-10584
@@ -766,7 +761,6 @@ class TestAccuracy(TestHelper):
             TestAccuracy.Validation.validate_counters, self.nodes, self.rf.values(), combinations),
 
     @skip('Does not work, skipping after allowing it on scylla_tests and will investigate later')
-    @since("3.0")
     def test_network_topology_strategy_each_quorum_counters(self):
         """
         @jira_ticket CASSANDRA-10584

@@ -38,7 +38,6 @@ from thrift_tests import get_thrift_client
 
 from tools import require
 from tools import rows_to_list
-from tools import since
 from scylla_tools import wait_for_view
 
 from nose.tools import assert_equal
@@ -2958,7 +2957,6 @@ class TestCQL(Tester):
         self.assertEqual(len(expected_rows), len(rows),
                          msg="expected_rows={} rows={}".format(expected_rows, rows))
 
-    @since('1.2.1')
     def timeuuid_test(self):
         session = self.prepare()
 
@@ -3124,7 +3122,6 @@ class TestCQL(Tester):
         res = session.execute("SELECT * FROM bar")
         assert rows_to_list(res) == [[1, 2]], list(res)
 
-    @since('2.0')
     @skip('indexes')
     def clustering_indexing_test(self):
         session = self.prepare()
@@ -3168,7 +3165,6 @@ class TestCQL(Tester):
         res = session.execute("SELECT v1 FROM posts WHERE time = 1")
         assert rows_to_list(res) == [['B'], ['E']], list(res)
 
-    @since('2.0')
     def invalid_clustering_indexing_test(self):
         session = self.prepare()
 
@@ -3184,7 +3180,6 @@ class TestCQL(Tester):
         session.execute("CREATE TABLE test3 (a int, b int, c int static , PRIMARY KEY (a, b))")
         assert_invalid(session, "CREATE INDEX ON test3(c)")
 
-    @since('2.0')
     @skip('indexes')
     def edge_2i_on_complex_pk_test(self):
         session = self.prepare()
@@ -3355,7 +3350,6 @@ class TestCQL(Tester):
         res = session.execute("SELECT * FROM test")
         assert rows_to_list(res) == [[0, '']], list(res)
 
-    @since('2.0')
     def rename_test(self):
         session = self.prepare(start_rpc=True)
 
@@ -3398,7 +3392,6 @@ class TestCQL(Tester):
 
         session.execute("SELECT dateOf(t) FROM test")
 
-    @since('2.0')
     def conditional_update_test(self):
         session = self.prepare(experimental=True)
 
@@ -3469,7 +3462,6 @@ class TestCQL(Tester):
             # Should apply
             assert_one(session, "DELETE FROM test WHERE k = 0 IF v1 IN (null)", [True, None])
 
-    @since('2.1.1')
     def non_eq_conditional_update_test(self):
         session = self.prepare(experimental=True)
 
@@ -3494,7 +3486,6 @@ class TestCQL(Tester):
         assert_one(session, "UPDATE test SET v2 = 'bar' WHERE k = 0 IF v1 IN (142, 276)", [False, 2])
         assert_one(session, "UPDATE test SET v2 = 'bar' WHERE k = 0 IF v1 IN ()", [False, 2])
 
-    @since('2.0.7')
     def conditional_delete_test(self):
         session = self.prepare(experimental=True)
 
@@ -3565,7 +3556,6 @@ class TestCQL(Tester):
         assert_all(session, "SELECT * FROM test", [[0], [1], [-1]])
         assert_invalid(session, "SELECT * FROM test WHERE k >= -1 AND k < 1;")
 
-    @since('2.0')
     def select_with_alias_test(self):
         session = self.prepare()
         session.execute('CREATE TABLE users (id int PRIMARY KEY, name text)')
@@ -3674,7 +3664,6 @@ class TestCQL(Tester):
 
         assert_one(session, "SELECT * FROM test", [1, set([2])])
 
-    @since('2.0.1')
     def select_distinct_test(self):
         session = self.prepare()
 
@@ -3780,7 +3769,6 @@ class TestCQL(Tester):
         session.execute("CREATE INDEX ON test(a)")
         assert_invalid(session, "SELECT * FROM test WHERE a = 3 AND b IN (1, 3)")
 
-    @since('2.0')
     def bug_6069_test(self):
         session = self.prepare(experimental=True)
 
@@ -3829,7 +3817,6 @@ class TestCQL(Tester):
         # Insert a non-version 1 uuid
         assert_invalid(session, "INSERT INTO test(k, c, v) VALUES (0, 0, 550e8400-e29b-41d4-a716-446655440000)")
 
-    @since('1.2')
     def bug_6327_test(self):
         session = self.prepare()
 
@@ -3845,7 +3832,6 @@ class TestCQL(Tester):
         self.cluster.flush()
         assert_one(session, "SELECT v FROM test WHERE k=0 AND v IN (1, 0)", [0])
 
-    @since('1.2')
     def large_count_test(self):
         session = self.prepare()
 
@@ -3898,7 +3884,6 @@ class TestCQL(Tester):
         assert selected[1] == [float("inf")]
         assert selected[2] == [float("-inf")]
 
-    @since('2.0')
     def static_columns_test(self):
         session = self.prepare(experimental=True)
 
@@ -3968,7 +3953,6 @@ class TestCQL(Tester):
         session.execute("ALTER TABLE test DROP s2")
         assert_all(session, "SELECT * FROM test", [[0, 1, None, 1], [0, 2, None, 2]])
 
-    @since('2.0')
     def static_columns_cas_test(self):
         session = self.prepare(experimental=True)
 
@@ -4101,7 +4085,6 @@ class TestCQL(Tester):
                              APPLY BATCH
                            """)
 
-    @since('2.0')
     @skip('indexes')
     def static_columns_with_2i_test(self):
         session = self.prepare()
@@ -4128,7 +4111,6 @@ class TestCQL(Tester):
         # We don't support that
         assert_invalid(session, "SELECT s FROM test WHERE v = 1")
 
-    @since('2.0')
     def static_columns_with_distinct_test(self):
         session = self.prepare()
 
@@ -4241,7 +4223,6 @@ class TestCQL(Tester):
         else:
             assert_one(session, "select count(*) from test where field3 = false limit 1;", [1])
 
-    @since('2.0')
     def cas_and_ttl_test(self):
         session = self.prepare(experimental=True)
         session.execute("CREATE TABLE test (k int PRIMARY KEY, v int, lock boolean)")
@@ -4251,7 +4232,6 @@ class TestCQL(Tester):
         time.sleep(2)
         assert_one(session, "UPDATE test SET v = 1 WHERE k = 0 IF lock = null", [True, None])
 
-    @since('2.1')
     @require('2029')
     def in_order_by_without_selecting_test(self):
         """ Test that columns don't need to be selected for ORDER BY when there is a IN (#4911) """
@@ -4285,7 +4265,6 @@ class TestCQL(Tester):
         # since we don't know the write times, just assert that the order matches the order we expect
         self.assertEqual(results, list(sorted(results)))
 
-    @since('2.0')
     def tuple_notation_test(self):
         """
         @jira_ticket CASSANDRA-4851
@@ -4389,7 +4368,6 @@ class TestCQL(Tester):
 
         assert_all(session, "SELECT * FROM test WHERE k=0 AND c1 = 0 AND c2 IN (2, 0) ORDER BY c1 DESC", [[0, 0, 2], [0, 0, 0]])
 
-    @since('2.0')
     def cas_and_compact_test(self):
         """
         @jira_ticket CASSANDRA-6813
@@ -4415,7 +4393,6 @@ class TestCQL(Tester):
 
         assert_one(session, "INSERT INTO lock(partition, key, owner) VALUES ('a', 'c', 'x') IF NOT EXISTS", [True, None, None, None])
 
-    @since('2.1.1')
     def whole_list_conditional_test(self):
         session = self.prepare(experimental=True)
 
@@ -4484,7 +4461,6 @@ class TestCQL(Tester):
             # not supported yet
             check_invalid("m CONTAINS 'bar'", expected=SyntaxException)
 
-    @since('2.0')
     def list_item_conditional_test(self):
         # Lists
         session = self.prepare(experimental=True)
@@ -4514,7 +4490,6 @@ class TestCQL(Tester):
             assert_one(session, "DELETE FROM tlist WHERE k=0 IF l[1] = 'bar'", [True, ['foo', 'bar', 'foobar']])
             assert_none(session, "SELECT * FROM tlist")
 
-    @since('2.1.1')
     def expanded_list_item_conditional_test(self):
         """
         expanded functionality from CASSANDRA-6839
@@ -4586,7 +4561,6 @@ class TestCQL(Tester):
             check_invalid("l[1] CONTAINS KEY 367", expected=SyntaxException)
             check_invalid("l[null] = null")
 
-    @since('2.1.1')
     def whole_set_conditional_test(self):
         session = self.prepare(experimental=True)
 
@@ -4655,7 +4629,6 @@ class TestCQL(Tester):
             # not supported yet
             check_invalid("m CONTAINS 'bar'", expected=SyntaxException)
 
-    @since('2.1.1')
     def whole_map_conditional_test(self):
         session = self.prepare(experimental=True)
 
@@ -4722,7 +4695,6 @@ class TestCQL(Tester):
             check_invalid("m CONTAINS null", expected=SyntaxException)
             check_invalid("m CONTAINS KEY null", expected=SyntaxException)
 
-    @since('2.0')
     def map_item_conditional_test(self):
         session = self.prepare(experimental=True)
 
@@ -4753,7 +4725,6 @@ class TestCQL(Tester):
                 else:
                     assert_one(session, "UPDATE tmap set m['foo'] = 'bar', m['bar'] = 'foo' WHERE k = 1 IF m['foo'] IN ('blah', null)", [True, None])
 
-    @since('2.1.1')
     def expanded_map_item_conditional_test(self):
         """
         Expanded functionality from CASSANDRA-6839
@@ -4824,7 +4795,6 @@ class TestCQL(Tester):
             check_invalid("m['foo'] CONTAINS KEY 367", expected=SyntaxException)
             check_invalid("m[null] = null")
 
-    @since("2.1.1")
     def cas_and_list_index_test(self):
         """
         @jira_ticket CASSANDRA-7499
@@ -4847,7 +4817,6 @@ class TestCQL(Tester):
         # since we write at all, and LWT update (serial), we need to read back at serial (or higher)
         assert_one(session, "SELECT * FROM test", [0, ['foo', 'bar'], 'foobar'], cl=ConsistencyLevel.QUORUM)
 
-    @since("2.0")
     def static_with_limit_test(self):
         """
         @jira_ticket CASSANDRA-6956
@@ -4873,7 +4842,6 @@ class TestCQL(Tester):
         assert_all(session, "SELECT * FROM test WHERE k = 0 LIMIT 2", [[0, 0, 42], [0, 1, 42]])
         assert_all(session, "SELECT * FROM test WHERE k = 0 LIMIT 3", [[0, 0, 42], [0, 1, 42], [0, 2, 42]])
 
-    @since("2.0")
     def static_with_empty_clustering_test(self):
         """
         @jira_ticket CASSANDRA-7455
@@ -4897,7 +4865,6 @@ class TestCQL(Tester):
 
         assert_one(session, "SELECT * FROM test", ['partition1', '', 'static value', 'value'])
 
-    @since("1.2")
     def limit_compact_table(self):
         """
         @jira_ticket CASSANDRA-7052
@@ -4959,7 +4926,6 @@ class TestCQL(Tester):
 
         assert_all(session, "SELECT * FROM test WHERE k2 = 0 AND v >= 2 ALLOW FILTERING", [[2, 0, 7], [0, 0, 3], [1, 0, 4]])
 
-    @since('1.2')
     def clustering_order_in_test(self):
         """
         @jira_ticket CASSANDRA-7105
@@ -4983,7 +4949,6 @@ class TestCQL(Tester):
         assert_one(session, "SELECT * FROM test WHERE a=1 AND b=2 AND c IN (3)", [1, 2, 3])
         assert_one(session, "SELECT * FROM test WHERE a=1 AND b=2 AND c IN (3, 4)", [1, 2, 3])
 
-    @since('1.2')
     def bug7105_test(self):
         """
         @jira_ticket CASSANDRA-7105
@@ -5007,7 +4972,6 @@ class TestCQL(Tester):
 
         assert_one(session, "SELECT * FROM test WHERE a=1 AND b=2 ORDER BY b DESC", [1, 2, 3, 3])
 
-    @since('2.0')
     @skip('unconfigured table schema_keyspaces')
     def conditional_ddl_keyspace_test(self):
         session = self.prepare(create_keyspace=False)
@@ -5041,7 +5005,6 @@ class TestCQL(Tester):
 
         assert_none(session, "select * from system.schema_keyspaces where keyspace_name = 'my_test_ks'")
 
-    @since('2.0')
     @skip('unconfigured table schema_columnfamilies')
     def conditional_ddl_table_test(self):
         session = self.prepare(create_keyspace=False)
@@ -5086,7 +5049,6 @@ class TestCQL(Tester):
                     """select * from system.schema_columnfamilies
                        where keyspace_name = 'my_test_ks' and columnfamily_name = 'my_test_table'""")
 
-    @since('2.0')
     @skip('indexes')
     def conditional_ddl_index_test(self):
         session = self.prepare(create_keyspace=False)
@@ -5127,7 +5089,6 @@ class TestCQL(Tester):
         session.execute("DROP INDEX IF EXISTS myindex")
         assert_none(session, """select index_name from system."IndexInfo" where table_name = 'my_test_ks'""")
 
-    @since('2.0')
     @skip('indexes')
     def bug_6612_test(self):
         session = self.prepare()
@@ -5154,7 +5115,6 @@ class TestCQL(Tester):
 
         assert_one(session, "select count(*) from session_data where app_name='foo' and account='bar' and last_access > 4 allow filtering", [1])
 
-    @since('2.0')
     def blobAs_functions_test(self):
         session = self.prepare()
 
