@@ -291,7 +291,7 @@ class CQLAuditTester(AuditTester):
             pass
 
         self.cluster.nodes['node1'].watch_log_for(
-            "Exiting on unhandled exception: audit::audit_exception \(Bad configuration: invalid 'audit': invalid\)")
+            "Startup failed: audit::audit_exception \(Bad configuration: invalid 'audit': invalid\)")
 
     def audit_empty_settings_test(self):
         """
@@ -332,7 +332,7 @@ class CQLAuditTester(AuditTester):
             pass
 
         self.cluster.nodes['node1'].watch_log_for(
-            "Exiting on unhandled exception: audit::audit_exception \(Bad configuration: invalid 'audit_categories': INVALID\)")
+            "Startup failed: audit::audit_exception \(Bad configuration: invalid 'audit_categories': INVALID\)")
 
     def audit_table_test(self):
         self.verify_table(audit_settings=AuditTester.audit_default_settings)
