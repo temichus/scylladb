@@ -369,35 +369,35 @@ class CQLAuditTester(AuditTester):
                                           'audit_categories': 'DDL, ADMIN,AUTH',
                                           'audit_keyspaces': 'ks'})
 
-    def user_test(self):
+    def user_password_masking_test(self):
         """
         CREATE USER, ALTER USER, DROP USER statements
         """
         session = self.prepare(user='cassandra', password='cassandra')
 
         session.execute("CREATE USER user1 WITH PASSWORD 'secret'")
-        self.assertLastAuditRow(session, "DCL", "CREATE USER user1 WITH PASSWORD 'secret'", ks="", user="cassandra")
+        self.assertLastAuditRow(session, "DCL", "CREATE USER user1 WITH PASSWORD '***'", ks="", user="cassandra")
 
-        session.execute("ALTER USER user1 WITH PASSWORD 'secret^2'")
-        self.assertLastAuditRow(session, "DCL", "ALTER USER user1 WITH PASSWORD 'secret^2'", ks="", user="cassandra")
+        session.execute("ALTER USER user1 WITH PASSWORD 'Secret^%$#@!'")
+        self.assertLastAuditRow(session, "DCL", "ALTER USER user1 WITH PASSWORD '***'", ks="", user="cassandra")
 
         session.execute("DROP USER user1")
         self.assertLastAuditRow(session, "DCL", "DROP USER user1", ks="", user="cassandra")
 
-    def drop_audit_ks_test(self):
+    def role_password_masking_test(self):
         """
-        CREATE USER, ALTER USER, DROP USER statements
+        CREATE ROLE, ALTER ROLE, DROP ROLE statements
         """
         session = self.prepare(user='cassandra', password='cassandra')
 
-        session.execute("CREATE USER user1 WITH PASSWORD 'secret'")
-        self.assertLastAuditRow(session, "DCL", "CREATE USER user1 WITH PASSWORD 'secret'", ks="", user="cassandra")
+        session.execute("CREATE ROLE role1 WITH PASSWORD = 'Secret!@#$'")
+        self.assertLastAuditRow(session, "DCL", "CREATE ROLE role1 WITH PASSWORD = '***'", ks="", user="cassandra")
 
-        session.execute("ALTER USER user1 WITH PASSWORD 'secret^2'")
-        self.assertLastAuditRow(session, "DCL", "ALTER USER user1 WITH PASSWORD 'secret^2'", ks="", user="cassandra")
+        session.execute("ALTER ROLE role1 WITH PASSWORD = 'Secret^%$#@!'")
+        self.assertLastAuditRow(session, "DCL", "ALTER ROLE role1 WITH PASSWORD = '***'", ks="", user="cassandra")
 
-        session.execute("DROP USER user1")
-        self.assertLastAuditRow(session, "DCL", "DROP USER user1", ks="", user="cassandra")
+        session.execute("DROP ROLE role1")
+        self.assertLastAuditRow(session, "DCL", "DROP ROLE role1", ks="", user="cassandra")
 
     def login_test(self):
         """
