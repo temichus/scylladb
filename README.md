@@ -198,6 +198,10 @@ To change Scylla CPU and memory configuration:
 
     SCYLLA_EXT_OPTS="--smp 2 --memory 1G"
 
+To pass environment variables for running scylla:
+
+    SCYLLA_EXT_ENV="ASAN_OPTIONS=disable_coredump=0,abort_on_error=1;UBSAN_OPTIONS=halt_on_error=1:abort_on_error=1;BOOST_TEST_CATCH_SYSTEM_ERRORS=no"
+
 Test Directories
 ----------------
 Each test directory is given a temporary name, e.g. `dtest-IouAlot`,

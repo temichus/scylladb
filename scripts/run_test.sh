@@ -39,6 +39,7 @@ Script to run dtest from within docker
     https://github.com/scylladb/scylla-dtest#common-optional-environment-variables
 
         SCYLLA_EXT_OPTS
+        SCYLLA_EXT_ENV
         LOG_SAVED_DIR
         PRINT_DEBUG
         DEBUG
@@ -70,13 +71,20 @@ if [[ ${CASSANDRA_DIR} == ${SCYLLA_ROOT_DIR} ]]; then
     export CASSANDRA_DIR=${CASSANDRA_DIR}/build/release
 fi
 
+if [[ ${CASSANDRA_DIR} == */build/* ]]; then
+    mode=$(echo $CASSANDRA_DIR | sed 's|.*/build/||')
+fi
+
 export TOOLS_JAVA_DIR=${TOOLS_JAVA_DIR:-`pwd`/../scylla-tools-java}
 export JMX_DIR=${JMX_DIR:-`pwd`/../scylla-jmx}
 export DTEST_DIR=${DTEST_DIR:-`pwd`}
 export CCM_DIR=${CCM_DIR:-`pwd`/../scylla-ccm}
 export SCYLLA_DBUILD_SO_DIR=$( realpath ${SCYLLA_DBUILD_SO_DIR:-${CASSANDRA_DIR}/dynamic_libs} )
 export SCYLLA_EXT_OPTS=${SCYLLA_EXT_OPTS:-"--smp 1 --memory 512M"}
-
+if [[ "$mode" == debug ]]; then
+    export DEF_SCYLLA_EXT_ENV="ASAN_OPTIONS=disable_coredump=0:abort_on_error=1;UBSAN_OPTIONS=halt_on_error=1:abort_on_error=1;BOOST_TEST_CATCH_SYSTEM_ERRORS=no"
+fi
+export SCYLLA_EXT_ENV=${SCYLLA_EXT_ENV:-"$DEF_SCYLLA_EXT_ENV"}
 
 mkdir -p ${HOME}/.dtest
 mkdir -p ${HOME}/.ccm
@@ -155,6 +163,7 @@ docker_cmd="docker run --detach=true \
     -e LOG_SAVED_DIR \
     -e HOME \
     -e SCYLLA_EXT_OPTS \
+    -e SCYLLA_EXT_ENV \
     -e LC_ALL=en_US.UTF-8 \
     -e PRINT_DEBUG \
     -e DEBUG \
