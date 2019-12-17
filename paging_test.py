@@ -115,6 +115,10 @@ class PageFetcher(object):
 
         Raises RuntimeError if seconds is exceeded.
         """
+        def error_message(msg):
+            return "{}. Requested: {}; retrieved: {}; empty retrieved {}".format(
+                    msg, self.requested_pages, self.retrieved_pages, self.retrieved_empty_pages)
+
         expiry = time.time() + seconds
 
         while time.time() < expiry:
@@ -123,10 +127,7 @@ class PageFetcher(object):
             # small wait so we don't need excess cpu to keep checking
             time.sleep(0.1)
 
-        raise RuntimeError(
-            "Requested pages were not delivered before timeout." +
-            "Requested: %d; retrieved: %d; empty retreived: %d" %
-            (self.requested_pages, self.retrieved_pages, self.retrieved_empty_pages))
+        raise RuntimeError(error_message('Requested pages were not delivered before timeout'))
 
     def pagecount(self):
         """
