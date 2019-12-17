@@ -121,6 +121,7 @@ class PageFetcher(object):
 
         def missing_pages():
             n = self.requested_pages - (self.retrieved_pages + self.retrieved_empty_pages)
+            assert n >= 0, error_message('Retrieved too many pages')
             return n
 
         expiry = time.time() + seconds
