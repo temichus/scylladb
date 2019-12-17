@@ -119,10 +119,14 @@ class PageFetcher(object):
             return "{}. Requested: {}; retrieved: {}; empty retrieved {}".format(
                     msg, self.requested_pages, self.retrieved_pages, self.retrieved_empty_pages)
 
+        def missing_pages():
+            n = self.requested_pages - (self.retrieved_pages + self.retrieved_empty_pages)
+            return n
+
         expiry = time.time() + seconds
 
         while time.time() < expiry:
-            if self.requested_pages == (self.retrieved_pages + self.retrieved_empty_pages):
+            if missing_pages() <= 0:
                 return self
             # small wait so we don't need excess cpu to keep checking
             time.sleep(0.1)
