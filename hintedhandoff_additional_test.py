@@ -82,7 +82,6 @@ class TestHintedHandoff(Tester):
 
         assert resp['total partitions:read'] == op_cnt
 
-    @attr('next-gating')
     @attr('dtest-debug')
     def hintedhandoff_removenode_test(self):
         """
