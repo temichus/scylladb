@@ -16,7 +16,6 @@ import signal
 import requests
 
 from tools import require
-from scylla_tools import check_errors
 
 from dtest import Tester, debug
 
@@ -126,7 +125,7 @@ class TestUpdateableConfig(Tester):
         node1.watch_log_for(err1, from_mark=mark)
         node1.watch_log_for(err2, from_mark=mark)
 
-        self.allow_log_errors = check_errors(node1, [err1, err2], search_str='ERROR')
+        self.allow_log_errors = self.check_errors(node1, [err1, err2], search_str='ERROR')
 
         debug('Recover the config file')
         os.rename('%s.backup' % config_file_path, config_file_path)
