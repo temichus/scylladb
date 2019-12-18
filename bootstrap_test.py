@@ -72,6 +72,45 @@ class TestBootstrap(Tester):
         cluster.stop()
         debug("done")
 
+    @attr('next-gating')
+    @attr('dtest-debug')
+    def add_node_test(self):
+        debug("populating cluster with three nodes")
+        cluster = self.cluster
+        cluster.populate(2)
+        debug("starting cluster")
+        cluster.start()
+        debug("adding node3")
+        node3 = cluster.new_node(3)
+        debug("starting node3")
+        node3.start(wait_other_notice=True)
+        debug("stopping cluster")
+        cluster.stop()
+        debug("done")
+
+    @attr('next-gating')
+    @attr('dtest-debug')
+    def add_detached_node_test(self):
+        debug("populating cluster with three nodes")
+        cluster = self.cluster
+        cluster.populate(2)
+        debug("starting cluster")
+        cluster.start()
+        debug("adding node3")
+        node3 = cluster.new_node(3, add_node=False)
+
+        def stop_node3():
+            debug("stopping node3")
+            node3.stop()
+
+        self.addCleanup(stop_node3)
+
+        debug("starting node3")
+        node3.start(wait_other_notice=True)
+        debug("stopping cluster")
+        cluster.stop()
+        debug("done")
+
     @attr('dtest-full')
     def simple_bootstrap_test(self):
         cluster = self.cluster

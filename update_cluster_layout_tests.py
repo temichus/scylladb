@@ -221,14 +221,7 @@ class TestUpdateClusterLayout(Tester):
         node2 = new_node(cluster)
         # creating an additional node without actually adding it to the cluster
         i = len(cluster.nodes) + 1
-        node3 = cluster.create_node('node%s' % i,
-                                    True,
-                                    (cluster.get_node_ip(i), 9160),
-                                    (cluster.get_node_ip(i), 7000),
-                                    str(cluster.get_node_jmx_port(i)),
-                                    None,
-                                    None,
-                                    binary_interface=(cluster.get_node_ip(i), 9042))
+        node3 = cluster.new_node(i, auto_bootstrap=True, add_node=False)
 
         def stop_node3():
             node3.stop()
@@ -342,14 +335,7 @@ class TestUpdateClusterLayout(Tester):
 
         for i in xrange(4, 5):
             # creating an additional node without actually adding it to the cluster
-            new_node = cluster.create_node('node%s' % i,
-                                           True,
-                                           (cluster.get_node_ip(i), 9160),
-                                           (cluster.get_node_ip(i), 7000),
-                                           str(cluster.get_node_jmx_port(i)),
-                                           None,
-                                           None,
-                                           binary_interface=(cluster.get_node_ip(i), 9042))
+            new_node = cluster.new_node(i, auto_bootstrap=True, add_node=False)
             debug("Start Node %d" % i)
             new_node.start(jvm_args=['--logger-log-level','stream_session=debug'])
             new_node.watch_log_for("JOINING: Starting to bootstrap")
@@ -421,14 +407,7 @@ class TestUpdateClusterLayout(Tester):
 
         for i in xrange(4, 5):
             # creating an additional node without actually adding it to the cluster
-            new_node = cluster.create_node('node%s' % i,
-                                           True,
-                                           (cluster.get_node_ip(i), 9160),
-                                           (cluster.get_node_ip(i), 7000),
-                                           str(cluster.get_node_jmx_port(i)),
-                                           None,
-                                           None,
-                                           binary_interface=(cluster.get_node_ip(i), 9042))
+            new_node = cluster.new_node(i, auto_bootstrap=True, add_node=False)
             failed = None
 
             def run():
