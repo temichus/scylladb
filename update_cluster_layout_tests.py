@@ -1570,6 +1570,58 @@ class TestUpdateClusterLayout(Tester):
         cs = ['2'] * 500
         scylla_tools.query_c1c2_concurrent(session, keys=range(500, 1000), consistency=ConsistencyLevel.ONE, c1_values=cs, c2_values=cs)
 
+    def verify_latest_copy_replace_node_test(self):
+        cluster = self.cluster
+        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        debug("Starting cluster with 3 nodes.")
+        cluster.populate(3).start(wait_for_binary_proto=True)
+        node1, node2, node3 = cluster.nodelist()
+
+        # Insert on node1, node2 and node3
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 3)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        cs = ['0'] * 1000
+        debug("Insert data on node 1 and node 2")
+        scylla_tools.insert_c1c2(session, keys=range(0, 1000), consistency=ConsistencyLevel.THREE, c1_values=cs, c2_values=cs)
+
+        # Stop node 3
+        node3.stop()
+
+        # Insert on node1 only
+        node2.stop()
+        session = self.patient_cql_connection(node1)
+        cs = ['1'] * 500
+        debug("Insert data on node 1")
+        scylla_tools.insert_c1c2(session, keys=range(0, 500), consistency=ConsistencyLevel.ONE, c1_values=cs, c2_values=cs)
+
+        # Insert on node2 only
+        node2.start(wait_for_binary_proto=True)
+        node1.stop()
+        session = self.patient_cql_connection(node2)
+        cs = ['2'] * 500
+        debug("Insert data on node 2")
+        scylla_tools.insert_c1c2(session, keys=range(500, 1000), consistency=ConsistencyLevel.ONE, c1_values=cs, c2_values=cs)
+        node1.start(wait_for_binary_proto=True)
+
+        # Replacing node3 with node4
+        debug("Starting node 4 to replace node 3")
+        node4 = new_node(cluster, bootstrap=True, token=None, remote_debug_port='0', data_center=None)
+        node4.start(wait_for_binary_proto=True, replace_address=self.cluster.get_node_ip(3))
+        session = self.patient_cql_connection(node4)
+        session.execute("use ks;")
+        debug("Node 4 finished replacing node 3")
+
+        # Shtudown node1 and node2
+        node1.stop()
+        node2.stop()
+
+        debug("Check rows on node 4 have latest copy")
+        cs = ['1'] * 500
+        scylla_tools.query_c1c2_concurrent(session, keys=range(0, 500), consistency=ConsistencyLevel.ONE, c1_values=cs, c2_values=cs)
+        cs = ['2'] * 500
+        scylla_tools.query_c1c2_concurrent(session, keys=range(500, 1000), consistency=ConsistencyLevel.ONE, c1_values=cs, c2_values=cs)
+
 @attr('dtest-full', 'dtest-long', 'dtest-heavy')
 class TestLargeScaleCluster(Tester):
     _multiprocess_can_split_ = False
