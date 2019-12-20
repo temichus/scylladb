@@ -1516,6 +1516,59 @@ class TestUpdateClusterLayout(Tester):
             assert result[c] == res[c][1], "Expecting counter%i = %i, got %i" % (
                 c, result[c], res[c][1])
 
+    def verify_latest_copy_add_node_test(self):
+        """
+        Test bootstrapped node streams latest copy
+        1. Create a cluster with a single node with rf=3
+        2. Add a new node
+        3. Check that new node has all the latest data
+        """
+        cluster = self.cluster
+
+        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.populate(2).start()
+        node1, node2 = cluster.nodelist()
+
+        # Insert on node1 and node2
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 3)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        cs = ['0'] * 1000
+        debug("Insert data on node 1 and node 2")
+        scylla_tools.insert_c1c2(session, keys=range(0, 1000), consistency=ConsistencyLevel.TWO, c1_values=cs, c2_values=cs)
+
+        # Insert on node1 only
+        node2.stop()
+        session = self.patient_cql_connection(node1)
+        cs = ['1'] * 500
+        debug("Insert data on node 1")
+        scylla_tools.insert_c1c2(session, keys=range(0, 500), consistency=ConsistencyLevel.ONE, c1_values=cs, c2_values=cs)
+
+        # Insert on node2 only
+        node2.start(wait_for_binary_proto=True)
+        node1.stop()
+        session = self.patient_cql_connection(node2)
+        cs = ['2'] * 500
+        debug("Insert data on node 2")
+        scylla_tools.insert_c1c2(session, keys=range(500, 1000), consistency=ConsistencyLevel.ONE, c1_values=cs, c2_values=cs)
+        node1.start(wait_for_binary_proto=True)
+
+        # Bootstrap a new node
+        node3 = new_node(cluster)
+        node3.start(wait_for_binary_proto=True)
+        session = self.patient_cql_connection(node3)
+        session.execute("use ks;")
+        debug("Node 3 started")
+
+        # Shtudown node1 and node2
+        node1.stop()
+        node2.stop()
+
+        debug("Check rows on node 3 have latest copy")
+        cs = ['1'] * 500
+        scylla_tools.query_c1c2_concurrent(session, keys=range(0, 500), consistency=ConsistencyLevel.ONE, c1_values=cs, c2_values=cs)
+        cs = ['2'] * 500
+        scylla_tools.query_c1c2_concurrent(session, keys=range(500, 1000), consistency=ConsistencyLevel.ONE, c1_values=cs, c2_values=cs)
 
 @attr('dtest-full', 'dtest-long', 'dtest-heavy')
 class TestLargeScaleCluster(Tester):
