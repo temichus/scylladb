@@ -1722,6 +1722,73 @@ class TestUpdateClusterLayout(Tester):
         cs = ['2'] * 500
         scylla_tools.query_c1c2_concurrent(session, keys=range(500, 1000), consistency=ConsistencyLevel.TWO, c1_values=cs, c2_values=cs)
 
+    def verify_latest_copy_removenode_node_test(self):
+        cluster = self.cluster
+        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        debug("Starting cluster with 4 nodes.")
+        cluster.populate(4).start(wait_for_binary_proto=True)
+        node1, node2, node3, node4 = cluster.nodelist()
+
+        # Insert on node1, node2, node3, node4
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 3)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        cs = ['0'] * 1000
+        debug("Insert data on node 1, node 2, node 3 and node 4")
+        scylla_tools.insert_c1c2(session, keys=range(0, 1000), consistency=ConsistencyLevel.THREE, c1_values=cs, c2_values=cs)
+
+        # Insert on node1, node2 and node3
+        node4.stop()
+        session = self.patient_cql_connection(node1)
+        cs = ['1'] * 250
+        debug("Insert data on node 1, node 2 and node 3")
+        scylla_tools.insert_c1c2(session, keys=range(0, 250), consistency=ConsistencyLevel.TWO, c1_values=cs, c2_values=cs)
+
+        # Insert on node1, node2 and node4
+        node4.start(wait_for_binary_proto=True)
+        node3.stop()
+        session = self.patient_cql_connection(node4)
+        cs = ['2'] * 250
+        debug("Insert data on node 1, node 2 and node 4")
+        scylla_tools.insert_c1c2(session, keys=range(250, 500), consistency=ConsistencyLevel.TWO, c1_values=cs, c2_values=cs)
+
+        # Insert on node1, node3 and node4
+        node3.start(wait_for_binary_proto=True)
+        node2.stop()
+        session = self.patient_cql_connection(node3)
+        cs = ['3'] * 250
+        debug("Insert data on node 1, node 3 and node 4")
+        scylla_tools.insert_c1c2(session, keys=range(500, 750), consistency=ConsistencyLevel.TWO, c1_values=cs, c2_values=cs)
+
+        # Insert on node2, node3 and node4
+        node2.start(wait_for_binary_proto=True)
+        node1.stop()
+        session = self.patient_cql_connection(node2)
+        cs = ['4'] * 250
+        debug("Insert data on node 2, node 3 and node 4")
+        scylla_tools.insert_c1c2(session, keys=range(750, 1000), consistency=ConsistencyLevel.TWO, c1_values=cs, c2_values=cs)
+
+        hostid = node2.hostid()
+        node2.stop()
+        node1.start(wait_for_binary_proto=True)
+        node1.nodetool("removenode %s" % hostid)
+        debug("Node 1 finished removenode node 2")
+        session = self.patient_cql_connection(node1)
+        session.execute("use ks;")
+
+        # Shtudown node4
+        node4.stop()
+
+        debug("Check rows on node 1 and node 3 have latest copy")
+        cs = ['1'] * 250
+        scylla_tools.query_c1c2_concurrent(session, keys=range(0, 250), consistency=ConsistencyLevel.TWO, c1_values=cs, c2_values=cs)
+        cs = ['2'] * 250
+        scylla_tools.query_c1c2_concurrent(session, keys=range(250, 500), consistency=ConsistencyLevel.TWO, c1_values=cs, c2_values=cs)
+        cs = ['3'] * 250
+        scylla_tools.query_c1c2_concurrent(session, keys=range(500, 750), consistency=ConsistencyLevel.TWO, c1_values=cs, c2_values=cs)
+        cs = ['4'] * 250
+        scylla_tools.query_c1c2_concurrent(session, keys=range(750, 1000), consistency=ConsistencyLevel.TWO, c1_values=cs, c2_values=cs)
+
 @attr('dtest-full', 'dtest-long', 'dtest-heavy')
 class TestLargeScaleCluster(Tester):
     _multiprocess_can_split_ = False
