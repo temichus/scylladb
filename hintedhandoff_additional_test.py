@@ -131,7 +131,7 @@ class TestHintedHandoff(Tester):
             # We wait twice on each shard because there are two hints managers: one for regular writes and one for views
             msgs = ['hints_manager - drain_for: finished draining {}'.format(node3_addr)] * (2 * node._smp)
 
-            node_timeout = min(wait_until - time.time(), 1)
+            node_timeout = max(wait_until - time.time(), 1)
             node.watch_log_for(msgs, from_mark=from_mark, timeout=node_timeout)
 
         debug("Reading the data...")
