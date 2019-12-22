@@ -640,6 +640,17 @@ class Tester(TestCase):
                 if os.path.exists(debuglog):
                     shutil.copyfile(debuglog, os.path.join(logdir, n + "_debug.log"))
 
+        if self.cluster._scylla_manager:
+            log = os.path.join(self.cluster._scylla_manager._get_path(), 'scylla-manager.log')
+            if os.path.exists(log):
+                shutil.copyfile(log, os.path.join(logdir, 'scylla-manager.log'))
+
+            logs = [(node.name, node.logfilename() + ".manager_agent") for node in self.cluster.nodes.values()]
+            if len(logs) is not 0:
+                for name, agent_log in logs:
+                    if os.path.exists(agent_log):
+                        shutil.copyfile(agent_log, os.path.join(logdir, name + ".log.manager_agent"))
+
         if KEEP_CORES:
             if cores is None:
                 cores = self.find_cores()
