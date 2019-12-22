@@ -72,7 +72,7 @@ class TestScyllaMgmtBackup(Tester):
             mgr_cluster.run_backup_command({"location": ["s3:{}".format(self.DESTINATION_BUCKET)],
                                            "rate-limit": ['a']})
         except ScyllaManagerError as err:
-            assert "invalid rate-limit" in err.args[0], "Unexpected error: {}".format(err.args[0])
+            assert "invalid" in err.args[0] and "limit" in err.args[0], "Unexpected error: {}".format(err.args[0])
         else:
             assert False, "No error occurred when an invalid rate-limit is used in the sctool backup command"
 
