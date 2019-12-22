@@ -9,14 +9,14 @@ from minio import Minio
 
 from dtest_scylla_manager import ScyllaManagerTool, ScyllaManagerError
 from dtest_scylla_manager import TaskStatus
-from scylla_tools import insert_c1c2
+from scylla_tools import insert_c1c2, query_c1c2, check_c1c2_all_results
 from dtest import Tester, debug
 
 
 class TestScyllaMgmtBackup(Tester):
     # TODO add restore and verify functions
     __test__ = True
-    KEYSPACE_NAME = 'ks'
+    CLUSTER_NAME = 'cluster1'
     DESTINATION_BUCKET = 'backup-bucket'
     FALSE_BUCKET = 'nonexistent_bucket'
 
@@ -33,16 +33,15 @@ class TestScyllaMgmtBackup(Tester):
 
     def config_and_create_cluster(self, nodes):
         self.cluster.populate(nodes).start(wait_for_binary_proto=False, wait_other_notice=False)
+        return self.cluster.nodelist()
 
     @attr('scylla-manager')
     def test_basic_backup(self):
-        self.config_and_create_cluster(nodes=2)
-        node1, node2 = self.cluster.nodelist()
+        node1, node2 = self.config_and_create_cluster(nodes=2)
 
         manager_tool = ScyllaManagerTool(scylla_manager=self.cluster._scylla_manager)
-        cluster_name = "cluster1"
-        debug("Add a cluster to scylla-manager, named: {}".format(cluster_name))
-        mgr_cluster = manager_tool.add_cluster(node=node1, name=cluster_name)
+        debug("Add a cluster to scylla-manager, named: {}".format(self.CLUSTER_NAME))
+        mgr_cluster = manager_tool.add_cluster(node=node1, name=self.CLUSTER_NAME)
 
         session = self.patient_cql_connection(node1)
         self.create_ks(session=session, name='ks', rf=2)
@@ -59,13 +58,11 @@ class TestScyllaMgmtBackup(Tester):
 
     @attr('scylla-manager')
     def test_backup_rate_limit_invalid(self):
-        self.config_and_create_cluster(nodes=2)
-        node1, node2 = self.cluster.nodelist()
+        node1, node2 = self.config_and_create_cluster(nodes=2)
 
         manager_tool = ScyllaManagerTool(scylla_manager=self.cluster._scylla_manager)
-        cluster_name = "cluster1"
-        debug("Add a cluster to scylla-manager, named: {}".format(cluster_name))
-        mgr_cluster = manager_tool.add_cluster(node=node1, name=cluster_name)
+        debug("Add a cluster to scylla-manager, named: {}".format(self.CLUSTER_NAME))
+        mgr_cluster = manager_tool.add_cluster(node=node1, name=self.CLUSTER_NAME)
 
         debug("Attempting to create a backup task with an invalid rate limit value, expecting it to fail")
         try:
@@ -78,13 +75,11 @@ class TestScyllaMgmtBackup(Tester):
 
     @attr('scylla-manager')
     def test_backup_start_date(self):
-        self.config_and_create_cluster(nodes=2)
-        node1, node2 = self.cluster.nodelist()
+        node1, node2 = self.config_and_create_cluster(nodes=2)
 
         manager_tool = ScyllaManagerTool(scylla_manager=self.cluster._scylla_manager)
-        cluster_name = "cluster1"
-        debug("Add a cluster to scylla-manager, named: {}".format(cluster_name))
-        mgr_cluster = manager_tool.add_cluster(node=node1, name=cluster_name)
+        debug("Add a cluster to scylla-manager, named: {}".format(self.CLUSTER_NAME))
+        mgr_cluster = manager_tool.add_cluster(node=node1, name=self.CLUSTER_NAME)
 
         session = self.patient_cql_connection(node1)
         self.create_ks(session=session, name='ks', rf=2)
