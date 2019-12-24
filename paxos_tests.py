@@ -22,7 +22,7 @@ class TestPaxos(Tester):
         if (use_cache):
             cluster.set_configuration_options(values={'row_cache_size_in_mb': 100})
 
-        cluster.set_configuration_options(values={'experimental': True})
+        cluster.set_configuration_options(values={'experimental_features': ['lwt']})
 
         cluster.populate(nodes).start()
         node1 = cluster.nodelist()[0]

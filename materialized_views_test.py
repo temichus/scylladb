@@ -1829,12 +1829,10 @@ class TestMaterializedViews(Tester):
             ['TX', 'user1', 1968, 'f', 'ch@ngem3a', None]
         )
 
-    @require('1359')
-    @require('2210')
     def lwt_test(self):
         """Test that lightweight transaction behave properly with a materialized view"""
 
-        session = self.prepare()
+        session = self.prepare(options={'experimental_features': ['lwt']})
 
         session.execute("CREATE TABLE t (id int PRIMARY KEY, v int, v2 text, v3 decimal)")
         session.execute(("CREATE MATERIALIZED VIEW t_by_v AS SELECT * FROM t "
@@ -1845,7 +1843,8 @@ class TestMaterializedViews(Tester):
             session.execute(
                 "INSERT INTO t (id, v, v2, v3) VALUES ({v}, {v}, 'a', 3.0) IF NOT EXISTS".format(v=i)
             )
-        self._replay_batchlogs()
+        # Scylla doesn't leverage the batchlog for MVs
+        #self._replay_batchlogs()
 
         debug("All rows should have been inserted")
         for i in xrange(1000):
@@ -1861,7 +1860,7 @@ class TestMaterializedViews(Tester):
             session.execute(
                 "INSERT INTO t (id, v, v2, v3) VALUES ({id}, {v}, 'a', 3.0) IF NOT EXISTS".format(id=i, v=v)
             )
-        self._replay_batchlogs()
+        #self._replay_batchlogs()
 
         debug("No rows should have changed")
         for i in xrange(1000):
@@ -1877,7 +1876,7 @@ class TestMaterializedViews(Tester):
             session.execute(
                 "UPDATE t SET v={v} WHERE id = {id} IF v < 10".format(id=i, v=v)
             )
-        self._replay_batchlogs()
+        #self._replay_batchlogs()
 
         debug("Verify that only the 10 first rows changed.")
         results = list(session.execute("SELECT * FROM t_by_v;"))
@@ -1896,7 +1895,7 @@ class TestMaterializedViews(Tester):
             session.execute(
                 "DELETE FROM t WHERE id = {id} IF v = {v} ".format(id=i, v=v)
             )
-        self._replay_batchlogs()
+        #self._replay_batchlogs()
 
         debug("Verify that only the 10 first rows have been deleted.")
         results = list(session.execute("SELECT * FROM t_by_v;"))
