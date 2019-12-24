@@ -196,6 +196,7 @@ class ScyllaManagerTool(ScyllaManagerBase):
         """
         if not any([node, db_cluster]):
             raise ScyllaManagerError("Neither host or db_cluster parameter were given to Manager add_cluster")
+        debug("Adding a cluster to scylla-manager, named: {}".format(name))
         node = node or self._get_cluster_hosts_ip(db_cluster=db_cluster)[0] #TODO: adjust  _get_cluster_hosts_ip()
         user = user or self.DEFAULT_USER
         ssh_user = create_user or 'scylla-manager'
