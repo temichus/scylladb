@@ -1,7 +1,10 @@
-from random import randint
+import os
+
+from random import randint, choice
 from uuid import uuid4
 
 from dtest import Tester, debug
+from tools import require
 from tools import rows_to_list
 from cassandra.concurrent import execute_concurrent_with_args
 
@@ -11,9 +14,10 @@ from ccmlib.scylla_cluster import ScyllaCluster
 from cassandra.cluster import Session
 
 
-class TracingReadAccess(Tester):
-
-    def prepare_cluster(self, nodes=1, disable_cache=True):
+class TracingReadAccessHelper:
+    def prepare_cluster(self, nodes=1, rf=None, disable_cache=True,
+                        compaction=None,
+                        create_index=False, create_mv=False):
         """Create, start cluster, create ks, cf
 
         create cf with column name:type:
@@ -33,10 +37,25 @@ class TracingReadAccess(Tester):
         self.cluster.populate(nodes).start(wait_for_binary_proto=True)
         node = self.cluster.nodelist()[0]  # type: ScyllaNode
         session = self.patient_cql_connection(node)  # type: Session
-        self.create_ks(session, "ks", rf=nodes)
-        self.create_cf(session, "cf", key_type="text", columns={"name": "text", "rate": "int"})
-
+        if not rf:
+            rf = nodes
+        self.create_ks(session, self.keyspace, rf)
+        self.create_cf(session, self.table, key_type="text", columns={"name": "text", "rate": "int"}, compaction=compaction)
+        if create_index:
+            session.execute("CREATE INDEX ON {0.keyspace}.{0.table} (rate)".format(self))
+        if create_mv:
+            session.execute("CREATE MATERIALIZED VIEW {0.table}_by_rate AS \
+                             SELECT * FROM {0.table} WHERE rate IS NOT NULL AND key IS NOT NULL \
+                             PRIMARY KEY (rate, key)".format(self))
         return session
+
+    def restart_node(self, node):
+        """restart node
+        :param node: Node to restart
+        :type node: ScyllaNode
+        """
+        node.stop()
+        node.start(wait_for_binary_proto=True)
 
     def insertinto_table(self, session, rows=1):
         """Fill table with data
@@ -47,8 +66,8 @@ class TracingReadAccess(Tester):
         :param rows: number of rows, defaults to 1
         :type rows: number, optional
         """
-        statement = session.prepare("INSERT INTO ks.cf (key, name, rate)"
-                                    "VALUES (?, ?, ?)")
+        statement = session.prepare("INSERT INTO {0.keyspace}.{0.table} (key, name, rate) \
+                                    VALUES (?, ?, ?)".format(self))
         execute_concurrent_with_args(session, statement,
                                      map(lambda x, y, z: [x, y, z],
                                          ["{}".format(uuid4()) for _ in range(rows)],
@@ -65,32 +84,93 @@ class TracingReadAccess(Tester):
         :type rows: number, optional
         """
 
-        result = session.execute("SELECT key FROM cf")
+        result = session.execute("SELECT key FROM {0.table}".format(self))
         keys = rows_to_list(result)
 
-        statement = session.prepare("INSERT INTO ks.cf (key, name, rate)"
-                                    "VALUES (?, ?, ?)")
+        statement = session.prepare("INSERT INTO {0.keyspace}.{0.table} (key, name, rate) \
+                                    VALUES (?, ?, ?)".format(self))
         execute_concurrent_with_args(session, statement,
                                      map(lambda x, y, z: [x, y, z],
                                          [key[0] for key in keys[:rows]],
                                          ["lastname_{}".format(randint(1, 1000)) for _ in range(rows)],
                                          [randint(1, 100) for _ in range(rows)]))
 
-    def restart_node(self, node):
-        """Restart node
+    def select_all_with_tracing(self, node):
+        output, err = node.run_cqlsh("TRACING ON; \
+                                     SELECT * \
+                                     FROM {0.keyspace}.{0.table}".format(self),
+                                     return_output=True, cqlsh_options=['--no-color'])
+        self.assertFalse(err)
+        return output
 
-        Restart node for reading data from sstable
-        :param node: node to restart
+    def select_single_key_with_tracing(self, node):
+        session = self.patient_cql_connection(node)
+        result = session.execute("SELECT key FROM {0.keyspace}.{0.table}".format(self))
+        keys = rows_to_list(result)
+        key = choice(keys)
+
+        output, err = node.run_cqlsh("TRACING ON; \
+                                     SELECT * \
+                                     FROM {0.keyspace}.{0.table} \
+                                     WHERE key = '{1}'".format(self, key[0]),
+                                     return_output=True, cqlsh_options=['--no-color'])
+        self.assertFalse(err)
+        return output
+
+    def select_all_from_mv_with_tracing(self, node):
+        output, err = node.run_cqlsh("TRACING ON; \
+                                     SELECT * \
+                                     FROM {0.keyspace}.{0.table}_by_rate".format(self),
+                                     return_output=True, cqlsh_options=['--no-color'])
+        self.assertFalse(err)
+        return output
+
+    def select_all_by_index_with_tracing(self, node):
+        output, err = node.run_cqlsh("TRACING ON; \
+                                     SELECT * \
+                                     FROM {0.keyspace}.{0.table} \
+                                     WHERE rate > 0 ALLOW FILTERING".format(self),
+                                     return_output=True, cqlsh_options=['--no-color'])
+        self.assertFalse(err)
+        return output
+
+    def select_one_by_index_with_tracing(self, node):
+        session = self.patient_cql_connection(node)
+        result = session.execute("SELECT key, rate FROM {0.keyspace}.{0.table}".format(self))
+        keys = rows_to_list(result)
+        key = choice(keys)
+        output, err = node.run_cqlsh("TRACING ON; \
+                                     SELECT * \
+                                     FROM {0.keyspace}.{0.table} \
+                                     WHERE rate = {1} ALLOW FILTERING".format(self, key[1]),
+                                     return_output=True, cqlsh_options=['--no-color'])
+        self.assertFalse(err)
+        return output
+
+    def get_tables_list_for_node(self, node, table_name, table_type="-big-Data.db"):
+        """get list of table files for the node
+
+        Scan data folder and return list of files by table_type
+        for specified node
+        :param node: Node to get files
         :type node: ScyllaNode
+        :param table_name: Collect data for table with table_name name
+        :type table_name: str
+        :param table_type: file type, defaults to "-big-Data.db"
+        :type table_type: str, optional
+        :returns: list of files with specified type
+        :rtype: {list}
         """
-        node.stop()
-        node.start(wait_for_binary_proto=True)
+        sstables = []
+        node_path = node.get_path()
+        for dirpath, dirs, filenames in os.walk(os.path.join(node_path, "data", self.keyspace)):
+            elems = os.path.split(dirpath)
+            if elems[-1].startswith(table_name):
+                sstables += [os.path.join(dirpath, f) for f in filenames if f.endswith(table_type)]
+                continue
+        return sstables
 
-    def restart_cluster(self):
-        self.cluster.stop()
-        self.cluster.start(wait_for_binary_proto=True)
-
-    def assert_sstable_read_access(self, output, node):
+    def verify_tracing_info_sstable_read_access_all_partitions(self, output, node, table_name):
         """verify tracing info in output
 
         Verify that result contains tracing info
@@ -100,17 +180,50 @@ class TracingReadAccess(Tester):
         :param node: Node where operations run
         :type node: ScyllaNode
         """
-        self.assertRegexpMatches(
-            output,
-            r"Reading partition range .*data/ks/cf-.*/mc-[\d]*-big-Data\.db.*{}".format(node.address()))
-        self.assertRegexpMatches(
-            output,
-            r"data/ks/cf-.*/mc-[\d]*-big-Index.db: scheduling bulk DMA read of size [\d]* at offset [\d]*.*{}".format(node.address()))
-        self.assertRegexpMatches(
-            output,
-            r"data/ks/cf-.*/mc-[\d]*-big-Index.db: finished bulk DMA read of size [\d]* at offset [\d]*, successfully read [\d]* bytes.*{}".format(node.address()))
+        sstables = self.get_tables_list_for_node(node, table_name)
+        index_tables = self.get_tables_list_for_node(node, table_name, table_type='-big-Index.db')
+        for sstable in sstables:
+            self.assertRegexpMatches(
+                output,
+                r"Reading partition range .* from sstable {}.*{}".format(sstable, node.address()))
+        for index_table in index_tables:
+            self.assertRegexpMatches(
+                output,
+                r"{}: scheduling bulk DMA read of size [\d]* at offset [\d]*.*{}".format(index_table, node.address()))
+            self.assertRegexpMatches(
+                output,
+                r"{}: finished bulk DMA read of size [\d]* at offset [\d]*, successfully read [\d]* bytes.*{}".format(index_table, node.address()))
 
-    def test_tracing_one_node_one_sstable(self):
+    def verify_sstable_read_access_one_key(self, output, node, table_name):
+        """verify tracing info in output
+
+        Verify that result contains tracing info
+        for I/O read sstables if select by one key
+        :param output: result of query with sstable
+        :type output: str
+        :param node: Node where operations run
+        :type node: ScyllaNode
+        """
+        sstables = self.get_tables_list_for_node(node, table_name)
+        index_tables = self.get_tables_list_for_node(node, table_name, table_type='-big-Index.db')
+        for sstable in sstables:
+            self.assertRegexpMatches(
+                output,
+                r"Reading key .* from sstable {}.*| {} |".format(sstable, node.address()))
+        for index_table in index_tables:
+            self.assertRegexpMatches(
+                output,
+                r"{}: scheduling bulk DMA read of size [\d]* at offset [\d]*.*| {} |".format(index_table, node.address()))
+            self.assertRegexpMatches(
+                output,
+                r"{}: finished bulk DMA read of size [\d]* at offset [\d]*, successfully read [\d]* bytes.*| {} |".format(index_table, node.address()))
+
+
+class TestTracingReadAccess(Tester, TracingReadAccessHelper):
+    keyspace = "ks"
+    table = "cf"
+
+    def test_tracing_info_for_all_partitions(self):
         """test tracing read access of sstable
 
         Testing that read from 1 sstable displayed
@@ -118,59 +231,126 @@ class TracingReadAccess(Tester):
         """
         session = self.prepare_cluster(nodes=1)  # type: Session
         node = self.cluster.nodelist()[0]  # type: ScyllaNode
-        node.nodetool('settraceprobability 1.0')
         self.insertinto_table(session, rows=1)
 
         # flush memtable to sstable
         node.flush()
 
         # Read all data with tracing on
-        out, err = node.run_cqlsh('TRACING ON; '
-                                  'SELECT * '
-                                  'FROM ks.cf',
-                                  return_output=True, cqlsh_options=['--no-color'])
+        out = self.select_all_with_tracing(node)
 
         debug(out)
         # Assert Reading partitions from sstable
-        self.assertFalse(err)
-        self.assert_sstable_read_access(out, node)
+        self.verify_tracing_info_sstable_read_access_all_partitions(out, node, self.table)
 
-    def test_tracing_one_node_several_sstables(self):
-        """test tracing I/O reads for several sstables
+    def test_tracing_info_for_mv(self):
+        """test tracing read access of sstable
 
+        Testing that read from 1 sstable displayed
+        correctly
         """
-        session = self.prepare_cluster(nodes=1)
+        session = self.prepare_cluster(nodes=1, create_mv=True)  # type: Session
         node = self.cluster.nodelist()[0]  # type: ScyllaNode
-        node.nodetool('settraceprobability 1.0')
-        self.insertinto_table(session, rows=4)
-        node.flush()
-        self.update_table(session, rows=2)
+        self.insertinto_table(session, rows=1)
+
+        # flush memtable to sstable
         node.flush()
 
         # Read all data with tracing on
-        out, err = node.run_cqlsh('TRACING ON; '
-                                  'SELECT * '
-                                  'FROM ks.cf',
-                                  return_output=True, cqlsh_options=['--no-color'])
+        out = self.select_all_from_mv_with_tracing(node)
         debug(out)
-        print out
         # Assert Reading partitions from sstable
-        self.assertFalse(err)
-        self.assert_sstable_read_access(out, node)
+        mv_table_name = self.table + "_by_rate"
+        self.verify_tracing_info_sstable_read_access_all_partitions(out, node, mv_table_name)
 
-    def test_tracing_for_all_nodes_sstables(self):
+    def test_tracing_info_selecting_by_one_key(self):
+        """validate that tracing info if select one key
+
+        """
+        session = self.prepare_cluster(nodes=1)  # type: Session
+        node = self.cluster.nodelist()[0]  # type: ScyllaNode
+        self.insertinto_table(session, rows=5)
+        node.flush()
+
+        out = self.select_single_key_with_tracing(node)
+        # verify tracing info
+        debug(out)
+        self.verify_sstable_read_access_one_key(out, node, self.table)
+
+    @require('#5529')
+    def test_tracing_info_for_index_read_range(self):
+        session = self.prepare_cluster(nodes=1, create_index=True)
+        node = self.cluster.nodelist()[0]
+        self.insertinto_table(session, rows=5)
+
+        node.flush()
+
+        out = self.select_all_by_index_with_tracing(node)
+        debug(out)
+
+        self.verify_tracing_info_sstable_read_access_all_partitions(out, node, self.table)
+
+    def test_tracing_info_for_index_read_one(self):
+        session = self.prepare_cluster(nodes=1, create_index=True)
+        node = self.cluster.nodelist()[0]
+        self.insertinto_table(session, rows=5)
+
+        node.flush()
+
+        out = self.select_one_by_index_with_tracing(node)
+        debug(out)
+        self.verify_sstable_read_access_one_key(out, node, self.table)
+
+    def test_tracing_info_read_from_several_sstables(self):
+        """test tracing I/O reads for several sstables
+
+        switch compaction strategy to allow create several sstables.
+        """
+        session = self.prepare_cluster(nodes=1, compaction="{'class':'LeveledCompactionStrategy'}")
+        node = self.cluster.nodelist()[0]  # type: ScyllaNode
+        node.nodetool('settraceprobability 1.0')
+
+        self.insertinto_table(session, rows=4)
+        node.flush()
+        self.insertinto_table(session, rows=4)
+        node.flush()
+        self.update_table(session, rows=4)
+        node.flush()
+        # Read all data with tracing on
+        out = self.select_all_with_tracing(node)
+        debug(out)
+        # Assert Reading partitions from sstable
+        self.verify_tracing_info_sstable_read_access_all_partitions(out, node, self.table)
+
+    def test_tracing_info_sstables_locally_on_each_node_from_replica(self):
         session = self.prepare_cluster(nodes=3)
         self.insertinto_table(session, rows=50)
         for node in self.cluster.nodelist():
             node.nodetool('settraceprobability 1.0')
             node.flush()
 
-        node = self.cluster.nodelist()[0]
-        out, err = node.run_cqlsh('TRACING ON; '
-                                  'SELECT * '
-                                  'FROM ks.cf',
-                                  return_output=True, cqlsh_options=['--no-color'])
+        for node in self.cluster.nodelist():
+            out = self.select_all_with_tracing(node)
+            self.verify_tracing_info_sstable_read_access_all_partitions(out, node, self.table)
 
-        # Assert Reading partitions from sstable
-        self.assertFalse(err)
-        self.assert_sstable_read_access(out, node)
+    def test_tracing_info_for_sstables_on_each_node_from_replica_with_cache_enabled(self):
+        session = self.prepare_cluster(nodes=3, disable_cache=False)
+        self.insertinto_table(session, rows=50)
+        for node in self.cluster.nodelist():
+            node.nodetool('settraceprobability 1.0')
+            node.flush()
+
+        for node in self.cluster.nodelist():
+            self.restart_node(node)
+            out = self.select_all_with_tracing(node)
+            self.verify_tracing_info_sstable_read_access_all_partitions(out, node, self.table)
+
+    def test_tracing_info_from_remote_sstables(self):
+        node1_session = self.prepare_cluster(nodes=2, rf=1)
+        self.insertinto_table(node1_session, rows=10)
+        node1 = self.cluster.nodelist()[0]
+        node1.flush()
+
+        node2 = self.cluster.nodelist()[1]
+        out = self.select_all_with_tracing(node2)
+        self.verify_tracing_info_sstable_read_access_all_partitions(out, node1, self.table)

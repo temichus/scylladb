@@ -17,6 +17,7 @@ cql_cast_test.py
 cql_group_functions_tests.py
 cql_tests.py
 cql_tracing_test.py
+cql_tracing_addition_test.py
 cqlsh_tests/cqlsh_tests.py
 cqlsh_tests/cqlsh_copy_tests.py
 heat_weighted_load_balancing_test.py
