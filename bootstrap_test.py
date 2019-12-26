@@ -47,6 +47,7 @@ class TestBootstrap(Tester):
 
     @attr('next-gating')
     @attr('dtest-debug')
+    @attr('dtest-smoke')
     def start_stop_test(self):
         debug("populating cluster with one node")
         cluster = self.cluster
@@ -59,6 +60,7 @@ class TestBootstrap(Tester):
 
     @attr('next-gating')
     @attr('dtest-debug')
+    @attr('dtest-smoke')
     def start_stop_test_node(self):
         debug("populating cluster with three nodes")
         cluster = self.cluster
