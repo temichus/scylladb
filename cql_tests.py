@@ -625,6 +625,7 @@ class RangeDeletionTester(CQLTester):
         assert_invalid(session=session, query=query, matching='preceding column \"ck1\" is restricted by a non-EQ '
                                                               'relation')
 
+    @attr('next-gating')
     def delete_by_1ck_range_in_test(self):
         """
         Delete range of data using "in" condition on CK column
@@ -683,6 +684,7 @@ class RangeDeletionTester(CQLTester):
         assert_all(session=session, query=select_query, expected=data[lower_index:], cl=ConsistencyLevel.ALL,
                    ignore_order=True)
 
+    @attr('next-gating')
     def delete_by_1ck_range_less_more_test(self):
         """
         Delete range of data using "<" and ">=" conditions on CK column
