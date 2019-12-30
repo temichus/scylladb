@@ -143,10 +143,12 @@ class InMemoryTest(Tester):
         if validate_in_memory_used:
             debug("Validating used memory amounts...")
             # Used memory is 57 * num keys  after compaction, 114 before. Checked empirically.
-            self.assertGreaterEqual(used_mem, 57 * num_keys, msg="Used memory is less than expected")
+            self.assertGreaterEqual(used_mem, 57 * num_keys, msg="Used memory ({}) is less than expected ({})".format(used_mem, 57 * num_keys))
             debug("Validating total memory...")
-            self.assertAlmostEqual(total_mem, self.in_memory_amount_kb, delta=2,  # when smp is odd we get 2 bytes less
-                                   msg="Total memory is incorrect")
+            delta = 2  # when smp is odd we get 2 bytes less
+            self.assertAlmostEqual(total_mem, self.in_memory_amount_kb, delta=delta,
+                                    msg="Total memory is incorrect, expected {}+/-{}  but got {}"
+                                   .format( self.in_memory_amount_kb, delta, total_mem))
             debug("Used memory and total memory amounts are correct.")
 
     @run_with_params(restart_node=[True, False])
