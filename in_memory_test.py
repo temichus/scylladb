@@ -45,7 +45,7 @@ class InMemoryTest(Tester):
         # this value was empiricaly determined and is based on the assumpion
         # that the ammount of memory used is roughly linearly dependant in the
         # number of keys.
-        self.memory_usage_per_key_factor = 57
+        self.memory_usage_per_key_factor = 30
         super(InMemoryTest, self).setUp()
 
     def in_memory_scylla_start_args(self, smp=1):
