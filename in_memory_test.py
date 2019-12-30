@@ -42,6 +42,10 @@ class InMemoryTest(Tester):
         self.columns_definitions = {'c1': 'text', 'c2': 'text'}
         self.in_memory_amount = 8  # Mb
         self.in_memory_amount_kb = 8 * 2**20  # Mb
+        # this value was empiricaly determined and is based on the assumpion
+        # that the ammount of memory used is roughly linearly dependant in the
+        # number of keys.
+        self.memory_usage_per_key_factor = 57
         super(InMemoryTest, self).setUp()
 
     def in_memory_scylla_start_args(self, smp=1):
@@ -142,8 +146,8 @@ class InMemoryTest(Tester):
         debug("Data was read from in-memory store.")
         if validate_in_memory_used:
             debug("Validating used memory amounts...")
-            # Used memory is 57 * num keys  after compaction, 114 before. Checked empirically.
-            self.assertGreaterEqual(used_mem, 57 * num_keys, msg="Used memory ({}) is less than expected ({})".format(used_mem, 57 * num_keys))
+            expected_memory_usage = num_keys * self.memory_usage_per_key_factor
+            self.assertGreaterEqual(used_mem, expected_memory_usage, msg="Used memory ({}) is less than expected ({})".format(used_mem, expected_memory_usage))
             debug("Validating total memory...")
             delta = 2  # when smp is odd we get 2 bytes less
             self.assertAlmostEqual(total_mem, self.in_memory_amount_kb, delta=delta,
@@ -240,7 +244,8 @@ class InMemoryTest(Tester):
             2. Populate with data more than available memory
             3. Scylla should stop with IO error
         """
-        self.populate_and_read(restart_node=True, num_keys=84000)
+        num_keys = int((self.in_memory_amount_kb * 0.57) / self.memory_usage_per_key_factor)
+        self.populate_and_read(restart_node=True, num_keys = num_keys)
 
     def alter_table_to_in_memory(self, session, key_space_name, table_name):
         debug("Altering table to in-memory...")
@@ -281,7 +286,8 @@ class InMemoryTest(Tester):
 
     @expected_failure(err_log_msg="In-Memory disk is out of space", exception=(NodeError,))
     def alter_table_to_in_memory_more_data_then_available_test(self):
-        self.alter_table_to_in_memory_test(num_additional_keys=84000)
+        num_keys = int((self.in_memory_amount_kb * 0.57) / self.memory_usage_per_key_factor)
+        self.alter_table_to_in_memory_test(num_additional_keys = num_keys)
 
     def streaming_test(self):
         """
