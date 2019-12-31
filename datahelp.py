@@ -14,10 +14,10 @@ def parse_headers_into_list(data):
     rows = map(strip, data.split('\n'))
 
     # remove any remaining empty lines (i.e. '') from data
-    rows = filter(None, rows)
+    rows = list(filter(None, rows))
 
     # separate headers from actual data and remove extra spaces from them
-    headers = [unicode(h.strip()) for h in rows.pop(0).split('|')]
+    headers = [str(h.strip()) for h in rows.pop(0).split('|')]
     return headers
 
 
@@ -89,7 +89,7 @@ def parse_data_into_dicts(data, format_funcs=None):
     rows = map(strip, data.split('\n'))
 
     # remove any remaining empty/decoration lines (i.e. '') from data
-    rows = filter(row_describes_data, rows)
+    rows = list(filter(row_describes_data, rows))
 
     # remove headers
     headers = parse_headers_into_list(rows.pop(0))

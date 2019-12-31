@@ -320,7 +320,7 @@ class CompactionAdditionalStrategyTests(Tester):
         sstablefiles = glob.glob(glob.glob(os.path.join(keyspace_dir,
                                                         'cf' + '-*', '*-TOC.txt'))[0].replace('TOC.txt', '') + '*')
         for f in sstablefiles:
-            for generation_suffix in xrange(10, 40):
+            for generation_suffix in range(10, 40):
                 self._copy_sstable_file(f, "9999%d" % generation_suffix)
 
         before_start_sstables = sorted(glob.glob(os.path.join(keyspace_dir, 'cf' + '-*', '*-Data.db')))

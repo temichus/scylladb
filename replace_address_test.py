@@ -97,7 +97,7 @@ class TestReplaceAddress(Tester):
         debug("Verifying querying works again.")
         query = SimpleStatement('select * from %s LIMIT 1' % stress_table, consistency_level=ConsistencyLevel.THREE)
         finalData = list(session.execute(query))
-        self.assertListEqual(initialData, finalData)
+        self.assertCountEqual(initialData, finalData)
 
         debug("Verifying tokens migrated sucessfully")
         movedTokensList = node4.grep_log("Token .* changing ownership from .*"+self.cluster.get_node_ip(3)+" to .*"+self.cluster.get_node_ip(4))
@@ -215,7 +215,7 @@ class TestReplaceAddress(Tester):
         # query should work again
         debug("Verifying querying works again.")
         finalData = list(session.execute(query))
-        self.assertListEqual(initialData, finalData)
+        self.assertCountEqual(initialData, finalData)
 
         debug("Verifying tokens migrated sucessfully")
         movedTokensList = node4.grep_log("Token .* changing ownership from .*"+self.cluster.get_node_ip(3)+" to .*"+self.cluster.get_node_ip(4))
@@ -235,7 +235,7 @@ class TestReplaceAddress(Tester):
 
         debug("Verifying querying works again.")
         finalData = list(session.execute(query))
-        self.assertListEqual(initialData, finalData)
+        self.assertCountEqual(initialData, finalData)
 
         # we redo this check because restarting node should not result in tokens being moved again, ie number should be same
         debug("Verifying tokens migrated sucessfully")
@@ -290,7 +290,7 @@ class TestReplaceAddress(Tester):
         # query should work again
         debug("Verifying querying works again.")
         finalData = list(session.execute(query))
-        self.assertListEqual(initialData, finalData)
+        self.assertCountEqual(initialData, finalData)
 
     @since('2.2')
     @skip('Scylla does not support the cassandra.reset_bootstrap_progress option.')
@@ -344,4 +344,4 @@ class TestReplaceAddress(Tester):
         # query should work again
         debug("Verifying querying works again.")
         finalData = list(session.execute(query))
-        self.assertListEqual(initialData, finalData)
+        self.assertCountEqual(initialData, finalData)

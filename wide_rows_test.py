@@ -89,7 +89,7 @@ class TestWideRows(Tester):
 
         date = datetime.datetime.now()
         debug('Prefill table {} with {} partitions'.format(table_name, partitions_num))
-        for k in xrange(start_partition_index, start_partition_index+partitions_num):
+        for k in range(start_partition_index, start_partition_index+partitions_num):
             user = 'user%d' % k
             for i in range(partition_rows):
                 date_str = (date + datetime.timedelta(i)).strftime("%Y-%m-%d")
@@ -101,7 +101,7 @@ class TestWideRows(Tester):
 
     def create_large_row_table(self, session, table_name, columns_num, entity_type='row'):
         debug('Create table {} with large {}s'.format(table_name, entity_type))
-        long_text_columns = ', '.join(['value%d blob' % i for i in xrange(columns_num)])
+        long_text_columns = ', '.join(['value%d blob' % i for i in range(columns_num)])
         create_table_query = 'CREATE TABLE IF NOT EXISTS %s (userid text, event text, %s, ' \
                              'PRIMARY KEY (userid, event)) with compression = { } and %s' % (table_name,
                                                                                              long_text_columns,
@@ -114,11 +114,11 @@ class TestWideRows(Tester):
 
         date = datetime.datetime.now()
         debug('Prefill table {} with {} rows'.format(table_name, rows_num))
-        for k in xrange(start_row_index, start_row_index + rows_num):
+        for k in range(start_row_index, start_row_index + rows_num):
             user = 'user%d' % k
-            value = 'a' * one_blob_size
+            value = 'a' * int(one_blob_size)
             event = (date + datetime.timedelta(k)).strftime("%Y-%m-%d")
-            for i in xrange(columns_num):
+            for i in range(columns_num):
                 out = session.execute(
                     "UPDATE {table_name} SET value{i} = textAsBlob('{value}') WHERE userid='{user}' and event='{event}'"
                     .format(**locals()))
@@ -331,7 +331,7 @@ class TestWideRows(Tester):
         ttl = 60
         # TTL one row
         event = ck_for_ttl[0][0]
-        columns = ', '.join(["value%d = textAsBlob('%s')" % (i, value) for i in xrange(columns_num)])
+        columns = ', '.join(["value%d = textAsBlob('%s')" % (i, value) for i in range(columns_num)])
 
         debug('Update row where USERID="%s" and EVENT="%s" with TTL %d' % (userid, event, ttl))
 
@@ -360,7 +360,7 @@ class TestWideRows(Tester):
         else:
             func = self.create_large_row_data
 
-        for i in xrange(5):
+        for i in range(5):
             func(session, self.TABLE_NAME, row_number, 1, size, index)
             self.cluster.flush()
             time.sleep(0.5)
@@ -383,7 +383,7 @@ class TestWideRows(Tester):
         # Create a large timeline for each of a group of users:
         for user in ('ryan', 'cathy', 'mallen', 'joaquin', 'erin', 'ham'):
             debug("Writing values for: %s" % user)
-            for day in xrange(5000):
+            for day in range(5000):
                 date_str = (date + datetime.timedelta(day)).strftime("%Y-%m-%d")
                 client = random.choice(clients)
                 msg = random.choice(status_messages)

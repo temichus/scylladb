@@ -2955,7 +2955,7 @@ class get_slice_result:
         if ftype == TType.LIST:
           self.success = []
           (_etype171, _size168) = iprot.readListBegin()
-          for _i172 in xrange(_size168):
+          for _i172 in range(_size168):
             _elem173 = ColumnOrSuperColumn()
             _elem173.read(iprot)
             self.success.append(_elem173)
@@ -3267,7 +3267,7 @@ class multiget_slice_args:
         if ftype == TType.LIST:
           self.keys = []
           (_etype178, _size175) = iprot.readListBegin()
-          for _i179 in xrange(_size175):
+          for _i179 in range(_size175):
             _elem180 = iprot.readString();
             self.keys.append(_elem180)
           iprot.readListEnd()
@@ -3380,11 +3380,11 @@ class multiget_slice_result:
         if ftype == TType.MAP:
           self.success = {}
           (_ktype183, _vtype184, _size182 ) = iprot.readMapBegin() 
-          for _i186 in xrange(_size182):
+          for _i186 in range(_size182):
             _key187 = iprot.readString();
             _val188 = []
             (_etype192, _size189) = iprot.readListBegin()
-            for _i193 in xrange(_size189):
+            for _i193 in range(_size189):
               _elem194 = ColumnOrSuperColumn()
               _elem194.read(iprot)
               _val188.append(_elem194)
@@ -3498,7 +3498,7 @@ class multiget_count_args:
         if ftype == TType.LIST:
           self.keys = []
           (_etype201, _size198) = iprot.readListBegin()
-          for _i202 in xrange(_size198):
+          for _i202 in range(_size198):
             _elem203 = iprot.readString();
             self.keys.append(_elem203)
           iprot.readListEnd()
@@ -3611,7 +3611,7 @@ class multiget_count_result:
         if ftype == TType.MAP:
           self.success = {}
           (_ktype206, _vtype207, _size205 ) = iprot.readMapBegin() 
-          for _i209 in xrange(_size205):
+          for _i209 in range(_size205):
             _key210 = iprot.readString();
             _val211 = iprot.readI32();
             self.success[_key210] = _val211
@@ -3826,7 +3826,7 @@ class get_range_slices_result:
         if ftype == TType.LIST:
           self.success = []
           (_etype217, _size214) = iprot.readListBegin()
-          for _i218 in xrange(_size214):
+          for _i218 in range(_size214):
             _elem219 = KeySlice()
             _elem219.read(iprot)
             self.success.append(_elem219)
@@ -4038,7 +4038,7 @@ class get_paged_slice_result:
         if ftype == TType.LIST:
           self.success = []
           (_etype224, _size221) = iprot.readListBegin()
-          for _i225 in xrange(_size221):
+          for _i225 in range(_size221):
             _elem226 = KeySlice()
             _elem226.read(iprot)
             self.success.append(_elem226)
@@ -4252,7 +4252,7 @@ class get_indexed_slices_result:
         if ftype == TType.LIST:
           self.success = []
           (_etype231, _size228) = iprot.readListBegin()
-          for _i232 in xrange(_size228):
+          for _i232 in range(_size228):
             _elem233 = KeySlice()
             _elem233.read(iprot)
             self.success.append(_elem233)
@@ -5108,15 +5108,15 @@ class batch_mutate_args:
         if ftype == TType.MAP:
           self.mutation_map = {}
           (_ktype236, _vtype237, _size235 ) = iprot.readMapBegin() 
-          for _i239 in xrange(_size235):
+          for _i239 in range(_size235):
             _key240 = iprot.readString();
             _val241 = {}
             (_ktype243, _vtype244, _size242 ) = iprot.readMapBegin() 
-            for _i246 in xrange(_size242):
+            for _i246 in range(_size242):
               _key247 = iprot.readString();
               _val248 = []
               (_etype252, _size249) = iprot.readListBegin()
-              for _i253 in xrange(_size249):
+              for _i253 in range(_size249):
                 _elem254 = Mutation()
                 _elem254.read(iprot)
                 _val248.append(_elem254)
@@ -5490,11 +5490,11 @@ class describe_schema_versions_result:
         if ftype == TType.MAP:
           self.success = {}
           (_ktype261, _vtype262, _size260 ) = iprot.readMapBegin() 
-          for _i264 in xrange(_size260):
+          for _i264 in range(_size260):
             _key265 = iprot.readString();
             _val266 = []
             (_etype270, _size267) = iprot.readListBegin()
-            for _i271 in xrange(_size267):
+            for _i271 in range(_size267):
               _elem272 = iprot.readString();
               _val266.append(_elem272)
             iprot.readListEnd()
@@ -5622,7 +5622,7 @@ class describe_keyspaces_result:
         if ftype == TType.LIST:
           self.success = []
           (_etype279, _size276) = iprot.readListBegin()
-          for _i280 in xrange(_size276):
+          for _i280 in range(_size276):
             _elem281 = KsDef()
             _elem281.read(iprot)
             self.success.append(_elem281)
@@ -5967,7 +5967,7 @@ class describe_ring_result:
         if ftype == TType.LIST:
           self.success = []
           (_etype286, _size283) = iprot.readListBegin()
-          for _i287 in xrange(_size283):
+          for _i287 in range(_size283):
             _elem288 = TokenRange()
             _elem288.read(iprot)
             self.success.append(_elem288)
@@ -6502,7 +6502,7 @@ class describe_splits_result:
         if ftype == TType.LIST:
           self.success = []
           (_etype293, _size290) = iprot.readListBegin()
-          for _i294 in xrange(_size290):
+          for _i294 in range(_size290):
             _elem295 = iprot.readString();
             self.success.append(_elem295)
           iprot.readListEnd()
@@ -7811,7 +7811,7 @@ class execute_prepared_cql_query_args:
         if ftype == TType.LIST:
           self.values = []
           (_etype300, _size297) = iprot.readListBegin()
-          for _i301 in xrange(_size297):
+          for _i301 in range(_size297):
             _elem302 = iprot.readString();
             self.values.append(_elem302)
           iprot.readListEnd()

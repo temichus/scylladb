@@ -35,7 +35,7 @@ class TestScyllaTop(Tester):
         """
         (cmd, logfile) = self.get_cli()
         debug(cmd)
-        p = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE)
+        p = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE, universal_newlines=True)
         if not wait:
             return (p, logfile)
         time.sleep(sleep_time)
@@ -54,7 +54,7 @@ class TestScyllaTop(Tester):
         (cmd, logfile) = self.get_cli()
         cmd = "%s -b -n %s" % (cmd, n)
         debug(cmd)
-        p = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE)
+        p = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE, universal_newlines=True)
         if not wait:
             return (p, logfile)
         out, err = p.communicate()
@@ -74,7 +74,7 @@ class TestScyllaTop(Tester):
         (cmd, logfile) = self.get_cli()
         cmd = '%s --help' % cmd
         debug(cmd)
-        p = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE)
+        p = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE, universal_newlines=True)
         out, err = p.communicate()
         debug(out[0:40] + '...')
         assert p.returncode == 0, err
@@ -91,7 +91,7 @@ class TestScyllaTop(Tester):
         (cmd, logfile) = self.get_cli()
         cmd = '%s --list' % cmd
         debug(cmd)
-        p = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE)
+        p = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE, universal_newlines=True)
         out, err = p.communicate()
         debug(out[0:40] + '...')
         assert p.returncode == 0, err

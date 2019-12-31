@@ -234,9 +234,9 @@ class CQLCastTest(CqlshPrepare):
             not self._create_table_for_cast(table_name, 'frozen <{}>'.format(type_name), column_name, prefill=False),
             'FAILURE: table {0} was not created. See error above'.format(table_name))
 
-        for id in xrange(max([len(h) for h in data_dict[fromt].values()])):
+        for id in range(max([len(h) for h in data_dict[fromt].values()])):
             data = '{'
-            for from_type, values in data_dict[fromt].iteritems():
+            for from_type, values in data_dict[fromt].items():
                 if len(values) > id:
                     data = '{0}{1}: {2}, '.format(data, self.COLUMN_NAME_TEMPLATE.format(from_type), values[id][0])
             if data != '{':
@@ -245,7 +245,7 @@ class CQLCastTest(CqlshPrepare):
     def _test_one_type(self, from_type, data_dict, exclude, column_name, table_name, success, fail, test_types=None,
                        test_to=None, compare_error=None):
         for row_id, exp_results in enumerate(data_dict[from_type]):
-            for test, test_exp_result in exp_results[1].iteritems():
+            for test, test_exp_result in exp_results[1].items():
                 # If asked exclude tests with name started with "#"
                 # test_commented = False
                 if exclude and test.startswith('#'):
@@ -254,7 +254,7 @@ class CQLCastTest(CqlshPrepare):
                 test = test.replace('#', '')
 
                 if (test_types and test in test_types) or not test_types:
-                    for to_type, exp_result in test_exp_result.iteritems():
+                    for to_type, exp_result in test_exp_result.items():
                         # If asked exclude tests with name started with "#"
                         # type_commented = False
                         if exclude and to_type.startswith('#'):

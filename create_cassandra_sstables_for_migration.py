@@ -65,7 +65,7 @@ def main(args):
             tests = yaml.safe_load(stream)
 
         for test, desc in tests.iteritems():
-            print test
+            print(test)
             test_data_folder = os.path.join(data_folder, desc['keyspace_name'])
             create_folder_if_not_exists(test_data_folder)
 
@@ -74,7 +74,7 @@ def main(args):
             for step in desc['cmds']:
                 tool = step[0]
                 cmd = step[1].strip() if len(step) == 2 else None
-                print cmd
+                print(cmd)
                 if tool == 'cqlsh':
                     stdout, stderr = node1.run_cqlsh(cmds=cmd, return_output=True)
                     if stderr:

@@ -31,7 +31,7 @@ def verify_durable_writes_keyspace(created_on_version, current_version, keyspace
         "durable_writes_true": True,
         "durable_writes_false": False
     }
-    for keyspace, is_durable in expected.iteritems():
+    for keyspace, is_durable in expected.items():
         keyspace_name = _table_name_builder(table_name_prefix, keyspace)
         meta = session.cluster.metadata.keyspaces[keyspace_name]
         assert_equal(is_durable, meta.durable_writes,

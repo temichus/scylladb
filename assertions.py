@@ -34,13 +34,14 @@ def assert_invalid_case_insensitive_matching(session, query, matching=None, expe
 def assert_invalid(session, query, matching=None, expected=InvalidRequest):
     try:
         res = session.execute(query)
-        assert False, "Expecting query to be invalid: got %s" % res
+        assert False, "Expecting query to be invalid: got an ok response %s" % str(res)
     except AssertionError as e:
         raise e
     except expected as e:
         msg = str(e)
         if matching is not None:
             assert re.search(matching, msg), "Error message does not contain " + matching + " (error = " + msg + ")"
+
 
 @retry_with_func_attempts
 def assert_one(session, query, expected, cl=ConsistencyLevel.ONE, timeout=60, num_attempts=1):
@@ -152,7 +153,7 @@ def assert_expected_error(func, expected_error, args, kwargs):
     except AssertionError:
         raise
     except Exception as e:
-        if expected_error in e.message:
+        if expected_error in str(e):
             assert True
         else:
             raise

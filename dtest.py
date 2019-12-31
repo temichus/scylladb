@@ -1,6 +1,3 @@
-from __future__ import with_statement
-
-import ConfigParser
 import copy
 import errno
 import logging
@@ -13,13 +10,11 @@ import tempfile
 import threading
 import time
 import traceback
-import types
 import itertools
 import requests
 import datetime
 import inspect
 from unittest import TestCase
-import signal
 import random
 
 import psutil
@@ -69,7 +64,7 @@ RECORD_COVERAGE = os.environ.get('RECORD_COVERAGE', '').lower() in ('yes', 'true
 REUSE_CLUSTER = os.environ.get('REUSE_CLUSTER', '').lower() in ('yes', 'true')
 SILENCE_DRIVER_ON_SHUTDOWN = os.environ.get('SILENCE_DRIVER_ON_SHUTDOWN', 'true').lower() in ('yes', 'true')
 IGNORE_REQUIRE = os.environ.get('IGNORE_REQUIRE', '').lower() in ('yes', 'true')
-NOSE_PROCESSES = os.environ.get('NOSE_PROCESSES', 0)
+NOSE_PROCESSES = int(os.environ.get('NOSE_PROCESSES', 0))
 CLUSTER_ID_ALLOCATOR = os.environ.get('CLUSTER_ID_ALLOCATOR', '')
 KEEP_CORES = os.environ.get('KEEP_CORES', 'true').lower() in ('yes', 'true')
 DTEST_CORE_COMPRESS_TOOL = os.environ.get('DTEST_CORE_COMPRESS_TOOL', 'gzip')
@@ -100,19 +95,19 @@ def reset_environment_vars():
 def warning(msg):
     LOG.warning(CURRENT_TEST + ' - ' + str(msg))
     if PRINT_DEBUG:
-        print "WARN: " + msg
+        print("WARN: " + msg)
 
 
 def debug(msg, add_timestamp=True):
     LOG.debug(CURRENT_TEST + ' - ' + str(msg))
     msg = '{0}{1}'.format('{} '.format(datetime.datetime.now()) if add_timestamp else '', msg)
     if PRINT_DEBUG:
-        print msg
+        print(msg)
 
 def info(msg, add_timestamp=True):
     LOG.info(CURRENT_TEST + ' - ' + str(msg))
     msg = '{0}{1}'.format('{} '.format(datetime.datetime.now()) if add_timestamp else '', msg)
-    print msg
+    print(msg)
 
 def retry_till_success(fun, *args, **kwargs):
     timeout = kwargs.pop('timeout', 60)
@@ -260,10 +255,10 @@ class Runner(threading.Thread):
 
 class ClusterIdAllocator:
     def alloc(self, cluster_dir):
-        fail
+        raise NotImplementedError
 
     def free(self, id):
-        fail
+        raise NotImplementedError
 
 
 class SingleClusterIdAllocator(ClusterIdAllocator):
@@ -544,7 +539,7 @@ class Tester(TestCase):
                         pass
                     else:
                         if (pinfo['name'] == 'java.exe' and '-Dcassandra' in pinfo['cmdline']):
-                            print 'Found running cassandra process with pid: ' + str(pinfo['pid']) + '. Killing.'
+                            print('Found running cassandra process with pid: ' + str(pinfo['pid']) + '. Killing.')
                             psutil.Process(pinfo['pid']).kill()
             except ImportError:
                 debug("WARN: psutil not installed. Cannot detect and kill running cassandra processes - you may see cascading dtest failures.")
@@ -802,13 +797,13 @@ class Tester(TestCase):
 
     def create_ks(self, session, name, rf):
         query = 'CREATE KEYSPACE %s WITH replication={%s}'
-        if isinstance(rf, types.IntType):
+        if isinstance(rf, int):
             # we assume simpleStrategy
             session.execute(query % (name, "'class':'SimpleStrategy', 'replication_factor':%d" % rf))
         else:
             assert len(rf) != 0, "At least one datacenter/rf pair is needed"
             # we assume networkTopologyStrategy
-            options = (', ').join(['\'%s\':%d' % (d, r) for d, r in rf.iteritems()])
+            options = (', ').join(['\'%s\':%d' % (d, r) for d, r in rf.items()])
             session.execute(query % (name, "'class':'NetworkTopologyStrategy', %s" % options))
         session.execute('USE %s' % name)
 
@@ -937,7 +932,7 @@ class Tester(TestCase):
                 if failed or KEEP_LOGS:
                     self.copy_logs(cores=found_cores)
             except Exception as e:
-                print "Error saving log:", str(e)
+                print("Error saving log:", str(e))
             finally:
                 if failed or not self._preserve_cluster:
                     self._cleanup_cluster()
@@ -1096,8 +1091,8 @@ class Tester(TestCase):
         prometheus_url = 'http://{}:{}/metrics'.format(ip, port)
         resp = requests.get(prometheus_url)
         if resp.status_code not in [200, 201, 202]:
-            raise 'Failed getting metrics from server! error: {}'.format(resp.content)
-        return resp.content
+            raise 'Failed getting metrics from server! error: {}'.format(resp.text)
+        return resp.text
 
     def get_node_metrics(self, node_ip, port='9180', metrics=[]):
         metrics_res = {}
@@ -1196,7 +1191,7 @@ class retrying(object):
                     num_attempts_position = default_args.index('num_attempts')
                     num_attempts = func_args.defaults[num_attempts_position]
 
-            for i in xrange(num_attempts - 1):
+            for i in range(num_attempts - 1):
                 try:
                     if self.message:
                         debug("trying {} [{}/{}] ({})".format(func.__name__, i+1, num_attempts, self.message))

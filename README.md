@@ -35,23 +35,23 @@ For example:
 Setup using virtualenv
 ----------------------
 
-Using `virtualenv` is recommended in order to not pollute your global python installation with the dtest requirements. It also makes it very easy to switch between the different ccm versions (or other package versions) when changing release branches.
+Using `virtualenv` is recommended in order to not pollute your global python3 installation with the dtest requirements. It also makes it very easy to switch between the different ccm versions (or other package versions) when changing release branches.
 To setup a `virtualenv` follow the below instructions:
 
 ```bash
-# Create the virtualenv (dtests require python2)
-python2 -m virtualenv env
+# Create the virtualenv (dtests require python3)
+python3 -m virtualenv env
 
 # Start using the virtualenv, you should now see `(env)` in you bash prompt.
 source ./env/bin/activate
 
 # General dependencies.
-pip install -r ./requirements.txt
+pip3 install -r ./requirements.txt
 
 # Install Scylla CCM, using pip ensures it will be installed *into* the
 # virtualenv (setup.py does a global install by default).
 cd /path/to/scylla-ccm
-pip install .
+pip3 install .
 ```
 
 To get rid of the virtual environment just delete the directory (`env` in the above example) it was created in.
@@ -283,7 +283,7 @@ Uploading docker images
 when doing changes to requirements.txt, or any other change to docker image, it can be uploaded like this:
 
 ```bash
-export DTEST_DOCKER_IMAGE=scylladb/scylla-dtest:fedora-29-$(date +'%Y%m%d')
+export DTEST_DOCKER_IMAGE=scylladb/scylla-dtest:fedora-29-py3-$(date +'%Y%m%d')
 docker build . -t ${DTEST_DOCKER_IMAGE}
 docker push ${DTEST_DOCKER_IMAGE}
 echo "${DTEST_DOCKER_IMAGE}" > scripts/image

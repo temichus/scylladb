@@ -40,7 +40,7 @@ class TestRepair(Tester):
         for k in missings:
             query = SimpleStatement("SELECT c1, c2 FROM cf WHERE key='k%d'" % k, consistency_level=ConsistencyLevel.ONE)
             res = list(session.execute(query))
-            self.assertEqual(len(filter(lambda x: len(x) != 0, res)), 0, res)
+            self.assertEqual(len(list(filter(lambda x: len(x) != 0, res))), 0, res)
 
         if restart:
             for node in stopped_nodes:
@@ -268,18 +268,18 @@ class TestRepair(Tester):
         node2.stop(wait_other_notice=True)
         for cf in ['cf1', 'cf2']:
             # insert some data
-            for i in xrange(0, 10):
-                for j in xrange(0, 1000):
+            for i in range(0, 10):
+                for j in range(0, 1000):
                     query = SimpleStatement("INSERT INTO %s (key, c1, c2) VALUES ('k%d', 'v%d', 'value')" % (cf, i, j), consistency_level=ConsistencyLevel.ONE)
                     session.execute(query)
             node1.flush()
             # delete those data, half with row tombstone, and the rest with cell range tombstones
-            for i in xrange(0, 5):
+            for i in range(0, 5):
                 query = SimpleStatement("DELETE FROM %s WHERE key='k%d'" % (cf, i), consistency_level=ConsistencyLevel.ONE)
                 session.execute(query)
             node1.flush()
-            for i in xrange(5, 10):
-                for j in xrange(0, 1000):
+            for i in range(5, 10):
+                for j in range(0, 1000):
                     query = SimpleStatement("DELETE FROM %s WHERE key='k%d' AND c1='v%d'" % (cf, i, j), consistency_level=ConsistencyLevel.ONE)
                     session.execute(query)
             node1.flush()
@@ -293,10 +293,10 @@ class TestRepair(Tester):
 
         # check no rows will be returned
         for cf in ['cf1', 'cf2']:
-            for i in xrange(0, 10):
+            for i in range(0, 10):
                 query = SimpleStatement("SELECT c1, c2 FROM %s WHERE key='k%d'" % (cf, i), consistency_level=ConsistencyLevel.ALL)
                 res = list(session.execute(query))
-                self.assertEqual(len(filter(lambda x: len(x) != 0, res)), 0, res)
+                self.assertEqual(len(list(filter(lambda x: len(x) != 0, res))), 0, res)
 
         # check log for no repair happened for gcable data
         if self.check_repair_logs():

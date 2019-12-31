@@ -1,4 +1,3 @@
-import itertools
 import os
 import random
 import re
@@ -191,7 +190,7 @@ class TestBootstrap(Tester):
         self.assertEquals(len(messages), len(matches))
 
         # Make sure the order of the matching log lines is exactly that of in `messages`.
-        for msg_re, match in itertools.izip(messages, matches):
+        for msg_re, match in zip(messages, matches):
             log_line, match_obj = match
             self.assertTrue(re.search(msg_re, log_line) is not None)
 
@@ -566,5 +565,5 @@ class TestBootstrap(Tester):
         # Repeat the select count(*) query, to help catch
         # bugs like 9484, where count(*) fails at higher
         # data loads.
-        for _ in xrange(5):
+        for _ in range(5):
             assert_one(session, "SELECT count(*) from keyspace1.standard1", [500000], cl=ConsistencyLevel.ONE)

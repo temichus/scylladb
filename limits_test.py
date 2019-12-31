@@ -230,7 +230,7 @@ class TestLimits(Tester):
         row_size = 1000
         overhead = 100
         blob = (row_size - overhead) * 'x'
-        rows = size / row_size
+        rows = size // row_size
         for i in range(rows):
             c += "INSERT INTO stuff (k, v) VALUES(%i, '%s')\n" % (i, blob)
         c += "APPLY BATCH;\n"
@@ -272,7 +272,7 @@ class TestLimits(Tester):
         session.execute(c)
 
         batch_size = MAX_CELLS_BATCH_SIZE
-        rows = cells / columns
+        rows = cells // columns
         c = "BEGIN UNLOGGED  BATCH\n"
         for i in range(rows):
             c += "insert into ks.test1  (%s blub) values (%s %i);\n" % (keys, values, i)

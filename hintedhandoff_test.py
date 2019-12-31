@@ -64,7 +64,7 @@ class TestHintedHandoffConfig(Tester):
 
         # Check node2 for all the keys that should have been delivered via HH if enabled or not if not enabled
         session = self.patient_exclusive_cql_connection(node2, keyspace='ks')
-        for n in xrange(0, 100):
+        for n in range(0, 100):
             if enabled:
                 query_c1c2(session, n, ConsistencyLevel.ONE)
             else:
@@ -166,5 +166,5 @@ class TestHintedHandoff(Tester):
         node2.decommission()
         node3.decommission()
         time.sleep(5)
-        for x in xrange(0, 100):
+        for x in range(0, 100):
             query_c1c2(session, x, ConsistencyLevel.ONE)

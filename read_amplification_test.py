@@ -56,7 +56,7 @@ class ReadAmplificationTest(Tester):
             session.execute(statement)
             session.execute('ALTER MATERIALIZED VIEW ks.cf_mv WITH read_repair_chance=0.0')
 
-        scylla_tools.insert_c1c2(session, keys=xrange(1,100), consistency=ConsistencyLevel.ALL)
+        scylla_tools.insert_c1c2(session, keys=range(1,100), consistency=ConsistencyLevel.ALL)
 
         debug("Stop node2")
         nodes[1].stop(wait_other_notice=True)
@@ -66,7 +66,7 @@ class ReadAmplificationTest(Tester):
         c = 'a' * 1024  * 1 # 1KB
         cs = [c] * cnt
         debug("Insert data")
-        scylla_tools.insert_c1c2(session, keys=xrange(1,cnt+1), consistency=ConsistencyLevel.QUORUM, c1_values=cs,
+        scylla_tools.insert_c1c2(session, keys=range(1,cnt+1), consistency=ConsistencyLevel.QUORUM, c1_values=cs,
                               c2_values=cs)
 
         debug("Start node2")
@@ -81,7 +81,7 @@ class ReadAmplificationTest(Tester):
         thr = executor.submit(repair)
 
         debug("Verify there is no read amplification in repair streaming")
-        node_ips = [cluster.get_node_ip(node_ind) for node_ind in xrange(1, len(nodes) + 1)]
+        node_ips = [cluster.get_node_ip(node_ind) for node_ind in range(1, len(nodes) + 1)]
         amplification_rate = 3
         max_val = {}
         metric_names = ['scylla_streaming_total_incoming_bytes', 'scylla_streaming_total_outgoing_bytes']
@@ -114,7 +114,7 @@ class ReadAmplificationTest(Tester):
         c1 = 'a' * KBYTE
         c2 = 'b' * KBYTE
         size = KBYTE * 2
-        cnt = read_size / size
+        cnt = read_size // size
         debug('count: %s' % cnt)
         c1s = [c1] * cnt
         c2s = [c2] * cnt

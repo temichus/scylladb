@@ -7,7 +7,7 @@ from scylla_tools import insert_c1c2_no_prepared
 from cassandra.query import SimpleStatement
 from cassandra import ConsistencyLevel
 import functools
-from Queue import Queue
+from queue import Queue
 import random
 import threading
 import time

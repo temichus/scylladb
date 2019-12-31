@@ -15,9 +15,8 @@ import os
 from concurrent.futures import ThreadPoolExecutor
 
 import random
-import commands
 import re
-
+from subprocess import getoutput
 
 class RepairAdditionalBase(Tester):
     __test__ = False
@@ -143,16 +142,16 @@ class RepairAdditionalBase(Tester):
 
         debug('Create {} partitions of {} columns with {} rows'.format(partition_range_end, num_of_columns,
                                                                        rows_in_partition))
-        for i in xrange(partition_range_start, partition_range_end + 1):
-            for k in xrange(1, rows_in_partition + 1):
+        for i in range(partition_range_start, partition_range_end + 1):
+            for k in range(1, rows_in_partition + 1):
                 str = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(10))
                 stmt = 'insert into {table_name} (pk, ck, {columns}, clist, cset, cmap) values ({ilist}, ' \
                        '{klist}, {int_values}, [{ilist}, {klist}], ' \
                        '{open}{set_value}{close}, {map_value})'.format(table_name=table_name,
                                                                        columns=', '.join(
-                                                                           'c%d' % l for l in xrange(1, num_of_columns)),
+                                                                           'c%d' % l for l in range(1, num_of_columns)),
                                                                        int_values=', '.join(
-                                                                           '%d' % l for l in xrange(1, num_of_columns)),
+                                                                           '%d' % l for l in range(1, num_of_columns)),
                                                                        ilist=i, klist=k, open='{\'',
                                                                        set_value=str, close='\'}',
                                                                        map_value='{%d: \'%s\'}' % (k, str)
@@ -576,7 +575,7 @@ class RepairAdditionalBase(Tester):
         tmp = tempfile.TemporaryFile()
         node.run_sstable2json(tmp)
         tmp.seek(0)
-        return tmp.read()
+        return tmp.read().decode('utf-8')
 
     def _repair_ttl_update_test(self):
         """
@@ -1881,7 +1880,7 @@ class RepairAdditionalBase(Tester):
             except Exception as ex:
                 debug(ex)
                 if repair_uses_stream:
-                    output = commands.getoutput('curl http://%s:10000/stream_manager/' % self.get_ip_from_node(node3))
+                    output = getoutput('curl http://%s:10000/stream_manager/' % self.get_ip_from_node(node3))
                     assert 'repair-' not in output
 
         checking_keys_num('Before Repair')
@@ -1891,7 +1890,7 @@ class RepairAdditionalBase(Tester):
         if repair_uses_stream:
             found_repair_sessions = False
             for i in range(600):
-                output = commands.getoutput('curl http://%s:10000/stream_manager/' % self.get_ip_from_node(node3))
+                output = getoutput('curl http://%s:10000/stream_manager/' % self.get_ip_from_node(node3))
                 if 'repair-' in output:
                     debug('Found repair stream sessions')
                     found_repair_sessions = True
@@ -1905,7 +1904,7 @@ class RepairAdditionalBase(Tester):
 
         debug('Abort repair sessions')
         url = "http://%s:10000/storage_service/force_terminate_repair" % self.get_ip_from_node(node3)
-        commands.getoutput('curl -X POST  --header "Accept: application/json" %s' % url)
+        getoutput('curl -X POST  --header "Accept: application/json" %s' % url)
         thread1.result(timeout=120)
 
         debug('Sleep 10 seconds')
@@ -1928,7 +1927,7 @@ class RepairAdditionalBase(Tester):
         if not same_shard_count:
             node1.set_smp(2)
             node2.set_smp(3)
-            debug("Set node1.smp=2, node2.smp=3");
+            debug("Set node1.smp=2, node2.smp=3")
         self.cluster.start(wait_for_binary_proto=True, wait_other_notice=True)
 
         session = self.patient_cql_connection(node1)
@@ -1937,7 +1936,7 @@ class RepairAdditionalBase(Tester):
 
         nr_rows = 10000
         # Add nr_rows -1  keys on node 1 and node2
-        insert_c1c2(session, keys=xrange(0, nr_rows - 1), consistency=ConsistencyLevel.ALL)
+        insert_c1c2(session, keys=range(0, nr_rows - 1), consistency=ConsistencyLevel.ALL)
 
         # Insert 1 more keys on node1
         debug("Adding data only on node 1...")
@@ -1991,7 +1990,7 @@ class RepairAdditionalBase(Tester):
 
         nr_rows = 10000
         # Add nr_rows keys on node 1 and node2
-        insert_c1c2(session, keys=xrange(0, nr_rows), consistency=ConsistencyLevel.ALL)
+        insert_c1c2(session, keys=range(0, nr_rows), consistency=ConsistencyLevel.ALL)
 
         # Insert 1 more keys on node1
         debug("Delete data only on node 1...")
@@ -2332,7 +2331,7 @@ class RepairAdditionalBase(Tester):
 
         stmt = 'create table {} (pk int, ck int, {}, clist list<int>, cset set<text>, cmap map<int, text>, ' \
                'PRIMARY KEY(pk, ck))'.format(self.TABLE_NAME,
-                                             ', '.join('c%d int' % i for i in xrange(1, self.NUM_OF_COLUMNS)))
+                                             ', '.join('c%d int' % i for i in range(1, self.NUM_OF_COLUMNS)))
         test_session.execute(stmt)
 
         # Prefill
@@ -2472,7 +2471,7 @@ class RepairAdditionalBase(Tester):
         11. Shutdown node 1,3 check all data on node 2
         12. Shutdown node 2,3 check all data on node 1
         """
-        fail
+        raise NotImplementedError
 
     @skip('unimplemented')
     def _full_repair_of_node_initiated_on_node_with_latest_data_test(self):
@@ -2485,7 +2484,7 @@ class RepairAdditionalBase(Tester):
         5. Run repair on node 1
         6. Shutdown node 1 - check that all data exists on node 2
         """
-        fail
+        raise NotImplementedError
 
     @skip('unimplemented')
     def _full_repair_of_node_initiated_on_node_without_data(self):
@@ -2498,7 +2497,7 @@ class RepairAdditionalBase(Tester):
         5. Run repair on node 2
         6. Shutdown node 1 - check that all data exists on node 2
         """
-        fail
+        raise NotImplementedError
 
     @skip('unimplemented')
     def _repair_fixes_updates_to_cells_test(self):
@@ -2512,7 +2511,7 @@ class RepairAdditionalBase(Tester):
         6. Run repair on node 2
         7. Shutdown node 1 - check that all data exists on node 2
         """
-        fail
+        raise NotImplementedError
 
     @skip('unimplemented')
     def _repair_fixes_remove_of_keys_test(self):
@@ -2526,7 +2525,7 @@ class RepairAdditionalBase(Tester):
         6. Run repair on node 2
         7. Shutdown node 1 - check that all data exists on node 2
         """
-        fail
+        raise NotImplementedError
 
     @skip('unimplemented')
     def _repair_fixes_deletion_of_cells_test(self):
@@ -2540,7 +2539,7 @@ class RepairAdditionalBase(Tester):
         6. Run repair on node 2
         7. Shutdown node 1 - check that all data exists on node 2
         """
-        fail
+        raise NotImplementedError
 
     @skip('unimplemented')
     def _repair_fixes_deletion_of_range_of_cells_test(self):
@@ -2554,7 +2553,7 @@ class RepairAdditionalBase(Tester):
         6. Run repair on node 2
         7. Shutdown node 1 - check that all data exists on node 2
         """
-        fail
+        raise NotImplementedError
 
     @skip('unimplemented')
     def _repair_fixes_update_of_ttl_test(self):
@@ -2569,7 +2568,7 @@ class RepairAdditionalBase(Tester):
         6. Run repair on node 2
         7. Shutdown node 1 - check that all data exists on node 2
         """
-        fail
+        raise NotImplementedError
 
     @skip('unimplemented')
     def _fail_node_initiating_repair_test(self):
@@ -2584,7 +2583,7 @@ class RepairAdditionalBase(Tester):
            c. Kill node 2
            d. Check that cluster is avilable (read/writes)
         """
-        fail
+        raise NotImplementedError
 
     @skip('unimplemented')
     def _fail_node_responding_to_repair_test(self):
@@ -2600,7 +2599,7 @@ class RepairAdditionalBase(Tester):
            c. Kill node 1
            d. Check that cluster is avilable (read/writes)
         """
-        fail
+        raise NotImplementedError
 
     @skip('unimplemented')
     def _repair_while_data_is_updated_test(self):
@@ -2615,7 +2614,7 @@ class RepairAdditionalBase(Tester):
         7. Stop node 1
         8. Check that all the data is up to date
         """
-        fail
+        raise NotImplementedError
 
     @skip('unimplemented')
     def _repair_while_nodes_are_down_1_test(self):
@@ -2629,7 +2628,7 @@ class RepairAdditionalBase(Tester):
         6. Start repair on node 2
         7. Check if repair is succesfull
         """
-        fail
+        raise NotImplementedError
 
     @skip('unimplemented')
     def _repair_while_nodes_are_down_2_test(self):
@@ -2643,7 +2642,7 @@ class RepairAdditionalBase(Tester):
         6. Start repair on node 2
         7. Check if repair is succesfull
         """
-        fail
+        raise NotImplementedError
 
     @skip('unimplemented')
     def _repair_while_new_node_is_added_test(self):
@@ -2656,7 +2655,7 @@ class RepairAdditionalBase(Tester):
         6. Start repair
         7. Create a new node and start it
         """
-        fail
+        raise NotImplementedError
 
     @skip('unimplemented')
     def _repair_while_node_is_decomissioned_test(self):
@@ -2670,7 +2669,7 @@ class RepairAdditionalBase(Tester):
         7. Decomission node 3
         8. Stop node 1 - does node 2 hold all the data
         """
-        fail
+        raise NotImplementedError
 
 
 @attr('dtest-full')

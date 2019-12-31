@@ -1,3 +1,4 @@
+from __future__ import print_function
 import os
 import time
 from re import findall
@@ -247,11 +248,11 @@ class TestIncRepair(Tester):
         # take a long time and don't print anything by default, which can result
         # in the test being timed out after 20 minutes.  These print statements
         # prevent it from being timed out.
-        print "compacting node1"
+        print("compacting node1")
         node1.compact()
-        print "compacting node2"
+        print("compacting node2")
         node2.compact()
-        print "compacting node3"
+        print("compacting node3")
         node3.compact()
 
         # wait some time to be sure the load size is propagated between nodes

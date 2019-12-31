@@ -3,11 +3,11 @@ import re
 import stat
 import sys
 import time
-import urllib2
 import shutil
 from threading import Thread
 from unittest import skip
 from binascii import hexlify
+import functools
 
 import yaml
 from nose.plugins.attrib import attr
@@ -880,7 +880,7 @@ class TestNodetool(Tester):
             session.execute("USE " + ks)
             for table in obj[ks]["tables"]:
                 t = obj[ks]["tables"][table]
-                keys = reduce(lambda a, b: a + "," + b, [k + " " + t[k] for k in t.keys() if k != "key"])
+                keys = functools.reduce(lambda a, b: a + "," + b, [k + " " + t[k] for k in t.keys() if k != "key"])
                 pk = t["key"]
                 create_table = "CREATE TABLE " + table + " (" + keys + " ,PRIMARY KEY (" + pk + "))"
                 session.execute(create_table)
@@ -904,8 +904,8 @@ class TestNodetool(Tester):
                 t = obj[ks][table]
                 for val in t:
                     ins = "INSERT INTO " + table + " ("
-                    ins = ins + reduce(lambda a, b: a + "," + b, val.keys()) + ") VALUES ("
-                    ins = ins + reduce(lambda a, b: a + "," + b, [self._sql_val(val[a]) for a in val.keys()]) + ")"
+                    ins = ins + functools.reduce(lambda a, b: a + "," + b, val.keys()) + ") VALUES ("
+                    ins = ins + functools.reduce(lambda a, b: a + "," + b, [self._sql_val(val[a]) for a in val.keys()]) + ")"
                     session.execute(ins)
 
     @staticmethod
@@ -1195,8 +1195,8 @@ class TestNodetool(Tester):
                 node.nodetool("refresh keyspace1 standard1")
                 self.fail("refresh should be with Permission denied")
             except NodetoolError as e:
-                self.assertTrue(error_to_track.search(e.message),
-                                'expected error not found in nodetool error message: {}'.format(e.message))
+                self.assertTrue(error_to_track.search(str(e)),
+                                'expected error not found in nodetool error message: {}'.format(str(e)))
         finally:
             self._change_data_perms(node, 'data', stat.S_IWRITE | stat.S_IREAD | stat.S_IEXEC)
             node.mark_log_for_errors()
@@ -1301,7 +1301,7 @@ class TestNodetool(Tester):
         node.stress_object(['mixed', 'n=10000', '-rate', 'threads=4'])
         session = self.patient_cql_connection(node)
         rows = session.execute("Select * from keyspace1.standard1 limit 100")
-        keys = ['0x' + hexlify(r[0]) for r in rows_to_list(rows)]
+        keys = ['0x' + hexlify(r[0]).decode('utf-8') for r in rows_to_list(rows)]
         debug('Run range queries')
         q_slice = 10
         start = 0
@@ -1439,7 +1439,7 @@ class TestNodetool(Tester):
         return res
 
     def print_time(self, lst):
-        lst.sort(lambda a, b: a["start"] < b["start"])
+        lst.sort(key=lambda a: a["start"])
         start = lst[0]["start"]
         end = max(map(lambda a: a["end"] if "end" in a else a["start"], lst))
         strts = list(set(map(lambda a: a["start"], lst)))
@@ -1518,7 +1518,7 @@ class TestNodetool(Tester):
                 operations.append(tr)
             if self.concurrent_test_fail:
                 break
-        while len(filter(lambda a: a.is_alive(), operations)) > 0:
+        while len(list(filter(lambda a: a.is_alive(), operations))) > 0:
             if not self.concurrent_test_fail:
                 self.do_recurrent(start, waits, res)
             time.sleep(20)

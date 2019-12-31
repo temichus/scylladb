@@ -18,7 +18,7 @@ from cassandra.concurrent import execute_concurrent_with_args
 
 from assertions import assert_all, assert_none
 from ccmlib import common
-from cqlsh_tools import monkeypatch_driver, unmonkeypatch_driver
+from .cqlsh_tools import monkeypatch_driver, unmonkeypatch_driver
 from dtest import Tester, debug
 from tools import create_c1c2_table, insert_c1c2, rows_to_list, require, new_node
 from nose.plugins.attrib import attr
@@ -119,12 +119,10 @@ class TestCqlsh(Tester):
     def verify_glass(self, node):
         session = self.patient_cql_connection(node)
 
-        def verify_varcharmap(map_name, expected, encode_value=False):
-            rows = list(session.execute((u"SELECT %s FROM testks.varcharmaptable WHERE varcharkey= '᚛᚛ᚉᚑᚅᚔᚉᚉᚔᚋ ᚔᚈᚔ ᚍᚂᚐᚅᚑ ᚅᚔᚋᚌᚓᚅᚐ᚜';" % map_name).encode("utf-8")))
-            if encode_value:
-                got = {k.encode("utf-8"): v.encode("utf-8") for k, v in rows[0][0].iteritems()}
-            else:
-                got = {k.encode("utf-8"): v for k, v in rows[0][0].iteritems()}
+        def verify_varcharmap(map_name, expected):
+            rows = list(session.execute(("SELECT %s FROM testks.varcharmaptable WHERE varcharkey= '᚛᚛ᚉᚑᚅᚔᚉᚉᚔᚋ ᚔᚈᚔ ᚍᚂᚐᚅᚑ ᚅᚔᚋᚌᚓᚅᚐ᚜';" % map_name)))
+
+            got = {k: v for k, v in rows[0][0].items()}
             self.assertEqual(got, expected)
 
         verify_varcharmap('varcharasciimap', {
@@ -223,7 +221,7 @@ class TestCqlsh(Tester):
             ' ⠊⠀⠉⠁⠝⠀⠑⠁⠞⠀⠛⠇⠁⠎⠎⠀⠁⠝⠙⠀⠊⠞⠀⠙⠕⠑⠎⠝⠞⠀⠓⠥⠗⠞⠀⠍⠑': ' ⠊⠀⠉⠁⠝⠀⠑⠁⠞⠀⠛⠇⠁⠎⠎⠀⠁⠝⠙⠀⠊⠞⠀⠙⠕⠑⠎⠝⠞⠀⠓⠥⠗⠞⠀⠍⠑',
             'Можам да јадам стакло, а не ме штета.': 'Можам да јадам стакло, а не ме штета.',
             'I can eat glass and it does not hurt me': 'I can eat glass and it does not hurt me'
-        }, encode_value=True)
+        })
 
         verify_varcharmap('varcharvarintmap', {
             'Vitrum edere possum, mihi non nocet.': 1010010101020400204143243,
@@ -246,7 +244,7 @@ class TestCqlsh(Tester):
 
         node1, = self.cluster.nodelist()
 
-        node1.run_cqlsh(cmds=u"""create KEYSPACE testks WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};
+        node1.run_cqlsh(cmds="""create KEYSPACE testks WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};
 use testks;
 
 CREATE TABLE varcharmaptable (
@@ -357,7 +355,7 @@ INSERT INTO varcharmaptable (varcharkey, varcharvarintmap ) VALUES      ('᚛᚛
 UPDATE varcharmaptable SET varcharvarintmap = varcharvarintmap + {'Vitrum edere possum, mihi non nocet.':20000} WHERE varcharkey= '᚛᚛ᚉᚑᚅᚔᚉᚉᚔᚋ ᚔᚈᚔ ᚍᚂᚐᚅᚑ ᚅᚔᚋᚌᚓᚅᚐ᚜';
 
 UPDATE varcharmaptable SET varcharvarintmap['Vitrum edere possum, mihi non nocet.'] = 1010010101020400204143243 WHERE varcharkey= '᚛᚛ᚉᚑᚅᚔᚉᚉᚔᚋ ᚔᚈᚔ ᚍᚂᚐᚅᚑ ᚅᚔᚋᚌᚓᚅᚐ᚜'
-        """.encode("utf-8"))
+        """)
 
         self.verify_glass(node1)
 
@@ -381,7 +379,7 @@ UPDATE varcharmaptable SET varcharvarintmap['Vitrum edere possum, mihi non nocet
 
         node1, = self.cluster.nodelist()
 
-        node1.run_cqlsh(cmds=u"""create keyspace  CASSANDRA_7196 WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1} ;
+        node1.run_cqlsh(cmds="""create keyspace  CASSANDRA_7196 WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1} ;
 
 use CASSANDRA_7196;
 
@@ -436,7 +434,7 @@ INSERT INTO has_all_types (num, intcol, asciicol, bigintcol, blobcol, booleancol
                            timestampcol, uuidcol, varcharcol, varintcol)
 VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDecimal(0x),
         blobAsDouble(0x), blobAsFloat(0x), '', blobAsTimestamp(0x), blobAsUuid(0x), '',
-        blobAsVarint(0x))""".encode("utf-8"))
+        blobAsVarint(0x))""")
 
         output, err = self.run_cqlsh(node1, "select intcol, bigintcol, varintcol from CASSANDRA_7196.has_all_types where num in (0, 1, 2, 3, 4)")
         if common.is_win():
@@ -916,14 +914,14 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
         # session
         with open(self.tempfile.name, 'r') as csvfile:
             csvreader = csv.reader(csvfile)
-            result_list = [map(str, cql_row) for cql_row in results]
-            self.assertItemsEqual(result_list, csvreader)
+            result_list = [list(map(str, cql_row)) for cql_row in results]
+            self.assertCountEqual(result_list, csvreader)
 
         # import the CSV file with COPY FROM
         session.execute("TRUNCATE ks.testcopyto")
         node1.run_cqlsh(cmds="COPY ks.testcopyto FROM '%s'" % (self.tempfile.name,))
         new_results = list(session.execute("SELECT * FROM testcopyto"))
-        self.assertItemsEqual(results, new_results)
+        self.assertCountEqual(results, new_results)
 
     def float_formatting_test(self):
         """ Tests for CASSANDRA-9224, check format of float and double values"""
@@ -1447,7 +1445,7 @@ Unlogged batch covering 2 partitions detected against table [client_warnings.tes
         args = cqlsh_options + [host, str(port)]
         sys.stdout.flush()
         p = subprocess.Popen([cli] + args, env=env, stdin=subprocess.PIPE, stderr=subprocess.PIPE,
-                             stdout=subprocess.PIPE)
+                             stdout=subprocess.PIPE, universal_newlines=True)
         for cmd in cmds.split(';'):
             p.stdin.write(cmd + ';\n')
         p.stdin.write("quit;\n")
@@ -1544,16 +1542,16 @@ class CqlshSmokeTest(Tester):
         self.create_cf(self.session, 'test')
 
         self.node1.run_cqlsh("INSERT INTO ks.test (key, c, v) VALUES ('a', 'a', 'a')")
-        assert_all(self.session, "SELECT key, c, v FROM test", [[u"a", u"a", u"a"]])
+        assert_all(self.session, "SELECT key, c, v FROM test", [["a", "a", "a"]])
 
     def update_test(self):
         self.create_ks(self.session, 'ks', 1)
         self.create_cf(self.session, 'test')
 
         self.session.execute("INSERT INTO test (key, c, v) VALUES ('a', 'a', 'a')")
-        assert_all(self.session, "SELECT key, c, v FROM test", [[u"a", u"a", u"a"]])
+        assert_all(self.session, "SELECT key, c, v FROM test", [["a", "a", "a"]])
         self.node1.run_cqlsh("UPDATE ks.test SET v = 'b' WHERE key = 'a' AND c = 'a'")
-        assert_all(self.session, "SELECT key, c, v FROM test", [[u"a", u"a", u"b"]])
+        assert_all(self.session, "SELECT key, c, v FROM test", [["a", "a", "b"]])
 
     def delete_test(self):
         self.create_ks(self.session, 'ks', 1)

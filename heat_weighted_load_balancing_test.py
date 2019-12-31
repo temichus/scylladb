@@ -1,3 +1,4 @@
+from __future__ import print_function
 import time
 from dtest import Tester, debug
 from concurrent.futures import ThreadPoolExecutor
@@ -21,13 +22,13 @@ class HeatWeightedLB(Tester):
                 if not metrics[key][node_ind]:
                     debug('WARNING: no metrics found for {}'.format(key))
                     continue
-            print key
-            print '{:10s}   {:10s}   {:10s}'.format('node1', 'node2', 'node3')
+            print(key)
+            print('{:10s}   {:10s}   {:10s}'.format('node1', 'node2', 'node3'))
             for i in range(100):
                 value = 'delta' if 'cache_hit_rate' not in key else 'val'
-                print '{:15s}  {:15s}  {:15s}'.format(str(metrics[key][1][i][value]),
+                print('{:15s}  {:15s}  {:15s}'.format(str(metrics[key][1][i][value]),
                                                       str(metrics[key][2][i][value]),
-                                                      str(metrics[key][3][i][value]))
+                                                      str(metrics[key][3][i][value])))
 
     def get_metrics_from_nodes(self):
         debug('Get metrics from all nodes')
@@ -35,7 +36,7 @@ class HeatWeightedLB(Tester):
         for i in range(100):
             for node_ind in (1, 2, 3):
                 metrics = self.get_node_metrics(node_ip=self.cluster.get_node_ip(node_ind), metrics=self.METRICS)
-                for k, v in metrics.iteritems():
+                for k, v in metrics.items():
                     delta = v - node_metrics[k][node_ind][-1]['val'] if node_metrics[k][node_ind] else 0
                     node_metrics[k][node_ind].append(dict(val=v, delta=delta))
             time.sleep(1)
@@ -55,13 +56,13 @@ class HeatWeightedLB(Tester):
                 for node_ind in (1, 3):
                     if cached:
                         # parameter's delta is almost equal for all the nodes
-                        self.assertLessEqual(metrics[key][node_ind][i]['delta']/metrics[key][2][i]['delta'], 1)
+                        self.assertAlmostEqual(metrics[key][node_ind][i]['delta']/metrics[key][2][i]['delta'], 1, delta=0.5)
                     else:
                         # parameter's delta on the restarted node is less from 4 to 13 times
                         mean_window = 5
                         mean_avg = sum([metrics[key][node_ind][j]['delta'] for j in range(i, i + mean_window)]) / mean_window
                         node_mean_avg = sum([metrics[key][2][j]['delta'] for j in range(i, i + mean_window)]) / mean_window
-                        self.assertIn(mean_avg / node_mean_avg, range(4, 13),
+                        self.assertIn(mean_avg // node_mean_avg, range(4, 13),
                                       'Cache difference between nodes is less then expected: {}/{}, metric {}'.format(
                                           mean_avg, node_mean_avg, key))
         key = 'scylla_column_family_cache_hit_rate.*cf=.*standard1'

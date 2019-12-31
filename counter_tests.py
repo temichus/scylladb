@@ -37,21 +37,21 @@ class TestCounters(Tester):
         nb_increment = 50
         nb_counter = 10
 
-        for i in xrange(0, nb_increment):
-            for c in xrange(0, nb_counter):
+        for i in range(0, nb_increment):
+            for c in range(0, nb_counter):
                 session = sessions[(i + c) % len(nodes)]
                 query = SimpleStatement("UPDATE cf SET c = c + 1 WHERE key = 'counter%i'" % c,
                                         consistency_level=ConsistencyLevel.QUORUM)
                 session.execute(query)
 
             session = sessions[i % len(nodes)]
-            keys = ",".join(["'counter%i'" % c for c in xrange(0, nb_counter)])
+            keys = ",".join(["'counter%i'" % c for c in range(0, nb_counter)])
             query = SimpleStatement("SELECT key, c FROM cf WHERE key IN (%s)" % keys,
                                     consistency_level=ConsistencyLevel.QUORUM)
             res = list(session.execute(query))
 
             assert len(res) == nb_counter
-            for c in xrange(0, nb_counter):
+            for c in range(0, nb_counter):
                 assert len(res[c]) == 2, "Expecting key and counter for counter%i, got %s" % (c, str(res[c]))
                 assert res[c][1] == i + 1, "Expecting counter%i = %i, got %i" % (c, i + 1, res[c][1])
 
@@ -147,7 +147,7 @@ class TestCounters(Tester):
 
         counters = []
         # establish 50 counters (2x25 rows)
-        for i in xrange(25):
+        for i in range(25):
             _id = str(uuid.uuid4())
             counters.append(
                 {_id: {'counter_one': 1, 'counter_two': 1}}
@@ -160,9 +160,9 @@ class TestCounters(Tester):
             session.execute(query)
 
         # increment a bunch of counters with CL.ONE
-        for i in xrange(10000):
+        for i in range(10000):
             counter = counters[random.randint(0, len(counters) - 1)]
-            counter_id = counter.keys()[0]
+            counter_id = list(counter.keys())[0]
 
             query = SimpleStatement("""
                 UPDATE counter_table
@@ -194,7 +194,7 @@ class TestCounters(Tester):
 
         # let's verify the counts are correct, using CL.ALL
         for counter_dict in counters:
-            counter_id = counter_dict.keys()[0]
+            counter_id = list(counter_dict.keys())[0]
 
             query = SimpleStatement("""
                 SELECT counter_one, counter_two
@@ -326,8 +326,8 @@ class TestCounters(Tester):
         nb_counter = 2
 
         def run(connection):
-            for i in xrange(0, nb_increment):
-                for c in xrange(0, nb_counter):
+            for i in range(0, nb_increment):
+                for c in range(0, nb_counter):
                     query = SimpleStatement("UPDATE cf SET c = c + 1 WHERE key = 'counter%i'" % c,
                                             consistency_level=ConsistencyLevel.QUORUM)
                     connection.execute(query)
@@ -343,14 +343,14 @@ class TestCounters(Tester):
             t.result()
 
         conn = sessions[1 % len(nodes)]
-        keys = ",".join(["'counter%i'" % c for c in xrange(0, nb_counter)])
+        keys = ",".join(["'counter%i'" % c for c in range(0, nb_counter)])
         query = SimpleStatement("SELECT key, c FROM cf WHERE key IN (%s)" % keys,
                                 consistency_level=ConsistencyLevel.QUORUM)
         res = list(conn.execute(query))
         expected_counters = nb_increment * num_threads
 
         assert len(res) == nb_counter
-        for c in xrange(0, nb_counter):
+        for c in range(0, nb_counter):
             assert len(res[c]) == 2, "Expecting key and counter for counter%i, got %s" % (
                 c, str(res[c]))
             assert res[c][1] == expected_counters, "Expecting counter%i = %i, got %i" % (
@@ -380,8 +380,8 @@ class TestCounters(Tester):
         nb_counter = 2
 
         def run(connection, decrement):
-            for i in xrange(0, nb_increment):
-                for c in xrange(0, nb_counter):
+            for i in range(0, nb_increment):
+                for c in range(0, nb_counter):
                     if decrement:
                         query = SimpleStatement("UPDATE cf SET c = c - 1 WHERE key = 'counter%i'" % c,
                                                 consistency_level=ConsistencyLevel.QUORUM)
@@ -401,14 +401,14 @@ class TestCounters(Tester):
             t.result()
 
         conn = sessions[1 % len(nodes)]
-        keys = ",".join(["'counter%i'" % c for c in xrange(0, nb_counter)])
+        keys = ",".join(["'counter%i'" % c for c in range(0, nb_counter)])
         query = SimpleStatement("SELECT key, c FROM cf WHERE key IN (%s)" % keys,
                                 consistency_level=ConsistencyLevel.QUORUM)
         res = list(conn.execute(query))
-        expected_counters = nb_increment * num_threads / 3
+        expected_counters = nb_increment * num_threads // 3
 
         assert len(res) == nb_counter
-        for c in xrange(0, nb_counter):
+        for c in range(0, nb_counter):
             assert len(res[c]) == 2, "Expecting key and counter for counter%i, got %s" % (
                 c, str(res[c]))
             assert res[c][1] == expected_counters, "Expecting counter%i = %i, got %i" % (
@@ -465,9 +465,9 @@ class TestCounters(Tester):
         debug('Update %s counters with random int by prepare statement' % keys_num)
         for key in range(keys_num):
             statement = session.prepare("update counter_tests.counter_bug set c = c + ? where t = ?")
-            # int is from `-sys.maxint - 1` to `sys.maxint`, we will reupdate
-            # counters with random int, so sys.maxint / 2 is safe to avoid rollover
-            rand_c = random.randint(-sys.maxint / 2, sys.maxint / 2)
+            # int is from `-sys.maxsize - 1` to `sys.maxsize`, we will reupdate
+            # counters with random int, so sys.maxsize // 2 is safe to avoid rollover
+            rand_c = random.randint(-sys.maxsize // 2, sys.maxsize // 2)
             counter_list.append([key, rand_c])
             session.execute(statement.bind((rand_c, key)))
         res = session.execute("SELECT * from counter_bug")
@@ -480,7 +480,7 @@ class TestCounters(Tester):
         debug('Reupdate all counters')
         for key in range(keys_num):
             statement = session.prepare("update counter_tests.counter_bug set c = c + ? where t = ?")
-            rand_c = random.randint(-sys.maxint / 2, sys.maxint / 2)
+            rand_c = random.randint(-sys.maxsize // 2, sys.maxsize // 2)
             session.execute(statement.bind((rand_c, key)))
         res = session.execute("SELECT * from counter_bug")
         rows = rows_to_list(res)
@@ -512,12 +512,12 @@ class TestCounters(Tester):
         session.execute("CREATE TABLE counter_bug (t int, c counter, primary key(t))")
 
         debug('Created counter table, try to update one counter to MAX_INT')
-        session.execute("UPDATE counter_bug SET c = c + %s where t = 0" % sys.maxint)
+        session.execute("UPDATE counter_bug SET c = c + %s where t = 0" % sys.maxsize)
         res = session.execute("SELECT * from counter_bug")
         rows = rows_to_list(res)
         assert len(rows) == 1
         debug(rows)
-        assert rows == [[0, sys.maxint]], 'Failed to update counter to MAX_INT'
+        assert rows == [[0, sys.maxsize]], 'Failed to update counter to MAX_INT'
 
         debug('Update the counter to make it rollover')
         session.execute("UPDATE counter_bug SET c = c + 1 where t = 0")
@@ -525,7 +525,7 @@ class TestCounters(Tester):
         rows = rows_to_list(res)
         assert len(rows) == 1
         debug(rows)
-        assert rows == [[0, -sys.maxint - 1]], "Int counter isn't rollover"
+        assert rows == [[0, -sys.maxsize - 1]], "Int counter isn't rollover"
 
         debug('Update the counter to make it recover')
         session.execute("UPDATE counter_bug SET c = c - 1 where t = 0")
@@ -533,7 +533,7 @@ class TestCounters(Tester):
         rows = rows_to_list(res)
         assert len(rows) == 1
         debug(rows)
-        assert rows == [[0, sys.maxint]], "Int counter isn't recovered"
+        assert rows == [[0, sys.maxsize]], "Int counter isn't recovered"
 
     def prepare_unset_value_test(self):
         """
@@ -576,7 +576,7 @@ class TestCounters(Tester):
     def assertUnauthorized(self, message, session, query):
         with self.assertRaises(Unauthorized) as cm:
             session.execute(query)
-        assert re.search(message, cm.exception.message), "Expected '%s', but got '%s'" % (message, cm.exception.message)
+        assert re.search(message, str(cm.exception)), "Expected '%s', but got '%s'" % (message, cm.exception.message)
 
     def static_counter_column_test(self):
         """
@@ -601,7 +601,7 @@ class TestCounters(Tester):
         res = session.execute("SELECT * FROM Test.cf;")
         self.assertEquals(len(rows_to_list(res)), 100)
         res = session.execute("SELECT s,v FROM Test.cf;")
-        rows = sorted(rows_to_list(res))
+        rows = sorted(rows_to_list(res), key=lambda x: (x and x[0] is not None, x))
         for i in range(1, 101):
             self.assertEquals(rows[i - 1][0], 100)
             self.assertEquals(rows[i - 1][1], i + 1)
@@ -619,7 +619,7 @@ class TestCounters(Tester):
 
         debug('Verify counter data')
         res = session.execute("SELECT s,v FROM Test.cf;")
-        rows = sorted(rows_to_list(res))
+        rows = sorted(rows_to_list(res), key=lambda x: (x and x[0] is not None, x))
         self.assertEquals(len(rows), 100)
         for i in range(1, 101):
             self.assertEquals(rows[i - 1][0], 200)

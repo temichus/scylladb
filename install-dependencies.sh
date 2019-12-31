@@ -3,14 +3,13 @@
 . /etc/os-release
 
 fedora_packages=(
-    virtualenv
-    python-devel
-    python2-pyyaml python3-pyyaml
-    python2-six python3-six
-    python2-requests python3-requests
-    python2-psutil python3-psutil
-    python2-cassandra-driver python3-cassandra-driver python-cassandra-driver-doc
-
+    python3-virtualenv
+    python3-devel
+    python3-pyyaml
+    python3-six
+    python3-requests
+    python3-psutil
+    python3-cassandra-driver python-cassandra-driver-doc
 )
 
 if [ "$ID" = "fedora" ]; then

@@ -79,7 +79,7 @@ class TestTopology(Tester):
         cluster.cleanup()
 
         # Check we can get all the keys
-        for n in xrange(0, 10000):
+        for n in range(0, 10000):
             query_c1c2(session, n, ConsistencyLevel.ONE)
 
         # Now the load should be basically even
@@ -115,7 +115,7 @@ class TestTopology(Tester):
         time.sleep(.5)
 
         # Check we can get all the keys
-        for n in xrange(0, 10000):
+        for n in range(0, 10000):
             query_c1c2(session, n, ConsistencyLevel.QUORUM)
 
         sizes = [node.data_size() for node in cluster.nodelist() if node.is_running()]
@@ -154,7 +154,7 @@ class TestTopology(Tester):
 
         debug('Query node1')
         # Check we can get all the keys
-        for n in xrange(0, 10000):
+        for n in range(0, 10000):
             query_c1c2(session, n, ConsistencyLevel.ONE)
         debug('Query node1 done')
 

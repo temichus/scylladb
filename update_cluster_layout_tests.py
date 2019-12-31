@@ -333,7 +333,7 @@ class TestUpdateClusterLayout(Tester):
         node2.stress(['write', 'n=5000', 'no-warmup', '-schema', 'replication(factor=3) keyspace=ks2'])
         node3.stress(['write', 'n=5000', 'no-warmup', '-schema', 'replication(factor=3) keyspace=ks3'])
 
-        for i in xrange(4, 5):
+        for i in range(4, 5):
             # creating an additional node without actually adding it to the cluster
             new_node = cluster.new_node(i, auto_bootstrap=True, add_node=False)
             debug("Start Node %d" % i)
@@ -405,7 +405,7 @@ class TestUpdateClusterLayout(Tester):
         node2.stress(['write', 'n=5000', 'no-warmup', '-schema', 'replication(factor=3) keyspace=ks2'])
         node3.stress(['write', 'n=5000', 'no-warmup', '-schema', 'replication(factor=3) keyspace=ks3'])
 
-        for i in xrange(4, 5):
+        for i in range(4, 5):
             # creating an additional node without actually adding it to the cluster
             new_node = cluster.new_node(i, auto_bootstrap=True, add_node=False)
             failed = None
@@ -562,7 +562,7 @@ class TestUpdateClusterLayout(Tester):
         result = list(session.execute(query))
         self.assertEqual(len(result), 4000, len(result))
 
-        for k in xrange(0, 4000):
+        for k in range(0, 4000):
             query_c1c2(session, k, consistency)
 
     def simple_add_new_node_while_adding_info_1_test(self):
@@ -602,7 +602,7 @@ class TestUpdateClusterLayout(Tester):
 
                 self.create_ks(session, 'ks1', rf)
                 self.create_cf(session, 'cf1', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
-                for i in xrange(0, 100):
+                for i in range(0, 100):
                     insert = SimpleStatement("insert into ks1.cf1 (key,c1,c2) values ('%d','%d','%d')" % (i, i, i),
                                              consistency_level=consistency)
                     session.execute(insert)
@@ -646,7 +646,7 @@ class TestUpdateClusterLayout(Tester):
         insert_c1c2(session, keys=range(2000), consistency=consistency)
 
         def run():
-            for i in xrange(1, 100):
+            for i in range(1, 100):
                 query = SimpleStatement("SELECT * FROM cf", consistency_level=consistency)
                 result = list(session.execute(query))
                 self.assertEqual(len(result), 2000, len(result))
@@ -665,7 +665,7 @@ class TestUpdateClusterLayout(Tester):
 
         result = list(session.execute(query))
         self.assertEqual(len(result), 2000, len(result))
-        for k in xrange(0, 2000):
+        for k in range(0, 2000):
             query_c1c2(session, k, consistency)
 
         t.result()
@@ -949,7 +949,7 @@ class TestUpdateClusterLayout(Tester):
         query = SimpleStatement("SELECT * FROM cf", consistency_level=consistency)
         result = list(session.execute(query))
         self.assertEqual(len(result), 4000, len(result))
-        for k in xrange(0, 4000):
+        for k in range(0, 4000):
             query_c1c2(session, k, consistency)
 
     def simple_decommission_node_while_adding_info_1_test(self):
@@ -982,7 +982,7 @@ class TestUpdateClusterLayout(Tester):
         insert_c1c2(session, keys=range(2000), consistency=consistency)
 
         def run():
-            for i in xrange(1, 100):
+            for i in range(1, 100):
                 query = SimpleStatement("SELECT * FROM cf", consistency_level=consistency)
                 result = list(session.execute(query))
                 self.assertEqual(len(result), 2000, len(result))
@@ -1002,7 +1002,7 @@ class TestUpdateClusterLayout(Tester):
         query = SimpleStatement("SELECT * FROM cf", consistency_level=consistency)
         result = list(session.execute(query))
         self.assertEqual(len(result), 2000, len(result))
-        for k in xrange(0, 2000):
+        for k in range(0, 2000):
             query_c1c2(session, k, consistency)
 
         t.result()
@@ -1109,7 +1109,7 @@ class TestUpdateClusterLayout(Tester):
         def run():
             self.create_ks(session, 'ks1', rf)
             self.create_cf(session, 'cf1', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
-            for i in xrange(0, 1000):
+            for i in range(0, 1000):
                 insert = SimpleStatement("insert into ks1.cf1 (key,c1,c2) values ('%d','%d','%d')" % (i, i, i),
                                          consistency_level=consistency)
                 session.execute(insert)
@@ -1359,7 +1359,7 @@ class TestUpdateClusterLayout(Tester):
         v4 = 'd' * 1024 * 3   # 3KB
         c1s = []
         c2s = []
-        for n in xrange(nr_rows):
+        for n in range(nr_rows):
             if n % 2 == 0:
                 c1s.append(v1)
                 c2s.append(v2)
@@ -1367,7 +1367,7 @@ class TestUpdateClusterLayout(Tester):
                 c1s.append(v3)
                 c2s.append(v4)
         debug("Insert data")
-        scylla_tools.insert_c1c2(session, keys=xrange(nr_rows), consistency=ConsistencyLevel.ONE, c1_values=c1s,
+        scylla_tools.insert_c1c2(session, keys=range(nr_rows), consistency=ConsistencyLevel.ONE, c1_values=c1s,
                                  c2_values=c2s)
 
         node2 = new_node(cluster)
@@ -1445,9 +1445,9 @@ class TestUpdateClusterLayout(Tester):
         nb_counter = 2
 
         def run(connection, decrement):
-            _return = dict.fromkeys([i for i in xrange(nb_counter)], 0)
-            for i in xrange(0, nb_increment):
-                for c in xrange(0, nb_counter):
+            _return = dict.fromkeys([i for i in range(nb_counter)], 0)
+            for i in range(0, nb_increment):
+                for c in range(0, nb_counter):
                     if decrement:
                         query = SimpleStatement("UPDATE cf SET c = c - 1 WHERE key = 'counter%i'" % c,
                                                 consistency_level=ConsistencyLevel.ONE)
@@ -1462,7 +1462,7 @@ class TestUpdateClusterLayout(Tester):
                     time.sleep(0.01)
             return _return
 
-        result = dict.fromkeys([i for i in xrange(nb_counter)], 0)
+        result = dict.fromkeys([i for i in range(nb_counter)], 0)
 
         num_threads = 120
 
@@ -1501,7 +1501,7 @@ class TestUpdateClusterLayout(Tester):
 
         sessions = [self.patient_cql_connection(node, 'ks') for node in nodes]
 
-        keys = ",".join(["'counter%i'" % c for c in xrange(0, nb_counter)])
+        keys = ",".join(["'counter%i'" % c for c in range(0, nb_counter)])
         query = SimpleStatement("SELECT key, c FROM cf WHERE key IN (%s)" % keys,
                                 consistency_level=ConsistencyLevel.ALL)
         res = list(sessions[0].execute(query))
@@ -1510,7 +1510,7 @@ class TestUpdateClusterLayout(Tester):
         assert res == list(sessions[2].execute(query)),\
             "different counter values in node0 and node2"
 
-        for c in xrange(0, nb_counter):
+        for c in range(0, nb_counter):
             assert result[c] == res[c][1], "Expecting counter%i = %i, got %i" % (
                 c, result[c], res[c][1])
 

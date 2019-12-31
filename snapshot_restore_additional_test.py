@@ -18,7 +18,7 @@ class SnapshotRestoreAdditionalTest(Tester):
         6. Run compact -forcing all ssstables to be merged
         7. Check that backups holds all the old files and the new compacted file
         """
-        fail
+        raise NotImplementedError
 
     @skip('unimplemented')
     def restore_snapshot_using_old_schema(self):
@@ -33,7 +33,7 @@ class SnapshotRestoreAdditionalTest(Tester):
         7. Restore data
         8. Check that all data exists
         """
-        fail
+        raise NotImplementedError
 
     @skip('unimplemented')
     def restore_snapshot_using_old_token_ownership(self):
@@ -48,7 +48,7 @@ class SnapshotRestoreAdditionalTest(Tester):
         7. Restore data
         8. Check that all data exists
         """
-        fail
+        raise NotImplementedError
 
     @skip('unimplemented')
     def restore_snapshot_using_different_smp_setting(self):
@@ -63,7 +63,7 @@ class SnapshotRestoreAdditionalTest(Tester):
         7. Restore data
         8. Check that all data exists
         """
-        fail
+        raise NotImplementedError
 
     @skip('unimplemented')
     def restore_snapshot_from_cassandra(self):
@@ -86,7 +86,7 @@ class SnapshotRestoreAdditionalTest(Tester):
         5. Start node
         6. Check that all data exists
         """
-        fail
+        raise NotImplementedError
 
     @skip('unimplemented')
     def failure_durring_restore_no_corrupt_data(self):
@@ -105,7 +105,7 @@ class SnapshotRestoreAdditionalTest(Tester):
         11. Restore data
         12. Check that all data exists
         """
-        fail
+        raise NotImplementedError
 
     @skip('unimplemented')
     def replay_restore_no_additional_data(self):
@@ -121,3 +121,4 @@ class SnapshotRestoreAdditionalTest(Tester):
         8. Restore data
         9. Check that all data exists
         """
+        raise NotImplementedError

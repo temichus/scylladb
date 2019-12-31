@@ -14,10 +14,10 @@ from cassandra import ConsistencyLevel
 @attr('dtest-full', 'dtest-heavy')
 class ReshardingTest(Tester):
     DEFAULT_MURMUR3_PARTITIONER = 12
-    DEFAULT_SMP = '2'
+    DEFAULT_SMP = 2
     DEFAULT_NODES = 1
-    SMP_FOR_INCREASE = '9'
-    SMP_FOR_DECREASE = DEFAULT_SMP
+    SMP_FOR_INCREASE = 9
+    SMP_FOR_DECREASE = int(DEFAULT_SMP)
     MURMUR3_PARTITIONER_FOR_DECREASE = 10
     MURMUR3_PARTITIONER_FOR_INCREASE = 17
     __test__ = False
@@ -36,7 +36,7 @@ class ReshardingTest(Tester):
         cluster = self.cluster
         cluster = cluster.populate(self.nodes)
         cluster.set_configuration_options(values={'murmur3_partitioner_ignore_msb_bits': self.murmur3})
-        cluster.start(wait_for_binary_proto=True, wait_other_notice=True, jvm_args=['--smp', self.smp, '--memory', self.mem])
+        cluster.start(wait_for_binary_proto=True, wait_other_notice=True, jvm_args=['--smp', str(self.smp), '--memory', self.mem])
         self.node = cluster.nodelist()[0]
 
     @staticmethod
@@ -51,7 +51,7 @@ class ReshardingTest(Tester):
 
         data_files_num_before = self._get_number_of_data_files(data_dir=data_dir)
         self.node.set_configuration_options(values={'murmur3_partitioner_ignore_msb_bits': murmur3})
-        self.node.start(jvm_args=['--smp', smp, '--memory', self.set_memory_param(smp)],
+        self.node.start(jvm_args=['--smp', str(smp), '--memory', self.set_memory_param(smp)],
                         wait_other_notice=True, wait_for_binary_proto=True)
         debug('Node has been started')
         return data_files_num_before
@@ -316,7 +316,7 @@ class ReshardingTest(Tester):
         # Read data
         session = self.patient_cql_connection(self.node)
         query = 'select count(*) from {0}.{1} where id={2}'
-        for i in xrange(op_cnt):
+        for i in range(op_cnt):
             assert_one(session, query.format(tm.keyspace, tm.table_name, i), [1])
             assert_one(session, query.format(tm.keyspace, mv.mv_name, i), [1])
 
@@ -332,7 +332,7 @@ class ReshardingTest(Tester):
 strategies = ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy',
               'TimeWindowCompactionStrategy']
 # SMP value should be according to the monster environment
-smp = '5'
+smp = 5
 murmur3 = 15
 for node_count in [1, 4]:
     for strategy in strategies:

@@ -68,10 +68,10 @@ class TestSSTableGenerationAndLoading(Tester):
         self.create_cf(session, 'cf', compression="Deflate")
 
         # make unique column names, and values that are incompressible
-        for col in xrange(10):
+        for col in range(10):
             col_name = str(col)
             col_val = os.urandom(5000)
-            col_val = col_val.encode('hex')
+            col_val = col_val.hex()
             cql = "UPDATE cf SET v='%s' WHERE KEY='0' AND c='%s'" % (col_val, col_name)
             # print cql
             session.execute(cql)

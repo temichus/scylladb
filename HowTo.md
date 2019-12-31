@@ -13,7 +13,7 @@ sudo apt install python-pip python-virtualenv
 ### Debian
 
 ```bash
-sudo dnf install Cython python-psutil python-yaml libev libev-devel ant-junit
+sudo dnf install Cython python3-psutil python3-yaml libev libev-devel ant-junit
 ```
 ### Centos / Redhat
 
@@ -35,11 +35,11 @@ git remote add upstream git@github.com:scylladb/scylla-dtest.git
 git checkout manager_hackaton
 cd scylla-dtest
 
-virtualenv .venv
+python3 -m venv .venv
 source .venv/bin/activate
 
 pip install -r requirements.txt
-pip install -e git+https://github.com/fruch/scylla-ccm.git@add_relocatable_support#egg=ccm
+pip install -e git+https://github.com/scylladb/scylla-ccm.git
 
 ccm create <CLUSTER_NAME> --scylla --version='unstable/master:<NUM>'
    

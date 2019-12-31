@@ -1,5 +1,4 @@
 # coding: utf-8
-
 import math
 import random
 import re
@@ -15,7 +14,6 @@ from uuid import UUID
 from cassandra import AlreadyExists, ConsistencyLevel, InvalidRequest
 from cassandra.concurrent import execute_concurrent_with_args
 from cassandra.protocol import ConfigurationException
-from cassandra.protocol import ProtocolException
 from cassandra.protocol import SyntaxException
 from cassandra.query import SimpleStatement
 from cassandra.query import UNSET_VALUE
@@ -28,11 +26,11 @@ from dtest import Tester, debug
 
 from scylla_tools import CassandraCluster
 
-from thrift_bindings.v22.ttypes import CfDef
-from thrift_bindings.v22.ttypes import Column
-from thrift_bindings.v22.ttypes import ColumnOrSuperColumn
-from thrift_bindings.v22.ttypes import Mutation
-from thrift_bindings.v22.ttypes import ConsistencyLevel as ThriftConsistencyLevel
+from thrift_bindings.thrift010.ttypes import CfDef
+from thrift_bindings.thrift010.ttypes import Column
+from thrift_bindings.thrift010.ttypes import ColumnOrSuperColumn
+from thrift_bindings.thrift010.ttypes import Mutation
+from thrift_bindings.thrift010.ttypes import ConsistencyLevel as ThriftConsistencyLevel
 
 from thrift_tests import get_thrift_client
 
@@ -404,7 +402,7 @@ class TestCQL(Tester):
         """)
 
         # Inserts
-        for id in xrange(0, 100):
+        for id in range(0, 100):
             for tld in ['com', 'org', 'net']:
                 session.execute("INSERT INTO clicks (userid, url, time) VALUES (%i, 'http://foo.%s', 42)" % (id, tld))
 
@@ -432,7 +430,7 @@ class TestCQL(Tester):
         """)
 
         # Inserts
-        for id in xrange(0, 100):
+        for id in range(0, 100):
             for tld in ['com', 'org', 'net']:
                 session.execute("INSERT INTO clicks (userid, url, time) VALUES (%i, 'http://foo.%s', 42)" % (id, tld))
 
@@ -638,7 +636,7 @@ class TestCQL(Tester):
         """)
 
         # Inserts
-        for id in xrange(0, 100):
+        for id in range(0, 100):
             for tld in ['com', 'org', 'net']:
                 session.execute("INSERT INTO clicks (userid, url, day, month, year) VALUES (%i, 'http://foo.%s', 1, 'jan', 2012)" % (id, tld))
 
@@ -1398,30 +1396,30 @@ class TestCQL(Tester):
         res = list(session.execute("SELECT k, c, writetime(c), ttl(c) FROM test"))
         assert len(res) == 2, res
         for r in res:
-            assert isinstance(r[2], (int, long))
+            assert isinstance(r[2], int)
             if r[0] == 1:
                 assert r[3] is None, res
             else:
-                assert isinstance(r[3], (int, long)), res
+                assert isinstance(r[3], int), res
 
         # wrap writetime(), ttl() in other functions (test for CASSANDRA-8451)
         res = list(session.execute("SELECT k, c, blobAsBigint(bigintAsBlob(writetime(c))), ttl(c) FROM test"))
         assert len(res) == 2, res
         for r in res:
-            assert isinstance(r[2], (int, long))
+            assert isinstance(r[2], int)
             if r[0] == 1:
                 assert r[3] is None, res
             else:
-                assert isinstance(r[3], (int, long)), res
+                assert isinstance(r[3], int), res
 
         res = list(session.execute("SELECT k, c, writetime(c), blobAsInt(intAsBlob(ttl(c))) FROM test"))
         assert len(res) == 2, res
         for r in res:
-            assert isinstance(r[2], (int, long))
+            assert isinstance(r[2], int)
             if r[0] == 1:
                 assert r[3] is None, res
             else:
-                assert isinstance(r[3], (int, long)), res
+                assert isinstance(r[3], int), res
 
         assert_invalid(session, "SELECT k, c, writetime(k) FROM test")
 
@@ -1524,29 +1522,29 @@ class TestCQL(Tester):
         col1 = 2
         col2 = 2
         cpr = col1 * col2
-        for i in xrange(0, rows):
-            for j in xrange(0, col1):
-                for k in xrange(0, col2):
+        for i in range(0, rows):
+            for j in range(0, col1):
+                for k in range(0, col2):
                     n = (i * cpr) + (j * col2) + k
                     session.execute("INSERT INTO test1 (k, c1, c2, v1, v2) VALUES (%d, %d, %d, %d, %d)" % (i, j, k, n, n))
 
-        for i in xrange(0, rows):
+        for i in range(0, rows):
             res = session.execute("SELECT v1, v2 FROM test1 where k = %d" % i)
-            assert rows_to_list(res) == [[x, x] for x in xrange(i * cpr, (i + 1) * cpr)], list(res)
+            assert rows_to_list(res) == [[x, x] for x in range(i * cpr, (i + 1) * cpr)], list(res)
 
-        for i in xrange(0, rows):
+        for i in range(0, rows):
             session.execute("DELETE FROM test1 WHERE k = %d AND c1 = 0" % i)
 
-        for i in xrange(0, rows):
+        for i in range(0, rows):
             res = session.execute("SELECT v1, v2 FROM test1 WHERE k = %d" % i)
-            assert rows_to_list(res) == [[x, x] for x in xrange(i * cpr + col1, (i + 1) * cpr)], list(res)
+            assert rows_to_list(res) == [[x, x] for x in range(i * cpr + col1, (i + 1) * cpr)], list(res)
 
         cluster.flush()
         time.sleep(0.2)
 
-        for i in xrange(0, rows):
+        for i in range(0, rows):
             res = session.execute("SELECT v1, v2 FROM test1 WHERE k = %d" % i)
-            assert rows_to_list(res) == [[x, x] for x in xrange(i * cpr + col1, (i + 1) * cpr)], list(res)
+            assert rows_to_list(res) == [[x, x] for x in range(i * cpr + col1, (i + 1) * cpr)], list(res)
 
     def range_tombstones_compaction_test(self):
         """ Test deletion by 'composite prefix' (range tombstones) with compaction """
@@ -1574,7 +1572,7 @@ class TestCQL(Tester):
         self.cluster.compact()
 
         res = session.execute("SELECT v1 FROM test1 WHERE k = 0")
-        assert rows_to_list(res) == [['%i%i' % (c1, c2)] for c1 in xrange(0, 4) for c2 in xrange(0, 2) if c1 != 1], list(res)
+        assert rows_to_list(res) == [['%i%i' % (c1, c2)] for c1 in range(0, 4) for c2 in range(0, 2) if c1 != 1], list(res)
 
     def delete_row_test(self):
         """ Test deletion of rows """
@@ -1758,28 +1756,28 @@ class TestCQL(Tester):
         session.execute(q % "tags = tags + [ 'foobar' ]")
 
         res = session.execute("SELECT tags FROM user")
-        self.assertItemsEqual(rows_to_list(res), [[['foo', 'bar', 'foo', 'foobar']]])
+        self.assertCountEqual(rows_to_list(res), [[['foo', 'bar', 'foo', 'foobar']]])
 
         q = "UPDATE user SET %s WHERE fn='Bilbo' AND ln='Baggins'"
         session.execute(q % "tags = [ 'a', 'c', 'b', 'c' ]")
         res = session.execute("SELECT tags FROM user WHERE fn='Bilbo' AND ln='Baggins'")
-        self.assertItemsEqual(rows_to_list(res), [[['a', 'c', 'b', 'c']]])
+        self.assertCountEqual(rows_to_list(res), [[['a', 'c', 'b', 'c']]])
 
         session.execute(q % "tags = [ 'm', 'n' ] + tags")
         res = session.execute("SELECT tags FROM user WHERE fn='Bilbo' AND ln='Baggins'")
-        self.assertItemsEqual(rows_to_list(res), [[['m', 'n', 'a', 'c', 'b', 'c']]])
+        self.assertCountEqual(rows_to_list(res), [[['m', 'n', 'a', 'c', 'b', 'c']]])
 
         session.execute(q % "tags[2] = 'foo', tags[4] = 'bar'")
         res = session.execute("SELECT tags FROM user WHERE fn='Bilbo' AND ln='Baggins'")
-        self.assertItemsEqual(rows_to_list(res), [[['m', 'n', 'foo', 'c', 'bar', 'c']]])
+        self.assertCountEqual(rows_to_list(res), [[['m', 'n', 'foo', 'c', 'bar', 'c']]])
 
         session.execute("DELETE tags[2] FROM user WHERE fn='Bilbo' AND ln='Baggins'")
         res = session.execute("SELECT tags FROM user WHERE fn='Bilbo' AND ln='Baggins'")
-        self.assertItemsEqual(rows_to_list(res), [[['m', 'n', 'c', 'bar', 'c']]])
+        self.assertCountEqual(rows_to_list(res), [[['m', 'n', 'c', 'bar', 'c']]])
 
         session.execute(q % "tags = tags - [ 'bar' ]")
         res = session.execute("SELECT tags FROM user WHERE fn='Bilbo' AND ln='Baggins'")
-        self.assertItemsEqual(rows_to_list(res), [[['m', 'n', 'c', 'c']]])
+        self.assertCountEqual(rows_to_list(res), [[['m', 'n', 'c', 'c']]])
 
     def list_prefetch_with_static_column_test(self):
         # Explits https://github.com/scylladb/scylla/issues/903
@@ -1802,17 +1800,17 @@ class TestCQL(Tester):
 
         session.execute(update_q % "tags = tags - [ 'b' ]")
         res = session.execute(select_q % 'tags')
-        self.assertItemsEqual(rows_to_list(res), [[['a', 'c']]])
+        self.assertCountEqual(rows_to_list(res), [[['a', 'c']]])
         res = session.execute("select static_tags from user where fn='Tom'")
-        self.assertItemsEqual(rows_to_list(res), [[['a', 'b', 'c', 'b']]])
+        self.assertCountEqual(rows_to_list(res), [[['a', 'b', 'c', 'b']]])
 
         session.execute("update user set static_tags = static_tags - [ 'b' ] where fn='Tom'")
         res = session.execute("select static_tags from user where fn='Tom'")
-        self.assertItemsEqual(rows_to_list(res), [[['a', 'c']]])
+        self.assertCountEqual(rows_to_list(res), [[['a', 'c']]])
 
         session.execute("update user set static_tags[1] = 'b' where fn='Tom'")
         res = session.execute("select static_tags from user where fn='Tom'")
-        self.assertItemsEqual(rows_to_list(res), [[['a', 'b']]])
+        self.assertCountEqual(rows_to_list(res), [[['a', 'b']]])
 
     def collection_serialization_with_protocol_v2_test(self):
         session = self.prepare(protocol_version=2)
@@ -1830,7 +1828,7 @@ class TestCQL(Tester):
         select_q = "SELECT %s FROM user WHERE fn='Tom' AND ln='Bombadil'"
         session.execute(update_q % "tags = tags + [ 'a', 'b', 'c' ]")
         res = session.execute(select_q % 'tags')
-        self.assertItemsEqual(rows_to_list(res), [[['a', 'b', 'c']]])
+        self.assertCountEqual(rows_to_list(res), [[['a', 'b', 'c']]])
 
     def multi_collection_test(self):
         session = self.prepare()
@@ -1852,7 +1850,7 @@ class TestCQL(Tester):
         session.execute("UPDATE ks.foo SET M = M + {'foobar' : 4} WHERE k = b017f48f-ae67-11e1-9096-005056c00008;")
 
         res = session.execute("SELECT L, M, S FROM foo WHERE k = b017f48f-ae67-11e1-9096-005056c00008")
-        self.assertItemsEqual(rows_to_list(res), [[
+        self.assertCountEqual(rows_to_list(res), [[
             [1, 3, 5, 7, 11, 13],
             OrderedDict([('bar', 3), ('foo', 1), ('foobar', 4)]),
             sortedset([1, 3, 5, 7, 11, 13])
@@ -1871,8 +1869,9 @@ class TestCQL(Tester):
         session.execute("INSERT INTO test (a, b, c, d, e, f) VALUES (1, 1, 1, 1, 5, '5');")
 
         res = session.execute("SELECT a, b, c, d, e, f FROM test WHERE a = 1 AND b = 1 AND c = 1 AND d = 1 AND e >= 2;")
-        assert rows_to_list(res) == [[1, 1, 1, 1, 2, u'2'], [1, 1, 1, 1, 3, u'3'], [1, 1, 1, 1, 5, u'5']], list(res)
+        assert rows_to_list(res) == [[1, 1, 1, 1, 2, '2'], [1, 1, 1, 1, 3, '3'], [1, 1, 1, 1, 5, '5']], list(res)
 
+    @require('#5424')
     def update_type_test(self):
         """ Test altering the type of a column, including the one in the primary key (#4041) """
         session = self.prepare(options={'experimental': True})
@@ -1893,20 +1892,20 @@ class TestCQL(Tester):
 
         session.execute("SELECT * FROM test")
         res = session.execute("SELECT * FROM test")
-        assert rows_to_list(res) == [[u'ɸ', u'ɸ', set([u'ɸ']), u'ɸ']], list(res)
+        assert rows_to_list(res) == [['ɸ', 'ɸ', set(['ɸ']), 'ɸ']], list(res)
 
         session.execute("ALTER TABLE test ALTER v TYPE blob")
         res = session.execute("SELECT * FROM test")
         # the last should not be utf8 but a raw string
-        assert rows_to_list(res) == [[u'ɸ', u'ɸ', set([u'ɸ']), 'ɸ']], list(res)
+        assert rows_to_list(res) == [['ɸ', 'ɸ', set(['ɸ']), 'ɸ']], list(res)
 
         session.execute("ALTER TABLE test ALTER k TYPE blob")
         res = session.execute("SELECT * FROM test")
-        assert rows_to_list(res) == [['ɸ', u'ɸ', set([u'ɸ']), 'ɸ']], list(res)
+        assert rows_to_list(res) == [['ɸ', 'ɸ', set(['ɸ']), 'ɸ']], list(res)
 
         session.execute("ALTER TABLE test ALTER c TYPE blob")
         res = session.execute("SELECT * FROM test")
-        assert rows_to_list(res) == [['ɸ', 'ɸ', set([u'ɸ']), 'ɸ']], list(res)
+        assert rows_to_list(res) == [['ɸ', 'ɸ', set(['ɸ']), 'ɸ']], list(res)
 
         if self.cluster.version() < "2.1":
             assert_invalid(session, "ALTER TABLE test ALTER s TYPE set<blob>", expected=ConfigurationException)
@@ -1972,7 +1971,7 @@ class TestCQL(Tester):
         key = struct.pack('>i', 2)
         column_name_component = struct.pack('>i', 4)
         # component length + component + EOC + component length + component + EOC
-        column_name = '\x00\x04' + column_name_component + '\x00' + '\x00\x01' + 'v' + '\x00'
+        column_name = b'\x00\x04' + column_name_component + b'\x00' + b'\x00\x01' + 'v'.encode('utf-8') + b'\x00'
         value = struct.pack('>i', 8)
         client.batch_mutate(
             {key: {'test': [Mutation(ColumnOrSuperColumn(column=Column(name=column_name, value=value, timestamp=100)))]}},
@@ -2290,18 +2289,18 @@ class TestCQL(Tester):
 
         if self.cluster.version() >= '2.2':
             assert_all(session, "SELECT keyspace_name, durable_writes, strategy_class FROM system.schema_keyspaces",
-                       [[u'system_auth', True, u'org.apache.cassandra.locator.SimpleStrategy'],
-                        [u'ks1', False, u'org.apache.cassandra.locator.NetworkTopologyStrategy'],
-                        [u'system_distributed', True, u'org.apache.cassandra.locator.SimpleStrategy'],
-                        [u'system', True, u'org.apache.cassandra.locator.LocalStrategy'],
-                        [u'system_traces', True, u'org.apache.cassandra.locator.SimpleStrategy'],
-                        [u'ks2', True, u'org.apache.cassandra.locator.SimpleStrategy']])
+                       [[u'system_auth', True, 'org.apache.cassandra.locator.SimpleStrategy'],
+                        [u'ks1', False, 'org.apache.cassandra.locator.NetworkTopologyStrategy'],
+                        [u'system_distributed', True, 'org.apache.cassandra.locator.SimpleStrategy'],
+                        [u'system', True, 'org.apache.cassandra.locator.LocalStrategy'],
+                        [u'system_traces', True, 'org.apache.cassandra.locator.SimpleStrategy'],
+                        [u'ks2', True, 'org.apache.cassandra.locator.SimpleStrategy']])
         else:
             assert_all(session, "SELECT keyspace_name, durable_writes, strategy_class FROM system.schema_keyspaces",
-                       [[u'ks1', False, u'org.apache.cassandra.locator.NetworkTopologyStrategy'],
-                        [u'system', True, u'org.apache.cassandra.locator.LocalStrategy'],
-                        [u'system_traces', True, u'org.apache.cassandra.locator.SimpleStrategy'],
-                        [u'ks2', True, u'org.apache.cassandra.locator.SimpleStrategy']])
+                       [[u'ks1', False, 'org.apache.cassandra.locator.NetworkTopologyStrategy'],
+                        [u'system', True, 'org.apache.cassandra.locator.LocalStrategy'],
+                        [u'system_traces', True, 'org.apache.cassandra.locator.SimpleStrategy'],
+                        [u'ks2', True, 'org.apache.cassandra.locator.SimpleStrategy']])
 
         session.execute("USE ks1")
 
@@ -2575,7 +2574,7 @@ class TestCQL(Tester):
         session.execute("INSERT INTO test(k, l, c) VALUES(3, [0, 1, 2], 4)")
         session.execute("UPDATE test SET l[0] = 1, c = 42 WHERE k = 3")
         res = session.execute("SELECT l, c FROM test WHERE k = 3")
-        self.assertItemsEqual(rows_to_list(res), [[[1, 1, 2], 42]])
+        self.assertCountEqual(rows_to_list(res), [[[1, 1, 2], 42]])
 
     def batch_and_list_test(self):
         session = self.prepare()
@@ -2596,7 +2595,7 @@ class TestCQL(Tester):
         """)
 
         res = session.execute("SELECT l FROM test WHERE k = 0")
-        self.assertItemsEqual(rows_to_list(res[0]), [[1, 2, 3]])
+        self.assertCountEqual(rows_to_list(res[0]), [[1, 2, 3]])
 
         session.execute("""
           BEGIN BATCH
@@ -2607,7 +2606,7 @@ class TestCQL(Tester):
         """)
 
         res = session.execute("SELECT l FROM test WHERE k = 1")
-        self.assertItemsEqual(rows_to_list(res[0]), [[3, 2, 1]])
+        self.assertCountEqual(rows_to_list(res[0]), [[3, 2, 1]])
 
     def boolean_test(self):
         session = self.prepare()
@@ -2699,7 +2698,7 @@ class TestCQL(Tester):
         session.execute("UPDATE test SET l2[1] = 42, l1[1] = 24  WHERE k = 0")
 
         res = session.execute("SELECT l1, l2 FROM test WHERE k = 0")
-        self.assertItemsEqual(rows_to_list(res), [[[1, 24, 3], [4, 42, 6]]])
+        self.assertCountEqual(rows_to_list(res), [[[1, 24, 3], [4, 42, 6]]])
 
     @skip('indexes')
     def composite_index_collections_test(self):
@@ -2836,7 +2835,7 @@ class TestCQL(Tester):
         for i in range(0, nb_keys):
             session.execute("INSERT INTO test(k, v) VALUES (%d, %d)" % (i, i))
 
-        for i in random.sample(xrange(nb_keys), nb_deletes):
+        for i in random.sample(range(nb_keys), nb_deletes):
             session.execute("DELETE FROM test WHERE k = %d" % i)
 
         res = list(session.execute("SELECT * FROM test LIMIT %d" % (nb_keys / 2)))
@@ -3349,7 +3348,7 @@ class TestCQL(Tester):
         session.execute("CREATE TABLE test (k int PRIMARY KEY, b blob)")
         session.execute("INSERT INTO test (k, b) VALUES (0, 0x)")
         res = session.execute("SELECT * FROM test")
-        assert rows_to_list(res) == [[0, '']], list(res)
+        assert rows_to_list(res) == [[0, b'']], list(rows_to_list(res))
 
     def rename_test(self):
         session = self.prepare(start_rpc=True)
@@ -3587,7 +3586,7 @@ class TestCQL(Tester):
         # test aliasing a regular function
         res = list(session.execute('SELECT intAsBlob(id) AS id_blob FROM users WHERE id = 0'))
         self.assertEqual('id_blob', res[0]._fields[0])
-        self.assertEqual('\x00\x00\x00\x00', res[0].id_blob)
+        self.assertEqual(b'\x00\x00\x00\x00', res[0].id_blob)
 
         # test that select throws a meaningful exception for aliases in where clause
         assert_invalid(session, 'SELECT id AS user_id, name AS user_name FROM users WHERE user_id = 0', matching="Aliases aren't allowed in the where clause")
@@ -3671,7 +3670,7 @@ class TestCQL(Tester):
         # Test a regular (CQL3) table.
         session.execute('CREATE TABLE regular (pk0 int, pk1 int, ck0 int, val int, PRIMARY KEY((pk0, pk1), ck0))')
 
-        for i in xrange(0, 3):
+        for i in range(0, 3):
             session.execute('INSERT INTO regular (pk0, pk1, ck0, val) VALUES (%d, %d, 0, 0)' % (i, i))
             session.execute('INSERT INTO regular (pk0, pk1, ck0, val) VALUES (%d, %d, 1, 1)' % (i, i))
 
@@ -3684,7 +3683,7 @@ class TestCQL(Tester):
         # Test a 'compact storage' table.
         session.execute('CREATE TABLE compact (pk0 int, pk1 int, val int, PRIMARY KEY((pk0, pk1))) WITH COMPACT STORAGE')
 
-        for i in xrange(0, 3):
+        for i in range(0, 3):
             session.execute('INSERT INTO compact (pk0, pk1, val) VALUES (%d, %d, %d)' % (i, i, i))
 
         res = session.execute('SELECT DISTINCT pk0, pk1 FROM compact LIMIT 1')
@@ -3696,7 +3695,7 @@ class TestCQL(Tester):
         # Test a 'wide row' thrift table.
         session.execute('CREATE TABLE wide (pk int, name text, val int, PRIMARY KEY(pk, name)) WITH COMPACT STORAGE')
 
-        for i in xrange(0, 3):
+        for i in range(0, 3):
             session.execute("INSERT INTO wide (pk, name, val) VALUES (%d, 'name0', 0)" % i)
             session.execute("INSERT INTO wide (pk, name, val) VALUES (%d, 'name1', 1)" % i)
 
@@ -4150,13 +4149,13 @@ class TestCQL(Tester):
 
         session.default_fetch_size = 7
         rows = list(session.execute("SELECT DISTINCT k, s FROM test"))
-        self.assertEqual(range(10), sorted([r[0] for r in rows]))
-        self.assertEqual(range(10), sorted([r[1] for r in rows]))
+        self.assertEqual(list(range(10)), sorted([r[0] for r in rows]))
+        self.assertEqual(list(range(10)), sorted([r[1] for r in rows]))
 
         keys = ",".join(map(str, range(10)))
         rows = list(session.execute("SELECT DISTINCT k, s FROM test WHERE k IN (%s)" % (keys,)))
-        self.assertEqual(range(10), [r[0] for r in rows])
-        self.assertEqual(range(10), [r[1] for r in rows])
+        self.assertEqual(list(range(10)), [r[0] for r in rows])
+        self.assertEqual(list(range(10)), [r[1] for r in rows])
 
         # additional testing for CASSANRA-8087
         session.execute("""
@@ -4178,32 +4177,32 @@ class TestCQL(Tester):
         for fetch_size in (None, 2, 5, 7, 10, 24, 25, 26, 1000):
             session.default_fetch_size = fetch_size
             rows = list(session.execute("SELECT DISTINCT k, s1 FROM test2"))
-            self.assertEqual(range(10), sorted([r[0] for r in rows]))
-            self.assertEqual(range(10), sorted([r[1] for r in rows]))
+            self.assertEqual(list(range(10)), sorted([r[0] for r in rows]))
+            self.assertEqual(list(range(10)), sorted([r[1] for r in rows]))
 
             rows = list(session.execute("SELECT DISTINCT k, s2 FROM test2"))
-            self.assertEqual(range(10), sorted([r[0] for r in rows]))
-            self.assertEqual(range(1, 11), sorted([r[1] for r in rows]))
+            self.assertEqual(list(range(10)), sorted([r[0] for r in rows]))
+            self.assertEqual(list(range(1, 11)), sorted([r[1] for r in rows]))
 
-            print "page size: ", fetch_size
+            print("page size: ", fetch_size)
             rows = list(session.execute("SELECT DISTINCT k, s1 FROM test2 LIMIT 10"))
-            self.assertEqual(range(10), sorted([r[0] for r in rows]))
-            self.assertEqual(range(10), sorted([r[1] for r in rows]))
+            self.assertEqual(list(range(10)), sorted([r[0] for r in rows]))
+            self.assertEqual(list(range(10)), sorted([r[1] for r in rows]))
 
             keys = ",".join(map(str, range(10)))
             rows = list(session.execute("SELECT DISTINCT k, s1 FROM test2 WHERE k IN (%s)" % (keys,)))
-            self.assertEqual(range(10), [r[0] for r in rows])
-            self.assertEqual(range(10), [r[1] for r in rows])
+            self.assertEqual(list(range(10)), [r[0] for r in rows])
+            self.assertEqual(list(range(10)), [r[1] for r in rows])
 
             keys = ",".join(map(str, range(10)))
             rows = list(session.execute("SELECT DISTINCT k, s2 FROM test2 WHERE k IN (%s)" % (keys,)))
-            self.assertEqual(range(10), [r[0] for r in rows])
-            self.assertEqual(range(1, 11), [r[1] for r in rows])
+            self.assertEqual(list(range(10)), [r[0] for r in rows])
+            self.assertEqual(list(range(1, 11)), [r[1] for r in rows])
 
             keys = ",".join(map(str, range(10)))
             rows = list(session.execute("SELECT DISTINCT k, s1 FROM test2 WHERE k IN (%s) LIMIT 10" % (keys,)))
-            self.assertEqual(range(10), sorted([r[0] for r in rows]))
-            self.assertEqual(range(10), sorted([r[1] for r in rows]))
+            self.assertEqual(list(range(10)), sorted([r[0] for r in rows]))
+            self.assertEqual(list(range(10)), sorted([r[1] for r in rows]))
 
     @skip('indexes')
     def select_count_paging_test(self):
@@ -5168,21 +5167,30 @@ class TestCQL(Tester):
         session.execute("alter table test drop v")
         session.execute("alter table test add v int")
 
+    @require('#5421')
     def invalid_string_literals_test(self):
         """
-        @jira_ticket CASSANDRA-8101
-        """
-        session = self.prepare()
-        assert_invalid(session, u"insert into invalid_string_literals (k, a) VALUES (0, '\u038E\u0394\u03B4\u03E0')")
+         @jira_ticket CASSANDRA-8101
 
-        # since the protocol requires strings to be valid UTF-8, the error response to this is a ProtocolError
-        session = self.cql_connection(self.cluster.nodelist()[0], keyspace='ks')
+         - assert INSERTing into a nonexistent table fails normally, with an InvalidRequest exception
+         - create a table with ascii and text columns
+         - assert that trying to execute an insert statement with non-UTF8 contents raises a ProtocolException
+             - tries to insert into a nonexistent column to make sure the ProtocolException is raised over other errors
+         """
+        session = self.prepare()
+        # this should fail as normal, not with a ProtocolException
+        assert_invalid(session, "insert into invalid_string_literals (k, a) VALUES (0, '\u038E\u0394\u03B4\u03E0')")
+
+        session = self.patient_cql_connection(self.cluster.nodelist()[0], keyspace='ks')
         session.execute("create table invalid_string_literals (k int primary key, a ascii, b text)")
-        try:
-            session.execute("insert into invalid_string_literals (k, c) VALUES (0, '\xc2\x01')")
-            self.fail("Expected error")
-        except ProtocolException as e:
-            self.assertTrue("Cannot decode string as UTF8" in str(e))
+
+        # this should still fail with an InvalidRequest
+        assert_invalid(session, "insert into invalid_string_literals (k, c) VALUES (0, '\u038E\u0394\u03B4\u03E0')")
+
+        # try to insert utf-8 characters into an ascii column and make sure it fails
+        assert_invalid(session, "insert into invalid_string_literals (k, a) VALUES (0, '\xE0\x80\x80')",
+                       expected=InvalidRequest, matching='Invalid ASCII character in string literal')
+
 
     def negative_timestamp_test(self):
         session = self.prepare()
@@ -5433,7 +5441,7 @@ class TestCQL(Tester):
         table_name = '"Columnfamily_For_Mc_Sstables"'
         data_amount = 10
         dataset = [(i, i, i, random.randint(124571, 236283618))
-                       for i in xrange(0, data_amount)]
+                       for i in range(0, data_amount)]
 
         self.mc_prepare_table(nodes=4, keyspace_name=keyspace_name, table_name=table_name,
                               dataset=dataset, data_amount=data_amount)
@@ -5456,7 +5464,7 @@ class TestCQL(Tester):
         table_name = '"Columnfamily_For_Mc_Sstables"'
         data_amount = 10
         dataset = [(i, i, i, random.randint(124571, 23628361))
-                           for i in xrange(0, data_amount)]
+                           for i in range(0, data_amount)]
 
         session = self.mc_prepare_table(nodes=4, keyspace_name=keyspace_name, table_name=table_name,
                                         dataset=dataset, data_amount=data_amount)
@@ -5498,13 +5506,13 @@ class TestCQL(Tester):
         table_name = '"Columnfamily_For_Mc_Sstables"'
         data_amount = 10
         dataset = [(i, i, i, random.randint(124571, 236283618))
-                       for i in xrange(0, data_amount)]
+                       for i in range(0, data_amount)]
 
         session = self.mc_prepare_table(nodes=4, keyspace_name=keyspace_name, table_name=table_name,
                                         dataset=dataset, data_amount=data_amount)
 
         debug('Run delete')
-        for i in xrange(2, 5):
+        for i in range(2, 5):
             row = dataset[i]
             session.execute(query='DELETE FROM {table_name} WHERE "ID"={row[0]} AND "Ck1"={row[1]} AND'
                                   ' "cK2"={row[2]}'.format(**locals()))
@@ -5530,7 +5538,7 @@ class TestCQL(Tester):
         keyspace_name = 'keyspace_for_mc_sstables'
         table_name = 'columnfamily_for_mc_sstables'
         data_amount = 10
-        dataset = [(i, i+1, i+2) for i in xrange(0, data_amount)]
+        dataset = [(i, i+1, i+2) for i in range(0, data_amount)]
         columns = ['id', 'ck1', 'ck2']
         keys_columns_amount = 2
 
@@ -5811,8 +5819,8 @@ class CQLAdditionalTests(Tester):
         c = """CREATE INDEX ryear ON racing.rank_by_year_and_name (race_year)"""
         try:
             session.execute(c)
-        except Exception, e:
-            assert(e.message == "Indexes are not supported yet")
+        except Exception as e:
+            assert(str(e) == "Indexes are not supported yet")
             assert(e.code == 0000)
 
     @attr('next-gating')
@@ -5832,7 +5840,7 @@ class CQLAdditionalTests(Tester):
             )"""
         session.execute(c)
 
-        row = [u'bcanet', u'benoit@scylladb.com', u'Benoit Canet']
+        row = [u'bcanet', 'benoit@scylladb.com', 'Benoit Canet']
 
         c = """INSERT INTO ks.users (login, email, name)
             values ('{}', '{}', '{}')
@@ -5861,8 +5869,8 @@ class CQLAdditionalTests(Tester):
         c = """GRANT SELECT ON ALL KEYSPACES TO benoit"""
         try:
             session.execute(c)
-        except Exception, e:
-            assert(e.message == "Not implemented: GRANT")
+        except Exception as e:
+            assert(str(e) == "Not implemented: GRANT")
             assert(e.code == 0000)
 
     @require('876')
@@ -5876,8 +5884,8 @@ class CQLAdditionalTests(Tester):
         c = """REVOKE SELECT ON ks.user FROM blob"""
         try:
             session.execute(c)
-        except Exception, e:
-            assert(e.message == "Not implemented: REVOKE")
+        except Exception as e:
+            assert(str(e) == "Not implemented: REVOKE")
             assert(e.code == 0000)
 
     @require('876')
@@ -5891,8 +5899,8 @@ class CQLAdditionalTests(Tester):
         c = """LIST ALL PERMISSIONS ON ks.boo"""
         try:
             session.execute(c)
-        except Exception, e:
-            assert(e.message == "Not implemented: LIST")
+        except Exception as e:
+            assert(str(e) == "Not implemented: LIST")
             assert(e.code == 0000)
 
     @attr('next-gating')
@@ -5934,7 +5942,7 @@ class CQLAdditionalTests(Tester):
         num_rows = int(re.search(regex, out).group(1))
         self.assertEqual(num_rows, 0)
 
-        for i in xrange(100):
+        for i in range(100):
             session.execute("insert into ks.raw_data (test_id, partition_key, time, value) "
                             "values (%s, '%s', '%s-02-03 04:05+0000', %s);" % (i, i, 2000-i, i*1.0))
 
@@ -5968,7 +5976,7 @@ class CQLAdditionalTests(Tester):
                               PRIMARY KEY ((test_id, partition_key), time)
                               ) WITH CLUSTERING ORDER BY (time ASC);""")
 
-        for i in xrange(2000):
+        for i in range(2000):
             session.execute("insert into ks.raw_data (test_id, partition_key, time, value) "
                             "values (%s, '%s', '%s-02-03 04:05+0000', %s);" % (i, i, 2000-i, i*1.0))
 
@@ -6001,7 +6009,7 @@ class CQLAdditionalTests(Tester):
                               PRIMARY KEY ((test_id, partition_key), time)
                               ) WITH CLUSTERING ORDER BY (time DESC);""")
 
-        for i in xrange(8000):
+        for i in range(8000):
             session.execute("insert into ks.raw_data (test_id, partition_key, time, value) "
                             "values (%s, '%s', '%s-02-03 04:05+0000', %s);" % (i, i, 2000+i, i*1.0))
 
@@ -6048,12 +6056,12 @@ class CQLAdditionalTests(Tester):
                   AND read_repair_chance = 0.0
                   AND speculative_retry = '99.0PERCENTILE';""")
         # insert 10K random data
-        for i in xrange(10000):
+        for i in range(10000):
             session.execute("insert into ks.hour_data (bucket, hour_ts, ug, user) "
                             "values ('2017-29-03', %s, %s, %s);" % (
                             random.randint(0, 23), random.randint(1, 17), random.randint(0, 9999999999)))
         # A little more data from another bucket
-        for i in xrange(100):
+        for i in range(100):
             session.execute("insert into ks.hour_data (bucket, hour_ts, ug, user) "
                             "values ('2017-29-04', %s, %s, %s);" % (
                             random.randint(0, 23), random.randint(1, 17), random.randint(0, 9999999999)))
@@ -6070,7 +6078,7 @@ class CQLAdditionalTests(Tester):
 
         r_implicitly = {}
         i = 0
-        for (hour, ug), count in sorted(counted.iteritems()):
+        for (hour, ug), count in sorted(counted.items()):
             r_implicitly[i] = (hour, ug, count)
             i += 1
             debug("%s %s %s " % (hour, ug, count))
@@ -6085,13 +6093,13 @@ class CQLAdditionalTests(Tester):
         r_explicitly = {}
         i = 0
 
-        for hour_ts in xrange(24):
+        for hour_ts in range(24):
             counted = defaultdict(int)
             for ug in range(1, 18):
                 res = session.execute(sql, (hour_ts, ug))
                 for num, row in enumerate(res):
                     counted[(row.hour_ts, row.ug)] += 1
-            for (hour, ug), count in sorted(counted.iteritems()):
+            for (hour, ug), count in sorted(counted.items()):
                 r_explicitly[i] = (hour, ug, count)
                 i += 1
             debug("%s %s %s " % (hour, ug, count))
@@ -6151,13 +6159,13 @@ class MultiColumnRestrictionSimpleTests(Tester):
                 ]
 
     EXPECTED_DATA = [[0, 0, 'text1', '1970-05-23T21:21:14.987000', True, '045asciitext',
-                      'de5cba0d-41a2-4f39-8834-35130d8b5d86', 'c'*10],
+                      'de5cba0d-41a2-4f39-8834-35130d8b5d86', b'c'*10],
                      [1, 0, 'text2', '1972-01-10T06:37:58.378000', False, 'abcdefj',
-                      'fa80080c-a4c5-46d6-afe4-5e184fec35ae', 'b'*10],
+                      'fa80080c-a4c5-46d6-afe4-5e184fec35ae', b'b'*10],
                      [2, 2, 'text3', '1982-08-21T16:03:01.719000', True, '354dsfsd',
-                      'de5cba0d-41a2-4f39-8834-35130d8b5d86', 'b'*10],
+                      'de5cba0d-41a2-4f39-8834-35130d8b5d86', b'b'*10],
                      [3, 3, 'text4', '1982-08-21T16:03:01.719000', False, '897dfjka9',
-                      'fa80080c-a4c5-46d6-afe4-5e184fec35ae', 'a'*10],
+                      'fa80080c-a4c5-46d6-afe4-5e184fec35ae', b'a'*10],
                      [4, 4, None, None, None, None, None, None]
                     ]
     TABLE_NAME = 'cf'

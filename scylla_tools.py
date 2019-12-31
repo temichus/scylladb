@@ -77,12 +77,12 @@ def insert_c1cn(session, keys=None, consistency=ConsistencyLevel.QUORUM, nr_colu
         keys = []
 
     cql_str = "INSERT INTO {}.{} (key, ".format(ks, cf)
-    for nr in xrange(1, nr_columns + 1):
+    for nr in range(1, nr_columns + 1):
         if nr != nr_columns:
             cql_str += 'c{}, '.format(nr)
         else:
             cql_str += 'c{}) VALUES (?, '.format(nr)
-    for nr in xrange(1, nr_columns + 1):
+    for nr in range(1, nr_columns + 1):
         if nr != nr_columns:
             cql_str += '?, '
         else:
@@ -93,7 +93,7 @@ def insert_c1cn(session, keys=None, consistency=ConsistencyLevel.QUORUM, nr_colu
 
     # build column values for c1 to cn
     col_data = []
-    for nr in xrange(1, nr_columns + 1):
+    for nr in range(1, nr_columns + 1):
         'x' * column_size
         if column_size:
             col_data.append('x' * column_size)
@@ -147,8 +147,8 @@ def query_c1c2_concurrent(session, keys, consistency=ConsistencyLevel.QUORUM, to
 
     results = execute_concurrent_with_args(session, pquery, map(lambda x: ['k{}'.format(x)], keys))
 
-    map(lambda (success, result), c1, c2:
-        check_c1c2_result_one(success, list(result), tolerate_missing, must_be_missing, c1, c2),
+    map(lambda result, c1, c2:
+        check_c1c2_result_one(result[0], list(result[1]), tolerate_missing, must_be_missing, c1, c2),
         results, c1_values, c2_values)
 
 def generate_random_text(length=10):
@@ -347,16 +347,16 @@ class TableManager(object):
                         cls=', {}'.format(', '.join([s for s in self.cl_list])) if self.cl_list else '')
         if self.table_options:
             statement = statement + ' WITH'
-            for op, value in self.table_options.iteritems():
+            for op, value in self.table_options.items():
                 statement = '{} {} = {}'.format(statement, op, value)
         debug(statement)
         self.session.execute(statement)
 
     def _create_columns_list(self):
         # TODO: add UDT
-        for c_type, c_def in self.columns_dict.iteritems():
+        for c_type, c_def in self.columns_dict.items():
             preffix = self._convert_type_to_preffix(c_type, c_def)
-            for i in xrange(c_def['amount']):
+            for i in range(int(c_def['amount'])):
                 clmn_name = '{clmn_prefix}{num}' .format(clmn_prefix=preffix, num=i) if preffix else c_def['names'][i]
 
                 self.columns_list.append('{clmn_name} {frozen}{clmn_type}'
@@ -389,8 +389,8 @@ class TableManager(object):
         statement.consistency_level = consistency
 
         execute_concurrent_with_args(self.session, statement,
-                                     map(lambda k: [k+start_id_from]+[data_arr[t][k] for t in xrange(0, len(data_arr))],
-                                         [ k for k in xrange(0,rows)]))
+                                     map(lambda k: [k+start_id_from]+[data_arr[t][k] for t in range(0, len(data_arr))],
+                                         [ k for k in range(0,rows)]))
         if flush:
             flush_by_node(self.cluster)
 
@@ -401,9 +401,9 @@ class TableManager(object):
         :param filter: {<column_name1>: [<value1>,<value2>,..] <column_name2>: [<value1>,<value2>,..], ..}
         """
         time.sleep(delay)
-        for i in xrange(0, len(next(filters.itervalues()))):
+        for i in range(0, len(next(iter(filters.values())))):
             filter = {}
-            for column, values in filters.iteritems():
+            for column, values in filters.items():
                 filter.update({column: values[i]})
             self.delete_row(filter)
 
@@ -411,7 +411,7 @@ class TableManager(object):
         """
         :param filter: {<column_name1>: <value>, <column_name2>: <value>, ..}
         """
-        where_statement = ['{0}={1}'.format(column, self.prepare_value(str(value))) for column, value in filter.iteritems()]
+        where_statement = ['{0}={1}'.format(column, self.prepare_value(str(value))) for column, value in filter.items()]
         query = 'delete from {tbl} where {where}'.format(tbl=self.table_name, where=' and '.join(s for s in where_statement))
         debug(query)
         self.session.execute(query)
@@ -428,12 +428,12 @@ class TableManager(object):
             data = []
             value = None
             #TODO: add UDT and collection types
-            for i in xrange(0, dupl):
+            for i in range(0, dupl):
                 if 'int' in c_type:
                     value = random.randint(c_def['value length']['min'], c_def['value length']['max'])
                 elif c_type in ['text', 'ascii', 'varchar']:
                     value = ''.join(random.choice(string.ascii_lowercase)
-                                     for _ in xrange(c_def['value length']['min'], c_def['value length']['max']))
+                                     for _ in range(c_def['value length']['min'], c_def['value length']['max']))
                 elif c_type in ['float','decimal', 'double']:
                     value = random.uniform(c_def['value length']['min'], c_def['value length']['max'])
                 elif c_type == 'decimal':
@@ -459,10 +459,10 @@ class TableManager(object):
 
         data_array = {}
         dupl = 10 if not ready_data else len(ready_data)
-        for c_type, c_def in self.columns_dict.iteritems():
+        for c_type, c_def in self.columns_dict.items():
             if 'value length' not in c_def:
                 c_def['value length'] = {'min': self.DEFAULT_MIN_LENGTH, 'max': self.DEFAULT_MAX_LENGTH}
-            data_array[c_type] = _get_random(dupl)*(rows/dupl) + _get_random(rows%dupl)
+            data_array[c_type] = _get_random(dupl)*(rows//dupl) + _get_random(rows % dupl)
         data_array = [data_array[i] for i in [c.split(' ')[1] for c in self.columns_list[1:]]]
         return data_array
 
@@ -496,12 +496,12 @@ class TableManager(object):
 
         if filter_dict:
             set_str = ' and '.join('{0} = {1}'.format(name, self.prepare_value(value))
-                                      for name, value in set_dict.iteritems())
+                                      for name, value in set_dict.items())
             filter_str = ' and '.join('{0} {1} {2}'.format(name, value['operator'],
                                 '({})'.format(', '.join([self.prepare_value(str(i)) for i in value['value']]))
                                 if isinstance(value['value'], list) and value['operator'] == 'in' else
-                                self.prepare_value(value['value']) )for name, value in filter_dict.iteritems())
-            using_str = ' USING {0} {1}'.format(using_clause.keys()[0], using_clause[using_clause.keys()[0]]) if using_clause else ''
+                                self.prepare_value(value['value']) )for name, value in filter_dict.items())
+            using_str = ' USING {0} {1}'.format(list(using_clause.keys())[0], using_clause[list(using_clause.keys())[0]]) if using_clause else ''
 
             statement = 'UPDATE {ks}.{table_name}{using} SET {set_clause} WHERE {filter}' \
                             .format(ks=self.keyspace, table_name=self.table_name,
@@ -525,7 +525,7 @@ class TableManager(object):
         id = None
         id_condition = False if not same_id else None
         res = list(self.session.execute(query))
-        for _ in xrange(updates):
+        for _ in range(updates):
             # Select column for update
             if not ids:
                 k = 0
@@ -559,7 +559,7 @@ class TableManager(object):
         else:
             statement_template = statement_template + ' LIMIT 10'
 
-        for _ in xrange(0, reads):
+        for _ in range(0, reads):
             i = random.randint(0, len(self.materialized_views)-1)
             mv_name = [name for j, name in enumerate(self.materialized_views.keys()) if j == i][0]
             statement = statement_template.format(mv_name, random.randint(0, max_id)) if by_id else \
@@ -578,7 +578,7 @@ class TableManager(object):
     def _build_filter(self, where_filter):
         clause = {}
         f, by = (where_filter['by name'], 'name') if 'by name' in where_filter else (where_filter['by type'], 'type')
-        for clmn, value in f.iteritems():
+        for clmn, value in f.items():
             name = ''
             if by == 'name':
                 if clmn in self.pk_list+self.cl_list:
@@ -593,17 +593,17 @@ class TableManager(object):
 
     def _bulid_set_clause(self, set_clause, exclude_columns=None):
         clause = {}
-        for utype, udef in set_clause.iteritems():
+        for utype, udef in set_clause.items():
             s, by = udef, utype.replace('by ', '')
             # s, by = (clause['by name'], 'name') if 'by name' in clause else (clause['by type'], 'type')
-            for name, new_value in s.iteritems():
+            for name, new_value in s.items():
                 update_item = ''
                 if by == 'name':
                     if [n for n in self.columns_list if '{} '.format(name) in n] \
-                            and name not in self.pk_list+self.cl_list+clause.keys():
+                            and name not in self.pk_list + self.cl_list + list(clause.keys()):
                         update_item = name
                 elif by == 'type':
-                    update_item = self._get_column_by_type(name, exclude_list=self.pk_list+self.cl_list+clause.keys()+exclude_columns)
+                    update_item = self._get_column_by_type(name, exclude_list=self.pk_list + self.cl_list + list(clause.keys()) +exclude_columns)
                 if update_item:
                     clause.update({update_item: new_value})
         return clause
@@ -709,7 +709,7 @@ class MaterializedViewManager(object):
                                                                                   for i in value['value']])
                                                                        if isinstance(value['value'], list) else value['value'] )
                                                          if value['operator'] == 'in' else value['value'])
-                                    for name, value in self.mv_where_restriction.iteritems()])
+                                    for name, value in self.mv_where_restriction.items()])
                 self.mv_where_clause = '{0} and {1}'.format(self.mv_where_clause, where_str)
             # TODO: add option to filter
             # TODO: ADD CLUSTERING OPTION
@@ -732,7 +732,7 @@ class MaterializedViewManager(object):
                                ks=self.parent_table.keyspace, view=self.mv_name)
 
             if options:
-                for op, value in options.iteritems():
+                for op, value in options.items():
                     self.parent_table.session.execute('ALTER MATERIALIZED VIEW {ks}.{mv_name} WITH {op} = {value}'.format
                                                       (ks=self.parent_table.keyspace, mv_name=self.mv_name,
                                                        op=op, value=value))
@@ -758,7 +758,7 @@ class MaterializedViewManager(object):
             if 'names' in mv_where_restriction:
                 restriction_dict.update(mv_where_restriction['names'])
             elif 'position' in mv_where_restriction:
-                for position, r_def in mv_where_restriction['position'].iteritems():
+                for position, r_def in mv_where_restriction['position'].items():
                     if len(pk_list) > position:
                         restriction_dict.update({pk_list[position]: r_def})
 
@@ -780,7 +780,7 @@ class MaterializedViewManager(object):
         exclude_list = exclude_list or []
         mv_columns_list = []
         mv_columns_list.extend(list(itertools.chain.from_iterable([self._build_columns_list(c_type, c_def, mv_columns_list+exclude_list)
-                                for c_type, c_def in mv_columns.iteritems()])))
+                                for c_type, c_def in mv_columns.items()])))
         return mv_columns_list
 
 
@@ -790,7 +790,7 @@ class MaterializedViewManager(object):
             column_names = [clmn for clmn in c_def['names'] if '{0} {1}'.format(clmn, c_type) in self.parent_table.columns_list
                             and clmn not in column_names + exclude_list]
         else:
-            for i in xrange(c_def['amount']):
+            for i in range(c_def['amount']):
                 column_names.append([clmn.split(' ')[0] for clmn in self.parent_table.columns_list if ' {}'.format(c_type) in clmn
                                     and clmn.split(' ')[0] not in column_names + exclude_list][0])
         return column_names
@@ -858,7 +858,7 @@ def view_built_status_query(ks='', view='', select_column='status'):
     query = "SELECT {} FROM system_distributed.view_build_status".format(select_column)
     if ks or view:
         query = "{} WHERE ".format(query)
-        where = ' AND '.join(['{0} = \'{1}\''.format(k, v) for k, v in {'keyspace_name': ks, 'view_name': view}.iteritems() if v])
+        where = ' AND '.join(['{0} = \'{1}\''.format(k, v) for k, v in {'keyspace_name': ks, 'view_name': view}.items() if v])
         if ks:
             query = "{0} {1}".format(query, where)
     return query
@@ -1072,7 +1072,7 @@ class CassandraCluster(object):
     def copy_table_data_all_nodes(self, from_base_path, to_base_path, nodes=None, create_to_folder=False):
         debug('Copy Scylla test data files')
         for node in nodes:
-            for ks, tables in self.folders_tree.iteritems():
+            for ks, tables in self.folders_tree.items():
                 for table in tables:
                     copy_from = self.get_table_folder(base_path=from_base_path, node=node, keyspace_name=ks, table_name=table)
                     copy_to = self.get_table_folder(base_path=to_base_path, node=node, keyspace_name=ks, table_name=table, create=create_to_folder)
@@ -1083,7 +1083,7 @@ class CassandraCluster(object):
         self.copy_table_data_all_nodes(from_base_path=self.scylla_data_tmp_folder, to_base_path=self.test_path, nodes=nodes)
 
     def create_test_schema(self, node):
-        for ks, cmds in self.scylla_schema_ddl.iteritems():
+        for ks, cmds in self.scylla_schema_ddl.items():
             debug('Create keyspace {} with all entities'.format(ks))
             out = node.run_cqlsh(cmds=';'.join(cmd for cmd in cmds), return_output=True)
             if out[1]:
@@ -1091,7 +1091,7 @@ class CassandraCluster(object):
 
     def migrate_data_to_cassandra(self, nodes):
         for node in nodes:
-            for ks, tables in self.folders_tree.iteritems():
+            for ks, tables in self.folders_tree.items():
                 for table in tables:
                     debug('Start data migration from Scylla to Cassandra for {}.{} table'.format(ks, table))
                     # If the keyspace/table names are case sensitive, we have to use double quotes. And nodetool refresh

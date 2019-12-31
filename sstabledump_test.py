@@ -167,7 +167,7 @@ class SSTableDumpAllDatatypes(CqlshPrepare, SSTableDump):
         q = list()
         r = dict()
         format_val = {'b': lambda v: int(v),
-                      'c': lambda v: bytearray.fromhex(v[:2] if type(v) == type(str()) else str(v)[2:]),
+                      'c': lambda v: bytearray.fromhex(v[2:]),
                       'd': lambda v: json.loads(v) if type(v) == type(str()) else v,
                       'e': lambda v: Decimal(v),
                       'f': lambda v: float(v),
@@ -217,5 +217,7 @@ class SSTableDumpAllDatatypes(CqlshPrepare, SSTableDump):
         for i in range(0, len(src) - 2):
             if isinstance(dst[i], dict):
                 self.assertEquals(dict(src[i]), dst[i])
+            if isinstance(src[i], str) and isinstance(dst[i], bytes):
+                self.assertEquals(src[i], dst[i].decode('utf-8'))
             else:
                 self.assertEquals(src[i], dst[i])

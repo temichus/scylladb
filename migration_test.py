@@ -320,8 +320,7 @@ class MigrationTestBase(Tester):
                                  'livyatan', "check ascii column")
             self.assertEqual(result[i].abigint, 1999 +
                              i, "check bigint column")
-            self.assertEqual(str(result[i].ablob).encode(
-                'hex'), '0000000000000003', "check blob column")
+            self.assertEqual(result[i].ablob.hex(), '0000000000000003', "check blob column")
             self.assertEqual(result[i].aboolean, True, "check boolean column")
             self.assertEqual(result[i].adecimal, 10, "check decimal column")
             self.assertEqual(result[i].adouble, 10.10, "check double column")
@@ -338,7 +337,7 @@ class MigrationTestBase(Tester):
                 "check timeuuid column")
             self.assertEqual(result[i].auuid, uuid.UUID(
                 '123e4567-e89b-12d3-a456-426655440000'), "check uuid column")
-            self.assertEqual(result[i].avarchar, unicode(
+            self.assertEqual(result[i].avarchar, str(
                 "tzachvarchar"), "check varchar column")
             self.assertEqual(result[i].avarint, 17, "check varint column")
             self.assertEqual(result[i].alist, [1, 2, 3], "check list column")
@@ -513,7 +512,7 @@ class MigrationTestBase(Tester):
 
         result = self.get_all_rows_for_check(node1)
         idx = 0
-        for key, value in collection_content.iteritems():
+        for key, value in collection_content.items():
             self.assertEqual(result[idx].key, key, "check partition key")
             # INSERT INTO ks.cf (key, messages) VALUES('a', {'scylladb', 'scylla', 'hello world', 'test'});
             self.assertEqual(result[idx].messages, value, "check messages")
@@ -527,7 +526,7 @@ class MigrationTestBase(Tester):
         self.create_ks(session, 'ks', 1)
 
         debug("Creating a column family 'cf'...")
-        if isinstance(query, basestring):
+        if isinstance(query, str):
             session.execute(query)
             time.sleep(0.2)
         elif query is not None:
@@ -808,7 +807,7 @@ class TTLWithMigrate(Tester):
         table_name = 'cf'
         int_columns = 99
         stmt = 'create table {} (pk int, ck int, {}, clist list<int>, cset set<text>, cmap map<int, text>, ' \
-               'PRIMARY KEY(pk, ck))'.format(table_name, ', '.join('c%d int' % i for i in xrange(1, int_columns)))
+               'PRIMARY KEY(pk, ck))'.format(table_name, ', '.join('c%d int' % i for i in range(1, int_columns)))
         self.session1.execute(stmt)
 
         min_ttl = 120
@@ -821,14 +820,14 @@ class TTLWithMigrate(Tester):
         partitions = 10
         rows_in_partition = 1000
         debug('Create {} partitions with {} rows'.format(partitions, rows_in_partition))
-        for i in xrange(1, partitions+1):
-            for k in xrange(1, rows_in_partition+1):
+        for i in range(1, partitions+1):
+            for k in range(1, rows_in_partition+1):
                 s = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(10))
                 stmt = 'insert into {table_name} (pk, ck, {columns}, clist, cset, cmap) values ({ilist}, {klist}, {int_values}, ' \
                        '[{ilist}, {klist}], ' \
                        '{open}{set_value}{close}, {map_value})'.format(table_name=table_name,
-                    columns=', '.join('c%d' % l for l in xrange(1, int_columns)),
-                    int_values=', '.join('%d' % l for l in xrange(1, int_columns)), ilist=i, klist=k, open='{\'',
+                    columns=', '.join('c%d' % l for l in range(1, int_columns)),
+                    int_values=', '.join('%d' % l for l in range(1, int_columns)), ilist=i, klist=k, open='{\'',
                     set_value=s, close='\'}', map_value='{%d: \'%s\'}' % (k, s)
                 )
                 self.session1.execute(stmt)
@@ -836,13 +835,13 @@ class TTLWithMigrate(Tester):
         big_partition = partitions + 1
         big_partition_rows = 100000
         debug('Create partition where pk = {} with {} rows'.format(big_partition, big_partition_rows))
-        for k in xrange(1, big_partition_rows+1):
+        for k in range(1, big_partition_rows+1):
             s = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(10))
             stmt = 'insert into {table_name} (pk, ck, {columns}, clist, cset, cmap) values ({ilist}, {klist}, {int_values}, ' \
                    '[{ilist}, {klist}], ' \
                    '{open}{set_value}{close}, {map_value})'.format(table_name=table_name,
-                columns=', '.join('c%d' % l for l in xrange(1, int_columns)),
-                int_values=', '.join('%d' % l for l in xrange(1, int_columns)), ilist=big_partition, klist=k, open='{\'',
+                columns=', '.join('c%d' % l for l in range(1, int_columns)),
+                int_values=', '.join('%d' % l for l in range(1, int_columns)), ilist=big_partition, klist=k, open='{\'',
                 set_value=s, close='\'}', map_value='{%d: \'%s\'}' % (k, s)
             )
             self.session1.execute(stmt)
@@ -860,7 +859,7 @@ class TTLWithMigrate(Tester):
         ttl_boundaries = [1800, 3600]
         debug('Run updates using TTLs in the {} range'.format(ttl_boundaries))
 
-        for _ in xrange(1, big_partition+1):
+        for _ in range(1, big_partition+1):
             # Update int columns
             stmts = [create_update_command(ttl=random.randint(ttl_boundaries[0], ttl_boundaries[1]),
                                            column_expr='c%d = %d' % (random.randint(1, int_columns-1), random.randint(0, 500000)),

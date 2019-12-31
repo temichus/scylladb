@@ -179,7 +179,7 @@ class TestCommitLog(Tester):
         debug("Verify data is present")
         session = self.patient_cql_connection(node1)
         res = session.execute("SELECT * FROM Test. users")
-        self.assertItemsEqual(rows_to_list(res),
+        self.assertCountEqual(rows_to_list(res),
                               [[u'gandalf', 1955, u'male', u'p@$$', u'WA']])
 
         debug("Stop node abruptly")
@@ -211,7 +211,7 @@ class TestCommitLog(Tester):
         debug("Make query and ensure data is present")
         session = self.patient_cql_connection(node1)
         res = session.execute("SELECT * FROM Test. users")
-        self.assertItemsEqual(rows_to_list(res),
+        self.assertCountEqual(rows_to_list(res),
                               [[u'gandalf', 1955, u'male', u'p@$$', u'WA']])
 
     @attr('next-gating')
@@ -270,7 +270,7 @@ class TestCommitLog(Tester):
         session = self.patient_cql_connection(node1)
         for key in range(n_partitions):
             res = session.execute("SELECT * FROM Test.cf where pk1 = %d" % (key))
-            self.assertItemsEqual(rows_to_list(res),
+            self.assertCountEqual(rows_to_list(res),
                                   [
                 [key, 0, None, 99, u'two', 999],
                 [key, 1, 2, None, u'four', None],
@@ -301,7 +301,7 @@ class TestCommitLog(Tester):
         session = self.patient_cql_connection(node1)
         for key in range(n_partitions):
             res = session.execute("SELECT * FROM Test.cf where pk1 = %d" % (key))
-            self.assertItemsEqual(rows_to_list(res),
+            self.assertCountEqual(rows_to_list(res),
                                   [
                 [key, 0, None, 99, u'two', 999],
                 [key, 1, 2, None, u'four', None],

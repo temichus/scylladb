@@ -8,8 +8,8 @@ from thrift.protocol import TBinaryProtocol
 from thrift.transport import TSocket, TTransport
 
 from dtest import DISABLE_VNODES, NUM_TOKENS, Tester, debug
-from thrift_bindings.v22 import Cassandra
-from thrift_bindings.v22.Cassandra import (CfDef, Column, ColumnDef,
+from thrift_bindings.thrift010 import Cassandra
+from thrift_bindings.thrift010.Cassandra import (CfDef, Column, ColumnDef,
                                            ColumnOrSuperColumn, ColumnParent,
                                            ColumnPath, ColumnSlice,
                                            ConsistencyLevel, CounterColumn,
@@ -244,14 +244,14 @@ def _verify_range():
     p = SlicePredicate(slice_range=SliceRange('c1', 'c2', False, 1000))
     result = client.get_slice('key1', ColumnParent('Standard1'), p, ConsistencyLevel.ONE)
     assert len(result) == 2
-    assert result[0].column.name == 'c1'
-    assert result[1].column.name == 'c2'
+    assert result[0].column.name == b'c1'
+    assert result[1].column.name == b'c2'
 
     p = SlicePredicate(slice_range=SliceRange('c3', 'c2', True, 1000))
     result = client.get_slice('key1', ColumnParent('Standard1'), p, ConsistencyLevel.ONE)
     assert len(result) == 2
-    assert result[0].column.name == 'c3'
-    assert result[1].column.name == 'c2'
+    assert result[0].column.name == b'c3'
+    assert result[1].column.name == b'c2'
 
     p = SlicePredicate(slice_range=SliceRange('a', 'z', False, 1000))
     result = client.get_slice('key1', ColumnParent('Standard1'), p, ConsistencyLevel.ONE)
@@ -266,14 +266,14 @@ def _verify_counter_range():
     p = SlicePredicate(slice_range=SliceRange('c1', 'c2', False, 1000))
     result = client.get_slice('key1', ColumnParent('Counter1'), p, ConsistencyLevel.ONE)
     assert len(result) == 2
-    assert result[0].counter_column.name == 'c1'
-    assert result[1].counter_column.name == 'c2'
+    assert result[0].counter_column.name == b'c1'
+    assert result[1].counter_column.name == b'c2'
 
     p = SlicePredicate(slice_range=SliceRange('c3', 'c2', True, 1000))
     result = client.get_slice('key1', ColumnParent('Counter1'), p, ConsistencyLevel.ONE)
     assert len(result) == 2
-    assert result[0].counter_column.name == 'c3'
-    assert result[1].counter_column.name == 'c2'
+    assert result[0].counter_column.name == b'c3'
+    assert result[1].counter_column.name == b'c2'
 
     p = SlicePredicate(slice_range=SliceRange('a', 'z', False, 1000))
     result = client.get_slice('key1', ColumnParent('Counter1'), p, ConsistencyLevel.ONE)
@@ -404,11 +404,11 @@ class TestMutations(ThriftTester):
         newcf = CfDef('Keyspace1', 'cf', default_validation_class='AsciiType', column_metadata=[cd])
         client.system_add_column_family(newcf)
 
-        prepared_ins = client.prepare_cql3_query("INSERT INTO cf (key, v) VALUES (?, ?)", Cassandra.Compression.NONE)
-        prepared_sel = client.prepare_cql3_query("SELECT v FROM cf WHERE key=?", Cassandra.Compression.NONE)
+        prepared_ins = client.prepare_cql3_query(b"INSERT INTO cf (key, v) VALUES (?, ?)", Cassandra.Compression.NONE)
+        prepared_sel = client.prepare_cql3_query(b"SELECT v FROM cf WHERE key=?", Cassandra.Compression.NONE)
         res = client.execute_prepared_cql3_query(prepared_ins.itemId, ['0', 'my_value'], ConsistencyLevel.ONE)
         rows = client.execute_prepared_cql3_query(prepared_sel.itemId, ['0'], ConsistencyLevel.ONE)
-        assert rows.rows[0].columns[0].value == 'my_value'
+        assert rows.rows[0].columns[0].value == b'my_value'
 
     def test_empty_slice(self):
         _set_keyspace('Keyspace1')
@@ -494,7 +494,7 @@ class TestMutations(ThriftTester):
         # Exercise paging
         column_parent = ColumnParent('Standard1')
         # Paging for small columns starts at 1024 columns
-        columns_to_insert = [Column('c%d' % (i,), 'value%d' % (i,), 0) for i in xrange(3, 1026)]
+        columns_to_insert = [Column('c%d' % (i,), 'value%d' % (i,), 0) for i in range(3, 1026)]
         cfmap = {'Standard1': [Mutation(ColumnOrSuperColumn(c)) for c in columns_to_insert]}
         client.batch_mutate({'key1': cfmap}, ConsistencyLevel.ONE)
 
@@ -516,7 +516,7 @@ class TestMutations(ThriftTester):
         parent = ColumnParent('Standard1')
         cl = ConsistencyLevel.ONE
 
-        for i in xrange(0, 3050):
+        for i in range(0, 3050):
             client.insert(key, parent, Column(str(i), '', 0), cl)
 
         # same as page size
@@ -569,13 +569,13 @@ class TestMutations(ThriftTester):
     def test_long_order(self):
         _set_keyspace('Keyspace1')
 
-        def long_xrange(start, stop, step):
+        def long_range(start, stop, step):
             i = start
             while i < stop:
                 yield i
                 i += step
         L = []
-        for i in long_xrange(0, 104294967296, 429496729):
+        for i in long_range(0, 104294967296, 429496729):
             name = _i64(i)
             client.insert('key1', ColumnParent('StandardLong1'), Column(name, 'v', 0), ConsistencyLevel.ONE)
             L.append(name)
@@ -585,13 +585,13 @@ class TestMutations(ThriftTester):
     def test_integer_order(self):
         _set_keyspace('Keyspace1')
 
-        def long_xrange(start, stop, step):
+        def long_range(start, stop, step):
             i = start
             while i >= stop:
                 yield i
                 i -= step
         L = []
-        for i in long_xrange(104294967296, 0, 429496729):
+        for i in long_range(104294967296, 0, 429496729):
             name = _i64(i)
             client.insert('key1', ColumnParent('StandardInteger1'), Column(name, 'v', 0), ConsistencyLevel.ONE)
             L.append(name)
@@ -605,12 +605,12 @@ class TestMutations(ThriftTester):
         L = []
         _set_keyspace('Keyspace2')
         # 100 isn't enough to fail reliably if the comparator is borked
-        for i in xrange(500):
+        for i in range(500):
             L.append(uuid.uuid1())
             client.insert('key1', ColumnParent('Super4', 'sc1'), Column(L[-1].bytes, 'value%s' % i, i), ConsistencyLevel.ONE)
         slice = _big_slice('key1', ColumnParent('Super4', 'sc1'))
         assert len(slice) == 500, len(slice)
-        for i in xrange(500):
+        for i in range(500):
             u = slice[i].column
             assert u.value == 'value%s' % i
             assert u.name == L[i].bytes
@@ -647,7 +647,7 @@ class TestMutations(ThriftTester):
         column_parent = ColumnParent('StandardLong1')
         sp = SlicePredicate(slice_range=SliceRange('', '', False, 1))
         _set_keyspace('Keyspace1')
-        for i in xrange(10):
+        for i in range(10):
             parent = ColumnParent('StandardLong1')
 
             client.insert('key1', parent, Column(_i64(i), 'value1', 10 * i), ConsistencyLevel.ONE)
@@ -664,7 +664,7 @@ class TestMutations(ThriftTester):
         column_parent = ColumnParent('StandardInteger1')
         sp = SlicePredicate(slice_range=SliceRange('', '', False, 1))
         _set_keyspace('Keyspace1')
-        for i in xrange(10):
+        for i in range(10):
             parent = ColumnParent('StandardInteger1')
 
             client.insert('key1', parent, Column(_i64(i), 'value1', 10 * i), ConsistencyLevel.ONE)
@@ -1279,7 +1279,7 @@ class TestMutations(ThriftTester):
     def test_range_with_remove(self):
         _set_keyspace('Keyspace1')
         _insert_simple()
-        assert get_range_slice(client, ColumnParent('Standard1'), SlicePredicate(column_names=['c1', 'c2']), 'key1', '', 1000, ConsistencyLevel.ONE)[0].key == 'key1'
+        assert get_range_slice(client, ColumnParent('Standard1'), SlicePredicate(column_names=['c1', 'c2']), 'key1', '', 1000, ConsistencyLevel.ONE)[0].key == b'key1'
 
         client.remove('key1', ColumnPath('Standard1', column='c1'), 1, ConsistencyLevel.ONE)
         client.remove('key1', ColumnPath('Standard1', column='c2'), 1, ConsistencyLevel.ONE)
@@ -1290,7 +1290,7 @@ class TestMutations(ThriftTester):
     def test_range_with_remove_cf(self):
         _set_keyspace('Keyspace1')
         _insert_simple()
-        assert get_range_slice(client, ColumnParent('Standard1'), SlicePredicate(column_names=['c1', 'c1']), 'key1', '', 1000, ConsistencyLevel.ONE)[0].key == 'key1'
+        assert get_range_slice(client, ColumnParent('Standard1'), SlicePredicate(column_names=['c1', 'c1']), 'key1', '', 1000, ConsistencyLevel.ONE)[0].key == b'key1'
 
         client.remove('key1', ColumnPath('Standard1'), 1, ConsistencyLevel.ONE)
         actual = get_range_slice(client, ColumnParent('Standard1'), SlicePredicate(column_names=['c1', 'c1']), '', '', 1000, ConsistencyLevel.ONE)
@@ -1299,7 +1299,7 @@ class TestMutations(ThriftTester):
 
     def test_range_collation(self):
         _set_keyspace('Keyspace1')
-        for key in ['-a', '-b', 'a', 'b'] + [str(i) for i in xrange(100)]:
+        for key in ['-a', '-b', 'a', 'b'] + [str(i) for i in range(100)]:
             client.insert(key, ColumnParent('Standard1'), Column(key, 'v', 0), ConsistencyLevel.ONE)
 
         #slices = get_range_slice(client, ColumnParent('Standard1'), SlicePredicate(column_names=['-a', '-a']), '', '', 1000, ConsistencyLevel.ONE)
@@ -1316,18 +1316,18 @@ class TestMutations(ThriftTester):
              '97', '98', '99', 'a', 'b']
         assert len(slices) == len(L)
         for key, ks in zip(L, slices):
-            assert key == ks.key
+            assert key.encode('utf-8') == ks.key
 
     def test_range_partial(self):
         _set_keyspace('Keyspace1')
 
-        for key in ['-a', '-b', 'a', 'b'] + [str(i) for i in xrange(100)]:
+        for key in ['-a', '-b', 'a', 'b'] + [str(i) for i in range(100)]:
             client.insert(key, ColumnParent('Standard1'), Column(key, 'v', 0), ConsistencyLevel.ONE)
 
         def check_slices_against_keys(keyList, sliceList):
             assert len(keyList) == len(sliceList), "%d vs %d" % (len(keyList), len(sliceList))
             for key, ks in zip(keyList, sliceList):
-                assert key == ks.key
+                assert key.encode('utf-8') == ks.key
 
         #slices = get_range_slice(client, ColumnParent('Standard1'), SlicePredicate(column_names=['-a', '-a']), 'a', '', 1000, ConsistencyLevel.ONE)
         slices = get_range_slice(client, ColumnParent('Standard1'), SlicePredicate(slice_range=SliceRange('', '', False, 1000)), 'a', '', 1000, ConsistencyLevel.ONE)
@@ -1366,8 +1366,8 @@ class TestMutations(ThriftTester):
         range = KeyRange(start_token='55', end_token='55', count=100)
         result = client.get_range_slices(cp, predicate, range, ConsistencyLevel.ONE)
         assert len(result) == 5
-        assert result[0].columns[0].column.name == 'col1'
-        assert result[0].columns[1].column.name == 'col3'
+        assert result[0].columns[0].column.name == b'col1'
+        assert result[0].columns[1].column.name == b'col3'
 
     @skip("Super columns not implemented")
     def test_get_range_slice_super(self):
@@ -1379,8 +1379,8 @@ class TestMutations(ThriftTester):
         cp = ColumnParent('Super3', 'sc1')
         result = get_range_slice(client, cp, SlicePredicate(column_names=['col1', 'col3']), 'key2', 'key4', 5, ConsistencyLevel.ONE)
         assert len(result) == 3
-        assert result[0].columns[0].column.name == 'col1'
-        assert result[0].columns[1].column.name == 'col3'
+        assert result[0].columns[0].column.name == b'col1'
+        assert result[0].columns[1].column.name == b'col3'
 
         cp = ColumnParent('Super3')
         result = get_range_slice(client, cp, SlicePredicate(column_names=['sc1']), 'key2', 'key4', 5, ConsistencyLevel.ONE)
@@ -1407,8 +1407,8 @@ class TestMutations(ThriftTester):
         # test column_names predicate
         result = get_range_slice(client, cp, SlicePredicate(column_names=['col1', 'col3']), 'key2', 'key4', 5, ConsistencyLevel.ONE)
         assert len(result) == 3, result
-        assert result[0].columns[0].column.name == 'col1'
-        assert result[0].columns[1].column.name == 'col3'
+        assert result[0].columns[0].column.name == b'col1'
+        assert result[0].columns[1].column.name == b'col3'
 
         # row limiting via count.
         result = get_range_slice(client, cp, SlicePredicate(column_names=['col1', 'col3']), 'key2', 'key4', 1, ConsistencyLevel.ONE)
@@ -1417,11 +1417,11 @@ class TestMutations(ThriftTester):
         # test column slice predicate
         result = get_range_slice(client, cp, SlicePredicate(slice_range=SliceRange(start='col2', finish='col4', reversed=False, count=5)), 'key1', 'key2', 5, ConsistencyLevel.ONE)
         assert len(result) == 2
-        assert result[0].key == 'key1'
-        assert result[1].key == 'key2'
+        assert result[0].key == b'key1'
+        assert result[1].key == b'key2'
         assert len(result[0].columns) == 3
-        assert result[0].columns[0].column.name == 'col2'
-        assert result[0].columns[2].column.name == 'col4'
+        assert result[0].columns[0].column.name == b'col2'
+        assert result[0].columns[2].column.name == b'col4'
 
         # col limiting via count
         result = get_range_slice(client, cp, SlicePredicate(slice_range=SliceRange(start='col2', finish='col4', reversed=False, count=2)), 'key1', 'key2', 5, ConsistencyLevel.ONE)
@@ -1429,8 +1429,8 @@ class TestMutations(ThriftTester):
 
         # and reversed
         result = get_range_slice(client, cp, SlicePredicate(slice_range=SliceRange(start='col4', finish='col2', reversed=True, count=5)), 'key1', 'key2', 5, ConsistencyLevel.ONE)
-        assert result[0].columns[0].column.name == 'col4'
-        assert result[0].columns[2].column.name == 'col2'
+        assert result[0].columns[0].column.name == b'col4'
+        assert result[0].columns[2].column.name == b'col2'
 
         # row limiting via count
         result = get_range_slice(client, cp, SlicePredicate(slice_range=SliceRange(start='col2', finish='col4', reversed=False, count=5)), 'key1', 'key2', 1, ConsistencyLevel.ONE)
@@ -1440,8 +1440,8 @@ class TestMutations(ThriftTester):
         client.remove('key1', ColumnPath('Standard1', column='col1'), 1, ConsistencyLevel.ONE)
         result = get_range_slice(client, cp, SlicePredicate(slice_range=SliceRange('', '')), 'key1', 'key2', 5, ConsistencyLevel.ONE)
         assert len(result) == 2, result
-        assert result[0].columns[0].column.name == 'col2', result[0].columns[0].column.name
-        assert result[1].columns[0].column.name == 'col1'
+        assert result[0].columns[0].column.name == b'col2', result[0].columns[0].column.name
+        assert result[1].columns[0].column.name == b'col1'
 
     def test_wrapped_range_slices(self):
         _set_keyspace('Keyspace1')
@@ -1459,10 +1459,10 @@ class TestMutations(ThriftTester):
         cp = ColumnParent('Standard1')
 
         result = client.get_range_slices(cp, SlicePredicate(column_names=['col1', 'col3']), KeyRange(start_token=copp_token('e'), end_token=copp_token('e')), ConsistencyLevel.ONE)
-        assert [row.key for row in result] == ['a', 'b', 'c', 'd', 'e', ], [row.key for row in result]
+        assert [row.key for row in result] == [b'a', b'b', b'c', b'd', b'e', ], [row.key for row in result]
 
         result = client.get_range_slices(cp, SlicePredicate(column_names=['col1', 'col3']), KeyRange(start_token=copp_token('c'), end_token=copp_token('c')), ConsistencyLevel.ONE)
-        assert [row.key for row in result] == ['d', 'e', 'a', 'b', 'c', ], [row.key for row in result]
+        assert [row.key for row in result] == [b'd', b'e', b'a', b'b', b'c', ], [row.key for row in result]
 
     def test_get_slice_by_names(self):
         _set_keyspace('Keyspace1')
@@ -1470,8 +1470,8 @@ class TestMutations(ThriftTester):
         p = SlicePredicate(column_names=['c1', 'c2'])
         result = client.get_slice('key1', ColumnParent('Standard1'), p, ConsistencyLevel.ONE)
         assert len(result) == 2
-        assert result[0].column.name == 'c1'
-        assert result[1].column.name == 'c2'
+        assert result[0].column.name == b'c1'
+        assert result[1].column.name == b'c2'
 
         #_insert_super()
         #p = SlicePredicate(column_names=[_i64(4)])
@@ -1498,11 +1498,11 @@ class TestMutations(ThriftTester):
         rows = client.multiget_slice(['key' + str(i) for i in range(0, 5)], ColumnParent('CompactColumnFamily'), p, ConsistencyLevel.ONE)
 
         for i in range(0, 5):
-            key = 'key' + str(i)
+            key = b'key' + str(i).encode('utf-8')
             assert key in rows
             assert len(rows[key]) == 1
-            assert rows[key][0].column.name == 'v'
-            assert rows[key][0].column.value == 'value' + str(i)
+            assert rows[key][0].column.name == b'v'
+            assert rows[key][0].column.value == b'value' + str(i).encode('utf-8')
 
     def test_multiget_slice(self):
         """Insert multiple keys and retrieve them using the multiget_slice interface"""
@@ -1510,7 +1510,7 @@ class TestMutations(ThriftTester):
         _set_keyspace('Keyspace1')
         # Generate a list of 10 keys and insert them
         num_keys = 10
-        keys = ['key' + str(i) for i in range(1, num_keys + 1)]
+        keys = [b'key' + str(i).encode('utf-8') for i in range(1, num_keys + 1)]
         _insert_multi(keys)
 
         # Retrieve all 10 key slices
@@ -1528,7 +1528,7 @@ class TestMutations(ThriftTester):
         _set_keyspace('Keyspace1')
         # Generate a list of 10 keys and insert them
         num_keys = 10
-        keys = ['key' + str(i) for i in range(1, num_keys + 1)]
+        keys = [b'key' + str(i).encode('utf-8') for i in range(1, num_keys + 1)]
         _insert_multi(keys)
 
         # Retrieve all 10 key slices
@@ -1559,7 +1559,7 @@ class TestMutations(ThriftTester):
 
         # Check the returned counts
         for i in range(1, num_keys + 1):
-            key = 'key' + str(i)
+            key = b'key' + str(i).encode('utf-8')
             assert counts[key] == i
 
     @skip("Super columns not implemented")
@@ -1574,15 +1574,15 @@ class TestMutations(ThriftTester):
     @skip("Super columns not implemented")
     def test_super_reinsert(self):
         _set_keyspace('Keyspace1')
-        for x in xrange(3):
+        for x in range(3):
             client.insert('key1', ColumnParent('Super1', 'sc2'), Column(_i64(x), 'value', 1), ConsistencyLevel.ONE)
 
         client.remove('key1', ColumnPath('Super1'), 2, ConsistencyLevel.ONE)
 
-        for x in xrange(3):
+        for x in range(3):
             client.insert('key1', ColumnParent('Super1', 'sc2'), Column(_i64(x + 3), 'value', 3), ConsistencyLevel.ONE)
 
-        for n in xrange(1, 4):
+        for n in range(1, 4):
             p = SlicePredicate(slice_range=SliceRange('', '', False, n))
             slice = client.get_slice('key1', ColumnParent('Super1', 'sc2'), p, ConsistencyLevel.ONE)
             assert len(slice) == n, "expected %s results; found %s" % (n, slice)
@@ -1619,7 +1619,7 @@ class TestMutations(ThriftTester):
         # test/conf/cassandra.yaml specifies org.apache.cassandra.dht.ByteOrderedPartitioner
         # which uses BytesToken, so this just tests that the string representation of the token
         # matches a regex pattern for BytesToken.toString().
-        ring = client.describe_token_map().items()
+        ring = list(client.describe_token_map().items())
         if DISABLE_VNODES:
             self.assertEqual(len(ring), 1)
         else:
@@ -1687,7 +1687,7 @@ class TestMutations(ThriftTester):
             # insert
             client.insert('key0', ColumnParent(cf_name), Column('colA', 'colA-value', 0), ConsistencyLevel.ONE)
             col1 = client.get_slice('key0', ColumnParent(cf_name), SlicePredicate(slice_range=SliceRange('', '', False, 100)), ConsistencyLevel.ONE)[0].column
-            assert col1.name == 'colA' and col1.value == 'colA-value'
+            assert col1.name == b'colA' and col1.value == b'colA-value'
 
             # drop
             client.system_drop_column_family(cf_name)
@@ -2231,10 +2231,10 @@ class TestMutations(ThriftTester):
         """ Tests CASSANDRA-7990 """
         _set_keyspace('Keyspace1')
 
-        def composite(item1, item2=None, eoc='\x00'):
-            packed = _i16(len(item1)) + item1 + eoc
+        def composite(item1, item2=None, eoc=b'\x00'):
+            packed = _i16(len(item1)) + item1.encode('utf-8') + eoc
             if item2 is not None:
-                packed += _i16(len(item2)) + item2
+                packed += _i16(len(item2)) + item2.encode('utf-8')
                 packed += eoc
             return packed
 
@@ -2243,7 +2243,7 @@ class TestMutations(ThriftTester):
             column = Column(column_name, 'value', int(time.time() * 1000))
             client.insert('key1', ColumnParent('StandardComposite'), column, ConsistencyLevel.ONE)
 
-        delete_slice = SlicePredicate(slice_range=SliceRange(composite('3', eoc='\xff'), composite('6', '\x01'), False, 100))
+        delete_slice = SlicePredicate(slice_range=SliceRange(composite('3', eoc=b'\xff'), composite('6', '\x01'), False, 100))
         mutations = [Mutation(deletion=Deletion(int(time.time() * 1000), predicate=delete_slice))]
         keyed_mutations = {'key1': {'StandardComposite': mutations}}
         client.batch_mutate(keyed_mutations, ConsistencyLevel.ONE)
@@ -2296,10 +2296,10 @@ class TestMutations(ThriftTester):
         # insert positive and negative values and check the counts
         counters = client.multiget_slice(['key1', 'key2'], ColumnParent('Counter1'), SlicePredicate(['c3', 'c4']), ConsistencyLevel.ONE)
 
-        assert counters['key1'][0].counter_column.value == d1 + d2
-        assert counters['key1'][1].counter_column.value == d1
-        assert counters['key2'][0].counter_column.value == d1 + d2
-        assert counters['key2'][1].counter_column.value == d1
+        assert counters[b'key1'][0].counter_column.value == d1 + d2
+        assert counters[b'key1'][1].counter_column.value == d1
+        assert counters[b'key2'][0].counter_column.value == d1 + d2
+        assert counters[b'key2'][1].counter_column.value == d1
 
     def test_counter_get_slice_range(self):
         _set_keyspace('Keyspace1')
@@ -2513,11 +2513,11 @@ class TestResultKeyOrder(ThriftTester):
         range = KeyRange(start_token=str(-(1 << 63)), end_token=str(-(1 << 63)), count=100)
         result = client.get_range_slices(cp, predicate, range, ConsistencyLevel.ONE)
         assert len(result) == 5
-        assert result[0].key == 'key5'
-        assert result[1].key == 'key1'
-        assert result[2].key == 'key4'
-        assert result[3].key == 'key3'
-        assert result[4].key == 'key2'
+        assert result[0].key == b'key5'
+        assert result[1].key == b'key1'
+        assert result[2].key == b'key4'
+        assert result[3].key == b'key3'
+        assert result[4].key == b'key2'
 
 
 @attr('dtest-full')
@@ -2584,22 +2584,21 @@ class TestWrappingRangeQueries(ThriftTester):
                          end_token=token_for(last, last_delta),
                          count=count),
                 CL)
-            from itertools import izip
-            for a_result, a_expected in izip(result, expected):
+            for a_result, a_expected in zip(result, expected):
                 assert a_result is not None
                 assert a_expected is not None
                 self.assertEqual(a_result.key, a_expected)
 
         # token order: a c e d b
-        test_range('a', 0, 'a', 0, 10, ['c', 'e', 'd', 'b', 'a'])
-        test_range('a', -1, 'a', -1, 10, ['a', 'c', 'e', 'd', 'b'])
-        test_range('a', 1, 'a', 1, 10, ['c', 'e', 'd', 'b', 'a'])
-        test_range('b', -1, 'a', 0, 10, ['b', 'a'])
+        test_range('a', 0, 'a', 0, 10, [b'c', b'e', b'd', b'b', b'a'])
+        test_range('a', -1, 'a', -1, 10, [b'a', b'c', b'e', b'd', b'b'])
+        test_range('a', 1, 'a', 1, 10, [b'c', b'e', b'd', b'b', b'a'])
+        test_range('b', -1, 'a', 0, 10, [b'b', b'a'])
         test_range('b', 0, 'a', -1, 10, [])
-        test_range('b', 0, 'a', 0, 10, ['a'])
-        test_range('b', -1, 'a', 0, 10, ['b', 'a'])
+        test_range('b', 0, 'a', 0, 10, [b'a'])
+        test_range('b', -1, 'a', 0, 10, [b'b', b'a'])
         test_range('c', 0, 'e', -1, 2, [])
-        test_range('b', -1, 'a', 1, 10, ['b', 'a'])
+        test_range('b', -1, 'a', 1, 10, [b'b', b'a'])
 
 
 @attr('dtest-full')

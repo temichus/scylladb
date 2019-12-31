@@ -88,25 +88,25 @@ class TestAuth(Tester):
         try:
             self.get_session(user='cassandra', password='badpassword')
         except NoHostAvailable as e:
-            assert isinstance(e.errors.values()[0], AuthenticationFailed)
+            assert isinstance(list(e.errors.values())[0], AuthenticationFailed)
         try:
             self.get_session(user='doesntexist', password='doesntmatter')
         except NoHostAvailable as e:
-            assert isinstance(e.errors.values()[0], AuthenticationFailed)
+            assert isinstance(list(e.errors.values())[0], AuthenticationFailed)
         # Authentication ID must not be null
         try:
             self.get_session(user='', password='')
         except NoHostAvailable as e:
-            assert isinstance(e.errors.values()[0], AuthenticationFailed)
-            assert 'Authentication ID must not be null' in e.errors.values()[0].message
+            assert isinstance(list(e.errors.values())[0], AuthenticationFailed)
+            assert 'Authentication ID must not be null' in str(list(e.errors.values())[0])
         # Password must not be null
         try:
             self.get_session(user='cassandra', password='')
         except NoHostAvailable as e:
-            assert isinstance(e.errors.values()[0], AuthenticationFailed)
+            assert isinstance(list(e.errors.values())[0], AuthenticationFailed)
             # Currently the null password can't be identified, comment the assert
             # https://github.com/scylladb/scylla/issues/2274
-            # assert 'Password must not be null' in e.errors.values()[0].message
+            # assert 'Password must not be null' in str(list(e.errors.values())[0])
 
     def anonymous_test(self):
         """
@@ -300,7 +300,7 @@ class TestAuth(Tester):
 
         cassandra.execute("DROP USER Test")
         rows = [x[0] for x in list(cassandra.execute("LIST USERS"))]
-        self.assertItemsEqual(rows, ['cassandra'])
+        self.assertCountEqual(rows, ['cassandra'])
 
         # Should be invalid, as 'Test' does not exist anymore
         assert_invalid(cassandra, "DROP USER test")
@@ -315,7 +315,7 @@ class TestAuth(Tester):
 
         cassandra.execute("DROP USER test")
         rows = [x[0] for x in list(cassandra.execute("LIST USERS"))]
-        self.assertItemsEqual(rows, ['cassandra'])
+        self.assertCountEqual(rows, ['cassandra'])
 
         # Should be invalid, as 'test' does not exist anymore
         assert_invalid(cassandra, "DROP USER test")
@@ -947,7 +947,7 @@ class TestAuth(Tester):
                         # legit failure
                         self.fail("Expecting query to raise an exception, but nothing was raised.")
                 except Unauthorized as e:
-                    self.assertEquals(e.message, 'Error from server: code=2100 [Unauthorized] message="User cathy has no SELECT permission on <table ks.cf> or any of its parents"')
+                    self.assertEquals(str(e), 'Error from server: code=2100 [Unauthorized] message="User cathy has no SELECT permission on <table ks.cf> or any of its parents"')
 
         check_caching()
 
@@ -1015,7 +1015,7 @@ class TestAuth(Tester):
         except Unavailable as e:
             debug('Debug: _check_session_available: Unavailable Exception')
             if expect_rf_err:
-                assert e.alive_replicas != e.required_replicas, e.message
+                assert e.alive_replicas != e.required_replicas, str(e)
                 debug("Good: session isn't available (rf error) as expected")
             else:
                 debug("Fail: session isn't available, but not expected error")
@@ -1023,7 +1023,7 @@ class TestAuth(Tester):
         except NoHostAvailable as e:
             debug(e.errors)
             if expect_auth_err:
-                assert isinstance(e.errors.values()[0], AuthenticationFailed)
+                assert isinstance(list(e.errors.values())[0], AuthenticationFailed)
                 debug("Good: session isn't available (auth err) as expected")
             else:
                 debug("Fail: session isn't available, but not expected error")
@@ -1087,7 +1087,7 @@ class TestAuth(Tester):
                                            password='cassandra')
         except NoHostAvailable as e:
             debug(e.errors)
-            assert isinstance(e.errors.values()[0], AuthenticationFailed)
+            assert isinstance(list(e.errors.values())[0], AuthenticationFailed)
 
         debug('Check if the new session works')
         self._check_session_available(new_session, expect_rf_err=True)
@@ -1147,7 +1147,7 @@ class TestAuth(Tester):
                                            password='cassandra')
         except NoHostAvailable as e:
             debug(e.errors)
-            assert isinstance(e.errors.values()[0], AuthenticationFailed)
+            assert isinstance(list(e.errors.values())[0], AuthenticationFailed)
 
         debug('Check if the new session works')
         self._check_session_available(new_session)
@@ -1174,7 +1174,7 @@ class TestAuth(Tester):
         try:
             session.execute("DROP KEYSPACE system_auth")
         except Unauthorized as e:
-            self.assertEquals(e.message,
+            self.assertEquals(str(e),
                               'Error from server: code=2100 [Unauthorized] message="Cannot DROP <keyspace system_auth>"')
 
         debug('Try to re-get session from first endpoint')
@@ -1227,7 +1227,7 @@ class TestAuth(Tester):
         try:
             session.execute("DROP KEYSPACE system_auth")
         except Unauthorized as e:
-            self.assertEquals(e.message,
+            self.assertEquals(str(e),
                               'Error from server: code=2100 [Unauthorized] message="Cannot DROP <keyspace system_auth>"')
 
         debug('Try to re-get session from first rf endpoint(%s: %s)' % (rf_node.name, rf_address))
@@ -1276,7 +1276,7 @@ class TestAuth(Tester):
         session.execute("DROP KEYSPACE system_auth")
 
         # verify connection to all nodes
-        for n in xrange(2):
+        for n in range(2):
             debug('Try to re-get session from first rf endpoint(node%s)' % n)
             try:
                 new_session = self.get_session(node_idx=n,
@@ -1284,7 +1284,7 @@ class TestAuth(Tester):
                                            password='cassandra')
             except NoHostAvailable as e:
                 debug(e.errors)
-                assert isinstance(e.errors.values()[0], AuthenticationFailed)
+                assert isinstance(list(e.errors.values())[0], AuthenticationFailed)
             else:
                 debug('Check if the new session works')
                 self._check_session_available(new_session, expect_auth_err=True, expect_invalid_req=True)
@@ -1322,7 +1322,7 @@ class TestAuth(Tester):
 
         # re-get session from rf node before killing node
         sessions = []
-        for i in xrange(3):
+        for i in range(3):
             sessions.append(self.get_session(node_idx=i, user='cassandra',
                                    password='cassandra'))
 
@@ -1330,7 +1330,7 @@ class TestAuth(Tester):
         nodes[2].stop(wait_other_notice=True, gently=True)
         self._check_session_available(session, expect_auth_err=True, expect_invalid_req=True, expect_rf_err=True)
 
-        for i in xrange(3):
+        for i in range(3):
             debug('Try to re-get session from %s: %s)' % (nodes[i].name, nodes[i].address()))
             try:
                 self.get_session(node_idx=i,
@@ -1339,15 +1339,15 @@ class TestAuth(Tester):
             except NoHostAvailable as e:
                 debug(e.errors)
                 if i in [0, 3]:
-                    assert isinstance(e.errors.values()[0], AuthenticationFailed)
+                    assert isinstance(list(e.errors.values())[0], AuthenticationFailed)
                 else:
-                    assert isinstance(e.errors.values()[0], socket.error)
+                    assert isinstance(list(e.errors.values())[0], socket.error)
             else:
                 if i == 1:
                     self.fail("Connection should not be created")
         nodes[1].start(wait_other_notice=True)
         # connection to 2 nodes should be ok
-        for i in xrange(2):
+        for i in range(2):
             debug('Try to re-get session from %s: %s)' % (nodes[i].name, nodes[i].address()))
             self._check_session_available(
                 self.get_session(node_idx=i, user='cassandra', password='cassandra'))
@@ -1359,7 +1359,7 @@ class TestAuth(Tester):
 
         nodes[2].start(wait_other_notice=True)
         # connection to all nodes should be ok
-        for i in xrange(3):
+        for i in range(3):
             debug('Try to re-get session from %s: %s)' % (nodes[i].name, nodes[i].address()))
             self._check_session_available(
                 self.get_session(node_idx=i, user='cassandra', password='cassandra'))
@@ -1386,7 +1386,7 @@ class TestAuth(Tester):
         try:
             session.execute("DROP KEYSPACE system_auth")
         except Unauthorized as e:
-            self.assertEquals(e.message,
+            self.assertEquals(str(e),
                               'Error from server: code=2100 [Unauthorized] message="Cannot DROP <keyspace system_auth>"')
 
     def change_setting_to_noauth_after_system_auth_was_lost_test(self):
@@ -1410,7 +1410,7 @@ class TestAuth(Tester):
                 session.execute("LIST USERS")
                 self.fail('You have to be logged in and not anonymous to perform this request!')
             except Unauthorized as e:
-                self.assertEquals(e.message,
+                self.assertEquals(str(e),
                                   'Error from server: code=2100 [Unauthorized] message="You have to be logged in and not anonymous to perform this request"')
 
     def restart_node_doesnt_lose_auth_data_test(self):
@@ -1462,7 +1462,7 @@ class TestAuth(Tester):
             session.execute("create KEYSPACE SyStEM WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}")
             self.fail("system keyspace is not user-modifiable")
         except InvalidRequest as e:
-            self.assertEquals(e.message, 'Error from server: code=2200 [Invalid query] message="system keyspace is not user-modifiable"')
+            self.assertEquals(str(e), 'Error from server: code=2200 [Invalid query] message="system keyspace is not user-modifiable"')
 
         for name in ['SYSTEM_tRaCeS', 'SYSTEM_aUtH']:
             try:
@@ -1470,13 +1470,13 @@ class TestAuth(Tester):
                     "create KEYSPACE %s WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}" % name)
                 self.fail("Keyspace %s shouldn't be created")
             except AlreadyExists as e:
-                self.assertEquals(e.message, "Keyspace '%s' already exists" % name.lower())
+                self.assertEquals(str(e), "Keyspace '%s' already exists" % name.lower())
 
         try:
             session.execute("drop KEYSPACE system")
             self.fail("system keyspace is not user-modifiable")
         except Unauthorized as e:
-            self.assertEquals(e.message, 'Error from server: code=2100 [Unauthorized] message="system keyspace is not user-modifiable."')
+            self.assertEquals(str(e), 'Error from server: code=2100 [Unauthorized] message="system keyspace is not user-modifiable."')
         # https://github.com/scylladb/scylla/issues/2338
         """for name in ['SYSTEM_tRaCeS', 'SYSTEM_aUtH']:
             try:
@@ -1484,7 +1484,7 @@ class TestAuth(Tester):
                     "drop KEYSPACE %s" % name)
                 self.fail("Keyspace %s shouldn't be deleted")
             except InvalidRequest as e:
-                self.assertEquals(e.message, 'Cannot DROP <keyspace %s>' % name.lower())"""
+                self.assertEquals(str(e), 'Cannot DROP <keyspace %s>' % name.lower())"""
 
     def remove_dead_node_test(self):
         """
@@ -1536,8 +1536,8 @@ class TestAuth(Tester):
             self.get_session(node_idx=0, user='cassandra', password='cassandra')
         except NoHostAvailable as e:
             debug(e.errors)
-            assert isinstance(e.errors.values()[0], AuthenticationFailed)
-            self.asserTrue('Cannot achieve consistency level QUORUM' in e.errors.values()[0].message)
+            assert isinstance(list(e.errors.values())[0], AuthenticationFailed)
+            self.asserTrue('Cannot achieve consistency level QUORUM' in str(list(e.errors.values())[0]))
 
     @skip('not-implemented')
     def manually_copy_system_auth_files_after_system_auth_was_lost_test(self):
@@ -1678,32 +1678,32 @@ class TestAuth(Tester):
             session = self.get_session(node_idx=0, user='cassandra', password='cassandra')
             self._check_session_available(session, expect_auth_err=True, expect_invalid_req=True)
         except Unauthorized as e:
-            self.assertEqual(e.message, 'Error from server: code=2100 [Unauthorized] message='
+            self.assertEqual(str(e), 'Error from server: code=2100 [Unauthorized] message='
                              '"You have to be logged in and not anonymous to perform this request"')
         except Exception as e:
-            assert isinstance(e.errors.values()[0], AuthenticationFailed)
+            assert isinstance(list(e.errors.values())[0], AuthenticationFailed)
 
         session = self.get_session(node_idx=1, user='cassandra', password='cassandra')
         try:
             self._check_session_available(session, expect_auth_err=True, expect_invalid_req=True)
         except Unauthorized as e:
-            self.assertEqual(e.message, 'Error from server: code=2100 [Unauthorized] message='
-                                        '"You have to be logged in and not anonymous to perform this request"')
+            self.assertEqual(str(e), 'Error from server: code=2100 [Unauthorized] message='
+                                     '"You have to be logged in and not anonymous to perform this request"')
 
         try:
             self.get_session(node_idx=0)
             self.fail("AuthenticationFailed expected")
         except Exception as e:
-            assert isinstance(e.errors.values()[0], AuthenticationFailed)
+            assert isinstance(list(e.errors.values())[0], AuthenticationFailed)
 
         try:
             session = self.get_session(node_idx=1)
             self._check_session_available(session, expect_auth_err=True, expect_invalid_req=True)
             self.fail("Unauthorized expected")
         except NoHostAvailable as e:
-            assert isinstance(e.errors.values()[0], AuthenticationFailed)
+            assert isinstance(list(e.errors.values())[0], AuthenticationFailed)
         except Exception as e:
-            self.assertEqual(e.message,
+            self.assertEqual(str(e),
                              'Error from server: code=2100 [Unauthorized] message='
                              '"You have to be logged in and not anonymous to perform this request"')
 
@@ -1784,7 +1784,7 @@ class TestAuth(Tester):
             self._check_session_available(session, expect_auth_err=True)
         except NoHostAvailable as e:
             debug(e)
-            assert isinstance(e.errors.values()[0], AuthenticationFailed)
+            assert isinstance(list(e.errors.values())[0], AuthenticationFailed)
         else:
             self.fail('Session should not be created')
 
@@ -1802,7 +1802,7 @@ class TestAuth(Tester):
             self._check_session_available(session, expect_auth_err=True)
         except NoHostAvailable as e:
             debug(e)
-            assert isinstance(e.errors.values()[0], AuthenticationFailed)
+            assert isinstance(list(e.errors.values())[0], AuthenticationFailed)
         else:
             self.fail('Session should not be created')
 
@@ -1811,7 +1811,7 @@ class TestAuth(Tester):
             self._check_session_available(session, expect_auth_err=True)
         except NoHostAvailable as e:
             debug(e)
-            assert isinstance(e.errors.values()[0], AuthenticationFailed)
+            assert isinstance(list(e.errors.values())[0], AuthenticationFailed)
         else:
             self.fail('Session should not be created')
 
@@ -1846,7 +1846,7 @@ class TestAuth(Tester):
             self._check_session_available(session, expect_auth_err=True)
         except NoHostAvailable as e:
             debug(e)
-            assert isinstance(e.errors.values()[0], AuthenticationFailed)
+            assert isinstance(list(e.errors.values())[0], AuthenticationFailed)
         else:
             self.fail('Session should not be created')
 
@@ -1879,7 +1879,7 @@ class TestAuth(Tester):
             self._check_session_available(session, expect_auth_err=True)
         except NoHostAvailable as e:
             debug(e)
-            assert isinstance(e.errors.values()[0], AuthenticationFailed)
+            assert isinstance(list(e.errors.values())[0], AuthenticationFailed)
         else:
             self.fail('Session should not be created')
 
@@ -1969,7 +1969,7 @@ class TestAuth(Tester):
             session = self.get_session(node_idx=1, user='normal', password='wrong')
             session.execute("LIST USERS")
         except NoHostAvailable as e:
-            assert isinstance(e.errors.values()[0], AuthenticationFailed)
+            assert isinstance(list(e.errors.values())[0], AuthenticationFailed)
             debug("can't get session of node2 with normal user/password")
         else:
             self.fail('Session should not be created')
@@ -2026,7 +2026,7 @@ class TestAuth(Tester):
     def assertUnauthorized(self, message, session, query):
         with self.assertRaises(Unauthorized) as cm:
             session.execute(query)
-        assert re.search(message, cm.exception.message), "Expected '%s', but got '%s'" % (message, cm.exception.message)
+        assert re.search(message, str(cm.exception)), "Expected '%s', but got '%s'" % (message, str(cm.exception))
 
 
 def data_resource_creator_permissions(creator, resource, support_func=True):

@@ -13,14 +13,15 @@ from cassandra.protocol import ProtocolException, SyntaxException
 from cassandra.query import SimpleStatement
 from cassandra.util import sortedset
 from nose.exc import SkipTest
+import six
 
 from assertions import assert_all, assert_invalid, assert_none, assert_one
 from dtest import debug
-from thrift_bindings.v22.ttypes import ConsistencyLevel as ThriftConsistencyLevel
-from thrift_bindings.v22.ttypes import (CfDef, Column, ColumnOrSuperColumn, Mutation)
+from thrift_bindings.thrift010.ttypes import ConsistencyLevel as ThriftConsistencyLevel
+from thrift_bindings.thrift010.ttypes import (CfDef, Column, ColumnOrSuperColumn, Mutation)
 from thrift_tests import get_thrift_client
 from tools import require, rows_to_list, since
-from upgrade_base import UpgradeTester
+from .upgrade_base import UpgradeTester
 
 
 class TestCQL(UpgradeTester):
@@ -328,7 +329,7 @@ class TestCQL(UpgradeTester):
             cursor.execute("TRUNCATE clicks")
 
             # Inserts
-            for id in xrange(0, 100):
+            for id in range(0, 100):
                 for tld in ['com', 'org', 'net']:
                     cursor.execute("INSERT INTO clicks (userid, url, time) VALUES (%i, 'http://foo.%s', 42)" % (id, tld))
 
@@ -357,7 +358,7 @@ class TestCQL(UpgradeTester):
             cursor.execute("TRUNCATE clicks")
 
             # Inserts
-            for id in xrange(0, 100):
+            for id in range(0, 100):
                 for tld in ['com', 'org', 'net']:
                     cursor.execute("INSERT INTO clicks (userid, url, time) VALUES (%i, 'http://foo.%s', 42)" % (id, tld))
 
@@ -413,7 +414,7 @@ class TestCQL(UpgradeTester):
             cursor.execute("TRUNCATE clicks")
 
             # Inserts
-            for id in xrange(0, 100):
+            for id in range(0, 100):
                 for tld in ['com', 'org', 'net']:
                     cursor.execute("INSERT INTO clicks (userid, url, day, month, year) VALUES (%i, 'http://foo.%s', 1, 'jan', 2012)" % (id, tld))
 
@@ -1092,30 +1093,30 @@ class TestCQL(UpgradeTester):
             res = list(cursor.execute("SELECT k, c, writetime(c), ttl(c) FROM test"))
             assert len(res) == 2, res
             for r in res:
-                assert isinstance(r[2], (int, long))
+                assert isinstance(r[2], six.integer_types)
                 if r[0] == 1:
                     assert r[3] is None, res
                 else:
-                    assert isinstance(r[3], (int, long)), res
+                    assert isinstance(r[3], six.integer_types), res
 
             # wrap writetime(), ttl() in other functions (test for CASSANDRA-8451)
             res = list(cursor.execute("SELECT k, c, blobAsBigint(bigintAsBlob(writetime(c))), ttl(c) FROM test"))
             assert len(res) == 2, res
             for r in res:
-                assert isinstance(r[2], (int, long))
+                assert isinstance(r[2], six.integer_types)
                 if r[0] == 1:
                     assert r[3] is None, res
                 else:
-                    assert isinstance(r[3], (int, long)), res
+                    assert isinstance(r[3], six.integer_types), res
 
             res = list(cursor.execute("SELECT k, c, writetime(c), blobAsInt(intAsBlob(ttl(c))) FROM test"))
             assert len(res) == 2, res
             for r in res:
-                assert isinstance(r[2], (int, long))
+                assert isinstance(r[2], six.integer_types)
                 if r[0] == 1:
                     assert r[3] is None, res
                 else:
-                    assert isinstance(r[3], (int, long)), res
+                    assert isinstance(r[3], six.integer_types), res
 
             assert_invalid(cursor, "SELECT k, c, writetime(k) FROM test")
 
@@ -1226,29 +1227,29 @@ class TestCQL(UpgradeTester):
             col1 = 2
             col2 = 2
             cpr = col1 * col2
-            for i in xrange(0, rows):
-                for j in xrange(0, col1):
-                    for k in xrange(0, col2):
+            for i in range(0, rows):
+                for j in range(0, col1):
+                    for k in range(0, col2):
                         n = (i * cpr) + (j * col2) + k
                         cursor.execute("INSERT INTO test1 (k, c1, c2, v1, v2) VALUES (%d, %d, %d, %d, %d)" % (i, j, k, n, n))
 
-            for i in xrange(0, rows):
+            for i in range(0, rows):
                 res = cursor.execute("SELECT v1, v2 FROM test1 where k = %d" % i)
-                assert rows_to_list(res) == [[x, x] for x in xrange(i * cpr, (i + 1) * cpr)], res
+                assert rows_to_list(res) == [[x, x] for x in range(i * cpr, (i + 1) * cpr)], res
 
-            for i in xrange(0, rows):
+            for i in range(0, rows):
                 cursor.execute("DELETE FROM test1 WHERE k = %d AND c1 = 0" % i)
 
-            for i in xrange(0, rows):
+            for i in range(0, rows):
                 res = cursor.execute("SELECT v1, v2 FROM test1 WHERE k = %d" % i)
-                assert rows_to_list(res) == [[x, x] for x in xrange(i * cpr + col1, (i + 1) * cpr)], res
+                assert rows_to_list(res) == [[x, x] for x in range(i * cpr + col1, (i + 1) * cpr)], res
 
             self.cluster.flush()
             time.sleep(0.2)
 
-            for i in xrange(0, rows):
+            for i in range(0, rows):
                 res = cursor.execute("SELECT v1, v2 FROM test1 WHERE k = %d" % i)
-                assert rows_to_list(res) == [[x, x] for x in xrange(i * cpr + col1, (i + 1) * cpr)], res
+                assert rows_to_list(res) == [[x, x] for x in range(i * cpr + col1, (i + 1) * cpr)], res
 
     def range_tombstones_compaction_test(self):
         """ Test deletion by 'composite prefix' (range tombstones) with compaction """
@@ -1280,7 +1281,7 @@ class TestCQL(UpgradeTester):
             self.cluster.compact()
 
             res = cursor.execute("SELECT v1 FROM test1 WHERE k = 0")
-            assert rows_to_list(res) == [['%i%i' % (c1, c2)] for c1 in xrange(0, 4) for c2 in xrange(0, 2) if c1 != 1], res
+            assert rows_to_list(res) == [['%i%i' % (c1, c2)] for c1 in range(0, 4) for c2 in range(0, 2) if c1 != 1], res
 
     def delete_row_test(self):
         """ Test deletion of rows """
@@ -1442,28 +1443,28 @@ class TestCQL(UpgradeTester):
             cursor.execute(q % "tags = tags + [ 'foobar' ]")
 
             res = cursor.execute("SELECT tags FROM user")
-            self.assertItemsEqual(rows_to_list(res), [[['foo', 'bar', 'foo', 'foobar']]])
+            self.assertCountEqual(rows_to_list(res), [[['foo', 'bar', 'foo', 'foobar']]])
 
             q = "UPDATE user SET %s WHERE fn='Bilbo' AND ln='Baggins'"
             cursor.execute(q % "tags = [ 'a', 'c', 'b', 'c' ]")
             res = cursor.execute("SELECT tags FROM user WHERE fn='Bilbo' AND ln='Baggins'")
-            self.assertItemsEqual(rows_to_list(res), [[['a', 'c', 'b', 'c']]])
+            self.assertCountEqual(rows_to_list(res), [[['a', 'c', 'b', 'c']]])
 
             cursor.execute(q % "tags = [ 'm', 'n' ] + tags")
             res = cursor.execute("SELECT tags FROM user WHERE fn='Bilbo' AND ln='Baggins'")
-            self.assertItemsEqual(rows_to_list(res), [[['m', 'n', 'a', 'c', 'b', 'c']]])
+            self.assertCountEqual(rows_to_list(res), [[['m', 'n', 'a', 'c', 'b', 'c']]])
 
             cursor.execute(q % "tags[2] = 'foo', tags[4] = 'bar'")
             res = cursor.execute("SELECT tags FROM user WHERE fn='Bilbo' AND ln='Baggins'")
-            self.assertItemsEqual(rows_to_list(res), [[['m', 'n', 'foo', 'c', 'bar', 'c']]])
+            self.assertCountEqual(rows_to_list(res), [[['m', 'n', 'foo', 'c', 'bar', 'c']]])
 
             cursor.execute("DELETE tags[2] FROM user WHERE fn='Bilbo' AND ln='Baggins'")
             res = cursor.execute("SELECT tags FROM user WHERE fn='Bilbo' AND ln='Baggins'")
-            self.assertItemsEqual(rows_to_list(res), [[['m', 'n', 'c', 'bar', 'c']]])
+            self.assertCountEqual(rows_to_list(res), [[['m', 'n', 'c', 'bar', 'c']]])
 
             cursor.execute(q % "tags = tags - [ 'bar' ]")
             res = cursor.execute("SELECT tags FROM user WHERE fn='Bilbo' AND ln='Baggins'")
-            self.assertItemsEqual(rows_to_list(res), [[['m', 'n', 'c', 'c']]])
+            self.assertCountEqual(rows_to_list(res), [[['m', 'n', 'c', 'c']]])
 
     def multi_collection_test(self):
         cursor = self.prepare()
@@ -1489,7 +1490,7 @@ class TestCQL(UpgradeTester):
             cursor.execute("UPDATE ks.foo SET M = M + {'foobar' : 4} WHERE k = b017f48f-ae67-11e1-9096-005056c00008;")
 
             res = cursor.execute("SELECT L, M, S FROM foo WHERE k = b017f48f-ae67-11e1-9096-005056c00008")
-            self.assertItemsEqual(rows_to_list(res), [[
+            self.assertCountEqual(rows_to_list(res), [[
                 [1, 3, 5, 7, 11, 13],
                 OrderedDict([('bar', 3), ('foo', 1), ('foobar', 4)]),
                 sortedset([1, 3, 5, 7, 11, 13])
@@ -2165,7 +2166,7 @@ class TestCQL(UpgradeTester):
             cursor.execute("INSERT INTO test(k, l, c) VALUES(3, [0, 1, 2], 4)")
             cursor.execute("UPDATE test SET l[0] = 1, c = 42 WHERE k = 3")
             res = cursor.execute("SELECT l, c FROM test WHERE k = 3")
-            self.assertItemsEqual(rows_to_list(res), [[[1, 1, 2], 42]])
+            self.assertCountEqual(rows_to_list(res), [[[1, 1, 2], 42]])
 
     def batch_and_list_test(self):
         cursor = self.prepare()
@@ -2190,7 +2191,7 @@ class TestCQL(UpgradeTester):
             """)
 
             res = cursor.execute("SELECT l FROM test WHERE k = 0")
-            self.assertItemsEqual(rows_to_list(res[0]), [[1, 2, 3]])
+            self.assertCountEqual(rows_to_list(res[0]), [[1, 2, 3]])
 
             cursor.execute("""
               BEGIN BATCH
@@ -2201,7 +2202,7 @@ class TestCQL(UpgradeTester):
             """)
 
             res = cursor.execute("SELECT l FROM test WHERE k = 1")
-            self.assertItemsEqual(rows_to_list(res[0]), [[3, 2, 1]])
+            self.assertCountEqual(rows_to_list(res[0]), [[3, 2, 1]])
 
     def boolean_test(self):
         cursor = self.prepare()
@@ -2296,7 +2297,7 @@ class TestCQL(UpgradeTester):
             cursor.execute("UPDATE test SET l2[1] = 42, l1[1] = 24  WHERE k = 0")
 
             res = cursor.execute("SELECT l1, l2 FROM test WHERE k = 0")
-            self.assertItemsEqual(rows_to_list(res), [[[1, 24, 3], [4, 42, 6]]])
+            self.assertCountEqual(rows_to_list(res), [[[1, 24, 3], [4, 42, 6]]])
 
     def composite_index_collections_test(self):
         cursor = self.prepare(ordered=True)
@@ -2381,7 +2382,7 @@ class TestCQL(UpgradeTester):
             for i in range(0, nb_keys):
                 cursor.execute("INSERT INTO test(k, v) VALUES (%d, %d)" % (i, i))
 
-            for i in random.sample(xrange(nb_keys), nb_deletes):
+            for i in random.sample(range(nb_keys), nb_deletes):
                 cursor.execute("DELETE FROM test WHERE k = %d" % i)
 
             res = list(cursor.execute("SELECT * FROM test LIMIT %d" % (nb_keys / 2)))
@@ -2440,7 +2441,7 @@ class TestCQL(UpgradeTester):
             ('test', '10015', 'NY', 36, 'New York'),
             ('test', '07182', 'NJ', 34, 'Newark'),
             ('test', '73301', 'TX', 48, 'Austin'),
-            ('test', '94102', 'CA', 06, 'San Francisco'),
+            ('test', '94102', 'CA', 6, 'San Francisco'),
 
             ('test2', '06029', 'CT', 9, 'Ellington'),
             ('test2', '06031', 'CT', 9, 'Falls Village'),
@@ -2449,7 +2450,7 @@ class TestCQL(UpgradeTester):
             ('test2', '10015', 'NY', 36, 'New York'),
             ('test2', '07182', 'NJ', 34, 'Newark'),
             ('test2', '73301', 'TX', 48, 'Austin'),
-            ('test2', '94102', 'CA', 06, 'San Francisco'),
+            ('test2', '94102', 'CA', 6, 'San Francisco'),
         ]
 
         create = """
@@ -3238,7 +3239,7 @@ class TestCQL(UpgradeTester):
             cursor.execute("TRUNCATE compact")
             cursor.execute("TRUNCATE wide")
 
-            for i in xrange(0, 3):
+            for i in range(0, 3):
                 cursor.execute('INSERT INTO regular (pk0, pk1, ck0, val) VALUES (%d, %d, 0, 0)' % (i, i))
                 cursor.execute('INSERT INTO regular (pk0, pk1, ck0, val) VALUES (%d, %d, 1, 1)' % (i, i))
 
@@ -3248,7 +3249,7 @@ class TestCQL(UpgradeTester):
             res = cursor.execute('SELECT DISTINCT pk0, pk1 FROM regular LIMIT 3')
             self.assertEqual([[0, 0], [1, 1], [2, 2]], rows_to_list(sorted(res)))
 
-            for i in xrange(0, 3):
+            for i in range(0, 3):
                 cursor.execute('INSERT INTO compact (pk0, pk1, val) VALUES (%d, %d, %d)' % (i, i, i))
 
             res = cursor.execute('SELECT DISTINCT pk0, pk1 FROM compact LIMIT 1')
@@ -3257,7 +3258,7 @@ class TestCQL(UpgradeTester):
             res = cursor.execute('SELECT DISTINCT pk0, pk1 FROM compact LIMIT 3')
             self.assertEqual([[0, 0], [1, 1], [2, 2]], rows_to_list(sorted(res)))
 
-            for i in xrange(0, 3):
+            for i in range(0, 3):
                 cursor.execute("INSERT INTO wide (pk, name, val) VALUES (%d, 'name0', 0)" % i)
                 cursor.execute("INSERT INTO wide (pk, name, val) VALUES (%d, 'name1', 1)" % i)
 
@@ -4883,7 +4884,7 @@ class TestCQL(UpgradeTester):
             debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
             cursor.execute("TRUNCATE invalid_string_literals")
 
-            assert_invalid(cursor, u"insert into ks.invalid_string_literals (k, a) VALUES (0, '\u038E\u0394\u03B4\u03E0')")
+            assert_invalid(cursor, "insert into ks.invalid_string_literals (k, a) VALUES (0, '\u038E\u0394\u03B4\u03E0')")
 
             # since the protocol requires strings to be valid UTF-8, the error response to this is a ProtocolError
             try:

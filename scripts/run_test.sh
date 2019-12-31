@@ -92,6 +92,7 @@ mkdir -p ${HOME}/.certs
 chmod 0700 ${HOME}/.certs
 mkdir -p ${HOME}/.config
 mkdir -p ${HOME}/.local/lib
+mkdir -p ${HOME}/.cassandra
 
 function check_directory_exists()
 {
@@ -179,6 +180,7 @@ docker_cmd="docker run --detach=true \
     -e AWS_S3_ENDPOINT \
     -e AWS_ACCESS_KEY_ID \
     -e AWS_SECRET_ACCESS_KEY \
+    -e PYTHONUNBUFFERED=1 \
     -w ${DTEST_DIR} \
     -v /etc/passwd:/etc/passwd:ro \
     -v /etc/group:/etc/group:ro \
@@ -189,9 +191,10 @@ docker_cmd="docker run --detach=true \
     -v ${HOME}/.ccm:${HOME}/.ccm \
     -v ${HOME}/.certs:${HOME}/.certs \
     -v ${HOME}/.config:${HOME}/.config \
+    -v ${HOME}/.cassandra:${HOME}/.cassandra \
     ${DOCKER_NETWORK_PARAM} \
     --privileged \
-    ${DOCKER_IMAGE} bash -c 'pip install --user -e ${CCM_DIR} ; export PATH=\$PATH:\${HOME}/.local/bin ; bash -c \"${INSTALL_CASSANDRA}\"; nosetests --nologcapture -v -s $*'"
+    ${DOCKER_IMAGE} bash -c 'pip3 install --user -e ${CCM_DIR} ; export PATH=\$PATH:\${HOME}/.local/bin ; bash -c \"${INSTALL_CASSANDRA}\"; python3 -m nose --nologcapture -v -s $*'"
 echo "Running Docker: $docker_cmd"
 container=$(eval $docker_cmd)
 

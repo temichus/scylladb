@@ -70,7 +70,7 @@ def build_doc_context(tester, test_name, prepare=True, connection=None, nodes=No
             port = nodes[0].network_interfaces['thrift'][1]
         args = [host, str(port)]
         sys.stdout.flush()
-        p = subprocess.Popen([cli] + args, env=env, stdin=subprocess.PIPE, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+        p = subprocess.Popen([cli] + args, env=env, stdin=subprocess.PIPE, stderr=subprocess.PIPE, stdout=subprocess.PIPE, universal_newlines=True)
         p.stdin.write("USE {};".format(enabled_ks()))
         for cmd in cmds.split(';'):
             p.stdin.write(cmd + ';\n')
@@ -138,7 +138,7 @@ def build_doc_context(tester, test_name, prepare=True, connection=None, nodes=No
 
     def waiting_mv_prefill_finish(cmds):
         output = None
-        for _ in xrange(20):
+        for _ in range(20):
             output = cqlsh(cmds=cmds)
             if output.split('\n')[3].strip():
                 break

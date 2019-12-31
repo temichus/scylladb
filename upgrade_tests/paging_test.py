@@ -10,7 +10,7 @@ from cassandra.query import SimpleStatement, dict_factory, named_tuple_factory
 from datahelp import create_rows, flatten_into_set, parse_data_into_dicts
 from dtest import debug, run_scenarios
 from tools import rows_to_list, since
-from upgrade_base import UpgradeTester
+from .upgrade_base import UpgradeTester
 
 
 def assert_read_timeout_or_failure(session, query):
@@ -240,7 +240,7 @@ class TestPagingSize(BasePagingTester, PageAssertionMixin):
                 |4 |and more testing|
                 |5 |and more testing|
                 """
-            expected_data = create_rows(data, cursor, 'paging_test', cl=CL.ALL, format_funcs={'id': int, 'value': unicode})
+            expected_data = create_rows(data, cursor, 'paging_test', cl=CL.ALL, format_funcs={'id': int, 'value': str})
 
             future = cursor.execute_async(
                 SimpleStatement("select * from paging_test", fetch_size=100, consistency_level=CL.ALL)
@@ -272,7 +272,7 @@ class TestPagingSize(BasePagingTester, PageAssertionMixin):
                 |8 |and more testing|
                 |9 |and more testing|
                 """
-            expected_data = create_rows(data, cursor, 'paging_test', cl=CL.ALL, format_funcs={'id': int, 'value': unicode})
+            expected_data = create_rows(data, cursor, 'paging_test', cl=CL.ALL, format_funcs={'id': int, 'value': str})
 
             future = cursor.execute_async(
                 SimpleStatement("select * from paging_test", fetch_size=5, consistency_level=CL.ALL)
@@ -303,7 +303,7 @@ class TestPagingSize(BasePagingTester, PageAssertionMixin):
                 |4 |and more testing|
                 |5 |and more testing|
                 """
-            expected_data = create_rows(data, cursor, 'paging_test', cl=CL.ALL, format_funcs={'id': int, 'value': unicode})
+            expected_data = create_rows(data, cursor, 'paging_test', cl=CL.ALL, format_funcs={'id': int, 'value': str})
 
             future = cursor.execute_async(
                 SimpleStatement("select * from paging_test", fetch_size=5, consistency_level=CL.ALL)
@@ -336,7 +336,7 @@ class TestPagingSize(BasePagingTester, PageAssertionMixin):
                    | id     |value   |
               *5001| [uuid] |testing |
                 """
-            expected_data = create_rows(data, cursor, 'paging_test', cl=CL.ALL, format_funcs={'id': random_txt, 'value': unicode})
+            expected_data = create_rows(data, cursor, 'paging_test', cl=CL.ALL, format_funcs={'id': random_txt, 'value': str})
 
             future = cursor.execute_async(
                 SimpleStatement("select * from paging_test", consistency_level=CL.ALL)
@@ -397,7 +397,7 @@ class TestPagingWithModifiers(BasePagingTester, PageAssertionMixin):
                 |1 |j    |
                 """
 
-            expected_data = create_rows(data, cursor, 'paging_test', cl=CL.ALL, format_funcs={'id': int, 'value': unicode})
+            expected_data = create_rows(data, cursor, 'paging_test', cl=CL.ALL, format_funcs={'id': int, 'value': str})
 
             future = cursor.execute_async(
                 SimpleStatement("select * from paging_test where id = 1 order by value asc", fetch_size=5, consistency_level=CL.ALL)
@@ -451,7 +451,7 @@ class TestPagingWithModifiers(BasePagingTester, PageAssertionMixin):
                 |1 |j    |j     |j     |
                 """
 
-            expected_data = create_rows(data, cursor, 'paging_test', cl=CL.ALL, format_funcs={'id': int, 'value': unicode, 'value2': unicode})
+            expected_data = create_rows(data, cursor, 'paging_test', cl=CL.ALL, format_funcs={'id': int, 'value': str, 'value2': str})
 
             future = cursor.execute_async(
                 SimpleStatement("select * from paging_test where id = 1 order by value asc", fetch_size=3, consistency_level=CL.ALL)
@@ -459,7 +459,7 @@ class TestPagingWithModifiers(BasePagingTester, PageAssertionMixin):
 
             pf = PageFetcher(future).request_all()
 
-            print "pages:", pf.num_results_all()
+            print("pages:", pf.num_results_all())
             self.assertEqual(pf.pagecount(), 4)
             self.assertEqual(pf.num_results_all(), [3, 3, 3, 1])
 
@@ -484,7 +484,7 @@ class TestPagingWithModifiers(BasePagingTester, PageAssertionMixin):
         cursor.execute("CREATE TABLE paging_test ( id int, value text, PRIMARY KEY (id, value) )")
 
         def random_txt(text):
-            return unicode(uuid.uuid4())
+            return str(uuid.uuid4())
 
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
@@ -586,7 +586,7 @@ class TestPagingWithModifiers(BasePagingTester, PageAssertionMixin):
                 |8 |and more testing|
                 |9 |and more testing|
                 """
-            create_rows(data, cursor, 'paging_test', cl=CL.ALL, format_funcs={'id': int, 'value': unicode})
+            create_rows(data, cursor, 'paging_test', cl=CL.ALL, format_funcs={'id': int, 'value': str})
 
             future = cursor.execute_async(
                 SimpleStatement("select * from paging_test where value = 'and more testing' ALLOW FILTERING", fetch_size=4, consistency_level=CL.ALL)
@@ -610,7 +610,7 @@ class TestPagingWithModifiers(BasePagingTester, PageAssertionMixin):
                     |7 |and more testing|
                     |8 |and more testing|
                     |9 |and more testing|
-                    """, format_funcs={'id': int, 'value': unicode}
+                    """, format_funcs={'id': int, 'value': str}
                 )
             )
 
@@ -726,7 +726,7 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
         cursor.execute("CREATE TABLE paging_test ( id int, value text, PRIMARY KEY (id, value) )")
 
         def random_txt(text):
-            return unicode(uuid.uuid4())
+            return str(uuid.uuid4())
 
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
@@ -758,7 +758,7 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
         cursor.execute("CREATE TABLE paging_test ( id int, value text, PRIMARY KEY (id, value) )")
 
         def random_txt(text):
-            return unicode(uuid.uuid4())
+            return str(uuid.uuid4())
 
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
@@ -789,7 +789,7 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
         cursor.execute("CREATE INDEX ON paging_test(mybool)")
 
         def random_txt(text):
-            return unicode(uuid.uuid4())
+            return str(uuid.uuid4())
 
         def bool_from_str_int(text):
             return bool(int(text))
@@ -1060,7 +1060,7 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
         cursor.execute("CREATE INDEX ON paging_test(mybool)")
 
         def random_txt(text):
-            return unicode(uuid.uuid4())
+            return str(uuid.uuid4())
 
         def bool_from_str_int(text):
             return bool(int(text))
@@ -1113,7 +1113,7 @@ class TestPagingDatasetChanges(BasePagingTester, PageAssertionMixin):
         cursor.execute("CREATE TABLE paging_test ( id int, mytext text, PRIMARY KEY (id, mytext) )")
 
         def random_txt(text):
-            return unicode(uuid.uuid4())
+            return str(uuid.uuid4())
 
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
@@ -1150,7 +1150,7 @@ class TestPagingDatasetChanges(BasePagingTester, PageAssertionMixin):
         cursor.execute("CREATE TABLE paging_test ( id int, mytext text, PRIMARY KEY (id, mytext) )")
 
         def random_txt(text):
-            return unicode(uuid.uuid4())
+            return str(uuid.uuid4())
 
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
@@ -1188,7 +1188,7 @@ class TestPagingDatasetChanges(BasePagingTester, PageAssertionMixin):
         cursor.execute("CREATE TABLE paging_test ( id int, mytext text, PRIMARY KEY (id, mytext) )")
 
         def random_txt(text):
-            return unicode(uuid.uuid4())
+            return str(uuid.uuid4())
 
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
@@ -1241,7 +1241,7 @@ class TestPagingDatasetChanges(BasePagingTester, PageAssertionMixin):
             """)
 
         def random_txt(text):
-            return unicode(uuid.uuid4())
+            return str(uuid.uuid4())
 
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
@@ -1318,7 +1318,7 @@ class TestPagingQueryIsolation(BasePagingTester, PageAssertionMixin):
         cursor.execute("CREATE TABLE paging_test ( id int, mytext text, PRIMARY KEY (id, mytext) )")
 
         def random_txt(text):
-            return unicode(uuid.uuid4())
+            return str(uuid.uuid4())
 
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
@@ -1416,7 +1416,7 @@ class TestPagingWithDeletions(BasePagingTester, PageAssertionMixin):
     def setup_data(self, cursor):
 
         def random_txt(text):
-            return unicode(uuid.uuid4())
+            return str(uuid.uuid4())
 
         data = """
              | id | mytext   | col1 | col2 | col3 |

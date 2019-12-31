@@ -55,7 +55,7 @@ class TestRebuild(Tester):
         insert_c1c2(session, n=keys, consistency=ConsistencyLevel.ALL)
 
         # check data
-        for i in xrange(0, keys):
+        for i in range(0, keys):
             query_c1c2(session, i, ConsistencyLevel.ALL)
         session.shutdown()
 
@@ -78,10 +78,10 @@ class TestRebuild(Tester):
             try:
                 node2.nodetool('rebuild dc1')
             except NodetoolError as e:
-                if 'rebuild is in progress' in e.message:
+                if 'rebuild is in progress' in str(e):
                     self.rebuild_errors += 1
                 else:
-                    debug('Unexpected rebuild failure {}'.format(e.message))
+                    debug('Unexpected rebuild failure {}'.format(str(e)))
                     self.unexpected_errors += 1
 
         cmd1 = Thread(target=rebuild)
@@ -104,5 +104,5 @@ class TestRebuild(Tester):
                          msg='concurrent rebuild should not be allowed, but one rebuild command should have succeeded.')
 
         # check data
-        for i in xrange(0, keys):
+        for i in range(0, keys):
             query_c1c2(session, i, ConsistencyLevel.ALL)

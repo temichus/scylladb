@@ -44,7 +44,7 @@ class TestUserTypes(Tester):
     def assertUnauthorized(self, session, query, message):
         with self.assertRaises(Unauthorized) as cm:
             session.execute(query)
-        assert re.search(message, cm.exception.message), "Expected: %s" % message
+        assert re.search(message, str(cm.exception)), "Expected: %s" % message
 
     def assertNoTypes(self, session):
         for keyspace in session.cluster.metadata.keyspaces.values():
@@ -299,12 +299,12 @@ class TestUserTypes(Tester):
         rows = list(session.execute(stmt))
 
         primary_item, other_items, other_containers = rows[0]
-        self.assertEqual(listify(primary_item), [[u'test', u'test2']])
-        self.assertEqual(listify(other_items), [[u'stuff', [u'one', u'two']]])
-        self.assertEqual(listify(other_containers), [[[u'stuff2', [u'one_other', u'two_other']], [u'stuff3', [u'one_2_other', u'two_2_other']], [u'stuff4', [u'one_3_other', u'two_3_other']]]])
+        self.assertEqual(listify(primary_item), [['test', 'test2']])
+        self.assertEqual(listify(other_items), [['stuff', ['one', 'two']]])
+        self.assertEqual(listify(other_containers), [[['stuff2', ['one_other', 'two_other']], ['stuff3', ['one_2_other', 'two_2_other']], ['stuff4', ['one_3_other', 'two_3_other']]]])
 
         #  Generate some repetitive data and check it for it's contents:
-        for x in xrange(50):
+        for x in range(50):
 
             # Create row:
             _id = uuid.uuid4()
@@ -324,7 +324,7 @@ class TestUserTypes(Tester):
             rows = list(session.execute(stmt))
 
             items = rows[0][0]
-            self.assertEqual(listify(items), [[[u'stuff3', [u'one_2_other', u'two_2_other']], [u'stuff4', [u'one_3_other', u'two_3_other']]]])
+            self.assertEqual(listify(items), [[['stuff3', ['one_2_other', 'two_2_other']], ['stuff4', ['one_3_other', 'two_3_other']]]])
 
     def test_type_as_part_of_pkey(self):
         """Tests user types as part of a composite pkey"""
@@ -378,8 +378,8 @@ class TestUserTypes(Tester):
         rows = session.execute(stmt)
 
         row_uuid, first_name, like = rows[0]
-        self.assertEqual(first_name, u'Nero')
-        self.assertEqual(like, u'arson')
+        self.assertEqual(first_name, 'Nero')
+        self.assertEqual(like, 'arson')
 
     @skip("Secondary indexes not implemented yet")
     def test_type_secondary_indexing(self):
@@ -468,8 +468,8 @@ class TestUserTypes(Tester):
         row_uuid, first_name, like = rows[0]
 
         self.assertEqual(str(row_uuid), str(_id))
-        self.assertEqual(first_name, u'Nero')
-        self.assertEqual(like, u'arson')
+        self.assertEqual(first_name, 'Nero')
+        self.assertEqual(like, 'arson')
 
         # rename a field in the type and make sure the index still works
         stmt = """
@@ -486,8 +486,8 @@ class TestUserTypes(Tester):
         row_uuid, first_name, like = rows[0]
 
         self.assertEqual(str(row_uuid), str(_id))
-        self.assertEqual(first_name, u'Nero')
-        self.assertEqual(like, u'arson')
+        self.assertEqual(first_name, 'Nero')
+        self.assertEqual(like, 'arson')
 
         # add another row to be sure the index is still adding new data
         _id = uuid.uuid4()
@@ -507,8 +507,8 @@ class TestUserTypes(Tester):
         row_uuid, first_name, like = rows[0]
 
         self.assertEqual(str(row_uuid), str(_id))
-        self.assertEqual(first_name, u'Abraham')
-        self.assertEqual(like, u'preserving unions')
+        self.assertEqual(first_name, 'Abraham')
+        self.assertEqual(like, 'preserving unions')
 
     def test_type_keyspace_permission_isolation(self):
         """
@@ -616,10 +616,10 @@ class TestUserTypes(Tester):
         session.execute("INSERT INTO bucket (id, my_item) VALUES (1, {sub_one: 'test'})")
 
         rows = list(session.execute("SELECT my_item FROM bucket WHERE id=0"))
-        self.assertEqual(listify(rows[0]), [[u'test', None]])
+        self.assertEqual(listify(rows[0]), [['test', None]])
 
         rows = list(session.execute("SELECT my_item FROM bucket WHERE id=1"))
-        self.assertEqual(listify(rows[0]), [[u'test', None]])
+        self.assertEqual(listify(rows[0]), [['test', None]])
 
     def test_no_counters_in_user_types(self):
         # CASSANDRA-7672
@@ -684,7 +684,7 @@ class TestUserTypes(Tester):
         for _id in ids:
             res = list(session.execute("SELECT letterpair FROM letters where id = {}".format(_id)))
 
-            self.assertEqual(listify(res), [[[u'a', u'z'], [u'c', u'a'], [u'c', u'f'], [u'c', u'z'], [u'd', u'e'], [u'z', u'a']]])
+            self.assertEqual(listify(res), [[['a', 'z'], ['c', 'a'], ['c', 'f'], ['c', 'z'], ['d', 'e'], ['z', 'a']]])
 
     @since('3.0')
     def udt_subfield_test(self):
@@ -703,7 +703,7 @@ class TestUserTypes(Tester):
         session.execute("INSERT INTO t (id, v) VALUES (0, {third: 2, second: 1})")
         session.execute("UPDATE t set v.first = 'a' WHERE id=0")
         rows = list(session.execute("SELECT * FROM t WHERE id = 0"))
-        self.assertEqual(listify(rows[0]), [[0, [u'a', 1, 2]]])
+        self.assertEqual(listify(rows[0]), [[0, ['a', 1, 2]]])
 
         # Create a full udt
         # Update a subfield on the udt
@@ -711,13 +711,13 @@ class TestUserTypes(Tester):
         session.execute("INSERT INTO t (id, v) VALUES (0, {first: 'c', second: 3, third: 33})")
         session.execute("UPDATE t set v.second = 5 where id=0")
         rows = list(session.execute("SELECT * FROM t WHERE id=0"))
-        self.assertEqual(listify(rows[0]), [[0, [u'c', 5, 33]]])
+        self.assertEqual(listify(rows[0]), [[0, ['c', 5, 33]]])
 
         # Rewrite the entire udt
         # Read back
         session.execute("INSERT INTO t (id, v) VALUES (0, {first: 'alpha', second: 111, third: 100})")
         rows = list(session.execute("SELECT * FROM t WHERE id=0"))
-        self.assertEqual(listify(rows[0]), [[0, [u'alpha', 111, 100]]])
+        self.assertEqual(listify(rows[0]), [[0, ['alpha', 111, 100]]])
 
         # Send three subfield updates to udt
         # Read back
@@ -725,7 +725,7 @@ class TestUserTypes(Tester):
         session.execute("UPDATE t set v.first = 'delta' WHERE id=0")
         session.execute("UPDATE t set v.second = -10 WHERE id=0")
         rows = list(session.execute("SELECT * FROM t WHERE id=0"))
-        self.assertEqual(listify(rows[0]), [[0, [u'delta', -10, 100]]])
+        self.assertEqual(listify(rows[0]), [[0, ['delta', -10, 100]]])
 
         # Send conflicting updates serially to different nodes
         # Read back
@@ -738,7 +738,7 @@ class TestUserTypes(Tester):
         session2.execute("UPDATE user_types.t set v.third = 103 WHERE id=0")
         query = SimpleStatement("SELECT * FROM t WHERE id = 0", consistency_level=ConsistencyLevel.ALL)
         rows = list(session.execute(query))
-        self.assertEqual(listify(rows[0]), [[0, [u'delta', -10, 103]]])
+        self.assertEqual(listify(rows[0]), [[0, ['delta', -10, 103]]])
         session1.shutdown()
         session2.shutdown()
         session3.shutdown()
@@ -926,60 +926,60 @@ class TestUserTypes(Tester):
         ]
 
         expected_lst = [
-            '[[[u\'five\', u\'six\', u\'seven\', u\'eight\']]]',
-            '[[SortedSet([UUID(\'080fdd90-ae74-41d6-9883-635625d3b069\'), '
-            'UUID(\'4b66458a-2a19-41d3-af25-6faef4dea9fe\'), '
-            'UUID(\'6cd7fab5-eacc-45c3-8414-6ad0177651d6\')])]]',
-            '[[OrderedMapSerializedKey([(u\'four\', 4), (u\'one\', 1), (u\'three\', 3), (u\'two\', 2)])]]',
-            '[[(u\'hey\', 10, UUID(\'16e69fba-a656-4932-8a01-6782a34505d9\'), True)]]',
-            "[[t_kitchen_sink(item1='heyimascii', item2='\\x00\\x11', item3='127.0.0.1', item4=u'whatev', "
+            "[[['five', 'six', 'seven', 'eight']]]",
+            "[[SortedSet([UUID('080fdd90-ae74-41d6-9883-635625d3b069'), "
+            "UUID('4b66458a-2a19-41d3-af25-6faef4dea9fe'), "
+            "UUID('6cd7fab5-eacc-45c3-8414-6ad0177651d6')])]]",
+            "[[OrderedMapSerializedKey([('four', 4), ('one', 1), ('three', 3), ('two', 2)])]]",
+            "[[('hey', 10, UUID('16e69fba-a656-4932-8a01-6782a34505d9'), True)]]",
+            "[[t_kitchen_sink(item1='heyimascii', item2=b'\\x00\\x11', item3='127.0.0.1', item4='whatev', "
             "item5=datetime.datetime(2011, 2, 3, 4, 5), item6=UUID('0ad6dfb6-7a6e-11e4-bc39-b4b6763e9d6f'), "
-            "item7=UUID('bdf5e8ac-a75e-4321-9ac8-938fc9576c4a'), item8=u'bleh', item9=-9223372036854775808, "
+            "item7=UUID('bdf5e8ac-a75e-4321-9ac8-938fc9576c4a'), item8='bleh', item9=-9223372036854775808, "
             "item10=Decimal('1234.45678'), item11=98712312.1222, item12=98712312.0, item13=-2147483648, "
             "item14=2147483647, item15=False, item16=[1, 3, 5, 7, 11, 13])]]",
-            "[[[t_todo_list(name=u'stuff to do!', todo_list=[t_todo_item(label=u'buy groceries', "
-            "details=u'bread and milk'), t_todo_item(label=u'pick up car from shop', details=u'$325 due'), "
-            "t_todo_item(label=u'call dave', details=u'for some reason')]), t_todo_list(name=u'more stuff to do!', "
-            "todo_list=[t_todo_item(label=u'buy new car', details=u'the old one is getting expensive'), "
-            "t_todo_item(label=u'price insurance', details=u'current cost is $95/mo')])]]]",
-            "[[[t_kitchen_sink(item1='asdf', item2='\\x00\\x12', item3='127.0.0.2', item4=u'whatev1', "
+            "[[[t_todo_list(name='stuff to do!', todo_list=[t_todo_item(label='buy groceries', "
+            "details='bread and milk'), t_todo_item(label='pick up car from shop', details='$325 due'), "
+            "t_todo_item(label='call dave', details='for some reason')]), t_todo_list(name='more stuff to do!', "
+            "todo_list=[t_todo_item(label='buy new car', details='the old one is getting expensive'), "
+            "t_todo_item(label='price insurance', details='current cost is $95/mo')])]]]",
+            "[[[t_kitchen_sink(item1='asdf', item2=b'\\x00\\x12', item3='127.0.0.2', item4='whatev1', "
             "item5=datetime.datetime(2012, 2, 3, 4, 5), item6=UUID('d05a10c8-7c12-11e4-949d-b4b6763e9d6f'), "
-            "item7=UUID('f90b04b1-f9ad-4ffa-b869-a7d894ce6003'), item8=u'tyru', item9=-9223372036854771111, "
+            "item7=UUID('f90b04b1-f9ad-4ffa-b869-a7d894ce6003'), item8='tyru', item9=-9223372036854771111, "
             "item10=Decimal('4321.45678'), item11=10012312.1222, item12=40012312.0, item13=-1147483648, "
             "item14=2047483648, item15=True, item16=[1, 1, 2, 3, 5, 8]), t_kitchen_sink(item1='fdsa', "
-            "item2='\\x00\\x13', item3='127.0.0.3', item4=u'whatev2', item5=datetime.datetime(2013, 2, 3, 4, 5), "
+            "item2=b'\\x00\\x13', item3='127.0.0.3', item4='whatev2', item5=datetime.datetime(2013, 2, 3, 4, 5), "
             "item6=UUID('d8ac38c8-7c12-11e4-8955-b4b6763e9d6f'), item7=UUID('e3e84f21-f28c-4e0f-80e0-068a640ae53a'), "
-            "item8=u'uytr', item9=-3333372036854775808, item10=Decimal('1234.12321'), item11=20012312.1222, "
+            "item8='uytr', item9=-3333372036854775808, item10=Decimal('1234.12321'), item11=20012312.1222, "
             "item12=50012312.0, item13=-1547483648, item14=1947483648, item15=False, item16=[3, 6, 9, 12, 15]), "
-            "t_kitchen_sink(item1='zxcv', item2='\\x00\\x14', item3='127.0.0.4', item4=u'whatev3', "
+            "t_kitchen_sink(item1='zxcv', item2=b'\\x00\\x14', item3='127.0.0.4', item4='whatev3', "
             "item5=datetime.datetime(2014, 2, 3, 4, 5), item6=UUID('de30838a-7c12-11e4-a907-b4b6763e9d6f'), "
-            "item7=UUID('f9381f0e-9467-4d4c-9315-eb9f0232487b'), item8=u'fghj', item9=-2239372036854775808, "
+            "item7=UUID('f9381f0e-9467-4d4c-9315-eb9f0232487b'), item8='fghj', item9=-2239372036854775808, "
             "item10=Decimal('5555.55555'), item11=30012312.1222, item12=60012312.0, item13=2147483647, "
             "item14=1347483648, item15=True, item16=[0, 1, 0, 1, 2, 0])]]]",
-            "[[OrderedMapSerializedKey([(u'namedsink1', t_kitchen_sink(item1='asdf', item2='\\x00\\x12', "
-            "item3='127.0.0.2', item4=u'whatev1', item5=datetime.datetime(2012, 2, 3, 4, 5), "
+            "[[OrderedMapSerializedKey([('namedsink1', t_kitchen_sink(item1='asdf', item2=b'\\x00\\x12', "
+            "item3='127.0.0.2', item4='whatev1', item5=datetime.datetime(2012, 2, 3, 4, 5), "
             "item6=UUID('d05a10c8-7c12-11e4-949d-b4b6763e9d6f'), item7=UUID('f90b04b1-f9ad-4ffa-b869-a7d894ce6003'), "
-            "item8=u'tyru', item9=-9223372036854771111, item10=Decimal('4321.45678'), item11=10012312.1222, "
+            "item8='tyru', item9=-9223372036854771111, item10=Decimal('4321.45678'), item11=10012312.1222, "
             "item12=40012312.0, item13=-1147483648, item14=2047483648, item15=True, item16=[1, 1, 2, 3, 5, 8])), "
-            "(u'namedsink2', t_kitchen_sink(item1='fdsa', item2='\\x00\\x13', item3='127.0.0.3', item4=u'whatev2', "
+            "('namedsink2', t_kitchen_sink(item1='fdsa', item2=b'\\x00\\x13', item3='127.0.0.3', item4='whatev2', "
             "item5=datetime.datetime(2013, 2, 3, 4, 5), item6=UUID('d8ac38c8-7c12-11e4-8955-b4b6763e9d6f'), "
-            "item7=UUID('e3e84f21-f28c-4e0f-80e0-068a640ae53a'), item8=u'uytr', item9=-3333372036854775808, "
+            "item7=UUID('e3e84f21-f28c-4e0f-80e0-068a640ae53a'), item8='uytr', item9=-3333372036854775808, "
             "item10=Decimal('1234.12321'), item11=20012312.1222, item12=50012312.0, item13=-1547483648, "
             "item14=1947483648, item15=False, item16=[3, 6, 9, 12, 15])), "
-            "(u'namedsink3', t_kitchen_sink(item1='zxcv', item2='\\x00\\x14', item3='127.0.0.4', item4=u'whatev3', "
+            "('namedsink3', t_kitchen_sink(item1='zxcv', item2=b'\\x00\\x14', item3='127.0.0.4', item4='whatev3', "
             "item5=datetime.datetime(2014, 2, 3, 4, 5), item6=UUID('de30838a-7c12-11e4-a907-b4b6763e9d6f'), "
-            "item7=UUID('f9381f0e-9467-4d4c-9315-eb9f0232487b'), item8=u'fghj', item9=-2239372036854775808, "
+            "item7=UUID('f9381f0e-9467-4d4c-9315-eb9f0232487b'), item8='fghj', item9=-2239372036854775808, "
             "item10=Decimal('5555.55555'), item11=30012312.1222, item12=60012312.0, item13=2147483647, "
             "item14=1347483648, item15=True, item16=[0, 1, 0, 1, 2, 0]))])]]"
         ]
 
         # EXECUTE SELECTS AND COMPARE WITH EXPECTED RESULTS
-        for i in xrange(0, len(select_lst)):
+        for i in range(0, len(select_lst)):
             assert_all(session=session, query=select_lst[i], expected=expected_lst[i], result_as_string=True)
 
         # EXECUTE UPDATE AND COMPARE WITH EXPECTED RESULT
         session.execute("UPDATE complex_types SET mylist = ['nine', 'ten', 'eleven'] WHERE key1 = 'row1'")
-        expected_res = "[[[u\'nine\', u\'ten\', u\'eleven\']]]"
+        expected_res = "[[[\'nine\', \'ten\', \'eleven\']]]"
         after_update_query = "SELECT mylist from complex_types"
         assert_all(session=session, query=after_update_query, expected=expected_res, result_as_string=True)
 
@@ -1047,7 +1047,7 @@ class TestUserTypes(Tester):
         session.execute('create index if not exists on entity_rel(rel_type)')
 
         def insert_into_entity(rows=rows_num, altered_type=False):
-            for i in xrange(rows):
+            for i in range(rows):
                 stmt = "insert into abcinfo.entity (entity_id, entity_info, entity_type, import_timestamp, " \
                        "import_timestamp_day, other_entity_id, service, type) values " \
                        "('text{i}', ('entity_id{i}', {i}, 'entity_type{i}', 'type{i}', 'service{i}', " \
@@ -1057,7 +1057,7 @@ class TestUserTypes(Tester):
                 session.execute(stmt)
 
         def insert_into_entity_rel(rows=rows_num, altered_type=False):
-            for i in xrange(rows):
+            for i in range(rows):
                 stmt = "insert into abcinfo.entity_rel (src_entity_id, src_entity, dest_entity_id, dest_entity, " \
                        "service, rel_type, deleted) values " \
                        "('text{i}', ('entity_id{i}', {i}, 'entity_type{i}', 'type{i}', 'service{i}', " \
@@ -1153,7 +1153,7 @@ class TestUserTypes(Tester):
                         'type is not null primary key(type, entity_id)')
         wait_for_view(cluster=self.cluster, session=session, ks=keyspace_name, view='entity_by_type')
 
-        for i in xrange(rows_num):
+        for i in range(rows_num):
             new_type = '(%d, {%d, %d})' % (i, i, i)
             stmt = "insert into entity (entity_id, type, entity_info) values " \
                    "('text{i}', 'type{i}', (('entity_id{i}', " \

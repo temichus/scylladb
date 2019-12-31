@@ -1254,7 +1254,7 @@ class TestAuthRoles(Tester):
         host, error = response.exception.errors.popitem()
         pattern = 'Failed to authenticate to %s:.* code=0100 \[Bad credentials\] message="%s"' % (host, message)
         assert isinstance(error, AuthenticationFailed), "Expected AuthenticationFailed, got %s" % error
-        assert re.search(pattern, error.message), "Expected: %s" % pattern
+        assert re.search(pattern, str(error)), "Expected: %s" % pattern
 
     def prepare(self, nodes=1, roles_expiry=0):
         config = {'authenticator': 'org.apache.cassandra.auth.PasswordAuthenticator',

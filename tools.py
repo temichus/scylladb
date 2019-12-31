@@ -13,6 +13,7 @@ from itertools import groupby
 from distutils.version import LooseVersion
 from threading import Thread
 from uuid import uuid1, uuid4
+import errno
 
 from cassandra import ConsistencyLevel
 from cassandra.concurrent import execute_concurrent_with_args
@@ -84,7 +85,7 @@ def new_node(cluster, bootstrap=True, token=None, remote_debug_port='0', data_ce
 
 
 def insert_columns(tester, session, key, columns_count, consistency=ConsistencyLevel.QUORUM, offset=0):
-    upds = ["UPDATE cf SET v=\'value%d\' WHERE key=\'k%s\' AND c=\'c%06d\'" % (i, key, i) for i in xrange(offset * columns_count, columns_count * (offset + 1))]
+    upds = ["UPDATE cf SET v=\'value%d\' WHERE key=\'k%s\' AND c=\'c%06d\'" % (i, key, i) for i in range(offset * columns_count, columns_count * (offset + 1))]
     query = 'BEGIN BATCH %s; APPLY BATCH' % '; '.join(upds)
     simple_query = SimpleStatement(query, consistency_level=consistency)
     session.execute(simple_query)
@@ -94,7 +95,7 @@ def query_columns(tester, session, key, columns_count, consistency=ConsistencyLe
     query = SimpleStatement('SELECT c, v FROM cf WHERE key=\'k%s\' AND c >= \'c%06d\' AND c <= \'c%06d\'' % (key, offset, columns_count + offset - 1), consistency_level=consistency)
     res = list(session.execute(query))
     assert len(res) == columns_count, "%s != %s (%s-%s)" % (len(res), columns_count, offset, columns_count + offset - 1)
-    for i in xrange(0, columns_count):
+    for i in range(0, columns_count):
         assert res[i][1] == 'value%d' % (i + offset)
 
 
@@ -122,7 +123,7 @@ def putget(cluster, session, cl=ConsistencyLevel.QUORUM):
     _put_with_overwrite(cluster, session, 1, cl)
 
     # reads by name
-    ks = ["\'c%02d\'" % i for i in xrange(0, 100)]
+    ks = ["\'c%02d\'" % i for i in range(0, 100)]
     # We do not support proper IN queries yet
     # if cluster.version() >= "1.2":
     #    session.execute('SELECT * FROM cf USING CONSISTENCY %s WHERE key=\'k0\' AND c IN (%s)' % (cl, ','.join(ks)))
@@ -136,20 +137,20 @@ def putget(cluster, session, cl=ConsistencyLevel.QUORUM):
 
 
 def _put_with_overwrite(cluster, session, nb_keys, cl=ConsistencyLevel.QUORUM):
-    for k in xrange(0, nb_keys):
-        kvs = ["UPDATE cf SET v=\'value%d\' WHERE key=\'k%s\' AND c=\'c%02d\'" % (i, k, i) for i in xrange(0, 100)]
+    for k in range(0, nb_keys):
+        kvs = ["UPDATE cf SET v=\'value%d\' WHERE key=\'k%s\' AND c=\'c%02d\'" % (i, k, i) for i in range(0, 100)]
         query = SimpleStatement('BEGIN BATCH %s APPLY BATCH' % '; '.join(kvs), consistency_level=cl)
         session.execute(query)
         time.sleep(.01)
     cluster.flush()
-    for k in xrange(0, nb_keys):
-        kvs = ["UPDATE cf SET v=\'value%d\' WHERE key=\'k%s\' AND c=\'c%02d\'" % (i * 4, k, i * 2) for i in xrange(0, 50)]
+    for k in range(0, nb_keys):
+        kvs = ["UPDATE cf SET v=\'value%d\' WHERE key=\'k%s\' AND c=\'c%02d\'" % (i * 4, k, i * 2) for i in range(0, 50)]
         query = SimpleStatement('BEGIN BATCH %s APPLY BATCH' % '; '.join(kvs), consistency_level=cl)
         session.execute(query)
         time.sleep(.01)
     cluster.flush()
-    for k in xrange(0, nb_keys):
-        kvs = ["UPDATE cf SET v=\'value%d\' WHERE key=\'k%s\' AND c=\'c%02d\'" % (i * 20, k, i * 5) for i in xrange(0, 20)]
+    for k in range(0, nb_keys):
+        kvs = ["UPDATE cf SET v=\'value%d\' WHERE key=\'k%s\' AND c=\'c%02d\'" % (i * 20, k, i * 5) for i in range(0, 20)]
         query = SimpleStatement('BEGIN BATCH %s APPLY BATCH' % '; '.join(kvs), consistency_level=cl)
         session.execute(query)
         time.sleep(.01)
@@ -158,7 +159,7 @@ def _put_with_overwrite(cluster, session, nb_keys, cl=ConsistencyLevel.QUORUM):
 
 def _validate_row(cluster, res):
     assert len(res) == 100, len(res)
-    for i in xrange(0, 100):
+    for i in range(0, 100):
         if i % 5 == 0:
             assert res[i][2] == 'value%d' % (i * 4), 'for %d, expecting value%d, got %s' % (i, i * 4, res[i][2])
         elif i % 2 == 0:
@@ -178,7 +179,7 @@ def range_putget(cluster, session, cl=ConsistencyLevel.QUORUM):
     rows = [result for result in paged_results]
 
     assert len(rows) == keys * 100, len(rows)
-    for k in xrange(0, keys):
+    for k in range(0, keys):
         res = rows[:100]
         del rows[:100]
         _validate_row(cluster, res)
@@ -403,6 +404,7 @@ def cassandra_git_branch(cdir=None):
         return
 
     out, err = p.communicate()
+    out = out.decode('utf-8')
     # fail if git failed
     if p.returncode != 0:
         raise RuntimeError('Git printed error: {err}'.format(err=err))
@@ -470,7 +472,7 @@ class ColumnType:
         return self.value
 
     def gen_random_string(self, length=1, source=string.printable):
-        return ''.join(random.choice(source) for _ in xrange(length))
+        return ''.join(random.choice(source) for _ in range(length))
 
     def gen_random_number(self, length):
         return int(self.gen_random_string(length=length, source=string.digits), 10) if length > 0 else 0
@@ -522,7 +524,7 @@ class ColumnType:
         elif data_type.lower() == 'tinyint':
             value = random.randint(-128, 127)
         elif data_type.lower() == 'list':
-            value = [self.generate_value('int') for _ in xrange(3)]
+            value = [self.generate_value('int') for _ in range(3)]
         elif data_type.lower() == 'map':
             value = ''.join(['{\'', self.gen_random_string(5, source=string.letters), '\': ',
                              str(self.generate_value('int')) + '}'])

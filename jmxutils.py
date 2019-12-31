@@ -1,5 +1,6 @@
+from __future__ import print_function
 import ccmlib.common as common
-from urllib2 import urlopen
+from urllib.request import urlopen
 import json
 import os
 import subprocess
@@ -100,9 +101,9 @@ class JolokiaAgent(object):
         try:
             subprocess.check_output(args, stderr=subprocess.STDOUT)
         except subprocess.CalledProcessError as exc:
-            print "Failed to start jolokia agent (command was: %s): %s" % (' '.join(args), exc)
-            print "Exit status was: %d" % (exc.returncode,)
-            print "Output was: %s" % (exc.output,)
+            print("Failed to start jolokia agent (command was: %s): %s" % (' '.join(args), exc))
+            print("Exit status was: %d" % (exc.returncode,))
+            print("Output was: %s" % (exc.output,))
             raise
 
     def stop(self):
@@ -116,9 +117,9 @@ class JolokiaAgent(object):
         try:
             subprocess.check_output(args, stderr=subprocess.STDOUT)
         except subprocess.CalledProcessError as exc:
-            print "Failed to stop jolokia agent (command was: %s): %s" % (' '.join(args), exc)
-            print "Exit status was: %d" % (exc.returncode,)
-            print "Output was: %s" % (exc.output,)
+            print("Failed to stop jolokia agent (command was: %s): %s" % (' '.join(args), exc))
+            print("Exit status was: %d" % (exc.returncode,))
+            print("Output was: %s" % (exc.output,))
             raise
 
     def _query(self, body):
@@ -133,9 +134,9 @@ class JolokiaAgent(object):
         if response['status'] != 200:
             stacktrace = response.get('stacktrace')
             if stacktrace:
-                print "Stacktrace from Jolokia error follows:"
+                print("Stacktrace from Jolokia error follows:")
                 for line in stacktrace.splitlines():
-                    print line
+                    print(line)
             raise Exception("Jolokia agent returned non-200 status: %s" % (response,))
         return response
 

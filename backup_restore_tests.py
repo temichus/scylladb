@@ -49,8 +49,8 @@ class TestBackupRestore(Tester):
         self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
         num_keys = 1000
-        c1_values = map(lambda x: '{}'.format(x), range(num_keys))
-        c2_values = map(lambda x: '{}'.format(x), range(num_keys, 2 * num_keys))
+        c1_values = list(map(lambda x: '{}'.format(x), range(num_keys)))
+        c2_values = list(map(lambda x: '{}'.format(x), range(num_keys, 2 * num_keys)))
         keys = range(num_keys)
 
         debug("Inserting concurrently {} keys...".format(num_keys))
@@ -100,8 +100,8 @@ class TestBackupRestore(Tester):
         self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
         num_keys = 1000
-        c1_values = map(lambda x: '{}'.format(x), range(num_keys))
-        c2_values = map(lambda x: '{}'.format(x), range(num_keys, 2 * num_keys))
+        c1_values = list(map(lambda x: '{}'.format(x), range(num_keys)))
+        c2_values = list(map(lambda x: '{}'.format(x), range(num_keys, 2 * num_keys)))
         keys = range(num_keys)
 
         debug("Inserting concurrently {} keys...".format(num_keys))
@@ -198,8 +198,8 @@ class TestBackupRestore(Tester):
         self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
         num_keys = 1000
-        c1_values = map(lambda x: '{}'.format(x), range(num_keys))
-        c2_values = map(lambda x: '{}'.format(x), range(num_keys, 2 * num_keys))
+        c1_values = list(map(lambda x: '{}'.format(x), range(num_keys)))
+        c2_values = list(map(lambda x: '{}'.format(x), range(num_keys, 2 * num_keys)))
         keys = range(num_keys)
 
         debug("Inserting concurrently {} keys...".format(num_keys))
@@ -262,8 +262,8 @@ class TestBackupRestore(Tester):
         cluster = self.cluster
         snapshot_name = 'testsnapshot'
         num_keys = 1000
-        c1_values = map(lambda x: '{}'.format(x), range(num_keys))
-        c2_values = map(lambda x: '{}'.format(x), range(num_keys, 2 * num_keys))
+        c1_values = list(map(lambda x: '{}'.format(x), range(num_keys)))
+        c2_values = list(map(lambda x: '{}'.format(x), range(num_keys, 2 * num_keys)))
         keys = range(num_keys)
 
         # Disable hinted handoff and set batch commit log so this doesn't
@@ -347,8 +347,8 @@ class TestBackupRestore(Tester):
         cluster = self.cluster
         snapshot_name = 'testsnapshot'
         num_keys = 1000
-        c1_values = map(lambda x: '{}'.format(x), range(num_keys))
-        c2_values = map(lambda x: '{}'.format(x), range(num_keys, 2 * num_keys))
+        c1_values = list(map(lambda x: '{}'.format(x), range(num_keys)))
+        c2_values = list(map(lambda x: '{}'.format(x), range(num_keys, 2 * num_keys)))
         keys = range(num_keys)
 
         # Disable hinted handoff and set batch commit log so this doesn't
@@ -426,8 +426,8 @@ class TestBackupRestore(Tester):
         """
         cluster = self.cluster
         num_keys = 1000
-        c1_values = map(lambda x: '{}'.format(x), range(num_keys))
-        c2_values = map(lambda x: '{}'.format(x), range(num_keys, 2 * num_keys))
+        c1_values = list(map(lambda x: '{}'.format(x), range(num_keys)))
+        c2_values = list(map(lambda x: '{}'.format(x), range(num_keys, 2 * num_keys)))
         keys = range(num_keys)
 
         # Disable hinted handoff and set batch commit log so this doesn't
@@ -496,8 +496,8 @@ class TestBackupRestore(Tester):
         """
         cluster = self.cluster
         num_keys = 1000
-        c1_values = map(lambda x: '{}'.format(x), range(num_keys))
-        c2_values = map(lambda x: '{}'.format(x), range(num_keys, 2 * num_keys))
+        c1_values = list(map(lambda x: '{}'.format(x), range(num_keys)))
+        c2_values = list(map(lambda x: '{}'.format(x), range(num_keys, 2 * num_keys)))
         keys = range(num_keys)
 
         # Disable hinted handoff and set batch commit log so this doesn't
@@ -583,8 +583,8 @@ class TestBackupRestore(Tester):
 
         for i in range(3):
             snapshot_name = 'snapshot{}'.format(i)
-            c1_values = map(lambda x: '{}'.format(x), range(start_key, start_key + num_keys))
-            c2_values = map(lambda x: '{}'.format(x), range(start_key + num_keys, start_key + 2 * num_keys))
+            c1_values = list(map(lambda x: '{}'.format(x), range(start_key, start_key + num_keys)))
+            c2_values = list(map(lambda x: '{}'.format(x), range(start_key + num_keys, start_key + 2 * num_keys)))
             keys = range(start_key, start_key + num_keys)
 
             debug("Inserting concurrently {} keys into 'ks0.cf' and 'ks1.cf'...".format(num_keys))

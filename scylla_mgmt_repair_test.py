@@ -260,7 +260,7 @@ class TestScyllaMgmtRepair(RepairAdditionalBase):
         self.create_ks(session, self.KEYSPACE_NAME, 2)
 
         # Create 4 tables
-        for i in xrange(1, 5):
+        for i in range(1, 5):
             self.create_cf(session, 'cf%d' % i, read_repair=0.0, columns={'c1': 'text', 'c2': 'text'},
                            dclocal_read_repair_chance=0.0, speculative_retry='NONE')
 
@@ -305,7 +305,7 @@ class TestScyllaMgmtRepair(RepairAdditionalBase):
         session = self.patient_cql_connection(node1)
 
         # Create 2 keyspaces, with 1 table in each
-        for i in xrange(1, 3):
+        for i in range(1, 3):
             self.create_ks(session, 'ks%d' % i, 2)
             self.create_cf(session, 'ks%d.cf' % i, read_repair=0.0, columns={'c1': 'text', 'c2': 'text'},
                            dclocal_read_repair_chance=0.0, speculative_retry='NONE')
@@ -313,7 +313,7 @@ class TestScyllaMgmtRepair(RepairAdditionalBase):
         num_of_keys = 10
         # Data for all tables. Will be used to validate the repaired data
         data_range = {}
-        for i in xrange(1, 3):
+        for i in range(1, 3):
             data_range['ks%d.cf' % i] = range(i*i, i*i+num_of_keys)
 
         self._insert_data_range_to_specific_node(node_to_insert=node1, nodes_to_shut_down=[node2], keyspace_name=None,
@@ -472,7 +472,7 @@ class TestScyllaMgmtRepair(RepairAdditionalBase):
         mgr_cluster = manager_tool.add_cluster(node=node1, name=cluster_name)
 
         # Create 2 tables
-        for i in xrange(1, 3):
+        for i in range(1, 3):
             self.create_cf(session, 'cf%d' % i, read_repair=0.0, columns={'c1': 'text', 'c2': 'text'},
                            dclocal_read_repair_chance=0.0, speculative_retry='NONE')
 
@@ -501,7 +501,7 @@ class TestScyllaMgmtRepair(RepairAdditionalBase):
         mgr_cluster = manager_tool.add_cluster(node=node1, name=cluster_name)
 
         # Create 2 tables
-        for i in xrange(1, 3):
+        for i in range(1, 3):
             self.create_cf(session, 'cf%d' % i, read_repair=0.0, columns={'c1': 'text', 'c2': 'text'},
                            dclocal_read_repair_chance=0.0, speculative_retry='NONE')
 

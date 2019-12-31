@@ -293,7 +293,7 @@ class TestScrubIndexes(TestHelper):
 
         users = list(session.execute(("SELECT * from users where uuids contains {some_uuid}").format(some_uuid=_id)))
 
-        self.assertListEqual(initial_users, users)
+        self.assertCountEqual(initial_users, users)
 
 
 class TestScrub(TestHelper):

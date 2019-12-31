@@ -528,7 +528,7 @@ class TestBatch(Tester):
 
         # then upgrade the current nodes to the current version but not hte
         # previous nodes
-        for i in xrange(current_nodes):
+        for i in range(current_nodes):
             node = self.cluster.nodelist()[i]
             self.upgrade_node(node)
 

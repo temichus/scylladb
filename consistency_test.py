@@ -1,4 +1,4 @@
-import Queue
+
 import sys
 import threading
 import time
@@ -8,6 +8,7 @@ from copy import deepcopy
 
 from cassandra import ConsistencyLevel
 from cassandra.query import SimpleStatement
+import queue
 
 from assertions import assert_none, assert_unavailable
 from dtest import DISABLE_VNODES, Tester, debug
@@ -16,8 +17,8 @@ from tools import (create_c1c2_table, insert_c1c2, insert_columns, query_c1c2,
 
 from thrift.protocol import TBinaryProtocol
 from thrift.transport import TSocket, TTransport
-from thrift_bindings.v22 import Cassandra
-from thrift_bindings.v22.Cassandra import ColumnParent, KeyRange, SlicePredicate, SliceRange
+from thrift_bindings.thrift010 import Cassandra
+from thrift_bindings.thrift010.Cassandra import ColumnParent, KeyRange, SlicePredicate, SliceRange
 
 from paging_test import PageFetcher
 from nose.plugins.attrib import attr
@@ -79,12 +80,12 @@ class TestHelper(Tester):
             ConsistencyLevel.ONE: 1,
             ConsistencyLevel.TWO: 2,
             ConsistencyLevel.THREE: 3,
-            ConsistencyLevel.QUORUM: sum(rf_factors) / 2 + 1,
+            ConsistencyLevel.QUORUM: sum(rf_factors) // 2 + 1,
             ConsistencyLevel.ALL: sum(rf_factors),
-            ConsistencyLevel.LOCAL_QUORUM: rf_factors[dc] / 2 + 1,
-            ConsistencyLevel.EACH_QUORUM: rf_factors[dc] / 2 + 1,
-            ConsistencyLevel.SERIAL: sum(rf_factors) / 2 + 1,
-            ConsistencyLevel.LOCAL_SERIAL: rf_factors[dc] / 2 + 1,
+            ConsistencyLevel.LOCAL_QUORUM: rf_factors[dc] // 2 + 1,
+            ConsistencyLevel.EACH_QUORUM: rf_factors[dc] // 2 + 1,
+            ConsistencyLevel.SERIAL: sum(rf_factors) // 2 + 1,
+            ConsistencyLevel.LOCAL_SERIAL: rf_factors[dc] // 2 + 1,
             ConsistencyLevel.LOCAL_ONE: 1,
         }[cl]
 
@@ -97,7 +98,7 @@ class TestHelper(Tester):
         if self._is_local(cl):
             return num_nodes_alive[current] >= self._required_nodes(cl, rf_factors, current)
         elif cl == ConsistencyLevel.EACH_QUORUM:
-            for i in xrange(0, len(rf_factors)):
+            for i in range(0, len(rf_factors)):
                 if num_nodes_alive[i] < self._required_nodes(cl, rf_factors, i):
                     return False
             return True
@@ -233,7 +234,7 @@ class TestAvailability(TestHelper):
         rf = self.rf
 
         num_alive = nodes
-        for node in xrange(nodes):
+        for node in range(nodes):
             debug('Testing node %d in single dc with %d nodes alive' %
                   (node, num_alive,))
             session = self.patient_exclusive_cql_connection(
@@ -256,12 +257,12 @@ class TestAvailability(TestHelper):
         rf = self.rf
 
         nodes_alive = deepcopy(nodes)
-        rf_factors = rf.values()
+        rf_factors = list(rf.values())
 
-        for i in xrange(0, len(nodes)):  # for each dc
+        for i in range(0, len(nodes)):  # for each dc
             self.log('Testing dc %d with rf %d and %s nodes alive' %
                      (i, rf_factors[i], nodes_alive))
-            for n in xrange(nodes[i]):  # for each node in this dc
+            for n in range(nodes[i]):  # for each node in this dc
                 self.log('Testing node %d in dc %d with %s nodes alive' %
                          (n, i, nodes_alive))
                 node = n + sum(nodes[:i])
@@ -288,14 +289,14 @@ class TestAvailability(TestHelper):
         age = 30
 
         if self._should_succeed(write_cl, rf_factors, num_nodes_alive, dc_idx):
-            for n in xrange(start, end):
+            for n in range(start, end):
                 self.insert_user(session, n, age, write_cl, serial_cl)
         else:
             assert_unavailable(
                 self.insert_user, session, end, age, write_cl, serial_cl)
 
         if self._should_succeed(read_cl, rf_factors, num_nodes_alive, dc_idx):
-            for n in xrange(start, end):
+            for n in range(start, end):
                 self.query_user(session, n, age, read_cl, check_ret)
         else:
             assert_unavailable(
@@ -434,12 +435,12 @@ class TestAccuracy(TestHelper):
             """
             outer = self.outer
             nodes = self.nodes
-            rf_factors = self.rf_factors
+            rf_factors = list(self.rf_factors)
             write_cl = self.write_cl
             read_cl = self.read_cl
 
             dc = 0
-            for i in xrange(1, len(nodes)):
+            for i in range(1, len(nodes)):
                 if idx < sum(nodes[:i]):
                     break
                 dc = dc + 1
@@ -481,7 +482,7 @@ class TestAccuracy(TestHelper):
                     "Failed to read value from sufficient number of nodes, required %d but  got %d - [%d, %s]" \
                     % (write_nodes, num, n, val)
 
-            for n in xrange(start, end):
+            for n in range(start, end):
                 age = 30
                 for s in range(0, len(sessions)):
                     outer.insert_user(sessions[s], n, age, write_cl, serial_cl)
@@ -522,7 +523,7 @@ class TestAccuracy(TestHelper):
                     "Failed to read value from sufficient number of nodes, required %d but got %d - [%d, %s]" \
                     % (write_nodes, num, n, val)
 
-            for n in xrange(start, end):
+            for n in range(start, end):
                 c = outer.read_counter(sessions[0], n, ConsistencyLevel.ALL)
                 for s in range(0, len(sessions)):
                     c = c + 1
@@ -535,8 +536,8 @@ class TestAccuracy(TestHelper):
         """
         self._start_cluster(save_sessions=True)
 
-        input_queue = Queue.Queue()
-        exceptions_queue = Queue.Queue()
+        input_queue = queue.Queue()
+        exceptions_queue = queue.Queue()
 
         def run():
             while not input_queue.empty():
@@ -544,7 +545,7 @@ class TestAccuracy(TestHelper):
                     v = TestAccuracy.Validation(
                         self, self.sessions, nodes, rf_factors, *input_queue.get(block=False))
                     valid_fcn(v)
-                except Queue.Empty:
+                except queue.Empty:
                     pass
                 except:
                     exceptions_queue.put(sys.exc_info())
@@ -565,7 +566,7 @@ class TestAccuracy(TestHelper):
         self.log("Waiting for workers to complete")
         while exceptions_queue.empty():
             time.sleep(0.1)
-            if len(filter(lambda t: t.isAlive(), threads)) == 0:
+            if len(list(filter(lambda t: t.isAlive(), threads))) == 0:
                 break
 
         if not exceptions_queue.empty():
@@ -803,7 +804,7 @@ class TestConsistency(Tester):
 
         # Repeat this test 10 times to make it more easy to spot a null pointer
         # exception caused by a race, see CASSANDRA-9460
-        for k in xrange(10):
+        for k in range(10):
             # insert 9 columns in one row
             insert_columns(self, session, 0, 9)
 
@@ -821,7 +822,7 @@ class TestConsistency(Tester):
             assert len(res) == 3, 'Expecting 3 values, got %d (%s)' % (
                 len(res), str(res))
             # value 0, 1 and 2 have been deleted
-            for i in xrange(1, 4):
+            for i in range(1, 4):
                 assert res[i - 1][1] == 'value%d' % (
                     i + 2), 'Expecting value%d, got %s (%s)' % (i + 2, res[i - 1][1], str(res))
 
@@ -944,14 +945,14 @@ class TestConsistency(Tester):
         node2.start(wait_other_notice=True)
 
         # query everything to cause RR
-        for n in xrange(0, 10000):
+        for n in range(0, 10000):
             query_c1c2(session, n, ConsistencyLevel.QUORUM)
 
         node1.stop(wait_other_notice=True)
 
         # Check node2 for all the keys that should have been repaired
         session = self.patient_cql_connection(node2, keyspace='ks')
-        for n in xrange(0, 10000):
+        for n in range(0, 10000):
             query_c1c2(session, n, ConsistencyLevel.ONE)
 
     def short_read_reversed_test(self):
@@ -975,7 +976,7 @@ class TestConsistency(Tester):
 
         # Repeat this test 10 times to make it more easy to spot a null pointer
         # exception caused by a race, see CASSANDRA-9460
-        for k in xrange(10):
+        for k in range(10):
             # insert 9 columns in one row
             insert_columns(self, session, 0, 9)
 
@@ -993,7 +994,7 @@ class TestConsistency(Tester):
             assert len(res) == 3, 'Expecting 3 values, got %d (%s)' % (
                 len(res), str(res))
             # value 6, 7 and 8 have been deleted
-            for i in xrange(0, 3):
+            for i in range(0, 3):
                 assert res[i][1] == 'value%d' % (
                     5 - i), 'Expecting value%d, got %s (%s)' % (5 - i, res[i][1], str(res))
 
@@ -1030,7 +1031,7 @@ class TestConsistency(Tester):
         node1.stop(wait_other_notice=True)
 
         debug("Reading back data.")
-        for n in xrange(100):
+        for n in range(100):
             query_c1c2(session, n, CL)
 
     def stop_delete_and_restart(self, node_number, column):
@@ -1129,7 +1130,7 @@ class TestConsistency(Tester):
         client.set_keyspace('ks')
 
         cp = ColumnParent('cf1')
-        res = client.get_range_slices(cp, SlicePredicate(column_names=['1']), KeyRange(start_token='00000000', end_token='00000005', count=1), thrift_bindings.v22.Cassandra.ConsistencyLevel.ALL)
+        res = client.get_range_slices(cp, SlicePredicate(column_names=['1']), KeyRange(start_token='00000000', end_token='00000005', count=1), thrift_bindings.thrift010.Cassandra.ConsistencyLevel.ALL)
 
         assert len(res) == 1, 'Expecting 1 row, got %d (%s)' % (len(res), str(res))
         assert len(res[0].columns) == 1, 'Expecting 1 cell, got %d (%s)' % (len(res[0].columns), str(res[0].columns))
@@ -1175,7 +1176,7 @@ class TestConsistency(Tester):
         client.set_keyspace('ks')
 
         cp = ColumnParent('cf1')
-        res = client.get_range_slices(cp, SlicePredicate(slice_range=SliceRange(start='', finish='', count=1)), KeyRange(start_token='00000000', end_token='00000005'), thrift_bindings.v22.Cassandra.ConsistencyLevel.ALL)
+        res = client.get_range_slices(cp, SlicePredicate(slice_range=SliceRange(start='', finish='', count=1)), KeyRange(start_token='00000000', end_token='00000005'), thrift_bindings.thrift010.Cassandra.ConsistencyLevel.ALL)
 
         assert len(res) == 1, 'Expecting 1 row, got %d (%s)' % (len(res), str(res))
         assert len(res[0].columns) == 1, 'Expecting 1 cell, got %d (%s)' % (len(res[0].columns), str(res[0].columns))
@@ -1303,7 +1304,7 @@ class TestConsistency(Tester):
         client.set_keyspace('ks')
 
         cp = ColumnParent('cf1')
-        res = client.get_range_slices(cp, SlicePredicate(column_names=['1']), KeyRange(start_token='00000000', end_token='00000005', count=2), thrift_bindings.v22.Cassandra.ConsistencyLevel.ALL)
+        res = client.get_range_slices(cp, SlicePredicate(column_names=['1']), KeyRange(start_token='00000000', end_token='00000005', count=2), thrift_bindings.thrift010.Cassandra.ConsistencyLevel.ALL)
 
         assert len(res) == 2, 'Expecting 2 rows, got %d (%s)' % (len(res), str(res))
 

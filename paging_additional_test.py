@@ -29,7 +29,7 @@ class TestAggregatePaging(BasePagingTester, PageAssertionMixin):
                +--------+--------+
           *5001| [uuid] |testing |
             """
-        create_rows(data, session, 'paging_test', cl=CL.ALL, format_funcs={'id': random_txt, 'value': unicode})
+        create_rows(data, session, 'paging_test', cl=CL.ALL, format_funcs={'id': random_txt, 'value': str})
 
         # Note that both page size and limit is less than actual num of rows.
         # Thus we should always get a count == limit
@@ -57,7 +57,7 @@ class TestAggregatePaging(BasePagingTester, PageAssertionMixin):
         session.execute("CREATE TABLE paging_test (pk int, ck1 int, ck2 text, v int, PRIMARY KEY(pk, ck1, ck2))")
 
         def random_txt(text):
-            return unicode(uuid.uuid4())
+            return str(uuid.uuid4())
 
         data = """
                | pk | ck1 | ck2          | v |
@@ -155,7 +155,7 @@ class TestLargePaging(TestPagingSavedQueryStateBase, PageAssertionMixin):
 
     def fill_data(self, data, data_size, keys, vals, format_funcs={}):
         def get_key(text):
-            return unicode(uuid.uuid4())
+            return str(uuid.uuid4())
 
         def get_data(text):
             return ' ' * data_size
@@ -246,7 +246,7 @@ class TestPagingSavedQueryStateSingularRanges(TestPagingSavedQueryStateBase):
 
         if len(kwargs) > 0:
             options = []
-            for key, val in kwargs.iteritems():
+            for key, val in kwargs.items():
                 if type(val) is float or type(val) is int:
                     options.append("{}={}".format(key, val))
                 else:
@@ -275,7 +275,7 @@ class TestPagingSavedQueryStateSingularRanges(TestPagingSavedQueryStateBase):
                     format_funcs={
                         'pk': int,
                         'ck': int,
-                        'val': unicode,
+                        'val': str,
                     })
 
         return [

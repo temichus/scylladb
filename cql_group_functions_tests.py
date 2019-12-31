@@ -70,7 +70,7 @@ class TestGroupFunctions(Tester):
         else:
             single_column = 'id int PRIMARY KEY, {}'.format(column.format(single_type))
         self.create_table(session=session, table_name=table_name, single_column=single_column)
-        for i in xrange(self.loop_number):
+        for i in range(self.loop_number):
             self.populate_all_types_table(session=session, table_name=table_name, column_name=single_type, index=i)
         self.check_results(session=session, table_name=table_name, single_type=single_type)
         session.execute('DROP TABLE {}'.format(table_name))

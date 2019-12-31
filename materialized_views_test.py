@@ -1,5 +1,6 @@
 import collections
-import sys, os
+import sys
+import os
 import time
 import traceback
 import random
@@ -7,6 +8,7 @@ import re
 from functools import partial
 from multiprocessing import Process, Queue, cpu_count
 from unittest import skip, skipIf
+
 from cassandra import ConsistencyLevel, WriteFailure
 from cassandra.cluster import Cluster
 from cassandra.query import SimpleStatement
@@ -86,7 +88,7 @@ class TestMaterializedViews(Tester):
         cluster = self.cluster
         populate = nodes if isinstance(nodes, list) else [nodes, 0]
         cluster.populate(populate)
-        self.rf = sum([v for v in rf.itervalues()]) if isinstance(rf, dict) else rf
+        self.rf = sum([v for v in rf.values()]) if isinstance(rf, dict) else rf
         if options:
             cluster.set_configuration_options(values=options)
         cluster.start(jvm_args=jvm_args,wait_other_notice=True,wait_for_binary_proto=True)
@@ -331,7 +333,7 @@ class TestMaterializedViews(Tester):
             debug('Try to select rows count from mview.users table. Expected integer vale, received: {}'.format(exp_res[0].count))
             raise
         except Exception as e:
-            debug('Try to select rows count from mview.users table. Failed with error: {}'.format(e.message))
+            debug('Try to select rows count from mview.users table. Failed with error: {}'.format(e))
             raise
 
         assert_row_count(session, 'users_by_first_name', exp_res, consistency_level=cl, num_attempts=num_attempts)
@@ -364,17 +366,17 @@ class TestMaterializedViews(Tester):
         query = 'select id, clmn_int0, %s from {tbl}{where}{f}' % mv.mv_columns_list[0]
 
         exp_query = 'select id, {clmn1}, {clmn2} from {tbl}{where}{f}'.format(clmn1=tm.column_names_list[-1],
-                                                                              clmn2=mv.mv_where_restriction.keys()[0],
+                                                                              clmn2=list(mv.mv_where_restriction.keys())[0],
                                                                               tbl=tm.table_name, where='', f='')
         act_query = query.format(tbl=mv.mv_name, where='', f='')
         assert_two_queries_equal(session, exp_query, session, act_query, consistency_level=ConsistencyLevel.QUORUM, session_timeout=120,
                                  group=True, groupby_column1=tm.column_names_list[-1], groupby_column2=tm.column_names_list[-1],
-                                 restrict_column1=mv.mv_where_restriction.keys()[0], restrict_value1=mv_restrict_value)
+                                 restrict_column1=list(mv.mv_where_restriction.keys())[0], restrict_value1=mv_restrict_value)
 
         proc_functions = [{'func': self._add_few_nodes, 'args': (2, 'dc2')},
                           {'func': self.add_mv_records if change == 'insert' else self._multiple_int_updates,
                            'args': (tm, mv_restrict_value) if change == 'insert' else
-                                   (session, tm, tm.column_names_list[-1], mv.mv_where_restriction.keys()[0], mv_restrict_value, [100, 200]),
+                                   (session, tm, tm.column_names_list[-1], list(mv.mv_where_restriction.keys()[0]), mv_restrict_value, [100, 200]),
                            'kwargs':  {'delay': 5, 'inserts': more_inserts} if change == 'insert' else {'delay': 5, 'updates': 200}}]
 
         run_in_parallel(proc_functions)
@@ -386,7 +388,7 @@ class TestMaterializedViews(Tester):
                 session = self.patient_exclusive_cql_connection(node, keyspace=tm.keyspace)
                 assert_two_queries_equal(session, exp_query, session, act_query, consistency_level=ConsistencyLevel.ALL, session_timeout=120,
                                          group=True, groupby_column1=tm.column_names_list[-1], groupby_column2=tm.column_names_list[-1],
-                                         restrict_column1=mv.mv_where_restriction.keys()[0], restrict_value1=mv_restrict_value)
+                                         restrict_column1=list(mv.mv_where_restriction.keys())[0], restrict_value1=mv_restrict_value)
 
     def add_mv_records(self, tm, mv_restrict_value=None, inserts=10, delay=0):
         if delay:
@@ -405,7 +407,7 @@ class TestMaterializedViews(Tester):
         debug('Start updates')
         res = session.execute('select * from {}'.format(tm.table_name)).current_rows
         updated_column_index = [i for i, clmn in enumerate(res[0]._fields) if clmn == updated_column][0]
-        for _ in xrange(updates):
+        for _ in range(updates):
             time.sleep(1)
             while True:
                 i = random.randint(0, len(res)-1)
@@ -423,7 +425,7 @@ class TestMaterializedViews(Tester):
             debug('Sleep for {} seconds'.format(delay))
             time.sleep(delay)
 
-        for i in xrange(0, nodes):
+        for i in range(0, nodes):
             debug('Bootstrapping {0} node in {1}'.format(i+1, data_center))
             self._add_new_node(data_center=data_center)
 
@@ -450,7 +452,7 @@ class TestMaterializedViews(Tester):
     # TODO: update non-key column
     def _parallel_updates_inserts(self, records, nodes, rf, mvs_amount):
         def _assert_rows_count(expected_rows=None):
-            names_list = [tm.table_name] + tm.materialized_views.keys() if expected_rows else tm.materialized_views.keys()
+            names_list = [tm.table_name] + list(tm.materialized_views.keys() if expected_rows else tm.materialized_views.keys())
             for name in names_list:
                 if expected_rows:
                     assert_row_count_in_select(session=session, query="SELECT * FROM {}".format(name),
@@ -466,7 +468,7 @@ class TestMaterializedViews(Tester):
                                      }, pk_columns={}, cl_columns = {})
         tm.create_table()
 
-        for i in xrange(1, len(tm.column_names_list)):
+        for i in range(1, len(tm.column_names_list)):
             ctype = tm.columns_list[i].split(' ')[1]
             mv = MaterializedViewManager(tm)
             mv.create_materialized_view(mv_columns={ctype: {'names': [tm.column_names_list[i]]}},
@@ -497,7 +499,7 @@ class TestMaterializedViews(Tester):
 
         # Validate data
         query_template = 'select {clmn} from {tbl}'
-        for mv_name, mv in tm.materialized_views.iteritems():
+        for mv_name, mv in tm.materialized_views.items():
             exp_query = query_template.format(clmn=mv.mv_columns_list[-1], tbl=tm.table_name)
             act_query = query_template.format(clmn=mv.mv_columns_list[-1], tbl=mv_name)
             debug('Compare: {0} AND {1}'.format(exp_query, act_query))
@@ -516,7 +518,7 @@ class TestMaterializedViews(Tester):
         print(result)
 
     def _create_mvs_by_one_column(self, tm, mvs_amount, wait_for_view_built=False):
-        for i in xrange(1, mvs_amount+1):
+        for i in range(1, mvs_amount+1):
             mv = MaterializedViewManager(tm)
             mv.create_materialized_view(mv_columns={tm.columns_list[i].split(' ')[1]: {'names': [tm.column_names_list[i]]}},
                                         mv_pk_column={'names': [tm.column_names_list[i]]}, wait_for_view_built=wait_for_view_built)
@@ -556,7 +558,7 @@ class TestMaterializedViews(Tester):
         data = [2, 5, 12, 45, 53, 78, 36, 85, 98, 100]
         tm.prefill_table(10000, data={'int': data})
 
-        for i in xrange(2, mvs+1):
+        for i in range(2, mvs+1):
             mv = MaterializedViewManager(tm)
             mv.create_materialized_view(mv_columns={'int': {'names': [tm.column_names_list[i]]}},
                                         mv_pk_column={'names': [tm.column_names_list[i]]},
@@ -564,15 +566,15 @@ class TestMaterializedViews(Tester):
                                         'names': {tm.pk_list[1]: {'operator': '=', 'value': data[i-1]}}})
 
         query = 'select id, clmn_int0, {clmn} from {tbl}'
-        for mv_name, mv in tm.materialized_views.iteritems():
+        for mv_name, mv in tm.materialized_views.items():
             act_query = query.format(clmn=mv.mv_columns_list[0], tbl=mv.mv_name)
             exp_query = query.format(clmn=mv.mv_columns_list[0], tbl=tm.table_name)
             self.eventually(lambda: assert_two_queries_equal(session, exp_query, session, act_query, consistency_level=ConsistencyLevel.QUORUM,
                                      session_timeout=120,
                                      group=True, groupby_column1=mv.mv_columns_list[0],
                                      groupby_column2=mv.mv_columns_list[0],
-                                     restrict_column1=mv.mv_where_restriction.keys()[0],
-                                     restrict_value1=mv.mv_where_restriction[mv.mv_where_restriction.keys()[0]]['value']))
+                                     restrict_column1=list(mv.mv_where_restriction.keys())[0],
+                                     restrict_value1=mv.mv_where_restriction[list(mv.mv_where_restriction.keys())[0]]['value']))
 
     def mv_populating_from_existing_data_during_inserts_test(self):
         """ Create 10 materialized views in parallel with base table prefill """
@@ -618,13 +620,13 @@ class TestMaterializedViews(Tester):
         rows_after_test = prefill
 
         if change_type == 'insert':
-            change_func = {'func': tm.prefill_table, 'args': (prefill / 2,), 'kwargs': {'start_id_from': prefill+1, 'delay': 1}}
+            change_func = {'func': tm.prefill_table, 'args': (prefill // 2,), 'kwargs': {'start_id_from': prefill+1, 'delay': 1}}
             rows_after_test = prefill*1.5
         elif change_type=='update':
             change_func = {'func': tm.multiple_int_updates_by_id, 'args': ([-100, -1],),
                            'kwargs': {'same_id': False, 'delay': 1}}
         elif change_type=='delete':
-            change_func = {'func': tm.multiple_deletes, 'args': ({'id': [i for i in xrange(1000, 6000)]},), 'kwargs': {'delay': 1}}
+            change_func = {'func': tm.multiple_deletes, 'args': ({'id': [i for i in range(1000, 6000)]},), 'kwargs': {'delay': 1}}
             rows_after_test = max(0, prefill - 5000)
         elif change_type == 'add node':
             change_func = {'func': self._add_new_node, 'kwargs': {'delay': 1}}
@@ -655,7 +657,7 @@ class TestMaterializedViews(Tester):
 
         try:
             if change_type not in ['stop node', 'restart node']:
-                for mv_name in tm.materialized_views.iterkeys():
+                for mv_name in tm.materialized_views.keys():
                     wait_for_view(cluster=self.cluster, session=session, ks=tm.keyspace, view=mv_name)
 
                 self._validate_data_in_mvs(tm=tm, session=session, table_expected_rows=rows_after_test,
@@ -663,7 +665,7 @@ class TestMaterializedViews(Tester):
                                            node_action=change_type.split(' ')[0])
             else:
                 self.cluster.nodelist()[1].start()
-                for mv_name in tm.materialized_views.iterkeys():
+                for mv_name in tm.materialized_views.keys():
                     wait_for_view(cluster=self.cluster, session=session, ks=tm.keyspace, view=mv_name)
 
                 self._validate_data_in_mvs(tm=tm, session=session, table_expected_rows=rows_after_test,
@@ -704,7 +706,7 @@ class TestMaterializedViews(Tester):
                               consistency_level=None):
         query = 'select * from {}'
         consistency_level = self.set_consistency_level(node_action=node_action, cl=consistency_level)
-        for mv_name, mv in tm.materialized_views.iteritems():
+        for mv_name, mv in tm.materialized_views.items():
             self._assert_count_table_mv(session, tm.table_name, table_expected_rows, mv_name, mv_expected_rows, cl=consistency_level)
 
             self.eventually(lambda: assert_two_queries_equal(session, query.format(tm.table_name),
@@ -731,14 +733,14 @@ class TestMaterializedViews(Tester):
 
         proc_functions = [
                           {'func': tm.multiple_int_updates_by_id, 'args': ([-100, -1],),
-                           'kwargs': {'same_id': False, 'ids': [0 for _ in xrange(0, 1001)],
+                           'kwargs': {'same_id': False, 'ids': [0 for _ in range(0, 1001)],
                                       'updates': 1000}},
-                          {'func': tm.multiple_deletes, 'args': ({'id': [0 for _ in xrange(0, 1001)]},)}]
+                          {'func': tm.multiple_deletes, 'args': ({'id': [0 for _ in range(0, 1001)]},)}]
         run_in_parallel(proc_functions)
 
         self.cluster.flush()
 
-        mv_name, mv = next(tm.materialized_views.iteritems())
+        mv_name, mv = next(iter(tm.materialized_views.items()))
         self.eventually(lambda: assert_two_queries_equal(session, 'select * from {}'.format(tm.table_name),
                                  session, 'select * from {}'.format(mv_name),
                                  consistency_level=ConsistencyLevel.QUORUM,
@@ -765,7 +767,7 @@ class TestMaterializedViews(Tester):
 
         session = self.prepare(rf=rf, nodes=4, options={'hinted_handoff_enabled': False, 'read_repair_chance': 0.0})
         session2, session3 = map(self.patient_cql_connection, [self.cluster.nodelist()[1], self.cluster.nodelist()[2]])
-        map(self.create_ks, [session2, session3], ['multi1', 'multi2'], [rf, rf])
+        list(map(self.create_ks, [session2, session3], ['multi1', 'multi2'], [rf, rf]))
         proc_functions = []
         for s in [session, session2, session3]:
             proc_functions.append({'func': self._multi_mvs_on_different_base_tables, 'args': (s,),
@@ -785,11 +787,11 @@ class TestMaterializedViews(Tester):
                 self._create_mvs_by_one_column(base_table, mvs_amount=mvs, wait_for_view_built=True)
 
         base_tables = []
-        for i in xrange(tables):
+        for i in range(tables):
             tm = TableManager(session, self.cluster, table_name='tm_table{}'.format(i),
-                          columns={'int': {'amount': mvs / 2, 'frozen': False,
+                          columns={'int': {'amount': mvs // 2, 'frozen': False,
                                            'value length': {'min': 1, 'max': 100}},
-                                   'text': {'amount': mvs / 2, 'frozen': False,
+                                   'text': {'amount': mvs // 2, 'frozen': False,
                                            'value length': {'min': 1, 'max': 10}}
                                    }, pk_columns={}, cl_columns={}, keyspace=session.keyspace)
             tm.create_table()
@@ -825,7 +827,7 @@ class TestMaterializedViews(Tester):
 
         def _drop_mv(delay=0):
             time.sleep(delay)
-            next(tm.materialized_views.itervalues()).drop_mv()
+            next(iter(tm.materialized_views.values())).drop_mv()
 
         session = self.prepare(rf=3, nodes=4)
         tm = TableManager(session, self.cluster,
@@ -952,7 +954,7 @@ class TestMaterializedViews(Tester):
 
         session.execute("CREATE TABLE t (id int PRIMARY KEY, v int)")
 
-        for i in xrange(1000):
+        for i in range(1000):
             session.execute("INSERT INTO t (id, v) VALUES ({v}, {v})".format(v=i))
 
         session.execute(("CREATE MATERIALIZED VIEW t_by_v AS SELECT * FROM t WHERE v IS NOT NULL "
@@ -960,7 +962,7 @@ class TestMaterializedViews(Tester):
 
         wait_for_view(cluster=self.cluster, session=session, ks='ks', view='t_by_v')
 
-        for i in xrange(1000):
+        for i in range(1000):
             assert_one(session, "SELECT * FROM t_by_v WHERE v = {}".format(i), [i, i])
 
     def populate_mv_after_insert_wide_rows_test(self):
@@ -970,8 +972,8 @@ class TestMaterializedViews(Tester):
 
         session.execute("CREATE TABLE t (id int, v int, PRIMARY KEY (id, v))")
 
-        for i in xrange(5):
-            for j in xrange(10000):
+        for i in range(5):
+            for j in range(10000):
                 session.execute("INSERT INTO t (id, v) VALUES ({}, {})".format(i, j))
 
         session.execute(("CREATE MATERIALIZED VIEW t_by_v AS SELECT * FROM t WHERE v IS NOT NULL "
@@ -979,8 +981,8 @@ class TestMaterializedViews(Tester):
 
         wait_for_view(cluster=self.cluster, session=session, ks='ks', view='t_by_v')
 
-        for i in xrange(5):
-            for j in xrange(10000):
+        for i in range(5):
+            for j in range(10000):
                 assert_one(session, "SELECT * FROM t_by_v WHERE id = {} AND v = {}".format(i, j), [j, i])
 
     @require('2431')
@@ -1186,15 +1188,15 @@ class TestMaterializedViews(Tester):
                          "WHERE v IS NOT NULL AND id IS NOT NULL PRIMARY KEY (v, id)"))
 
         debug("Writing 1k to base")
-        for i in xrange(1000):
+        for i in range(1000):
             session.execute("INSERT INTO t (id, v) VALUES ({id}, {v})".format(id=i, v=-i))
 
         debug("Reading 1k from view")
-        for i in xrange(1000):
+        for i in range(1000):
             self.eventually_assert_one(session, "SELECT * FROM t_by_v WHERE v = {}".format(-i), [-i, i])
 
         debug("Reading 1k from base")
-        for i in xrange(1000):
+        for i in range(1000):
             assert_one(session, "SELECT * FROM t WHERE id = {}".format(i), [i, -i])
 
         debug("Bootstrapping new node in another dc")
@@ -1208,15 +1210,15 @@ class TestMaterializedViews(Tester):
         session2 = self.patient_exclusive_cql_connection(node4)
 
         debug("Verifying data from new node in view")
-        for i in xrange(1000):
+        for i in range(1000):
             self.eventually_assert_one(session2, "SELECT * FROM ks.t_by_v WHERE v = {}".format(-i), [-i, i])
 
         debug("Inserting 100 into base")
-        for i in xrange(1000, 1100):
+        for i in range(1000, 1100):
             session.execute("INSERT INTO t (id, v) VALUES ({id}, {v})".format(id=i, v=-i))
 
         debug("Verify 100 in view")
-        for i in xrange(1000, 1100):
+        for i in range(1000, 1100):
             self.eventually_assert_one(session, "SELECT * FROM t_by_v WHERE v = {}".format(-i), [-i, i])
 
         self.check_errors(node=self.cluster.nodelist()[0], exclude_errors='migration_task - Can''t send migration request')
@@ -1251,7 +1253,7 @@ class TestMaterializedViews(Tester):
         update_to = 5000
         proc_functions = ([{'func': self._add_new_node, 'args': (), 'kwargs': {}}]
                           + [{'func': tm.update_table, 'args': ({'by type': {'int': update_to}},
-                                             {'by name': {'id': {'operator': 'in', 'value': [i for i in xrange(start, start + 100)]}}}),
+                                             {'by name': {'id': {'operator': 'in', 'value': [i for i in range(start, start + 100)]}}}),
                                               'kwargs': {'delay': 5}}
                              for start in range(100, 4900, 100)])
         results = run_in_parallel(proc_functions)
@@ -1319,21 +1321,21 @@ class TestMaterializedViews(Tester):
         session.execute(("CREATE MATERIALIZED VIEW t_by_v AS SELECT * FROM t "
                          "WHERE v IS NOT NULL AND id IS NOT NULL PRIMARY KEY (v, id)"))
 
-        for i in xrange(1000):
+        for i in range(1000):
             session.execute("INSERT INTO t (id, v) VALUES ({id}, {v})".format(id=i, v=-i))
 
-        for i in xrange(1000):
+        for i in range(1000):
             assert_one(session, "SELECT * FROM t_by_v WHERE v = {}".format(-i), [-i, i])
 
         session2 = self._add_new_node(data_center='dc1')
 
-        for i in xrange(1000):
+        for i in range(1000):
             assert_one(session2, "SELECT * FROM ks.t_by_v WHERE v = {}".format(-i), [-i, i])
 
-        for i in xrange(1000, 1100):
+        for i in range(1000, 1100):
             session.execute("INSERT INTO t (id, v) VALUES ({id}, {v})".format(id=i, v=-i))
 
-        for i in xrange(1000, 1100):
+        for i in range(1000, 1100):
             assert_one(session, "SELECT * FROM t_by_v WHERE v = {}".format(-i), [-i, i])
 
     # @skip('unrecognised option \'-Dcassandra.migration_task_wait_in_seconds\'')
@@ -1354,26 +1356,26 @@ class TestMaterializedViews(Tester):
         session.execute(("CREATE MATERIALIZED VIEW t_by_v AS SELECT * FROM t "
                          "WHERE v IS NOT NULL AND id IS NOT NULL PRIMARY KEY (v, id)"))
 
-        for i in xrange(10):
-            for j in xrange(100):
+        for i in range(10):
+            for j in range(100):
                 session.execute("INSERT INTO t (id, v) VALUES ({id}, {v})".format(id=i, v=j))
 
         self.cluster.flush()
 
-        for i in xrange(10):
-            for j in xrange(100):
+        for i in range(10):
+            for j in range(100):
                 assert_one(session, "SELECT * FROM t WHERE id = {} and v = {}".format(i, j), [i, j])
                 assert_one(session, "SELECT * FROM t_by_v WHERE id = {} and v = {}".format(i, j), [j, i])
 
-        for i in xrange(10):
-            for j in xrange(100):
+        for i in range(10):
+            for j in range(100):
                 if j % 10 == 0:
                     session.execute("DELETE FROM t WHERE id = {} AND v >= {} and v < {}".format(i, j, j + 2))
 
         self.cluster.flush()
 
-        for i in xrange(10):
-            for j in xrange(100):
+        for i in range(10):
+            for j in range(100):
                 if j % 10 == 0 or (j - 1) % 10 == 0:
                     assert_none(session, "SELECT * FROM t WHERE id = {} and v = {}".format(i, j))
                     assert_none(session, "SELECT * FROM t_by_v WHERE id = {} and v = {}".format(i, j))
@@ -1386,8 +1388,8 @@ class TestMaterializedViews(Tester):
                                       # , jvm_args=["-Dcassandra.migration_task_wait_in_seconds={}".format(MIGRATION_WAIT)],
                                       # configuration_options={'max_mutation_size_in_kb': 20}
                                       )
-        for i in xrange(10):
-            for j in xrange(100):
+        for i in range(10):
+            for j in range(100):
                 if j % 10 == 0 or (j - 1) % 10 == 0:
                     assert_none(session2, "SELECT * FROM ks.t WHERE id = {} and v = {}".format(i, j))
                     assert_none(session2, "SELECT * FROM ks.t_by_v WHERE id = {} and v = {}".format(i, j))
@@ -1395,12 +1397,12 @@ class TestMaterializedViews(Tester):
                     assert_one(session2, "SELECT * FROM ks.t WHERE id = {} and v = {}".format(i, j), [i, j])
                     assert_one(session2, "SELECT * FROM ks.t_by_v WHERE id = {} and v = {}".format(i, j), [j, i])
 
-        for i in xrange(10):
-            for j in xrange(100, 110):
+        for i in range(10):
+            for j in range(100, 110):
                 session.execute("INSERT INTO t (id, v) VALUES ({id}, {v})".format(id=i, v=j))
 
-        for i in xrange(10):
-            for j in xrange(110):
+        for i in range(10):
+            for j in range(110):
                 if j < 100 and (j % 10 == 0 or (j - 1) % 10 == 0):
                     assert_none(session2, "SELECT * FROM ks.t WHERE id = {} and v = {}".format(i, j))
                     assert_none(session2, "SELECT * FROM ks.t_by_v WHERE id = {} and v = {}".format(i, j))
@@ -1424,14 +1426,14 @@ class TestMaterializedViews(Tester):
         session.execute(("CREATE MATERIALIZED VIEW t_by_v AS SELECT * FROM t "
                          "WHERE v IS NOT NULL AND id IS NOT NULL PRIMARY KEY (v, id)"))
 
-        for i in xrange(5):
-            for j in xrange(5000):
+        for i in range(5):
+            for j in range(5000):
                 session.execute("INSERT INTO t (id, v) VALUES ({id}, {v})".format(id=i, v=j))
 
         self.cluster.flush()
 
-        for i in xrange(5):
-            for j in xrange(5000):
+        for i in range(5):
+            for j in range(5000):
                 assert_one(session, "SELECT * FROM t_by_v WHERE id = {} and v = {}".format(i, j), [j, i])
 
         # Scylla does not support migration_task_wait_in_seconds and max_mutation_size_in_kb parameters
@@ -1439,16 +1441,16 @@ class TestMaterializedViews(Tester):
                                       # , jvm_args=["-Dcassandra.migration_task_wait_in_seconds={}".format(MIGRATION_WAIT)],
                                       # configuration_options={'max_mutation_size_in_kb': 20}
                                       )
-        for i in xrange(5):
-            for j in xrange(5000):
+        for i in range(5):
+            for j in range(5000):
                 assert_one(session2, "SELECT * FROM ks.t_by_v WHERE id = {} and v = {}".format(i, j), [j, i])
 
-        for i in xrange(5):
-            for j in xrange(5100):
+        for i in range(5):
+            for j in range(5100):
                 session.execute("INSERT INTO t (id, v) VALUES ({id}, {v})".format(id=i, v=j))
 
-        for i in xrange(5):
-            for j in xrange(5100):
+        for i in range(5):
+            for j in range(5100):
                 assert_one(session, "SELECT * FROM t_by_v WHERE id = {} and v = {}".format(i, j), [j, i])
 
     @skip("unrecognised option '-Dcassandra.write_survey=true'")
@@ -1465,19 +1467,19 @@ class TestMaterializedViews(Tester):
         session.execute(("CREATE MATERIALIZED VIEW t_by_v AS SELECT * FROM t "
                          "WHERE v IS NOT NULL AND id IS NOT NULL PRIMARY KEY (v, id)"))
 
-        for i in xrange(1000):
+        for i in range(1000):
             session.execute("INSERT INTO t (id, v) VALUES ({id}, {v})".format(id=i, v=-i))
 
-        for i in xrange(1000):
+        for i in range(1000):
             assert_one(session, "SELECT * FROM t_by_v WHERE v = {}".format(-i), [-i, i])
 
         node4 = new_node(self.cluster, data_center='dc1')
         node4.start(wait_for_binary_proto=True, jvm_args=["-Dcassandra.write_survey=true"])
 
-        for i in xrange(1000, 1100):
+        for i in range(1000, 1100):
             session.execute("INSERT INTO t (id, v) VALUES ({id}, {v})".format(id=i, v=-i))
 
-        for i in xrange(1100):
+        for i in range(1100):
             assert_one(session, "SELECT * FROM t_by_v WHERE v = {}".format(-i), [-i, i])
 
     def allow_filtering_test(self):
@@ -1491,10 +1493,10 @@ class TestMaterializedViews(Tester):
         session.execute(("CREATE MATERIALIZED VIEW t_by_v2 AS SELECT * FROM t "
                          "WHERE v2 IS NOT NULL AND id IS NOT NULL PRIMARY KEY (v2, id)"))
 
-        for i in xrange(1000):
+        for i in range(1000):
             session.execute("INSERT INTO t (id, v, v2, v3) VALUES ({v}, {v}, 'a', 3.0)".format(v=i))
 
-        for i in xrange(1000):
+        for i in range(1000):
             assert_one(session, "SELECT * FROM t_by_v WHERE v = {v}".format(v=i), [i, i, 'a', 3.0])
 
         rows = list(session.execute("SELECT * FROM t_by_v2 WHERE v2 = 'a'"))
@@ -1503,7 +1505,7 @@ class TestMaterializedViews(Tester):
         assert_invalid(session, "SELECT * FROM t_by_v WHERE v = 1 AND v2 = 'a'", expected=Exception)
         assert_invalid(session, "SELECT * FROM t_by_v2 WHERE v2 = 'a' AND v = 1", expected=Exception)
 
-        for i in xrange(1000):
+        for i in range(1000):
             assert_one(
                 session,
                 "SELECT * FROM t_by_v WHERE v = {} AND v3 = 3.0 ALLOW FILTERING".format(i),
@@ -1548,8 +1550,8 @@ class TestMaterializedViews(Tester):
                                         wait_for_view_built=False)
         except Exception as e:
             expected_error = 'Non-primary key columns cannot be restricted in the SELECT statement used for materialized ' \
-                               'view creation (got restrictions on: {})'.format(next(mv.mv_where_restriction.iterkeys()))
-            assert e.message == expected_error, '\nExpected error: {0}.\n Received error: {1}'.format(expected_error, e.message)
+                               'view creation (got restrictions on: {})'.format(next(mv.mv_where_restriction.keys()))
+            assert str(e) == expected_error, '\nExpected error: {0}.\n Received error: {1}'.format(expected_error, str(e))
 
     def ttl_remove_with_non_mv_column_test(self):
         """
@@ -1692,10 +1694,10 @@ class TestMaterializedViews(Tester):
         session.execute(("CREATE MATERIALIZED VIEW t_by_v2 AS SELECT * FROM t "
                          "WHERE v2 IS NOT NULL AND id IS NOT NULL PRIMARY KEY (v2, id)"))
 
-        for i in xrange(100):
+        for i in range(100):
             session.execute("INSERT INTO t (id, v, v2, v3) VALUES ({v}, {v}, {v}, {v}) USING TTL 10".format(v=i))
 
-        for i in xrange(100):
+        for i in range(100):
             assert_one(session, "SELECT * FROM t_by_v2 WHERE v2 = {}".format(i), [i, i, i, i])
 
         time.sleep(20)
@@ -1839,7 +1841,7 @@ class TestMaterializedViews(Tester):
                          "WHERE v IS NOT NULL AND id IS NOT NULL PRIMARY KEY (v, id)"))
 
         debug("Inserting initial data using IF NOT EXISTS")
-        for i in xrange(1000):
+        for i in range(1000):
             session.execute(
                 "INSERT INTO t (id, v, v2, v3) VALUES ({v}, {v}, 'a', 3.0) IF NOT EXISTS".format(v=i)
             )
@@ -1847,7 +1849,7 @@ class TestMaterializedViews(Tester):
         #self._replay_batchlogs()
 
         debug("All rows should have been inserted")
-        for i in xrange(1000):
+        for i in range(1000):
             assert_one(
                 session,
                 "SELECT * FROM t_by_v WHERE v = {}".format(i),
@@ -1855,7 +1857,7 @@ class TestMaterializedViews(Tester):
             )
 
         debug("Tyring to UpInsert data with a different value using IF NOT EXISTS")
-        for i in xrange(1000):
+        for i in range(1000):
             v = i * 2
             session.execute(
                 "INSERT INTO t (id, v, v2, v3) VALUES ({id}, {v}, 'a', 3.0) IF NOT EXISTS".format(id=i, v=v)
@@ -1863,7 +1865,7 @@ class TestMaterializedViews(Tester):
         #self._replay_batchlogs()
 
         debug("No rows should have changed")
-        for i in xrange(1000):
+        for i in range(1000):
             assert_one(
                 session,
                 "SELECT * FROM t_by_v WHERE v = {}".format(i),
@@ -1871,7 +1873,7 @@ class TestMaterializedViews(Tester):
             )
 
         debug("Update the 10 first rows with a different value")
-        for i in xrange(1000):
+        for i in range(1000):
             v = i + 2000
             session.execute(
                 "UPDATE t SET v={v} WHERE id = {id} IF v < 10".format(id=i, v=v)
@@ -1881,7 +1883,7 @@ class TestMaterializedViews(Tester):
         debug("Verify that only the 10 first rows changed.")
         results = list(session.execute("SELECT * FROM t_by_v;"))
         self.assertEqual(len(results), 1000)
-        for i in xrange(1000):
+        for i in range(1000):
             v = i + 2000 if i < 10 else i
             assert_one(
                 session,
@@ -1890,7 +1892,7 @@ class TestMaterializedViews(Tester):
             )
 
         debug("Deleting the first 10 rows")
-        for i in xrange(1000):
+        for i in range(1000):
             v = i + 2000
             session.execute(
                 "DELETE FROM t WHERE id = {id} IF v = {v} ".format(id=i, v=v)
@@ -1900,7 +1902,7 @@ class TestMaterializedViews(Tester):
         debug("Verify that only the 10 first rows have been deleted.")
         results = list(session.execute("SELECT * FROM t_by_v;"))
         self.assertEqual(len(results), 990)
-        for i in xrange(10, 1000):
+        for i in range(10, 1000):
             assert_one(
                 session,
                 "SELECT * FROM t_by_v WHERE v = {}".format(i),
@@ -1931,7 +1933,7 @@ class TestMaterializedViews(Tester):
         rows = 200000
         debug("Inserting initial data")
         insert_stmt = session.prepare("INSERT INTO t (id, v, v2, v3) VALUES (?, ?, ?, ?)")
-        for i in xrange(rows):
+        for i in range(rows):
             session.execute(insert_stmt, (i, i, 'a', 3.0))
 
         debug("Create a MV")
@@ -1971,7 +1973,7 @@ class TestMaterializedViews(Tester):
         rows = 200000
         debug("Inserting initial data")
         insert_stmt = session.prepare("INSERT INTO t (id, v, v2, v3) VALUES (?, ?, ?, ?)")
-        for i in xrange(rows):
+        for i in range(rows):
             session.execute(insert_stmt, (i, i, 'a', 3.0))
 
         debug("Create a MV")
@@ -2001,22 +2003,22 @@ class TestMaterializedViews(Tester):
         assert_row_count(session, 't_by_v', rows, consistency_level=ConsistencyLevel.ALL)
 
     def interrupt_build_process_with_resharding_low_to_half_test(self):
-        """Test that an interrupted MV build process is resumed, with resharding 1 -> cpu_count() / 2"""
-        self._do_resharding_test('1', str(cpu_count() / 2))
+        """Test that an interrupted MV build process is resumed, with resharding 1 -> cpu_count() // 2"""
+        self._do_resharding_test('1', str(cpu_count() // 2))
 
     def interrupt_build_process_with_resharding_half_to_max_test(self):
-        """Test that an interrupted MV build process is resumed, with resharding cpu_count() / 2 -> cpu_count()"""
+        """Test that an interrupted MV build process is resumed, with resharding cpu_count() // 2 -> cpu_count()"""
         # For some reason, Scylla's hwloc only sees cpu_count() - 1 cpus
-        self._do_resharding_test(str(cpu_count() / 2), str(cpu_count() - 1))
+        self._do_resharding_test(str(cpu_count() // 2), str(cpu_count() - 1))
 
     def interrupt_build_process_with_resharding_max_to_half_test(self):
-        """Test that an interrupted MV build process is resumed, with resharding cpu_count() -> cpu_count() / 2"""
+        """Test that an interrupted MV build process is resumed, with resharding cpu_count() -> cpu_count() // 2"""
         # For some reason, Scylla's hwloc only sees cpu_count() - 1 cpus
-        self._do_resharding_test(str(cpu_count() - 1), str(cpu_count() / 2))
+        self._do_resharding_test(str(cpu_count() - 1), str(cpu_count() // 2))
 
     def interrupt_build_process_with_resharding_half_to_low_test(self):
-        """Test that an interrupted MV build process is resumed, with resharding cpu_count() / 2 -> 1"""
-        self._do_resharding_test(str(cpu_count() / 2), '1')
+        """Test that an interrupted MV build process is resumed, with resharding cpu_count() // 2 -> 1"""
+        self._do_resharding_test(str(cpu_count() // 2), '1')
 
     @staticmethod
     def set_memory_param(smp):
@@ -2024,16 +2026,16 @@ class TestMaterializedViews(Tester):
 
     def _do_resharding_test(self, smp_before, smp_after):
         session = self.prepare(options={'hinted_handoff_enabled': False, 'shadow_round_ms': 1000, 'prometheus_port': 0, 'read_request_timeout_in_ms': 100000, 'range_request_timeout_in_ms': 100000},
-                               jvm_args=['--smp', smp_before, '--memory', self.set_memory_param(smp_before)])
+                               jvm_args=['--smp', str(smp_before), '--memory', self.set_memory_param(smp_before)])
         node1, node2, node3 = self.cluster.nodelist()
 
         self.allow_log_errors = True
         session.execute("CREATE TABLE t (id int PRIMARY KEY, v int, v2 text, v3 decimal)")
 
         rows = 200000
-        debug("Inserting initial data; smp = " + smp_before)
+        debug("Inserting initial data; smp = {}".format(smp_before))
         insert_stmt = session.prepare("INSERT INTO t (id, v, v2, v3) VALUES (?, ?, ?, ?)")
-        for i in xrange(rows):
+        for i in range(rows):
             session.execute(insert_stmt, (i, i, str(i), 3.0))
 
         debug("Create a couple of MVs")
@@ -2058,10 +2060,10 @@ class TestMaterializedViews(Tester):
             have_finished += len(finished)
         assert have_finished < 2 * len(self.cluster.nodelist())
 
-        debug("Restart the cluster with shards " + smp_after)
+        debug("Restart the cluster with shards {}".format(smp_after))
         for node in self.cluster.nodelist():
             debug("Starting node " + node.name)
-            node.start(jvm_args=['--smp', smp_after, '--memory', self.set_memory_param(smp_after)],
+            node.start(jvm_args=['--smp', str(smp_after), '--memory', self.set_memory_param(smp_after)],
                        wait_for_binary_proto=True)
 
         session = self.patient_cql_connection(node1)
@@ -2091,7 +2093,7 @@ class TestMaterializedViews(Tester):
         rows = 1000000
         debug("Inserting initial data")
         insert_stmt = session.prepare("INSERT INTO t (id, v, v2, v3) VALUES (?, ?, ?, ?)")
-        for i in xrange(rows):
+        for i in range(rows):
             session.execute(insert_stmt, (i, i, 'a', 3.0))
 
         debug("Create a MV")
@@ -2471,11 +2473,11 @@ class TestMaterializedViews(Tester):
                          "WHERE k IS NOT NULL AND a IS NOT NULL PRIMARY KEY (k, a)"))
         session.cluster.control_connection.wait_for_schema_agreement()
 
-        for k in xrange(100):
+        for k in range(100):
             session.execute("INSERT INTO t (k, a, b) VALUES ({}, {}, {})".format(k, k, k))
 
         # generate view row with expired liveness except for row 50 and 99
-        for k in xrange(100):
+        for k in range(100):
             if k == 50 or k == 99:
                 continue
             session.execute("DELETE a FROM t where k = {};".format(k))
@@ -2486,7 +2488,7 @@ class TestMaterializedViews(Tester):
         assert_all(session, "SELECT k,a,b FROM mv", [[50, 50, 50], [99, 99, 99]])
 
         # verify IN
-        keys = xrange(100)
+        keys = range(100)
         assert_one(session, "SELECT k,a,b FROM mv WHERE k in ({}) limit 1".format(', '.join(str(x) for x in keys)),
                    [50, 50, 50])
         assert_all(session, "SELECT k,a,b FROM mv WHERE k in ({}) limit 2".format(', '.join(str(x) for x in keys)),
@@ -2685,7 +2687,7 @@ class TestMaterializedViews(Tester):
 
         node2.stop(wait_other_notice=True)
 
-        for i in xrange(prefill/2):
+        for i in range(prefill//2):
             tm.update_table(set_clause={'by name': {mv_pk_column: 3}},
                         where_filter={'by name': {'id': {'value': i, 'operator': '='}}},
                         consistency_level=ConsistencyLevel.ONE)
@@ -2709,7 +2711,7 @@ class TestMaterializedViews(Tester):
         assert_one(session, 'select count(*) from {1} where {0}=3 ALLOW FILTERING'.format(mv_pk_column, mv.mv_name), [50])
 
         debug('Verify the base table data with CL=ONE - all rows shouldn\'t be updated')
-        for i in xrange(prefill):
+        for i in range(prefill):
             assert_one(session, 'select {0} from {1} where id={2}'.format(mv_pk_column, tm.table_name, i), [2])
 
     def simple_repair_test(self):
@@ -2729,14 +2731,14 @@ class TestMaterializedViews(Tester):
         debug('Shutdown node2')
         node2.stop(wait_other_notice=True)
 
-        for i in xrange(1000):
+        for i in range(1000):
             session.execute("INSERT INTO t (id, v, v2, v3) VALUES ({v}, {v}, 'a', 3.0)".format(v=i))
 
         # Scylla doesn't leverage the batchlog for MVs
         #self._replay_batchlogs()
 
         debug('Verify the data in the MV with CL=ONE')
-        for i in xrange(1000):
+        for i in range(1000):
             assert_one(
                 session,
                 "SELECT * FROM t_by_v WHERE v = {}".format(i),
@@ -2744,7 +2746,7 @@ class TestMaterializedViews(Tester):
             )
 
         debug('Verify the data in the MV with CL=ALL. All should be unavailable.')
-        for i in xrange(1000):
+        for i in range(1000):
             statement = SimpleStatement(
                 "SELECT * FROM t_by_v WHERE v = {}".format(i),
                 consistency_level=ConsistencyLevel.ALL
@@ -2760,7 +2762,7 @@ class TestMaterializedViews(Tester):
         node1.repair()
 
         debug('Verify the data in the MV with CL=ONE. All should be available now.')
-        for i in xrange(1000):
+        for i in range(1000):
             assert_one(
                 session,
                 "SELECT * FROM t_by_v WHERE v = {}".format(i),
@@ -2793,14 +2795,14 @@ class TestMaterializedViews(Tester):
         session.cluster.control_connection.wait_for_schema_agreement()
 
         debug('Write initial data')
-        for i in xrange(1000):
+        for i in range(1000):
             session.execute("INSERT INTO t (id, v, v2, v3) VALUES ({v}, {v}, 'a', 3.0)".format(v=i))
 
         # Scylla doesn't leverage the batchlog for MVs
         #self._replay_batchlogs()
 
         debug('Verify the data in the MV with CL=ALL')
-        for i in xrange(1000):
+        for i in range(1000):
             assert_one(
                 session,
                 "SELECT * FROM t_by_v WHERE v = {}".format(i),
@@ -2833,7 +2835,7 @@ class TestMaterializedViews(Tester):
         session.execute('USE ks')
 
         debug('Verify that there is no data on node1')
-        for i in xrange(1000):
+        for i in range(1000):
             assert_none(
                 session,
                 "SELECT * FROM t_by_v WHERE v = {}".format(i)
@@ -2848,7 +2850,7 @@ class TestMaterializedViews(Tester):
         node1.nodetool("repair ks t")
 
         debug('Verify base table data with cl=ONE')
-        for i in xrange(1000):
+        for i in range(1000):
             assert_one(
                 session,
                 "SELECT * FROM t WHERE id = {}".format(i),
@@ -2856,7 +2858,7 @@ class TestMaterializedViews(Tester):
             )
 
         debug('Verify materialize view data with cl=ONE')
-        for i in xrange(1000):
+        for i in range(1000):
             assert_one(
                 session,
                 "SELECT * FROM t_by_v WHERE v = {}".format(i),
@@ -2880,7 +2882,7 @@ class TestMaterializedViews(Tester):
         def _verify_data_by_one(session, rows, cl, multiply, debug_message, none_data=False):
             debug(debug_message)
             statement_template = "SELECT * FROM ks.t_by_v WHERE v = {}"
-            for i in xrange(rows):
+            for i in range(rows):
                 v = i * 2 if multiply else i
                 statement = statement_template.format(v)
                 if not none_data:
@@ -2905,7 +2907,7 @@ class TestMaterializedViews(Tester):
         rows = 1000
 
         debug('Write initial data to node1 (will be replicated to node4 and node5)')
-        for i in xrange(rows):
+        for i in range(rows):
             session.execute("INSERT INTO ks.t (id, v, v2, v3) VALUES ({v}, {v}, 'a', 3.0)".format(v=i))
 
         _verify_data_by_one(session, rows, ConsistencyLevel.ONE, False, 'Verify the data in the MV on node1 with CL=ONE')
@@ -2922,7 +2924,7 @@ class TestMaterializedViews(Tester):
                             'Verify the data in the MV on node2 with CL=ONE. No rows should be found.', none_data=True)
 
         debug('Write new data in node2 and node3 that overlap those in node1, node4 and node5')
-        for i in xrange(rows):
+        for i in range(rows):
             # we write i*2 as value, instead of i
             session2.execute("INSERT INTO ks.t (id, v, v2, v3) VALUES ({v}, {v}, 'a', 6.0)".format(v=i * 2))
 
@@ -3247,7 +3249,7 @@ class TestMaterializedViews(Tester):
         debug('Write 1000 rows - all node1 writes should fail')
 
         failed = False
-        for i in xrange(1, 1000):
+        for i in range(1, 1000):
             try:
                 session.execute("INSERT INTO t (id, v, v2, v3) VALUES ({v}, {v}, 'a', 3.0) USING TIMESTAMP {v}".format(v=i))
             except WriteFailure:
@@ -3259,7 +3261,7 @@ class TestMaterializedViews(Tester):
         missing_entries = 0
         session = self.patient_exclusive_cql_connection(node1)
         session.execute('USE ks')
-        for i in xrange(1, 1000):
+        for i in range(1, 1000):
             view_entry = rows_to_list(session.execute(SimpleStatement("SELECT * FROM t_by_v WHERE id = {} AND v = {}".format(i, i),
                                                       consistency_level=ConsistencyLevel.ONE)))
             base_entry = rows_to_list(session.execute(SimpleStatement("SELECT * FROM t WHERE id = {}".format(i),
@@ -3285,7 +3287,7 @@ class TestMaterializedViews(Tester):
         debug('Verify that both the base table entry and view are present after commit and batchlog replay')
         session = self.patient_exclusive_cql_connection(node1)
         session.execute('USE ks')
-        for i in xrange(1, 1000):
+        for i in range(1, 1000):
             view_entry = rows_to_list(session.execute(SimpleStatement("SELECT * FROM t_by_v WHERE id = {} AND v = {}".format(i, i),
                                                       consistency_level=ConsistencyLevel.ONE)))
             base_entry = rows_to_list(session.execute(SimpleStatement("SELECT * FROM t WHERE id = {}".format(i),
@@ -3304,7 +3306,7 @@ class TestMaterializedViews(Tester):
         ks = 'ks'
         session.execute('USE {}'.format(ks))
 
-        for i in xrange(500):
+        for i in range(500):
             session.execute(SimpleStatement("INSERT INTO users (username, password, gender, birth_year) VALUES"
                             "('Jane{}', 'Doe', 'F', 1980)".format(i), consistency_level=ConsistencyLevel.ALL))
         self.cluster.flush()
@@ -3314,7 +3316,7 @@ class TestMaterializedViews(Tester):
             node3.stop(wait=True, wait_other_notice=True)
 
         num_updates = 500
-        for i in xrange(num_updates):
+        for i in range(num_updates):
             session.execute(SimpleStatement("UPDATE users SET state = 'CA{}' WHERE username = 'Jane{}'".format(i, 1500 - 2*i),
                                             consistency_level=ConsistencyLevel.ANY))
         node2.start(wait_for_binary_proto=True, wait_other_notice=True)
@@ -3327,7 +3329,7 @@ class TestMaterializedViews(Tester):
         total_wait = 60
         sleep_time = 5
         returned_rows = []
-        for _ in xrange(total_wait / sleep_time):
+        for _ in range(total_wait // sleep_time):
             returned_rows = [row for row in session.execute(SimpleStatement("SELECT * FROM {}".format(view), consistency_level=ConsistencyLevel.ALL))]
             if len(returned_rows) == num_updates:
                 break
@@ -3505,7 +3507,7 @@ def thread_session(ip, queue, start, end, rows, num_partitions):
             ret = execute_query(session, select_gi, i)
             queue.put_nowait(ret)
     except Exception as e:
-        print str(e)
+        print(str(e))
         queue.close()
 
 
@@ -3558,7 +3560,7 @@ class TestMaterializedViewsConsistency(Tester):
                     self.counts[MutationPresence.match],
                     self.counts[MutationPresence.extra],
                     self.counts[MutationPresence.missing],
-                    self.counts[MutationPresence.unkown])
+                    self.counts[MutationPresence.unknown])
             )
         sys.stdout.flush()
 
@@ -3571,7 +3573,7 @@ class TestMaterializedViewsConsistency(Tester):
                 name = type(exc).__name__
                 self.exception_type[name] += 1
             except Exception as e:
-                print traceback.format_exception_only(type(e), e)
+                print(traceback.format_exception_only(type(e), e))
 
         # Success callback for async requests
         def success_callback(row):
@@ -3581,9 +3583,9 @@ class TestMaterializedViewsConsistency(Tester):
             self._print_write_status(i)
 
         row = row_generate(i, num_partitions)
-        async = self.session.execute_async(insert_stmt, row)
+        async_exec = self.session.execute_async(insert_stmt, row)
         errors = partial(handle_errors, row)
-        async.add_callbacks(success_callback, errors)
+        async_exec.add_callbacks(success_callback, errors)
 
     def _populate_rows(self):
         statement = SimpleStatement(
@@ -3642,7 +3644,7 @@ class TestMaterializedViewsConsistency(Tester):
         insert1.consistency_level = writeConsistency
 
         debug("Writing data to base table")
-        for i in range(upper / 10):
+        for i in range(upper // 10):
             self._do_row(insert1, i, num_partitions)
 
         debug("Creating materialized view")
@@ -3654,7 +3656,7 @@ class TestMaterializedViewsConsistency(Tester):
         session.cluster.control_connection.wait_for_schema_agreement()
 
         debug("Writing more data to base table")
-        for i in range(upper / 10, upper):
+        for i in range(upper // 10, upper):
             self._do_row(insert1, i, num_partitions)
 
         # Wait that all requests are done

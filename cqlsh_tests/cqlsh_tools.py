@@ -4,7 +4,7 @@ import random
 import time
 
 import cassandra
-from nose.tools import assert_items_equal
+from nose.tools import assert_count_equal
 
 
 class DummyColorMap(object):
@@ -20,7 +20,7 @@ def csv_rows(filename, delimiter=None):
     reader_opts = {}
     if delimiter is not None:
         reader_opts['delimiter'] = delimiter
-    with open(filename, 'rb') as csvfile:
+    with open(filename, 'r') as csvfile:
         for row in csv.reader(csvfile, **reader_opts):
             yield row
 
@@ -37,7 +37,7 @@ def strip_timezone_if_time_string(s):
 
 def assert_csvs_items_equal(filename1, filename2):
     with open(filename1, 'r') as x, open(filename2, 'r') as y:
-        assert_items_equal(list(x.readlines()), list(y.readlines()))
+        assert_count_equal(list(x.readlines()), list(y.readlines()))
 
 
 def random_list(gen=None, n=None):
@@ -55,11 +55,11 @@ def random_list(gen=None, n=None):
 
 
 def write_rows_to_csv(filename, data):
-    with open(filename, 'wb') as csvfile:
+    with open(filename, 'w', encoding='utf-8') as csvfile:
         writer = csv.writer(csvfile)
         for row in data:
             writer.writerow(row)
-        csvfile.close
+        csvfile.close()
 
 
 def monkeypatch_driver():

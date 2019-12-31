@@ -68,7 +68,7 @@ class TestHintedHandoff(Tester):
 
         # Wait fill all hints are sent
         for node in [node1, node2]:
-            for shard in xrange(0, 2):
+            for shard in range(0, 2):
                 while self.__get_hint_segs_count(node, node3, shard) > 1:
                     debug("Still sending hints")
                     time.sleep(1)
@@ -135,7 +135,7 @@ class TestHintedHandoff(Tester):
             node.watch_log_for(msgs, from_mark=from_mark, timeout=node_timeout)
 
         debug("Reading the data...")
-        for x in xrange(0, 100):
+        for x in range(0, 100):
             query_c1c2(session, x, ConsistencyLevel.ONE)
 
         debug("Check that the directories have been cleaned up...")
@@ -237,7 +237,7 @@ class TestHintedHandoff(Tester):
                self.__check_hints_dir_present(node_from=node2, node_to=node3, must_be_present=False)
 
         debug("Reading the data...")
-        for x in xrange(0, 100):
+        for x in range(0, 100):
             query_c1c2(session, x, ConsistencyLevel.ONE)
 
     def hintedhandoff_dont_revive_test(self):
@@ -415,13 +415,13 @@ class TestHintedHandoff(Tester):
         for node in nodes:
             hints_on_node = []
 
-            for shard in xrange(0, num_shards):
+            for shard in range(0, num_shards):
                 hints_on_node.append(self.__get_hint_segs_count(node_from=node, node_to=down_node, shard=shard))
 
             hints_on_nodes.append(hints_on_node)
 
-        for i in xrange(0, num_shards):
-            for k in xrange(i + 1, num_shards):
-                for j in xrange(0, len(nodes)):
+        for i in range(0, num_shards):
+            for k in range(i + 1, num_shards):
+                for j in range(0, len(nodes)):
                     debug("{}: comparing number of files on shards {} and {}".format(nodes[j].name, i, k))
                     assert abs(hints_on_nodes[j][i] - hints_on_nodes[j][k]) <= 1

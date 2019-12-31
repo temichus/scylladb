@@ -1,5 +1,5 @@
 from dtest import Tester
-import tools as tools
+import tools
 from tools import no_vnodes, create_c1c2_table, retry_till_success
 from cassandra import ConsistencyLevel
 
@@ -54,7 +54,7 @@ class TestPutGet(Tester):
 
         # insert and get at CL.QUORUM (since RF=2, node1 won't have all key locally)
         tools.insert_c1c2(session, n=1000, consistency=ConsistencyLevel.QUORUM)
-        for n in xrange(0, 1000):
+        for n in range(0, 1000):
             tools.query_c1c2(session, n, ConsistencyLevel.QUORUM)
 
     def rangeputget_test(self):
@@ -84,11 +84,11 @@ class TestPutGet(Tester):
 
         key = 'wide'
 
-        for x in xrange(1, 5001):
+        for x in range(1, 5001):
             tools.insert_columns(self, session, key, 100, offset=x - 1)
 
         for size in (10, 100, 1000):
-            for x in xrange(1, (50001 - size) / size):
+            for x in range(1, (50001 - size) // size):
                 tools.query_columns(self, session, key, size, offset=x * size - 1)
 
     @no_vnodes()
@@ -140,9 +140,9 @@ class TestPutGet(Tester):
         session.execute(query)
         time.sleep(.5)
 
-        for i in xrange(10):
+        for i in range(10):
             key_num = str(i).zfill(2)
-            for j in xrange(10):
+            for j in range(10):
                 stmt = "INSERT INTO test (k, column1, value) VALUES ('a%s', 'col%s', '%s')" % (key_num, j, j)
                 session.execute(stmt)
                 stmt = "INSERT INTO test (k, column1, value) VALUES ('b%s', 'col%s', '%s')" % (key_num, j, j)
@@ -258,7 +258,7 @@ class ThriftConnection(object):
         """ Insert some basic values """
         cf_parent = self.Cassandra.ColumnParent(column_family=self.cf_name)
 
-        for row_key in ('row_%d' % i for i in xrange(num_rows)):
+        for row_key in ('row_%d' % i for i in range(num_rows)):
             col = self.Cassandra.Column(name='col_0', value='val_0',
                                         timestamp=int(time.time() * 1000))
             retry_till_success(self.client.insert,
@@ -269,7 +269,7 @@ class ThriftConnection(object):
 
     def query_columns(self, num_rows=10, consistency_level='QUORUM'):
         """ Check that the values inserted in insert_columns() are present """
-        for row_key in ('row_%d' % i for i in xrange(num_rows)):
+        for row_key in ('row_%d' % i for i in range(num_rows)):
             cpath = self.Cassandra.ColumnPath(column_family=self.cf_name,
                                               column='col_0')
             cosc = retry_till_success(self.client.get, key=row_key, column_path=cpath,

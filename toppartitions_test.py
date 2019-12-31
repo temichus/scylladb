@@ -233,7 +233,7 @@ class TestTopPartitions(Tester):
         self.assertFalse(out['READS']['partitions'])
 
     def verifySamplesPresentInResult(self, samplers, result):
-        self.assertListEqual(sorted(samplers), sorted(result.keys()))
+        self.assertCountEqual(sorted(samplers), sorted(result.keys()))
 
     def verifyTopPartitionCounterForSample(self, actual_results, expected_results):
         """Verify couters for toppartitions

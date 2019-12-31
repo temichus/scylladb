@@ -12,7 +12,7 @@ import uuid
 from collections import defaultdict
 from distutils.version import LooseVersion
 from multiprocessing import Process, Queue
-from Queue import Empty, Full
+from queue import Empty, Full
 
 import psutil
 
@@ -54,7 +54,7 @@ else:
     REPO_LOCATION = "https://git-wip-us.apache.org/repos/asf/cassandra.git"
 
 # lets cache this once so we don't make a bunch of remote requests
-GIT_LS = subprocess.check_output(["git", "ls-remote", "-h", "-t", REPO_LOCATION]).rstrip()
+GIT_LS = subprocess.check_output(["git", "ls-remote", "-h", "-t", REPO_LOCATION]).rstrip().decode('utf-8')
 
 # maps ref type (branch, tags) to ref names and sha's
 MAPPED_REFS = defaultdict(dict)
@@ -67,7 +67,7 @@ for row in GIT_LS.split('\n'):
 print("************************************* GIT REFS USED FOR THIS TEST RUN *********************************************")
 print("************************** KEEP IN MIND THAT A SHA MAY POINT TO ANOTHER COMMIT SHA! *******************************")
 for ref_type in MAPPED_REFS.keys():
-    print("Git refs for {}:").format(ref_type.upper())
+    print("Git refs for {}:".format(ref_type.upper()))
     pprint.pprint(MAPPED_REFS[ref_type], indent=4)
 
 if os.environ.get('CASSANDRA_VERSION'):
@@ -91,21 +91,25 @@ class GitSemVer(object):
         if semver_str == 'trunk':
             self.semver = LooseVersion(make_ver_str(TRUNK_VER))
 
-    def __cmp__(self, other):
-        # when comparing x.y.z and x.y.z-foo, we need to value x.y.z higher than the "nicknamed" tag x.y.z-foo
-        # likewise for shorter versions of the form X.Y and X.Y-foo
-        # to accomplish this, check if "x.y.z-" (note the dash there) is contained within "x.y.z-foo", and if so declare x.y.z the higher version
-        # e.g. when comparing 3.0.0 and 3.0.0-rc1, consider 3.0.0 higher
-        # e.g. when comparing 3.3 and 3.3-beta1, consider 3.3 higher
-        if (len(self.semver.version) <= 3) or (len(other.semver.version) <= 3):
-            if self.semver.vstring + "-" in other.semver.vstring:
-                return 1
-            elif other.semver.vstring + "-" in self.semver.vstring:
-                return -1
-            elif other.semver.vstring == self.semver.vstring:
-                return 0
+    # when comparing x.y.z and x.y.z-foo, we need to value x.y.z higher than the "nicknamed" tag x.y.z-foo
+    # likewise for shorter versions of the form X.Y and X.Y-foo
+    # to accomplish this, check if "x.y.z-" (note the dash there) is contained within "x.y.z-foo", and if so declare x.y.z the higher version
+    # e.g. when comparing 3.0.0 and 3.0.0-rc1, consider 3.0.0 higher
+    # e.g. when comparing 3.3 and 3.3-beta1, consider 3.3 higher
+    def __gt__(self, other):
+        if self.semver.vstring + "-" in other.semver.vstring:
+            return True
+        else:
+            return self.semver.__gt__(other.semver)
 
-        return cmp(self.semver, other.semver)
+    def __le__(self, other):
+        if other.semver.vstring + "-" in self.semver.vstring:
+            return True
+        else:
+            return self.semver.__le__(other.semver)
+
+    def __eq__(self, other):
+        return self.semver.__eq__(other.semver)
 
 
 def latest_tag_matching(ver_tuple):
@@ -686,7 +690,7 @@ class TestUpgradeThroughVersions(Tester):
     def _write_values(self, num=100):
         session = self.patient_cql_connection(self.node2, protocol_version=PROTOCOL_VERSION)
         session.execute("use upgrade")
-        for i in xrange(num):
+        for i in range(num):
             x = len(self.row_values) + 1
             session.execute("UPDATE cf SET v='%d' WHERE k=%d" % (x, x))
             self.row_values.add(x)

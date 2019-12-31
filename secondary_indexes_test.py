@@ -212,7 +212,7 @@ class SecondaryIndexesHelpers(object):
         debug('Verify data with {} consistency level'.format(ConsistencyLevel.value_to_name[cl]))
         for _ in range(60):
             try:
-                for i in xrange(num_rows):
+                for i in range(num_rows):
                     assert_all(session, stmt.format(table_name, index_column, i, i + num_rows),
                                expected=[[i]], cl=cl)
                 return
@@ -351,7 +351,7 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
 
         num_rows = 100
         for i in range(num_rows):
-            indexed_value = i % (num_rows / 3)
+            indexed_value = i % (num_rows // 3)
             # use the same indexed value three times
             session.execute("INSERT INTO {0}.{1} (key, col1) VALUES ('{2}', '{3}');".format(ks_name, table_name, i,
                                                                                             indexed_value))
@@ -669,7 +669,7 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
         self.create_cf(session, table_name, key_type='uuid', columns={'c0': 'text', 'c1': 'text', 'c2': 'text'},
                        compaction={'class': self.compaction_strategy})
 
-        for name, column in index_names.iteritems():
+        for name, column in index_names.items():
             self.assertTrue(self.create_and_build_index(self.create_index, self.cluster, session, keyspace_name,
                                                         table_name, column, name, compaction=self.compaction_strategy),
                             msg='Index %s is not built' % name)
@@ -732,7 +732,7 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
         self.create_cf(session, table_name, key_type='uuid', columns={'c0': 'text', 'c1': 'text', 'c2': 'text'},
                        compaction={'class': self.compaction_strategy})
 
-        for name, column in index_names.iteritems():
+        for name, column in index_names.items():
             self.assertTrue(self.create_and_build_index(self.create_index, self.cluster, session, keyspace_name,
                                                         table_name, column, name, compaction=self.compaction_strategy),
                         msg='Index %s is not built' % name)
@@ -858,7 +858,7 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
 
         session = self.prepare(self, nodes=1, rf=1, keyspace_name=keyspace_name, use_vnodes=True)
 
-        for table_name, compact_storage in tables.iteritems():
+        for table_name, compact_storage in tables.items():
             self.create_cf(session, table_name, key_type='int', columns={'b': 'int'}, compact_storage=compact_storage,
                            compaction={'class': self.compaction_strategy})
             self.assertTrue(self.create_and_build_index(self.create_index, self.cluster, session, keyspace_name,
@@ -866,7 +866,7 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
                                                         compaction=self.compaction_strategy),
                             msg='Index %s is not built' % get_index_view_name(table_name))
 
-        insert_args = [(i, i % 2) for i in xrange(100)]
+        insert_args = [(i, i % 2) for i in range(100)]
         for table in tables:
             debug('Perform the test for {} table'.format(table))
             execute_concurrent_with_args(session,
@@ -1060,7 +1060,7 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
         statement.consistency_level = ConsistencyLevel.QUORUM
 
         execute_concurrent_with_args(session, statement,
-                                     map(lambda k: [k] + [k+num_rows], [k for k in xrange(0, num_rows)]))
+                                     map(lambda k: [k] + [k+num_rows], [k for k in range(0, num_rows)]))
         self.cluster.flush()
 
         # Create index and wait while the build is starting
@@ -1141,7 +1141,7 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
         statement.consistency_level = ConsistencyLevel.QUORUM
 
         execute_concurrent_with_args(session, statement,
-                                     map(lambda k: [k] + [k + num_rows], [k for k in xrange(0, num_rows)]))
+                                     map(lambda k: [k] + [k + num_rows], [k for k in range(0, num_rows)]))
         self.cluster.flush()
 
         # Create index and wait while the index is built
@@ -1202,7 +1202,7 @@ class TestSecondaryIndexesOnCollections(Tester, SecondaryIndexesHelpers):
 
         assert_invalid(session, stmt, matching='use ALLOW FILTERING', expected=Exception)
 
-        for index_column in index_columns.iterkeys():
+        for index_column in index_columns.keys():
             self.assertTrue(self.create_and_build_index(self.create_index, self.cluster, session, keyspace_name, table_name,
                                         index_column, 'idx_' + index_column, compaction=self.compaction_strategy),
                             msg='Index %s is not built' % 'idx_' + index_column)
@@ -1210,7 +1210,7 @@ class TestSecondaryIndexesOnCollections(Tester, SecondaryIndexesHelpers):
         select_cmd = "select * from {} where {} = {}"
         # check if indexes work on existing data
         for n in range(50):
-            for index_column, template in index_columns.iteritems():
+            for index_column, template in index_columns.items():
                 self.assertEqual(5, len(
                     list(session.execute(select_cmd.format(table_name, index_column, template.format(n))))))
                 self.assertEqual(0, len(
@@ -1223,7 +1223,7 @@ class TestSecondaryIndexesOnCollections(Tester, SecondaryIndexesHelpers):
         time.sleep(5)
 
         def _validate_data(expected_rows, format_value):
-            for index_column, template in index_columns.iteritems():
+            for index_column, template in index_columns.items():
                 self.assertEqual(expected_rows, len(
                     list(session.execute(select_cmd.format(table_name, index_column, template.format(format_value))))))
 
@@ -1232,7 +1232,7 @@ class TestSecondaryIndexesOnCollections(Tester, SecondaryIndexesHelpers):
 
         # check if indexes work on mutated data
         for n in range(5):
-            for index_column, template in index_columns.iteritems():
+            for index_column, template in index_columns.items():
                 rows = session.execute(select_cmd.format(table_name, index_column, template.format(n)))
                 for row in rows:
                     session.execute("update {} set {} = {} where key = {}".format(table_name, index_column,
@@ -1407,7 +1407,7 @@ class TestSecondaryIndexesOnCollections(Tester, SecondaryIndexesHelpers):
             self.create_index(session, table_name, index_column, index_name, compaction = self.compaction_strategy)
             assert False, 'Expected failure during global index creation, but index was created successfully'
         except InvalidRequest as e:
-            self.assertRegexpMatches(e.message, 'Cannot create index on index_values of frozen<')
+            self.assertRegexpMatches(str(e), 'Cannot create index on index_values of frozen<')
         except Exception:
             raise Exception
 
@@ -1417,7 +1417,7 @@ class TestSecondaryIndexesOnCollections(Tester, SecondaryIndexesHelpers):
                                     compaction = self.compaction_strategy)
             assert False, 'Expected failure during local index creation, but index was created successfully'
         except InvalidRequest as e:
-            self.assertRegexpMatches(e.message, 'Cannot create index on index_values of frozen<')
+            self.assertRegexpMatches(str(e), 'Cannot create index on index_values of frozen<')
         except Exception:
             raise Exception
 
@@ -2105,7 +2105,7 @@ class TestLocalIndexes(Tester, SecondaryIndexesHelpers):
         statement.consistency_level = ConsistencyLevel.QUORUM
 
         execute_concurrent_with_args(session, statement,
-                                     map(lambda k: [k] + [k+num_rows], [k for k in xrange(0, num_rows)]))
+                                     map(lambda k: [k] + [k+num_rows], [k for k in range(0, num_rows)]))
         self.cluster.flush()
 
         # Create index and wait while the build is starting
@@ -2182,7 +2182,7 @@ class TestLocalIndexes(Tester, SecondaryIndexesHelpers):
         statement.consistency_level = ConsistencyLevel.QUORUM
 
         execute_concurrent_with_args(session, statement,
-                                     map(lambda k: [k] + [k + num_rows], [k for k in xrange(0, num_rows)]))
+                                     map(lambda k: [k] + [k + num_rows], [k for k in range(0, num_rows)]))
         self.cluster.flush()
 
         # Create index and wait while the index is built

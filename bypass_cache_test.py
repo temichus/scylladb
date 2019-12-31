@@ -55,7 +55,7 @@ class TestBypassCache(Tester):
         session = self.prepare()
         node = self.cluster.nodelist()[0]
         time.sleep(3)
-        for _ in xrange(20):
+        for _ in range(20):
             query = 'SELECT * FROM cf BYPASS CACHE'
             self.verify_read_was_from_disk(node=node, query=query, session=session)
 

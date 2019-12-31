@@ -275,7 +275,7 @@ class SnitchConfigurationUpdateTest(Tester):
         """
         Check a dummy key expecting it to have replication factor as the sum of rf on all dcs.
         """
-        expected_count = sum([int(r) for d, r in rf.iteritems() if d != 'class'])
+        expected_count = sum([int(r) for d, r in rf.items() if d != 'class'])
         for node in nodes:
             cmd = "getendpoints {} {} dummy".format(ks, table)
             out, err = node.nodetool(cmd)
@@ -509,7 +509,7 @@ class SnitchConfigurationUpdateTest(Tester):
 
         session = self.patient_cql_connection(cluster.nodelist()[0])
 
-        options = (', ').join(['\'{}\': {}'.format(d, r) for d, r in rf.iteritems()])
+        options = (', ').join(['\'{}\': {}'.format(d, r) for d, r in rf.items()])
         session.execute("CREATE KEYSPACE testing WITH replication = {{{}}}".format(options))
         session.execute("CREATE TABLE testing.rf_test (key text PRIMARY KEY, value text)")
 
@@ -745,7 +745,7 @@ class TestRFAutoExpand(Tester):
         res = session.execute(
             "SELECT replication FROM system_schema.keyspaces "
             "WHERE keyspace_name = 'test_simple'")
-        self.assertItemsEqual(
+        self.assertCountEqual(
             rows_to_list(res),
             [[mk_replication({'dc1': 1, 'dc2': 1, 'dc3': 1})]])
 
@@ -755,7 +755,7 @@ class TestRFAutoExpand(Tester):
         res = session.execute(
             "SELECT replication FROM system_schema.keyspaces "
             "WHERE keyspace_name = 'test_manual'")
-        self.assertItemsEqual(
+        self.assertCountEqual(
             rows_to_list(res),
             [[mk_replication({'dc1': 1, 'dc2': 1, 'dc3': 3})]])
 
@@ -766,7 +766,7 @@ class TestRFAutoExpand(Tester):
         res = session.execute(
             "SELECT replication FROM system_schema.keyspaces "
             "WHERE keyspace_name = 'test_manual'")
-        self.assertItemsEqual(
+        self.assertCountEqual(
             rows_to_list(res),
             [[mk_replication({'dc1': 1, 'dc2': 1, 'dc3': 3})]])
 
@@ -780,7 +780,7 @@ class TestRFAutoExpand(Tester):
         res = session.execute(
             "SELECT replication FROM system_schema.keyspaces WHERE "
             "keyspace_name = 'test_switch'")
-        self.assertItemsEqual(
+        self.assertCountEqual(
             rows_to_list(res),
             [[mk_replication({'dc1': 3, 'dc2': 3, 'dc3': 3})]])
 
@@ -794,7 +794,7 @@ class TestRFAutoExpand(Tester):
         res = session.execute(
             "SELECT replication FROM system_schema.keyspaces WHERE "
             "keyspace_name = 'test_switch_2'")
-        self.assertItemsEqual(
+        self.assertCountEqual(
             rows_to_list(res),
             [[mk_replication({'dc1': 2})]])
 
@@ -805,7 +805,7 @@ class TestRFAutoExpand(Tester):
         res = session.execute(
             "SELECT replication FROM system_schema.keyspaces WHERE "
             "keyspace_name = 'test_switch_2'")
-        self.assertItemsEqual(
+        self.assertCountEqual(
             rows_to_list(res),
             [[mk_replication({'dc1': 2, 'dc2': 3, 'dc3': 3})]])
 

@@ -42,10 +42,10 @@ class TestBootstrapConsistency(Tester):
         node3.move(2)
 
         debug("Checking that no data was lost")
-        for n in xrange(10, 20):
+        for n in range(10, 20):
             query_c1c2(n2session, n, ConsistencyLevel.ALL)
 
-        for n in xrange(30, 1000):
+        for n in range(30, 1000):
             query_c1c2(n2session, n, ConsistencyLevel.ALL)
 
     @attr('next-gating')
@@ -86,8 +86,8 @@ class TestBootstrapConsistency(Tester):
         n3session = self.patient_cql_connection(node3)
         n3session.execute("USE ks")
         debug("Checking that no data was lost")
-        for n in xrange(10, 20):
+        for n in range(10, 20):
             query_c1c2(n3session, n, ConsistencyLevel.ALL)
 
-        for n in xrange(30, 1000):
+        for n in range(30, 1000):
             query_c1c2(n3session, n, ConsistencyLevel.ALL)

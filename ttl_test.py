@@ -455,7 +455,7 @@ class TestTTL(Tester):
         assert_row_count(self.session1, 'session', 0)
 
     def insert_few_rows(self, start, end, table_name, ttl=None):
-        for i in xrange(start, end + 1):
+        for i in range(start, end + 1):
             statement = 'INSERT INTO %s (key, col1, col2, col3) VALUES (%d, %d, %d, %d)' % (table_name, i, i, i, i)
             if ttl:
                 statement = '{} USING TTL {}'.format(statement, ttl)
@@ -501,26 +501,26 @@ class TestTTL(Tester):
             # Update rows with key 5-10 with TTL 20
             ttl = ttls[1]
             steps = {
-                      ttl: {'expected_result': [[i] for i in xrange(1, 21) if i not in [5, 6, 7, 8, 10]],
+                      ttl: {'expected_result': [[i] for i in range(1, 21) if i not in [5, 6, 7, 8, 10]],
                       'execute_time': self.execute_statement(action='INSERT', ttl=ttl, start_key_value=5, end_key_value=10, table_name=table_name)
                      }
                     }
 
             # Update rows with key 9-13 with TTL 25
             ttl = ttls[2]
-            steps[ttl] = {'expected_result': [[i] for i in xrange(1, 21) if i < 5 or i > 10],
+            steps[ttl] = {'expected_result': [[i] for i in range(1, 21) if i < 5 or i > 10],
                           'execute_time': self.execute_statement(action='INSERT', ttl=ttl, start_key_value=9, end_key_value=13, table_name=table_name)
                          }
 
             # Update rows with key 10-11 with TTL 13
             ttl = ttls[0]
-            steps[ttl] = {'expected_result': [[i] for i in xrange(1, 21) if i != 10],
+            steps[ttl] = {'expected_result': [[i] for i in range(1, 21) if i != 10],
                           'execute_time': self.execute_statement(action='INSERT', ttl=ttl, start_key_value=10, end_key_value=11, table_name=table_name)
                          }
 
             # Update rows with key 11-15 with TTL 30
             ttl = ttls[3]
-            steps[ttl] = {'expected_result': [[i] for i in xrange(1, 21) if i < 5 or i > 15],
+            steps[ttl] = {'expected_result': [[i] for i in range(1, 21) if i < 5 or i > 15],
                           'execute_time': self.execute_statement(action='INSERT', ttl=ttl, start_key_value=11, end_key_value=15, table_name=table_name)
                          }
 

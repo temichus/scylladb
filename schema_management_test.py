@@ -88,7 +88,7 @@ class SchemaManagementTest(Tester):
         2. Run create table with different table names in parallel - check all complete
         3. Run create table with the same table name in parallel - check if they complete
         """
-        fail
+        raise NotImplementedError
 
     @skip('unimplemented')
     def multiple_alter_table_in_parallel(self):
@@ -98,7 +98,7 @@ class SchemaManagementTest(Tester):
         2. Run alter table with different table names in parallel - check all complete
         3. Run alter table with the same table name in parallel - check if they complete
         """
-        fail
+        raise NotImplementedError
 
     @skip('unimplemented')
     def alter_and_drop_table_in_parallel(self):
@@ -108,7 +108,7 @@ class SchemaManagementTest(Tester):
         2. Run alter and drop table with different table names in parallel - check all complete
         3. Run alter and drop table with the same table name in parallel - check if they complete
         """
-        fail
+        raise NotImplementedError
 
     @skip('unimplemented')
     def create_table_after_drop_table(self):
@@ -118,7 +118,7 @@ class SchemaManagementTest(Tester):
         2. Run drop table
         3. Create a table using the same table name
         """
-        fail
+        raise NotImplementedError
 
     @skip('unimplemented')
     def alter_table_in_parallel_to_write(self):
@@ -128,7 +128,7 @@ class SchemaManagementTest(Tester):
         2. Run insert statements in a loop
         3. Alter table while inserts are running
         """
-        fail
+        raise NotImplementedError
 
     @skip('unimplemented')
     def alter_table_in_parallel_to_read(self):
@@ -138,7 +138,7 @@ class SchemaManagementTest(Tester):
         2. Run query statements in a loop
         3. Alter table while query are running
         """
-        fail
+        raise NotImplementedError
 
     @skip('unimplemented')
     def alter_table_in_parallel_to_read_and_write(self):
@@ -149,7 +149,7 @@ class SchemaManagementTest(Tester):
         3. Run insert statements in a loop
         4. Alter table while query and insert are running
         """
-        fail
+        raise NotImplementedError
 
     @skip('unimplemented')
     def commitlog_replays_after_schema_change(self):
@@ -160,28 +160,28 @@ class SchemaManagementTest(Tester):
         3. Kill node
         4. Boot node and verify that commitlog have been replayed and that all data is restored
         """
-        fail
+        raise NotImplementedError
 
     @skip('unimplemented')
     def create_table_while_node_is_killed(self):
         """
         Check that a node that is killed durring a table creation is able to rejoin and to synch on schema
         """
-        fail
+        raise NotImplementedError
 
     @skip('unimplemented')
     def alter_table_while_node_is_killed(self):
         """
         Check that a node that is killed durring a table alter is able to rejoin and to synch on schema
         """
-        fail
+        raise NotImplementedError
 
     @skip('unimplemented')
     def drop_table_while_node_is_killed(self):
         """
         Check that a node that is killed durring a table drop is able to rejoin and to synch on schema
         """
-        fail
+        raise NotImplementedError
 
     @skip('unimplemented')
     def nodes_rejoining_a_cluster_synch_on_schema(self):
@@ -194,8 +194,7 @@ class SchemaManagementTest(Tester):
         5. Start the stopped node
         6. Verify the stopped node synchs on the updated schema
         """
-        fail
-
+        raise NotImplementedError
 
     def test_reads_schema_recreated_while_node_down(self):
         self.cluster.set_configuration_options(values={ 'ring_delay_ms': 5000 })
