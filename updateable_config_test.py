@@ -15,11 +15,14 @@ import os
 import signal
 import requests
 
+from nose.plugins.attrib import attr
+
 from tools import require
 
 from dtest import Tester, debug
 
 
+@attr('dtest-full')
 class TestUpdateableConfig(Tester):
     """
     Scylla supported to change some of configuration in runtime, this

@@ -720,6 +720,8 @@ class SnitchConfigurationUpdateTest(Tester):
         node.start()
         node.watch_log_for(expected_error, from_mark=mark, timeout=10)
 
+
+@attr('dtest-full')
 class TestRFAutoExpand(Tester):
     """
     Test for #4210 (or CASSANDRA-14303).

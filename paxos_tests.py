@@ -3,6 +3,7 @@
 import time
 from threading import Thread
 
+from nose.plugins.attrib import attr
 from cassandra import ConsistencyLevel, WriteTimeout
 from cassandra.query import SimpleStatement
 
@@ -12,6 +13,7 @@ from tools import no_vnodes, since
 
 
 @since('2.0.6')
+@attr('dtest-full')
 class TestPaxos(Tester):
 
     def prepare(self, ordered=False, create_keyspace=True, use_cache=False, nodes=1, rf=1):

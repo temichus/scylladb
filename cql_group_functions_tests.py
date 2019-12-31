@@ -3,7 +3,10 @@ from assertions import assert_one
 from cassandra import ConsistencyLevel
 from tools import require, rows_to_list, ColumnType
 
+from nose.plugins.attrib import attr
 
+
+@attr('dtest-full')
 class TestGroupFunctions(Tester):
     # failed types:
     # ascii failure - https://github.com/scylladb/scylla/issues/5147

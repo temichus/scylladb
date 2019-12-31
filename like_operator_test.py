@@ -5,6 +5,7 @@ from dtest import Tester
 from tools import rows_to_list, require
 from cassandra.query import SimpleStatement
 from collections import OrderedDict
+from nose.plugins.attrib import attr
 
 from paging_test import PageFetcher
 
@@ -285,6 +286,7 @@ class BaseOperationsHelper():
         return session
 
 
+@attr('dtest-full')
 class TestLikeOperatorForBaseTable(Tester, BaseOperationsHelper):
 
     def test_pk_filtering_of_text_type_with_percent_sign(self):
@@ -2081,6 +2083,7 @@ class TestLikeOperatorForBaseTable(Tester, BaseOperationsHelper):
             self.assertIn(expected, actual_rows)
 
 
+@attr('dtest-full')
 class TestLikeOperatorForMV(Tester, BaseOperationsHelper):
 
     def test_filtering_MV_new_primary(self):
@@ -2163,6 +2166,7 @@ class TestLikeOperatorForMV(Tester, BaseOperationsHelper):
                     query="SELECT * FROM building_by_city WHERE name LIKE 'q%T_' ALLOW FILTERING")
 
 
+@attr('dtest-full')
 class TestIndexFilteringWithLike(Tester, BaseOperationsHelper):
 
     def test_filter_index(self):

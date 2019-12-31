@@ -4,6 +4,7 @@ from scylla_tools import insert_c1c2_no_prepared, query_c1c2_concurrent
 from tools import create_c1c2_table, require
 
 from cassandra.concurrent import execute_concurrent_with_args
+from nose.plugins.attrib import attr
 
 import time
 import re
@@ -50,6 +51,7 @@ def wait_nodetool_toppartitions_start(node, cmd, timeout=30):
             raise TimeoutErrorNodetoolToppartitionStarted('timeout error, nodetool toppartitions not started')
 
 
+@attr('dtest-full')
 class TestTopPartitions(Tester):
     """Class to test new functioanality of nodetool command toppartitions
 

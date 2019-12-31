@@ -2206,6 +2206,7 @@ class TestLocalIndexes(Tester, SecondaryIndexesHelpers):
         self.check_errors(self.cluster.nodelist()[0], ['Can\'t send migration request: node {} is down'.format(node2_ip)])
 
 
+@attr('dtest-full')
 class TestMultipleSecondaryIndexes(Tester, SecondaryIndexesHelpers):
     def _prepare_for_multi_index_test(self):
         session = self.prepare(self, user_table=False, nodes=4, rf=3, keyspace_name='ks')

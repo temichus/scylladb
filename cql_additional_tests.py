@@ -6687,6 +6687,8 @@ class MultiColumnRestrictionCollectionTests(Tester):
                                                         'ALLOW FILTERING',
                    expected=[], ignore_order=True)
 
+
+@attr('dtest-full')
 class TestLWTWithCQL(Tester):
     """
     Validate CQL queries for LWTs for static columns for null and non-existing rows
