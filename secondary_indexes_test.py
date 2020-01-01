@@ -133,7 +133,8 @@ class SecondaryIndexesHelpers(object):
                 assert_fail = "Expecting query %s to be invalid" % cql_string
             else:
                 assert_success = (value_length == res_length)
-                assert_fail = "Expecting value length is {0}, received {1}".format(value_length, res_length)
+                assert_fail = "Expecting value length is {0}, received {1}. Result: {2}".format(
+                    value_length, res_length, result)
             assert assert_success, assert_fail
         except AssertionError as e:
             raise e
