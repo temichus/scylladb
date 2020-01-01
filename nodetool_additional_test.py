@@ -1392,7 +1392,7 @@ class TestNodetool(Tester):
             tr.start()
             return tr
         else:
-            before = int(time.time())
+            before = time.time()
             ops["start"] = before
             debug("starting " + func_info["func"].__name__)
             try:
@@ -1405,14 +1405,15 @@ class TestNodetool(Tester):
                 ops["exception"] = str(sys.exc_info()[1])
                 self.concurrent_test_fail = True
                 # raise
-            msg = func_info["func"].__name__ + " completed in " + str(int(time.time()) - before) + " seconds"
+            duration = int(time.time() - before + 0.5)
+            msg = func_info["func"].__name__ + " completed in " + str(duration) + " seconds"
             if "time" in func_info:
                 # self.assertLessEqual(int(time.time()) - before, func_info["time"], msg)
-                if int(time.time()) - before > func_info["time"] and not self.concurrent_test_fail:
+                if duration > func_info["time"] and not self.concurrent_test_fail:
                     ops["exception"] = "Timeout:" + msg
                     self.concurrent_test_fail = True
             debug(msg)
-            ops["end"] = int(time.time())
+            ops["end"] = time.time()
             return None
 
     @staticmethod
@@ -1428,7 +1429,7 @@ class TestNodetool(Tester):
         return res
 
     def print_ops(self, ops, start, ratio):
-        ln = int((ops["end"] - ops["start"]) / ratio) if "end" in ops else len(ops["name"]) + 2
+        ln = int((ops["end"] - ops["start"] + 0.5) / ratio) if "end" in ops else len(ops["name"]) + 2
         strt = int((ops["start"] - start) / ratio)
         end = "]" if "end" in ops and "exception" not in ops else "X"
         res = "".rjust(strt) + self.print_fun_name(ops["name"], ln, end)
@@ -1442,8 +1443,9 @@ class TestNodetool(Tester):
         lst.sort(key=lambda a: a["start"])
         if not start:
             start = lst[0]["start"]
-        end = max(map(lambda a: a["end"] if "end" in a else a["start"], lst))
-        strts = list(set(map(lambda a: a["start"], lst)))
+        start = int(start)
+        end = int(max(map(lambda a: a["end"] if "end" in a else a["start"], lst)) + 0.5)
+        strts = list(set(map(lambda a: int(a["start"]), lst)))
         strts.sort()
         ratio = 1.0 * (end - start) / self.width
         res = str(end - start)
@@ -1493,7 +1495,7 @@ class TestNodetool(Tester):
     @staticmethod
     def create_op(ops):
         res = {}
-        res["start"] = int(time.time())
+        res["start"] = time.time()
         res["name"] = ops["func"].__name__
         return res
 
