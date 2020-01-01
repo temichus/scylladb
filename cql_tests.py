@@ -428,9 +428,9 @@ class RangeDeletionTester(CQLTester):
         """
         current_date = datetime.now()
         # Data for first partition
-        data = list([1, (current_date+timedelta(days=i)).strftime("%Y-%m-%d"), i] for i in xrange(0, rows_in_pk))
+        data = list([1, (current_date+timedelta(days=i)).strftime("%Y-%m-%d"), i] for i in range(0, rows_in_pk))
         # Data for second partition
-        data.extend(list([2, (current_date+timedelta(days=i)).strftime("%Y-%m-%d"), i] for i in xrange(0, rows_in_pk)))
+        data.extend(list([2, (current_date+timedelta(days=i)).strftime("%Y-%m-%d"), i] for i in range(0, rows_in_pk)))
 
         ttl_clause = ' USING TTL %d' % ttl if ttl else ''
 
@@ -462,7 +462,7 @@ class RangeDeletionTester(CQLTester):
         sub_partition_rows = 2
         # Data for first and second partitions
         for p in [0, 1]: # pk1 value
-            for k in xrange(rows_in_pk): # ck1 and ck2 values
+            for k in range(rows_in_pk): # ck1 and ck2 values
                 data.append([p, p, 'ck%d' % k, k])
 
         for (pk1, ck1, ck2, v1) in data:

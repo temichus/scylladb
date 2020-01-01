@@ -1069,9 +1069,9 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
         self.create_ks(session, 'group_by_with_range_name_query_paging_test', 2)
         session.execute("CREATE TABLE test (a int, b int, c int, d int, primary key (a, b, c))")
 
-        for i in xrange(1, 5):
-            for j in xrange(1, 5):
-                for k in xrange(1, 5):
+        for i in range(1, 5):
+            for j in range(1, 5):
+                for k in range(1, 5):
                     session.execute("INSERT INTO test (a, b, c, d) VALUES ({}, {}, {}, {})".format(i, j, k, i + j))
 
         # Makes sure that we have some tombstones
