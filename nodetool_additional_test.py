@@ -1431,7 +1431,9 @@ class TestNodetool(Tester):
     def print_ops(self, ops, start, ratio):
         ln = int((ops["end"] - ops["start"] + 0.5) / ratio) if "end" in ops else len(ops["name"]) + 2
         strt = int((ops["start"] - start) / ratio)
-        end = "]" if "end" in ops and "exception" not in ops else "X"
+        end = "]" if "end" in ops else ""
+        if "exception" in ops:
+            end = "E" + end
         res = "".rjust(strt) + self.print_fun_name(ops["name"], ln, end)
         if len(ops["name"]) > ln:
             res = res + "\n" + ops["name"].rjust(strt + ln)
