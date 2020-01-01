@@ -1438,9 +1438,10 @@ class TestNodetool(Tester):
             res = res + "\n" + ops["exception"].rjust(strt + ln)
         return res
 
-    def print_time(self, lst):
+    def print_time(self, lst, start=None):
         lst.sort(key=lambda a: a["start"])
-        start = lst[0]["start"]
+        if not start:
+            start = lst[0]["start"]
         end = max(map(lambda a: a["end"] if "end" in a else a["start"], lst))
         strts = list(set(map(lambda a: a["start"], lst)))
         strts.sort()
@@ -1549,7 +1550,10 @@ class TestNodetool(Tester):
         self.concurrent_test_fail = False
         for op in tst:
             if not self.concurrent_test_fail:
-                debug("Test call flow:\n" + self.print_time(self.concurrent_part(op)))
+                debug("Starting concurrent test: {}".format(op))
+                start = time.time()
+                times = self.concurrent_part(op)
+                debug("Test call flow:\n" + self.print_time(times, start))
 
     def concurrent_repair_test(self):
         tst = [{"operations": [{"func": self.run_cluster, "block": True}, {"func": self.concurrent_stress, "delay": 5}, {"func": self.repair, "time": 300, "delay": 10}],
