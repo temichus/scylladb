@@ -1417,28 +1417,23 @@ class TestNodetool(Tester):
             return None
 
     @staticmethod
-    def print_fun_name(name, ln, end="]"):
-        res = "["
-        if ln > 2:
-            if len(name) + 2 <= ln:
-                res = res + name.ljust(ln - 2) + end
-            else:
-                res = res + name[:ln - 2] + end
-        else:
-            res += end
-        return res
+    def print_fun_name(name, ln):
+        if ln <= 2:
+            return "", name
+        if len(name) > ln - 2:
+            return name[:ln-2], name[ln-2:]
+        return name.ljust(ln - 2), ""
 
     def print_ops(self, ops, start, ratio):
-        ln = int((ops["end"] - ops["start"] + 0.5) / ratio) if "end" in ops else len(ops["name"]) + 2
+        ln = int((ops["end"] - ops["start"] + 0.5) / ratio) if "end" in ops else 0
         strt = int((ops["start"] - start) / ratio)
         end = "]" if "end" in ops else ""
         if "exception" in ops:
             end = "E" + end
-        res = "".rjust(strt) + self.print_fun_name(ops["name"], ln, end)
-        if len(ops["name"]) > ln:
-            res = res + "\n" + ops["name"].rjust(strt + ln)
+        name, name_extra = self.print_fun_name(ops["name"], ln)
+        res = "".rjust(strt) + "[" + name + end + name_extra
         if "exception" in ops:
-            res = res + "\n" + ops["exception"].rjust(strt + ln)
+            res += "\n" + ops["exception"].rjust(strt + 2 + len(name))
         return res
 
     def print_time(self, lst, start=None):
