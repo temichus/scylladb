@@ -1376,7 +1376,7 @@ class TestNodetool(Tester):
 
     concurrent_test_fail = False
 
-    def time_func(self, func_info, ops, paralel=True):
+    def time_func(self, func_info, ops, paralel=True, delay=0):
         """takes a function and a time limit
         it runs the function, verify when it's done
         that it didn't took too long
@@ -1385,14 +1385,13 @@ class TestNodetool(Tester):
         calling the function
         """
         if paralel:
-            if "delay" in func_info:
-                time.sleep(func_info["delay"])
-            else:
-                time.sleep(0.2)
-            tr = Thread(target=self.time_func, args=[func_info, ops, False])
+            delay = func_info["delay"] if "delay" in func_info else 0
+            tr = Thread(target=self.time_func, args=[func_info, ops, False, delay])
             tr.start()
             return tr
         else:
+            if delay:
+                time.sleep(delay)
             before = time.time()
             ops["start"] = before
             debug("starting " + func_info["func"].__name__)
