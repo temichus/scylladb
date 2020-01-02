@@ -9,7 +9,7 @@ from cassandra import ReadTimeout, ReadFailure, ConsistencyLevel
 
 from dtest import Tester, debug, warning
 from tools import rows_to_list
-from scylla_tools import flush_by_node, insert_c1c2, query_c1c2, check_errors
+from scylla_tools import flush_by_node, insert_c1c2, query_c1c2
 from assertions import assert_one
 
 
@@ -365,7 +365,7 @@ class EncryptionAtRestBase(Tester):
             debug(e.message)
         err = 'SSTable reader found an exception when reading sstable'
         node1.watch_log_for(err, from_mark=mark)
-        self.allow_log_errors = check_errors(node1, [err], search_str='ERROR')
+        self.allow_log_errors = self.check_errors(node1, [err], search_str='ERROR')
         kp.restore_key(key_file)
 
         debug('Restart to trigger the read error')
