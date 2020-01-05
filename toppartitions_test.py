@@ -719,7 +719,7 @@ class TestTopPartitions(Tester):
 
         def write_into_one_partition_to_different_rows(session, ks, cf):
             column_values = map(lambda y, z: [1, 1, y, z],
-                                list(range(25) * 100),
+                                list(range(25)) * 100,
                                 ["value{}".format(a) for a in range(2500)])
 
             statement = session.prepare("INSERT INTO {}.{} (key1, key2, ckey, val) VALUES (?, ?, ?, ?)".format(ks, cf))
