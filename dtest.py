@@ -913,7 +913,8 @@ class Tester(TestCase):
             return
         failed = sys.exc_info() != (None, None, None)
         if failed:
-            debug("Test failed")
+            exc_type, exc_value = sys.exc_info()[:2]
+            debug("Test failed with exception: {}: {}".format(exc_type, exc_value))
         found_cores = None
         try:
             for node in self.cluster.nodelist():
