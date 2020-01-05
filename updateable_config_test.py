@@ -45,7 +45,7 @@ class TestUpdateableConfig(Tester):
         debug('Change configuration `%s`' % param)
         response = requests.get('http://%s:10000/v2/config/%s' % (self.get_ip_from_node(node),
                                                                   param))
-        debug('Original value before change: %s' % response.content)
+        debug('Original value before change: %s' % response.text)
         node.set_configuration_options({param: value})
         self.trigger_reload_config(node)
         node.watch_log_for('completed re-reading configuration file', from_mark=mark)
@@ -53,8 +53,8 @@ class TestUpdateableConfig(Tester):
         debug('Using the API to validate the configuration change, expected: %s' % verify_response)
         response = requests.get('http://%s:10000/v2/config/%s' % (self.get_ip_from_node(node),
                                                                   param))
-        self.assertEquals(response.content, verify_response, 'response: %s, expected: %s' %
-                          (response.content, verify_response))
+        self.assertEquals(response.text, verify_response, 'response: %s, expected: %s' %
+                          (response.text, verify_response))
 
     def test_compaction_enforce_min_threshold(self):
         self.cluster.populate(1).start(wait_other_notice=True, wait_for_binary_proto=True)
