@@ -66,14 +66,14 @@ class BaseOperationsHelper():
         return session
 
     def prepare_unsupported_column_names_and_types(self):
-        names = self.unsupported_column_types_and_values.keys()
+        names = list(self.unsupported_column_types_and_values.keys())
         columns = ["pk_{0} {0}".format(names[0])]
         columns.extend(["cl_{0} {0}".format(cl_type) for cl_type in names[1:]])
         return columns
 
     def generate_unsupported_columns_name(self):
         # use first type as pk
-        names = self.unsupported_column_types_and_values.keys()
+        names = list(self.unsupported_column_types_and_values.keys())
         columns = ["pk_{0}".format(names[0])]
         columns.extend(["cl_{0}".format(cl_type) for cl_type in names[1:]])
 
@@ -1552,7 +1552,7 @@ class TestLikeOperatorForBaseTable(Tester, BaseOperationsHelper):
         """
         session = self.prepare_simple_table_with_column_type(cl_type='text')
         all_data = self.populate_simple_table_with_specific_data(session)
-        special_data = filter(lambda x: 'cluster' in x[1], all_data)
+        special_data = list(filter(lambda x: 'cluster' in x[1], all_data))
         # test special chars as escaped, with LIKE operators
         for char in self.special_values:
             # filter by column
@@ -1615,7 +1615,7 @@ class TestLikeOperatorForBaseTable(Tester, BaseOperationsHelper):
                    query="SELECT * FROM test WHERE pk LIKE 'TEST_STRING1' ALLOW FILTERING",
                    expected=["TEST%STRING1", "1Test_String", "_{}%"])
         # test queries for CaseSensivity and combinations on clustering key
-        expected_rows = filter(lambda x: 'String' in x[1], all_data)
+        expected_rows = list(filter(lambda x: 'String' in x[1], all_data))
         assert_all(session,
                    query="SELECT * FROM test WHERE ck LIKE '%Test%Str%' ALLOW FILTERING",
                    expected=expected_rows,
@@ -1639,7 +1639,7 @@ class TestLikeOperatorForBaseTable(Tester, BaseOperationsHelper):
                    query="SELECT * FROM test WHERE ck LIKE '1Test_String' ALLOW FILTERING",
                    expected=["TEST%STRING1", "1Test_String", "_{}%"])
         # validate escaping LIKE operators
-        expected_rows = filter(lambda x: '_{}%' in x[2], all_data)
+        expected_rows = list(filter(lambda x: '_{}%' in x[2], all_data))
         assert_all(session,
                    query="SELECT * FROM test WHERE test like '_{}%' ALLOW FILTERING",
                    expected=expected_rows)
@@ -1690,7 +1690,7 @@ class TestLikeOperatorForBaseTable(Tester, BaseOperationsHelper):
         """
         session = self.prepare_simple_table_with_column_type(cl_type='ascii')
         all_data = self.populate_simple_table_with_specific_data(session)
-        special_data = filter(lambda x: 'cluster' in x[1], all_data)
+        special_data = list(filter(lambda x: 'cluster' in x[1], all_data))
         # test special chars as escaped, with LIKE operators
         for char in self.special_values:
             # filter by column
@@ -1704,11 +1704,11 @@ class TestLikeOperatorForBaseTable(Tester, BaseOperationsHelper):
                        query="SELECT * FROM test WHERE test LIKE '\%' ALLOW FILTERING",
                        expected=['TEST%STRING7', 'cluster_%', '%'])
             assert_all(session,
-                       query="SELECT * FROM test WHERE test LIKE '_' ALLOW FILTERING".format(char),
+                       query="SELECT * FROM test WHERE test LIKE '_' ALLOW FILTERING",
                        expected=special_data,
                        ignore_order=True)
             assert_all(session,
-                       query="SELECT * FROM test WHERE test LIKE '%' ALLOW FILTERING".format(char),
+                       query="SELECT * FROM test WHERE test LIKE '%' ALLOW FILTERING",
                        expected=all_data,
                        ignore_order=True)
             # filter by cluster key
@@ -1753,7 +1753,7 @@ class TestLikeOperatorForBaseTable(Tester, BaseOperationsHelper):
                    query="SELECT * FROM test WHERE pk LIKE 'TEST_STRING1' ALLOW FILTERING",
                    expected=["TEST%STRING1", "1Test_String", "_{}%"])
         # test queries for CaseSensivity and combinations on clustering key
-        expected_rows = filter(lambda x: 'String' in x[1], all_data)
+        expected_rows = list(filter(lambda x: 'String' in x[1], all_data))
         assert_all(session,
                    query="SELECT * FROM test WHERE ck LIKE '%Test%Str%' ALLOW FILTERING",
                    expected=expected_rows,
@@ -1777,7 +1777,7 @@ class TestLikeOperatorForBaseTable(Tester, BaseOperationsHelper):
                    query="SELECT * FROM test WHERE ck LIKE '1Test_String' ALLOW FILTERING",
                    expected=["TEST%STRING1", "1Test_String", "_{}%"])
         # validate escaping LIKE operators
-        expected_rows = filter(lambda x: '_{}%' in x[2], all_data)
+        expected_rows = list(filter(lambda x: '_{}%' in x[2], all_data))
         assert_all(session,
                    query="SELECT * FROM test WHERE test like '_{}%' ALLOW FILTERING",
                    expected=expected_rows)
@@ -1828,7 +1828,7 @@ class TestLikeOperatorForBaseTable(Tester, BaseOperationsHelper):
         """
         session = self.prepare_simple_table_with_column_type(cl_type='varchar')
         all_data = self.populate_simple_table_with_specific_data(session)
-        special_data = filter(lambda x: 'cluster' in x[1], all_data)
+        special_data = list(filter(lambda x: 'cluster' in x[1], all_data))
         # test special chars as escaped, with LIKE operators
         for char in self.special_values:
             # filter by column
@@ -1842,11 +1842,11 @@ class TestLikeOperatorForBaseTable(Tester, BaseOperationsHelper):
                        query="SELECT * FROM test WHERE test LIKE '\%' ALLOW FILTERING",
                        expected=['TEST%STRING7', 'cluster_%', '%'])
             assert_all(session,
-                       query="SELECT * FROM test WHERE test LIKE '_' ALLOW FILTERING".format(char),
+                       query="SELECT * FROM test WHERE test LIKE '_' ALLOW FILTERING",
                        expected=special_data,
                        ignore_order=True)
             assert_all(session,
-                       query="SELECT * FROM test WHERE test LIKE '%' ALLOW FILTERING".format(char),
+                       query="SELECT * FROM test WHERE test LIKE '%' ALLOW FILTERING",
                        expected=all_data,
                        ignore_order=True)
             # filter by cluster key
@@ -1891,7 +1891,7 @@ class TestLikeOperatorForBaseTable(Tester, BaseOperationsHelper):
                    query="SELECT * FROM test WHERE pk LIKE 'TEST_STRING1' ALLOW FILTERING",
                    expected=["TEST%STRING1", "1Test_String", "_{}%"])
         # test queries for CaseSensivity and combinations on clustering key
-        expected_rows = filter(lambda x: 'String' in x[1], all_data)
+        expected_rows = list(filter(lambda x: 'String' in x[1], all_data))
         assert_all(session,
                    query="SELECT * FROM test WHERE ck LIKE '%Test%Str%' ALLOW FILTERING",
                    expected=expected_rows,
@@ -1915,7 +1915,7 @@ class TestLikeOperatorForBaseTable(Tester, BaseOperationsHelper):
                    query="SELECT * FROM test WHERE ck LIKE '1Test_String' ALLOW FILTERING",
                    expected=["TEST%STRING1", "1Test_String", "_{}%"])
         # validate escaping LIKE operators
-        expected_rows = filter(lambda x: '_{}%' in x[2], all_data)
+        expected_rows = list(filter(lambda x: '_{}%' in x[2], all_data))
         assert_all(session,
                    query="SELECT * FROM test WHERE test like '_{}%' ALLOW FILTERING",
                    expected=expected_rows)
@@ -1956,12 +1956,12 @@ class TestLikeOperatorForBaseTable(Tester, BaseOperationsHelper):
 
         all_data = self.populate_simple_table_with_several_partitions(session)
 
-        expected_rows = filter(lambda x: "0" in x[1], all_data)
+        expected_rows = list(filter(lambda x: "0" in x[1], all_data))
         assert_all(session,
                    query="SELECT * FROM test WHERE pk LIKE '_e%t%g_' AND ck LIKE '0%' ALLOW FILTERING",
                    expected=expected_rows,
                    ignore_order=True)
-        expected_rows = filter(lambda x: "1" in x[2], all_data)
+        expected_rows = list(filter(lambda x: "1" in x[2], all_data))
         assert_all(session,
                    query="SELECT * FROM test where ck LIKE '_test%' and test LIKE '%1%' ALLOW FILTERING",
                    expected=expected_rows,
@@ -1974,7 +1974,7 @@ class TestLikeOperatorForBaseTable(Tester, BaseOperationsHelper):
         assert_none(session,
                     query="SELECT * FROM test WHERE pk LIKE 'teststring_' and test LIKE 'test\_string' ALLOW FILTERING")
 
-        expected_rows = filter(lambda x: "1" in x[1] and "1" in x[2], all_data)
+        expected_rows = list(filter(lambda x: "1" in x[1] and "1" in x[2], all_data))
         assert_all(session,
                    query="SELECT * FROM test WHERE test LIKE '%1%' AND ck = '1teststring' ALLOW FILTERING",
                    expected=expected_rows,
@@ -1988,7 +1988,7 @@ class TestLikeOperatorForBaseTable(Tester, BaseOperationsHelper):
         assert_none(session,
                     query="SELECT * FROM test WHERE pk in ('teststring1', 'teststring0') AND ck > '0teststring' AND test LIKE 'test0string' ALLOW FILTERING")
 
-        expected_rows = filter(lambda x: ("0" in x[0] or "1" in x[0]) and "1" in x[1] and ("1" in x[2] or "0" in x[2]), all_data)
+        expected_rows = list(filter(lambda x: ("0" in x[0] or "1" in x[0]) and "1" in x[1] and ("1" in x[2] or "0" in x[2]), all_data))
         assert_all(session,
                    query="SELECT * FROM test WHERE pk in ('teststring1', 'teststring0') AND ck > '0teststring' AND test LIKE 'test_string' ALLOW FILTERING",
                    expected=expected_rows,
