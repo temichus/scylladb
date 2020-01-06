@@ -35,6 +35,7 @@ class TestNodetool(Tester):
                                     {"func": self.verify_cfhistograms, "time": 25}, {"func": self.verify_cfstats, "time": 25, "args": [None, "keyspace1"]},
                                     {"func": self.verify_describering, "time": 25}, {"func": self.verify_decribecluster, "time": 25}]
         self.reserved_names = ['view_pending_updates']
+        self.cluster_started = False
 
     @staticmethod
     def _to_cfstats(out):
