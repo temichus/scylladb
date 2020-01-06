@@ -915,7 +915,7 @@ class Tester(TestCase):
         if failed:
             exc_type, exc_value = sys.exc_info()[:2]
             debug("Test failed with exception: {}: {}".format(exc_type, exc_value))
-        if hasattr(self, '_outcome'):
+        if hasattr(self, '_outcome') and self._outcome is not None:
             if not self._outcome.success:
                 failed = True
                 debug("Test failed with unsuccessful outcome")
