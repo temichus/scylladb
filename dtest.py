@@ -32,6 +32,7 @@ from ccmlib.common import is_win
 from ccmlib.node import TimeoutError
 from ccmlib.scylla_cluster import ScyllaCluster
 from nose.exc import SkipTest
+from nose.plugins.attrib import attr
 
 from multiprocessing import Queue, Lock
 from functools import wraps
@@ -378,7 +379,7 @@ def make_execution_profile(retry_policy=FlakyRetryPolicy(), consistency_level=Co
     return ExecutionProfile(retry_policy=retry_policy,
                             consistency_level=consistency_level,
                             **kwargs)
-
+PRESERVED_CLUSTER = None
 
 class Tester(TestCase):
     _multiprocess_can_split_ = True
@@ -397,9 +398,19 @@ class Tester(TestCase):
         self.runners = []
         super(Tester, self).__init__(*argv, **kwargs)
 
+    def _reuse_preserved_cluster(self):
+        global PRESERVED_CLUSTER
+        if self._preserve_cluster and PRESERVED_CLUSTER is not None:
+            self.cluster = PRESERVED_CLUSTER
+            self.test_path = os.path.join(PRESERVED_CLUSTER.get_path(),"..")
+            PRESERVED_CLUSTER = None
+            return True
+        return False
+
     def _get_cluster(self, name='test', version=None):
         if self._preserve_cluster and hasattr(self, 'cluster'):
             return self.cluster
+
         # we can not work /tmp
         dtest_root = os.path.join(os.path.expanduser("~"), '.dtest')
         if not os.path.exists(dtest_root):
@@ -504,7 +515,7 @@ class Tester(TestCase):
             os.remove(LAST_TEST_DIR)
 
         if not preserve_cluster:
-            Tester._cls_force_clean(cluster)
+            Tester._force_clean(cluster)
 
         # cluster.id may be equal to 0
         # so test it is not None
@@ -521,10 +532,8 @@ class Tester(TestCase):
         else:
             node.set_install_dir(install_dir=cdir)
 
-    def _force_clean(self):
-        Tester._cls_force_clean(self.cluster)
-
-    def _cls_force_clean(cluster):
+    @staticmethod
+    def _force_clean(cluster):
         cdir = CASSANDRA_DIR
 
         if isScylla(cdir):
@@ -554,6 +563,10 @@ class Tester(TestCase):
             if os.path.exists(m):
                 module = m
         CURRENT_TEST = "{}:{}.{}".format(module, qualname, self._testMethodName)
+
+        self._preserve_cluster = False
+        if (getattr(getattr(self,  self._testMethodName), 'reuse-cluster', False) or getattr(self, 'reuse-cluster', False)):
+            self._preserve_cluster = REUSE_CLUSTER
 
         # On Windows, forcefully terminate any leftover previously running cassandra processes. This is a temporary
         # workaround until we can determine the cause of intermittent hung-open tests and file-handles.
@@ -588,16 +601,21 @@ class Tester(TestCase):
                 # after a restart, /tmp will be emptied so we'll get an IOError when loading the old cluster here
                 pass
 
+        new_cluster=False
         if not hasattr(self, 'cluster') or self.cluster is None:
-            self.cluster = self._get_cluster(version=self.cassandra_version)
-            self.addCleanup(self.cleanUpCluster)
+            if not self._reuse_preserved_cluster():
+                 new_cluster=True
+                 self.cluster = self._get_cluster(version=self.cassandra_version)
+        self.addCleanup(self.cleanUpCluster)
 
         annotate =  os.path.join(self.cluster.get_path(), 'current_test')
         with open(annotate, 'a') as f:
             f.write(self.id() + '\n')
 
-        if not self._preserve_cluster:
-            self._force_clean()
+        if new_cluster:
+            self._force_clean(self.cluster)
+        else:
+            return
 
         if RECORD_COVERAGE:
             self.__setup_jacoco()
@@ -914,6 +932,11 @@ class Tester(TestCase):
 
     @classmethod
     def tearDownClass(cls):
+        global PRESERVED_CLUSTER
+        if PRESERVED_CLUSTER is not None:
+            cls._cls_cleanup_cluster(PRESERVED_CLUSTER, PRESERVED_CLUSTER.get_path(),False,cluster_id_allocator)
+            PRESERVED_CLUSTER = None
+
         reset_environment_vars()
         if os.path.exists(LAST_TEST_DIR):
             with open(LAST_TEST_DIR) as f:
@@ -999,6 +1022,15 @@ class Tester(TestCase):
             finally:
                 if failed or not self._preserve_cluster:
                     self._cleanup_cluster()
+                    self.cluster = None
+                else:
+                    # test passed and preserving is set
+                    # removing the LAST_TEST_DIR as the test ended
+                    if os.path.exists(LAST_TEST_DIR):
+                        os.remove(LAST_TEST_DIR)
+                    # preserving cluster
+                    global PRESERVED_CLUSTER
+                    PRESERVED_CLUSTER = self.cluster
                     self.cluster = None
 
     def go(self, func):
@@ -1169,6 +1201,9 @@ class Tester(TestCase):
                             else metrics_res[metric_name] + val
         return metrics_res
 
+@attr('reuse-cluster')
+class TesterReuseCluster(Tester):
+    _multiprocess_can_split_ = not REUSE_CLUSTER
 
 class MultiError(Exception):
     """
