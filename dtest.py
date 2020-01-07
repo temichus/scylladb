@@ -466,48 +466,51 @@ class Tester(TestCase):
         self.var_trace(cluster)
 
     def _cleanup_cluster(self, remove=True):
+        Tester._cls_cleanup_cluster(self.cluster, self.test_path,self._preserve_cluster, self.cluster_id_allocator, remove)
+
+    def _cls_cleanup_cluster(cluster, test_path, preserve_cluster, cluster_id_allocator, remove=True):
         if SILENCE_DRIVER_ON_SHUTDOWN:
             # driver logging is very verbose when nodes start going down -- bump up the level
             logging.getLogger('cassandra').setLevel(logging.CRITICAL)
 
         if KEEP_TEST_DIR:
-            debug("{}stopping ccm cluster {} at: {}".format("gently " if RECORD_COVERAGE else "", self.cluster.name, self.test_path))
-            self.cluster.stop(gently=RECORD_COVERAGE)
+            debug("{}stopping ccm cluster {} at: {}".format("gently " if RECORD_COVERAGE else "", cluster.name, test_path))
+            cluster.stop(gently=RECORD_COVERAGE)
         else:
             # when recording coverage the jvm has to exit normally
             # or the coverage information is not written by the jacoco agent
             # otherwise we can just kill the process
             if RECORD_COVERAGE:
-                self.cluster.stop(gently=True)
+                cluster.stop(gently=True)
 
             if remove:
                 # Cleanup everything:
-                debug("removing ccm cluster " + self.cluster.name + " at: " + self.test_path)
-                self.cluster.remove()
+                debug("removing ccm cluster " + cluster.name + " at: " + test_path)
+                cluster.remove()
 
-                # debug("clearing ssl stores from [{0}] directory".format(self.test_path))
+                # debug("clearing ssl stores from [{0}] directory".format(test_path))
                 for filename in ('keystore.jks', 'truststore.jks', 'ccm_node.cer', 'ccm_node.pem', 'ccm_node.key', 'trust.pem'):
                     try:
-                        os.remove(os.path.join(self.test_path, filename))
+                        os.remove(os.path.join(test_path, filename))
                     except OSError as e:
                         # once we port to py3, which has better reporting for exceptions raised while
                         # handling other excpetions, we should just assert e.errno == errno.ENOENT
                         if e.errno != errno.ENOENT:  # ENOENT = no such file or directory
                             raise
 
-                if os.path.exists(self.test_path):
-                    os.rmdir(self.test_path)
+                if os.path.exists(test_path):
+                    os.rmdir(test_path)
         if os.path.exists(LAST_TEST_DIR):
             os.remove(LAST_TEST_DIR)
 
-        if not self._preserve_cluster:
-            self._force_clean()
+        if not preserve_cluster:
+            Tester._cls_force_clean(cluster)
 
         # cluster.id may be equal to 0
         # so test it is not None
-        if self.cluster.id is not None:
-            self.cluster_id_allocator.free(self.cluster.id)
-            self.cluster.id = None
+        if cluster.id is not None:
+            cluster_id_allocator.free(cluster.id)
+            cluster.id = None
 
     def set_node_to_current_version(self, node):
         version = os.environ.get('CASSANDRA_VERSION')
@@ -519,13 +522,16 @@ class Tester(TestCase):
             node.set_install_dir(install_dir=cdir)
 
     def _force_clean(self):
+        Tester._cls_force_clean(self.cluster)
+
+    def _cls_force_clean(cluster):
         cdir = CASSANDRA_DIR
 
         if isScylla(cdir):
             for proc in psutil.process_iter():
                 try:
-                    if ('scylla' in proc.name() or 'scylla' in proc.cmdline()[0]) and any(self.cluster.ipprefix in cmd for cmd in proc.cmdline()):
-                        debug("proc %s killed - cluster %s" % (proc.pid, self.cluster.ipprefix))
+                    if ('scylla' in proc.name() or 'scylla' in proc.cmdline()[0]) and any(cluster.ipprefix in cmd for cmd in proc.cmdline()):
+                        debug("proc %s killed - cluster %s" % (proc.pid, cluster.ipprefix))
                         try:
                             proc.kill()
                         except Exception:
