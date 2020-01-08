@@ -204,6 +204,10 @@ To keep all test cluster directories (under `$HOME/.dtest/`), use:
 
 > See also "Test Directories" below.
 
+To skip all tests and just check that all modules are found:
+
+    DRY_RUN=true
+
 To change Scylla CPU and memory configuration:
 
     SCYLLA_EXT_OPTS="--smp 2 --memory 1G"

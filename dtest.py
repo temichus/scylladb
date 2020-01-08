@@ -69,6 +69,7 @@ CLUSTER_ID_ALLOCATOR = os.environ.get('CLUSTER_ID_ALLOCATOR', '')
 KEEP_CORES = os.environ.get('KEEP_CORES', 'true').lower() in ('yes', 'true')
 DTEST_CORE_COMPRESS_TOOL = os.environ.get('DTEST_CORE_COMPRESS_TOOL', 'gzip')
 DTEST_CORE_COMPRESS_EXT = os.environ.get('DTEST_CORE_COMPRESS_EXT', 'gz')
+DRY_RUN = os.environ.get('DRY_RUN', '').lower() in ('yes', 'true')
 
 CURRENT_TEST = ""
 
@@ -524,6 +525,9 @@ class Tester(TestCase):
                     pass
 
     def setUp(self):
+        if DRY_RUN:
+            raise SkipTest("Dry run")
+
         global CURRENT_TEST
         CURRENT_TEST = self.id() + self._testMethodName
 

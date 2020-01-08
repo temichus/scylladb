@@ -49,6 +49,7 @@ Script to run dtest from within docker
         KEEP_CORES
         CLUSTER_ID_ALLOCATOR
         NOSE_PROCESSES
+        DRY_RUN
 
     Examples:
     cd ~/scylla-dtest/
@@ -174,6 +175,7 @@ docker_cmd="docker run --detach=true \
     -e KEEP_CORES \
     -e NOSE_PROCESSES \
     -e CLUSTER_ID_ALLOCATOR \
+    -e DRY_RUN \
     -e NODE_TOTAL \
     -e NODE_INDEX \
     -e SCYLLA_MANAGER_PACKAGE \
