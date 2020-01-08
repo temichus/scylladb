@@ -425,8 +425,8 @@ class TestScyllaMgmtRepair(RepairAdditionalBase):
         # cf_to_not_be_repaired should not appear in node4, unlike the others
         self._assert_multiple_row_ranges_from_specific_node(node_to_query=node4, nodes_to_shut_down=[node1, node2, node3],
                                                             keyspace_name=self.KEYSPACE_NAME, tables_and_row_count_dict=
-                                                            dict(first_range_to_repair.items() +
-                                                                 second_range_to_repair.items() +
+                                                            dict(list(first_range_to_repair.items()) +
+                                                                 list(second_range_to_repair.items()) +
                                                                  [("cf_to_not_be_repaired", [])]))
 
     @attr('scylla-manager')
