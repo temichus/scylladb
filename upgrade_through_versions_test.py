@@ -862,30 +862,6 @@ class TestUpgradeThroughVersions(Tester):
             self.fail("Count query did not return")
 
 
-class TestRandomPartitionerUpgrade(TestUpgradeThroughVersions):
-    """
-    Upgrades a 3-node RandomPartitioner cluster through versions specified in test_versions.
-    """
-
-    def __init__(self, *args, **kwargs):
-        # Ignore these log patterns:
-        self.ignore_log_patterns = [
-            # This one occurs if we do a non-rolling upgrade, the node
-            # it's trying to send the migration to hasn't started yet,
-            # and when it does, it gets replayed and everything is fine.
-            r'Can\'t send migration request: node.*is down',
-            r'RejectedExecutionException.*ThreadPoolExecutor has shut down',
-        ]
-        self.subprocs = []
-        # Force cluster options that are common among versions:
-        kwargs['cluster_options'] = {'partitioner': 'org.apache.cassandra.dht.RandomPartitioner'}
-        Tester.__init__(self, *args, **kwargs)
-
-    @property
-    def test_versions(self):
-        return [make_branch_str(v) for v in UPGRADE_PATH]
-
-
 class PointToPointUpgradeBase(TestUpgradeThroughVersions):
     """
     Base class for testing a single upgrade (ver1->ver2).
