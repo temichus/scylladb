@@ -56,6 +56,8 @@ class TestUpdateableConfig(Tester):
         self.assertEquals(response.text, verify_response, 'response: %s, expected: %s' %
                           (response.text, verify_response))
 
+    @attr('next-gating')
+    @attr('dtest-debug')
     def test_compaction_enforce_min_threshold(self):
         self.cluster.populate(1).start(wait_other_notice=True, wait_for_binary_proto=True)
         node1 = self.cluster.nodelist()[0]
