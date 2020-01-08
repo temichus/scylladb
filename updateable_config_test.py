@@ -17,7 +17,7 @@ import requests
 
 from nose.plugins.attrib import attr
 
-from tools import require
+from tools import require, insert_c1c2
 
 from dtest import Tester, debug
 
@@ -74,6 +74,52 @@ class TestUpdateableConfig(Tester):
 
         self.change_and_verify_config(node1, 'compaction_enforce_min_threshold', False, 'false')
         node1.stress(['mixed', 'n=10000', '-rate', 'threads=8'])
+
+    def test_verify_min_threshold(self):
+        self.cluster.populate(1).start(wait_other_notice=True, wait_for_binary_proto=True)
+        node1 = self.cluster.nodelist()[0]
+        session = self.patient_cql_connection(node1)
+
+        min_threshold = 5
+        insert_keys_num = 1
+
+        self.create_ks(session, 'ks', 1)
+        self.create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'})
+        insert_c1c2(session, keys=range(100))
+        session.execute("""
+            ALTER TABLE ks.cf WITH compaction = {
+                'class' : 'SizeTieredCompactionStrategy', 'min_threshold' : %d }
+        """ % min_threshold)
+
+        self.change_and_verify_config(node1, 'compaction_enforce_min_threshold', True, 'true')
+        mark = node1.mark_log()
+        compact_log = "compaction - Compacting \[%s" % os.path.join(node1.get_path(), "data/ks/cf")
+
+        for i in range(min_threshold - 1):
+            insert_c1c2(session, n=insert_keys_num)
+            node1.flush()
+        try:
+            node1.watch_log_for(compact_log, from_mark=mark, timeout=10)
+        except Exception as ex:
+            debug(ex)
+            assert "Missing: ['compaction - Compacting" in str(ex)
+
+        insert_c1c2(session, n=insert_keys_num)
+        node1.flush()
+        debug('Reach to min threshold, expect compact to be triggered')
+        node1.watch_log_for(compact_log, from_mark=mark, timeout=10)
+
+        mark = node1.mark_log()
+        debug('Execute compact to clean the threshold counting')
+        node1.compact()
+        node1.watch_log_for(compact_log, from_mark=mark, timeout=10)
+
+        self.change_and_verify_config(node1, 'compaction_enforce_min_threshold', False, 'false')
+        mark = node1.mark_log()
+        insert_c1c2(session, n=insert_keys_num)
+        node1.flush()
+        debug('compaction_enforce_min_threshold is disabled, expect compact to be triggered by one insert')
+        node1.watch_log_for(compact_log, from_mark=mark, timeout=10)
 
     @require('#5382')
     def test_auto_adjust_flush_quota(self):
