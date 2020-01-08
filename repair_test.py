@@ -129,10 +129,6 @@ class TestRepair(Tester):
     def empty_vs_gcable_parallel_repair_test(self):
         self._empty_vs_gcable_no_repair(sequential=False)
 
-    @no_vnodes()  # https://issues.apache.org/jira/browse/CASSANDRA-5220
-    def simple_repair_order_preserving_test(self, ):
-        self._simple_repair(order_preserving_partitioner=True)
-
     def _repair_options(self, ks='', cf=None, sequential=True):
         if cf is None:
             cf = []
@@ -155,11 +151,8 @@ class TestRepair(Tester):
             opts += cf
         return opts
 
-    def _simple_repair(self, order_preserving_partitioner=False, sequential=True):
+    def _simple_repair(self, sequential=True):
         cluster = self.cluster
-
-        if order_preserving_partitioner:
-            cluster.set_partitioner('org.apache.cassandra.dht.ByteOrderedPartitioner')
 
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfer with the test (this must be after the populate)
