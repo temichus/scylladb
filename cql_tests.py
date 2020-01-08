@@ -26,11 +26,8 @@ from nose.plugins.attrib import attr
 @attr('dtest-full')
 class CQLTester(Tester):
 
-    def prepare(self, ordered=False, create_keyspace=True, use_cache=False, nodes=1, rf=1, protocol_version=None, user=None, password=None, **kwargs):
+    def prepare(self, create_keyspace=True, use_cache=False, nodes=1, rf=1, protocol_version=None, user=None, password=None, **kwargs):
         cluster = self.cluster
-
-        if (ordered):
-            cluster.set_partitioner("org.apache.cassandra.dht.ByteOrderedPartitioner")
 
         if (use_cache):
             cluster.set_configuration_options(values={'row_cache_size_in_mb': 100})
