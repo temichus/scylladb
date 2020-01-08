@@ -39,6 +39,16 @@ Using `virtualenv` is recommended in order to not pollute your global python3 in
 To setup a `virtualenv` follow the below instructions:
 
 ```bash
+# fedora
+sudo dnf install python3 python3-devel python3-pip python3-virtualenv
+
+# centos/redhat
+sudo yum install https://centos7.iuscommunity.org/ius-release.rpm
+sudo yum install python36u python36u-libs python36u-devel python36u-pip python36u-virtualenv
+
+# ubuntu/debian
+sudo apt install python3 python3-dev python3-pip python3-virtualenv
+
 # Create the virtualenv (dtests require python3)
 python3 -m virtualenv env
 
