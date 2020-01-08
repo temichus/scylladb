@@ -28,14 +28,6 @@ from tools import rows_to_list, require
 DEFAULT_FLOAT_PRECISION = 5  # magic number copied from cqlsh script
 DEFAULT_TIME_FORMAT = '%Y-%m-%d %H:%M:%S%z'  # based on cqlsh script
 
-PARTITIONERS = {
-    "murmur3": "org.apache.cassandra.dht.Murmur3Partitioner",
-    "random": "org.apache.cassandra.dht.RandomPartitioner",
-    "byte": "org.apache.cassandra.dht.ByteOrderedPartitioner",
-    "order": "org.apache.cassandra.dht.OrderPreservingPartitioner"
-}
-
-
 class UTC(datetime.tzinfo):
     """
     A utility class to specify a UTC timezone.
@@ -103,12 +95,9 @@ class ImmutableDictMixin(object):
 @attr('dtest-full')
 class CqlshPrepare(Tester):
 
-    def prepare(self, nodes=1, partitioner="murmur3", configuration_options=None):
+    def prepare(self, nodes=1, configuration_options=None):
         if not self.cluster.nodelist():
-            p = PARTITIONERS[partitioner]
-            self.cluster.set_partitioner(p)
-            if partitioner != "murmur3":
-                self.cluster.set_configuration_options(values={'enable_deprecated_partitioners': True})
+            self.cluster.set_partitioner("org.apache.cassandra.dht.Murmur3Partitioner")
             if configuration_options:
                 self.cluster.set_configuration_options(values=configuration_options)
             self.cluster.populate(nodes).start(wait_for_binary_proto=True)
@@ -123,8 +112,8 @@ class CqlshPrepare(Tester):
         self.session.execute('DROP KEYSPACE IF EXISTS ks')
         self.create_ks(self.session, 'ks', 1)
 
-    def all_datatypes_prepare(self, nodes=1, partitioner="murmur3"):
-        self.prepare(nodes, partitioner)
+    def all_datatypes_prepare(self, nodes=1):
+        self.prepare(nodes)
 
         self.session.execute('CREATE TYPE name_type (firstname text, lastname text)')
         self.session.execute('''
@@ -1175,7 +1164,7 @@ class CqlshCopyTest(CqlshPrepare):
         self.assertFalse(self.session.execute("SELECT * FROM testcolumns"))
         self.assertIn('Failed to import', err)
 
-    def _test_round_trip(self, nodes, partitioner, num_records=10000):
+    def _test_round_trip(self, nodes, num_records=10000):
         """
         Test a simple round trip of a small CQL table to and from a CSV file via
         COPY.
@@ -1188,7 +1177,7 @@ class CqlshCopyTest(CqlshPrepare):
         - asserting that the previously-SELECTed contents of the table match the
         current contents of the table.
         """
-        self.prepare(nodes=nodes, partitioner=partitioner)
+        self.prepare(nodes=nodes)
         self.session.execute("""
             CREATE TABLE testcopyto (
                 a text PRIMARY KEY,
@@ -1221,13 +1210,7 @@ class CqlshCopyTest(CqlshPrepare):
         self.assertEqual(results, new_results)
 
     def test_round_trip_murmur3(self):
-        self._test_round_trip(nodes=3, partitioner="murmur3")
-
-    def test_round_trip_random(self):
-        self._test_round_trip(nodes=3, partitioner="random")
-
-    def test_round_trip_byte_ordered(self):
-        self._test_round_trip(nodes=3, partitioner="byte")
+        self._test_round_trip(nodes=3)
 
     @attr('single_node')
     def test_source_copy_round_trip(self):
@@ -1278,13 +1261,13 @@ class CqlshCopyTest(CqlshPrepare):
 
         os.unlink(commandfile.name)
 
-    def _test_bulk_round_trip(self, nodes, partitioner,
+    def _test_bulk_round_trip(self, nodes,
                               num_operations, profile=None, stress_table='keyspace1.standard1',
                               page_size=1000, page_timeout=10, configuration_options=None):
         """
         Test exporting a large number of rows into a csv file.
         """
-        self.prepare(nodes=nodes, partitioner=partitioner, configuration_options=configuration_options)
+        self.prepare(nodes=nodes, configuration_options=configuration_options)
 
         if not profile:
             debug('Running stress without any user profile')
@@ -1327,7 +1310,7 @@ class CqlshCopyTest(CqlshPrepare):
 
         @jira_ticket CASSANDRA-9302
         """
-        self._test_bulk_round_trip(nodes=3, partitioner="murmur3", num_operations=100000)
+        self._test_bulk_round_trip(nodes=3, num_operations=100000)
 
     @require('#2386')
     def test_bulk_round_trip_blogposts(self):
@@ -1336,7 +1319,7 @@ class CqlshCopyTest(CqlshPrepare):
 
         @jira_ticket CASSANDRA-9302
         """
-        self._test_bulk_round_trip(nodes=3, partitioner="murmur3", num_operations=10000,
+        self._test_bulk_round_trip(nodes=3, num_operations=10000,
                                    profile=os.path.join(os.path.dirname(os.path.realpath(__file__)), 'blogposts.yaml'),
                                    stress_table='stresscql.blogposts', page_timeout=60)
 
@@ -1349,7 +1332,7 @@ class CqlshCopyTest(CqlshPrepare):
 
         @jira_ticket CASSANDRA-9302
         """
-        self._test_bulk_round_trip(nodes=1, partitioner="murmur3", num_operations=100000,
+        self._test_bulk_round_trip(nodes=1, num_operations=100000,
                                    configuration_options={'range_request_timeout_in_ms': '300',
                                                           'write_request_timeout_in_ms': '200'})
 
