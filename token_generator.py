@@ -15,18 +15,15 @@ class TokenGenerator(Tester):
     Basic tools/bin/token-generator test.
     """
 
-    def call_token_generator(self, install_dir, randomPart, nodes):
+    def call_token_generator(self, install_dir, defaultPart, nodes):
         executable = install_dir + "/tools/bin/token-generator"
         if common.is_win():
             executable += ".bat"
 
         args = [executable]
 
-        if randomPart is not None:
-            if randomPart:
-                args.append("--random")
-            else:
-                args.append("--murmur3")
+        if not defaultPart:
+            args.append("--murmur3")
 
         for n in nodes:
             args.append(str(n))
@@ -56,20 +53,14 @@ class TokenGenerator(Tester):
 
         return generated_tokens
 
-    def prepare(self, randomPart=None, nodes=1):
+    def prepare(self, defualtPart=True, nodes=1):
         cluster = self.cluster
 
         install_dir = cluster.get_install_dir()
 
-        generated_tokens = self.call_token_generator(install_dir, randomPart, [nodes])
+        generated_tokens = self.call_token_generator(install_dir, defualtPart, [nodes])
 
-        if not randomPart:
-            cluster.set_partitioner("org.apache.cassandra.dht.Murmur3Partitioner")
-        else:
-            if randomPart:
-                cluster.set_partitioner("org.apache.cassandra.dht.RandomPartitioner")
-            else:
-                cluster.set_partitioner("org.apache.cassandra.dht.Murmur3Partitioner")
+        cluster.set_partitioner("org.apache.cassandra.dht.Murmur3Partitioner")
 
         # remove these from cluster options - otherwise node's config would be overridden with cluster._config_options_
         cluster._config_options.__delitem__('num_tokens')
@@ -84,8 +75,8 @@ class TokenGenerator(Tester):
 
         return generated_tokens, session
 
-    def _token_gen_test(self, nodes, randomPart=None):
-        generated_tokens, session = self.prepare(randomPart, nodes=nodes)
+    def _token_gen_test(self, nodes, defaultPart=True):
+        generated_tokens, session = self.prepare(defaultPart, nodes=nodes)
         dc_tokens = generated_tokens[0]
 
         tokens = []
@@ -117,11 +108,6 @@ class TokenGenerator(Tester):
 
         self._token_gen_test(nodes, False)
 
-    def token_gen_random_test(self, nodes=3):
-        """ Validate token-generator with Murmur3Partitioner with explicit random """
-
-        self._token_gen_test(nodes, True)
-
     dc_nodes_combinations = [
         [3, 5],
         [3, 5, 5],
@@ -133,16 +119,13 @@ class TokenGenerator(Tester):
         [2500, 2500, 2500, 2500]
     ]
 
-    def _multi_dc_tokens(self, random=None):
-        t_min = 0
-        t_max = 1 << 127
-        if random is None or not random:
-            t_min = -1 << 63
-            t_max = 1 << 63
+    def _multi_dc_tokens(self, defaultPart=True):
+        t_min = -1 << 63
+        t_max = 1 << 63
         for dc_nodes in self.dc_nodes_combinations:
             all_tokens = sortedset()
             node_count = 0
-            generated_tokens = self.call_token_generator(self.cluster.get_install_dir(), random, dc_nodes)
+            generated_tokens = self.call_token_generator(self.cluster.get_install_dir(), defaultPart, dc_nodes)
             self.assertEqual(dc_nodes.__len__(), generated_tokens.__len__())
             for n in range(0, dc_nodes.__len__()):
                 nodes = dc_nodes[n]
@@ -161,5 +144,3 @@ class TokenGenerator(Tester):
     def multi_dc_tokens_murmur3_test(self):
         self._multi_dc_tokens(False)
 
-    def multi_dc_tokens_random_test(self):
-        self._multi_dc_tokens(True)
