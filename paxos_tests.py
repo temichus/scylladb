@@ -16,11 +16,8 @@ from tools import no_vnodes, since
 @attr('dtest-full')
 class TestPaxos(Tester):
 
-    def prepare(self, ordered=False, create_keyspace=True, use_cache=False, nodes=1, rf=1):
+    def prepare(self, create_keyspace=True, use_cache=False, nodes=1, rf=1):
         cluster = self.cluster
-
-        if (ordered):
-            cluster.set_partitioner("org.apache.cassandra.dht.ByteOrderedPartitioner")
 
         if (use_cache):
             cluster.set_configuration_options(values={'row_cache_size_in_mb': 100})
