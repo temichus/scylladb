@@ -54,13 +54,3 @@ class TestPartitioner(Tester):
     def murmur3_partitioner_test(self):
         self.run_cluster("org.apache.cassandra.dht.Murmur3Partitioner",
                          "cassandra.3.nodes.30.rows.256.murmur3.partitioner")
-
-    def random_partitioner_test(self):
-        self.run_cluster("org.apache.cassandra.dht.RandomPartitioner",
-                         "cassandra.3.nodes.30.rows.256.random.partitioner",
-                         deprecated=True)
-
-    def byte_ordered_partitioner_test(self):
-        self.run_cluster("org.apache.cassandra.dht.ByteOrderedPartitioner",
-                         "cassandra.3.nodes.30.rows.256.byteordered.partitioner",
-                         deprecated=True)
