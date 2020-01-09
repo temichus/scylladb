@@ -742,11 +742,11 @@ class TestTopPartitions(Tester):
                 self.verify_thread_execution(ft)
 
             toppartition_result = ft_top.result()
-
-        expected_write_toppartition_results = [("1:1", "200")]
-        for i in range(1, 10):
-            expected_write_toppartition_results.append(("1:{}".format(i), "25"))
-
+        # expected first partitions
+        expected_write_toppartition_results = [("1:1", "150"), ("1:0", "15")]
+        # expected rest of partitions
+        for i in range(2, 10):
+            expected_write_toppartition_results.append(("1:{}".format(i), "15"))
         self.verifySamplesPresentInResult(["WRITES", "READS"], toppartition_result)
         self.verifyTopPartitionCounterForSample(actual_results=toppartition_result["WRITES"],
                                                 expected_results=expected_write_toppartition_results)
