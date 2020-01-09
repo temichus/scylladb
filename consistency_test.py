@@ -1312,11 +1312,11 @@ class TestConsistency(Tester):
         assert len(res[1].columns) == 1, 'Expecting 1 cell, got %d (%s)' % (len(res[0].columns), str(res[0].columns))
         assert res[1].columns[0].column.value == b'3', 'Expecting value 3, got %s' % str(res[0].columns[0].column.value)
 
-    @skip('Does not work, skipping after allowing it on scylla_tests and will investigate later')
     def reaching_end_after_retry_test(self):
         debug('Create cluster')
         cluster = self.cluster
         cluster.set_partitioner("org.apache.cassandra.dht.ByteOrderedPartitioner")
+        self.cluster.set_configuration_options(values={'enable_deprecated_partitioners': True})
         cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
         cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
         cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
