@@ -1092,8 +1092,7 @@ class TestConsistency(Tester):
     def incomplete_result_test_partition_limit(self):
         debug('Create cluster')
         cluster = self.cluster
-        cluster.set_partitioner("org.apache.cassandra.dht.ByteOrderedPartitioner")
-        self.cluster.set_configuration_options(values={'enable_deprecated_partitioners': True})
+        cluster.set_partitioner("org.apache.cassandra.dht.Murmur3Partitioner")
         cluster.set_configuration_options(values={'start_rpc': True})
         cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
         cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
@@ -1129,7 +1128,7 @@ class TestConsistency(Tester):
         client.set_keyspace('ks')
 
         cp = ColumnParent('cf1')
-        res = client.get_range_slices(cp, SlicePredicate(column_names=['1']), KeyRange(start_token='00000000', end_token='00000005', count=1), ConsistencyLevel.ALL)
+        res = client.get_range_slices(cp, SlicePredicate(column_names=['1']), KeyRange(start_token=str(-(1 << 63)), end_token=str(-(1 << 63)), count=1), ConsistencyLevel.ALL)
 
         assert len(res) == 1, 'Expecting 1 row, got %d (%s)' % (len(res), str(res))
         assert len(res[0].columns) == 1, 'Expecting 1 cell, got %d (%s)' % (len(res[0].columns), str(res[0].columns))
