@@ -86,7 +86,7 @@ class UpgradeTester(Tester):
     """
     NODES, RF, __test__, CL = 2, 1, False, None
 
-    def prepare(self, ordered=False, create_keyspace=True, use_cache=False,
+    def prepare(self, create_keyspace=True, use_cache=False,
                 nodes=None, rf=None, protocol_version=None, cl=None, **kwargs):
         nodes = self.NODES if nodes is None else nodes
         rf = self.RF if rf is None else rf
@@ -100,9 +100,6 @@ class UpgradeTester(Tester):
         self.protocol_version = protocol_version
 
         cluster = self.cluster
-
-        if (ordered):
-            cluster.set_partitioner("org.apache.cassandra.dht.ByteOrderedPartitioner")
 
         if (use_cache):
             cluster.set_configuration_options(values={'row_cache_size_in_mb': 100})
