@@ -1134,11 +1134,11 @@ class TestConsistency(Tester):
         assert len(res[0].columns) == 1, 'Expecting 1 cell, got %d (%s)' % (len(res[0].columns), str(res[0].columns))
         assert res[0].columns[0].column.value == b'2', 'Expecting value 2, got %s' % str(res[0].columns[0].column.value)
 
-    @skip('Does not work, skipping after allowing it on scylla_tests and will investigate later')
     def incomplete_result_test_per_partition_row_limit(self):
         debug('Create cluster')
         cluster = self.cluster
         cluster.set_partitioner("org.apache.cassandra.dht.ByteOrderedPartitioner")
+        self.cluster.set_configuration_options(values={'enable_deprecated_partitioners': True})
         cluster.set_configuration_options(values={'start_rpc': True})
         cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
         cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
@@ -1174,11 +1174,11 @@ class TestConsistency(Tester):
         client.set_keyspace('ks')
 
         cp = ColumnParent('cf1')
-        res = client.get_range_slices(cp, SlicePredicate(slice_range=SliceRange(start='', finish='', count=1)), KeyRange(start_token='00000000', end_token='00000005'), thrift_bindings.thrift010.Cassandra.ConsistencyLevel.ALL)
+        res = client.get_range_slices(cp, SlicePredicate(slice_range=SliceRange(start='', finish='', count=1)), KeyRange(start_token='00000000', end_token='00000005'), ConsistencyLevel.ALL)
 
         assert len(res) == 1, 'Expecting 1 row, got %d (%s)' % (len(res), str(res))
         assert len(res[0].columns) == 1, 'Expecting 1 cell, got %d (%s)' % (len(res[0].columns), str(res[0].columns))
-        assert res[0].columns[0].column.value == '2', 'Expecting value 2, got %s' % str(res[0].columns[0].column.value)
+        assert res[0].columns[0].column.value == b'2', 'Expecting value 2, got %s' % str(res[0].columns[0].column.value)
 
     def empty_reconciled_result(self):
         debug('Create cluster')
