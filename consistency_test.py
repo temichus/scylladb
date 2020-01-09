@@ -795,7 +795,7 @@ class TestConsistency(Tester):
             values={'hinted_handoff_enabled': False}, batch_commitlog=True)
         cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
 
-        cluster.populate(3).start(wait_other_notice=True)
+        cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2, node3 = cluster.nodelist()
 
         session = self.patient_cql_connection(node1)
@@ -840,7 +840,7 @@ class TestConsistency(Tester):
             values={'hinted_handoff_enabled': False}, batch_commitlog=True)
         cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
 
-        cluster.populate(2).start(wait_other_notice=True)
+        cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2 = cluster.nodelist()
 
         session = self.patient_cql_connection(node1)
@@ -882,7 +882,7 @@ class TestConsistency(Tester):
             values={'hinted_handoff_enabled': False}, batch_commitlog=True)
         cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
 
-        cluster.populate(3).start(wait_other_notice=True)
+        cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2, node3 = cluster.nodelist()
 
         session = self.patient_cql_connection(node1)
@@ -928,10 +928,10 @@ class TestConsistency(Tester):
         cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
 
         if DISABLE_VNODES:
-            cluster.populate(2).start()
+            cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
         else:
             tokens = cluster.balanced_tokens(2)
-            cluster.populate(2, tokens=tokens).start()
+            cluster.populate(2, tokens=tokens).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2 = cluster.nodelist()
 
         session = self.patient_cql_connection(node1)
@@ -967,7 +967,7 @@ class TestConsistency(Tester):
             values={'hinted_handoff_enabled': False}, batch_commitlog=True)
         cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
 
-        cluster.populate(3).start(wait_other_notice=True)
+        cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2, node3 = cluster.nodelist()
 
         session = self.patient_cql_connection(node1)
@@ -1012,12 +1012,11 @@ class TestConsistency(Tester):
         cluster = self.cluster
         cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
         if DISABLE_VNODES:
-            cluster.populate(3).start()
+            cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True)
         else:
             tokens = cluster.balanced_tokens(3)
-            cluster.populate(3, tokens=tokens).start()
+            cluster.populate(3, tokens=tokens).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2, node3 = cluster.nodelist()
-        cluster.start()
 
         debug("Set to talk to node 2")
         session = self.patient_cql_connection(node2)
@@ -1057,7 +1056,7 @@ class TestConsistency(Tester):
         cluster = self.cluster
         cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
         cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
-        cluster.populate(2).start()
+        cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2 = cluster.nodelist()
 
         debug('Prepare column family')
@@ -1097,7 +1096,7 @@ class TestConsistency(Tester):
         cluster.set_partitioner("org.apache.cassandra.dht.ByteOrderedPartitioner")
         cluster.set_configuration_options(values={'start_rpc': True})
         cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
-        cluster.populate(2).start()
+        cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
         cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
         node1, node2 = cluster.nodelist()
 
@@ -1144,7 +1143,7 @@ class TestConsistency(Tester):
         cluster.set_configuration_options(values={'start_rpc': True})
         cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
         cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
-        cluster.populate(2).start()
+        cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2 = cluster.nodelist()
 
         debug('Prepare column family')
@@ -1187,7 +1186,7 @@ class TestConsistency(Tester):
         cluster = self.cluster
         cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
         cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
-        cluster.populate(2).start()
+        cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2 = cluster.nodelist()
 
         debug('Prepare column family')
@@ -1226,7 +1225,7 @@ class TestConsistency(Tester):
         cluster = self.cluster
         cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
         cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
-        cluster.populate(2).start()
+        cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2 = cluster.nodelist()
 
         debug('Prepare column family')
@@ -1269,7 +1268,7 @@ class TestConsistency(Tester):
         cluster.set_partitioner("org.apache.cassandra.dht.ByteOrderedPartitioner")
         cluster.set_configuration_options(values={'start_rpc': True})
         cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
-        cluster.populate(2).start()
+        cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
         cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
         node1, node2 = cluster.nodelist()
 
@@ -1321,7 +1320,7 @@ class TestConsistency(Tester):
         cluster.set_partitioner("org.apache.cassandra.dht.ByteOrderedPartitioner")
         cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
         cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
-        cluster.populate(2).start()
+        cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2 = cluster.nodelist()
 
         debug('Prepare column family')
