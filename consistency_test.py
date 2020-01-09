@@ -1315,8 +1315,7 @@ class TestConsistency(Tester):
     def reaching_end_after_retry_test(self):
         debug('Create cluster')
         cluster = self.cluster
-        cluster.set_partitioner("org.apache.cassandra.dht.ByteOrderedPartitioner")
-        self.cluster.set_configuration_options(values={'enable_deprecated_partitioners': True})
+        cluster.set_partitioner("org.apache.cassandra.dht.Murmur3Partitioner")
         cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
         cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
         cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
@@ -1351,6 +1350,6 @@ class TestConsistency(Tester):
 
         assert len(res) == 3, 'Expecting 3 rows, got %d (%s)' % (len(res), str(res))
 
-        assert res[0][0] == 3, 'Expecting value 3, got %s' % str(res[0][0])
+        assert res[0][0] == 5, 'Expecting value 3, got %s' % str(res[0][0])
         assert res[1][0] == 4, 'Expecting value 4, got %s' % str(res[0][0])
-        assert res[2][0] == 5, 'Expecting value 5, got %s' % str(res[0][0])
+        assert res[2][0] == 3, 'Expecting value 5, got %s' % str(res[0][0])
