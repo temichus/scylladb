@@ -286,7 +286,7 @@ class BaseOperationsHelper():
         return session
 
 
-@attr('dtest-full')
+@attr('dtest-full', 'single_node')
 class TestLikeOperatorForBaseTable(Tester, BaseOperationsHelper):
 
     def test_pk_filtering_of_text_type_with_percent_sign(self):
@@ -2083,7 +2083,7 @@ class TestLikeOperatorForBaseTable(Tester, BaseOperationsHelper):
             self.assertIn(expected, actual_rows)
 
 
-@attr('dtest-full')
+@attr('dtest-full', 'single_node')
 class TestLikeOperatorForMV(Tester, BaseOperationsHelper):
 
     def test_filtering_MV_new_primary(self):
@@ -2166,7 +2166,7 @@ class TestLikeOperatorForMV(Tester, BaseOperationsHelper):
                     query="SELECT * FROM building_by_city WHERE name LIKE 'q%T_' ALLOW FILTERING")
 
 
-@attr('dtest-full')
+@attr('dtest-full', 'single_node')
 class TestIndexFilteringWithLike(Tester, BaseOperationsHelper):
 
     def test_filter_index(self):
