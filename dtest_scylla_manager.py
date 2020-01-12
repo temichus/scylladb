@@ -596,6 +596,44 @@ class BackupTask(ManagerTask):
     def __init__(self, task_id, cluster_id, scylla_manager):
         ManagerTask.__init__(self, task_id=task_id, cluster_id=cluster_id, scylla_manager=scylla_manager)
 
+    def get_snapshot_tag(self):
+        # TODO: Add an option to choose from one of the tags to restore from, using backup list
+        command = f" -c {self.cluster_id} task progress {self.id}"
+        stdout, stderr = self.sctool.run(command, parse_table_res=False)
+        if stderr:
+            raise ScyllaManagerError(f"Failure for sctool '{command}' command:\n{stderr}")
+        snapshot_line = [line for line in stdout.splitlines() if "snapshot tag" in line.lower()]
+        # Returns the following:
+        # Snapshot Tag:	sm_20200106093455UTC
+        # (when executed manually, the title and value is separated by \t instead
+        snapshot_tag = snapshot_line[0].split(":")[1].strip()
+        return snapshot_tag
+
+    def get_backup_files_dict(self, snapshot_tag):
+        command = f" -c {self.cluster_id} backup files --snapshot-tag {snapshot_tag}"
+        snapshot_files, stderr = self.sctool.run(command)
+        if stderr:
+            raise ScyllaManagerError(f"Failure for sctool '{command}' command:\n{stderr}")
+        snapshot_file_list = [file_path_list[0] for file_path_list in snapshot_files]
+        # sctool.run returns a list of lists, each of them is a 1 length list that contains the row.
+        # This list comprehension turns the list into a list of strings (rows) instead
+        return self.snapshot_files_to_dict(snapshot_file_list)
+
+    def snapshot_files_to_dict(self, snapshot_file_lines):
+        per_node_keyspaces_and_tables_backup_files = {}
+        for line in snapshot_file_lines:
+            s3_file_path, keyspace_and_table = [string.strip() for string in line.split(' ')]
+            node_id = s3_file_path[s3_file_path.find("/node/") + len("/node/"):s3_file_path.find("/keyspace")]
+            keyspace, table = keyspace_and_table.split('/')
+            if node_id not in per_node_keyspaces_and_tables_backup_files:
+                per_node_keyspaces_and_tables_backup_files[node_id] = {}
+            if keyspace not in per_node_keyspaces_and_tables_backup_files[node_id]:
+                per_node_keyspaces_and_tables_backup_files[node_id][keyspace] = {}
+            if table not in per_node_keyspaces_and_tables_backup_files[node_id][keyspace]:
+                per_node_keyspaces_and_tables_backup_files[node_id][keyspace][table] = []
+            per_node_keyspaces_and_tables_backup_files[node_id][keyspace][table].append(s3_file_path)
+        return per_node_keyspaces_and_tables_backup_files
+
 
 class RestTask(ManagerTask):
     def __init__(self, task_id, cluster_id, scylla_manager):
