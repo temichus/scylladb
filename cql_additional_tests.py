@@ -48,12 +48,8 @@ MSG_ALLOW_FILTERING = "ALLOW FILTERING"
 @attr('dtest-full')
 class TestCQL(Tester):
 
-    def prepare(self, ordered=False, create_keyspace=True, use_cache=False, nodes=1, rf=1, protocol_version=None, options={}, **kwargs):
+    def prepare(self, create_keyspace=True, use_cache=False, nodes=1, rf=1, protocol_version=None, options={}, **kwargs):
         cluster = self.cluster
-
-        if ordered:
-            cluster.set_configuration_options(values={'enable_deprecated_partitioners': True})
-            cluster.set_partitioner("org.apache.cassandra.dht.ByteOrderedPartitioner")
 
         if use_cache:
             cluster.set_configuration_options(values={'row_cache_size_in_mb': 100})
@@ -399,7 +395,7 @@ class TestCQL(Tester):
         """
         Validate LIMIT option for 'range queries' in SELECT statements.
         """
-        session = self.prepare(ordered=True)
+        session = self.prepare()
 
         session.execute("""
             CREATE TABLE clicks (
@@ -420,7 +416,7 @@ class TestCQL(Tester):
         assert rows_to_list(res) == [[2, 'http://foo.com', 42]], list(res)
 
         res = session.execute("SELECT * FROM clicks WHERE token(userid) > token(2) LIMIT 1")
-        assert rows_to_list(res) == [[3, 'http://foo.com', 42]], list(res)
+        assert rows_to_list(res) == [[45, 'http://foo.com', 42]], list(res)
 
     @require("2029")
     @attr('single_node')
@@ -1521,7 +1517,7 @@ class TestCQL(Tester):
 
     @attr('single_node')
     def undefined_column_handling_test(self):
-        session = self.prepare(ordered=True)
+        session = self.prepare()
 
         session.execute("""
             CREATE TABLE test (
@@ -1536,7 +1532,7 @@ class TestCQL(Tester):
         session.execute("INSERT INTO test (k, v1, v2) VALUES (2, 2, 2)")
 
         res = session.execute("SELECT v2 FROM test")
-        assert rows_to_list(res) == [[0], [None], [2]], list(res)
+        assert rows_to_list(res) == [[None], [0], [2]], list(res)
 
         res = session.execute("SELECT v2 FROM test WHERE k = 1")
         assert rows_to_list(res) == [[None]], list(res)
@@ -2083,7 +2079,7 @@ class TestCQL(Tester):
     @attr('single_node')
     def only_pk_test(self):
         """ Check table with only a PK (#4361) """
-        session = self.prepare(ordered=True)
+        session = self.prepare()
 
         session.execute("""
             CREATE TABLE test (
@@ -2099,7 +2095,7 @@ class TestCQL(Tester):
                 session.execute(q % (k, c))
 
         res = session.execute("SELECT * FROM test")
-        assert rows_to_list(res) == [[x, y] for x in range(0, 2) for y in range(0, 2)], list(res)
+        assert rows_to_list(res) == [[x, y] for x in range(1, -1, -1) for y in range(0, 2)], list(res)
 
         # Check for dense tables too
         session.execute("""
@@ -2116,7 +2112,7 @@ class TestCQL(Tester):
                 session.execute(q % (k, c))
 
         res = session.execute("SELECT * FROM test2")
-        assert rows_to_list(res) == [[x, y] for x in range(0, 2) for y in range(0, 2)], list(res)
+        assert rows_to_list(res) == [[x, y] for x in range(1, -1, -1) for y in range(0, 2)], list(res)
 
     @attr('single_node')
     def date_test(self):
@@ -2163,7 +2159,7 @@ class TestCQL(Tester):
     @attr('single_node')
     def composite_index_with_pk_test(self):
 
-        session = self.prepare(ordered=True)
+        session = self.prepare()
         session.execute("""
             CREATE TABLE blogs (
                 blog_id int,
@@ -2223,7 +2219,7 @@ class TestCQL(Tester):
     def limit_bugs_test(self):
         """ Test for LIMIT bugs from 4579 """
 
-        session = self.prepare(ordered=True)
+        session = self.prepare()
         session.execute("""
             CREATE TABLE testcf (
                 a int,
@@ -2241,7 +2237,7 @@ class TestCQL(Tester):
         session.execute("INSERT INTO testcf (a, b, c, d, e) VALUES (4, 4, 4, 4, 4);")
 
         res = session.execute("SELECT * FROM testcf;")
-        assert rows_to_list(res) == [[1, 1, 1, 1, 1], [2, 2, 2, 2, 2], [3, 3, 3, 3, 3], [4, 4, 4, 4, 4]], list(res)
+        assert rows_to_list(res) == [[1, 1, 1, 1, 1], [2, 2, 2, 2, 2], [4, 4, 4, 4, 4], [3, 3, 3, 3, 3]], list(res)
 
         res = session.execute("SELECT * FROM testcf LIMIT 1;")  # columns d and e in result row are null
         assert rows_to_list(res) == [[1, 1, 1, 1, 1]], list(res)
@@ -2263,7 +2259,7 @@ class TestCQL(Tester):
         session.execute("INSERT INTO testcf2 (a, b, c) VALUES (4, 4, 4);")
 
         res = session.execute("SELECT * FROM testcf2;")
-        assert rows_to_list(res) == [[1, 1, 1], [2, 2, 2], [3, 3, 3], [4, 4, 4]], list(res)
+        assert rows_to_list(res) == [[1, 1, 1], [2, 2, 2], [4, 4, 4], [3, 3, 3]], list(res)
 
         res = session.execute("SELECT * FROM testcf2 LIMIT 1;")  # gives 1 row
         assert rows_to_list(res) == [[1, 1, 1]], list(res)
@@ -2272,13 +2268,13 @@ class TestCQL(Tester):
         assert rows_to_list(res) == [[1, 1, 1], [2, 2, 2]], list(res)
 
         res = session.execute("SELECT * FROM testcf2 LIMIT 3;")  # gives 2 rows
-        assert rows_to_list(res) == [[1, 1, 1], [2, 2, 2], [3, 3, 3]], list(res)
+        assert rows_to_list(res) == [[1, 1, 1], [2, 2, 2], [4, 4, 4]], list(res)
 
         res = session.execute("SELECT * FROM testcf2 LIMIT 4;")  # gives 2 rows
-        assert rows_to_list(res) == [[1, 1, 1], [2, 2, 2], [3, 3, 3], [4, 4, 4]], list(res)
+        assert rows_to_list(res) == [[1, 1, 1], [2, 2, 2], [4, 4, 4], [3, 3, 3]], list(res)
 
         res = session.execute("SELECT * FROM testcf2 LIMIT 5;")  # gives 3 rows
-        assert rows_to_list(res) == [[1, 1, 1], [2, 2, 2], [3, 3, 3], [4, 4, 4]], list(res)
+        assert rows_to_list(res) == [[1, 1, 1], [2, 2, 2], [4, 4, 4], [3, 3, 3]], list(res)
 
     @attr('single_node')
     def bug_4532_test(self):
@@ -2308,7 +2304,7 @@ class TestCQL(Tester):
     def order_by_multikey_test(self):
         """ Test for #4612 bug and more generaly order by when multiple C* rows are queried """
 
-        session = self.prepare(ordered=True)
+        session = self.prepare()
         session.default_fetch_size = None
         session.execute("""
             CREATE TABLE test(
@@ -2783,7 +2779,7 @@ class TestCQL(Tester):
     @skip('indexes')
     @attr('single_node')
     def composite_index_collections_test(self):
-        session = self.prepare(ordered=True)
+        session = self.prepare()
         session.execute("""
             CREATE TABLE blogs (
                 blog_id int,
@@ -2808,7 +2804,7 @@ class TestCQL(Tester):
 
     @attr('single_node')
     def truncate_clean_cache_test(self):
-        session = self.prepare(ordered=True, use_cache=True)
+        session = self.prepare(use_cache=True)
 
         session.execute("""
             CREATE TABLE test (
@@ -3656,7 +3652,7 @@ class TestCQL(Tester):
 
     @attr('single_node')
     def range_key_ordered_test(self):
-        session = self.prepare(ordered=True)
+        session = self.prepare()
 
         session.execute("CREATE TABLE test ( k int PRIMARY KEY)")
 
@@ -3664,7 +3660,7 @@ class TestCQL(Tester):
         session.execute("INSERT INTO test(k) VALUES ( 0)")
         session.execute("INSERT INTO test(k) VALUES ( 1)")
 
-        assert_all(session, "SELECT * FROM test", [[0], [1], [-1]])
+        assert_all(session, "SELECT * FROM test", [[1], [0], [-1]])
         assert_invalid(session, "SELECT * FROM test WHERE k >= -1 AND k < 1;")
 
     @attr('single_node')
@@ -5497,7 +5493,7 @@ class TestCQL(Tester):
 
     @attr('single_node')
     def bop_order_test(self):
-        session = self.prepare(ordered=True)
+        session = self.prepare()
 
         session.execute("""
             CREATE TABLE test (
@@ -5516,12 +5512,12 @@ class TestCQL(Tester):
         session.execute("INSERT INTO test (k, v) VALUES ('2', 7)")
 
         res = session.execute("SELECT v FROM test")
-        assert rows_to_list(res) == [[5], [6], [7], [1], [2], [0], [4], [3]], list(res)
+        assert rows_to_list(res) == [[3], [0], [2], [6], [4], [7], [1], [5]], list(res)
 
 
     @attr('single_node')
     def collection_column_can_replace_dropped_non_collection_column(self):
-        session = self.prepare(ordered=True)
+        session = self.prepare()
 
         session.execute("""
             CREATE TABLE test (
