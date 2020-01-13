@@ -450,6 +450,7 @@ class TestBootstrap(Tester):
         original_rows = list(session.execute("SELECT * FROM {}".format(stress_table,)))
 
         # Add a new node, bootstrap=True ensures that it is not a seed
+        debug("Starting node4")
         node4 = new_node(cluster, bootstrap=True)
         node4.start(wait_for_binary_proto=True, wait_other_notice=True)
 
@@ -457,7 +458,9 @@ class TestBootstrap(Tester):
         self.assertEquals(original_rows, list(session.execute("SELECT * FROM {}".format(stress_table,))))
 
         # Decommision the new node and wipe its data
+        debug("Decommissioning node4")
         node4.decommission()
+        debug("Stopping node4")
         node4.stop(wait_other_notice=True)
         data_dir = os.path.join(node4.get_path(), 'data')
         commitlog_dir = os.path.join(node4.get_path(), 'commitlogs')
@@ -466,8 +469,10 @@ class TestBootstrap(Tester):
         shutil.rmtree(commitlog_dir)
 
         # Now start it, it should be allowed to join
+        debug("Restarting node4")
         mark = node4.mark_log()
         node4.start(wait_other_notice=True)
+        debug("Waiting for node4 to join")
         node4.watch_log_for("JOINING:", from_mark=mark)
 
     def failed_bootstap_wiped_node_can_join_test(self):
