@@ -450,25 +450,25 @@ class TestBootstrap(Tester):
         original_rows = list(session.execute("SELECT * FROM {}".format(stress_table,)))
 
         # Add a new node, bootstrap=True ensures that it is not a seed
-        node2 = new_node(cluster, bootstrap=True)
-        node2.start(wait_for_binary_proto=True, wait_other_notice=True)
+        node4 = new_node(cluster, bootstrap=True)
+        node4.start(wait_for_binary_proto=True, wait_other_notice=True)
 
-        session = self.patient_cql_connection(node2)
+        session = self.patient_cql_connection(node4)
         self.assertEquals(original_rows, list(session.execute("SELECT * FROM {}".format(stress_table,))))
 
         # Decommision the new node and wipe its data
-        node2.decommission()
-        node2.stop(wait_other_notice=True)
-        data_dir = os.path.join(node2.get_path(), 'data')
-        commitlog_dir = os.path.join(node2.get_path(), 'commitlogs')
+        node4.decommission()
+        node4.stop(wait_other_notice=True)
+        data_dir = os.path.join(node4.get_path(), 'data')
+        commitlog_dir = os.path.join(node4.get_path(), 'commitlogs')
         debug("Deleting {}".format(data_dir))
         shutil.rmtree(data_dir)
         shutil.rmtree(commitlog_dir)
 
         # Now start it, it should be allowed to join
-        mark = node2.mark_log()
-        node2.start(wait_other_notice=True)
-        node2.watch_log_for("JOINING:", from_mark=mark)
+        mark = node4.mark_log()
+        node4.start(wait_other_notice=True)
+        node4.watch_log_for("JOINING:", from_mark=mark)
 
     def failed_bootstap_wiped_node_can_join_test(self):
         """
