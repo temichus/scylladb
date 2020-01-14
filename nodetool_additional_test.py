@@ -260,6 +260,7 @@ class TestNodetool(Tester):
             for cf in res[ks]["tables"]:
                 self._verify_cfstats_cf(res[ks]["tables"][cf])
 
+    @attr('single_node')
     def cfstats_test(self):
         """Ensure that cfstats action works successfully.
         it runs a load with write, check some of the parameters
@@ -452,6 +453,7 @@ class TestNodetool(Tester):
         m = re.findall("^\s*([\d\.]+)\s+([^\s]+)\s+([^\s]+)\s+([^\s]+)\s+([\d\.]+)\s+([^\s]+)\s+([^\s]+)\s+([^\s].*)\s*$", out, re.MULTILINE)
         return [self._list2ring(r) for r in m]
 
+    @attr('single_node')
     def global_create_after_clean(self):
         """ Test that after a clean
         it is possible to create an additional snapshot
@@ -518,6 +520,7 @@ class TestNodetool(Tester):
         table = output["keyspace1"]["tables"]["standard1"]
         self.assertMapLess(table, "SSTable count", sstable)
 
+    @attr('single_node')
     def general_compact_test(self):
         """ Test that the nodetool compact works by:
         starting a cluster.
@@ -528,6 +531,7 @@ class TestNodetool(Tester):
         """
         self._compact("")
 
+    @attr('single_node')
     def specific_compact_test(self):
         """ Test that the nodetool compact for
         a keyspace works, by:
@@ -737,6 +741,7 @@ class TestNodetool(Tester):
     def keyspace_ring_test(self):
         self.check_ring("keyspace1")
 
+    @attr('single_node')
     def general_flush_test(self):
         """
         Test the `nodetool flush` command.
@@ -748,6 +753,7 @@ class TestNodetool(Tester):
         """
         self._flush("")
 
+    @attr('single_node')
     def keyspace_flush_test(self):
         """
         Test the `nodetool flush` command to flush keyspace1.
@@ -759,6 +765,7 @@ class TestNodetool(Tester):
         """
         self._flush(" keyspace1")
 
+    @attr('single_node')
     def keyspace_column_family_flush_test(self):
         """
         Test the `nodetool flush` command to flush keyspace1.standard1.
@@ -1220,6 +1227,7 @@ class TestNodetool(Tester):
             if expected_error:
                 assert re.search(expected_error, str(error)), "/{}/ not found in '{}'".format(expected_error, error)
 
+    @attr('single_node')
     def nodetool_refresh_with_wrong_upload_modes_test(self):
         """
         Test that nodetool refresh with different wrong modes:
@@ -1323,6 +1331,7 @@ class TestNodetool(Tester):
             node = self.cluster.nodelist()[0]
         return node.nodetool('version', True)[0]
 
+    @attr('single_node')
     def version_test(self):
         self.run_cluster(nodes=1)
         self.assertRegexpMatches(self.nodetool_version(), "ReleaseVersion: 3\.\d+\.\d+", "Wrong version")
@@ -1660,6 +1669,7 @@ class TestNodetool(Tester):
             opt = []
         return self.stress(node, 'mixed', times=times, duration=duration, col=col, pop=pop, opt=opt)
 
+    @attr('single_node')
     def get_sstable_test(self):
         """
         get sstables get a keyspace, table and a key and return the sstables that contain that key

@@ -252,6 +252,7 @@ class TestCounters(Tester):
 
             self.assertEqual(v, count[0][0])
 
+    @attr('single_node')
     def validate_empty_column_name_test(self):
         cluster = self.cluster
         cluster.set_configuration_options(values={'experimental': True})
@@ -280,6 +281,7 @@ class TestCounters(Tester):
         assert_one(session, "SELECT pk, ck, value FROM compact_counter_table", [0, 'ck', 3])
 
     @since('2.0')
+    @attr('single_node')
     def drop_counter_column_test(self):
         """Test for CASSANDRA-7831"""
         cluster = self.cluster
@@ -414,6 +416,7 @@ class TestCounters(Tester):
             assert res[c][1] == expected_counters, "Expecting counter%i = %i, got %i" % (
                 c, expected_counters, res[c][1])
 
+    @attr('single_node')
     def update_counter_with_ttl_and_timestamp_negative_test(self):
         """
         Try to update counter column using TTL/TIMESTAMP option
@@ -435,6 +438,7 @@ class TestCounters(Tester):
             else:
                 raise Exception('USING {} was not rejected!'.format(option.split()[0]))
 
+    @attr('single_node')
     def prepare_statement_test(self):
         """
         update counters with prepare statement, and verify the data
@@ -494,6 +498,7 @@ class TestCounters(Tester):
         rows = rows_to_list(res)
         assert len(rows) == 0
 
+    @attr('single_node')
     def int_rollover_test(self):
         """
         currently the counter will rollover when it reaches to MAX_INT.
@@ -535,6 +540,7 @@ class TestCounters(Tester):
         debug(rows)
         assert rows == [[0, sys.maxsize]], "Int counter isn't recovered"
 
+    @attr('single_node')
     def prepare_unset_value_test(self):
         """
         Try to update counter with UNSET_VALUE
@@ -578,6 +584,7 @@ class TestCounters(Tester):
             session.execute(query)
         assert re.search(message, str(cm.exception)), "Expected '%s', but got '%s'" % (message, cm.exception.message)
 
+    @attr('single_node')
     def static_counter_column_test(self):
         """
         Test of static counter column

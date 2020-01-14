@@ -4,7 +4,7 @@ from dtest import Tester
 from nose.plugins.attrib import attr
 
 
-@attr('dtest-full')
+@attr('dtest-full', 'single_node')
 class TestRangeGhosts(Tester):
 
     def ghosts_test(self):

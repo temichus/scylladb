@@ -77,6 +77,7 @@ class TestCQL(Tester):
             self.create_ks(session, 'ks', rf)
         return session
 
+    @attr('single_node')
     def static_cf_test(self):
         """
         Test static CF syntax.
@@ -126,6 +127,7 @@ class TestCQL(Tester):
             [UUID('550e8400-e29b-41d4-a716-446655440000'), 36, None, None],
         ], list(res)
 
+    @attr('single_node')
     def large_collection_errors(self):
         """
         For large collections, make sure that we are printing warnings.
@@ -156,6 +158,7 @@ class TestCQL(Tester):
                             "first 65535 elements will be returned to the "
                             "client. Please see http://cassandra.apache.org/doc/cql3/CQL.html#collections for more details.")
 
+    @attr('single_node')
     def noncomposite_static_cf_test(self):
         """
         Test non-composite static CF syntax.
@@ -205,6 +208,7 @@ class TestCQL(Tester):
             [UUID('550e8400-e29b-41d4-a716-446655440000'), 36, None, None],
         ], list(res)
 
+    @attr('single_node')
     def select_duplicate_column(self):
         """
         Regression test for https://github.com/scylladb/scylla/issues/1367
@@ -229,6 +233,7 @@ class TestCQL(Tester):
         # scylla: cql3/result_set.cc:145: void cql3::result_set::add_row(std::vector<std::experimental::fundamentals_v1::optional<basic_sstring<signed char, unsigned int, 31u> > >): Assertion `row.size() == _metadata->value_count()' failed.
         session.execute("SELECT userid, userid FROM clicks")
 
+    @attr('single_node')
     def dynamic_cf_test(self):
         """
         Test non-composite dynamic CF syntax.
@@ -268,6 +273,7 @@ class TestCQL(Tester):
         # Check we don't allow empty values for url since this is the full underlying cell name (#6152)
         assert_invalid(session, "INSERT INTO clicks (userid, url, time) VALUES (810e8500-e29b-41d4-a716-446655440000, '', 42)")
 
+    @attr('single_node')
     def dense_cf_test(self):
         """
         Test composite 'dense' CF syntax.
@@ -326,6 +332,7 @@ class TestCQL(Tester):
         res = list(session.execute("SELECT * FROM connections WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479 AND ip = '192.168.0.3'"))
         self.assertEqual([], res)
 
+    @attr('single_node')
     def sparse_cf_test(self):
         """
         Test composite 'sparse' CF syntax.
@@ -366,6 +373,7 @@ class TestCQL(Tester):
             [30, 'Yet one more message', None]
         ], list(res)
 
+    @attr('single_node')
     def create_invalid_test(self):
         """
         Check invalid CREATE TABLE requests.
@@ -386,6 +394,7 @@ class TestCQL(Tester):
 
         assert_invalid(session, "CREATE TABLE test (key text, key2 text, c int, d text, PRIMARY KEY (key, key2)) WITH COMPACT STORAGE")
 
+    @attr('single_node')
     def limit_ranges_test(self):
         """
         Validate LIMIT option for 'range queries' in SELECT statements.
@@ -414,6 +423,7 @@ class TestCQL(Tester):
         assert rows_to_list(res) == [[3, 'http://foo.com', 42]], list(res)
 
     @require("2029")
+    @attr('single_node')
     def limit_multiget_test(self):
         """
         Validate LIMIT option for 'multiget' in SELECT statements.
@@ -461,6 +471,7 @@ class TestCQL(Tester):
         session.execute("""INSERT INTO foo (a, b, c, d, e) VALUES (0, -1, 2, 2, 2);""")
 
     @require("2029")
+    @attr('single_node')
     def tuple_query_mixed_order_columns_test(self):
         """
         @jira_ticket CASSANDRA-7281
@@ -477,6 +488,7 @@ class TestCQL(Tester):
                              [0, 0, 1, 1, 1], [0, 0, 2, 1, -3], [0, 0, 2, 0, 3]], rows_list
 
     @require("2029")
+    @attr('single_node')
     def tuple_query_mixed_order_columns_test2(self):
         """
         @jira_ticket CASSANDRA-7281
@@ -493,6 +505,7 @@ class TestCQL(Tester):
                              [0, 0, 2, 0, 3], [0, 0, 1, 2, -1], [0, 0, 1, 1, 1]], rows_list
 
     @require("2029")
+    @attr('single_node')
     def tuple_query_mixed_order_columns_test3(self):
         """
         @jira_ticket CASSANDRA-7281
@@ -509,6 +522,7 @@ class TestCQL(Tester):
                              [0, 0, 1, 1, 1], [0, 1, 0, 0, 0], [0, 2, 0, 0, 0]], rows_list
 
     @require("2029")
+    @attr('single_node')
     def tuple_query_mixed_order_columns_test4(self):
         """
         @jira_ticket CASSANDRA-7281
@@ -525,6 +539,7 @@ class TestCQL(Tester):
                              [0, 0, 1, 2, -1], [0, 0, 2, 0, 3], [0, 0, 2, 1, -3]], rows_list
 
     @require("2029")
+    @attr('single_node')
     def tuple_query_mixed_order_columns_test5(self):
         """
         @jira_ticket CASSANDRA-7281
@@ -539,6 +554,7 @@ class TestCQL(Tester):
         assert rows_list == [[0, 2, 0, 0, 0], [0, 1, 0, 0, 0], [0, 0, 2, 1, -3],
                              [0, 0, 2, 0, 3], [0, 0, 1, 2, -1], [0, 0, 1, 1, 1]], rows_list
 
+    @attr('single_node')
     def tuple_query_mixed_order_columns_test6(self):
         """CASSANDRA-7281: SELECT on tuple relations are broken for mixed ASC/DESC clustering order
             Test that non mixed columns are still working.
@@ -552,6 +568,7 @@ class TestCQL(Tester):
                              [0, 0, 2, 1, -3], [0, 1, 0, 0, 0], [0, 2, 0, 0, 0]], rows_list
 
     @require("2029")
+    @attr('single_node')
     def tuple_query_mixed_order_columns_test7(self):
         """
         @jira_ticket CASSANDRA-7281
@@ -567,6 +584,7 @@ class TestCQL(Tester):
                              [0, 0, 1, 0, 2], [0, -1, 2, 2, 2]], rows_list
 
     @require("2029")
+    @attr('single_node')
     def tuple_query_mixed_order_columns_test8(self):
         """
         @jira_ticket CASSANDRA-7281
@@ -582,6 +600,7 @@ class TestCQL(Tester):
                              [0, 0, 1, 0, 2], [0, 0, 0, 0, 0]], rows_list
 
     @require("2029")
+    @attr('single_node')
     def tuple_query_mixed_order_columns_test9(self):
         """
         @jira_ticket CASSANDRA-7281
@@ -597,6 +616,7 @@ class TestCQL(Tester):
                              [0, 0, 1, 0, 2], [0, -1, 2, 2, 2]], rows_list
 
     @require("64")
+    @attr('single_node')
     def simple_tuple_query_test(self):
         """
         @jira_ticket CASSANDRA-8613
@@ -618,6 +638,7 @@ class TestCQL(Tester):
         res = session.execute("SELECT * FROM bard WHERE b=0 AND (c, d, e) > (1, 1, 1) ALLOW FILTERING;")
         assert rows_to_list(res) == [[0, 0, 2, 2, 2], [0, 0, 3, 3, 3]]
 
+    @attr('single_node')
     def limit_sparse_test(self):
         """
         Validate LIMIT option for sparse table in SELECT statements.
@@ -645,6 +666,7 @@ class TestCQL(Tester):
         res = list(session.execute("SELECT * FROM clicks LIMIT 4"))
         assert len(res) == 4, list(res)
 
+    @attr('single_node')
     def counters_test(self):
         """
         Validate counter support.
@@ -677,6 +699,7 @@ class TestCQL(Tester):
         assert rows_to_list(res) == [[-4]], list(res)
 
     @skip('indexes')
+    @attr('single_node')
     def indexed_with_eq_test(self):
         """ Check that you can query for an indexed column even with a key EQ clause """
         session = self.prepare()
@@ -704,6 +727,7 @@ class TestCQL(Tester):
         res = session.execute("SELECT firstname FROM users WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479 AND age = 33")
         assert rows_to_list(res) == [['Samwise']], list(res)
 
+    @attr('single_node')
     def select_key_in_test(self):
         """
         Query for KEY IN (...).
@@ -738,6 +762,7 @@ class TestCQL(Tester):
 
         assert len(res) == 2, res
 
+    @attr('single_node')
     def exclusive_slice_test(self):
         """
         Test SELECT respects inclusive and exclusive bounds.
@@ -780,6 +805,7 @@ class TestCQL(Tester):
         res = list(session.execute("SELECT v FROM test WHERE k = 0 AND c >= 2 AND c < 6 ORDER BY c DESC LIMIT 2"))
         assert len(res) == 2 and res[0][0] == 5 and res[len(res) - 1][0] == 4, list(res)
 
+    @attr('single_node')
     def in_clause_wide_rows_test(self):
         """ Check IN support for 'wide rows' in SELECT statement """
         session = self.prepare()
@@ -827,6 +853,7 @@ class TestCQL(Tester):
         res = session.execute("SELECT v FROM test2 WHERE k = 0 AND c1 = 0 AND c2 IN (5, 2, 8)")
         assert rows_to_list(res) == [[2], [5], [8]], list(res)
 
+    @attr('single_node')
     def order_by_test(self):
         """ Check ORDER BY support in SELECT statement """
         session = self.prepare()
@@ -874,6 +901,7 @@ class TestCQL(Tester):
         res = session.execute("SELECT v FROM test2 WHERE k = 0 ORDER BY c1")
         assert rows_to_list(res) == [[x] for x in range(0, 8)], list(res)
 
+    @attr('single_node')
     def more_order_by_test(self):
         """ More ORDER BY checks (#4160) """
         session = self.prepare()
@@ -910,6 +938,7 @@ class TestCQL(Tester):
         res = session.execute("SELECT number FROM Test WHERE row='row' AND number <= 3 ORDER BY number DESC;")
         assert rows_to_list(res) == [[3], [2], [1]], list(res)
 
+    @attr('single_node')
     def order_by_validation_test(self):
         """ Check we don't allow order by on row key (#4246) """
         session = self.prepare()
@@ -930,6 +959,7 @@ class TestCQL(Tester):
 
         assert_invalid(session, "SELECT * FROM test ORDER BY k2")
 
+    @attr('single_node')
     def order_by_with_in_test(self):
         """ Check that order-by works with IN (#4327) """
         session = self.prepare()
@@ -959,6 +989,7 @@ class TestCQL(Tester):
         res = session.execute(query)
         assert rows_to_list(res) == [['key1', 1], ['key3', 2], ['key2', 3]], list(res)
 
+    @attr('single_node')
     def reversed_comparator_test(self):
         session = self.prepare()
 
@@ -1010,6 +1041,7 @@ class TestCQL(Tester):
 
         assert_invalid(session, "SELECT c1, c2, v FROM test2 WHERE k = 0 ORDER BY c2 DESC, c1 ASC")
 
+    @attr('single_node')
     def invalid_old_property_test(self):
         """ Check obsolete properties from CQL2 are rejected """
         session = self.prepare(options={'experimental': True})
@@ -1019,6 +1051,7 @@ class TestCQL(Tester):
         session.execute("CREATE TABLE test (foo text PRIMARY KEY, c int)")
         assert_invalid(session, "ALTER TABLE test WITH default_validation=int;", expected=SyntaxException)
 
+    @attr('single_node')
     def null_support_test(self):
         """ Test support for nulls """
         session = self.prepare()
@@ -1050,6 +1083,7 @@ class TestCQL(Tester):
         assert_invalid(session, "SELECT * FROM test WHERE k = null")
         assert_invalid(session, "INSERT INTO test (k, c, v2) VALUES (0, 0, { 'foo', 'bar', null })")
 
+    @attr('single_node')
     def unset_value_support_test(self):
         """ Test support for unset value """
         session = self.prepare(protocol_version=4)
@@ -1093,6 +1127,7 @@ class TestCQL(Tester):
         assert_equal(rows_to_list(res), [[0, 2, list([1, 2, 3]), set([1, 2, 3]), dict({1: 2}), (1, 2), simple_type(1)]])
 
     @skip('indexes')
+    @attr('single_node')
     def nameless_index_test(self):
         """ Test CREATE INDEX without name and validate the index can be dropped """
         session = self.prepare()
@@ -1117,6 +1152,7 @@ class TestCQL(Tester):
 
         assert_invalid(session, "SELECT id FROM users WHERE birth_year = 42")
 
+    @attr('single_node')
     def deletion_test(self):
         """ Test simple deletion and in particular check for #4193 bug """
 
@@ -1170,6 +1206,7 @@ class TestCQL(Tester):
         if self.cluster.version() < "1.2":
             assert_invalid(session, "DELETE FROM testcf2 WHERE username='abc' AND id=2")
 
+    @attr('single_node')
     def count_test(self):
         session = self.prepare()
 
@@ -1199,6 +1236,7 @@ class TestCQL(Tester):
         res = session.execute("SELECT COUNT(1) FROM events WHERE kind IN ('ev1', 'ev2') AND time=0")
         assert rows_to_list(res) == [[2]], list(res)
 
+    @attr('single_node')
     def reserved_keyword_test(self):
         session = self.prepare(options={'experimental': True})
 
@@ -1211,6 +1249,7 @@ class TestCQL(Tester):
 
         assert_invalid(session, "CREATE TABLE test2 ( select text PRIMARY KEY, x int)", expected=SyntaxException)
 
+    @attr('single_node')
     def identifier_test(self):
         session = self.prepare()
 
@@ -1230,6 +1269,7 @@ class TestCQL(Tester):
         # Reserved keywords
         assert_invalid(session, "CREATE TABLE test1 (select int PRIMARY KEY, column int)", expected=SyntaxException)
 
+    @attr('single_node')
     def keyspace_test(self):
         session = self.prepare()
 
@@ -1245,6 +1285,7 @@ class TestCQL(Tester):
                        matching="code=2300")
         session.execute("CREATE KEYSPACE test2 WITH replication = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 }")
 
+    @attr('single_node')
     def table_test(self):
         session = self.prepare()
 
@@ -1295,6 +1336,7 @@ class TestCQL(Tester):
             )
         """)
 
+    @attr('single_node')
     def batch_test(self):
         session = self.prepare()
 
@@ -1316,6 +1358,7 @@ class TestCQL(Tester):
         """, consistency_level=ConsistencyLevel.QUORUM)
         session.execute(query)
 
+    @attr('single_node')
     def token_range_test(self):
         session = self.prepare()
 
@@ -1348,6 +1391,7 @@ class TestCQL(Tester):
         res = session.execute("SELECT k FROM test WHERE token(k) >= token(%d) AND token(k) < token(%d)" % (inOrder[32], inOrder[65]))
         assert rows_to_list(res) == [[inOrder[x]] for x in range(32, 65)], "%s [all: %s]" % (str(res), str(inOrder))
 
+    @attr('single_node')
     def table_options_test(self):
         session = self.prepare(options={'experimental': True})
 
@@ -1379,6 +1423,7 @@ class TestCQL(Tester):
              AND caching = 'rows_only'
         """)
 
+    @attr('single_node')
     def timestamp_and_ttl_test(self):
         session = self.prepare()
 
@@ -1426,6 +1471,7 @@ class TestCQL(Tester):
         res = list(session.execute("SELECT k, d, writetime(d) FROM test WHERE k = 1"))
         assert rows_to_list(res) == [[1, None, None]]
 
+    @attr('single_node')
     def no_range_ghost_test(self):
         session = self.prepare()
 
@@ -1473,6 +1519,7 @@ class TestCQL(Tester):
         res = session.execute("SELECT * FROM users WHERE KEY='user1'")
         assert rows_to_list(res) == [], list(res)
 
+    @attr('single_node')
     def undefined_column_handling_test(self):
         session = self.prepare(ordered=True)
 
@@ -1546,6 +1593,7 @@ class TestCQL(Tester):
             res = session.execute("SELECT v1, v2 FROM test1 WHERE k = %d" % i)
             assert rows_to_list(res) == [[x, x] for x in range(i * cpr + col1, (i + 1) * cpr)], list(res)
 
+    @attr('single_node')
     def range_tombstones_compaction_test(self):
         """ Test deletion by 'composite prefix' (range tombstones) with compaction """
         session = self.prepare()
@@ -1574,6 +1622,7 @@ class TestCQL(Tester):
         res = session.execute("SELECT v1 FROM test1 WHERE k = 0")
         assert rows_to_list(res) == [['%i%i' % (c1, c2)] for c1 in range(0, 4) for c2 in range(0, 2) if c1 != 1], list(res)
 
+    @attr('single_node')
     def delete_row_test(self):
         """ Test deletion of rows """
         session = self.prepare()
@@ -1600,6 +1649,7 @@ class TestCQL(Tester):
         assert len(res) == 3, res
 
     @skip('indexes')
+    @attr('single_node')
     def range_query_2ndary_test(self):
         """ Test range queries with 2ndary indexes (#4257) """
         session = self.prepare()
@@ -1617,6 +1667,7 @@ class TestCQL(Tester):
         res = session.execute("SELECT * FROM indextest WHERE setid = 0 AND row < 1 ALLOW FILTERING;")
         assert rows_to_list(res) == [[0, 0, 0]], list(res)
 
+    @attr('single_node')
     def compression_option_validation_test(self):
         """ Check for unknown compression parameters options (#4266) """
         session = self.prepare()
@@ -1632,6 +1683,7 @@ class TestCQL(Tester):
               WITH compression = { 'sstable_compressor' : 'DeflateCompressor' };
             """, expected=ConfigurationException)
 
+    @attr('single_node')
     def keyspace_creation_options_test(self):
         """ Check one can use arbitrary name for datacenter when creating keyspace (#4278) """
         session = self.prepare()
@@ -1652,6 +1704,7 @@ class TestCQL(Tester):
                      AND strategy_options:"us-west"=1;
             """)
 
+    @attr('single_node')
     def set_test(self):
         session = self.prepare()
 
@@ -1696,6 +1749,7 @@ class TestCQL(Tester):
         else:
             assert rows_to_list(res) == [], list(res)
 
+    @attr('single_node')
     def map_test(self):
         session = self.prepare()
 
@@ -1737,6 +1791,7 @@ class TestCQL(Tester):
         else:
             assert rows_to_list(res) == [], list(res)
 
+    @attr('single_node')
     def list_test(self):
         session = self.prepare()
 
@@ -1779,6 +1834,7 @@ class TestCQL(Tester):
         res = session.execute("SELECT tags FROM user WHERE fn='Bilbo' AND ln='Baggins'")
         self.assertCountEqual(rows_to_list(res), [[['m', 'n', 'c', 'c']]])
 
+    @attr('single_node')
     def list_prefetch_with_static_column_test(self):
         # Explits https://github.com/scylladb/scylla/issues/903
         session = self.prepare()
@@ -1812,6 +1868,7 @@ class TestCQL(Tester):
         res = session.execute("select static_tags from user where fn='Tom'")
         self.assertCountEqual(rows_to_list(res), [[['a', 'b']]])
 
+    @attr('single_node')
     def collection_serialization_with_protocol_v2_test(self):
         session = self.prepare(protocol_version=2)
 
@@ -1830,6 +1887,7 @@ class TestCQL(Tester):
         res = session.execute(select_q % 'tags')
         self.assertCountEqual(rows_to_list(res), [[['a', 'b', 'c']]])
 
+    @attr('single_node')
     def multi_collection_test(self):
         session = self.prepare()
 
@@ -1856,6 +1914,7 @@ class TestCQL(Tester):
             sortedset([1, 3, 5, 7, 11, 13])
         ]])
 
+    @attr('single_node')
     def range_query_test(self):
         """ Range test query from #4372 """
         session = self.prepare()
@@ -1872,6 +1931,7 @@ class TestCQL(Tester):
         assert rows_to_list(res) == [[1, 1, 1, 1, 2, '2'], [1, 1, 1, 1, 3, '3'], [1, 1, 1, 1, 5, '5']], list(res)
 
     @require('#5424')
+    @attr('single_node')
     def update_type_test(self):
         """ Test altering the type of a column, including the one in the primary key (#4041) """
         session = self.prepare(options={'experimental': True})
@@ -1914,6 +1974,7 @@ class TestCQL(Tester):
             res = session.execute("SELECT * FROM test")
             assert rows_to_list(res) == [['ɸ', 'ɸ', set(['ɸ']), 'ɸ']], list(res)
 
+    @attr('single_node')
     def composite_row_key_test(self):
         session = self.prepare()
 
@@ -1950,6 +2011,7 @@ class TestCQL(Tester):
         res = session.execute("SELECT * FROM test WHERE token(k1, k2) > " + str(-((2 ** 63) - 1)))
         assert rows_to_list(res) == [[0, 2, 2, 2], [0, 3, 3, 3], [0, 0, 0, 0], [0, 1, 1, 1]], list(res)
 
+    @attr('single_node')
     def cql3_insert_thrift_test(self):
         """ Check that we can insert from thrift into a CQL3 table (#4377) """
         session = self.prepare(start_rpc=True)
@@ -1980,6 +2042,7 @@ class TestCQL(Tester):
         res = session.execute("SELECT * FROM test")
         assert rows_to_list(res) == [[2, 4, 8]], list(res)
 
+    @attr('single_node')
     def row_existence_test(self):
         """ Check the semantic of CQL row existence (part of #4361) """
         session = self.prepare()
@@ -2017,6 +2080,7 @@ class TestCQL(Tester):
         res = session.execute("SELECT * FROM test")
         assert rows_to_list(res) == [[2, 2, None, None]], list(res)
 
+    @attr('single_node')
     def only_pk_test(self):
         """ Check table with only a PK (#4361) """
         session = self.prepare(ordered=True)
@@ -2054,6 +2118,7 @@ class TestCQL(Tester):
         res = session.execute("SELECT * FROM test2")
         assert rows_to_list(res) == [[x, y] for x in range(0, 2) for y in range(0, 2)], list(res)
 
+    @attr('single_node')
     def date_test(self):
         """ Check dates are correctly recognized and validated """
         session = self.prepare()
@@ -2095,6 +2160,7 @@ class TestCQL(Tester):
         assert len(res) == 2, res
 
     @require('#3574')
+    @attr('single_node')
     def composite_index_with_pk_test(self):
 
         session = self.prepare(ordered=True)
@@ -2153,8 +2219,7 @@ class TestCQL(Tester):
             assert_invalid(session, "SELECT content FROM blogs WHERE time1 = 1 AND time2 = 1 AND author='foo'")
             assert_invalid(session, "SELECT content FROM blogs WHERE time1 = 1 AND time2 > 0 AND author='foo'")
 
-    @attr('next-gating')
-    @attr('dtest-debug')
+    @attr('next-gating', 'dtest-debug', 'single_node')
     def limit_bugs_test(self):
         """ Test for LIMIT bugs from 4579 """
 
@@ -2215,6 +2280,7 @@ class TestCQL(Tester):
         res = session.execute("SELECT * FROM testcf2 LIMIT 5;")  # gives 3 rows
         assert rows_to_list(res) == [[1, 1, 1], [2, 2, 2], [3, 3, 3], [4, 4, 4]], list(res)
 
+    @attr('single_node')
     def bug_4532_test(self):
 
         session = self.prepare()
@@ -2238,6 +2304,7 @@ class TestCQL(Tester):
         assert_invalid(session, "SELECT * FROM compositetest WHERE ctime>=12345679 AND key='key3' AND ctime<=12345680 LIMIT 3;")
         assert_invalid(session, "SELECT * FROM compositetest WHERE ctime=12345679  AND key='key3' AND ctime<=12345680 LIMIT 3")
 
+    @attr('single_node')
     def order_by_multikey_test(self):
         """ Test for #4612 bug and more generaly order by when multiple C* rows are queried """
 
@@ -2268,6 +2335,7 @@ class TestCQL(Tester):
         assert_invalid(session, "SELECT col1 FROM test WHERE my_id > 'key1' ORDER BY col1;")
 
     @skip("unconfigured table schema_keyspaces")
+    @attr('single_node')
     def create_alter_options_test(self):
         session = self.prepare(create_keyspace=False)
 
@@ -2308,6 +2376,7 @@ class TestCQL(Tester):
         session.execute("CREATE TABLE cf1 (a int PRIMARY KEY, b int) WITH compaction = { 'class' : 'SizeTieredCompactionStrategy', 'min_threshold' : 7 }")
         assert_one(session, "SELECT columnfamily_name, min_compaction_threshold FROM system.schema_columnfamilies WHERE keyspace_name='ks1'", ['cf1', 7])
 
+    @attr('single_node')
     def remove_range_slice_test(self):
         session = self.prepare()
 
@@ -2326,6 +2395,7 @@ class TestCQL(Tester):
         assert rows_to_list(res) == [[0, 0], [2, 2]], list(res)
 
     @skip('indexes')
+    @attr('single_node')
     def indexes_composite_test(self):
         session = self.prepare()
 
@@ -2365,6 +2435,7 @@ class TestCQL(Tester):
         assert rows_to_list(res) == [[1, 0], [1, 3], [0, 0]], list(res)
 
     @skip('indexes')
+    @attr('single_node')
     def refuse_in_with_indexes_test(self):
         """ Test for the validation bug of #4709 """
 
@@ -2380,6 +2451,7 @@ class TestCQL(Tester):
         session.execute("insert into t1  (pk, col1, col2) values ('pk3','foo3','bar3');")
         assert_invalid(session, "select * from t1 where col2 in ('bar1', 'bar2');")
 
+    @attr('single_node')
     def validate_counter_regular_test(self):
         """
         @jira_ticket CASSANDRA-4706
@@ -2391,6 +2463,7 @@ class TestCQL(Tester):
         assert_invalid(session, "CREATE TABLE test (id bigint PRIMARY KEY, count counter, things set<text>)",
                        matching=r"Cannot add a( non)? counter column", expected=ConfigurationException)
 
+    @attr('single_node')
     def reversed_compact_test(self):
         """
         @jira_ticket CASSANDRA-4716
@@ -2460,6 +2533,7 @@ class TestCQL(Tester):
         res = session.execute("SELECT c FROM test2 WHERE c >= 2 AND c <= 6 AND k = 'foo' ORDER BY c DESC")
         assert rows_to_list(res) == [[6], [5], [4], [3], [2]], list(res)
 
+    @attr('single_node')
     def unescaped_string_test(self):
         """
         Test that unescaped strings in CQL statements raise syntax exceptions.
@@ -2478,6 +2552,7 @@ class TestCQL(Tester):
         # over the wire instead of \'.
         assert_invalid(session, "INSERT INTO test (k, c) VALUES ('foo', 'CQL is cassandra\'s best friend')", expected=SyntaxException)
 
+    @attr('single_node')
     def reversed_compact_multikey_test(self):
         """
         @jira_ticket CASSANDRA-4760
@@ -2559,6 +2634,7 @@ class TestCQL(Tester):
         res = session.execute("SELECT c1, c2 FROM test WHERE key='foo' AND c1 <= 1 ORDER BY c1 DESC, c2 DESC")
         assert rows_to_list(res) == [[1, 2], [1, 1], [1, 0], [0, 2], [0, 1], [0, 0]], list(res)
 
+    @attr('single_node')
     def collection_and_regular_test(self):
 
         session = self.prepare()
@@ -2576,6 +2652,7 @@ class TestCQL(Tester):
         res = session.execute("SELECT l, c FROM test WHERE k = 3")
         self.assertCountEqual(rows_to_list(res), [[[1, 1, 2], 42]])
 
+    @attr('single_node')
     def batch_and_list_test(self):
         session = self.prepare()
 
@@ -2608,6 +2685,7 @@ class TestCQL(Tester):
         res = session.execute("SELECT l FROM test WHERE k = 1")
         self.assertCountEqual(rows_to_list(res[0]), [[3, 2, 1]])
 
+    @attr('single_node')
     def boolean_test(self):
         session = self.prepare()
 
@@ -2622,8 +2700,7 @@ class TestCQL(Tester):
         res = session.execute("SELECT * FROM test WHERE k = true")
         assert rows_to_list(res) == [[True, False]], list(res)
 
-    @attr('next-gating')
-    @attr('dtest-debug')
+    @attr('next-gating', 'dtest-debug', 'single_node')
     def multiordering_test(self):
         session = self.prepare()
         session.execute("""
@@ -2652,6 +2729,7 @@ class TestCQL(Tester):
         assert_invalid(session, "SELECT c1, c2 FROM test WHERE k = 'foo' ORDER BY c2 ASC")
         assert_invalid(session, "SELECT c1, c2 FROM test WHERE k = 'foo' ORDER BY c1 ASC, c2 ASC")
 
+    @attr('single_node')
     def multiordering_validation_test(self):
         session = self.prepare()
 
@@ -2662,6 +2740,7 @@ class TestCQL(Tester):
         session.execute("CREATE TABLE test1 (k int, c1 int, c2 int, PRIMARY KEY (k, c1, c2)) WITH CLUSTERING ORDER BY (c1 DESC, c2 DESC)")
         session.execute("CREATE TABLE test2 (k int, c1 int, c2 int, PRIMARY KEY (k, c1, c2)) WITH CLUSTERING ORDER BY (c1 ASC, c2 DESC)")
 
+    @attr('single_node')
     def bug_4882_test(self):
         session = self.prepare()
 
@@ -2683,6 +2762,7 @@ class TestCQL(Tester):
         res = session.execute("select * from test where k = 0 limit 1;")
         assert rows_to_list(res) == [[0, 0, 2, 2]], list(res)
 
+    @attr('single_node')
     def multi_list_set_test(self):
         session = self.prepare()
 
@@ -2701,6 +2781,7 @@ class TestCQL(Tester):
         self.assertCountEqual(rows_to_list(res), [[[1, 24, 3], [4, 42, 6]]])
 
     @skip('indexes')
+    @attr('single_node')
     def composite_index_collections_test(self):
         session = self.prepare(ordered=True)
         session.execute("""
@@ -2725,6 +2806,7 @@ class TestCQL(Tester):
         res = session.execute("SELECT blog_id, content FROM blogs WHERE author='foo'")
         assert rows_to_list(res) == [[1, set(['bar1', 'bar2'])], [1, set(['bar2', 'bar3'])], [2, set(['baz'])]], list(res)
 
+    @attr('single_node')
     def truncate_clean_cache_test(self):
         session = self.prepare(ordered=True, use_cache=True)
 
@@ -2747,8 +2829,7 @@ class TestCQL(Tester):
         res = session.execute("SELECT v1, v2 FROM test WHERE k IN (0, 1, 2)")
         assert rows_to_list(res) == [], list(res)
 
-    @attr('next-gating')
-    @attr('dtest-debug')
+    @attr('next-gating', 'dtest-debug', 'single_node')
     def allow_filtering_test(self):
         """
         test queries with multiple restrictions.
@@ -2784,6 +2865,7 @@ class TestCQL(Tester):
             self._assert_valid_query(session=session, query=q + " ALLOW FILTERING")
             self._assert_invalid_filtering(session=session, query=q)
 
+    @attr('single_node')
     def allow_filtering_secondary_indexes_test(self):
         """
                 test queries with multiple restrictions + secondary indexes.
@@ -2817,8 +2899,7 @@ class TestCQL(Tester):
             self._assert_invalid_filtering(session=session, query=q)
             self._assert_valid_query(session=session, query=q + " ALLOW FILTERING")
 
-    @attr('next-gating')
-    @attr('dtest-debug')
+    @attr('next-gating', 'dtest-debug', 'single_node')
     def range_with_deletes_test(self):
         session = self.prepare()
 
@@ -2841,6 +2922,7 @@ class TestCQL(Tester):
         res = list(session.execute("SELECT * FROM test LIMIT %d" % (nb_keys / 2)))
         assert len(res) == nb_keys / 2, "Expected %d but got %d" % (nb_keys / 2, len(res))
 
+    @attr('single_node')
     def alter_with_collections_test(self):
         """
         @jira_ticket CASSANDRA-4982
@@ -2854,6 +2936,7 @@ class TestCQL(Tester):
         session.execute("ALTER TABLE collections ADD c text")
         session.execute("ALTER TABLE collections ADD alist list<text>")
 
+    @attr('single_node')
     def collection_compact_test(self):
         session = self.prepare()
 
@@ -2864,6 +2947,7 @@ class TestCQL(Tester):
             ) WITH COMPACT STORAGE;
         """)
 
+    @attr('single_node')
     def collection_function_test(self):
         session = self.prepare()
 
@@ -2877,6 +2961,7 @@ class TestCQL(Tester):
         assert_invalid(session, "SELECT ttl(l) FROM test WHERE k = 0")
         assert_invalid(session, "SELECT writetime(l) FROM test WHERE k = 0")
 
+    @attr('single_node')
     def collection_counter_test(self):
         session = self.prepare(options={'experimental': True})
 
@@ -2901,6 +2986,7 @@ class TestCQL(Tester):
             )
         """, expected=(InvalidRequest, SyntaxException))
 
+    @attr('single_node')
     def composite_partition_key_validation_test(self):
         """
         @jira_ticket CASSANDRA-5122
@@ -2920,6 +3006,7 @@ class TestCQL(Tester):
 
         assert_invalid(session, "SELECT * FROM foo WHERE a=1")
 
+    @attr('single_node')
     def large_clustering_in_test(self):
         """
         @jira_ticket CASSANDRA-8410
@@ -2957,6 +3044,7 @@ class TestCQL(Tester):
         self.assertEqual(len(expected_rows), len(rows),
                          msg="expected_rows={} rows={}".format(expected_rows, rows))
 
+    @attr('single_node')
     def timeuuid_test(self):
         session = self.prepare()
 
@@ -2996,6 +3084,7 @@ class TestCQL(Tester):
         session.execute("SELECT t FROM test WHERE k = 0 AND t > maxTimeuuid(1234567) AND t < minTimeuuid('2012-11-07 18:18:22-0800')")
         # not sure what to check exactly so just checking the query returns
 
+    @attr('single_node')
     def cql_tinyint_type_test(self):
         session = self.prepare()
 
@@ -3018,6 +3107,7 @@ class TestCQL(Tester):
         self.assertEqual(-128, res[0].t)
         self.assertEqual(127,  res[1].t)
 
+    @attr('single_node')
     def cql_smallint_type_test(self):
         session = self.prepare()
 
@@ -3040,6 +3130,7 @@ class TestCQL(Tester):
         self.assertEqual(-32768, res[0].t)
         self.assertEqual(32767,  res[1].t)
 
+    @attr('single_node')
     def cql_date_type_test(self):
         session = self.prepare()
 
@@ -3064,6 +3155,7 @@ class TestCQL(Tester):
         self.assertEqual("1970-01-01",  str(res[1].t))
         self.assertEqual("2147483647",  str(res[2].t))
 
+    @attr('single_node')
     def cql_time_type_test(self):
         session = self.prepare()
 
@@ -3088,6 +3180,7 @@ class TestCQL(Tester):
         self.assertEqual("14:53:12.000000000", str(res[1].t))
         self.assertEqual("14:53:12.123456789", str(res[2].t))
 
+    @attr('single_node')
     def float_with_exponent_test(self):
         session = self.prepare()
 
@@ -3103,6 +3196,7 @@ class TestCQL(Tester):
         session.execute("INSERT INTO test(k, d, f) VALUES (1, 3.E10, -23.44E-3)")
         session.execute("INSERT INTO test(k, d, f) VALUES (2, 3, -2)")
 
+    @attr('single_node')
     def compact_metadata_test(self):
         """
         @jira_ticket CASSANDRA-5189
@@ -3123,6 +3217,7 @@ class TestCQL(Tester):
         assert rows_to_list(res) == [[1, 2]], list(res)
 
     @skip('indexes')
+    @attr('single_node')
     def clustering_indexing_test(self):
         session = self.prepare()
 
@@ -3165,6 +3260,7 @@ class TestCQL(Tester):
         res = session.execute("SELECT v1 FROM posts WHERE time = 1")
         assert rows_to_list(res) == [['B'], ['E']], list(res)
 
+    @attr('single_node')
     def invalid_clustering_indexing_test(self):
         session = self.prepare()
 
@@ -3181,6 +3277,7 @@ class TestCQL(Tester):
         assert_invalid(session, "CREATE INDEX ON test3(c)")
 
     @skip('indexes')
+    @attr('single_node')
     def edge_2i_on_complex_pk_test(self):
         session = self.prepare()
 
@@ -3221,6 +3318,7 @@ class TestCQL(Tester):
         self.assertEqual([[4]], rows_to_list(res))
 
     @skip('indexes')
+    @attr('single_node')
     def bug_5240_test(self):
         session = self.prepare()
 
@@ -3248,6 +3346,7 @@ class TestCQL(Tester):
         res = session.execute("select * from test where severity = 3 and interval = 't' and seq =1;")
         assert rows_to_list(res) == [['t', 1, 4, 3]], list(res)
 
+    @attr('single_node')
     def ticket_5230_test(self):
         session = self.prepare()
 
@@ -3267,6 +3366,7 @@ class TestCQL(Tester):
         res = session.execute("SELECT c FROM foo WHERE key = 'foo' AND c IN ('1', '2');")
         assert rows_to_list(res) == [['1'], ['2']], list(res)
 
+    @attr('single_node')
     def conversion_functions_test(self):
         session = self.prepare()
 
@@ -3282,6 +3382,7 @@ class TestCQL(Tester):
         res = session.execute("SELECT i, blobAsText(b) FROM test WHERE k = 0")
         assert rows_to_list(res) == [[3, 'foobar']], list(res)
 
+    @attr('single_node')
     def alter_bug_test(self):
         """
         @jira_ticket CASSANDRA-5232
@@ -3303,6 +3404,7 @@ class TestCQL(Tester):
         res = session.execute("SELECT * FROM t1;")
         assert rows_to_list(res) == [[1, None, None, '111']], list(res)
 
+    @attr('single_node')
     def bug_5376(self):
         session = self.prepare()
 
@@ -3318,6 +3420,7 @@ class TestCQL(Tester):
 
         assert_invalid(session, "select * from test where key = 'foo' and c in (1,3,4);")
 
+    @attr('single_node')
     def function_and_reverse_type_test(self):
         """
         @jira_ticket CASSANDRA-5386
@@ -3335,6 +3438,7 @@ class TestCQL(Tester):
 
         session.execute("INSERT INTO test (k, c, v) VALUES (0, now(), 0);")
 
+    @attr('single_node')
     def bug_5404(self):
         session = self.prepare()
 
@@ -3342,6 +3446,7 @@ class TestCQL(Tester):
         # We just want to make sure this doesn't NPE server side
         assert_invalid(session, "select * from test where token(key) > token(int(3030343330393233)) limit 1;")
 
+    @attr('single_node')
     def empty_blob_test(self):
         session = self.prepare()
 
@@ -3350,6 +3455,7 @@ class TestCQL(Tester):
         res = session.execute("SELECT * FROM test")
         assert rows_to_list(res) == [[0, b'']], list(rows_to_list(res))
 
+    @attr('single_node')
     def rename_test(self):
         session = self.prepare(start_rpc=True)
 
@@ -3376,6 +3482,7 @@ class TestCQL(Tester):
         session.execute("ALTER TABLE test RENAME column1 TO foo1 AND column2 TO foo2 AND column3 TO foo3")
         assert_one(session, "SELECT foo1, foo2, foo3 FROM test", [4, 3, 2])
 
+    @attr('single_node')
     def clustering_order_and_functions_test(self):
         session = self.prepare()
 
@@ -3392,6 +3499,7 @@ class TestCQL(Tester):
 
         session.execute("SELECT dateOf(t) FROM test")
 
+    @attr('single_node')
     def conditional_update_test(self):
         session = self.prepare(options={'experimental_features': ['lwt']})
 
@@ -3462,6 +3570,7 @@ class TestCQL(Tester):
             # Should apply
             assert_one(session, "DELETE FROM test WHERE k = 0 IF v1 IN (null)", [True, None])
 
+    @attr('single_node')
     def non_eq_conditional_update_test(self):
         session = self.prepare(options={'experimental_features': ['lwt']})
 
@@ -3486,6 +3595,7 @@ class TestCQL(Tester):
         assert_one(session, "UPDATE test SET v2 = 'bar' WHERE k = 0 IF v1 IN (142, 276)", [False, 2])
         assert_one(session, "UPDATE test SET v2 = 'bar' WHERE k = 0 IF v1 IN ()", [False, 2])
 
+    @attr('single_node')
     def conditional_delete_test(self):
         session = self.prepare(options={'experimental_features': ['lwt']})
 
@@ -3544,6 +3654,7 @@ class TestCQL(Tester):
             assert_invalid(session, "DELETE FROM test2 WHERE k = 0 AND i > 0 IF EXISTS")
             assert_invalid(session, "DELETE FROM test2 WHERE k = 0 AND i > 0 IF v = 'foo'")
 
+    @attr('single_node')
     def range_key_ordered_test(self):
         session = self.prepare(ordered=True)
 
@@ -3556,6 +3667,7 @@ class TestCQL(Tester):
         assert_all(session, "SELECT * FROM test", [[0], [1], [-1]])
         assert_invalid(session, "SELECT * FROM test WHERE k >= -1 AND k < 1;")
 
+    @attr('single_node')
     def select_with_alias_test(self):
         session = self.prepare()
         session.execute('CREATE TABLE users (id int PRIMARY KEY, name text)')
@@ -3594,6 +3706,7 @@ class TestCQL(Tester):
         # test that select throws a meaningful exception for aliases in order by clause
         assert_invalid(session, 'SELECT id AS user_id, name AS user_name FROM users WHERE id IN (0) ORDER BY user_name', matching="Aliases are not allowed in order by clause")
 
+    @attr('single_node')
     def nonpure_function_collection_test(self):
         """
         @jira_ticket CASSANDRA-5795
@@ -3605,6 +3718,7 @@ class TestCQL(Tester):
         # we just want to make sure this doesn't throw
         session.execute("INSERT INTO test(k, v) VALUES (0, [now()])")
 
+    @attr('single_node')
     def empty_in_test(self):
         session = self.prepare()
         session.execute("CREATE TABLE test (k1 int, k2 int, v int, PRIMARY KEY (k1, k2))")
@@ -3649,6 +3763,7 @@ class TestCQL(Tester):
         session.execute("UPDATE test_compact SET v = 3 WHERE k1 IN () AND k2 = 2")
         assert_nothing_changed("test_compact")
 
+    @attr('single_node')
     def collection_flush_test(self):
         """
         @jira_ticket CASSANDRA-5805
@@ -3664,6 +3779,7 @@ class TestCQL(Tester):
 
         assert_one(session, "SELECT * FROM test", [1, set([2])])
 
+    @attr('single_node')
     def select_distinct_test(self):
         session = self.prepare()
 
@@ -3709,6 +3825,7 @@ class TestCQL(Tester):
         assert_invalid(session, 'SELECT DISTINCT pk0 FROM regular', matching="queries must request all the partition key columns")
         assert_invalid(session, 'SELECT DISTINCT pk0, pk1, ck0 FROM regular', matching="queries must only request partition key columns")
 
+    @attr('single_node')
     def select_distinct_with_deletions_test(self):
         session = self.prepare()
         session.execute('CREATE TABLE t1 (k int PRIMARY KEY, c int, v int)')
@@ -3730,6 +3847,7 @@ class TestCQL(Tester):
         rows = list(session.execute('SELECT DISTINCT k FROM t1'))
         self.assertEqual(9, len(rows))
 
+    @attr('single_node')
     def function_with_null_test(self):
         session = self.prepare()
 
@@ -3755,6 +3873,7 @@ class TestCQL(Tester):
             assert_one(session, "UPDATE tkns SET consumed = TRUE WHERE tkn = %i IF consumed = FALSE;" % i, [False, True], cl=ConsistencyLevel.QUORUM)
 
     @skip('indexes')
+    @attr('single_node')
     def bug_6050_test(self):
         session = self.prepare()
 
@@ -3769,6 +3888,7 @@ class TestCQL(Tester):
         session.execute("CREATE INDEX ON test(a)")
         assert_invalid(session, "SELECT * FROM test WHERE a = 3 AND b IN (1, 3)")
 
+    @attr('single_node')
     def bug_6069_test(self):
         session = self.prepare(options={'experimental_features': ['lwt']})
 
@@ -3782,6 +3902,7 @@ class TestCQL(Tester):
         assert_one(session, "INSERT INTO test(k, s) VALUES (0, {1, 2, 3}) IF NOT EXISTS", [True, None, None])
         assert_one(session, "SELECT * FROM test", [0, {1, 2, 3}])
 
+    @attr('single_node')
     def bug_6115_test(self):
         session = self.prepare()
 
@@ -3792,11 +3913,13 @@ class TestCQL(Tester):
 
         assert_one(session, "SELECT * FROM test", [0, 2])
 
+    @attr('single_node')
     def secondary_index_counters(self):
         session = self.prepare()
         session.execute("CREATE TABLE test (k int PRIMARY KEY, c counter)")
         assert_invalid(session, "CREATE INDEX ON test(c)")
 
+    @attr('single_node')
     def column_name_validation_test(self):
         session = self.prepare()
 
@@ -3817,6 +3940,7 @@ class TestCQL(Tester):
         # Insert a non-version 1 uuid
         assert_invalid(session, "INSERT INTO test(k, c, v) VALUES (0, 0, 550e8400-e29b-41d4-a716-446655440000)")
 
+    @attr('single_node')
     def bug_6327_test(self):
         session = self.prepare()
 
@@ -3832,6 +3956,7 @@ class TestCQL(Tester):
         self.cluster.flush()
         assert_one(session, "SELECT v FROM test WHERE k=0 AND v IN (1, 0)", [0])
 
+    @attr('single_node')
     def large_count_test(self):
         session = self.prepare()
 
@@ -3864,6 +3989,7 @@ class TestCQL(Tester):
 
         assert_one(session, "SELECT COUNT(*) FROM test", [15000])
 
+    @attr('single_node')
     def nan_infinity_test(self):
         session = self.prepare()
 
@@ -3884,6 +4010,7 @@ class TestCQL(Tester):
         assert selected[1] == [float("inf")]
         assert selected[2] == [float("-inf")]
 
+    @attr('single_node')
     def static_columns_test(self):
         session = self.prepare(options={'experimental': True})
 
@@ -3953,6 +4080,7 @@ class TestCQL(Tester):
         session.execute("ALTER TABLE test DROP s2")
         assert_all(session, "SELECT * FROM test", [[0, 1, None, 1], [0, 2, None, 2]])
 
+    @attr('single_node')
     def static_columns_cas_test(self):
         session = self.prepare(options={'experimental_features': ['lwt']})
 
@@ -4086,6 +4214,7 @@ class TestCQL(Tester):
                            """)
 
     @skip('indexes')
+    @attr('single_node')
     def static_columns_with_2i_test(self):
         session = self.prepare()
 
@@ -4111,6 +4240,7 @@ class TestCQL(Tester):
         # We don't support that
         assert_invalid(session, "SELECT s FROM test WHERE v = 1")
 
+    @attr('single_node')
     def static_columns_with_distinct_test(self):
         session = self.prepare()
 
@@ -4205,6 +4335,7 @@ class TestCQL(Tester):
             self.assertEqual(list(range(10)), sorted([r[1] for r in rows]))
 
     @skip('indexes')
+    @attr('single_node')
     def select_count_paging_test(self):
         """
         @jira_ticket CASSANDRA-6579
@@ -4223,6 +4354,7 @@ class TestCQL(Tester):
         else:
             assert_one(session, "select count(*) from test where field3 = false limit 1;", [1])
 
+    @attr('single_node')
     def cas_and_ttl_test(self):
         session = self.prepare(options={'experimental_features': ['lwt']})
         session.execute("CREATE TABLE test (k int PRIMARY KEY, v int, lock boolean)")
@@ -4233,6 +4365,7 @@ class TestCQL(Tester):
         assert_one(session, "UPDATE test SET v = 1 WHERE k = 0 IF lock = null", [True, None])
 
     @require('2029')
+    @attr('single_node')
     def in_order_by_without_selecting_test(self):
         """ Test that columns don't need to be selected for ORDER BY when there is a IN (#4911) """
 
@@ -4265,6 +4398,7 @@ class TestCQL(Tester):
         # since we don't know the write times, just assert that the order matches the order we expect
         self.assertEqual(results, list(sorted(results)))
 
+    @attr('single_node')
     def tuple_notation_test(self):
         """
         @jira_ticket CASSANDRA-4851
@@ -4294,6 +4428,7 @@ class TestCQL(Tester):
 
         assert_invalid(session, "SELECT v1, v2, v3 FROM test WHERE k = 0 AND (v1, v3) > (1, 0)")
 
+    @attr('single_node')
     def slicing_test(self):
         session = self.prepare()
 
@@ -4358,6 +4493,7 @@ class TestCQL(Tester):
 
         assert_all(session, "SELECT c1, c2, v FROM test WHERE k = 0 AND c1 < 1 and c1 > 1", [])
 
+    @attr('single_node')
     def in_with_desc_order_test(self):
         session = self.prepare()
 
@@ -4368,6 +4504,7 @@ class TestCQL(Tester):
 
         assert_all(session, "SELECT * FROM test WHERE k=0 AND c1 = 0 AND c2 IN (2, 0) ORDER BY c1 DESC", [[0, 0, 2], [0, 0, 0]])
 
+    @attr('single_node')
     def cas_and_compact_test(self):
         """
         @jira_ticket CASSANDRA-6813
@@ -4393,6 +4530,7 @@ class TestCQL(Tester):
 
         assert_one(session, "INSERT INTO lock(partition, key, owner) VALUES ('a', 'c', 'x') IF NOT EXISTS", [True, None, None, None])
 
+    @attr('single_node')
     def whole_list_conditional_test(self):
         session = self.prepare(options={'experimental_features': ['lwt']})
 
@@ -4461,6 +4599,7 @@ class TestCQL(Tester):
             # not supported yet
             check_invalid("m CONTAINS 'bar'", expected=SyntaxException)
 
+    @attr('single_node')
     def list_item_conditional_test(self):
         # Lists
         session = self.prepare(options={'experimental_features': ['lwt']})
@@ -4490,6 +4629,7 @@ class TestCQL(Tester):
             assert_one(session, "DELETE FROM tlist WHERE k=0 IF l[1] = 'bar'", [True, ['foo', 'bar', 'foobar']])
             assert_none(session, "SELECT * FROM tlist")
 
+    @attr('single_node')
     def expanded_list_item_conditional_test(self):
         """
         expanded functionality from CASSANDRA-6839
@@ -4561,6 +4701,7 @@ class TestCQL(Tester):
             check_invalid("l[1] CONTAINS KEY 367", expected=SyntaxException)
             check_invalid("l[null] = null")
 
+    @attr('single_node')
     def whole_set_conditional_test(self):
         session = self.prepare(options={'experimental_features': ['lwt']})
 
@@ -4629,6 +4770,7 @@ class TestCQL(Tester):
             # not supported yet
             check_invalid("m CONTAINS 'bar'", expected=SyntaxException)
 
+    @attr('single_node')
     def whole_map_conditional_test(self):
         session = self.prepare(options={'experimental_features': ['lwt']})
 
@@ -4695,6 +4837,7 @@ class TestCQL(Tester):
             check_invalid("m CONTAINS null", expected=SyntaxException)
             check_invalid("m CONTAINS KEY null", expected=SyntaxException)
 
+    @attr('single_node')
     def map_item_conditional_test(self):
         session = self.prepare(options={'experimental_features': ['lwt']})
 
@@ -4725,6 +4868,7 @@ class TestCQL(Tester):
                 else:
                     assert_one(session, "UPDATE tmap set m['foo'] = 'bar', m['bar'] = 'foo' WHERE k = 1 IF m['foo'] IN ('blah', null)", [True, None])
 
+    @attr('single_node')
     def expanded_map_item_conditional_test(self):
         """
         Expanded functionality from CASSANDRA-6839
@@ -4795,6 +4939,7 @@ class TestCQL(Tester):
             check_invalid("m['foo'] CONTAINS KEY 367", expected=SyntaxException)
             check_invalid("m[null] = null")
 
+    @attr('single_node')
     def cas_and_list_index_test(self):
         """
         @jira_ticket CASSANDRA-7499
@@ -4817,6 +4962,7 @@ class TestCQL(Tester):
         # since we write at all, and LWT update (serial), we need to read back at serial (or higher)
         assert_one(session, "SELECT * FROM test", [0, ['foo', 'bar'], 'foobar'], cl=ConsistencyLevel.QUORUM)
 
+    @attr('single_node')
     def static_with_limit_test(self):
         """
         @jira_ticket CASSANDRA-6956
@@ -4842,6 +4988,7 @@ class TestCQL(Tester):
         assert_all(session, "SELECT * FROM test WHERE k = 0 LIMIT 2", [[0, 0, 42], [0, 1, 42]])
         assert_all(session, "SELECT * FROM test WHERE k = 0 LIMIT 3", [[0, 0, 42], [0, 1, 42], [0, 2, 42]])
 
+    @attr('single_node')
     def static_with_empty_clustering_test(self):
         """
         @jira_ticket CASSANDRA-7455
@@ -4865,6 +5012,7 @@ class TestCQL(Tester):
 
         assert_one(session, "SELECT * FROM test", ['partition1', '', 'static value', 'value'])
 
+    @attr('single_node')
     def limit_compact_table(self):
         """
         @jira_ticket CASSANDRA-7052
@@ -4896,6 +5044,7 @@ class TestCQL(Tester):
         # Introduced in CASSANDRA-7059
         assert_invalid(session, "SELECT * FROM test WHERE v > 1 AND v <= 3 LIMIT 6 ALLOW FILTERING")
 
+    @attr('single_node')
     def key_index_with_reverse_clustering(self):
         """
         @jira_ticket CASSANDRA-6950
@@ -4926,6 +5075,7 @@ class TestCQL(Tester):
 
         assert_all(session, "SELECT * FROM test WHERE k2 = 0 AND v >= 2 ALLOW FILTERING", [[2, 0, 7], [0, 0, 3], [1, 0, 4]])
 
+    @attr('single_node')
     def clustering_order_in_test(self):
         """
         @jira_ticket CASSANDRA-7105
@@ -4949,6 +5099,7 @@ class TestCQL(Tester):
         assert_one(session, "SELECT * FROM test WHERE a=1 AND b=2 AND c IN (3)", [1, 2, 3])
         assert_one(session, "SELECT * FROM test WHERE a=1 AND b=2 AND c IN (3, 4)", [1, 2, 3])
 
+    @attr('single_node')
     def bug7105_test(self):
         """
         @jira_ticket CASSANDRA-7105
@@ -4973,6 +5124,7 @@ class TestCQL(Tester):
         assert_one(session, "SELECT * FROM test WHERE a=1 AND b=2 ORDER BY b DESC", [1, 2, 3, 3])
 
     @skip('unconfigured table schema_keyspaces')
+    @attr('single_node')
     def conditional_ddl_keyspace_test(self):
         session = self.prepare(create_keyspace=False)
 
@@ -5006,6 +5158,7 @@ class TestCQL(Tester):
         assert_none(session, "select * from system.schema_keyspaces where keyspace_name = 'my_test_ks'")
 
     @skip('unconfigured table schema_columnfamilies')
+    @attr('single_node')
     def conditional_ddl_table_test(self):
         session = self.prepare(create_keyspace=False)
 
@@ -5050,6 +5203,7 @@ class TestCQL(Tester):
                        where keyspace_name = 'my_test_ks' and columnfamily_name = 'my_test_table'""")
 
     @skip('indexes')
+    @attr('single_node')
     def conditional_ddl_index_test(self):
         session = self.prepare(create_keyspace=False)
 
@@ -5090,6 +5244,7 @@ class TestCQL(Tester):
         assert_none(session, """select index_name from system."IndexInfo" where table_name = 'my_test_ks'""")
 
     @skip('indexes')
+    @attr('single_node')
     def bug_6612_test(self):
         session = self.prepare()
 
@@ -5115,6 +5270,7 @@ class TestCQL(Tester):
 
         assert_one(session, "select count(*) from session_data where app_name='foo' and account='bar' and last_access > 4 allow filtering", [1])
 
+    @attr('single_node')
     def blobAs_functions_test(self):
         session = self.prepare()
 
@@ -5128,6 +5284,7 @@ class TestCQL(Tester):
         # A blob that is not 4 bytes should be rejected
         assert_invalid(session, "INSERT INTO test(k, v) VALUES (0, blobAsInt(0x01))")
 
+    @attr('single_node')
     def alter_clustering_and_static_test(self):
         session = self.prepare(options={'experimental': True})
 
@@ -5136,6 +5293,7 @@ class TestCQL(Tester):
         # We shouldn't allow static when there is not clustering columns
         assert_invalid(session, "ALTER TABLE foo ADD bar2 text static")
 
+    @attr('single_node')
     def alter_with_multiple_columns_test(self):
         session = self.prepare(options={'experimental': True})
 
@@ -5143,6 +5301,7 @@ class TestCQL(Tester):
         session.execute("ALTER TABLE foo ADD (c text, d int)")
         session.execute("INSERT INTO foo (bar, c, d) VALUES (1, 'hello', 100)")
 
+    @attr('single_node')
     def drop_and_readd_collection_test(self):
         """
         @jira_ticket CASSANDRA-6276
@@ -5155,6 +5314,7 @@ class TestCQL(Tester):
         session.execute("alter table test drop v")
         assert_invalid(session, "alter table test add v set<int>")
 
+    @attr('single_node')
     def downgrade_to_compact_bug_test(self):
         """
         @jira_ticket CASSANDRA-7744
@@ -5168,6 +5328,7 @@ class TestCQL(Tester):
         session.execute("alter table test add v int")
 
     @require('#5421')
+    @attr('single_node')
     def invalid_string_literals_test(self):
         """
          @jira_ticket CASSANDRA-8101
@@ -5192,6 +5353,7 @@ class TestCQL(Tester):
                        expected=InvalidRequest, matching='Invalid ASCII character in string literal')
 
 
+    @attr('single_node')
     def negative_timestamp_test(self):
         session = self.prepare()
 
@@ -5200,6 +5362,7 @@ class TestCQL(Tester):
 
         assert_one(session, "SELECT writetime(v) FROM TEST WHERE k = 1", [-42])
 
+    @attr('single_node')
     def bug_8558_test(self):
         session = self.prepare()
         node1 = self.cluster.nodelist()[0]
@@ -5214,6 +5377,7 @@ class TestCQL(Tester):
         assert_none(session, "select * from space1.table1 where a=1 and b=1")
 
     @skip('indexes')
+    @attr('single_node')
     def bug_5732_test(self):
         session = self.prepare(use_cache=True, options={'experimental': True})
 
@@ -5251,6 +5415,7 @@ class TestCQL(Tester):
         session = self.patient_cql_connection(self.cluster.nodelist()[0])
         assert_all(session, "SELECT k FROM ks.test WHERE v = 0", [[0]])
 
+    @attr('single_node')
     def double_with_npe_test(self):
         """
         @jira_ticket CASSANDRA-9565
@@ -5272,6 +5437,7 @@ class TestCQL(Tester):
                 self.assertIsInstance(e, SyntaxException)
                 self.assertNotIn('NullPointerException', str(e))
 
+    @attr('single_node')
     def cql_versions_collections_test(self):
         for p in range(1, 3):
             session = self.prepare(protocol_version=p)
@@ -5299,6 +5465,7 @@ class TestCQL(Tester):
 
             session.execute("DROP KEYSPACE IF EXISTS ks")
 
+    @attr('single_node')
     def cql_versions_batch_test(self):
         for p in range(2, 3):
             session = self.prepare(protocol_version=p)
@@ -5328,6 +5495,7 @@ class TestCQL(Tester):
             assert_one(session, "SELECT * FROM dogs", [0, 'Pluto'])
             session.execute("DROP KEYSPACE IF EXISTS ks")
 
+    @attr('single_node')
     def bop_order_test(self):
         session = self.prepare(ordered=True)
 
@@ -5351,6 +5519,7 @@ class TestCQL(Tester):
         assert rows_to_list(res) == [[5], [6], [7], [1], [2], [0], [4], [3]], list(res)
 
 
+    @attr('single_node')
     def collection_column_can_replace_dropped_non_collection_column(self):
         session = self.prepare(ordered=True)
 
@@ -5581,6 +5750,7 @@ class TestCQL(Tester):
                        query='select {} from {} where {}'.format(columns[-1], table_name, where_clause),
                        expected=[row[-1]])
 
+    @attr('single_node')
     def allow_filtering_with_mv_test(self):
         """
                 test queries with multiple restrictions + materialized view.
@@ -5619,6 +5789,7 @@ class TestCQL(Tester):
 
         self._assert_invalid_filtering(session, "SELECT * FROM users_by_state where username = 'user1'")
 
+    @attr('single_node')
     def partition_key_allow_filtering_test(self):
         """
         Filtering with unrestricted parts of partition keys
@@ -5778,6 +5949,7 @@ class CQLAdditionalTests(Tester):
         cluster.populate(1).start()
         return cluster
 
+    @attr('single_node')
     def simple_null_value_test(self):
         cluster = self.prepare()
         node1 = cluster.nodelist()[0]
@@ -5800,6 +5972,7 @@ class CQLAdditionalTests(Tester):
         assert len(res) == 3, res
 
     @require('876')
+    @attr('single_node')
     def create_secondary_indexes_test(self):
         cluster = self.prepare()
         node = cluster.nodelist()[0]
@@ -5823,8 +5996,7 @@ class CQLAdditionalTests(Tester):
             assert(str(e) == "Indexes are not supported yet")
             assert(e.code == 0000)
 
-    @attr('next-gating')
-    @attr('dtest-debug')
+    @attr('next-gating', 'dtest-debug', 'single_node')
     def lightweight_transaction_test(self):
         cluster = self.prepare(options={'experimental_features': ['lwt']})
         node = cluster.nodelist()[0]
@@ -5859,6 +6031,7 @@ class CQLAdditionalTests(Tester):
         assert res[0] == row, res[0]
 
     @require('876')
+    @attr('single_node')
     def grant_test(self):
         cluster = self.prepare()
         node = cluster.nodelist()[0]
@@ -5874,6 +6047,7 @@ class CQLAdditionalTests(Tester):
             assert(e.code == 0000)
 
     @require('876')
+    @attr('single_node')
     def revoke_test(self):
         cluster = self.prepare()
         node = cluster.nodelist()[0]
@@ -5889,6 +6063,7 @@ class CQLAdditionalTests(Tester):
             assert(e.code == 0000)
 
     @require('876')
+    @attr('single_node')
     def list_test(self):
         cluster = self.prepare()
         node = cluster.nodelist()[0]
@@ -5903,8 +6078,7 @@ class CQLAdditionalTests(Tester):
             assert(str(e) == "Not implemented: LIST")
             assert(e.code == 0000)
 
-    @attr('next-gating')
-    @attr('dtest-debug')
+    @attr('next-gating', 'dtest-debug', 'single_node')
     def limit_date_value_out_of_range_test(self):
         # positive case for scylladb/scylla#1694
         cluster = self.prepare()
@@ -5959,6 +6133,7 @@ class CQLAdditionalTests(Tester):
         self.assertEqual(num_rows, 100)
 
     @require('2251')
+    @attr('single_node')
     def limit_date_value_out_of_range_lower_limit_test(self):
         cluster = self.prepare()
         node = cluster.nodelist()[0]
@@ -5992,6 +6167,7 @@ class CQLAdditionalTests(Tester):
         num_rows = int(re.search(regex, out).group(1))
         self.assertEqual(num_rows, 10)
 
+    @attr('single_node')
     def limit_date_value_out_of_range_upper_limit_test(self):
         cluster = self.prepare()
         node = cluster.nodelist()[0]
@@ -6025,8 +6201,7 @@ class CQLAdditionalTests(Tester):
         num_rows = int(re.search(regex, out).group(1))
         self.assertEqual(num_rows, 10)
 
-    @attr('next-gating')
-    @attr('dtest-debug')
+    @attr('next-gating', 'dtest-debug', 'single_node')
     def select_all_data_and_filter_explicitly_test(self):
         # https://github.com/scylladb/scylla/issues/2272
         cluster = self.prepare()
@@ -6143,7 +6318,7 @@ class CQLAdditionalTests(Tester):
         assert len(out.split()) == 112, 'created 100+ tables'
 
 
-@attr('dtest-full')
+@attr('dtest-full', 'single_node')
 class MultiColumnRestrictionSimpleTests(Tester):
 
     INSERT_COLUMNS = 'key,clmn_int,clmn_text,clmn_timestamp,clmn_bool,clmn_ascii,clmn_uuid,clmn_blob'
@@ -6505,7 +6680,7 @@ class MultiColumnRestrictionSimpleTests(Tester):
                    expected=[], ignore_order=True)
 
 
-@attr('dtest-full')
+@attr('dtest-full', 'single_node')
 class MultiColumnRestrictionCollectionTests(Tester):
     TABLE_NAME = 'cf'
     TEST_DATA = [[0, "[0, 1, 2]", "[textAsBlob('t1'), textAsBlob('t2')]",

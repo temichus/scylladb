@@ -847,6 +847,7 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
                            [("127.0.0.1", 1, 200), ("127.0.0.2", 1, 200), ("127.0.0.3", 1, 200)],
                            retry_on_failure)
 
+    @attr('single_node')
     def test_query_indexes_with_vnodes(self):
         """
         Verifies correct query behaviour in the presence of vnodes
@@ -877,6 +878,7 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
             res = session.execute("SELECT * FROM {}.{} WHERE {} = 0".format(keyspace_name, table, index_column))
             self.assertEqual(len(rows_to_list(res)), 50)
 
+    @attr('single_node')
     def test_multi_column_index(self):
         """
         Test that impossible to create secondary index on the few columns and valid error message is received
@@ -924,6 +926,7 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
         assert_all(session, select_query.format(table_name, index_column, 1), [[0, 1, 2]], cl=ConsistencyLevel.ALL)
         return session, keyspace_name, table_name, index_column, index_name, select_query, mv_query
 
+    @attr('single_node')
     def test_ttl_index_column(self):
         """
         Verify SI with default_time_to_live can be deleted properly using expired livenessInfo
@@ -945,6 +948,7 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
         assert_none(session, select_query.format(table_name, index_column, 1), cl=ConsistencyLevel.ALL)
         assert_none(session, mv_query, cl=ConsistencyLevel.ALL)
 
+    @attr('single_node')
     def test_ttl_non_index_column(self):
         """
         Verify SI is not impact from TTL on non-imdex column
@@ -1165,7 +1169,7 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
         self.check_errors(self.cluster.nodelist()[0], ['Can\'t send migration request: node {} is down'.format(node2_ip)])
 
 
-@attr('dtest-full')
+@attr('dtest-full', 'single_node')
 class TestSecondaryIndexesOnCollections(Tester, SecondaryIndexesHelpers):
     INDEX_TYPE = 'global'
     def __init__(self, *args, **kwargs):
@@ -1939,6 +1943,7 @@ class TestLocalIndexes(Tester, SecondaryIndexesHelpers):
         # check that index queries are also truncated
         select_by_index(0)
 
+    @attr('single_node')
     def test_multi_column_local_index(self):
         """
         Test that impossible to create secondary index on the few columns and valid error message is received
@@ -1987,6 +1992,7 @@ class TestLocalIndexes(Tester, SecondaryIndexesHelpers):
         assert_all(session, select_query.format(table_name, '%s = %d and' % (index_column, 1)), [[0, 1, 2]], cl=ConsistencyLevel.ALL)
         return session, keyspace_name, table_name, index_column, index_name, select_query, mv_query
 
+    @attr('single_node')
     def test_ttl_local_index_column(self):
         """
         Verify SI with default_time_to_live can be deleted properly using expired livenessInfo

@@ -92,6 +92,7 @@ class TestTTL(Tester):
         debug('Stop to wait at: {}'.format(self.format_float_time_to_readable(stop_time)))
         debug('   Waiting time is {}'.format(stop_time-start_time))
 
+    @attr('single_node')
     def default_ttl_test(self):
         """ Test default_time_to_live specified on a table """
 
@@ -103,6 +104,7 @@ class TestTTL(Tester):
         self.smart_sleep(start, 3)
         assert_row_count(self.session1, 'ttl_table', 0)
 
+    @attr('single_node')
     def insert_ttl_has_priority_on_defaut_ttl_test(self):
         """ Test that a ttl specified during an insert has priority on the default table ttl """
 
@@ -117,6 +119,7 @@ class TestTTL(Tester):
         self.smart_sleep(start, 7)
         assert_row_count(self.session1, 'ttl_table', 0)
 
+    @attr('single_node')
     def insert_ttl_works_without_default_ttl_test(self):
         """ Test that a ttl specified during an insert works even if a table has no default ttl """
 
@@ -129,6 +132,7 @@ class TestTTL(Tester):
         self.smart_sleep(start, 3)
         assert_row_count(self.session1, 'ttl_table', 0)
 
+    @attr('single_node')
     def default_ttl_can_be_removed_test(self):
         """ Test that default_time_to_live can be removed """
 
@@ -142,8 +146,7 @@ class TestTTL(Tester):
         self.smart_sleep(start, 1.5)
         assert_row_count(self.session1, 'ttl_table', 1)
 
-    @attr('next-gating')
-    @attr('dtest-debug')
+    @attr('next-gating', 'dtest-debug', 'single_node')
     def removing_default_ttl_does_not_affect_existing_rows_test(self):
         """ Test that removing a default_time_to_live doesn't affect the existings rows """
 
@@ -166,6 +169,7 @@ class TestTTL(Tester):
         self.smart_sleep(start, 20)
         assert_row_count(self.session1, 'ttl_table', 1)
 
+    @attr('single_node')
     def update_single_column_ttl_test(self):
         """ Test that specifying a TTL on a single column works """
 
@@ -180,6 +184,7 @@ class TestTTL(Tester):
         self.smart_sleep(start, 5)
         assert_all(self.session1, "SELECT * FROM ttl_table;", [[1, None, 1, 1]])
 
+    @attr('single_node')
     def update_multiple_columns_ttl_test(self):
         """ Test that specifying a TTL on multiple columns works """
 
@@ -196,6 +201,7 @@ class TestTTL(Tester):
         self.smart_sleep(start, 4)
         assert_all(self.session1, "SELECT * FROM ttl_table;", [[1, None, None, None]])
 
+    @attr('single_node')
     def update_column_ttl_with_default_ttl_test(self):
         """
         Test that specifying a column ttl works when a default ttl is set.
@@ -215,6 +221,7 @@ class TestTTL(Tester):
         self.smart_sleep(start, 10)
         assert_row_count(self.session1, 'ttl_table', 0)
 
+    @attr('single_node')
     def update_column_ttl_with_default_ttl_test2(self):
         """
         Test that specifying a column ttl works when a default ttl is set.
@@ -233,6 +240,7 @@ class TestTTL(Tester):
         self.smart_sleep(start, 8)
         assert_row_count(self.session1, 'ttl_table', 0)
 
+    @attr('single_node')
     def remove_column_ttl_test(self):
         """
         Test that removing a column ttl works.
@@ -248,8 +256,7 @@ class TestTTL(Tester):
         self.smart_sleep(start, 4)
         assert_all(self.session1, "SELECT * FROM ttl_table;", [[1, 42, None, None]])
 
-    @attr('next-gating')
-    @attr('dtest-debug')
+    @attr('next-gating', 'dtest-debug', 'single_node')
     def remove_column_ttl_with_default_ttl_test(self):
         """
         Test that we cannot remove a column ttl when a default ttl is set.
@@ -272,6 +279,7 @@ class TestTTL(Tester):
         self.smart_sleep(start, 10)
         assert_row_count(self.session1, 'ttl_table', 0)
 
+    @attr('single_node')
     def collection_list_ttl_test(self):
         """
         Test that ttl has a granularity of elements using a list collection.
@@ -302,6 +310,7 @@ class TestTTL(Tester):
         self.smart_sleep(start, 12)
         assert_row_count(self.session1, 'ttl_table', 0)
 
+    @attr('single_node')
     def collection_set_ttl_test(self):
         """
         Test that ttl has a granularity of elements using a set collection.
@@ -340,6 +349,7 @@ class TestTTL(Tester):
         self.smart_sleep(start, 12)
         assert_row_count(self.session1, 'ttl_table', 0)
 
+    @attr('single_node')
     def collection_map_ttl_test(self):
         """
         Test that ttl has a granularity of elements using a map collection.
@@ -378,6 +388,7 @@ class TestTTL(Tester):
         self.smart_sleep(start, 8)
         assert_row_count(self.session1, 'ttl_table', 0)
 
+    @attr('single_node')
     def delete_with_ttl_expired_test(self):
         """
         Updating a row with a ttl does not prevent deletion, test for CASSANDRA-6363
@@ -400,6 +411,7 @@ class TestTTL(Tester):
         assert_row_count(self.session1, 'session', 0)
 
     @require('3182')
+    @attr('single_node')
     def boundary_ttl_test(self):
         """
         Test with boundary invalid and valid TTL.

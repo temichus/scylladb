@@ -19,7 +19,7 @@ from tools import since, rows_to_list
 from nose.plugins.attrib import attr
 
 
-@attr('dtest-full')
+@attr('dtest-full', 'single_node')
 class TestCommitLog(Tester):
     """ CommitLog Tests """
 

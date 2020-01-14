@@ -21,7 +21,7 @@ role2_role = ['role2', False, False, {}]
 cassandra_role = ['cassandra', True, True, {}]
 
 
-@attr('dtest-full')
+@attr('dtest-full', 'single_node')
 @since('2.2')
 class TestAuthRoles(Tester):
 
@@ -1268,7 +1268,7 @@ class TestAuthRoles(Tester):
         found = self.wait_for_any_log(
             self.cluster.nodelist(),
             ["Created default superuser role", "Created default superuser authentication record"],
-            10,
+            30,
             dispersed=True)
 
         if isinstance(found, list):

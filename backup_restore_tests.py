@@ -18,6 +18,7 @@ from nose.plugins.attrib import attr
 @attr('dtest-full')
 class TestBackupRestore(Tester):
 
+    @attr('single_node')
     def failure_durring_snapshot_no_corrupt_data_test(self):
         """
         Check that we can recover from a failure durring snapshot:
@@ -66,6 +67,7 @@ class TestBackupRestore(Tester):
         debug("Checking rows on node1...")
         self.check_rows_on_node(node1, num_keys, found=keys, c1_values=c1_values, c2_values=c2_values)
 
+    @attr('single_node')
     def failure_durring_restore_no_corrupt_data_test(self):
         """
         Check that we can recover from a failure during restore
@@ -164,6 +166,7 @@ class TestBackupRestore(Tester):
         debug("Checking rows on node1...")
         self.check_rows_on_node(node1, num_keys, found=keys, c1_values=c1_values, c2_values=c2_values)
 
+    @attr('single_node')
     def replay_restore_no_additional_data_test(self):
         """
         Check that we can restore snapshot files that use old schema
@@ -246,6 +249,7 @@ class TestBackupRestore(Tester):
         debug("Checking rows on node1...")
         self.check_rows_on_node(node1, num_keys, found=keys, c1_values=c1_values, c2_values=c2_values)
 
+    @attr('single_node')
     def restore_snapshot_using_different_smp_setting_test(self):
         """
         Check that we can restore snapshot files that used a different smp setting
@@ -409,8 +413,7 @@ class TestBackupRestore(Tester):
         debug("Check that we may query ks.cf on node1...")
         session.execute(SimpleStatement("SELECT COUNT(*) FROM ks.cf"))
 
-    @attr('next-gating')
-    @attr('dtest-debug')
+    @attr('next-gating', 'dtest-debug', 'single_node')
     def incremental_backup_test(self):
         """
         Check that incremetal backup works as expected
@@ -483,8 +486,7 @@ class TestBackupRestore(Tester):
         # should not change after a compaction
         self.assertEqual(backups1_files, backups2_files, "backup contents changed after a compaction")
 
-    @attr('next-gating')
-    @attr('dtest-debug')
+    @attr('next-gating', 'dtest-debug', 'single_node')
     def restore_snapshot_from_cassandra_test(self):
         """
         Check that we can restore snapshot files that have been created by cassandra
@@ -539,6 +541,7 @@ class TestBackupRestore(Tester):
         debug("Checking rows on node1...")
         self.check_rows_on_node(node1, num_keys, found=keys, c1_values=c1_values, c2_values=c2_values)
 
+    @attr('single_node')
     def clearsnapshot_options_test(self):
         """
         Check different 'nodetool clearsnapshot' options

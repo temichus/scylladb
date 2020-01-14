@@ -8,7 +8,7 @@ from cqlsh_tests.cqlsh_copy_tests import CqlshPrepare
 from nose.plugins.attrib import attr
 
 
-@attr('dtest-full')
+@attr('dtest-full', 'single_node')
 class CQLCastTest(CqlshPrepare):
     """ Class provides interface for CAST scalar function """
 

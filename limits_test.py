@@ -32,7 +32,7 @@ MAX_CELLS = 16777216
 #MAX_CELLS_BATCH_SIZE = 100
 #MAX_CELLS = 1000
 
-@attr('dtest-full')
+@attr('dtest-full', 'single_node')
 class TestLimits(Tester):
 
     def prepare(self):

@@ -11,7 +11,7 @@ from nose.plugins.attrib import attr
 from unittest import skip
 
 
-@attr('dtest-full')
+@attr('dtest-full', 'single_node')
 class TestCompaction(Tester):
 
     __test__ = False

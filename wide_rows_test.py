@@ -366,8 +366,7 @@ class TestWideRows(Tester):
             time.sleep(0.5)
         return row_number
 
-    @attr('next-gating')
-    @attr('dtest-debug')
+    @attr('next-gating', 'dtest-debug', 'single_node')
     def test_wide_rows(self):
         self.write_wide_rows()
 
@@ -400,6 +399,7 @@ class TestWideRows(Tester):
             debug(value)
             assert len(value[0]) > 0
 
+    @attr('single_node')
     def test_column_index_stress(self):
         """Write a large number of columns to a single row and set
         'column_index_size_in_kb' to a sufficiently low value to force
@@ -844,6 +844,7 @@ class TestWideRows(Tester):
                                    keyspace_name=self.KEYSPACE_NAME,
                                    table_name=self.TABLE_NAME)
 
+    @attr('single_node')
     def test_large_partition_detector_small_partition(self):
         """
         Create table with one small partition and validate that partition isn't reported in the system.large_partitions
@@ -868,6 +869,7 @@ class TestWideRows(Tester):
                                    table_name=self.TABLE_NAME,
                                    expect_warning=False)
 
+    @attr('single_node')
     def test_large_row_detector_small_row(self):
         """
         Create table with one small row and validate that row isn't reported in the system.large_rows

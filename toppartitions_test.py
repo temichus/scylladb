@@ -51,7 +51,7 @@ def wait_nodetool_toppartitions_start(node, cmd, timeout=30):
             raise TimeoutErrorNodetoolToppartitionStarted('timeout error, nodetool toppartitions not started')
 
 
-@attr('dtest-full')
+@attr('dtest-full', 'single_node')
 class TestTopPartitions(Tester):
     """Class to test new functioanality of nodetool command toppartitions
 

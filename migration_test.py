@@ -27,7 +27,7 @@ from nose.plugins.attrib import attr
 
 
 @tools.nottest
-@attr('dtest-full')
+@attr('dtest-full', 'single_node')
 class MigrationTestBase(Tester):
 
     @attr('dtest-debug')
@@ -606,7 +606,7 @@ class MigrationTestBase(Tester):
 
 
 @tools.nottest
-@attr('dtest-full')
+@attr('dtest-full', 'single_node')
 class TestMigration(MigrationTestBase):
 
     def __init__(self, *args, **kwargs):

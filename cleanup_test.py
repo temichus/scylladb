@@ -7,7 +7,7 @@ from nose.plugins.attrib import attr
 @attr('dtest-full')
 class TestCleanup(Tester):
 
-    @attr('next-gating')
+    @attr('next-gating', 'single_node')
     def cleanup_test(self):
         cluster = self.cluster
         cluster.populate(1).start(wait_for_binary_proto=True)

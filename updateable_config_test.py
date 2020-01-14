@@ -22,7 +22,7 @@ from tools import require
 from dtest import Tester, debug
 
 
-@attr('dtest-full')
+@attr('dtest-full', 'single_node')
 class TestUpdateableConfig(Tester):
     """
     Scylla supported to change some of configuration in runtime, this

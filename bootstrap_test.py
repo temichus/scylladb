@@ -45,9 +45,7 @@ class TestBootstrap(Tester):
             return initial_value
         return -1
 
-    @attr('next-gating')
-    @attr('dtest-debug')
-    @attr('dtest-smoke')
+    @attr('next-gating', 'dtest-debug', 'dtest-smoke', 'single_node')
     def start_stop_test(self):
         debug("populating cluster with one node")
         cluster = self.cluster

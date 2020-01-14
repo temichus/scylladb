@@ -57,7 +57,7 @@ class CQLTester(Tester):
         return session
 
 
-@attr('dtest-full')
+@attr('dtest-full', 'single_node')
 class StorageProxyCQLTester(CQLTester):
     """
     Each CQL statement is exercised at least once in order to
@@ -272,8 +272,7 @@ class MiscellaneousCQLTester(CQLTester):
                             "first 65535 elements will be returned to the "
                             "client. Please see http://cassandra.apache.org/doc/cql3/CQL.html#collections for more details.")
 
-    @attr('next-gating')
-    @attr('dtest-debug')
+    @attr('next-gating', 'dtest-debug', 'single_node')
     def cql3_insert_thrift_test(self):
         """ Check that we can insert from thrift into a CQL3 table (#4377) """
         session = self.prepare(start_rpc=True)
@@ -304,6 +303,7 @@ class MiscellaneousCQLTester(CQLTester):
         res = session.execute("SELECT * FROM test")
         assert rows_to_list(res) == [[2, 4, 8]], res
 
+    @attr('single_node')
     def rename_test(self):
         session = self.prepare(start_rpc=True)
 
@@ -330,6 +330,7 @@ class MiscellaneousCQLTester(CQLTester):
         session.execute("ALTER TABLE test RENAME column1 TO foo1 AND column2 TO foo2 AND column3 TO foo3")
         assert_one(session, "SELECT foo1, foo2, foo3 FROM test", [4, 3, 2])
 
+    @attr('single_node')
     def prepared_statement_invalidation_test(self):
         """
         @jira_ticket CASSANDRA-7910
@@ -578,6 +579,7 @@ class RangeDeletionTester(CQLTester):
         debug(query)
         assert_invalid(session=session, query=query, matching='Invalid operator in where clause Restrictions')
 
+    @attr('single_node')
     def delete_by_2ck_range_failure_test(self):
         """
         Unsupported deletion - validate the query return valid error message
@@ -799,8 +801,7 @@ class TruncateTester(CQLTester):
 
         self.assertLessEqual(len(truncated_time_per_node), len(sec_truncated_time_per_node))
 
-    @attr('next-gating')
-    @attr('dtest-debug')
+    @attr('next-gating', 'dtest-debug', 'single_node')
     def truncate_after_restart_test(self):
         session = self.prepare(nodes=1, create_keyspace=False)
 
@@ -833,7 +834,7 @@ class AbortedQueriesTester(CQLTester):
     @jira_ticket CASSANDRA-7392
     Test that read-queries that take longer than read_request_timeout_in_ms time out
     """
-
+    @attr('single_node')
     def local_query_test(self):
         """
         Check that a query running on the local coordinator node times out
@@ -912,6 +913,7 @@ class AbortedQueriesTester(CQLTester):
 
         node2.watch_log_for("Some operations timed out", from_mark=mark, timeout=60)
 
+    @attr('single_node')
     def index_query_test(self):
         """
         Check that a secondary index query times out

@@ -7,7 +7,7 @@ from assertions import assert_invalid
 from cassandra.concurrent import execute_concurrent
 
 @since('2.0')
-@attr('dtest-full')
+@attr('dtest-full', 'single_node')
 class TestSchema(Tester):
 
     def drop_column_compact_test(self):

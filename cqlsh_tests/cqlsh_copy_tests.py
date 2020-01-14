@@ -389,6 +389,7 @@ class CqlshCopyTest(CqlshPrepare):
         return [[self.format_for_csv(v) for v in row] for row in result]
 
     @skip('#2393')
+    @attr('single_node')
     def test_list_data(self):
         """
         Tests the COPY TO command with the list datatype by:
@@ -417,6 +418,7 @@ class CqlshCopyTest(CqlshPrepare):
         self.assertCsvResultEqual(self.tempfile.name, results)
 
     @skip('#2393')
+    @attr('single_node')
     def test_tuple_data(self):
         """
         Tests the COPY TO command with the tuple datatype by:
@@ -475,6 +477,7 @@ class CqlshCopyTest(CqlshPrepare):
         self.assertCsvResultEqual(self.tempfile.name, results)
 
     @require('#2386')
+    @attr('single_node')
     def test_colon_delimiter(self):
         """
         Use non_default_delimiter_template to test COPY with the delimiter ':'.
@@ -482,6 +485,7 @@ class CqlshCopyTest(CqlshPrepare):
         self.non_default_delimiter_template(':')
 
     @require('#2386')
+    @attr('single_node')
     def test_letter_delimiter(self):
         """
         Use non_default_delimiter_template to test COPY with the delimiter 'a'.
@@ -489,6 +493,7 @@ class CqlshCopyTest(CqlshPrepare):
         self.non_default_delimiter_template('a')
 
     @require('#2386')
+    @attr('single_node')
     def test_number_delimiter(self):
         """
         Use non_default_delimiter_template to test COPY with the delimiter '1'.
@@ -526,6 +531,7 @@ class CqlshCopyTest(CqlshPrepare):
         self.assertCsvResultEqual(self.tempfile.name, results)
 
     @require('#2386')
+    @attr('single_node')
     def test_undefined_as_null_indicator(self):
         """
         Use custom_null_indicator_template to test COPY with NULL = undefined.
@@ -533,12 +539,14 @@ class CqlshCopyTest(CqlshPrepare):
         self.custom_null_indicator_template('undefined')
 
     @require('#2386')
+    @attr('single_node')
     def test_null_as_null_indicator(self):
         """
         Use custom_null_indicator_template to test COPY with NULL = 'null'.
         """
         self.custom_null_indicator_template('null')
 
+    @attr('single_node')
     def test_writing_use_header(self):
         """
         Test that COPY can write a CSV with a header by:
@@ -612,6 +620,7 @@ class CqlshCopyTest(CqlshPrepare):
         result = self.session.execute("SELECT * FROM testcounter")
         self.assertCountEqual(data, rows_to_list(result))
 
+    @attr('single_node')
     def test_reading_counter(self):
         """
         Test that COPY can read a csv file of COUNTER values.
@@ -620,6 +629,7 @@ class CqlshCopyTest(CqlshPrepare):
         """
         self._test_reading_counter_template()
 
+    @attr('single_node')
     def test_reading_counter_without_batching(self):
         """
         Test that COPY can read a csv file of COUNTER values with batching disabled,
@@ -630,6 +640,7 @@ class CqlshCopyTest(CqlshPrepare):
         self._test_reading_counter_template(copy_options={'MAXBATCHSIZE': '1'})
 
     @require('#2386')
+    @attr('single_node')
     def test_reading_counters_with_skip_cols(self):
         """
         Test importing a CSV file for a counter table but skipping some columns:
@@ -673,6 +684,7 @@ class CqlshCopyTest(CqlshPrepare):
         do_test('b', [[1, 1, 2, 2, 2], [2, 1, 2, 2, 2]])
         do_test('e', [[1, 2, 3, 3, 2], [2, 2, 3, 3, 2]])
 
+    @attr('single_node')
     def test_reading_use_header(self):
         """
         Test that COPY can read a CSV with a header by:
@@ -709,6 +721,7 @@ class CqlshCopyTest(CqlshPrepare):
                               [tuple(r) for r in rows_to_list(result)])
 
     @require('#2386')
+    @attr('single_node')
     def test_writing_with_timeformat(self):
         """
         @jira_ticket CASSANDRA-10633
@@ -746,6 +759,7 @@ class CqlshCopyTest(CqlshPrepare):
                                ['3', '2015/12/31 23:59']])
 
     @require('#2386')
+    @attr('single_node')
     def test_reading_with_ttl(self):
         """
         @jira_ticket CASSANDRA-9494
@@ -784,6 +798,7 @@ class CqlshCopyTest(CqlshPrepare):
         result = rows_to_list(self.session.execute("SELECT * FROM testttl"))
         self.assertCountEqual([], result)
 
+    @attr('single_node')
     def test_explicit_column_order_writing(self):
         """
         Test that COPY can write to a CSV file when the order of columns is
@@ -822,6 +837,7 @@ class CqlshCopyTest(CqlshPrepare):
 
         assert_csvs_items_equal(self.tempfile.name, reference_file.name)
 
+    @attr('single_node')
     def test_explicit_column_order_reading(self):
         """
         Test that COPY can write to a CSV file when the order of columns is
@@ -897,6 +913,7 @@ class CqlshCopyTest(CqlshPrepare):
         results = list(self.session.execute("SELECT * FROM ks.testquoted"))
         self.assertCsvResultEqual(self.tempfile.name, results)
 
+    @attr('single_node')
     def test_quoted_column_names_reading_specify_names(self):
         """
         Use quoted_column_names_reading_template to test reading from a CSV file
@@ -905,6 +922,7 @@ class CqlshCopyTest(CqlshPrepare):
         """
         self.quoted_column_names_reading_template(specify_column_names=True)
 
+    @attr('single_node')
     def test_quoted_column_names_reading_dont_specify_names(self):
         """
         Use quoted_column_names_reading_template to test reading from a CSV file
@@ -951,9 +969,11 @@ class CqlshCopyTest(CqlshPrepare):
 
         assert_csvs_items_equal(self.tempfile.name, reference_file.name)
 
+    @attr('single_node')
     def test_quoted_column_names_writing_specify_names(self):
         self.quoted_column_names_writing_template(specify_column_names=True)
 
+    @attr('single_node')
     def test_quoted_column_names_writing_dont_specify_names(self):
         self.quoted_column_names_writing_template(specify_column_names=False)
 
@@ -998,6 +1018,7 @@ class CqlshCopyTest(CqlshPrepare):
             self.assertFalse(err)
             self.assertCsvResultEqual(self.tempfile.name, results)
 
+    @attr('single_node')
     def test_read_valid_data(self):
         """
         Use data_validation_on_read_template to test COPYing an int value from a
@@ -1007,6 +1028,7 @@ class CqlshCopyTest(CqlshPrepare):
         # make sure the template works properly
         self.data_validation_on_read_template(2, expect_invalid=False)
 
+    @attr('single_node')
     def test_read_invalid_float(self):
         """
         Use data_validation_on_read_template to test COPYing a float value from a
@@ -1014,6 +1036,7 @@ class CqlshCopyTest(CqlshPrepare):
         """
         self.data_validation_on_read_template(2.14, expect_invalid=True)
 
+    @attr('single_node')
     def test_read_invalid_uuid(self):
         """
         Use data_validation_on_read_template to test COPYing a uuid value from a
@@ -1021,6 +1044,7 @@ class CqlshCopyTest(CqlshPrepare):
         """
         self.data_validation_on_read_template(uuid4(), expect_invalid=True)
 
+    @attr('single_node')
     def test_read_invalid_text(self):
         """
         Use data_validation_on_read_template to test COPYing a text value from a
@@ -1029,6 +1053,7 @@ class CqlshCopyTest(CqlshPrepare):
         self.data_validation_on_read_template('test', expect_invalid=True)
 
     @skip('#2393')
+    @attr('single_node')
     def test_all_datatypes_write(self):
         """
         Test that, after COPYing a table containing all CQL datatypes to a CSV
@@ -1056,6 +1081,7 @@ class CqlshCopyTest(CqlshPrepare):
         self.assertCsvResultEqual(self.tempfile.name, results)
 
     @skip('#2393')
+    @attr('single_node')
     def test_all_datatypes_read(self):
         """
         Test that, after COPYing a CSV file to a table containing all CQL
@@ -1087,7 +1113,7 @@ class CqlshCopyTest(CqlshPrepare):
 
         self.assertCsvResultEqual(self.tempfile.name, results)
 
-    @attr('next-gating')
+    @attr('next-gating', 'single_node')
     def test_all_datatypes_round_trip(self):
         """
         Test that a table containing all CQL datatypes successfully round-trips
@@ -1126,6 +1152,7 @@ class CqlshCopyTest(CqlshPrepare):
 
         self.assertEqual(exported_results, imported_results)
 
+    @attr('single_node')
     def test_wrong_number_of_columns(self):
         """
         Test that a COPY statement will fail when trying to import from a CSV
@@ -1210,6 +1237,7 @@ class CqlshCopyTest(CqlshPrepare):
     def test_round_trip_byte_ordered(self):
         self._test_round_trip(nodes=3, partitioner="byte")
 
+    @attr('single_node')
     def test_source_copy_round_trip(self):
         """
         Like test_round_trip, but uses the SOURCE command to execute the
@@ -1321,6 +1349,7 @@ class CqlshCopyTest(CqlshPrepare):
                                    stress_table='stresscql.blogposts', page_timeout=60)
 
     @require('#2386')
+    @attr('single_node')
     def test_bulk_round_trip_with_timeouts(self):
         """
         Test bulk import with very short read and write timeout values, this should exercise the
@@ -1333,6 +1362,7 @@ class CqlshCopyTest(CqlshPrepare):
                                                           'write_request_timeout_in_ms': '200'})
 
     @require('#2386')
+    @attr('single_node')
     def test_copy_to_with_more_failures_than_max_attempts(self):
         """
         Test exporting rows with failure injection by setting the environment variable CQLSH_COPY_TEST_FAILURES,
@@ -1365,6 +1395,7 @@ class CqlshCopyTest(CqlshPrepare):
         self.assertTrue(len(open(self.tempfile.name).readlines()) < num_records)
 
     @require('#2386')
+    @attr('single_node')
     def test_copy_to_with_fewer_failures_than_max_attempts(self):
         """
         Test exporting rows with failure injection by setting the environment variable CQLSH_COPY_TEST_FAILURES,
@@ -1395,6 +1426,7 @@ class CqlshCopyTest(CqlshPrepare):
         self.assertNotIn('some records might be missing', err)
         self.assertEqual(num_records, len(open(self.tempfile.name).readlines()))
 
+    @attr('single_node')
     def test_copy_to_with_child_process_crashing(self):
         """
         Test exporting rows with failure injection by setting the environment variable CQLSH_COPY_TEST_FAILURES,
@@ -1427,6 +1459,7 @@ class CqlshCopyTest(CqlshPrepare):
         self.assertTrue(len(open(self.tempfile.name).readlines()) < num_records)
 
     @require('#2386')
+    @attr('single_node')
     def test_copy_from_with_more_failures_than_max_attempts(self):
         """
         Test importing rows with failure injection by setting the environment variable CQLSH_COPY_TEST_FAILURES,
@@ -1464,6 +1497,7 @@ class CqlshCopyTest(CqlshPrepare):
         self.assertTrue(num_records_imported < num_records)
 
     @require('#2386')
+    @attr('single_node')
     def test_copy_from_with_fewer_failures_than_max_attempts(self):
         """
         Test importing rows with failure injection by setting the environment variable CQLSH_COPY_TEST_FAILURES,
@@ -1501,6 +1535,7 @@ class CqlshCopyTest(CqlshPrepare):
         self.assertEquals(num_records, num_records_imported)
 
     @require('#2386')
+    @attr('single_node')
     def test_copy_from_with_child_process_crashing(self):
         """
         Test importing rows with failure injection by setting the environment variable CQLSH_COPY_TEST_FAILURES,

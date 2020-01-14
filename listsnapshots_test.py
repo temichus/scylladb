@@ -17,7 +17,7 @@ def human_size(size, units=['bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB']):
         return human_size(size / 1024.0, units[1:])
 
 
-@attr('dtest-full')
+@attr('dtest-full', 'single_node')
 class TestNodetoolListSnapshots(Tester):
     """Validate nodetool listshapshot command
 

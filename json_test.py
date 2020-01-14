@@ -195,7 +195,7 @@ def run_func_docstring(tester, test_func, globs=None, verbose=False, compileflag
         raise RuntimeError("No tests were run!")
 
 
-@attr('dtest-full')
+@attr('dtest-full', 'single_node')
 class ToJsonSelectTests(Tester):
     """
     Tests using toJson with a SELECT statement
@@ -628,7 +628,7 @@ class ToJsonSelectTests(Tester):
         run_func_docstring(tester=self, test_func=self.mv_basic_data_types_with_test)
 
 
-@attr('dtest-full')
+@attr('dtest-full', 'single_node')
 class FromJsonUpdateTests(Tester):
     """
     Tests using fromJson within UPDATE statements.
@@ -933,7 +933,7 @@ class FromJsonUpdateTests(Tester):
         run_func_docstring(tester=self, test_func=self.collection_update_test)
 
 
-@attr('dtest-full')
+@attr('dtest-full', 'single_node')
 class FromJsonSelectTests(Tester):
     """
     Tests using fromJson in conjunction with a SELECT statement
@@ -1015,7 +1015,7 @@ class FromJsonSelectTests(Tester):
         run_func_docstring(tester=self, test_func=self.select_using_secondary_index_test)
 
 
-@attr('dtest-full')
+@attr('dtest-full', 'single_node')
 class FromJsonInsertTests(Tester):
     """
     Tests using fromJson within INSERT statements.
@@ -1243,7 +1243,7 @@ class FromJsonInsertTests(Tester):
         run_func_docstring(tester=self, test_func=self.complex_data_types_test)
 
 
-@attr('dtest-full')
+@attr('dtest-full', 'single_node')
 class FromJsonDeleteTests(Tester):
     """
     Tests using fromJson within DELETE statements.
@@ -1302,7 +1302,7 @@ class FromJsonDeleteTests(Tester):
         run_func_docstring(tester=self, test_func=self.delete_using_pkey_json_test)
 
 
-@attr('dtest-full')
+@attr('dtest-full', 'single_node')
 class JsonFullRowInsertSelect(Tester):
     """
     Tests for creating full rows from json documents, selecting full rows back as json documents, and related functionality.

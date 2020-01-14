@@ -78,7 +78,7 @@ class SnapshotTester(Tester):
         node.nodetool("refresh %s %s" % (ks, cf))
 
 
-@attr('dtest-full')
+@attr('dtest-full', 'single_node')
 class TestSnapshot(SnapshotTester):
 
     """
@@ -306,7 +306,7 @@ class TestSnapshot(SnapshotTester):
         compaction_thread.join()
 
 
-@attr('dtest-full')
+@attr('dtest-full', 'single_node')
 class TestArchiveCommitlog(SnapshotTester):
 
     """

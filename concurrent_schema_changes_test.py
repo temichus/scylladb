@@ -535,7 +535,7 @@ class TestConcurrentSchemaChanges(Tester):
         wait(2)
         self.validate_schema_consistent(node1)
 
-    @attr('next-gating')
+    @attr('next-gating', 'single_node')
     def load_test(self):
         """
         apply schema changes while the cluster is under load.

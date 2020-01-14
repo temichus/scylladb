@@ -43,6 +43,7 @@ pid_fname = "system_test.pid"
 def pid():
     return int(open(pid_fname).read())
 
+@attr('single_node')
 class BaseTester(Tester):
     client = None
     extra_args = []

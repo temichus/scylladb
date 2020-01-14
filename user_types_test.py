@@ -621,6 +621,7 @@ class TestUserTypes(Tester):
         rows = list(session.execute("SELECT my_item FROM bucket WHERE id=1"))
         self.assertEqual(listify(rows[0]), [['test', None]])
 
+    @attr('single_node')
     def test_no_counters_in_user_types(self):
         # CASSANDRA-7672
         cluster = self.cluster
@@ -756,6 +757,7 @@ class TestUserTypes(Tester):
         rows = list(session.execute("SELECT v.third FROM t WHERE id=0"))
         assert listify(rows) == [[0]]
 
+    @attr('single_node')
     def test_user_type_isolation(self):
         """
         Ensure UDT cannot be used from another keyspace
@@ -780,6 +782,7 @@ class TestUserTypes(Tester):
             "Statement on keyspace user_ks cannot refer to a user type in keyspace user_types"
         )
 
+    @attr('single_node')
     def test_keyspace_drop_with_table_containing_udt(self):
         """
         Test for #3068
@@ -795,6 +798,7 @@ class TestUserTypes(Tester):
         session.execute("CREATE TABLE table1 (id uuid PRIMARY KEY, x frozen<udt>);")
         session.execute("DROP KEYSPACE IF EXISTS ks;")
 
+    @attr('single_node')
     def test_complex_data_types(self):
         """"
         This test was adapted from json_test.py (test_complex_data_types).

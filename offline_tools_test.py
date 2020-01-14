@@ -49,6 +49,7 @@ class TestOfflineTools(Tester):
         self.assertTrue(not self._nodetool_stderr_has_error(error),
                         "Unexpected nodetool stderr: %s" % error)
 
+    @attr('single_node')
     def sstablelevelreset_test(self):
         """
         Insert data and call sstablelevelreset on a series of
@@ -129,6 +130,7 @@ class TestOfflineTools(Tester):
                 break
 
     @nottest
+    @attr('single_node')
     def sstableofflinerelevel_test(self):
         """
         Generate sstables of varying levels.
@@ -284,6 +286,7 @@ class TestOfflineTools(Tester):
         self.assertEqual(rc, 1, msg=str(rc))
 
     @nottest
+    @attr('single_node')
     def sstableexpiredblockers_test(self):
         cluster = self.cluster
         cluster.populate(1).start(wait_for_binary_proto=True)

@@ -24,6 +24,7 @@ from nose.plugins.attrib import attr
 class TestBatch(Tester):
 
     @require(10711)
+    @attr('single_node')
     def empty_batch_throws_no_error_test(self):
         """
         @jira_ticket CASSANDRA-10711
@@ -36,6 +37,7 @@ class TestBatch(Tester):
         for node in self.cluster.nodelist():
             self.assertEquals(0, len(node.grep_log_for_errors()))
 
+    @attr('single_node')
     def counter_batch_accepts_counter_mutations_test(self):
         """ Test that counter batch accepts counter mutations """
         session = self.prepare()
@@ -50,6 +52,7 @@ class TestBatch(Tester):
         assert [list(rows[0]), list(rows[1]), list(rows[2])] == [
             [1], [1], [1]], rows
 
+    @attr('single_node')
     def counter_batch_rejects_regular_mutations_test(self):
         """ Test that counter batch rejects non-counter mutations """
         session = self.prepare()
@@ -133,6 +136,7 @@ class TestBatch(Tester):
             expected = [i, None, name, name]
             assert list(res[i]) == expected, "Expected %s, got %s" % (expected, res[i])
 
+    @attr('single_node')
     def logged_batch_accepts_regular_mutations_test(self):
         """ Test that logged batch accepts regular mutations """
         session = self.prepare()
@@ -149,6 +153,7 @@ class TestBatch(Tester):
 
     @since('3.0')
     @require('#2483')
+    @attr('single_node')
     def logged_batch_gcgs_below_threshold_single_table_test(self):
         """ Test that logged batch accepts regular mutations """
         session = self.prepare()
@@ -173,6 +178,7 @@ class TestBatch(Tester):
 
     @since('3.0')
     @require('#2483')
+    @attr('single_node')
     def logged_batch_gcgs_below_threshold_multi_table_test(self):
         """ Test that logged batch accepts regular mutations """
         session = self.prepare()
@@ -201,6 +207,7 @@ class TestBatch(Tester):
             1, len(warning), "Cannot find the gc_grace_seconds warning message.")
 
     @since('3.0')
+    @attr('single_node')
     def unlogged_batch_gcgs_below_threshold_should_not_print_warning_test(self):
         """ Test that logged batch accepts regular mutations """
         session = self.prepare()
@@ -218,6 +225,7 @@ class TestBatch(Tester):
         self.assertEquals(
             0, len(warning), "Cannot find the gc_grace_seconds warning message.")
 
+    @attr('single_node')
     def logged_batch_rejects_counter_mutations_test(self):
         """ Test that logged batch rejects counter mutations """
         session = self.prepare()
@@ -231,6 +239,7 @@ class TestBatch(Tester):
             APPLY BATCH
             """, matching=err)
 
+    @attr('single_node')
     def unlogged_batch_accepts_regular_mutations_test(self):
         """ Test that unlogged batch accepts regular mutations """
         session = self.prepare()
@@ -245,6 +254,7 @@ class TestBatch(Tester):
         assert [list(res[0]), list(res[1])] == [
             [0, u'Jack', u'Sparrow'], [2, u'Elizabeth', u'Swann']], res
 
+    @attr('single_node')
     def unlogged_batch_rejects_counter_mutations_test(self):
         """ Test that unlogged batch rejects counter mutations """
         session = self.prepare()
@@ -311,6 +321,7 @@ class TestBatch(Tester):
             APPLY BATCH
         """, ConsistencyLevel.THREE, received_responses=2)
 
+    @attr('single_node')
     def batch_uses_proper_timestamp_test(self):
         """ Test that each statement will be executed with provided BATCH timestamp """
         session = self.prepare()
@@ -326,6 +337,7 @@ class TestBatch(Tester):
         assert [list(res[0]), list(res[1])] == [[0, 1111111111111111, 1111111111111111], [
             1, 1111111111111111, 1111111111111111]], res
 
+    @attr('single_node')
     def only_one_timestamp_is_valid_test(self):
         """ Test that TIMESTAMP must not be used in the statements within the batch. """
         session = self.prepare()
@@ -336,6 +348,7 @@ class TestBatch(Tester):
             APPLY BATCH
         """, matching="Timestamp must be set either on BATCH or individual statements")
 
+    @attr('single_node')
     def each_statement_in_batch_uses_proper_timestamp_test(self):
         """ Test that each statement will be executed with its own timestamp """
         session = self.prepare()
@@ -351,6 +364,7 @@ class TestBatch(Tester):
         assert [list(res[0]), list(res[1])] == [[0, 1111111111111111, 1111111111111111], [
             1, 1111111111111112, 1111111111111112]], res
 
+    @attr('single_node')
     def multi_table_batch_for_10554_test(self):
         """ Test a batch on 2 tables having different columns, restarting the node afterwards, to reproduce CASSANDRA-10554 """
 

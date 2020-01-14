@@ -184,20 +184,26 @@ class ReadAmplificationTest(Tester):
         debug('Read amplification for {} data size: {} times or {}%'.format(size_formatted, ampl, ampl_percent))
         self.assertLessEqual(ampl, max_ratio_expected, 'Read amplification is too large: {} times'.format(ampl))
 
+    @attr('single_node')
     def no_amplification_on_read_20kb_test(self):
         self.read_amplification(PARTITION_READ, KBYTE * 20, 1, 20)
 
+    @attr('single_node')
     def no_amplification_on_read_400kb_test(self):
         self.read_amplification(PARTITION_READ, KBYTE * 400)
 
+    @attr('single_node')
     def no_amplification_on_read_20mb_test(self):
         self.read_amplification(PARTITION_READ, KBYTE * KBYTE * 20)
 
+    @attr('single_node')
     def no_amplification_on_scanning_read_20kb_test(self):
         self.read_amplification(SCAN_READ, KBYTE * 20)
 
+    @attr('single_node')
     def no_amplification_on_scanning_read_2mb_test(self):
         self.read_amplification(SCAN_READ, KBYTE * KBYTE * 2)
 
+    @attr('single_node')
     def no_amplification_on_scanning_read_20mb_test(self):
         self.read_amplification(SCAN_READ, KBYTE * KBYTE * 20)

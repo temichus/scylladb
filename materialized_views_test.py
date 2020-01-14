@@ -2450,6 +2450,7 @@ class TestMaterializedViews(Tester):
         #self.check_trace_events(result.get_query_trace(), False)
         self.eventually(lambda: self.assertEqual(0, len(session.execute(query, trace=True).current_rows)))
 
+    @attr('single_node')
     def test_expired_liveness_with_limit_rf1_nodes1(self):
         self._test_expired_liveness_with_limit(rf=1, nodes=1)
 

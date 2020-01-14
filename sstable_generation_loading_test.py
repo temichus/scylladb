@@ -16,6 +16,7 @@ class TestSSTableGenerationAndLoading(Tester):
         super(TestSSTableGenerationAndLoading, self).__init__(*argv, **kwargs)
         self.allow_log_errors = True
 
+    @attr('single_node')
     def promoted_index_generation_with_small_partition_followed_by_a_large_partition_test(self):
         """
         Tests for https://github.com/scylladb/scylla/issues/1567
@@ -49,6 +50,7 @@ class TestSSTableGenerationAndLoading(Tester):
         # assert(len(rows) == 1)
         # self.assertEquals([0, 'ck_45', 7, 45], list(rows[0]))
 
+    @attr('single_node')
     def incompressible_data_in_compressed_table_test(self):
         """
         tests for the bug that caused #3370:
@@ -81,6 +83,7 @@ class TestSSTableGenerationAndLoading(Tester):
         rows = list(session.execute("SELECT * FROM cf WHERE KEY = '0' AND c < '8'"))
         assert len(rows) > 0
 
+    @attr('single_node')
     def remove_index_file_test(self):
         """
         tests for situations similar to that found in #343:

@@ -125,6 +125,7 @@ class TestTopology(Tester):
         assert_almost_equal(sizes[2], init_size)
 
     @no_vnodes()
+    @attr('single_node')
     def move_single_node_test(self):
         """ Test moving a node in a single-node cluster (#4200) """
         cluster = self.cluster

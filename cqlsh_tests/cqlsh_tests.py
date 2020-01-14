@@ -72,6 +72,7 @@ class TestCqlsh(Tester):
         self.assertEqual(len(stdout), 0, stdout)
         self.assertEqual(len(stderr), 0, stderr)
 
+    @attr('single_node')
     def simple_insert_test(self):
 
         self.cluster.populate(1)
@@ -95,6 +96,7 @@ class TestCqlsh(Tester):
         self.assertEqual({1: 'one', 2: 'two', 3: 'three', 4: 'four', 5: 'five'},
                          {k: v for k, v in rows})
 
+    @attr('single_node')
     def past_and_future_dates_test(self):
         self.cluster.populate(1)
         self.cluster.start(wait_for_binary_proto=True)
@@ -236,7 +238,7 @@ class TestCqlsh(Tester):
         self.assertEquals(output.count(' ⠊⠀⠉⠁⠝⠀⠑⠁⠞⠀⠛⠇⠁⠎⠎⠀⠁⠝⠙⠀⠊⠞⠀⠙⠕⠑⠎⠝⠞⠀⠓⠥⠗⠞⠀⠍⠑'), 16)
         self.assertEquals(output.count('᚛᚛ᚉᚑᚅᚔᚉᚉᚔᚋ ᚔᚈᚔ ᚍᚂᚐᚅᚑ ᚅᚔᚋᚌᚓᚅᚐ᚜'), 2)
 
-    @attr('next-gating')
+    @attr('next-gating', 'single_node')
     def eat_glass_test(self):
 
         self.cluster.populate(1)
@@ -359,6 +361,7 @@ UPDATE varcharmaptable SET varcharvarintmap['Vitrum edere possum, mihi non nocet
 
         self.verify_glass(node1)
 
+    @attr('single_node')
     def source_glass_test(self):
 
         self.cluster.populate(1)
@@ -370,6 +373,7 @@ UPDATE varcharmaptable SET varcharvarintmap['Vitrum edere possum, mihi non nocet
 
         self.verify_glass(node1)
 
+    @attr('single_node')
     def with_empty_values_test(self):
         """
         CASSANDRA-7196. Make sure the server returns empty values and CQLSH prints them properly
@@ -451,6 +455,7 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
 
         self.assertTrue(expected in output, "Output \n {%s} \n doesn't contain expected\n {%s}" % (output, expected))
 
+    @attr('single_node')
     def tracing_from_system_traces_test(self):
         self.cluster.populate(1).start(wait_for_binary_proto=True)
 
@@ -472,6 +477,7 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
         out, err = self.run_cqlsh(node1, 'TRACING ON; SELECT * FROM system_traces.sessions')
         self.assertNotIn('Tracing session: ', out)
 
+    @attr('single_node')
     def select_element_inside_udt_test(self):
         self.cluster.populate(1).start()
 
@@ -516,6 +522,7 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
         debug(output)
         self.assertTrue(expected in output, "Output \n {%s} \n doesn't contain expected\n {%s}" % (output, expected))
 
+    @attr('single_node')
     def list_queries_test(self):
         config = {'authenticator': 'org.apache.cassandra.auth.PasswordAuthenticator',
                   'authorizer': 'org.apache.cassandra.auth.CassandraAuthorizer',
@@ -577,6 +584,7 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
 """)
 
     @skip("Indexes not implemented")
+    @attr('single_node')
     def describe_test(self):
         """
         @jira_ticket CASSANDRA-7814
@@ -661,6 +669,7 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
         self.execute(cql="DESCRIBE test.test", expected_output=self.get_test_table_output(has_val=True, has_val_idx=False))
         self.execute(cql='DESCRIBE test.test_val_idx', expected_err="'test_val_idx' not found in keyspace 'test'")
 
+    @attr('single_node')
     def describe_describes_non_default_compaction_parameters_test(self):
         self.cluster.populate(1)
         self.cluster.start(wait_for_binary_proto=True)
@@ -675,6 +684,7 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
         self.assertIn("'min_threshold': '10'", stdout)
         self.assertIn("'max_threshold': '100'", stdout)
 
+    @attr('single_node')
     def describe_on_non_reserved_keywords_test(self):
         """
         @jira_ticket CASSANDRA-9232
@@ -692,6 +702,7 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
         self.assertIn("CREATE TABLE ks.map (", out)
 
     @require('materialized view')
+    @attr('single_node')
     def describe_mv_test(self):
         """
         @jira_ticket CASSANDRA-9961
@@ -886,6 +897,7 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
         expected_lines = [s.strip() for s in expected_response.split("\n") if s.strip()]
         self.assertEqual(expected_lines, lines)
 
+    @attr('single_node')
     def copy_to_test(self):
         self.cluster.populate(1).start()
         node1, = self.cluster.nodelist()
@@ -923,6 +935,7 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
         new_results = list(session.execute("SELECT * FROM testcopyto"))
         self.assertCountEqual(results, new_results)
 
+    @attr('single_node')
     def float_formatting_test(self):
         """ Tests for CASSANDRA-9224, check format of float and double values"""
         self.cluster.populate(1)
@@ -1100,6 +1113,7 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
     0 |  6 | 1e-16 | 1e-16
 """)
 
+    @attr('single_node')
     def int_values_test(self):
         """ Tests for CASSANDRA-9399, check tables with int, bigint, smallint and tinyint values"""
         self.cluster.populate(1)
@@ -1138,7 +1152,7 @@ CREATE TABLE int_checks.values (
     val4 tinyint
 """)
 
-    @attr('next-gating')
+    @attr('next-gating', 'single_node')
     def datetime_values_test(self):
         """ Tests for CASSANDRA-9399, check tables with date and time values"""
         self.cluster.populate(1)
@@ -1183,6 +1197,7 @@ CREATE TABLE datetime_checks.values (
     PRIMARY KEY (d, t)
 """)
 
+    @attr('single_node')
     def tracing_test(self):
         """
         Tests for CASSANDRA-9399, check tracing works.
@@ -1219,6 +1234,7 @@ CREATE TABLE datetime_checks.values (
 Tracing session:""")
 
     @skip('No such warning')
+    @attr('single_node')
     def client_warnings_test(self):
         """
         Tests for CASSANDRA-9399, check client warnings.
@@ -1243,6 +1259,7 @@ Tracing session:""")
 Warnings :
 Unlogged batch covering 2 partitions detected against table [client_warnings.test]. You should use a logged batch for atomicity, or asynchronous writes for performance.""")
 
+    @attr('single_node')
     def connect_timeout_test(self):
         """
         @jira_ticket CASSANDRA-9601
@@ -1279,6 +1296,7 @@ Unlogged batch covering 2 partitions detected against table [client_warnings.tes
         self.assertIn("Warning: schema version mismatch detected", stderr)
         self.assertIn("check the schema versions of your nodes in system.local and system.peers.", stderr)
 
+    @attr('single_node')
     def describe_round_trip_test(self):
         """
         @jira_ticket CASSANDRA-9064
@@ -1316,6 +1334,7 @@ Unlogged batch covering 2 partitions detected against table [client_warnings.tes
         self.assertEqual(reloaded_describe_out, describe_out)
 
     @require('materialized view')
+    @attr('single_node')
     def materialized_view_test(self):
         """
         Test operations on a materialized view: create, describe, select from, drop, create using describe output.
@@ -1368,6 +1387,7 @@ Unlogged batch covering 2 partitions detected against table [client_warnings.tes
         self.assertEqual(select_out, reloaded_select_out)
 
     @skip("fails on Jenkins")
+    @attr('single_node')
     def clear_test(self):
         """
         Test the CLEAR command
@@ -1376,6 +1396,7 @@ Unlogged batch covering 2 partitions detected against table [client_warnings.tes
         self._test_clear_screen('CLEAR')
 
     @skip("fails on Jenkins")
+    @attr('single_node')
     def cls_test(self):
         """
         Test the CLS command
@@ -1412,6 +1433,7 @@ Unlogged batch covering 2 partitions detected against table [client_warnings.tes
         if not common.is_win():
             self.assertTrue(re.search(chr(27) + "\[[0,1,2]?J", out))
 
+    @attr('single_node')
     def batch_test(self):
         """
         Test the BATCH command
@@ -1452,7 +1474,7 @@ Unlogged batch covering 2 partitions detected against table [client_warnings.tes
         return p.communicate()
 
 
-@attr('dtest-full')
+@attr('dtest-full', 'single_node')
 class CqlshSmokeTest(Tester):
     """
     Tests simple use cases for clqsh.
@@ -1816,7 +1838,7 @@ class CqlshSmokeTest(Tester):
         return [table.name for table in self.session.cluster.metadata.keyspaces[keyspace].tables.values()]
 
 
-@attr('dtest-full')
+@attr('dtest-full', 'single_node')
 class CqlLoginTest(Tester):
     """
     Tests login which requires password authenticator

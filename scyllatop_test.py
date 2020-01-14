@@ -64,6 +64,7 @@ class TestScyllaTop(Tester):
         assert len(out) > 0, 'Output should not be empty'
         os.remove(logfile)
 
+    @attr('single_node')
     def help_test(self):
         """
         Test help message of scyllatop tool
@@ -81,6 +82,7 @@ class TestScyllaTop(Tester):
         assert len(out) > 0, 'Output should not be empty'
         os.remove(logfile)
 
+    @attr('single_node')
     def list_test(self):
         """
         Test list message of scyllatop tool

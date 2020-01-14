@@ -75,6 +75,7 @@ class TestAuth(Tester):
             session = self.patient_exclusive_cql_connection(node, user='cassandra', password='cassandra')
             self.assertEquals(3, session.cluster.metadata.keyspaces['system_auth'].replication_strategy.replication_factor)
 
+    @attr('single_node')
     def login_test(self):
         """
         Originally from dtest.
@@ -108,6 +109,7 @@ class TestAuth(Tester):
             # https://github.com/scylladb/scylla/issues/2274
             # assert 'Password must not be null' in str(list(e.errors.values())[0])
 
+    @attr('single_node')
     def anonymous_test(self):
         """
         Both Scylla and Cassandra allow to create a non-anonymous user which name
@@ -147,6 +149,7 @@ class TestAuth(Tester):
 
     # from 2.2 role creation is granted by CREATE_ROLE permissions, not superuser status
     @since('1.2', max_version='2.1.x')
+    @attr('single_node')
     def only_superuser_can_create_users_test(self):
         """
         Originally from dtest.
@@ -163,6 +166,7 @@ class TestAuth(Tester):
         self.assertUnauthorized('Only superusers are allowed to perform CREATE (\[ROLE\|USER\]|USER) queries', jackob, "CREATE USER james WITH PASSWORD '54321' NOSUPERUSER")
 
     @since('2.2')
+    @attr('single_node')
     def create_user_permissions_test(self):
         """
         Description: Try to create new user in two ways, somebody can execute `CREATE USER/CREATE ROLE` is either if
@@ -179,6 +183,7 @@ class TestAuth(Tester):
         self.assertUnauthorized('User jackob has no CREATE permission on <all roles> or any of its parents', jackob, "CREATE USER james WITH PASSWORD '54321' NOSUPERUSER")
 
     @since('1.2', max_version='2.1.x')
+    @attr('single_node')
     def password_authenticator_create_user_requires_password_test(self):
         """
         Originally from dtest.
@@ -191,6 +196,7 @@ class TestAuth(Tester):
         session = self.get_session(user='cassandra', password='cassandra')
         assert_invalid(session, "CREATE USER jackob NOSUPERUSER", 'PasswordAuthenticator requires PASSWORD option')
 
+    @attr('single_node')
     def cant_create_existing_user_test(self):
         """
         Originally from dtest.
@@ -204,6 +210,7 @@ class TestAuth(Tester):
         session.execute("CREATE USER 'james@example.com' WITH PASSWORD '12345' NOSUPERUSER")
         assert_invalid(session, "CREATE USER 'james@example.com' WITH PASSWORD '12345' NOSUPERUSER", 'james@example.com already exists')
 
+    @attr('single_node')
     def list_users_test(self):
         """
         Originally from dtest.
@@ -230,6 +237,7 @@ class TestAuth(Tester):
         self.assertFalse(users['cathy'])
         self.assertTrue(users['dave'])
 
+    @attr('single_node')
     def user_cant_drop_themselves_test(self):
         """
         Originally from dtest.
@@ -245,6 +253,7 @@ class TestAuth(Tester):
 
     # from 2.2 role deletion is granted by DROP_ROLE permissions, not superuser status
     @since('1.2', max_version='2.1.x')
+    @attr('single_node')
     def only_superusers_can_drop_users_test(self):
         """
         Originally from dtest.
@@ -271,6 +280,7 @@ class TestAuth(Tester):
         rows = list(cassandra.execute("LIST USERS"))
         self.assertEqual(2, len(rows))
 
+    @attr('single_node')
     def dropping_nonexistent_user_throws_exception_test(self):
         """
         Originally from dtest.
@@ -283,6 +293,7 @@ class TestAuth(Tester):
         session = self.get_session(user='cassandra', password='cassandra')
         assert_invalid(session, 'DROP USER nonexistent', "nonexistent doesn't exist")
 
+    @attr('single_node')
     def drop_user_case_sensitive_test(self):
         """
         * Launch a one node cluster
@@ -322,6 +333,7 @@ class TestAuth(Tester):
         assert_invalid(cassandra, "DROP USER TEST")
         assert_invalid(cassandra, "DROP USER Test")
 
+    @attr('single_node')
     def drop_user_revoke_all_test(self):
         """
         Test all user permissions will be revoked when the user is dropped.
@@ -372,6 +384,7 @@ class TestAuth(Tester):
         self.assertUnauthorized("User test has no AUTHORIZE permission on <table ks.cf> or any of its parents",
                                 session, "GRANT SELECT ON ks.cf TO test2")
 
+    @attr('single_node')
     def alter_user_case_sensitive_test(self):
         """
         * Launch a one node cluster
@@ -392,6 +405,7 @@ class TestAuth(Tester):
         assert_invalid(cassandra, "ALTER USER TEST WITH PASSWORD '12345'")
         cassandra.execute("ALTER USER test WITH PASSWORD '54321'")
 
+    @attr('single_node')
     def regular_users_can_alter_their_passwords_only_test(self):
         """
         Originally from dtest.
@@ -411,6 +425,7 @@ class TestAuth(Tester):
         self.assertUnauthorized("User cathy has no ALTER permission on <role bob> or any of its parents",
                                 cathy, "ALTER USER bob WITH PASSWORD 'cantchangeit'")
 
+    @attr('single_node')
     def users_cant_alter_their_superuser_status_test(self):
         """
         Originally from dtest.
@@ -424,6 +439,7 @@ class TestAuth(Tester):
         self.assertUnauthorized("You aren't allowed to alter your own superuser status",
                                 session, "ALTER USER cassandra NOSUPERUSER")
 
+    @attr('single_node')
     def only_superuser_alters_superuser_status_test(self):
         """
         Originally from dtest.
@@ -442,6 +458,7 @@ class TestAuth(Tester):
 
         cassandra.execute("ALTER USER cathy SUPERUSER")
 
+    @attr('single_node')
     def altering_nonexistent_user_throws_exception_test(self):
         """
         Originally from dtest.
@@ -454,6 +471,7 @@ class TestAuth(Tester):
         session = self.get_session(user='cassandra', password='cassandra')
         assert_invalid(session, "ALTER USER nonexistent WITH PASSWORD 'doesn''tmatter'", "nonexistent doesn't exist")
 
+    @attr('single_node')
     def conditional_create_drop_user_test(self):
         """
         Originally from dtest.
@@ -479,6 +497,7 @@ class TestAuth(Tester):
         users = list(session.execute("LIST USERS"))
         self.assertEqual(1, len(users))  # cassandra
 
+    @attr('single_node')
     def create_ks_auth_test(self):
         """
         Originally from dtest.
@@ -499,6 +518,7 @@ class TestAuth(Tester):
         cassandra.execute("GRANT CREATE ON ALL KEYSPACES TO cathy")
         cathy.execute("""CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}""")
 
+    @attr('single_node')
     def create_cf_auth_test(self):
         """
         Originally from dtest.
@@ -519,6 +539,7 @@ class TestAuth(Tester):
         cassandra.execute("GRANT CREATE ON KEYSPACE ks TO cathy")
         cathy.execute("CREATE TABLE ks.cf (id int primary key)")
 
+    @attr('single_node')
     def alter_ks_auth_test(self):
         """
         Originally from dtest.
@@ -541,6 +562,7 @@ class TestAuth(Tester):
         cathy.execute("ALTER KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':2}")
 
     @skip('index')
+    @attr('single_node')
     def alter_cf_auth_test(self):
         """
         * Launch a one node cluster
@@ -581,6 +603,7 @@ class TestAuth(Tester):
         cassandra.execute("GRANT ALTER ON ks.cf TO cathy")
         cathy.execute("DROP INDEX cf_val_idx")
 
+    @attr('single_node')
     def alter_cf_auth_test_without_indexes(self):
         """
         * Launch a one node cluster
@@ -622,6 +645,7 @@ class TestAuth(Tester):
         cathy.execute("ALTER TABLE ks.cf DROP val2")
 
     @since('3.0')
+    @attr('single_node')
     def materialized_views_auth_test(self):
         """
         Originally from dtest.
@@ -665,6 +689,7 @@ class TestAuth(Tester):
         cassandra.execute("GRANT ALTER ON ks.cf TO cathy")
         cathy.execute("DROP MATERIALIZED VIEW mv1")
 
+    @attr('single_node')
     def drop_ks_auth_test(self):
         """
         Originally from dtest.
@@ -685,6 +710,7 @@ class TestAuth(Tester):
         cassandra.execute("GRANT DROP ON KEYSPACE ks TO cathy")
         cathy.execute("DROP KEYSPACE ks")
 
+    @attr('single_node')
     def drop_cf_auth_test(self):
         """
         Originally from dtest.
@@ -706,6 +732,7 @@ class TestAuth(Tester):
         cassandra.execute("GRANT DROP ON ks.cf TO cathy")
         cathy.execute("DROP TABLE ks.cf")
 
+    @attr('single_node')
     def modify_and_select_auth_test(self):
         """
         Originally from dtest.
@@ -756,6 +783,7 @@ class TestAuth(Tester):
         assert len(rows) == 0
 
     @since('2.2')
+    @attr('single_node')
     def grant_revoke_without_ks_specified_test(self):
         """
         * Launch a one node cluster
@@ -789,8 +817,7 @@ class TestAuth(Tester):
         cathy.execute("GRANT SELECT ON cf TO bob")
         bob.execute("SELECT * FROM ks.cf")
 
-    @attr('next-gating')
-    @attr('dtest-debug')
+    @attr('next-gating', 'dtest-debug', 'single_node')
     def grant_revoke_auth_test(self):
         """
         Originally from dtest.
@@ -820,6 +847,7 @@ class TestAuth(Tester):
         # should succeed now with both SELECT and AUTHORIZE
         cathy.execute("GRANT SELECT ON ALL KEYSPACES TO bob")
 
+    @attr('single_node')
     def grant_revoke_validation_test(self):
         """
         Originally from dtest.
@@ -841,6 +869,7 @@ class TestAuth(Tester):
 
         assert_invalid(cassandra, "REVOKE ALL ON KEYSPACE ks FROM nonexistent", "(User|Role) nonexistent doesn't exist")
 
+    @attr('single_node')
     def grant_revoke_cleanup_test(self):
         """
         Originally from dtest.
@@ -888,7 +917,7 @@ class TestAuth(Tester):
         self.assertUnauthorized("User cathy has no SELECT permission on <table ks.cf> or any of its parents",
                                 cathy, "SELECT * FROM ks.cf")
 
-    @attr('next-gating')
+    @attr('next-gating', 'single_node')
     def permissions_caching_test(self):
         """
         Originally from dtest.
@@ -978,6 +1007,7 @@ class TestAuth(Tester):
 
         assert success
 
+    @attr('single_node')
     def type_auth_test(self):
         """
         Originally from dtest..
@@ -1155,6 +1185,7 @@ class TestAuth(Tester):
         debug('Check if the first session still works')
         self._check_session_available(session)
 
+    @attr('single_node')
     def dropping_keyspace_system_auth_1_node_test(self):
         """
         **Description:** try to drop system_auth table
@@ -1367,6 +1398,7 @@ class TestAuth(Tester):
         debug('Check if the first session still works')
         self._check_session_available(session, expect_auth_err=True, expect_invalid_req=True)
 
+    @attr('single_node')
     def drop_keyspace_system_auth_1_node_test(self):
         """
         **Description:** try to drop system_auth table
@@ -1389,6 +1421,7 @@ class TestAuth(Tester):
             self.assertEquals(str(e),
                               'Error from server: code=2100 [Unauthorized] message="Cannot DROP <keyspace system_auth>"')
 
+    @attr('single_node')
     def change_setting_to_noauth_after_system_auth_was_lost_test(self):
         """
         **Description:** after the auth info is lost, change the setting of a node
@@ -1413,6 +1446,7 @@ class TestAuth(Tester):
                 self.assertEquals(str(e),
                                   'Error from server: code=2100 [Unauthorized] message="You have to be logged in and not anonymous to perform this request"')
 
+    @attr('single_node')
     def restart_node_doesnt_lose_auth_data_test(self):
         """
         * Launch a one node cluster
@@ -1449,6 +1483,7 @@ class TestAuth(Tester):
 
         philip.execute("SELECT * FROM ks.cf")
 
+    @attr('single_node')
     def system_keyspace_sensitive_test(self):
         """
         * Launch a one node cluster
@@ -1564,8 +1599,7 @@ class TestAuth(Tester):
         """
         raise NotImplementedError
 
-    @attr('next-gating')
-    @attr('dtest-debug')
+    @attr('next-gating', 'dtest-debug', 'single_node')
     def all_authorization_operations_test(self):
         """
         **Description:** Test all authorization operations, actions and applied objects.
@@ -1829,7 +1863,7 @@ class TestAuth(Tester):
         """
         debug('STEP: start cluster with PasswordAuthenticator/CassandraAuthorizer')
         self.prepare(nodes=3, enable_auth=True)
-        self.wait_for_any_log(self.cluster.nodelist(), 'Created default superuser', 10)
+        self.wait_for_any_log(self.cluster.nodelist(), 'Created default superuser', 30)
 
         session = self.get_session(user='cassandra', password='cassandra')
         debug('STEP: create normal user by super cassandra')
@@ -1913,7 +1947,7 @@ class TestAuth(Tester):
                    'authorizer': 'com.scylladb.auth.TransitionalAuthorizer'}
         nodes[0].set_configuration_options(values=config)
         nodes[0].start(wait_for_binary_proto=True)
-        self.wait_for_any_log(self.cluster.nodelist(), 'Created default superuser authentication record', 10)
+        self.wait_for_any_log(self.cluster.nodelist(), 'Created default superuser authentication record', 30)
 
         session = self.get_session(node_idx=0, user='cassandra', password='cassandra')
         session.execute("CREATE USER normal WITH PASSWORD '123456' NOSUPERUSER")
@@ -1993,7 +2027,7 @@ class TestAuth(Tester):
             found = self.wait_for_any_log(
                 self.cluster.nodelist(),
                 expected_entries,
-                10,
+                30,
                 dispersed=True)
 
             if isinstance(found, list):

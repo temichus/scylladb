@@ -50,7 +50,7 @@ class SSTableDump(Tester):
         self.assertEquals(len(symmetric_diff), 0)
 
 
-@attr('dtest-full')
+@attr('dtest-full', 'single_node')
 class SSTableDumpTests(SSTableDump):
 
     @attr('next-gating')
@@ -129,7 +129,7 @@ class SSTableDumpTests(SSTableDump):
         return res
 
 
-@attr('dtest-full')
+@attr('dtest-full', 'single_node')
 class SSTableDumpAllDatatypes(CqlshPrepare, SSTableDump):
 
     @attr('next-gating')

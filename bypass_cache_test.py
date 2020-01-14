@@ -5,7 +5,7 @@ from dtest import Tester
 import time
 import tools
 
-@attr('dtest-full')
+@attr('dtest-full', 'single_node')
 class TestBypassCache(Tester):
     '''
     Test that will verify if the select statement will skip cache during its read
