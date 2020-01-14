@@ -10,4 +10,5 @@ requests==2.21.0
 urwid==2.0.1
 nose-parallel==0.3.1
 https://github.com/scylladb/sstable-tools/archive/master.zip
+https://github.com/scylladb/scylla-ccm/archive/master.zip
 boto3==1.10.46
