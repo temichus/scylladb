@@ -109,7 +109,7 @@ class TestNodetoolListSnapshots(Tester):
                 disk_size = sum(
                     [os.path.getsize(os.path.join(path, f))
                         for f in files
-                        if 'manifest.json' not in f]
+                        if 'manifest.json' not in f and 'schema.cql' not in f]
                     )
                 debug('Snapshot ks:{} cf:{} name:{} size is {}, human size is {}'.format(
                     ks,
