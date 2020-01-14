@@ -7,7 +7,7 @@
 #
 
 from thrift.Thrift import TType, TMessageType, TException
-from ttypes import *
+from .ttypes import *
 from thrift.Thrift import TProcessor
 from thrift.transport import TTransport
 from thrift.protocol import TBinaryProtocol, TProtocol
@@ -1791,9 +1791,9 @@ class Processor(Iface, TProcessor):
     result = login_result()
     try:
       self._handler.login(args.auth_request)
-    except AuthenticationException, authnx:
+    except AuthenticationException as authnx:
       result.authnx = authnx
-    except AuthorizationException, authzx:
+    except AuthorizationException as authzx:
       result.authzx = authzx
     oprot.writeMessageBegin("login", TMessageType.REPLY, seqid)
     result.write(oprot)
@@ -1807,7 +1807,7 @@ class Processor(Iface, TProcessor):
     result = set_keyspace_result()
     try:
       self._handler.set_keyspace(args.keyspace)
-    except InvalidRequestException, ire:
+    except InvalidRequestException as ire:
       result.ire = ire
     oprot.writeMessageBegin("set_keyspace", TMessageType.REPLY, seqid)
     result.write(oprot)
@@ -1821,13 +1821,13 @@ class Processor(Iface, TProcessor):
     result = get_result()
     try:
       result.success = self._handler.get(args.key, args.column_path, args.consistency_level)
-    except InvalidRequestException, ire:
+    except InvalidRequestException as ire:
       result.ire = ire
-    except NotFoundException, nfe:
+    except NotFoundException as nfe:
       result.nfe = nfe
-    except UnavailableException, ue:
+    except UnavailableException as ue:
       result.ue = ue
-    except TimedOutException, te:
+    except TimedOutException as te:
       result.te = te
     oprot.writeMessageBegin("get", TMessageType.REPLY, seqid)
     result.write(oprot)
@@ -1841,11 +1841,11 @@ class Processor(Iface, TProcessor):
     result = get_slice_result()
     try:
       result.success = self._handler.get_slice(args.key, args.column_parent, args.predicate, args.consistency_level)
-    except InvalidRequestException, ire:
+    except InvalidRequestException as ire:
       result.ire = ire
-    except UnavailableException, ue:
+    except UnavailableException as ue:
       result.ue = ue
-    except TimedOutException, te:
+    except TimedOutException as te:
       result.te = te
     oprot.writeMessageBegin("get_slice", TMessageType.REPLY, seqid)
     result.write(oprot)
@@ -1859,11 +1859,11 @@ class Processor(Iface, TProcessor):
     result = get_count_result()
     try:
       result.success = self._handler.get_count(args.key, args.column_parent, args.predicate, args.consistency_level)
-    except InvalidRequestException, ire:
+    except InvalidRequestException as ire:
       result.ire = ire
-    except UnavailableException, ue:
+    except UnavailableException as ue:
       result.ue = ue
-    except TimedOutException, te:
+    except TimedOutException as te:
       result.te = te
     oprot.writeMessageBegin("get_count", TMessageType.REPLY, seqid)
     result.write(oprot)
@@ -1877,11 +1877,11 @@ class Processor(Iface, TProcessor):
     result = multiget_slice_result()
     try:
       result.success = self._handler.multiget_slice(args.keys, args.column_parent, args.predicate, args.consistency_level)
-    except InvalidRequestException, ire:
+    except InvalidRequestException as ire:
       result.ire = ire
-    except UnavailableException, ue:
+    except UnavailableException as ue:
       result.ue = ue
-    except TimedOutException, te:
+    except TimedOutException as te:
       result.te = te
     oprot.writeMessageBegin("multiget_slice", TMessageType.REPLY, seqid)
     result.write(oprot)
@@ -1895,11 +1895,11 @@ class Processor(Iface, TProcessor):
     result = multiget_count_result()
     try:
       result.success = self._handler.multiget_count(args.keys, args.column_parent, args.predicate, args.consistency_level)
-    except InvalidRequestException, ire:
+    except InvalidRequestException as ire:
       result.ire = ire
-    except UnavailableException, ue:
+    except UnavailableException as ue:
       result.ue = ue
-    except TimedOutException, te:
+    except TimedOutException as te:
       result.te = te
     oprot.writeMessageBegin("multiget_count", TMessageType.REPLY, seqid)
     result.write(oprot)
@@ -1913,11 +1913,11 @@ class Processor(Iface, TProcessor):
     result = get_range_slices_result()
     try:
       result.success = self._handler.get_range_slices(args.column_parent, args.predicate, args.range, args.consistency_level)
-    except InvalidRequestException, ire:
+    except InvalidRequestException as ire:
       result.ire = ire
-    except UnavailableException, ue:
+    except UnavailableException as ue:
       result.ue = ue
-    except TimedOutException, te:
+    except TimedOutException as te:
       result.te = te
     oprot.writeMessageBegin("get_range_slices", TMessageType.REPLY, seqid)
     result.write(oprot)
@@ -1931,11 +1931,11 @@ class Processor(Iface, TProcessor):
     result = get_paged_slice_result()
     try:
       result.success = self._handler.get_paged_slice(args.column_family, args.range, args.start_column, args.consistency_level)
-    except InvalidRequestException, ire:
+    except InvalidRequestException as ire:
       result.ire = ire
-    except UnavailableException, ue:
+    except UnavailableException as ue:
       result.ue = ue
-    except TimedOutException, te:
+    except TimedOutException as te:
       result.te = te
     oprot.writeMessageBegin("get_paged_slice", TMessageType.REPLY, seqid)
     result.write(oprot)
@@ -1949,11 +1949,11 @@ class Processor(Iface, TProcessor):
     result = get_indexed_slices_result()
     try:
       result.success = self._handler.get_indexed_slices(args.column_parent, args.index_clause, args.column_predicate, args.consistency_level)
-    except InvalidRequestException, ire:
+    except InvalidRequestException as ire:
       result.ire = ire
-    except UnavailableException, ue:
+    except UnavailableException as ue:
       result.ue = ue
-    except TimedOutException, te:
+    except TimedOutException as te:
       result.te = te
     oprot.writeMessageBegin("get_indexed_slices", TMessageType.REPLY, seqid)
     result.write(oprot)
@@ -1967,11 +1967,11 @@ class Processor(Iface, TProcessor):
     result = insert_result()
     try:
       self._handler.insert(args.key, args.column_parent, args.column, args.consistency_level)
-    except InvalidRequestException, ire:
+    except InvalidRequestException as ire:
       result.ire = ire
-    except UnavailableException, ue:
+    except UnavailableException as ue:
       result.ue = ue
-    except TimedOutException, te:
+    except TimedOutException as te:
       result.te = te
     oprot.writeMessageBegin("insert", TMessageType.REPLY, seqid)
     result.write(oprot)
@@ -1985,11 +1985,11 @@ class Processor(Iface, TProcessor):
     result = add_result()
     try:
       self._handler.add(args.key, args.column_parent, args.column, args.consistency_level)
-    except InvalidRequestException, ire:
+    except InvalidRequestException as ire:
       result.ire = ire
-    except UnavailableException, ue:
+    except UnavailableException as ue:
       result.ue = ue
-    except TimedOutException, te:
+    except TimedOutException as te:
       result.te = te
     oprot.writeMessageBegin("add", TMessageType.REPLY, seqid)
     result.write(oprot)
@@ -2003,11 +2003,11 @@ class Processor(Iface, TProcessor):
     result = remove_result()
     try:
       self._handler.remove(args.key, args.column_path, args.timestamp, args.consistency_level)
-    except InvalidRequestException, ire:
+    except InvalidRequestException as ire:
       result.ire = ire
-    except UnavailableException, ue:
+    except UnavailableException as ue:
       result.ue = ue
-    except TimedOutException, te:
+    except TimedOutException as te:
       result.te = te
     oprot.writeMessageBegin("remove", TMessageType.REPLY, seqid)
     result.write(oprot)
@@ -2021,11 +2021,11 @@ class Processor(Iface, TProcessor):
     result = remove_counter_result()
     try:
       self._handler.remove_counter(args.key, args.path, args.consistency_level)
-    except InvalidRequestException, ire:
+    except InvalidRequestException as ire:
       result.ire = ire
-    except UnavailableException, ue:
+    except UnavailableException as ue:
       result.ue = ue
-    except TimedOutException, te:
+    except TimedOutException as te:
       result.te = te
     oprot.writeMessageBegin("remove_counter", TMessageType.REPLY, seqid)
     result.write(oprot)
@@ -2039,11 +2039,11 @@ class Processor(Iface, TProcessor):
     result = batch_mutate_result()
     try:
       self._handler.batch_mutate(args.mutation_map, args.consistency_level)
-    except InvalidRequestException, ire:
+    except InvalidRequestException as ire:
       result.ire = ire
-    except UnavailableException, ue:
+    except UnavailableException as ue:
       result.ue = ue
-    except TimedOutException, te:
+    except TimedOutException as te:
       result.te = te
     oprot.writeMessageBegin("batch_mutate", TMessageType.REPLY, seqid)
     result.write(oprot)
@@ -2057,11 +2057,11 @@ class Processor(Iface, TProcessor):
     result = truncate_result()
     try:
       self._handler.truncate(args.cfname)
-    except InvalidRequestException, ire:
+    except InvalidRequestException as ire:
       result.ire = ire
-    except UnavailableException, ue:
+    except UnavailableException as ue:
       result.ue = ue
-    except TimedOutException, te:
+    except TimedOutException as te:
       result.te = te
     oprot.writeMessageBegin("truncate", TMessageType.REPLY, seqid)
     result.write(oprot)
@@ -2075,7 +2075,7 @@ class Processor(Iface, TProcessor):
     result = describe_schema_versions_result()
     try:
       result.success = self._handler.describe_schema_versions()
-    except InvalidRequestException, ire:
+    except InvalidRequestException as ire:
       result.ire = ire
     oprot.writeMessageBegin("describe_schema_versions", TMessageType.REPLY, seqid)
     result.write(oprot)
@@ -2089,7 +2089,7 @@ class Processor(Iface, TProcessor):
     result = describe_keyspaces_result()
     try:
       result.success = self._handler.describe_keyspaces()
-    except InvalidRequestException, ire:
+    except InvalidRequestException as ire:
       result.ire = ire
     oprot.writeMessageBegin("describe_keyspaces", TMessageType.REPLY, seqid)
     result.write(oprot)
@@ -2125,7 +2125,7 @@ class Processor(Iface, TProcessor):
     result = describe_ring_result()
     try:
       result.success = self._handler.describe_ring(args.keyspace)
-    except InvalidRequestException, ire:
+    except InvalidRequestException as ire:
       result.ire = ire
     oprot.writeMessageBegin("describe_ring", TMessageType.REPLY, seqid)
     result.write(oprot)
@@ -2161,9 +2161,9 @@ class Processor(Iface, TProcessor):
     result = describe_keyspace_result()
     try:
       result.success = self._handler.describe_keyspace(args.keyspace)
-    except NotFoundException, nfe:
+    except NotFoundException as nfe:
       result.nfe = nfe
-    except InvalidRequestException, ire:
+    except InvalidRequestException as ire:
       result.ire = ire
     oprot.writeMessageBegin("describe_keyspace", TMessageType.REPLY, seqid)
     result.write(oprot)
@@ -2177,7 +2177,7 @@ class Processor(Iface, TProcessor):
     result = describe_splits_result()
     try:
       result.success = self._handler.describe_splits(args.cfName, args.start_token, args.end_token, args.keys_per_split)
-    except InvalidRequestException, ire:
+    except InvalidRequestException as ire:
       result.ire = ire
     oprot.writeMessageBegin("describe_splits", TMessageType.REPLY, seqid)
     result.write(oprot)
@@ -2191,9 +2191,9 @@ class Processor(Iface, TProcessor):
     result = system_add_column_family_result()
     try:
       result.success = self._handler.system_add_column_family(args.cf_def)
-    except InvalidRequestException, ire:
+    except InvalidRequestException as ire:
       result.ire = ire
-    except SchemaDisagreementException, sde:
+    except SchemaDisagreementException as sde:
       result.sde = sde
     oprot.writeMessageBegin("system_add_column_family", TMessageType.REPLY, seqid)
     result.write(oprot)
@@ -2207,9 +2207,9 @@ class Processor(Iface, TProcessor):
     result = system_drop_column_family_result()
     try:
       result.success = self._handler.system_drop_column_family(args.column_family)
-    except InvalidRequestException, ire:
+    except InvalidRequestException as ire:
       result.ire = ire
-    except SchemaDisagreementException, sde:
+    except SchemaDisagreementException as sde:
       result.sde = sde
     oprot.writeMessageBegin("system_drop_column_family", TMessageType.REPLY, seqid)
     result.write(oprot)
@@ -2223,9 +2223,9 @@ class Processor(Iface, TProcessor):
     result = system_add_keyspace_result()
     try:
       result.success = self._handler.system_add_keyspace(args.ks_def)
-    except InvalidRequestException, ire:
+    except InvalidRequestException as ire:
       result.ire = ire
-    except SchemaDisagreementException, sde:
+    except SchemaDisagreementException as sde:
       result.sde = sde
     oprot.writeMessageBegin("system_add_keyspace", TMessageType.REPLY, seqid)
     result.write(oprot)
@@ -2239,9 +2239,9 @@ class Processor(Iface, TProcessor):
     result = system_drop_keyspace_result()
     try:
       result.success = self._handler.system_drop_keyspace(args.keyspace)
-    except InvalidRequestException, ire:
+    except InvalidRequestException as ire:
       result.ire = ire
-    except SchemaDisagreementException, sde:
+    except SchemaDisagreementException as sde:
       result.sde = sde
     oprot.writeMessageBegin("system_drop_keyspace", TMessageType.REPLY, seqid)
     result.write(oprot)
@@ -2255,9 +2255,9 @@ class Processor(Iface, TProcessor):
     result = system_update_keyspace_result()
     try:
       result.success = self._handler.system_update_keyspace(args.ks_def)
-    except InvalidRequestException, ire:
+    except InvalidRequestException as ire:
       result.ire = ire
-    except SchemaDisagreementException, sde:
+    except SchemaDisagreementException as sde:
       result.sde = sde
     oprot.writeMessageBegin("system_update_keyspace", TMessageType.REPLY, seqid)
     result.write(oprot)
@@ -2271,9 +2271,9 @@ class Processor(Iface, TProcessor):
     result = system_update_column_family_result()
     try:
       result.success = self._handler.system_update_column_family(args.cf_def)
-    except InvalidRequestException, ire:
+    except InvalidRequestException as ire:
       result.ire = ire
-    except SchemaDisagreementException, sde:
+    except SchemaDisagreementException as sde:
       result.sde = sde
     oprot.writeMessageBegin("system_update_column_family", TMessageType.REPLY, seqid)
     result.write(oprot)
@@ -2287,13 +2287,13 @@ class Processor(Iface, TProcessor):
     result = execute_cql_query_result()
     try:
       result.success = self._handler.execute_cql_query(args.query, args.compression)
-    except InvalidRequestException, ire:
+    except InvalidRequestException as ire:
       result.ire = ire
-    except UnavailableException, ue:
+    except UnavailableException as ue:
       result.ue = ue
-    except TimedOutException, te:
+    except TimedOutException as te:
       result.te = te
-    except SchemaDisagreementException, sde:
+    except SchemaDisagreementException as sde:
       result.sde = sde
     oprot.writeMessageBegin("execute_cql_query", TMessageType.REPLY, seqid)
     result.write(oprot)
@@ -2307,7 +2307,7 @@ class Processor(Iface, TProcessor):
     result = prepare_cql_query_result()
     try:
       result.success = self._handler.prepare_cql_query(args.query, args.compression)
-    except InvalidRequestException, ire:
+    except InvalidRequestException as ire:
       result.ire = ire
     oprot.writeMessageBegin("prepare_cql_query", TMessageType.REPLY, seqid)
     result.write(oprot)
@@ -2321,13 +2321,13 @@ class Processor(Iface, TProcessor):
     result = execute_prepared_cql_query_result()
     try:
       result.success = self._handler.execute_prepared_cql_query(args.itemId, args.values)
-    except InvalidRequestException, ire:
+    except InvalidRequestException as ire:
       result.ire = ire
-    except UnavailableException, ue:
+    except UnavailableException as ue:
       result.ue = ue
-    except TimedOutException, te:
+    except TimedOutException as te:
       result.te = te
-    except SchemaDisagreementException, sde:
+    except SchemaDisagreementException as sde:
       result.sde = sde
     oprot.writeMessageBegin("execute_prepared_cql_query", TMessageType.REPLY, seqid)
     result.write(oprot)
@@ -2341,7 +2341,7 @@ class Processor(Iface, TProcessor):
     result = set_cql_version_result()
     try:
       self._handler.set_cql_version(args.version)
-    except InvalidRequestException, ire:
+    except InvalidRequestException as ire:
       result.ire = ire
     oprot.writeMessageBegin("set_cql_version", TMessageType.REPLY, seqid)
     result.write(oprot)
