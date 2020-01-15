@@ -24,7 +24,7 @@ from assertions import assert_all, assert_invalid, assert_none, assert_one, asse
 
 from dtest import Tester, debug
 
-from scylla_tools import CassandraCluster
+from scylla_tools import CassandraCluster, get_rows_set_from_res
 
 from thrift_bindings.thrift010.ttypes import CfDef
 from thrift_bindings.thrift010.ttypes import Column
@@ -2154,6 +2154,72 @@ class TestCQL(Tester):
 
         res = list(session.execute("SELECT * FROM test"))
         assert len(res) == 2, res
+
+    def aggregate_and_simple_selection_together_test(self):
+
+        session = self.prepare(ordered=True)
+        session.execute("""
+                CREATE TABLE together (
+                    a int,
+                    b int,
+                    c int,
+                    PRIMARY KEY ((a), c)
+                )
+            """)
+        session.execute("INSERT INTO together (a, b, c) VALUES (1, 2, 3)")
+        session.execute("INSERT INTO together (a, b, c) VALUES (2, 4, 6)")
+        session.execute("INSERT INTO together (a, b, c) VALUES (3, 6, 9)")
+        session.execute("INSERT INTO together (a, b, c) VALUES (3, 8, 10)")
+        res = session.execute("SELECT sum(c), avg(b), min(c), a  FROM together WHERE b>2 ALLOW FILTERING")
+        assert rows_to_list(res) == [[25, 6, 6, 2]], list(res)
+        res = session.execute("SELECT count(c), max(b)  FROM together WHERE a = 3 ")
+        assert rows_to_list(res) == [[2, 8]], list(res)
+
+    def partition_key_as_secondary_index_test(self):
+
+        session = self.prepare(ordered=True)
+        session.execute("""
+                CREATE TABLE test_index (
+                    a BIGINT,
+                    b BIGINT,
+                    c BIGINT,
+                    PRIMARY KEY ((a, b))
+                )
+            """)
+        session.execute("CREATE INDEX ON test_index(a)")
+        session.execute("INSERT INTO test_index (a, b, c) VALUES (0, 2, 1)")
+        session.execute("INSERT INTO test_index (a, b, c) VALUES (1, 2, 3)")
+        session.execute("INSERT INTO test_index (a, b, c) VALUES (2, 2, 4)")
+
+        res = session.execute("SELECT * FROM test_index WHERE a>0 AND b=2 ALLOW FILTERING")
+        rows_set = get_rows_set_from_res(res)
+        assert rows_set == {(2, 2, 4), (1, 2, 3)}, rows_set
+        res = session.execute("SELECT b,c FROM test_index WHERE a>=2 ALLOW FILTERING")
+        rows_set = get_rows_set_from_res(res)
+        assert rows_set == {(2, 4)}, rows_set
+
+    def restricted_column_not_in_select_clause_test(self):
+        session = self.prepare(ordered=True)
+        session.execute("""
+                    CREATE TABLE test_index (
+                        a BIGINT,
+                        b BIGINT,
+                        c BIGINT,
+                        d INT,
+                        e INT,
+                        PRIMARY KEY ((a, b),c)
+                    )
+                """)
+        session.execute("CREATE INDEX ON test_index(d)")
+        session.execute("INSERT INTO test_index (a, b, c, d, e) VALUES (1, 2, 3, 4, 5)")
+        session.execute("INSERT INTO test_index (a, b, c, d, e) VALUES (11, 22, 33, 44, 55)")
+
+        res = session.execute("select c,e from ks.test_index where d = 44 ALLOW FILTERING")
+        rows_list = rows_to_list(res)
+        assert rows_list == [[33, 55]], rows_list
+        res = session.execute("select a from ks.test_index where d > 43 ALLOW FILTERING")
+        rows_list = rows_to_list(res)
+        assert rows_list == [[11]], rows_list
 
     @attr('single_node')
     def composite_index_with_pk_test(self):

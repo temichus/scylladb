@@ -996,6 +996,10 @@ def get_truncated_time_from_system_truncated(session, table_id):
     return truncated_time[0]
 
 
+def get_rows_set_from_res(res):
+    return set([tuple(res_list) for res_list in rows_to_list(res)])
+
+
 class CassandraCluster(object):
     """Class provides interface to create Cassandra cluster and migrate the data from Scylla"""
 
