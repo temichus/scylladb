@@ -5,6 +5,7 @@ from cassandra import ConsistencyLevel
 
 import time
 import binascii
+import sys
 
 from thrift.transport import TTransport, TSocket
 from thrift.protocol import TBinaryProtocol
@@ -105,27 +106,24 @@ class TestPutGet(Tester):
         trigger this.
 
         Then, I think you'll be able to reproduce with the following steps:
-        1) you'd want to use 2 nodes with RF=1 and with ByteOrderedPartitioner (it's
+        1) you'd want to use 2 nodes with RF=1 and with Murmur3Partitioner (it's
         possible to reproduce with a random partitioner but a tad more painful)
-        2) picks token for the nodes so that you know what goes on which node. For
-        example you may want that any row key starting with 'a' goes on node1, and
-        anything starting with a 'b' goes on node 2.
-        3) insers data that span the two nodes. Say inserts 20 rows 'a0' ... 'a9' and
-        'b0' ...'b9' (so 10 rows on each node) with say 10 columns on row.
-        4) then do a get_paged_slice for keys 'a5' to 'b4' and for the column filter, a
+        2) picks token for the nodes so that you know what goes on which node.
+        3) insers data that span the two nodes. Say inserts 22 rows (so 11 rows
+        on each node) with say 10 columns on row.
+        4) then do a get_paged_slice for keys 'key01' to 'key02' and for the column filter, a
         slice filter that picks the fifth last columns.
         5) the get_paged_slice is supposed to return 95 columns (it should return the 5
-        last columns of a5 and then all 10 columns for 'a6' to 'b4'), but without
+        last columns of key01 and then all 10 columns for remaining keys in the range), but without
         CASSANDRA-4919 it will return 90 columns only (it will only return the 5 last
-        columns of 'b0').
+        columns of 'key03').
         """
         cluster = self.cluster
-        cluster.set_configuration_options(values={'partitioner': 'org.apache.cassandra.dht.ByteOrderedPartitioner'})
-        cluster.set_configuration_options(values={'enable_deprecated_partitioners': True})
+        cluster.set_configuration_options(values={'partitioner': 'org.apache.cassandra.dht.Murmur3Partitioner'})
         cluster.populate(2, use_vnodes=False)
         node1, node2 = cluster.nodelist()
-        node1.set_configuration_options(values={'initial_token': '61'}) # "a"
-        node2.set_configuration_options(values={'initial_token': '62'}) # "b"
+        node1.set_configuration_options(values={'initial_token': '-9103060099726885728'}) # key05
+        node2.set_configuration_options(values={'initial_token': '1530895188695377504'}) # key03
         cluster.start()
         time.sleep(.5)
         session = self.patient_cql_connection(node1)
@@ -142,12 +140,12 @@ class TestPutGet(Tester):
         session.execute(query)
         time.sleep(.5)
 
-        for i in range(10):
-            key_num = str(i).zfill(2)
+        # order of partition keys:
+        # key05, key17, key20, key13, key00, key10, key01, key09, key14, key16, key11,
+        # key03, key19, key04, key12, key02, key18, key08, key07, key15, key06, key21
+        for i in range(22):
             for j in range(10):
-                stmt = "INSERT INTO test (k, column1, value) VALUES ('a%s', 'col%s', '%s')" % (key_num, j, j)
-                session.execute(stmt)
-                stmt = "INSERT INTO test (k, column1, value) VALUES ('b%s', 'col%s', '%s')" % (key_num, j, j)
+                stmt = "INSERT INTO test (k, column1, value) VALUES ('key%s', 'col%s', '%s')" % (str(i).zfill(2), j, j)
                 session.execute(stmt)
         session.shutdown()
 
@@ -156,8 +154,8 @@ class TestPutGet(Tester):
 
         # Slice on the keys
         rnge = tc.Cassandra.KeyRange(
-            start_key="a%s" % ('5'.zfill(2)),
-            end_key="b%s" % ('4'.zfill(2)),
+            start_key="key01",
+            end_key="key02",
             count=9999,
         )
         rows = tc.client.get_paged_slice(
