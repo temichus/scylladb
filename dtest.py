@@ -655,6 +655,7 @@ class Tester(TestCase):
         # Reduce waiting time for the nodes to hear from others before joining the ring.
         # Since all test cases run on localhost and there are no large test clusters
         # it's safe to reduce the value to save a lot of time while testing.
+        # (Default value for the option is 30s)
         self.cluster.set_configuration_options(values={'ring_delay_ms': 10000})
 
     def find_cores(self):
