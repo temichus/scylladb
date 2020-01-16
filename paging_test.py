@@ -10,7 +10,7 @@ from cassandra.query import SimpleStatement, dict_factory, named_tuple_factory, 
 
 from assertions import assert_invalid
 from datahelp import create_rows, flatten_into_set, parse_data_into_dicts
-from dtest import Tester, run_scenarios
+from dtest import Tester, run_scenarios, debug
 from tools import require, since, rows_to_list
 from collections import Counter
 
@@ -2817,6 +2817,7 @@ class TestPagingWithIndexingAndAggregation(BasePagingTester, PageAssertionMixin)
         return all_data
     
     def execute_query_and_compare_results(self, session, query, expected_data, assert_msg=''):
+        debug("Validating '{}'. Expected result: '{}'".format(query, expected_data))
         future = session.execute_async(
             SimpleStatement(query, fetch_size=40, consistency_level=CL.ALL)
         )
@@ -2826,31 +2827,38 @@ class TestPagingWithIndexingAndAggregation(BasePagingTester, PageAssertionMixin)
             pf.num_results_all()))
         self.assertEqualIgnoreOrder(pf.all_data(), expected_data, assert_msg)
 
-    def _verify_col_func_results(self, session, filtered_list, query_fmt, col, query_func, exp_func):
-        query = query_fmt.format(query_func, col)
-        expected_data = [{u'system.{}({})'.format(query_func, col): exp_func([item[col] for item in filtered_list])}]
+    def _verify_col_func_results(self, session, filtered_list, query_fmt, result_fmt, col, query_func, exp_func, where_clause, allow_filtering):
+        core_query = query_fmt.format(**locals())
+        result_desc = result_fmt.format(**locals())
+        query = "select {} from paging_test where {}{}".format(
+            core_query,
+            where_clause,
+            ' ALLOW FILTERING' if allow_filtering else '')
+        expected_data = [{result_desc: exp_func([item[col] for item in filtered_list])}]
         self.execute_query_and_compare_results(session=session, query=query, expected_data=expected_data,
-                                               assert_msg='{}({}) returned wrong value'.format(query_func, col))
+                                               assert_msg='{} returned wrong value'.format(core_query))
 
-    def _verify_col_results(self, session, filtered_list, query_fmt, col):
-        self._verify_col_func_results(session, filtered_list, query_fmt, col, 'count', len)
-        self._verify_col_func_results(session, filtered_list, query_fmt, col, 'min', min)
-        self._verify_col_func_results(session, filtered_list, query_fmt, col, 'max', max)
+    def _verify_col_results(self, session, filtered_list, col, where_clause, allow_filtering):
+        query_fmt = '{query_func}({col})'
+        result_fmt = 'system.{query_func}({col})'
+        self._verify_col_func_results(session, filtered_list, query_fmt, result_fmt, col, 'count', len, where_clause, allow_filtering)
+        self._verify_col_func_results(session, filtered_list, query_fmt, result_fmt, col, 'min', min, where_clause, allow_filtering)
+        self._verify_col_func_results(session, filtered_list, query_fmt, result_fmt, col, 'max', max, where_clause, allow_filtering)
         if col.endswith('bigint'):
-            self._verify_col_func_results(session, filtered_list, query_fmt, col, 'sum', lambda l: ctypes.c_long(sum(l)).value)
-        elif col.endswith('int'):
-            self._verify_col_func_results(session, filtered_list, query_fmt, col, 'sum', lambda l: ctypes.c_int(sum(l)).value)
+            query_fmt = '{query_func}(cast({col} as varint))'
+            result_fmt = 'system.{query_func}(system.castasvarint({col}))'
+        else:
+            query_fmt = '{query_func}(cast({col} as bigint))'
+            result_fmt = 'system.{query_func}(system.castasbigint({col}))'
+        self._verify_col_func_results(session, filtered_list, query_fmt, result_fmt, col, 'sum', sum, where_clause, allow_filtering)
 
     def _create_and_verify_results(self, session, cols, filter_func, where_clause, allow_filtering):
         all_data = self.create_and_insert_data(self.data, session)
         filtered_list = [entry for entry in all_data if filter_func(entry) is True]
-        query_fmt = 'select {}({}) from paging_test where ' + where_clause
-        if allow_filtering:
-            query_fmt += ' ALLOW FILTERING'
         if not isinstance(cols, list):
             cols = [cols] 
         for col in cols:
-            self._verify_col_results(session, filtered_list, query_fmt, col)
+            self._verify_col_results(session, filtered_list, col, where_clause, allow_filtering)
 
     def create_and_verify_mybool_results(self, session, cols, mybool_val=True, allow_filtering=False):
         filter_func = lambda entry: entry[u'mybool'] == mybool_val
