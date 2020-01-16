@@ -684,7 +684,7 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
 
         self.assertEqual(pf.pagecount(), 2)
         self.assertEqual(pf.num_results_all(), [400, 200])
-        self.assertEqualIgnoreOrder(expected_data, pf.all_data())
+        self.assertEqualIgnoreOrder(pf.all_data(), expected_data)
 
     def test_paging_with_in_orderby_and_two_partition_keys(self):
         session = self.prepare()
@@ -1931,7 +1931,7 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
 
         self.assertEqual(pf.pagecount(), 2)
         self.assertEqual(pf.num_results_all(), [400, 200])
-        self.assertEqualIgnoreOrder(expected_data, pf.all_data())
+        self.assertEqualIgnoreOrder(pf.all_data(), expected_data)
 
     def static_columns_with_empty_non_static_columns_paging_test(self):
         """
@@ -2824,7 +2824,7 @@ class TestPagingWithIndexingAndAggregation(BasePagingTester, PageAssertionMixin)
         self.assertEqual(pf.pagecount(), 1, 'Expected 1 page but received {}'.format(pf.pagecount()))
         self.assertEqual(pf.num_results_all(), [1], 'Expected 1 single result, but received {}'.format(
             pf.num_results_all()))
-        self.assertEqualIgnoreOrder(expected_data, pf.all_data(), assert_msg)
+        self.assertEqualIgnoreOrder(pf.all_data(), expected_data, assert_msg)
 
     def _verify_col_func_results(self, session, filtered_list, query_fmt, col, query_func, exp_func):
         query = query_fmt.format(query_func, col)
