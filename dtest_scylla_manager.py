@@ -64,6 +64,7 @@ class TaskStatus(Enum):
     ERROR = "ERROR"
     STOPPED = "STOPPED"
     STARTING = "STARTING"
+    ABORTED = "ABORTED"
 
     @classmethod
     def from_str(cls, output_str):
@@ -113,6 +114,10 @@ class ScyllaManagerTool(ScyllaManagerBase):
         time.sleep(sleep)
         debug("Initiating Scylla-Manager, version: {}".format(self.version))
         self.DEFAULT_USER = "centos"
+
+    def restart_manager_server(self, gently):
+        self.scylla_manager.stop(gently)
+        self.scylla_manager.start()
 
     @property
     def version(self):
@@ -278,7 +283,7 @@ class SCTool(object):
 
     def parse_result_table(self, stdout):
         parsed_table = []
-        lines = stdout.split('\n')
+        lines = stdout.splitlines()
         filtered_lines = [line for line in lines if line]
         if filtered_lines:
             if '╭' in stdout:
@@ -407,8 +412,8 @@ class ManagerTask(ScyllaManagerBase):
         res = self.sctool.run(cmd=cmd, is_verify_errorless_result=True)
         return self.wait_and_get_final_status(timeout=30, step=3)
 
-    def start(self, cmd=None):
-        cmd = cmd or "task start {} -c {}".format(self.id, self.cluster_id)
+    def start(self, cmd=None, continue_attr="true"):
+        cmd = cmd or "task start {} -c {} --continue {}".format(self.id, self.cluster_id, continue_attr)
         res = self.sctool.run(cmd=cmd, is_verify_errorless_result=True)
         list_expected_task_status = [status for status in TaskStatus.all_members() if status != TaskStatus.STOPPED]
         return self.wait_for_status(list_status=list_expected_task_status, timeout=30, step=3)
@@ -609,31 +614,6 @@ class BackupTask(ManagerTask):
         snapshot_tag = snapshot_line[0].split(":")[1].strip()
         return snapshot_tag
 
-    def get_backup_files_dict(self, snapshot_tag):
-        command = f" -c {self.cluster_id} backup files --snapshot-tag {snapshot_tag}"
-        snapshot_files, stderr = self.sctool.run(command)
-        if stderr:
-            raise ScyllaManagerError(f"Failure for sctool '{command}' command:\n{stderr}")
-        snapshot_file_list = [file_path_list[0] for file_path_list in snapshot_files]
-        # sctool.run returns a list of lists, each of them is a 1 length list that contains the row.
-        # This list comprehension turns the list into a list of strings (rows) instead
-        return self.snapshot_files_to_dict(snapshot_file_list)
-
-    def snapshot_files_to_dict(self, snapshot_file_lines):
-        per_node_keyspaces_and_tables_backup_files = {}
-        for line in snapshot_file_lines:
-            s3_file_path, keyspace_and_table = [string.strip() for string in line.split(' ')]
-            node_id = s3_file_path[s3_file_path.find("/node/") + len("/node/"):s3_file_path.find("/keyspace")]
-            keyspace, table = keyspace_and_table.split('/')
-            if node_id not in per_node_keyspaces_and_tables_backup_files:
-                per_node_keyspaces_and_tables_backup_files[node_id] = {}
-            if keyspace not in per_node_keyspaces_and_tables_backup_files[node_id]:
-                per_node_keyspaces_and_tables_backup_files[node_id][keyspace] = {}
-            if table not in per_node_keyspaces_and_tables_backup_files[node_id][keyspace]:
-                per_node_keyspaces_and_tables_backup_files[node_id][keyspace][table] = []
-            per_node_keyspaces_and_tables_backup_files[node_id][keyspace][table].append(s3_file_path)
-        return per_node_keyspaces_and_tables_backup_files
-
 
 class RestTask(ManagerTask):
     def __init__(self, task_id, cluster_id, scylla_manager):
@@ -670,6 +650,31 @@ class ManagerCluster(ScyllaManagerBase):
         task_id = stdout.strip()
         debug("Created task id is: {}".format(task_id))
         return BackupTask(task_id=task_id, cluster_id=self.id, scylla_manager=self.scylla_manager)
+
+    def get_backup_files_dict(self, snapshot_tag):
+        command = f" -c {self.id} backup files --snapshot-tag {snapshot_tag}"
+        # The sctool backup files command prints the s3 paths of all of the files that are required to restore the
+        # cluster from the backup
+        snapshot_files, stderr = self.sctool.run(command)
+        snapshot_file_list = [file_path_list[0] for file_path_list in snapshot_files]
+        # sctool.run returns a list of lists, each of them is a 1 length list that contains the row.
+        # This list comprehension turns the list into a list of strings (rows) instead
+        return self.snapshot_files_to_dict(snapshot_file_list)
+
+    def snapshot_files_to_dict(self, snapshot_file_lines):
+        per_node_keyspaces_and_tables_backup_files = {}
+        for line in snapshot_file_lines:
+            s3_file_path, keyspace_and_table = [string.strip() for string in line.split(' ')]
+            node_id = s3_file_path[s3_file_path.find("/node/") + len("/node/"):s3_file_path.find("/keyspace")]
+            keyspace, table = keyspace_and_table.split('/')
+            if node_id not in per_node_keyspaces_and_tables_backup_files:
+                per_node_keyspaces_and_tables_backup_files[node_id] = {}
+            if keyspace not in per_node_keyspaces_and_tables_backup_files[node_id]:
+                per_node_keyspaces_and_tables_backup_files[node_id][keyspace] = {}
+            if table not in per_node_keyspaces_and_tables_backup_files[node_id][keyspace]:
+                per_node_keyspaces_and_tables_backup_files[node_id][keyspace][table] = []
+            per_node_keyspaces_and_tables_backup_files[node_id][keyspace][table].append(s3_file_path)
+        return per_node_keyspaces_and_tables_backup_files
 
     def create_repair_task(self, node=None, dc_list=None, token_ranges=None, keyspace=None, with_hosts=None,
                            interval=None, num_retries=None, fail_fast=None):
