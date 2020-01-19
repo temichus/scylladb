@@ -143,9 +143,9 @@ if [[ -z ${MINIO_DOCKER_ID} ]]; then
     # removed the --network=bridge from the docker run command specifically for manager testing,
     # since docker sometimes does not allow to create a link when this attribute is set (even though it's the default)
 else
-    export MINIO_DOCKER_LINK_PARAM="--link ${MINIO_DOCKER_ID}:minio_server"
+    export MINIO_DOCKER_LINK_PARAM="--link ${MINIO_DOCKER_ID}:MinioServer"
     export DOCKER_NETWORK_PARAM=""
-    export AWS_S3_ENDPOINT="http://minio_server:9000"
+    export AWS_S3_ENDPOINT="http://MinioServer:9000"
 fi
 
 
