@@ -170,12 +170,14 @@ def scylla_mode(modes):
         is_scylla = common.isScylla(cdir)
     if not is_scylla:
         return unittest.skipIf(True, 'Test disabled for non-scylla installation')
+    if NO_SKIP:
+        return unittest.skipIf(False, 'NO_SKIP')
     version = os.environ.get('SCYLLA_VERSION')
     if version:
         mode = 'reloc'
     else:
         idir, mode = common.scylla_extract_install_dir_and_mode(cdir)
-    return unittest.skipIf(not NO_SKIP and modes.find(mode) == -1, 'Test disabled for scylla %s' % mode)
+    return unittest.skipIf(modes.find(mode) == -1, 'Test disabled for scylla %s' % mode)
 
 def get_sstables_files(cf_dir, f_type=''):
     """
