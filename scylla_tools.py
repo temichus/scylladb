@@ -162,6 +162,7 @@ def scylla_mode(modes):
         Run the decorated tests if they are executed on correct mode
         @scylla_mode('release') - will run tests only if mode is release
         @scylla_mode('debug') - will run tests only if mode is debug
+        @scylla_mode('!debug') - will run tests only if mode is not debug
    ."""
     NO_SKIP = os.environ.get('SKIP', '').lower() in ('no', 'false')
     is_scylla = False
@@ -183,7 +184,12 @@ def scylla_mode(modes):
         return unittest.skipIf(False, 'NO_SKIP')
     if cdir:
         idir, mode = common.scylla_extract_install_dir_and_mode(cdir)
-    return unittest.skipIf(modes.find(mode) == -1, 'Test disabled for scylla %s' % mode)
+    found = (modes.find(mode) != -1)
+    if modes[0] != '!':
+        do_skip = not found
+    else:
+        do_skip = found
+    return unittest.skipIf(do_skip, 'Test disabled for scylla %s' % mode)
 
 def get_sstables_files(cf_dir, f_type=''):
     """

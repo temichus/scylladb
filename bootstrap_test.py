@@ -324,7 +324,7 @@ class TestBootstrap(Tester):
         current_rows = list(session.execute("SELECT * FROM %s" % stress_table))
         self.assertEquals(original_rows, current_rows)
 
-    @scylla_mode('release')
+    @scylla_mode('!debug')
     def local_quorum_bootstrap_test(self):
         """Test that CL local_quorum works while a node is bootstrapping. CASSANDRA-8058"""
 

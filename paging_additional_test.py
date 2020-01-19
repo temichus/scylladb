@@ -43,7 +43,7 @@ class TestAggregatePaging(BasePagingTester, PageAssertionMixin):
             self.assertEqual(pf.num_results_all(), [1])
             self.assertEqual(pf.all_data(), [{u'count': 5001}])
 
-    @scylla_mode('release')
+    @scylla_mode('!debug')
     def test_paged_count_with_limit(self):
         self._test_paged_count_with_limit([10, 100, 1000, 3000, 5000])
 
