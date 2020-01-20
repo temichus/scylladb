@@ -1,6 +1,6 @@
-import md5
+from hashlib import md5
 import time
-import commands
+import subprocess
 import os
 import shutil
 
@@ -86,12 +86,12 @@ class BaseKeyProviderFactory(Tester):
 
     def break_key(self, filename):
         debug('Break key : %s' % filename)
-        debug(commands.getoutput('head %s*' % filename))
+        debug(subprocess.getoutput('head %s*' % filename))
         os.rename(filename, filename + '.break_backup')
 
     def restore_key(self, filename):
         debug('Restore key : %s' % filename)
-        debug(commands.getoutput('head %s*' % filename))
+        debug(subprocess.getoutput('head %s*' % filename))
         os.rename(filename + '.break_backup', filename)
 
     def prepare(self, node_num=2):
@@ -109,10 +109,10 @@ class BaseKeyProviderFactory(Tester):
                 shutil.copy(src, dest)
         else:
             src = '/etc/dse/conf/system_key_tmp'
-            commands.getoutput('sudo rm -f %s' % src)
-            commands.getoutput("sudo /home/amos/.ccm/repository/5.1.5/bin/dsetool createsystemkey '%s' %d system_key_tmp" % (cipher_algorithm, secret_key_strength))
-            commands.getoutput('sudo cp %s %s' % (src, dest))
-            commands.getoutput('sudo chown $USER:$USER %s' % dest)
+            subprocess.getoutput('sudo rm -f %s' % src)
+            subprocess.getoutput("sudo /home/amos/.ccm/repository/5.1.5/bin/dsetool createsystemkey '%s' %d system_key_tmp" % (cipher_algorithm, secret_key_strength))
+            subprocess.getoutput('sudo cp %s %s' % (src, dest))
+            subprocess.getoutput('sudo chown $USER:$USER %s' % dest)
 
         self.cluster.set_configuration_options({'system_key_directory': dirname})
         self.system_keyfile = dest
@@ -146,7 +146,7 @@ class BaseKeyProviderFactory(Tester):
 
     def prepare_write_workload(self, session, ks='ks', cf='cf', flush=True):
         debug('Insert data to encrypted table: %s.%s' % (ks, cf))
-        insert_c1c2(session, keys=range(100), consistency=ConsistencyLevel.ALL, ks=ks, cf=cf)
+        insert_c1c2(session, keys=list(range(100)), consistency=ConsistencyLevel.ALL, ks=ks, cf=cf)
         if flush:
             debug('flush cluster')
             self.cluster.flush()
@@ -166,10 +166,11 @@ class BaseKeyProviderFactory(Tester):
         if secret_key_strength is None:
             secret_key_strength = 128
         found = False
-        for line in file(keyfile).readlines():
-            if line.startswith('%s:%d:' % (cipher_algorithm, secret_key_strength)):
-                debug('Found system key: %s' % line)
-                found = True
+        with open(keyfile) as f:
+            for line in f.readlines():
+                if line.startswith('%s:%d:' % (cipher_algorithm, secret_key_strength)):
+                    debug('Found system key: %s' % line)
+                    found = True
         self.assertTrue(found, 'Did not found specific system key in %s' % keyfile)
 
     def _grep_database_files(self, pattern, path, expect=None, skip=False, debug_detail=False):
@@ -177,7 +178,7 @@ class BaseKeyProviderFactory(Tester):
         skip: skip check in topdir and result assert for avoiding dead loop
         """
         grep_commitlog_cmd = "grep -r '%s' %s" % (pattern, os.path.join(self.Tester.test_path, 'test/node*/', path))
-        output = commands.getoutput(grep_commitlog_cmd)
+        output = subprocess.getoutput(grep_commitlog_cmd)
         debug('\tExpect: %s, Result: %s' % (expect, len(output) > 0))
         if debug_detail:
             debug('\tCMD: %s' % grep_commitlog_cmd)
@@ -362,7 +363,7 @@ class EncryptionAtRestBase(Tester):
         try:
             kp.read_verify_workload(session)
         except ReadFailure as e:
-            debug(e.message)
+            debug(str(e))
         err = 'SSTable reader found an exception when reading sstable'
         node1.watch_log_for(err, from_mark=mark)
         self.allow_log_errors = self.check_errors(node1, [err], search_str='ERROR')
@@ -377,13 +378,13 @@ class EncryptionAtRestBase(Tester):
         try:
             kp.read_verify_workload(session)
         except ReadFailure as e:
-            debug('Encryption key has been re-generated, expect to fail. %s' % e.message)
+            debug('Encryption key has been re-generated, expect to fail. %s' % str(e))
 
     def _multiple_ks_test(self, key_provider=KeyProviderEnum.local):
         kss = ['mks_%s' % i for i in range(self.multiple_num)]
         kp = self.get_key_provider(key_provider)
         kp.prepare_conf()
-        session = self.prepare(kss=kss, restart=key_provider==KeyProviderEnum.kmip)
+        session = self.prepare(kss=kss, restart=key_provider == KeyProviderEnum.kmip)
         secret_key_file = None
         system_key_file = None
         for ks in kss:
@@ -435,7 +436,7 @@ class EncryptionAtRestTest(EncryptionAtRestBase):
                     try:
                         EncryptionAtRestBase._smoke_test(self, key_provider=value, cipher_algorithm=k, secret_key_strength=i)
                     except Exception as e:
-                        debug(e.message)
+                        debug(str(e))
                     finally:
                         EncryptionAtRestBase.cleanup(self)
 
@@ -484,7 +485,7 @@ class SystemInfoEncryptionTest(EncryptionAtRestBase):
         debug('Original salted_hash in system_auth.roles:\n%s' % salted_hash)
         # ignore short prefix and suffix in searching binary to avoid error
         # skip fixed prefix `$6$`, one more byte, and 2 chars suffix
-        salted_hash = salted_hash[4:-2].replace('/', '\/')
+        salted_hash = salted_hash[4:-2].replace('/', r'\/')
         debug('GREP_DB_FILES: Check PM key user in commitlogs ....')
         key_provider._grep_database_files(rand_user, 'commitlogs/', expect=expect)
         debug('GREP_DB_FILES: Check salted_hash of password in commitlogs ....')
