@@ -138,7 +138,7 @@ class CQLAuditTester(AuditTester):
         self.assertLastAuditRow(session, "DDL", "ALTER TABLE test1 ADD v2 int", "test1",
                                 match='DML' in audit_settings['audit_categories'])
 
-        for i in xrange(0, 10):
+        for i in range(0, 10):
             session.execute("INSERT INTO test1 (k, v1, v2) VALUES (%d, %d, %d)" % (i, i, i))
             self.assertLastAuditRow(session, "DML", "INSERT INTO test1 (k, v1, v2) VALUES (%d, %d, %d)" % (i, i, i),
                                     "test1", match='DML' in audit_settings['audit_categories'])
@@ -147,12 +147,12 @@ class CQLAuditTester(AuditTester):
                                     "test2", match='DML' in audit_settings['audit_categories'])
 
         res = sorted(session.execute("SELECT * FROM test1"))
-        assert rows_to_list(res) == [[i, i, i] for i in xrange(0, 10)], res
+        assert rows_to_list(res) == [[i, i, i] for i in range(0, 10)], res
         self.assertLastAuditRow(session, "QUERY", "SELECT * FROM test1", "test1",
                                 match='QUERY' in audit_settings['audit_categories'])
 
         res = sorted(session.execute("SELECT * FROM test2"))
-        assert rows_to_list(res) == [[i, i, i] for i in xrange(0, 10)], res
+        assert rows_to_list(res) == [[i, i, i] for i in range(0, 10)], res
         self.assertLastAuditRow(session, "QUERY", "SELECT * FROM test2", "test2",
                                 match='QUERY' in audit_settings['audit_categories'])
 
@@ -187,10 +187,10 @@ class CQLAuditTester(AuditTester):
         session.execute("CREATE KEYSPACE ks2 WITH replication = { 'class':'SimpleStrategy', 'replication_factor':1} AND DURABLE_WRITES = true")
         session.execute("CREATE TABLE ks2.test1 (k int PRIMARY KEY, v1 int)")
         session.execute("ALTER TABLE ks2.test1 ADD v2 int")
-        for i in xrange(0, 10):
+        for i in range(0, 10):
             session.execute("INSERT INTO ks2.test1 (k, v1, v2) VALUES (%d, %d, %d)" % (i, i, i))
         res = sorted(session.execute("SELECT * FROM ks2.test1"))
-        assert rows_to_list(res) == [[i, i, i] for i in xrange(0, 10)], res
+        assert rows_to_list(res) == [[i, i, i] for i in range(0, 10)], res
         session.execute("TRUNCATE ks2.test1")
         res = session.execute("SELECT * FROM ks2.test1")
         assert rows_to_list(res) == [], res
@@ -421,14 +421,14 @@ class CQLAuditTester(AuditTester):
         count_after = self.getAuditEntriesCount(session)
         assert (count_before == count_after), "count_before is {} and count_after is {}".format(count_before, count_after)
 
-        for i in xrange(0, 10):
+        for i in range(0, 10):
             session.execute("INSERT INTO test1 (k, v1, v2) VALUES (%d, %d, %d)" % (i, i, i))
             self.assertLastAuditRow(session, "DML", "INSERT INTO test1 (k, v1, v2) VALUES (%d, %d, %d)" % (i, i, i),
                                     "test1")
 
         count_before = self.getAuditEntriesCount(session)
         res = sorted(session.execute("SELECT * FROM test1"))
-        assert rows_to_list(res) == [[i, i, i] for i in xrange(0, 10)], res
+        assert rows_to_list(res) == [[i, i, i] for i in range(0, 10)], res
         count_after = self.getAuditEntriesCount(session)
         assert (count_before == count_after), "count_before is {} and count_after is {}".format(count_before, count_after)
 
