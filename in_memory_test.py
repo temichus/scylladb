@@ -276,7 +276,7 @@ class InMemoryTest(Tester):
         node1.flush()
         self.alter_table_to_in_memory(session=session, key_space_name=key_space_name, table_name=table_name)
         debug("Inserting additional data")
-        insert_c1c2(session, keys=range(num_keys, num_keys + num_additional_keys), ks=key_space_name)
+        insert_c1c2(session, keys=list(range(num_keys, num_keys + num_additional_keys)), ks=key_space_name)
         debug("Flushing to disk")
         node1.nodetool(cmd="flush", capture_output=False, wait=False)
         node1._wait_no_pending_flushes(wait_timeout=30)
@@ -286,8 +286,8 @@ class InMemoryTest(Tester):
 
     @expected_failure(err_log_msg="In-Memory disk is out of space", exception=(NodeError,))
     def alter_table_to_in_memory_more_data_then_available_test(self):
-        num_keys = int((self.in_memory_amount_kb * 0.57) / self.memory_usage_per_key_factor)
-        self.alter_table_to_in_memory_test(num_additional_keys = num_keys)
+        num_keys = int((self.in_memory_amount_kb * 0.57) // self.memory_usage_per_key_factor)
+        self.alter_table_to_in_memory_test(num_additional_keys=num_keys)
 
     def streaming_test(self):
         """
