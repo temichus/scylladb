@@ -2844,13 +2844,14 @@ class TestPagingWithIndexingAndAggregation(BasePagingTester, PageAssertionMixin)
         self._verify_col_func_results(session, filtered_list, query_fmt, result_fmt, col, 'count', len, where_clause, allow_filtering)
         self._verify_col_func_results(session, filtered_list, query_fmt, result_fmt, col, 'min', min, where_clause, allow_filtering)
         self._verify_col_func_results(session, filtered_list, query_fmt, result_fmt, col, 'max', max, where_clause, allow_filtering)
-        if col.endswith('bigint'):
-            query_fmt = '{query_func}(cast({col} as varint))'
-            result_fmt = 'system.{query_func}(system.castasvarint({col}))'
-        else:
-            query_fmt = '{query_func}(cast({col} as bigint))'
-            result_fmt = 'system.{query_func}(system.castasbigint({col}))'
-        self._verify_col_func_results(session, filtered_list, query_fmt, result_fmt, col, 'sum', sum, where_clause, allow_filtering)
+        if col.endswith('int'):
+            if col.endswith('bigint'):
+                query_fmt = '{query_func}(cast({col} as varint))'
+                result_fmt = 'system.{query_func}(system.castasvarint({col}))'
+            else:
+                query_fmt = '{query_func}(cast({col} as bigint))'
+                result_fmt = 'system.{query_func}(system.castasbigint({col}))'
+            self._verify_col_func_results(session, filtered_list, query_fmt, result_fmt, col, 'sum', sum, where_clause, allow_filtering)
 
     def _create_and_verify_results(self, session, cols, filter_func, where_clause, allow_filtering):
         all_data = self.create_and_insert_data(self.data, session)
@@ -2896,6 +2897,7 @@ class TestPagingWithIndexingAndAggregation(BasePagingTester, PageAssertionMixin)
 
         self.create_and_verify_mybool_results(session, 'id', allow_filtering=True)
 
+    @attr('next-gating')
     def test_group_ck_column_index_filter(self):
         session = self.prepare()
         self.create_table(session)
