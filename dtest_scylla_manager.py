@@ -553,7 +553,7 @@ class ManagerTask(ScyllaManagerBase):
             ###
             progress = self.progress
             debug("Task {} progress is: {}".format(self.id, progress))
-        return self.status in list_status
+        return status in list_status
 
     def wait_for_status(self, list_status, check_task_progress=True, timeout=600, step=20,
                         log_progress_on_failure=True):
