@@ -568,7 +568,7 @@ class SLATests(Tester):
                                          'service_level': s} for s in slas[:2]}
         user = User(session=session, name='user1')
 
-        for _, role_sl in roles_slas.iteritems():
+        for _, role_sl in roles_slas.items():
             self.create_entity_with_service_level(entity=role_sl['role'], service_level=role_sl['service_level'])
 
         roles_slas[200]['role'].grant_me_to(grant_to=roles_slas[600]['role'])
@@ -577,9 +577,9 @@ class SLATests(Tester):
         roles_slas[200]['role'].grant_me_to(grant_to=user)
 
 
-        expected_attached_all_sla_list = [role_sl['role'] for _, role_sl in roles_slas.iteritems()] + [user]
+        expected_attached_all_sla_list = [role_sl['role'] for _, role_sl in roles_slas.items()] + [user]
 
-        for _, role_sl in roles_slas.iteritems():
+        for _, role_sl in roles_slas.items():
             self.validate_sla(service_level=role_sl['service_level'],
                               expected_slas_list=[role_sl['service_level']],
                               expected_attached_slas_list=[role_sl['role']],
@@ -610,7 +610,7 @@ class SLATests(Tester):
         roles_slas = {s.service_shares: {'role': Role(name="role%d" % s.service_shares, session=session),
                                          'service_level': s} for s in slas}
         user = self.create_user(session=session, name='user1')
-        for _, role_sl in roles_slas.iteritems():
+        for _, role_sl in roles_slas.items():
             self.create_entity_with_service_level(entity=role_sl['role'], service_level=role_sl['service_level'])
 
         roles_slas[200]['role'].grant_me_to(grant_to=roles_slas[50]['role'])
@@ -619,8 +619,8 @@ class SLATests(Tester):
         roles_slas[50]['role'].grant_me_to(grant_to=user)
 
         # Validate roles after grant
-        expected_attached_all_sla_list = [role_sl['role'] for _, role_sl in roles_slas.iteritems()]
-        for _, role_sl in roles_slas.iteritems():
+        expected_attached_all_sla_list = [role_sl['role'] for _, role_sl in roles_slas.items()]
+        for _, role_sl in roles_slas.items():
             self.validate_sla(service_level=role_sl['service_level'],
                               expected_slas_list=[role_sl['service_level']],
                               expected_attached_slas_list=[role_sl['role']],
