@@ -261,7 +261,13 @@ test fails, the logs for the node are saved in a `logs/<timestamp>` directory
 for analysis (it's not perfect but has been good enough so far, I'm open to
 better suggestions).
 
-- Most of the time when you start a cluster with `cluster.start()`, you'll want to pass in `wait_for_binary_proto=True` so the call blocks until the cluster is ready to accept CQL connections. We tried setting this to `True` by default once, but the problems caused there (e.g. when it waited the full timeout time on a node that was deliberately down) were more unpleasant and more difficult to debug than the problems caused by having it `False` by default.
+- By default, when the cluster is started, `wait_for_binary_proto=True` and `wait_other_notice=True` are set by default
+so the call blocks until all nodes start and the cluster is ready to accept CQL connections.
+You may want to explicitly set these to `False` if you want to execute some stimulus while the cluster is starting.
+Another example is setting `wait_for_binary_proto=False` and/or `wait_other_notice=False` when starting a single node
+that is not expected to be able to join the cluster or if other nodes in the cluster are considered alive but
+cannot detect that the node started.
+
 - If you're using JMX via [the `jmxutils` module](jmxutils.py), make sure to call `remove_perf_disable_shared_mem` on the node or nodes you want to query with JMX _before starting the nodes_. `remove_perf_disable_shared_mem` disables a JVM option that's incompatible with JMX (see [this JMX ticket](https://github.com/rhuss/jolokia/issues/198)). It works by performing a string replacement in the node's Cassandra startup script, so changes will only propagate to the node at startup time.
 
 If you'd like to know what to expect during a code review, please see the included [CONTRIBUTING file](CONTRIBUTING.md).
