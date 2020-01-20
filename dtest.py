@@ -414,12 +414,12 @@ class Tester(TestCase):
         elif scylla_version:
             debug("Starting Scylla cluster version {}".format(scylla_version))
             cluster = ScyllaCluster(self.test_path, name, cassandra_version=scylla_version,
-                                    force_wait_for_cluster_start=parallel_tests())
+                                    force_wait_for_cluster_start=True)
         else:
             if isScylla(cdir):
                 debug("Starting Scylla cluster from directory {}".format(cdir))
                 cluster = ScyllaCluster(self.test_path, name, cassandra_dir=cdir, install_dir=cdir,
-                                        force_wait_for_cluster_start=parallel_tests())
+                                        force_wait_for_cluster_start=True)
             else:
                 debug("Starting Cassandra cluster from directory {}".format(cdir))
                 cluster = Cluster(self.test_path, name, cassandra_dir=cdir)
