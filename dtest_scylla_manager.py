@@ -7,7 +7,7 @@ import yaml
 from enum import Enum
 
 from ccmlib import common
-from dtest import warning, debug, wait_for
+from dtest import warning, debug, wait_for, WaitTimeoutExpired
 from distutils.version import LooseVersion
 
 
@@ -528,6 +528,15 @@ class ManagerTask(ScyllaManagerBase):
                 break
         return progress
 
+    def full_progress_string(self):
+        if self.status in [TaskStatus.NEW, TaskStatus.STARTING]:
+            return " 0%"
+        cmd = "task progress {} -c {}".format(self.id, self.cluster_id)
+        stdout_list, stderr = self.sctool.run(cmd=cmd)
+        assert not stderr, f"Failed to receive task progress for task {self.id}\nerror:\n{stderr}"
+        full_stdout_string = '\n'.join(stdout_list)
+        return full_stdout_string
+
     def is_status_in_list(self, list_status, check_task_progress=False):
         """
         Check if the status of a given task is in list
@@ -546,10 +555,18 @@ class ManagerTask(ScyllaManagerBase):
             debug("Task {} progress is: {}".format(self.id, progress))
         return self.status in list_status
 
-    def wait_for_status(self, list_status, check_task_progress=True, timeout=600, step=20):
+    def wait_for_status(self, list_status, check_task_progress=True, timeout=600, step=20,
+                        log_progress_on_failure=True):
         text = "Waiting until task: {} reaches status of: {}".format(self.id, list_status)
-        is_status_reached = wait_for(func=self.is_status_in_list, step=step, text=text, list_status=list_status,
-                                     check_task_progress=check_task_progress, timeout=timeout)
+        try:
+            is_status_reached = wait_for(func=self.is_status_in_list, step=step, text=text, list_status=list_status,
+                                         check_task_progress=check_task_progress, timeout=timeout)
+        except WaitTimeoutExpired:
+            if log_progress_on_failure:
+                task_progress_string = self.full_progress_string()
+                warning(f"Task {self.id} failed to reach a status from {list_status}\n"
+                        f"Task Progress:\n{task_progress_string}")
+            raise
         return is_status_reached
 
     def wait_and_get_final_status(self, timeout=600, step=20):
