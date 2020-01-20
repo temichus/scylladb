@@ -502,7 +502,7 @@ class TestBootstrap(Tester):
         t = KillOnBootstrap(node2)
         t.start()
 
-        node2.start()
+        node2.start(wait_for_binary_proto=False, wait_other_notice=False)
         t.join()
         self.assertFalse(node2.is_running())
 

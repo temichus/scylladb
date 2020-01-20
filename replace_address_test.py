@@ -140,7 +140,7 @@ class TestReplaceAddress(Tester):
         node4 = new_node(cluster, bootstrap=True, token=None, remote_debug_port='0', data_center=None)
 
         mark = node4.mark_log()
-        node4.start(replace_address=self.cluster.get_node_ip(3))
+        node4.start(replace_address=self.cluster.get_node_ip(3), no_wait=True)
         node4.watch_log_for(".Cannot replace a live node...", from_mark=mark)
         self.check_not_running(node4)
 
@@ -156,7 +156,7 @@ class TestReplaceAddress(Tester):
         # try to replace an unassigned ip address
         mark = node4.mark_log()
         try:
-            node4.start(replace_address=self.cluster.get_node_ip(5))
+            node4.start(replace_address=self.cluster.get_node_ip(5), no_wait=True)
         except NodeError:
             pass  # node doesn't start as expected
         node4.watch_log_for("Cannot replace_address .*"+self.cluster.get_node_ip(5)+" because it doesn't exist in gossip", from_mark=mark)
@@ -220,14 +220,14 @@ class TestReplaceAddress(Tester):
 
         # check that restarting node 3 doesn't work
         debug("Try to restart node 3 (should fail)")
-        node3.start()
+        node3.start(no_wait=True)
         checkCollision = node1.grep_log("between .*"+self.cluster.get_node_ip(3)+" and .*"+self.cluster.get_node_ip(4)+"; .*"+self.cluster.get_node_ip(4)+" is the new owner")
         debug(checkCollision)
         self.assertEqual(len(checkCollision), 1)
 
         # restart node4 (if error's might have to change num_tokens)
         node4.stop(gently=False)
-        node4.start(wait_for_binary_proto=True)
+        node4.start(wait_for_binary_proto=True, wait_other_notice=False)
 
         debug("Verifying querying works again.")
         finalData = list(session.execute(query))

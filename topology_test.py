@@ -234,7 +234,7 @@ class TestTopology(Tester):
                 break
             debug("Restarting node2")
             node2.stop(gently=False)
-            node2.start(wait_for_binary_proto=True)
+            node2.start(wait_for_binary_proto=True, wait_other_notice=False)
 
         debug("Waiting for decommission to complete")
         t.join()

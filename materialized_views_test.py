@@ -1279,14 +1279,14 @@ class TestMaterializedViews(Tester):
                                  statement_template.format(mv.mv_name), consistency_level=ConsistencyLevel.QUORUM,
                                  group=True, groupby_column1=select, groupby_column2=select)
 
-    def _add_new_node(self, data_center='dc1', wait_for_binary_proto=True, jvm_args=None,
+    def _add_new_node(self, data_center='dc1', wait_for_binary_proto=True, wait_other_notice=False, jvm_args=None,
                       configuration_options=None, delay=0, new_node_index=None):
         time.sleep(delay)
         node = new_node(self.cluster, data_center=data_center, new_node_index=new_node_index)
         if configuration_options:
             node.set_configuration_options(values=configuration_options)  # CASSANDRA-11670
         debug("Start join at {}".format(time.strftime("%H:%M:%S")))
-        node.start(wait_for_binary_proto=wait_for_binary_proto, jvm_args=jvm_args)
+        node.start(wait_for_binary_proto=wait_for_binary_proto, wait_other_notice=wait_other_notice, jvm_args=jvm_args)
         session = self.patient_exclusive_cql_connection(node)
         debug("Finish join at {}".format(time.strftime("%H:%M:%S")))
         return session
@@ -3259,7 +3259,7 @@ class TestMaterializedViews(Tester):
         debug('Restarting node1 to ensure commit log is replayed')
         node1.stop(wait_other_notice=True)
         # Set batchlog.replay_timeout_seconds=1 so we can ensure batchlog will be replayed below
-        node1.start(jvm_args=["-Dcassandra.batchlog.replay_timeout_in_ms=1"])
+        node1.start(jvm_args=["-Dcassandra.batchlog.replay_timeout_in_ms=1"], no_wait=True)
 
         debug('Replay batchlogs')
         time.sleep(0.001)  # Wait batchlog.replay_timeout_in_ms=1 (ms)

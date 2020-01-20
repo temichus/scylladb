@@ -292,7 +292,7 @@ class TestUpdateClusterLayout(Tester):
 
         debug("Start node 4...")
         node4 = new_node(cluster)
-        node4.start(jvm_args=['--logger-log-level','stream_session=debug'])
+        node4.start(jvm_args=['--logger-log-level','stream_session=debug'], no_wait=True)
         node4.watch_log_for("Beginning stream session")
 
         debug("Stop node 2...")
@@ -337,7 +337,7 @@ class TestUpdateClusterLayout(Tester):
             # creating an additional node without actually adding it to the cluster
             new_node = cluster.new_node(i, auto_bootstrap=True, add_node=False)
             debug("Start Node %d" % i)
-            new_node.start(jvm_args=['--logger-log-level','stream_session=debug'])
+            new_node.start(jvm_args=['--logger-log-level','stream_session=debug'], no_wait=True)
             new_node.watch_log_for("JOINING: Starting to bootstrap")
             new_node.watch_log_for("Beginning stream session")
             debug("Stop Node %d" % i)
@@ -438,7 +438,7 @@ class TestUpdateClusterLayout(Tester):
             executor = ThreadPoolExecutor(max_workers=1)
 
             debug("Start Node %d" % i)
-            new_node.start(jvm_args=['--logger-log-level','stream_session=debug'])
+            new_node.start(jvm_args=['--logger-log-level','stream_session=debug'], no_wait=True)
             new_node.watch_log_for("JOINING: Starting to bootstrap")
             t = executor.submit(run)
             new_node.watch_log_for("Beginning stream session")
@@ -513,7 +513,7 @@ class TestUpdateClusterLayout(Tester):
         executor = ThreadPoolExecutor(max_workers=1)
 
         debug("Start Node")
-        a_new_node.start(jvm_args=['--logger-log-level','stream_session=debug'])
+        a_new_node.start(jvm_args=['--logger-log-level','stream_session=debug'], no_wait=True)
         a_new_node.watch_log_for("JOINING: Starting to bootstrap")
         time.sleep(1)
         t = executor.submit(run)
@@ -554,7 +554,7 @@ class TestUpdateClusterLayout(Tester):
         insert_c1c2(session, keys=range(2000), consistency=consistency)
 
         node4 = new_node(cluster)
-        node4.start(jvm_args=['--logger-log-level','stream_session=debug'])
+        node4.start(jvm_args=['--logger-log-level','stream_session=debug'], no_wait=True)
         node4.watch_log_for("Beginning stream session")
         insert_c1c2(session, keys=range(2000, 4000), consistency=consistency)
 
@@ -610,7 +610,7 @@ class TestUpdateClusterLayout(Tester):
         executor = ThreadPoolExecutor(max_workers=1)
 
         node4 = new_node(cluster)
-        node4.start(jvm_args=['--logger-log-level','stream_session=debug'])
+        node4.start(jvm_args=['--logger-log-level','stream_session=debug'], no_wait=True)
         node4.watch_log_for("Beginning stream session")
         t = executor.submit(run)
 
@@ -655,7 +655,7 @@ class TestUpdateClusterLayout(Tester):
         executor = ThreadPoolExecutor(max_workers=1)
 
         node4 = new_node(cluster)
-        node4.start(jvm_args=['--logger-log-level','stream_session=debug'])
+        node4.start(jvm_args=['--logger-log-level','stream_session=debug'], no_wait=True)
         node4.watch_log_for("Beginning stream session")
         t = executor.submit(run)
 
@@ -1122,7 +1122,7 @@ class TestUpdateClusterLayout(Tester):
             t = executor.submit(run)
 
         node4 = new_node(cluster)
-        node4.start(jvm_args=['--logger-log-level','stream_session=debug'])
+        node4.start(jvm_args=['--logger-log-level','stream_session=debug'], no_wait=True)
         node4.watch_log_for("Beginning stream session")
         # Create table and insert data during bootstrapping of the new node
         if when == "during":
@@ -1208,7 +1208,7 @@ class TestUpdateClusterLayout(Tester):
 
         debug("Start node 4...")
         node4 = new_node(cluster)
-        node4.start(jvm_args=['--logger-log-level','stream_session=debug'])
+        node4.start(jvm_args=['--logger-log-level','stream_session=debug'], no_wait=True)
         node4.watch_log_for("Beginning stream session")
 
         debug("Stop node 4 ...")
