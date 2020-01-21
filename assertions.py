@@ -82,6 +82,14 @@ def assert_all(session, query, expected, cl=ConsistencyLevel.ONE, ignore_order=F
         expected = sorted(expected)
     assert list_res == expected, "Expected %s from %s, but got %s" % (expected, query, list_res)
 
+def assert_all_or_none(session, query, expected, cl=ConsistencyLevel.ONE, ignore_order=False, num_attempts=1, result_as_string=False):
+    """
+    :param num_attempts: defines how many time try to assert data in case failure. Used in retry_with_func_attempts decorator
+    """
+    list_res = _get_list_res(session, query, cl, ignore_order, result_as_string)
+    if ignore_order:
+        expected = sorted(expected)
+    assert (list_res == expected or list_res == []), "Expected %s or [] from %s, but got %s" % (expected, query, list_res)
 
 def assert_almost_equal(*args, **kwargs):
     try:
