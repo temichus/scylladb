@@ -2868,14 +2868,12 @@ class TestMaterializedViews(Tester):
             )
 
     def _stop_nodes(self, nodes):
-        for node in nodes:
-            debug('Stop {}'.format(node.name))
-            node.stop(wait_other_notice=True)
+        debug('Stopping {}'.format([node.name for node in nodes]))
+        self.cluster.stop_nodes(nodes, wait_other_notice=True)
 
     def _start_nodes(self, nodes):
-        for node in nodes:
-            debug('Start {}'.format(node.name))
-            node.start(wait_other_notice=True, wait_for_binary_proto=True)
+        debug('Starting {}'.format([node.name for node in nodes]))
+        self.cluster.start_nodes(nodes, wait_other_notice=True, wait_for_binary_proto=True)
 
     def complex_repair_test(self):
         """
@@ -2914,10 +2912,8 @@ class TestMaterializedViews(Tester):
 
         _verify_data_by_one(session, rows, ConsistencyLevel.ONE, False, 'Verify the data in the MV on node1 with CL=ONE')
 
-        debug('Shutdown node1, node4 and node5')
         self._stop_nodes([node1, node4, node5])
 
-        debug('Start nodes 2 and 3')
         self._start_nodes([node2, node3])
 
         session2 = self.patient_cql_connection(node2)
@@ -2981,9 +2977,7 @@ class TestMaterializedViews(Tester):
         wait_for_view(cluster=self.cluster, session=session, ks="ks", view="t_by_v")
         session.cluster.control_connection.wait_for_schema_agreement()
 
-        debug('Shutdown node2 and node3')
-        node2.stop(wait_other_notice=True)
-        node3.stop(wait_other_notice=True)
+        self._stop_nodes([node2, node3])
 
         session.execute("INSERT INTO ks.t (id, v, v2, v3) VALUES (1, 1, 'a', 3.0)")
         session.execute("INSERT INTO ks.t (id, v, v2, v3) VALUES (2, 2, 'a', 3.0)")
@@ -3001,10 +2995,7 @@ class TestMaterializedViews(Tester):
 
         session.shutdown()
 
-        debug('Shutdown node1, node4 and node5')
         self._stop_nodes([node1, node4, node5])
-
-        debug('Start nodes 2 and 3')
         self._start_nodes([node2, node3])
 
         session2 = self.patient_cql_connection(node2)
@@ -3039,9 +3030,7 @@ class TestMaterializedViews(Tester):
         #time.sleep(5)
 
         debug('Start remaining nodes')
-        node1.start(wait_other_notice=True, wait_for_binary_proto=True)
-        node4.start(wait_other_notice=True, wait_for_binary_proto=True)
-        node5.start(wait_other_notice=True, wait_for_binary_proto=True)
+        self._start_nodes([node1, node4, node5])
 
         # at this point the data may not be repaired yet so we may have an inconsistency.
         # this value should return either the expected data or None
