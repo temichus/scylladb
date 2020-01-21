@@ -137,7 +137,7 @@ class SSTableDumpAllDatatypes(CqlshPrepare, SSTableDump):
     def sstabledump_all_datatypes_test(self):
         cluster = self.cluster
         cluster.populate(1).start()
-        self.all_datatypes_prepare(nodes=1, partitioner=None)
+        self.all_datatypes_prepare(nodes=1)
 
         # TODO: apply all the data on scylla-tools-java #24 fix
         data = self.data[:19] + self.data[21:]
