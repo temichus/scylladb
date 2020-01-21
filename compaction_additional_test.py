@@ -4,6 +4,9 @@ import os
 import shutil
 import glob
 import tools
+
+from threading import Thread
+
 from dtest import Tester, debug, run_with_params
 from scylla_tools import get_sstables_files, insert_c1c2, get_cf_dir
 from cassandra import ConsistencyLevel, concurrent
@@ -12,6 +15,8 @@ from assertions import assert_none
 from datetime import datetime as dt
 from nose.plugins.attrib import attr
 import sstable_tools.statistics
+
+from ccmlib.node import NodetoolError
 
 
 @attr('dtest-full', 'single_node')
@@ -403,17 +408,19 @@ for strategy in strategies:
 
 
 def micros_to_seconds(micros):
-    return int(micros/(1000 * 1000))
+    return int(micros / (1000 * 1000))
 
 
 def seconds_to_micros(seconds):
     return seconds * 1000 * 1000
 
 
+@attr('dtest-full')
 class TestTimeWindowDataSegregation(Tester):
     keyspace_name = "ks"
     table_name = "test"
     window_size = 1
+    window_unit = "MINUTES"
 
     def _get_time_window_in_seconds(self, statistics_file):
         with open(statistics_file, 'rb') as f:
@@ -422,10 +429,9 @@ class TestTimeWindowDataSegregation(Tester):
         metadata = sstable_tools.statistics.parse(data, 'mc')
         min_timestamp = metadata['Stats']['min_timestamp']
         max_timestamp = metadata['Stats']['max_timestamp']
-
         return micros_to_seconds(max_timestamp - min_timestamp)
 
-    def _check_sstable_timestamps(self, node):
+    def _get_list_of_sstables(self, node):
         ks_path = os.path.join(node.get_path(), 'data', self.keyspace_name)
         statistics_files = []
         for dirpath, dirnames, filenames in os.walk(ks_path):
@@ -440,53 +446,224 @@ class TestTimeWindowDataSegregation(Tester):
                 if not d.startswith(self.table_name):
                     dirnames.remove(d)
 
-        self.assertTrue(len(statistics_files) > 0)
+        return statistics_files
 
+    def _check_sstable_timestamps(self, node):
+        statistics_files = self._get_list_of_sstables(node)
+        self.assertTrue(len(statistics_files) > 0)
         for sf in statistics_files:
             tw = self._get_time_window_in_seconds(sf)
+
             # Allow an error margin of a half-window.
             self.assertTrue(tw <= 1.5 * self.window_size * 60)
 
+    def _create_ks_cl_with_twcs(self, session, rf=1):
 
-    def test_streaming(self):
-        cluster = self.cluster
-        cluster.populate(1)
-        cluster.start(wait_for_binary_proto=True)
+        session.execute("CREATE KEYSPACE {} WITH replication = {{'class': 'SimpleStrategy', 'replication_factor': {}}}".format(self.keyspace_name, rf))
+        session.execute(
+            "CREATE TABLE {0.keyspace_name}.{0.table_name} (pk int, ck int, v int, PRIMARY KEY(pk, ck))"
+            "WITH compaction = {{"
+            "'class': 'TimeWindowCompactionStrategy',"
+            "'compaction_window_unit': '{0.window_unit}',"
+            "'compaction_window_size': {0.window_size} }}".format(self))
 
-        node1 = cluster.nodelist()[0]
+    def _simulate_write_process_in_minutes(self, session, duration_minutes=20, start_from_minute=0, flush_period_seconds=30, flushing_exclude_nodes=None):
+        """Simulate a write process across duration minutes.
 
-        session = self.patient_cql_connection(node1)
+        We use `USING TIMESTAMP` to distribute the writes evenly
+        across the entire range, simulating a write every second (to
+        several partitions).
+        flush_period_seconds allow to control how many time windows could be
+        in sstable
 
-        session.execute("CREATE KEYSPACE {} WITH replication = {{'class': 'SimpleStrategy', 'replication_factor': 1}}".format(self.keyspace_name))
-        session.execute("CREATE TABLE {}.{} (pk int, ck int, v int, PRIMARY KEY(pk, ck))"
-                "WITH compaction = {{"
-                    "'class': 'TimeWindowCompactionStrategy',"
-                    "'compaction_window_unit': 'MINUTES',"
-                    "'compaction_window_size': {}}}".format(self.keyspace_name, self.table_name, self.window_size))
+        Arguments:
+            session {Session} -- opened session to node
 
-        insert_statement = session.prepare("INSERT INTO {}.{} (pk, ck, v) VALUES (?, ?, ?) USING TIMESTAMP ?".format(self.keyspace_name, self.table_name))
+        Keyword Arguments:
+            duration_minutes {number} -- how many minutes to sumilate (default: {20})
+            flush_period_seconds {number} -- in how many seconds flush memtable (default: {30})
+            start_from_minute {number} -- start minute to write data
+            flushing_nodes {list} -- list of nodes, which should be flushed.
 
-        # Simulate a write process across 20 minutes.
-        # We use `USING TIMESTAMP` to distribute the writes evenly
-        # across the entire range, simulating a write every second (to
-        # several partitions).
-        for t in range(20 * 60):
+        """
+        exclude_nodes = flushing_exclude_nodes if flushing_exclude_nodes else []
+        insert_statement = session.prepare("INSERT INTO {}.{} (pk, ck, v) VALUES (?, ?, ?)"
+                                           "USING TIMESTAMP ?".format(self.keyspace_name, self.table_name))
+
+        flushing_nodes = [node for node in self.cluster.nodelist() if node not in exclude_nodes]
+        for t in range(start_from_minute * 60, duration_minutes * 60):
             concurrent.execute_concurrent_with_args(
-                    session,
-                    insert_statement,
-                    [(pk, t, 0, seconds_to_micros(t)) for pk in range(10)])
+                session,
+                insert_statement,
+                [(pk, t, 0, seconds_to_micros(t)) for pk in range(10)])
 
-            # Flush every half minute to ensure each sstable contains at
-            # max a single window.
-            if t % 30 == 0:
-                node1.flush()
+            # Flush every flush period in seconds on each node
+            if t % flush_period_seconds == 0:
+                for node in flushing_nodes:
+                    node.flush()
+
+    def _list_sstable_timestamps(self, node):
+        statistics_files = self._get_list_of_sstables(node)
+        list_sstables_timewindows = []
+        for sf in statistics_files:
+            time_window = self._get_time_window_in_seconds(sf)
+            list_sstables_timewindows.append((sf, time_window))
+
+        return list_sstables_timewindows
+
+    def test_streaming_during_adding_node_with_boostrap(self):
+        self.cluster.populate(1).start(wait_for_binary_proto=True)
+
+        node1 = self.cluster.nodelist()[0]
+        session = self.patient_cql_connection(node1)
+        self._create_ks_cl_with_twcs(session, rf=1)
+
+        self._simulate_write_process_in_minutes(session, duration_minutes=20)
 
         # Not really relevant to the test, just for sanity.
         self._check_sstable_timestamps(node1)
 
-        node2 = tools.new_node(cluster)
+        # node added with bootstrap enabled
+        node2 = tools.new_node(self.cluster)
         node2.start(wait_for_binary_proto=True)
-
         # After streaming the new node should also have at max one
         # window per sstable.
         self._check_sstable_timestamps(node2)
+
+    def test_streaming_decommission(self):
+        self.cluster.populate(2).start(wait_for_binary_proto=True)
+
+        node1, node2 = self.cluster.nodelist()  # type: ScyllaNode
+        session = self.patient_cql_connection(node1)
+        self._create_ks_cl_with_twcs(session, rf=1)
+
+        self._simulate_write_process_in_minutes(session, duration_minutes=20)
+        # Not really relevant to the test, just for sanity.
+        self._check_sstable_timestamps(node1)
+        self._check_sstable_timestamps(node2)
+
+        # run decommossion for node1
+        node1.decommission()
+        # After streaming the left node should also have at max one
+        # window per sstable.
+        self._check_sstable_timestamps(node2)
+
+    def test_streaming_on_repair(self):
+        self.cluster.populate(2).start(wait_for_binary_proto=True)
+
+        node1, node2 = self.cluster.nodelist()  # type: ScyllaNode
+        session = self.patient_cql_connection(node1)
+        self._create_ks_cl_with_twcs(session, rf=2)
+
+        self._simulate_write_process_in_minutes(session, duration_minutes=10)
+        self._check_sstable_timestamps(node1)
+        self._check_sstable_timestamps(node2)
+        node2.stop()
+        self._simulate_write_process_in_minutes(session, duration_minutes=20, start_from_minute=10,
+                                                flushing_exclude_nodes=[node2])
+        self._check_sstable_timestamps(node1)
+        node2.start(wait_for_binary_proto=True)
+        node2.repair(['-seq', self.keyspace_name])
+
+        self._check_sstable_timestamps(node1)
+        self._check_sstable_timestamps(node2)
+
+    def test_streaming_on_rebuild_multidc(self):
+
+        def _add_node(i, dc):
+            return self.cluster.new_node(i, debug=True, data_center=dc)
+
+        self.cluster.set_configuration_options(values={'endpoint_snitch': 'GossipingPropertyFileSnitch'})
+        node1 = _add_node(1, 'dc1')  # type: ScyllaNode
+
+        # start node in dc1
+        node1.start(wait_for_binary_proto=True)
+
+        # populate data in dc1
+        session = self.patient_exclusive_cql_connection(node1)
+        session.execute("CREATE KEYSPACE {} "
+                        " WITH replication = {{"
+                        "'class': 'NetworkTopologyStrategy', 'dc1':1}}".format(self.keyspace_name))
+        session.execute("CREATE TABLE {}.{} (pk int, ck int, v int, PRIMARY KEY(pk, ck))"
+                        " WITH compaction = {{"
+                        "'class': 'TimeWindowCompactionStrategy',"
+                        "'compaction_window_unit': 'MINUTES',"
+                        "'compaction_window_size': {}}}".format(self.keyspace_name, self.table_name, self.window_size))
+        session = self.patient_cql_connection(node1)
+        self._simulate_write_process_in_minutes(session, duration_minutes=10)
+        self._check_sstable_timestamps(node1)
+        # Bootstraping a new node in dc2 with auto_bootstrap: false
+        node2 = _add_node(2, 'dc2')  # type=ScyllaNode
+        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+
+        # wait for snitch to reload
+        node2.watch_log_for("init - Scylla.*initialization completed")
+        # alter keyspace to replicate to dc2
+        session = self.patient_exclusive_cql_connection(node2)
+        session.execute("ALTER KEYSPACE {} WITH replication = {{'class':'NetworkTopologyStrategy', 'dc1':1, 'dc2':1}};".format(self.keyspace_name))
+
+        self.rebuild_errors = 0
+        self.unexpected_errors = 0
+        mark = node2.mark_log()
+
+        # rebuild dc2 from dc1
+        def rebuild():
+            try:
+                node2.nodetool('rebuild dc1')
+            except NodetoolError as e:
+                if 'rebuild is in progress' in str(e):
+                    self.rebuild_errors += 1
+                else:
+                    debug('Unexpected rebuild failure {}'.format(str(e)))
+                    self.unexpected_errors += 1
+
+        cmd1 = Thread(target=rebuild)
+        cmd1.start()
+        cmd1.join()
+
+        self.assertEqual(self.unexpected_errors, 0,
+                         msg='unexpected rebuild errors encountered.')
+
+        node2.watch_log_for("Streaming for rebuild successful", from_mark=mark)
+        node2.wait_for_compactions()
+        self._check_sstable_timestamps(node2)
+
+    def test_streaming_sstables_with_several_timewindows(self):
+        self.cluster.populate(1).start(wait_for_binary_proto=True)
+
+        node1 = self.cluster.nodelist()[0]
+        session = self.patient_cql_connection(node1)
+        self._create_ks_cl_with_twcs(session, rf=1)
+
+        self._simulate_write_process_in_minutes(session, duration_minutes=10, flush_period_seconds=120)
+
+        sstable_timewindows_list = self._list_sstable_timestamps(node1)
+        for sstable, timewindow in sstable_timewindows_list:
+            self.assertTrue(timewindow <= 1.5 * 2 * 60)
+
+        node2 = tools.new_node(self.cluster)
+        node2.start(wait_for_binary_proto=True)
+
+        self._check_sstable_timestamps(node2)
+
+    def test_rebuild_node_streaming(self):
+        self.cluster.populate(3).start(wait_for_binary_proto=True)
+        node1 = self.cluster.nodelist()[0]  # type: ScyllaNode
+        session = self.patient_cql_connection(node1)
+        self._create_ks_cl_with_twcs(session, rf=3)
+
+        self._simulate_write_process_in_minutes(session, duration_minutes=10, flush_period_seconds=20)
+        for node in self.cluster.nodelist():
+            self._check_sstable_timestamps(node)
+        # stop node and remove all data
+        node3 = self.cluster.nodelist()[2]  # type: ScyllaNode
+        node3.stop()
+        data_dir = os.path.join(node3.get_path(), 'data', self.keyspace_name)
+        shutil.rmtree(data_dir, ignore_errors=True)
+        # start node and rebuild
+        node3.start(wait_other_notice=True, wait_for_binary_proto=True)
+        mark = node3.mark_log()
+        node3.nodetool('rebuild')
+        node3.watch_log_for("Streaming for rebuild successful", from_mark=mark)
+        node3.wait_for_compactions()
+        self._check_sstable_timestamps(node3)
