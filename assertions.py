@@ -43,14 +43,25 @@ def assert_invalid(session, query, matching=None, expected=InvalidRequest):
             assert re.search(matching, msg), "Error message does not contain " + matching + " (error = " + msg + ")"
 
 
+def _get_list_res(session, query, cl, ignore_order=False, result_as_string=False, timeout=None):
+    simple_query = SimpleStatement(query, consistency_level=cl)
+    if timeout is not None:
+        res = session.execute(simple_query, timeout=timeout)
+    else:
+        res = session.execute(simple_query)
+    list_res = rows_to_list(res)
+    if ignore_order:
+        list_res = sorted(list_res)
+    if result_as_string:
+        list_res = str(list_res)
+    return list_res
+
 @retry_with_func_attempts
 def assert_one(session, query, expected, cl=ConsistencyLevel.ONE, timeout=60, num_attempts=1):
     """
     :param num_attempts: defines how many time try to assert data in case failure. Used in retry_with_func_attempts decorator
     """
-    simple_query = SimpleStatement(query, consistency_level=cl)
-    res = session.execute(simple_query, timeout=timeout)
-    list_res = rows_to_list(res)
+    list_res = _get_list_res(session, query, cl, timeout=timeout)
     assert list_res == [expected], "Expected %s from %s, but got %s" % ([expected], query, list_res)
 
 @retry_with_func_attempts
@@ -58,9 +69,7 @@ def assert_none(session, query, cl=ConsistencyLevel.ONE, num_attempts=1):
     """
     :param num_attempts: defines how many time try to assert data in case failure. Used in retry_with_func_attempts decorator
     """
-    simple_query = SimpleStatement(query, consistency_level=cl)
-    res = session.execute(simple_query)
-    list_res = rows_to_list(res)
+    list_res = _get_list_res(session, query, cl)
     assert list_res == [], "Expected nothing from %s, but got %s" % (query, list_res)
 
 @retry_with_func_attempts
@@ -68,14 +77,9 @@ def assert_all(session, query, expected, cl=ConsistencyLevel.ONE, ignore_order=F
     """
     :param num_attempts: defines how many time try to assert data in case failure. Used in retry_with_func_attempts decorator
     """
-    simple_query = SimpleStatement(query, consistency_level=cl)
-    res = session.execute(simple_query)
-    list_res = rows_to_list(res)
+    list_res = _get_list_res(session, query, cl, ignore_order, result_as_string)
     if ignore_order:
         expected = sorted(expected)
-        list_res = sorted(list_res)
-    if result_as_string:
-        list_res = str(list_res)
     assert list_res == expected, "Expected %s from %s, but got %s" % (expected, query, list_res)
 
 
@@ -109,9 +113,7 @@ def assert_row_count_in_select(session, query, num_rows_expected, consistency_le
     Function to validate the row count are returned by select
     :param num_attempts: defines how many time try to assert data in case failure. Used in retry_with_func_attempts decorator
     """
-    simple_query = SimpleStatement(query, consistency_level=consistency_level)
-    res = session.execute(simple_query)
-    count = len(rows_to_list(res))
+    count = len(_get_list_res(session, query, consistency_level))
     assert count == num_rows_expected, "Expected a row count of {} in query \"{}\", but got {}".format(
             num_rows_expected, query, count)
 
