@@ -102,7 +102,6 @@ class CqlshPrepare(Tester):
                 self.cluster.set_configuration_options(values=configuration_options)
             self.cluster.populate(nodes).start(wait_for_binary_proto=True)
         else:
-            self.assertEqual(self.cluster.partitioner, partitioner, "Cannot reuse cluster: different partitioner")
             self.assertEqual(len(self.cluster.nodelist()), nodes, "Cannot reuse cluster: different number of nodes")
             self.assertIsNone(configuration_options)
 
