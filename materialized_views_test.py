@@ -14,7 +14,7 @@ from cassandra.cluster import Cluster
 from cassandra.query import SimpleStatement
 from enum import Enum  # Remove when switching to py3
 
-from assertions import assert_all, assert_one, assert_invalid, assert_unavailable, assert_none, \
+from assertions import assert_all, assert_one, assert_invalid, assert_unavailable, assert_none, assert_all_or_none, \
     assert_crc_check_chance_equal, assert_row_count, assert_two_queries_equal, \
     assert_two_queries_equal_ignore_order, assert_row_count_in_select
 from dtest import Tester, debug, flaky_with_tear_down
@@ -3043,9 +3043,9 @@ class TestMaterializedViews(Tester):
         node4.start(wait_other_notice=True, wait_for_binary_proto=True)
         node5.start(wait_other_notice=True, wait_for_binary_proto=True)
 
-        # at this point the data isn't repaired so we have an inconsistency.
-        # this value should return None
-        assert_all(
+        # at this point the data may not be repaired yet so we may have an inconsistency.
+        # this value should return either the expected data or None
+        assert_all_or_none(
             session2,
             "SELECT * FROM ks.t_by_v WHERE v2 = 'a'", [['a', 1, 1, 3.0], ['a', 2, 2, 3.0]],
             cl=ConsistencyLevel.QUORUM
