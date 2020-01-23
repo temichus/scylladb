@@ -941,7 +941,7 @@ class Tester(TestCase):
             found_errors = []
             for node in self.cluster.nodelist():
                 if not self.allow_log_errors:
-                    errors = list(self.__filter_errors(node.grep_log_for_errors()))
+                    errors = list(self.__filter_errors(node.grep_log_for_errors(distinct_errors=True)))
                     if len(errors) is not 0:
                         failed = True
                         found_errors.append((node.name, errors))
