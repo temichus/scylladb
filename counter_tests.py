@@ -666,7 +666,6 @@ class TestCountersOnMultipleNodes(Tester):
     def __init__(self, *argv, **kwargs):
         kwargs['cluster_options'] = {'start_rpc': 'true'}
         super(TestCountersOnMultipleNodes, self).__init__(*argv, **kwargs)
-        self.allow_log_errors = True
         self._start_row = 2
         self._row_cnt = 1000
         self._extra_row_cnt = 0
