@@ -34,7 +34,6 @@ class TestBootstrap(Tester):
             r'Streaming error occurred'
         ]
         Tester.__init__(self, *args, **kwargs)
-        self.allow_log_errors = True
 
     def get_space_used(self, node, table_name='cf'):
         output = node.nodetool('cfstats', True)[0]
