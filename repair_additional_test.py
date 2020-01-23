@@ -229,8 +229,7 @@ class RepairAdditionalBase(Tester):
         insert_c1c2(session, keys=range(3000, 4000), consistency=ConsistencyLevel.ONE)
 
         # Bring up all 3 nodes, each should have different data
-        node1.start(wait_other_notice=True, wait_for_binary_proto=True)
-        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+        self.cluster.start_nodes([node1, node2], wait_other_notice=True, wait_for_binary_proto=True)
 
         # Run repair on (arbitrarily), node 3
         time.sleep(10)  # see CASSANDRA-4373
@@ -1094,9 +1093,7 @@ class RepairAdditionalBase(Tester):
         # Start all nodes, do a repair limited to dc1 and dc3, and confirm the
         # data was correctly copied to node2 (in dc1) and node4 (in dc3) but
         # not to node3 (in dc2):
-        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
-        node3.start(wait_other_notice=True, wait_for_binary_proto=True)
-        node4.start(wait_other_notice=True, wait_for_binary_proto=True)
+        self.cluster.start_nodes([node2, node3, node4], wait_other_notice=True, wait_for_binary_proto=True)
         info = node1.repair(['-dc', 'dc1,dc3', 'ks'])
         debug(info[0])
         debug(info[1])
@@ -1119,9 +1116,7 @@ class RepairAdditionalBase(Tester):
         session = self.patient_cql_connection(node4, 'ks')
         self.assertEqual(len(list(session.execute("SELECT * from cf"))), 1, "cf on node4")
 
-        node1.start(wait_other_notice=True, wait_for_binary_proto=True)
-        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
-        node3.start(wait_other_notice=True, wait_for_binary_proto=True)
+        self.cluster.start_nodes([node1, node2, node3], wait_other_notice=True, wait_for_binary_proto=True)
 
         # Repair with one of the data centers specified being invalid should
         # cause a failure
@@ -1157,9 +1152,7 @@ class RepairAdditionalBase(Tester):
         session = self.patient_cql_connection(node1, 'ks')
         query = SimpleStatement("INSERT INTO cf (key, c1) VALUES ('k12', 'v12')", consistency_level=ConsistencyLevel.ONE)
         session.execute(query)
-        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
-        node3.start(wait_other_notice=True, wait_for_binary_proto=True)
-        node4.start(wait_other_notice=True, wait_for_binary_proto=True)
+        self.cluster.start_nodes([node2, node3, node4], wait_other_notice=True, wait_for_binary_proto=True)
         info = node1.repair(['-local', 'ks'])
         debug(info[0])
         debug(info[1])
@@ -1222,8 +1215,7 @@ class RepairAdditionalBase(Tester):
         insert_c1c2(session, keys=range(3000, 4000), consistency=ConsistencyLevel.ONE)
 
         # Bring up all 3 nodes, each should have different data
-        node1.start(wait_other_notice=True, wait_for_binary_proto=True)
-        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+        self.cluster.start_nodes([node1, node2], wait_other_notice=True, wait_for_binary_proto=True)
 
         # Run repair on all three nods in parallel
         executor = ThreadPoolExecutor(max_workers=3)
@@ -1835,8 +1827,7 @@ class RepairAdditionalBase(Tester):
         insert_c1c2(session, keys=range(2 * keys_unit, 3 * keys_unit), consistency=ConsistencyLevel.ONE)
 
         # Bring up all 3 nodes, each should have different data
-        node1.start(wait_other_notice=True, wait_for_binary_proto=True)
-        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+        self.cluster.start_nodes([node1, node2], wait_other_notice=True, wait_for_binary_proto=True)
 
         # Run repair on (arbitrarily), node 3
         time.sleep(10)  # see CASSANDRA-4373
@@ -2128,8 +2119,7 @@ class RepairAdditionalBase(Tester):
         insert_c1c2(session, keys=range(3000, 4000), consistency=ConsistencyLevel.ONE)
 
         # Bring up all 3 nodes, each should have different data
-        node1.start(wait_other_notice=True, wait_for_binary_proto=True)
-        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+        self.cluster.start_nodes([node1, node2], wait_other_notice=True, wait_for_binary_proto=True)
 
         debug("starting repair...")
         info = self._repair(node3, more_options + ['ks'])
@@ -2305,8 +2295,7 @@ class RepairAdditionalBase(Tester):
         insert_c1c2(session, keys=range(15, 25), consistency=ConsistencyLevel.ONE)
 
         # Bring up all 3 nodes, each should have different data
-        node1.start(wait_other_notice=True, wait_for_binary_proto=True)
-        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+        self.cluster.start_nodes([node1, node2], wait_other_notice=True, wait_for_binary_proto=True)
 
         debug("starting repair...")
         info = self._repair(node3, more_options + ['ks'])
