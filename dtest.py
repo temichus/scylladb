@@ -938,13 +938,15 @@ class Tester(TestCase):
                 debug("Test failed with errors: {}".format(self._outcome.errors))
         found_cores = None
         try:
+            found_errors = []
             for node in self.cluster.nodelist():
                 if not self.allow_log_errors:
-                    errors = list(self.__filter_errors(
-                        ['\n'.join(msg) for msg in node.grep_log_for_errors()]))
+                    errors = list(self.__filter_errors(node.grep_log_for_errors()))
                     if len(errors) is not 0:
                         failed = True
-                        raise AssertionError('Unexpected error in %s node log: %s' % (node.name, errors))
+                        found_errors.append((node.name, errors))
+            if found_errors:
+                raise AssertionError('Unexpected errors found: {}'.format(found_errors))
             found_cores = self.find_cores()
             if found_cores:
                 failed = True
