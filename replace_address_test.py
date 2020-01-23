@@ -33,7 +33,6 @@ class TestReplaceAddress(Tester):
             r'Streaming error occurred'
         ]
         Tester.__init__(self, *args, **kwargs)
-        self.allow_log_errors = True
 
     def replace_stopped_node_test(self):
         """
