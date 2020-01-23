@@ -938,12 +938,18 @@ class Tester(TestCase):
                 debug("Test failed with errors: {}".format(self._outcome.errors))
         found_cores = None
         try:
+            critical_errors = []
             found_errors = []
             for node in self.cluster.nodelist():
+                matches = node.grep_log(r'Assertion.*failed|Aborting|AddressSanitizer')
+                if matches:
+                    critical_errors.append((node.name, [m[0].strip() for m in matches]))
                 errors = list(self.__filter_errors(node.grep_log_for_errors(distinct_errors=True)))
                 if len(errors) is not 0:
                     failed = True
                     found_errors.append((node.name, errors))
+            if critical_errors:
+                raise AssertionError('Critical errors found: {}\nOther errors: {}'.format(critical_errors, found_errors))
             if found_errors:
                 if not self.allow_log_errors:
                     raise AssertionError('Unexpected errors found: {}'.format(found_errors))
