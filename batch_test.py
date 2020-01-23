@@ -121,9 +121,7 @@ class TestBatch(Tester):
         node3.stop(gently=False)
 
         debug("Starting all nodes")
-        node1.start(wait_for_binary_proto=True)
-        node2.start(wait_for_binary_proto=True)
-        node3.start(wait_for_binary_proto=True)
+        self.cluster.start_nodes(wait_for_binary_proto=True)
 
         debug("Waiting for batch replay")
         time.sleep(4)  # batchlog replay timeout
