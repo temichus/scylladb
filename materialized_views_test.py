@@ -1983,8 +1983,7 @@ class TestMaterializedViews(Tester):
         session.execute(("CREATE MATERIALIZED VIEW t_by_v AS SELECT * FROM t "
                          "WHERE v IS NOT NULL AND id IS NOT NULL PRIMARY KEY (v, id)"))
 
-        node2.stop()
-        node3.stop()
+        self.cluster.stop_nodes([node2, node3])
 
         wait_for_view_build_start(session, "ks", "t_by_v")
 
@@ -1994,8 +1993,7 @@ class TestMaterializedViews(Tester):
             time.sleep(1)
 
         debug("Restart the cluster")
-        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
-        node3.start(wait_other_notice=True, wait_for_binary_proto=True)
+        self.cluster.start_nodes([node2, node3], wait_other_notice=True, wait_for_binary_proto=True)
 
         debug("Wait and ensure the MV build resumed.")
         wait_for_view(cluster=self.cluster, session=session, ks="ks", view="t_by_v")
@@ -2399,10 +2397,8 @@ class TestMaterializedViews(Tester):
         self.eventually_assert_one(session, "SELECT k,a,b FROM mv WHERE k = 2", [2, 2, 2])
 
         # stop node2, node3
-        debug('Shutdown node2')
-        node2.stop(wait_other_notice=True)
-        debug('Shutdown node3')
-        node3.stop(wait_other_notice=True)
+        debug('Shutdown [node2, node3]')
+        self.cluster.stop_nodes([node2, node3], wait_other_notice=True)
         # shadow a = 1, create a = 2
         query = SimpleStatement("UPDATE t USING TIMESTAMP 9 SET a = 2 WHERE k = 1", consistency_level=ConsistencyLevel.ONE)
         self.update_view(session, query, flush)
@@ -2410,10 +2406,8 @@ class TestMaterializedViews(Tester):
         query = SimpleStatement("UPDATE t USING TTL 3 SET a = 2 WHERE k = 2", consistency_level=ConsistencyLevel.ONE)
         self.update_view(session, query, flush)
 
-        debug('Starting node2')
-        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
-        debug('Starting node3')
-        node3.start(wait_other_notice=True, wait_for_binary_proto=True)
+        debug('Starting [node2, node3]')
+        self.cluster.start_nodes([node2, node3], wait_other_notice=True, wait_for_binary_proto=True)
 
         # For k = 1 & a = 1, We should get a digest mismatch of tombstones and repaired
         # We don't have check_trace_events
@@ -2602,8 +2596,7 @@ class TestMaterializedViews(Tester):
         assert_none(session, "SELECT * FROM t_by_v WHERE v = 1")
 
         debug('Shutdown nodes 2 and 3')
-        node2.stop(wait_other_notice=True)
-        node3.stop(wait_other_notice=True)
+        self.cluster.stop_nodes([node2, node3], wait_other_notice=True)
 
         session.execute(SimpleStatement("UPDATE t USING TIMESTAMP 4 SET v = 1 WHERE id = 1",
                                         consistency_level=ConsistencyLevel.ONE))
@@ -2615,8 +2608,8 @@ class TestMaterializedViews(Tester):
 
         self.allow_log_errors = True  # otherwise we have in teardown verification:
         # Exception occurred when loading system table views: Can't find a column family with UUID
-        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
-        node3.start(wait_other_notice=True, wait_for_binary_proto=True)
+        debug('Starting nodes 2 and 3')
+        self.cluster.start_nodes([node2, node3], wait_other_notice=True, wait_for_binary_proto=True)
 
         session2 = self.patient_exclusive_cql_connection(node2)
         session2.execute('USE ks')
@@ -2702,8 +2695,8 @@ class TestMaterializedViews(Tester):
         debug('Repair the mv replica')
         node1.nodetool("repair {ks} {mv_name}".format(ks=tm.keyspace, mv_name=mv.mv_name))
 
-        node1.stop(wait_other_notice=True)
-        node3.stop(wait_other_notice=True)
+        debug('Stop [node1, node3]')
+        self.cluster.stop_nodes([node1, node3], wait_other_notice=True)
 
         # Validate data
         debug('Verify the MV data for updated rows in the MV with CL=ONE')
@@ -2830,8 +2823,7 @@ class TestMaterializedViews(Tester):
 
         node1.start(wait_other_notice=True, wait_for_binary_proto=True)
         debug('Shutdown node2 and node3')
-        node2.stop(wait_other_notice=True)
-        node3.stop(wait_other_notice=True)
+        self.cluster.stop_nodes([node2, node3], wait_other_notice=True)
 
         session = self.patient_exclusive_cql_connection(node1)
         session.execute('USE ks')
@@ -2844,8 +2836,7 @@ class TestMaterializedViews(Tester):
             )
 
         debug('Restarting node2 and node3')
-        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
-        node3.start(wait_other_notice=True, wait_for_binary_proto=True)
+        self.cluster.start_nodes([node2, node3], wait_other_notice=True, wait_for_binary_proto=True)
 
         # Just repair the base replica
         debug('Starting repair on node1')
@@ -3192,8 +3183,7 @@ class TestMaterializedViews(Tester):
                          'PRIMARY KEY (state, username)'))
 
         debug("Stopping other nodes")
-        node1.stop(wait_other_notice=True)
-        node2.stop(wait_other_notice=True)
+        self.cluster.stop_nodes([node1, node2], wait_other_notice=True)
         debug("Restarting node3")
         node3.start(wait_for_binary_proto=True)
         session = self.patient_cql_connection(node3, consistency_level=ConsistencyLevel.QUORUM)
@@ -3302,17 +3292,16 @@ class TestMaterializedViews(Tester):
                             "('Jane{}', 'Doe', 'F', 1980)".format(i), consistency_level=ConsistencyLevel.ALL))
         self.cluster.flush()
 
-        node2.stop(wait=True, wait_other_notice=True)
+        stopped = [node2]
         if double_failure:
-            node3.stop(wait=True, wait_other_notice=True)
+            stopped.append(node3)
+        self.cluster.stop_nodes(stopped, wait_other_notice=True)
 
         num_updates = 500
         for i in range(num_updates):
             session.execute(SimpleStatement("UPDATE users SET state = 'CA{}' WHERE username = 'Jane{}'".format(i, 1500 - 2*i),
                                             consistency_level=ConsistencyLevel.ANY))
-        node2.start(wait_for_binary_proto=True, wait_other_notice=True)
-        if double_failure:
-            node3.start(wait_for_binary_proto=True, wait_other_notice=True)
+        self.cluster.start_nodes(stopped, wait_for_binary_proto=True, wait_other_notice=True)
         view = 'users_by_state'
         # Wait until the view is built.
         # Note that it won't wait until all the data is propagated from hinted handoff
