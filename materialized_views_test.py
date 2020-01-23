@@ -265,7 +265,6 @@ class TestMaterializedViews(Tester):
         wait_for_view(cluster=self.cluster, session=session, ks='mview', view='users_by_first_name')
         wait_for_view(cluster=self.cluster, session=session, ks='mview', view='users_by_last_name')
 
-        self.allow_log_errors = True
         self.eventually(lambda: self._validate_cs_results(node1_dc1, exclude_errors=['mutation_write_timeout_exception'],
                                                           node_action='', double_failure=True))
 
@@ -546,7 +545,7 @@ class TestMaterializedViews(Tester):
 
         self._validate_data_in_mvs(tm=tm, session=session, table_expected_rows=prefill, mv_expected_rows=prefill,
                                    consistency_level=ConsistencyLevel.ALL)
-        self.ignore_log_patterns = [r'Error applying view update to .*: std::_Nested_exception<no_such_column_family>']
+        self.ignore_log_patterns += [r'Error applying view update to .*: std::_Nested_exception<no_such_column_family>']
 
     def mv_populating_from_existing_data_with_restriction_test(self):
         session = self.prepare(rf=3, nodes=4)
@@ -576,42 +575,44 @@ class TestMaterializedViews(Tester):
                                      groupby_column2=mv.mv_columns_list[0],
                                      restrict_column1=list(mv.mv_where_restriction.keys())[0],
                                      restrict_value1=mv.mv_where_restriction[list(mv.mv_where_restriction.keys())[0]]['value']))
+            self.ignore_log_patterns += [r'view - Error applying view update to .*: exceptions::mutation_write_failure_exception '
+                                         '(Operation failed for ks.{} - received 0 responses and 1 failures from 1 CL=ONE.)'.format(mv.mv_name)]
 
     def mv_populating_from_existing_data_during_inserts_test(self):
         """ Create 10 materialized views in parallel with base table prefill """
-        self._mv_populating_from_existing_data_during_changes_test('insert', nodes=4, rf=3, mvs=10, prefill=40000, fail=False)
+        self._mv_populating_from_existing_data_during_changes_test('insert', nodes=4, rf=3, mvs=10, prefill=40000)
 
     def mv_populating_from_existing_data_during_updates_test(self):
         """ Create 10 materialized views in parallel with base table updates """
-        self._mv_populating_from_existing_data_during_changes_test('update', nodes=4, rf=3, mvs=10, prefill=40000, fail=False)
+        self._mv_populating_from_existing_data_during_changes_test('update', nodes=4, rf=3, mvs=10, prefill=40000)
 
     def mv_populating_from_existing_data_during_deletes_test(self):
         """ Create 10 materialized views in parallel with base table deletes """
-        self._mv_populating_from_existing_data_during_changes_test('delete', nodes=4, rf=3, mvs=10, prefill=40000, fail=False)
+        self._mv_populating_from_existing_data_during_changes_test('delete', nodes=4, rf=3, mvs=10, prefill=40000)
 
     def mv_populating_from_existing_data_during_extend_test(self):
         """ Create 10 materialized views in parallel with adding a node """
-        self._mv_populating_from_existing_data_during_changes_test('add node', nodes=4, rf=3, mvs=10, prefill=40000, fail=False)
+        self._mv_populating_from_existing_data_during_changes_test('add node', nodes=4, rf=3, mvs=10, prefill=40000)
 
     def mv_populating_from_existing_data_during_node_remove_test(self):
         """ Create 10 materialized views in parallel with removing a node """
-        self._mv_populating_from_existing_data_during_changes_test('remove node', nodes=4, rf=3, mvs=10, prefill=40000, fail=False)
+        self._mv_populating_from_existing_data_during_changes_test('remove node', nodes=4, rf=3, mvs=10, prefill=40000)
 
     @attr('dtest-heavy')
     def mv_populating_from_existing_data_during_node_stop_test(self):
         """ Create 10 materialized views in parallel with stopping a node """
-        self._mv_populating_from_existing_data_during_changes_test('stop node', nodes=4, rf=3, mvs=10, prefill=40000, fail=False)
+        self._mv_populating_from_existing_data_during_changes_test('stop node', nodes=4, rf=3, mvs=10, prefill=40000)
 
     def mv_populating_from_existing_data_during_node_decommission_test(self):
         """ Create 10 materialized views in parallel with a node decommission """
-        self._mv_populating_from_existing_data_during_changes_test('decommission', nodes=4, rf=3, mvs=10, prefill=40000, fail=False)
+        self._mv_populating_from_existing_data_during_changes_test('decommission', nodes=4, rf=3, mvs=10, prefill=40000)
 
     @attr('dtest-heavy')
     def mv_populating_from_existing_data_during_node_restart_test(self):
         """ Create 10 materialized views in parallel with a node restart """
-        self._mv_populating_from_existing_data_during_changes_test('restart node', nodes=4, rf=3, mvs=10, prefill=40000, fail=False)
+        self._mv_populating_from_existing_data_during_changes_test('restart node', nodes=4, rf=3, mvs=10, prefill=40000)
 
-    def _mv_populating_from_existing_data_during_changes_test(self, change_type, nodes, rf, mvs, prefill, fail):
+    def _mv_populating_from_existing_data_during_changes_test(self, change_type, nodes, rf, mvs, prefill):
         session = self.prepare(rf=rf, nodes=nodes, options={'prometheus_port': 0})
         tm = TableManager(session, self.cluster,
                           columns={'int': {'amount': mvs, 'frozen': False,
@@ -653,8 +654,6 @@ class TestMaterializedViews(Tester):
 
         proc_functions = [change_func, {'func': self._create_mvs_by_one_column, 'args': (tm, mvs)}]
         run_in_parallel(proc_functions)
-
-        self.allow_log_errors = fail
 
         try:
             if change_type not in ['stop node', 'restart node']:
@@ -1809,7 +1808,6 @@ class TestMaterializedViews(Tester):
         )
 
         # Rename a column with an injected byteman rule to kill the node after the first schema update
-        self.allow_log_errors = True
         script_version = '4x' if self.cluster.version() >= '4' else '3x'
         node.byteman_submit(['./byteman/merge_schema_failure_{}.btm'.format(script_version)])
         with self.assertRaises(NoHostAvailable):
@@ -1928,7 +1926,6 @@ class TestMaterializedViews(Tester):
         session = self.prepare(options={'hinted_handoff_enabled': False, 'shadow_round_ms': 1000})
         node1, node2, node3 = self.cluster.nodelist()
 
-        self.allow_log_errors = True
         session.execute("CREATE TABLE t (id int PRIMARY KEY, v int, v2 text, v3 decimal)")
 
         rows = 200000
@@ -1968,7 +1965,6 @@ class TestMaterializedViews(Tester):
         session = self.prepare(options={'hinted_handoff_enabled': False, 'shadow_round_ms': 1000})
         node1, node2, node3 = self.cluster.nodelist()
 
-        self.allow_log_errors = True
         session.execute("CREATE TABLE t (id int PRIMARY KEY, v int, v2 text, v3 decimal)")
 
         rows = 200000
@@ -2024,11 +2020,14 @@ class TestMaterializedViews(Tester):
         return '{}M'.format(512 * int(smp))
 
     def _do_resharding_test(self, smp_before, smp_after):
+        self.ignore_log_patterns += [
+            r'view - Error applying view update to .*: exceptions::unavailable_exception',
+            r'view - Error applying view update to .*: exceptions::mutation_write_timeout_exception',
+        ]
         session = self.prepare(options={'hinted_handoff_enabled': False, 'shadow_round_ms': 1000, 'prometheus_port': 0, 'read_request_timeout_in_ms': 100000, 'range_request_timeout_in_ms': 100000},
                                jvm_args=['--smp', str(smp_before), '--memory', self.set_memory_param(smp_before)])
         node1, node2, node3 = self.cluster.nodelist()
 
-        self.allow_log_errors = True
         session.execute("CREATE TABLE t (id int PRIMARY KEY, v int, v2 text, v3 decimal)")
 
         rows = 200000
@@ -2082,10 +2081,6 @@ class TestMaterializedViews(Tester):
         """Test that a MV build is interrupted when the view is removed"""
 
         session = self.prepare(options={'hinted_handoff_enabled': False})
-
-        # Expect at least one error since writing a view update can race with
-        # dropping the view.
-        self.allow_log_errors = True
 
         session.execute("CREATE TABLE t (id int PRIMARY KEY, v int, v2 text, v3 decimal)")
 
@@ -2606,8 +2601,6 @@ class TestMaterializedViews(Tester):
             [1, 1, 'b', 3.0]
         )
 
-        self.allow_log_errors = True  # otherwise we have in teardown verification:
-        # Exception occurred when loading system table views: Can't find a column family with UUID
         debug('Starting nodes 2 and 3')
         self.cluster.start_nodes([node2, node3], wait_other_notice=True, wait_for_binary_proto=True)
 
@@ -3212,7 +3205,7 @@ class TestMaterializedViews(Tester):
         """
 
         self.cluster.set_batch_commitlog(enabled=True)
-        self.ignore_log_patterns = [r'Dummy failure', r"Failed to force-recycle all segments"]
+        self.ignore_log_patterns += [r'Dummy failure', r"Failed to force-recycle all segments"]
         self.prepare(rf=1, install_byteman=True)
         node1, node2, node3 = self.cluster.nodelist()
         session = self.patient_exclusive_cql_connection(node1)
