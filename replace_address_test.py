@@ -111,7 +111,7 @@ class TestReplaceAddress(Tester):
         debug(checkCollision)
         self.assertEqual(len(checkCollision), 1)
 
-    @require('#4361')
+    @require('#4325')
     def shutdown_all_and_replace_node_test(self):
         debug("Starting cluster with 3 nodes.")
         cluster = self.cluster
