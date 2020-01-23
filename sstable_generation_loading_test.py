@@ -14,7 +14,6 @@ class TestSSTableGenerationAndLoading(Tester):
     def __init__(self, *argv, **kwargs):
         kwargs['cluster_options'] = {'start_rpc': 'true'}
         super(TestSSTableGenerationAndLoading, self).__init__(*argv, **kwargs)
-        self.allow_log_errors = True
 
     @attr('single_node')
     def promoted_index_generation_with_small_partition_followed_by_a_large_partition_test(self):
@@ -153,6 +152,15 @@ class TestSSTableGenerationAndLoading(Tester):
         session = self.patient_cql_connection(node1)
         new_rows = list(session.execute("SELECT * FROM %s" % (stress_table,)))
         self.assertEquals(original_rows, new_rows)
+
+        self.ignore_log_patterns += [r"database - Exception while populating keyspace 'keyspace1' with column family 'standard1' from file '.*': "
+                                      "sstables::malformed_sstable_exception \(.*: file not found\)",
+                                     r"database - Exception while populating keyspace 'keyspace1' with column family 'standard1' from file '.*': "
+                                      "std::filesystem::__cxx11::filesystem_error \(error system:2, filesystem error: (open|stat) failed: No such file or directory \[.*\]\)",
+                                     r"database - Unrecognized error while processing .*: std::filesystem::__cxx11::filesystem_error "
+                                      "\(error system:2, filesystem error: (open|stat) failed: No such file or directory \[.*\]\)",
+                                     r"database - malformed sstable .*: .*: file not found",
+                                    ]
 
     def sstableloader_compression_none_to_none_test(self):
         self.load_sstable_with_configuration(None, None)
