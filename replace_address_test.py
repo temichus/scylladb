@@ -118,12 +118,8 @@ class TestReplaceAddress(Tester):
         cluster.populate(3).start()
         node1, node2, node3 = cluster.nodelist()
 
-        node1.stop()
-        node2.stop()
-        node3.stop()
-
-        node1.start(wait_for_binary_proto=True)
-        node2.start(wait_for_binary_proto=True)
+        cluster.stop_nodes([node1, node2, node3])
+        cluster.start_nodes([node1, node2], wait_for_binary_proto=True)
 
         debug("Starting node 4 to replace node 3")
         node4 = new_node(cluster, bootstrap=True, token=None, remote_debug_port='0', data_center=None)
