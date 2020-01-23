@@ -940,13 +940,15 @@ class Tester(TestCase):
         try:
             found_errors = []
             for node in self.cluster.nodelist():
-                if not self.allow_log_errors:
-                    errors = list(self.__filter_errors(node.grep_log_for_errors(distinct_errors=True)))
-                    if len(errors) is not 0:
-                        failed = True
-                        found_errors.append((node.name, errors))
+                errors = list(self.__filter_errors(node.grep_log_for_errors(distinct_errors=True)))
+                if len(errors) is not 0:
+                    failed = True
+                    found_errors.append((node.name, errors))
             if found_errors:
-                raise AssertionError('Unexpected errors found: {}'.format(found_errors))
+                if not self.allow_log_errors:
+                    raise AssertionError('Unexpected errors found: {}'.format(found_errors))
+                else:
+                    warning('Expected errors found with allow_log_errors. Use ignore_log_patterns instead! {}'.format(found_errors))
             found_cores = self.find_cores()
             if found_cores:
                 failed = True
