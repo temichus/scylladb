@@ -128,7 +128,7 @@ class TestUpdateableConfig(Tester):
         node1.watch_log_for(err1, from_mark=mark)
         node1.watch_log_for(err2, from_mark=mark)
 
-        self.allow_log_errors = self.check_errors(node1, [err1, err2], search_str='ERROR')
+        self.check_errors(node1, [err1, err2])
 
         debug('Recover the config file')
         os.rename('%s.backup' % config_file_path, config_file_path)
