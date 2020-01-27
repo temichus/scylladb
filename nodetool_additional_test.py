@@ -1653,7 +1653,7 @@ class TestNodetool(Tester):
                 error = True
                 if hasattr(self, 'ignore_log_patterns'):
                    for p in self.ignore_log_patterns:
-                       if p in line:
+                       if re.search(p, line):
                            error = False
                 if error:
                     raise Exception('Error running cassandra-stress: {}'.format(ret))
