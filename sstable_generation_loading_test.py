@@ -199,7 +199,7 @@ class TestSSTableGenerationAndLoading(Tester):
 
         cluster = self.cluster
         cluster.set_configuration_options(values={'experimental': True})
-        cluster.populate(2).start()
+        cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2 = cluster.nodelist()
         time.sleep(.5)
 
@@ -234,8 +234,7 @@ class TestSSTableGenerationAndLoading(Tester):
         debug("Wiping out the data and restarting cluster")
         # wipe out the node data.
         cluster.clear()
-        cluster.start()
-        time.sleep(5)  # let gossip figure out what is going on
+        cluster.start(wait_for_binary_proto=True, wait_other_notice=True)
 
         debug("re-creating the keyspace and column families.")
         session = self.cql_connection(node1)
