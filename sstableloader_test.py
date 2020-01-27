@@ -129,7 +129,7 @@ class TestSSTableLoader(MigrationTestBase):
 
     @attr('next-gating')
     @attr('dtest-debug')
-    def load_migrated_table_with_old_counter(self):
+    def load_migrated_table_with_old_counter_test(self):
         """
         Test migration of old data with counter, using the default (--ignore-dropped-counter-data isn't passed)
         """
@@ -155,7 +155,7 @@ class TestSSTableLoader(MigrationTestBase):
 
     @attr('next-gating')
     @attr('dtest-debug')
-    def load_migrated_table_with_counter(self):
+    def load_migrated_table_with_counter_test(self):
         """
         Test migration of old data with counter, using the default (--ignore-dropped-counter-data isn't passed)
         """
