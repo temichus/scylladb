@@ -51,7 +51,7 @@ class TestBootstrap(Tester):
         cluster = self.cluster
         cluster.populate(1)
         debug("starting cluster")
-        cluster.start()
+        cluster.start(wait_for_binary_proto=True, wait_other_notice=True)
         debug("stopping cluster")
         cluster.stop()
         debug("done")
@@ -64,7 +64,7 @@ class TestBootstrap(Tester):
         cluster = self.cluster
         cluster.populate(3)
         debug("starting cluster")
-        cluster.start()
+        cluster.start(wait_for_binary_proto=True, wait_other_notice=True)
         debug("stopping node")
         node1 = cluster.nodelist()[0]
         node1.stop(wait_other_notice=True, wait_seconds=10)
@@ -79,7 +79,7 @@ class TestBootstrap(Tester):
         cluster = self.cluster
         cluster.populate(2)
         debug("starting cluster")
-        cluster.start()
+        cluster.start(wait_other_notice=True)
         debug("adding node3")
         node3 = cluster.new_node(3)
         debug("starting node3")
@@ -95,7 +95,7 @@ class TestBootstrap(Tester):
         cluster = self.cluster
         cluster.populate(2)
         debug("starting cluster")
-        cluster.start()
+        cluster.start(wait_other_notice=True)
         debug("adding node3")
         node3 = cluster.new_node(3, add_node=False)
 
