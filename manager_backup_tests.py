@@ -336,23 +336,25 @@ class TestScyllaMgmtBackup(Tester):
 
     @attr('scylla-manager')
     def test_backup_task_progress(self):
-        keyspace_table_and_key_range = {"ks": {"cf1": (1, 21)}}
-        node1, node2 = self._prepare_cluster_with_data(keyspace_table_and_key_range=keyspace_table_and_key_range)
+        node1, node2 = self.config_and_create_cluster(nodes=2)
 
         mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
 
-        backup_task = mgr_cluster.run_backup_command({"location": ["s3:{}".format(DESTINATION_BUCKET)],
-                                                      "keyspace": list(keyspace_table_and_key_range.keys())})
+        self._create_stress_compatible_table(node=node1)
+        self.cluster.stress(['write', 'n=5000K', '-rate', 'threads=50'])
 
-        backup_task.wait_for_status(list_status=[TaskStatus.RUNNING], timeout=100, step=3)
+        backup_task = mgr_cluster.run_backup_command({"location": ["s3:{}".format(DESTINATION_BUCKET)]})
+
+        backup_task.wait_for_status(list_status=[TaskStatus.RUNNING], timeout=100, step=1)
         progress_percentage = backup_task.progress
         assert progress_percentage != "N/A", "couldn't read the progress of the backup test"
 
         backup_task.wait_for_status(list_status=[TaskStatus.DONE], timeout=1000, step=5)
         progress_percentage = backup_task.progress
         assert progress_percentage == '100%', "The percentage of the backup task at its end was not 100%"
-        self.clean_restore_and_verify_backup(backup_task, self.cluster.nodelist(), mgr_cluster, node1,
-                                             keyspace_table_and_key_range)
+        self.clean_restore_and_verify_backup_with_stress(backup_task=backup_task, node_list=self.cluster.nodelist(),
+                                                         mgr_cluster=mgr_cluster, healthy_node=node1,
+                                                         number_of_rows="5000K", threads=50)
 
     @staticmethod
     def extract_all_snapshot_names(output):
