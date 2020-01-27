@@ -117,8 +117,6 @@ class TestUpdateClusterLayout(Tester):
         """
         cluster = self.cluster
 
-        self.allow_log_errors = True
-
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfer with the test (this must be after the populate)
         cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
@@ -204,7 +202,6 @@ class TestUpdateClusterLayout(Tester):
         4. Check that the second fails with correct cause
         """
         cluster = self.cluster
-        self.allow_log_errors = True
 
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfer with the test (this must be after the populate)
@@ -268,7 +265,6 @@ class TestUpdateClusterLayout(Tester):
         4. Check that the new node has all data
         """
         cluster = self.cluster
-        self.allow_log_errors = True
 
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfer with the test (this must be after the populate)
@@ -312,7 +308,6 @@ class TestUpdateClusterLayout(Tester):
         4. Check that the cluster returns all
         """
         cluster = self.cluster
-        self.allow_log_errors = True
 
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfer with the test (this must be after the populate)
@@ -382,7 +377,6 @@ class TestUpdateClusterLayout(Tester):
         """
 
         cluster = self.cluster
-        self.allow_log_errors = True
 
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfer with the test (this must be after the populate)
@@ -462,7 +456,6 @@ class TestUpdateClusterLayout(Tester):
         4. Check that the cluster returns all
         """
         cluster = self.cluster
-        self.allow_log_errors = True
 
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfer with the test (this must be after the populate)
@@ -538,7 +531,6 @@ class TestUpdateClusterLayout(Tester):
         4. Check that the cluster returns all
         """
         cluster = self.cluster
-        self.allow_log_errors = True
         consistency = {1: ConsistencyLevel.ONE, 2: ConsistencyLevel.TWO}[rf]
 
         # Disable hinted handoff and set batch commit log so this doesn't
@@ -580,7 +572,6 @@ class TestUpdateClusterLayout(Tester):
         4. Check that node was connected and the cluster returns all
         """
         cluster = self.cluster
-        self.allow_log_errors = True
         rf = 1
         consistency = {1: ConsistencyLevel.ONE, 2: ConsistencyLevel.TWO}[rf]
 
@@ -630,7 +621,6 @@ class TestUpdateClusterLayout(Tester):
         4. Check that the cluster returns all
         """
         cluster = self.cluster
-        self.allow_log_errors = True
         consistency = {1: ConsistencyLevel.ONE, 2: ConsistencyLevel.TWO}[rf]
 
         # Disable hinted handoff and set batch commit log so this doesn't
@@ -783,7 +773,6 @@ class TestUpdateClusterLayout(Tester):
         5. Check that the node rejoins the cluster and works correctly
         """
         cluster = self.cluster
-        self.allow_log_errors = True
 
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfer with the test (this must be after the populate)
@@ -832,7 +821,6 @@ class TestUpdateClusterLayout(Tester):
         5. Check that the node rejoins the cluster and works correctly
         """
         cluster = self.cluster
-        self.allow_log_errors = True
 
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfer with the test (this must be after the populate)
@@ -917,7 +905,6 @@ class TestUpdateClusterLayout(Tester):
         3. Check that the cluster returns all
         """
         cluster = self.cluster
-        self.allow_log_errors = True
         consistency = {1: ConsistencyLevel.ONE, 2: ConsistencyLevel.TWO}[rf]
 
         # Disable hinted handoff and set batch commit log so this doesn't
@@ -966,7 +953,6 @@ class TestUpdateClusterLayout(Tester):
         3. Check that the cluster returns all
         """
         cluster = self.cluster
-        self.allow_log_errors = True
         consistency = {1: ConsistencyLevel.ONE, 2: ConsistencyLevel.TWO}[rf]
 
         # Disable hinted handoff and set batch commit log so this doesn't
@@ -1090,7 +1076,6 @@ class TestUpdateClusterLayout(Tester):
         4. Check that node was connected and the cluster returns all data inserted
         """
         cluster = self.cluster
-        self.allow_log_errors = True
         rf = 1
         consistency = {1: ConsistencyLevel.ONE, 2: ConsistencyLevel.TWO}[rf]
 
@@ -1192,7 +1177,6 @@ class TestUpdateClusterLayout(Tester):
         4. Check gossip on_remove callback in storage_service will not cause deadlock
         """
         cluster = self.cluster
-        self.allow_log_errors = True
 
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfere with the test (this must be after the populate)
@@ -1527,8 +1511,6 @@ class TestLargeScaleCluster(Tester):
         """
         cluster = self.cluster
 
-        self.allow_log_errors = True
-
         node1 = cluster.nodelist()[0]
 
         session = self.patient_cql_connection(node1)
@@ -1562,8 +1544,6 @@ class TestLargeScaleCluster(Tester):
         """
         starting_size = 3
         cluster = self.cluster
-
-        self.allow_log_errors = True
 
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfere with the test (this must be after the populate)
