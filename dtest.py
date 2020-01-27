@@ -379,6 +379,8 @@ class Tester(TestCase):
         # if False, then scan the log of each node for errors after every test.
         if not hasattr(self, '_preserve_cluster'):
             self._preserve_cluster = False
+        if not hasattr(self, 'ignore_log_patterns'):
+            self.ignore_log_patterns = []
         self.allow_log_errors = False
         self.cluster_id_allocator = cluster_id_allocator
         self.cluster_options = kwargs.pop('cluster_options', None)
@@ -1013,8 +1015,7 @@ class Tester(TestCase):
         """Filter errors, removing those that match patterns"""
         if not patterns:
             patterns = []
-        if hasattr(self, 'ignore_log_patterns'):
-            patterns += self.ignore_log_patterns
+        patterns += self.ignore_log_patterns
         patterns.append(r'.*Compaction for .* deliberately stopped.*')
         for e in errors:
             for pattern in patterns:
@@ -1039,9 +1040,7 @@ class Tester(TestCase):
             assert False, '\n'.join(list(errors))
 
         if exclude_errors:
-            if not hasattr(self, 'ignore_log_patterns'):
-                self.ignore_log_patterns = []
-            self.ignore_log_patterns = list(set(self.ignore_log_patterns + exclude_errors))
+            self.ignore_log_patterns += list(set(self.ignore_log_patterns + exclude_errors))
 
     def check_errors_all_nodes(self, nodes=None, exclude_errors=None, search_str=None, regex=False):
         if nodes is None:

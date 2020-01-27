@@ -1211,8 +1211,6 @@ class TestNodetool(Tester):
 
     def _nodetool_refresh_expect_fail(self, node, ks='keyspace1', cf='standard1', expected_error=None, debug_message='', ignore_log_error=True):
         if expected_error and ignore_log_error:
-            if not hasattr(self, 'ignore_log_patterns'):
-                self.ignore_log_patterns = []
             self.ignore_log_patterns.append(expected_error)
 
         cmd = "refresh -- {} {}".format(ks, cf)

@@ -282,8 +282,6 @@ class RepairAdditionalBase(Tester):
         debug("checking data on node2...")
         self.check_rows_on_node(node2, 1000)
 
-        if not hasattr(self, 'ignore_log_patterns'):
-            self.ignore_log_patterns = []
         self.ignore_log_patterns.append(r'.*migration_task - Can\'t send migration request.*')
 
 
@@ -330,8 +328,6 @@ class RepairAdditionalBase(Tester):
         debug("checking data on node2...")
         self.check_rows_on_node(node2, 1000)
 
-        if not hasattr(self, 'ignore_log_patterns'):
-            self.ignore_log_patterns = []
         self.ignore_log_patterns.append(r'.*migration_task - Can\'t send migration request.*')
 
     def _repair_cell_update_test(self):
