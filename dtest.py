@@ -381,7 +381,6 @@ class Tester(TestCase):
             self._preserve_cluster = False
         if not hasattr(self, 'ignore_log_patterns'):
             self.ignore_log_patterns = []
-        self.allow_log_errors = False
         self.cluster_id_allocator = cluster_id_allocator
         self.cluster_options = kwargs.pop('cluster_options', None)
         self.cassandra_version = kwargs.pop('cassandra_version', None)
@@ -939,6 +938,8 @@ class Tester(TestCase):
             if self._outcome.errors:
                 failed = True
                 debug("Test failed with errors: {}".format(self._outcome.errors))
+        if hasattr(self, 'allow_log_errors'):
+            warning('allow_log_errors is deprecated. Use ignore_log_patterns instead! {}')
         found_cores = None
         try:
             critical_errors = []
@@ -956,10 +957,7 @@ class Tester(TestCase):
             if critical_errors:
                 raise AssertionError('Critical errors found: {}\nOther errors: {}'.format(critical_errors, found_errors))
             if found_errors:
-                if not self.allow_log_errors:
-                    raise AssertionError('Unexpected errors found: {}'.format(found_errors))
-                else:
-                    warning('Expected errors found with allow_log_errors. Use ignore_log_patterns instead! {}'.format(found_errors))
+                raise AssertionError('Unexpected errors found: {}'.format(found_errors))
             found_cores = self.find_cores()
             if found_cores:
                 raise AssertionError("Core file(s) found.{}".format("" if failed else " Marking test as failed."))
