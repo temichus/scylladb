@@ -1234,9 +1234,11 @@ class retrying(object):
                     return func(*args, **kwargs)
                 except self.allowed_exceptions as e:
                     if self.tear_down_on_failure:
-                        args[0].allow_log_errors = True
+                        tmp_ignore_log_patterns = args[0].ignore_log_patterns
+                        args[0].ignore_log_patterns = [r'.*']
                         args[0].tearDown()
                         args[0].setUp()
+                        args[0].ignore_log_patterns = tmp_ignore_log_patterns
                     debug("{} [{}/{}]: {}: will retry in {} second(s)".format(func.__name__, i+1, num_attempts, e, self.sleep_time))
                     time.sleep(self.sleep_time)
             if self.message:
