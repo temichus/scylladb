@@ -941,9 +941,12 @@ class Tester(TestCase):
             critical_errors = []
             found_errors = []
             for node in self.cluster.nodelist():
-                matches = node.grep_log(r'Assertion.*failed|Aborting|AddressSanitizer')
-                if matches:
-                    critical_errors.append((node.name, [m[0].strip() for m in matches]))
+                try:
+                    matches = node.grep_log(r'Assertion.*failed|Aborting|AddressSanitizer')
+                    if matches:
+                        critical_errors.append((node.name, [m[0].strip() for m in matches]))
+                except FileNotFoundError:
+                    pass
                 errors = list(self.__filter_errors(node.grep_log_for_errors(distinct_errors=True)))
                 if len(errors) is not 0:
                     found_errors.append((node.name, errors))
