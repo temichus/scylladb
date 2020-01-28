@@ -8,10 +8,6 @@ from nose.plugins.attrib import attr
 
 @attr('dtest-full')
 class TestGroupFunctions(Tester):
-    # failed types:
-    # ascii failure - https://github.com/scylladb/scylla/issues/5147
-    # unexpected hexa failure - https://github.com/scylladb/scylla/issues/5139
-    # blob, inet, list, map, set, time, tuple and udt failed for min and max (returned unexpected result - a hexa)
     types_to_skip = ['ascii', 'blob', 'inet', 'list', 'map', 'set', 'time', 'tuple', 'udt']
 
     text_types_list = ['ascii', 'blob', 'inet', 'uuid', 'text', 'varchar']
@@ -98,7 +94,6 @@ class TestGroupFunctions(Tester):
             self.create_tables_and_run_group_functions(session=session, table_name=self.table_name,
                                                        single_type=single_type)
     
-    @require('5139')
     def test_lists_type_group(self):
         session = self.prepare()
         for single_type in self.lists_types_list:
