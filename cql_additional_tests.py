@@ -2155,7 +2155,6 @@ class TestCQL(Tester):
         res = list(session.execute("SELECT * FROM test"))
         assert len(res) == 2, res
 
-    @require('#3574')
     @attr('single_node')
     def composite_index_with_pk_test(self):
 
