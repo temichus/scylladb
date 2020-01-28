@@ -7122,7 +7122,7 @@ class TestLWTWithCQL(Tester):
 
         assert_one(session, "SELECT * FROM {} WHERE a = 7".format(table_name), [7, 7, None, None, 7])
 
-    def lwt_with_empty_resultset(self):
+    def test_lwt_with_empty_resultset(self):
         """
         LWT with unset row.
         @jira_ticket CASSANDRA-12694
