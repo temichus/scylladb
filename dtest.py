@@ -946,7 +946,6 @@ class Tester(TestCase):
                     critical_errors.append((node.name, [m[0].strip() for m in matches]))
                 errors = list(self.__filter_errors(node.grep_log_for_errors(distinct_errors=True)))
                 if len(errors) is not 0:
-                    failed = True
                     found_errors.append((node.name, errors))
             if critical_errors:
                 raise AssertionError('Critical errors found: {}\nOther errors: {}'.format(critical_errors, found_errors))
@@ -957,8 +956,10 @@ class Tester(TestCase):
                     warning('Expected errors found with allow_log_errors. Use ignore_log_patterns instead! {}'.format(found_errors))
             found_cores = self.find_cores()
             if found_cores:
-                failed = True
                 raise AssertionError("Core file(s) found.{}".format("" if failed else " Marking test as failed."))
+        except:
+            failed = True
+            raise
         finally:
             try:
                 if failed or KEEP_LOGS:
