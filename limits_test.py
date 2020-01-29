@@ -1,4 +1,6 @@
 from dtest import Tester
+from scylla_tools import scylla_mode
+from cassandra.cluster import NoHostAvailable
 
 import math
 
@@ -42,15 +44,17 @@ class TestLimits(Tester):
         cluster = self.cluster
         return cluster
 
-    def _do_test_max_key_length(self, session, node, size):
-        print("Testing max key length for %i" % size)
+    def _do_test_max_key_length(self, session, node, size, expect_failure=False):
+        print("Testing max key length for {}.{}".format(size, " Expected failure..." if expect_failure else ""))
         key_name = "k" * size
 
-        session.execute("""
-            CREATE TABLE test1 (
-                %s int PRIMARY KEY,
-            )
-        """ % key_name)
+        c = "CREATE TABLE test1 ({} int PRIMARY KEY)".format(key_name)
+        if expect_failure:
+            with self.assertRaisesRegex(NoHostAvailable, "Key size too large: \d+ > 65535"):
+                session.execute(c)
+            return
+
+        session.execute(c)
 
         session.execute("insert into ks.test1  (%s) values (1);" % key_name)
         session.execute("insert into ks.test1  (%s) values (2);" % key_name)
@@ -62,17 +66,16 @@ class TestLimits(Tester):
                 WHERE %s=1
         """ % key_name)
 
-        self.assertEqual(len(res), 1)
+        self.assertEqual(len(res.current_rows), 1)
 
         res = session.execute("""
                 SELECT * FROM ks.test1
                 WHERE %s=2
         """ % key_name)
 
-        self.assertEqual(len(res), 1)
+        self.assertEqual(len(res.current_rows), 1)
         session.execute("""DROP TABLE test1""")
 
-    @skip('scylladb/scylla#807')
     def max_key_length_test(self):
         cluster = self.prepare()
         cluster.populate(1).start()
@@ -82,12 +85,16 @@ class TestLimits(Tester):
         self.create_ks(session, 'ks', 1)
 
         # biggest that will currently work in scylla
-        # key_name = "k" * 32766
+        # key_name = "k" * 65526
+        self._do_test_max_key_length(session, node, MAX_KEY_SIZE, expect_failure=True)
+        self._do_test_max_key_length(session, node, MAX_KEY_SIZE - 9, expect_failure=True)
 
-        size = 1
-        for i in range(int(math.log(MAX_KEY_SIZE, 2))):
-            size <<= 1
-            self._do_test_max_key_length(session, node, size - 1)
+        self._do_test_max_key_length(session, node, MAX_KEY_SIZE - 10)
+
+        size = MAX_KEY_SIZE // 2
+        while size >= 1:
+            self._do_test_max_key_length(session, node, size)
+            size >>= 3
 
     def _do_test_blob_size(self, session, node, size):
         print("Testing blob size %i" % size)
@@ -135,8 +142,8 @@ class TestLimits(Tester):
             size <<= 1
             self._do_test_blob_size(session, node, size - 1)
 
-    def _do_test_max_columns(self, session, node, count):
-        print("Testing maximum numbers of columns with count %i" % count)
+    def _do_test_max_columns(self, session, count, expect_failure=False):
+        print("Testing maximum numbers of columns with count {}.{}".format(count, " Expected failure..." if expect_failure else ""))
 
         # we must count the primary key
         count -= 1
@@ -152,6 +159,11 @@ class TestLimits(Tester):
         keys = keys
 
         c = """CREATE TABLE test1 (%s blub int PRIMARY KEY,)""" % keys_create
+        if expect_failure:
+            with self.assertRaisesRegex(NoHostAvailable, "Mutation of \d+ bytes is too large for the maximum size of 16777216"):
+                session.execute(c)
+            return
+
         session.execute(c)
 
         c = "insert into ks.test1  (%s blub) values (%s 1);" % (keys, values)
@@ -159,9 +171,7 @@ class TestLimits(Tester):
 
         session.execute("""DROP TABLE test1""")
 
-    # this test colludes issue #173 and issue #176
-    # since we do an insert statement
-    @skip('scylladb/scylla#809')
+    @scylla_mode('!debug')  # client times out in debug mode
     def max_columns_and_query_parameters_test(self):
         cluster = self.prepare()
         cluster.populate(1).start()
@@ -173,7 +183,7 @@ class TestLimits(Tester):
         count = 1
         for i in range(int(math.log(MAX_COLUMNS, 2))):
             count <<= 1
-            self._do_test_max_columns(session, node, count - 1)
+            self._do_test_max_columns(session, count - 1, expect_failure=(count == MAX_COLUMNS))
 
     def _do_test_max_tuples(self, session, node, count):
         print("Testing max tuples for %i" % count)
@@ -198,11 +208,10 @@ class TestLimits(Tester):
 
         c = "SELECT * FROM STUFF;"
         res = session.execute(c)
-        self.assertEqual(len(res), 1)
+        self.assertEqual(len(res.current_rows), 1)
 
         session.execute("""DROP TABLE stuff""")
 
-    @skip('scylladb/scylla#')
     def max_tuple_test(self):
         cluster = self.prepare()
         cluster.populate(1).start()
@@ -283,6 +292,7 @@ class TestLimits(Tester):
 
         session.execute("""DROP TABLE test1""")
 
+    @scylla_mode('!debug')  # client times out in debug mode
     def max_cells_test(self):
         cluster = self.prepare()
         cluster.populate(1).start()
@@ -295,21 +305,3 @@ class TestLimits(Tester):
         for i in range(int(math.log(MAX_CELLS, 2))):
             cells <<= 1
             self._do_test_max_cell_count(session, node, cells - 1)
-
-    @skip('scylladb/scylla#809')
-    def test_overflow_key_length(self):
-        cluster = self.prepare()
-        cluster.populate(1).start()
-        node = cluster.nodelist()[0]
-
-        session = self.patient_cql_connection(node)
-        self.create_ks(session, 'ks', 1)
-
-        # Here we overflow the max key length by 1
-        key_name = "k" * MAX_KEY_SIZE
-
-        session.execute("""
-            CREATE TABLE test1 (
-                %s int PRIMARY KEY,
-            )
-        """ % key_name)
