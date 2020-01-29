@@ -151,8 +151,10 @@ class HeatWeightedLB(Tester):
         metrics = self.get_metrics_from_nodes()
         self.verify_metrics(metrics)
 
-        debug('Wait for stress read finish')
-        thr.result()
+        if not thr.done():
+            debug('Cancel stress read')
+            thr.cancel()
+
         debug('Restart node {}'.format(self.node2.name))
         self.node2.stop(wait_other_notice=True)
         self.node2.start(wait_other_notice=True, wait_for_binary_proto=True)
@@ -162,8 +164,9 @@ class HeatWeightedLB(Tester):
         metrics = self.get_metrics_from_nodes()
         self.verify_metrics(metrics, cached=False)
 
-        debug('Wait for stress read finish')
-        thr.result()
+        if not thr.done():
+            debug('Cancel stress read')
+            thr.cancel()
 
     def heat_weighted_load_balancing_cl_ONE_test(self):
         self.run_heat_weighted_load_balancing('ONE')
