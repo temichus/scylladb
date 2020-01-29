@@ -55,26 +55,56 @@ class HeatWeightedLB(Tester):
             for i in range(10, 50):
                 for node_ind in (1, 3):
                     if cached:
-                        # parameter's delta is almost equal for all the nodes
-                        self.assertAlmostEqual(metrics[key][node_ind][i]['delta']/metrics[key][2][i]['delta'], 1, delta=0.5)
+                        # parameter's delta is within 0.25x - 4x for all the nodes
+                        delta_ratio = metrics[key][node_ind][i]['delta'] / metrics[key][2][i]['delta']
+                        self.assertGreaterEqual(delta_ratio, 0.25)
+                        self.assertLessEqual(delta_ratio, 4)
                     else:
-                        # parameter's delta on the restarted node is less from 4 to 13 times
+                        # parameter's delta on the restarted node is less from 3 to 13 times
                         mean_window = 5
                         mean_avg = sum([metrics[key][node_ind][j]['delta'] for j in range(i, i + mean_window)]) / mean_window
                         node_mean_avg = sum([metrics[key][2][j]['delta'] for j in range(i, i + mean_window)]) / mean_window
-                        self.assertIn(mean_avg // node_mean_avg, range(4, 13),
+                        self.assertIn(mean_avg // node_mean_avg, range(3, 13),
                                       'Cache difference between nodes is less then expected: {}/{}, metric {}'.format(
                                           mean_avg, node_mean_avg, key))
         key = 'scylla_column_family_cache_hit_rate.*cf=.*standard1'
+        last_drop = None
         for i in range(20, 50):
             for node_ind in (1, 3):
                 if cached:
                     # parameter's value is equal for all the nodes
                     self.assertEqual(metrics[key][node_ind][i]['val'], metrics[key][2][i]['val'])
                 else:
-                    # parameter's delta on the restarted node is less but growing
-                    self.assertGreater(metrics[key][node_ind][i]['val'], metrics[key][2][i]['val'])
-                    self.assertGreaterEqual(metrics[key][2][i]['val'], metrics[key][2][i - 1]['val'])
+                    # parameter's value on the restarted node is less than others
+                    self.assertGreaterEqual(metrics[key][node_ind][i]['val'], metrics[key][2][i]['val'])
+            if not cached:
+                # parameter's value on the restarted node may drop, but just a bit
+                ratio = metrics[key][2][i]['val'] / metrics[key][2][i-1]['val']
+                if ratio < 1.0:
+                    # allow one slight drop and then plateau at most 
+                    self.assertGreaterEqual(ratio, 0.98)
+                    self.assertEqual(last_drop, None)
+                    last_drop = i
+                elif ratio > 1.0:
+                    last_drop = None
+        # parameter's value on the restarted node is on a growing trend
+        if not cached:
+            v = metrics[key][2][19]['val']
+            val_min = v
+            val_min_pos = 19
+            val_max = v
+            val_max_pos = 19
+            for i in range(20, 50):
+                v = metrics[key][2][i]['val']
+                if v < val_min:
+                    val_min = v
+                    val_min_pos = i
+                if v > val_max:
+                    val_max = v
+                    val_max_pos = i
+            self.assertGreater(val_max_pos, val_min_pos)
+            self.assertGreater((20+50)/2, val_min_pos)
+            self.assertGreaterEqual(val_max_pos, (20+50)/2)
 
     def run_read_thread(self):
         executor = ThreadPoolExecutor(max_workers=1)
