@@ -14,7 +14,8 @@ class HeatWeightedLB(Tester):
 
     def __init__(self, *argv, **kwargs):
         super(HeatWeightedLB, self).__init__(*argv, **kwargs)
-        self._op_cnt = 10000
+        self._op_cnt = 5000
+        self._metrics_count = 60
 
     def _pretty_print(self, metrics):
         for key in metrics:
@@ -24,7 +25,7 @@ class HeatWeightedLB(Tester):
                     continue
             print(key)
             print('{:10s}   {:10s}   {:10s}'.format('node1', 'node2', 'node3'))
-            for i in range(100):
+            for i in range(self._metrics_count):
                 value = 'delta' if 'cache_hit_rate' not in key else 'val'
                 print('{:15s}  {:15s}  {:15s}'.format(str(metrics[key][1][i][value]),
                                                       str(metrics[key][2][i][value]),
@@ -33,13 +34,16 @@ class HeatWeightedLB(Tester):
     def get_metrics_from_nodes(self):
         debug('Get metrics from all nodes')
         node_metrics = {k: {1: [], 2: [], 3: []} for k in self.METRICS}
-        for i in range(100):
+        for _ in range(self._metrics_count):
+            t = time.time()
             for node_ind in (1, 2, 3):
                 metrics = self.get_node_metrics(node_ip=self.cluster.get_node_ip(node_ind), metrics=self.METRICS)
                 for k, v in metrics.items():
                     delta = v - node_metrics[k][node_ind][-1]['val'] if node_metrics[k][node_ind] else 0
                     node_metrics[k][node_ind].append(dict(val=v, delta=delta))
-            time.sleep(1)
+            delta = time.time() - t
+            if delta < 1:
+                time.sleep(1 - delta)
         self._pretty_print(node_metrics)
         return node_metrics
 
@@ -143,7 +147,7 @@ class HeatWeightedLB(Tester):
         self.node3.flush()
 
         thr = self.run_read_thread()
-        time.sleep(30)
+        time.sleep(10)
         metrics = self.get_metrics_from_nodes()
         self.verify_metrics(metrics)
 
@@ -154,6 +158,7 @@ class HeatWeightedLB(Tester):
         self.node2.start(wait_other_notice=True, wait_for_binary_proto=True)
 
         thr = self.run_read_thread()
+        time.sleep(10)
         metrics = self.get_metrics_from_nodes()
         self.verify_metrics(metrics, cached=False)
 
