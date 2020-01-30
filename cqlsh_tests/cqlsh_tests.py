@@ -1792,7 +1792,7 @@ class CqlshSmokeTest(Tester):
         self.assertEqual(cqlsh_stderr[1], """<stdin>:2:InvalidRequest: Error from server: code=2200 [Invalid query] message="PRIMARY KEY column "b" cannot be restricted (preceding column "at" is restricted by a non-EQ relation)"\n""")
 
 
-    @attr('next-gating')
+    # @attr('next-gating') - https://github.com/scylladb/scylla/issues/5679
     def select_all_cl_quorum_test(self):
         """
          https://github.com/scylladb/scylla/issues/2593
