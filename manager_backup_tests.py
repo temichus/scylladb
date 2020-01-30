@@ -198,6 +198,7 @@ class TestScyllaMgmtBackup(Tester):
         else:
             assert False, "No error occurred when an invalid rate-limit is used in the sctool backup command"
 
+    @skip("will return when minio bandwidth limiting is on")
     @attr('scylla-manager')
     def test_backup_start_date(self):
         keyspace_table_and_key_range = {"ks": {"cf1": (1, 21)}}
@@ -401,6 +402,7 @@ class TestScyllaMgmtBackup(Tester):
         self.clean_restore_and_verify_backup(backup_task, self.cluster.nodelist(), mgr_cluster, node1,
                                              keyspace_table_and_key_range)
 
+    @skip("will return when minio bandwidth limiting is on")
     @attr('scylla-manager')
     def test_multiple_backups_task_then_restore(self):
         first_keyspace_table_and_key_range = {"ks": {"cf1": (1, 21)}}
@@ -524,6 +526,7 @@ class TestScyllaMgmtBackup(Tester):
         memtable_flush_period_in_ms=0 AND
         compaction={'class': 'SizeTieredCompactionStrategy'};""")
 
+    @skip("will return when minio bandwidth limiting is on")
     @attr('scylla-manager')
     def test_backup_while_adding_node_to_cluster(self):
         node1, node2, node3 = self.config_and_create_cluster(nodes=3)
@@ -566,6 +569,7 @@ class TestScyllaMgmtBackup(Tester):
         self.clean_restore_and_verify_backup(backup_task, self.cluster.nodelist(), mgr_cluster, node1,
                                              keyspace_table_and_key_range)
 
+    @skip("will return when minio bandwidth limiting is on")
     @attr('scylla-manager')
     def test_restart_node_during_backup(self):
         node1, node2, node3 = self._prepare_cluster_with_data(
@@ -580,6 +584,7 @@ class TestScyllaMgmtBackup(Tester):
         node3.start(wait_other_notice=True, wait_for_binary_proto=True)
         backup_task.wait_for_status(list_status=[TaskStatus.ERROR], timeout=600, step=5)
 
+    @skip("will return when minio bandwidth limiting is on")
     @attr('scylla-manager')
     def test_restart_agent_during_backup(self):
         node1, node2, node3 = self._prepare_cluster_with_data(
@@ -593,6 +598,7 @@ class TestScyllaMgmtBackup(Tester):
         node3.restart_scylla_manager_agent(gently=True)
         backup_task.wait_for_status(list_status=[TaskStatus.ERROR], timeout=600, step=5)
 
+    @skip("will return when minio bandwidth limiting is on")
     @attr('scylla-manager')
     def test_restart_manager_server_during_backup(self):
         keyspace_table_and_key_range = {"ks": {"cf1": (1, 21)}}
@@ -612,6 +618,7 @@ class TestScyllaMgmtBackup(Tester):
         self.clean_restore_and_verify_backup(backup_task, self.cluster.nodelist(), mgr_cluster, node1,
                                              keyspace_table_and_key_range)
 
+    @skip("will return when minio bandwidth limiting is on")
     @attr('scylla-manager')
     def test_nodetool_clearsnapshot_during_backup(self):
         node1, node2, node3 = self.config_and_create_cluster(nodes=3)
