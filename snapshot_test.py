@@ -8,6 +8,7 @@ import uuid
 
 from cassandra.concurrent import execute_concurrent_with_args
 from threading import Thread, Event
+from typing import List
 
 from dtest import Tester, debug
 from nose.plugins.attrib import attr
@@ -16,8 +17,10 @@ from tools import safe_mkdtemp, replace_in_file, require
 
 from concurrent.futures import ThreadPoolExecutor
 
+from ccmlib.scylla_node import ScyllaNode
 
-class SnapshotOperations():
+
+class SnapshotOperations:
     """Base snapshot operations for parallel executing
 
     Have operations for creating keyspaces, tables,
@@ -109,43 +112,119 @@ class SnapshotTester(Tester):
     Object with utility functions to perform snapshot operations.
     """
 
-    def __init__(self, *args, **kwargs):
-        Tester.__init__(self, *args, **kwargs)
+    def init_cluster(self):
+        self.cluster.populate(1).start(wait_for_binary_proto=True)
+        node = self.cluster.nodelist()[0]
+        session = self.patient_cql_connection(node)
+
+        return node, session
 
     def insert_rows(self, session, start, end):
         insert_statement = session.prepare("INSERT INTO ks.cf (key, val) VALUES (?, 'asdf')")
         args = [(r,) for r in range(start, end)]
         execute_concurrent_with_args(session, insert_statement, args, concurrency=20)
 
-    def make_snapshot(self, node, ks, cf, name):
+    def make_snapshot(self, node: ScyllaNode, ks: str = None, cf: str = None, name: str = None) -> str:
+        """Create snapshot for all keyspaces or for specified ks, ks.cf, with name
+
+        Create snapshot for:
+        - if ks is none, for all keyspaces
+        - if ks is provided, create snapshot for all tables in keyspace
+        - if ks and cf provided, create snapshot for ks.cf table only
+        - if name is set, create snapshot with tag name, datetime otherwise
+
+        and then copy created snapshots to temp directory
+
+        :param node: Scylla Node instance where create snapshot
+        :type node: ScyllaNode
+        :param ks: keyspace name, defaults to None
+        :type ks: str, optional
+        :param cf: column factory name, defaults to None
+        :type cf: str, optional
+        :param name: tag name of snapshot, defaults to None
+        :type name: str, optional
+        :returns: path where all snapshots stored, temp directory
+        :rtype: {str}
+        """
         debug("Making snapshot....")
         node.flush()
-        snapshot_cmd = 'snapshot {ks} -cf {cf} -t {name}'.format(**locals())
+        snapshot_cmd = 'snapshot '
+        if ks:
+            snapshot_cmd += f"{ks} "
+            if cf:
+                snapshot_cmd += f"-cf {cf} "
+            if name:
+                snapshot_cmd += f"-t {name}"
+
         debug("Running snapshot cmd: {snapshot_cmd}".format(snapshot_cmd=snapshot_cmd))
         node.nodetool(snapshot_cmd)
         tmpdir = safe_mkdtemp()
-        os.mkdir(os.path.join(tmpdir, ks))
-        os.mkdir(os.path.join(tmpdir, ks, cf))
         node_dir = node.get_path()
 
-        # Find the snapshot dir, it's different in various C* versions:
-        snapshot_dir = "{node_dir}/data/{ks}/{cf}/snapshots/{name}".format(**locals())
-        if not os.path.isdir(snapshot_dir):
-            snapshot_dir = glob.glob("{node_dir}/data/{ks}/{cf}-*/snapshots/{name}".format(**locals()))[0]
-        debug("snapshot_dir is : " + snapshot_dir)
-        debug("snapshot copy is : " + tmpdir)
+        # # Find the snapshot dir, it's different in various C* versions:
+        snapshot_dir_pattern = f"{node_dir}/data/"
+        if ks:
+            snapshot_dir_pattern += f"{ks}/"
+            if cf:
+                snapshot_dir_pattern += f"{cf}-*/"
+            else:
+                snapshot_dir_pattern += f"*/"
+            if name:
+                snapshot_dir_pattern += f"snapshots/{name}"
+            else:
+                snapshot_dir_pattern += f"snapshots/*"
+        else:
+            snapshot_dir_pattern += f"/*/*/snapshots/*"
 
-        # Copy files from the snapshot dir to existing temp dir
-        distutils.dir_util.copy_tree(str(snapshot_dir), os.path.join(tmpdir, ks, cf))
+        snapshot_dirs = glob.glob(snapshot_dir_pattern)
+
+        debug(f"snapshot_dir is : {snapshot_dirs}")
+        debug(f"snapshot copy is : {tmpdir}")
+
+        # # Copy files from the snapshot dir to existing temp dir
+        for snapshot_dir in snapshot_dirs:
+            save_dir = snapshot_dir.replace('/snapshots', '').replace(os.path.join(node_dir, "data/"), '')
+            os.makedirs(os.path.join(tmpdir, save_dir), exist_ok=False)
+            distutils.dir_util.copy_tree(str(snapshot_dir), os.path.join(tmpdir, save_dir))
 
         return tmpdir
 
-    def restore_snapshot_with_sstableloader(self, snapshot_dir, node, ks, cf):
-        debug("Restoring snapshot....")
-        snapshot_dir = os.path.join(snapshot_dir, ks, cf)
-        ip = node.address()
+    def get_cf_snapshot_saved_dir(self, base_snapshot_dir: str, ks: str, cf: str, name: str =None) -> str:
+        """Get path to specified snapshot of ks.cf by name or first one
 
-        args = [node.get_tool('sstableloader'), '-d', ip, snapshot_dir]
+        return path to directory with sstables from snapshot store in
+        base_snapshot_dir. base_snapshot_dir is a path to temp folder returned by
+        self.make_snapshot method or any folder where all snapshots located
+            - <base_snapshot_dir>/ks/cf-*/[name|any]/
+
+        :param base_snapshot_dir: path to folder with snapshots
+        :type base_snapshot_dir: str
+        :param ks: keyspace name
+        :type ks: str
+        :param cf: column family name
+        :type cf: str
+        :param name: name of snapshot, defaults to None
+        :type name: str, optional
+        :returns: path to first matched snapshot dir for ks.cf by [name| of first one]
+        :rtype: {str}
+        """
+        path_pattern = f"{base_snapshot_dir}/{ks}/{cf}-*"
+        if name:
+            path_pattern += f"/{name}"
+        else:
+            path_pattern += f"/*/"
+        return glob.glob(path_pattern)[0]
+
+    def restore_snapshot_with_sstableloader(self, snapshot_dir, node, ks, cf, name=None):
+        debug("Restoring snapshot....")
+        snapshot_dir = self.get_cf_snapshot_saved_dir(snapshot_dir, ks, cf, name)
+        ip = node.address()
+        # copy sstables to ks.cf folder to properly load with sstableloader
+        tmpdir = safe_mkdtemp()
+        os.makedirs(os.path.join(tmpdir, ks, cf), exist_ok=True)
+        distutils.dir_util.copy_tree(snapshot_dir, os.path.join(tmpdir, ks, cf))
+
+        args = [node.get_tool('sstableloader'), '-d', ip, os.path.join(tmpdir, ks, cf)]
         p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = p.communicate()
         exit_status = p.wait()
@@ -153,14 +232,13 @@ class SnapshotTester(Tester):
         if exit_status != 0:
             raise Exception("sstableloader command '%s' failed; exit status: %d'; stdout: %s; stderr: %s" %
                             (" ".join(args), exit_status, stdout, stderr))
+        shutil.rmtree(tmpdir, ignore_errors=True)
 
-    def restore_snapshot_with_refresh(self, snapshot_dir, node, ks, cf):
+    def restore_snapshot_with_refresh(self, snapshot_dir, node, ks, cf, name=None):
         debug("Restoring snapshot....")
         node_dir = node.get_path()
-        restore_dir = "{node_dir}/data/{ks}/{cf}/".format(**locals())
-        if not os.path.isdir(restore_dir):
-            restore_dir = glob.glob("{node_dir}/data/{ks}/{cf}-*/".format(**locals()))[0]
-        snapshot_dir = os.path.join(snapshot_dir, ks, cf)
+        restore_dir = glob.glob("{node_dir}/data/{ks}/{cf}-*/".format(**locals()))[0]
+        snapshot_dir = self.get_cf_snapshot_saved_dir(snapshot_dir, ks, cf, name)
         debug("Copying from %s to %s" % (str(snapshot_dir), str(restore_dir)))
         distutils.dir_util.copy_tree(snapshot_dir, restore_dir)
         node.nodetool("refresh %s %s" % (ks, cf))
@@ -172,9 +250,6 @@ class TestSnapshot(SnapshotTester):
     """
     Test snapshot operations.
     """
-
-    def __init__(self, *args, **kwargs):
-        SnapshotTester.__init__(self, *args, **kwargs)
 
     @attr('next-gating')
     @attr('dtest-debug')
@@ -404,32 +479,6 @@ class TestArchiveCommitlog(SnapshotTester):
     def __init__(self, *args, **kwargs):
         kwargs['cluster_options'] = {'commitlog_segment_size_in_mb': 1}
         SnapshotTester.__init__(self, *args, **kwargs)
-
-    def make_snapshot(self, node, ks, cf, name):
-        debug("Making snapshot....")
-        node.flush()
-        snapshot_cmd = 'snapshot {ks} -cf {cf} -t {name}'.format(**locals())
-        debug("Running snapshot cmd: {snapshot_cmd}".format(snapshot_cmd=snapshot_cmd))
-        node.nodetool(snapshot_cmd)
-        tmpdir = safe_mkdtemp()
-        node_dir = node.get_path()
-
-        # Copy files from the snapshot dir to existing temp dir
-        distutils.dir_util.copy_tree(os.path.join(node.get_path(), 'data', ks), tmpdir)
-
-        return tmpdir
-
-    def restore_snapshot(self, snapshot_dir, node, ks, cf, name):
-        debug("Restoring snapshot for cf ....")
-        data_dir = os.path.join(node.get_path(), 'data')
-        cf_id = [s for s in os.listdir(snapshot_dir) if s.startswith(cf + "-")][0]
-        snapshot_dir = glob.glob("{snapshot_dir}/{cf_id}/snapshots/{name}".format(**locals()))[0]
-        if not os.path.exists(os.path.join(data_dir, ks)):
-            os.mkdir(os.path.join(data_dir, ks))
-        os.mkdir(os.path.join(data_dir, ks, cf_id))
-
-        debug("snapshot_dir is : " + snapshot_dir)
-        distutils.dir_util.copy_tree(snapshot_dir, os.path.join(data_dir, ks, cf_id))
 
     @skip('Does not work, skipping after allowing it on scylla_tests and will investigate later')
     def test_archive_commitlog(self):
@@ -859,3 +908,487 @@ class TestParallelSnapshotOperations(Tester, SnapshotOperations):
             clearing_snapshots.result()
 
         self.verify_stderr_empty(results)
+
+
+@attr('dtest-full', 'single_node')
+class TestSchemaFileInSnapshot(SnapshotTester):
+    native_column_types_and_values = {
+        "bigint": ('10000', '1', '2'),
+        "boolean": ('true', 'true', 'false'),
+        "blob": ("textAsBlob('1234567890qwertyuiop')", "textAsBlob('a')", "bigintAsBlob(1)"),
+        "date": ('currentDate()', 'currentDate()', 'currentDate()'),
+        "decimal": ('10.1', '11.1', '12.2'),
+        "double": ('10.1000001', '11.111111', '22.22222'),
+        "duration": ('89h1m48s', '11h11m11s', '22h22m22s'),
+        "float": ('10.10001', '33.33', '44.44'),
+        "inet": ("'1.1.1.1'", "'1.1.1.1'", "'2.2.2.2'"),
+        "int": ('100001', '1', '2'),
+        "smallint": ('1', '1', '2'),
+        "time": ('currentTime()', 'currentTime()', 'currentTime()'),
+        "timestamp": ('currentTimestamp()', 'currentTimestamp()', 'currentTimestamp()'),
+        "timeuuid": ('currentTimeUUID()', 'currentTimeUUID()', 'currentTimeUUID()'),
+        "tinyint": ('1', '2', '5'),
+        "uuid": ('uuid()', 'uuid()', 'uuid()'),
+        "varint": ('1', '4', '5'),
+        "text": ("'a'", "'A'", "'b'"),
+        "varchar": ("'c'", "'d'", "'E'"),
+        "ascii": ("'1'", "'c'", "'$'")
+    }
+
+    def test_schema_file_created(self):
+        """Check that schema.cql file is in snapshot
+
+        """
+        node1, session = self.init_cluster()
+        self.create_ks(session, "ks", 1)
+        self.create_cf(session, name="cf", key_type="int", columns={"val": "text"})
+        self.insert_rows(session, 0, 100)
+
+        base_snapshot_dir = self.make_snapshot(node1, "ks", "cf", "basic")
+        schema_file = self.get_schema_file_from_snapshot(base_snapshot_dir, "ks", "cf", "basic")
+
+        table_desc = self.get_table_description(node1, "ks", "cf")
+
+        self.drop_keyspaces_and_clear_files(session, "ks", node1)
+        self.create_ks(session, "ks", 1)
+        self.restore_table_by_schema_file(session, schema_file)
+        restored_table_desc = self.get_table_description(node1, "ks", "cf")
+
+        self.assertEqual(table_desc, restored_table_desc)
+
+    def test_restore_snapshot_by_table_schema_file_with_sstableloader(self):
+        self.create_restore_data_with_snapshot(use_sstableloader=True)
+
+    def test_restoring_by_schema_file_with_refresh(self):
+        self.create_restore_data_with_snapshot(use_sstableloader=False)
+
+    @require("#5686")
+    def test_restoring_by_schema_with_mv_use_sstableloader(self):
+        self.create_restore_data_with_snapshot_with_mv(use_sstableloader=True)
+
+    @require("#5686")
+    def test_restoring_by_schema_with_mv_use_refresh(self):
+        self.create_restore_data_with_snapshot_with_mv(use_sstableloader=False)
+
+    @require("#5686")
+    def test_restoring_snapshot_with_indexes_use_sstableloader(self):
+        self.create_and_restore_data_with_snapshot_and_si(use_sstableloader=True)
+
+    @require("#5686")
+    def test_restoring_snapshot_with_indexes_use_refresh(self):
+        self.create_and_restore_data_with_snapshot_and_si(use_sstableloader=False)
+
+    @require("#5686")
+    def test_restoring_snapshot_for_lsi_use_sstablesloader(self):
+        self.create_restore_data_with_lsi_from_snapshot(use_sstableloader=True)
+
+    @require("#5686")
+    def test_restoring_snapshot_for_lsi_use_refresh(self):
+        self.create_restore_data_with_lsi_from_snapshot(use_sstableloader=False)
+
+    def test_schema_file_contains_altering_table_changes(self):
+        node1, session = self.init_cluster_and_create_schema('ks', 'cf')
+
+        self.insert_rows(session, 0, 100)
+        base_snapshot_dir = self.make_snapshot(node1, 'ks', 'cf', 'basic')
+        schema_file = self.get_schema_file_from_snapshot(base_snapshot_dir, 'ks', 'cf', 'basic')
+        table_desc = self.get_table_description(node1, 'ks', 'cf')
+
+        session.execute('ALTER TABLE ks.cf ADD val1 text')
+        base_snapshot_dir = self.make_snapshot(node1, 'ks', 'cf', 'basic1')
+        new_schema_file = self.get_schema_file_from_snapshot(base_snapshot_dir, 'ks', 'cf', 'basic1')
+        altered_table_desc = self.get_table_description(node1, 'ks', 'cf')
+
+        self.drop_keyspaces_and_clear_files(session, 'ks', node1)
+        self.create_ks(session, 'ks', rf=1)
+
+        self.restore_table_by_schema_file(session, new_schema_file)
+        restored_altered_table_desc = self.get_table_description(node1, 'ks', 'cf')
+
+        self.assertEqual(altered_table_desc, restored_altered_table_desc)
+        self.assertNotEqual(restored_altered_table_desc, table_desc)
+        self.assertNotEqual(self.read_schema_from_file(schema_file),
+                            self.read_schema_from_file(new_schema_file))
+
+    def test_restore_data_for_all_native_data_types_from_snapshot_with_sstablesloader(self):
+        self.create_and_restore_data_all_native_datatypes(use_sstableloader=True)
+
+    def test_restore_data_for_all_native_data_types_from_snapshot_with_refresh(self):
+        self.create_and_restore_data_all_native_datatypes(use_sstableloader=False)
+
+    @require("#5762")
+    def test_restore_data_from_snapshot_with_udt_with_sstablesloader(self):
+        self.create_and_restore_udt_from_snapshot(use_sstableloader=True)
+
+    def test_restore_data_from_snapshot_with_udt_with_refresh(self):
+        self.create_and_restore_udt_from_snapshot(use_sstableloader=False)
+
+    def test_restore_data_from_snapshot_with_frozen_udt_with_sstablesloader(self):
+        self.create_and_restore_udt_from_snapshot(use_sstableloader=True, use_frozen=True)
+
+    def test_restore_data_from_snapshot_with_frozen_udt_with_refresh(self):
+        self.create_and_restore_udt_from_snapshot(use_sstableloader=False, use_frozen=True)
+
+    def test_upper_case_of_table_name_is_saved(self):
+        node1, session = self.init_cluster()
+        self.create_ks(session, 'ks', 1)
+        session.execute('CREATE TABLE "UPPER_CASE_CF" ( "KEY" int PRIMARY KEY, "VAL" text);')
+        session.execute("INSERT INTO \"UPPER_CASE_CF\" (\"KEY\", \"VAL\") VALUES (1, 'ASDFG');")
+
+        base_snapshot_dir = self.make_snapshot(node1, 'ks', 'UPPER_CASE_CF', 'basic')
+        schema_file = self.get_schema_file_from_snapshot(base_snapshot_dir, 'ks', 'UPPER_CASE_CF', 'basic')
+        table_desc = self.get_table_description(node1, 'ks', '\"UPPER_CASE_CF\"')
+        self.drop_keyspaces_and_clear_files(session, 'ks', node1)
+        self.create_ks(session, 'ks', 1)
+        self.restore_table_by_schema_file(session, schema_file)
+        restored_table_desc = self.get_table_description(node1, 'ks', '\"UPPER_CASE_CF\"')
+
+        self.assertEqual(table_desc, restored_table_desc)
+
+    def create_restore_data_with_snapshot(self, use_sstableloader=True):
+        node1, session = self.init_cluster_and_create_schema("ks", "cf")
+        self.insert_rows(session, 0, 100)
+        self.check_rows_number_in_table(session, "ks", "cf", 100)
+
+        snapshot_dir = self.make_snapshot(node1, 'ks', 'cf', 'basic')
+
+        # get table schema from schema file saved in snapshot
+        schema_cql_file = self.get_schema_file_from_snapshot(snapshot_dir, 'ks', 'cf', 'basic')
+        table_schema = self.get_table_description(node1, "ks", "cf")
+
+        # Write more data after the snapshot, this will get thrown
+        # away when we restore:
+        self.insert_rows(session, 100, 200)
+        self.check_rows_number_in_table(session, "ks", "cf", 200)
+
+        # Drop the keyspace, make sure we have no data:
+        self.drop_keyspaces_and_clear_files(session, "ks", node1)
+
+        # Restore keyspace
+        self.create_ks(session, 'ks', 1)
+
+        self.restore_table_by_schema_file(session, schema_cql_file)
+
+        restored_table_schema = self.get_table_description(node1, "ks", "cf")
+
+        self.assertEqual(table_schema, restored_table_schema)
+
+        # check that data is not restored yet
+        self.check_rows_number_in_table(session, "ks", "cf", 0)
+
+        if use_sstableloader:
+            self.restore_snapshot_with_sstableloader(snapshot_dir, node1, 'ks', 'cf')
+        else:
+            self.restore_snapshot_with_refresh(snapshot_dir, node1, 'ks', 'cf', 'basic')
+            node1.nodetool('refresh ks cf')
+
+        # check data correctly restored and updated
+        self.check_rows_number_in_table(session, "ks", "cf", 100)
+
+    def create_restore_data_with_snapshot_with_mv(self, use_sstableloader=True):
+        node1, session = self.init_cluster_and_create_schema("ks", "cf", mv=True)
+
+        self.insert_rows(session, 0, 100)
+
+        # create snapshot for keyspace
+        snapshot_dir_base_table = self.make_snapshot(node1, 'ks')
+
+        # get schema.cql files for base table and mv
+        schema_cql_file_basic_table = self.get_schema_file_from_snapshot(snapshot_dir_base_table, 'ks', 'cf')
+        schema_table_desc = self.get_table_description(node1, "ks", "cf")
+        schema_cql_file_mv = self.get_schema_file_from_snapshot(snapshot_dir_base_table, 'ks', 'cf_mv')
+        schema_mv_desc = self.get_mv_description(node1, "ks", "cf_mv")
+
+        # Write more data after the snapshot, this will get thrown
+        # away when we restore:
+        self.insert_rows(session, 100, 200)
+        self.check_rows_number_in_table(session, "ks", "cf", 200)
+
+        # check that MV was updated too
+        self.check_rows_number_in_table(session, "ks", "cf_mv", 200)
+
+        # Drop the keyspace, make sure we have no data:
+        self.drop_keyspaces_and_clear_files(session, "ks", node1)
+
+        # restore keyspace
+        self.create_ks(session, 'ks', 1)
+
+        self.restore_table_by_schema_file(session, schema_cql_file_basic_table)
+        self.restore_table_by_schema_file(session, schema_cql_file_mv)
+
+        # validate that base table and mv are empty
+        self.check_rows_number_in_table(session, "ks", "cf", 0)
+        self.check_rows_number_in_table(session, "ks", "cf_mv", 0)
+
+        # checkt that restored table and mv are same as before
+        restored_base_table_desc = self.get_table_description(node1, "ks", "cf")
+        restored_mv_table_desc = self.get_mv_description(node1, "ks", "cf_mv")
+
+        self.assertEqual(schema_table_desc, restored_base_table_desc)
+        self.assertEqual(schema_mv_desc, restored_mv_table_desc)
+
+        if use_sstableloader:
+            self.restore_snapshot_with_sstableloader(snapshot_dir_base_table, node1, 'ks', 'cf')
+            self.restore_snapshot_with_sstableloader(snapshot_dir_base_table, node1, 'ks', 'cf_mv')
+        else:
+            self.restore_snapshot_with_refresh(snapshot_dir_base_table, node1, 'ks', 'cf')
+            self.restore_snapshot_with_refresh(snapshot_dir_base_table, node1, 'ks', 'cf_mv')
+        # check data have been restored
+
+        self.check_rows_number_in_table(session, "ks", "cf", 100)
+        self.check_rows_number_in_table(session, "ks", "cf_mv", 100)
+
+    def create_and_restore_data_with_snapshot_and_si(self, use_sstableloader=True):
+        node1, session = self.init_cluster_and_create_schema('ks', 'cf', si=True)
+
+        self.insert_rows(session, 0, 100)
+
+        self.check_rows_number_in_table(session, 'ks', 'cf', 100)
+        # check secondary index
+        self.check_rows_number_in_index(session, 'ks', 'cf', 100, "val", "'asdf'")
+
+        snapshot_dir = self.make_snapshot(node1, 'ks')
+        schema_cql_file_basic_table = self.get_schema_file_from_snapshot(snapshot_dir, 'ks', 'cf')
+        base_table_desc = self.get_table_description(node1, 'ks', 'cf')
+        schema_cql_file_index_table = self.get_schema_file_from_snapshot(snapshot_dir, 'ks', 'cf_ind_index')
+        si_table_desc = self.get_index_description(node1, 'ks', 'cf_ind')
+
+        # Write more data after the snapshot, this will get thrown
+        # away when we restore:
+        self.insert_rows(session, 100, 200)
+        self.check_rows_number_in_table(session, "ks", "cf", 200)
+        # check secondary index
+        self.check_rows_number_in_index(session, "ks", "cf", 200, "val", "'asdf'")
+
+        # Drop the keyspace, make sure we have no data:
+        self.drop_keyspaces_and_clear_files(session, 'ks', node1)
+
+        # restore data
+        self.create_ks(session, 'ks', 1)
+
+        # load schema and restore data
+        self.restore_table_by_schema_file(session, schema_cql_file_basic_table)
+        self.restore_table_by_schema_file(session, schema_cql_file_index_table)
+
+        # checkt that restored table and mv are same as before
+        restored_base_table_desc = self.get_table_description(node1, "ks", "cf")
+        restored_index_table_desc = self.get_index_description(node1, "ks", "cf_ind")
+
+        self.assertEqual(base_table_desc, restored_base_table_desc)
+        self.assertEqual(si_table_desc, restored_index_table_desc)
+
+        self.check_rows_number_in_table(session, "ks", "cf", 0)
+        self.check_rows_number_in_index(session, "ks", "cf", 0, "val", "'asdf'")
+
+        if use_sstableloader:
+            self.restore_snapshot_with_sstableloader(snapshot_dir, node1, 'ks', 'cf')
+            self.restore_snapshot_with_sstableloader(snapshot_dir, node1, 'ks', 'cf_ind_index')
+        else:
+            self.restore_snapshot_with_refresh(snapshot_dir, node1, 'ks', 'cf')
+            self.restore_snapshot_with_refresh(snapshot_dir, node1, 'ks', 'cf_ind_index')
+
+        self.check_rows_number_in_table(session, "ks", "cf", 100)
+        self.check_rows_number_in_index(session, "ks", "cf", 100, index_column="val", value="'asdf'")
+        self.insert_rows(session, 100, 200)
+        self.check_rows_number_in_table(session, "ks", "cf", 200)
+        self.check_rows_number_in_index(session, "ks", "cf", 200, index_column="val", value="'asdf'")
+
+    def create_restore_data_with_lsi_from_snapshot(self, use_sstableloader=True):
+        node1, session = self.init_cluster_and_create_schema("ks", "cf", lsi=True)
+
+        self.insert_rows(session, 0, 100)
+        self.check_rows_number_in_table(session, "ks", "cf", 100)
+
+        snapshot_dir_base_table = self.make_snapshot(node1, 'ks')
+
+        schema_cql_file_basic_table = self.get_schema_file_from_snapshot(snapshot_dir_base_table, 'ks', 'cf')
+        table_desc = self.get_table_description(node1, "ks", "cf")
+        schema_cql_file_lsi = self.get_schema_file_from_snapshot(snapshot_dir_base_table, 'ks', 'cf_val_index')
+        lsi_desc = self.get_index_description(node1, "ks", "cf_val")
+
+        # Write more data after the snapshot, this will get thrown
+        # away when we restore:
+        self.insert_rows(session, 100, 200)
+        self.check_rows_number_in_table(session, "ks", "cf", 200)
+
+        # Drop the keyspace, make sure we have no data:
+        self.drop_keyspaces_and_clear_files(session, 'ks', node1)
+
+        # restore schema and data
+        self.create_ks(session, 'ks', 1)
+
+        # restore schema from schema.cql file
+        self.restore_table_by_schema_file(session, schema_cql_file_basic_table)
+        self.restore_table_by_schema_file(session, schema_cql_file_lsi)
+
+        self.check_rows_number_in_table(session, 'ks', 'cf', 0)
+
+        restored_table_desc = self.get_table_description(node1, 'ks', 'cf')
+        restored_lsi_desc = self.get_index_description(node1, 'ks', 'cf_val')
+
+        self.assertEqual(table_desc, restored_table_desc)
+        self.assertEqual(lsi_desc, restored_lsi_desc)
+
+        if use_sstableloader:
+            self.restore_snapshot_with_sstableloader(snapshot_dir_base_table, node1, 'ks', 'cf')
+            self.restore_snapshot_with_sstableloader(snapshot_dir_base_table, node1, 'ks', 'cf_val_index')
+        else:
+            self.restore_snapshot_with_refresh(snapshot_dir_base_table, node1, 'ks', 'cf')
+            self.restore_snapshot_with_refresh(snapshot_dir_base_table, node1, 'ks', 'cf_val_index')
+
+        self.insert_rows(session, 0, 100)
+        self.check_rows_number_in_table(session, 'ks', 'cf', 100)
+
+    def create_and_restore_data_all_native_datatypes(self, use_sstableloader=True):
+        node1, session = self.init_cluster()
+        self.create_ks(session, 'ks', rf=1)
+        cl_types = list(self.native_column_types_and_values.keys())
+        columns = ""
+        for cl_type in cl_types:
+            columns += f"cl_{cl_type} {cl_type}, "
+        session.execute(f"CREATE TABLE native_types_table ({columns} PRIMARY KEY (cl_{cl_types[0]}))")
+
+        for i in range(3):
+            columns = [f"cl_{cl_type}" for cl_type in cl_types]
+            values = [f"{values[i]}" for _, values in self.native_column_types_and_values.items()]
+
+            session.execute(f"INSERT INTO native_types_table ({', '.join(columns)}) VALUES ({', '.join(values)})")
+
+        self.check_rows_number_in_table(session, 'ks', 'native_types_table', 3)
+
+        snapshots_dir = self.make_snapshot(node1, 'ks', name='basic')
+        table_desc = self.get_table_description(node1, 'ks', 'native_types_table')
+        schema_file = self.get_schema_file_from_snapshot(snapshots_dir, 'ks', 'native_types_table', 'basic')
+
+        self.drop_keyspaces_and_clear_files(session, 'ks', node1)
+
+        self.create_ks(session, 'ks', rf=1)
+
+        self.restore_table_by_schema_file(session, schema_file)
+
+        self.check_rows_number_in_table(session, 'ks', 'native_types_table', 0)
+
+        restored_table_desc = self.get_table_description(node1, 'ks', 'native_types_table')
+        if use_sstableloader:
+            self.restore_snapshot_with_sstableloader(snapshots_dir, node1, 'ks', 'native_types_table', 'basic')
+        else:
+            self.restore_snapshot_with_refresh(snapshots_dir, node1, 'ks', 'native_types_table', 'basic')
+
+        self.check_rows_number_in_table(session, 'ks', 'native_types_table', 3)
+
+        self.assertEqual(table_desc, restored_table_desc)
+
+    def create_and_restore_udt_from_snapshot(self, use_sstableloader, use_frozen=False):
+        node1, session = self.init_cluster()
+
+        self.create_ks(session, 'ks', rf=1)
+
+        cl_types = list(self.native_column_types_and_values.keys())
+        columns = [f"cl_{cl_type} {cl_type}" for cl_type in cl_types]
+        session.execute(f"CREATE TYPE all_native_types ({', '.join(columns)})")
+        udt_type = "frozen<all_native_types>" if use_frozen else "all_native_types"
+        session.execute(f"CREATE TABLE table_with_udt (cl_{cl_types[0]} {cl_types[0]}, data {udt_type}, PRIMARY KEY (cl_{cl_types[0]}))")
+
+        for i in range(3):
+            columns = [f"cl_{cl_type}" for cl_type in cl_types]
+            udt_values = [f"cl_{cl_type}: {values[i]}" for cl_type, values in self.native_column_types_and_values.items()]
+            session.execute(f"INSERT INTO table_with_udt (cl_{cl_types[0]}, data) VALUES ({self.native_column_types_and_values[cl_types[0]][i]}, \
+                            {{{', '.join(udt_values)}}})")
+
+        self.check_rows_number_in_table(session, 'ks', 'table_with_udt', 3)
+
+        snapshots_dir = self.make_snapshot(node1, 'ks', name='basic')
+        table_desc = self.get_table_description(node1, 'ks', 'table_with_udt')
+        schema_file = self.get_schema_file_from_snapshot(snapshots_dir, 'ks', 'table_with_udt', 'basic')
+
+        self.drop_keyspaces_and_clear_files(session, 'ks', node1)
+
+        self.create_ks(session, 'ks', rf=1)
+        columns = [f"cl_{cl_type} {cl_type}" for cl_type in cl_types]
+        session.execute(f"CREATE TYPE all_native_types ({', '.join(columns)})")
+
+        self.restore_table_by_schema_file(session, schema_file)
+
+        self.check_rows_number_in_table(session, 'ks', 'table_with_udt', 0)
+
+        restored_table_desc = self.get_table_description(node1, 'ks', 'table_with_udt')
+        if use_sstableloader:
+            self.restore_snapshot_with_sstableloader(snapshots_dir, node1, 'ks', 'table_with_udt', 'basic')
+        else:
+            self.restore_snapshot_with_refresh(snapshots_dir, node1, 'ks', 'table_with_udt', 'basic')
+
+        self.check_rows_number_in_table(session, 'ks', 'table_with_udt', 3)
+
+        self.assertEqual(table_desc, restored_table_desc)
+
+    def drop_keyspaces_and_clear_files(self, session, ks, node):
+        session.execute(f'DROP KEYSPACE {ks}')
+        shutil.rmtree(os.path.join(node.get_path(), 'data', ks))
+
+    def restore_table_by_schema_file(self, session, schema_file):
+        schema = self.read_schema_from_file(schema_file)
+        session.execute(schema)
+
+    def read_schema_from_file(self, schema_file):
+        with open(schema_file, "r") as fp:
+            content = fp.read()
+        return content
+
+    def get_table_description(self, node, ks, cf):
+        table_desc = node.run_cqlsh(f"describe table {ks}.{cf}", return_output=True)
+        return table_desc[0]
+
+    def get_mv_description(self, node, ks, mv):
+        mv_desc = node.run_cqlsh(f"DESCRIBE MATERIALIZED VIEW {ks}.{mv}", return_output=True)
+        return mv_desc[0]
+
+    def get_index_description(self, node, ks, index):
+        index_desc = node.run_cqlsh(f"describe index {ks}.{index}", return_output=True)
+        return index_desc[0]
+
+    def get_schema_file_from_snapshot(self, base_snapshot_dir: str, ks: str, cf: str, name: str = None) -> str:
+        snapshot_dir = self.get_cf_snapshot_saved_dir(base_snapshot_dir, ks, cf, name)
+        schema_file = os.path.join(snapshot_dir, "schema.cql")
+        self.assertTrue(os.path.exists(schema_file))
+        return schema_file
+
+    def check_schema_file(self, schema_file: str, *attributes: List[str]) -> None:
+        """Check that schema file is exists and contains provided attributes
+
+        Validate that schema file was created and is in snapshot dir.
+        Check that all attributes provided in attributes list are present
+        in schema.cql file
+        :param schema_file: path to schema.cql file
+        :type schema_file: str
+        :param *attributes: list of attributes to check in schema
+        :type *attributes: List[str]
+        """
+        self.assertIn("schema.cql", schema_file)
+        with open(schema_file, "r") as fp:
+            content = fp.read()
+
+        self.assertTrue(content)
+        for attribute in attributes:
+            self.assertIn(attribute, content)
+
+    def check_rows_number_in_table(self, session, ks, cf, number):
+        rows = session.execute(f'SELECT count(*) from {ks}.{cf}')
+        self.assertEqual(rows[0][0], number)
+
+    def check_rows_number_in_index(self, session, ks, cf, number, index_column, value):
+        rows = session.execute(f'SELECT count(*) from {ks}.{cf} WHERE {index_column} = {value}')
+        self.assertEqual(rows[0][0], number)
+
+    def init_cluster_and_create_schema(self, ks, cf, mv=False, si=False, lsi=False):
+        node, session = self.init_cluster()
+        self.create_ks(session, ks, 1)
+        self.create_cf(session, name=cf, key_type="int", columns={"val": "text"})
+        if mv:
+            session.execute(f'CREATE MATERIALIZED VIEW {cf}_mv AS SELECT val, key FROM ks.cf \
+                              WHERE val IS NOT NULL PRIMARY KEY (val, key)')
+        if si:
+            self.create_index(session, cf, "val", f"{cf}_ind")
+        if lsi:
+            self.create_local_index(session, cf, "key", "val", index_name="cf_val")
+
+        return node, session
