@@ -613,7 +613,7 @@ class TestScyllaMgmtBackup(Tester):
         manager_tool.restart_manager_server(gently=True)
         backup_task.wait_for_status(list_status=[TaskStatus.ABORTED], timeout=100, step=1)
 
-        backup_task.start(continue_attr=True)
+        backup_task.start(continue_attr="true")
         backup_task.wait_for_status(list_status=[TaskStatus.DONE], timeout=600, step=5)
         self.clean_restore_and_verify_backup(backup_task, self.cluster.nodelist(), mgr_cluster, node1,
                                              keyspace_table_and_key_range)

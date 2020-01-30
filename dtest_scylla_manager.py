@@ -413,7 +413,7 @@ class ManagerTask(ScyllaManagerBase):
         return self.wait_and_get_final_status(timeout=30, step=3)
 
     def start(self, cmd=None, continue_attr="true"):
-        cmd = cmd or "task start {} -c {} --continue {}".format(self.id, self.cluster_id, continue_attr)
+        cmd = cmd or "task start {} -c {} --continue={}".format(self.id, self.cluster_id, continue_attr)
         res = self.sctool.run(cmd=cmd, is_verify_errorless_result=True)
         list_expected_task_status = [status for status in TaskStatus.all_members() if status != TaskStatus.STOPPED]
         return self.wait_for_status(list_status=list_expected_task_status, timeout=30, step=3)
