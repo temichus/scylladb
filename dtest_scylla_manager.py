@@ -532,8 +532,9 @@ class ManagerTask(ScyllaManagerBase):
         if self.status in [TaskStatus.NEW, TaskStatus.STARTING]:
             return " 0%"
         cmd = "task progress {} -c {}".format(self.id, self.cluster_id)
-        stdout_list, stderr = self.sctool.run(cmd=cmd)
-        assert not stderr, f"Failed to receive task progress for task {self.id}\nerror:\n{stderr}"
+        stdout_list, stderr = self.sctool.run(cmd=cmd, is_verify_errorless_result=True)
+        # sctool.run returns stdout_list as a list of lists, each of them containing a row of the output
+        stdout_list = [line[0] for line in stdout_list]
         full_stdout_string = '\n'.join(stdout_list)
         return full_stdout_string
 
@@ -563,9 +564,8 @@ class ManagerTask(ScyllaManagerBase):
                                          check_task_progress=check_task_progress, timeout=timeout)
         except WaitTimeoutExpired:
             if log_progress_on_failure:
-                task_progress_string = self.full_progress_string()
                 warning(f"Task {self.id} failed to reach a status from {list_status}\n"
-                        f"Task Progress:\n{task_progress_string}")
+                        f"Task Progress:\n{self.full_progress_string()}\n")
             raise
         return is_status_reached
 
