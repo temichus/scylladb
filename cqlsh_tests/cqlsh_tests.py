@@ -1824,9 +1824,6 @@ class CqlshSmokeTest(Tester):
              consistency quorum;
              select * from keyspace1.standard1;
          """
-        # [shard 0] storage_proxy - no row count in query result, should not happen here
-        self.allow_log_errors = True
-
         for i in range(3):
             new_node(self.cluster, bootstrap=False)
         self.cluster.start()
