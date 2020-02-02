@@ -581,16 +581,15 @@ class Tester(TestCase):
         self.cluster.set_configuration_options(values={'phi_convict_threshold': 5})
 
         timeout = 10000
+        self.cluster.set_configuration_options(values={
+            'read_request_timeout_in_ms': timeout,
+            'range_request_timeout_in_ms': timeout,
+            'write_request_timeout_in_ms': timeout,
+            'truncate_request_timeout_in_ms': timeout,
+            'request_timeout_in_ms': timeout
+        })
         if self.cluster_options is not None:
             self.cluster.set_configuration_options(values=self.cluster_options)
-        else:
-            self.cluster.set_configuration_options(values={
-                'read_request_timeout_in_ms': timeout,
-                'range_request_timeout_in_ms': timeout,
-                'write_request_timeout_in_ms': timeout,
-                'truncate_request_timeout_in_ms': timeout,
-                'request_timeout_in_ms': timeout
-            })
 
         # if tests are running in parallel do not use last test info
         if not (parallel_tests() or CLUSTER_ID_ALLOCATOR == 'random'):
