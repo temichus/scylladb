@@ -1474,7 +1474,7 @@ Unlogged batch covering 2 partitions detected against table [client_warnings.tes
         return p.communicate()
 
 
-@attr('dtest-full', 'single_node')
+@attr('dtest-full')
 class CqlshSmokeTest(Tester):
     """
     Tests simple use cases for clqsh.
@@ -1486,6 +1486,7 @@ class CqlshSmokeTest(Tester):
         [self.node1] = self.cluster.nodelist()
         self.session = self.patient_cql_connection(self.node1)
 
+    @attr('single_node')
     def uuid_test(self):
         """
         the `uuid()` function can generate UUIDs from cqlsh.
@@ -1514,6 +1515,7 @@ class CqlshSmokeTest(Tester):
         self.assertIsInstance(result[1][0], UUID)
         self.assertNotEqual(result[0][0], result[1][0])
 
+    @attr('single_node')
     def commented_lines_test(self):
         self.create_ks(self.session, 'ks', 1)
         self.create_cf(self.session, 'test')
@@ -1531,6 +1533,7 @@ class CqlshSmokeTest(Tester):
         self.assertEqual(err, "")
         self.assertTrue(out.strip().startswith("CREATE KEYSPACE ks"))
 
+    @attr('single_node')
     def colons_in_string_literals_test(self):
         self.create_ks(self.session, 'ks', 1)
         self.create_cf(self.session, 'test', columns={'i': 'int'})
@@ -1542,6 +1545,7 @@ class CqlshSmokeTest(Tester):
         assert_all(self.session, "SELECT key FROM test",
                    [[u'Cassandra:TheMovie']])
 
+    @attr('single_node')
     def select_test(self):
         self.create_ks(self.session, 'ks', 1)
         self.create_cf(self.session, 'test')
@@ -1559,6 +1563,7 @@ class CqlshSmokeTest(Tester):
         self.assertIn("a | a | a", out_lines)
         self.assertEqual(err, '')
 
+    @attr('single_node')
     def insert_test(self):
         self.create_ks(self.session, 'ks', 1)
         self.create_cf(self.session, 'test')
@@ -1566,6 +1571,7 @@ class CqlshSmokeTest(Tester):
         self.node1.run_cqlsh("INSERT INTO ks.test (key, c, v) VALUES ('a', 'a', 'a')")
         assert_all(self.session, "SELECT key, c, v FROM test", [["a", "a", "a"]])
 
+    @attr('single_node')
     def update_test(self):
         self.create_ks(self.session, 'ks', 1)
         self.create_cf(self.session, 'test')
@@ -1575,6 +1581,7 @@ class CqlshSmokeTest(Tester):
         self.node1.run_cqlsh("UPDATE ks.test SET v = 'b' WHERE key = 'a' AND c = 'a'")
         assert_all(self.session, "SELECT key, c, v FROM test", [["a", "a", "b"]])
 
+    @attr('single_node')
     def delete_test(self):
         self.create_ks(self.session, 'ks', 1)
         self.create_cf(self.session, 'test', columns={'i': 'int'})
@@ -1592,6 +1599,7 @@ class CqlshSmokeTest(Tester):
         assert_all(self.session, 'SELECT key from test',
                    [[u'a'], [u'e'], [u'd'], [u'b']])
 
+    @attr('single_node')
     def batch_test(self):
         self.create_ks(self.session, 'ks', 1)
         self.create_cf(self.session, 'test', columns={'i': 'int'})
@@ -1608,6 +1616,7 @@ class CqlshSmokeTest(Tester):
         assert_all(self.session, 'SELECT key FROM ks.test',
                    [[u'eggs'], [u'spam'], [u'sausage']])
 
+    @attr('single_node')
     def create_keyspace_test(self):
         self.assertNotIn(u'created', self.get_keyspace_names())
 
@@ -1615,6 +1624,7 @@ class CqlshSmokeTest(Tester):
                              "{ 'class' : 'SimpleStrategy', 'replication_factor' : 1 }")
         self.assertIn(u'created', self.get_keyspace_names())
 
+    @attr('single_node')
     def drop_keyspace_test(self):
         self.create_ks(self.session, 'ks', 1)
         self.assertIn(u'ks', self.get_keyspace_names())
@@ -1623,12 +1633,14 @@ class CqlshSmokeTest(Tester):
 
         self.assertNotIn(u'ks', self.get_keyspace_names())
 
+    @attr('single_node')
     def create_table_test(self):
         self.create_ks(self.session, 'ks', 1)
 
         self.node1.run_cqlsh('CREATE TABLE ks.test (i int PRIMARY KEY);')
         self.assertEquals(self.get_tables_in_keyspace('ks'), [u'test'])
 
+    @attr('single_node')
     def drop_table_test(self):
         self.create_ks(self.session, 'ks', 1)
         self.create_cf(self.session, 'test')
@@ -1640,6 +1652,7 @@ class CqlshSmokeTest(Tester):
 
         self.assertEqual(0, len(self.session.cluster.metadata.keyspaces['ks'].tables))
 
+    @attr('single_node')
     def truncate_test(self):
         self.create_ks(self.session, 'ks', 1)
         self.create_cf(self.session, 'test', columns={'i': 'int'})
@@ -1655,6 +1668,7 @@ class CqlshSmokeTest(Tester):
         self.node1.run_cqlsh('TRUNCATE ks.test;')
         self.assertEqual([], rows_to_list(self.session.execute('SELECT * from test')))
 
+    @attr('single_node')
     def truncate_with_limit_test(self):
         """
         Create keyspace RF=1 and table, populate the table with data
@@ -1677,6 +1691,7 @@ class CqlshSmokeTest(Tester):
         self.node1.run_cqlsh('TRUNCATE ks.test;')
         self.assertEqual([], rows_to_list(self.session.execute('SELECT * from test limit 1')))
 
+    @attr('single_node')
     def alter_table_test(self):
         self.create_ks(self.session, 'ks', 1, )
         self.create_cf(self.session, 'test', columns={'i': 'ascii'})
@@ -1699,6 +1714,7 @@ class CqlshSmokeTest(Tester):
                        u'text'],
                       new_columns)
 
+    @attr('single_node')
     def use_keyspace_test(self):
         # ks1 contains ks1table, ks2 contains ks2table
         self.create_ks(self.session, 'ks1', 1)
@@ -1726,6 +1742,7 @@ class CqlshSmokeTest(Tester):
 
     # DROP INDEX statement fails in 2.0 (see CASSANDRA-9247)
     @require('secondary index')
+    @attr('single_node')
     def drop_index_test(self):
         self.create_ks(self.session, 'ks', 1)
         self.create_cf(self.session, 'test', columns={'i': 'int'})
@@ -1749,6 +1766,7 @@ class CqlshSmokeTest(Tester):
 
     # DROP INDEX statement fails in 2.0 (see CASSANDRA-9247)
     @require('secondary index')
+    @attr('single_node')
     def create_index_test(self):
         self.create_ks(self.session, 'ks', 1)
         self.create_cf(self.session, 'test', columns={'i': 'int'})
@@ -1770,6 +1788,7 @@ class CqlshSmokeTest(Tester):
         self.session.execute('DROP INDEX ks.index_to_drop;')
         self.assertRaises(InvalidRequest, execute_requires_index)
 
+    @attr('single_node')
     def incorrect_clustering_restrictions_test(self):
         # https://github.com/scylladb/scylla/issues/2421
         self.create_ks(self.session, 'ks', 1)  # self.create_cf(self.session, 'ks1table')
