@@ -604,9 +604,11 @@ class Tester(TestCase):
         # Waiting for gossip to settle is absolutely redundant when there
         # is only one node in the testing cluster, but consumes a large
         # amount of time when starting cluster.
-        if getattr(getattr(self,  self._testMethodName), 'single_node', False) or \
-           getattr(self, 'single_node', False):
-            self.cluster.set_configuration_options(values={'skip_wait_for_gossip_to_settle': 0})
+        if isinstance(self.cluster, ScyllaCluster):
+            if getattr(getattr(self,  self._testMethodName), 'single_node', False) or \
+               getattr(self, 'single_node', False):
+                debug("configuring skip_wait_for_gossip_to_settle=0 for single_node test")
+                self.cluster.set_configuration_options(values={'skip_wait_for_gossip_to_settle': 0})
 
     def find_cores(self):
         cores = []
