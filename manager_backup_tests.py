@@ -282,7 +282,6 @@ class TestScyllaMgmtBackup(Tester):
             raise ScyllaManagerError("No error occurred when a nonexistent bucket was used as a location"
                                      " in a manager backup command")
 
-    @attr('scylla-cluster')
     def _backup_nonexistent_keyspace_template(self, keyspace_filter_string):
         node1, node2 = self._prepare_cluster_with_data(keyspace_table_and_key_range={"ks": {"cf1": (1, 21)}})
 
@@ -301,11 +300,11 @@ class TestScyllaMgmtBackup(Tester):
             raise ScyllaManagerError("No error occurred when a non existent keyspace was used in a keyspace flag"
                                      " in a manager backup command")
 
-    @attr('scylla-cluster')
+    @attr('scylla-manager')
     def test_backup_nonexistent_keyspace(self):
         self._backup_nonexistent_keyspace_template("Nonexistent_keyspace")
 
-    @attr('scylla-cluster')
+    @attr('scylla-manager')
     def test_backup_nonexistent_keyspace_glob(self):
         self._backup_nonexistent_keyspace_template("Nonexistent*")
 
@@ -326,11 +325,11 @@ class TestScyllaMgmtBackup(Tester):
             raise ScyllaManagerError("No error occurred when a non existent database was used in a database flag"
                                      " in a manager backup command")
 
-    @attr('scylla-cluster')
+    @attr('scylla-manager')
     def test_backup_nonexistent_datacenter(self):
         self._backup_nonexistent_datacenter_template("nonexistent")
 
-    @attr('scylla-cluster')
+    @attr('scylla-manager')
     def test_backup_nonexistent_datacenter_glob(self):
         self._backup_nonexistent_datacenter_template("nonexistent*")
 
