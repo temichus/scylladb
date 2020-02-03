@@ -1,7 +1,7 @@
 from dtest import Tester, retry_with_func_attempts, debug
 from nose.plugins.attrib import attr
 from cassandra import ConsistencyLevel
-from cassandra.util import Time, uuid_from_time
+from cassandra.util import Time, Date, uuid_from_time, SortedSet
 from tools import rows_to_list
 from assertions import assert_one
 
@@ -285,15 +285,15 @@ class TestCQL(Tester):
             'date': {
                 'test_cases': [
                     {'init_val': None, 'update_patterns': ['value=:v', 'value in (:v)']},
-                    standard_test_case(date(1970, 1, 1)),
-                    standard_test_case(date(2020, 1, 2))
+                    standard_test_case(Date(0)),
+                    standard_test_case(Date('2020-1-2'))
                 ],
-                'update_value': date(2021, 2, 3)
+                'update_value': Date('2021-2-3')
             },
             'time': {
                 'test_cases': [
                     {'init_val': None, 'update_patterns': ['value=:v', 'value in (:v)']},
-                    standard_test_case(Time('00:00:00.000')),
+                    standard_test_case(Time(0)),
                     standard_test_case(Time('12:13:14.001'))
                 ],
                 'update_value': Time('13:14:15.002')
@@ -330,7 +330,7 @@ class TestCQL(Tester):
     def lwt_update_prepared_listlike_test(self):
 
         def standard_test_case(init_val):
-            return {'init_val': [init_val], 'update_patterns': [
+            return {'init_val': SortedSet([init_val]), 'update_patterns': [
                     'value=:v',
                     'value in (:v)',
                     {'p': 'value in :v', 'v': [[init_val]]},
@@ -450,14 +450,14 @@ class TestCQL(Tester):
             },
             'date': {
                 'test_cases': [
-                    standard_test_case(date(1970, 1, 1)),
-                    standard_test_case(date(2020, 1, 2))
+                    standard_test_case(Date(0)),
+                    standard_test_case(Date('2020-1-2'))
                 ],
-                'update_value': [date(2021, 2, 3)]
+                'update_value': [Date('2021-2-3')]
             },
             'time': {
                 'test_cases': [
-                    standard_test_case(Time('00:00:00.000')),
+                    standard_test_case(Time(0)),
                     standard_test_case(Time('12:13:14.001'))
                 ],
                 'update_value': [Time('13:14:15.002')]
