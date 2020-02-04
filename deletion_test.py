@@ -1,9 +1,448 @@
+from datetime import datetime, timedelta
+
 from dtest import Tester
 
 import time
 from jmxutils import make_mbean, JolokiaAgent, remove_perf_disable_shared_mem
+from nose.plugins.attrib import attr
+from unittest import skip
+from tools import debug, new_node
+from assertions import assert_invalid, assert_one, assert_all
+from cassandra import ConsistencyLevel
 
 
+@attr('dtest-full')
+class RangeDeletionTester(Tester):
+
+    def __init__(self, *args, **kwargs):
+        super(RangeDeletionTester, self).__init__(*args, **kwargs)
+        if hasattr(self, 'compaction_strategy'):
+            self.compaction_strategy = self.compaction_strategy
+        else:
+            self.compaction_strategy = 'LeveledCompactionStrategy'
+
+    def prepare(self, create_keyspace=True, use_cache=False, nodes=1, rf=1, protocol_version=None, user=None,
+                password=None, **kwargs):
+        cluster = self.cluster
+
+        if (use_cache):
+            cluster.set_configuration_options(values={'row_cache_size_in_mb': 100})
+
+        start_rpc = kwargs.pop('start_rpc', False)
+        if start_rpc:
+            cluster.set_configuration_options(values={'start_rpc': True})
+
+        if user:
+            config = {'authenticator': 'org.apache.cassandra.auth.PasswordAuthenticator',
+                      'authorizer': 'org.apache.cassandra.auth.CassandraAuthorizer',
+                      'permissions_validity_in_ms': 0}
+            cluster.set_configuration_options(values=config)
+
+        if not cluster.nodelist():
+            cluster.populate(nodes).start(wait_for_binary_proto=True)
+        node1 = cluster.nodelist()[0]
+
+        session = self.patient_cql_connection(node1, protocol_version=protocol_version, user=user, password=password)
+        if create_keyspace:
+            if self._preserve_cluster:
+                session.execute("DROP KEYSPACE IF EXISTS ks")
+            self.create_ks(session, 'ks', rf)
+        return session
+
+    def create_cf_1pk_1ck(self, session):
+        query = "CREATE TABLE ks.test1 (pk int, ck date, v1 int, PRIMARY KEY(pk, ck)) " \
+                "WITH compaction = {'class': '%s' }" % self.compaction_strategy
+        debug(query)
+        session.execute(query)
+
+    def create_cf_2ck(self, session):
+        query = "CREATE TABLE ks.test1 (pk1 int, ck1 int, ck2 varchar, v1 int, " \
+                "PRIMARY KEY(pk1, ck1, ck2)) WITH compaction = {'class': '%s' }" % self.compaction_strategy
+        debug(query)
+        session.execute(query)
+
+    @staticmethod
+    def insert_data_cf_1pk_1ck(conn, rows_in_pk, ttl=None):
+        """ Create data for 2 partitions
+            Data example:
+                [[1, '2019-11-18', 0],
+                [1, '2019-11-19', 1],
+                [1, '2019-11-20', 2],
+                [1, '2019-11-21', 3],
+                [1, '2019-11-22', 4],
+                ..................
+                [2, '2019-11-23', 5],
+                [2, '2019-11-24', 6],
+                [2, '2019-11-25', 7],
+                [2, '2019-11-26', 8],
+                [2, '2019-11-27', 9]]
+        """
+        current_date = datetime.now()
+        # Data for first partition
+        data = list([1, (current_date+timedelta(days=i)).strftime("%Y-%m-%d"), i] for i in range(0, rows_in_pk))
+        # Data for second partition
+        data.extend(list([2, (current_date+timedelta(days=i)).strftime("%Y-%m-%d"), i] for i in range(0, rows_in_pk)))
+
+        ttl_clause = ' USING TTL %d' % ttl if ttl else ''
+
+        for (pk, ck, v1) in data:
+            conn.execute("INSERT INTO ks.test1 (pk, ck, v1) VALUES ({pk}, '{ck}', {v1}){ttl}".format(pk=pk,
+                                                                                                     ck=ck,
+                                                                                                     v1=v1,
+                                                                                                     ttl=ttl_clause))
+        return data
+
+    @staticmethod
+    def insert_data_cf_2ck(conn, rows_in_pk):
+        """ Create data for 2 partitions
+            Data example:
+                [[0, 0, 'ck0', 0],
+                [0, 0, 'ck1', 1],
+                [0, 0, 'ck2', 2],
+                [0, 0, 'ck3', 3],
+                [0, 0, 'ck4', 4],
+                [0, 0, 'ck5', 5],
+                ..................
+                [1, 1, 'ck5', 5],
+                [1, 1, 'ck6', 6],
+                [1, 1, 'ck7', 7],
+                [1, 1, 'ck8', 8],
+                [1, 1, 'ck9', 9]]
+        """
+        data = list()
+        sub_partition_rows = 2
+        # Data for first and second partitions
+        for p in [0, 1]: # pk1 value
+            for k in range(rows_in_pk): # ck1 and ck2 values
+                data.append([p, p, 'ck%d' % k, k])
+
+        for (pk1, ck1, ck2, v1) in data:
+            conn.execute("INSERT INTO ks.test1 (pk1, ck1, ck2, v1) VALUES ({pk1}, {ck1}, '{ck2}', {v1})"
+                         .format(pk1=pk1, ck1=ck1, ck2=ck2, v1=v1))
+        return data
+
+    def delete_by_2ck_range_in_test(self):
+        """
+        The table has 1 PKs and 2 CKs
+        Delete range of data using in condition on both CK columns
+        """
+        session = self.prepare(nodes=4, rf=3)
+        # Create table with 1 PKs and 2 CKs
+        self.create_cf_2ck(session=session)
+
+        data = self.insert_data_cf_2ck(conn=session, rows_in_pk=10)
+
+        select_query = "SELECT * FROM ks.test1"
+        assert_all(session=session, query=select_query, expected=data, cl=ConsistencyLevel.QUORUM, ignore_order=True)
+        self.cluster.flush()
+
+        range_indexes = [4, 6, 8] # indexes of element in "data" variable - all these rows should be deleted
+        pk_index = range_indexes[0]
+        query = "DELETE FROM ks.test1 WHERE pk1={pk1} and ck1 in ({ck1}) and ck2 in ({ck2})" \
+                        .format(pk1=data[pk_index][0],
+                                ck1=', '.join(str(data[indx][1]) for indx in range_indexes),
+                                ck2=', '.join("'%s'" % data[indx][2] for indx in range_indexes)
+                                )
+        debug(query)
+        session.execute(query)
+        self.cluster.flush()
+
+        assert_one(session, 'select count(*) from ks.test1', [17])
+
+        # Prepare list with expected data
+        for indx in sorted(range_indexes, reverse=True):
+            del data[indx]
+
+        assert_all(session=session, query=select_query, expected=data, cl=ConsistencyLevel.ALL, ignore_order=True)
+
+    def delete_by_2ck_range_equal_and_not_equal_test(self):
+        """
+        The table has 2 CKs
+        Delete range of data using equal condition on first CK column and non-EQ on second CK column
+        """
+        session = self.prepare(nodes=4, rf=3)
+        # Create table with 2 PKs and 2 CKs
+        self.create_cf_2ck(session=session)
+
+        data = self.insert_data_cf_2ck(conn=session, rows_in_pk=10)
+
+        select_query = "SELECT * FROM ks.test1"
+        assert_all(session=session, query=select_query, expected=data, cl=ConsistencyLevel.QUORUM, ignore_order=True)
+        self.cluster.flush()
+
+        lower_index = 4 # index of element in "data" variable - all rows before it should be deleted
+        query = "DELETE FROM ks.test1 WHERE pk1={pk1} and ck1 = {ck1} and ck2 >= '{ck2}'" \
+                        .format(pk1=data[lower_index][0],
+                                ck1=data[lower_index][1],
+                                ck2=data[lower_index][2]
+                                )
+        debug(query)
+        session.execute(query)
+        self.cluster.flush()
+
+        assert_one(session, 'select count(*) from ks.test1', [14])
+
+        assert_all(session=session, query=select_query, expected=data[:lower_index]+data[lower_index+6:],
+                   cl=ConsistencyLevel.ALL, ignore_order=True)
+
+    def delete_by_2ck_range_one_non_equal_test(self):
+        """
+        The table has 2 CKs
+        Delete range of data using ">=" condition on first CK column
+        """
+        session = self.prepare(nodes=4, rf=3)
+        # Create table with 2 PKs and 2 CKs
+        self.create_cf_2ck(session=session)
+
+        data = self.insert_data_cf_2ck(conn=session, rows_in_pk=10)
+
+        select_query = "SELECT * FROM ks.test1"
+        assert_all(session=session, query=select_query, expected=data, cl=ConsistencyLevel.QUORUM, ignore_order=True)
+        self.cluster.flush()
+
+        lower_index = 4 # index of element in "data" variable - select rows for deleted
+        query = "DELETE FROM ks.test1 WHERE pk1={pk1} and ck1 >= {ck1}" \
+                        .format(pk1=data[lower_index][0],
+                                ck1=data[lower_index][1]
+                                )
+        debug(query)
+        session.execute(query)
+        self.cluster.flush()
+
+        assert_one(session, 'select count(*) from ks.test1', [10])
+
+        assert_all(session=session, query=select_query, expected=data[10:], cl=ConsistencyLevel.ALL,
+                   ignore_order=True)
+
+    def update_by_1ck_range_test(self):
+        """
+        Update by range is not allowed - validate the query return valid error message
+        """
+        session = self.prepare(nodes=4, rf=3)
+        self.create_cf_1pk_1ck(session=session)
+
+        data = self.insert_data_cf_1pk_1ck(conn=session, rows_in_pk=10)
+
+        lower_index = 4 # index of element in "data" variable
+        query = "UPDATE ks.test1 SET v1 = 100 WHERE pk={pk} and ck < '{ck}'".format(pk=data[lower_index][0],
+                                                                                    ck=data[lower_index][1])
+        debug(query)
+        assert_invalid(session=session, query=query, matching='Invalid operator in where clause Restrictions')
+
+    @attr('single_node')
+    def delete_by_2ck_range_failure_test(self):
+        """
+        Unsupported deletion - validate the query return valid error message
+        """
+        session = self.prepare(nodes=1)
+        self.create_cf_2ck(session=session)
+
+        # Filter by ck2
+        query = "DELETE FROM ks.test1 WHERE pk1=0 and ck1 > 3 and ck2 = 'ck3'"
+        debug(query)
+        assert_invalid(session=session, query=query, matching='preceding column \"ck1\" is restricted by a non-EQ '
+                                                              'relation')
+
+        # Filter by ck1 non-EQ relation
+        query = "DELETE FROM ks.test1 WHERE pk1=0 and ck2 > 'ck3'"
+        debug(query)
+        assert_invalid(session=session, query=query, matching='cannot be restricted as preceding column \"ck1\" is '
+                                                              'not restricted')
+
+        # Filter by ck1 non-EQ relation
+        query = "DELETE FROM ks.test1 WHERE pk1=0 and ck1 > 3 and ck2 > 'ck3'"
+        debug(query)
+        assert_invalid(session=session, query=query, matching='preceding column \"ck1\" is restricted by a non-EQ '
+                                                              'relation')
+
+        # Filter by ck1 non-EQ relation
+        query = "DELETE FROM ks.test1 WHERE pk1=0 and ck1 > 3 and ck2 in ('ck3')"
+        debug(query)
+        assert_invalid(session=session, query=query, matching='preceding column \"ck1\" is restricted by a non-EQ '
+                                                              'relation')
+
+    @attr('next-gating')
+    def delete_by_1ck_range_in_test(self):
+        """
+        Delete range of data using "in" condition on CK column
+        """
+        session = self.prepare(nodes=4, rf=3)
+        # Create table with 1 clustering key
+        self.create_cf_1pk_1ck(session=session)
+
+        data = self.insert_data_cf_1pk_1ck(conn=session, rows_in_pk=10)
+        self.cluster.flush()
+
+        # Validate that all data inserted
+        select_query = "SELECT pk, cast(ck as text), v1 FROM ks.test1"
+        assert_all(session=session, query=select_query, expected=data, cl=ConsistencyLevel.QUORUM, ignore_order=True)
+
+        first_index = 4 # index of element in "data" variable - this row should be deleted
+        second_index = 12 # index of element in "data" variable - this row should be deleted
+        query = "DELETE FROM ks.test1 WHERE pk in ({pk1}, {pk2}) and ck in ('{ck1}', '{ck2}')" \
+                        .format(pk1=data[first_index][0], pk2=data[second_index][0],
+                                ck1=data[first_index][1], ck2=data[second_index][1])
+        debug(query)
+        session.execute(query)
+        self.cluster.flush()
+
+        assert_one(session, 'select count(*) from ks.test1', [16])
+
+        # Prepare list with expected data
+        for indx in [first_index+10, second_index, first_index, second_index-10]:
+            del data[indx]
+
+        assert_all(session=session, query=select_query, expected=data, cl=ConsistencyLevel.ALL, ignore_order=True)
+
+    def delete_by_1ck_range_less_test(self):
+        """
+        Delete range of data using "<" condition on CK column
+        """
+        session = self.prepare(nodes=4, rf=3)
+        # Create table with 1 clustering key
+        self.create_cf_1pk_1ck(session=session)
+
+        data = self.insert_data_cf_1pk_1ck(conn=session, rows_in_pk=10)
+        self.cluster.flush()
+
+        # Validate that all data inserted
+        select_query = "SELECT pk, cast(ck as text), v1 FROM ks.test1"
+        assert_all(session=session, query=select_query, expected=data, cl=ConsistencyLevel.QUORUM, ignore_order=True)
+
+        lower_index = 4 # index of element in "data" variable - all rows before it should be deleted
+        query = "DELETE FROM ks.test1 WHERE pk={pk} and ck < '{ck}'".format(pk=data[lower_index][0],
+                                                                                    ck=data[lower_index][1])
+        debug(query)
+        session.execute(query)
+        self.cluster.flush()
+
+        assert_one(session, 'select count(*) from ks.test1', [16])
+        assert_all(session=session, query=select_query, expected=data[lower_index:], cl=ConsistencyLevel.ALL,
+                   ignore_order=True)
+
+    @attr('next-gating')
+    def delete_by_1ck_range_less_more_test(self):
+        """
+        Delete range of data using "<" and ">=" conditions on CK column
+        """
+        session = self.prepare(nodes=4, rf=3)
+        # Create table with 1 clustering key
+        self.create_cf_1pk_1ck(session=session)
+
+        data = self.insert_data_cf_1pk_1ck(conn=session, rows_in_pk=10)
+        self.cluster.flush()
+
+        # Validate that all data inserted
+        select_query = "SELECT pk, cast(ck as text), v1 FROM ks.test1"
+        assert_all(session=session, query=select_query, expected=data, cl=ConsistencyLevel.QUORUM, ignore_order=True)
+
+        lower_index = 4 # index of element in "data" variable - all rows before it should be deleted
+        upper_index = 6 # index of element in "data" variable - all rows before it should be deleted
+        query = "DELETE FROM ks.test1 WHERE pk={pk} and ck < '{upper_ck}' and ck >= '{lower_ck}'" \
+                .format(pk=data[lower_index][0],
+                        lower_ck=data[lower_index][1],
+                        upper_ck=data[upper_index][1])
+        debug(query)
+        session.execute(query)
+        self.cluster.flush()
+
+        assert_one(session, 'select count(*) from ks.test1', [18])
+        assert_all(session=session, query=select_query, expected=data[:lower_index]+data[upper_index:],
+                   cl=ConsistencyLevel.ALL, ignore_order=True)
+
+    def delete_when_node_stopped_test(self):
+        """
+         Task: https://trello.com/c/NHO1Gek9/1583-open-range-tombstones-new-tests-in-dtest
+         Test open range deletion when one of the nodes is stopped
+         After the node is returned back, correct data should be returned from this node
+        """
+        session = self.prepare(nodes=3, rf=3)
+        # Create table with 1 clustering key
+        self.create_cf_1pk_1ck(session=session)
+        data = self.insert_data_cf_1pk_1ck(conn=session, rows_in_pk=10)
+        self.cluster.flush()
+
+        # Validate that all data inserted
+        select_query = "SELECT pk, cast(ck as text), v1 FROM ks.test1"
+        assert_all(session=session, query=select_query, expected=data, cl=ConsistencyLevel.QUORUM, ignore_order=True)
+
+        node2 = self.cluster.nodelist()[1]
+        debug('Stop node {}'.format(node2.name))
+        node2.stop(wait_other_notice=True)
+
+        lower_index = 16 # index of element in "data" variable - all rows after it should be deleted
+        query = "DELETE FROM ks.test1 WHERE pk={pk} and ck > '{ck}'".format(pk=data[lower_index][0],
+                                                                            ck=data[lower_index][1])
+        debug(query)
+        session.execute(query)
+        self.cluster.flush()
+
+        assert_one(session, 'select count(*) from ks.test1', [17])
+        assert_all(session=session, query=select_query, expected=data[:lower_index+1], cl=ConsistencyLevel.QUORUM,
+                   ignore_order=True)
+
+        debug('Start node {}'.format(node2.name))
+        node2.start(wait_for_binary_proto=True)
+
+        for node in self.cluster.nodelist():
+            if node is not node2:
+                debug('Stop node {}'.format(node.name))
+                node.stop(wait_other_notice=True)
+
+        session = self.patient_exclusive_cql_connection(node2)
+
+        assert_one(session, 'select count(*) from ks.test1', [17])
+        assert_all(session=session, query=select_query, expected=data[:lower_index+1], cl=ConsistencyLevel.ONE,
+                   ignore_order=True)
+
+    def delete_when_decommission_node_test(self):
+        """
+         Task: https://trello.com/c/NHO1Gek9/1583-open-range-tombstones-new-tests-in-dtest
+         Test open range deletion when one of the nodes is decommissioned
+         Add new node instead of decommissioned. Correct data should be returned from this node
+        """
+        session = self.prepare(nodes=3, rf=3)
+        # Create table with 1 clustering key
+        self.create_cf_1pk_1ck(session=session)
+        data = self.insert_data_cf_1pk_1ck(conn=session, rows_in_pk=10)
+        self.cluster.flush()
+
+        # Validate that all data inserted
+        select_query = "SELECT pk, cast(ck as text), v1 FROM ks.test1"
+        assert_all(session=session, query=select_query, expected=data, cl=ConsistencyLevel.QUORUM, ignore_order=True)
+
+        node2 = self.cluster.nodelist()[1]
+        debug('Decommission node {}'.format(node2.name))
+        node2.nodetool('decommission')
+
+        lower_index = 16 # index of element in "data" variable - all rows after it should be deleted
+        query = "DELETE FROM ks.test1 WHERE pk={pk} and ck > '{ck}'".format(pk=data[lower_index][0],
+                                                                            ck=data[lower_index][1])
+        debug(query)
+        session.execute(query)
+        self.cluster.flush()
+
+        assert_one(session, 'select count(*) from ks.test1', [17])
+        assert_all(session=session, query=select_query, expected=data[:lower_index+1], cl=ConsistencyLevel.QUORUM,
+                   ignore_order=True)
+
+        node_new = new_node(self.cluster, new_node_index=len(self.cluster.nodelist())+1)
+        debug('Add new node {}'.format(node_new.name))
+        node_new.start(wait_for_binary_proto=True)
+
+        for node in self.cluster.nodelist():
+            if not (node == node_new or node == node2):
+                debug('Stop node {}'.format(node.name))
+                node.stop()
+
+        session = self.patient_exclusive_cql_connection(node_new)
+
+        assert_one(session, 'select count(*) from ks.test1', [17])
+        assert_all(session=session, query=select_query, expected=data[:lower_index+1], cl=ConsistencyLevel.ONE,
+                   ignore_order=True)
+
+
+@skip('Old Cassandra tests')
 class TestDeletion(Tester):
     """
     Test deleting operations and associated tombstone operations.
@@ -92,3 +531,9 @@ def table_metric(node, keyspace, table, name):
         value = jmx.read_attribute(mbean, 'Value')
 
     return value
+
+strategies = ['SizeTieredCompactionStrategy', 'TimeWindowCompactionStrategy']
+# SMP value should be according to the monster environment
+for strategy in strategies:
+    cls_name = ('RangeDeletionTester_with_' + strategy)
+    vars()[cls_name] = type(cls_name, (RangeDeletionTester,), {'compaction_strategy': strategy, '__test__': True})
