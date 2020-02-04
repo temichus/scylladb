@@ -60,7 +60,7 @@ class TestInternodeSSL(Tester):
         elif dcs > 1:
             cluster.set_configuration_options(values={'endpoint_snitch':
                                                       'org.apache.cassandra.locator.GossipingPropertyFileSnitch'})
-            cluster.populate([3 for i in range(dcs)]).start(wait_for_binary_proto=True, wait_other_notice=True)
+            cluster.populate([3 for i in range(dcs)]).start(no_wait=False, wait_for_binary_proto=True, wait_other_notice=True)
         else:
             raise Exception('Invalid parameter dc: %s' % dc)
 
