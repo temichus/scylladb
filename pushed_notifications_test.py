@@ -288,7 +288,6 @@ class TestVariousNotifications(Tester):
         @jira_ticket CASSANDRA-7886
         """
 
-        self.allow_log_errors = True
         self.cluster.set_configuration_options(
             values={
                 'tombstone_failure_threshold': 500,
@@ -318,6 +317,7 @@ class TestVariousNotifications(Tester):
             ))
 
         failure_msg = ("Scanned over.* tombstones.* query aborted")
+        self.ignore_log_patterns += [failure_msg]
 
         @timed(25)
         def read_failure_query():
