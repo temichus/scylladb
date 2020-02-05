@@ -1,6 +1,5 @@
 from dtest import Tester
 from scylla_tools import scylla_mode
-from cassandra.cluster import NoHostAvailable
 
 import math
 
@@ -50,7 +49,7 @@ class TestLimits(Tester):
 
         c = "CREATE TABLE test1 ({} int PRIMARY KEY)".format(key_name)
         if expect_failure:
-            with self.assertRaisesRegex(NoHostAvailable, "Key size too large: \d+ > 65535"):
+            with self.assertRaisesRegex(Exception, "Key size too large: \d+ > 65535"):
                 session.execute(c)
             return
 
@@ -160,7 +159,7 @@ class TestLimits(Tester):
 
         c = """CREATE TABLE test1 (%s blub int PRIMARY KEY,)""" % keys_create
         if expect_failure:
-            with self.assertRaisesRegex(NoHostAvailable, "Mutation of \d+ bytes is too large for the maximum size of 16777216"):
+            with self.assertRaisesRegex(Exception, "Mutation of \d+ bytes is too large for the maximum size of 16777216"):
                 session.execute(c)
             return
 
