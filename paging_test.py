@@ -2710,7 +2710,6 @@ class TestPagingWithDeletions(BasePagingTester, PageAssertionMixin):
     @skip("test doesn't behave as expected - tombstone_failure_threshold supported ?")
     def test_failure_threshold_deletions(self):
         """Test that paging throws a failure in case of tombstone threshold """
-        self.allow_log_errors = True
         self.cluster.set_configuration_options(
             values={'tombstone_failure_threshold': 500}
         )
@@ -2739,6 +2738,7 @@ class TestPagingWithDeletions(BasePagingTester, PageAssertionMixin):
         failure = (node1.grep_log(failure_msg) or
                    node2.grep_log(failure_msg) or
                    node3.grep_log(failure_msg))
+        self.ignore_log_patterns += [failure_msg]
 
         self.assertTrue(failure, "Cannot find tombstone failure threshold error in log")
 
