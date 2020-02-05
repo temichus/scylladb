@@ -653,7 +653,7 @@ class TestMigration(MigrationTestBase):
             debug("Copying data/system_traces created by Cassandra...")
             self.recursive_copy_to(os.path.join(cassandra_dir, 'system_traces'), os.path.join(scylla_dir, 'system_traces'))
 
-    def load_migrated_tables(self, node, migrated_files_dir, ks='ks', cf='cf', extra_args=None,
+    def load_migrated_tables(self, node, migrated_files_dir, ks='ks', cf='cf',
                              partitioner='org.apache.cassandra.dht.Murmur3Partitioner'):
         cassandra_sstable_dir = self.get_cassandra_sstable_dir(self.version, migrated_files_dir)
         debug("cassandra sstable dir is {}".format(cassandra_sstable_dir))
