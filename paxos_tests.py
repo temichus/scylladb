@@ -1,15 +1,65 @@
 # coding: utf-8
 
 import time
-from threading import Thread
+import random
+
+from threading import Thread, Event
 
 from nose.plugins.attrib import attr
 from cassandra import ConsistencyLevel, WriteTimeout
 from cassandra.query import SimpleStatement
 
 from assertions import assert_unavailable
-from dtest import Tester
+from dtest import Tester, debug
 from tools import no_vnodes, since
+
+
+class LoadThread(Thread):
+    def __init__(self, tester, node, shift):
+        Thread.__init__(self)
+        self.tester = tester
+        self.target_node = node
+        self._to_stop = Event()
+        self._to_stop.clear()
+        self._results = []
+        self._step = 1000
+        self._base_value = -2147483648 + shift
+        self._max_value = 2147483647
+        self._current = 0
+
+    def run(self):
+        if not self.target_node.is_running():
+            return
+
+        while True:
+            with self.tester.patient_cql_connection(self.target_node) as session:
+                insert_stmt = session.prepare("INSERT INTO ks.test(k,v) VALUES (?, ?)")
+                update_stmt = session.prepare("UPDATE ks.test SET v = v + 1 WHERE k=? IF EXISTS")
+                for n in range(self._base_value, self._max_value, self._step):
+                    if self._to_stop.is_set():
+                        return
+                    try:
+                        self._results[(n - self._base_value) // self._step]
+                    except IndexError:
+                        try:
+                            session.execute(insert_stmt.bind((n, 0)))
+                            self._results[(n - self._base_value)//self._step] = 0
+                            continue
+                        except:  # pylint: disable=bare-except
+                            self._results[(n - self._base_value)//self._step] = None
+                            continue
+                    try:
+                        session.execute(update_stmt.bind((n,)))
+                        self._results[(n - self._base_value)//self._step] += 1
+                    except:  # pylint: disable=bare-except
+                        pass
+
+    def stop(self, timeout=None):
+        self._to_stop.set()
+        try:
+            self.join(timeout)
+        except:  # pylint: disable=bare-except
+            pass
 
 
 @since('2.0.6')
@@ -24,14 +74,39 @@ class TestPaxos(Tester):
 
         cluster.set_configuration_options(values={'experimental_features': ['lwt']})
 
-        cluster.populate(nodes).start()
+        cluster.populate(nodes).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1 = cluster.nodelist()[0]
         time.sleep(0.2)
 
         session = self.patient_cql_connection(node1)
         if create_keyspace:
             self.create_ks(session, 'ks', rf)
+        self._node_num = 6
         return session
+
+    def add_nodes(self, num=1):
+        if num == 0:
+            return
+        added_nodes = []
+        for n in range(num):
+            self._node_num += 1
+            new_node = self.cluster.new_node(self._node_num)
+            new_node.start(wait_for_binary_proto=True, wait_other_notice=True)
+            added_nodes.append(new_node)
+        self._wait_till_nodes_are_up(added_nodes)
+        return added_nodes
+
+    def _wait_till_nodes_are_up(self, nodes):
+        for node in nodes:
+            for _ in range(10):
+                try:
+                    self.patient_cql_connection(node).execute('USE system')
+                except Exception:  # pylint: disable=broad-except
+                    pass
+                time.sleep(0.5)
+
+    def node_session(self, node):
+        return self.patient_cql_connection(self.nodelist()[node])
 
     def replica_availability_test(self):
         """
@@ -190,3 +265,55 @@ class TestPaxos(Tester):
             retries = retries + w.retries
 
         assert (value == threads * iterations) and (errors == 0), "value=%d, errors=%d, retries=%d" % (value, errors, retries)
+
+    def _add_random_nodes(self, max_limit, upper_node_limit, loaders):
+        debug(f"_add_random_nodes(self, max_limit={max_limit}")
+        nodes_to_add = random.randint(0, min(max_limit, upper_node_limit - len(self.cluster.nodelist())))
+        if nodes_to_add == 0:
+            return
+        debug(f"_remove_random_nodes number_to_add={nodes_to_add}")
+        nodes_before = len(self.cluster.nodelist())
+        added_nodes = self.add_nodes(nodes_to_add)
+        for node_n in range(len(added_nodes)):
+            node = added_nodes[node_n]
+            loaders[node] = LoadThread(self, node, nodes_before + node_n)
+
+    def _remove_random_nodes(self, max_limit, lower_node_limit, loaders):
+        nodes = self.cluster.nodelist()
+        to_stop = []
+        number_to_remove = random.randint(0, min(max_limit, len(self.cluster.nodelist()) - lower_node_limit))
+        if not number_to_remove:
+            return
+        debug(f"_remove_random_nodes number_to_remove={number_to_remove}")
+        for n in range(number_to_remove):
+            to_stop.append(nodes[n + lower_node_limit])
+        for node in to_stop:
+            node.stop(wait=True, wait_other_notice=True, gently=True)
+            if node.is_running():
+                node.stop(wait=True, wait_other_notice=True, gently=False)
+            self.cluster.remove(node)
+            loaders[node].stop()
+            del loaders[node]
+
+    @since('3.3')
+    def test_topology_change_in_presence_of_down_node(self):
+        session = self.prepare(nodes=6, rf=4)
+        lower_node_limit = 3
+        upper_node_limit = 8
+        stop_start_limit = 3
+        session.execute("CREATE TABLE test (k int PRIMARY KEY, v int)")
+        loaders = {}
+        n = 0
+        for node in self.cluster.nodelist():
+            loaders[node] = LoadThread(self, node, n)
+            n += 1
+        time.sleep(10)
+        for n in range(3):
+            self._remove_random_nodes(1, lower_node_limit, loaders)
+            time.sleep(random.uniform(5, 15))
+        for n in range(10):
+            self._remove_random_nodes(stop_start_limit, lower_node_limit, loaders)
+            time.sleep(random.uniform(0, 3))
+            self._add_random_nodes(stop_start_limit, upper_node_limit, loaders)
+            time.sleep(random.uniform(5, 15))
+
