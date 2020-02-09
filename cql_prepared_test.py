@@ -110,26 +110,26 @@ class TestCQL(Tester):
         debug('Executing a single LWT Update test for type {}'.format(column_type))
 
         test_cases = test_params['test_cases']
-        upd_v = test_params['update_value']
+        default_upd_v = test_params['default_update_value']
         raw_init_values = []
         args_per_test_case = []
         for entry in test_cases:
             init_val = entry['init_val']
+            upd_v = default_upd_v if 'update_value' not in entry else entry['update_value']
             for pattern in entry['update_patterns']:
                 if isinstance(pattern, dict) and 'coll_type_filter' in pattern \
                     and 'collection_type' in test_params and \
                         test_params['collection_type'] not in pattern['coll_type_filter']:
                     continue
                 raw_init_values.append(init_val)
-                args_per_test_case.append((init_val, pattern))
+                args_per_test_case.append((init_val, upd_v, pattern))
 
         table_name, column_name = self._lwt_create_update_test_table(session,
             column_type,
             zip(range(0, len(raw_init_values)), raw_init_values))
 
         for key, entry in zip(range(0, len(args_per_test_case)), args_per_test_case):
-            init_val = entry[0]
-            pattern_entry = entry[1]
+            init_val, upd_v, pattern_entry = entry
 
             query_args = {'upd_v': upd_v}
 
@@ -168,7 +168,7 @@ class TestCQL(Tester):
                     {'init_val': None, 'update_patterns': ['value=:v', 'value in (:v)']},
                     standard_test_case(False)
                 ],
-                'update_value': True
+                'default_update_value': True
             },
             'blob': {
                 'test_cases': [
@@ -176,7 +176,7 @@ class TestCQL(Tester):
                     standard_test_case(b''),
                     standard_test_case(b'\x00\x00\x00\x00')
                 ],
-                'update_value': b'\x00\x00\x00\x01'
+                'default_update_value': b'\x00\x00\x00\x01'
             },
             'ascii': {
                 'test_cases': [
@@ -184,14 +184,14 @@ class TestCQL(Tester):
                     standard_test_case(''),
                     standard_test_case('abc')
                 ],
-                'update_value': 'def'
+                'default_update_value': 'def'
             },
             'decimal': {
                 'test_cases': [
                     {'init_val': None, 'update_patterns': ['value=:v', 'value in (:v)']},
                     standard_test_case(Decimal('1.2349823094823948209384209348'))
                 ],
-                'update_value': Decimal('2.3495083459083095483409534534')
+                'default_update_value': Decimal('2.3495083459083095483409534534')
             },
             'double': {
                 'test_cases': [
@@ -201,7 +201,7 @@ class TestCQL(Tester):
                     standard_test_case(1.7976931348623157e+308),
                     standard_test_case(-1.7976931348623157e+308)
                 ],
-                'update_value': 1.0
+                'default_update_value': 1.0
             },
             'float': {
                 'test_cases': [
@@ -211,7 +211,7 @@ class TestCQL(Tester):
                     standard_test_case(3.4028234663852886e+38),
                     standard_test_case(-3.4028234663852886e+38)
                 ],
-                'update_value': 1.0
+                'default_update_value': 1.0
             },
             'text': {
                 'test_cases': [
@@ -219,7 +219,7 @@ class TestCQL(Tester):
                     standard_test_case(''),
                     standard_test_case('abc')
                 ],
-                'update_value': 'def'
+                'default_update_value': 'def'
             },
             'varchar': {
                 'test_cases': [
@@ -227,7 +227,7 @@ class TestCQL(Tester):
                     standard_test_case(''),
                     standard_test_case('abc')
                 ],
-                'update_value': 'def'
+                'default_update_value': 'def'
             },
             'bigint': {
                 'test_cases': [
@@ -236,7 +236,7 @@ class TestCQL(Tester):
                     standard_test_case(2**63 - 1),
                     standard_test_case(-2**63)
                 ],
-                'update_value': 1
+                'default_update_value': 1
             },
             'int': {
                 'test_cases': [
@@ -245,7 +245,7 @@ class TestCQL(Tester):
                     standard_test_case(2**31 - 1),
                     standard_test_case(-2**31)
                 ],
-                'update_value': 1
+                'default_update_value': 1
             },
             'smallint': {
                 'test_cases': [
@@ -254,7 +254,7 @@ class TestCQL(Tester):
                     standard_test_case(2**15 - 1),
                     standard_test_case(-2**15)
                 ],
-                'update_value': 1
+                'default_update_value': 1
             },
             'tinyint': {
                 'test_cases': [
@@ -263,7 +263,7 @@ class TestCQL(Tester):
                     standard_test_case(2**7 - 1),
                     standard_test_case(-2**7)
                 ],
-                'update_value': 1
+                'default_update_value': 1
             },
             'varint': {
                 'test_cases': [
@@ -272,7 +272,7 @@ class TestCQL(Tester):
                     standard_test_case(2**128),
                     standard_test_case(-2**128)
                 ],
-                'update_value': 1
+                'default_update_value': 1
             },
             'timestamp': {
                 'test_cases': [
@@ -280,7 +280,7 @@ class TestCQL(Tester):
                     standard_test_case(datetime(1970, 1, 1, 0, 0)),
                     standard_test_case(datetime.strptime('2020-01-02 14:13:12.001', "%Y-%m-%d %H:%M:%S.%f"))
                 ],
-                'update_value': datetime.strptime('2021-02-03 15:14:13.002', "%Y-%m-%d %H:%M:%S.%f")
+                'default_update_value': datetime.strptime('2021-02-03 15:14:13.002', "%Y-%m-%d %H:%M:%S.%f")
             },
             'date': {
                 'test_cases': [
@@ -288,7 +288,7 @@ class TestCQL(Tester):
                     standard_test_case(Date(0)),
                     standard_test_case(Date('2020-1-2'))
                 ],
-                'update_value': Date('2021-2-3')
+                'default_update_value': Date('2021-2-3')
             },
             'time': {
                 'test_cases': [
@@ -296,14 +296,14 @@ class TestCQL(Tester):
                     standard_test_case(Time(0)),
                     standard_test_case(Time('12:13:14.001'))
                 ],
-                'update_value': Time('13:14:15.002')
+                'default_update_value': Time('13:14:15.002')
             },
             'timeuuid': {
                 'test_cases': [
                     {'init_val': None, 'update_patterns': ['value=:v', 'value in (:v)']},
                     standard_test_case(uuid_from_time(datetime(2020, 1, 2, 3, 4, 5, 0)))
                 ],
-                'update_value': uuid_from_time(datetime(2021, 2, 3, 4, 5, 6, 1))
+                'default_update_value': uuid_from_time(datetime(2021, 2, 3, 4, 5, 6, 1))
             },
             'uuid': {
                 'test_cases': [
@@ -311,7 +311,7 @@ class TestCQL(Tester):
                     standard_test_case(uuid.UUID(bytes=b'\x00' * 16)),
                     standard_test_case(uuid.uuid4())
                 ],
-                'update_value': uuid.uuid4()
+                'default_update_value': uuid.uuid4()
             }
         }
 
@@ -334,7 +334,7 @@ class TestCQL(Tester):
                     'value=:v',
                     'value in (:v)',
                     {'p': 'value in :v', 'v': [[init_val]]},
-                    # Set columns don't support indexing by key in C* and Scylla, limit these tests to lists only
+                    # Set and tuple columns don't support indexing by key in C* and Scylla, limit these tests to lists only
                     {'p': 'value[:i]=:v', 'i': 0, 'v': init_val, 'coll_type_filter': ['list']},
                     {'p': 'value[:i] in (:v)', 'i': 0, 'v': init_val, 'coll_type_filter': ['list']},
                     {'p': 'value[:i] in :v', 'i': 0, 'v': [init_val], 'coll_type_filter': ['list']}
@@ -347,28 +347,28 @@ class TestCQL(Tester):
                 'test_cases': [
                     standard_test_case(False)
                 ],
-                'update_value': [True]
+                'default_update_value': [True]
             },
             'blob': {
                 'test_cases': [
                     standard_test_case(b''),
                     standard_test_case(b'\x00\x00\x00\x00')
                 ],
-                'update_value': [b'\x00\x00\x00\x01']
+                'default_update_value': [b'\x00\x00\x00\x01']
             },
             'ascii': {
                 'test_cases': [
                     standard_test_case(''),
                     standard_test_case('abc')
                 ],
-                'update_value': ['def']
+                'default_update_value': ['def']
             },
-             'decimal': {
-                 'test_cases': [
-                     standard_test_case(Decimal('1.2349823094823948209384209348'))
-                 ],
-                 'update_value': [Decimal('2.3495083459083095483409534534')]
-             },
+            'decimal': {
+                'test_cases': [
+                    standard_test_case(Decimal('1.2349823094823948209384209348'))
+                ],
+                'default_update_value': [Decimal('2.3495083459083095483409534534')]
+            },
             'double': {
                 'test_cases': [
                     standard_test_case(0.0),
@@ -376,7 +376,7 @@ class TestCQL(Tester):
                     standard_test_case(1.7976931348623157e+308),
                     standard_test_case(-1.7976931348623157e+308)
                 ],
-                'update_value': [1.0]
+                'default_update_value': [1.0]
             },
             'float': {
                 'test_cases': [
@@ -385,21 +385,21 @@ class TestCQL(Tester):
                     standard_test_case(3.4028234663852886e+38),
                     standard_test_case(-3.4028234663852886e+38)
                 ],
-                'update_value': [1.0]
+                'default_update_value': [1.0]
             },
             'text': {
                 'test_cases': [
                     standard_test_case(''),
                     standard_test_case('abc')
                 ],
-                'update_value': ['def']
+                'default_update_value': ['def']
             },
             'varchar': {
                 'test_cases': [
                     standard_test_case(''),
                     standard_test_case('abc')
                 ],
-                'update_value': ['def']
+                'default_update_value': ['def']
             },
             'bigint': {
                 'test_cases': [
@@ -407,7 +407,7 @@ class TestCQL(Tester):
                     standard_test_case(2**63 - 1),
                     standard_test_case(-2**63)
                 ],
-                'update_value': [1]
+                'default_update_value': [1]
             },
             'int': {
                 'test_cases': [
@@ -415,7 +415,7 @@ class TestCQL(Tester):
                     standard_test_case(2**31 - 1),
                     standard_test_case(-2**31)
                 ],
-                'update_value': [1]
+                'default_update_value': [1]
             },
             'smallint': {
                 'test_cases': [
@@ -423,7 +423,7 @@ class TestCQL(Tester):
                     standard_test_case(2**15 - 1),
                     standard_test_case(-2**15)
                 ],
-                'update_value': [1]
+                'default_update_value': [1]
             },
             'tinyint': {
                 'test_cases': [
@@ -431,7 +431,7 @@ class TestCQL(Tester):
                     standard_test_case(2**7 - 1),
                     standard_test_case(-2**7)
                 ],
-                'update_value': [1]
+                'default_update_value': [1]
             },
             'varint': {
                 'test_cases': [
@@ -439,41 +439,41 @@ class TestCQL(Tester):
                     standard_test_case(2**128),
                     standard_test_case(-2**128)
                 ],
-                'update_value': [1]
+                'default_update_value': [1]
             },
             'timestamp': {
                 'test_cases': [
                     standard_test_case(datetime(1970, 1, 1, 0, 0)),
                     standard_test_case(datetime.strptime('2020-01-02 14:13:12.001', "%Y-%m-%d %H:%M:%S.%f"))
                 ],
-                'update_value': [datetime.strptime('2021-02-03 15:14:13.002', "%Y-%m-%d %H:%M:%S.%f")]
+                'default_update_value': [datetime.strptime('2021-02-03 15:14:13.002', "%Y-%m-%d %H:%M:%S.%f")]
             },
             'date': {
                 'test_cases': [
                     standard_test_case(Date(0)),
                     standard_test_case(Date('2020-1-2'))
                 ],
-                'update_value': [Date('2021-2-3')]
+                'default_update_value': [Date('2021-2-3')]
             },
             'time': {
                 'test_cases': [
                     standard_test_case(Time(0)),
                     standard_test_case(Time('12:13:14.001'))
                 ],
-                'update_value': [Time('13:14:15.002')]
+                'default_update_value': [Time('13:14:15.002')]
             },
             'timeuuid': {
                 'test_cases': [
                     standard_test_case(uuid_from_time(datetime(2020, 1, 2, 3, 4, 5, 0)))
                 ],
-                'update_value': [uuid_from_time(datetime(2021, 2, 3, 4, 5, 6, 1))]
+                'default_update_value': [uuid_from_time(datetime(2021, 2, 3, 4, 5, 6, 1))]
             },
             'uuid': {
                 'test_cases': [
                     standard_test_case(uuid.UUID(bytes=b'\x00' * 16)),
                     standard_test_case(uuid.uuid4())
                 ],
-                'update_value': [uuid.uuid4()]
+                'default_update_value': [uuid.uuid4()]
             }
         }
 
@@ -486,3 +486,163 @@ class TestCQL(Tester):
                     self._lwt_execute_single_type_update_test(session,
                         self._build_collection_typename(column_type, is_frozen, collection_type),
                         {**test_data, **additional_test_data})
+
+
+    def lwt_update_prepared_tuple_test(self):
+
+        def standard_test_case(init_val, update_val=None):
+            res = {'init_val': (init_val,), 'update_patterns': [
+                'value=:v',
+                'value in (:v)',
+                {'p': 'value in :v', 'v': [(init_val,)]},
+                # accessing individual tuple elements is not supported in IF conditions
+            ]}
+            if update_val:
+                res.update({'update_value': update_val})
+            return res
+
+        # TODO: null values testing
+        PRIMITIVE_TYPES_MAP = {
+            'boolean': {
+                'test_cases': [
+                    standard_test_case(False)
+                ],
+                'default_update_value': (True,)
+            },
+            'blob': {
+                'test_cases': [
+                    standard_test_case(b''),
+                    standard_test_case(b'\x00\x00\x00\x00')
+                ],
+                'default_update_value': (b'\x00\x00\x00\x01',)
+            },
+            'ascii': {
+                'test_cases': [
+                    standard_test_case(''),
+                    standard_test_case('abc')
+                ],
+                'default_update_value': ('def',)
+            },
+            'decimal': {
+                'test_cases': [
+                    standard_test_case(Decimal('1.2349823094823948209384209348'))
+                ],
+                'default_update_value': (Decimal('2.3495083459083095483409534534'),)
+            },
+            'double': {
+                'test_cases': [
+                    standard_test_case(0.0),
+                    standard_test_case(2.2250738585072014e-308),
+                    standard_test_case(1.7976931348623157e+308),
+                    standard_test_case(-1.7976931348623157e+308)
+                ],
+                'default_update_value': (1.0,)
+            },
+            'float': {
+                'test_cases': [
+                    standard_test_case(0.0),
+                    standard_test_case(1.1754943508222875e-38),
+                    standard_test_case(3.4028234663852886e+38),
+                    standard_test_case(-3.4028234663852886e+38)
+                ],
+                'default_update_value': (1.0,)
+            },
+            'text': {
+                'test_cases': [
+                    standard_test_case(''),
+                    standard_test_case('abc')
+                ],
+                'default_update_value': ('def',)
+            },
+            'varchar': {
+                'test_cases': [
+                    standard_test_case(''),
+                    standard_test_case('abc')
+                ],
+                'default_update_value': ('def',)
+            },
+            'bigint': {
+                'test_cases': [
+                    standard_test_case(0),
+                    standard_test_case(2**63 - 1),
+                    standard_test_case(-2**63)
+                ],
+                'default_update_value': (1,)
+            },
+            'int': {
+                'test_cases': [
+                    standard_test_case(0),
+                    standard_test_case(2**31 - 1),
+                    standard_test_case(-2**31)
+                ],
+                'default_update_value': (1,)
+            },
+            'smallint': {
+                'test_cases': [
+                    standard_test_case(0),
+                    standard_test_case(2**15 - 1),
+                    standard_test_case(-2**15)
+                ],
+                'default_update_value': (1,)
+            },
+            'tinyint': {
+                'test_cases': [
+                    standard_test_case(0),
+                    standard_test_case(2**7 - 1),
+                    standard_test_case(-2**7)
+                ],
+                'default_update_value': (1,)
+            },
+            'varint': {
+                'test_cases': [
+                    standard_test_case(0),
+                    standard_test_case(2**128),
+                    standard_test_case(-2**128)
+                ],
+                'default_update_value': (1,)
+            },
+            'timestamp': {
+                'test_cases': [
+                    standard_test_case(datetime(1970, 1, 1, 0, 0)),
+                    standard_test_case(datetime.strptime('2020-01-02 14:13:12.001', "%Y-%m-%d %H:%M:%S.%f"))
+                ],
+                'default_update_value': (datetime.strptime('2021-02-03 15:14:13.002', "%Y-%m-%d %H:%M:%S.%f"),)
+            },
+            'date': {
+                'test_cases': [
+                    standard_test_case(Date(0)),
+                    standard_test_case(Date('2020-1-2'))
+                ],
+                'default_update_value': (Date('2021-2-3'),)
+            },
+            'time': {
+                'test_cases': [
+                    standard_test_case(Time(0)),
+                    standard_test_case(Time('12:13:14.001'))
+                ],
+                'default_update_value': (Time('13:14:15.002'),)
+            },
+            'timeuuid': {
+                'test_cases': [
+                    standard_test_case(uuid_from_time(datetime(2020, 1, 2, 3, 4, 5, 0)))
+                ],
+                'default_update_value': (uuid_from_time(datetime(2021, 2, 3, 4, 5, 6, 1)),)
+            },
+            'uuid': {
+                'test_cases': [
+                    standard_test_case(uuid.UUID(bytes=b'\x00' * 16)),
+                    standard_test_case(uuid.uuid4())
+                ],
+                'default_update_value': (uuid.uuid4(),)
+            }
+        }
+
+        session = self.prepare(options={'experimental_features': ['lwt']})
+
+        for is_frozen in (False, True):
+            for column_type, test_data in PRIMITIVE_TYPES_MAP.items():
+                collection_type = 'tuple'
+                additional_test_data = {'collection_type': collection_type}
+                self._lwt_execute_single_type_update_test(session,
+                    self._build_collection_typename(column_type, is_frozen, collection_type),
+                    {**test_data, **additional_test_data})
