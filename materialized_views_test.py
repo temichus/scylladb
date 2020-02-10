@@ -2023,6 +2023,7 @@ class TestMaterializedViews(Tester):
         self.ignore_log_patterns += [
             r'view - Error applying view update to .*: exceptions::unavailable_exception',
             r'view - Error applying view update to .*: exceptions::mutation_write_timeout_exception',
+            r'view - Error applying view update to .*: exceptions::mutation_write_failure_exception'
         ]
         session = self.prepare(options={'hinted_handoff_enabled': False, 'shadow_round_ms': 1000, 'prometheus_port': 0, 'read_request_timeout_in_ms': 100000, 'range_request_timeout_in_ms': 100000},
                                jvm_args=['--smp', str(smp_before), '--memory', self.set_memory_param(smp_before)])
