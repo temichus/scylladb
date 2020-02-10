@@ -1038,7 +1038,7 @@ class Tester(TestCase):
             assert False, '\n'.join(list(errors))
 
         if exclude_errors:
-            self.ignore_log_patterns += list(set(self.ignore_log_patterns + exclude_errors))
+            self.ignore_log_patterns = list(set(self.ignore_log_patterns + exclude_errors))
 
     def check_errors_all_nodes(self, nodes=None, exclude_errors=None, search_str=None, regex=False):
         if nodes is None:
