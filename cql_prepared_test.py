@@ -56,10 +56,10 @@ class TestCQL(Tester):
 
         session.execute(pq, ['foo', 4])
 
-    def null_value_tuple_test(self):
+    def null_value_tuple_boolean_test(self):
         session = self.prepare(options={'experimental_features': ['lwt']})
 
-        table_name = 'null_value_tuple_test'
+        table_name = 'null_value_tuple_boolean_test'
 
         session.execute('''
             CREATE TABLE IF NOT EXISTS {table_name} (
@@ -79,6 +79,55 @@ class TestCQL(Tester):
 
         assert_one_prepared(session, update_stmt, [True, None], {'new_value': False, 'v': (None,)})
         assert_one(session, "SELECT * FROM {table_name}".format(table_name=table_name), [0, False])
+
+    def null_value_tuple_double_test(self):
+        session = self.prepare(options={'experimental_features': ['lwt']})
+
+        table_name = 'null_value_tuple_double_test'
+
+        session.execute('''
+            CREATE TABLE IF NOT EXISTS {table_name} (
+                k int PRIMARY KEY,
+                test double
+            )
+        '''.format(table_name=table_name))
+
+        insert_stmt = prepare_statement(session, '''
+            INSERT INTO {table_name} (k, test) VALUES(?, ?)
+        '''.format(table_name=table_name))
+        session.execute(insert_stmt, [0, None])
+
+        update_stmt = prepare_statement(session, '''
+            UPDATE {table_name} SET test=:new_value WHERE k=0 IF test in :v
+        '''.format(table_name=table_name))
+
+        assert_one_prepared(session, update_stmt, [True, None], {'new_value': 1.0, 'v': (None,)})
+        assert_one(session, "SELECT * FROM {table_name}".format(table_name=table_name), [0, 1.0])
+
+    def null_value_tuple_uuid_test(self):
+        session = self.prepare(options={'experimental_features': ['lwt']})
+
+        table_name = 'null_value_tuple_uuid_test'
+
+        session.execute('''
+            CREATE TABLE IF NOT EXISTS {table_name} (
+                k int PRIMARY KEY,
+                test uuid
+            )
+        '''.format(table_name=table_name))
+
+        insert_stmt = prepare_statement(session, '''
+            INSERT INTO {table_name} (k, test) VALUES(?, ?)
+        '''.format(table_name=table_name))
+        session.execute(insert_stmt, [0, None])
+
+        update_stmt = prepare_statement(session, '''
+            UPDATE {table_name} SET test=:new_value WHERE k=0 IF test in :v
+        '''.format(table_name=table_name))
+
+        new_value = uuid.uuid4()
+        assert_one_prepared(session, update_stmt, [True, None], {'new_value': new_value, 'v': (None,)})
+        assert_one(session, "SELECT * FROM {table_name}".format(table_name=table_name), [0, new_value])
 
     def _lwt_create_update_test_table(self, session, column_type, test_data={}, table_name=None):
         '''Prepare table for test: create table and populate with test data'''
@@ -171,7 +220,7 @@ class TestCQL(Tester):
                 ]
             }
 
-        # TODO: tests fail: 'value in :v' (null values) for float, double, uuid, timeuuid
+        # TODO: tests fail: 'value in :v' (null) for float, double, uuid, timeuuid
         PRIMITIVE_TYPES_MAP = {
             'boolean': {
                 'test_cases': [
@@ -340,7 +389,7 @@ class TestCQL(Tester):
     def lwt_update_prepared_listlike_and_tuples_test(self):
 
         def standard_test_case(init_val):
-            return {'init_val': SortedSet([init_val]), 'update_patterns': [
+            return {'init_val': [init_val], 'update_patterns': [
                     'value=:v',
                     'value in (:v)',
                     {'p': 'value in :v', 'v': [[init_val]]},
@@ -496,3 +545,27 @@ class TestCQL(Tester):
                     self._lwt_execute_single_type_update_test(session,
                         self._build_collection_typename(column_type, is_frozen, collection_type),
                         {**test_data, **additional_test_data})
+
+    def null_value_boolean_list_index_access_test(self):
+        session = self.prepare(options={'experimental_features': ['lwt']})
+
+        table_name = 'null_value_boolean_list_index_access_test'
+
+        session.execute('''
+            CREATE TABLE IF NOT EXISTS {table_name} (
+                k int PRIMARY KEY,
+                test list<boolean>
+            )
+        '''.format(table_name=table_name))
+
+        insert_stmt = prepare_statement(session, '''
+            INSERT INTO {table_name} (k, test) VALUES(?, ?)
+        '''.format(table_name=table_name))
+        session.execute(insert_stmt, [0, [None]])
+
+        update_stmt = prepare_statement(session, '''
+            UPDATE {table_name} SET test=:new_value WHERE k=0 IF test[:i]=:v
+        '''.format(table_name=table_name))
+
+        assert_one_prepared(session, update_stmt, [True, [None]], {'new_value': [False], 'i': 0, 'v': None})
+        assert_one(session, "SELECT * FROM {table_name}".format(table_name=table_name), [0, [None]])
