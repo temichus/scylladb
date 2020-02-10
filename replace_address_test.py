@@ -105,7 +105,7 @@ class TestReplaceAddress(Tester):
 
         # check that restarting node 3 doesn't work
         debug("Try to restart node 3 (should fail)")
-        node3.start()
+        node3.start(wait_for_binary_proto=True, wait_other_notice=False)
         checkCollision = node1.grep_log("between .*"+self.cluster.get_node_ip(3)+" and .*"+self.cluster.get_node_ip(4)+"; .*"+self.cluster.get_node_ip(4)+" is the new owner")
         debug(checkCollision)
         self.assertEqual(len(checkCollision), 1)
