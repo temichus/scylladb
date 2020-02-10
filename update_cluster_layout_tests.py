@@ -224,7 +224,7 @@ class TestUpdateClusterLayout(Tester):
             node3.stop()
 
         self.addCleanup(stop_node3)
-        node2.start()
+        node2.start(no_wait=True)
         node2.watch_log_for("JOINING: sleeping .* ms for pending range setup")
 
         failed_to_detect = False
