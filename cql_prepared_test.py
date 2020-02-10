@@ -157,7 +157,7 @@ class TestCQL(Tester):
             )
             stmt = prepare_statement(session, update_query)
 
-            debug('Asserting results from two consecutive identical CAS statements')
+            debug('Asserting results from two consecutive identical CAS statements with the following query args: {}'.format(query_args))
             assert_one_prepared(session, stmt, [True, init_val], query_args)
             assert_one_prepared(session, stmt, [False, upd_v], query_args)
 
@@ -171,18 +171,18 @@ class TestCQL(Tester):
                 ]
             }
 
-        # TODO: test 'value in :v' (null values)
+        # TODO: tests fail: 'value in :v' (null values) for float, double, uuid, timeuuid
         PRIMITIVE_TYPES_MAP = {
             'boolean': {
                 'test_cases': [
-                    {'init_val': None, 'update_patterns': ['value=:v', 'value in (:v)']},
+                    standard_test_case(None),
                     standard_test_case(False)
                 ],
                 'default_update_value': True
             },
             'blob': {
                 'test_cases': [
-                    {'init_val': None, 'update_patterns': ['value=:v', 'value in (:v)']},
+                    standard_test_case(None),
                     standard_test_case(b''),
                     standard_test_case(b'\x00\x00\x00\x00')
                 ],
@@ -190,7 +190,7 @@ class TestCQL(Tester):
             },
             'ascii': {
                 'test_cases': [
-                    {'init_val': None, 'update_patterns': ['value=:v', 'value in (:v)']},
+                    standard_test_case(None),
                     standard_test_case(''),
                     standard_test_case('abc')
                 ],
@@ -198,7 +198,7 @@ class TestCQL(Tester):
             },
             'decimal': {
                 'test_cases': [
-                    {'init_val': None, 'update_patterns': ['value=:v', 'value in (:v)']},
+                    standard_test_case(None),
                     standard_test_case(Decimal('1.2349823094823948209384209348'))
                 ],
                 'default_update_value': Decimal('2.3495083459083095483409534534')
@@ -225,7 +225,7 @@ class TestCQL(Tester):
             },
             'text': {
                 'test_cases': [
-                    {'init_val': None, 'update_patterns': ['value=:v', 'value in (:v)']},
+                    standard_test_case(None),
                     standard_test_case(''),
                     standard_test_case('abc')
                 ],
@@ -233,7 +233,7 @@ class TestCQL(Tester):
             },
             'varchar': {
                 'test_cases': [
-                    {'init_val': None, 'update_patterns': ['value=:v', 'value in (:v)']},
+                    standard_test_case(None),
                     standard_test_case(''),
                     standard_test_case('abc')
                 ],
@@ -241,7 +241,7 @@ class TestCQL(Tester):
             },
             'bigint': {
                 'test_cases': [
-                    {'init_val': None, 'update_patterns': ['value=:v', 'value in (:v)']},
+                    standard_test_case(None),
                     standard_test_case(0),
                     standard_test_case(2**63 - 1),
                     standard_test_case(-2**63)
@@ -250,7 +250,7 @@ class TestCQL(Tester):
             },
             'int': {
                 'test_cases': [
-                    {'init_val': None, 'update_patterns': ['value=:v', 'value in (:v)']},
+                    standard_test_case(None),
                     standard_test_case(0),
                     standard_test_case(2**31 - 1),
                     standard_test_case(-2**31)
@@ -259,7 +259,7 @@ class TestCQL(Tester):
             },
             'smallint': {
                 'test_cases': [
-                    {'init_val': None, 'update_patterns': ['value=:v', 'value in (:v)']},
+                    standard_test_case(None),
                     standard_test_case(0),
                     standard_test_case(2**15 - 1),
                     standard_test_case(-2**15)
@@ -268,7 +268,7 @@ class TestCQL(Tester):
             },
             'tinyint': {
                 'test_cases': [
-                    {'init_val': None, 'update_patterns': ['value=:v', 'value in (:v)']},
+                    standard_test_case(None),
                     standard_test_case(0),
                     standard_test_case(2**7 - 1),
                     standard_test_case(-2**7)
@@ -277,7 +277,7 @@ class TestCQL(Tester):
             },
             'varint': {
                 'test_cases': [
-                    {'init_val': None, 'update_patterns': ['value=:v', 'value in (:v)']},
+                    standard_test_case(None),
                     standard_test_case(0),
                     standard_test_case(2**128),
                     standard_test_case(-2**128)
@@ -286,7 +286,7 @@ class TestCQL(Tester):
             },
             'timestamp': {
                 'test_cases': [
-                    {'init_val': None, 'update_patterns': ['value=:v', 'value in (:v)']},
+                    standard_test_case(None),
                     standard_test_case(datetime(1970, 1, 1, 0, 0)),
                     standard_test_case(datetime.strptime('2020-01-02 14:13:12.001', "%Y-%m-%d %H:%M:%S.%f"))
                 ],
@@ -294,7 +294,7 @@ class TestCQL(Tester):
             },
             'date': {
                 'test_cases': [
-                    {'init_val': None, 'update_patterns': ['value=:v', 'value in (:v)']},
+                    standard_test_case(None),
                     standard_test_case(Date(0)),
                     standard_test_case(Date('2020-1-2'))
                 ],
@@ -302,7 +302,7 @@ class TestCQL(Tester):
             },
             'time': {
                 'test_cases': [
-                    {'init_val': None, 'update_patterns': ['value=:v', 'value in (:v)']},
+                    standard_test_case(None),
                     standard_test_case(Time(0)),
                     standard_test_case(Time('12:13:14.001'))
                 ],
