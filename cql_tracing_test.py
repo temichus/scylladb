@@ -117,6 +117,9 @@ class TestCqlTracing(Tester):
         self.cluster.populate(2).start()
         node1, node2 = self.cluster.nodelist()
 
+        # FIXME: remove when https://github.com/scylladb/scylla/issues/5697 issue is fixed
+        self.ignore_log_patterns += [r'seastar - Timer callback failed: seastar::metrics::double_registration \(registering metrics twice for metrics: storage_proxy_coordinator_background_replica_writes_failed_remote_node\)']
+
         debug("Enable tracing for all CQL requests on node1 and node2...")
         node1.nodetool('settraceprobability 1.0')
         node2.nodetool('settraceprobability 1.0')
@@ -191,6 +194,9 @@ class TestCqlTracing(Tester):
         # Start a cluster of two nodes, and create a keyspace with RF=2.
         self.cluster.populate(2).start()
         node1, node2 = self.cluster.nodelist()
+
+        # FIXME: remove when https://github.com/scylladb/scylla/issues/5697 issue is fixed
+        self.ignore_log_patterns += [r'seastar - Timer callback failed: seastar::metrics::double_registration \(registering metrics twice for metrics: storage_proxy_coordinator_background_replica_writes_failed_remote_node\)']
 
         debug("Enable tracing for all CQL requests on node1...")
         node1.nodetool('settraceprobability 1.0')
