@@ -181,10 +181,6 @@ class TestCqlTracing(Tester):
         debug("Waiting for insert-thread to complete...")
         insert_thread.join()
 
-        debug("Checking log of node2 for assertions...")
-        match = node2.grep_log("Assertion .* failed.")
-        self.assertEqual(len(match), 0)
-
     def tracing_startup_test(self):
         """
         Check tracing functionality when Node is started:
@@ -234,10 +230,6 @@ class TestCqlTracing(Tester):
         node2.start(wait_for_binary_proto=True)
 
         insert_thread.join()
-
-        debug("Checking log of node2 for assertions...")
-        match = node2.grep_log("Assertion .* failed.")
-        self.assertEqual(len(match), 0)
 
 # ----------------------------------------------------------------------------------------------------------------------
     def grep_one_line(self, line, pattern):
