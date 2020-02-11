@@ -418,7 +418,7 @@ class TestCQL(Tester):
         res = session.execute("SELECT * FROM clicks WHERE token(userid) > token(2) LIMIT 1")
         assert rows_to_list(res) == [[45, 'http://foo.com', 42]], list(res)
 
-    @require("2029")
+
     @attr('single_node')
     def limit_multiget_test(self):
         """
@@ -466,7 +466,7 @@ class TestCQL(Tester):
         session.execute("""INSERT INTO foo (a, b, c, d, e) VALUES (0, 0, 2, 0, 3);""")
         session.execute("""INSERT INTO foo (a, b, c, d, e) VALUES (0, -1, 2, 2, 2);""")
 
-    @require("2029")
+
     @attr('single_node')
     def tuple_query_mixed_order_columns_test(self):
         """
@@ -483,7 +483,7 @@ class TestCQL(Tester):
         assert rows_list == [[0, 2, 0, 0, 0], [0, 1, 0, 0, 0], [0, 0, 1, 2, -1],
                              [0, 0, 1, 1, 1], [0, 0, 2, 1, -3], [0, 0, 2, 0, 3]], rows_list
 
-    @require("2029")
+
     @attr('single_node')
     def tuple_query_mixed_order_columns_test2(self):
         """
@@ -500,7 +500,7 @@ class TestCQL(Tester):
         assert rows_list == [[0, 2, 0, 0, 0], [0, 1, 0, 0, 0], [0, 0, 2, 1, -3],
                              [0, 0, 2, 0, 3], [0, 0, 1, 2, -1], [0, 0, 1, 1, 1]], rows_list
 
-    @require("2029")
+
     @attr('single_node')
     def tuple_query_mixed_order_columns_test3(self):
         """
@@ -517,7 +517,7 @@ class TestCQL(Tester):
         assert rows_list == [[0, 0, 2, 1, -3], [0, 0, 2, 0, 3], [0, 0, 1, 2, -1],
                              [0, 0, 1, 1, 1], [0, 1, 0, 0, 0], [0, 2, 0, 0, 0]], rows_list
 
-    @require("2029")
+
     @attr('single_node')
     def tuple_query_mixed_order_columns_test4(self):
         """
@@ -534,7 +534,7 @@ class TestCQL(Tester):
         assert rows_list == [[0, 2, 0, 0, 0], [0, 1, 0, 0, 0], [0, 0, 1, 1, 1],
                              [0, 0, 1, 2, -1], [0, 0, 2, 0, 3], [0, 0, 2, 1, -3]], rows_list
 
-    @require("2029")
+
     @attr('single_node')
     def tuple_query_mixed_order_columns_test5(self):
         """
@@ -563,7 +563,7 @@ class TestCQL(Tester):
         assert rows_list == [[0, 0, 1, 1, 1], [0, 0, 1, 2, -1], [0, 0, 2, 0, 3],
                              [0, 0, 2, 1, -3], [0, 1, 0, 0, 0], [0, 2, 0, 0, 0]], rows_list
 
-    @require("2029")
+
     @attr('single_node')
     def tuple_query_mixed_order_columns_test7(self):
         """
@@ -579,7 +579,7 @@ class TestCQL(Tester):
         assert rows_list == [[0, 0, 0, 0, 0], [0, 0, 1, 1, -1], [0, 0, 1, 1, 0],
                              [0, 0, 1, 0, 2], [0, -1, 2, 2, 2]], rows_list
 
-    @require("2029")
+
     @attr('single_node')
     def tuple_query_mixed_order_columns_test8(self):
         """
@@ -595,7 +595,7 @@ class TestCQL(Tester):
         assert rows_list == [[0, -1, 2, 2, 2], [0, 0, 1, 1, -1], [0, 0, 1, 1, 0],
                              [0, 0, 1, 0, 2], [0, 0, 0, 0, 0]], rows_list
 
-    @require("2029")
+
     @attr('single_node')
     def tuple_query_mixed_order_columns_test9(self):
         """
@@ -4359,7 +4359,6 @@ class TestCQL(Tester):
         time.sleep(2)
         assert_one(session, "UPDATE test SET v = 1 WHERE k = 0 IF lock = null", [True, None])
 
-    @require('2029')
     @attr('single_node')
     def in_order_by_without_selecting_test(self):
         """ Test that columns don't need to be selected for ORDER BY when there is a IN (#4911) """
