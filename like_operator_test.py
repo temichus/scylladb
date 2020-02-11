@@ -1931,7 +1931,6 @@ class TestLikeOperatorForBaseTable(Tester, BaseOperationsHelper):
         assert_none(session,
                     query="SELECT * FROM test WHERE test like '' ALLOW FILTERING")
 
-    @require("#5400")
     def test_filtering_combinations_of_fields_and_wc(self):
         """Validate LIKE operator filtering by several columns
 
