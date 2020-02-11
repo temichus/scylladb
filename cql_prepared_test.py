@@ -571,5 +571,6 @@ class TestCQL(Tester):
             UPDATE {table_name} SET test=:new_value WHERE k=0 IF test[:i]=:v
         '''.format(table_name=table_name))
 
-        assert_one_prepared(session, update_stmt, [True, [None]], {'new_value': [False], 'i': 0, 'v': None})
         assert_one(session, "SELECT * FROM {table_name}".format(table_name=table_name), [0, [None]])
+        assert_one_prepared(session, update_stmt, [True, [None]], {'new_value': [False], 'i': 0, 'v': None})
+        assert_one(session, "SELECT * FROM {table_name}".format(table_name=table_name), [0, [False]])
