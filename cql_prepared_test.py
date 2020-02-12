@@ -3,26 +3,15 @@ from nose.plugins.attrib import attr
 from cassandra import ConsistencyLevel
 from cassandra.util import Time, Date, uuid_from_time, SortedSet
 from tools import rows_to_list
-from assertions import assert_one
-from unittest import skip
+from assertions import assert_one, assert_one_prepared
+from tools import require
+from scylla_tools import prepare_statement
 
 from decimal import Decimal
 from datetime import datetime, date
 
 import time
 import uuid
-
-@retry_with_func_attempts
-def assert_one_prepared(session, stmt, expected, parameters, cl=ConsistencyLevel.ONE, timeout=60, num_attempts=1):
-    res = session.execute(stmt, parameters=parameters, timeout=timeout)
-    list_res = rows_to_list(res)
-    assert list_res == [expected], 'Expected %s from "%s", but got %s' % ([expected], stmt.query_string, list_res)
-
-def prepare_statement(session, query, cl=ConsistencyLevel.ONE):
-    debug('Prepairing statement: {}'.format(query))
-    res = session.prepare(query)
-    res.consistency_level = cl
-    return res
 
 @attr('single_node')
 class TestCQL(Tester):
@@ -33,9 +22,8 @@ class TestCQL(Tester):
         if options:
             cluster.set_configuration_options(values=options)
 
-        cluster.populate(1).start()
+        cluster.populate(1).start(wait_other_notice=True, wait_for_binary_proto=True)
         node1 = cluster.nodelist()[0]
-        time.sleep(0.2)
 
         session = self.patient_cql_connection(node1)
         self.create_ks(session, 'ks', 1)
@@ -81,7 +69,7 @@ class TestCQL(Tester):
         assert_one_prepared(session, update_stmt, [True, None], {'new_value': False, 'v': (None,)})
         assert_one(session, "SELECT * FROM {table_name}".format(table_name=table_name), [0, False])
 
-    @skip('Failing for scylla, skip for now until investigated and fixed')
+    @require('#5782')
     def null_value_tuple_double_test(self):
         session = self.prepare(options={'experimental_features': ['lwt']})
 
@@ -106,7 +94,7 @@ class TestCQL(Tester):
         assert_one_prepared(session, update_stmt, [True, None], {'new_value': 1.0, 'v': (None,)})
         assert_one(session, "SELECT * FROM {table_name}".format(table_name=table_name), [0, 1.0])
 
-    @skip('fails for Scylla, need to investigate')
+    @require('#5782')
     def null_value_tuple_uuid_test(self):
         session = self.prepare(options={'experimental_features': ['lwt']})
 
@@ -132,13 +120,12 @@ class TestCQL(Tester):
         assert_one_prepared(session, update_stmt, [True, None], {'new_value': new_value, 'v': (None,)})
         assert_one(session, "SELECT * FROM {table_name}".format(table_name=table_name), [0, new_value])
 
-    def _lwt_create_update_test_table(self, session, column_type, test_data={}, table_name=None):
+    def _lwt_create_table(self, session, column_type, test_data={}, table_name=None):
         '''Prepare table for test: create table and populate with test data'''
 
         if not table_name:
-            # check if we are given a collection type
-            sanitized_column_type = column_type if '<' not in column_type else \
-                column_type.replace('<', '_').replace('>', '_')
+            # sanitize name in case we have a collection column type there
+            sanitized_column_type = column_type.replace('<', '_').replace('>', '_')
             table_name = sanitized_column_type + '_update_test_table'
         column_name = 'value'
 
@@ -158,7 +145,7 @@ class TestCQL(Tester):
 
         return (table_name, column_name)
 
-    def _lwt_execute_single_type_update_test(self, session, column_type, test_params):
+    def _lwt_execute_single_type_update_case(self, session, column_type, test_params):
         debug('Executing a single LWT Update test for type {}'.format(column_type))
 
         test_cases = test_params['test_cases']
@@ -186,11 +173,11 @@ class TestCQL(Tester):
                 raw_init_values.append(init_val)
                 args_per_test_case.append((init_val, upd_v, pattern))
 
-        table_name, column_name = self._lwt_create_update_test_table(session,
+        table_name, column_name = self._lwt_create_table(session,
             column_type,
-            zip(range(0, len(raw_init_values)), raw_init_values))
+            enumerate(raw_init_values))
 
-        for key, entry in zip(range(0, len(args_per_test_case)), args_per_test_case):
+        for key, entry in enumerate(args_per_test_case):
             init_val, upd_v, pattern_entry = entry
 
             query_args = {'upd_v': upd_v}
@@ -201,8 +188,13 @@ class TestCQL(Tester):
             else:
                 update_pattern = pattern_entry['p']
                 # filter out pattern string and supply the remaining keys as arguments to the query
-                pattern_entry = {k: v for k, v in pattern_entry.items() if k != 'p'}
-                query_args.update(pattern_entry)
+                #
+                # `copy` is needed because `pop` removes the element from the
+                # original map, so consequent test runs observe the same `pattern_entry`
+                # but without a `p` pattern, which is undesired behavior
+                args_from_pattern = pattern_entry.copy()
+                args_from_pattern.pop('p')
+                query_args.update(args_from_pattern)
 
             update_query = 'UPDATE {table_name} SET {column_name}=:upd_v WHERE k={id} IF {update_pattern}'.format(
                 table_name=table_name, column_name=column_name, id=key, update_pattern=update_pattern
@@ -380,7 +372,7 @@ class TestCQL(Tester):
         session = self.prepare(options={'experimental_features': ['lwt']})
 
         for column_type, test_data in PRIMITIVE_TYPES_MAP.items():
-            self._lwt_execute_single_type_update_test(session, column_type, test_data)
+            self._lwt_execute_single_type_update_case(session, column_type, test_data)
 
     @staticmethod
     def _build_collection_typename(column_type, is_frozen, collection_type):
@@ -545,11 +537,11 @@ class TestCQL(Tester):
             for collection_type in ('list', 'set', 'tuple'):
                 for column_type, test_data in PRIMITIVE_TYPES_MAP.items():
                     additional_test_data = {'collection_type': collection_type}
-                    self._lwt_execute_single_type_update_test(session,
+                    self._lwt_execute_single_type_update_case(session,
                         self._build_collection_typename(column_type, is_frozen, collection_type),
                         {**test_data, **additional_test_data})
 
-    @skip('Failing for scylla, skip for now until investigated and fixed')
+    @require('#5791')
     def null_value_boolean_list_index_access_test(self):
         session = self.prepare(options={'experimental_features': ['lwt']})
 

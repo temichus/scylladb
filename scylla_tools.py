@@ -1248,3 +1248,13 @@ class SchemaDDL(object):
             if l.isupper():
                 return '"{}"'.format(string)
         return string
+
+
+def prepare_statement(session, query, cl=ConsistencyLevel.ONE):
+    '''
+    Prepare CQL query into statement and assign given consistency level to it.
+    '''
+    debug('Prepairing statement: {}'.format(query))
+    res = session.prepare(query)
+    res.consistency_level = cl
+    return res

@@ -65,6 +65,12 @@ def assert_one(session, query, expected, cl=ConsistencyLevel.ONE, timeout=60, nu
     assert list_res == [expected], "Expected %s from %s, but got %s" % ([expected], query, list_res)
 
 @retry_with_func_attempts
+def assert_one_prepared(session, stmt, expected, parameters, cl=ConsistencyLevel.ONE, timeout=60, num_attempts=1):
+    res = session.execute(stmt, parameters=parameters, timeout=timeout)
+    list_res = rows_to_list(res)
+    assert list_res == [expected], 'Expected %s from "%s", but got %s' % ([expected], stmt.query_string, list_res)
+
+@retry_with_func_attempts
 def assert_none(session, query, cl=ConsistencyLevel.ONE, num_attempts=1):
     """
     :param num_attempts: defines how many time try to assert data in case failure. Used in retry_with_func_attempts decorator
