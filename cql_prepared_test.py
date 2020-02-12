@@ -46,6 +46,14 @@ class TestCQL(Tester):
         session.execute(pq, ['foo', 4])
 
     def null_value_tuple_boolean_test(self):
+        """
+        Test that "IF column in :v" condition pattern in LWT update statements
+        works as expected if supplied a bound value "(null)" (i.e. a tuple with null value).
+
+        This operation should succeed if tested against a column with null value.
+
+        Regression test for #5710.
+        """
         session = self.prepare(options={'experimental_features': ['lwt']})
 
         table_name = 'null_value_tuple_boolean_test'
@@ -71,6 +79,17 @@ class TestCQL(Tester):
 
     @require('#5782')
     def null_value_tuple_double_test(self):
+        """
+        Test that "IF column in :v" condition pattern in LWT update statements
+        works as expected (column type=double) if supplied a bound value "(null)" (i.e. a tuple with null value).
+
+        This operation should succeed if tested against a column with null value.
+
+        NOTE: will be incorporated into "lwt_update_prepared_test" when the
+        corresponding issue is resolved.
+
+        Regression test for #5782.
+        """
         session = self.prepare(options={'experimental_features': ['lwt']})
 
         table_name = 'null_value_tuple_double_test'
@@ -96,6 +115,17 @@ class TestCQL(Tester):
 
     @require('#5782')
     def null_value_tuple_uuid_test(self):
+        """
+        Test that "IF column in :v" condition pattern in LWT update statements
+        works as expected (column type=uuid) if supplied a bound value "(null)" (i.e. a tuple with null value).
+
+        This operation should succeed if tested against a column with null value.
+
+        NOTE: will be incorporated into "lwt_update_prepared_test" when the
+        corresponding issue is resolved.
+
+        Regression test for #5782.
+        """
         session = self.prepare(options={'experimental_features': ['lwt']})
 
         table_name = 'null_value_tuple_uuid_test'
@@ -206,6 +236,19 @@ class TestCQL(Tester):
             assert_one_prepared(session, stmt, [False, upd_v], query_args)
 
     def lwt_update_prepared_test(self):
+        """
+        Test that the most common IF condition patterns with parameter markers work as expected
+        for prepared LWT statements.
+
+        This test case is composed of many sub-testcases to handle column types for each primitive type.
+
+        Each nested test case executes a series of tests for each IF pattern with some supplied values,
+        usually the following combinations:
+        * null values
+        * empty values
+        * zero values
+        * min/max values
+        """
 
         def standard_test_case(init_val):
             return {'init_val': init_val, 'update_patterns': [
@@ -382,6 +425,20 @@ class TestCQL(Tester):
         return ret
 
     def lwt_update_prepared_listlike_and_tuples_test(self):
+        """
+        Test that the most common IF condition patterns with parameter markers work as expected
+        for prepared LWT statements.
+
+        This test case is composed of many sub-testcases to handle column types for each primitive type.
+        Tested column types are set<T>, list<T>, tuple<T> as well as their frozen<T> companions.
+
+        Each nested test case executes a series of tests for each IF pattern with some supplied values,
+        usually the following combinations:
+        * null values
+        * empty values
+        * zero values
+        * min/max values
+        """
 
         def standard_test_case(init_val):
             return {'init_val': [init_val], 'update_patterns': [
@@ -543,6 +600,17 @@ class TestCQL(Tester):
 
     @require('#5791')
     def null_value_boolean_list_index_access_test(self):
+        """
+        Test that "IF column[:i]=:v" condition pattern in LWT update statements
+        works as expected (column type=list<boolean>) if supplied a null bound value.
+
+        This operation should succeed if tested against a column with "[null]" value.
+
+        NOTE: will be incorporated into "lwt_update_prepared_listlike_and_tuples_test" when the
+        corresponding issue is resolved.
+
+        Regression test for #5791.
+        """
         session = self.prepare(options={'experimental_features': ['lwt']})
 
         table_name = 'null_value_boolean_list_index_access_test'
