@@ -744,10 +744,12 @@ class Tester(TestCase):
         return protocol_version
 
     def cql_connection(self, node, keyspace=None, user=None,
-                       password=None, compression=True, protocol_version=None, port=None, ssl_opts=None, **kwargs):
+                       password=None, compression=True, protocol_version=None, port=None, ssl_opts=None,
+                       topology_event_refresh_window=10, **kwargs):
 
         return self._create_session(node, keyspace, user, password, compression,
-                                    protocol_version, port=port, ssl_opts=ssl_opts, **kwargs)
+                                    protocol_version, port=port, ssl_opts=ssl_opts,
+                                    topology_event_refresh_window=topology_event_refresh_window, **kwargs)
 
     def exclusive_cql_connection(self, node, keyspace=None, user=None,
                                  password=None, compression=True, protocol_version=None, port=None, ssl_opts=None, **kwargs):
@@ -759,7 +761,8 @@ class Tester(TestCase):
                                     protocol_version, load_balancing_policy=wlrr, port=port, ssl_opts=ssl_opts, **kwargs)
 
     def _create_session(self, node, keyspace, user, password, compression, protocol_version,
-                        port=None, ssl_opts=None, execution_profiles=None, **kwargs):
+                        port=None, ssl_opts=None, execution_profiles=None,
+                        topology_event_refresh_window=10, **kwargs):
         node_ip = self.get_ip_from_node(node)
         if not port:
             port = self.get_port_from_node(node)
@@ -784,6 +787,7 @@ class Tester(TestCase):
                             connect_timeout=5,
                             max_schema_agreement_wait=60,
                             control_connection_timeout=6.0,
+                            topology_event_refresh_window=topology_event_refresh_window,
                             execution_profiles=profiles)
         session = cluster.connect()
 
@@ -802,7 +806,8 @@ class Tester(TestCase):
 
     def patient_cql_connection(self, node, keyspace=None, user=None, password=None,
                                request_timeout=30, compression=True, timeout=60,
-                               protocol_version=None, port=None, ssl_opts=None, **kwargs):
+                               protocol_version=None, port=None, ssl_opts=None,
+                               topology_event_refresh_window=10, **kwargs):
         """
         Returns a connection after it stops throwing NoHostAvailables due to not being ready.
 
@@ -823,6 +828,7 @@ class Tester(TestCase):
             protocol_version=protocol_version,
             port=port,
             ssl_opts=ssl_opts,
+            topology_event_refresh_window=topology_event_refresh_window,
             bypassed_exception=NoHostAvailable,
             **kwargs
         )
