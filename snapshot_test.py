@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import time
 import uuid
+import requests
 
 from cassandra.concurrent import execute_concurrent_with_args
 from threading import Thread, Event
@@ -119,8 +120,8 @@ class SnapshotTester(Tester):
 
         return node, session
 
-    def insert_rows(self, session, start, end):
-        insert_statement = session.prepare("INSERT INTO ks.cf (key, val) VALUES (?, 'asdf')")
+    def insert_rows(self, session, start, end, cf="cf"):
+        insert_statement = session.prepare("INSERT INTO ks.{} (key, val) VALUES (?, 'asdf')".format(cf))
         args = [(r,) for r in range(start, end)]
         execute_concurrent_with_args(session, insert_statement, args, concurrency=20)
 
@@ -242,6 +243,9 @@ class SnapshotTester(Tester):
         debug("Copying from %s to %s" % (str(snapshot_dir), str(restore_dir)))
         distutils.dir_util.copy_tree(snapshot_dir, restore_dir)
         node.nodetool("refresh %s %s" % (ks, cf))
+
+    def clear_snapshot_per_keyspace_per_table(self, ip, tag, ks, cf):
+        requests.delete("http://{}:10000/storage_service/snapshots?tag={}&kn={}&cf={}".format(ip, tag, ks, cf))
 
 
 @attr('dtest-full', 'single_node')
@@ -468,6 +472,46 @@ class TestSnapshot(SnapshotTester):
 
         compaction_thread.join()
 
+
+    def test_cleaning_snapshot_by_cf(self):
+        """Test deleting specific table from snapshot
+           The test create a keyspace and two tables
+           it take a snapshot, make sure that both tables are part of the backup
+           It then delete on table and make sure that it is deleted but the other one is not.
+        """
+        def search_cf_in_snapthot(node, cf, tag):
+            snapshot_dir = os.path.join(node.get_path(), 'data', 'ks')
+            cf_id = [s for s in os.listdir(snapshot_dir) if s.startswith(cf + "-")][0]
+
+            if not os.path.exists(os.path.join(snapshot_dir, cf_id)):
+                return False
+            if not os.path.exists(os.path.join(snapshot_dir, cf_id, 'snapshots', tag)):
+                return False
+            return True
+
+        cluster = self.cluster
+        cluster.populate(1).start()
+        node = cluster.nodelist()[0]
+        session = self.patient_cql_connection(node)
+        self.create_ks(session, 'ks', 1)
+        session.execute('CREATE TABLE ks.cf ( key int PRIMARY KEY, val text);')
+        session.execute('CREATE TABLE ks.cf1 ( key int PRIMARY KEY, val text);')
+
+        self.insert_rows(session, 0, 100)
+        self.insert_rows(session, 0, 100, "cf1")
+
+        debug("all KSes and CFes are created")
+        node.flush()
+        node.nodetool('snapshot ks -t per_cf')
+
+        self.assertTrue(search_cf_in_snapthot(node, "cf", "per_cf"), "cf {} is not found in snapshot".format("cf"))
+        self.assertTrue(search_cf_in_snapthot(node, "cf1", "per_cf"), "cf {} is not found in snapshot".format("cf1"))
+        debug("all KSes and CFes are part of the snapshot")
+
+        self.clear_snapshot_per_keyspace_per_table(self.cluster.get_node_ip(1), 'per_cf', "ks", "cf")
+
+        self.assertFalse(search_cf_in_snapthot(node, "cf", "per_cf"), "cf {} is found in snapshot but should be deleted".format("cf"))
+        self.assertTrue(search_cf_in_snapthot(node, "cf1", "per_cf"), "cf {} is not found in snapshot but should be remain".format("cf1"))
 
 @attr('dtest-full', 'single_node')
 class TestArchiveCommitlog(SnapshotTester):
