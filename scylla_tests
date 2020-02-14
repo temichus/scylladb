@@ -74,3 +74,4 @@ like_operator_test.py
 paxos_tests.py
 rest_api_tests.py
 cdc_tests.py
+lwt_test.py
