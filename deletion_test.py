@@ -413,7 +413,7 @@ class RangeDeletionTester(Tester):
 
         node2 = self.cluster.nodelist()[1]
         debug('Decommission node {}'.format(node2.name))
-        node2.nodetool('decommission')
+        node2.decommission()
 
         lower_index = 16 # index of element in "data" variable - all rows after it should be deleted
         query = "DELETE FROM ks.test1 WHERE pk={pk} and ck > '{ck}'".format(pk=data[lower_index][0],
@@ -428,7 +428,7 @@ class RangeDeletionTester(Tester):
 
         node_new = new_node(self.cluster, new_node_index=len(self.cluster.nodelist())+1)
         debug('Add new node {}'.format(node_new.name))
-        node_new.start(wait_for_binary_proto=True)
+        node_new.start(wait_for_binary_proto=True, wait_other_notice=True)
 
         for node in self.cluster.nodelist():
             if not (node == node_new or node == node2):
