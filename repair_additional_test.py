@@ -670,6 +670,10 @@ class RepairAdditionalBase(Tester):
                     save_line = None
         self.assertTrue(save_line is None, "expected c1 value and timeout in sstable")
 
+    def assert_repair_option_pr_count(self, count, min_count, max_count):
+        self.assertTrue(count >= min_count and count <= max_count,
+                        "expected pr repair to repair between {} to {} rows, but count is {}".format(min_count, max_count, count))
+
     def _repair_option_pr_test(self):
         """
         Test the "partitioner range" (-pr) option. We start two nodes and a
@@ -722,13 +726,13 @@ class RepairAdditionalBase(Tester):
         node1.stop(wait_other_notice=True)
         session = self.patient_cql_connection(node2, 'ks')
         count = len(list(session.execute("SELECT * FROM cf LIMIT 2000")))
-        self.assertTrue(count > 1200 and count < 1800, "expected pr repair to repair part, but not everything")
+        self.assert_repair_option_pr_count(count, 1200, 1800)
         node1.start(wait_other_notice=True, wait_for_binary_proto=True)
         node2.flush()
         node2.stop(wait_other_notice=True)
         session = self.patient_cql_connection(node1, 'ks')
         count = len(list(session.execute("SELECT * FROM cf LIMIT 2000")))
-        self.assertTrue(count > 1200 and count < 1800, "expected pr repair to repair part, but not everything")
+        self.assert_repair_option_pr_count(count, 1200, 1800)
         node2.start(wait_other_notice=True, wait_for_binary_proto=True)
 
         # Run a second "-pr" repair, this time on node 2. This should repair
@@ -853,13 +857,13 @@ class RepairAdditionalBase(Tester):
         session = self.patient_cql_connection(node1_2, 'ks')
         count_query = SimpleStatement("SELECT count(*) from cf", consistency_level=ConsistencyLevel.ONE)
         count = session.execute(count_query)[0][0]
-        self.assertTrue(count > 1200 and count < 1800, "expected pr repair to repair part, but not everything")
+        self.assert_repair_option_pr_count(count, 1200, 1800)
         node1_1.start(wait_other_notice=True, wait_for_binary_proto=True)
         node1_2.flush()
         node1_2.stop(wait_other_notice=True)
         session = self.patient_cql_connection(node1_1, 'ks')
         count = session.execute(count_query)[0][0]
-        self.assertTrue(count > 1200 and count < 1800, "expected pr repair to repair part, but not everything")
+        self.assert_repair_option_pr_count(count, 1200, 1800)
         node1_2.start(wait_other_notice=True, wait_for_binary_proto=True)
 
         # Run a second dc-local "-pr" repair, this time on node 2. This
@@ -934,8 +938,7 @@ class RepairAdditionalBase(Tester):
         node1_2.stop(wait_other_notice=True)
         session = self.patient_cql_connection(node1_1, 'ks')
         count = len(list(session.execute("SELECT * FROM cf LIMIT 2000")))
-        debug(count)
-        self.assertTrue(count > 1050 and count < 1300, "expected pr repair to repair part, but not everything")
+        self.assert_repair_option_pr_count(count, 1050, 1300)
         node1_2.start(wait_other_notice=True, wait_for_binary_proto=True)
 
         # Run dc-local "-pr" repair on all other nodes. This should repair
