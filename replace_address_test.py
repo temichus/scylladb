@@ -7,7 +7,7 @@ from cassandra.query import SimpleStatement
 
 from ccmlib.node import NodeError
 from dtest import DISABLE_VNODES, Tester, debug
-from tools import InterruptBootstrap, since, new_node, require
+from tools import InterruptBootstrap, since, new_node, require, rows_to_list
 
 
 class NodeUnavailable(Exception):
@@ -344,3 +344,80 @@ class TestReplaceAddress(Tester):
         debug("Verifying querying works again.")
         finalData = list(session.execute(query))
         self.assertCountEqual(initialData, finalData)
+
+    @since('3.3')
+    def replace_node_no_hibernate_state_test(self):
+        """Test that there is no HIBERNATE status for a replacing node.
+
+        See https://github.com/scylladb/scylla/issues/5449 for details.
+        """
+
+        debug("Starting cluster with 2 nodes.")
+        cluster = self.cluster
+        cluster.populate(2).start()
+        node1, node2 = cluster.nodelist()
+        debug(f"Node 1 address is {cluster.get_node_ip(1)}")
+
+        node2_address = cluster.get_node_ip(2)
+        debug(f"Node 2 address is {node2_address}")
+
+        if DISABLE_VNODES:
+            num_tokens = 1
+        else:
+            # A little hacky but grep_log returns the whole line.
+            num_tokens = int(node2.get_conf_option("num_tokens"))
+        debug(f"Detected number of tokens: {num_tokens}")
+
+        debug("Inserting Data...")
+        node1.stress(["write", "n=10000", "-schema", "replication(factor=2)"])
+
+        session = self.patient_cql_connection(node1)
+        stress_table = "keyspace1.standard1"
+        query = SimpleStatement(f"SELECT * FROM {stress_table} LIMIT 1", consistency_level=ConsistencyLevel.TWO)
+        initial_data = list(session.execute(query))
+
+        debug("Stopping node 2.")
+        node2.stop()
+
+        debug("Starting node 3 to replace node 2, but stop it in the middle of the replace.")
+        node3 = new_node(cluster, bootstrap=True, token=None, remote_debug_port="0", data_center=None)
+        node3.start(replace_address=self.cluster.get_node_ip(2), no_wait=True)
+
+        node3_address = cluster.get_node_ip(3)
+        debug(f"Node 3 address is {node3_address}")
+
+        node3.stop()
+
+        status1, err1 = node1.nodetool("gossipinfo")
+        debug(f"gossipinfo:\n{status1}")
+        self.assertNotIn("STATUS:hibernate,true", status1, "There is a node in HIBERNATE status.")
+
+        debug("Starting node 4 to replace node 2.")
+        node4 = new_node(cluster, bootstrap=True, token=None, remote_debug_port='0', data_center=None)
+        node4.start(replace_address=self.cluster.get_node_ip(2), wait_for_binary_proto=True, wait_other_notice=True)
+
+        node4_address = cluster.get_node_ip(4)
+        debug(f"Node 4 address is {node4_address}")
+
+        status2, err2 = node1.nodetool("gossipinfo")
+        debug(f"gossipinfo:\n{status2}")
+        self.assertNotIn("STATUS:hibernate,true", status2, "There is a node in HIBERNATE status.")
+        self.assertNotIn(f"/{node3_address}\n", status2, "Node 3 stays in gossip.")
+
+        debug("Verifying querying works.")
+        final_data = list(session.execute(query))
+        self.assertCountEqual(initial_data, final_data)
+
+        debug("Verifying tokens migrated sucessfully.")
+        moved_tokens_list = node4.grep_log(f"Token .* changing ownership from .*{node2_address} to .*{node4_address}")
+        debug(moved_tokens_list[0])
+        self.assertEqual(len(moved_tokens_list), num_tokens)
+
+        debug("Verifying logs for connection refuse messages.")
+        connection_refuse_message = f"rpc - client {node3_address}:7000: fail to connect: Connection refused"
+        self.assertEqual(node1.grep_log(connection_refuse_message), [])
+        self.assertEqual(node4.grep_log(connection_refuse_message), [])
+
+        debug("Verifying system.peers table.")
+        peers = rows_to_list(session.execute("SELECT * FROM system.peers"))
+        self.assertEqual(len(peers), 1, "There are more peers than expected.")
