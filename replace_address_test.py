@@ -345,13 +345,11 @@ class TestReplaceAddress(Tester):
         finalData = list(session.execute(query))
         self.assertCountEqual(initialData, finalData)
 
-    @since('3.3')
     def replace_node_no_hibernate_state_test(self):
         """Test that there is no HIBERNATE status for a replacing node.
 
         See https://github.com/scylladb/scylla/issues/5449 for details.
         """
-
         debug("Starting cluster with 2 nodes.")
         cluster = self.cluster
         cluster.populate(2).start()
@@ -381,7 +379,7 @@ class TestReplaceAddress(Tester):
 
         debug("Starting node 3 to replace node 2, but stop it in the middle of the replace.")
         node3 = new_node(cluster, bootstrap=True, token=None, remote_debug_port="0", data_center=None)
-        node3.start(replace_address=self.cluster.get_node_ip(2), no_wait=True)
+        node3.start(replace_address=node2_address, no_wait=True)
 
         node3_address = cluster.get_node_ip(3)
         debug(f"Node 3 address is {node3_address}")
@@ -394,7 +392,7 @@ class TestReplaceAddress(Tester):
 
         debug("Starting node 4 to replace node 2.")
         node4 = new_node(cluster, bootstrap=True, token=None, remote_debug_port='0', data_center=None)
-        node4.start(replace_address=self.cluster.get_node_ip(2), wait_for_binary_proto=True, wait_other_notice=True)
+        node4.start(replace_address=node2_address, wait_for_binary_proto=True, wait_other_notice=True)
 
         node4_address = cluster.get_node_ip(4)
         debug(f"Node 4 address is {node4_address}")
