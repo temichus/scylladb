@@ -41,7 +41,6 @@ class CompactionAdditionalTest(Tester):
         cluster = self.cluster
         cluster.populate(1)
         [node1] = cluster.nodelist()
-        node1.set_log_level("DEBUG")
         node1.start(wait_for_binary_proto=True, jvm_args=['--smp', '1'])
 
         session = self.patient_cql_connection(node1)
@@ -152,7 +151,6 @@ class CompactionAdditionalTest(Tester):
         if not cluster.nodelist():
             cluster.populate(1)
             [node1] = cluster.nodelist()
-            node1.set_log_level("DEBUG")
             node1.start(wait_for_binary_proto=True)
         nodes = cluster.nodelist()
         node1 = nodes[0]
@@ -215,7 +213,6 @@ class CompactionAdditionalTest(Tester):
         cluster = self.cluster
         cluster.populate(1)
         [node1] = cluster.nodelist()
-        node1.set_log_level("DEBUG")
         node1.start(wait_for_binary_proto=True)
 
         TIME_TO_SLEEP_BETWEEN_FILES = 15
@@ -302,7 +299,6 @@ class CompactionAdditionalStrategyTests(Tester):
         cluster = self.cluster
         cluster.populate(1)
         [node1] = cluster.nodelist()
-        node1.set_log_level("DEBUG")
         node1.start(wait_for_binary_proto=True)
 
         session = self.patient_cql_connection(node1)
@@ -366,7 +362,6 @@ class CompactionAdditionalStrategyTests(Tester):
         cluster = self.cluster
         cluster.populate(1)
         [node1] = cluster.nodelist()
-        node1.set_log_level("DEBUG")
         node1.start(wait_for_binary_proto=True)
 
         session = self.patient_cql_connection(node1)
