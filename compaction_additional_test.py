@@ -41,28 +41,35 @@ class CompactionAdditionalTest(Tester):
         cluster = self.cluster
         cluster.populate(1)
         [node1] = cluster.nodelist()
+        debug("Starting node1 with 1 cpu")
         node1.start(wait_for_binary_proto=True, jvm_args=['--smp', '1'])
 
         session = self.patient_cql_connection(node1)
         self.create_ks(session, 'ks', 1)
 
+        gc_grace_seconds = 30
+        keys = 100
+        debug("Inserting {} keys with gc_grace_seconds={}".format(keys, gc_grace_seconds))
         session.execute("create table ks.cf (key int PRIMARY KEY, val int) "
-                        "with compaction = {'class':'SizeTieredCompactionStrategy'} and gc_grace_seconds = 30;")
+                        "with compaction = {{'class':'SizeTieredCompactionStrategy'}} and gc_grace_seconds = {};".format(gc_grace_seconds))
 
-        for x in range(0, 100):
+        for x in range(0, keys):
             session.execute('insert into cf (key, val) values (' + str(x) + ',1)')
 
         node1.flush()
         node1.compact()
+        debug("Restarting node1 with 2 cpus")
         node1.stop()
         node1.start(wait_for_binary_proto=True, jvm_args=['--smp', '2'])
 
         session = self.patient_cql_connection(node1, 'ks')
-        for x in range(0, 100):
+        debug("Deleting {} keys".format(keys))
+        for x in range(0, keys):
             session.execute('delete from cf where key = ' + str(x))
         node1.flush()
 
-        time.sleep(31)
+        debug("Waiting gc_grace_seconds={} to pass".format(gc_grace_seconds))
+        time.sleep(gc_grace_seconds + 1)
 
         # we passed gc_period and force an update so that compaction will
         # be triggered on a single shard (removing data and tombstone)
@@ -70,19 +77,22 @@ class CompactionAdditionalTest(Tester):
         compactions_1 = rows[0][0]
         compactions_2 = compactions_1
 
+        debug("Inserting data and waiting for new compaction")
         while compactions_1 == compactions_2:
-            session.execute('insert into ks.cf (key, val) values (199,1);')
+            session.execute('insert into ks.cf (key, val) values ({},1);'.format(keys + 1))
             node1.flush()
             rows = session.execute("select count(*) from system.compaction_history")
             compactions_2 = rows[0][0]
         node1.wait_for_compactions()
 
         # reboot and verify that data  is not resurected
+        debug("Restarting node1")
         node1.stop()
         node1.start(wait_for_binary_proto=True, jvm_args=['--smp', '2'])
 
         session = self.patient_cql_connection(node1, 'ks')
-        for x in range(0, 100):
+        debug("Verify that no data was resurrected")
+        for x in range(0, keys):
             assert_none(session, 'select * from cf where key = ' + str(x))
 
         # verify that only some deletion markers will be kept since we reshard the files
@@ -96,18 +106,20 @@ class CompactionAdditionalTest(Tester):
             jsoninfo = g.read()
 
         numfound = jsoninfo.count("marked_deleted")
-
-        self.assertLess(numfound, 100)
+        debug("{} keys are now marked_deleted (0 < expected < {})".format(numfound, keys))
+        self.assertLess(numfound, keys)
         self.assertGreater(numfound, 0)
 
         # trigger compaction on both shards
+        debug("Waiting for compaction")
         node1.wait_for_compactions()
         rows = session.execute("select count(*) from system.compaction_history")
         compactions_1 = rows[0][0]
         compactions_2 = compactions_1
 
+        debug("Inserting data and waiting for new compaction")
         while compactions_1 + 2 > compactions_2:
-            for x in range(200, 300):
+            for x in range(keys*2, keys*3):
                 session.execute('insert into ks.cf (key, val) values (' + str(x) + ',1);')
             node1.flush()
             rows = session.execute("select count(*) from system.compaction_history")
@@ -124,7 +136,7 @@ class CompactionAdditionalTest(Tester):
             jsoninfo = g.read()
 
         numfound = jsoninfo.count("marked_deleted")
-
+        debug("{} keys are now marked_deleted (Excpecting 0)".format(numfound))
         self.assertEqual(numfound, 0)
 
     def wait_for_new_minute(self):
