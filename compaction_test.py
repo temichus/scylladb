@@ -22,8 +22,6 @@ class TestCompaction(Tester):
 
     def setUp(self):
         Tester.setUp(self)
-        # compaction test for version 2.2.2 and above relies on DEBUG log in debug.log
-        self.cluster.set_log_level("DEBUG")
 
     def _compaction_delete_test(self):
         cluster = self.cluster
