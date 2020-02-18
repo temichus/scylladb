@@ -47,7 +47,7 @@ class CompactionAdditionalTest(Tester):
         session = self.patient_cql_connection(node1)
         self.create_ks(session, 'ks', 1)
 
-        gc_grace_seconds = 30
+        gc_grace_seconds = 5
         keys = 100
         debug("Inserting {} keys with gc_grace_seconds={}".format(keys, gc_grace_seconds))
         session.execute("create table ks.cf (key int PRIMARY KEY, val int) "
