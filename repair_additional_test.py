@@ -819,9 +819,7 @@ class RepairAdditionalBase(Tester):
         # both in the first data center. The other data centers will be
         # completely missing this data:
         debug("Adding data only on node 1...")
-        for node in self.cluster.nodelist():
-            if node != node1_1:
-                node.stop(wait_other_notice=True)
+        self.cluster.stop_nodes([node1_2, node2_1, node2_2, node3_1, node3_2], wait_other_notice=True)
         session = self.patient_cql_connection(node1_1, 'ks')
         insert_c1c2(session, keys=range(1000, 2000), consistency=ConsistencyLevel.LOCAL_ONE)
         self.cluster.flush()
@@ -834,9 +832,8 @@ class RepairAdditionalBase(Tester):
         # Bring up all nodes, each node on dc 1 should have different data
         # and all the nodes of the two other clusters are empty (but that's
         # not important in this case).
-        for node in self.cluster.nodelist():
-            if node != node1_2:
-                node.start(wait_other_notice=True, wait_for_binary_proto=True)
+        debug("Bring back all nodes...")
+        self.cluster.start_nodes(wait_other_notice=True, wait_for_binary_proto=True)
 
         # Run dc-local partioner-range repair on node 1
         info = node1_1.repair(['-pr', '-local', 'ks'])
@@ -852,18 +849,24 @@ class RepairAdditionalBase(Tester):
         # failure here because without "-local", "-pr" repair of just one
         # node in a cluster of 6 would just repair 1/6th of the range,
         # not 1/2.
+        debug("Stopping node1_1")
         node1_1.flush()
         node1_1.stop(wait_other_notice=True)
         session = self.patient_cql_connection(node1_2, 'ks')
         count_query = SimpleStatement("SELECT count(*) from cf", consistency_level=ConsistencyLevel.ONE)
         count = session.execute(count_query)[0][0]
         self.assert_repair_option_pr_count(count, 1200, 1800)
+
+        debug("Restarting node1_2")
         node1_1.start(wait_other_notice=True, wait_for_binary_proto=True)
+        debug("Stopping node1_2")
         node1_2.flush()
         node1_2.stop(wait_other_notice=True)
         session = self.patient_cql_connection(node1_1, 'ks')
         count = session.execute(count_query)[0][0]
         self.assert_repair_option_pr_count(count, 1200, 1800)
+
+        debug("Restarting node1_2")
         node1_2.start(wait_other_notice=True, wait_for_binary_proto=True)
 
         # Run a second dc-local "-pr" repair, this time on node 2. This
@@ -903,9 +906,7 @@ class RepairAdditionalBase(Tester):
         # both in the first data center. The other data centers will be
         # completely missing this data:
         debug("Adding data only on node 1...")
-        for node in self.cluster.nodelist():
-            if node != node1_1:
-                node.stop(wait_other_notice=True)
+        self.cluster.stop_nodes([node1_2, node2_1, node2_2, node3_1, node3_2], wait_other_notice=True)
         session = self.patient_cql_connection(node1_1, 'ks')
         insert_c1c2(session, keys=range(1000, 2000), consistency=ConsistencyLevel.LOCAL_ONE)
         self.cluster.flush()
@@ -919,9 +920,7 @@ class RepairAdditionalBase(Tester):
         # (all the nodes of the two other clusters are empty, but that's
         # not important in this case).
         debug("Bring back all nodes...")
-        for node in self.cluster.nodelist():
-            if node != node1_2:
-                node.start(wait_other_notice=True, wait_for_binary_proto=True)
+        self.cluster.start_nodes(wait_other_notice=True, wait_for_binary_proto=True)
 
         # Run dc-local partioner-range repair on node 1
         debug("Repair with -pr on node 1...")
@@ -934,11 +933,14 @@ class RepairAdditionalBase(Tester):
         # number, but given the assumed random distribution of tokens and keys,
         # it is unlikely to be far from 1166 - let's assert it is between
         # 1050 and 1300
+        debug("Stopping node1_2")
         node1_2.flush()
         node1_2.stop(wait_other_notice=True)
         session = self.patient_cql_connection(node1_1, 'ks')
         count = len(list(session.execute("SELECT * FROM cf LIMIT 2000")))
         self.assert_repair_option_pr_count(count, 1050, 1300)
+
+        debug("Restarting node1_2")
         node1_2.start(wait_other_notice=True, wait_for_binary_proto=True)
 
         # Run dc-local "-pr" repair on all other nodes. This should repair
