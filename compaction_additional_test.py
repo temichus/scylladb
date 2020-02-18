@@ -21,7 +21,6 @@ from ccmlib.node import NodetoolError
 
 @attr('dtest-full', 'single_node')
 class CompactionAdditionalTest(Tester):
-    _multiprocess_can_split_ = False
 
     @attr('next-gating')
     @attr('dtest-debug')
