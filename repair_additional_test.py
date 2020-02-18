@@ -670,9 +670,16 @@ class RepairAdditionalBase(Tester):
                     save_line = None
         self.assertTrue(save_line is None, "expected c1 value and timeout in sstable")
 
-    def assert_repair_option_pr_count(self, count, min_count, max_count):
+    def assert_repair_option_pr_rows(self, session, min_count, max_count, consistency_level=ConsistencyLevel.ONE):
+        select_query = SimpleStatement("SELECT * FROM cf LIMIT 2000", consistency_level=consistency_level)
+        rows = list(session.execute(select_query))
+        count_query = SimpleStatement("SELECT count(*) from cf", consistency_level=consistency_level)
+        count = session.execute(count_query)[0][0]
+        self.assertEqual(count, len(rows),
+                        "count {} must be equal to len(rows)\nrows: {}".format(count, rows))
+        debug("Asserting pr repair count: {} in [{}..{}]".format(count, min_count, max_count))
         self.assertTrue(count >= min_count and count <= max_count,
-                        "expected pr repair to repair between {} to {} rows, but count is {}".format(min_count, max_count, count))
+                        "expected pr repair to repair between {} to {} rows, but count is {}\nrows: {}".format(min_count, max_count, count, rows))
 
     def _repair_option_pr_test(self):
         """
@@ -725,14 +732,12 @@ class RepairAdditionalBase(Tester):
         node1.flush()
         node1.stop(wait_other_notice=True)
         session = self.patient_cql_connection(node2, 'ks')
-        count = len(list(session.execute("SELECT * FROM cf LIMIT 2000")))
-        self.assert_repair_option_pr_count(count, 1200, 1800)
+        self.assert_repair_option_pr_rows(session, 1200, 1800)
         node1.start(wait_other_notice=True, wait_for_binary_proto=True)
         node2.flush()
         node2.stop(wait_other_notice=True)
         session = self.patient_cql_connection(node1, 'ks')
-        count = len(list(session.execute("SELECT * FROM cf LIMIT 2000")))
-        self.assert_repair_option_pr_count(count, 1200, 1800)
+        self.assert_repair_option_pr_rows(session, 1200, 1800)
         node2.start(wait_other_notice=True, wait_for_binary_proto=True)
 
         # Run a second "-pr" repair, this time on node 2. This should repair
@@ -853,9 +858,7 @@ class RepairAdditionalBase(Tester):
         node1_1.flush()
         node1_1.stop(wait_other_notice=True)
         session = self.patient_cql_connection(node1_2, 'ks')
-        count_query = SimpleStatement("SELECT count(*) from cf", consistency_level=ConsistencyLevel.ONE)
-        count = session.execute(count_query)[0][0]
-        self.assert_repair_option_pr_count(count, 1200, 1800)
+        self.assert_repair_option_pr_rows(session, 1200, 1800)
 
         debug("Restarting node1_2")
         node1_1.start(wait_other_notice=True, wait_for_binary_proto=True)
@@ -863,8 +866,7 @@ class RepairAdditionalBase(Tester):
         node1_2.flush()
         node1_2.stop(wait_other_notice=True)
         session = self.patient_cql_connection(node1_1, 'ks')
-        count = session.execute(count_query)[0][0]
-        self.assert_repair_option_pr_count(count, 1200, 1800)
+        self.assert_repair_option_pr_rows(session, 1200, 1800)
 
         debug("Restarting node1_2")
         node1_2.start(wait_other_notice=True, wait_for_binary_proto=True)
@@ -937,8 +939,7 @@ class RepairAdditionalBase(Tester):
         node1_2.flush()
         node1_2.stop(wait_other_notice=True)
         session = self.patient_cql_connection(node1_1, 'ks')
-        count = len(list(session.execute("SELECT * FROM cf LIMIT 2000")))
-        self.assert_repair_option_pr_count(count, 1050, 1300)
+        self.assert_repair_option_pr_rows(session, 1050, 1300)
 
         debug("Restarting node1_2")
         node1_2.start(wait_other_notice=True, wait_for_binary_proto=True)
