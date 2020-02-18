@@ -1169,3 +1169,60 @@ class TestUserTypes(Tester):
 
         assert_row_count(session=session, table_name='entity_by_type', expected=rows_num,
                          consistency_level=ConsistencyLevel.QUORUM)
+
+    def test_case_sensitive_type_name(self):
+        """Test case sensitive type name"""
+        cluster = self.cluster
+        cluster.populate(3).start()
+        node1, node2, node3 = cluster.nodelist()
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'user_types', 2)
+        session.set_keyspace('user_types')
+
+        debug('Test with capital type name - PHone')
+        session.execute("CREATE TYPE \"PHone\" (country_code int, number text)")
+        session.execute("CREATE TABLE cf (pk int, pn \"PHone\", PRIMARY KEY (pk))")
+        session.execute("CREATE TABLE cf2 (pk int, pn frozen<\"PHone\">, PRIMARY KEY (pk))")
+        session.execute("CREATE TABLE cf3 (pk int, pn frozen<list<\"PHone\">>, PRIMARY KEY (pk))")
+
+        # Make sure the schema propagates
+        time.sleep(2)
+
+        session.execute("INSERT INTO cf (pk, pn) VALUES (0, {country_code: 86, number: '123'})")
+        session.execute("INSERT INTO cf2 (pk, pn) VALUES (0, {country_code: 87, number: '456'})")
+        session.execute("INSERT INTO cf3 (pk, pn) VALUES (0, [{country_code: 86, number: '123'}, {country_code: 88, number: '789'}])")
+
+        rows = list(session.execute("SELECT pn FROM cf WHERE pk=0"))
+        self.assertEqual(listify(rows[0]), [[86, '123']])
+        rows = list(session.execute("SELECT pn FROM cf2 WHERE pk=0"))
+        self.assertEqual(listify(rows[0]), [[87, '456']])
+        rows = list(session.execute("SELECT pn FROM cf3 WHERE pk=0"))
+        self.assertEqual(listify(rows[0]), [[[86, '123'], [88, '789']]])
+
+        debug('Test with lower case type name - phone')
+        session.execute("CREATE TYPE phone (country_code text, number int)")
+        session.execute("CREATE TABLE new_cf (pk int, pn phone, PRIMARY KEY (pk))")
+        session.execute("CREATE TABLE new_cf2 (pk int, pn frozen<phone>, PRIMARY KEY (pk))")
+        session.execute("CREATE TABLE new_cf3 (pk int, pn frozen<list<phone>>, PRIMARY KEY (pk))")
+
+        # Make sure the schema propagates
+        time.sleep(2)
+
+        session.execute("INSERT INTO new_cf (pk, pn) VALUES (0, {country_code: '86', number: 123})")
+        session.execute("INSERT INTO new_cf2 (pk, pn) VALUES (0, {country_code: '87', number: 456})")
+        session.execute("INSERT INTO new_cf3 (pk, pn) VALUES (0, [{country_code: '86', number: 123}, {country_code: '88', number: 789}])")
+
+        rows = list(session.execute("SELECT pn FROM new_cf WHERE pk=0"))
+        self.assertEqual(listify(rows[0]), [['86', 123]])
+        rows = list(session.execute("SELECT pn FROM new_cf2 WHERE pk=0"))
+        self.assertEqual(listify(rows[0]), [['87', 456]])
+        rows = list(session.execute("SELECT pn FROM new_cf3 WHERE pk=0"))
+        self.assertEqual(listify(rows[0]), [[['86', 123], ['88', 789]]])
+
+        debug("Drop captial type name, and check lower case type still exists")
+        session.execute("DROP TABLE cf")
+        session.execute("DROP TABLE cf2")
+        session.execute("DROP TABLE cf3")
+        session.execute("DROP TYPE \"PHone\"")
+        rows = list(session.execute("SELECT pn FROM new_cf3 WHERE pk=0"))
+        self.assertEqual(listify(rows[0]), [[['86', 123], ['88', 789]]])
