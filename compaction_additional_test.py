@@ -90,13 +90,8 @@ class CompactionAdditionalTest(Tester):
         node1.stop()
         node1.start(wait_for_binary_proto=True, jvm_args=['--smp', '2'])
 
-        session = self.patient_cql_connection(node1, 'ks')
-        debug("Verify that no data was resurrected")
-        for x in range(0, keys):
-            assert_none(session, 'select * from cf where key = ' + str(x))
-
         # verify that only some deletion markers will be kept since we reshard the files
-        # and gc_preiod passed so some tombstones have been removed by compaction
+        # and gc_period passed so some tombstones have been removed by compaction
         json_path = tempfile.mkstemp(suffix='.json')
         jname = json_path[1]
         with open(jname, 'w') as f:
@@ -109,6 +104,11 @@ class CompactionAdditionalTest(Tester):
         debug("{} keys are now marked_deleted (0 < expected < {})".format(numfound, keys))
         self.assertLess(numfound, keys)
         self.assertGreater(numfound, 0)
+
+        session = self.patient_cql_connection(node1, 'ks')
+        debug("Verify that no data was resurrected")
+        for x in range(0, keys):
+            assert_none(session, 'select * from cf where key = ' + str(x))
 
         # trigger compaction on both shards
         debug("Waiting for compaction")
