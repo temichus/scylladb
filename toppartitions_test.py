@@ -249,11 +249,13 @@ class TestTopPartitions(Tester):
         """
         result_accurancy = .9  # actual result for counter could be less on 10% from expected
 
-        self.assertEqual(len(actual_results["partitions"]), len(expected_results))
+        self.assertEqual(len(actual_results["partitions"]), len(expected_results),
+                         "Expected results: {}\nActual results: {}.".format(expected_results, actual_results["partitions"]))
         for partition, counter in expected_results:
             self.assertIn(partition, actual_results['partitions'].keys())
             self.assertGreaterEqual(int(actual_results["partitions"][partition]['count']),
-                                    result_accurancy * int(counter))
+                                    result_accurancy * int(counter),
+                                    "Expected results: {}\nActual results: {}.".format(expected_results, actual_results["partitions"]))
 
     def verfityPartitionKeyInTopPartitionList(self, actual_partition_keys, expected_toppartition_keys):
         for actual_key in actual_partition_keys:
