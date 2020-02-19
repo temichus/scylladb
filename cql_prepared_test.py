@@ -45,111 +45,6 @@ class TestCQL(Tester):
 
         session.execute(pq, ['foo', 4])
 
-    def null_value_tuple_boolean_test(self):
-        """
-        Test that "IF column in :v" condition pattern in LWT update statements
-        works as expected if supplied a bound value "(null)" (i.e. a tuple with null value).
-
-        This operation should succeed if tested against a column with null value.
-
-        Regression test for #5710.
-        """
-        session = self.prepare(options={'experimental_features': ['lwt']})
-
-        table_name = 'null_value_tuple_boolean_test'
-
-        session.execute('''
-            CREATE TABLE IF NOT EXISTS {table_name} (
-                k int PRIMARY KEY,
-                test boolean
-            )
-        '''.format(table_name=table_name))
-
-        insert_stmt = prepare_statement(session, '''
-            INSERT INTO {table_name} (k, test) VALUES(?, ?)
-        '''.format(table_name=table_name))
-        session.execute(insert_stmt, [0, None])
-
-        update_stmt = prepare_statement(session, '''
-            UPDATE {table_name} SET test=:new_value WHERE k=0 IF test in :v
-        '''.format(table_name=table_name))
-
-        assert_one_prepared(session, update_stmt, [True, None], {'new_value': False, 'v': (None,)})
-        assert_one(session, "SELECT * FROM {table_name}".format(table_name=table_name), [0, False])
-
-    @require('#5782')
-    def null_value_tuple_double_test(self):
-        """
-        Test that "IF column in :v" condition pattern in LWT update statements
-        works as expected (column type=double) if supplied a bound value "(null)" (i.e. a tuple with null value).
-
-        This operation should succeed if tested against a column with null value.
-
-        NOTE: will be incorporated into "lwt_update_prepared_test" when the
-        corresponding issue is resolved.
-
-        Regression test for #5782.
-        """
-        session = self.prepare(options={'experimental_features': ['lwt']})
-
-        table_name = 'null_value_tuple_double_test'
-
-        session.execute('''
-            CREATE TABLE IF NOT EXISTS {table_name} (
-                k int PRIMARY KEY,
-                test double
-            )
-        '''.format(table_name=table_name))
-
-        insert_stmt = prepare_statement(session, '''
-            INSERT INTO {table_name} (k, test) VALUES(?, ?)
-        '''.format(table_name=table_name))
-        session.execute(insert_stmt, [0, None])
-
-        update_stmt = prepare_statement(session, '''
-            UPDATE {table_name} SET test=:new_value WHERE k=0 IF test in :v
-        '''.format(table_name=table_name))
-
-        assert_one_prepared(session, update_stmt, [True, None], {'new_value': 1.0, 'v': (None,)})
-        assert_one(session, "SELECT * FROM {table_name}".format(table_name=table_name), [0, 1.0])
-
-    @require('#5782')
-    def null_value_tuple_uuid_test(self):
-        """
-        Test that "IF column in :v" condition pattern in LWT update statements
-        works as expected (column type=uuid) if supplied a bound value "(null)" (i.e. a tuple with null value).
-
-        This operation should succeed if tested against a column with null value.
-
-        NOTE: will be incorporated into "lwt_update_prepared_test" when the
-        corresponding issue is resolved.
-
-        Regression test for #5782.
-        """
-        session = self.prepare(options={'experimental_features': ['lwt']})
-
-        table_name = 'null_value_tuple_uuid_test'
-
-        session.execute('''
-            CREATE TABLE IF NOT EXISTS {table_name} (
-                k int PRIMARY KEY,
-                test uuid
-            )
-        '''.format(table_name=table_name))
-
-        insert_stmt = prepare_statement(session, '''
-            INSERT INTO {table_name} (k, test) VALUES(?, ?)
-        '''.format(table_name=table_name))
-        session.execute(insert_stmt, [0, None])
-
-        update_stmt = prepare_statement(session, '''
-            UPDATE {table_name} SET test=:new_value WHERE k=0 IF test in :v
-        '''.format(table_name=table_name))
-
-        new_value = uuid.uuid4()
-        assert_one_prepared(session, update_stmt, [True, None], {'new_value': new_value, 'v': (None,)})
-        assert_one(session, "SELECT * FROM {table_name}".format(table_name=table_name), [0, new_value])
-
     def _lwt_create_table(self, session, column_type, test_data={}, table_name=None):
         '''Prepare table for test: create table and populate with test data'''
 
@@ -258,7 +153,6 @@ class TestCQL(Tester):
                 ]
             }
 
-        # TODO: tests fail: 'value in :v' (null) for float, double, uuid, timeuuid
         PRIMITIVE_TYPES_MAP = {
             'boolean': {
                 'test_cases': [
@@ -292,7 +186,7 @@ class TestCQL(Tester):
             },
             'double': {
                 'test_cases': [
-                    {'init_val': None, 'update_patterns': ['value=:v', 'value in (:v)']},
+                    standard_test_case(None),
                     standard_test_case(0.0),
                     standard_test_case(2.2250738585072014e-308),
                     standard_test_case(1.7976931348623157e+308),
@@ -302,7 +196,7 @@ class TestCQL(Tester):
             },
             'float': {
                 'test_cases': [
-                    {'init_val': None, 'update_patterns': ['value=:v', 'value in (:v)']},
+                    standard_test_case(None),
                     standard_test_case(0.0),
                     standard_test_case(1.1754943508222875e-38),
                     standard_test_case(3.4028234663852886e+38),
@@ -397,14 +291,14 @@ class TestCQL(Tester):
             },
             'timeuuid': {
                 'test_cases': [
-                    {'init_val': None, 'update_patterns': ['value=:v', 'value in (:v)']},
+                    standard_test_case(None),
                     standard_test_case(uuid_from_time(datetime(2020, 1, 2, 3, 4, 5, 0)))
                 ],
                 'default_update_value': uuid_from_time(datetime(2021, 2, 3, 4, 5, 6, 1))
             },
             'uuid': {
                 'test_cases': [
-                    {'init_val': None, 'update_patterns': ['value=:v', 'value in (:v)']},
+                    standard_test_case(None),
                     standard_test_case(uuid.UUID(bytes=b'\x00' * 16)),
                     standard_test_case(uuid.uuid4())
                 ],
@@ -452,7 +346,6 @@ class TestCQL(Tester):
                 ]
             }
 
-        # TODO: null values testing
         PRIMITIVE_TYPES_MAP = {
             'boolean': {
                 'test_cases': [
@@ -597,40 +490,3 @@ class TestCQL(Tester):
                     self._lwt_execute_single_type_update_case(session,
                         self._build_collection_typename(column_type, is_frozen, collection_type),
                         {**test_data, **additional_test_data})
-
-    @require('#5791')
-    def null_value_boolean_list_index_access_test(self):
-        """
-        Test that "IF column[:i]=:v" condition pattern in LWT update statements
-        works as expected (column type=list<boolean>) if supplied a null bound value.
-
-        This operation should succeed if tested against a column with "[null]" value.
-
-        NOTE: will be incorporated into "lwt_update_prepared_listlike_and_tuples_test" when the
-        corresponding issue is resolved.
-
-        Regression test for #5791.
-        """
-        session = self.prepare(options={'experimental_features': ['lwt']})
-
-        table_name = 'null_value_boolean_list_index_access_test'
-
-        session.execute('''
-            CREATE TABLE IF NOT EXISTS {table_name} (
-                k int PRIMARY KEY,
-                test list<boolean>
-            )
-        '''.format(table_name=table_name))
-
-        insert_stmt = prepare_statement(session, '''
-            INSERT INTO {table_name} (k, test) VALUES(?, ?)
-        '''.format(table_name=table_name))
-        session.execute(insert_stmt, [0, [None]])
-
-        update_stmt = prepare_statement(session, '''
-            UPDATE {table_name} SET test=:new_value WHERE k=0 IF test[:i]=:v
-        '''.format(table_name=table_name))
-
-        assert_one(session, "SELECT * FROM {table_name}".format(table_name=table_name), [0, [None]])
-        assert_one_prepared(session, update_stmt, [True, [None]], {'new_value': [False], 'i': 0, 'v': None})
-        assert_one(session, "SELECT * FROM {table_name}".format(table_name=table_name), [0, [False]])
