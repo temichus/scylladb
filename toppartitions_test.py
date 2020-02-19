@@ -742,6 +742,7 @@ class TestTopPartitions(Tester):
             futures.append(executor.submit(write_into_one_partition_to_different_rows,
                                            session, ks='keyspace1', cf='columnfamily1'))
             wait_nodetool_toppartitions_start(node, self.cmd, timeout=30)
+            time.sleep(1)
             sync_starter.set()
             for ft in futures:
                 self.verify_thread_execution(ft)
