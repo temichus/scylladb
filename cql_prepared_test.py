@@ -493,7 +493,7 @@ class TestCQL(Tester):
                         {**test_data, **additional_test_data})
 
     @require('#5855')
-    def compare_collection_with_null_test(self):
+    def lwt_compare_collection_with_null_test(self):
         """
         Test that comparing empty collection to null yields correct results.
         Null is passed as an argument to the query as parameter marker.
