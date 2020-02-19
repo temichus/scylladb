@@ -9,6 +9,7 @@ from scylla_tools import prepare_statement
 
 from decimal import Decimal
 from datetime import datetime, date
+from collections import namedtuple
 
 import time
 import uuid
@@ -52,23 +53,23 @@ class TestCQL(Tester):
             # sanitize name in case we have a collection column type there
             sanitized_column_type = column_type.replace('<', '_').replace('>', '_')
             table_name = sanitized_column_type + '_update_test_table'
-        column_name = 'value'
 
         session.execute('''
             CREATE TABLE IF NOT EXISTS {table_name} (
                 k int PRIMARY KEY,
-                {column_name} {column_type}
+                value {column_type}
             )
-        '''.format(table_name=table_name, column_name=column_name, column_type=column_type))
+        '''.format(table_name=table_name, column_type=column_type))
 
-        insert_stmt = session.prepare('''
-            INSERT INTO {table_name} (k, {column_name}) VALUES (?, ?)
-        '''.format(table_name=table_name, column_name=column_name))
+        if test_data:
+            insert_stmt = session.prepare('''
+                INSERT INTO {table_name} (k, value) VALUES (?, ?)
+            '''.format(table_name=table_name))
 
-        for k, v in test_data:
-            session.execute(insert_stmt, [k, v])
+            for k, v in test_data:
+                session.execute(insert_stmt, [k, v])
 
-        return (table_name, column_name)
+        return table_name
 
     def _lwt_execute_single_type_update_case(self, session, column_type, test_params):
         debug('Executing a single LWT Update test for type {}'.format(column_type))
@@ -98,7 +99,7 @@ class TestCQL(Tester):
                 raw_init_values.append(init_val)
                 args_per_test_case.append((init_val, upd_v, pattern))
 
-        table_name, column_name = self._lwt_create_table(session,
+        table_name = self._lwt_create_table(session,
             column_type,
             enumerate(raw_init_values))
 
@@ -121,8 +122,8 @@ class TestCQL(Tester):
                 args_from_pattern.pop('p')
                 query_args.update(args_from_pattern)
 
-            update_query = 'UPDATE {table_name} SET {column_name}=:upd_v WHERE k={id} IF {update_pattern}'.format(
-                table_name=table_name, column_name=column_name, id=key, update_pattern=update_pattern
+            update_query = 'UPDATE {table_name} SET value=:upd_v WHERE k={id} IF {update_pattern}'.format(
+                table_name=table_name, id=key, update_pattern=update_pattern
             )
             stmt = prepare_statement(session, update_query)
 
@@ -490,3 +491,93 @@ class TestCQL(Tester):
                     self._lwt_execute_single_type_update_case(session,
                         self._build_collection_typename(column_type, is_frozen, collection_type),
                         {**test_data, **additional_test_data})
+
+    def compare_collection_with_null_test(self):
+        """
+        Test that comparing empty collection to null yields correct results.
+        Null is passed as an argument to the query as parameter marker.
+
+        Tested situations include the following:
+         * empty non-frozen collection ~ null
+         * empty frozen collection != null
+        """
+
+        session = self.prepare(options={'experimental_features': ['lwt']})
+
+
+        # Create test table and prepare data
+
+        session.execute('''
+            CREATE TABLE test (
+                k INT PRIMARY KEY,
+                lvalue list<boolean>,
+                flvalue frozen<list<boolean>>,
+                svalue set<boolean>,
+                fsvalue frozen<set<boolean>>,
+                mvalue map<boolean, boolean>,
+                fmvalue frozen<map<boolean, boolean>>
+            )
+        ''')
+
+        session.execute('''
+            INSERT INTO test (k) VALUES (0)
+        ''') # leave collection cells == null
+
+
+        # Prepare statements
+
+        # list<T>
+        TestInfo = namedtuple('TestInfo', ['stmt', 'frozen_stmt', 'empty', 'non_empty'])
+        test_infos = []
+        # list<T>
+        test_infos.append(
+            TestInfo(
+                stmt=prepare_statement(session, '''
+                    UPDATE test SET lvalue=:update_val WHERE k=0 IF lvalue=:v
+                '''),
+                frozen_stmt=prepare_statement(session, '''
+                    UPDATE test SET flvalue=:update_val WHERE k=0 IF flvalue=:v
+                '''),
+                empty=[],
+                non_empty=[False]
+            )
+        )
+        # set<T>
+        test_infos.append(
+            TestInfo(
+                stmt=prepare_statement(session, '''
+                    UPDATE test SET svalue=:update_val WHERE k=0 IF svalue=:v
+                '''),
+                frozen_stmt=prepare_statement(session, '''
+                    UPDATE test SET fsvalue=:update_val WHERE k=0 IF fsvalue=:v
+                '''),
+                empty=[],
+                non_empty=[False]
+            )
+        )
+        # map<K,V>
+        test_infos.append(
+            TestInfo(
+                stmt=prepare_statement(session, '''
+                    UPDATE test SET mvalue=:update_val WHERE k=0 IF mvalue=:v
+                '''),
+                frozen_stmt=prepare_statement(session, '''
+                    UPDATE test SET fmvalue=:update_val WHERE k=0 IF fmvalue=:v
+                '''),
+                empty={},
+                non_empty={False: True}
+            )
+        )
+
+        # Execute checks
+        for ti in test_infos:
+            # Non-frozen empty collection should be equivalent to null
+            # The following should also succeed exactly as it does in un-prepared variant. Ref: #bug_id
+            #assert_one_prepared(session, ti.stmt, [True, None], {'update_val': [], 'v': []})
+            assert_one_prepared(session, ti.stmt, [True, None], {'update_val': ti.non_empty, 'v': None})
+            assert_one_prepared(session, ti.stmt, [False, ti.non_empty], {'update_val': ti.empty, 'v': ti.empty})
+
+            # Frozen empty collection should be distinct from null
+            assert_one_prepared(session, ti.frozen_stmt, [False, None], {'update_val': ti.empty, 'v': ti.empty})
+            assert_one_prepared(session, ti.frozen_stmt, [True, None], {'update_val': ti.non_empty, 'v': None})
+            assert_one_prepared(session, ti.frozen_stmt, [False, ti.non_empty], {'update_val': ti.empty, 'v': ti.empty})
