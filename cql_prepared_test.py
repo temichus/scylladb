@@ -583,3 +583,85 @@ class TestCQL(Tester):
             assert_one_prepared(session, ti.frozen_stmt, [False, None], {'update_val': ti.empty, 'v': ti.empty})
             assert_one_prepared(session, ti.frozen_stmt, [True, None], {'update_val': ti.non_empty, 'v': None})
             assert_one_prepared(session, ti.frozen_stmt, [False, ti.non_empty], {'update_val': ti.empty, 'v': ti.empty})
+
+    def lwt_nested_collections_test(self):
+        """
+        Test that nested collections are working with parameter markers.
+
+        Note: only non_frozen<frozen<T>> combinations are supported.
+        """
+
+        session = self.prepare(options={'experimental_features': ['lwt']})
+
+        # Create test table and prepare data
+
+        session.execute('''
+            CREATE TABLE test (
+                k INT PRIMARY KEY,
+                set_list set<frozen<list<int>>>,
+                list_set list<frozen<set<int>>>
+            )
+        ''')
+
+        insert_stmt = prepare_statement(session, '''
+            INSERT INTO test (k, set_list, list_set) VALUES (1, ?, ?)
+        ''')
+
+        # INSERT INTO test (k, set_list, list_set) VALUES (1, {[1,2], [1,2]}, [{1,2}, {1,2}])
+        session.execute(insert_stmt, [
+                SortedSet([[1, 2], [1, 2]]),
+                [SortedSet([1, 2]), SortedSet([1, 2])]
+            ])
+
+        # Sets
+
+        # UPDATE test SET set_list={[3,3], [4,4]} WHERE k = 1 IF b = {[1,2], [1,2]}
+        stmt = prepare_statement(session, '''
+            UPDATE test SET set_list=:update_val WHERE k=1 IF set_list=:v
+        ''')
+        assert_one_prepared(session, stmt, [True, SortedSet([[1, 2]])],
+            {'update_val': SortedSet([[3, 3], [4, 4]]), 'v': SortedSet([[1, 2], [1, 2]])})
+
+        # UPDATE test SET set_list={[5,5,5], [4,4,4]} WHERE k = 1 if set_list > {[3,3], [4,4]}
+        stmt = prepare_statement(session, '''
+            UPDATE test SET set_list=:update_val WHERE k=1 IF set_list > :v
+        ''')
+        assert_one_prepared(session, stmt, [False, SortedSet([[3, 3], [4, 4]])],
+            {'update_val': SortedSet([[5, 5, 5], [4, 4, 4]]), 'v': SortedSet([[3, 3], [4, 4]])})
+
+        # UPDATE test SET set_list={[5,5,5], [4,4,4]} WHERE k = 1 IF set_list >= {[3,3], [4,4]}
+        stmt = prepare_statement(session, '''
+            UPDATE test SET set_list=:update_val WHERE k=1 IF set_list >= :v
+        ''')
+        assert_one_prepared(session, stmt, [True, SortedSet([[3, 3], [4, 4]])],
+            {'update_val': SortedSet([[5, 5, 5], [4, 4, 4]]), 'v': SortedSet([[3, 3], [4, 4]])})
+
+        # Lists
+
+        # UPDATE test SET list_set=[{3,4}, {4,5}] WHERE a = 1 IF list_set = [{1,2}, {1,2}]
+        stmt = prepare_statement(session, '''
+            UPDATE test SET list_set=:update_val WHERE k=1 IF list_set=:v
+        ''')
+        assert_one_prepared(session, stmt, [True, [SortedSet([1, 2]), SortedSet([1, 2])]],
+            {'update_val': [SortedSet([3, 4]), SortedSet([4, 5])], 'v': [SortedSet([1, 2]), SortedSet([1, 2])]})
+
+        # UPDATE test SET list_set=[{3,4,5}, {4,5,6}] WHERE k = 1 IF list_set > [{3,3}, {4,4}]
+        stmt = prepare_statement(session, '''
+            UPDATE test SET list_set=:update_val WHERE k=1 IF list_set > :v
+        ''')
+        assert_one_prepared(session, stmt, [True, [SortedSet([3, 4]), SortedSet([4, 5])]],
+            {'update_val': [SortedSet([3, 4, 5]), SortedSet([4, 5, 6])], 'v': [SortedSet([3, 3]), SortedSet([4, 4])]})
+
+        # UPDATE test SET list_set=[{5,6,7}, {7,8,9}] WHERE k = 1 IF list_set >= [{3,3}, {5,4}]
+        stmt = prepare_statement(session, '''
+            UPDATE test SET list_set=:update_val WHERE k=1 IF list_set >= :v
+        ''')
+        assert_one_prepared(session, stmt, [True, [SortedSet([3, 4, 5]), SortedSet([4, 5, 6])]],
+            {'update_val': [SortedSet([5, 6, 7]), SortedSet([7, 8, 9])], 'v': [SortedSet([3, 3]), SortedSet([5, 4])]})
+
+        # UPDATE test SET list_set=[{5,6,7}, {7,8,9}] WHERE k = 1 IF list_set >= [{3,4}, {4,5}]
+        stmt = prepare_statement(session, '''
+            UPDATE test SET list_set=:update_val WHERE k=1 IF list_set >= :v
+        ''')
+        assert_one_prepared(session, stmt, [True, [SortedSet([5, 6, 7]), SortedSet([7, 8, 9])]],
+            {'update_val': [SortedSet([5, 6, 7]), SortedSet([7, 8, 9])], 'v': [SortedSet([3, 4]), SortedSet([4, 5])]})
