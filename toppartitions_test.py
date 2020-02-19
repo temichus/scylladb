@@ -1,4 +1,4 @@
-from dtest import Tester
+from dtest import Tester, debug
 from ccmlib.node import NodetoolError
 from scylla_tools import insert_c1c2_no_prepared, query_c1c2_concurrent
 from tools import create_c1c2_table, require
@@ -160,9 +160,11 @@ class TestTopPartitions(Tester):
     def run_toppartition_for(self, node, ks, cf, duration=10000, optional_params=''):
         self.cmd = self.get_nodetool_toppartition_cmd(ks, cf, duration, optional_params)
         try:
+            debug("Running nodetool {}".format(self.cmd))
             out, err = node.nodetool(self.cmd)
             if err:
                 self.fail(err)
+            debug("nodetool {} output={}".format(self.cmd, out))
             return self._parse_toppartitions_output(out)
 
         except NodetoolError as details:
@@ -714,9 +716,9 @@ class TestTopPartitions(Tester):
                                 list(range(10)) * 250,
                                 list(range(2500)),
                                 ["value{}".format(a) for a in range(2500)])
-
             statement = session.prepare("INSERT INTO {}.{} (key1, key2, ckey, val) VALUES (?, ?, ?, ?)".format(ks, cf))
             if sync_starter.wait(30):
+                debug("write_25_ops_for_10_partitions")
                 execute_concurrent_with_args(session, statement, column_values)
 
         def write_into_one_partition_to_different_rows(session, ks, cf):
@@ -726,6 +728,7 @@ class TestTopPartitions(Tester):
 
             statement = session.prepare("INSERT INTO {}.{} (key1, key2, ckey, val) VALUES (?, ?, ?, ?)".format(ks, cf))
             if sync_starter.wait(30):
+                debug("write_into_one_partition_to_different_rows")
                 execute_concurrent_with_args(session, statement, column_values)
 
         node, session = self.prepare_cluster_with_ks_cf_complex_primary_key(ks='keyspace1', cf='columnfamily1')
