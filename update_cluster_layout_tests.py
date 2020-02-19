@@ -798,6 +798,8 @@ class TestUpdateClusterLayout(Tester):
         # check node2 has started decommission
         node2.watch_log_for("Beginning stream session")
 
+        self.ignore_log_patterns += ["Failed to handle STREAM_MUTATION_FRAGMENTS.*peer={}".format(node2.address())]
+
         debug("Stop node2 ")
         node2.stop(gently=False)
 
