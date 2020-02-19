@@ -492,6 +492,7 @@ class TestCQL(Tester):
                         self._build_collection_typename(column_type, is_frozen, collection_type),
                         {**test_data, **additional_test_data})
 
+    @require('#5855')
     def compare_collection_with_null_test(self):
         """
         Test that comparing empty collection to null yields correct results.
@@ -572,8 +573,9 @@ class TestCQL(Tester):
         # Execute checks
         for ti in test_infos:
             # Non-frozen empty collection should be equivalent to null
-            # The following should also succeed exactly as it does in un-prepared variant. Ref: #bug_id
-            #assert_one_prepared(session, ti.stmt, [True, None], {'update_val': [], 'v': []})
+            # The following should also succeed exactly as it does in un-prepared variant.
+            # Ref: https://github.com/scylladb/scylla/issues/5855
+            #assert_one_prepared(session, ti.stmt, [True, None], {'update_val': ti.empty, 'v': ti.empty})
             assert_one_prepared(session, ti.stmt, [True, None], {'update_val': ti.non_empty, 'v': None})
             assert_one_prepared(session, ti.stmt, [False, ti.non_empty], {'update_val': ti.empty, 'v': ti.empty})
 
