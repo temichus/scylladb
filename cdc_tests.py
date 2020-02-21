@@ -1,6 +1,12 @@
 import bisect
 import os
 import time
+import itertools
+
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta
+from enum import IntEnum
+from threading import Event
 
 from cassandra import ConsistencyLevel, InvalidRequest
 from cassandra.connection import ConnectionException
@@ -9,23 +15,64 @@ from cassandra.query import SimpleStatement
 from cassandra.util import datetime_from_uuid1
 from cassandra.policies import FallthroughRetryPolicy
 from ccmlib.scylla_cluster import ScyllaCluster
-from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta
 from dtest import Tester, debug, wait_for
-import itertools
 from nose.plugins.attrib import attr
 from tools import new_node
-from threading import Event
 
 
 TOKENS_PER_NODE = 256
 
-OPERATION_PRE_IMAGE = 0
-OPERATION_INSERT = 2
+
+class CdcLogOperations(IntEnum):
+    PREIMAGE = 0
+    UPDATE = 1
+    INSERT = 2
+    ROW_DELETE = 3
+    PARTITION_DELETE = 4
+    RANGE_DELETE_START_INCLUSIVE = 5
+    RANGE_DELETE_START_EXCLUSIVE = 6
+    RANGE_DELETE_END_INCLUSIVE = 7
+    RANGE_DELETE_END_EXCLUSIVE = 8
+    POSTIMAGE = 9
+
+
+class CDCInitializeHelper:
+
+    def wait_for_last_generation_to_be_active(self, session):
+        cdc_descriptions = list(self.get_cdc_description_rows(session))
+        self.assertGreater(len(cdc_descriptions), 0, "No CDC generations")
+        last_timestamp = max(desc.time for desc in cdc_descriptions)
+
+        # Add one second to account for clock differences
+        self.sleep_until(last_timestamp + timedelta(seconds=1))
+        debug('Current generation timestamp: {}'.format(last_timestamp))
+        return last_timestamp
+
+    def get_cdc_description_rows(self, session):
+        query = SimpleStatement("SELECT * FROM system_distributed.cdc_description",
+                                consistency_level=ConsistencyLevel.ONE)
+        return session.execute(query)
+
+    def wait_for_metadata_update(self, session, cluster_size):
+        # Cluster metadata is updated asynchronously, so we need to wait
+        def check_metadata():
+            ring = self.get_vnode_ring(session)
+            debug('Token ring length: {}'.format(len(ring)))
+            return len(ring) == cluster_size * 256
+        wait_for(check_metadata, timeout=60, text='Waiting until metadata is updated')
+
+    def sleep_until(self, timestamp):
+        secs = (timestamp - datetime.utcnow()).total_seconds()
+        if secs > 0:
+            debug('Sleeping for {} seconds'.format(secs))
+            time.sleep(secs)
+
+    def get_vnode_ring(self, session):
+        return list(session.cluster.metadata.token_map.ring)
 
 
 @attr('scylla-cdc')
-class TestCdc(Tester):
+class TestCdc(Tester, CDCInitializeHelper):
     def __init__(self, *args, **kwargs):
         ring_delay_sec = 5
         kwargs['cluster_options'] = {'experimental_features': ['cdc'],
@@ -342,14 +389,14 @@ class TestCdc(Tester):
             if len(write_rows) == 1:
                 # This is a new row
                 row = write_rows[0]
-                self.assertEqual(row.cdc_operation, OPERATION_INSERT)
+                self.assertEqual(row.cdc_operation, CdcLogOperations.INSERT)
                 self.assertNotIn(row.a, latest_rows)
                 latest_rows[row.a] = row
             else:
                 # The row was updated
                 preimage_row, update_row = write_rows
-                self.assertEqual(preimage_row.cdc_operation, OPERATION_PRE_IMAGE)
-                self.assertEqual(update_row.cdc_operation, OPERATION_INSERT)
+                self.assertEqual(preimage_row.cdc_operation, CdcLogOperations.PREIMAGE)
+                self.assertEqual(update_row.cdc_operation, CdcLogOperations.INSERT)
                 self.assertIn(update_row.a, latest_rows)
                 old_row = latest_rows[update_row.a]
 
@@ -446,26 +493,8 @@ class TestCdc(Tester):
             len(ring), len(ring) - len(vnodes_with_stream), percent_bad))
         self.assertLessEqual(percent_bad, 10.0, 'Expected that at most 10% vnodes will be without a stream')
 
-    def wait_for_metadata_update(self, session, cluster_size):
-        # Cluster metadata is updated asynchronously, so we need to wait
-        def check_metadata():
-            ring = self.get_vnode_ring(session)
-            debug('Token ring length: {}'.format(len(ring)))
-            return len(ring) == cluster_size * TOKENS_PER_NODE
-        wait_for(check_metadata, timeout=60, text='Waiting until metadata is updated')
-
-    def wait_for_last_generation_to_be_active(self, session):
-        cdc_descriptions = list(self.get_cdc_description_rows(session))
-        self.assertGreater(len(cdc_descriptions), 0, "No CDC generations")
-        last_timestamp = max(desc.time for desc in cdc_descriptions)
-
-        # Add one second to account for clock differences
-        self.sleep_until(last_timestamp + timedelta(seconds=1))
-        debug('Current generation timestamp: {}'.format(last_timestamp))
-        return last_timestamp
-
     def get_sorted_update_rows(self, session, log_rows):
-        update_rows = [r for r in log_rows if r.cdc_operation == OPERATION_INSERT]
+        update_rows = [r for r in log_rows if r.cdc_operation == CdcLogOperations.INSERT]
         assignment = self.get_stream_id_to_timestamp_assignment(session)
         return sorted(update_rows, key=lambda r: assignment[r.cdc_stream_id])
 
@@ -497,11 +526,6 @@ class TestCdc(Tester):
         session.execute("DROP KEYSPACE tmp")
         return res
 
-    def get_cdc_description_rows(self, session):
-        query = SimpleStatement("SELECT * FROM system_distributed.cdc_description",
-                                consistency_level=ConsistencyLevel.ALL)
-        return session.execute(query)
-
     def get_cdc_topology_description_for_timestamp(self, session, timestamp):
         query = session.prepare("SELECT description FROM system_distributed.cdc_topology_description WHERE time = ?")
         query.consistency_level = ConsistencyLevel.ALL
@@ -528,9 +552,6 @@ class TestCdc(Tester):
                  "token(\"cdc$stream_id\") AS tok FROM {}").format(log_table_name)
         return session.execute(SimpleStatement(query, consistency_level=ConsistencyLevel.ALL))
 
-    def get_vnode_ring(self, session):
-        return list(session.cluster.metadata.token_map.ring)
-
     def get_vnode_for_stream_token(self, ring, token):
         # Stream token marks the beginning of a token. Much like a vnode,
         # a stream is a half-open interval, thus this function has a slightly
@@ -545,12 +566,6 @@ class TestCdc(Tester):
         if idx == 0 or idx == len(ring):
             return (ring[-1], ring[0])
         return (ring[idx - 1], ring[idx])
-
-    def sleep_until(self, timestamp):
-        secs = (timestamp - datetime.utcnow()).total_seconds()
-        if secs > 0:
-            debug('Sleeping for {} seconds'.format(secs))
-            time.sleep(secs)
 
     def log_table_name(self, base_table_name):
         return base_table_name + "_scylla_cdc_log"

@@ -74,6 +74,7 @@ like_operator_test.py
 paxos_tests.py
 rest_api_tests.py
 cdc_tests.py
+cdc_types_test.py
 lwt_test.py
 lwt_destructive_ddl_test.py
 cql_prepared_test.py
