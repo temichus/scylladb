@@ -211,6 +211,8 @@ class TestMaterializedViews(Tester):
                                     capture_output=True)
         self.assertFalse(stderr, 'Run c-s failed: {}'.format(stderr))
 
+        self.ignore_log_patterns += [r'view - Error applying view update to .*: seastar::broken_promise']
+
         other_nodes = self.cluster.nodelist()
         nodes_to_start = [ other_nodes.pop(1) ]
         if double_failure and len(self.cluster.nodelist()) > 2:
