@@ -85,10 +85,14 @@ class CompactionAdditionalTest(Tester):
             compactions_2 = rows[0][0]
         node1.wait_for_compactions()
 
+        rows = session.execute("select count(*) from system.compaction_history")
+        compactions_2 = rows[0][0]
+        num_compactions = compactions_2 - compactions_1
+        debug("{} compaction(s) completed".format(num_compactions))
+
         # reboot and verify that data  is not resurected
-        debug("Restarting node1")
+        debug("Stopping node1")
         node1.stop()
-        node1.start(wait_for_binary_proto=True, jvm_args=['--smp', '2'])
 
         # verify that only some deletion markers will be kept since we reshard the files
         # and gc_period passed so some tombstones have been removed by compaction
@@ -101,10 +105,13 @@ class CompactionAdditionalTest(Tester):
             jsoninfo = g.read()
 
         numfound = jsoninfo.count("marked_deleted")
-        debug("{} keys are now marked_deleted (0 < expected < {})".format(numfound, keys))
+        debug("{} keys are now marked_deleted (0 {} expected < {})".format(numfound, "<" if num_compactions < 2 else "<=", keys))
         self.assertLess(numfound, keys)
-        self.assertGreater(numfound, 0)
+        if num_compactions < 2:
+            self.assertGreater(numfound, 0)
 
+        debug("Restarting node1")
+        node1.start(wait_for_binary_proto=True, jvm_args=['--smp', '2'])
         session = self.patient_cql_connection(node1, 'ks')
         debug("Verify that no data was resurrected")
         for x in range(0, keys):
