@@ -530,7 +530,8 @@ class Tester(TestCase):
             raise SkipTest("Dry run")
 
         global CURRENT_TEST
-        CURRENT_TEST = self.id() + self._testMethodName
+        cls = self.__class__
+        CURRENT_TEST = "{}:{}.{}".format(cls.__module__, cls.__qualname__, self._testMethodName)
 
         # On Windows, forcefully terminate any leftover previously running cassandra processes. This is a temporary
         # workaround until we can determine the cause of intermittent hung-open tests and file-handles.
