@@ -531,7 +531,15 @@ class Tester(TestCase):
 
         global CURRENT_TEST
         cls = self.__class__
-        CURRENT_TEST = "{}:{}.{}".format(cls.__module__, cls.__qualname__, self._testMethodName)
+        qualname = cls.__qualname__
+        module = cls.__module__
+        if os.path.exists(module + '.py'):
+            module += '.py'
+        elif '.' in module:
+            m = "{}.py".format(module.replace('.', '/'))
+            if os.path.exists(m):
+                module = m
+        CURRENT_TEST = "{}:{}.{}".format(module, qualname, self._testMethodName)
 
         # On Windows, forcefully terminate any leftover previously running cassandra processes. This is a temporary
         # workaround until we can determine the cause of intermittent hung-open tests and file-handles.
