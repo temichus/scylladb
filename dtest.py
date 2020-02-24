@@ -92,21 +92,29 @@ def reset_environment_vars():
     os.environ.clear()
     os.environ.update(initial_environment)
 
+def log_message(msg):
+    if CURRENT_TEST != "":
+        msg = CURRENT_TEST + ' - ' + str(msg)
+    return msg;
 
-def warning(msg):
-    LOG.warning(CURRENT_TEST + ' - ' + str(msg))
+def warning(msg, add_timestamp=True):
+    msg = log_message(msg)
+    LOG.warning(msg)
     if PRINT_DEBUG:
+        msg = '{0}{1}'.format('{} '.format(datetime.datetime.now()) if add_timestamp else '', msg)
         print("WARN: " + msg)
 
 
 def debug(msg, add_timestamp=True):
-    LOG.debug(CURRENT_TEST + ' - ' + str(msg))
+    msg = log_message(msg)
+    LOG.debug(msg)
     msg = '{0}{1}'.format('{} '.format(datetime.datetime.now()) if add_timestamp else '', msg)
     if PRINT_DEBUG:
         print(msg)
 
 def info(msg, add_timestamp=True):
-    LOG.info(CURRENT_TEST + ' - ' + str(msg))
+    msg = log_message(msg)
+    LOG.info(msg)
     msg = '{0}{1}'.format('{} '.format(datetime.datetime.now()) if add_timestamp else '', msg)
     print(msg)
 
