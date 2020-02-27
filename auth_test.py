@@ -1090,7 +1090,7 @@ class TestAuth(Tester):
         self.assertEquals(1, rf, "RF of system_auth isn't 1")
 
         # check the replicas endpoint of system_auth.user:cassandra
-        out, err = node1.nodetool("getendpoints system_auth users cassandra")
+        out, err = node1.nodetool("getendpoints system_auth roles cassandra")
         debug('Endpoints of system_auth.users:cassandra : %s' % out.strip().split('\n'))
         rf_address = out.strip().split('\n')[0]
 
@@ -1148,7 +1148,7 @@ class TestAuth(Tester):
         self.assertEquals(3, rf)
 
         # check the replicas endpoint of system_auth.user:cassandra
-        out, err = node1.nodetool("getendpoints system_auth users cassandra")
+        out, err = node1.nodetool("getendpoints system_auth roles cassandra")
         debug('Endpoints of system_auth.users:cassandra : %s' % out.strip().split('\n'))
         rf_addresses = out.strip().split('\n')
 
@@ -1238,7 +1238,7 @@ class TestAuth(Tester):
         self.assertEquals(1, rf, "RF of system_auth isn't 1")
 
         # check the replicas endpoint of system_auth.user:cassandra
-        out, err = node1.nodetool("getendpoints system_auth users cassandra")
+        out, err = node1.nodetool("getendpoints system_auth roles cassandra")
         debug('Endpoints of system_auth.users:cassandra : %s' % out.strip().split('\n'))
         self.assertEqual(1, len(out.strip().split('\n')), "1 node expected")
         rf_address = out.strip().split('\n')[0]
@@ -1299,7 +1299,7 @@ class TestAuth(Tester):
         self.assertEquals(2, rf)
 
         # check the replicas endpoint of system_auth.user:cassandra
-        out, err = node1.nodetool("getendpoints system_auth users cassandra")
+        out, err = node1.nodetool("getendpoints system_auth roles cassandra")
         debug('Endpoints of system_auth.users:cassandra : %s' % out.strip().split('\n'))
         self.assertEqual(2, len(out.strip().split('\n')), "2 nodes expected")
 
@@ -1347,7 +1347,7 @@ class TestAuth(Tester):
                           cluster.metadata.keyspaces['system_auth'].replication_strategy.replication_factor)
 
         # check the replicas endpoint of system_auth.user:cassandra
-        out, err = nodes[0].nodetool("getendpoints system_auth users cassandra")
+        out, err = nodes[0].nodetool("getendpoints system_auth roles cassandra")
         debug('Endpoints of system_auth.users:cassandra : %s' % out.strip().split('\n'))
         self.assertEqual(3, len(out.strip().split('\n')), "3 nodes expected")
 
