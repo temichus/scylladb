@@ -581,6 +581,7 @@ class TestTimeWindowDataSegregation(Tester):
         self._check_sstable_timestamps(node1)
         self._check_sstable_timestamps(node2)
 
+    @attr('next-gating')
     def test_streaming_on_rebuild_multidc(self):
 
         def _add_node(i, dc):
@@ -637,7 +638,8 @@ class TestTimeWindowDataSegregation(Tester):
         self.assertEqual(self.unexpected_errors, 0,
                          msg='unexpected rebuild errors encountered.')
 
-        node2.watch_log_for("Streaming for rebuild successful", from_mark=mark)
+        node2.watch_log_for("Streaming for rebuild successful|"
+                            "rebuild_with_repair: finished with keyspace=ks", from_mark=mark)
         node2.wait_for_compactions()
         self._check_sstable_timestamps(node2)
 
@@ -677,6 +679,7 @@ class TestTimeWindowDataSegregation(Tester):
         node3.start(wait_other_notice=True, wait_for_binary_proto=True)
         mark = node3.mark_log()
         node3.nodetool('rebuild')
-        node3.watch_log_for("Streaming for rebuild successful", from_mark=mark)
+        node3.watch_log_for("Streaming for rebuild successful|"
+                            "rebuild_with_repair: finished with keyspace=ks", from_mark=mark)
         node3.wait_for_compactions()
         self._check_sstable_timestamps(node3)
