@@ -1150,6 +1150,7 @@ class TestNodetool(Tester):
             res["streams"].append(stream)
         return res
 
+    @require('bootstrap using streaming')
     def netstats_test(self):
         """Testwing the `nodetool netstats` command
         It starts a 2 node cluster load it.
