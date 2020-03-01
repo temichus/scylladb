@@ -560,6 +560,9 @@ class TestMaterializedViews(Tester):
         data = [2, 5, 12, 45, 53, 78, 36, 85, 98, 100]
         tm.prefill_table(10000, data={'int': data})
 
+        self.ignore_log_patterns += [r'view - Error applying view update to .*: exceptions::mutation_write_failure_exception '
+                                      '\(Operation failed for ks.tm_table_mv_\d+ - received 0 responses and 1 failures from 1 CL=ONE\.\)']
+
         for i in range(2, mvs+1):
             mv = MaterializedViewManager(tm)
             mv.create_materialized_view(mv_columns={'int': {'names': [tm.column_names_list[i]]}},
@@ -577,8 +580,6 @@ class TestMaterializedViews(Tester):
                                      groupby_column2=mv.mv_columns_list[0],
                                      restrict_column1=list(mv.mv_where_restriction.keys())[0],
                                      restrict_value1=mv.mv_where_restriction[list(mv.mv_where_restriction.keys())[0]]['value']))
-            self.ignore_log_patterns += [r'view - Error applying view update to .*: exceptions::mutation_write_failure_exception '
-                                         '(Operation failed for ks.{} - received 0 responses and 1 failures from 1 CL=ONE.)'.format(mv.mv_name)]
 
     def mv_populating_from_existing_data_during_inserts_test(self):
         """ Create 10 materialized views in parallel with base table prefill """
