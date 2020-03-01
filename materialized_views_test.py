@@ -658,27 +658,21 @@ class TestMaterializedViews(Tester):
         proc_functions = [change_func, {'func': self._create_mvs_by_one_column, 'args': (tm, mvs)}]
         run_in_parallel(proc_functions)
 
-        try:
-            if change_type not in ['stop node', 'restart node']:
-                for mv_name in tm.materialized_views.keys():
-                    wait_for_view(cluster=self.cluster, session=session, ks=tm.keyspace, view=mv_name)
+        if change_type not in ['stop node', 'restart node']:
+            for mv_name in tm.materialized_views.keys():
+                wait_for_view(cluster=self.cluster, session=session, ks=tm.keyspace, view=mv_name)
 
-                self._validate_data_in_mvs(tm=tm, session=session, table_expected_rows=rows_after_test,
-                                           mv_expected_rows=rows_after_test,
-                                           node_action=change_type.split(' ')[0])
-            else:
-                self.cluster.nodelist()[1].start()
-                for mv_name in tm.materialized_views.keys():
-                    wait_for_view(cluster=self.cluster, session=session, ks=tm.keyspace, view=mv_name)
+            self._validate_data_in_mvs(tm=tm, session=session, table_expected_rows=rows_after_test,
+                                       mv_expected_rows=rows_after_test,
+                                       node_action=change_type.split(' ')[0])
+        else:
+            self.cluster.nodelist()[1].start()
+            for mv_name in tm.materialized_views.keys():
+                wait_for_view(cluster=self.cluster, session=session, ks=tm.keyspace, view=mv_name)
 
-                self._validate_data_in_mvs(tm=tm, session=session, table_expected_rows=rows_after_test,
-                                           mv_expected_rows=rows_after_test,
-                                           node_action=change_type.split(' ')[0])
-        except Exception:
-            if not fail:
-                raise
-            else:
-                assert True
+            self._validate_data_in_mvs(tm=tm, session=session, table_expected_rows=rows_after_test,
+                                       mv_expected_rows=rows_after_test,
+                                       node_action=change_type.split(' ')[0])
 
         exclude_errors=['migration_task - Can''t send migration request',
                         'mutation_write_timeout_exception',
