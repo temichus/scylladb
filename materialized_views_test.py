@@ -1197,8 +1197,13 @@ class TestMaterializedViews(Tester):
             assert_one(session, "SELECT * FROM t WHERE id = {}".format(i), [i, -i])
 
         debug("Bootstrapping new node in another dc")
+        # We are adding a new dc, to follow the add dc procedure, we should
+        # bootstrap the node, then modify the rf to use the new dc, then rebuild
+        # https://docs.scylladb.com/operating-scylla/procedures/cluster-management/add_dc_to_exist_dc/
         node4 = new_node(self.cluster, data_center='dc2')
         node4.start(wait_other_notice=True, wait_for_binary_proto=True)
+        session.execute("ALTER KEYSPACE ks WITH REPLICATION = {'class':'NetworkTopologyStrategy', 'dc1':1, 'dc2':1};")
+        node4.nodetool('rebuild -- dc1')
 
         debug("Bootstrapping new node in another dc")
         node5 = new_node(self.cluster, remote_debug_port='1414', data_center='dc2')
@@ -1303,7 +1308,7 @@ class TestMaterializedViews(Tester):
         Test that materialized views work as expected when adding a datacenter with NetworkTopologyStrategy.
         """
 
-        self._add_dc_after_mv_test({'dc1': 1, 'dc2': 1})
+        self._add_dc_after_mv_test({'dc1': 1, 'dc2': 0})
 
     @flaky_with_tear_down
     def add_node_after_mv_test(self):
