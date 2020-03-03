@@ -160,6 +160,7 @@ class TestSSTableGenerationAndLoading(Tester):
                                      r"database - Unrecognized error while processing .*: std::filesystem::__cxx11::filesystem_error "
                                       "\(error system:2, filesystem error: (open|stat) failed: No such file or directory \[.*\]\)",
                                      r"database - malformed sstable .*: .*: file not found",
+                                     r"init - Startup failed: std::runtime_error"
                                     ]
 
     def sstableloader_compression_none_to_none_test(self):
