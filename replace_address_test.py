@@ -219,14 +219,16 @@ class TestReplaceAddress(Tester):
         debug(movedTokensList[0])
         self.assertEqual(len(movedTokensList), numNodes)
 
-        # check that restarting node 3 doesn't work
-        # FIXME: https://github.com/scylladb/scylla/issues/5523 is fixed
-        # need to verify that the node doesn't start listening
-        debug("Try to restart node 3 (should fail)")
-        node3.start(no_wait=True)
         checkCollision = node1.grep_log("between .*"+self.cluster.get_node_ip(3)+" and .*"+self.cluster.get_node_ip(4)+"; .*"+self.cluster.get_node_ip(4)+" is the new owner")
         debug(checkCollision)
         self.assertEqual(len(checkCollision), 1)
+
+        # FIXME: Do not restart the replaced node until
+        # https://github.com/scylladb/scylla/issues/5523 is fixed
+        # With #5523 fixed, we can verify that n3 could not start and rejoin
+        # the cluster.
+        # debug("Try to restart node 3 (should fail)")
+        # node3.start(no_wait=True)
 
         # restart node4 (if error's might have to change num_tokens)
         node4.stop(gently=False)
