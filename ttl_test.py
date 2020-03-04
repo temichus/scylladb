@@ -112,11 +112,17 @@ class TestTTL(Tester):
 
         start = time.time()
         self.session1.execute("""
-            INSERT INTO ttl_table (key, col1) VALUES (%d, %d) USING TTL 5;
-        """ % (1, 1))
+            INSERT INTO ttl_table (key, col1, col2, col3) VALUES (%d, %d, %d, %d) USING TTL 5;
+        """ % (1, 1, 1, 1))
         self.smart_sleep(start, 2)
         assert_row_count(self.session1, 'ttl_table', 1)  # should still exist
-        self.smart_sleep(start, 7)
+
+        # Issue #5290: Data expired via TTL is returned with null values for a short period of time
+        self.smart_sleep(start, 4)
+        # Non-key column value has its original value and shouldn't became None
+        assert_all(self.session1, "SELECT * FROM ttl_table;", [[1, 1, 1, 1]])
+
+        self.smart_sleep(start, 6)
         assert_row_count(self.session1, 'ttl_table', 0)
 
     @attr('single_node')
@@ -127,9 +133,17 @@ class TestTTL(Tester):
 
         start = time.time()
         self.session1.execute("""
-            INSERT INTO ttl_table (key, col1) VALUES (%d, %d) USING TTL 1;
-        """ % (1, 1))
+            INSERT INTO ttl_table (key, col1, col2, col3) VALUES (%d, %d, %d, %d) USING TTL 6;
+        """ % (1, 1, 1, 1))
         self.smart_sleep(start, 3)
+        assert_all(self.session1, "SELECT * FROM ttl_table;", [[1, 1, 1, 1]])
+
+        # Issue #5290: Data expired via TTL is returned with null values for a short period of time
+        self.smart_sleep(start, 5)
+        # Non-key columns value have their original value and shouldn't became None
+        assert_all(self.session1, "SELECT * FROM ttl_table;", [[1, 1, 1, 1]])
+
+        self.smart_sleep(start, 7)
         assert_row_count(self.session1, 'ttl_table', 0)
 
     @attr('single_node')
@@ -168,6 +182,46 @@ class TestTTL(Tester):
         assert_row_count(self.session1, 'ttl_table', 2)
         self.smart_sleep(start, 20)
         assert_row_count(self.session1, 'ttl_table', 1)
+
+    @attr('next-gating', 'dtest-debug')
+    def row_marker_for_ttl_test(self):
+        """ Test that rows are removed correctly with a default_time_to_live and TTL
+            Test the table with PK and CK
+        """
+
+        table_create_statement = "CREATE TABLE ttl_table (key int, col1 int, col2 int, col3 int, " \
+                                 "primary key(key, col1))"
+        self.prepare(default_time_to_live=1, create_table_statement=table_create_statement,
+                     nodes=4)
+
+        self.session1.execute("ALTER TABLE ttl_table WITH default_time_to_live = 10;")
+        start = time.time()
+        self.session1.execute("""
+            INSERT INTO ttl_table (key, col1, col2, col3) VALUES (%d, %d, %d, %d);
+        """ % (1, 1, 1, 1))
+        self.session1.execute("""
+            INSERT INTO ttl_table (key, col1, col2, col3) VALUES (%d, %d, %d, %d) USING TTL 15;
+        """ % (1, 2, 2, 2))
+
+        assert_all(self.session1, "SELECT * FROM ttl_table;", [[1, 1, 1, 1], [1, 2, 2, 2]])
+
+        # Issue #5290: Data expired via TTL is returned with null values for a short period of time
+        self.smart_sleep(start, 9)
+        # Non-key columns value have their original value and shouldn't became None
+        assert_all(self.session1, "SELECT * FROM ttl_table;", [[1, 1, 1, 1], [1, 2, 2, 2]])
+
+        # First row is expired according to default_time_to_live
+        self.smart_sleep(start, 11)
+        assert_all(self.session1, "SELECT * FROM ttl_table;", [[1, 2, 2, 2]])
+
+        # Issue #5290: Data expired via TTL is returned with null values for a short period of time
+        self.smart_sleep(start, 14)
+        # Non-key columns value have their original value and shouldn't became None
+        assert_all(self.session1, "SELECT * FROM ttl_table;", [[1, 2, 2, 2]])
+
+        # Second row is expired according to TTL
+        self.smart_sleep(start, 16)
+        assert_row_count(self.session1, 'ttl_table', 0)
 
     @attr('single_node')
     def update_single_column_ttl_test(self):
