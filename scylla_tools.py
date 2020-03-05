@@ -146,10 +146,8 @@ def query_c1c2_concurrent(session, keys, consistency=ConsistencyLevel.QUORUM, to
     pquery.consistency_level = consistency
 
     results = execute_concurrent_with_args(session, pquery, map(lambda x: ['k{}'.format(x)], keys))
-
-    map(lambda result, c1, c2:
-        check_c1c2_result_one(result[0], list(result[1]), tolerate_missing, must_be_missing, c1, c2),
-        results, c1_values, c2_values)
+    for result, c1, c2 in zip(results, c1_values, c2_values):
+        check_c1c2_result_one(result[0], list(result[1]), tolerate_missing, must_be_missing, c1, c2)
 
 def generate_random_text(length=10):
     return ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(length))
