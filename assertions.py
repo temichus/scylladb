@@ -131,6 +131,17 @@ def assert_row_count_in_select(session, query, num_rows_expected, consistency_le
     assert count == num_rows_expected, "Expected a row count of {} in query \"{}\", but got {}".format(
             num_rows_expected, query, count)
 
+@retry_with_func_attempts
+def assert_row_count_in_select_less(session, query, max_rows_expected, consistency_level=ConsistencyLevel.ONE,
+                                    num_attempts=1):
+    """
+    Function to validate the row count are returned by select
+    :param num_attempts: defines how many time try to assert data in case failure. Used in retry_with_func_attempts decorator
+    """
+    count = len(_get_list_res(session, query, consistency_level))
+    assert count < max_rows_expected, "Expected a row count < of {} in query \"{}\", but got {}".format(
+        max_rows_expected, query, count)
+
 def assert_crc_check_chance_equal(session, table, expected, ks="ks", view=False):
     """
     driver still doesn't support top-level crc_check_chance property,
