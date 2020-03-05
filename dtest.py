@@ -666,6 +666,9 @@ class Tester(TestCase):
                     shutil.copyfile(log, os.path.join(logdir, n + ".log"))
                 if os.path.exists(debuglog):
                     shutil.copyfile(debuglog, os.path.join(logdir, n + "_debug.log"))
+                jmxlog = log + '.jmx'
+                if os.path.exists(jmxlog):
+                    shutil.copyfile(jmxlog, os.path.join(logdir, n + "_jmx.log"))
 
         if self.cluster._scylla_manager:
             log = os.path.join(self.cluster._scylla_manager._get_path(), 'scylla-manager.log')
