@@ -140,9 +140,12 @@ class TestReplaceAddress(Tester):
         debug("Starting node 4 to replace active node 3")
         node4 = new_node(cluster, bootstrap=True, token=None, remote_debug_port='0', data_center=None)
 
+        expected_message = "Cannot replace a live node"
+        self.ignore_log_patterns += [expected_message]
+
         mark = node4.mark_log()
         node4.start(replace_address=self.cluster.get_node_ip(3), no_wait=True)
-        node4.watch_log_for(".Cannot replace a live node...", from_mark=mark)
+        node4.watch_log_for(expected_message, from_mark=mark)
         self.check_not_running(node4)
 
     def replace_nonexistent_node_test(self):
@@ -154,13 +157,16 @@ class TestReplaceAddress(Tester):
         debug('Start node 4 and replace an address with no node')
         node4 = new_node(cluster, bootstrap=True, token=None, remote_debug_port='0', data_center=None)
 
+        expected_message = "Cannot replace_address .*"+self.cluster.get_node_ip(5)+" because it doesn't exist in gossip"
+        self.ignore_log_patterns += [expected_message]
+
         # try to replace an unassigned ip address
         mark = node4.mark_log()
         try:
             node4.start(replace_address=self.cluster.get_node_ip(5), no_wait=True)
         except NodeError:
             pass  # node doesn't start as expected
-        node4.watch_log_for("Cannot replace_address .*"+self.cluster.get_node_ip(5)+" because it doesn't exist in gossip", from_mark=mark)
+        node4.watch_log_for(expected_message, from_mark=mark)
         self.check_not_running(node4)
 
     def check_not_running(self, node):
