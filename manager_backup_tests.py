@@ -190,8 +190,8 @@ class TestScyllaMgmtBackup(Tester):
         for keyspace in keyspace_table_and_key_range:
             for table_name, key_range in keyspace_table_and_key_range.get(keyspace, {}).items():
                 results = session.execute(f"select {key_name} from {keyspace}.{table_name}")
-                existing_key_set = {getattr(row, key_name) for row in results}
-                missing_key_set = set(range(*key_range))
+                existing_key_set = {str(getattr(row, key_name)).replace("k", "") for row in results}
+                missing_key_set = set([str(n) for n in range(*key_range)])
                 wrongfully_existing_keys = existing_key_set.intersection(missing_key_set)
                 assert not wrongfully_existing_keys, \
                     f"The table {'.'.join([keyspace, table_name])} contains the keys {wrongfully_existing_keys} " \
