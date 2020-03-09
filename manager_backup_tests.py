@@ -12,7 +12,7 @@ from unittest import skip
 from tools import require
 from dtest_scylla_manager import ScyllaManagerTool, ScyllaManagerError
 from dtest_scylla_manager import TaskStatus
-from scylla_tools import insert_c1c2
+from scylla_tools import insert_c1c2, insert_c1c2_with_clustering
 from dtest import Tester, debug, wait_for
 
 
@@ -47,7 +47,27 @@ class TestScyllaMgmtBackup(Tester):
         self.insert_data_from_ranges(healthy_node=node_list[0], keyspace_table_and_key_range=keyspace_table_and_key_range)
         return node_list
 
-    def insert_data_from_ranges(self, healthy_node, keyspace_table_and_key_range):
+    def create_c1_c2_with_clustering_key(self, session, keyspace_name, table_name, partition_key_name="pkey",
+                                         partition_key_type="int", clustering_key_name="ckey", clustering_key_type="int"):
+        session.execute(f"create table {keyspace_name}.{table_name} ( {partition_key_name} {partition_key_type}, "
+                        f"{clustering_key_name} {clustering_key_type}, c1 text, c2 text, "
+                        f"PRIMARY KEY({partition_key_name}, {clustering_key_name}));")
+
+    def insert_data_from_ranges(self, healthy_node, keyspace_table_and_key_range, use_clustering_key=False, partition_key_value=1):
+        """
+
+        :param healthy_node: node in UN status
+        :param keyspace_table_and_key_range: a dict that contains what rows to insert, per table in each keyspace, like so:
+        {
+            keyspace_name:
+            {
+                table_name: key_range[]
+            }
+        }
+        :param use_clustering_key:
+        :param partition_key_value:
+        :return:
+        """
         session = self.patient_cql_connection(healthy_node)
         keyspace_list_rows = session.execute("SELECT keyspace_name FROM system_schema.keyspaces;")
         keyspace_list = [row.keyspace_name for row in keyspace_list_rows]
@@ -61,14 +81,35 @@ class TestScyllaMgmtBackup(Tester):
 
             for table, key_range in keyspace_table_and_key_range.get(keyspace, {}).items():
                 if table not in table_list:
-                    self.create_cf(session=session, name="{}.{}".format(keyspace, table), read_repair=0.0,
-                                   columns={'c1': 'text', 'c2': 'text'},
-                                   dclocal_read_repair_chance=0.0, speculative_retry='NONE')
+                    if use_clustering_key:
+                        self.create_c1_c2_with_clustering_key(
+                            session=session, keyspace_name=keyspace, table_name=table)
+                    else:
+                        self.create_cf(session=session, name="{}.{}".format(keyspace, table), read_repair=0.0,
+                                       columns={'c1': 'text', 'c2': 'text'},
+                                       dclocal_read_repair_chance=0.0, speculative_retry='NONE')
 
-                insert_c1c2(session=session, keys=range(*key_range), consistency=ConsistencyLevel.ALL,
-                            c1_values=[C1_PREFIX % i for i in range(*key_range)],
-                            c2_values=[C2_PREFIX % i for i in range(*key_range)],
-                            ks=keyspace, cf=table)
+                if use_clustering_key:
+                    insert_c1c2_with_clustering(session=session, clustering_key_values=range(*key_range),
+                                                ks=keyspace, cf=table, partition_key_set_value=partition_key_value)
+                else:
+                    insert_c1c2(session=session, keys=range(*key_range), consistency=ConsistencyLevel.ALL,
+                                c1_values=[C1_PREFIX % i for i in range(*key_range)],
+                                c2_values=[C2_PREFIX % i for i in range(*key_range)],
+                                ks=keyspace, cf=table)
+
+    def delete_range(self, healthy_node, keyspace, table, key_range, clustering_key_name="ckey",
+                     partition_key_name="pkey", partition_key_set_value=1):
+        """
+        Only works on a table that contains a clustering key
+        :param healthy_node: node in UN state
+        :param key_range: range of the clustering key values, the rows of which will be deleted
+        :param partition_key_set_value: the permanent value of the partition key
+        """
+        session = self.patient_cql_connection(healthy_node)
+        query = f"DELETE from {keyspace}.{table} where {clustering_key_name} >= {key_range[0]} and " \
+                f"{clustering_key_name} <= {key_range[1]} and {partition_key_name} = {partition_key_set_value}"
+        session.execute(query)
 
     def _create_mgr_cluster(self, node, name):
         manager_tool = ScyllaManagerTool(scylla_manager=self.cluster._scylla_manager)
@@ -144,17 +185,17 @@ class TestScyllaMgmtBackup(Tester):
                 results = session.execute(f"select * from {keyspace}.{table_name}")
                 self.compare_c1c2_rows_to_expected_results(results, key_range, table_name)
 
-    def verify_lack_of_keys(self, keyspace_table_and_key_range, node):
+    def verify_lack_of_keys(self, keyspace_table_and_key_range, node, key_name="key"):
         session = self.patient_cql_connection(node)
         for keyspace in keyspace_table_and_key_range:
             for table_name, key_range in keyspace_table_and_key_range.get(keyspace, {}).items():
-                results = session.execute(f"select key from {keyspace}.{table_name}")
-                existing_key_set = {row.key for row in results}
+                results = session.execute(f"select {key_name} from {keyspace}.{table_name}")
+                existing_key_set = {getattr(row, key_name) for row in results}
                 missing_key_set = set(range(*key_range))
                 wrongfully_existing_keys = existing_key_set.intersection(missing_key_set)
                 assert not wrongfully_existing_keys, \
-                    f"The table {'.'.join([keyspace, table_name])} contains the keys {wrongfully_existing_keys}, " \
-                    f"even though they are not suppose to exist in it"
+                    f"The table {'.'.join([keyspace, table_name])} contains the keys {wrongfully_existing_keys} " \
+                    f"in column {key_name}, even though they are not suppose to exist in it"
 
     def clean_restore_and_verify_backup(self, backup_task, node_list, mgr_cluster, healthy_node,
                                         keyspace_table_and_key_range):
@@ -633,3 +674,47 @@ class TestScyllaMgmtBackup(Tester):
         backup_task.wait_for_status(list_status=[TaskStatus.RUNNING], timeout=100, step=1)
         self.cluster.nodetool("clearsnapshot")
         backup_task.wait_for_status(list_status=[TaskStatus.ERROR], timeout=100, step=1)
+
+    def insert_data_over_multiple_queries(self, healthy_node, keyspace_table_and_key_range, num_of_queries=10,
+                                          use_clustering_key=False, partition_key_value=1):
+        for keyspace in keyspace_table_and_key_range:
+            for table, key_range in keyspace_table_and_key_range.get(keyspace, {}).items():
+                split_key_ranges = list(range(key_range[0], key_range[1], (key_range[1] - key_range[0]) // num_of_queries))
+                split_key_ranges.append(key_range[1])
+                for n in range(len(split_key_ranges[:-1])):
+                    self.insert_data_from_ranges(healthy_node=healthy_node, keyspace_table_and_key_range=
+                                                 {keyspace: {table: (split_key_ranges[n], split_key_ranges[n + 1])}},
+                                                 use_clustering_key=use_clustering_key,
+                                                 partition_key_value=partition_key_value)
+                    healthy_node.nodetool("flush")
+
+    @attr('scylla-manager')
+    def test_restore_after_purge(self):
+        node1, node2 = self.config_and_create_cluster(nodes=2)
+        mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
+        snapshot_tags = []
+
+        self.insert_data_over_multiple_queries(
+            healthy_node=node1, keyspace_table_and_key_range={"ks": {"cf1": (1, 1001)}}, use_clustering_key=True)
+        backup_task = mgr_cluster.run_backup_command({"location": ["s3:{}".format(DESTINATION_BUCKET)],
+                                                      "keyspace": ['ks'],
+                                                      "interval": "1h",
+                                                      "num-retries": "0",
+                                                      "retention": "3"})
+        backup_task.wait_for_status(list_status=[TaskStatus.DONE], step=5)
+        snapshot_tags.append(backup_task.get_snapshot_tag())
+        self.delete_range(node1, keyspace="ks", table="cf1", key_range=(1, 1000))
+
+        for i in range(1, 4):
+            self.insert_data_over_multiple_queries(
+                healthy_node=node1, keyspace_table_and_key_range={"ks": {"cf1": (i*1000+1, i*1000 + 1001)}},
+                use_clustering_key=True)
+            backup_task.start(continue_attr=False)
+            backup_task.wait_for_status(list_status=[TaskStatus.DONE], step=5)
+            snapshot_tags.append(backup_task.get_snapshot_tag())
+
+        self.clean_up_tables(node1, {"ks": ["cf1"]})
+        self.restore_backup(node_list=self.cluster.nodelist(), mgr_cluster=mgr_cluster,
+                            snapshot_tag=snapshot_tags[1], keyspace_and_table_list={"ks": ["cf1"]})
+
+        self.verify_lack_of_keys(keyspace_table_and_key_range={"ks": {"cf1": (1, 1001)}}, node=node1, key_name="ckey")

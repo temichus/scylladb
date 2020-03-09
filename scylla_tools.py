@@ -58,6 +58,36 @@ def insert_c1c2(session, keys=None, n=None, consistency=ConsistencyLevel.QUORUM,
                                  map(lambda x, y, z: ['k{}'.format(x), y, z], keys, c1_values, c2_values))
 
 
+def insert_c1c2_with_clustering(session, clustering_key_values=None, n=None, consistency=ConsistencyLevel.QUORUM,
+                                c1_values=None, c2_values=None, ks='ks', cf='cf', partition_key_set_value=1,
+                                output_20_lines=True):
+    if clustering_key_values is None:
+        clustering_key_values = []
+
+    if c1_values is None:
+        c1_values = []
+
+    if c2_values is None:
+        c2_values = []
+
+    build_insert_params(clustering_key_values, n, c1_values, c2_values)
+
+    partition_key_values = [partition_key_set_value]*len(clustering_key_values)
+
+    statement = session.prepare("INSERT INTO {}.{} (pkey, ckey, c1, c2) VALUES (?, ?, ?, ?)".format(ks, cf))
+    statement.consistency_level = consistency
+
+    execute_concurrent_with_args(
+        session, statement, map(lambda w, x, y, z: [w, x, y, z], partition_key_values,
+                                clustering_key_values, c1_values, c2_values))
+
+    if output_20_lines:
+        debug("output of 20 lines after insertion:")
+        query = SimpleStatement('SELECT * FROM %s.%s limit 20' % (ks, cf), consistency_level=consistency)
+        rows = list(session.execute(query))
+        debug("\n".join(str(row) for row in rows))
+
+
 def insert_c1c2_no_prepared(session, keys=None, n=None, consistency=ConsistencyLevel.QUORUM, c1_values=None, c2_values=None, ks='ks', cf='cf'):
     if keys is None:
         keys = []
