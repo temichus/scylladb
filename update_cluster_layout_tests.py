@@ -1208,6 +1208,7 @@ class TestUpdateClusterLayout(Tester):
         insert_c1c2(session, keys=range(2000), consistency=ConsistencyLevel.TWO)
 
         debug("Start node 4...")
+        self.ignore_log_patterns += ['Startup failed']
         node4 = new_node(cluster)
         node4.start(jvm_args=['--logger-log-level','stream_session=debug'], no_wait=True)
         node4.watch_log_for("JOINING: Starting to bootstrap")
