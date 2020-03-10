@@ -392,6 +392,7 @@ class TestReplaceAddress(Tester):
         node3_address = cluster.get_node_ip(3)
         debug(f"Node 3 address is {node3_address}")
 
+        self.ignore_log_patterns += ['Startup failed']
         node3.stop()
 
         status1, err1 = node1.nodetool("gossipinfo")
