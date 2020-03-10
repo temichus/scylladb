@@ -27,7 +27,7 @@ class TestNodetool(Tester):
             self.assertFalse("Expected nodetool error")
         except NodetoolError as e:
             self.assertEqual('', e.stderr)
-            self.assertTrue('Unsupported operation' in e.stdout)
+            self.assertTrue('Node in DRAINED state' in e.stdout)
 
     def test_correct_dc_rack_in_nodetool_info(self):
         """
