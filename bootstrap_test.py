@@ -422,13 +422,15 @@ class TestBootstrap(Tester):
         shutil.rmtree(commitlog_dir)
 
         # Now start it, it should not be allowed to join.
+        expected_error = "A node with address {} already exists, cancelling join".format(self.cluster.get_node_ip(4))
+        self.ignore_log_patterns += [expected_error]
         mark = node2.mark_log()
         try:
             node2.start(no_wait=True)
         except NodeError:
             # It is expected that the node will not boot
             pass
-        node2.watch_log_for("A node with address .*"+self.cluster.get_node_ip(4)+" already exists, cancelling join", from_mark=mark)
+        node2.watch_log_for(expected_error, from_mark=mark)
 
     def decommissioned_wiped_node_can_join_test(self):
         """
