@@ -1072,6 +1072,13 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
         self.create_index(session, table_name, index_column, index_name, compaction=self.compaction_strategy)
         wait_for_view_build_start(session, ks=keyspace_name, view=view_name)
 
+        exclude_errors = ['Can\'t send migration request: node {} is down'.format(node2_ip),
+                          'Error applying view update to {}: exceptions::unavailable_exception \(Cannot achieve consistency level for cl ONE. Requires 1, alive 0\)'.format(node2_ip),
+                          'Error applying view update to {}: exceptions::mutation_write_timeout_exception \(Operation timed out for {}.{}_index - received only 0 responses from 1 CL=ONE.\)'.format(node2_ip, keyspace_name, index_name),
+                          'Error applying view update to {}: exceptions::mutation_write_failure_exception \(Operation failed for {}.{}_index - received 0 responses and 1 failures from 1 CL=ONE.\)'.format(node2_ip, keyspace_name, index_name),
+                         ]
+        self.ignore_log_patterns += exclude_errors
+
         # Perform action on second node
         self.node_action_with_delay(self, node_action, node2)
 
@@ -1097,12 +1104,7 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
         assert_row_count_in_select(session=session, query="SELECT * FROM {}".format(view_name),
                                    num_rows_expected=num_rows, consistency_level=ConsistencyLevel.QUORUM)
 
-        exclude_errors = ['Can\'t send migration request: node {} is down'.format(node2_ip),
-                          'Error applying view update to {}: exceptions::unavailable_exception \(Cannot achieve consistency level for cl ONE. Requires 1, alive 0\)'.format(node2_ip),
-                          'Error applying view update to {}: exceptions::mutation_write_timeout_exception \(Operation timed out for {}.{}_index - received only 0 responses from 1 CL=ONE.\)'.format(node2_ip, keyspace_name, index_name),
-                          'Error applying view update to {}: exceptions::mutation_write_failure_exception \(Operation failed for {}.{}_index - received 0 responses and 1 failures from 1 CL=ONE.\)'.format(node2_ip, keyspace_name, index_name),
-                         ]
-        self.check_errors(self.cluster.nodelist()[0], exclude_errors=exclude_errors)
+        self.check_errors(self.cluster.nodelist()[0], exclude_errors=exclude_errors, regex=True)
 
     def test_stop_node_after_index_build(self):
         """
@@ -1155,6 +1157,9 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
                                     compaction=self.compaction_strategy),
                         msg='Index %s is not built' % index_name)
 
+        exclude_errors = ['Can\'t send migration request: node {} is down'.format(node2_ip)]
+        self.ignore_log_patterns += exclude_errors
+
         # Perform action on second node
         self.node_action_with_delay(self, node_action, node=node2)
 
@@ -1166,7 +1171,7 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
         assert_row_count_in_select(session=session, query="SELECT * FROM {}".format(view_name),
                                    num_rows_expected=num_rows, consistency_level=ConsistencyLevel.QUORUM)
 
-        self.check_errors(self.cluster.nodelist()[0], ['Can\'t send migration request: node {} is down'.format(node2_ip)])
+        self.check_errors(self.cluster.nodelist()[0], exclude_errors)
 
 
 @attr('dtest-full', 'single_node')
@@ -1887,6 +1892,10 @@ class TestLocalIndexes(Tester, SecondaryIndexesHelpers):
         assert_invalid(session, 'SELECT * FROM {0} WHERE {1} = 0x00'.format(table_name, index_column),
                        matching='use ALLOW FILTERING', expected=Exception)
 
+        exclude_errors = ['Can\'t find a column family with UUID {}'.format(view_id),
+                          'mutation_write_failure_exception']
+        self.ignore_log_patterns += exclude_errors
+
         # Restart the node to trigger any eventual unexpected index rebuild
         session = self.drain_and_restart_node(self, node, keyspace_name)
 
@@ -1895,8 +1904,6 @@ class TestLocalIndexes(Tester, SecondaryIndexesHelpers):
         assert_invalid(session, 'SELECT * FROM {0} WHERE {1} = 0x00'.format(table_name, index_column),
                        matching='use ALLOW FILTERING', expected=Exception)
 
-        exclude_errors = ['Can\'t find a column family with UUID {}'.format(view_id),
-                          'mutation_write_failure_exception']
         self.check_errors(node, exclude_errors=exclude_errors)
 
     def test_truncate_base_with_local_index(self):
@@ -2120,6 +2127,11 @@ class TestLocalIndexes(Tester, SecondaryIndexesHelpers):
                                 compaction=self.compaction_strategy)
         wait_for_view_build_start(session, ks=keyspace_name, view=view_name)
 
+        exclude_errors = ['Can\'t send migration request: node {} is down'.format(node2_ip),
+                          'Error applying view update to {}: exceptions::unavailable_exception \(Cannot achieve consistency level for cl ONE. Requires 1, alive 0\)'.format(node2_ip),
+                          'Operation timed out for ks.b_index_index - received only 0 responses from 1 CL=ONE.']
+        self.ignore_log_patterns += exclude_errors
+
         # Perform action on second node
         self.node_action_with_delay(self, node_action, node2)
 
@@ -2143,10 +2155,7 @@ class TestLocalIndexes(Tester, SecondaryIndexesHelpers):
         assert_row_count_in_select(session=session, query="SELECT * FROM {}".format(view_name),
                                    num_rows_expected=num_rows, consistency_level=ConsistencyLevel.QUORUM)
 
-        exclude_errors = ['Can\'t send migration request: node {} is down'.format(node2_ip),
-                          'Error applying view update to {}: exceptions::unavailable_exception \(Cannot achieve consistency level for cl ONE. Requires 1, alive 0\)'.format(node2_ip),
-                          'Operation timed out for ks.b_index_index - received only 0 responses from 1 CL=ONE.']
-        self.check_errors(self.cluster.nodelist()[0], exclude_errors=exclude_errors)
+        self.check_errors(self.cluster.nodelist()[0], exclude_errors=exclude_errors, regex=True)
 
     def test_stop_node_after_local_index_build(self):
         """
@@ -2199,6 +2208,9 @@ class TestLocalIndexes(Tester, SecondaryIndexesHelpers):
                                                     compaction=self.compaction_strategy),
                         msg='Index %s is not built' % index_name)
 
+        exclude_errors = ['Can\'t send migration request: node {} is down'.format(node2_ip)]
+        self.ignore_log_patterns += exclude_errors
+
         # Perform action on second node
         self.node_action_with_delay(self, node_action, node=node2)
 
@@ -2210,7 +2222,7 @@ class TestLocalIndexes(Tester, SecondaryIndexesHelpers):
         assert_row_count_in_select(session=session, query="SELECT * FROM {}".format(view_name),
                                    num_rows_expected=num_rows, consistency_level=ConsistencyLevel.QUORUM)
 
-        self.check_errors(self.cluster.nodelist()[0], ['Can\'t send migration request: node {} is down'.format(node2_ip)])
+        self.check_errors(self.cluster.nodelist()[0], exclude_errors)
 
 
 @attr('dtest-full')
