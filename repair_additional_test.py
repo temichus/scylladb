@@ -858,7 +858,7 @@ class RepairAdditionalBase(Tester):
         node1_1.flush()
         node1_1.stop(wait_other_notice=True)
         session = self.patient_cql_connection(node1_2, 'ks')
-        self.assert_repair_option_pr_rows(session, 1200, 1800, consistency=ConsistencyLevel.LOCAL_ONE)
+        self.assert_repair_option_pr_rows(session, 1200, 1800, consistency_level=ConsistencyLevel.LOCAL_ONE)
 
         debug("Restarting node1_2")
         node1_1.start(wait_other_notice=True, wait_for_binary_proto=True)
@@ -866,7 +866,7 @@ class RepairAdditionalBase(Tester):
         node1_2.flush()
         node1_2.stop(wait_other_notice=True)
         session = self.patient_cql_connection(node1_1, 'ks')
-        self.assert_repair_option_pr_rows(session, 1200, 1800, consistency=ConsistencyLevel.LOCAL_ONE)
+        self.assert_repair_option_pr_rows(session, 1200, 1800, consistency_level=ConsistencyLevel.LOCAL_ONE)
 
         debug("Restarting node1_2")
         node1_2.start(wait_other_notice=True, wait_for_binary_proto=True)
@@ -939,7 +939,7 @@ class RepairAdditionalBase(Tester):
         node1_2.flush()
         node1_2.stop(wait_other_notice=True)
         session = self.patient_cql_connection(node1_1, 'ks')
-        self.assert_repair_option_pr_rows(session, 1050, 1300, consistency=ConsistencyLevel.LOCAL_ONE)
+        self.assert_repair_option_pr_rows(session, 1050, 1300, consistency_level=ConsistencyLevel.LOCAL_ONE)
 
         debug("Restarting node1_2")
         node1_2.start(wait_other_notice=True, wait_for_binary_proto=True)
