@@ -287,7 +287,7 @@ class IcsCompactionTest(Tester):
         assert_row_count(session=session, table_name=FULL_TABLE_NAME, expected=4)
         sstables_files1, files_size = self._get_sstable_files_and_sizes()
         # Check that the number and sizes of ssables on snapshot is restored.
-        assert set(files_size) == {2, 3, 5}, "Found sstable files with wrong sizes."
+        assert set(files_size) == {2, 3, 5}, "Found sstable files with wrong sizes. files_size: {}".format(files_size)
 
         # clean up
         debug("removing snapshot_dir: " + snapshot_dir)
