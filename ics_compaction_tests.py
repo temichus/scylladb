@@ -300,17 +300,17 @@ class IcsCompactionTest(Tester):
 
         debug('Create {} partitions of {} columns with {} rows'.format(partition_range_end, num_of_columns,
                                                                        rows_in_partition))
-        for i in xrange(partition_range_start, partition_range_end + 1):
-            for k in xrange(1, rows_in_partition + 1):
+        for i in range(partition_range_start, partition_range_end + 1):
+            for k in range(1, rows_in_partition + 1):
                 str = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(10))
                 stmt = 'insert into {table_name} (pk, ck, {columns}, clist, cset, cmap) values ({ilist}, ' \
                        '{klist}, {int_values}, [{ilist}, {klist}], ' \
                        '{open}{set_value}{close}, {map_value})'.format(table_name=table_name,
                                                                        columns=', '.join(
                                                                            'c%d' % l for l in
-                                                                           xrange(1, num_of_columns)),
+                                                                           range(1, num_of_columns)),
                                                                        int_values=', '.join(
-                                                                           '%d' % l for l in xrange(1, num_of_columns)),
+                                                                           '%d' % l for l in range(1, num_of_columns)),
                                                                        ilist=i, klist=k, open='{\'',
                                                                        set_value=str, close='\'}',
                                                                        map_value='{%d: \'%s\'}' % (k, str)
