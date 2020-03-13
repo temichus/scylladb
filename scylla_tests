@@ -3,6 +3,7 @@ auth_roles_test.py
 backup_restore_tests.py
 batch_test.py
 bootstrap_test.py
+cassandra_batch_test.py
 cfid_test.py
 clustering_key_filter_test.py
 commitlog_test.py
