@@ -604,12 +604,15 @@ class TestDistributedTTL(Tester):
 
     def setUp(self):
         super(TestDistributedTTL, self).setUp()
+
+    def prepare(self, default_time_to_live=None, options=None):
+        if options:
+            self.cluster.set_configuration_options(values=options)
         self.cluster.populate(2).start()
         [self.node1, self.node2] = self.cluster.nodelist()
         self.session1 = self.patient_cql_connection(self.node1)
         self.create_ks(self.session1, 'ks', 2)
 
-    def prepare(self, default_time_to_live=None):
         drop_table(session=self.session1, table_name='ttl_table', if_exists=True)
         query = """
             CREATE TABLE ttl_table (
@@ -659,7 +662,8 @@ class TestDistributedTTL(Tester):
     def ttl_is_respected_on_delayed_replication_test(self):
         """ Test that ttl is respected on delayed replication """
 
-        self.prepare()
+        self.prepare(options={'shadow_round_ms': 1000})
+        debug("Stopping node2")
         self.node2.stop()
         self.session1.execute("""
             INSERT INTO ttl_table (key, col1) VALUES (1, 1) USING TTL 5;
@@ -673,16 +677,21 @@ class TestDistributedTTL(Tester):
             [[1, 1, None, None], [2, 2, None, None]]
         )
         time.sleep(7)
+        debug("Stopping node1")
         self.node1.stop()
+        debug("Restarting node2")
         self.node2.start(wait_for_binary_proto=True)
         session2 = self.patient_exclusive_cql_connection(self.node2)
         session2.execute("USE ks;")
+        debug("Expecting empty ttl_table")
         assert_row_count(session2, 'ttl_table', 0)  # should be 0 since node1 is down, no replica yet
+        debug("Restarting node1")
         self.node1.start(wait_for_binary_proto=True)
         self.session1 = self.patient_exclusive_cql_connection(self.node1)
         self.session1.execute("USE ks;")
         self.node1.cleanup()
 
+        debug("Expecting row in ttl_table")
         assert_all(session2, "SELECT count(*) FROM ttl_table", [[1]], cl=ConsistencyLevel.ALL)
         assert_all(
             session2,
@@ -694,6 +703,7 @@ class TestDistributedTTL(Tester):
         # Check that the TTL on both server are the same
         ttl_session1 = self.session1.execute('SELECT ttl(col1) FROM ttl_table;')
         ttl_session2 = session2.execute('SELECT ttl(col1) FROM ttl_table;')
+        debug("ttl_session1={} ttl_session2={}".format(ttl_session1, ttl_session2))
         self.assertLessEqual(abs(ttl_session1[0][0] - ttl_session2[0][0]), 1)
 
     @attr('next-gating')
