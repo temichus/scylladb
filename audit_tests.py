@@ -290,8 +290,9 @@ class CQLAuditTester(AuditTester):
         except NodeError:
             pass
 
-        self.cluster.nodes['node1'].watch_log_for(
-            "Startup failed: audit::audit_exception \(Bad configuration: invalid 'audit': invalid\)")
+        expected_error = "Startup failed: audit::audit_exception \(Bad configuration: invalid 'audit': invalid\)"
+        self.ignore_log_patterns.append(expected_error)
+        self.cluster.nodes['node1'].watch_log_for(expected_error)
 
     def audit_empty_settings_test(self):
         """
@@ -330,9 +331,9 @@ class CQLAuditTester(AuditTester):
             cluster.populate(1).start(no_wait=True)
         except NodeError:
             pass
-
-        self.cluster.nodes['node1'].watch_log_for(
-            "Startup failed: audit::audit_exception \(Bad configuration: invalid 'audit_categories': INVALID\)")
+        expected_error = "Startup failed: audit::audit_exception \(Bad configuration: invalid 'audit_categories': INVALID\)"
+        self.ignore_log_patterns.append(expected_error)
+        self.cluster.nodes['node1'].watch_log_for(expected_error)
 
     def audit_table_test(self):
         self.verify_table(audit_settings=AuditTester.audit_default_settings)
