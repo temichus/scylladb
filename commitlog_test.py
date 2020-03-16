@@ -742,7 +742,7 @@ class TestCommitLog(Tester):
 
         debug("Insert 100 rows")
         for i in range(0, 100):
-            session.execute("UPDATE Test.cf SET ck1={i}, v1={i} WHERE pk1 = {i} IF ck1 = NULL".format(i=i))
+            session.execute("UPDATE Test.cf SET v1={i} WHERE pk1 = {i} and ck1={i} IF v1 = NULL".format(i=i))
 
         assert_row_count(session=session, table_name='Test.cf', expected=100)
 
