@@ -104,7 +104,7 @@ class BaseKeyProviderFactory(Tester):
         dest = os.path.join(dirname, keyfile)
         if reuse_key:
             # use saved key in dtest repo, generate it in future
-            src = './resources/system_keys/system_key.backup'  # AES/ECB/PKCS5Padding:128
+            src = './resources/system_keys/system_key'  # AES/ECB/PKCS5Padding:128
             if not os.path.exists(dest) or not os.path.samefile(src, dest):
                 shutil.copy(src, dest)
         else:
