@@ -72,3 +72,4 @@ bypass_cache_test.py
 toppartitions_test.py
 like_operator_test.py
 paxos_tests.py
+rest_api_tests.py
