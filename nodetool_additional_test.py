@@ -789,6 +789,7 @@ class TestNodetool(Tester):
         m = re.findall(r"^([^\s]+)\s+([\d\.]+)\s+([\d\.]+)\s+([\d\.]+)\s+([\d\.]+)\s+([\d\.]+)\s*$", out, re.MULTILINE)
         heads = ['Percentile', 'SSTables', 'Write Latency', 'Read Latency', 'Partition Size', 'Cell Count']
         res["vals"] = {}
+        res["out"] = out
         for val in m:
             if val:
                 res["vals"][val[0]] = {}
@@ -845,8 +846,8 @@ class TestNodetool(Tester):
                 latency_val = res["vals"][v][latency_type]
                 self.assertNotEqual(float(latency_val), 0.0, "unexpected {} 0 for {} load".format(latency_type, v))
                 self.assertGreaterEqual(latency_val, cur,
-                                        "{} is not monotonic: {}({} load), was {}".format(latency_type, latency_val,
-                                                                                          v, cur))
+                                        "{} is not monotonic: {}({} load), was {}\n{}".format(latency_type, latency_val,
+                                                                                          v, cur,res["out"]))
                 cur = latency_val
 
     @staticmethod
