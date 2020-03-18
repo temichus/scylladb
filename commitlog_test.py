@@ -796,10 +796,7 @@ class TestCommitLog(Tester):
 
         debug("Make query and ensure data is present as expected")
         session = self.patient_cql_connection(node1)
+
         # LWT rows - expected all rows were flushed immediately
         assert_row_count_in_select(session=session, query='select * from Test.cf where pk1=1',
                                    num_rows_expected=101)
-
-        # non-LWT rows - expected that the rows that were inserted before LWT write are flushed
-        assert_row_count_in_select(session=session, query='select * from Test.cf where pk1=2',
-                                   num_rows_expected=150)
