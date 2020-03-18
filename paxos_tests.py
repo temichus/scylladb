@@ -2,6 +2,8 @@
 
 import time
 import random
+import itertools
+import requests
 
 from threading import Thread, Event
 
@@ -316,4 +318,73 @@ class TestPaxos(Tester):
             time.sleep(random.uniform(0, 3))
             self._add_random_nodes(stop_start_limit, upper_node_limit, loaders)
             time.sleep(random.uniform(5, 15))
+
+    def enable_error_injection(self, node, injection_name, once=False):
+        ip = self.get_ip_from_node(node)
+        port = 10000 # default REST API port value
+
+        url = f"http://{ip}:{port}/v2/error_injection/injection/{injection_name}"
+        resp = requests.post(url, params={"one_shot": once})
+        if not resp.ok:
+            raise Exception(f"Failed to enable error injection on a node. Error message: {resp.text}")
+
+    def disable_all_error_injections(self, node):
+        ip = self.get_ip_from_node(node)
+        port = 10000 # default REST API port value
+
+        url = f"http://{ip}:{port}/v2/error_injection/injection"
+        resp = requests.delete(url)
+        if not resp.ok:
+            raise Exception(f"Failed to disable error injections on a node. Error message: {resp.text}")
+
+    def cas_statement_timeout_test(self):
+        '''
+        Tests for adequate handling timeouts from replicas in each stage of paxos algorithm.
+        I.e. there should be a retry of the paxos round if a timeout is encountered.
+        '''
+
+        # Reduce write request timeout to 100ms in order to speed the testing a little bit
+        self.cluster.set_configuration_options(values={'write_request_timeout_in_ms': 100})
+        session = self.prepare(nodes=3, rf=3)
+
+        session.execute("CREATE TABLE test (k int PRIMARY KEY, v int)")
+
+        nodes = self.cluster.nodelist()
+
+        # Try different combinations of timeouts in each paxos stage
+        paxos_stages = ['prepare', 'accept', 'learn']
+
+        def _reset_enabled_injections():
+            debug("Reset enabled injections on each node in the test cluster")
+            for node in nodes:
+                self.disable_all_error_injections(node)
+
+        # Execute the LWT query on the first node, which acts as a coordinator in this case
+        session_node1 = self.patient_exclusive_cql_connection(nodes[0], protocol_version=4)
+        session_node1.set_keyspace("ks")
+        stmt = session_node1.prepare("INSERT INTO test (k, v) VALUES (?, 0) IF NOT EXISTS")
+        key = 0
+
+        for combination_len in range(0, len(paxos_stages) + 1):
+            for combination in itertools.combinations(paxos_stages, combination_len):
+                # We need to clear leftover enabled injections from a previous
+                # iteration of the test because each injection is enabled at
+                # each shard on a given node.
+                #
+                # Though, it's not guaranteed that the injection is triggered on
+                # each shard actually, so we can end up with some injections still
+                # enabled for some shards.
+                _reset_enabled_injections()
+
+                debug(f"Testing combination {combination}")
+                for stage in combination:
+                    injection_name = f"paxos_state_{stage}_timeout"
+                    for node in nodes:
+                        self.enable_error_injection(node, injection_name, once=True)
+
+                res = session_node1.execute(stmt, [key])
+                # verify the number of retries of the query is equal to combination_len
+                assert res.response_future._query_retries == combination_len
+
+                key += 1
 
