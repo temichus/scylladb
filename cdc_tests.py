@@ -8,7 +8,7 @@ from cassandra.metadata import Murmur3Token
 from cassandra.query import SimpleStatement
 from cassandra.util import datetime_from_uuid1
 from cassandra.policies import FallthroughRetryPolicy
-from ccmlib.common import isScylla
+from ccmlib.scylla_cluster import ScyllaCluster
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from dtest import Tester, debug, wait_for
@@ -27,10 +27,6 @@ OPERATION_INSERT = 2
 @attr('scylla-cdc')
 class TestCdc(Tester):
     def __init__(self, *args, **kwargs):
-        CASSANDRA_DIR = os.environ.get('CASSANDRA_DIR')
-        assert isScylla(
-            CASSANDRA_DIR), "CDC tests are intended for Scylla only"
-
         ring_delay_sec = 5
         kwargs['cluster_options'] = {'experimental_features': ['cdc'],
                                      'ring_delay_ms': ring_delay_sec * 1000,
@@ -38,6 +34,11 @@ class TestCdc(Tester):
                                      'hinted_handoff_enabled': False}
         Tester.__init__(self, *args, **kwargs)
         self.ring_delay_sec = ring_delay_sec
+
+    def setUp(self):
+        Tester.setUp(self)
+        assert type(self.cluster) is ScyllaCluster, \
+            "CDC tests are intended for Scylla only"
 
     def simple_cdc_template(self, with_preimage):
         debug('Setup a cluster')
