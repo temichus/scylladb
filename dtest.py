@@ -66,7 +66,7 @@ REUSE_CLUSTER = os.environ.get('REUSE_CLUSTER', '').lower() in ('yes', 'true')
 SILENCE_DRIVER_ON_SHUTDOWN = os.environ.get('SILENCE_DRIVER_ON_SHUTDOWN', 'true').lower() in ('yes', 'true')
 IGNORE_REQUIRE = os.environ.get('IGNORE_REQUIRE', '').lower() in ('yes', 'true')
 NOSE_PROCESSES = int(os.environ.get('NOSE_PROCESSES', 0))
-CLUSTER_ID_ALLOCATOR = os.environ.get('CLUSTER_ID_ALLOCATOR', '')
+CLUSTER_ID_ALLOCATOR = os.environ.get('CLUSTER_ID_ALLOCATOR', 'random')
 KEEP_CORES = os.environ.get('KEEP_CORES', 'true').lower() in ('yes', 'true')
 DTEST_CORE_COMPRESS_TOOL = os.environ.get('DTEST_CORE_COMPRESS_TOOL', 'gzip')
 DTEST_CORE_COMPRESS_EXT = os.environ.get('DTEST_CORE_COMPRESS_EXT', 'gz')
@@ -354,14 +354,7 @@ class RandomClusterIdAllocator(ClusterIdAllocator):
 def parallel_tests():
     return NOSE_PROCESSES > 0
 
-if parallel_tests():
-    debug("going to run tests in parallel")
-    if not CLUSTER_ID_ALLOCATOR:
-        CLUSTER_ID_ALLOCATOR = 'random'
-else:
-    debug("going to run tests sequentially")
-    if not CLUSTER_ID_ALLOCATOR:
-        CLUSTER_ID_ALLOCATOR = 'single'
+debug("going to run tests {}".format("in parallel" if parallel_tests() else "sequentially"))
 
 if CLUSTER_ID_ALLOCATOR == 'random':
     debug("using the RandomClusterIdAllocator")
