@@ -245,7 +245,15 @@ class TestCdc(Tester):
 
     def populate_sequentially(self, n):
         cluster = self.cluster
-        for i in range(1, n + 1):
+        debug('Starting node 1')
+        # We need to use populate() for the first node, because it writes
+        # a configuration file that specifies the first node as a seed.
+        # Unless we do that, the first node will try to communicate
+        # with 127.0.0.1 - which is configured to be the default seed - and
+        # might fail, because in some environments the first node might listen
+        # for gossip on a different address.
+        cluster.populate(1).start(wait_for_binary_proto=True)
+        for i in range(2, n + 1):
             debug('Starting node {}'.format(i))
             node = new_node(self.cluster, bootstrap=True)
             node.start(wait_for_binary_proto=True)
