@@ -457,6 +457,7 @@ class TestConcurrentSchemaChanges(Tester):
         cluster.start(wait_other_notice=True, wait_for_binary_proto=True)
         self.validate_schema_consistent(node1)
 
+    @attr('next-gating')
     def decommission_node_test(self):
         debug("decommission_node_test()")
         cluster = self.cluster
