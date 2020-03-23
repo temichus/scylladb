@@ -2002,6 +2002,7 @@ class TestMaterializedViews(Tester):
         """Test that an interrupted MV build process is resumed, with resharding 1 -> cpu_count() // 2"""
         self._do_resharding_test('1', str(cpu_count() // 2))
 
+    @attr('next-gating')
     def interrupt_build_process_with_resharding_half_to_max_test(self):
         """Test that an interrupted MV build process is resumed, with resharding cpu_count() // 2 -> cpu_count()"""
         # For some reason, Scylla's hwloc only sees cpu_count() - 1 cpus
