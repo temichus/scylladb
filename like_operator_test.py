@@ -1351,7 +1351,7 @@ class TestLikeOperatorForBaseTable(Tester, BaseOperationsHelper):
         assert_none(session,
                     query="SELECT * FROM test WHERE test LIKE 'test_1string' ALLOW FILTERING")
 
-    def test_invalid_queries_with_like_oparator(self):
+    def test_invalid_queries_with_like_operator(self):
         """Test invalid queires with LIKE operator
 
         Validate that wrong queries with LIKE operator
@@ -1362,14 +1362,6 @@ class TestLikeOperatorForBaseTable(Tester, BaseOperationsHelper):
 
         assert_invalid(session,
                        query="SELECT * FROM test WHERE pk LIKE 'teststring%'")
-        assert_invalid(session,
-                       query="SELECT * FROM test WHERE pk LIKE '%4' and pk LIKE '%' ALLOW FILTERING")
-
-        assert_invalid(session,
-                       query="SELECT * FROM test WHERE ck LIKE '%4%' and ck LIKE '1teststring' ALLOW FILTERING")
-
-        assert_invalid(session,
-                       query="SELECT * FROM test WHERE test LIKE '%4' and test LIKE '%' ALLOW FILTERING")
 
         assert_invalid(session,
                        query="SELECT * FROM test WHERE pk LIKE '%%' and pk in ('teststring1', 'teststring2') ALLOW FILTERING")
@@ -1385,6 +1377,28 @@ class TestLikeOperatorForBaseTable(Tester, BaseOperationsHelper):
 
         assert_invalid(session,
                        query="SELECT * FROM test WHERE ck LIKE currentTime() ALLOW FILTERING")
+
+    def test_multiple_like_operator_on_same_column(self):
+        """Test query with like operator on same column
+
+        Validate that query return correct result if filter
+        with like operator by same column
+            - by primary key
+            - by cluster key
+            - by column
+        """
+        session = self.prepare_simple_table_with_column_type()
+        all_data = self.populate_simple_table_with_basic_data(session)
+
+        assert_one(session,
+                   query="SELECT * FROM test WHERE pk LIKE '%4' and pk LIKE '%' ALLOW FILTERING",
+                   expected=all_data[4])
+        assert_none(session,
+                    query="SELECT * FROM test WHERE ck LIKE '%4%' and ck LIKE '1teststring' ALLOW FILTERING")
+
+        assert_one(session,
+                   query="SELECT * FROM test WHERE test LIKE '%4%' and test LIKE '%' ALLOW FILTERING",
+                   expected=all_data[4])
 
     def test_unsupported_data_types(self):
         """Test unsupported types are not filtered by LIKE operator
