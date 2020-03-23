@@ -56,7 +56,7 @@ class ManagerHealthCheckTest(Tester):
         now = datetime.now()
         list_next_run = healthcheck_task.next_run.split()
         next_run_time = datetime.strptime(" ".join(list_next_run[:4]), "%d %b %y %H:%M:%S")
-        assert next_run_time - now > timedelta(seconds=time_to_start_task-1),\
+        assert next_run_time - now > timedelta(seconds=time_to_start_task-2),\
             "Healthcheck was not set to the proper time: {}   {}".format(next_run_time, now)
 
         healthcheck_task.wait_for_status(list_status=[TaskStatus.DONE, TaskStatus.RUNNING, TaskStatus.STARTING],
