@@ -21,7 +21,7 @@ Running using docker
 Use `scripts/run_test.sh` to run the distributed tests in the `scylla-dtest` docker container.
 
 Optional values can be set via environment variables:
-    SCYLLA_DIR, TOOLS_JAVA_DIR, JMX_DIR, DTEST_DIR, CCM_DIR, SCYLLA_DBUILD_SO_DIR, SCYLLA_EXT_OPTS, NOSE_PROCESSES
+    `SCYLLA_DIR`, `TOOLS_JAVA_DIR`, `JMX_DIR`, `DTEST_DIR`, `CCM_DIR`, `SCYLLA_DBUILD_SO_DIR`, `SCYLLA_EXT_OPTS`, `NOSE_PROCESSES`, `CLUSTER_ID_ALLOCATOR`
 
 The script pulls the latest `docker.io/scylladb/scylla-dtest` image (and if that fails, it builds it)
 and the it runs nosetests in a docker container based on this image.
@@ -176,6 +176,28 @@ to these installations should be defined in the environment variables
 JAVA7_HOME and JAVA8_HOME, respectively.
 
 See more information about dtest here: [Scylla-DTEST](https://github.com/scylladb/scylla/wiki/Scylla-DTEST)
+
+### Changing the Cluster ID Allocator
+
+The Cluster ID allocator controls the base ip address allocated to each test's cluster.
+Hisrotically, clusters used the localhost subnet such that node1 will use `127.0.0.1`,
+and any node<i> will use `127.0.0.<i>`.
+
+This method may be suitable with no parallelism (and has other drawbacks as well)
+and it naturally can't be used when a number of clusters are started in parallel.
+
+The default allocator was changed to the RandomClusterIdAllocator that draws
+a random number in the range [1, 99] and allocates it by creating a symbolic link
+in the ~/.dtest directory by that name, pointing at the cluster directory.
+This way conflicts are resolved with no need for shared memory-based coordination
+between nosetests processes.  However, if nosetests is aborted before the symbolic
+link has been removed, there may be stale symlinks that prevent re-allocating
+those cluster IDs.  These should be cleaned up by hand.
+
+To select the Cluster ID allocator, use:
+    `CLUSTER_ID_ALLOCATOR=random` for the random Cluster ID Allocator (default selection if unset).
+    `CLUSTER_ID_ALLOCATOR=single` for the legacy allocator used with no parallelism (with `NOSE_PROCESSES` unset or set to `0`).
+    `CLUSTER_ID_ALLOCATOR=multiprocess` for the old, shared-memory based allocator used with NOSE_PROCESSES > 0.
 
 Common Optional Environment Variables
 -------------------------------------
