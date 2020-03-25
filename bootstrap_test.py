@@ -503,9 +503,13 @@ class TestBootstrap(Tester):
         t = KillOnBootstrap(node2)
         t.start()
 
+        mark = node1.mark_log()
+        debug("Starting node2")
         node2.start(wait_for_binary_proto=False, wait_other_notice=False)
         t.join()
         self.assertFalse(node2.is_running())
+        debug("node2 killed during bootstrap. Waiting for other nodes to notice...")
+        node1.watch_log_for("{} has been silent .* removing from gossip".format(node2.address()), from_mark=mark)
 
         # wipe any data for node2
         data_dir = os.path.join(node2.get_path(), 'data')
@@ -516,6 +520,7 @@ class TestBootstrap(Tester):
 
         # Now start it again, it should be allowed to join
         mark = node2.mark_log()
+        debug("Restarting node2")
         node2.start(wait_other_notice=True)
         node2.watch_log_for("JOINING:", from_mark=mark)
 
