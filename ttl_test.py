@@ -194,33 +194,50 @@ class TestTTL(Tester):
         self.prepare(default_time_to_live=1, create_table_statement=table_create_statement,
                      nodes=4)
 
-        self.session1.execute("ALTER TABLE ttl_table WITH default_time_to_live = 10;")
-        start = time.time()
+        default_ttl = 10
+        explicit_ttl = 15
+        self.session1.execute("ALTER TABLE ttl_table WITH default_time_to_live = {};".format(default_ttl))
         self.session1.execute("""
             INSERT INTO ttl_table (key, col1, col2, col3) VALUES (%d, %d, %d, %d);
         """ % (1, 1, 1, 1))
+        start_default = time.time()
+        debug("Wrote [1, 1, 1, 1] with default ttl {}".format(default_ttl))
         self.session1.execute("""
-            INSERT INTO ttl_table (key, col1, col2, col3) VALUES (%d, %d, %d, %d) USING TTL 15;
-        """ % (1, 2, 2, 2))
+            INSERT INTO ttl_table (key, col1, col2, col3) VALUES (%d, %d, %d, %d) USING TTL %d;
+        """ % (1, 2, 2, 2, explicit_ttl))
+        start_explicit = time.time()
+        debug("Wrote [1, 2, 2, 2] with explicit ttl {}".format(explicit_ttl))
 
-        assert_all(self.session1, "SELECT * FROM ttl_table;", [[1, 1, 1, 1], [1, 2, 2, 2]])
+        def get_rows(session):
+            res = session.execute("SELECT * FROM ttl_table;")
+            return [list(row) for row in res]
 
-        # Issue #5290: Data expired via TTL is returned with null values for a short period of time
-        self.smart_sleep(start, 9)
-        # Non-key columns value have their original value and shouldn't became None
-        assert_all(self.session1, "SELECT * FROM ttl_table;", [[1, 1, 1, 1], [1, 2, 2, 2]])
+        def assert_rows(rows, expected):
+            assert rows == expected, "Expected the following rows: {}, but got: {}".format(expected, rows)
 
-        # First row is expired according to default_time_to_live
-        self.smart_sleep(start, 11)
-        assert_all(self.session1, "SELECT * FROM ttl_table;", [[1, 2, 2, 2]])
+        rows = get_rows(self.session1)
+        expected = [[1, 1, 1, 1], [1, 2, 2, 2]]
+        assert_rows(rows, expected)
 
-        # Issue #5290: Data expired via TTL is returned with null values for a short period of time
-        self.smart_sleep(start, 14)
-        # Non-key columns value have their original value and shouldn't became None
-        assert_all(self.session1, "SELECT * FROM ttl_table;", [[1, 2, 2, 2]])
+        def wait_for_rows_to_change(expected_cur, expected_next, start, ttl):
+            delta = time.time() - start
+            rows = get_rows(self.session1)
+            while rows == expected_cur and delta < ttl + 2:
+                time.sleep(1)
+                rows = get_rows(self.session1)
+                delta = time.time() - start
+            debug("Got {} after {} seconds".format(rows, delta))
+            assert_rows(rows, expected_next)
+            assert ttl - 1 <= delta and delta <= ttl + 1, "Expected delta time to be between {} to {} seconds, but got {}".format(ttl - 1, ttl + 1, delta)
+            return rows
 
-        # Second row is expired according to TTL
-        self.smart_sleep(start, 16)
+        expected_next = [[1, 2, 2, 2]]
+        wait_for_rows_to_change(expected, expected_next, start_default, default_ttl)
+
+        expected = expected_next
+        expected_next = []
+        wait_for_rows_to_change(expected, expected_next, start_explicit, explicit_ttl)
+
         assert_row_count(self.session1, 'ttl_table', 0)
 
     @attr('single_node')
