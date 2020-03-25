@@ -224,11 +224,11 @@ class TestTTL(Tester):
             rows = get_rows(self.session1)
             while rows == expected_cur and delta < ttl + 2:
                 time.sleep(1)
-                rows = get_rows(self.session1)
                 delta = time.time() - start
+                rows = get_rows(self.session1)
             debug("Got {} after {} seconds".format(rows, delta))
             assert_rows(rows, expected_next)
-            assert ttl - 1 <= delta and delta <= ttl + 1, "Expected delta time to be between {} to {} seconds, but got {}".format(ttl - 1, ttl + 1, delta)
+            assert ttl - 1 <= delta, "Expected delta time to be greater than {} seconds, but got {}".format(ttl - 1, delta)
             return rows
 
         expected_next = [[1, 2, 2, 2]]
