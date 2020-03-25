@@ -7,6 +7,7 @@ import shutil
 from threading import Thread
 from unittest import skip
 from binascii import hexlify
+from subprocess import getoutput
 import functools
 
 import yaml
@@ -16,6 +17,7 @@ from ccmlib.node import NodetoolError
 from dtest import Tester
 from tools import debug
 from tools import new_node
+from tools import insert_c1c2
 from tools import no_vnodes, rows_to_list, require
 
 
@@ -1706,3 +1708,57 @@ class TestNodetool(Tester):
         self.assertTrue("ks3/tbl3" in out, "key was not found in the sstable")
         out = node.nodetool("getsstables ks3 tbl3 keytest1", True)[0]
         self.assertEqual("", out, "unexpected sstable return for the key")
+
+    @attr('single_node')
+    def scrub_with_one_node_expect_data_loss_test(self):
+        cluster = self.run_cluster(nodes=1)
+        node = cluster[0]
+        session = self.patient_cql_connection(node)
+        self.create_ks(session, 'ks', 1)
+        self.create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'})
+        insert_c1c2(session, keys=range(100))
+        node.nodetool("flush")
+        out = node.nodetool("getsstables ks cf k1", True)[0]
+        debug(out)
+        node.stop()
+        dd_cmd = 'dd if=/dev/random count=1024 of={}'.format(out.strip())
+        debug(dd_cmd)
+        output = getoutput(dd_cmd)
+        debug(output)
+        node.start(wait_for_binary_proto=True,wait_other_notice=True)
+
+        session = self.patient_cql_connection(node)
+        rows = list(session.execute('SELECT * FROM ks.cf'))
+        assert len(rows) == 0
+
+        debug('Rebuild sstables by storage_service/keyspace_scrub API')
+        output = getoutput('curl http://{}:10000/storage_service/keyspace_scrub/ks?skip_corrupted=true'.format(self.get_ip_from_node(node)))
+        debug(output)
+
+        rows = list(session.execute('SELECT * FROM ks.cf'))
+        assert len(rows) == 0
+
+    def scrub_with_multi_nodes_expect_data_rebuild_test(self):
+        cluster = self.run_cluster(nodes=3)
+        node = cluster[0]
+        session = self.patient_cql_connection(node)
+        self.create_ks(session, 'ks', 3)
+        self.create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'})
+        insert_c1c2(session, keys=range(100))
+        node.nodetool("flush")
+        out = node.nodetool("getsstables ks cf k1", True)[0]
+        debug(out)
+        node.stop()
+        dd_cmd = 'dd if=/dev/random count=1024 of={}'.format(out.strip())
+        debug(dd_cmd)
+        output = getoutput(dd_cmd)
+        debug(output)
+        node.start(wait_for_binary_proto=True,wait_other_notice=True)
+
+        session = self.patient_cql_connection(node)
+        debug('Rebuild sstables by storage_service/keyspace_scrub API')
+        output = getoutput('curl http://{}:10000/storage_service/keyspace_scrub/ks?skip_corrupted=true'.format(self.get_ip_from_node(node)))
+        debug(output)
+
+        rows = list(session.execute('SELECT * FROM ks.cf'))
+        assert len(rows) == 100
