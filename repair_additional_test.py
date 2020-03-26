@@ -671,7 +671,7 @@ class RepairAdditionalBase(Tester):
         self.assertTrue(save_line is None, "expected c1 value and timeout in sstable")
 
     def assert_repair_option_pr_rows(self, session, min_count, max_count, consistency_level=ConsistencyLevel.ONE):
-        select_query = SimpleStatement("SELECT * FROM cf LIMIT 2000", consistency_level=consistency_level)
+        select_query = SimpleStatement("SELECT * FROM cf", consistency_level=consistency_level)
         rows = list(session.execute(select_query))
         count_query = SimpleStatement("SELECT count(*) from cf", consistency_level=consistency_level)
         count = session.execute(count_query)[0][0]
