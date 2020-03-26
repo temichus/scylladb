@@ -42,7 +42,8 @@ class RepairAdditionalBase(Tester):
         for node in self.cluster.nodes.values():
             if node.is_running() and node is not node_to_check:
                 stopped_nodes.append(node)
-                node.stop(wait_other_notice=True)
+
+        self.cluster.stop_nodes(stopped_nodes, wait_other_notice=True)
 
         session = self.patient_cql_connection(node_to_check, 'ks')
         result = list(session.execute("SELECT * FROM cf LIMIT %d" % (rows * 2)))
@@ -57,8 +58,7 @@ class RepairAdditionalBase(Tester):
             self.assertEqual(len(filter(lambda x: len(x) != 0, res)), 0, res)
 
         if restart:
-            for node in stopped_nodes:
-                node.start(wait_other_notice=True)
+            self.cluster.start_nodes(stopped_nodes, wait_other_notice=True)
 
     def check_repair_tx_rx_rows(self, node_to_check, expected_tx_row_nr, expected_rx_row_nr):
         tx = 0
