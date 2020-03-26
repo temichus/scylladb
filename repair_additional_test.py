@@ -904,7 +904,7 @@ class RepairAdditionalBase(Tester):
         self.create_ks(session, 'ks', {'dc1': 2, 'dc2': 2, 'dc3': 2})
         self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
-        num_keys = 1000
+        num_keys = 3000
 
         # Insert 1000 keys *only* on node 1, another 1000 keys *only* on node 2
         # both in the first data center. The other data centers will be
@@ -941,7 +941,7 @@ class RepairAdditionalBase(Tester):
         node1_2.flush()
         node1_2.stop(wait_other_notice=True)
         session = self.patient_cql_connection(node1_1, 'ks')
-        self.assert_repair_option_pr_rows(session, int(num_keys * 1.05), int(num_keys * 1.3), consistency_level=ConsistencyLevel.LOCAL_ONE)
+        self.assert_repair_option_pr_rows(session, int(num_keys * 1.05), int(num_keys * 1.667), consistency_level=ConsistencyLevel.LOCAL_ONE)
 
         debug("Restarting node1_2")
         node1_2.start(wait_other_notice=True, wait_for_binary_proto=True)
