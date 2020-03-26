@@ -152,7 +152,7 @@ class SecondaryIndexesHelpers(object):
                                  'Expected that failure reason is "{}", but the message wasn\'t found in the log'.
                                  format(expect_message))
         except Exception as e:
-            if (expect_message and expect_message not in e.message) or not expect_message:
+            if (expect_message and expect_message not in str(e)) or not expect_message:
                 raise e
 
     @staticmethod
