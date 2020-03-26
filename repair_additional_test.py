@@ -904,19 +904,21 @@ class RepairAdditionalBase(Tester):
         self.create_ks(session, 'ks', {'dc1': 2, 'dc2': 2, 'dc3': 2})
         self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
+        num_keys = 1000
+
         # Insert 1000 keys *only* on node 1, another 1000 keys *only* on node 2
         # both in the first data center. The other data centers will be
         # completely missing this data:
         debug("Adding data only on node 1...")
         self.cluster.stop_nodes([node1_2, node2_1, node2_2, node3_1, node3_2], wait_other_notice=True)
         session = self.patient_cql_connection(node1_1, 'ks')
-        insert_c1c2(session, keys=range(1000, 2000), consistency=ConsistencyLevel.LOCAL_ONE)
+        insert_c1c2(session, keys=range(1 * num_keys, 2 * num_keys), consistency=ConsistencyLevel.LOCAL_ONE)
         self.cluster.flush()
         debug("Adding data only on node 2...")
         node1_2.start(wait_other_notice=True, wait_for_binary_proto=True)
         node1_1.stop(wait_other_notice=True)
         session = self.patient_cql_connection(node1_2, 'ks')
-        insert_c1c2(session, keys=range(2000, 3000), consistency=ConsistencyLevel.LOCAL_ONE)
+        insert_c1c2(session, keys=range(2 * num_keys, 3 * num_keys), consistency=ConsistencyLevel.LOCAL_ONE)
 
         # Bring up all nodes, each should have different data
         # (all the nodes of the two other clusters are empty, but that's
@@ -939,7 +941,7 @@ class RepairAdditionalBase(Tester):
         node1_2.flush()
         node1_2.stop(wait_other_notice=True)
         session = self.patient_cql_connection(node1_1, 'ks')
-        self.assert_repair_option_pr_rows(session, 1050, 1300, consistency_level=ConsistencyLevel.LOCAL_ONE)
+        self.assert_repair_option_pr_rows(session, int(num_keys * 1.05), int(num_keys * 1.3), consistency_level=ConsistencyLevel.LOCAL_ONE)
 
         debug("Restarting node1_2")
         node1_2.start(wait_other_notice=True, wait_for_binary_proto=True)
@@ -955,7 +957,7 @@ class RepairAdditionalBase(Tester):
                 debug(info[1])
         for node in self.cluster.nodelist():
             debug("Checking data on " + node.name)
-            self.check_rows_on_node(node, 2000)
+            self.check_rows_on_node(node, 2 * num_keys)
 
     def _repair_option_cf_test(self):
         """
