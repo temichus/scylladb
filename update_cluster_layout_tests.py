@@ -224,15 +224,18 @@ class TestUpdateClusterLayout(Tester):
             node3.stop()
 
         self.addCleanup(stop_node3)
+        debug("Starting node2")
         node2.start(no_wait=True)
-        node2.watch_log_for("JOINING: sleeping .* ms for pending range setup")
+        node2.watch_log_for("JOINING: Starting to bootstrap")
 
         failed_to_detect = False
         try:
+            debug("Starting node3")
             node3.start(wait_other_notice=True, wait_for_binary_proto=True)
             # lets check that it detected there was another bootstrapping in progress
             try:
-                node3.watch_log_for("Checking bootstrapping/leaving/moving nodes: .* sleep 1 second and check again .*", timeout=5)
+                debug("Waiting until node3 notices other node was booting")
+                node3.watch_log_for("Checking bootstrapping/leaving/moving nodes: node={}.* sleep 1 second and check again".format(node2.address()), timeout=5)
                 debug('Node3 noticed other node was booting')
             except:
                 debug('Node3 did not notice other node was booting')
