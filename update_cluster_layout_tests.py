@@ -220,10 +220,6 @@ class TestUpdateClusterLayout(Tester):
         i = len(cluster.nodes) + 1
         node3 = cluster.new_node(i, auto_bootstrap=True, add_node=False)
 
-        def stop_node3():
-            node3.stop()
-
-        self.addCleanup(stop_node3)
         debug("Starting node2")
         node2.start(no_wait=True)
         node2.watch_log_for("JOINING: Starting to bootstrap")
@@ -234,6 +230,7 @@ class TestUpdateClusterLayout(Tester):
         failed_to_detect = False
         try:
             debug("Starting node3")
+            cluster.add(node3, is_seed=False)
             node3.start(wait_other_notice=True, wait_for_binary_proto=True)
             # lets check that it detected there was another bootstrapping in progress
             try:
