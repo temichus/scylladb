@@ -228,6 +228,9 @@ class TestUpdateClusterLayout(Tester):
         node2.start(no_wait=True)
         node2.watch_log_for("JOINING: Starting to bootstrap")
 
+        expected_error = "Other bootstrapping/leaving/moving nodes detected, cannot bootstrap while consistent_rangemovement is true"
+        self.ignore_log_patterns += [expected_error]
+
         failed_to_detect = False
         try:
             debug("Starting node3")
@@ -242,7 +245,7 @@ class TestUpdateClusterLayout(Tester):
                 failed_to_detect = True
         except:
             # if the node was not allowed to boot check reason
-            node3.watch_log_for("Other bootstrapping/leaving/moving nodes detected, cannot bootstrap while consistent_rangemovement is true", timeout=5)
+            node3.watch_log_for(expected_error, timeout=5)
             debug("Node 3 detected other node was booting and gave up booting")
         if failed_to_detect:
             self.assertTrue(False, "Node3 did not notice other node was booting")
