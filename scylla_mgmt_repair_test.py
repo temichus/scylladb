@@ -508,7 +508,7 @@ class TestScyllaMgmtRepair(RepairAdditionalBase):
         node3.stop(wait_other_notice=True)
         repair_task = mgr_cluster.create_repair_task(node=node3, token_ranges='all', keyspace=self.KEYSPACE_NAME,
                                                      with_hosts=[node1, node2])
-        assert repair_task.wait_for_status(list_status=[TaskStatus.ERROR], timeout=100, step=5), \
+        assert repair_task.wait_for_status(list_status=[TaskStatus.ERROR], timeout=300, step=5), \
             "Repairing an unavailable node did not fail as expected"
 
     @attr('scylla-manager')
