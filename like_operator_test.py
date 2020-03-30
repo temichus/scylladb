@@ -289,6 +289,7 @@ class BaseOperationsHelper():
 @attr('dtest-full', 'single_node')
 class TestLikeOperatorForBaseTable(Tester, BaseOperationsHelper):
 
+    @attr('next-gating')
     def test_pk_filtering_of_text_type_with_percent_sign(self):
         """Test filtering with LIKE operator by partition key
 
@@ -1351,6 +1352,7 @@ class TestLikeOperatorForBaseTable(Tester, BaseOperationsHelper):
         assert_none(session,
                     query="SELECT * FROM test WHERE test LIKE 'test_1string' ALLOW FILTERING")
 
+    @attr('next-gating')
     def test_invalid_queries_with_like_operator(self):
         """Test invalid queires with LIKE operator
 
@@ -1378,6 +1380,7 @@ class TestLikeOperatorForBaseTable(Tester, BaseOperationsHelper):
         assert_invalid(session,
                        query="SELECT * FROM test WHERE ck LIKE currentTime() ALLOW FILTERING")
 
+    @attr('next-gating')
     def test_multiple_like_operator_on_same_column(self):
         """Test query with like operator on same column
 
@@ -2099,6 +2102,7 @@ class TestLikeOperatorForBaseTable(Tester, BaseOperationsHelper):
 @attr('dtest-full', 'single_node')
 class TestLikeOperatorForMV(Tester, BaseOperationsHelper):
 
+    @attr('next-gating')
     def test_filtering_MV_new_primary(self):
 
         session = self.prepare_cluster_with_materialized_views()
@@ -2182,6 +2186,7 @@ class TestLikeOperatorForMV(Tester, BaseOperationsHelper):
 @attr('dtest-full', 'single_node')
 class TestIndexFilteringWithLike(Tester, BaseOperationsHelper):
 
+    @attr('next-gating')
     def test_filter_index(self):
 
         session = self.prepare_cluster_with_global_index()
