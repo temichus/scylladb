@@ -239,6 +239,7 @@ class IcsCompactionTest(Tester):
         node1 = self.cluster.nodelist()[0]
         self._write_and_flush_sstables(num_of_generated_sstables=NUM_OF_GENERATED_SSTABLES, start_index=1,
                                        increasing_write_size=True)
+        node1.wait_for_compactions()
         snapshot_dir = make_snapshot(node1, KEYSPACE_NAME, TABLE_NAME, 'basic')
         return snapshot_dir, session, node1
 
@@ -451,6 +452,7 @@ class IcsCompactionTest(Tester):
                                        increasing_write_size=True, num_writes_per_sstable=num_rows_per_sstable,
                                        write_range=num_rows_per_sstable)
 
+        node1.wait_for_compactions()
         # Create a snapshot
         snapshot_dir = make_snapshot(node1, KEYSPACE_NAME, TABLE_NAME, 'basic')
 
@@ -521,6 +523,8 @@ class IcsCompactionTest(Tester):
         start_index = 1
         self._write_and_flush_sstables(num_of_generated_sstables=num_of_generated_sstables, start_index=start_index,
                                        increasing_write_size=True)
+        node1 = self.cluster.nodelist()[0]
+        node1.wait_for_compactions()
         sstables_files1, files_size = self._get_sstable_files_and_sizes()
         debug("Number of files after {} flushes is: {} , {}".format(num_of_generated_sstables, len(sstables_files1),
                                                                     sstables_files1))
