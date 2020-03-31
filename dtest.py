@@ -1191,7 +1191,8 @@ class Tester(TestCase):
             raise 'Failed getting metrics from server! error: {}'.format(resp.text)
         return resp.text
 
-    def get_node_metrics(self, node_ip, port='9180', metrics=[]):
+    def get_node_metrics(self, node_ip, port='9180', metrics=None):
+        metrics = metrics or []
         metrics_res = {}
         if metrics:
             for metric in self._prometheus_get(node_ip, port).splitlines():

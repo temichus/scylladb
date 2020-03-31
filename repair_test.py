@@ -6,7 +6,7 @@ from nose.plugins.attrib import attr
 from cassandra import ConsistencyLevel
 from cassandra.query import SimpleStatement
 
-from dtest import Tester, debug
+from dtest import Tester, debug, info
 from tools import insert_c1c2, no_vnodes, query_c1c2, since
 
 from ccmlib.scylla_cluster import ScyllaCluster
@@ -151,7 +151,10 @@ class TestRepair(Tester):
             opts += cf
         return opts
 
-    def _simple_repair(self, sequential=True):
+    def _simple_repair(self, sequential=True, metrics=None):
+        metrics, metrics_data = metrics or set(), dict()
+        if not isinstance(metrics, set):
+            metrics = set() if not isinstance(metrics, str) else {[metrics]}
         cluster = self.cluster
 
         # Disable hinted handoff and set batch commit log so this doesn't
@@ -194,6 +197,8 @@ class TestRepair(Tester):
         debug("starting repair...")
         node1.repair(self._repair_options(ks='ks', sequential=sequential))
         debug("Repair time: {end}".format(end=time.time() - start))
+        if metrics:
+            metrics_data = self.get_node_metrics(node_ip=self.get_ip_from_node(node1), metrics=metrics)
 
         # Validate that only one range was transfered
         if self.check_repair_logs():
@@ -213,6 +218,7 @@ class TestRepair(Tester):
 
         # Check node3 now has the key
         self.check_rows_on_node(node3, 2001, found=[1000], restart=False)
+        return metrics_data
 
     def _empty_vs_gcable_no_repair(self, sequential):
         """
@@ -385,6 +391,33 @@ class TestRepair(Tester):
         for node in [node1, node3, node4]:
             self.check_rows_on_node(node, 2001, found=[1000])
         return cluster
+
+    def test_two_consecutive_repair(self):
+        """
+        - Create a cluster
+        - Insert data
+        - cause one node to miss some data
+        - trigger repair to fix it
+        - trigger another repair and verify no data was streamed.
+        """
+        metric_name = 'scylla_repair_tx_row_bytes'
+
+        sequential = True
+        metric_data = self._simple_repair(sequential=sequential, metrics=[metric_name])['metric_name']
+        info(f"Verifying the metric value of '{metric_name}' after the first repair is greater from '0'")
+        self.assertGreater(a=metric_data, b=0, msg=f"Got incorrect metric value '{metric_data}'")
+        [info(f"Starting node{node_idx} because is in state down")
+         for node_idx, node in enumerate(self.cluster.nodelist()) if node.status.lower() == "down"]
+        self.cluster.start()
+        node1 = self.cluster.nodelist()[0]
+
+        start = time.time()
+        debug("Starting second repair...")
+        node1.repair(self._repair_options(ks='ks', sequential=sequential))
+        debug(f"Repair time: {time.time() - start}")
+        info(f"Verifying the metric value of '{metric_name}' after the second repair is  '0'")
+        metric_data = self.get_node_metrics(node_ip=self.get_ip_from_node(node1), metrics=[metric_name])
+        self.assertEqual(first=metric_data, second=0, msg="Got incorrect value '{metric_data}'")
 
 
 RepairTableContents = namedtuple('RepairTableContents',
