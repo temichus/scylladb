@@ -3,6 +3,7 @@ import time
 from nose.plugins.attrib import attr
 
 from dtest import Tester, debug, info
+from scylla_tools import print_table
 
 
 @attr('dtest-full', 'single_node')
@@ -80,13 +81,12 @@ class PersistenceTest(Tester):
         1) CREATE KEYSPACE ks WITH replication = {'class': 'SimpleStrategy', 'replication_factor': '1'} AND
             durable_writes = true;
         2) CREATE TABLE ks.user_stats3 ( user_id text PRIMARY KEY, clients_usage map<text, text>, last_seen timestamp );
-        3) CREATE TABLE ks.user_stats3 ( user_id text PRIMARY KEY, clients_usage map<text, text>, last_seen timestamp );
-        4) Insert into ks.user_stats3(user_id, clients_usage) values ('Piotr', {'':'2019-05-05T04:14:16.954407'});
-        5) Select * from ks.user_stats3;
-        6) docker exec -it scyllaU nodetool flush
-        7) docker exec -it scyllaU nodetool compact
-        8) Reboot the cluster
-        9) Select * from ks.user_stats3;
+        3) Insert into ks.user_stats3(user_id, clients_usage) values ('Piotr', {'':'2019-05-05T04:14:16.954407'});
+        4) Select * from ks.user_stats3;
+        5) docker exec -it scyllaU nodetool flush
+        6) docker exec -it scyllaU nodetool compact
+        7) Reboot the cluster
+        8) Select * from ks.user_stats3;
         """
         keyspace_name = "keyspace1"
         table_name = f"{keyspace_name}.user_stats3"
@@ -106,6 +106,7 @@ class PersistenceTest(Tester):
         info(f"Showing table '{table_name}' data")
         table_before_reboot = session.execute(show_table_cmd)
         row_before_reboot = table_before_reboot.current_rows[0]
+        print_table(table=table_before_reboot)
         node = self.cluster.nodelist()[0]
         debug("Executing flush")
         node.flush()
@@ -117,6 +118,7 @@ class PersistenceTest(Tester):
         session = self.prepare()
         table_after_reboot = session.execute(show_table_cmd)
         row_after_reboot = table_after_reboot.current_rows[0]
+        print_table(table=table_after_reboot)
         msg_error = f"The data before reboot ('{row_before_reboot}') should be equal to data after reboot ('" \
                     f"{row_after_reboot}')"
         self.assertEqual(first=row_before_reboot, second=row_after_reboot, msg=msg_error)

@@ -2,6 +2,8 @@ import os
 import shutil
 import time
 import unittest
+
+import tabulate
 from cassandra import ConsistencyLevel
 from cassandra.concurrent import execute_concurrent_with_args, execute_concurrent
 from cassandra.query import SimpleStatement
@@ -1256,3 +1258,9 @@ def prepare_statement(session, query, cl=ConsistencyLevel.ONE):
     res = session.prepare(query)
     res.consistency_level = cl
     return res
+
+
+def print_table(table):
+    debug(tabulate.tabulate(tabular_data=[
+        [str(getattr(row, column_name)) for column_name in table.column_names]
+        for row in table.current_rows], headers=table.column_names))
