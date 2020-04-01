@@ -250,6 +250,7 @@ class TestCounters(Tester):
                 WHERE id = 'foo' and myuuid = {k}
                 """.format(k=k)))
 
+            assert len(count) and len(count[0]), "Expected counter_one={} for myuuid={}, got: {}".format(v, k, count)
             self.assertEqual(v, count[0][0])
 
     @attr('single_node')
