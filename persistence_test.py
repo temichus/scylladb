@@ -2,7 +2,7 @@ import time
 
 from nose.plugins.attrib import attr
 
-from dtest import Tester
+from dtest import Tester, debug, info
 
 
 @attr('dtest-full', 'single_node')
@@ -71,3 +71,52 @@ class PersistenceTest(Tester):
         4) Run a read workload, to see if data was persisted.
         """
         self.stress_with_col_size(1)
+
+    def test_data_persistence_of_map_with_empty_keys(self):
+        """
+        https://github.com/scylladb/scylla-enterprise/issues/909
+        Data loss issue with "map" type and empty key in the map.
+
+        1) CREATE KEYSPACE ks WITH replication = {'class': 'SimpleStrategy', 'replication_factor': '1'} AND
+            durable_writes = true;
+        2) CREATE TABLE ks.user_stats3 ( user_id text PRIMARY KEY, clients_usage map<text, text>, last_seen timestamp );
+        3) CREATE TABLE ks.user_stats3 ( user_id text PRIMARY KEY, clients_usage map<text, text>, last_seen timestamp );
+        4) Insert into ks.user_stats3(user_id, clients_usage) values ('Piotr', {'':'2019-05-05T04:14:16.954407'});
+        5) Select * from ks.user_stats3;
+        6) docker exec -it scyllaU nodetool flush
+        7) docker exec -it scyllaU nodetool compact
+        8) Reboot the cluster
+        9) Select * from ks.user_stats3;
+        """
+        keyspace_name = "keyspace1"
+        table_name = f"{keyspace_name}.user_stats3"
+        keyspace_cmd = "CREATE KEYSPACE %s WITH replication = {'class': 'SimpleStrategy', 'replication_factor': " \
+                       "'1'}  AND durable_writes = true;" % keyspace_name
+        new_table_cmd = f"CREATE TABLE {table_name} ( user_id text PRIMARY KEY, clients_usage map<text, text>, " \
+                        f"last_seen timestamp );"
+        add_new_row_cmd = "Insert into {} (user_id, clients_usage) values ('{}', {});"
+        show_table_cmd = f"Select * from {table_name};"
+
+        debug("Opening CQL session")
+        session = self.prepare()
+        debug(f"Creating new table '{table_name}'")
+        session.execute(keyspace_cmd)
+        session.execute(new_table_cmd)
+        session.execute(add_new_row_cmd.format(table_name, "Piotr", {'': '2019-05-05T04:14:16.954407'}))
+        info(f"Showing table '{table_name}' data")
+        table_before_reboot = session.execute(show_table_cmd)
+        row_before_reboot = table_before_reboot.current_rows[0]
+        node = self.cluster.nodelist()[0]
+        debug("Executing flush")
+        node.flush()
+        debug("Executing compact")
+        node.compact()
+        debug("Rebooting the cluster")
+        self.restart_cluster()
+        debug("Opening CQL session after rebooting")
+        session = self.prepare()
+        table_after_reboot = session.execute(show_table_cmd)
+        row_after_reboot = table_after_reboot.current_rows[0]
+        msg_error = f"The data before reboot ('{row_before_reboot}') should be equal to data after reboot ('" \
+                    f"{row_after_reboot}')"
+        self.assertEqual(first=row_before_reboot, second=row_after_reboot, msg=msg_error)
