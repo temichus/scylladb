@@ -77,3 +77,4 @@ cdc_tests.py
 lwt_test.py
 lwt_destructive_ddl_test.py
 cql_prepared_test.py
+alternator_tests.py
