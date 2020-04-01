@@ -1602,7 +1602,6 @@ class TestNodetool(Tester):
         start 2 nodes
         call rebuild
         """
-        self.ignore_log_patterns = ["migration_task - Can't send migration request: node"]
         expected_errors = ["No schema agreement from live replicas after"]
         tst = [{"operations": [{"func": self.run_cluster, "args": [[2, 2], {'hinted_handoff_enabled': False, 'compaction_enforce_min_threshold': True}], "block": True}, {"func": self.stop, "delay": 5, "args": [ [2, 3]]}],
                 "recurrent":[{"func": self.verify_all_api, "block": True}, {"func": self.verify_info, "time": 60, "delay": 10, "args": [None, 'dc1', 'RAC1']}]},
@@ -1627,7 +1626,6 @@ class TestNodetool(Tester):
         run load
         call drain
         """
-        self.ignore_log_patterns = ["migration_task - Can't send migration request: node"]
         expected_errors = ["Connection has been closed"]
         tst = [{"operations": [{"func": self.run_cluster}],
                 "recurrent": [{"func": self.verify_all_api, "block": True}, {"func": self.verify_info, "time": 60, "delay": 10}]},
