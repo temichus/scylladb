@@ -1655,6 +1655,9 @@ class TestNodetool(Tester):
         ret = node.stress_object(cmd)
         if type(ret) == type(str()):
             for line in ret.splitlines():
+                # Ignore Java stacktrace lines
+                if (re.search('^\s+(at|\.\.\.)', line)):
+                    continue
                 error = True
                 for p in expected_errors:
                     if re.search(p, line):
