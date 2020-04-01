@@ -1217,11 +1217,11 @@ class TestUpdateClusterLayout(Tester):
         node4.watch_log_for("JOINING: Starting to bootstrap")
         node4.watch_log_for("Beginning stream session|sync data for keyspace=ks, status=started")
 
-        debug("Stop node 4 ...")
-        node4.stop()
+        debug("Hard-stop node 4 ...")
+        node4.stop(gently=False)
 
         debug("Check node 1 removed node4  ...")
-        node1.watch_log_for("FatClient .* has been silent for .*ms, removing from gossip")
+        node1.watch_log_for("FatClient {} has been silent for .*ms, removing from gossip".format(node4.address()))
 
         debug("Check the hearbeat of node 1 ...")
         status1, err1 = node1.nodetool('gossipinfo')
