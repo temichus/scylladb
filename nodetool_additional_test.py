@@ -1632,7 +1632,7 @@ class TestNodetool(Tester):
                 "recurrent": self. queries_method_list}]
         self.general_concurrent(tst)
 
-    def stress(self, node, opr, times=10000, duration=None, col=None, pop=None, opt=None, cl=None):
+    def stress(self, node, opr, times=10000, duration=None, col=None, pop=None, opt=None, cl=None, expected_errors=None):
         cmd = [opr]
         if cl is None:
             cl = 'ALL'
@@ -1651,25 +1651,27 @@ class TestNodetool(Tester):
             cmd += opt
         ret = node.stress_object(cmd)
         if type(ret) == type(str()):
+            if not expected_errors and hasattr(self, 'ignore_log_patterns'):
+                expected_errors = self.ignore_log_patterns
             for line in ret.splitlines():
                 error = True
-                if hasattr(self, 'ignore_log_patterns'):
-                    for p in self.ignore_log_patterns:
-                        if re.search(p, line):
-                            error = False
+                for p in expected_errors:
+                    if re.search(p, line):
+                        error = False
                 if error:
+                    debug("Unexpected output line: {}".format(line))
                     raise Exception('Error running cassandra-stress: {}'.format(ret))
         return ret
 
-    def stress_write(self, node, times=10000, duration=None, col=None, pop=None, opt=None, cl=None):
+    def stress_write(self, node, times=10000, duration=None, col=None, pop=None, opt=None, cl=None, expected_errors=None):
         if opt is None:
             opt = []
-        return self.stress(node, 'write', times=times, duration=duration, col=col, pop=pop, opt=opt, cl=cl)
+        return self.stress(node, 'write', times=times, duration=duration, col=col, pop=pop, opt=opt, cl=cl, expected_errors=expected_errors)
 
-    def stress_mixed(self, node, times=10000, duration=None, col=None, pop=None, opt=None):
+    def stress_mixed(self, node, times=10000, duration=None, col=None, pop=None, opt=None, expected_errors=None):
         if opt is None:
             opt = []
-        return self.stress(node, 'mixed', times=times, duration=duration, col=col, pop=pop, opt=opt)
+        return self.stress(node, 'mixed', times=times, duration=duration, col=col, pop=pop, opt=opt, expected_errors=expected_errors)
 
     @attr('single_node')
     def get_sstable_test(self):
