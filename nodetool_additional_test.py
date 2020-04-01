@@ -1602,10 +1602,14 @@ class TestNodetool(Tester):
         start 2 nodes
         call rebuild
         """
-        self.ignore_log_patterns = ["migration_task - Can't send migration request: node", "No schema agreement from live replicas after"]
+        self.ignore_log_patterns = ["migration_task - Can't send migration request: node"]
+        expected_errors = ["No schema agreement from live replicas after"]
         tst = [{"operations": [{"func": self.run_cluster, "args": [[2, 2], {'hinted_handoff_enabled': False, 'compaction_enforce_min_threshold': True}], "block": True}, {"func": self.stop, "delay": 5, "args": [ [2, 3]]}],
                 "recurrent":[{"func": self.verify_all_api, "block": True}, {"func": self.verify_info, "time": 60, "delay": 10, "args": [None, 'dc1', 'RAC1']}]},
-               {"operations": [{"func": self.concurrent_stress, "delay": 15, "args": [None, {"cl":"ONE","duration": "1m", "opt": ["-schema","replication(strategy=NetworkTopologyStrategy, dc1=1,dc2=1)","-rate","threads=10"]}]}],
+               {"operations": [{"func": self.concurrent_stress, "delay": 15,
+                                "args": [None, {"cl":"ONE","duration": "1m",
+                                                "opt": ["-schema","replication(strategy=NetworkTopologyStrategy, dc1=1,dc2=1)","-rate","threads=10"],
+                                                "expected_errors": expected_errors}]}],
                 "recurrent": [{"func": self.verify_info, "time": 60, "delay": 10, "args": [None, 'dc1', 'RAC1']}]},
                {"operations": [{"func": self.start, "delay": 5, "args": [[2, 3], {"wait_for_binary_proto": True}]}],
                 "recurrent": [{"func": self.verify_info, "time": 60, "delay": 10, "args": [None, 'dc1', 'RAC1']}]},
@@ -1623,12 +1627,13 @@ class TestNodetool(Tester):
         run load
         call drain
         """
-        self.ignore_log_patterns = ["migration_task - Can't send migration request: node", "Connection has been closed"]
+        self.ignore_log_patterns = ["migration_task - Can't send migration request: node"]
+        expected_errors = ["Connection has been closed"]
         tst = [{"operations": [{"func": self.run_cluster}],
                 "recurrent": [{"func": self.verify_all_api, "block": True}, {"func": self.verify_info, "time": 60, "delay": 10}]},
                {"operations": [{"func": self.concurrent_stress, "delay": 5, "args": [None, {"duration": "1m","opt": ["-schema","replication(strategy=SimpleStrategy, replication_factor=2)","-rate","threads=10"]}]}],
                 "recurrent": [{"func": self.verify_info, "time": 60, "delay": 10}]},
-               {"operations": [{"func": self.concurrent_stress, "delay": 5, "args": [None, {"cl":"ONE", "duration": "2m"}]}, {"func": self.drain, "delay": 90, "args": [1]}],
+               {"operations": [{"func": self.concurrent_stress, "delay": 5, "args": [None, {"cl":"ONE", "duration": "2m", "expected_errors": expected_errors}]}, {"func": self.drain, "delay": 90, "args": [1]}],
                 "recurrent": self. queries_method_list}]
         self.general_concurrent(tst)
 
@@ -1651,8 +1656,6 @@ class TestNodetool(Tester):
             cmd += opt
         ret = node.stress_object(cmd)
         if type(ret) == type(str()):
-            if not expected_errors and hasattr(self, 'ignore_log_patterns'):
-                expected_errors = self.ignore_log_patterns
             for line in ret.splitlines():
                 error = True
                 for p in expected_errors:
