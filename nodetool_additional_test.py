@@ -1628,7 +1628,14 @@ class TestNodetool(Tester):
         call drain
         """
         node_to_drain = 2
-        expected_errors = ["Connection has been closed"]
+        node_address = "{}{}".format(self.cluster.get_ipprefix(), node_to_drain)
+        addr_msg = re.escape("{}/{}:9042".format(node_address, node_address))
+        expected_errors = [
+            "\[{}\] Connection has been closed".format(addr_msg),
+            "Error creating netty channel to {}".format(addr_msg),
+            "Connection refused: {}".format(addr_msg),
+            "Caused by: java.net.ConnectException: Connection refused",
+        ]
         tst = [{"operations": [{"func": self.run_cluster}],
                 "recurrent": [{"func": self.verify_all_api, "block": True}, {"func": self.verify_info, "time": 60, "delay": 10}]},
                {"operations": [{"func": self.concurrent_stress, "delay": 5, "args": [None, {"duration": "1m","opt": ["-schema","replication(strategy=SimpleStrategy, replication_factor=2)","-rate","threads=10"]}]}],
