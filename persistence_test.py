@@ -1,7 +1,8 @@
 import time
 
-from dtest import Tester
 from nose.plugins.attrib import attr
+
+from dtest import Tester
 
 
 @attr('dtest-full', 'single_node')
@@ -9,6 +10,7 @@ class PersistenceTest(Tester):
     """
     Insert data into clusters, then restart them and verify if data persisted.
     """
+
     def restart_cluster(self):
         self.cluster.stop()
         time.sleep(0.5)
@@ -50,7 +52,8 @@ class PersistenceTest(Tester):
         """
         session = self.prepare()
         session.execute("CREATE KEYSPACE ks WITH replication={'class':'SimpleStrategy', 'replication_factor':1}")
-        session.execute("CREATE COLUMNFAMILY ks.cf (p1 text, c1 text, r1 int, PRIMARY KEY (p1, c1)) WITH compaction={'class': 'SizeTieredCompactionStrategy'}")
+        session.execute("CREATE COLUMNFAMILY ks.cf (p1 text, c1 text, r1 int, PRIMARY KEY (p1, c1)) WITH compaction={"
+                        "'class': 'SizeTieredCompactionStrategy'}")
         session.execute("INSERT INTO ks.cf (p1, c1, r1) VALUES ('key1', 'a', 1)")
         session.execute("INSERT INTO ks.cf (p1, c1, r1) VALUES ('key2', 'b', 1)")
         res_before_restart = list(session.execute("SELECT * FROM ks.cf"))
