@@ -154,7 +154,7 @@ class TestRepair(Tester):
     def _simple_repair(self, sequential=True, metrics=None):
         metrics, metrics_data = metrics or set(), dict()
         if not isinstance(metrics, set):
-            metrics = set() if not isinstance(metrics, str) else {[metrics]}
+            metrics = set(metrics) if not isinstance(metrics, str) else {[metrics]}
         cluster = self.cluster
 
         # Disable hinted handoff and set batch commit log so this doesn't
@@ -392,7 +392,7 @@ class TestRepair(Tester):
             self.check_rows_on_node(node, 2001, found=[1000])
         return cluster
 
-    def test_two_consecutive_repair(self):
+    def two_consecutive_repair_test(self):
         """
         - Create a cluster
         - Insert data
@@ -403,7 +403,7 @@ class TestRepair(Tester):
         metric_name = 'scylla_repair_tx_row_bytes'
 
         sequential = True
-        metric_data = self._simple_repair(sequential=sequential, metrics=[metric_name])['metric_name']
+        metric_data = self._simple_repair(sequential=sequential, metrics=[metric_name])[metric_name]
         info(f"Verifying the metric value of '{metric_name}' after the first repair is greater from '0'")
         self.assertGreater(a=metric_data, b=0, msg=f"Got incorrect metric value '{metric_data}'")
         [info(f"Starting node{node_idx} because is in state down")
@@ -416,7 +416,7 @@ class TestRepair(Tester):
         node1.repair(self._repair_options(ks='ks', sequential=sequential))
         debug(f"Repair time: {time.time() - start}")
         info(f"Verifying the metric value of '{metric_name}' after the second repair is  '0'")
-        metric_data = self.get_node_metrics(node_ip=self.get_ip_from_node(node1), metrics=[metric_name])
+        metric_data = self.get_node_metrics(node_ip=self.get_ip_from_node(node1), metrics=[metric_name])[metric_name]
         self.assertEqual(first=metric_data, second=0, msg="Got incorrect value '{metric_data}'")
 
 
