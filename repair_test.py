@@ -1,24 +1,24 @@
 import time
 from collections import namedtuple
 from unittest import skip
-from nose.plugins.attrib import attr
 
 from cassandra import ConsistencyLevel
 from cassandra.query import SimpleStatement
+from ccmlib.scylla_cluster import ScyllaCluster
+from nose.plugins.attrib import attr
 
 from dtest import Tester, debug, info
-from tools import insert_c1c2, no_vnodes, query_c1c2, since
-
-from ccmlib.scylla_cluster import ScyllaCluster
+from tools import insert_c1c2, query_c1c2, since
 
 
 @attr('dtest-full')
 class TestRepair(Tester):
 
     def check_repair_logs(self):
-        return not (type(self.cluster) is ScyllaCluster)
+        return not isinstance(self.cluster, ScyllaCluster)
 
-    def check_rows_on_node(self, node_to_check, rows, found=None, missings=None, restart=True):
+    def check_rows_on_node(self, node_to_check, rows, found=None, missings=None,  # pylint: disable=too-many-arguments
+                           restart=True):
         if found is None:
             found = []
         if missings is None:
@@ -76,7 +76,7 @@ class TestRepair(Tester):
         cluster = self.cluster
         debug("Starting cluster..")
         cluster.populate([2, 2]).start(wait_for_binary_proto=True)
-        node1_1, node2_1, node1_2, node2_2 = cluster.nodelist()
+        node1_1, *_ = cluster.nodelist()
         node1_1.stress(stress_options=['write', 'n=50K', 'cl=ONE', '-schema', 'replication(factor=2)'])
         node1_1.nodetool("repair -hosts 127.0.0.1,127.0.0.2,127.0.0.3,127.0.0.4 keyspace1 standard1")
         for node in cluster.nodelist():
@@ -93,7 +93,7 @@ class TestRepair(Tester):
         cluster = self.cluster
         debug("Starting cluster..")
         cluster.populate(3).start(wait_for_binary_proto=True)
-        node1, node2, node3 = cluster.nodelist()
+        node1, *_ = cluster.nodelist()
         node1.stress(stress_options=['write', 'n=50K', 'cl=ONE', '-schema', 'replication(factor=3)'])
         node1.nodetool("repair -st 0 -et 1000 keyspace1 standard1")
         for node in cluster.nodelist():
@@ -102,6 +102,7 @@ class TestRepair(Tester):
             self.assertFalse(node.grep_log("Starting anticompaction"))
 
     @since('2.2.1')
+    @skip('Scylla does not support anticompaction.')
     def anticompaction_after_normal_repair_test(self):
         """
         @jira_ticket CASSANDRA-10422
@@ -109,10 +110,10 @@ class TestRepair(Tester):
         cluster = self.cluster
         debug("Starting cluster..")
         cluster.populate([2, 2]).start(wait_for_binary_proto=True)
-        node1_1, node2_1, node1_2, node2_2 = cluster.nodelist()
+        node1_1, *_ = cluster.nodelist()
         node1_1.stress(stress_options=['write', 'n=50K', 'cl=ONE', '-schema', 'replication(factor=2)'])
         node1_1.nodetool("repair keyspace1 standard1")
-        for node in cluster.nodelist():
+        for _ in cluster.nodelist():
             self.assertTrue("Starting anticompaction")
 
     def simple_sequential_repair_test(self, ):
@@ -173,7 +174,7 @@ class TestRepair(Tester):
         insert_c1c2(session, n=1000, consistency=ConsistencyLevel.ALL)
         node3.flush()
         node3.stop(wait_other_notice=True)
-        insert_c1c2(session, keys=(1000, ), consistency=ConsistencyLevel.TWO)
+        insert_c1c2(session, keys=(1000,), consistency=ConsistencyLevel.TWO)
         node3.start(wait_other_notice=True, wait_for_binary_proto=True)
         insert_c1c2(session, keys=range(1001, 2001), consistency=ConsistencyLevel.ALL)
 
@@ -202,19 +203,16 @@ class TestRepair(Tester):
 
         # Validate that only one range was transfered
         if self.check_repair_logs():
-            out_of_sync_logs = node1.grep_log("/([0-9.]+) and /([0-9.]+) have ([0-9]+) range\(s\) out of sync")
-            if cluster.version() > "1":
-                self.assertEqual(len(out_of_sync_logs), 2, "Lines matching: " + str([elt[0] for elt in out_of_sync_logs]))
-            else:
-                # In pre-1.0, we should have only one line
-                self.assertEqual(len(out_of_sync_logs), 1, "Lines matching: " + str([elt[0] for elt in out_of_sync_logs]))
+            out_of_sync_logs = node1.grep_log(r"([0-9.]+) and ([0-9.]+) have ([0-9]+) range(s) out of sync")
+            self.assertEqual(first=len(out_of_sync_logs), second=2,
+                             msg="Lines matching: " + str([elt[0] for elt in out_of_sync_logs]))
             valid = [(node1.address(), node3.address()), (node3.address(), node1.address()),
                      (node2.address(), node3.address()), (node3.address(), node2.address())]
-            for line, m in out_of_sync_logs:
-                self.assertEqual(int(m.group(3)), 1, "Expecting 1 range out of sync, got " + m.group(3))
-                self.assertIn((m.group(1), m.group(2)), valid, str((m.group(1), m.group(2))))
-                valid.remove((m.group(1), m.group(2)))
-                valid.remove((m.group(2), m.group(1)))
+            for _, match in out_of_sync_logs:
+                self.assertEqual(int(match.group(3)), 1, "Expecting 1 range out of sync, got " + match.group(3))
+                self.assertIn((match.group(1), match.group(2)), valid, str((match.group(1), match.group(2))))
+                valid.remove((match.group(1), match.group(2)))
+                valid.remove((match.group(2), match.group(1)))
 
         # Check node3 now has the key
         self.check_rows_on_node(node3, 2001, found=[1000], restart=False)
@@ -269,17 +267,20 @@ class TestRepair(Tester):
             # insert some data
             for i in range(0, 10):
                 for j in range(0, 1000):
-                    query = SimpleStatement("INSERT INTO %s (key, c1, c2) VALUES ('k%d', 'v%d', 'value')" % (cf, i, j), consistency_level=ConsistencyLevel.ONE)
+                    query = SimpleStatement("INSERT INTO %s (key, c1, c2) VALUES ('k%d', 'v%d', 'value')" % (cf, i, j),
+                                            consistency_level=ConsistencyLevel.ONE)
                     session.execute(query)
             node1.flush()
             # delete those data, half with row tombstone, and the rest with cell range tombstones
             for i in range(0, 5):
-                query = SimpleStatement("DELETE FROM %s WHERE key='k%d'" % (cf, i), consistency_level=ConsistencyLevel.ONE)
+                query = SimpleStatement("DELETE FROM %s WHERE key='k%d'" % (cf, i),
+                                        consistency_level=ConsistencyLevel.ONE)
                 session.execute(query)
             node1.flush()
             for i in range(5, 10):
                 for j in range(0, 1000):
-                    query = SimpleStatement("DELETE FROM %s WHERE key='k%d' AND c1='v%d'" % (cf, i, j), consistency_level=ConsistencyLevel.ONE)
+                    query = SimpleStatement("DELETE FROM %s WHERE key='k%d' AND c1='v%d'" % (cf, i, j),
+                                            consistency_level=ConsistencyLevel.ONE)
                     session.execute(query)
             node1.flush()
 
@@ -293,16 +294,19 @@ class TestRepair(Tester):
         # check no rows will be returned
         for cf in ['cf1', 'cf2']:
             for i in range(0, 10):
-                query = SimpleStatement("SELECT c1, c2 FROM %s WHERE key='k%d'" % (cf, i), consistency_level=ConsistencyLevel.ALL)
+                query = SimpleStatement("SELECT c1, c2 FROM %s WHERE key='k%d'" % (cf, i),
+                                        consistency_level=ConsistencyLevel.ALL)
                 res = list(session.execute(query))
                 self.assertEqual(len(list(filter(lambda x: len(x) != 0, res))), 0, res)
 
         # check log for no repair happened for gcable data
         if self.check_repair_logs():
-            out_of_sync_logs = node2.grep_log("/([0-9.]+) and /([0-9.]+) have ([0-9]+) range\(s\) out of sync for cf1")
-            self.assertEqual(len(out_of_sync_logs), 0, "GC-able data does not need to be repaired with empty data: " + str([elt[0] for elt in out_of_sync_logs]))
+            out_of_sync_logs = node2.grep_log(r"([0-9.]+) and ([0-9.]+) have ([0-9]+) range(s) out of sync for cf1")
+            self.assertEqual(len(out_of_sync_logs), 0,
+                             "GC-able data does not need to be repaired with empty data: " + str(
+                                 [elt[0] for elt in out_of_sync_logs]))
             # check log for actual repair for non gcable data
-            out_of_sync_logs = node2.grep_log("/([0-9.]+) and /([0-9.]+) have ([0-9]+) range\(s\) out of sync for cf2")
+            out_of_sync_logs = node2.grep_log(r"([0-9.]+) and /([0-9.]+) have ([0-9]+) range(s) out of sync for cf2")
             self.assertGreater(len(out_of_sync_logs), 0, "Non GC-able data should be repaired")
 
     def local_dc_repair_test(self):
@@ -317,14 +321,14 @@ class TestRepair(Tester):
 
         # Verify that only nodes in dc1 are involved in repair
         if self.check_repair_logs():
-            out_of_sync_logs = node1.grep_log("/([0-9.]+) and /([0-9.]+) have ([0-9]+) range\(s\) out of sync")
+            out_of_sync_logs = node1.grep_log(r"([0-9.]+) and ([0-9.]+) have ([0-9]+) range(s) out of sync")
             self.assertEqual(len(out_of_sync_logs), 1, "Lines matching: %d" % len(out_of_sync_logs))
-            line, m = out_of_sync_logs[0]
-            self.assertEqual(int(m.group(3)), 1, "Expecting 1 range out of sync, got " + m.group(3))
+            _, match = out_of_sync_logs[0]
+            self.assertEqual(int(match.group(3)), 1, "Expecting 1 range out of sync, got " + match.group(3))
             valid = [node1.address(), node2.address()]
-            self.assertIn(m.group(1), valid, "Unrelated node found in local repair: " + m.group(1))
-            valid.remove(m.group(1))
-            self.assertIn(m.group(2), valid, "Unrelated node found in local repair: " + m.group(2))
+            self.assertIn(match.group(1), valid, "Unrelated node found in local repair: " + match.group(1))
+            valid.remove(match.group(1))
+            self.assertIn(match.group(2), valid, "Unrelated node found in local repair: " + match.group(2))
         # Check node2 now has the key
         self.check_rows_on_node(node2, 2001, found=[1000], restart=False)
 
@@ -341,15 +345,15 @@ class TestRepair(Tester):
 
         # Verify that only nodes in dc1 and dc2 are involved in repair
         if self.check_repair_logs():
-            out_of_sync_logs = node1.grep_log("/([0-9.]+) and /([0-9.]+) have ([0-9]+) range\(s\) out of sync")
+            out_of_sync_logs = node1.grep_log(r"([0-9.]+) and ([0-9.]+) have ([0-9]+) range(s) out of sync")
             self.assertEqual(len(out_of_sync_logs), 2, "Lines matching: " + str([elt[0] for elt in out_of_sync_logs]))
             valid = [(node1.address(), node2.address()), (node2.address(), node1.address()),
                      (node2.address(), node3.address()), (node3.address(), node2.address())]
-            for line, m in out_of_sync_logs:
-                self.assertEqual(int(m.group(3)), 1, "Expecting 1 range out of sync, got " + m.group(3))
-                self.assertIn((m.group(1), m.group(2)), valid, str((m.group(1), m.group(2))))
-                valid.remove((m.group(1), m.group(2)))
-                valid.remove((m.group(2), m.group(1)))
+            for _, match in out_of_sync_logs:
+                self.assertEqual(int(match.group(3)), 1, "Expecting 1 range out of sync, got " + match.group(3))
+                self.assertIn((match.group(1), match.group(2)), valid, str((match.group(1), match.group(2))))
+                valid.remove((match.group(1), match.group(2)))
+                valid.remove((match.group(2), match.group(1)))
         # Check node2 now has the key
         self.check_rows_on_node(node2, 2001, found=[1000], restart=False)
 
@@ -369,7 +373,8 @@ class TestRepair(Tester):
 
         [node1, node2, node3, node4] = cluster.nodelist()
         session = self.patient_cql_connection(node1)
-        session.execute("CREATE KEYSPACE ks WITH replication = {'class': 'NetworkTopologyStrategy', 'dc1': 2, 'dc2': 1, 'dc3':1};")
+        session.execute(
+            "CREATE KEYSPACE ks WITH replication = {'class': 'NetworkTopologyStrategy', 'dc1': 2, 'dc2': 1, 'dc3':1};")
         session.execute("USE ks")
         self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
@@ -378,7 +383,7 @@ class TestRepair(Tester):
         insert_c1c2(session, n=1000, consistency=ConsistencyLevel.ALL)
         node2.flush()
         node2.stop(wait_other_notice=True)
-        insert_c1c2(session, keys=(1000, ), consistency=ConsistencyLevel.THREE)
+        insert_c1c2(session, keys=(1000,), consistency=ConsistencyLevel.THREE)
         node2.start(wait_for_binary_proto=True, wait_other_notice=True)
         node1.watch_log_for_alive(node2)
         insert_c1c2(session, keys=range(1001, 2001), consistency=ConsistencyLevel.ALL)
@@ -406,8 +411,9 @@ class TestRepair(Tester):
         metric_data = self._simple_repair(sequential=sequential, metrics=[metric_name])[metric_name]
         info(f"Verifying the metric value of '{metric_name}' after the first repair is greater from '0'")
         self.assertGreater(a=metric_data, b=0, msg=f"Got incorrect metric value '{metric_data}'")
-        [info(f"Starting node{node_idx} because is in state down")
-         for node_idx, node in enumerate(self.cluster.nodelist()) if node.status.lower() == "down"]
+        for node_idx, node in enumerate(self.cluster.nodelist()):
+            if node.status.lower() == "down":
+                info(f"Starting node{node_idx} because is in state down")
         self.cluster.start()
         node1 = self.cluster.nodelist()[0]
 
@@ -455,7 +461,8 @@ class TestRepairDataSystemTable(Tester):
     def repair_table_contents(self, node, include_system_keyspaces=True):
         """
         @param node the node to connect to and query
-        @param include_system_keyspaces if truthy, return repair information about all keyspaces. If falsey, filter out keyspaces whose name contains 'system'
+        @param include_system_keyspaces if truthy, return repair information about all keyspaces.
+        If falsey, filter out keyspaces whose name contains 'system'
 
         Return a `RepairTableContents` `namedtuple` containing the rows in
         `node`'s `system_distributed.parent_repair_history` and
