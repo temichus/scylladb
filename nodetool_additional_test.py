@@ -1616,8 +1616,9 @@ class TestNodetool(Tester):
                 "recurrent":self.multi_dc_queries_method_list}]
         self.general_concurrent(tst)
 
-    def drain(self, node):
-        node = self.get_node(node)
+    def drain(self, node_to_drain):
+        # get_node uses 0-based index into cluster.nodelist()
+        node = self.get_node(node_to_drain-1)
         node.nodetool("drain")
 
     def concurrent_drain_test(self):
@@ -1626,12 +1627,14 @@ class TestNodetool(Tester):
         run load
         call drain
         """
+        node_to_drain = 2
         expected_errors = ["Connection has been closed"]
         tst = [{"operations": [{"func": self.run_cluster}],
                 "recurrent": [{"func": self.verify_all_api, "block": True}, {"func": self.verify_info, "time": 60, "delay": 10}]},
                {"operations": [{"func": self.concurrent_stress, "delay": 5, "args": [None, {"duration": "1m","opt": ["-schema","replication(strategy=SimpleStrategy, replication_factor=2)","-rate","threads=10"]}]}],
                 "recurrent": [{"func": self.verify_info, "time": 60, "delay": 10}]},
-               {"operations": [{"func": self.concurrent_stress, "delay": 5, "args": [None, {"cl":"ONE", "duration": "2m", "expected_errors": expected_errors}]}, {"func": self.drain, "delay": 90, "args": [1]}],
+               {"operations": [{"func": self.concurrent_stress, "delay": 5, "args": [None, {"cl":"ONE", "duration": "2m", "expected_errors": expected_errors}]},
+                               {"func": self.drain, "delay": 90, "args": [node_to_drain]}],
                 "recurrent": self. queries_method_list}]
         self.general_concurrent(tst)
 
