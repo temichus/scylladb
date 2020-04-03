@@ -68,7 +68,12 @@ class LwtTest(Tester):
 
     @attr("single_node")
     def metrics_test(self):
-        node, session = self.case_prologue()
+        # Because of
+        # https://github.com/scylladb/scylla/issues/5860
+        # lwt: CQL metrics are incremented twice if message was bounced
+        # some of the metrics can double unless we set the number of cores
+        # to 1
+        node, session = self.case_prologue(jvm_args=["--smp", "1"])
         before = None
         after = None
 
@@ -138,19 +143,21 @@ class LwtTest(Tester):
             "experimental_features": ["lwt"],
             "hinted_handoff_enabled": False,
         })
-        cluster.populate(3).start(wait_for_binary_proto=True, jvm_args =
-                                  ["--default-log-level", "trace"])
+        cluster.populate(3).start(wait_for_binary_proto=True)
         node = cluster.nodelist()[0]
-        session = self.patient_cql_connection(node)
+        session = self.patient_exclusive_cql_connection(node)
         self.create_ks(session=session, name="lwt", rf=3)
         cql = "DROP TABLE IF EXISTS t"
         session.execute(cql)
         cql = "CREATE TABLE IF NOT EXISTS t (a INT PRIMARY KEY, b INT)"
         session.execute(cql)
         cql = "INSERT INTO t (a,b) VALUES (1,0) IF NOT EXISTS"
+        stmt = SimpleStatement(cql, consistency_level =
+                               ConsistencyLevel.QUORUM)
         session.execute(cql)
         cql = "UPDATE t SET b = ? WHERE a = 1 IF b = ?"
         stmt = session.prepare(cql)
+        stmt.consistency_level = ConsistencyLevel.QUORUM
         name = "scylla_storage_proxy_coordinator_cas_failed_read_round_optimization"
         before = self.get_node_metrics(self.get_ip_from_node(node), metrics=[name])
         for i in range(10):
@@ -161,24 +168,34 @@ class LwtTest(Tester):
         session.execute(cql)
         #
         # 3.6
+        # use a range of statements to avoid any flakiness.
         #
+        KEY_COUNT = 100
         cql = "CREATE TABLE IF NOT EXISTS t (a INT PRIMARY KEY, b INT)"
         session.execute(cql)
-        non_paxos_stmt = session.prepare("UPDATE t SET b = ? WHERE a = 1")
+        cql = "INSERT INTO t (a, b) VALUES (?, ?)"
+        stmt = session.prepare(cql)
+        stmt.consistency_level = ConsistencyLevel.ALL
+        for i in range(KEY_COUNT):
+            session.execute(stmt, (i,i))
+
+        non_paxos_stmt = session.prepare("UPDATE t SET b = 2 WHERE a = ?")
+        non_paxos_stmt.consistency_level = ConsistencyLevel.QUORUM
+        paxos_stmt = session.prepare("UPDATE t SET b = 3 WHERE a = ? IF b = 2")
+        node1 = cluster.nodelist()[1]
+        node2 = cluster.nodelist()[2]
 
         before = self.get_node_metrics(self.get_ip_from_node(node), metrics=[name])
-        node1 = cluster.nodelist()[1]
         node1.stop()
-        session.execute(non_paxos_stmt, (1,))
-        node2 = cluster.nodelist()[2]
+        for i in range(KEY_COUNT):
+            session.execute(non_paxos_stmt, (i,))
         node2.stop()
         node1.start(wait_for_binary_proto=True)
-        session.execute(stmt, (2, 1))
+        for i in range(KEY_COUNT):
+            session.execute(paxos_stmt, (i,))
         after = self.get_node_metrics(self.get_ip_from_node(node), metrics=[name])
-        assert after[name] - before[name] ==  1, "{} {}".format(before, after)
+        assert after[name] - before[name] ==  KEY_COUNT, "{} {}".format(before, after)
 
-        cql = "DROP TABLE IF EXISTS t"
-        session.execute(cql)
 
     def basic_distributed_test(self):
         """Basic distributed tests (3.1 - 3.4 from the test plan). """
