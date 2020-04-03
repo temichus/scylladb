@@ -1,3 +1,6 @@
+import datetime
+import threading
+
 from time import sleep
 from unittest import skip
 from nose.plugins.attrib import attr
@@ -428,3 +431,67 @@ class TestReplaceAddress(Tester):
         debug("Verifying system.peers table.")
         peers = rows_to_list(session.execute("SELECT * FROM system.peers"))
         self.assertEqual(len(peers), 1, "There are more peers than expected.")
+
+    def replace_with_background_workload_test(self):
+        """
+        The subtest is used to reproduce https://github.com/scylladb/scylla/issues/4705
+        the background write workload continue running more than 30 seconds,
+        the gossiper reached a timeout, and nodes raise 'unknown endpoint' error.
+        """
+        cluster = self.cluster
+        cluster.populate(3).start(no_wait=False, wait_for_binary_proto=True, wait_other_notice=True)
+
+        node1 = cluster.nodelist()[0]
+        debug(node1.nodetool('status')[0])
+
+        enable_nodetool_debug = False
+
+        def nodetool_thread():
+            debug('nodetool thread')
+            for key in range(20):
+                debug('enable_nodetool_debug: {}'.format(n))
+                debug(node1.nodetool('status')[0])
+                debug(node1.nodetool("gossipinfo", True)[0])
+            debug('nodetool thread: completed')
+
+        def workload_thread():
+            debug('workload thread: start')
+            # The added scylla 3.1 node can be up quicker than latest master, 140s workload is enough for scylla 3.1
+            node1.stress(['write', 'duration=320s', 'no-warmup', 'cl=QUORUM', '-rate', 'threads=1', '-schema', 'replication(factor=3)', '-pop', 'seq=1..1000'])
+            debug('workload thread: completed')
+            expect_msg = 'Expect workload continue running more than 30 seconds after new node is added'
+            assert self.replace_done_time, expect_msg
+            rest_time = (datetime.datetime.now() - self.replace_done_time).total_seconds()
+            debug('Workload still executes {} seconds after new node is added. {}'.format(rest_time, expect_msg))
+            assert rest_time > 30, expect_msg
+
+        cs_thread = threading.Thread(target=workload_thread)
+        cs_thread.start()
+
+        if enable_nodetool_debug:
+            nodetool_thread = threading.Thread(target=nodetool_thread)
+            nodetool_thread.start()
+
+        debug('Sleep 5 seconds to wait the workload starts')
+        sleep(5)
+
+        debug('Start to kill node3 ...')
+        node3 = cluster.nodelist()[2]
+        node3.stop(gently=False)
+        debug('node3 has been killed')
+
+        debug('Add a new node to replace the dead node')
+        self.replace_done_time = None
+        added_node = new_node(cluster, data_center='dc1')
+        added_node.start(replace_address=self.cluster.get_node_ip(3), wait_for_binary_proto=True)
+        debug('Successfully add a new node to replace node3')
+        self.replace_done_time = datetime.datetime.now()
+
+        cs_thread.join(timeout=300)
+        if enable_nodetool_debug:
+            nodetool_thread.join(timeout=300)
+
+        for node in cluster.nodelist():
+            err_log = node.grep_log('unknown endpoint')[0:3]
+            debug('{}: {}'.format(node.name, err_log))
+            self.assertEqual(0, len(err_log))
