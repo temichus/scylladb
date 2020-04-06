@@ -1754,6 +1754,13 @@ class TestNodetool(Tester):
             f.seek(offset)
             f.write(bytearray(randbytes(length)))
 
+        self.ignore_log_patterns += [
+            'malformed_sstable_exception',
+            'SSTables with Cassandra-style shadowable deletion cannot be read by Scylla',
+            'Adding missing partition-end to the end of the stream',
+            'Skipping invalid clustering row',
+        ]
+
         node.start(wait_for_binary_proto=True,wait_other_notice=True)
 
         session = self.patient_cql_connection(node)
@@ -1794,6 +1801,13 @@ class TestNodetool(Tester):
         with io.open(out, 'rb+', buffering=0) as f:
             f.seek(offset)
             f.write(bytearray(randbytes(length)))
+
+        self.ignore_log_patterns += [
+            'malformed_sstable_exception',
+            'SSTables with Cassandra-style shadowable deletion cannot be read by Scylla',
+            'Adding missing partition-end to the end of the stream',
+            'Skipping invalid clustering row',
+        ]
 
         node.start(wait_for_binary_proto=True,wait_other_notice=True)
 
