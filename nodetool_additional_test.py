@@ -9,6 +9,8 @@ from unittest import skip
 from binascii import hexlify
 from subprocess import getoutput
 import functools
+import random
+import io
 
 import yaml
 from nose.plugins.attrib import attr
@@ -20,6 +22,9 @@ from tools import new_node
 from tools import insert_c1c2
 from tools import no_vnodes, rows_to_list, require
 
+def randbytes(n):
+    for _ in range(n):
+        yield random.getrandbits(8)
 
 @attr('dtest-full')
 class TestNodetool(Tester):
@@ -1734,13 +1739,21 @@ class TestNodetool(Tester):
         self.create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'})
         insert_c1c2(session, keys=range(100))
         node.nodetool("flush")
-        out = node.nodetool("getsstables ks cf k1", True)[0]
-        debug(out)
+        out = node.nodetool("getsstables ks cf k1", True)[0].strip()
+        debug("Will corrupt sstable {}".format(out))
         node.stop()
-        dd_cmd = 'dd if=/dev/random count=1024 of={}'.format(out.strip())
-        debug(dd_cmd)
-        output = getoutput(dd_cmd)
-        debug(output)
+
+        seed = int(time.time())
+        debug("Random seed: {}".format(seed))
+        random.seed(seed)
+        size = os.stat(out).st_size
+        offset = random.randint(0, size)
+        length = random.randint(1, 102400)
+        debug("writing random contents at offset={} length={}".format(offset, length))
+        with io.open(out, 'rb+', buffering=0) as f:
+            f.seek(offset)
+            f.write(bytearray(randbytes(length)))
+
         node.start(wait_for_binary_proto=True,wait_other_notice=True)
 
         session = self.patient_cql_connection(node)
@@ -1766,13 +1779,21 @@ class TestNodetool(Tester):
         self.create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'})
         insert_c1c2(session, keys=range(100))
         node.nodetool("flush")
-        out = node.nodetool("getsstables ks cf k1", True)[0]
-        debug(out)
+        out = node.nodetool("getsstables ks cf k1", True)[0].strip()
+        debug("Will corrupt sstable {}".format(out))
         node.stop()
-        dd_cmd = 'dd if=/dev/random count=1024 of={}'.format(out.strip())
-        debug(dd_cmd)
-        output = getoutput(dd_cmd)
-        debug(output)
+
+        seed = int(time.time())
+        debug("Random seed: {}".format(seed))
+        random.seed(seed)
+        size = os.stat(out).st_size
+        offset = random.randint(0, size)
+        length = random.randint(1, 102400)
+        debug("writing random contents at offset={} length={}".format(offset, length))
+        with io.open(out, 'rb+', buffering=0) as f:
+            f.seek(offset)
+            f.write(bytearray(randbytes(length)))
+
         node.start(wait_for_binary_proto=True,wait_other_notice=True)
 
         session = self.patient_cql_connection(node)
