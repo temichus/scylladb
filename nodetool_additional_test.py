@@ -7,7 +7,7 @@ import shutil
 from threading import Thread
 from unittest import skip
 from binascii import hexlify
-from subprocess import getoutput
+from subprocess import run
 import functools
 import random
 import io
@@ -1763,8 +1763,9 @@ class TestNodetool(Tester):
             pass
 
         debug('Rebuild sstables by storage_service/keyspace_scrub API')
-        output = getoutput('curl http://{}:10000/storage_service/keyspace_scrub/ks?skip_corrupted=true'.format(self.get_ip_from_node(node)))
-        debug(output)
+        p = run(args=['curl', 'http://{}:10000/storage_service/keyspace_scrub/ks?skip_corrupted=true'.format(self.get_ip_from_node(node))],
+                capture_output=True, check=True, timeout=60)
+        debug("Scrub output: {}".format(p.stdout))
 
         try:
             list(session.execute('SELECT * FROM ks.cf'))
@@ -1798,8 +1799,9 @@ class TestNodetool(Tester):
 
         session = self.patient_cql_connection(node)
         debug('Rebuild sstables by storage_service/keyspace_scrub API')
-        output = getoutput('curl http://{}:10000/storage_service/keyspace_scrub/ks?skip_corrupted=true'.format(self.get_ip_from_node(node)))
-        debug(output)
+        p = run(args=['curl', 'http://{}:10000/storage_service/keyspace_scrub/ks?skip_corrupted=true'.format(self.get_ip_from_node(node))],
+                capture_output=True, check=True, timeout=60)
+        debug("Scrub output: {}".format(p.stdout))
 
         rows = list(session.execute('SELECT * FROM ks.cf'))
         assert len(rows) == 100
