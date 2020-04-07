@@ -1,3 +1,5 @@
+import os
+
 from dtest import Tester, debug
 from tools import generate_ssl_stores, putget
 from nose.plugins.attrib import attr
@@ -47,7 +49,10 @@ class TestInternodeSSL(Tester):
         """
         self.__putget_with_internode_ssl_test('dc', internode_encryption='rack', dcs=2)
 
-    def __putget_with_internode_ssl_test(self, internode_compression, internode_encryption='all', dcs=1):
+    def putget_with_reloaded_certificates_test(self):
+        self.__putget_with_internode_ssl_test('all', internode_encryption='all', reload_certs=True)
+
+    def __putget_with_internode_ssl_test(self, internode_compression, internode_encryption='all', dcs=1, reload_certs=False):
         cluster = self.cluster
 
         debug("***using internode ssl***")
@@ -63,6 +68,24 @@ class TestInternodeSSL(Tester):
             cluster.populate([3 for i in range(dcs)]).start(no_wait=False, wait_for_binary_proto=True, wait_other_notice=True)
         else:
             raise Exception('Invalid parameter dc: %s' % dc)
+
+        if reload_certs:
+            debug("rewriting certs")
+            os.remove(os.path.join(self.test_path, 'keystore.jks'))
+            os.remove(os.path.join(self.test_path, 'truststore.jks'))
+            mtime = os.path.getmtime(os.path.join(self.test_path, 'ccm_node.key'))            
+            # overwrite old certs
+            generate_ssl_stores(self.test_path)
+
+            mtime2 = os.path.getmtime(os.path.join(self.test_path, 'ccm_node.key'))            
+            self.assertGreater(mtime2, mtime, "Cert regen failed?")
+
+            cluster.enable_internode_ssl(self.test_path, internode_encryption=internode_encryption)
+
+            for node in cluster.nodelist():
+                debug("waiting for {} to reload certs".format(node.get_path()))
+                node.watch_log_for(["^.*messaging_service.*Reloaded.*ccm_node.pem.*", "^.*messaging_service.*Reloaded.*ccm_node.key.*"])
+                debug("done")
 
         session = self.patient_cql_connection(cluster.nodelist()[0])
         self.create_ks(session, 'ks', 3)
