@@ -12,6 +12,9 @@ from unittest import skip
 from nose.plugins.attrib import attr
 from ccmlib import common
 
+def wait_for_cert_reload(node, module, files, from_mark=None):
+    for f in files:
+        node.watch_log_for("^.*{}.*Reloaded.*{}\.*".format(module, f.replace('.', '\.')), from_mark=from_mark)
 
 @attr('dtest-full', 'single_node')
 class NativeTransportSSL(Tester):
@@ -135,7 +138,6 @@ class NativeTransportSSL(Tester):
 
     @attr('next-gating')
     @attr('dtest-debug')
-    @skip('fails in next')
     def reload_certificates_test(self):
         """
         Verify certificate reloading on modified file(s)
@@ -157,11 +159,13 @@ class NativeTransportSSL(Tester):
             except NoHostAvailable:
                 pass
 
+            mark = node1.mark_log()
+
             # copy new certs to old path
             distutils.dir_util.copy_tree(tmpdir, self.test_path)
 
             # now we play the waiting game...
-            node1.watch_log_for(["^.*cql_server.*Reloaded.*ccm_node.pem.*", "^.*cql_server.*Reloaded.*ccm_node.key.*"])
+            wait_for_cert_reload(node1, "cql_server", ["ccm_node.pem", "ccm_node.key"], from_mark=mark)
 
             # now we should match
             session = self.patient_cql_connection(node1, ssl_opts={'ca_certs': os.path.join(self.test_path, 'ccm_node.cer'), "cert_reqs":ssl.CERT_REQUIRED})
