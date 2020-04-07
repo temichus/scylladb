@@ -1,9 +1,9 @@
 import os
 
-from unittest import skip
 from dtest import Tester, debug
 from tools import generate_ssl_stores, putget
 from nose.plugins.attrib import attr
+from native_transport_ssl_test import wait_for_cert_reload
 
 @attr('next-gating')
 @attr('dtest-debug')
@@ -50,7 +50,6 @@ class TestInternodeSSL(Tester):
         """
         self.__putget_with_internode_ssl_test('dc', internode_encryption='rack', dcs=2)
 
-    @skip('fails in next')
     def putget_with_reloaded_certificates_test(self):
         self.__putget_with_internode_ssl_test('all', internode_encryption='all', reload_certs=True)
 
@@ -73,6 +72,9 @@ class TestInternodeSSL(Tester):
 
         if reload_certs:
             debug("rewriting certs")
+
+            node_marks = {node: node.mark_log() for node in cluster.nodelist()}
+
             os.remove(os.path.join(self.test_path, 'keystore.jks'))
             os.remove(os.path.join(self.test_path, 'truststore.jks'))
             mtime = os.path.getmtime(os.path.join(self.test_path, 'ccm_node.key'))            
@@ -84,9 +86,9 @@ class TestInternodeSSL(Tester):
 
             cluster.enable_internode_ssl(self.test_path, internode_encryption=internode_encryption)
 
-            for node in cluster.nodelist():
+            for node, mark in node_marks.items():
                 debug("waiting for {} to reload certs".format(node.get_path()))
-                node.watch_log_for(["^.*messaging_service.*Reloaded.*ccm_node.pem.*", "^.*messaging_service.*Reloaded.*ccm_node.key.*"])
+                wait_for_cert_reload(node, "messaging_service", ["internode-ccm_node.pem", "internode-ccm_node.key"], from_mark=mark)
                 debug("done")
 
         session = self.patient_cql_connection(cluster.nodelist()[0])
