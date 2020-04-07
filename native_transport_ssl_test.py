@@ -1,10 +1,13 @@
 import os
+import distutils.dir_util
+import shutil
+import ssl
 
 from cassandra import ConsistencyLevel
 from cassandra.cluster import NoHostAvailable
 
 from dtest import Tester
-from tools import generate_ssl_stores, putget, since
+from tools import generate_ssl_stores, putget, since, safe_mkdtemp
 from unittest import skip
 from nose.plugins.attrib import attr
 from ccmlib import common
@@ -129,6 +132,41 @@ class NativeTransportSSL(Tester):
         # connect to additional dedicated ssl port
         session = self.patient_cql_connection(node1, port=9666, ssl_opts={'ca_certs': os.path.join(self.test_path, 'ccm_node.cer')})
         self._putget(cluster, session, ks='ks2')
+
+    @attr('next-gating')
+    @attr('dtest-debug')
+    def reload_certificates_test(self):
+        """
+        Verify certificate reloading on modified file(s)
+        """
+        cluster = self._populateCluster(enableSSL=True)
+        node1 = cluster.nodelist()[0]
+
+        cluster.start(jvm_args=['--logger-log-level','cql_server=debug'])
+
+        tmpdir = safe_mkdtemp()
+        try: 
+            # create new certs
+            generate_ssl_stores(tmpdir)
+
+            try:  # hack around assertRaise's lack of msg parameter
+                # try to connect without new, mismatched cert truststore (and required verification). Should fail
+                self.patient_cql_connection(node1, ssl_opts={'ca_certs': os.path.join(tmpdir, 'ccm_node.cer'), "cert_reqs":ssl.CERT_REQUIRED})
+                self.fail('Should not be able to connect to SSL socket with mismatched trust store')
+            except NoHostAvailable:
+                pass
+
+            # copy new certs to old path
+            distutils.dir_util.copy_tree(tmpdir, self.test_path)
+
+            # now we play the waiting game...
+            node1.watch_log_for(["^.*cql_server.*Reloaded.*ccm_node.pem.*", "^.*cql_server.*Reloaded.*ccm_node.key.*"])
+
+            # now we should match
+            session = self.patient_cql_connection(node1, ssl_opts={'ca_certs': os.path.join(self.test_path, 'ccm_node.cer'), "cert_reqs":ssl.CERT_REQUIRED})
+            self._putget(cluster, session)
+        finally: 
+            shutil.rmtree(tmpdir)
 
     def _populateCluster(self, enableSSL=False, nativePort=None, nativePortSSL=None, sslOptional=False, requireAuth=False):
         cluster = self.cluster
