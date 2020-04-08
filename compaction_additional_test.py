@@ -435,13 +435,18 @@ class TestTimeWindowDataSegregation(Tester):
     window_size = 1
     window_unit = "MINUTES"
 
-    def _get_time_window_in_seconds(self, statistics_file):
+    def _get_stats(self, statistics_file):
         with open(statistics_file, 'rb') as f:
             data = f.read()
 
         metadata = sstable_tools.statistics.parse(data, 'mc')
-        min_timestamp = metadata['Stats']['min_timestamp']
-        max_timestamp = metadata['Stats']['max_timestamp']
+        return metadata['Stats']
+
+    def _get_time_window_in_seconds(self, statistics_file, stats=None):
+        if not stats:
+            stats = self._get_stats(statistics_file)
+        min_timestamp = stats['min_timestamp']
+        max_timestamp = stats['max_timestamp']
         return micros_to_seconds(max_timestamp - min_timestamp)
 
     def _get_list_of_sstables(self, node):
@@ -465,10 +470,13 @@ class TestTimeWindowDataSegregation(Tester):
         statistics_files = self._get_list_of_sstables(node)
         self.assertTrue(len(statistics_files) > 0)
         for sf in statistics_files:
-            tw = self._get_time_window_in_seconds(sf)
+            stats = self._get_stats(sf)
+            tw = self._get_time_window_in_seconds(sf, stats)
 
             # Allow an error margin of a half-window.
-            self.assertTrue(tw <= 1.5 * self.window_size * 60)
+            margin = 1.5 * self.window_size * 60
+            self.assertTrue(tw <= margin, msg="time window of {} seconds is greater than {} seconds margin: "
+                            "sstable={} min_timestamp={} max_timestamp={}".format(tw, margin, sf, stats['min_timestamp'], stats['max_timestamp']))
 
     def _create_ks_cl_with_twcs(self, session, rf=1):
 
