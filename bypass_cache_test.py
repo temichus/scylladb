@@ -1,7 +1,7 @@
 from nose.tools import assert_true, assert_false
 from nose.plugins.attrib import attr
 from dtest import Tester
-
+from unittest import skip
 import time
 import tools
 
@@ -36,11 +36,13 @@ class TestBypassCache(Tester):
 
     def is_read_from_disk(self, node, query, session, metric=None):
         if metric is None:
-            metric = 'scylla_cache_reads'
+            metric = ['scylla_cache_reads']
+        if not isinstance(metric, list):
+            metric = [metric]
         cache_read_before_bypass_read = self.get_scylla_cache_reads_metrics(node=node, metrics=metric)
         session.execute(query)
         cache_read_after_bypass_read = self.get_scylla_cache_reads_metrics(node=node, metrics=metric)
-        return cache_read_before_bypass_read[metric] == cache_read_after_bypass_read[metric]
+        return cache_read_before_bypass_read[metric[0]] == cache_read_after_bypass_read[metric[0]]
 
     def verify_read_was_from_disk(self, node, query, session, metric=None):
         assert_true(self.is_read_from_disk(node, query, session, metric=metric),
@@ -109,6 +111,7 @@ class TestBypassCache(Tester):
                         f'{metrics[1]} metric was supposed to be incremented by 1 '
                         f'and was\'t. Before={before_query[metrics[1]]} After={after_query[metrics[1]]}')
 
+    @skip('skipping until #6045 is fixed')
     def test_range_scan_bypass_cache(self):
         session = self.insert_data_for_scan_range()
         node = self.cluster.nodelist()[0]
@@ -123,6 +126,7 @@ class TestBypassCache(Tester):
                                               bypass_cache=True, metrics=[partition_range_scan_metric,
                                                                           partition_range_scan_no_bypass_cache_metric])
 
+    @skip('skipping until #6045 is fixed')
     def test_full_scan_bypass_cache(self):
         session = self.prepare()
         node = self.cluster.nodelist()[0]
