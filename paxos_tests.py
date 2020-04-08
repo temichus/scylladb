@@ -354,11 +354,6 @@ class TestPaxos(Tester):
         # Try different combinations of timeouts in each paxos stage
         paxos_stages = ['prepare', 'accept', 'learn']
 
-        def _reset_enabled_injections():
-            debug("Reset enabled injections on each node in the test cluster")
-            for node in nodes:
-                self.disable_all_error_injections(node)
-
         # Execute the LWT query on the first node, which acts as a coordinator in this case
         session_node1 = self.patient_exclusive_cql_connection(nodes[0], protocol_version=4)
         session_node1.set_keyspace("ks")
@@ -374,7 +369,10 @@ class TestPaxos(Tester):
                 # Though, it's not guaranteed that the injection is triggered on
                 # each shard actually, so we can end up with some injections still
                 # enabled for some shards.
-                _reset_enabled_injections()
+
+                debug("Reset enabled injections on each node in the test cluster")
+                for node in nodes:
+                    self.disable_all_error_injections(node)
 
                 debug(f"Testing combination {combination}")
                 for stage in combination:
