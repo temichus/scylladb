@@ -99,9 +99,7 @@ class TestCdc(Tester, CDCInitializeHelper):
         self.wait_for_metadata_update(session, cluster_size=3)
         ring = self.get_vnode_ring(session)
 
-        debug('Checking invariants on generation')
-        gen_description = self.get_cdc_topology_description_for_timestamp(session, gen_timestamp)
-        self.generation_quality_check(session, gen_description, ring)
+        self.generation_quality_check(session, gen_timestamp, ring)
 
         debug('Create a table with CDC enabled, and start writing to it')
         finish_writing = self.run_writes_with_counting(node1, with_preimage=with_preimage)
@@ -137,9 +135,7 @@ class TestCdc(Tester, CDCInitializeHelper):
         self.wait_for_metadata_update(session, cluster_size=3)
         ring_before_expansion = self.get_vnode_ring(session)
 
-        debug('Checking invariants on generation')
-        gen_description = self.get_cdc_topology_description_for_timestamp(session, gen_timestamp)
-        self.generation_quality_check(session, gen_description, ring_before_expansion)
+        self.generation_quality_check(session, gen_timestamp, ring_before_expansion)
 
         debug('Create a table with CDC enabled, and start writing to it')
         finish_writing = self.run_writes_with_counting(node1, with_preimage=with_preimage)
@@ -160,9 +156,7 @@ class TestCdc(Tester, CDCInitializeHelper):
         ring_after_expansion = self.get_vnode_ring(session)
         self.assertNotEqual(ring_before_expansion, ring_after_expansion)
 
-        debug('Checking invariants on generation')
-        gen_description = self.get_cdc_topology_description_for_timestamp(session, gen_timestamp)
-        self.generation_quality_check(session, gen_description, ring_after_expansion)
+        self.generation_quality_check(session, gen_timestamp, ring_after_expansion)
 
         base_rows, log_rows = self.get_base_and_log_rows(session, "ks.cf")
         update_rows = self.get_sorted_update_rows(session, log_rows)
@@ -203,9 +197,7 @@ class TestCdc(Tester, CDCInitializeHelper):
         self.wait_for_metadata_update(session, cluster_size=4)
         ring = self.get_vnode_ring(session)
 
-        debug('Checking invariants on generation')
-        gen_description = self.get_cdc_topology_description_for_timestamp(session, gen_timestamp)
-        self.generation_quality_check(session, gen_description, ring)
+        self.generation_quality_check(session, gen_timestamp, ring)
 
         debug('Create a table with CDC enabled, and start writing to it')
         finish_writing = self.run_writes_with_counting(node1, with_preimage=with_preimage)
@@ -247,9 +239,7 @@ class TestCdc(Tester, CDCInitializeHelper):
         self.wait_for_metadata_update(session, cluster_size=3)
         ring = self.get_vnode_ring(session)
 
-        debug('Checking invariants on generation')
-        gen_description = self.get_cdc_topology_description_for_timestamp(session, gen_timestamp)
-        self.generation_quality_check(session, gen_description, ring)
+        self.generation_quality_check(session, gen_timestamp, ring)
 
         debug('Create a table with CDC enabled, and start writing to it')
         finish_writing = self.run_writes_with_counting(node1,
@@ -475,23 +465,25 @@ class TestCdc(Tester, CDCInitializeHelper):
                 debug('Timestamp of the offending log write: {}'.format(time))
             self.assertEquals(base_row_vnode, log_row_vnode)
 
-    def generation_quality_check(self, session, gen_description, ring):
+    def generation_quality_check(self, session, gen_timestamp, ring):
+        debug('Checking invariants on generation')
         debug('Checking if generation token ranges refine vnodes')
-        token_ranges = set(Murmur3Token(entry[0]) for entry in gen_description)
-        ring_tokens = set(ring)
-        self.assertLessEqual(len(ring_tokens), len(token_ranges), 'Generation token ranges should refine tokens')
-        self.assertLessEqual(ring_tokens, token_ranges, 'Generation token ranges should refine tokens')
+        gen_description = self.get_cdc_topology_description_for_timestamp(session, gen_timestamp)
+        token_ranges = set(entry[0] for entry in gen_description)
+        ring_tokens = set(token.value for token in ring)
+        self.assertEqual(ring_tokens, token_ranges, 'Generation token ranges should cover all vnodes')
 
-        debug('Checking that sufficient number of vnodes have a stream')
-        streams = set(stream for entry in gen_description for stream in entry[1])
-        stream_to_token = self.get_stream_tokens(session, streams)
-        vnodes_with_stream = set(self.get_vnode_for_stream_token(ring, Murmur3Token(tok))
-                                 for tok in stream_to_token.values())
-
-        percent_bad = 100.0 * (len(ring) - len(vnodes_with_stream)) / len(ring)
-        debug('There are {} vnodes, {} of which do not have a stream, which is {}% of total vnodes'.format(
-            len(ring), len(ring) - len(vnodes_with_stream), percent_bad))
-        self.assertLessEqual(percent_bad, 10.0, 'Expected that at most 10% vnodes will be without a stream')
+        debug('Checking that all vnodes have a stream')
+        prev_token = gen_description[-1][0]
+        for entry in gen_description:
+            vnode_size = 0;
+            if entry[0] > prev_token:
+                vnode_size = entry[0] - prev_token
+            else:
+                vnode_size = 2**63 - 1 - prev_token + entry[0]
+            if vnode_size > 1:
+                self.assertTrue(any(int.from_bytes(stream[0:8], byteorder='big', signed=True) != entry[0] for stream in entry[1]))
+            prev_token = entry[0]
 
     def get_sorted_update_rows(self, session, log_rows):
         update_rows = [r for r in log_rows if r.cdc_operation == CdcLogOperations.INSERT]
@@ -512,19 +504,6 @@ class TestCdc(Tester, CDCInitializeHelper):
     def get_timestamp_of_first_generation_after(self, session, timestamp):
         cdc_descriptions = list(self.get_cdc_description_rows(session))
         return min(desc.time for desc in cdc_descriptions if desc.time > timestamp)
-
-    def get_stream_tokens(self, session, streams):
-        # Use Scylla to calculate tokens for us
-        session.execute("CREATE KEYSPACE tmp WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3}")
-        session.execute("CREATE TABLE tmp.tmp (id blob PRIMARY KEY)")
-        insert_stmt = session.prepare("INSERT INTO tmp.tmp (id) values (?)")
-        for s in streams:
-            session.execute(insert_stmt, (s,))
-
-        rs = session.execute("SELECT id, token(id) AS tok FROM tmp.tmp")
-        res = {r.id: r.tok for r in rs}
-        session.execute("DROP KEYSPACE tmp")
-        return res
 
     def get_cdc_topology_description_for_timestamp(self, session, timestamp):
         query = session.prepare("SELECT description FROM system_distributed.cdc_topology_description WHERE time = ?")
@@ -551,15 +530,6 @@ class TestCdc(Tester, CDCInitializeHelper):
                  "\"cdc$time\", \"cdc$batch_seq_no\", a, b, \"cdc$operation\", \"cdc$ttl\", " +
                  "token(\"cdc$stream_id\") AS tok FROM {}").format(log_table_name)
         return session.execute(SimpleStatement(query, consistency_level=ConsistencyLevel.ALL))
-
-    def get_vnode_for_stream_token(self, ring, token):
-        # Stream token marks the beginning of a token. Much like a vnode,
-        # a stream is a half-open interval, thus this function has a slightly
-        # different behavior when `token` is the beginning of a vnode.
-        idx = bisect.bisect_right(ring, token)
-        if idx == 0 or idx == len(ring):
-            return (ring[-1], ring[0])
-        return (ring[idx - 1], ring[idx])
 
     def get_vnode_for_partition_token(self, ring, token):
         idx = bisect.bisect_left(ring, token)
