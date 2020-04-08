@@ -50,6 +50,7 @@ class TestBypassCache(Tester):
         assert_false(self.is_read_from_disk(node, query, session, metric=metric),
                      'Read was made from disk instead of from cache')
 
+    @attr('next-gating')
     def test_simple_bypass_cache(self):
         session = self.prepare()
         node = self.cluster.nodelist()[0]
