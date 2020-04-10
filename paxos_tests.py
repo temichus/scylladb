@@ -345,8 +345,8 @@ class TestPaxos(Tester):
         I.e. there should be a retry of the paxos round if a timeout is encountered.
         '''
 
-        # Reduce write request timeout to 100ms in order to speed the testing a little bit
-        self.cluster.set_configuration_options(values={'write_request_timeout_in_ms': 100})
+        # Reduce write request timeout to 1000ms in order to speed the testing a little bit
+        self.cluster.set_configuration_options(values={'write_request_timeout_in_ms': 1000})
         session = self.prepare(nodes=3, rf=3)
 
         session.execute("CREATE TABLE test (k int PRIMARY KEY, v int)")
