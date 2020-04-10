@@ -14,6 +14,7 @@ from cassandra.query import SimpleStatement
 from assertions import assert_unavailable
 from dtest import Tester, debug
 from tools import no_vnodes, since
+from scylla_tools import scylla_mode
 
 
 class LoadThread(Thread):
@@ -337,6 +338,7 @@ class TestPaxos(Tester):
         if not resp.ok:
             raise Exception(f"Failed to disable error injections on a node. Error message: {resp.text}")
 
+    @scylla_mode('!release')
     def cas_statement_timeout_test(self):
         '''
         Tests for adequate handling timeouts from replicas in each stage of paxos algorithm.
