@@ -1640,6 +1640,7 @@ class TestNodetool(Tester):
             "Error creating netty channel to {}".format(addr_msg),
             "Connection refused: {}".format(addr_msg),
             "Caused by: java.net.ConnectException: Connection refused",
+            "Cassandra timeout during SIMPLE write query",
         ]
         tst = [{"operations": [{"func": self.run_cluster}],
                 "recurrent": [{"func": self.verify_all_api, "block": True}, {"func": self.verify_info, "time": 60, "delay": 10}]},
@@ -1647,6 +1648,38 @@ class TestNodetool(Tester):
                 "recurrent": [{"func": self.verify_info, "time": 60, "delay": 10}]},
                {"operations": [{"func": self.concurrent_stress, "delay": 5, "args": [None, {"cl":"ONE", "duration": "2m", "expected_errors": expected_errors}]},
                                {"func": self.drain, "delay": 90, "args": [node_to_drain]}],
+                "recurrent": self. queries_method_list}]
+        self.general_concurrent(tst)
+
+    def restart(self, node_to_restart, gently=False, wait_for_binary_proto=True, wait_other_notice=True):
+        # get_node uses 0-based index into cluster.nodelist()
+        node = self.get_node(node_to_restart-1)
+        node.stop(gently=gently, wait_other_notice=wait_other_notice)
+        time.sleep(1)
+        node.start(wait_for_binary_proto=wait_for_binary_proto, wait_other_notice=wait_other_notice)
+
+    def concurrent_restart_test(self):
+        """
+        Start a cluster with 2 nodes
+        run load
+        call drain
+        """
+        node_to_drain = 2
+        node_address = "{}{}".format(self.cluster.get_ipprefix(), node_to_drain)
+        addr_msg = re.escape("{}/{}:9042".format(node_address, node_address))
+        expected_errors = [
+            "\[{}\] Connection has been closed".format(addr_msg),
+            "Error creating netty channel to {}".format(addr_msg),
+            "Connection refused: {}".format(addr_msg),
+            "Caused by: java.net.ConnectException: Connection refused",
+            "Cassandra timeout during SIMPLE write query",
+        ]
+        tst = [{"operations": [{"func": self.run_cluster}],
+                "recurrent": [{"func": self.verify_all_api, "block": True}, {"func": self.verify_info, "time": 60, "delay": 10}]},
+               {"operations": [{"func": self.concurrent_stress, "delay": 5, "args": [None, {"duration": "1m","opt": ["-schema","replication(strategy=SimpleStrategy, replication_factor=2)","-rate","threads=10"]}]}],
+                "recurrent": [{"func": self.verify_info, "time": 60, "delay": 10}]},
+               {"operations": [{"func": self.concurrent_stress, "delay": 5, "args": [None, {"cl":"ONE", "duration": "2m", "expected_errors": expected_errors}]},
+                               {"func": self.restart, "delay": 10, "args": [node_to_drain]}],
                 "recurrent": self. queries_method_list}]
         self.general_concurrent(tst)
 
