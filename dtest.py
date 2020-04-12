@@ -1078,6 +1078,13 @@ class Tester(TestCase):
             patterns = []
         patterns += self.ignore_log_patterns
         patterns.append(r'.*Compaction for .* deliberately stopped.*')
+        # ignore expected rpc errors when nodes are stopped.
+        expected_rpc_errors = [
+            'connection dropped: connection is closed',
+            'connection dropped: .*Connection reset by peer',
+            'fail to connect: Connection refused',
+        ]
+        patterns += ["rpc - client .*({})".format('|'.join(expected_rpc_errors))]
         for e in errors:
             for pattern in patterns:
                 if re.search(pattern, e):
