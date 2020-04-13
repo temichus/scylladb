@@ -296,7 +296,10 @@ class TestUpdateClusterLayout(Tester):
         node4.watch_log_for("JOINING: Starting to bootstrap")
         node4.watch_log_for("Beginning stream session|sync data for keyspace=ks, status=started")
 
-        self.ignore_log_patterns += [r'Repair .* status=failed: mandatory neighbor={} is not alive'.format(node2.address())]
+        self.ignore_log_patterns += [
+            r'Repair .* status=failed: mandatory neighbor={} is not alive'.format(node2.address()),
+            r'Startup failed:.*Failed to repair for keyspace=ks',
+        ]
 
         debug("Stop node 2...")
         node2.stop()
