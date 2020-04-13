@@ -1085,11 +1085,9 @@ class Tester(TestCase):
             'fail to connect: Connection refused',
         ]
         patterns += ["rpc - client .*({})".format('|'.join(expected_rpc_errors))]
+        pattern = re.compile('|'.join(["({})".format(p) for p in set(patterns)]))
         for e in errors:
-            for pattern in patterns:
-                if re.search(pattern, e):
-                    break
-            else:
+            if not pattern.search(e):
                 yield e
 
     def check_errors(self, node, exclude_errors=None, search_str=None, from_mark=None, regex=False):
