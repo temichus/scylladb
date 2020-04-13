@@ -829,7 +829,6 @@ class TestUpdateClusterLayout(Tester):
 
         self.verify_nodes_status(node1, ['UN', 'UN', 'UN'])
 
-    @require("2042")
     def simple_kill_remained_node_while_decommissioning_test(self):
         """
         Test a decommissioning node killed is able to rejoin the cluster with data
@@ -871,11 +870,11 @@ class TestUpdateClusterLayout(Tester):
         node1.stop(gently=False)
 
         # starting node1 - it should reconnect and run as is
-        node1.start(wait_other_notice=True, wait_for_binary_proto=True)
+        node1.start(wait_other_notice=False, wait_for_binary_proto=True)
         result = list(session.execute("SELECT * FROM cf"))
         self.assertEqual(len(result), 1000, len(result))
 
-        self.wait_for_nodes_status(node3, ['UN', 'UN', 'UN'])
+        self.wait_for_nodes_status(node3, ['UN', 'UL', 'UN'])
 
     def verify_nodes_status(self, node, exp_statuses_list, keyspace=""):
         if exp_statuses_list and not isinstance(exp_statuses_list[0], list):
