@@ -876,6 +876,11 @@ class TestUpdateClusterLayout(Tester):
 
         self.wait_for_nodes_status(node3, ['UN', 'UL', 'UN'])
 
+        node2.stop();
+        node2.start(no_wait=True);
+
+        self.wait_for_nodes_status(node3, ['UN', 'UN', 'UN'])
+
     def verify_nodes_status(self, node, exp_statuses_list, keyspace=""):
         if exp_statuses_list and not isinstance(exp_statuses_list[0], list):
             exp_statuses_list = [exp_statuses_list]
