@@ -486,6 +486,58 @@ class CQLAuditTester(AuditTester):
         self.assertLastAuditRow(session, "DML", "INSERT INTO ks.test1 (k, v1) VALUES (2, 2)", table="test1",
                                 user="test", error=True, match=False)
 
+    def users_filtering_test(self):
+        """ Test auditing only selected users """
+        session = self.prepare(user='cassandra', password='cassandra',
+                               audit_settings={'audit': 'table', 'audit_categories': 'DML,DDL',
+                                               'audit_keyspaces': 'ks',
+                                               'audit_users': 'user1,user2'})
+        session.execute("CREATE TABLE test1 (k int PRIMARY KEY, v1 int)")
+        session.execute("CREATE USER user1 WITH PASSWORD 'user1'")
+        session.execute("CREATE USER user2 WITH PASSWORD 'user2'")
+        session.execute("CREATE USER user3 WITH PASSWORD 'user3'")
+        session.execute("GRANT ALL PERMISSIONS ON ks.test1 TO user1")
+        session.execute("GRANT ALL PERMISSIONS ON ks.test1 TO user2")
+        session.execute("GRANT ALL PERMISSIONS ON ks.test1 TO user3")
+
+
+        user1_session = self.patient_cql_connection(self.cluster.nodelist()[0], user="user1", password="user1")
+        user1_session.execute("INSERT INTO ks.test1 (k, v1) VALUES (1, 1)")
+        self.assertLastAuditRow(session, "DML", "INSERT INTO ks.test1 (k, v1) VALUES (1, 1)", table="test1",
+                                user="user1")
+        # select is not audited
+        user1_session.execute("SELECT * FROM ks.test1")
+        self.assertLastAuditRow(session, "DML", "INSERT INTO ks.test1 (k, v1) VALUES (1, 1)", table="test1",
+                                user="user1")
+        user1_session.execute("ALTER TABLE ks.test1 ADD user1 text")
+        self.assertLastAuditRow(session, "DDL", "ALTER TABLE ks.test1 ADD user1 text", table="test1",
+                                user="user1")
+
+
+        user2_session = self.patient_cql_connection(self.cluster.nodelist()[0], user="user2", password="user2")
+        user2_session.execute("INSERT INTO ks.test1 (k, v1) VALUES (2, 2)")
+        self.assertLastAuditRow(session, "DML", "INSERT INTO ks.test1 (k, v1) VALUES (2, 2)", table="test1",
+                                user="user2")
+        # select is not audited
+        user2_session.execute("SELECT * FROM ks.test1")
+        self.assertLastAuditRow(session, "DML", "INSERT INTO ks.test1 (k, v1) VALUES (2, 2)", table="test1",
+                                user="user2")
+        user2_session.execute("ALTER TABLE ks.test1 ADD user2 text")
+        self.assertLastAuditRow(session, "DDL", "ALTER TABLE ks.test1 ADD user2 text", table="test1",
+                                user="user2")
+
+        # user3 is not audited
+        user3_session = self.patient_cql_connection(self.cluster.nodelist()[0], user="user3", password="user3")
+        user3_session.execute("INSERT INTO ks.test1 (k, v1) VALUES (3, 3)")
+        self.assertLastAuditRow(session, "DDL", "ALTER TABLE ks.test1 ADD user2 text", table="test1",
+                                user="user2")
+        user3_session.execute("SELECT * FROM ks.test1")
+        self.assertLastAuditRow(session, "DDL", "ALTER TABLE ks.test1 ADD user2 text", table="test1",
+                                user="user2")
+        user3_session.execute("ALTER TABLE ks.test1 ADD user3 text")
+        self.assertLastAuditRow(session, "DDL", "ALTER TABLE ks.test1 ADD user2 text", table="test1",
+                                user="user2")
+
     def batch_test(self):
         """
         BATCH statement
