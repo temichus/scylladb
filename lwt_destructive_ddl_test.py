@@ -16,9 +16,7 @@ class LwtDestructiveDDLTest(Tester):
 
         cluster = self.cluster
 
-        configuration = {
-            "experimental_features": ["lwt"]
-        }
+        configuration = {}
 
         if setup_auth:
             configuration.update({
@@ -70,12 +68,23 @@ class LwtDestructiveDDLTest(Tester):
         session = self.patient_cql_connection(node, user=user, password=password)
         session.execute('USE ks')
 
-        dml_statements = [
-            session.prepare(raw_stmt) for raw_stmt in [
-                'INSERT INTO test (pk, v) VALUES (:pk, :v) IF NOT EXISTS',
-                'UPDATE test SET v = 1001 WHERE pk = :pk IF v > -100 AND v < 100'
-                ]
+        raw_dml_statements = [
+            'INSERT INTO test (pk, v) VALUES (:pk, :v) IF NOT EXISTS',
+            'UPDATE test SET v = 1001 WHERE pk = :pk IF v > -100 AND v < 100',
+            'DELETE FROM test WHERE pk = :pk IF EXISTS'
         ]
+        dml_statements = [session.prepare(raw_stmt) for raw_stmt in raw_dml_statements]
+        # Also include conditional BATCH statements in LWT workload:
+        # wrap every kind of query into a batch.
+        # Settle now only on single-statement batches for simplicity.
+        dml_statements.extend([
+            session.prepare(
+                f'''
+                BEGIN BATCH
+                {raw_stmt}
+                APPLY BATCH
+                ''') for raw_stmt in raw_dml_statements])
+
         for stmt in dml_statements:
             stmt.serial_consistency_level = ConsistencyLevel.SERIAL
 
@@ -84,7 +93,7 @@ class LwtDestructiveDDLTest(Tester):
             if need_to_stop.is_set():
                 break
             try:
-                session.execute(dml_statements[random.randint(0, 1)],
+                session.execute(dml_statements[random.randint(0, len(dml_statements) - 1)],
                     {'pk': random.randint(0, 10000), 'v': random.randint(-1000, 1000)})
             except Unavailable as exc:
                 debug(f'Failed to execute LWT statement (thread "{thread_name}"). Unavailable error: {exc}')
@@ -118,7 +127,6 @@ class LwtDestructiveDDLTest(Tester):
                 raise
             except DriverException as exc:
                 debug(f'Failure during disruption thread operation (thread "{thread_name}"). Driver error: {exc}')
-            time.sleep(random.randint(1, 3))
         debug(f'Finished DDL stress workload (thread "{thread_name}")')
     
     def _case_template(self, session, ddl_fn, test_duration_sec=60, tolerate_unavailable=False, ddl_user=None, ddl_pass=None, lwt_user=None, lwt_pass=None):

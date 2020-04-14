@@ -75,3 +75,4 @@ paxos_tests.py
 rest_api_tests.py
 cdc_tests.py
 lwt_test.py
+lwt_destructive_ddl_test.py
