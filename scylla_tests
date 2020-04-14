@@ -22,6 +22,7 @@ cql_tracing_addition_test.py
 cqlsh_tests/cqlsh_tests.py
 cqlsh_tests/cqlsh_copy_tests.py
 deletion_test.py
+data_distribution_balance_test.py
 heat_weighted_load_balancing_test.py
 internode_ssl_test.py
 json_test.py
