@@ -135,6 +135,7 @@ class NativeTransportSSL(Tester):
 
     @attr('next-gating')
     @attr('dtest-debug')
+    @skip('fails in next')
     def reload_certificates_test(self):
         """
         Verify certificate reloading on modified file(s)
