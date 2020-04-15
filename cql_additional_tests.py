@@ -6731,7 +6731,8 @@ class MultiColumnRestrictionSimpleTests(Tester):
 
         debug('Filter by PK, CK, SI and two non-indexed column')
         assert_all(session=session, query=select_stmt + 'where key > 1 and clmn_int < 5 '
-                                                        'and clmn_uuid = null and clmn_blob = null ALLOW FILTERING',
+                                                        'and clmn_uuid = fa80080c-a4c5-46d6-afe4-5e184fec35ae and '
+                                                        'clmn_blob = textAsBlob(\'bbbbbbbbbb\') ALLOW FILTERING',
                    expected=[], ignore_order=True)
 
         select_stmt = 'select {select_columns} from {table_name} '.format(select_columns=self.SELECT_COLUMNS,
