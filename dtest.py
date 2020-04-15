@@ -383,6 +383,11 @@ class Tester(TestCase):
             self._preserve_cluster = False
         if not hasattr(self, 'ignore_log_patterns'):
             self.ignore_log_patterns = []
+        if not hasattr(self, 'ignore_cores_log_patterns'):
+            self.ignore_cores_log_patterns = []
+        # nodes will be added to ignore_cores if errors matching ignore_cores_log_patterns
+        # are found in their log
+        self.ignore_cores = []
         self.cluster_id_allocator = cluster_id_allocator
         self.cluster_options = kwargs.pop('cluster_options', None)
         self.cassandra_version = kwargs.pop('cassandra_version', None)
@@ -661,15 +666,19 @@ class Tester(TestCase):
                     pids = [node.pid]
             except AttributeError:
                 pids = [node.pid]
-            nodes += [(node.name, pids)]
+            nodes += [(node, pids)]
         for f in os.listdir('.'):
             if not f.endswith('.core'):
                 continue
-            for n, pids in nodes:
+            for node, pids in nodes:
                 """Look for this cluster's coredumps"""
                 for p in pids:
                     if f.find(".{}.".format(p)) >= 0:
-                        cores += [(n, os.path.join(os.getcwd(), f))]
+                        path = os.path.join(os.getcwd(), f)
+                        if not node in self.ignore_cores:
+                            cores += [(node.name, path)]
+                        else:
+                            debug("Ignoring core file {} belonging to {} due to ignore_cores_log_patterns".format(path, node.name))
         # returns empty list if no core files found
         return cores
 
@@ -1000,7 +1009,16 @@ class Tester(TestCase):
             found_errors = []
             for node in self.cluster.nodelist():
                 try:
-                    matches = node.grep_log(r'Assertion.*failed|Aborting|AddressSanitizer')
+                    critical_errors_pattern = r'Assertion.*failed|AddressSanitizer'
+                    if self.ignore_cores_log_patterns:
+                        expr = '|'.join(["({})".format(p) for p in set(self.ignore_cores_log_patterns)])
+                        matches = node.grep_log(expr)
+                        if matches:
+                            debug("Will ignore cores on {}. Found the following log messages: {}".format(node.name, matches))
+                            self.ignore_cores.append(node)
+                    if not node in self.ignore_cores:
+                        critical_errors_pattern += "|Aborting"
+                    matches = node.grep_log(critical_errors_pattern)
                     if matches:
                         critical_errors.append((node.name, [m[0].strip() for m in matches]))
                 except FileNotFoundError:
@@ -1077,6 +1095,7 @@ class Tester(TestCase):
         if not patterns:
             patterns = []
         patterns += self.ignore_log_patterns
+        patterns += self.ignore_cores_log_patterns
         patterns.append(r'.*Compaction for .* deliberately stopped.*')
         # ignore expected rpc errors when nodes are stopped.
         expected_rpc_errors = [

@@ -1794,6 +1794,10 @@ class TestNodetool(Tester):
             'Skipping invalid clustering row',
         ]
 
+        self.ignore_cores_log_patterns += [
+            'Failed to allocate',
+        ]
+
         node.start(wait_for_binary_proto=True,wait_other_notice=True)
 
         session = self.patient_cql_connection(node)
@@ -1840,6 +1844,10 @@ class TestNodetool(Tester):
             'SSTables with Cassandra-style shadowable deletion cannot be read by Scylla',
             'Adding missing partition-end to the end of the stream',
             'Skipping invalid clustering row',
+        ]
+
+        self.ignore_cores_log_patterns += [
+            'Failed to allocate',
         ]
 
         node.start(wait_for_binary_proto=True,wait_other_notice=True)
