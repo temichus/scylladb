@@ -8,6 +8,21 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 class LwtDestructiveDDLTest(Tester):
+    '''
+    Destructive DDL in presence of LWT: execute destructive DDL
+    instructions (i.e. statements which cause the executed LWT
+    query to become invalid) in a loop in one connection,
+    while running LWT queries against test table in another.
+
+    Currently the following DDL nemesis operations are implemented:
+    1. DROP + CREATE TABLE
+    2. DROP + CREATE KEYSPACE/TABLE
+    3. ALTER TABLE RENAME COLUMN TO (only pk columns are allowed)
+    4. DROP + ADD COLUMN
+    5. ALTER KEYSPACE (use NetworkTopologyStrategy, set to non-existing
+       data center)
+    6. REVOKE + GRANT PERMISSION ON TABLE
+    '''
 
     def prepare(self, ks_dc_mapping=None, setup_auth=False):
         is_multi_dc = ks_dc_mapping is not None
@@ -93,7 +108,7 @@ class LwtDestructiveDDLTest(Tester):
             if need_to_stop.is_set():
                 break
             try:
-                session.execute(dml_statements[random.randint(0, len(dml_statements) - 1)],
+                session.execute(random.choice(dml_statements),
                     {'pk': random.randint(0, 10000), 'v': random.randint(-1000, 1000)})
             except Unavailable as exc:
                 debug(f'Failed to execute LWT statement (thread "{thread_name}"). Unavailable error: {exc}')
