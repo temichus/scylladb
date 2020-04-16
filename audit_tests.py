@@ -606,6 +606,35 @@ class CQLAuditTester(AuditTester):
         self.assertLastAuditRow(session, "DDL", "ALTER TABLE ks.test1 ADD user7 text", table="test1",
                                 user="user7")
 
+        session.execute("GRANT role1 to role3")
+
+        # Now user6 should be audited because role3 has role1
+        user6_session.execute("INSERT INTO ks.test1 (k, v1) VALUES (66, 66)")
+        self.assertLastAuditRow(session, "DML", "INSERT INTO ks.test1 (k, v1) VALUES (66, 66)", table="test1",
+                                user="user6")
+        # select is not audited
+        user6_session.execute("SELECT * FROM ks.test1")
+        self.assertLastAuditRow(session, "DML", "INSERT INTO ks.test1 (k, v1) VALUES (66, 66)", table="test1",
+                                user="user6")
+        user6_session.execute("ALTER TABLE ks.test1 ADD user66 text")
+        self.assertLastAuditRow(session, "DDL", "ALTER TABLE ks.test1 ADD user66 text", table="test1",
+                                user="user6")
+
+        session.execute("REVOKE role1 from role4")
+
+        # Now role4 has no role1 so user7 shouldn't be audited
+        user7_session.execute("INSERT INTO ks.test1 (k, v1) VALUES (77, 77)")
+        self.assertLastAuditRow(session, "DDL", "ALTER TABLE ks.test1 ADD user66 text", table="test1",
+                                user="user6")
+        # select is not audited
+        user7_session.execute("SELECT * FROM ks.test1")
+        self.assertLastAuditRow(session, "DDL", "ALTER TABLE ks.test1 ADD user66 text", table="test1",
+                                user="user6")
+        user7_session.execute("ALTER TABLE ks.test1 ADD user77 text")
+        self.assertLastAuditRow(session, "DDL", "ALTER TABLE ks.test1 ADD user66 text", table="test1",
+                                user="user6")
+
+
     def batch_test(self):
         """
         BATCH statement
