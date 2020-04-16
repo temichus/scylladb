@@ -491,14 +491,32 @@ class CQLAuditTester(AuditTester):
         session = self.prepare(user='cassandra', password='cassandra',
                                audit_settings={'audit': 'table', 'audit_categories': 'DML,DDL',
                                                'audit_keyspaces': 'ks',
-                                               'audit_users': 'user1,user2'})
+                                               'audit_users': 'user1,user2',
+                                               'audit_roles': 'role1,role2'})
         session.execute("CREATE TABLE test1 (k int PRIMARY KEY, v1 int)")
         session.execute("CREATE USER user1 WITH PASSWORD 'user1'")
         session.execute("CREATE USER user2 WITH PASSWORD 'user2'")
         session.execute("CREATE USER user3 WITH PASSWORD 'user3'")
+        session.execute("CREATE USER user4 WITH PASSWORD 'user4'")
+        session.execute("CREATE USER user5 WITH PASSWORD 'user5'")
+        session.execute("CREATE USER user6 WITH PASSWORD 'user6'")
+        session.execute("CREATE USER user7 WITH PASSWORD 'user7'")
         session.execute("GRANT ALL PERMISSIONS ON ks.test1 TO user1")
         session.execute("GRANT ALL PERMISSIONS ON ks.test1 TO user2")
         session.execute("GRANT ALL PERMISSIONS ON ks.test1 TO user3")
+        session.execute("GRANT ALL PERMISSIONS ON ks.test1 TO user4")
+        session.execute("GRANT ALL PERMISSIONS ON ks.test1 TO user5")
+        session.execute("GRANT ALL PERMISSIONS ON ks.test1 TO user6")
+        session.execute("GRANT ALL PERMISSIONS ON ks.test1 TO user7")
+        session.execute("CREATE ROLE role1")
+        session.execute("CREATE ROLE role2")
+        session.execute("CREATE ROLE role3")
+        session.execute("CREATE ROLE role4")
+        session.execute("GRANT role1 to role4")
+        session.execute("GRANT role1 to user4")
+        session.execute("GRANT role2 to user5")
+        session.execute("GRANT role3 to user6")
+        session.execute("GRANT role4 to user7")
 
 
         user1_session = self.patient_cql_connection(self.cluster.nodelist()[0], user="user1", password="user1")
@@ -537,6 +555,56 @@ class CQLAuditTester(AuditTester):
         user3_session.execute("ALTER TABLE ks.test1 ADD user3 text")
         self.assertLastAuditRow(session, "DDL", "ALTER TABLE ks.test1 ADD user2 text", table="test1",
                                 user="user2")
+
+        user4_session = self.patient_cql_connection(self.cluster.nodelist()[0], user="user4", password="user4")
+        user4_session.execute("INSERT INTO ks.test1 (k, v1) VALUES (4, 4)")
+        self.assertLastAuditRow(session, "DML", "INSERT INTO ks.test1 (k, v1) VALUES (4, 4)", table="test1",
+                                user="user4")
+        # select is not audited
+        user4_session.execute("SELECT * FROM ks.test1")
+        self.assertLastAuditRow(session, "DML", "INSERT INTO ks.test1 (k, v1) VALUES (4, 4)", table="test1",
+                                user="user4")
+        user4_session.execute("ALTER TABLE ks.test1 ADD user4 text")
+        self.assertLastAuditRow(session, "DDL", "ALTER TABLE ks.test1 ADD user4 text", table="test1",
+                                user="user4")
+
+        user5_session = self.patient_cql_connection(self.cluster.nodelist()[0], user="user5", password="user5")
+        user5_session.execute("INSERT INTO ks.test1 (k, v1) VALUES (5, 5)")
+        self.assertLastAuditRow(session, "DML", "INSERT INTO ks.test1 (k, v1) VALUES (5, 5)", table="test1",
+                                user="user5")
+        # select is not audited
+        user5_session.execute("SELECT * FROM ks.test1")
+        self.assertLastAuditRow(session, "DML", "INSERT INTO ks.test1 (k, v1) VALUES (5, 5)", table="test1",
+                                user="user5")
+        user5_session.execute("ALTER TABLE ks.test1 ADD user5 text")
+        self.assertLastAuditRow(session, "DDL", "ALTER TABLE ks.test1 ADD user5 text", table="test1",
+                                user="user5")
+
+        # user6 is not audited because role3 is not in audit_roles
+        user6_session = self.patient_cql_connection(self.cluster.nodelist()[0], user="user6", password="user6")
+        user6_session.execute("INSERT INTO ks.test1 (k, v1) VALUES (6, 6)")
+        self.assertLastAuditRow(session, "DDL", "ALTER TABLE ks.test1 ADD user5 text", table="test1",
+                                user="user5")
+        # select is not audited
+        user6_session.execute("SELECT * FROM ks.test1")
+        self.assertLastAuditRow(session, "DDL", "ALTER TABLE ks.test1 ADD user5 text", table="test1",
+                                user="user5")
+        user6_session.execute("ALTER TABLE ks.test1 ADD user6 text")
+        self.assertLastAuditRow(session, "DDL", "ALTER TABLE ks.test1 ADD user5 text", table="test1",
+                                user="user5")
+
+        # user7 is audited because role4 has role1 which is in audit_roles
+        user7_session = self.patient_cql_connection(self.cluster.nodelist()[0], user="user7", password="user7")
+        user7_session.execute("INSERT INTO ks.test1 (k, v1) VALUES (7, 7)")
+        self.assertLastAuditRow(session, "DML", "INSERT INTO ks.test1 (k, v1) VALUES (7, 7)", table="test1",
+                                user="user7")
+        # select is not audited
+        user7_session.execute("SELECT * FROM ks.test1")
+        self.assertLastAuditRow(session, "DML", "INSERT INTO ks.test1 (k, v1) VALUES (7, 7)", table="test1",
+                                user="user7")
+        user7_session.execute("ALTER TABLE ks.test1 ADD user7 text")
+        self.assertLastAuditRow(session, "DDL", "ALTER TABLE ks.test1 ADD user7 text", table="test1",
+                                user="user7")
 
     def batch_test(self):
         """
