@@ -656,7 +656,7 @@ class TestTimeWindowDataSegregation(Tester):
 
         node1 = self.cluster.nodelist()[0]
         session = self.patient_cql_connection(node1)
-        self._create_ks_cl_with_twcs(session, rf=1)
+        self._create_ks_cl_with_twcs(session, rf=2)
 
         self._simulate_write_process_in_minutes(session, duration_minutes=10, flush_period_seconds=120)
 
