@@ -418,6 +418,22 @@ class EncryptionAtRestBase(Tester):
         for cf in cfs:
             kp.read_verify_workload(session, cf=cf)
 
+    def _reboot_test(self, key_provider=KeyProviderEnum.local):
+        kp = self.get_key_provider(key_provider)
+        kp.prepare_conf()
+        self.prepare(n=3, restart=key_provider==KeyProviderEnum.kmip)
+
+        session = self.get_session()
+        kp.create_encrypted_cf(session, name='ks.cf')
+        kp.prepare_write_workload(session, flush=False)
+
+        for node in self.cluster.nodelist()[1:]:
+            for i in range(3):
+                debug('Kill node {}, and restart'.format(node.name))
+                node.stop(gently=False)
+                node.start(wait_for_binary_proto=True)
+            kp.read_verify_workload(self.get_session())
+
 
 class EncryptionAtRestTest(EncryptionAtRestBase):
     __test__ = True
@@ -448,6 +464,11 @@ class EncryptionAtRestTest(EncryptionAtRestBase):
     def multiple_cf_test(self):
         for name, value in KeyProviderEnum.__members__.items():
             EncryptionAtRestBase._multiple_cf_test(self, key_provider=value)
+            EncryptionAtRestBase.cleanup(self)
+
+    def reboot_test(self):
+        for name, value in KeyProviderEnum.__members__.items():
+            EncryptionAtRestBase._reboot_test(self, key_provider=value)
             EncryptionAtRestBase.cleanup(self)
 
     def alter_test(self):
@@ -535,3 +556,27 @@ class SystemInfoEncryptionTest(EncryptionAtRestBase):
         session = self.rolling_restart(user='cassandra', password='cassandra')
         debug("Re-verify system info after system_info_encryption is enabled")
         self.verify_system_info(session, kp, ks_suffix='encrypt', expect=False)
+
+    def reboot_test(self):
+        """
+        The test is used to reproduce a scylla crash, enable commitlog encryption and reboot.
+        https://github.com/scylladb/scylla-enterprise/issues/1332
+        """
+        kp = self.get_key_provider(key_provider=None)
+        kp.prepare_conf()
+
+        self.prepare(n=3, restart=False)
+        options = {'system_info_encryption': {'enabled': True, 'key_provider': 'LocalFileSystemKeyProviderFactory'}}
+        self.cluster.set_configuration_options(options)
+        debug("\n\nRestarting nodes one by one ...... Make sure encryption change is persistent\n")
+        session = self.rolling_restart()
+
+        kp.create_encrypted_cf(session, name='ks.cf')
+        kp.prepare_write_workload(session, flush=False)
+
+        for node in self.cluster.nodelist()[1:]:
+            for i in range(3):
+                debug('Kill node {}, and restart'.format(node.name))
+                node.stop(gently=False)
+                node.start(wait_for_binary_proto=True)
+            kp.read_verify_workload(self.get_session())
