@@ -11,6 +11,8 @@ from subprocess import run
 import functools
 import random
 import io
+from psutil import Process
+from concurrent.futures import ThreadPoolExecutor
 
 import yaml
 from nose.plugins.attrib import attr
@@ -1857,3 +1859,81 @@ class TestNodetool(Tester):
 
         rows = list(session.execute('SELECT * FROM ks.cf'))
         assert len(rows) == 100
+
+
+    def node_graceful_stop_during_stress_and_decommission_test(self, starting_size=4, node_count=10, rf=1):
+        """
+        reference:https://github.com/scylladb/scylla/issues/4491
+        1. Create a cluster with 4 nodes and rf=3, insert data
+        2. Run stress (write) on node 2
+        3. Decommission node 4
+        4. Stop node 3 (immediately  after Decommission)
+        5. Check if node3 process exited successfully
+
+        shell:
+        ccm create scylla-repository5 --scylla --vnodes -n 4 --version unstable/master:2020-05-11T12:14:24Z
+        ccm create scylla-repository5 --scylla -n 4 --version unstable/master:2020-05-11T12:14:24Z
+        ccm start --jvm_arg="--memory" --jvm_arg="1G" --jvm_arg="--collectd-address" --jvm_arg="127.0.0.1:25826" --jvm_arg="--hinted-handoff-enabled" --jvm_arg="false" --jvm_arg="--collectd" --jvm_arg="1" --jvm_arg="--logger-log-level" --jvm_arg="stream_session=debug"
+        ccm node1 stress write cl=QUORUM duration=15h no-warmup -rate threads=300 -mode native cql3 -schema "replication(factor=3)" -pop dist=gaussian\(0..100000000,500000,100000\)
+        ccm node4 decommission
+        ccm node3 stop
+        ccm node2 nodetool status
+        ps -elf | grep "bin/scylla" | grep node3
+        """
+        starting_size = 4
+        # Create/Start cluster
+        cluster = self.cluster
+        cluster.set_configuration_options(values={'hinted_handoff_enabled': True}, batch_commitlog=True)
+        cluster.populate(starting_size).start(wait_for_binary_proto=True, wait_other_notice=True,
+                                              jvm_args=['--logger-log-level', 'stream_session=debug'])
+        _, node2, node3, node4 = cluster.nodelist()
+
+        # save node 3 process details
+        node3_pid = node3.all_pids[0]
+        node3_process = Process(node3_pid)
+        executor = ThreadPoolExecutor(max_workers=3)
+
+        def run_stress_write():
+            debug('Run stress write on node 2')
+            node2.stress(
+                ['write', 'cl=QUORUM', 'no-warmup', 'duration=15m', '-mode', 'cql3', 'native', '-rate', 'threads=300',
+                 '-pop', 'seq=1..100000000', '-log', 'interval=5'],
+                capture_output=True)
+
+        def run_decommission():
+            try:
+                debug('Decommission node 4')
+                node4.decommission()
+            except Exception:
+                pass
+
+        stress_thread = executor.submit(run_stress_write)
+        decommission_thread = executor.submit(run_decommission)
+
+        first_iteration = True
+        while not decommission_thread.done():
+            debug("Waiting until decommission_thread terminates...")
+            if first_iteration:
+                debug('Check logs and stop node 3')
+                row = node4.watch_log_for("DECOMMISSIONING: unbootstrap starts")
+                debug("Found the proper message in logs: {}".format(row))
+                time.sleep(2)
+                debug('Stop node 3')
+                node3.stop()
+                first_iteration = False
+            time.sleep(10)
+
+        debug('Get node 3 status')
+        test_node_tool = TestNodetool()
+        status = test_node_tool.nodetool_status(node2)
+        node_3_status = status["nodes"][2]['status']
+
+        if not stress_thread.done():
+            debug('Cancel stress write')
+            stress_thread.cancel()
+
+        debug("Verifying node 3 status is DN")
+        self.assertEqual("DN", node_3_status, "Node 3 status is incorrect (should be DN) Instead we got {}".format(
+            node_3_status))
+        debug("Verifying node 3 process is not running")
+        self.assertEqual(False, node3_process.is_running(), "Node 3 process didn't stop/exit correctly")
