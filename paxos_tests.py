@@ -15,6 +15,7 @@ from assertions import assert_unavailable
 from dtest import Tester, debug
 from tools import no_vnodes, since
 from nose.plugins.attrib import attr
+from scylla_tools import scylla_mode
 
 
 class LoadThread(Thread):
@@ -339,10 +340,14 @@ class TestPaxos(Tester):
             raise Exception(f"Failed to disable error injections on a node. Error message: {resp.text}")
 
     @attr('dtest-debug')
+    @scylla_mode('!release')
     def cas_statement_timeout_test(self):
         '''
         Tests for adequate handling timeouts from replicas in each stage of paxos algorithm.
         I.e. there should be a retry of the paxos round if a timeout is encountered.
+
+        This test is meant to be run only on 'debug' and 'dev' builds of Scylla since in
+        release mode error injections do nothing.
         '''
 
         # Reduce write request timeout to 1000ms in order to speed the testing a little bit
