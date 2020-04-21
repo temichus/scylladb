@@ -7,8 +7,11 @@ CCM_DIR=`pwd`/../scylla-ccm
 export PATH=$CCM_DIR:$PATH
 export PERL5LIB=$CCM_DIR
 export PYTHONPATH=$CCM_DIR
-export CASSANDRA_DIR=`pwd`/../scylla-tools-java
 export CASSANDRA_DIR=`pwd`/../scylla
+echo "Scylla dir set to ${CASSANDRA_DIR}"
+echo "Using release build. To use debug (or dev) build set with:"
+echo "export CASSANDRA_DIR=\"${CASSANDRA_DIR}/build/debug\""
+echo
 echo "Examples:"
 echo "=== To run a simple boot and shutdown test:"
 echo 'nosetests -v -s simple_boot_shutdown.py'

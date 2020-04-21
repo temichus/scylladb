@@ -137,12 +137,12 @@ to the build dir:
 
     CASSANDRA_DIR=~/path/to/scylla/build/debug nosetests --process-timeout=7200
 
-The shell script `scylla_dtest-env.sh` will set this automatically for you to a
+The shell script `scylla_dtest_env.sh` will set this automatically for you to a
 value that works in most deployments, it assumes the Scylla sources are next to
 the `scylla-dtest` repository, in a directory called `scylla`. To use this
 script just source it:
 
-    source ./scylla_dtest-env.sh
+    source ./scylla_dtest_env.sh
 
 Note that for the dtests to work the Scylla repository has to contain a
 directory called `resources` that contains a symlink to a local clone of the
