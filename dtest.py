@@ -1101,6 +1101,7 @@ class Tester(TestCase):
         expected_rpc_errors = [
             'connection dropped: connection is closed',
             'connection dropped: .*Connection reset by peer',
+            'connection dropped: Semaphore broken',
             'fail to connect: Connection refused',
             'fail to connect: Connection reset by peer',
         ]
