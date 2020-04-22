@@ -1102,6 +1102,7 @@ class Tester(TestCase):
             'connection dropped: connection is closed',
             'connection dropped: .*Connection reset by peer',
             'fail to connect: Connection refused',
+            'fail to connect: Connection reset by peer',
         ]
         patterns += ["rpc - client .*({})".format('|'.join(expected_rpc_errors))]
         pattern = re.compile('|'.join(["({})".format(p) for p in set(patterns)]))
