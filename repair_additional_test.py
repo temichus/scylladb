@@ -253,16 +253,15 @@ class RepairAdditionalBase(Tester):
         self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
         self.cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2 = self.cluster.nodelist()
-        with self.patient_cql_connection(node1) as session:
-            self.create_ks(session, 'ks', 2)
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 2)
 
         # Take node2 down, and create a new table and data on node1 only.
         debug("Creating table and data only on node 1...")
         node2.flush()
         node2.stop(wait_other_notice=True)
-        with self.patient_exclusive_cql_connection(node1, 'ks') as session1:
-            self.create_cf(session1, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
-            insert_c1c2(session1, keys=range(1000, 2000), consistency=ConsistencyLevel.ONE)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        insert_c1c2(session, keys=range(1000, 2000), consistency=ConsistencyLevel.ONE)
 
         # At this point node2 is not only missing some data, it is actually
         # missing an entire table. Let's bring node2 back up, start repair on
@@ -300,16 +299,15 @@ class RepairAdditionalBase(Tester):
         self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
         self.cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2 = self.cluster.nodelist()
-        with self.patient_cql_connection(node1) as session:
-            self.create_ks(session, 'ks', 2)
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 2)
 
         # Take node2 down, and create a new table and data on node1 only.
         debug("Creating table and data only on node 1...")
         node2.flush()
         node2.stop(wait_other_notice=True)
-        with self.patient_exclusive_cql_connection(node1, 'ks') as session1:
-            self.create_cf(session1, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
-            insert_c1c2(session1, keys=range(1000, 2000), consistency=ConsistencyLevel.ONE)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        insert_c1c2(session, keys=range(1000, 2000), consistency=ConsistencyLevel.ONE)
 
         # At this point node2 is not only missing some data, it is actually
         # missing an entire table. Let's bring node2 back up, start repair on
