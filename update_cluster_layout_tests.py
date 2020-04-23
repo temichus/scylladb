@@ -299,6 +299,7 @@ class TestUpdateClusterLayout(Tester):
         self.ignore_log_patterns += [
             r'Repair .* status=failed: mandatory neighbor={} is not alive'.format(node2.address()),
             r'Startup failed:.*Failed to repair for keyspace=ks',
+            r'Startup failed: std::runtime_error .* \(repair .* failed',
         ]
 
         debug("Stop node 2...")
