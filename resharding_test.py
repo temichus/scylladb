@@ -133,11 +133,6 @@ class ReshardingTest(Tester):
         self.assertIsInstance(res, dict, 'failed to run stress test')
         self.assertEquals(res['total errors'], 0)
 
-    def _check_logs_for_errors(self):
-        debug('Verify there are no errors in the logs')
-        for node in self.cluster.nodelist():
-            self.assertFalse(node.grep_log_for_errors(distinct_errors=True))
-
     def _resharding_basic(self, reshard_to, rows, murmur3):
         debug('Run stress test on node1')
         op_cnt = rows
@@ -156,7 +151,7 @@ class ReshardingTest(Tester):
                        if reshard_to == self.smp and murmur3 == self.murmur3 \
                        else (True, 'Failed to recognize re-sharding finish')
         self.assertEquals(res, exp_res, msg)
-        self._check_logs_for_errors()
+        self.check_errors_all_nodes()
 
         # Verify data files number during resharding
         self._verify_number_of_data_files(data_files_num_before=data_files_num_before, reshard_to=reshard_to,
@@ -271,7 +266,7 @@ class ReshardingTest(Tester):
         self.assertEquals(res, True, 'Failed to recognize re-sharding finish')
 
         self._verify_number_of_data_files(data_files_num_before=data_files_num_before, reshard_to=self.SMP_FOR_INCREASE)
-        self._check_logs_for_errors()
+        self.check_errors_all_nodes()
 
         stress_cmd = ['counter_read', 'n={}'.format(op_cnt), 'no-warmup', '-rate', 'threads=16']
         self._verify_data(op_cnt, stress_cmd)
@@ -311,7 +306,7 @@ class ReshardingTest(Tester):
 
         self._verify_number_of_data_files(data_files_num_before=data_files_num_before, reshard_to=self.SMP_FOR_INCREASE,
                                           data_dir=data_dir)
-        self._check_logs_for_errors()
+        self.check_errors_all_nodes()
 
         # Read data
         session = self.patient_cql_connection(self.node)
