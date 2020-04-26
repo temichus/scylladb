@@ -46,7 +46,8 @@ class RepairAdditionalBase(Tester):
         self.cluster.stop_nodes(stopped_nodes, wait_other_notice=True)
 
         session = self.patient_exclusive_cql_connection(node_to_check, 'ks')
-        result = list(session.execute("SELECT * FROM cf LIMIT %d" % (rows * 2)))
+        query = SimpleStatement("SELECT * FROM cf LIMIT %d" % (rows * 2), consistency_level=ConsistencyLevel.ONE)
+        result = list(session.execute(query))
         self.assertEqual(len(result), rows, len(result))
 
         for k in found:
