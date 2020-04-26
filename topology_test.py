@@ -161,7 +161,6 @@ class TestTopology(Tester):
 
     # Scylla suports this feature
     # @since('3.0')
-    @no_vnodes()
     def decommissioned_node_cant_rejoin_test(self):
         '''
         @jira_ticket CASSANDRA-8801
