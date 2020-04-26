@@ -11,8 +11,7 @@ from assertions import assert_one, assert_two_queries_equal
 from cassandra import ConsistencyLevel
 
 
-@attr('dtest-full', 'dtest-heavy')
-class ReshardingTest(Tester):
+class ReshardingTestBase(Tester):
     DEFAULT_MURMUR3_PARTITIONER = 12
     DEFAULT_SMP = 2
     DEFAULT_NODES = 1
@@ -22,7 +21,7 @@ class ReshardingTest(Tester):
     MURMUR3_PARTITIONER_FOR_INCREASE = 17
     __test__ = False
     def __init__(self, *args, **kwargs):
-        super(ReshardingTest, self).__init__(*args, **kwargs)
+        super(ReshardingTestBase, self).__init__(*args, **kwargs)
         self.compaction_strategy = self.compaction_strategy if hasattr(self, 'compaction_strategy') else 'LeveledCompactionStrategy'
         self.smp = self.smp if hasattr(self, 'smp') else self.DEFAULT_SMP
         self.murmur3 = self.murmur3 if hasattr(self, 'murmur3') else self.DEFAULT_MURMUR3_PARTITIONER
@@ -32,7 +31,7 @@ class ReshardingTest(Tester):
         self.mem =  self.set_memory_param(self.smp)
 
     def setUp(self):
-        super(ReshardingTest, self).setUp()
+        super(ReshardingTestBase, self).setUp()
         cluster = self.cluster
         cluster = cluster.populate(self.nodes)
         cluster.set_configuration_options(values={'murmur3_partitioner_ignore_msb_bits': self.murmur3})
@@ -167,6 +166,20 @@ class ReshardingTest(Tester):
         # Verify data files number after resharding and compaction
         self._verify_number_of_data_files(data_files_num_before=data_files_num_before, reshard_to=reshard_to)
 
+@attr('next-gating')
+@attr('single_node')
+class ReshardingSingleNodeGatingTest(ReshardingTestBase):
+
+    # Copied from resharding_by_murmur3_smp_test to run in reduced configurations for next-gating
+    def resharding_by_murmur3_gating_test(self):
+        """
+        Cluster with 10M objects. Both SMP and MURMUR3 parameter are changed
+        and restarting the cluster
+        """
+        self._resharding_basic(self.SMP_FOR_INCREASE, rows=1000, murmur3=self.MURMUR3_PARTITIONER_FOR_INCREASE)
+
+@attr('dtest-full', 'dtest-heavy')
+class ReshardingVariantsTest(ReshardingTestBase):
     def resharding_by_murmur3_increase_test(self):
         """
         Resharding with 10M objects after increasing the MURMUR3 parameter
@@ -332,5 +345,11 @@ murmur3 = 15
 for node_count in [1, 4]:
     for strategy in strategies:
         cls_name = ('ReshardingTest_nodes' + str(node_count) + '_with_' + strategy)
-        vars()[cls_name] = type(cls_name, (ReshardingTest,), {'nodes': node_count, 'compaction_strategy': strategy,
+        vars()[cls_name] = type(cls_name, (ReshardingVariantsTest,), {'nodes': node_count, 'compaction_strategy': strategy,
+                                                              'smp': smp, 'murmur3': murmur3, '__test__': True})
+
+for node_count in [1]:
+    for strategy in ['TimeWindowCompactionStrategy']:
+        cls_name = ('ReshardingTest_nodes' + str(node_count) + '_with_' + strategy)
+        vars()[cls_name] = type(cls_name, (ReshardingSingleNodeGatingTest,), {'nodes': node_count, 'compaction_strategy': strategy,
                                                               'smp': smp, 'murmur3': murmur3, '__test__': True})
