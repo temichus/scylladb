@@ -188,22 +188,13 @@ class TestTopology(Tester):
         debug('stopping...')
         node3.stop()
         debug('attempting restart...')
-        try:
-            node3.start()
-        except NodeError:
-            debug('It is expected node3 will not be started succesfully')
+        node3.start(no_wait=True)
 
-        try:
-            # usually takes 3 seconds, so give it a generous 15
-            node3.watch_log_for(rejoin_err, timeout=15)
-        except TimeoutError:
-            # TimeoutError is not very helpful to the reader of the test output;
-            # let that pass and move on to string assertion below
-            pass
-
-        self.assertIn(rejoin_err,
-                      '\n'.join(['\n'.join(err_list)
-                                 for err_list in node3.grep_log_for_errors()]))
+        node3.watch_log_for(rejoin_err, timeout=60)
+        debug('waiting for node to stop...')
+        start = time.time()
+        while node3.is_running() and time.time() - start < 60:
+            time.sleep(1)
         self.assertFalse(node3.is_running())
 
     # Scylla suports this
