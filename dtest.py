@@ -1121,7 +1121,7 @@ class Tester(TestCase):
                 exclude_errors = [exclude_errors]
             if not regex:
                 exclude_errors = [re.escape(ee) for ee in list(exclude_errors)]
-            errors = list(self.__filter_errors(errors, exclude_errors))
+        errors = list(self.__filter_errors(errors, exclude_errors))
 
         if errors:
             assert False, '\n'.join(list(errors))
