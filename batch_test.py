@@ -33,8 +33,6 @@ class TestBatch(Tester):
             BEGIN BATCH
             APPLY BATCH;
         """)
-        for node in self.cluster.nodelist():
-            self.assertEquals(0, len(node.grep_log_for_errors()))
 
     @attr('single_node')
     def counter_batch_accepts_counter_mutations_test(self):
