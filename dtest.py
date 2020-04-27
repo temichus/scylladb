@@ -84,6 +84,8 @@ LOG = logging.getLogger('dtest')
 # set python-driver log level to WARN by default for dtest
 logging.getLogger('cassandra').setLevel(logging.WARNING)
 logging.getLogger('urllib3').setLevel(logging.WARNING)
+logging.getLogger('boto3').setLevel(logging.WARNING)
+logging.getLogger('botocore').setLevel(logging.WARNING)
 
 # copy the initial environment variables so we can reset them later:
 initial_environment = copy.deepcopy(os.environ)
