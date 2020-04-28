@@ -7204,3 +7204,103 @@ class TestLWTWithCQL(Tester):
         node1 = self.cluster.nodelist()[0]
         self.cluster.flush()
         assert_one(session, "UPDATE test SET v1 = 100 WHERE pk = 'test1' IF v2 = null;", [True, None])
+
+    def test_batch_delete_insert_same_row(self):
+        """
+        Issue: 6273
+
+        Delete have priority above Insert.
+        """
+        session = self.prepare()
+        table_name = "cf"
+        session.execute("""
+                        CREATE COLUMNFAMILY {cf} (key bigint, ck int, cv set<text>, PRIMARY KEY ((key), ck))
+                        """.format(cf=table_name))
+        assert_one(session,
+                   """INSERT INTO {cf} (key, ck, cv) VALUES (1, 0, {{'a', 'b'}}) if not exists;""".format(cf=table_name),
+                   [True, None, None, None])
+
+        assert_one(session,
+                   """BEGIN BATCH
+                        DELETE FROM {cf} WHERE key=1 and ck=0 if exists;
+                        INSERT INTO {cf} (key, ck, cv) VALUES (1, 0, {{'b', 'c'}});
+                      APPLY BATCH;""".format(cf=table_name),
+                   [True, 1, 0, {'a', 'b'}])
+
+        assert_none(session,
+                    "SELECT * FROM {cf}".format(cf=table_name))
+
+    def test_batch_insert_delete_same_row(self):
+        """
+        Issue: 6273
+
+        Delete have priority above Insert.
+        """
+        session = self.prepare()
+        table_name = "cf"
+        session.execute("""
+                        CREATE COLUMNFAMILY {cf} (key bigint, ck int, cv set<text>, PRIMARY KEY ((key), ck))
+                        """.format(cf=table_name))
+        assert_one(session,
+                   """INSERT INTO {cf} (key, ck, cv) VALUES (1, 0, {{'a', 'b'}}) if not exists;""".format(cf=table_name),
+                   [True, None, None, None])
+
+        assert_one(session,
+                   """BEGIN BATCH
+                        INSERT INTO {cf} (key, ck, cv) VALUES (1, 0, {{'b', 'c'}});
+                        DELETE FROM {cf} WHERE key=1 and ck=0 if exists;
+                      APPLY BATCH;""".format(cf=table_name),
+                   [True, 1, 0, {'a', 'b'}])
+
+        assert_none(session,
+                    "SELECT * FROM {cf}".format(cf=table_name))
+
+    def test_batch_insert_new_delete_old_row(self):
+        """
+        """
+        session = self.prepare()
+        table_name = "cf"
+        session.execute("""
+                        CREATE COLUMNFAMILY {cf} (key bigint, ck int, cv set<text>, PRIMARY KEY ((key), ck))
+                        """.format(cf=table_name))
+        assert_one(session,
+                   """INSERT INTO {cf} (key, ck, cv) VALUES (1, 0, {{'a', 'b'}}) if not exists;""".format(cf=table_name),
+                   [True, None, None, None])
+
+        assert_one(session,
+                   """BEGIN BATCH
+                        INSERT INTO {cf} (key, ck, cv) VALUES (1, 1, {{'b', 'c'}}) IF NOT EXISTS;
+                        DELETE FROM {cf} WHERE key=1 and ck=0 if exists;
+                      APPLY BATCH;""".format(cf=table_name),
+                   [True, 1, 0, {'a', 'b'}])
+
+        assert_one(session,
+                   "SELECT * FROM {cf}".format(cf=table_name),
+                   expected=[1, 1, {'b', 'c'}])
+
+    def test_batch_update_insert_same_row(self):
+        """
+        workaround for #6273
+        """
+        session = self.prepare()
+
+        table_name = "cf"
+
+        session.execute("""
+                        CREATE COLUMNFAMILY {cf} (key bigint, ck int, cv set<text>, PRIMARY KEY ((key), ck))
+                        """.format(cf=table_name))
+
+        assert_one(session,
+                   """INSERT INTO {cf} (key, ck, cv) VALUES (1, 0, {{'a', 'b'}}) if not exists;""".format(cf=table_name),
+                   [True, None, None, None])
+
+        assert_one(session,
+                   """BEGIN BATCH
+                        UPDATE {cf} SET cv=null WHERE key=1 and ck=0 if exists;
+                        INSERT INTO {cf} (key, ck, cv) VALUES (1, 0, {{'b', 'c'}});
+                      APPLY BATCH;""".format(cf=table_name),
+                   [True, 1, 0, {"a", "b"}])
+
+        assert_one(session,
+                   "SELECT * FROM {cf}".format(cf=table_name),
+                   [1, 0, {'b', 'c'}])
