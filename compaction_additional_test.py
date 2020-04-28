@@ -489,7 +489,7 @@ class TestTimeWindowDataSegregation(Tester):
             "'compaction_window_unit': '{0.window_unit}',"
             "'compaction_window_size': {0.window_size} }}".format(self))
 
-    def _simulate_write_process_in_minutes(self, session, duration_minutes=20, start_from_minute=0, flush_period_seconds=30, flushing_exclude_nodes=None):
+    def _simulate_write_process_in_minutes(self, session, duration_minutes=20, start_from_minute=0, flush_period_seconds=30, flushing_exclude_nodes=None, num_pks=10):
         """Simulate a write process across duration minutes.
 
         We use `USING TIMESTAMP` to distribute the writes evenly
@@ -517,7 +517,7 @@ class TestTimeWindowDataSegregation(Tester):
             concurrent.execute_concurrent_with_args(
                 session,
                 insert_statement,
-                [(pk, t, 0, seconds_to_micros(t)) for pk in range(10)])
+                [(pk, t, 0, seconds_to_micros(t)) for pk in range(num_pks)])
 
             # Flush every flush period in seconds on each node
             if t % flush_period_seconds == 0:
@@ -659,7 +659,7 @@ class TestTimeWindowDataSegregation(Tester):
         session = self.patient_cql_connection(node1)
         self._create_ks_cl_with_twcs(session, rf=2)
 
-        self._simulate_write_process_in_minutes(session, duration_minutes=10, flush_period_seconds=120)
+        self._simulate_write_process_in_minutes(session, duration_minutes=10, flush_period_seconds=120, num_pks=100)
 
         sstable_timewindows_list = self._list_sstable_timestamps(node1)
         for sstable, timewindow in sstable_timewindows_list:
