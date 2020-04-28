@@ -45,7 +45,8 @@ class RepairAdditionalBase(Tester):
 
         self.cluster.stop_nodes(stopped_nodes, wait_other_notice=True)
 
-        session = self.patient_exclusive_cql_connection(node_to_check, 'ks')
+        cs = self.patient_cql_cluster_session(node_to_check, 'ks', exclusive=True)
+        session = cs.session
         query = SimpleStatement("SELECT * FROM cf LIMIT %d" % (rows * 2), consistency_level=ConsistencyLevel.ONE)
         result = list(session.execute(query))
         self.assertEqual(len(result), rows, len(result))
@@ -700,7 +701,7 @@ class RepairAdditionalBase(Tester):
         self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
         self.cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2 = self.cluster.nodelist()
-        with self.patient_cql_connection(node1) as session:
+        with self.patient_cql_cluster_session(node1) as session:
             self.create_ks(session, 'ks', 2)
             self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
@@ -708,14 +709,14 @@ class RepairAdditionalBase(Tester):
         debug("Adding data only on node 1...")
         node2.flush()
         node2.stop(wait_other_notice=True)
-        with self.patient_exclusive_cql_connection(node1, 'ks') as session1:
+        with self.patient_cql_cluster_session(node1, 'ks', exclusive=True) as session1:
             insert_c1c2(session1, keys=range(1000, 2000), consistency=ConsistencyLevel.ONE)
         self.cluster.flush()
         debug("Adding data only on node 2...")
         node2.start(wait_other_notice=True, wait_for_binary_proto=True)
         node1.flush()
         node1.stop(wait_other_notice=True)
-        with self.patient_exclusive_cql_connection(node2, 'ks') as session2:
+        with self.patient_cql_cluster_session(node2, 'ks', exclusive=True) as session2:
             insert_c1c2(session2, keys=range(2000, 3000), consistency=ConsistencyLevel.ONE)
 
         # Bring up both nodes, each should have different data
@@ -734,12 +735,12 @@ class RepairAdditionalBase(Tester):
         # 1200 and 1800
         node1.flush()
         node1.stop(wait_other_notice=True)
-        with self.patient_exclusive_cql_connection(node2, 'ks') as session2:
+        with self.patient_cql_cluster_session(node2, 'ks', exclusive=True) as session2:
             self.assert_repair_option_pr_rows(session2, 1200, 1800)
         node1.start(wait_other_notice=True, wait_for_binary_proto=True)
         node2.flush()
         node2.stop(wait_other_notice=True)
-        with self.patient_exclusive_cql_connection(node1, 'ks') as session1:
+        with self.patient_cql_cluster_session(node1, 'ks', exclusive=True) as session1:
             self.assert_repair_option_pr_rows(session1, 1200, 1800)
         node2.start(wait_other_notice=True, wait_for_binary_proto=True)
 
@@ -778,7 +779,7 @@ class RepairAdditionalBase(Tester):
         self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
         self.cluster.populate([2,2,2]).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1_1, node1_2, node2_1, node2_2, node3_1, node3_2 = self.cluster.nodelist()
-        with self.patient_cql_connection(node1_1) as session:
+        with self.patient_cql_cluster_session(node1_1) as session:
             self.create_ks(session, 'ks', {'dc1': 2, 'dc2': 2, 'dc3': 2})
             self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
@@ -828,13 +829,13 @@ class RepairAdditionalBase(Tester):
         # completely missing this data:
         debug("Adding data only on node 1...")
         self.cluster.stop_nodes([node1_2, node2_1, node2_2, node3_1, node3_2], wait_other_notice=True)
-        with self.patient_exclusive_cql_connection(node1_1, 'ks') as session1:
+        with self.patient_cql_cluster_session(node1_1, 'ks', exclusive=True) as session1:
             insert_c1c2(session1, keys=range(1000, 2000), consistency=ConsistencyLevel.LOCAL_ONE)
         self.cluster.flush()
         debug("Adding data only on node 2...")
         node1_2.start(wait_other_notice=True, wait_for_binary_proto=True)
         node1_1.stop(wait_other_notice=True)
-        with self.patient_exclusive_cql_connection(node1_2, 'ks') as session2:
+        with self.patient_cql_cluster_session(node1_2, 'ks', exclusive=True) as session2:
             insert_c1c2(session2, keys=range(2000, 3000), consistency=ConsistencyLevel.LOCAL_ONE)
 
         # Bring up all nodes, each node on dc 1 should have different data
@@ -860,7 +861,7 @@ class RepairAdditionalBase(Tester):
         debug("Stopping node1_1")
         node1_1.flush()
         node1_1.stop(wait_other_notice=True)
-        with self.patient_exclusive_cql_connection(node1_2, 'ks') as session2:
+        with self.patient_cql_cluster_session(node1_2, 'ks', exclusive=True) as session2:
             self.assert_repair_option_pr_rows(session2, 1200, 1800, consistency_level=ConsistencyLevel.LOCAL_ONE)
 
         debug("Restarting node1_2")
@@ -868,7 +869,7 @@ class RepairAdditionalBase(Tester):
         debug("Stopping node1_2")
         node1_2.flush()
         node1_2.stop(wait_other_notice=True)
-        with self.patient_exclusive_cql_connection(node1_1, 'ks') as session1:
+        with self.patient_cql_cluster_session(node1_1, 'ks', exclusive=True) as session1:
             self.assert_repair_option_pr_rows(session1, 1200, 1800, consistency_level=ConsistencyLevel.LOCAL_ONE)
 
         debug("Restarting node1_2")
@@ -903,7 +904,7 @@ class RepairAdditionalBase(Tester):
         self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
         self.cluster.populate([2,2,2]).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1_1, node1_2, node2_1, node2_2, node3_1, node3_2 = self.cluster.nodelist()
-        with self.patient_cql_connection(node1_1) as session:
+        with self.patient_cql_cluster_session(node1_1) as session:
             self.create_ks(session, 'ks', {'dc1': 2, 'dc2': 2, 'dc3': 2})
             self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
@@ -914,13 +915,13 @@ class RepairAdditionalBase(Tester):
         # completely missing this data:
         debug("Adding data only on node 1...")
         self.cluster.stop_nodes([node1_2, node2_1, node2_2, node3_1, node3_2], wait_other_notice=True)
-        with self.patient_exclusive_cql_connection(node1_1, 'ks') as session1:
+        with self.patient_cql_cluster_session(node1_1, 'ks', exclusive=True) as session1:
             insert_c1c2(session1, keys=range(1 * num_keys, 2 * num_keys), consistency=ConsistencyLevel.LOCAL_ONE)
         self.cluster.flush()
         debug("Adding data only on node 2...")
         node1_2.start(wait_other_notice=True, wait_for_binary_proto=True)
         node1_1.stop(wait_other_notice=True)
-        with self.patient_exclusive_cql_connection(node1_2, 'ks') as session2:
+        with self.patient_cql_cluster_session(node1_2, 'ks', exclusive=True) as session2:
             insert_c1c2(session2, keys=range(2 * num_keys, 3 * num_keys), consistency=ConsistencyLevel.LOCAL_ONE)
 
         # Bring up all nodes, each should have different data
@@ -943,7 +944,7 @@ class RepairAdditionalBase(Tester):
         debug("Stopping node1_2")
         node1_2.flush()
         node1_2.stop(wait_other_notice=True)
-        with self.patient_exclusive_cql_connection(node1_1, 'ks') as session1:
+        with self.patient_cql_cluster_session(node1_1, 'ks', exclusive=True) as session1:
             self.assert_repair_option_pr_rows(session1, int(num_keys * 1.05), int(num_keys * 1.667), consistency_level=ConsistencyLevel.LOCAL_ONE)
 
         debug("Restarting node1_2")
