@@ -656,7 +656,7 @@ class TestTimeWindowDataSegregation(Tester):
         self._check_sstable_timestamps(node2)
 
     def test_streaming_sstables_with_several_timewindows(self):
-        self.cluster.populate(1).start(wait_for_binary_proto=True)
+        self.cluster.populate(2).start(wait_for_binary_proto=True)
 
         node1 = self.cluster.nodelist()[0]
         session = self.patient_cql_connection(node1)
@@ -668,10 +668,10 @@ class TestTimeWindowDataSegregation(Tester):
         for sstable, timewindow in sstable_timewindows_list:
             self.assertTrue(timewindow <= 1.5 * 2 * 60)
 
-        node2 = tools.new_node(self.cluster)
-        node2.start(wait_for_binary_proto=True)
+        new_node = tools.new_node(self.cluster)
+        new_node.start(wait_for_binary_proto=True)
 
-        self._check_sstable_timestamps(node2)
+        self._check_sstable_timestamps(new_node)
 
     def test_rebuild_node_streaming(self):
         self.cluster.populate(3).start(wait_for_binary_proto=True)
