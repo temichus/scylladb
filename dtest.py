@@ -23,6 +23,7 @@ from cassandra.auth import PlainTextAuthProvider
 from cassandra.cluster import Cluster as PyCluster
 from cassandra.cluster import NoHostAvailable
 from cassandra.cluster import ExecutionProfile, EXEC_PROFILE_DEFAULT
+from cassandra.cluster import default_lbp_factory
 from cassandra.policies import RetryPolicy
 from cassandra.policies import WhiteListRoundRobinPolicy
 from ccmlib.cluster import Cluster
@@ -759,7 +760,9 @@ class Tester(TestCase):
 
         return self._create_session(node, keyspace, user, password, compression,
                                     protocol_version, port=port, ssl_opts=ssl_opts,
-                                    topology_event_refresh_window=topology_event_refresh_window, **kwargs)
+                                    topology_event_refresh_window=topology_event_refresh_window,
+                                    load_balancing_policy=default_lbp_factory(),
+                                    **kwargs)
 
     def exclusive_cql_connection(self, node, keyspace=None, user=None,
                                  password=None, compression=True, protocol_version=None, port=None, ssl_opts=None, **kwargs):
