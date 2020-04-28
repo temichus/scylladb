@@ -880,6 +880,74 @@ class Tester(TestCase):
             **kwargs
         )
 
+    def cql_cluster_session(self, node, keyspace=None, user=None,
+                            password=None, compression=True, protocol_version=None, port=None, ssl_opts=None,
+                            topology_event_refresh_window=10, exclusive=False, **kwargs):
+
+        if exclusive:
+            node_ip = self.get_ip_from_node(node)
+            topology_event_refresh_window=-1
+            load_balancing_policy = WhiteListRoundRobinPolicy([node_ip])
+        else:
+            load_balancing_policy=default_lbp_factory()
+
+        session = self._create_session(node, keyspace, user, password, compression, protocol_version,
+                                       port=port, ssl_opts=ssl_opts,
+                                       topology_event_refresh_window=topology_event_refresh_window,
+                                       load_balancing_policy=load_balancing_policy,
+                                       keep_session=False,
+                                       **kwargs)
+
+        class ClusterSession:
+            def __init__(self, session):
+                self.session = session
+
+            def __del__(self):
+                self.__cleanup()
+
+            def __enter__(self):
+                return self.session
+
+            def __exit__(self, type, value, traceback):
+                self.__cleanup()
+
+            def __cleanup(self):
+                if self.session:
+                    self.session.cluster.shutdown()
+                    self.session = None
+
+        return ClusterSession(session)
+
+    def patient_cql_cluster_session(self, node, keyspace=None, user=None, password=None,
+                                    request_timeout=30, compression=True, timeout=60,
+                                    protocol_version=None, port=None, ssl_opts=None,
+                                    topology_event_refresh_window=10, exclusive=False, **kwargs):
+        """
+        Returns a connection after it stops throwing NoHostAvailables due to not being ready.
+
+        If the timeout is exceeded, the exception is raised.
+        """
+        if is_win():
+            timeout *= 2
+
+        return retry_till_success(
+            self.cql_cluster_session,
+            node,
+            keyspace=keyspace,
+            user=user,
+            password=password,
+            timeout=timeout,
+            request_timeout=request_timeout,
+            compression=compression,
+            protocol_version=protocol_version,
+            port=port,
+            ssl_opts=ssl_opts,
+            topology_event_refresh_window=topology_event_refresh_window,
+            exclusive=exclusive,
+            bypassed_exception=NoHostAvailable,
+            **kwargs
+        )
+
     def create_ks(self, session, name, rf):
         query = 'CREATE KEYSPACE %s WITH replication={%s}'
         if isinstance(rf, int):
