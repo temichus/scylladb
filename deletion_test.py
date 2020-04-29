@@ -441,6 +441,144 @@ class RangeDeletionTester(Tester):
         assert_all(session=session, query=select_query, expected=data[:lower_index+1], cl=ConsistencyLevel.ONE,
                    ignore_order=True)
 
+    @attr('single_node')
+    def delete_by_1ck_range_condition_if_exists_failed_test(self):
+        session = self.prepare(nodes=1, rf=1)
+        self.create_cf_1pk_1ck(session=session)
+        data = self.insert_data_cf_1pk_1ck(session, 5)
+
+        query = "DELETE FROM ks.test1 where pk={pk} and ck < '{ck_upper}' and ck >= '{ck_lower}' IF EXISTS".format(pk=data[0][0],
+                                                                                                                   ck_lower=data[1][1],
+                                                                                                                   ck_upper=data[3][1])
+        debug(query)
+        assert_invalid(session=session,
+                       query=query,
+                       matching='DELETE statements must restrict all PRIMARY KEY columns with equality relations in order to delete non static columns')
+
+    @attr('single_node')
+    def delete_by_1ck_range_condition_if_equality_failed_test(self):
+        session = self.prepare(nodes=1, rf=1)
+        self.create_cf_1pk_1ck(session=session)
+        data = self.insert_data_cf_1pk_1ck(session, 5)
+
+        query = "DELETE FROM ks.test1 WHERE pk={pk} and ck < '{ck_upper}' and ck >= '{ck_lower}' IF v1 = {cv}".format(pk=data[0][0],
+                                                                                                                      ck_lower=data[1][1],
+                                                                                                                      ck_upper=data[3][1],
+                                                                                                                      cv=data[1][2])
+        debug(query)
+        assert_invalid(session=session,
+                       query=query,
+                       matching='DELETE statements must restrict all PRIMARY KEY columns with equality relations in order to delete non static columns')
+
+    @attr('single_node')
+    def delete_by_1ck_range_if_range_failed_test(self):
+        session = self.prepare(nodes=1, rf=1)
+        self.create_cf_1pk_1ck(session=session)
+        data = self.insert_data_cf_1pk_1ck(session, 5)
+
+        query = "DELETE FROM ks.test1 WHERE pk={pk} and ck < '{ck_upper}' and ck >= '{ck_lower}' \
+                IF v1 >= {cv_lower} and v1 < {cv_upper}".format(pk=data[0][0],
+                                                                ck_lower=data[1][1],
+                                                                ck_upper=data[3][1],
+                                                                cv_lower=data[1][2],
+                                                                cv_upper=data[3][2])
+        debug(query)
+        assert_invalid(session=session,
+                       query=query,
+                       matching='DELETE statements must restrict all PRIMARY KEY columns with equality relations in order to delete non static columns')
+
+    def delete_by_1ck_range_conditional_batch_test(self):
+
+        """ if in batch at least one operation with IF, whole batch is conditional
+        """
+        num_rows = 5
+        session = self.prepare(nodes=3, rf=3)
+        self.create_cf_1pk_1ck(session=session)
+        data = self.insert_data_cf_1pk_1ck(session, num_rows)
+
+        select_query = "SELECT pk, cast(ck as text), v1 FROM ks.test1"
+        assert_all(session=session, query=select_query, expected=data, cl=ConsistencyLevel.QUORUM, ignore_order=True)
+
+        lower_index = 1
+        upper_index = 3
+
+        # build batch with range delete from lower_index(included) to upper_index
+        # (not included) from data list
+        query = """ BEGIN BATCH DELETE FROM ks.test1 where pk={pk} and ck < '{ck_upper}' and ck >= '{ck_lower}';
+            """.format(pk=data[0][0],
+                       ck_lower=data[lower_index][1],
+                       ck_upper=data[upper_index][1])
+        # generate new data row
+        current_date = datetime.now()
+        for i in range(lower_index, upper_index):
+            data[i][1] = (current_date + timedelta(days=i + num_rows)).strftime("%Y-%m-%d")
+            data[i][2] = i * num_rows
+        # add into batch conditional insert operation
+        for i in range(lower_index, upper_index):
+            query += " INSERT INTO ks.test1 (pk, ck, v1) VALUES ({pk}, '{ck}', {v1}) IF NOT EXISTS;".format(pk=data[0][0],
+                                                                                                            ck=data[i][1],
+                                                                                                            v1=data[i][2])
+        query += "APPLY BATCH;"
+        debug(query)
+        # execute batch and verify it is applied
+        assert_one(session, query,
+                   expected=[True, None, None, None],
+                   cl=ConsistencyLevel.QUORUM)
+
+        assert_all(session=session, query=select_query, expected=data, cl=ConsistencyLevel.QUORUM, ignore_order=True)
+
+    def delete_by_1ck_range_conditional_batch_update_test(self):
+        """ if in batch at least one operation with IF, whole batch is conditional
+        """
+        num_rows = 5
+        lower_index = 1
+        upper_index = 3
+        session = self.prepare(nodes=3, rf=3)
+
+        self.create_cf_1pk_1ck(session=session)
+        data = self.insert_data_cf_1pk_1ck(session, num_rows)
+
+        select_query = "SELECT pk, cast(ck as text), v1 FROM ks.test1"
+        assert_all(session=session, query=select_query, expected=data, cl=ConsistencyLevel.QUORUM, ignore_order=True)
+
+        lower_index = 1
+        upper_index = 3
+
+        # build batch with range delete from lower_index(included) to upper_index
+        # (not included) from data list
+        query = """ BEGIN BATCH DELETE FROM ks.test1 where pk={pk} and ck < '{ck_upper}' and ck >= '{ck_lower}';
+            """.format(pk=data[0][0],
+                       ck_lower=data[lower_index][1],
+                       ck_upper=data[upper_index][1])
+
+        # add into batch conditional insert operation
+        for i in range(upper_index, num_rows):
+            query += " UPDATE ks.test1 SET v1 = {new_v1} WHERE pk = {pk} and ck = '{ck}' IF v1 = {old_v1};".format(pk=data[0][0],
+                                                                                                                   ck=data[i][1],
+                                                                                                                   old_v1=data[i][2],
+                                                                                                                   new_v1=data[i][2] * num_rows)
+        query += "APPLY BATCH;"
+        debug(query)
+        # execute batch and verify it is applied
+        conditinal_batch_result = []
+        for row in data[upper_index: num_rows]:
+            batch_row = row[:]
+            batch_row[1] = datetime.strptime(batch_row[1], "%Y-%m-%d").date()
+            batch_row.insert(0, True)
+            conditinal_batch_result.append(batch_row)
+
+        assert_all(session, query,
+                   expected=conditinal_batch_result,
+                   cl=ConsistencyLevel.QUORUM,
+                   ignore_order=True)
+
+        for row in data[upper_index: num_rows]:
+            row[2] *= num_rows
+
+        del data[lower_index: upper_index]
+
+        assert_all(session=session, query=select_query, expected=data, cl=ConsistencyLevel.QUORUM, ignore_order=True)
+
 
 @skip('Old Cassandra tests')
 class TestDeletion(Tester):
