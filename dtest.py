@@ -778,7 +778,9 @@ class Tester(TestCase):
 
     def _create_session(self, node, keyspace, user, password, compression, protocol_version,
                         port=None, ssl_opts=None, execution_profiles=None,
-                        topology_event_refresh_window=10, **kwargs):
+                        topology_event_refresh_window=10,
+                        keep_session=True,
+                        **kwargs):
         node_ip = self.get_ip_from_node(node)
         if not port:
             port = self.get_port_from_node(node)
@@ -817,7 +819,9 @@ class Tester(TestCase):
         # override driver default consistency level of LOCAL_QUORUM
         # session.default_consistency_level = ConsistencyLevel.ONE
 
-        self.connections.append(session)
+        if keep_session:
+            self.connections.append(session)
+
         return session
 
     def patient_cql_connection(self, node, keyspace=None, user=None, password=None,
