@@ -770,8 +770,11 @@ class Tester(TestCase):
         node_ip = self.get_ip_from_node(node)
         wlrr = WhiteListRoundRobinPolicy([node_ip])
 
-        return self._create_session(node, keyspace, user, password, compression,
-                                    protocol_version, load_balancing_policy=wlrr, port=port, ssl_opts=ssl_opts, **kwargs)
+        return self._create_session(node, keyspace, user, password, compression, protocol_version,
+                                    port=port, ssl_opts=ssl_opts,
+                                    topology_event_refresh_window=-1,
+                                    load_balancing_policy=wlrr,
+                                    **kwargs)
 
     def _create_session(self, node, keyspace, user, password, compression, protocol_version,
                         port=None, ssl_opts=None, execution_profiles=None,
