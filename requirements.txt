@@ -13,3 +13,4 @@ https://github.com/scylladb/sstable-tools/archive/master.zip
 https://github.com/scylladb/scylla-ccm/archive/master.zip
 boto3==1.10.46
 tabulate==0.8.7
+deepdiff==4.3.2
