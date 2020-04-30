@@ -1,9 +1,12 @@
 import os
 import shutil
+import collections
+import random
+import string
 import threading
 from collections import namedtuple
 from concurrent.futures import ThreadPoolExecutor
-from typing import List, Dict
+from typing import List, Dict, Union
 
 import boto3
 from ccmlib.scylla_node import ScyllaNode
@@ -18,6 +21,31 @@ TABLE_NAME = 'user_table'
 NUM_OF_NODES = 3
 NUM_OF_ITEMS = 100
 ALTERNATOR_PORT = 8080
+DEFAULT_SCHEMA = tuple(dict(
+    KeySchema=[
+        {'AttributeName': 'pk', 'KeyType': 'HASH'},
+    ],
+    AttributeDefinitions=[
+        {'AttributeName': 'pk', 'AttributeType': 'S'},
+        {'AttributeName': 'other', 'AttributeType': 'S'}
+    ]
+).items())
+
+
+class Gsi:
+    ATTRIBUTE_NAME = 'g_s_i'
+    ATTRIBUTE_DEFINITION = {'AttributeName': ATTRIBUTE_NAME, 'AttributeType': 'S'}
+    NAME = f'hello_{ATTRIBUTE_NAME}'
+    CONFIG = dict(
+        GlobalSecondaryIndexes=[
+            {'IndexName': NAME,
+             'KeySchema': [
+                 {'AttributeName': ATTRIBUTE_NAME, 'KeyType': 'HASH'},
+             ],
+             'Projection': {'ProjectionType': 'ALL'}
+             }
+        ]
+    )
 
 
 class StoppableThread:
@@ -57,15 +85,24 @@ class TesterAlternator(Tester):
         super().__init__(*argv, **kwargs)
         self._nodes_url_list = None
         self.keyspace_name_template = "alternator_{}"
-        self._table_pk = "key"
+        self._table_pk = "pk"
         self._dynamo_params = dict(service_name="dynamodb", aws_access_key_id="None", aws_secret_access_key="None",
                                    region_name="None")
         self.alternator_apis = {}
 
+    def _add_api_for_node(self, node: ScyllaNode) -> None:
+        node_alternator_address = f"http://{self.get_ip_from_node(node=node)}:{ALTERNATOR_PORT}"
+        self.alternator_apis[node.name] = AlternatorApi(
+            resource=boto3.resource(endpoint_url=node_alternator_address, **self._dynamo_params),
+            client=boto3.client(endpoint_url=node_alternator_address, **self._dynamo_params)
+        )
+
     def get_dynamodb_api(self, node: ScyllaNode) -> AlternatorApi:
+        if node.name not in self.alternator_apis:
+            self._add_api_for_node(node=node)
         return self.alternator_apis[node.name]
 
-    def prepare_cluster(self, num_of_nodes: int = NUM_OF_NODES, is_multi_dc: bool = False) -> None:
+    def prepare_dynamodb_cluster(self, num_of_nodes: int = NUM_OF_NODES, is_multi_dc: bool = False) -> None:
         cluster_type = "single DC" if not is_multi_dc else "multi DC"
         debug(f"Populating a cluster with {num_of_nodes} nodes for {cluster_type}..")
         cluster = self.cluster
@@ -74,29 +111,34 @@ class TesterAlternator(Tester):
         cluster.populate([num_of_nodes, num_of_nodes] if is_multi_dc else num_of_nodes)
         debug("Starting cluster..")
         cluster.start(wait_for_binary_proto=True, wait_other_notice=True)
-        for node_idx, node in enumerate(self.cluster.nodelist()):
-            node_alternator_address = f"http://{self.get_ip_from_node(node=node)}:{ALTERNATOR_PORT}"
-            self.alternator_apis[node_idx] = self.alternator_apis[node.name] = AlternatorApi(
-                resource=boto3.resource(endpoint_url=node_alternator_address, **self._dynamo_params),
-                client=boto3.client(endpoint_url=node_alternator_address, **self._dynamo_params)
-            )
+        for node in self.cluster.nodelist():
+            self._add_api_for_node(node=node)
 
     # pylint:disable=too-many-arguments
-    def create_table(self, table_name: str, node: ScyllaNode, key_schema: List[Dict[str, str]] = None,
-                     attribute_definitions: List[Dict[str, str]] = None, wait_until_table_exists: bool = True):
+    def create_table(self, node: ScyllaNode, table_name: str = TABLE_NAME,
+                     base_schema: Union[tuple, Dict] = DEFAULT_SCHEMA,
+                     wait_until_table_exists: bool = True,
+                     create_gsi: bool = False, **kwargs):
+        if type(base_schema) == tuple:
+            base_schema = dict(base_schema)
+        if create_gsi:
+            base_schema['AttributeDefinitions'].append(Gsi.ATTRIBUTE_DEFINITION)
+            base_schema.update(Gsi.CONFIG)
         dynamodb_api = self.get_dynamodb_api(node=node)
-        debug(f"Creating a new table '{table_name}' for node '{node.name}'..")
-        dynamodb_api.resource.create_table(
+        debug(f"Creating a new table '{table_name}' using node '{node.name}'..")
+        table = dynamodb_api.resource.create_table(
             TableName=table_name,
-            KeySchema=key_schema or [{"AttributeName": self._table_pk, "KeyType": "HASH"}],
-            AttributeDefinitions=attribute_definitions or [
-                {"AttributeName": self._table_pk, "AttributeType": "S"}, ],
             BillingMode="PAY_PER_REQUEST",
+            **base_schema,
+            **kwargs
         )
         if wait_until_table_exists:
             waiter = dynamodb_api.client.get_waiter('table_exists')
             waiter.wait(TableName=table_name)
         info(f"The table '{table_name}' successfully created..")
+        response = dynamodb_api.client.describe_table(TableName=table_name)
+        debug(f"Table's schema is: {response}")
+        return table
 
     def wait_table_exists(self, table_name: str, nodes: List[ScyllaNode]) -> None:
         """
@@ -235,9 +277,88 @@ class TesterAlternator(Tester):
         debug(f"Starting queries of: {num_of_items} items with ConsistentRead = {consistent_read}")
         if verbose:
             debug("First Item in range: {}".format(
-                table.get_item(ConsistentRead=consistent_read, Key={'key': 'test0'})['Item']))
+                table.get_item(ConsistentRead=consistent_read, Key={self._table_pk: 'test0'})['Item']))
             debug("Last Item in range: {}".format(
-                table.get_item(ConsistentRead=consistent_read, Key={'key': f'test{num_of_items - 1}'})['Item']))
+                table.get_item(ConsistentRead=consistent_read, Key={self._table_pk: f'test{num_of_items - 1}'})['Item']))
 
         for idx in range(num_of_items):
-            table.get_item(ConsistentRead=consistent_read, Key={'key': f'test{idx}'})
+            table.get_item(ConsistentRead=consistent_read, Key={self._table_pk: f'test{idx}'})
+
+    def batch_writer_item_list(self, node: ScyllaNode, item_list=None):
+        item_list = item_list or generate_put_request_items(num_of_items=NUM_OF_ITEMS)
+        dynamodb_api = self.get_dynamodb_api(node=node)
+        debug(f"Executing batch_write_item, using {dynamodb_api.client.meta.endpoint_url} resource..")
+        table = dynamodb_api.resource.Table(TABLE_NAME)
+        with table.batch_writer() as batch:
+            for item in item_list:
+                debug(f"put item: {item}")
+                batch.put_item(item)
+        return table
+
+    def prefill_dynamodb_table(self, node: ScyllaNode, table_name: str = TABLE_NAME):
+        self.create_table(table_name=table_name, node=node)
+        self.wait_table_exists(table_name, self.cluster.nodelist())
+        self.generate_request_items(table_name=table_name, node=node)
+
+
+def create_dynamodb_table(dynamodb_resource, table_name=TABLE_NAME, base_schema=DEFAULT_SCHEMA, **kwargs):
+    if type(base_schema) == tuple:
+        base_schema = dict(base_schema)
+    debug(f"Schema to create is: {base_schema} {kwargs}")
+    table = dynamodb_resource.create_table(TableName=table_name, BillingMode='PAY_PER_REQUEST', **base_schema, **kwargs)
+    waiter = table.meta.client.get_waiter('table_exists')
+    waiter.config.delay = 1
+    waiter.config.max_attempts = 200
+    waiter.wait(TableName=table_name)
+    return table
+
+
+def random_string(length=1, chars=string.ascii_uppercase + string.digits):
+    return ''.join(random.choice(chars) for x in range(length))
+
+
+def generate_put_request_items(num_of_items: int = NUM_OF_ITEMS, add_gsi: bool = False) -> List[
+    Dict[str, Union[str, Dict[str, str]]]]:
+    debug(f"Generating {num_of_items} put request items..")
+    put_request_items = list()  # type: List[Dict[str, Union[str, Dict[str, str]]]]
+    for idx in range(num_of_items):
+        item = {
+            'pk': f'test{idx}', 'other': random_string(), 'x': {'hello': f'world{idx}'}
+        }
+        if add_gsi:
+            item['g_s_i'] = random_string()
+        put_request_items.append(item)
+    return put_request_items
+
+
+def freeze(item):
+    if isinstance(item, dict):
+        return frozenset((key, freeze(value)) for key, value in item.items())
+    elif isinstance(item, list):
+        return tuple(freeze(value) for value in item)
+    return item
+
+
+def multiset(items):
+    return collections.Counter([freeze(item) for item in items])
+
+
+def full_query(table, **kwargs):
+    response = table.query(**kwargs)
+    items = response['Items']
+    while 'LastEvaluatedKey' in response:
+        response = table.query(ExclusiveStartKey=response['LastEvaluatedKey'], **kwargs)
+        items.extend(response['Items'])
+    return items
+
+
+def get_table_items(table, num_of_items: int = NUM_OF_ITEMS, verbose: bool = True, consistent_read: bool = True):
+    debug(f"Starting queries of: {num_of_items} items with ConsistentRead = {consistent_read}")
+    if verbose:
+        debug("First Item in range: {}".format(
+            table.get_item(ConsistentRead=consistent_read, Key={'p': 'test0'})['Item']))
+        debug("Last Item in range: {}".format(
+            table.get_item(ConsistentRead=consistent_read, Key={'p': f'test{num_of_items - 1}'})['Item']))
+
+    for idx in range(num_of_items):
+        table.get_item(ConsistentRead=consistent_read, Key={'p': f'test{idx}'})
