@@ -120,7 +120,8 @@ def check_c1c2_result_one(success, rows, tolerate_missing, must_be_missing, c1_v
     if not tolerate_missing:
         assert len(rows) == 1, 'Wrong length, %s' % len(rows)
         res = rows[0]
-        assert len(res) == 2 and res[0] == c1_value and res[1] == c2_value, res
+        assert len(res) == 2, "Expected 2 columns in result, but got: {}".format(res)
+        assert res[0] == c1_value and res[1] == c2_value, "Expected Row(c1='{}', c2='{}'), but got: {}".format(c1_value, c2_value, res)
 
     if must_be_missing:
         assert len(rows) == 0
