@@ -238,7 +238,7 @@ class SnapshotTester(Tester):
     def restore_snapshot_with_refresh(self, snapshot_dir, node, ks, cf, name=None):
         debug("Restoring snapshot....")
         node_dir = node.get_path()
-        restore_dir = glob.glob("{node_dir}/data/{ks}/{cf}-*/".format(**locals()))[0]
+        restore_dir = glob.glob("{node_dir}/data/{ks}/{cf}-*/upload/".format(**locals()))[0]
         snapshot_dir = self.get_cf_snapshot_saved_dir(snapshot_dir, ks, cf, name)
         debug("Copying from %s to %s" % (str(snapshot_dir), str(restore_dir)))
         distutils.dir_util.copy_tree(snapshot_dir, restore_dir)
