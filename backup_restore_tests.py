@@ -153,7 +153,7 @@ class TestBackupRestore(Tester):
             shutil.copy2(os.path.join(snapshot_dir, f), os.path.join(cf_dir, 'upload', f))
 
         debug("Running 'nodetool refresh'...")
-        self.start_nodetool_and_kill_node(node1, 'refresh -- ks cf')
+        self.start_nodetool_and_kill_node(node1, 'refresh -- ks cf', 'Loading new SSTables for ks.cf')
 
         debug("Delete commitlogs...")
         commitlog_dir = os.path.join(self.test_path, 'test', 'node1', 'commitlogs')
@@ -162,6 +162,9 @@ class TestBackupRestore(Tester):
 
         debug("Restart the node...")
         node1.start(wait_for_binary_proto=True)
+
+        debug("Running 'nodetool refresh -- ks cf' - after restart...")
+        node1.nodetool("refresh -- ks cf")
 
         debug("Checking rows on node1...")
         self.check_rows_on_node(node1, num_keys, found=keys, c1_values=c1_values, c2_values=c2_values)
@@ -721,7 +724,7 @@ class TestBackupRestore(Tester):
 
         return None
 
-    def start_nodetool_and_kill_node(self, node, cmd):
+    def start_nodetool_and_kill_node(self, node, cmd, message=None):
         def run():
             try:
                 debug("Starting nodetool {}...".format(cmd))
@@ -732,6 +735,9 @@ class TestBackupRestore(Tester):
 
         executor = ThreadPoolExecutor(max_workers=1)
         nodetool_thread = executor.submit(run)
+        if message:
+            debug("Watch log for '{}".format(message))
+            node.watch_log_for(message)
         random.seed()
         wait_time = random.random()
 
