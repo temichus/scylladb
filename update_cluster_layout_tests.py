@@ -1537,7 +1537,7 @@ class TestUpdateClusterLayout(Tester):
         """
         cluster = self.cluster
 
-        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.set_configuration_options(values={'enable_repair_based_node_ops': True, 'hinted_handoff_enabled': False}, batch_commitlog=True)
         cluster.populate(2).start()
         node1, node2 = cluster.nodelist()
 
@@ -1584,7 +1584,7 @@ class TestUpdateClusterLayout(Tester):
 
     def verify_latest_copy_replace_node_test(self):
         cluster = self.cluster
-        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.set_configuration_options(values={'enable_repair_based_node_ops': True, 'hinted_handoff_enabled': False}, batch_commitlog=True)
         debug("Starting cluster with 3 nodes.")
         cluster.populate(3).start(wait_for_binary_proto=True)
         node1, node2, node3 = cluster.nodelist()
@@ -1636,7 +1636,7 @@ class TestUpdateClusterLayout(Tester):
 
     def verify_latest_copy_rebuild_node_test(self):
         cluster = self.cluster
-        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.set_configuration_options(values={'enable_repair_based_node_ops': True, 'hinted_handoff_enabled': False}, batch_commitlog=True)
         debug("Starting cluster with 3 nodes.")
         cluster.populate(3).start(wait_for_binary_proto=True)
         node1, node2, node3 = cluster.nodelist()
@@ -1688,7 +1688,7 @@ class TestUpdateClusterLayout(Tester):
 
     def verify_latest_copy_decommission_node_test(self):
         cluster = self.cluster
-        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.set_configuration_options(values={'enable_repair_based_node_ops': True, 'hinted_handoff_enabled': False}, batch_commitlog=True)
         debug("Starting cluster with 3 nodes.")
         cluster.populate(3).start(wait_for_binary_proto=True)
         node1, node2, node3 = cluster.nodelist()
@@ -1736,7 +1736,7 @@ class TestUpdateClusterLayout(Tester):
 
     def verify_latest_copy_removenode_node_test(self):
         cluster = self.cluster
-        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.set_configuration_options(values={'enable_repair_based_node_ops': True, 'hinted_handoff_enabled': False}, batch_commitlog=True)
         debug("Starting cluster with 4 nodes.")
         cluster.populate(4).start(wait_for_binary_proto=True)
         node1, node2, node3, node4 = cluster.nodelist()
