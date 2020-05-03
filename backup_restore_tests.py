@@ -150,7 +150,7 @@ class TestBackupRestore(Tester):
 
         debug("Copy sstables from the snapshot...")
         for f in os.listdir(snapshot_dir):
-            shutil.copy2(os.path.join(snapshot_dir, f), os.path.join(cf_dir, f))
+            shutil.copy2(os.path.join(snapshot_dir, f), os.path.join(cf_dir, 'upload', f))
 
         debug("Running 'nodetool refresh'...")
         self.start_nodetool_and_kill_node(node1, 'refresh -- ks cf')
@@ -235,7 +235,7 @@ class TestBackupRestore(Tester):
 
         debug("Copy sstables from the snapshot...")
         for f in os.listdir(snapshot_dir):
-            shutil.copy2(os.path.join(snapshot_dir, f), os.path.join(cf_dir, f))
+            shutil.copy2(os.path.join(snapshot_dir, f), os.path.join(cf_dir, 'upload', f))
 
         debug("Running 'nodetool refresh -- ks cf' - first take...")
         node1.nodetool("refresh -- ks cf")
@@ -325,7 +325,7 @@ class TestBackupRestore(Tester):
 
         debug("Copy sstables from the snapshot...")
         for f in os.listdir(snapshot_dir):
-            shutil.copy2(os.path.join(snapshot_dir, f), os.path.join(cf_dir, f))
+            shutil.copy2(os.path.join(snapshot_dir, f), os.path.join(cf_dir, 'upload', f))
 
         debug("Running 'nodetool refresh -- ks cf'")
         node1.nodetool("refresh -- ks cf")
@@ -405,7 +405,7 @@ class TestBackupRestore(Tester):
 
         debug("Copy sstables from the snapshot...")
         for f in os.listdir(snapshot_dir):
-            shutil.copy2(os.path.join(snapshot_dir, f), os.path.join(cf_dir, f))
+            shutil.copy2(os.path.join(snapshot_dir, f), os.path.join(cf_dir, 'upload', f))
 
         debug("Running 'nodetool refresh -- ks cf'")
         node1.nodetool("refresh -- ks cf")
@@ -533,7 +533,7 @@ class TestBackupRestore(Tester):
 
         debug("Copy sstables from the snapshot...")
         for f in os.listdir(cassandra_snapshot_dir):
-            shutil.copy2(os.path.join(cassandra_snapshot_dir, f), os.path.join(cf_dir, f))
+            shutil.copy2(os.path.join(cassandra_snapshot_dir, f), os.path.join(cf_dir, 'upload', f))
 
         debug("Running 'nodetool refresh -- ks cf'")
         node1.nodetool("refresh -- ks cf")
