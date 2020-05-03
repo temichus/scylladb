@@ -98,6 +98,15 @@ class TesterAlternator(Tester):
             waiter.wait(TableName=table_name)
         info(f"The table '{table_name}' successfully created..")
 
+    def wait_table_exists(self, table_name: str, nodes: List[ScyllaNode]) -> None:
+        """
+        Wait until table exists on all `nodes`
+        """
+        for node in nodes:
+            dynamodb_api = self.get_dynamodb_api(node=node)
+            waiter = dynamodb_api.client.get_waiter('table_exists')
+            waiter.wait(TableName=table_name, WaiterConfig={'Delay': 0.2, 'MaxAttempts': 60})
+
     def delete_table_items(self, table_name: str, node: ScyllaNode, items: List[Dict[str, str]], primary_key: str = None
                            ) -> None:
         dynamodb_api = self.get_dynamodb_api(node=node)

@@ -63,6 +63,8 @@ class AlternatorTest(TesterAlternator):
         self.prepare_cluster()
         node1, node2, node3 = self.cluster.nodelist()
         self.create_table(table_name=TABLE_NAME, node=node1)
+        self.wait_table_exists(TABLE_NAME, self.cluster.nodelist())
+
         self.generate_request_items(table_name=TABLE_NAME, node=node1)
         get_items_thread = self.run_stress(table_name=TABLE_NAME, node=node1)
         debug(f'Start drain for: {node3.name}')
@@ -74,6 +76,8 @@ class AlternatorTest(TesterAlternator):
         self.prepare_cluster()
         node1, node2, node3 = self.cluster.nodelist()
         self.create_table(table_name=TABLE_NAME, node=node1)
+        self.wait_table_exists(TABLE_NAME, self.cluster.nodelist())
+
         self.generate_request_items(table_name=TABLE_NAME, node=node1)
         alternator_consistent_stress = self.run_stress(table_name=TABLE_NAME, node=node1)
         debug(f'Start first decommission during consistent Alternator-load for: {node2.name}')
@@ -122,6 +126,8 @@ class AlternatorTest(TesterAlternator):
         self.prepare_cluster(num_of_nodes=3, is_multi_dc=True)
         dc1_node = self.cluster.nodelist()[0]
         self.create_table(table_name=TABLE_NAME, node=dc1_node)
+        self.wait_table_exists(TABLE_NAME, self.cluster.nodelist())
+
         debug(f"Writing Alternator queries to node {dc1_node.name} on data-center {dc1_node.data_center}")
         self.generate_request_items(table_name=TABLE_NAME, node=dc1_node)
         dc2_node = next(node for node in self.cluster.nodelist() if node.data_center != dc1_node.data_center)
