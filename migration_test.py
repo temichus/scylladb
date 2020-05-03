@@ -663,7 +663,7 @@ class TestMigration(MigrationTestBase):
         debug("Column family directory is {}".format(cf_dir))
 
         upload_dir = os.path.join(cf_dir, "upload")
-        debug("Colum family upload directory is {}".format(upload_dir))
+        debug("Column family upload directory is {}".format(upload_dir))
 
         debug("Copying sstables created by Cassandra...")
         self.copy_files_to(cassandra_sstable_dir, upload_dir)
