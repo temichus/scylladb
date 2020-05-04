@@ -3,18 +3,16 @@ import random
 import shutil
 import tempfile
 
-import boto3
 from botocore import exceptions as boto3_exceptions
+from deepdiff import DeepDiff
 from nose.plugins.attrib import attr
 from pprint import pformat
 
 from alternator_utils import TesterAlternator, ALTERNATOR_SNAPSHOT_FOLDER, TABLE_NAME, NUM_OF_ITEMS
-from alternator_utils import create_dynamodb_table, generate_put_request_items, StoppableThread, get_table_items, \
-    Gsi, full_query, multiset
-from dtest import Tester, debug
+from alternator_utils import generate_put_request_items, Gsi, full_query, multiset
+from dtest import debug
 from tools import new_node
 
-NUM_OF_NODES = 3
 
 @attr('dtest-full')
 class AlternatorTest(TesterAlternator):
@@ -75,17 +73,19 @@ class AlternatorTest(TesterAlternator):
         items = generate_put_request_items(num_of_items=NUM_OF_ITEMS, add_gsi=True)
         node_resource_table = self.batch_writer_item_list(node=node1, item_list=items)
 
-        debug("Stopping one node before testing GSI query")
         node = self.cluster.nodelist()[1]
+        debug(f"Stopping {node.name} before testing GSI query")
         node.stop()
 
-        debug(f"Testing and validating a query using GSI")
+        debug("Testing and validating a query using GSI")
         gsi_filtered_val = items[random.randint(0, NUM_OF_ITEMS - 1)][Gsi.ATTRIBUTE_NAME]
-        expected_items = [i for i in items if i['g_s_i'] == gsi_filtered_val]
+        expected_items = [item for item in items if item['g_s_i'] == gsi_filtered_val]
         key_condition = {Gsi.ATTRIBUTE_NAME: {'AttributeValueList': [gsi_filtered_val], 'ComparisonOperator': 'EQ'}}
         result_items = full_query(node_resource_table, IndexName=Gsi.NAME,
                                   KeyConditions=key_condition)
-        self.assertEqual(first=multiset(result_items), second=multiset(expected_items))
+        diff_result = DeepDiff(t1=result_items, t2=expected_items, ignore_order=True)
+        self.assertTrue(expr=not diff_result, msg=f"The following items are missing:\n{pformat(diff_result)}")
+
 
     def test_drain_during_dynamo_load(self):
         self.prepare_dynamodb_cluster(num_of_nodes=3)
@@ -164,7 +164,7 @@ class AlternatorTest(TesterAlternator):
     def test_dynamo_reads_after_new_node_repair(self):
         self.prepare_dynamodb_cluster(num_of_nodes=3)
         node1, node2, node3 = self.cluster.nodelist()
-        debug(f"Adding data for all nodes")
+        debug("Adding data for all nodes")
         self.prefill_dynamodb_table(node=node1)
         debug(f"Decommissioning {node3.name}")
         node3.decommission()
@@ -173,9 +173,8 @@ class AlternatorTest(TesterAlternator):
         debug("Start node4..")
         node4.start(wait_for_binary_proto=True, wait_other_notice=True)
         debug(f"starting repair on {node4.name}...")
-        info = node4.repair()
-        debug(info[0])
-        debug(info[1])
+        stdout, stderr = node4.repair()
+        debug(f'nodetool repair : stdout={stdout}, stderr={stderr}')
         debug(f"Stopping {node1.name}")
         node1.stop(wait_other_notice=True)
         debug(f"Stopping {node2.name}")

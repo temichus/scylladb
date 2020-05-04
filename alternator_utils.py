@@ -1,18 +1,18 @@
-import os
-import shutil
 import collections
+import os
 import random
+import shutil
 import string
-import threading
 from collections import namedtuple
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Dict, Union
 
 import boto3
-from ccmlib.scylla_node import ScyllaNode
+import threading
 from deepdiff import DeepDiff
 from nose.plugins.attrib import attr
 
+from ccmlib.scylla_node import ScyllaNode
 from dtest import debug, Tester, info
 
 AlternatorApi = namedtuple("AlternatorApi", ["resource", "client"])
@@ -279,7 +279,8 @@ class TesterAlternator(Tester):
             debug("First Item in range: {}".format(
                 table.get_item(ConsistentRead=consistent_read, Key={self._table_pk: 'test0'})['Item']))
             debug("Last Item in range: {}".format(
-                table.get_item(ConsistentRead=consistent_read, Key={self._table_pk: f'test{num_of_items - 1}'})['Item']))
+                table.get_item(ConsistentRead=consistent_read, Key={self._table_pk: f'test{num_of_items - 1}'})[
+                    'Item']))
 
         for idx in range(num_of_items):
             table.get_item(ConsistentRead=consistent_read, Key={self._table_pk: f'test{idx}'})
@@ -309,6 +310,7 @@ def create_dynamodb_table(dynamodb_resource, table_name=TABLE_NAME, base_schema=
     waiter = table.meta.client.get_waiter('table_exists')
     waiter.config.delay = 1
     waiter.config.max_attempts = 200
+    waiter.wait(TableName=table_name, WaiterConfig={'Delay': 1, 'MaxAttepts': 200})
     waiter.wait(TableName=table_name)
     return table
 
@@ -331,7 +333,15 @@ def generate_put_request_items(num_of_items: int = NUM_OF_ITEMS, add_gsi: bool =
     return put_request_items
 
 
-def freeze(item):
+def freeze(item: Union[list, dict, str]) -> Union[tuple, frozenset, str]:
+    """
+    This method aims to "freeze" a Dynabodb item query result of list and sub-lists of dictionaries with values.
+    it recursively goes over all sub-lists and turns each dict to a frozenset and each list to a tuple.
+    this way, it turns to hashable data type and can be used with comparison operator.
+    thus table query results can be compared to expected results.
+    :param item:
+    :return:
+    """
     if isinstance(item, dict):
         return frozenset((key, freeze(value)) for key, value in item.items())
     elif isinstance(item, list):
@@ -339,26 +349,34 @@ def freeze(item):
     return item
 
 
-def multiset(items):
+def multiset(items: list):
+    """
+    To compare two lists of items (each is a dict) without regard for order,
+    "==" is not good enough because it will fail if the order is different.
+    The following function, multiset() converts the list into a multiset
+    (set with duplicates) where order doesn't matter, so the multisets can
+    be compared.
+
+    example multiset result:
+    Counter({frozenset({('x', frozenset({('hello', 'world19')})), ('g_s_i', 'V'), ('p', 'test19')}): 1, frozenset({('x',
+            frozenset({('hello', 'world77')})), ('g_s_i', 'V'), ('p', 'test77')}): 1,
+            frozenset({('g_s_i', 'V'), ('p', 'test83'), ('x', frozenset({('hello', 'world83')}))}): 1})
+    :param items:
+    :return: Counter collection
+    """
     return collections.Counter([freeze(item) for item in items])
 
 
 def full_query(table, **kwargs):
+    """
+    A dynamodb table query that can also be extended with parameters like 'KeyConditions'
+    :param table:  the dynamodb table object to run query on
+    :param kwargs: for adding any other optional dynamodb params
+    :return: A list of query result items.
+    """
     response = table.query(**kwargs)
     items = response['Items']
     while 'LastEvaluatedKey' in response:
         response = table.query(ExclusiveStartKey=response['LastEvaluatedKey'], **kwargs)
         items.extend(response['Items'])
     return items
-
-
-def get_table_items(table, num_of_items: int = NUM_OF_ITEMS, verbose: bool = True, consistent_read: bool = True):
-    debug(f"Starting queries of: {num_of_items} items with ConsistentRead = {consistent_read}")
-    if verbose:
-        debug("First Item in range: {}".format(
-            table.get_item(ConsistentRead=consistent_read, Key={'p': 'test0'})['Item']))
-        debug("Last Item in range: {}".format(
-            table.get_item(ConsistentRead=consistent_read, Key={'p': f'test{num_of_items - 1}'})['Item']))
-
-    for idx in range(num_of_items):
-        table.get_item(ConsistentRead=consistent_read, Key={'p': f'test{idx}'})
