@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-from cassandra.protocol import SyntaxException, ServerError
+from cassandra.protocol import SyntaxException, ServerError, InvalidRequest
 
 from dtest import Tester, ServiceLevel, Role, User
 from dtest import DEFAULT_SERVICE_LEVEL_SHARES
@@ -978,8 +978,7 @@ class SLATests(Tester):
         role = self.create_role(session=session, name='role1')
 
         expected_error = 'Service Level {} doesn\'t exists.'.format(sl.name)
-
-        self.assertRaisesRegexp(ServerError, expected_error, role.attach_service_level, service_level=sl)
+        self.assertRaisesRegexp(InvalidRequest, expected_error, role.attach_service_level, service_level=sl)
 
     def attach_sla_to_not_exists_role_test(self):
         """
@@ -992,7 +991,7 @@ class SLATests(Tester):
 
         expected_error = 'Role {} doesn\'t exist.'.format(role.name)
 
-        self.assertRaisesRegexp(ServerError, expected_error, role.attach_service_level, service_level=sl)
+        self.assertRaisesRegexp(InvalidRequest, expected_error, role.attach_service_level, service_level=sl)
 
     def drop_not_existing_sla_test(self):
         """
@@ -1002,7 +1001,7 @@ class SLATests(Tester):
         sl = ServiceLevel(session=session, name='sla1')
         expected_error = 'Service Level {} doesn\'t exists.'.format(sl.name)
 
-        self.assertRaisesRegexp(Exception, expected_error, sl.drop, if_exists=False)
+        self.assertRaisesRegexp(InvalidRequest, expected_error, sl.drop, if_exists=False)
 
     @require('#776')
     def update_not_existing_sla_test(self):
