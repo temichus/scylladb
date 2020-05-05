@@ -66,6 +66,12 @@ here="$(realpath $(dirname "$0"))"
 DOCKER_IMAGE="$(<"$here/image")"
 
 export CASSANDRA_DIR=${CASSANDRA_DIR:-`pwd`/../scylla}
+
+# turn CASSANDRA_DIR into an absolute path if needed
+if [[ ${CASSANDRA_DIR} != /* ]]; then
+    export CASSANDRA_DIR="`pwd`/${CASSANDRA_DIR}"
+fi
+
 SCYLLA_ROOT_DIR=$(echo $CASSANDRA_DIR | sed 's|/build/.*||')
 
 # if CASSANDRA_DIR didn't point to specific variant default to release
