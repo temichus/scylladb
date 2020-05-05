@@ -32,7 +32,7 @@ class RepairAdditionalBase(Tester):
     ROWS_IN_PARTITION = 20
     BIG_PARTITION_ROWS = 10000
 
-    def check_rows_on_node(self, node_to_check, rows, found=None, missings=None, restart=True):
+    def check_rows_on_node(self, node_to_check, rows, found=None, missings=None, restart=True, consistency_level=ConsistencyLevel.ONE):
         if found is None:
             found = []
         if missings is None:
@@ -45,17 +45,17 @@ class RepairAdditionalBase(Tester):
 
         self.cluster.stop_nodes(stopped_nodes, wait_other_notice=True)
 
-        cs = self.patient_cql_cluster_session(node_to_check, 'ks', exclusive=True)
+        cs = self.patient_cql_cluster_session(node_to_check, 'ks', exclusive=True, consistency_level=consistency_level)
         session = cs.session
-        query = SimpleStatement("SELECT * FROM cf LIMIT %d" % (rows * 2), consistency_level=ConsistencyLevel.ONE)
+        query = SimpleStatement("SELECT * FROM cf LIMIT %d" % (rows * 2), consistency_level=consistency_level)
         result = list(session.execute(query))
         self.assertEqual(len(result), rows, len(result))
 
         for k in found:
-            query_c1c2(session, k, ConsistencyLevel.ONE)
+            query_c1c2(session, k, consistency_level)
 
         for k in missings:
-            query = SimpleStatement("SELECT c1, c2 FROM cf WHERE key='k%d'" % k, consistency_level=ConsistencyLevel.ONE)
+            query = SimpleStatement("SELECT c1, c2 FROM cf WHERE key='k%d'" % k, consistency_level=consistency_level)
             res = list(session.execute(query))
             self.assertEqual(len(filter(lambda x: len(x) != 0, res)), 0, res)
 
@@ -829,13 +829,13 @@ class RepairAdditionalBase(Tester):
         # completely missing this data:
         debug("Adding data only on node 1...")
         self.cluster.stop_nodes([node1_2, node2_1, node2_2, node3_1, node3_2], wait_other_notice=True)
-        with self.patient_cql_cluster_session(node1_1, 'ks', exclusive=True) as session1:
+        with self.patient_cql_cluster_session(node1_1, 'ks', exclusive=True, consistency_level=ConsistencyLevel.LOCAL_ONE) as session1:
             insert_c1c2(session1, keys=range(1000, 2000), consistency=ConsistencyLevel.LOCAL_ONE)
         self.cluster.flush()
         debug("Adding data only on node 2...")
         node1_2.start(wait_other_notice=True, wait_for_binary_proto=True)
         node1_1.stop(wait_other_notice=True)
-        with self.patient_cql_cluster_session(node1_2, 'ks', exclusive=True) as session2:
+        with self.patient_cql_cluster_session(node1_2, 'ks', exclusive=True, consistency_level=ConsistencyLevel.LOCAL_ONE) as session2:
             insert_c1c2(session2, keys=range(2000, 3000), consistency=ConsistencyLevel.LOCAL_ONE)
 
         # Bring up all nodes, each node on dc 1 should have different data
@@ -861,7 +861,7 @@ class RepairAdditionalBase(Tester):
         debug("Stopping node1_1")
         node1_1.flush()
         node1_1.stop(wait_other_notice=True)
-        with self.patient_cql_cluster_session(node1_2, 'ks', exclusive=True) as session2:
+        with self.patient_cql_cluster_session(node1_2, 'ks', exclusive=True, consistency_level=ConsistencyLevel.LOCAL_ONE) as session2:
             self.assert_repair_option_pr_rows(session2, 1200, 1800, consistency_level=ConsistencyLevel.LOCAL_ONE)
 
         debug("Restarting node1_2")
@@ -869,7 +869,7 @@ class RepairAdditionalBase(Tester):
         debug("Stopping node1_2")
         node1_2.flush()
         node1_2.stop(wait_other_notice=True)
-        with self.patient_cql_cluster_session(node1_1, 'ks', exclusive=True) as session1:
+        with self.patient_cql_cluster_session(node1_1, 'ks', exclusive=True, consistency_level=ConsistencyLevel.LOCAL_ONE) as session1:
             self.assert_repair_option_pr_rows(session1, 1200, 1800, consistency_level=ConsistencyLevel.LOCAL_ONE)
 
         debug("Restarting node1_2")
@@ -886,8 +886,8 @@ class RepairAdditionalBase(Tester):
         info = node1_2.repair(['-pr', '-local', 'ks'])
         debug(info[0])
         debug(info[1])
-        self.check_rows_on_node(node1_1, 2000)
-        self.check_rows_on_node(node1_2, 2000)
+        self.check_rows_on_node(node1_1, 2000, consistency_level=ConsistencyLevel.LOCAL_ONE)
+        self.check_rows_on_node(node1_2, 2000, consistency_level=ConsistencyLevel.LOCAL_ONE)
 
     def _repair_option_pr_multi_dc_test(self):
         """
@@ -915,13 +915,13 @@ class RepairAdditionalBase(Tester):
         # completely missing this data:
         debug("Adding data only on node 1...")
         self.cluster.stop_nodes([node1_2, node2_1, node2_2, node3_1, node3_2], wait_other_notice=True)
-        with self.patient_cql_cluster_session(node1_1, 'ks', exclusive=True) as session1:
+        with self.patient_cql_cluster_session(node1_1, 'ks', exclusive=True, consistency_level=ConsistencyLevel.LOCAL_ONE) as session1:
             insert_c1c2(session1, keys=range(1 * num_keys, 2 * num_keys), consistency=ConsistencyLevel.LOCAL_ONE)
         self.cluster.flush()
         debug("Adding data only on node 2...")
         node1_2.start(wait_other_notice=True, wait_for_binary_proto=True)
         node1_1.stop(wait_other_notice=True)
-        with self.patient_cql_cluster_session(node1_2, 'ks', exclusive=True) as session2:
+        with self.patient_cql_cluster_session(node1_2, 'ks', exclusive=True, consistency_level=ConsistencyLevel.LOCAL_ONE) as session2:
             insert_c1c2(session2, keys=range(2 * num_keys, 3 * num_keys), consistency=ConsistencyLevel.LOCAL_ONE)
 
         # Bring up all nodes, each should have different data
@@ -944,7 +944,7 @@ class RepairAdditionalBase(Tester):
         debug("Stopping node1_2")
         node1_2.flush()
         node1_2.stop(wait_other_notice=True)
-        with self.patient_cql_cluster_session(node1_1, 'ks', exclusive=True) as session1:
+        with self.patient_cql_cluster_session(node1_1, 'ks', exclusive=True, consistency_level=ConsistencyLevel.LOCAL_ONE) as session1:
             self.assert_repair_option_pr_rows(session1, int(num_keys * 1.05), int(num_keys * 1.667), consistency_level=ConsistencyLevel.LOCAL_ONE)
 
         debug("Restarting node1_2")
@@ -961,7 +961,7 @@ class RepairAdditionalBase(Tester):
                 debug(info[1])
         for node in self.cluster.nodelist():
             debug("Checking data on " + node.name)
-            self.check_rows_on_node(node, 2 * num_keys)
+            self.check_rows_on_node(node, 2 * num_keys, consistency_level=ConsistencyLevel.LOCAL_ONE)
 
     def _repair_option_cf_test(self):
         """
