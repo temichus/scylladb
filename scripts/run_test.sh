@@ -88,7 +88,7 @@ export JMX_DIR=${JMX_DIR:-`pwd`/../scylla-jmx}
 export DTEST_DIR=${DTEST_DIR:-`pwd`}
 export CCM_DIR=${CCM_DIR:-`pwd`/../scylla-ccm}
 export SCYLLA_DBUILD_SO_DIR=$( realpath ${SCYLLA_DBUILD_SO_DIR:-${CASSANDRA_DIR}/dynamic_libs} )
-export SCYLLA_EXT_OPTS=${SCYLLA_EXT_OPTS:-"--smp 1 --memory 512M"}
+export SCYLLA_EXT_OPTS=${SCYLLA_EXT_OPTS:-"--smp 2 --memory 1024M"}
 if [[ "$mode" == debug ]]; then
     export DEF_SCYLLA_EXT_ENV="ASAN_OPTIONS=disable_coredump=0:abort_on_error=1;UBSAN_OPTIONS=halt_on_error=1:abort_on_error=1;BOOST_TEST_CATCH_SYSTEM_ERRORS=no"
 fi
