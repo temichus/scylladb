@@ -55,7 +55,7 @@ class SecondaryIndexesHelpers(object):
 
     @staticmethod
     def prepare(self, user_table=False, rf=3, options={}, keyspace_name='ks', nodes=3, use_vnodes=False,
-                fetch_size=None, jvm_args=[], session_node=1, **kwargs):
+                fetch_size=None, jvm_args=[], session_node=1, consistency_level=ConsistencyLevel.QUORUM, **kwargs):
         """
         Prepare environment for test
         """
@@ -75,7 +75,8 @@ class SecondaryIndexesHelpers(object):
             debug('The cluster has been started with SMP {}'.format(jvm_args[jvm_args.index('--smp')+1]))
         node1 = cluster.nodelist()[session_node-1]
 
-        session = self.patient_cql_connection(node1, **kwargs)
+        self.cs = self.patient_cql_cluster_session(node1, consistency_level=consistency_level, **kwargs)
+        session = self.cs.session
         if fetch_size:
             session.default_fetch_size = fetch_size
         self.create_ks(session, keyspace_name, rf)
