@@ -48,7 +48,8 @@ Script to run dtest from within docker
         KEEP_TEST_DIR
         KEEP_CORES
         CLUSTER_ID_ALLOCATOR
-        NOSE_PROCESSES
+        NOSE_PROCESSES (defaults to 1)
+        NOSE_PROCESS_TIMEOUT (defaults to 7200)
         DRY_RUN
 
     Examples:
@@ -86,6 +87,8 @@ if [[ "$mode" == debug ]]; then
     export DEF_SCYLLA_EXT_ENV="ASAN_OPTIONS=disable_coredump=0:abort_on_error=1;UBSAN_OPTIONS=halt_on_error=1:abort_on_error=1;BOOST_TEST_CATCH_SYSTEM_ERRORS=no"
 fi
 export SCYLLA_EXT_ENV=${SCYLLA_EXT_ENV:-"$DEF_SCYLLA_EXT_ENV"}
+export NOSE_PROCESSES=${NOSE_PROCESSES:-"1"}
+export NOSE_PROCESS_TIMEOUT=${NOSE_PROCESS_TIMEOUT:-"7200"}
 
 mkdir -p ${HOME}/.dtest
 mkdir -p ${HOME}/.ccm
@@ -174,6 +177,7 @@ docker_cmd="docker run --detach=true \
     -e KEEP_TEST_DIR \
     -e KEEP_CORES \
     -e NOSE_PROCESSES \
+    -e NOSE_PROCESS_TIMEOUT \
     -e CLUSTER_ID_ALLOCATOR \
     -e DRY_RUN \
     -e NODE_TOTAL \
