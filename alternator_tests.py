@@ -9,7 +9,7 @@ from nose.plugins.attrib import attr
 from pprint import pformat
 
 from alternator_utils import TesterAlternator, ALTERNATOR_SNAPSHOT_FOLDER, TABLE_NAME, NUM_OF_ITEMS
-from alternator_utils import generate_put_request_items, Gsi, full_query, multiset
+from alternator_utils import generate_put_request_items, Gsi, full_query
 from dtest import debug
 from tools import new_node
 

@@ -293,19 +293,6 @@ class TesterAlternator(Tester):
         self.batch_write_items(table_name=table_name, node=node)
 
 
-def create_dynamodb_table(dynamodb_resource, table_name=TABLE_NAME, base_schema=DEFAULT_SCHEMA, **kwargs):
-    if type(base_schema) == tuple:
-        base_schema = dict(base_schema)
-    debug(f"Schema to create is: {base_schema} {kwargs}")
-    table = dynamodb_resource.create_table(TableName=table_name, BillingMode='PAY_PER_REQUEST', **base_schema, **kwargs)
-    waiter = table.meta.client.get_waiter('table_exists')
-    waiter.config.delay = 1
-    waiter.config.max_attempts = 200
-    waiter.wait(TableName=table_name, WaiterConfig={'Delay': 1, 'MaxAttepts': 200})
-    waiter.wait(TableName=table_name)
-    return table
-
-
 def random_string(length=1, chars=string.ascii_uppercase + string.digits):
     return ''.join(random.choice(chars) for x in range(length))
 
@@ -322,40 +309,6 @@ def generate_put_request_items(num_of_items: int = NUM_OF_ITEMS, add_gsi: bool =
             item['g_s_i'] = random_string()
         put_request_items.append(item)
     return put_request_items
-
-
-def freeze(item: Union[list, dict, str]) -> Union[tuple, frozenset, str]:
-    """
-    This method aims to "freeze" a Dynabodb item query result of list and sub-lists of dictionaries with values.
-    it recursively goes over all sub-lists and turns each dict to a frozenset and each list to a tuple.
-    this way, it turns to hashable data type and can be used with comparison operator.
-    thus table query results can be compared to expected results.
-    :param item:
-    :return:
-    """
-    if isinstance(item, dict):
-        return frozenset((key, freeze(value)) for key, value in item.items())
-    elif isinstance(item, list):
-        return tuple(freeze(value) for value in item)
-    return item
-
-
-def multiset(items: list):
-    """
-    To compare two lists of items (each is a dict) without regard for order,
-    "==" is not good enough because it will fail if the order is different.
-    The following function, multiset() converts the list into a multiset
-    (set with duplicates) where order doesn't matter, so the multisets can
-    be compared.
-
-    example multiset result:
-    Counter({frozenset({('x', frozenset({('hello', 'world19')})), ('g_s_i', 'V'), ('p', 'test19')}): 1, frozenset({('x',
-            frozenset({('hello', 'world77')})), ('g_s_i', 'V'), ('p', 'test77')}): 1,
-            frozenset({('g_s_i', 'V'), ('p', 'test83'), ('x', frozenset({('hello', 'world83')}))}): 1})
-    :param items:
-    :return: Counter collection
-    """
-    return collections.Counter([freeze(item) for item in items])
 
 
 def full_query(table, **kwargs):
