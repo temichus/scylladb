@@ -53,7 +53,7 @@ class AlternatorTest(TesterAlternator):
         self.prepare_dynamodb_cluster(num_of_nodes=1)
         node1 = self.cluster.nodelist()[0]
         self.create_table(table_name=table_name, node=node1)
-        self.generate_request_items(table_name=table_name, num_of_items=num_of_items, node=node1)
+        self.batch_write_items(table_name=table_name, num_of_items=num_of_items, node=node1)
         data_before_refresh = self.scan_table(table_name=table_name, node=node1)
 
         snapshot_folder = tempfile.mkdtemp()
@@ -71,7 +71,7 @@ class AlternatorTest(TesterAlternator):
         self.create_table(node=node1, create_gsi=True)
         debug(f"Writing Alternator data on a table with GSI")
         items = generate_put_request_items(num_of_items=NUM_OF_ITEMS, add_gsi=True)
-        node_resource_table = self.batch_writer_item_list(node=node1, item_list=items)
+        node_resource_table = self.batch_write_items(node=node1, items=items)
 
         node = self.cluster.nodelist()[1]
         debug(f"Stopping {node.name} before testing GSI query")
@@ -86,13 +86,12 @@ class AlternatorTest(TesterAlternator):
         diff_result = DeepDiff(t1=result_items, t2=expected_items, ignore_order=True)
         self.assertTrue(expr=not diff_result, msg=f"The following items are missing:\n{pformat(diff_result)}")
 
-
     def test_drain_during_dynamo_load(self):
         self.prepare_dynamodb_cluster(num_of_nodes=3)
         node1, node2, node3 = self.cluster.nodelist()
         self.create_table(table_name=TABLE_NAME, node=node1)
         self.wait_table_exists(TABLE_NAME, self.cluster.nodelist())
-        self.generate_request_items(table_name=TABLE_NAME, node=node1)
+        self.batch_write_items(table_name=TABLE_NAME, node=node1)
         get_items_thread = self.run_stress(table_name=TABLE_NAME, node=node1)
         debug(f'Start drain for: {node3.name}')
         node3.drain()
@@ -105,7 +104,7 @@ class AlternatorTest(TesterAlternator):
         self.create_table(table_name=TABLE_NAME, node=node1)
         self.wait_table_exists(TABLE_NAME, self.cluster.nodelist())
 
-        self.generate_request_items(table_name=TABLE_NAME, node=node1)
+        self.batch_write_items(table_name=TABLE_NAME, node=node1)
         alternator_consistent_stress = self.run_stress(table_name=TABLE_NAME, node=node1)
         debug(f'Start first decommission during consistent Alternator-load for: {node2.name}')
         node2.decommission()
@@ -140,7 +139,7 @@ class AlternatorTest(TesterAlternator):
         debug(f"Stopping {node2.name}")
         node2.stop(wait_other_notice=True)
         self.create_table(table_name=TABLE_NAME, node=node1)
-        self.generate_request_items(table_name=TABLE_NAME, node=node1)
+        self.batch_write_items(table_name=TABLE_NAME, node=node1)
         debug(f"Starting {node2.name}")
         node2.start(wait_other_notice=True, wait_for_binary_proto=True)
         debug(f"starting repair on {node2.name}...")
@@ -156,7 +155,7 @@ class AlternatorTest(TesterAlternator):
         self.wait_table_exists(TABLE_NAME, self.cluster.nodelist())
 
         debug(f"Writing Alternator queries to node {dc1_node.name} on data-center {dc1_node.data_center}")
-        self.generate_request_items(table_name=TABLE_NAME, node=dc1_node)
+        self.batch_write_items(table_name=TABLE_NAME, node=dc1_node)
         dc2_node = next(node for node in self.cluster.nodelist() if node.data_center != dc1_node.data_center)
         debug(f"Reading Alternator queries from node {dc2_node.name} on data-center {dc2_node.data_center}")
         self.get_table_items(table_name=TABLE_NAME, node=dc2_node, consistent_read=False)

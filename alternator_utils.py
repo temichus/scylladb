@@ -184,14 +184,16 @@ class TesterAlternator(Tester):
         return items
 
     # pylint:disable=too-many-arguments
-    def generate_request_items(self, table_name: str, node: ScyllaNode, items: List[Dict[str, str]] = None,
-                               num_of_items: int = NUM_OF_ITEMS, primary_key: str = None) -> None:
+    def batch_write_items(self, node: ScyllaNode, table_name: str = TABLE_NAME, items: List[Dict[str, str]] = None,
+                          num_of_items: int = NUM_OF_ITEMS, primary_key: str = None):
         dynamodb_api = self.get_dynamodb_api(node=node)
         items = self.create_items(primary_key=primary_key, items=items, num_of_items=num_of_items)
         debug(f"Generating '{len(items)}' items for table '{table_name}'..")
-        with dynamodb_api.resource.Table(name=table_name).batch_writer() as batch:
+        table = dynamodb_api.resource.Table(name=table_name)
+        with table.batch_writer() as batch:
             for item in items:
                 batch.put_item(item)
+        return table
 
     def scan_table(self, table_name: str, node: ScyllaNode) -> list:
         dynamodb_api = self.get_dynamodb_api(node=node)
@@ -285,21 +287,10 @@ class TesterAlternator(Tester):
         for idx in range(num_of_items):
             table.get_item(ConsistentRead=consistent_read, Key={self._table_pk: f'test{idx}'})
 
-    def batch_writer_item_list(self, node: ScyllaNode, item_list=None):
-        item_list = item_list or generate_put_request_items(num_of_items=NUM_OF_ITEMS)
-        dynamodb_api = self.get_dynamodb_api(node=node)
-        debug(f"Executing batch_write_item, using {dynamodb_api.client.meta.endpoint_url} resource..")
-        table = dynamodb_api.resource.Table(TABLE_NAME)
-        with table.batch_writer() as batch:
-            for item in item_list:
-                debug(f"put item: {item}")
-                batch.put_item(item)
-        return table
-
     def prefill_dynamodb_table(self, node: ScyllaNode, table_name: str = TABLE_NAME):
         self.create_table(table_name=table_name, node=node)
         self.wait_table_exists(table_name, self.cluster.nodelist())
-        self.generate_request_items(table_name=table_name, node=node)
+        self.batch_write_items(table_name=table_name, node=node)
 
 
 def create_dynamodb_table(dynamodb_resource, table_name=TABLE_NAME, base_schema=DEFAULT_SCHEMA, **kwargs):
