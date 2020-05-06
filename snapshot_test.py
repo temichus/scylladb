@@ -847,7 +847,6 @@ class TestParallelSnapshotOperations(Tester, SnapshotOperations):
         # assert that result of each command has not stderr message
         self.verify_stderr_empty(results)
 
-    @require("5603")
     def test_parallel_operations_create_list_clear_for_all_ks(self):
         """Test create/list/clear for all keyspaces
 
@@ -876,7 +875,6 @@ class TestParallelSnapshotOperations(Tester, SnapshotOperations):
         # assert that result of each command has not stderr message
         self.verify_stderr_empty(results)
 
-    @require("5603")
     def test_parallel_operations_with_large_data_size(self):
         """Test create/list/clear in parallel, which start not at same time
 
@@ -903,7 +901,6 @@ class TestParallelSnapshotOperations(Tester, SnapshotOperations):
                 results.append(f.result())
         self.verify_stderr_empty(results)
 
-    @require("5603")
     def test_snapshot_parallel_in_complex_mode_creating_listing_clearing(self):
         """Test varios snapshot operations in parallel
 
