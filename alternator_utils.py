@@ -21,6 +21,7 @@ TABLE_NAME = 'user_table'
 NUM_OF_NODES = 3
 NUM_OF_ITEMS = 100
 ALTERNATOR_PORT = 8080
+DEFAULT_STRING_LENGTH = 5
 DEFAULT_SCHEMA = tuple(dict(
     KeySchema=[
         {'AttributeName': 'pk', 'KeyType': 'HASH'},
@@ -137,7 +138,7 @@ class TesterAlternator(Tester):
             waiter.wait(TableName=table_name)
         info(f"The table '{table_name}' successfully created..")
         response = dynamodb_api.client.describe_table(TableName=table_name)
-        debug(f"Table's schema is: {response}")
+        debug(f"Table's schema and configuration are: {response}")
         return table
 
     def wait_table_exists(self, table_name: str, nodes: List[ScyllaNode]) -> None:
@@ -293,7 +294,7 @@ class TesterAlternator(Tester):
         self.batch_write_items(table_name=table_name, node=node)
 
 
-def random_string(length=1, chars=string.ascii_uppercase + string.digits):
+def random_string(length: int, chars=string.ascii_uppercase + string.digits):
     return ''.join(random.choice(chars) for x in range(length))
 
 
@@ -303,10 +304,10 @@ def generate_put_request_items(num_of_items: int = NUM_OF_ITEMS, add_gsi: bool =
     put_request_items = list()  # type: List[Dict[str, Union[str, Dict[str, str]]]]
     for idx in range(num_of_items):
         item = {
-            'pk': f'test{idx}', 'other': random_string(), 'x': {'hello': f'world{idx}'}
+            'pk': f'test{idx}', 'other': random_string(length=DEFAULT_STRING_LENGTH), 'x': {'hello': f'world{idx}'}
         }
         if add_gsi:
-            item['g_s_i'] = random_string()
+            item[Gsi.ATTRIBUTE_NAME] = random_string(length=1)
         put_request_items.append(item)
     return put_request_items
 

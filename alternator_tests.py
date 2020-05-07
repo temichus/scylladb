@@ -79,12 +79,12 @@ class AlternatorTest(TesterAlternator):
 
         debug("Testing and validating a query using GSI")
         gsi_filtered_val = items[random.randint(0, NUM_OF_ITEMS - 1)][Gsi.ATTRIBUTE_NAME]
-        expected_items = [item for item in items if item['g_s_i'] == gsi_filtered_val]
+        expected_items = [item for item in items if item[Gsi.ATTRIBUTE_NAME] == gsi_filtered_val]
         key_condition = {Gsi.ATTRIBUTE_NAME: {'AttributeValueList': [gsi_filtered_val], 'ComparisonOperator': 'EQ'}}
         result_items = full_query(node_resource_table, IndexName=Gsi.NAME,
                                   KeyConditions=key_condition)
         diff_result = DeepDiff(t1=result_items, t2=expected_items, ignore_order=True)
-        self.assertTrue(expr=not diff_result, msg=f"The following items are missing:\n{pformat(diff_result)}")
+        self.assertTrue(expr=not diff_result, msg=f"The following items differs:\n{pformat(diff_result)}")
 
     def test_drain_during_dynamo_load(self):
         self.prepare_dynamodb_cluster(num_of_nodes=3)
