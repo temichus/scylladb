@@ -144,6 +144,8 @@ class TestSSTableGenerationAndLoading(Tester):
                                      r"init - Startup failed: std::runtime_error"
                                     ]
 
+        timeout = 10 if cluster.scylla_mode != 'debug' else 90
+
         # For each of these component files, verify that if it's removed
         # then the sstable is is detected is malformed but the data
         # file is not lost
@@ -155,7 +157,7 @@ class TestSSTableGenerationAndLoading(Tester):
             debug("Starting node, expected to fail")
             mark = node1.mark_log()
             node1.start(no_wait=True)
-            node1.watch_log_for("malformed_sstable_exception", timeout=10, from_mark=mark)
+            node1.watch_log_for("malformed_sstable_exception", timeout=timeout, from_mark=mark)
             debug("Stopping node")
             node1.stop(wait=False, gently=False)
             time.sleep(1)
