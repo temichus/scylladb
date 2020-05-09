@@ -623,7 +623,7 @@ class Tester(TestCase):
         # the failure detector can be quite slow in such tests with quick start/stop
         self.cluster.set_configuration_options(values={'phi_convict_threshold': 5})
 
-        timeout = 10000
+        timeout = 10000 if self.cluster.scylla_mode != 'debug' else 90000
         self.cluster.set_configuration_options(values={
             'read_request_timeout_in_ms': timeout,
             'range_request_timeout_in_ms': timeout,
