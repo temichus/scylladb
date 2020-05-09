@@ -94,13 +94,16 @@ class TestSSTableGenerationAndLoading(Tester):
 
         # Makinge sure the cluster is ready to accept the subsequent
         # stress connection. This was an issue on Windows.
+        debug("Writing initial data")
         node1.stress(['write', 'n=10000', '-rate', 'threads=8'])
 
         # Query existing data and keep in original_rows
         session = self.patient_cql_connection(node1)
         stress_table = 'keyspace1.standard1'
+        debug("Retrieving initial data")
         original_rows = list(session.execute("SELECT * FROM %s" % (stress_table,)))
 
+        debug("Stopping node and removing summary")
         node1.flush()
         node1.compact()
         node1.stop()
@@ -115,11 +118,14 @@ class TestSSTableGenerationAndLoading(Tester):
         # and that the data is still there
         os.system('rm %s/*Summary.db' % path)
 
+        debug("Starting node")
         node1.start(wait_for_binary_proto=True)
         session = self.patient_cql_connection(node1)
+        debug("Verifying data")
         new_rows = list(session.execute("SELECT * FROM %s" % (stress_table,)))
         self.assertEquals(original_rows, new_rows)
 
+        debug("Stopping node")
         node1.stop()
         time.sleep(1)
         os.system('rm -rf %s/snapshots' % path)
@@ -143,11 +149,14 @@ class TestSSTableGenerationAndLoading(Tester):
         # file is not lost
         comps = ['Index.db', 'Filter.db', 'Statistics.db', 'Digest.*']
         for comp in comps:
+            debug("Removing {comp}".format(**locals()))
             os.system("mv {path}/*{comp} {path}/snapshots/".format(**locals()))
 
+            debug("Starting node, expected to fail")
             mark = node1.mark_log()
             node1.start(no_wait=True)
             node1.watch_log_for("malformed_sstable_exception", timeout=10, from_mark=mark)
+            debug("Stopping node")
             node1.stop(wait=False, gently=False)
             time.sleep(1)
 
@@ -161,8 +170,10 @@ class TestSSTableGenerationAndLoading(Tester):
 
         # Finally, verify that the data is still there after renaming
         # all components back.
+        debug("Starting node")
         node1.start(wait_for_binary_proto=True)
         session = self.patient_cql_connection(node1)
+        debug("Verifying data")
         new_rows = list(session.execute("SELECT * FROM %s" % (stress_table,)))
         self.assertEquals(original_rows, new_rows)
 
