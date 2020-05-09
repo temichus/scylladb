@@ -128,10 +128,13 @@ class TestSSTableGenerationAndLoading(Tester):
         self.ignore_log_patterns += [r"database - Exception while populating keyspace 'keyspace1' with column family 'standard1' from file '.*': "
                                       "sstables::malformed_sstable_exception \(.*: file not found\)",
                                      r"database - Exception while populating keyspace 'keyspace1' with column family 'standard1' from file '.*': "
+                                      "sstables::malformed_sstable_exception \(.*: No such file or directory\)",
+                                     r"database - Exception while populating keyspace 'keyspace1' with column family 'standard1' from file '.*': "
                                       "std::filesystem::__cxx11::filesystem_error \(error system:2, filesystem error: (open|stat) failed: No such file or directory \[.*\]\)",
                                      r"database - Unrecognized error while processing .*: std::filesystem::__cxx11::filesystem_error "
                                       "\(error system:2, filesystem error: (open|stat) failed: No such file or directory \[.*\]\)",
                                      r"database - malformed sstable .*: .*: file not found",
+                                     r"database - malformed sstable .*: .*: No such file or directory",
                                      r"init - Startup failed: std::runtime_error"
                                     ]
 
