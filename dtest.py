@@ -625,11 +625,11 @@ class Tester(TestCase):
 
         timeout = 10000
         self.cql_request_timeout = 30
-        if self.cluster.scylla_mode == 'debug':
+        if isinstance(self.cluster, ScyllaCluster) and self.cluster.scylla_mode == 'debug':
             timeout *= 3
             self.cql_request_timeout *= 3
-        debug("Scylla mode is '{}'".format(self.cluster.scylla_mode))
-        debug("scylla *_request_timeout_in_ms={}, cql request_timeout={}".format(timeout, self.cql_request_timeout))
+            debug("Scylla mode is '{}'".format(self.cluster.scylla_mode))
+        debug("Cluster *_request_timeout_in_ms={}, cql request_timeout={}".format(timeout, self.cql_request_timeout))
         self.cluster.set_configuration_options(values={
             'read_request_timeout_in_ms': timeout,
             'range_request_timeout_in_ms': timeout,
