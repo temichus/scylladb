@@ -12,5 +12,6 @@ nose-parallel==0.3.1
 https://github.com/scylladb/sstable-tools/archive/master.zip
 https://github.com/scylladb/scylla-ccm/archive/master.zip
 boto3==1.10.46
+boto3-stubs[s3,dynamodb]==1.10.46
 tabulate==0.8.7
 deepdiff==4.3.2

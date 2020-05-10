@@ -1,21 +1,20 @@
-import collections
 import os
 import random
 import shutil
 import string
-from collections import namedtuple
+import threading
 from concurrent.futures import ThreadPoolExecutor
-from typing import List, Dict, Union
+from typing import List, Dict, Union, NamedTuple
 
 import boto3
-import threading
+from mypy_boto3_dynamodb import DynamoDBClient, DynamoDBServiceResource
+from mypy_boto3_dynamodb.service_resource import Table
 from deepdiff import DeepDiff
 from nose.plugins.attrib import attr
 
 from ccmlib.scylla_node import ScyllaNode
 from dtest import debug, Tester, info
 
-AlternatorApi = namedtuple("AlternatorApi", ["resource", "client"])
 ALTERNATOR_SNAPSHOT_FOLDER = os.path.join(os.getcwd(), "alternator", "snapshot")
 TABLE_NAME = 'user_table'
 NUM_OF_NODES = 3
@@ -35,6 +34,11 @@ CONDITION_EXPRESSION_SCHEMA = tuple(dict(
     KeySchema=[{'AttributeName': 'pk', 'KeyType': 'HASH'}, {'AttributeName': 'c', 'KeyType': 'RANGE'}],
     AttributeDefinitions=[{'AttributeName': 'pk', 'AttributeType': 'S'}, {'AttributeName': 'c', 'AttributeType': 'N'}]
 ).items())
+
+
+class AlternatorApi(NamedTuple):
+    resource: DynamoDBServiceResource
+    client: DynamoDBClient
 
 
 class Gsi:
@@ -123,8 +127,8 @@ class TesterAlternator(Tester):
     def create_table(self, node: ScyllaNode, table_name: str = TABLE_NAME,
                      base_schema: Union[tuple, Dict] = DEFAULT_SCHEMA,
                      wait_until_table_exists: bool = True,
-                     create_gsi: bool = False, **kwargs):
-        if type(base_schema) == tuple:
+                     create_gsi: bool = False, **kwargs) -> Table:
+        if isinstance(base_schema, tuple):
             base_schema = dict(base_schema)
         if create_gsi:
             base_schema['AttributeDefinitions'].append(Gsi.ATTRIBUTE_DEFINITION)
@@ -250,7 +254,7 @@ class TesterAlternator(Tester):
         upload_folder = os.path.join(keyspace_folder_path, "upload")
         if not os.path.exists(path=snapshot_folder):
             raise NotADirectoryError(f"The snapshot folder '{snapshot_folder}' not exists")
-        if not len(os.listdir(snapshot_folder)):
+        if not os.listdir(snapshot_folder):
             raise IsADirectoryError(f"The snapshot folder '{snapshot_folder}' not contain any files")
 
         debug(f"Loading snapshot files from folder '{snapshot_folder}' to '{upload_folder}'..")
@@ -280,7 +284,7 @@ class TesterAlternator(Tester):
     def get_table_items(self, table_name: str, node: ScyllaNode, num_of_items: int = NUM_OF_ITEMS,
                         verbose: bool = True, consistent_read: bool = True):
         dynamodb_api = self.get_dynamodb_api(node=node)
-        table = dynamodb_api.resource.Table(name=table_name)
+        table: Table = dynamodb_api.resource.Table(name=table_name)
         debug(f"Starting queries of: {num_of_items} items with ConsistentRead = {consistent_read}")
         if verbose:
             debug("First Item in range: {}".format(
