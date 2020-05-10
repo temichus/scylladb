@@ -2,13 +2,14 @@ import os
 import random
 import shutil
 import tempfile
-
-from botocore import exceptions as boto3_exceptions
+from decimal import Decimal
+from botocore.exceptions import ClientError, EndpointConnectionError
 from deepdiff import DeepDiff
 from nose.plugins.attrib import attr
 from pprint import pformat
 
-from alternator_utils import TesterAlternator, ALTERNATOR_SNAPSHOT_FOLDER, TABLE_NAME, NUM_OF_ITEMS
+from alternator_utils import TesterAlternator, ALTERNATOR_SNAPSHOT_FOLDER, TABLE_NAME, NUM_OF_ITEMS, random_string, \
+    CONDITION_EXPRESSION_SCHEMA, DEFAULT_STRING_LENGTH
 from alternator_utils import generate_put_request_items, Gsi, full_query
 from dtest import debug
 from tools import new_node
@@ -120,7 +121,7 @@ class AlternatorTest(TesterAlternator):
         try:
             self.get_table_items(table_name=TABLE_NAME, node=node1, num_of_items=10, consistent_read=True)
             self.fail(msg="Expected ClientError for Alternator query.")
-        except boto3_exceptions.ClientError as query_exp:
+        except ClientError as query_exp:
             self.assertIn('Cannot achieve consistency level for cl LOCAL_QUORUM',
                           query_exp.response['Error']['Message'], msg=query_exp)
             self.assertIn('Internal Server Error', query_exp.response['Error']['Code'], msg=query_exp)
@@ -128,7 +129,7 @@ class AlternatorTest(TesterAlternator):
         debug("Check that the correct error is returned for a resource of a decommissioned node")
         dynamodb_api_node2 = self.get_dynamodb_api(node=node2)
         self.node2_resource_table = dynamodb_api_node2.resource.Table(TABLE_NAME)
-        with self.assertRaisesRegexp(boto3_exceptions.EndpointConnectionError, "Could not connect to the endpoint URL"):
+        with self.assertRaisesRegexp(EndpointConnectionError, "Could not connect to the endpoint URL"):
             self.get_table_items(table_name=TABLE_NAME, node=node2, num_of_items=10, consistent_read=True)
 
     def test_dynamo_reads_after_repair(self):
@@ -181,3 +182,60 @@ class AlternatorTest(TesterAlternator):
         tested_node = node4
         debug(f"Reading Alternator queries from node {tested_node.name}")
         self.get_table_items(table_name=TABLE_NAME, node=tested_node, consistent_read=False)
+
+    def test_read_key_condition_expression(self):
+        self.prepare_dynamodb_cluster(num_of_nodes=3)
+        node1 = self.cluster.nodelist()[0]
+        self.create_table(node=node1, base_schema=CONDITION_EXPRESSION_SCHEMA)
+        debug("Writing Alternator items of the same partition key")
+        pk_condition_value = random_string(length=DEFAULT_STRING_LENGTH)
+        items = [{'pk': pk_condition_value, 'c': Decimal(i), 'a': random_string(length=DEFAULT_STRING_LENGTH)} for i in range(12)]
+        table = self.batch_write_items(node=node1, items=items)
+        debug("Writing an extra different partition key")
+        with table.batch_writer() as batch:
+            batch.put_item({'pk': random_string(length=DEFAULT_STRING_LENGTH), 'c': 123, 'a': random_string(length=DEFAULT_STRING_LENGTH)})
+        node = self.cluster.nodelist()[1]
+        debug(f"Stopping {node.name} before testing key condition expression query")
+        node.stop()
+        debug("Testing and validating a query using key condition expression")
+        got_condition_items = full_query(table, KeyConditionExpression='pk=:pk',
+                                         ExpressionAttributeValues={':pk': pk_condition_value})
+        diff_result = DeepDiff(t1=items, t2=got_condition_items, ignore_order=True)
+        self.assertTrue(expr=not diff_result, msg=f"The following items differs:\n{pformat(diff_result)}")
+
+    def test_update_condition_expression(self):
+        self.prepare_dynamodb_cluster(num_of_nodes=3, is_multi_dc=True)
+        node1 = self.cluster.nodelist()[0]
+        node2 = next(node for node in self.cluster.nodelist() if
+                     node.data_center == node1.data_center and node.name != node1.name)
+        debug("Adding data for all nodes from DC1")
+        table = self.prefill_dynamodb_table(node=node1)
+
+        debug(f"Stopping {node2.name} (before testing update query with key condition expression)")
+        node2.stop()
+
+        dc2_node = next(node for node in self.cluster.nodelist() if node.data_center != node1.data_center)
+        dynamodb_api = self.get_dynamodb_api(node=dc2_node)
+        dc2_table = dynamodb_api.resource.Table(name=TABLE_NAME)
+
+        debug("Testing and validating an update query using key condition expression")
+        new_pk_val = random_string(length=DEFAULT_STRING_LENGTH)
+        debug("simple update from dc1")
+        table.update_item(Key={'pk': new_pk_val},
+                          AttributeUpdates={'a': {'Value': 1, 'Action': 'PUT'}})
+        debug("ConditionExpression update from dc2")
+        dc2_table.update_item(Key={'pk': new_pk_val},
+                              UpdateExpression='SET c = :val',
+                              ConditionExpression='attribute_exists (a)',
+                              ExpressionAttributeValues={':val': 2})
+        debug("ConditionExpression update from dc1")
+        table.update_item(Key={'pk': new_pk_val},
+                          UpdateExpression='SET c = :val',
+                          ConditionExpression='attribute_not_exists (b)',
+                          ExpressionAttributeValues={':val': 3})
+        assert table.get_item(Key={'pk': new_pk_val}, ConsistentRead=True)['Item']['c'] == 3
+        with self.assertRaisesRegexp(ClientError, "ConditionalCheckFailedException"):
+            table.update_item(Key={'pk': new_pk_val},
+                              UpdateExpression='SET c = :val',
+                              ConditionExpression='attribute_not_exists (a)',
+                              ExpressionAttributeValues={':val': 4})

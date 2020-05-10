@@ -31,6 +31,10 @@ DEFAULT_SCHEMA = tuple(dict(
         {'AttributeName': 'other', 'AttributeType': 'S'}
     ]
 ).items())
+CONDITION_EXPRESSION_SCHEMA = tuple(dict(
+    KeySchema=[{'AttributeName': 'pk', 'KeyType': 'HASH'}, {'AttributeName': 'c', 'KeyType': 'RANGE'}],
+    AttributeDefinitions=[{'AttributeName': 'pk', 'AttributeType': 'S'}, {'AttributeName': 'c', 'AttributeType': 'N'}]
+).items())
 
 
 class Gsi:
@@ -291,7 +295,7 @@ class TesterAlternator(Tester):
     def prefill_dynamodb_table(self, node: ScyllaNode, table_name: str = TABLE_NAME):
         self.create_table(table_name=table_name, node=node)
         self.wait_table_exists(table_name, self.cluster.nodelist())
-        self.batch_write_items(table_name=table_name, node=node)
+        return self.batch_write_items(table_name=table_name, node=node)
 
 
 def random_string(length: int, chars=string.ascii_uppercase + string.digits):
