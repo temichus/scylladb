@@ -623,7 +623,13 @@ class Tester(TestCase):
         # the failure detector can be quite slow in such tests with quick start/stop
         self.cluster.set_configuration_options(values={'phi_convict_threshold': 5})
 
-        timeout = 10000 if self.cluster.scylla_mode != 'debug' else 90000
+        timeout = 10000
+        self.cql_request_timeout = 30
+        if self.cluster.scylla_mode == 'debug':
+            timeout *= 3
+            self.cql_request_timeout *= 3
+        debug("Scylla mode is '{}'".format(self.cluster.scylla_mode))
+        debug("scylla *_request_timeout_in_ms={}, cql request_timeout={}".format(timeout, self.cql_request_timeout))
         self.cluster.set_configuration_options(values={
             'read_request_timeout_in_ms': timeout,
             'range_request_timeout_in_ms': timeout,
@@ -756,16 +762,18 @@ class Tester(TestCase):
 
     def cql_connection(self, node, keyspace=None, user=None,
                        password=None, compression=True, protocol_version=None, port=None, ssl_opts=None,
-                       topology_event_refresh_window=10, **kwargs):
+                       topology_event_refresh_window=10, request_timeout=None, **kwargs):
 
         return self._create_session(node, keyspace, user, password, compression,
                                     protocol_version, port=port, ssl_opts=ssl_opts,
                                     topology_event_refresh_window=topology_event_refresh_window,
                                     load_balancing_policy=default_lbp_factory(),
+                                    request_timeout=request_timeout,
                                     **kwargs)
 
     def exclusive_cql_connection(self, node, keyspace=None, user=None,
-                                 password=None, compression=True, protocol_version=None, port=None, ssl_opts=None, **kwargs):
+                                 password=None, compression=True, protocol_version=None, port=None, ssl_opts=None,
+                                 request_timeout=None, **kwargs):
 
         node_ip = self.get_ip_from_node(node)
         wlrr = WhiteListRoundRobinPolicy([node_ip])
@@ -774,11 +782,13 @@ class Tester(TestCase):
                                     port=port, ssl_opts=ssl_opts,
                                     topology_event_refresh_window=-1,
                                     load_balancing_policy=wlrr,
+                                    request_timeout=request_timeout,
                                     **kwargs)
 
     def _create_session(self, node, keyspace, user, password, compression, protocol_version,
                         port=None, ssl_opts=None, execution_profiles=None,
                         topology_event_refresh_window=10,
+                        request_timeout=None,
                         keep_session=True,
                         **kwargs):
         node_ip = self.get_ip_from_node(node)
@@ -793,7 +803,10 @@ class Tester(TestCase):
         else:
             auth_provider = None
 
-        profiles = {EXEC_PROFILE_DEFAULT: make_execution_profile(**kwargs)
+        if request_timeout is None:
+            request_timeout = self.cql_request_timeout
+
+        profiles = {EXEC_PROFILE_DEFAULT: make_execution_profile(request_timeout=request_timeout, **kwargs)
                     } if not execution_profiles else execution_profiles
 
         cluster = PyCluster([node_ip],
@@ -825,7 +838,7 @@ class Tester(TestCase):
         return session
 
     def patient_cql_connection(self, node, keyspace=None, user=None, password=None,
-                               request_timeout=30, compression=True, timeout=60,
+                               request_timeout=None, compression=True, timeout=60,
                                protocol_version=None, port=None, ssl_opts=None,
                                topology_event_refresh_window=10, **kwargs):
         """
@@ -854,7 +867,7 @@ class Tester(TestCase):
         )
 
     def patient_exclusive_cql_connection(self, node, keyspace=None, user=None, password=None,
-                                         timeout=60, request_timeout=30, compression=True,
+                                         timeout=60, request_timeout=None, compression=True,
                                          protocol_version=None, port=None, ssl_opts=None,  **kwargs):
         """
         Returns a connection after it stops throwing NoHostAvailables due to not being ready.
@@ -882,7 +895,7 @@ class Tester(TestCase):
 
     def cql_cluster_session(self, node, keyspace=None, user=None,
                             password=None, compression=True, protocol_version=None, port=None, ssl_opts=None,
-                            topology_event_refresh_window=10, exclusive=False, **kwargs):
+                            topology_event_refresh_window=10, request_timeout=None, exclusive=False, **kwargs):
 
         if exclusive:
             node_ip = self.get_ip_from_node(node)
@@ -895,6 +908,7 @@ class Tester(TestCase):
                                        port=port, ssl_opts=ssl_opts,
                                        topology_event_refresh_window=topology_event_refresh_window,
                                        load_balancing_policy=load_balancing_policy,
+                                       request_timeout=request_timeout,
                                        keep_session=False,
                                        **kwargs)
 
@@ -919,7 +933,7 @@ class Tester(TestCase):
         return ClusterSession(session)
 
     def patient_cql_cluster_session(self, node, keyspace=None, user=None, password=None,
-                                    request_timeout=30, compression=True, timeout=60,
+                                    request_timeout=None, compression=True, timeout=60,
                                     protocol_version=None, port=None, ssl_opts=None,
                                     topology_event_refresh_window=10, exclusive=False, **kwargs):
         """
