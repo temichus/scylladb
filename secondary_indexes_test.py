@@ -55,7 +55,7 @@ class SecondaryIndexesHelpers(object):
 
     @staticmethod
     def prepare(self, user_table=False, rf=3, options={}, keyspace_name='ks', nodes=3, use_vnodes=False,
-                fetch_size=None, jvm_args=[], session_node=1, consistency_level=ConsistencyLevel.QUORUM, **kwargs):
+                fetch_size=None, jvm_args=[], session_node=1, consistency_level=None, **kwargs):
         """
         Prepare environment for test
         """
@@ -74,6 +74,9 @@ class SecondaryIndexesHelpers(object):
         if '--smp' in jvm_args:
             debug('The cluster has been started with SMP {}'.format(jvm_args[jvm_args.index('--smp')+1]))
         node1 = cluster.nodelist()[session_node-1]
+
+        if consistency_level is None:
+            consistency_level = ConsistencyLevel.QUORUM if nodes > 1 else ConsistencyLevel.ONE
 
         self.cs = self.patient_cql_cluster_session(node1, consistency_level=consistency_level, **kwargs)
         session = self.cs.session
