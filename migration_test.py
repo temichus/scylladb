@@ -229,14 +229,23 @@ class MigrationTestBase(Tester):
         cluster.populate(1).start()
         node1 = cluster.nodelist()[0]
 
-        debug('Run stress test on node1')
+        stress_count = 1000000
+        if cluster.scylla_mode == 'debug':
+            stress_count //= 10
+
+        debug('Run stress test(n={}) on node1'.format(stress_count))
         profile_path = os.path.join(os.path.dirname(__file__),
                                     'test_data/c-s-profiles/cassandra-stress-custom-large-row-num-1.yaml')
-        node1.stress(['user', 'profile={}'.format(profile_path), 'ops(insert=1)', 'n=1000000', '-rate', 'threads=4'],
+        node1.stress(['user', 'profile={}'.format(profile_path), 'ops(insert=1)', 'n={}'.format(stress_count), '-rate', 'threads=4'],
                      capture_output=True)
 
+        timeout = 300
+        if cluster.scylla_mode == 'debug':
+            timeout *= 3
+
+        debug('Reading initial data')
         session = self.patient_cql_connection(node1)
-        rows = rows_to_list(session.execute('SELECT count(*) FROM keyspace1.standard1;', timeout=300.0))
+        rows = rows_to_list(session.execute('SELECT count(*) FROM keyspace1.standard1;', timeout=timeout))
         row_number_src = rows[0][0]
         debug('{} rows written'.format(row_number_src))
 
@@ -279,7 +288,7 @@ class MigrationTestBase(Tester):
         time.sleep(5)
         debug('Verify number of rows on node1')
         session = self.patient_cql_connection(node1)
-        rows = rows_to_list(session.execute('SELECT count(*) FROM keyspace1.standard1;', timeout=300.0))
+        rows = rows_to_list(session.execute('SELECT count(*) FROM keyspace1.standard1;', timeout=timeout))
         row_number = rows[0][0]
         debug('{} rows read'.format(row_number))
         self.assertEqual(row_number, row_number_src)
