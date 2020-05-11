@@ -1446,7 +1446,7 @@ class TestUpdateClusterLayout(Tester):
         8. Verify counters consistency
         """
         cluster = self.cluster
-        cluster.set_configuration_options(values={'experimental': True})
+
 
         cluster.populate(3).start()
         nodes = cluster.nodelist()

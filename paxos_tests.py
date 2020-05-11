@@ -76,8 +76,6 @@ class TestPaxos(Tester):
         if (use_cache):
             cluster.set_configuration_options(values={'row_cache_size_in_mb': 100})
 
-        cluster.set_configuration_options(values={'experimental_features': ['lwt']})
-
         cluster.populate(nodes).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1 = cluster.nodelist()[0]
         time.sleep(0.2)

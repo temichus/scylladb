@@ -667,7 +667,7 @@ class TestCQL(Tester):
         """
         Validate counter support.
         """
-        session = self.prepare(options={'experimental': True})
+        session = self.prepare()
 
         session.execute("""
             CREATE TABLE clicks (
@@ -1040,7 +1040,7 @@ class TestCQL(Tester):
     @attr('single_node')
     def invalid_old_property_test(self):
         """ Check obsolete properties from CQL2 are rejected """
-        session = self.prepare(options={'experimental': True})
+        session = self.prepare()
 
         assert_invalid(session, "CREATE TABLE test (foo text PRIMARY KEY, c int) WITH default_validation=timestamp", expected=SyntaxException)
 
@@ -1234,7 +1234,7 @@ class TestCQL(Tester):
 
     @attr('single_node')
     def reserved_keyword_test(self):
-        session = self.prepare(options={'experimental': True})
+        session = self.prepare()
 
         session.execute("""
             CREATE TABLE test1 (
@@ -1389,7 +1389,7 @@ class TestCQL(Tester):
 
     @attr('single_node')
     def table_options_test(self):
-        session = self.prepare(options={'experimental': True})
+        session = self.prepare()
 
         session.execute("""
             CREATE TABLE test (
@@ -1930,7 +1930,7 @@ class TestCQL(Tester):
     @attr('single_node')
     def update_type_test(self):
         """ Test altering the type of a column, including the one in the primary key (#4041) """
-        session = self.prepare(options={'experimental': True})
+        session = self.prepare()
 
         session.execute("""
             CREATE TABLE test (
@@ -2522,7 +2522,7 @@ class TestCQL(Tester):
         Regression test for a validation bug.
         """
 
-        session = self.prepare(options={'experimental': True})
+        session = self.prepare()
         assert_invalid(session, "CREATE TABLE test (id bigint PRIMARY KEY, count counter, things set<text>)",
                        matching=r"Cannot add a( non)? counter column", expected=ConfigurationException)
 
@@ -2993,7 +2993,7 @@ class TestCQL(Tester):
         Test you can add columns in a table with collections. Regression test
         for CASSANDRA-4982.
         """
-        session = self.prepare(options={'experimental': True})
+        session = self.prepare()
 
         session.execute("CREATE TABLE collections (key int PRIMARY KEY, aset set<text>)")
         session.execute("ALTER TABLE collections ADD c text")
@@ -3026,7 +3026,7 @@ class TestCQL(Tester):
 
     @attr('single_node')
     def collection_counter_test(self):
-        session = self.prepare(options={'experimental': True})
+        session = self.prepare()
 
         assert_invalid(session, """
             CREATE TABLE test (
@@ -3450,7 +3450,7 @@ class TestCQL(Tester):
         """
         @jira_ticket CASSANDRA-5232
         """
-        session = self.prepare(options={'experimental': True})
+        session = self.prepare()
 
         session.execute("CREATE TABLE t1 (id int PRIMARY KEY, t text);")
 
@@ -3564,7 +3564,7 @@ class TestCQL(Tester):
 
     @attr('single_node')
     def conditional_update_test(self):
-        session = self.prepare(options={'experimental_features': ['lwt']})
+        session = self.prepare()
 
         session.execute("""
             CREATE TABLE test (
@@ -3635,7 +3635,7 @@ class TestCQL(Tester):
 
     @attr('single_node')
     def non_eq_conditional_update_test(self):
-        session = self.prepare(options={'experimental_features': ['lwt']})
+        session = self.prepare()
 
         session.execute("""
             CREATE TABLE test (
@@ -3660,7 +3660,7 @@ class TestCQL(Tester):
 
     @attr('single_node')
     def conditional_delete_test(self):
-        session = self.prepare(options={'experimental_features': ['lwt']})
+        session = self.prepare()
 
         session.execute("""
             CREATE TABLE test (
@@ -3925,7 +3925,7 @@ class TestCQL(Tester):
         assert_one(session, "SELECT dateOf(t) FROM test WHERE k=0", [None])
 
     def cas_simple_test(self):
-        session = self.prepare(nodes=3, rf=3, options={'experimental_features': ['lwt']})
+        session = self.prepare(nodes=3, rf=3)
 
         session.execute("CREATE TABLE tkns (tkn int, consumed boolean, PRIMARY KEY (tkn));")
 
@@ -3953,7 +3953,7 @@ class TestCQL(Tester):
 
     @attr('single_node')
     def bug_6069_test(self):
-        session = self.prepare(options={'experimental_features': ['lwt']})
+        session = self.prepare()
 
         session.execute("""
             CREATE TABLE test (
@@ -4075,7 +4075,7 @@ class TestCQL(Tester):
 
     @attr('single_node')
     def static_columns_test(self):
-        session = self.prepare(options={'experimental': True})
+        session = self.prepare()
 
         session.execute("""
             CREATE TABLE test (
@@ -4145,7 +4145,7 @@ class TestCQL(Tester):
 
     @attr('single_node')
     def static_columns_cas_test(self):
-        session = self.prepare(options={'experimental_features': ['lwt']})
+        session = self.prepare()
 
         session.execute("""
             CREATE TABLE test (
@@ -4419,7 +4419,7 @@ class TestCQL(Tester):
 
     @attr('single_node')
     def cas_and_ttl_test(self):
-        session = self.prepare(options={'experimental_features': ['lwt']})
+        session = self.prepare()
         session.execute("CREATE TABLE test (k int PRIMARY KEY, v int, lock boolean)")
 
         session.execute("INSERT INTO test (k, v, lock) VALUES (0, 0, false)")
@@ -4573,7 +4573,7 @@ class TestCQL(Tester):
 
         Test for CAS with compact storage table, and #6813 in particular.
         """
-        session = self.prepare(options={'experimental_features': ['lwt']})
+        session = self.prepare()
 
         session.execute("""
             CREATE TABLE lock (
@@ -4594,7 +4594,7 @@ class TestCQL(Tester):
 
     @attr('single_node')
     def whole_list_conditional_test(self):
-        session = self.prepare(options={'experimental_features': ['lwt']})
+        session = self.prepare()
 
         session.execute("""
             CREATE TABLE tlist (
@@ -4664,7 +4664,7 @@ class TestCQL(Tester):
     @attr('single_node')
     def list_item_conditional_test(self):
         # Lists
-        session = self.prepare(options={'experimental_features': ['lwt']})
+        session = self.prepare()
 
         frozen_values = (False, True) if self.cluster.version() >= "2.1.3" else (False,)
         for frozen in frozen_values:
@@ -4697,7 +4697,7 @@ class TestCQL(Tester):
         expanded functionality from CASSANDRA-6839
         @jira_ticket CASSANDRA-6839
         """
-        session = self.prepare(options={'experimental_features': ['lwt']})
+        session = self.prepare()
 
         session.execute("""
             CREATE TABLE tlist (
@@ -4765,7 +4765,7 @@ class TestCQL(Tester):
 
     @attr('single_node')
     def whole_set_conditional_test(self):
-        session = self.prepare(options={'experimental_features': ['lwt']})
+        session = self.prepare()
 
         session.execute("""
             CREATE TABLE tset (
@@ -4834,7 +4834,7 @@ class TestCQL(Tester):
 
     @attr('single_node')
     def whole_map_conditional_test(self):
-        session = self.prepare(options={'experimental_features': ['lwt']})
+        session = self.prepare()
 
         session.execute("""
             CREATE TABLE tmap (
@@ -4901,7 +4901,7 @@ class TestCQL(Tester):
 
     @attr('single_node')
     def map_item_conditional_test(self):
-        session = self.prepare(options={'experimental_features': ['lwt']})
+        session = self.prepare()
 
         frozen_values = (False, True) if self.cluster.version() >= "2.1.3" else (False,)
         for frozen in frozen_values:
@@ -4936,7 +4936,7 @@ class TestCQL(Tester):
         Expanded functionality from CASSANDRA-6839
         @jira_ticket CASSANDRA-6839
         """
-        session = self.prepare(options={'experimental_features': ['lwt']})
+        session = self.prepare()
 
         session.execute("""
             CREATE TABLE tmap (
@@ -5006,7 +5006,7 @@ class TestCQL(Tester):
         """
         @jira_ticket CASSANDRA-7499
         """
-        session = self.prepare(options={'experimental_features': ['lwt']})
+        session = self.prepare()
 
         session.execute("""
             CREATE TABLE test (
@@ -5348,7 +5348,7 @@ class TestCQL(Tester):
 
     @attr('single_node')
     def alter_clustering_and_static_test(self):
-        session = self.prepare(options={'experimental': True})
+        session = self.prepare()
 
         session.execute("CREATE TABLE foo (bar int, PRIMARY KEY (bar))")
 
@@ -5357,7 +5357,7 @@ class TestCQL(Tester):
 
     @attr('single_node')
     def alter_with_multiple_columns_test(self):
-        session = self.prepare(options={'experimental': True})
+        session = self.prepare()
 
         session.execute("CREATE TABLE foo (bar int, PRIMARY KEY (bar))")
         session.execute("ALTER TABLE foo ADD (c text, d int)")
@@ -5368,7 +5368,7 @@ class TestCQL(Tester):
         """
         @jira_ticket CASSANDRA-6276
         """
-        session = self.prepare(options={'experimental': True})
+        session = self.prepare()
 
         session.execute("create table test (k int primary key, v set<text>, x int)")
         session.execute("insert into test (k, v) VALUES (0, {'fffffffff'})")
@@ -5381,7 +5381,7 @@ class TestCQL(Tester):
         """
         @jira_ticket CASSANDRA-7744
         """
-        session = self.prepare(options={'experimental': True})
+        session = self.prepare()
 
         session.execute("create table test (k int primary key, v set<text>)")
         session.execute("insert into test (k, v) VALUES (0, {'f'})")
@@ -5441,7 +5441,7 @@ class TestCQL(Tester):
     @skip('indexes')
     @attr('single_node')
     def bug_5732_test(self):
-        session = self.prepare(use_cache=True, options={'experimental': True})
+        session = self.prepare(use_cache=True)
 
         session.execute("""
             CREATE TABLE test (
@@ -6060,7 +6060,7 @@ class CQLAdditionalTests(Tester):
 
     @attr('next-gating', 'dtest-debug', 'single_node')
     def lightweight_transaction_test(self):
-        cluster = self.prepare(options={'experimental_features': ['lwt']})
+        cluster = self.prepare()
         node = cluster.nodelist()[0]
 
         session = self.patient_cql_connection(node)
@@ -6943,8 +6943,6 @@ class TestLWTWithCQL(Tester):
 
     def prepare(self):
         cluster = self.cluster
-
-        cluster.set_configuration_options(values={'experimental_features': ['lwt']})
 
         cluster.populate(3)
         cluster.start(wait_for_binary_proto=True)

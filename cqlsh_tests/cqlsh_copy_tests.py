@@ -568,7 +568,7 @@ class CqlshCopyTest(CqlshPrepare):
         - importing the contents of the CSV file using COPY with header,
         - checking that the contents of the table are the written values.
         """
-        self.prepare(configuration_options={'experimental': True})
+        self.prepare()
         self.session.execute("""
             CREATE TABLE IF NOT EXISTS testcounter (
                 a int,
@@ -634,7 +634,7 @@ class CqlshCopyTest(CqlshPrepare):
 
         @jira_ticket CASSANDRA-9303
         """
-        self.prepare(configuration_options={'experimental': True})
+        self.prepare()
         self.session.execute("""
             CREATE TABLE testskipcols (
                 a int primary key,

@@ -1840,7 +1840,7 @@ class TestMaterializedViews(Tester):
     def lwt_test(self):
         """Test that lightweight transaction behave properly with a materialized view"""
 
-        session = self.prepare(options={'experimental_features': ['lwt']})
+        session = self.prepare()
 
         session.execute("CREATE TABLE t (id int PRIMARY KEY, v int, v2 text, v3 decimal)")
         session.execute(("CREATE MATERIALIZED VIEW t_by_v AS SELECT * FROM t "

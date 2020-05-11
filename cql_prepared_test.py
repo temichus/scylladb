@@ -307,7 +307,7 @@ class TestCQL(Tester):
             }
         }
 
-        session = self.prepare(options={'experimental_features': ['lwt']})
+        session = self.prepare()
 
         for column_type, test_data in PRIMITIVE_TYPES_MAP.items():
             self._lwt_execute_single_type_update_case(session, column_type, test_data)
@@ -482,7 +482,7 @@ class TestCQL(Tester):
             }
         }
 
-        session = self.prepare(options={'experimental_features': ['lwt']})
+        session = self.prepare()
 
         for is_frozen in (False, True):
             for collection_type in ('list', 'set', 'tuple'):
@@ -503,7 +503,7 @@ class TestCQL(Tester):
          * empty frozen collection != null
         """
 
-        session = self.prepare(options={'experimental_features': ['lwt']})
+        session = self.prepare()
 
 
         # Create test table and prepare data
@@ -592,7 +592,7 @@ class TestCQL(Tester):
         Note: only non_frozen<frozen<T>> combinations are supported.
         """
 
-        session = self.prepare(options={'experimental_features': ['lwt']})
+        session = self.prepare()
 
         # Create test table and prepare data
 
@@ -646,7 +646,7 @@ class TestCQL(Tester):
         Note: only non_frozen<frozen<T>> combinations are supported.
         """
 
-        session = self.prepare(options={'experimental_features': ['lwt']})
+        session = self.prepare()
 
         # Create test table and prepare data
 

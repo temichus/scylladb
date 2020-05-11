@@ -23,7 +23,6 @@ class TestCounters(Tester):
     def simple_increment_test(self):
         """ Simple incrementation test (Created for #3465, that wasn't a bug) """
         cluster = self.cluster
-        cluster.set_configuration_options(values={'experimental': True})
         cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
 
         cluster.populate(3).start()
@@ -59,7 +58,7 @@ class TestCounters(Tester):
         """ Test for bug of #4436 """
 
         cluster = self.cluster
-        cluster.set_configuration_options(values={'experimental': True})
+
         cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
 
         cluster.populate(2).start()
@@ -128,7 +127,6 @@ class TestCounters(Tester):
         Do a bunch of writes with ONE, read back with ALL and check results.
         """
         cluster = self.cluster
-        cluster.set_configuration_options(values={'experimental': True})
         cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
 
         cluster.populate(3).start()
@@ -214,7 +212,7 @@ class TestCounters(Tester):
         Test for singlular update statements that will affect multiple counters.
         """
         cluster = self.cluster
-        cluster.set_configuration_options(values={'experimental': True})
+
         cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
 
         cluster.populate(3).start()
@@ -256,7 +254,6 @@ class TestCounters(Tester):
     @attr('single_node')
     def validate_empty_column_name_test(self):
         cluster = self.cluster
-        cluster.set_configuration_options(values={'experimental': True})
         cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
 
         cluster.populate(1).start()
@@ -286,7 +283,7 @@ class TestCounters(Tester):
     def drop_counter_column_test(self):
         """Test for CASSANDRA-7831"""
         cluster = self.cluster
-        cluster.set_configuration_options(values={'experimental': True})
+
         cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
 
         cluster.populate(1).start()
@@ -314,7 +311,6 @@ class TestCounters(Tester):
         expected result: counters equal 100000(500*200)
         """
         cluster = self.cluster
-        cluster.set_configuration_options(values={'experimental': True})
         cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
 
         cluster.populate(3).start()
@@ -368,7 +364,7 @@ class TestCounters(Tester):
         expected result: counters equal 100000(500*200)
         """
         cluster = self.cluster
-        cluster.set_configuration_options(values={'experimental': True})
+
         cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
 
         cluster.populate(3).start()
@@ -424,7 +420,6 @@ class TestCounters(Tester):
         Result: should be rejected
         """
         cluster = self.cluster
-        cluster.set_configuration_options(values={'experimental': True})
         cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
         cluster.populate(1).start()
         session = self.patient_cql_connection(cluster.nodelist()[0])
@@ -445,7 +440,7 @@ class TestCounters(Tester):
         update counters with prepare statement, and verify the data
         """
         cluster = self.cluster
-        cluster.set_configuration_options(values={'experimental': True})
+
         cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
 
         cluster.populate(1).start()
@@ -507,7 +502,6 @@ class TestCounters(Tester):
         Expected result: rollover
         """
         cluster = self.cluster
-        cluster.set_configuration_options(values={'experimental': True})
         cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
 
         cluster.populate(1).start()
@@ -548,7 +542,7 @@ class TestCounters(Tester):
         Expected result: nothing is changed
         """
         cluster = self.cluster
-        cluster.set_configuration_options(values={'experimental': True})
+
         cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
 
         cluster.populate(1).start()
@@ -591,7 +585,6 @@ class TestCounters(Tester):
         Test of static counter column
         """
         cluster = self.cluster
-        cluster.set_configuration_options(values={'experimental': True})
         cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
         cluster.populate(1).start()
         node1 = cluster.nodelist()[0]
@@ -638,7 +631,7 @@ class TestCounters(Tester):
         @jira_ticket CASSANDRA-12219
         """
         cluster = self.cluster
-        cluster.set_configuration_options(values={'experimental': True})
+
         cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
         cluster.populate(3).start()
         node1 = cluster.nodelist()[0]
@@ -675,7 +668,7 @@ class TestCountersOnMultipleNodes(Tester):
         super(TestCountersOnMultipleNodes, self).setUp()
         debug("Starting cluster with 3 nodes.")
         cluster = self.cluster
-        cluster.set_configuration_options(values={'experimental': True, 'hinted_handoff_enabled': False})
+        cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
         cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
         cluster.populate(3).start(wait_other_notice=True, wait_for_binary_proto=True)
         self.node1, self.node2, self.node3 = cluster.nodelist()
@@ -861,7 +854,7 @@ class TestCountersStress(Tester):
     def setUp(self):
         super(TestCountersStress, self).setUp()
         cluster = self.cluster
-        cluster.set_configuration_options(values={'experimental': True})
+
         cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
         cluster.populate(3).start(wait_other_notice=True, wait_for_binary_proto=True)
         self.node = cluster.nodelist()[0]

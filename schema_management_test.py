@@ -14,8 +14,7 @@ class SchemaManagementTest(Tester):
     def test_prepared_statements_work_after_node_restart_after_altering_schema_without_changing_columns(self):
         ring_delay_sec = 5
         self.cluster.set_configuration_options(values={
-            'ring_delay_ms': ring_delay_sec * 1000,
-            'experimental': True})
+            'ring_delay_ms': ring_delay_sec * 1000})
         self.cluster.populate(3)
         self.cluster.start(wait_other_notice=True)
 

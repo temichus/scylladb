@@ -10,12 +10,8 @@ class LwtTest(Tester):
     def case_prologue(self, jvm_args = None):
         """ Assorted actions in preparation for a test case"""
         cluster = self.cluster
-        cluster.set_configuration_options(values={
-            "experimental_features": ["lwt"],
-        # Avoid sending mutations automatically on restart
-            "hinted_handoff_enabled": False,
-        })
-        cluster.populate(1).start(wait_for_binary_proto=True, jvm_args = jvm_args)
+        cluster.set_configuration_options(values={"hinted_handoff_enabled": False})
+        cluster.populate(1).start(wait_for_binary_proto=True, jvm_args=jvm_args)
         node = cluster.nodelist()[0]
 
         session = self.patient_cql_connection(node, protocol_version=4)
@@ -139,10 +135,7 @@ class LwtTest(Tester):
         # 3.5
         #
         cluster = self.cluster
-        cluster.set_configuration_options(values={
-            "experimental_features": ["lwt"],
-            "hinted_handoff_enabled": False,
-        })
+        cluster.set_configuration_options(values={"hinted_handoff_enabled": False})
         cluster.populate(3).start(wait_for_binary_proto=True)
         node = cluster.nodelist()[0]
         session = self.patient_exclusive_cql_connection(node)
@@ -201,10 +194,7 @@ class LwtTest(Tester):
         """Basic distributed tests (3.1 - 3.4 from the test plan). """
 
         cluster = self.cluster
-        cluster.set_configuration_options(values={
-            "experimental_features": ["lwt"],
-            "hinted_handoff_enabled": False,
-        })
+        cluster.set_configuration_options(values={"hinted_handoff_enabled": False})
         cluster.populate(3).start(wait_for_binary_proto=True)
         node1 = cluster.nodelist()[0]
         node2 = cluster.nodelist()[1]
@@ -304,10 +294,7 @@ class LwtTest(Tester):
         # 4.1 Check LOCAL_QUORUM works as expected if the other DC is not
         # available.
         cluster = self.cluster
-        cluster.set_configuration_options(values={
-            "experimental_features": ["lwt"],
-            "hinted_handoff_enabled": False,
-        })
+        cluster.set_configuration_options(values={"hinted_handoff_enabled": False})
         cluster.populate([3,3]).start(wait_for_binary_proto=True)
         node1 = cluster.nodelist()[0]
         session1 = self.patient_cql_connection(node1)

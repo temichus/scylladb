@@ -70,8 +70,7 @@ class TestBatch(Tester):
         """ Test that logged batch is replayed after schema was changed on the node """
         ring_delay_sec = 5
         self.cluster.set_configuration_options(values={
-            'ring_delay_ms': ring_delay_sec * 1000,
-            'experimental': True})
+            'ring_delay_ms': ring_delay_sec * 1000})
         self.cluster.populate(3)
         self.cluster.start(wait_other_notice=True)
         [node1, node2, node3] = self.cluster.nodelist()
@@ -484,7 +483,6 @@ class TestBatch(Tester):
             assert False, "Expecting TimedOutException but no exception was raised"
 
     def prepare(self, nodes=1, compression=True, version=None):
-        self.cluster.set_configuration_options(values={'experimental': True})
         if not self.cluster.nodelist():
             self.cluster.populate(nodes)
             if version:

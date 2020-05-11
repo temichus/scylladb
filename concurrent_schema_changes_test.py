@@ -330,7 +330,6 @@ class TestConcurrentSchemaChanges(Tester):
         create tables, indexes, alters across multiple threads concurrently
         """
         cluster = self.cluster
-        cluster.set_configuration_options(values={'experimental': True})
         cluster.populate(3).start()
         node1, node2, node3 = cluster.nodelist()
         session = self.cql_connection(node1)
@@ -348,7 +347,7 @@ class TestConcurrentSchemaChanges(Tester):
         create tables, indexes, alters across multiple threads concurrently with a node down
         """
         cluster = self.cluster
-        cluster.set_configuration_options(values={'experimental': True})
+
         cluster.populate(3).start()
         node1, node2, node3 = cluster.nodelist()
         session = self.cql_connection(node1)
@@ -370,7 +369,6 @@ class TestConcurrentSchemaChanges(Tester):
         debug("basic_test()")
 
         cluster = self.cluster
-        cluster.set_configuration_options(values={'experimental': True})
         cluster.populate(2).start()
 
         node1 = cluster.nodelist()[0]
@@ -386,7 +384,6 @@ class TestConcurrentSchemaChanges(Tester):
     def changes_to_different_nodes_test(self):
         debug("changes_to_different_nodes_test()")
         cluster = self.cluster
-        cluster.set_configuration_options(values={'experimental': True})
         cluster.populate(2).start()
         node1, node2 = cluster.nodelist()
         wait(2)
@@ -415,7 +412,6 @@ class TestConcurrentSchemaChanges(Tester):
         """
         debug("changes_while_node_down_test()")
         cluster = self.cluster
-        cluster.set_configuration_options(values={'experimental': True})
         cluster.populate(2).start()
         node1, node2 = cluster.nodelist()
         wait(2)
@@ -441,7 +437,7 @@ class TestConcurrentSchemaChanges(Tester):
         """
         debug("changes_while_node_toggle_test()")
         cluster = self.cluster
-        cluster.set_configuration_options(values={'experimental': True})
+
         cluster.populate(2).start()
         node1, node2 = cluster.nodelist()
         wait(2)
@@ -461,7 +457,6 @@ class TestConcurrentSchemaChanges(Tester):
     def decommission_node_test(self):
         debug("decommission_node_test()")
         cluster = self.cluster
-        cluster.set_configuration_options(values={'experimental': True})
 
         cluster.populate(1)
         # create and add a new node, I must not be a seed, otherwise
@@ -492,7 +487,6 @@ class TestConcurrentSchemaChanges(Tester):
     def snapshot_test(self):
         debug("snapshot_test()")
         cluster = self.cluster
-        cluster.set_configuration_options(values={'experimental': True})
         cluster.populate(2).start()
         node1, node2 = cluster.nodelist()
         wait(2)

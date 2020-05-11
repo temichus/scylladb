@@ -92,7 +92,6 @@ class SSTableDumpTests(SSTableDump):
         and compare it with a source
         """
         cluster = self.cluster
-        cluster.set_configuration_options(values={'experimental': True})
         cluster.populate(1).start()
         self.node = cluster.nodelist()[0]
 

@@ -107,7 +107,6 @@ class TestHelper(Tester):
 
     def _start_cluster(self, save_sessions=False):
         cluster = self.cluster
-        cluster.set_configuration_options(values={'experimental': True})
         cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
 
         nodes = self.nodes

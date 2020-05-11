@@ -59,9 +59,6 @@ class TestRandomPaxos(Tester):
             min_node_count=2,
             max_node_count=7,
             sleep_time=10,
-            db_configuration={
-                'experimental_features': ['lwt'],
-            },
             loader=IntKeyLoader(
                 consistency_level=ConsistencyLevel.QUORUM,
                 insert="INSERT INTO ks.test(k,v) VALUES (?, ?) IF NOT EXISTS",
@@ -108,9 +105,6 @@ class TestRandomPaxos(Tester):
             min_node_count=2,
             max_node_count=7,
             sleep_time=10,
-            db_configuration={
-                'experimental_features': ['lwt'],
-            },
             loader=IntKeyLoader(
                 # Variate consistency level in order to see if loader traffic is be processed
                 #   correctly when consistency requirements is not meet
@@ -140,9 +134,6 @@ class TestRandomPaxos(Tester):
             min_node_count=2,
             max_node_count=7,
             sleep_time=10,
-            db_configuration={
-                'experimental_features': ['lwt'],
-            },
             loader=IntKeyLoader(
                 consistency_level=ConsistencyLevel.QUORUM,
                 insert="INSERT INTO ks.test(k,v) VALUES (?, ?) IF NOT EXISTS",
@@ -171,9 +162,6 @@ class TestRandomPaxos(Tester):
             min_node_count=2,
             max_node_count=7,
             sleep_time=10,
-            db_configuration={
-                'experimental_features': ['lwt'],
-            },
             loader=IntKeyLoader(
                 consistency_level=ConsistencyLevel.QUORUM,
                 insert="INSERT INTO ks.test(k,v) VALUES (?, ?) IF NOT EXISTS",

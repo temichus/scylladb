@@ -202,7 +202,6 @@ class SystemClientsTest(Tester):
             'role_manager': 'org.apache.cassandra.auth.CassandraRoleManager',
             'permissions_validity_in_ms': 0,
             'roles_validity_in_ms': 0,
-            'experimental_features': ['lwt'],
             'native_transport_port': 9042,
             'native_transport_port_ssl': 9142,
         })

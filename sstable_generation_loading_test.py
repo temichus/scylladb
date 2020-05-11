@@ -223,7 +223,7 @@ class TestSSTableGenerationAndLoading(Tester):
         debug("Testing sstableloader with pre_compression=%s and post_compression=%s" % (pre_compression, post_compression))
 
         cluster = self.cluster
-        cluster.set_configuration_options(values={'experimental': True})
+
         cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2 = cluster.nodelist()
         time.sleep(.5)

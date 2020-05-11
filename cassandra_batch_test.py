@@ -17,7 +17,6 @@ class BatchTester(Tester):
     def prepare(self, nodes=1):
 
         cluster = self.cluster
-        cluster.set_configuration_options(values={'experimental_features': ['lwt']})
         if not cluster.nodelist():
             cluster.populate(nodes).start(wait_for_binary_proto=True)
         node1 = cluster.nodelist()[0]

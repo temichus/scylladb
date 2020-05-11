@@ -225,7 +225,7 @@ class TestCommitLog(Tester):
         """
 
         node1 = self.node1
-        node1.set_configuration_options(batch_commitlog=True, values={'experimental': True})
+        node1.set_configuration_options(batch_commitlog=True)
         node1.start(wait_for_binary_proto=True)
 
         debug("Create table")
@@ -628,8 +628,7 @@ class TestCommitLog(Tester):
         we save the end result in the commit log, not delta.
         """
         node1 = self.node1
-        node1.set_configuration_options(values={'experimental': True,
-                                                'commitlog_sync_period_in_ms': 200})
+        node1.set_configuration_options(values={'commitlog_sync_period_in_ms': 200})
         self.cluster.start()
 
         debug("Create table")
@@ -689,7 +688,6 @@ class TestCommitLog(Tester):
 
     def prepare_cluster_with_ks_cf(self):
         node1 = self.node1
-        node1.set_configuration_options(values={'experimental': True})
         self.cluster.start()
 
         debug("Create table")

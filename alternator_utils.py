@@ -119,7 +119,7 @@ class TesterAlternator(Tester):
         debug(f"Populating a cluster with {num_of_nodes} nodes for {cluster_type}..")
         cluster = self.cluster
         cluster.set_configuration_options(
-            {"start_native_transport": True, "experimental": True, "alternator_port": ALTERNATOR_PORT})
+            {"start_native_transport": True, "alternator_port": ALTERNATOR_PORT})
         cluster.populate([num_of_nodes, num_of_nodes] if is_multi_dc else num_of_nodes)
         debug("Starting cluster..")
         cluster.start(wait_for_binary_proto=True, wait_other_notice=True)
