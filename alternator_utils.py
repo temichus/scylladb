@@ -309,7 +309,7 @@ class TesterAlternator(Tester):
 
     def compare_table_data(self, table_name: str, table_data: List[Dict[str, str]], node: ScyllaNode) -> DeepDiff:
         data = self.scan_table(table_name=table_name, node=node)
-        return DeepDiff(t1=table_data, t2=data, ignore_order=True)
+        return DeepDiff(t1=table_data, t2=data, ignore_order=True, ignore_numeric_type_changes=True)
 
     def run_stress(self, table_name: str, node: ScyllaNode, num_of_item: int = NUM_OF_ITEMS,
                    verbose: bool = True, consistent_read: bool = True) -> StoppableThread:

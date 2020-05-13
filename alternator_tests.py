@@ -8,6 +8,7 @@ from deepdiff import DeepDiff
 from nose.plugins.attrib import attr
 from pprint import pformat
 
+from alternator.utils.data_generator import AlternatorDataGenerator, TypeMode
 from alternator_utils import TesterAlternator, ALTERNATOR_SNAPSHOT_FOLDER, TABLE_NAME, NUM_OF_ITEMS, random_string, \
     CONDITION_EXPRESSION_SCHEMA, DEFAULT_STRING_LENGTH, NUM_OF_NODES
 from alternator_utils import generate_put_request_items, Gsi, full_query
@@ -298,3 +299,27 @@ class AlternatorTest(TesterAlternator):
         debug("Starting Alternator scan stress..")
         alternator_scan_thread.start()
         self._reboot_nodes_while_running_stress(node=node1)
+
+    def test_dynamo_types(self):
+        """
+        Create items with each of DynamoDB supported types and verify:
+            * No errors while inserting items to DB
+            * Get all the values from DB and compare to what we know we inserted
+        """
+        all_items = []
+        table_name, items_count = TABLE_NAME, 0
+        data_generator = AlternatorDataGenerator(
+            primary_key=self._table_primary_key, primary_key_format=self._table_primary_key_format)
+        data_generator.create_random_number_item()
+        self.prepare_dynamodb_cluster(num_of_nodes=NUM_OF_NODES)
+        node1, node2, node3 = self.cluster.nodelist()
+        self.create_table(table_name=table_name, node=node1)
+        self.wait_table_exists(table_name, self.cluster.nodelist())
+
+        for mode in TypeMode:
+            items = data_generator.create_multiple_items(num_of_items=random.randint(1, 10), mode=mode)
+            all_items += items
+            debug(f"Adding '{len(items)}' {data_generator.get_mode_name} items to table '{table_name}'..")
+            self.batch_write_actions(table_name=table_name, node=node1, new_items=items)
+            diff = self.compare_table_data(table_name=table_name, table_data=all_items, node=node1)
+            self.assertTrue(expr=not diff, msg=f"The following items are missing:\n{pformat(diff)}")
