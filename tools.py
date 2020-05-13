@@ -264,6 +264,37 @@ def generate_ssl_stores(base_dir, passphrase='cassandra'):
                 raise
 
 
+def create_stress_compatible_table(self, node, rf=1, dclocal_read_repair_chance=0.1, gc_grace_seconds=864000,
+                                   read_repair_chance=0.0, default_time_to_live=0, speculative_retry="'99.0PERCENTILE'",
+                                   compaction="'class': 'SizeTieredCompactionStrategy', 'sstable_size_in_mb': '100'"):
+    session = self.patient_cql_connection(node)
+    session.execute(f"""CREATE KEYSPACE keyspace1 WITH replication = {{
+    'class': 'SimpleStrategy',
+    'replication_factor': {rf} }};""")
+
+    session.execute(f"""CREATE TABLE keyspace1.standard1(
+    key blob PRIMARY KEY,
+    "C0" blob,
+    "C1" blob,
+    "C2" blob,
+    "C3" blob,
+    "C4" blob,
+    ) WITH bloom_filter_fp_chance = 0.01
+    AND caching = {{'keys': 'ALL', 'rows_per_partition': 'ALL'}}
+    AND comment = ''
+    AND compaction = {{{compaction}}}
+    AND compression = {{}}
+    AND crc_check_chance = 1.0
+    AND dclocal_read_repair_chance = {dclocal_read_repair_chance}
+    AND default_time_to_live = {default_time_to_live}
+    AND gc_grace_seconds = {gc_grace_seconds}
+    AND max_index_interval = 2048
+    AND memtable_flush_period_in_ms = 0
+    AND min_index_interval = 128
+    AND read_repair_chance = {read_repair_chance}
+    AND speculative_retry = {speculative_retry};""")
+
+
 class since(object):
 
     def __init__(self, cass_version, max_version=None):
