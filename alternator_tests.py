@@ -9,7 +9,7 @@ from nose.plugins.attrib import attr
 from pprint import pformat
 
 from alternator_utils import TesterAlternator, ALTERNATOR_SNAPSHOT_FOLDER, TABLE_NAME, NUM_OF_ITEMS, random_string, \
-    CONDITION_EXPRESSION_SCHEMA, DEFAULT_STRING_LENGTH
+    CONDITION_EXPRESSION_SCHEMA, DEFAULT_STRING_LENGTH, NUM_OF_NODES
 from alternator_utils import generate_put_request_items, Gsi, full_query
 from dtest import debug
 from tools import new_node
@@ -54,7 +54,8 @@ class AlternatorTest(TesterAlternator):
         self.prepare_dynamodb_cluster(num_of_nodes=1)
         node1 = self.cluster.nodelist()[0]
         self.create_table(table_name=table_name, node=node1)
-        self.batch_write_items(table_name=table_name, num_of_items=num_of_items, node=node1)
+        new_items = self.create_items(num_of_items=num_of_items)
+        self.batch_write_actions(table_name=table_name, node=node1, new_items=new_items)
         data_before_refresh = self.scan_table(table_name=table_name, node=node1)
 
         snapshot_folder = tempfile.mkdtemp()
@@ -72,7 +73,7 @@ class AlternatorTest(TesterAlternator):
         self.create_table(node=node1, create_gsi=True)
         debug(f"Writing Alternator data on a table with GSI")
         items = generate_put_request_items(num_of_items=NUM_OF_ITEMS, add_gsi=True)
-        node_resource_table = self.batch_write_items(node=node1, items=items)
+        node_resource_table = self.batch_write_actions(table_name=TABLE_NAME, node=node1, new_items=items)
 
         node = self.cluster.nodelist()[1]
         debug(f"Stopping {node.name} before testing GSI query")
@@ -92,7 +93,7 @@ class AlternatorTest(TesterAlternator):
         node1, node2, node3 = self.cluster.nodelist()
         self.create_table(table_name=TABLE_NAME, node=node1)
         self.wait_table_exists(TABLE_NAME, self.cluster.nodelist())
-        self.batch_write_items(table_name=TABLE_NAME, node=node1)
+        self.batch_write_actions(table_name=TABLE_NAME, node=node1)
         get_items_thread = self.run_stress(table_name=TABLE_NAME, node=node1)
         debug(f'Start drain for: {node3.name}')
         node3.drain()
@@ -105,7 +106,7 @@ class AlternatorTest(TesterAlternator):
         self.create_table(table_name=TABLE_NAME, node=node1)
         self.wait_table_exists(TABLE_NAME, self.cluster.nodelist())
 
-        self.batch_write_items(table_name=TABLE_NAME, node=node1)
+        self.batch_write_actions(table_name=TABLE_NAME, node=node1)
         alternator_consistent_stress = self.run_stress(table_name=TABLE_NAME, node=node1)
         debug(f'Start first decommission during consistent Alternator-load for: {node2.name}')
         node2.decommission()
@@ -140,7 +141,7 @@ class AlternatorTest(TesterAlternator):
         debug(f"Stopping {node2.name}")
         node2.stop(wait_other_notice=True)
         self.create_table(table_name=TABLE_NAME, node=node1)
-        self.batch_write_items(table_name=TABLE_NAME, node=node1)
+        self.batch_write_actions(table_name=TABLE_NAME, node=node1)
         debug(f"Starting {node2.name}")
         node2.start(wait_other_notice=True, wait_for_binary_proto=True)
         debug(f"starting repair on {node2.name}...")
@@ -156,7 +157,7 @@ class AlternatorTest(TesterAlternator):
         self.wait_table_exists(TABLE_NAME, self.cluster.nodelist())
 
         debug(f"Writing Alternator queries to node {dc1_node.name} on data-center {dc1_node.data_center}")
-        self.batch_write_items(table_name=TABLE_NAME, node=dc1_node)
+        self.batch_write_actions(table_name=TABLE_NAME, node=dc1_node)
         dc2_node = next(node for node in self.cluster.nodelist() if node.data_center != dc1_node.data_center)
         debug(f"Reading Alternator queries from node {dc2_node.name} on data-center {dc2_node.data_center}")
         self.get_table_items(table_name=TABLE_NAME, node=dc2_node, consistent_read=False)
@@ -190,7 +191,7 @@ class AlternatorTest(TesterAlternator):
         debug("Writing Alternator items of the same partition key")
         pk_condition_value = random_string(length=DEFAULT_STRING_LENGTH)
         items = [{'pk': pk_condition_value, 'c': Decimal(i), 'a': random_string(length=DEFAULT_STRING_LENGTH)} for i in range(12)]
-        table = self.batch_write_items(node=node1, items=items)
+        table = self.batch_write_actions(table_name=TABLE_NAME, node=node1, new_items=items)
         debug("Writing an extra different partition key")
         with table.batch_writer() as batch:
             batch.put_item({'pk': random_string(length=DEFAULT_STRING_LENGTH), 'c': 123, 'a': random_string(length=DEFAULT_STRING_LENGTH)})
@@ -239,3 +240,61 @@ class AlternatorTest(TesterAlternator):
                               UpdateExpression='SET c = :val',
                               ConditionExpression='attribute_not_exists (a)',
                               ExpressionAttributeValues={':val': 4})
+
+    def _reboot_nodes_while_running_stress(self, node):
+        for _node in self.cluster.nodelist():
+            if _node.name != node.name:
+                debug(f"Stopping node '{_node.name}'")
+                _node.stop()
+                debug(f"Starting node '{_node.name}'")
+                _node.start(wait_other_notice=True, wait_for_binary_proto=True)
+
+    def test_full_scan_table_while_restart_each_nodes(self):
+        """
+        Checks scan logic while each node is stopping and after that starting
+        """
+        table_name, num_of_items, node_idx = TABLE_NAME, NUM_OF_ITEMS, 0
+        self.prepare_dynamodb_cluster(num_of_nodes=NUM_OF_NODES)
+        node1 = self.cluster.nodelist()[node_idx]
+        self.prefill_dynamodb_table(node=node1, table_name=table_name, num_of_items=num_of_items)
+        alternator_scan_thread = self.run_scan_stress(table_name=table_name, node=node1)
+
+        debug("Starting Alternator scan stress..")
+        alternator_scan_thread.start()
+        self._reboot_nodes_while_running_stress(node=node1)
+
+    def test_full_parallel_scan_table_while_restart_each_nodes(self):
+        """
+        Checks parallel scan logic while each node is stopping and after that starting
+        """
+        table_name, num_of_items, node_idx, threads_num = TABLE_NAME, NUM_OF_ITEMS, 0, 4
+        self.prepare_dynamodb_cluster(num_of_nodes=NUM_OF_NODES)
+        node1 = self.cluster.nodelist()[node_idx]
+        self.prefill_dynamodb_table(node=node1, table_name=table_name, num_of_items=num_of_items)
+        alternator_scan_thread = self.run_scan_stress(table_name=table_name, node=node1, threads_num=threads_num)
+
+        debug("Starting Alternator scan stress..")
+        alternator_scan_thread.start()
+        self._reboot_nodes_while_running_stress(node=node1)
+
+    def test_full_parallel_scan_table_while_insert_update_delete_items(self):
+        """
+        Checks parallel scan logic while each node is stopping and after that starting and in the background there is
+         a thread that creates and updates items.
+        """
+        table_name, num_of_items, node_idx, threads_num = TABLE_NAME, NUM_OF_ITEMS, 0, 4
+        self.prepare_dynamodb_cluster(num_of_nodes=NUM_OF_NODES)
+        node1 = self.cluster.nodelist()[node_idx]
+        self.prefill_dynamodb_table(node=node1, table_name=table_name, num_of_items=num_of_items)
+        self.update_items(table_name=table_name, node=node1)
+        alternator_scan_thread = \
+            self.run_scan_stress(table_name=table_name, node=node1, threads_num=threads_num,
+                                 is_compare_scan_result=False)
+
+        insert_update_thread = self.run_delete_insert_update_item_stress(table_name=table_name, node=node1)
+        debug("Starting Alternator create and update items stress..")
+        insert_update_thread.start()
+
+        debug("Starting Alternator scan stress..")
+        alternator_scan_thread.start()
+        self._reboot_nodes_while_running_stress(node=node1)

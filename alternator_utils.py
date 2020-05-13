@@ -4,6 +4,7 @@ import shutil
 import string
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from itertools import chain
 from typing import List, Dict, Union, NamedTuple
 
 import boto3
@@ -94,7 +95,8 @@ class TesterAlternator(Tester):
         super().__init__(*argv, **kwargs)
         self._nodes_url_list = None
         self.keyspace_name_template = "alternator_{}"
-        self._table_pk = "pk"
+        self._table_primary_key = "pk"
+        self._table_primary_key_format = "test{}"
         self._dynamo_params = dict(service_name="dynamodb", aws_access_key_id="None", aws_secret_access_key="None",
                                    region_name="None")
         self.alternator_apis = {}
@@ -162,7 +164,7 @@ class TesterAlternator(Tester):
                            ) -> None:
         dynamodb_api = self.get_dynamodb_api(node=node)
         table = dynamodb_api.resource.Table(name=table_name)
-        primary_key = primary_key or self._table_pk
+        primary_key = primary_key or self._table_primary_key
         with table.batch_writer() as batch:
             for item in items:
                 batch.delete_item(Key={primary_key: item[primary_key]})
@@ -184,7 +186,7 @@ class TesterAlternator(Tester):
     def create_items(self, primary_key: str = None, items: List[Dict[str, str]] = None,
                      num_of_items: int = NUM_OF_ITEMS) -> List[Dict[str, str]]:
         items = items or num_of_items
-        primary_key = primary_key or self._table_pk
+        primary_key = primary_key or self._table_primary_key
         if isinstance(items, int):
             if items < 1:
                 raise ValueError("The number of items should be greater from 1")
@@ -193,27 +195,66 @@ class TesterAlternator(Tester):
         return items
 
     # pylint:disable=too-many-arguments
-    def batch_write_items(self, node: ScyllaNode, table_name: str = TABLE_NAME, items: List[Dict[str, str]] = None,
-                          num_of_items: int = NUM_OF_ITEMS, primary_key: str = None):
+    def batch_write_actions(self, table_name: str, node: ScyllaNode, primary_key: str = None,
+                            new_items: List[Dict[str, str]] = None, delete_items: List[Dict[str, str]] = None):
         dynamodb_api = self.get_dynamodb_api(node=node)
-        items = self.create_items(primary_key=primary_key, items=items, num_of_items=num_of_items)
-        debug(f"Generating '{len(items)}' items for table '{table_name}'..")
+        primary_key = primary_key or self._table_primary_key
+        new_items, delete_items = new_items or [], delete_items or []
+        if new_items:
+            debug(f"Adding new '{len(new_items)}' items to table '{table_name}'..")
+        if delete_items:
+            debug(f"Deleting '{len(delete_items)}' items from table '{table_name}'..")
+
         table = dynamodb_api.resource.Table(name=table_name)
         with table.batch_writer() as batch:
-            for item in items:
+            for item in new_items:
                 batch.put_item(item)
+            for item in delete_items:
+                batch.delete_item({primary_key: item[primary_key]})
         return table
 
-    def scan_table(self, table_name: str, node: ScyllaNode) -> list:
+    def update_items(self, table_name: str, node: ScyllaNode, items: List[Dict] = None,
+                     primary_key: str = None) -> None:
+        items = items or self.create_items(num_of_items=NUM_OF_ITEMS)
         dynamodb_api = self.get_dynamodb_api(node=node)
-        result, still_running_while = [], True
-        table = dynamodb_api.resource.Table(name=table_name)
-        while still_running_while:
-            response = table.scan()
-            result.extend(response["Items"])
-            still_running_while = 'LastEvaluatedKey' in response
+        primary_key = primary_key or self._table_primary_key
 
-        return result
+        debug(f"Updating '{len(items)}' items from table '{table_name}'..")
+        table = dynamodb_api.resource.Table(name=table_name)
+        for update_item in items:
+            if "AttributeUpdates" in update_item:
+                table.update_item(**update_item)
+            else:
+                table.update_item(**dict(
+                    Key={primary_key: update_item[primary_key]}, AttributeUpdates={
+                        key: dict(Value=value, Action="PUT") for key, value in update_item.items()
+                        if key != primary_key}))
+
+    def scan_table(self, table_name: str, node: ScyllaNode, threads_num: int = None, **kwargs) -> List[Dict[str, str]]:
+        scan_result, is_parallel_scan = [], threads_num and threads_num > 0
+        dynamodb_api = self.get_dynamodb_api(node=node)
+        table = dynamodb_api.resource.Table(name=table_name)
+
+        def _scan_table(part_scan_idx=None) -> List[Dict[str, str]]:
+            parallel_params, result, still_running_while = {}, [], True
+            if is_parallel_scan:
+                parallel_params = {"TotalSegments": threads_num, "Segment": part_scan_idx}
+                debug(f"Starting parallel scan part '{part_scan_idx + 1}' on table '{table_name}'")
+            else:
+                debug(f"Starting full scan on table '{table_name}'")
+            while still_running_while:
+                response = table.scan(**parallel_params, **kwargs)
+                result.extend(response["Items"])
+                still_running_while = 'LastEvaluatedKey' in response
+
+            return result
+
+        if is_parallel_scan:
+            with ThreadPoolExecutor(max_workers=threads_num) as executor:
+                threads = [executor.submit(_scan_table, part_idx) for part_idx in range(threads_num)]
+                scan_result = [thread.result() for thread in threads]
+            return list(chain(*scan_result)) if len(scan_result) > 1 else scan_result
+        return _scan_table()
 
     def is_table_exists(self, table_name: str, node: ScyllaNode) -> bool:
         dynamodb_api = self.get_dynamodb_api(node=node)
@@ -288,18 +329,67 @@ class TesterAlternator(Tester):
         debug(f"Starting queries of: {num_of_items} items with ConsistentRead = {consistent_read}")
         if verbose:
             debug("First Item in range: {}".format(
-                table.get_item(ConsistentRead=consistent_read, Key={self._table_pk: 'test0'})['Item']))
+                table.get_item(ConsistentRead=consistent_read, Key={self._table_primary_key: 'test0'})['Item']))
             debug("Last Item in range: {}".format(
-                table.get_item(ConsistentRead=consistent_read, Key={self._table_pk: f'test{num_of_items - 1}'})[
+                table.get_item(ConsistentRead=consistent_read, Key={self._table_primary_key: f'test{num_of_items - 1}'})[
                     'Item']))
 
         for idx in range(num_of_items):
-            table.get_item(ConsistentRead=consistent_read, Key={self._table_pk: f'test{idx}'})
+            table.get_item(ConsistentRead=consistent_read, Key={self._table_primary_key: f'test{idx}'})
 
-    def prefill_dynamodb_table(self, node: ScyllaNode, table_name: str = TABLE_NAME):
+    def prefill_dynamodb_table(self, node: ScyllaNode, table_name: str = TABLE_NAME, num_of_items: int = NUM_OF_ITEMS):
         self.create_table(table_name=table_name, node=node)
         self.wait_table_exists(table_name, self.cluster.nodelist())
-        return self.batch_write_items(table_name=table_name, node=node)
+        new_items = self.create_items(num_of_items=num_of_items)
+        return self.batch_write_actions(table_name=table_name, node=node, new_items=new_items)
+
+    def run_scan_stress(self, table_name: str, node: ScyllaNode, items: List[Dict[str, str]] = None,
+                        threads_num: int = None, is_compare_scan_result: bool = True) -> StoppableThread:
+        items = items or self.create_items(num_of_items=NUM_OF_ITEMS)
+
+        def full_scan():
+            self.scan_table(table_name=table_name, node=node, threads_num=threads_num)
+            debug("Verifying the scan result..")
+            if not is_compare_scan_result:
+                return
+            self.compare_table_items_data(table_name=table_name, expected_items=items, node=node)
+
+        debug("Creating Alternator scan stress..")
+        scan_thread = StoppableThread(target=full_scan)
+        self.addCleanup(scan_thread.stop)
+        return scan_thread
+
+    def run_delete_insert_update_item_stress(self, table_name: str, node: ScyllaNode):
+        primary_key, total_items = "insert_stress_{}", 0
+
+        def insert_item():
+            nonlocal total_items
+            sub_items_size = total_items // 3
+            items = self.create_items(primary_key=primary_key, num_of_items=total_items)
+            update_items = items[sub_items_size: sub_items_size * 2]
+            if total_items % 2 == 0:
+                delete_items = items[:sub_items_size]
+                new_items = items[2 * sub_items_size:]
+            else:
+                delete_items = items[2 * sub_items_size:]
+                new_items = items[:sub_items_size]
+            if total_items % 25 == 0:
+                debug(f"Updating '{len(update_items)}' existing items, creating '{len(new_items)}' new items and "
+                      f"removing '{len(delete_items)}' items from table '{table_name}'..")
+
+            with ThreadPoolExecutor(max_workers=3) as executor:
+                executor.submit(fn=self.batch_write_actions, **dict(
+                    table_name=table_name, node=node, primary_key=primary_key, new_items=new_items))
+                executor.submit(fn=self.batch_write_actions, **dict(
+                    table_name=table_name, node=node, primary_key=primary_key, delete_items=delete_items))
+                executor.submit(fn=self.update_items, **dict(
+                    table_name=table_name, node=node, items=update_items, primary_key=primary_key))
+            total_items += 1
+
+        debug("Creating Alternator scan stress..")
+        insert_update_thread = StoppableThread(target=insert_item)
+        self.addCleanup(insert_update_thread.stop)
+        return insert_update_thread
 
 
 def random_string(length: int, chars=string.ascii_uppercase + string.digits):
