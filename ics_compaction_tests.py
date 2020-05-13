@@ -6,7 +6,7 @@ import string
 from nose.plugins.attrib import attr
 
 from assertions import assert_row_count
-from dtest import Tester, debug
+from dtest import Tester, debug, wait_for
 from scylla_defines import TABLE_NAME, KEYSPACE_NAME, CompactionStrategy, FULL_TABLE_NAME
 from scylla_tools import get_sstables_files, get_cf_dir
 from tools import make_snapshot, restore_snapshot_with_refresh, restore_snapshot_with_sstableloader
@@ -474,7 +474,8 @@ class IcsCompactionTest(Tester):
         assert all([size <= max_compacted_sstable_size for size in
                     files_size]), "Found larger sstable file size than expected"
         # Check that the number of table rows after refresh is correct.
-        assert_row_count(session=session, table_name=FULL_TABLE_NAME, expected=num_rows_per_sstable * num_of_generated_sstables)
+        assert_row_count(session=session, table_name=FULL_TABLE_NAME,
+                         expected=num_rows_per_sstable * num_of_generated_sstables)
 
         # clean up
         debug("removing snapshot_dir: " + snapshot_dir)
@@ -519,33 +520,27 @@ class IcsCompactionTest(Tester):
                      compaction_strategy=compaction_strategy,
                      sstable_size_in_mb=sstable_size_in_mb)
         num_of_generated_sstables = 4
+        # The maximum expected compacted sstable size is the addition of the 2 largets generated sstables.
+        max_expected_file_size = WRITE_SIZE_UNIT_IN_MB * (2 * num_of_generated_sstables - 1)
         start_index = 1
         self._write_and_flush_sstables(num_of_generated_sstables=num_of_generated_sstables, start_index=start_index,
                                        increasing_write_size=True)
-        node1 = self.cluster.nodelist()[0]
-        node1.wait_for_compactions()
+
+        def is_compaction_executed():
+            sstables_files1, _ = self._get_sstable_files_and_sizes()
+            debug("Found {} sstables, out of {} originally created".format(len(sstables_files1), num_of_generated_sstables))
+            return len(sstables_files1) < num_of_generated_sstables
+
+        wait_for(func=is_compaction_executed, text=str(is_compaction_executed),
+                       timeout=100)
         sstables_files1, files_size = self._get_sstable_files_and_sizes()
+        max_found_file_size = max(files_size)
         debug("Number of files after {} flushes is: {} , {}".format(num_of_generated_sstables, len(sstables_files1),
                                                                     sstables_files1))
-        # a. Generating sstables with sizes of: 1,2,3,4
-        # b. the ICS is expected to compact sstables of 1 and 4 to a single sstable of size 5.
-        assert set(files_size) == {2, 3, 5}, "Found sstable files with wrong sizes."
-
-        # (2) Test sstables number and sizes after major compaction
-        node1 = self.cluster.nodelist()[0]
-        node1.compact()
-        debug("Get sstable files after major compaction")
-        sstables_files2, files_size2 = self._get_sstable_files_and_sizes()
-        assert set(files_size2) == {2, 3, 5}, "Found sstable files with wrong sizes."
-
-        # (3) Test sstables number and sizes after generating 4 additional minimal-size sstables and compactions.
-        self._write_and_flush_sstables(num_of_generated_sstables=num_of_generated_sstables,
-                                       start_index=start_index + num_of_generated_sstables)
-        sstables_files3, files_size3 = self._get_sstable_files_and_sizes()
-        # a. Existing sstables have sizes of: 2,3,5
-        # b. Generating 4 sstables with sizes of 1. that means {2,3,5} + {1,1,1,1}
-        # c. The expected ICS compaction result is to get sstables with sizes of: {4, 2, 2, 2, 3, 1}.
-        assert set(files_size3) == {4, 2, 2, 2, 3, 1}, "Found sstable files with wrong sizes."
+        self.assertGreater(a=len(sstables_files1), b=1, msg="More than 1 sstable is expected")
+        self.assertLessEqual(a=max_found_file_size, b=max_expected_file_size,
+                             msg="Maximum file size exceeds expected limit of {}: {}".format(max_expected_file_size,
+                                                                                             max_found_file_size))
 
     def lcs_major_compaction_then_ics_major_compaction_test(self):
         """
