@@ -94,7 +94,7 @@ class TestScyllaMgmtRepair(RepairAdditionalBase):
 
     def config_and_create_cluster(self, nodes):
         self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
-        self.cluster.populate(nodes).start(wait_for_binary_proto=False, wait_other_notice=False)
+        self.cluster.populate(nodes).start(wait_for_binary_proto=True, wait_other_notice=True)
 
     def _initiate_cluster_with_data(self):
         debug("Starting cluster and inserting data...")

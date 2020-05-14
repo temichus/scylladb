@@ -14,7 +14,7 @@ class ScyllaManagerTaskTest(Tester):
         debug("Starting cluster...")
         # Start a cluster of three nodes, and create a keyspace with RF=3, and
         self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
-        self.cluster.populate(3).start(wait_for_binary_proto=False, wait_other_notice=False)
+        self.cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1 = self.cluster.nodelist()[0]
         return node1
 

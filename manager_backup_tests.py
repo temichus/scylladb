@@ -39,7 +39,7 @@ class TestScyllaMgmtBackup(Tester):
             pass
 
     def config_and_create_cluster(self, nodes):
-        self.cluster.populate(nodes).start(wait_for_binary_proto=False, wait_other_notice=False)
+        self.cluster.populate(nodes).start(wait_for_binary_proto=True, wait_other_notice=True)
         return self.cluster.nodelist()
 
     def _prepare_cluster_with_data(self, keyspace_table_and_key_range, number_of_nodes=2):

@@ -9,7 +9,7 @@ from nose.plugins.attrib import attr
 class ManagerHealthCheckTest(Tester):
 
     def create_x_nodes_cluster(self, node_amount=2):
-        self.cluster.populate(node_amount).start(wait_for_binary_proto=False, wait_other_notice=False)
+        self.cluster.populate(node_amount).start(wait_for_binary_proto=True, wait_other_notice=True)
 
     def get_manager_cluster(self):
         debug("Create Manager Tool instance to run scylla-manager operations")

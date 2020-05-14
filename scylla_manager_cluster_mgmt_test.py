@@ -12,7 +12,7 @@ class TestScyllaManagerClusterMgmt(Tester):
 
     @attr('scylla-manager')
     def adding_cluster_while_its_down_test(self):
-        self.cluster.populate(3).start()
+        self.cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2, node3 = self.cluster.nodelist()
 
         debug("Create Manager Tool instance to run scylla-manager operations")
@@ -30,7 +30,7 @@ class TestScyllaManagerClusterMgmt(Tester):
 
     @attr('scylla-manager')
     def add_more_than_one_scylla_cluster_test(self):
-        self.cluster.populate(3).start(wait_for_binary_proto=False, wait_other_notice=False)
+        self.cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2, node3 = self.cluster.nodelist()
 
         manager_tool = ScyllaManagerTool(scylla_manager=self.cluster._scylla_manager)
@@ -69,7 +69,7 @@ class TestScyllaManagerClusterMgmt(Tester):
 
     @attr('scylla-manager')
     def removing_managed_driver_during_repair_test(self):
-        self.cluster.populate(3).start()
+        self.cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2, node3 = self.cluster.nodelist()
 
         debug("Create Manager Tool instance to run scylla-manager operations")
@@ -91,7 +91,7 @@ class TestScyllaManagerClusterMgmt(Tester):
 
     @attr('scylla-manager')
     def removing_node_from_managed_cluster_test(self):
-        self.cluster.populate(3).start()
+        self.cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2, node3 = self.cluster.nodelist()
 
         manager_tool = ScyllaManagerTool(scylla_manager=self.cluster._scylla_manager)
