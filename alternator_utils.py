@@ -306,6 +306,7 @@ class TesterAlternator(Tester):
         refresh_cmd = f"refresh -- {self.keyspace_name_template.format(table_name)} {table_name}"
         debug(f"Running following refresh cmd '{refresh_cmd}'..")
         node.nodetool(refresh_cmd)
+        node.repair()
 
     def compare_table_data(self, table_name: str, table_data: List[Dict[str, str]], node: ScyllaNode) -> DeepDiff:
         data = self.scan_table(table_name=table_name, node=node)
