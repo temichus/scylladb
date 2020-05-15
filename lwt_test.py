@@ -1,7 +1,7 @@
 from dtest import Tester, debug
 from nose.plugins.attrib import attr
 from assertions import assert_one, assert_none, assert_unavailable
-from cassandra import ConsistencyLevel, Unavailable
+from cassandra import ConsistencyLevel, Unavailable, WriteFailure
 from cassandra.query import SimpleStatement
 from tools import rows_to_list
 
@@ -348,4 +348,100 @@ class LwtTest(Tester):
             pass
         stmt1.serial_consistency_level = ConsistencyLevel.SERIAL
         session1.execute(stmt1, (7,))
+
+#
+# Read Linearizability Test
+#
+NODES  = 3
+NODE_A = 0
+NODE_B = 1
+NODE_C = 2
+
+error_injections = [
+    "paxos_prepare_timeout",
+    "paxos_error_before_save_promise",
+    "paxos_error_after_save_promise",
+    "paxos_accept_proposal_timeout",
+    "paxos_error_before_save_proposal",
+    "paxos_error_after_save_proposal",
+    "paxos_error_before_learn",
+    "paxos_state_learn_timeout",
+    "paxos_timeout_after_save_decision" ]
+
+class LwtReadLinearizabilityTest(Tester):
+
+    @attr("!dtest-release")
+    def read_linearizability_test(self):
+        """Consider 3 nodes A, B and C and a LWT failed write operation that managed to get V
+           accepted on A. The value is read twice without writes in the middle. First read access
+           B and C and returns nothing. Next one access A and B, notices failed round and
+           completes it. Returns value V. Since two consequent writes without any reads in the
+           middle return different value this breaks linearisability."""
+
+        self.ignore_log_patterns.extend(["utils::injected_error"])
+
+        # Runs three nodes A, B, C
+        if not self.cluster.nodelist():
+            self.cluster.populate(NODES)
+            self.cluster.start(wait_other_notice=True)
+
+        session_a = self.patient_cql_connection(self.cluster.nodelist()[NODE_A])
+        self.create_ks(session_a, "ks", rf=NODES)
+        session_a.execute("CREATE TABLE t (id int PRIMARY KEY, v int)")
+
+        # 1. Inject error at accept stage in B and C
+        for node in [NODE_B, NODE_C]:
+            self.enable_error("paxos_error_before_save_proposal", node)
+
+        # 2. run a write(V) that suppose to succeed
+        # 3. write will fail because B and C will fail
+        with self.assertRaises(WriteFailure):
+            ret = session_a.execute("INSERT INTO ks.t (id, v) VALUES (1, 1) IF NOT EXISTS").current_rows
+            assert ret[0].applied == False
+
+        # 4. enable all error injections on A
+        for error in error_injections:
+            self.enable_error(error, NODE_A)
+
+        # 5. remove error injection from B and C
+        for node in [NODE_B, NODE_C]:
+            self.disable_error("paxos_error_before_save_proposal", node)
+
+        # 6. run a read of the same key
+        # 7. verify that read does not return V
+
+        # Verify value is not set in B and C
+        for node in [NODE_B, NODE_C]:
+            session = self.patient_exclusive_cql_connection(self.cluster.nodelist()[node])
+            query = SimpleStatement(
+                "SELECT v FROM ks.t WHERE id = 1",
+                consistency_level=ConsistencyLevel.ONE
+            )
+            ret = session.execute(query).current_rows
+            if ret:
+                debug(f"Got invalid value for node {node}: {ret}")
+            assert ret == []
+
+        # Verify value is not set in A  (complete round?)
+        query = SimpleStatement(
+            "SELECT v FROM ks.t WHERE id = 1",
+            consistency_level=ConsistencyLevel.SERIAL
+        )
+        ret = session_a.execute(query).current_rows
+        assert ret == []
+
+        # 8. remove injected errors from A and to C
+        for error in error_injections:
+            self.disable_error(error, NODE_A)
+            self.enable_error(error, NODE_C)
+
+        # 9. run the read again and check that the value is still not V
+        query = SimpleStatement(
+            "SELECT v FROM ks.t WHERE id = 1",
+            consistency_level=ConsistencyLevel.SERIAL
+        )
+        ret = session.execute(query).current_rows
+
+        # 7. verify that read does not return V
+        assert ret == []
 
