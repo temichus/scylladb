@@ -1403,7 +1403,7 @@ class TestCQL(Tester):
                AND compaction = { 'class' : 'LeveledCompactionStrategy',
                                   'sstable_size_in_mb' : 10 }
                AND compression = { 'sstable_compression' : '' }
-               AND caching = 'all'
+               AND caching = '{"keys":"ALL","rows_per_partition":"ALL"}'
         """)
 
         session.execute("""
@@ -1416,7 +1416,7 @@ class TestCQL(Tester):
              AND compaction = { 'class' : 'SizeTieredCompactionStrategy',
                                 'min_sstable_size' : 42 }
              AND compression = { 'sstable_compression' : 'SnappyCompressor' }
-             AND caching = 'rows_only'
+             AND caching = '{"keys":"NONE","rows_per_partition":"ALL"}'
         """)
 
     @attr('single_node')
@@ -2878,7 +2878,7 @@ class TestCQL(Tester):
                 k int PRIMARY KEY,
                 v1 int,
                 v2 int,
-            ) WITH CACHING = ALL;
+            ) WITH CACHING = '{"keys":"ALL","rows_per_partition":"ALL"}';
         """)
 
         for i in range(0, 3):
@@ -5450,7 +5450,7 @@ class TestCQL(Tester):
             )
         """)
 
-        session.execute("ALTER TABLE test WITH CACHING='ALL'")
+        session.execute("ALTER TABLE test WITH CACHING={'keys':'ALL','rows_per_partition':'ALL'}")
         session.execute("INSERT INTO test (k,v) VALUES (0,0)")
         session.execute("INSERT INTO test (k,v) VALUES (1,1)")
         session.execute("CREATE INDEX testindex on test(v)")
