@@ -203,9 +203,9 @@ class TesterAlternator(Tester):
         assert new_items or delete_items, "should pass new_items or delete_items, other it's a no-op"
         new_items, delete_items = new_items or [], delete_items or []
         if new_items:
-            debug(f"Adding new '{len(new_items)}' items to table '{table_name}'..")
+            debug(f"Adding new {len(new_items)} items to table '{table_name}'..")
         if delete_items:
-            debug(f"Deleting '{len(delete_items)}' items from table '{table_name}'..")
+            debug(f"Deleting {len(delete_items)} items from table '{table_name}'..")
 
         table = dynamodb_api.resource.Table(name=table_name)
         with table.batch_writer() as batch:

@@ -97,7 +97,7 @@ class AlternatorDataGenerator:
 
     def create_random_dict_item(self):
         original_item_count = self.items_count + 1
-        item = {self.primary_key: self.primary_key_format.format(self.items_count),
+        item = {self.primary_key: self.primary_key_format.format(original_item_count),
                 self.get_mode_name(mode=TypeMode.NUMBER): self.create_random_number_item(),
                 self.get_mode_name(mode=TypeMode.BOOL): self.create_random_bool_item(),
                 self.get_mode_name(mode=TypeMode.NONE): self.create_none_item(),
@@ -126,7 +126,7 @@ class AlternatorDataGenerator:
         elif mode == TypeMode.BINARY:
             return [self.create_random_binary_item() for _ in range(num_of_items)]
         elif mode == TypeMode.LIST:
-            return [self.create_random_binary_item() for _ in range(num_of_items)]
+            return [self.create_random_list_item() for _ in range(num_of_items)]
         elif mode == TypeMode.DICT:
             return [self.create_random_dict_item() for _ in range(num_of_items)]
 

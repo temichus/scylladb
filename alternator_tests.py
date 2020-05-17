@@ -327,7 +327,7 @@ class AlternatorTest(TesterAlternator):
         for mode in TypeMode:
             items = data_generator.create_multiple_items(num_of_items=random.randint(1, 10), mode=mode)
             all_items += items
-            debug(f"Adding '{len(items)}' {data_generator.get_mode_name} items to table '{table_name}'..")
+            debug(f"Adding {len(items)} {data_generator.get_mode_name(mode)} items to table '{table_name}'..")
             self.batch_write_actions(table_name=table_name, node=node1, new_items=items)
             diff = self.compare_table_data(table_name=table_name, table_data=all_items, node=node1)
             self.assertTrue(expr=not diff, msg=f"The following items are missing:\n{pformat(diff)}")
