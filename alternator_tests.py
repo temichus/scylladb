@@ -94,7 +94,9 @@ class AlternatorTest(TesterAlternator):
         node1, node2, node3 = self.cluster.nodelist()
         self.create_table(table_name=TABLE_NAME, node=node1)
         self.wait_table_exists(TABLE_NAME, self.cluster.nodelist())
-        self.batch_write_actions(table_name=TABLE_NAME, node=node1)
+
+        items = self.create_items(num_of_items=NUM_OF_ITEMS)
+        self.batch_write_actions(table_name=TABLE_NAME, node=node1, new_items=items)
         get_items_thread = self.run_stress(table_name=TABLE_NAME, node=node1)
         debug(f'Start drain for: {node3.name}')
         node3.drain()
@@ -107,7 +109,8 @@ class AlternatorTest(TesterAlternator):
         self.create_table(table_name=TABLE_NAME, node=node1)
         self.wait_table_exists(TABLE_NAME, self.cluster.nodelist())
 
-        self.batch_write_actions(table_name=TABLE_NAME, node=node1)
+        items = self.create_items(num_of_items=NUM_OF_ITEMS)
+        self.batch_write_actions(table_name=TABLE_NAME, node=node1, new_items=items)
         alternator_consistent_stress = self.run_stress(table_name=TABLE_NAME, node=node1)
         debug(f'Start first decommission during consistent Alternator-load for: {node2.name}')
         node2.decommission()
@@ -142,7 +145,10 @@ class AlternatorTest(TesterAlternator):
         debug(f"Stopping {node2.name}")
         node2.stop(wait_other_notice=True)
         self.create_table(table_name=TABLE_NAME, node=node1)
-        self.batch_write_actions(table_name=TABLE_NAME, node=node1)
+
+        items = self.create_items(num_of_items=NUM_OF_ITEMS)
+        self.batch_write_actions(table_name=TABLE_NAME, node=node1, new_items=items)
+
         debug(f"Starting {node2.name}")
         node2.start(wait_other_notice=True, wait_for_binary_proto=True)
         debug(f"starting repair on {node2.name}...")
@@ -158,7 +164,9 @@ class AlternatorTest(TesterAlternator):
         self.wait_table_exists(TABLE_NAME, self.cluster.nodelist())
 
         debug(f"Writing Alternator queries to node {dc1_node.name} on data-center {dc1_node.data_center}")
-        self.batch_write_actions(table_name=TABLE_NAME, node=dc1_node)
+        items = self.create_items(num_of_items=NUM_OF_ITEMS)
+        self.batch_write_actions(table_name=TABLE_NAME, node=dc1_node, new_items=items)
+
         dc2_node = next(node for node in self.cluster.nodelist() if node.data_center != dc1_node.data_center)
         debug(f"Reading Alternator queries from node {dc2_node.name} on data-center {dc2_node.data_center}")
         self.get_table_items(table_name=TABLE_NAME, node=dc2_node, consistent_read=False)
