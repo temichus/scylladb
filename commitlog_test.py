@@ -14,7 +14,7 @@ from cassandra.cluster import NoHostAvailable, OperationTimedOut
 from ccmlib.common import is_win
 from ccmlib.node import Node, TimeoutError
 from assertions import assert_almost_equal, assert_none, assert_one, assert_row_count_in_select, \
-    assert_row_count_in_select_less, assert_row_count
+    assert_row_count_in_select_less, assert_row_count, assert_all
 from dtest import Tester, debug
 from tools import since, rows_to_list
 from nose.plugins.attrib import attr
@@ -686,9 +686,11 @@ class TestCommitLog(Tester):
         self.assertEquals(rows[0][0], 44)
         self.assertEquals(rows[1][0], 10)
 
-    def prepare_cluster_with_ks_cf(self):
+    def prepare_cluster_with_ks_cf(self, jvm_args=None):
         node1 = self.node1
-        self.cluster.start()
+        node1.set_configuration_options(values={'experimental': True})
+        jvm_args = jvm_args or []
+        self.cluster.start(jvm_args=jvm_args)
 
         debug("Create table")
         session = self.patient_cql_connection(node1)
@@ -754,7 +756,7 @@ class TestCommitLog(Tester):
         session = self.patient_cql_connection(node1)
         assert_row_count(session=session, table_name='Test.cf', expected=100)
 
-    def test_mixed_mode_commitlog(self):
+    def test_mixed_mode_commitlog_2_partitions_smp_1(self):
         """
         Test 'batch' and 'periodic' mode of commitlog flushing
 
@@ -765,20 +767,83 @@ class TestCommitLog(Tester):
           and writes are only ready after they are flushed.
           This mode is used for LWT
         """
-        session, node1 = self.prepare_cluster_with_ks_cf()
+        session, node1 = self.prepare_cluster_with_ks_cf(jvm_args=['--smp', '1'])
 
+        expected_result = []
         debug("Insert 200 rows")
         for i in range(0, 100):
-            # Row - candidate for 'periodic' mode
-            session.execute("INSERT INTO Test.cf (pk1, ck1, v1) VALUES ({pk}, {i}, {i})".format(i=i, pk=2))
             # Row - candidate for 'batch' mode
             session.execute("INSERT INTO Test.cf (pk1, ck1, v1) VALUES ({pk}, {i},{i}) IF NOT EXISTS".format(i=i, pk=1))
+            # Row - candidate for 'periodic' mode
+            session.execute("INSERT INTO Test.cf (pk1, ck1, v1) VALUES ({pk}, {i}, {i})".format(i=i, pk=2))
+            expected_result.append([2, i, i])
+            expected_result.append([1, i, i])
 
         debug("Insert more 100 non-LWT rows and 1 LWT row in the middle of queue")
         for i in range(100, 200):
             if i == 150:
                 session.execute(
                     "INSERT INTO Test.cf (pk1, ck1, v1) VALUES ({pk}, {i},{i}) IF NOT EXISTS".format(i=i, pk=1))
+                expected_result.append([1, i, i])
+            session.execute("INSERT INTO Test.cf (pk1, ck1, v1) VALUES ({pk}, {i}, {i})".format(i=i, pk=2))
+            if i < 150:
+                expected_result.append([2, i, i])
+
+        assert_row_count_in_select(session=session, query='select * from Test.cf where pk1=1',
+                                   num_rows_expected=101)
+        assert_row_count_in_select(session=session, query='select * from Test.cf where pk1=2',
+                                   num_rows_expected=200)
+
+        debug("Stop node abruptly")
+        node1.stop(gently=False)
+
+        debug("Start node")
+        node1.start()
+
+        debug("Make query and ensure data is present as expected")
+        session = self.patient_cql_connection(node1)
+
+        # LWT rows - expected all rows were flushed immediately
+        assert_row_count_in_select(session=session, query='select * from Test.cf where pk1=1',
+                                   num_rows_expected=101)
+        assert_row_count_in_select(session=session, query='select * from Test.cf where pk1=2',
+                                   num_rows_expected=150)
+        assert_all(session=session, query='select * from Test.cf', expected=expected_result, ignore_order=True)
+
+    def test_mixed_mode_commitlog_2_partitions_smp_2(self):
+        """
+        Test 'batch' and 'periodic' mode of commitlog flushing
+
+        - 'periodic' mode is where all commitlog writes are ready the moment they are stored in
+          a memory buffer and the memory buffer is flushed to a storage periodically.
+
+        - 'batch' mode where each write is flushed as soon as possible (after previous flush completed)
+          and writes are only ready after they are flushed.
+          This mode is used for LWT
+
+        By Glebs explanation:
+            When LWT and non-LWT data is written into different partitions and smp > 1
+            non-LWT rows may be flushed for many reasons, or may be not.
+            Any number between 0 and total number of written non LWT rows are expected. So there is no expected
+            result for non-LWT rows
+        """
+        session, node1 = self.prepare_cluster_with_ks_cf(jvm_args=['--smp', '2'])
+
+        expected_result = []
+        debug("Insert 200 rows")
+        for i in range(0, 100):
+            # Row - candidate for 'batch' mode
+            session.execute("INSERT INTO Test.cf (pk1, ck1, v1) VALUES ({pk}, {i},{i}) IF NOT EXISTS".format(i=i, pk=1))
+            # Row - candidate for 'periodic' mode
+            session.execute("INSERT INTO Test.cf (pk1, ck1, v1) VALUES ({pk}, {i}, {i})".format(i=i, pk=2))
+            expected_result.append([1, i, i])
+
+        debug("Insert more 100 non-LWT rows and 1 LWT row in the middle of queue")
+        for i in range(100, 200):
+            if i == 150:
+                session.execute(
+                    "INSERT INTO Test.cf (pk1, ck1, v1) VALUES ({pk}, {i},{i}) IF NOT EXISTS".format(i=i, pk=1))
+                expected_result.append([1, i, i])
             session.execute("INSERT INTO Test.cf (pk1, ck1, v1) VALUES ({pk}, {i}, {i})".format(i=i, pk=2))
 
         assert_row_count_in_select(session=session, query='select * from Test.cf where pk1=1',
@@ -798,3 +863,118 @@ class TestCommitLog(Tester):
         # LWT rows - expected all rows were flushed immediately
         assert_row_count_in_select(session=session, query='select * from Test.cf where pk1=1',
                                    num_rows_expected=101)
+        assert_all(session=session, query='select * from Test.cf where pk1=1',
+                   expected=expected_result, ignore_order=True)
+
+    def test_mixed_mode_commitlog_same_partition_smp_1(self):
+        self._mixed_mode_commitlog_same_partition(smp='1')
+
+    def test_mixed_mode_commitlog_same_partition_smp_2(self):
+        self._mixed_mode_commitlog_same_partition(smp='2')
+
+    def _mixed_mode_commitlog_same_partition(self, smp):
+        """
+        Test 'batch' and 'periodic' mode of commitlog flushing
+
+        - 'periodic' mode is where all commitlog writes are ready the moment they are stored in
+          a memory buffer and the memory buffer is flushed to a storage periodically.
+
+        - 'batch' mode where each write is flushed as soon as possible (after previous flush completed)
+          and writes are only ready after they are flushed.
+          This mode is used for LWT
+
+          When LWT and non-LWT data is written into the same partition it isn't matter how many smp -
+          all non-LWT rows that were arrived before last LWT row should be flushed
+        """
+        session, node1 = self.prepare_cluster_with_ks_cf(jvm_args=['--smp', smp, '--default-log-level', 'trace'])
+
+        expected_result = []
+        debug("Insert 200 rows")
+        for i in range(0, 100):
+            # Row - candidate for 'batch' mode
+            session.execute("INSERT INTO Test.cf (pk1, ck1, v1) VALUES ({pk}, {i},{i}) IF NOT EXISTS".format(i=i, pk=1))
+            expected_result.append([1, i, i])
+        for i in range(100, 200):
+            # Row - candidate for 'periodic' mode
+            session.execute("INSERT INTO Test.cf (pk1, ck1, v1) VALUES ({pk}, {i}, {i})".format(i=i, pk=1))
+            expected_result.append([1, i, i])
+
+        debug("Insert more 100 non-LWT rows and 1 LWT row in the middle of queue")
+        for i in range(200, 300):
+            if i == 250:
+                session.execute(
+                    "INSERT INTO Test.cf (pk1, ck1, v1) VALUES ({pk}, {i},{i}) IF NOT EXISTS".format(i=i, pk=1))
+            else:
+                session.execute("INSERT INTO Test.cf (pk1, ck1, v1) VALUES ({pk}, {i}, {i})".format(i=i, pk=1))
+
+            if i <= 250:
+                expected_result.append([1, i, i])
+        assert_row_count_in_select(session=session, query='select * from Test.cf where pk1=1',
+                                   num_rows_expected=300)
+
+        debug("Stop node abruptly")
+        node1.stop(gently=False)
+
+        debug("Start node")
+        node1.start()
+
+        debug("Make query and ensure data is present as expected")
+        session = self.patient_cql_connection(node1)
+
+        # LWT rows - expected all rows were flushed immediately
+        assert_row_count_in_select(session=session, query='select * from Test.cf',
+                                   num_rows_expected=251)
+        assert_all(session=session, query='select * from Test.cf', expected=expected_result, ignore_order=True)
+
+    def test_mixed_mode_with_delete_commitlog(self):
+        """
+        Test 'batch' and 'periodic' mode of commitlog flushing
+
+        - 'periodic' mode is where all commitlog writes are ready the moment they are stored in
+          a memory buffer and the memory buffer is flushed to a storage periodically.
+
+        - 'batch' mode where each write is flushed as soon as possible (after previous flush completed)
+          and writes are only ready after they are flushed.
+          This mode is used for LWT
+        """
+        session, node1 = self.prepare_cluster_with_ks_cf()
+
+        expected_result = []
+        debug("Insert 100 non-LWT rows")
+        for i in range(0, 100):
+            # Row - candidate for 'periodic' mode
+            session.execute("INSERT INTO Test.cf (pk1, ck1, v1) VALUES ({pk}, {i}, {i})".format(i=i, pk=1))
+            expected_result.append([1, i, i])
+
+        debug("Insert 100 LWT rows")
+        for i in range(100, 200):
+            # Row - candidate for 'batch' mode
+            session.execute("INSERT INTO Test.cf (pk1, ck1, v1) VALUES ({pk}, {i},{i}) IF NOT EXISTS".format(i=i, pk=1))
+            if i != 150:
+                expected_result.append([1, i, i])
+
+        debug("Insert more 100 non-LWT rows and 1 LWT row in the middle of queue")
+        for i in range(200, 300):
+            if i == 250:
+                session.execute(
+                    "DELETE FROM Test.cf WHERE pk1 = 1 and ck1 = 150 IF EXISTS")
+            session.execute("INSERT INTO Test.cf (pk1, ck1, v1) VALUES ({pk}, {i}, {i})".format(i=i, pk=1))
+            if i < 250:
+                expected_result.append([1, i, i])
+
+        assert_row_count_in_select(session=session, query='select * from Test.cf where pk1=1',
+                                   num_rows_expected=299)
+
+        debug("Stop node abruptly")
+        node1.stop(gently=False)
+
+        debug("Start node")
+        node1.start()
+
+        debug("Make query and ensure data is present as expected")
+        session = self.patient_cql_connection(node1)
+        # LWT rows - expected all rows were flushed immediately
+        assert_row_count_in_select(session=session, query='select * from Test.cf',
+                                   num_rows_expected=249)
+        assert_all(session=session, query='select * from Test.cf', expected=expected_result, ignore_order=True)
+        
