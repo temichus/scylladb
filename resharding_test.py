@@ -2,6 +2,7 @@ import os
 import glob
 import re
 import time
+import multiprocessing
 
 from nose.plugins.attrib import attr
 from dtest import Tester, debug, flaky
@@ -13,20 +14,21 @@ from cassandra import ConsistencyLevel
 
 class ReshardingTestBase(Tester):
     DEFAULT_MURMUR3_PARTITIONER = 12
-    DEFAULT_SMP = 2
     DEFAULT_NODES = 1
-    SMP_FOR_INCREASE = 9
-    SMP_FOR_DECREASE = int(DEFAULT_SMP)
     MURMUR3_PARTITIONER_FOR_DECREASE = 10
     MURMUR3_PARTITIONER_FOR_INCREASE = 17
     __test__ = False
     def __init__(self, *args, **kwargs):
         super(ReshardingTestBase, self).__init__(*args, **kwargs)
         self.compaction_strategy = self.compaction_strategy if hasattr(self, 'compaction_strategy') else 'LeveledCompactionStrategy'
-        self.smp = self.smp if hasattr(self, 'smp') else self.DEFAULT_SMP
+        cpu_count = multiprocessing.cpu_count()
+        assert cpu_count >= 4, "Resharding tests require a minimum of 4 cpus"
+        self.smp = min(cpu_count // 2 + 1, 5)
+        self.SMP_FOR_INCREASE = min(self.smp + 1, cpu_count, 9)
+        self.SMP_FOR_DECREASE = min(1, self.smp // 2)
+
         self.murmur3 = self.murmur3 if hasattr(self, 'murmur3') else self.DEFAULT_MURMUR3_PARTITIONER
         self.nodes = self.nodes if hasattr(self, 'nodes') else self.DEFAULT_NODES
-        # smp_for_increase and smp_for_decrease values should be according to the monster environment
         self.rf = 1 if self.nodes < 3 else 3
         self.mem =  self.set_memory_param(self.smp)
 
@@ -339,17 +341,16 @@ class ReshardingVariantsTest(ReshardingTestBase):
 
 strategies = ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy',
               'TimeWindowCompactionStrategy']
-# SMP value should be according to the monster environment
-smp = 5
+
 murmur3 = 15
 for node_count in [1, 4]:
     for strategy in strategies:
         cls_name = ('ReshardingTest_nodes' + str(node_count) + '_with_' + strategy)
         vars()[cls_name] = type(cls_name, (ReshardingVariantsTest,), {'nodes': node_count, 'compaction_strategy': strategy,
-                                                              'smp': smp, 'murmur3': murmur3, '__test__': True})
+                                                                      'murmur3': murmur3, '__test__': True})
 
 for node_count in [1]:
     for strategy in ['TimeWindowCompactionStrategy']:
         cls_name = ('ReshardingTest_nodes' + str(node_count) + '_with_' + strategy)
         vars()[cls_name] = type(cls_name, (ReshardingSingleNodeGatingTest,), {'nodes': node_count, 'compaction_strategy': strategy,
-                                                              'smp': smp, 'murmur3': murmur3, '__test__': True})
+                                                                              'murmur3': murmur3, '__test__': True})
