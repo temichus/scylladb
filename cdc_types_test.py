@@ -1,4 +1,5 @@
 import time
+import re
 from datetime import datetime, timedelta, date
 from typing import Tuple
 from enum import IntEnum
@@ -971,15 +972,19 @@ frozen_collections = [
     {"cl_type": "frozen<list<int>>", "ins_dataset": [1, 12], "upd_dataset": [3, 13]},
 ]
 
+def mkident(s):
+    s = re.sub('\s+', '', s)
+    s = re.sub('[<>,]', '_', s)
+    return re.sub('_+$', '', s)
 
 for native_type in native_types_values:
-    cls_name = ('TestCDCNativeType_' + native_type["cl_type"])
+    cls_name = ('TestCDCNativeType_with_{}'.format(native_type["cl_type"]))
     vars()[cls_name] = type(cls_name, (CDCNativeTypeTmpl,), {'columns_data': native_type, '__test__': True})
 
 for frozen_collection_type in frozen_collections:
-    cls_name = (f'TestCDCFrozenCollection_{frozen_collection_type["cl_type"]}')
+    cls_name = ('TestCDCFrozenCollection_with_{}'.format(mkident(frozen_collection_type["cl_type"])))
     vars()[cls_name] = type(cls_name, (CDCNativeTypeTmpl, ), {'columns_data': frozen_collection_type, '__test__': True})
 
 for collection_type in collections_types:
-    cls_name = ('TestCDCCollectionType_with_' + collection_type["cl_type"])
+    cls_name = ('TestCDCCollectionType_with_{}'.format(mkident(collection_type["cl_type"])))
     vars()[cls_name] = type(cls_name, (CDCCollectionsTmpl,), {'columns_data': collection_type, '__test__': True})
