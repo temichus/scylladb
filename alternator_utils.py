@@ -9,6 +9,7 @@ from typing import List, Dict, Union, NamedTuple
 
 import boto3
 from mypy_boto3_dynamodb import DynamoDBClient, DynamoDBServiceResource
+from mypy_boto3_dynamodb.type_defs import AttributeValueTypeDef
 from mypy_boto3_dynamodb.service_resource import Table
 from deepdiff import DeepDiff
 from nose.plugins.attrib import attr
@@ -190,7 +191,7 @@ class TesterAlternator(Tester):
         if isinstance(items, int):
             if items < 1:
                 raise ValueError("The number of items should be greater from 1")
-            items = [{primary_key: f"test{item_idx}", "x": {"hello": f"world{item_idx}"}, }
+            items = [{primary_key: self._table_primary_key_format.format(item_idx), "x": {"hello": f"world{item_idx}"}, }
                      for item_idx in range(0, items)]
         return items
 
@@ -199,6 +200,7 @@ class TesterAlternator(Tester):
                             new_items: List[Dict[str, str]] = None, delete_items: List[Dict[str, str]] = None):
         dynamodb_api = self.get_dynamodb_api(node=node)
         primary_key = primary_key or self._table_primary_key
+        assert new_items or delete_items, "should pass new_items or delete_items, other it's a no-op"
         new_items, delete_items = new_items or [], delete_items or []
         if new_items:
             debug(f"Adding new '{len(new_items)}' items to table '{table_name}'..")
@@ -230,12 +232,12 @@ class TesterAlternator(Tester):
                         key: dict(Value=value, Action="PUT") for key, value in update_item.items()
                         if key != primary_key}))
 
-    def scan_table(self, table_name: str, node: ScyllaNode, threads_num: int = None, **kwargs) -> List[Dict[str, str]]:
+    def scan_table(self, table_name: str, node: ScyllaNode, threads_num: int = None, **kwargs) -> List[Dict[str, AttributeValueTypeDef]]:
         scan_result, is_parallel_scan = [], threads_num and threads_num > 0
         dynamodb_api = self.get_dynamodb_api(node=node)
         table = dynamodb_api.resource.Table(name=table_name)
 
-        def _scan_table(part_scan_idx=None) -> List[Dict[str, str]]:
+        def _scan_table(part_scan_idx=None) -> List[Dict[str, AttributeValueTypeDef]]:
             parallel_params, result, still_running_while = {}, [], True
             if is_parallel_scan:
                 parallel_params = {"TotalSegments": threads_num, "Segment": part_scan_idx}
