@@ -327,3 +327,27 @@ class AlternatorTest(TesterAlternator):
             self.batch_write_actions(table_name=table_name, node=node1, new_items=items)
             diff = self.compare_table_data(table_name=table_name, table_data=all_items, node=node1)
             self.assertTrue(expr=not diff, msg=f"The following items are missing:\n{pformat(diff)}")
+
+    def read_system_tables_via_dynamodb_api(self):
+        """
+        make sure we could only read system tables via dynamodb api
+
+        https://github.com/scylladb/scylla/issues/6122
+        """
+        self.prepare_dynamodb_cluster(num_of_nodes=3)
+        all_nodes = self.cluster.nodelist()
+
+        # check each node peer are the node we expect
+        for node in all_nodes:
+            results = self.scan_table('.scylla.alternator.system.peers', node=node)
+            peers = set(item['peer'] for item in results)
+
+            # get all the other nodes ip addresses
+            other_nodes_ips = set(self.get_ip_from_node(n) for n in set(all_nodes).difference({node}))
+
+            assert peers == other_nodes_ips, f"peers in {node.name} are not as expected {other_nodes_ips}"
+
+            debug("trying to write into system table, which should be readonly")
+            self.assertRaisesRegex(expected_exception=ClientError, expected_regex=r"ResourceNotFoundException",
+                                   callable=self.batch_write_actions,
+                                   table_name='.scylla.alternator.system.peers', new_items=[dict(pk=1)], node=node)
