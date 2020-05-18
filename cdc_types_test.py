@@ -596,7 +596,7 @@ class CDCCollectionsTmpl(CdcTools):
         self.insert_operation_tmpl(postimage_enable=True)
 
     def test_collection_insert_with_preimage_postimage(self):
-        self.insert_operation_tmpl(postimage_enable=True)
+        self.insert_operation_tmpl(preimage_enable=True, postimage_enable=True)
 
     def test_update_collection_with_add_element(self):
         self.collection_update_tmpl(add_element=True)
@@ -727,10 +727,10 @@ class CDCCollectionsTmpl(CdcTools):
                                    expected_data=self.null_value_dataset)
             self.check_cdc_log_row(cdc_log_data[4], operation=CdcLogOperations.INSERT, batch_seq=1,
                                    expected_data=self.null_value_dataset)
-            self.check_cdc_log_row_collection(cdc_log_data[5], operation=CdcLogOperations.POSTIMAGE, batch_seq=2,
-                                              expected_data=self.inserted_dataset)
-            self.check_cdc_log_row_collection(cdc_log_data[6], operation=CdcLogOperations.PREIMAGE, batch_seq=3,
-                                              expected_data=self.inserted_dataset)
+            self.check_cdc_log_row(cdc_log_data[5], operation=CdcLogOperations.POSTIMAGE, batch_seq=2,
+                                   expected_data=self.null_value_dataset)
+            self.check_cdc_log_row(cdc_log_data[6], operation=CdcLogOperations.PREIMAGE, batch_seq=3,
+                                   expected_data=self.null_value_dataset)
             self.check_cdc_log_row_collection(cdc_log_data[7], operation=CdcLogOperations.UPDATE, batch_seq=4,
                                               expected_data=self.inserted_dataset)
             self.check_cdc_log_row_collection(cdc_log_data[8], operation=CdcLogOperations.POSTIMAGE, batch_seq=5,
@@ -747,8 +747,8 @@ class CDCCollectionsTmpl(CdcTools):
                                    expected_data=self.null_value_dataset)
             self.check_cdc_log_row_collection(cdc_log_data[4], operation=CdcLogOperations.UPDATE, batch_seq=2,
                                               expected_data=self.inserted_dataset)
-            self.check_cdc_log_row(cdc_log_data[5], operation=CdcLogOperations.POSTIMAGE, batch_seq=3,
-                                   expected_data=self.inserted_dataset)
+            self.check_cdc_log_row_collection(cdc_log_data[5], operation=CdcLogOperations.POSTIMAGE, batch_seq=3,
+                                              expected_data=self.inserted_dataset)
 
         elif preimage_enable:
             self.check_cdc_log_num_row(cdc_log_data, 6)
