@@ -19,7 +19,7 @@ from assertions import assert_one
 from ccmlib.node import NodetoolError
 
 from dtest import Tester, debug
-from scylla_tools import CassandraCluster, drop_table
+from scylla_tools import CassandraCluster, drop_table, get_sstables_files
 from tools import require, rows_to_list, safe_mkdtemp
 from nose import tools
 from nose.plugins.attrib import attr
@@ -260,14 +260,15 @@ class MigrationTestBase(Tester):
         data_dir = self.get_cf_dir(os.path.join(node1.get_path(), 'data/keyspace1'), 'standard1')
 
         debug('Copy node1 sstables from {} to {}'.format(data_dir, dir))
-        data_files = glob.glob(os.path.join(data_dir, '*.*'))
+        data_files = get_sstables_files(data_dir)
+        debug('Data files: {}'.format(data_files))
         for data_file in data_files:
-            shutil.copy2(data_file, os.path.join(dir, os.path.basename(data_file)))
+            shutil.copy2(os.path.join(data_dir, data_file), dir)
 
         debug('Remove sstables and commit log for node1')
         shutil.rmtree(os.path.join(node1.get_path(), 'commitlogs'))
         for data_file in data_files:
-            os.unlink(data_file)
+            os.unlink(os.path.join(data_dir, data_file))
 
         debug('Start node1')
         node1.start(wait_for_binary_proto=True)
