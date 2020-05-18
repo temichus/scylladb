@@ -93,7 +93,6 @@ class AlternatorTest(TesterAlternator):
         self.prepare_dynamodb_cluster(num_of_nodes=3)
         node1, node2, node3 = self.cluster.nodelist()
         self.create_table(table_name=TABLE_NAME, node=node1)
-        self.wait_table_exists(TABLE_NAME, self.cluster.nodelist())
 
         items = self.create_items(num_of_items=NUM_OF_ITEMS)
         self.batch_write_actions(table_name=TABLE_NAME, node=node1, new_items=items)
@@ -107,7 +106,6 @@ class AlternatorTest(TesterAlternator):
         self.prepare_dynamodb_cluster(num_of_nodes=3)
         node1, node2, node3 = self.cluster.nodelist()
         self.create_table(table_name=TABLE_NAME, node=node1)
-        self.wait_table_exists(TABLE_NAME, self.cluster.nodelist())
 
         items = self.create_items(num_of_items=NUM_OF_ITEMS)
         self.batch_write_actions(table_name=TABLE_NAME, node=node1, new_items=items)
@@ -161,7 +159,6 @@ class AlternatorTest(TesterAlternator):
         self.prepare_dynamodb_cluster(num_of_nodes=3, is_multi_dc=True)
         dc1_node = self.cluster.nodelist()[0]
         self.create_table(table_name=TABLE_NAME, node=dc1_node)
-        self.wait_table_exists(TABLE_NAME, self.cluster.nodelist())
 
         debug(f"Writing Alternator queries to node {dc1_node.name} on data-center {dc1_node.data_center}")
         items = self.create_items(num_of_items=NUM_OF_ITEMS)
@@ -322,7 +319,6 @@ class AlternatorTest(TesterAlternator):
         self.prepare_dynamodb_cluster(num_of_nodes=NUM_OF_NODES)
         node1, node2, node3 = self.cluster.nodelist()
         self.create_table(table_name=table_name, node=node1)
-        self.wait_table_exists(table_name, self.cluster.nodelist())
 
         for mode in TypeMode:
             items = data_generator.create_multiple_items(num_of_items=random.randint(1, 10), mode=mode)

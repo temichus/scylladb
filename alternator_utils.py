@@ -152,15 +152,6 @@ class TesterAlternator(Tester):
         debug(f"Table's schema and configuration are: {response}")
         return table
 
-    def wait_table_exists(self, table_name: str, nodes: List[ScyllaNode]) -> None:
-        """
-        Wait until table exists on all `nodes`
-        """
-        for node in nodes:
-            dynamodb_api = self.get_dynamodb_api(node=node)
-            waiter = dynamodb_api.client.get_waiter('table_exists')
-            waiter.wait(TableName=table_name, WaiterConfig={'Delay': 0.2, 'MaxAttempts': 60})
-
     def delete_table_items(self, table_name: str, node: ScyllaNode, items: List[Dict[str, str]], primary_key: str = None
                            ) -> None:
         dynamodb_api = self.get_dynamodb_api(node=node)
@@ -342,7 +333,6 @@ class TesterAlternator(Tester):
 
     def prefill_dynamodb_table(self, node: ScyllaNode, table_name: str = TABLE_NAME, num_of_items: int = NUM_OF_ITEMS):
         self.create_table(table_name=table_name, node=node)
-        self.wait_table_exists(table_name, self.cluster.nodelist())
         new_items = self.create_items(num_of_items=num_of_items)
         return self.batch_write_actions(table_name=table_name, node=node, new_items=new_items)
 
