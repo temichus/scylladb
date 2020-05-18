@@ -4,6 +4,7 @@ import os
 import shutil
 import glob
 import tools
+import random
 
 from threading import Thread
 
@@ -511,13 +512,15 @@ class TestTimeWindowDataSegregation(Tester):
         exclude_nodes = flushing_exclude_nodes if flushing_exclude_nodes else []
         insert_statement = session.prepare("INSERT INTO {}.{} (pk, ck, v) VALUES (?, ?, ?)"
                                            "USING TIMESTAMP ?".format(self.keyspace_name, self.table_name))
-
+        rand_pks = set()
+        while len(rand_pks) < num_pks:
+            rand_pks.add(random.randint(-2147483647, 2147483647))
         flushing_nodes = [node for node in self.cluster.nodelist() if node not in exclude_nodes]
         for t in range(start_from_minute * 60, duration_minutes * 60):
             concurrent.execute_concurrent_with_args(
                 session,
                 insert_statement,
-                [(pk, t, 0, seconds_to_micros(t)) for pk in range(num_pks)])
+                [(pk, t, 0, seconds_to_micros(t)) for pk in rand_pks])
 
             # Flush every flush period in seconds on each node
             if t % flush_period_seconds == 0:
