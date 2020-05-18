@@ -21,7 +21,7 @@ from cassandra.query import SimpleStatement
 from nose.plugins.attrib import attr
 
 from dtest import CASSANDRA_DIR, DISABLE_VNODES, IGNORE_REQUIRE, debug, make_execution_profile
-
+import glob, distutils.dir_util
 
 def rows_to_list(rows):
     new_list = [list(row) for row in rows]
@@ -569,3 +569,60 @@ class ColumnType:
         else:
             value = None
         return value
+
+
+def make_snapshot(node, ks, cf, name):
+    debug("Making snapshot....")
+    node.flush()
+    snapshot_cmd = 'snapshot {ks} -cf {cf} -t {name}'.format(**locals())
+    debug("Running snapshot cmd: {snapshot_cmd}".format(snapshot_cmd=snapshot_cmd))
+    node.nodetool(snapshot_cmd)
+    tmpdir = safe_mkdtemp()
+    os.mkdir(os.path.join(tmpdir, ks))
+    os.mkdir(os.path.join(tmpdir, ks, cf))
+    node_dir = node.get_path()
+
+    # Find the snapshot dir, it's different in various C* versions:
+    snapshot_dir = "{node_dir}/data/{ks}/{cf}/snapshots/{name}".format(**locals())
+    if not os.path.isdir(snapshot_dir):
+        snapshot_dir = glob.glob("{node_dir}/data/{ks}/{cf}-*/snapshots/{name}".format(**locals()))[0]
+    debug("snapshot_dir is : " + snapshot_dir)
+    debug("snapshot copy is : " + tmpdir)
+
+    # Copy files from the snapshot dir to existing temp dir
+    distutils.dir_util.copy_tree(str(snapshot_dir), os.path.join(tmpdir, ks, cf))
+
+    return tmpdir
+
+
+def restore_snapshot_files(snapshot_dir, node, ks, cf):
+    debug("Restoring snapshot....")
+    node_dir = node.get_path()
+    restore_dir = "{node_dir}/data/{ks}/{cf}/".format(**locals())
+    if not os.path.isdir(restore_dir):
+        restore_dir = glob.glob("{node_dir}/data/{ks}/{cf}-*/".format(**locals()))[0]
+    snapshot_dir = os.path.join(snapshot_dir, ks, cf)
+    debug("Copying from %s to %s" % (str(snapshot_dir), str(restore_dir)))
+    distutils.dir_util.copy_tree(snapshot_dir, restore_dir)
+
+
+def restore_snapshot_with_refresh(snapshot_dir, node, keyspace, table):
+    restore_snapshot_files(snapshot_dir=snapshot_dir, node=node, ks=keyspace, cf=table)
+    node.nodetool("refresh %s %s" % (keyspace, table))
+
+
+def restore_snapshot_with_sstableloader(snapshot_dir, node, keyspace, table):
+    debug("Restoring snapshot....")
+    snapshot_dir = os.path.join(snapshot_dir, keyspace, table)
+    ip = node.address()
+
+    args = [node.get_tool('sstableloader'), '-d', ip, snapshot_dir]
+    sstableloader_cmd = " ".join(args)
+    debug("sstableloader_cmd: "+sstableloader_cmd)
+    p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    stdout, stderr = p.communicate()
+    exit_status = p.wait()
+
+    if exit_status != 0 or 'exception' in str(stderr):
+        raise Exception("sstableloader command '%s' failed; exit status: %d'; stdout: %s; stderr: %s" %
+                        (" ".join(args), exit_status, stdout, stderr))
