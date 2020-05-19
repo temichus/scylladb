@@ -69,15 +69,15 @@ class ReadRows():
 
     def run(self, session, stop):
 
+        if self.start_delay:
+            sleep(self.start_delay)
+
         select_cql    = "SELECT pk, v FROM table1 WHERE pk > %i AND pk < %i ALLOW FILTERING" % (self.row_start, self.row_end)
         select_stmt   = session.prepare(select_cql)
         select_stmt.consistency_level = ConsistencyLevel.ALL
         rows_expected = listify(sorted(session.execute(select_stmt).current_rows))
 
         end_time = time() + self.end if self.end else None
-
-        if self.start_delay:
-            sleep(self.start_delay)
 
         while not stop.is_set() and (not end_time or time() < end_time):
             rows = listify(sorted(session.execute(select_stmt).current_rows))
