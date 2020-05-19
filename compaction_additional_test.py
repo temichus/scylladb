@@ -73,20 +73,23 @@ class CompactionAdditionalTest(Tester):
 
         # we passed gc_period and force an update so that compaction will
         # be triggered on a single shard (removing data and tombstone)
-        rows = session.execute("select count(*) from system.compaction_history")
-        compactions_1 = rows[0][0]
+        def compactions_count():
+            rows = session.execute("select count(*) from system.compaction_history "
+                                   "where keyspace_name='ks' and columnfamily_name='cf' "
+                                   "allow filtering")
+            return rows[0][0]
+
+        compactions_1 = compactions_count()
         compactions_2 = compactions_1
 
         debug("Inserting data and waiting for new compaction")
         while compactions_1 == compactions_2:
             session.execute('insert into ks.cf (key, val) values ({},1);'.format(keys + 1))
             node1.flush()
-            rows = session.execute("select count(*) from system.compaction_history")
-            compactions_2 = rows[0][0]
+            compactions_2 = compactions_count()
         node1.wait_for_compactions()
 
-        rows = session.execute("select count(*) from system.compaction_history")
-        compactions_2 = rows[0][0]
+        compactions_2 = compactions_count()
         num_compactions = compactions_2 - compactions_1
         debug("{} compaction(s) completed".format(num_compactions))
 
@@ -120,8 +123,7 @@ class CompactionAdditionalTest(Tester):
         # trigger compaction on both shards
         debug("Waiting for compaction")
         node1.wait_for_compactions()
-        rows = session.execute("select count(*) from system.compaction_history")
-        compactions_1 = rows[0][0]
+        compactions_1 = compactions_count()
         compactions_2 = compactions_1
 
         debug("Inserting data and waiting for new compaction")
@@ -129,8 +131,7 @@ class CompactionAdditionalTest(Tester):
             for x in range(keys*2, keys*3):
                 session.execute('insert into ks.cf (key, val) values (' + str(x) + ',1);')
             node1.flush()
-            rows = session.execute("select count(*) from system.compaction_history")
-            compactions_2 = rows[0][0]
+            compactions_2 = compactions_count()
         node1.wait_for_compactions()
 
         # validate that all deletion markers have been removed
