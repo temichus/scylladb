@@ -617,6 +617,13 @@ class TestMaterializedViews(Tester):
 
     def _mv_populating_from_existing_data_during_changes_test(self, change_type, nodes, rf, mvs, prefill):
         session = self.prepare(rf=rf, nodes=nodes, options={'prometheus_port': 0})
+
+        node_action = change_type.split(' ')[0]
+        if node_action in ['decommission', 'restart', 'remove', 'stop']:
+            session.cluster.shutdown()
+            cs = self.patient_cql_cluster_session(self.cluster.nodelist()[0], 'ks', exclusive=True, consistency_level=ConsistencyLevel.QUORUM)
+            session = cs.session
+
         tm = TableManager(session, self.cluster,
                           columns={'int': {'amount': mvs, 'frozen': False,
                                            'value length': {'min': 1, 'max': 100}}
@@ -641,7 +648,7 @@ class TestMaterializedViews(Tester):
         elif change_type == 'restart node':
             change_func = {'func': self._node_action_with_delay, 'args': ('stop', self.cluster.nodelist()[1]), 'kwargs': {'delay': 1}}
         elif change_type in ['remove node', 'stop node']:
-            change_func = {'func': self._node_action_with_delay, 'args': (change_type.split(' ')[0], self.cluster.nodelist()[1]),
+            change_func = {'func': self._node_action_with_delay, 'args': (node_action, self.cluster.nodelist()[1]),
                            'kwargs': {'delay': 1}}
         else:
             assert False, 'Unexpected parameter "change_type": {}. ' \
@@ -664,7 +671,7 @@ class TestMaterializedViews(Tester):
 
             self._validate_data_in_mvs(tm=tm, session=session, table_expected_rows=rows_after_test,
                                        mv_expected_rows=rows_after_test,
-                                       node_action=change_type.split(' ')[0])
+                                       node_action=node_action)
         else:
             self.cluster.nodelist()[1].start()
             for mv_name in tm.materialized_views.keys():
@@ -672,7 +679,7 @@ class TestMaterializedViews(Tester):
 
             self._validate_data_in_mvs(tm=tm, session=session, table_expected_rows=rows_after_test,
                                        mv_expected_rows=rows_after_test,
-                                       node_action=change_type.split(' ')[0])
+                                       node_action=node_action)
 
         exclude_errors=['migration_task - Can''t send migration request',
                         'mutation_write_timeout_exception',
