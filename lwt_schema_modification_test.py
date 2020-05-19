@@ -402,14 +402,14 @@ class LWTSchemaModificationTester(Tester):
     def table_alter_col_type_test(self):
         self._test_combine([ReadRows(row_start = 0, row_end = 9),
                             AlterColumnType(start_delay = .1)],
-                           run_s = 3)
+                           run_s = 10)
 
     @skip("issue #6174  add/remove column changing type vs LWT deletes")
     def table_alter_delete_test(self):
         """Table alter test"""
         self._test_combine([DropAddColumn(start_delay = .1),
                             DeleteRows(row_start = 1, row_end = 1000, lwt = True)],
-                           loops = 3, run_s = 3)
+                           loops = 3, run_s = 10)
 
 
     @skip("issue #6185 alter columns in parallel bug")
@@ -418,7 +418,7 @@ class LWTSchemaModificationTester(Tester):
            change type on one and remove/add on the second one"""
         self._test_combine([DropAddColumn(start_delay = 0),
                             AlterColumnType(start_delay = 0)],
-                           run_s = 1)
+                           run_s = 10)
 
     def all_test(self):
         self._test_combine([ReadRows(row_start = 0, row_end = 99),   # NOTE: change to 9 for more fun
@@ -426,7 +426,7 @@ class LWTSchemaModificationTester(Tester):
                             DropAddColumn(start_delay = 1, inter_delay = .2),
                             AlterColumnType(start_delay = 1),
                             DeleteRows(row_start = 100, row_end = 1000, lwt = True)],
-                           loops = 2, run_s = 3)
+                           loops = 2, run_s = 10)
 
     def lwt_truncate_test(self):
         self._test_combine([LWTLoad(start_delay = 0, end = 1),
@@ -434,7 +434,7 @@ class LWTSchemaModificationTester(Tester):
                             InsertRows(start_delay = 2, start_value = 10000),
                             LWTLoad(start_delay = 2, row_start = 100, row_end = 999),
                             ReadRows(start_delay = 5)],
-                           smp = 8, nodes = 8, loops = 1, run_s = 3)
+                           smp = 8, nodes = 8, loops = 1, run_s = 10)
 
     def lwt_load_test(self):
         self._test_combine([ReadRows(row_start = 0, row_end = 1000),
@@ -445,18 +445,18 @@ class LWTSchemaModificationTester(Tester):
     def lwt_batch_insert_test(self):
         self._test_combine([LWTLoad(start_delay = 0, end = 1),
                             BatchInserts(node = 1)],
-                           smp = 8, nodes = 8, loops = 1, run_s = 3)
+                           smp = 8, nodes = 8, loops = 1, run_s = 10)
 
     def index_drop_add_test(self):
         self._test_combine([LWTLoad(start_delay = 0, row_start = 1001, row_end = 9999),
                             ReadRows(row_start = 0, row_end = 1000),
                             IndexDropAdd(start_delay = .5, inter_delay = .5)],
-                           nrows = 10000, loops = 20, run_s = 3)
+                           nrows = 10000, loops = 20, run_s = 10)
 
     def materialized_view_test(self):
         self._test_combine([LWTLoad(start_delay = 0, row_start = 1001, row_end = 9999),
                             MaterializedView(start_delay = 0.5, row_max = 1000)],
-                           nrows = 10000, loops = 1, run_s = 3)
+                           nrows = 10000, loops = 1, run_s = 10)
 
     def lwt_load_check_test(self):
         self._test_combine([LWTLoad(row_start = 1, row_end = 99),
