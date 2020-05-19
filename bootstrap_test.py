@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 import time
 from concurrent.futures.thread import ThreadPoolExecutor
+from psutil import Process
 
 from tools import require
 from assertions import assert_almost_equal, assert_one
@@ -15,7 +16,7 @@ from ccmlib.node import NodeError
 from dtest import Tester, debug
 from unittest import skip
 from tools import (InterruptBootstrap, KillOnBootstrap, new_node, query_c1c2,
-                   since)
+                   since, create_c1c2_table, insert_c1c2)
 from scylla_tools import scylla_mode
 from nose.plugins.attrib import attr
 
@@ -573,6 +574,62 @@ class TestBootstrap(Tester):
         # data loads.
         for _ in range(5):
             assert_one(session, "SELECT count(*) from keyspace1.standard1", [500000], cl=ConsistencyLevel.ONE)
+
+    def _full_cluster_recovery_after_stop(self, gently, num_of_nodes, rf):
+        """
+        steps:
+        - Create N node cluster (RF=rf)
+        - Insert some data with cassandra-stress (wait all data is inserted, no flush manually)
+        - Flush (only needed on D-test otherwise the test will fail - no data will be written w/o the flush)
+        - Stop cluster (gently/forcibly)
+        - Start the cluster
+        - read data make sure all data is alive
+        """
+        # Create/Start cluster
+        cluster = self.cluster
+        cluster.populate(num_of_nodes).start(wait_for_binary_proto=True)
+        node1 = cluster.nodelist()[0]
+        session = self.patient_cql_connection(node1)
+
+        debug("Preparing a KS and a CF...")
+        self.create_ks(session, name='ks', rf=rf)
+        create_c1c2_table(self, session)
+
+        debug("Populating the data...")
+        insert_c1c2(session, n=10000, consistency=ConsistencyLevel.QUORUM)
+        # This flush will only be needed on d-test otherwise the test will fail (no data will be written)
+        cluster.flush()
+
+        debug("Saving nodes process list")
+        pid_ls = [node.all_pids[0] for node in cluster.nodelist()]
+        process_ls = []
+        for pid in pid_ls:
+            process = Process(pid)
+            process_ls.append(process)
+
+        debug("Killing all nodes")
+        cluster.stop_nodes(gently=gently, wait_seconds=20)
+
+        debug("Making sure all node processes are down")
+        for process in process_ls:
+            self.assertEqual(False, process.is_running(), "Node with the following pid {} didn't stop/exit correctly"
+                             .format(process.pid))
+
+        debug("Starting all nodes")
+        cluster.start_nodes(no_wait=False)
+
+        debug("Checking that no data was lost")
+        for n in range(10000):
+            query_c1c2(session, n, ConsistencyLevel.QUORUM)
+
+    def test_full_cluster_recovery_after_forcibly_stop_3_nodes_rf_3(self):
+        self._full_cluster_recovery_after_stop(gently=False, num_of_nodes=3, rf=3)
+
+    def test_full_cluster_recovery_after_gentle_stop_5_nodes_rf_2(self):
+        self._full_cluster_recovery_after_stop(gently=True, num_of_nodes=5, rf=2)
+
+    def test_full_cluster_recovery_after_forcibly_stop_4_nodes_rf_1(self):
+        self._full_cluster_recovery_after_stop(gently=False, num_of_nodes=4, rf=1)
 
     def _cluster_become_unavailable_when_kill_node_during_bootstrap(self, is_gracefully=True):
         """
