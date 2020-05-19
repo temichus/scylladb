@@ -420,6 +420,7 @@ class LWTSchemaModificationTester(Tester):
                             AlterColumnType(start_delay = 0)],
                            run_s = 10)
 
+    @skip("issue #6151    alter column type vs reads")
     def all_test(self):
         self._test_combine([ReadRows(row_start = 0, row_end = 99),   # NOTE: change to 9 for more fun
                             LWTLoad(),
