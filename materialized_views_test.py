@@ -275,7 +275,7 @@ class TestMaterializedViews(Tester):
         :param action: expected values: stop, remove
         :param action: str
         """
-        if action not in ['stop', 'remove', 'decommission']:
+        if action not in ['stop', 'remove', 'decommission', 'restart']:
             assert False, 'Unsupported node action'
 
         if delay:
@@ -285,6 +285,10 @@ class TestMaterializedViews(Tester):
         debug('START: {0} node {1}'.format(action, node.name))
         if action == 'stop':
             node.stop(wait=wait, wait_other_notice=wait_other_notice, other_nodes=other_nodes, gently=gently)
+        elif action == 'restart':
+            node.stop(wait=wait, wait_other_notice=wait_other_notice, other_nodes=other_nodes, gently=gently)
+            time.sleep(delay if delay else 1)
+            node.start(wait_other_notice=wait_other_notice)
         elif action == 'remove':
             remove_node(self.cluster, node, wait_other_notice=wait_other_notice, other_nodes=other_nodes)
         else:
@@ -646,7 +650,7 @@ class TestMaterializedViews(Tester):
             change_func = {'func': self._node_action_with_delay, 'args': ('decommission', self.cluster.nodes['node2']),
                            'kwargs': {'delay': 2}}
         elif change_type == 'restart node':
-            change_func = {'func': self._node_action_with_delay, 'args': ('stop', self.cluster.nodelist()[1]), 'kwargs': {'delay': 1}}
+            change_func = {'func': self._node_action_with_delay, 'args': (node_action, self.cluster.nodelist()[1]), 'kwargs': {'delay': 1}}
         elif change_type in ['remove node', 'stop node']:
             change_func = {'func': self._node_action_with_delay, 'args': (node_action, self.cluster.nodelist()[1]),
                            'kwargs': {'delay': 1}}
@@ -665,21 +669,15 @@ class TestMaterializedViews(Tester):
         proc_functions = [change_func, {'func': self._create_mvs_by_one_column, 'args': (tm, mvs)}]
         run_in_parallel(proc_functions)
 
-        if change_type not in ['stop node', 'restart node']:
-            for mv_name in tm.materialized_views.keys():
-                wait_for_view(cluster=self.cluster, session=session, ks=tm.keyspace, view=mv_name)
-
-            self._validate_data_in_mvs(tm=tm, session=session, table_expected_rows=rows_after_test,
-                                       mv_expected_rows=rows_after_test,
-                                       node_action=node_action)
-        else:
+        if node_action == 'stop':
             self.cluster.nodelist()[1].start()
-            for mv_name in tm.materialized_views.keys():
-                wait_for_view(cluster=self.cluster, session=session, ks=tm.keyspace, view=mv_name)
 
-            self._validate_data_in_mvs(tm=tm, session=session, table_expected_rows=rows_after_test,
-                                       mv_expected_rows=rows_after_test,
-                                       node_action=node_action)
+        for mv_name in tm.materialized_views.keys():
+            wait_for_view(cluster=self.cluster, session=session, ks=tm.keyspace, view=mv_name)
+
+        self._validate_data_in_mvs(tm=tm, session=session, table_expected_rows=rows_after_test,
+                                   mv_expected_rows=rows_after_test,
+                                   node_action=node_action)
 
         exclude_errors=['migration_task - Can''t send migration request',
                         'mutation_write_timeout_exception',
