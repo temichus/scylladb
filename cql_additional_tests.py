@@ -20,7 +20,8 @@ from cassandra.query import UNSET_VALUE
 from cassandra.util import sortedset
 from cassandra.cluster import ResultSet
 
-from assertions import assert_all, assert_invalid, assert_none, assert_one, assert_invalid_case_insensitive_matching
+from assertions import assert_all, assert_invalid, assert_none, assert_one, assert_invalid_case_insensitive_matching, \
+    assert_row_count
 
 from dtest import Tester, debug
 
@@ -661,6 +662,81 @@ class TestCQL(Tester):
         # Check we do get as many rows as requested
         res = list(session.execute("SELECT * FROM clicks LIMIT 4"))
         assert len(res) == 4, list(res)
+
+    @attr('single_node')
+    def filter_by_counter(self):
+        session = self.prepare()
+
+        session.execute("""
+                    CREATE TABLE clicks (
+                        pk int,
+                        ck int,
+                        c1 counter,
+                        c2 counter,
+                        PRIMARY KEY (pk, ck)
+                    ) ;
+                """)
+
+        for i in range(5):
+            session.execute(f"UPDATE clicks SET c1 = c1+{i} WHERE pk=0 and ck={i}")
+
+        for i in range(5):
+            session.execute(f"UPDATE clicks SET c1 = c1+{i}, c2 = c2+{i} WHERE pk=1 and ck={i}")
+
+        assert_row_count(session=session, table_name='clicks', expected=10)
+
+        with self.subTest("Filter by counter column with equal condition", i=1):
+            assert_all(session=session,
+                       query=f"select * from clicks where c1 = 2 {MSG_ALLOW_FILTERING}",
+                       expected=[[1, 2, 2, 2], [0, 2, 2, None]])
+
+        with self.subTest("Filter by counter column with more condition", i=2):
+            assert_all(session=session,
+                       query=f"select * from clicks where c1 > 2 {MSG_ALLOW_FILTERING}",
+                       expected=[[1, 3, 3, 3], [1, 4, 4, 4], [0, 3, 3, None], [0, 4, 4, None]])
+
+        with self.subTest("Filter by counter column with more and equal condition", i=3):
+            assert_all(session=session,
+                       query=f"select * from clicks where c1 > 3 and c2 = 0 {MSG_ALLOW_FILTERING}",
+                       expected=[[0, 4, 4, None]])
+
+        with self.subTest("Filter by counter column with \"in\" and >= condition"):
+            assert_all(session=session,
+                       query=f"select * from clicks where c1 in (0, 2) and c2 >= 2 {MSG_ALLOW_FILTERING}",
+                       expected=[[1, 2, 2, 2]])
+
+        with self.subTest("Filter by all columns including counter column"):
+            assert_all(session=session,
+                       query=f"select * from clicks where pk = 1 and ck = 4 and c1 < 3 and c2 = 0 {MSG_ALLOW_FILTERING}",
+                       expected=[])
+
+        with self.subTest("Verify ALLOW FILTERING error message"):
+            assert_invalid(session=session,
+                           query=f"select * from clicks where pk = 1 and ck = 4 and c1 > 3 and c2 = 0",
+                           matching="Cannot execute this query as it might involve data filtering and thus may have "
+                                    "unpredictable performance. If you want to execute this query despite the performance "
+                                    "unpredictability, use ALLOW FILTERING")
+
+        with self.subTest("Add new counter column"):
+            session.execute("ALTER TABLE clicks ADD c3 counter")
+            assert_all(session=session,
+                       query=f"select count(*) from clicks where c3 = 0 {MSG_ALLOW_FILTERING}",
+                       expected=[[10]])
+
+            session.execute(f"UPDATE clicks SET c3 = c3-1 WHERE pk=0 and ck=1")
+            assert_all(session=session,
+                       query=f"select * from clicks where c3 = -1 {MSG_ALLOW_FILTERING}",
+                       expected=[[0, 1, 1, None, -1]])
+
+        with self.subTest("Delete counter column"):
+            session.execute("DELETE c1 FROM clicks WHERE pk = 1 and ck = 1")
+            assert_all(session=session,
+                       query=f"select * from clicks where c1 = 1 {MSG_ALLOW_FILTERING}",
+                       expected=[[0, 1, 1, None, -1]])
+
+            assert_all(session=session,
+                       query=f"select * from clicks where c1 = 0 {MSG_ALLOW_FILTERING}",
+                       expected=[[1, 0, 0, 0, None], [1, 1, None, 1, None], [0, 0, 0, None, None]])
 
     @attr('single_node')
     def counters_test(self):
