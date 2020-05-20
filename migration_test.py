@@ -32,12 +32,18 @@ class MigrationTestBase(Tester):
 
     @attr('dtest-debug')
     def migrate_sstable_without_compression_test(self):
+        # Content generated with:
+        # INSERT INTO ks.cf (key, c2) VALUES ('abc', 'cde');
         self._run_basic_migration_test("without_compression", {'key': 'abc', 'c1': None, 'c2': 'cde'})
 
     def migrate_sstable_with_lz4_compression_test(self):
+        # Content generated with:
+        # INSERT INTO ks.cf (key, c1, c2) VALUES ('a', 'abc', 'cde');
         self._run_basic_migration_test('with_lz4_compression', {'key': 'a', 'c1': 'abc', 'c2': 'cde'}, compression='LZ4')
 
     def migrate_sstable_with_compact_storage_test(self):
+        # Content generated with:
+        # INSERT INTO ks.cf (key, c1, c2) VALUES ('a', 'abc', 'cde');
         self._run_basic_migration_test('with_compact_storage', {'key': 'a', 'c1': 'abc', 'c2': 'cde'}, compact_storage=True)
 
     def migrate_sstable_with_compact_storage_and_composite_key_test(self):
@@ -100,9 +106,13 @@ class MigrationTestBase(Tester):
         self.assertEqual(result[2].v, 'b', "check column c1")
 
     def migrate_sstable_with_collection_set_test(self):
+        # CREATE COLUMNFAMILY ks.cf (key varchar PRIMARY KEY, messages set<text>);
+        # INSERT INTO ks.cf (key, messages) VALUES ( 'a', {'hello world', 'scylla', 'scylladb', 'test'});
         self._run_migration_test_for_collection("with_collection_set", "set<text>", {'a': {'hello world', 'scylla', 'scylladb', 'test'}})
 
     def migrate_sstable_with_collection_list_test(self):
+        # CREATE COLUMNFAMILY ks.cf (key varchar PRIMARY KEY, messages list<text>);
+        # INSERT INTO ks.cf (key, messages) VALUES ( 'a', ['scylladb', 'scylla', 'hello world', 'test']);
         self._run_migration_test_for_collection("with_collection_list", "list<text>", {'a': ['scylladb', 'scylla', 'hello world', 'test']})
 
     def migrate_sstable_with_collection_map_test(self):
@@ -189,6 +199,9 @@ class MigrationTestBase(Tester):
 
         result = self.get_all_rows_for_check(node1)
 
+        # Content created by:
+        # INSERT INTO ks.cf (id, c) VALUES (62c36092-82a1-3a00-93d1-46196ee77202, { b1: 'a', b2: { a1: 'b', a2: 'c' } });
+        # INSERT INTO ks.cf (id, c) VALUES (62c36092-82a1-3a00-93d1-46196ee77242, { b1: 'x', b2: { a1: 'y', a2: 'z' } });
         self.assertEqual(result[0].id, uuid.UUID('62c36092-82a1-3a00-93d1-46196ee77202'), "check id row 0")
         self.assertEqual(result[0].c, ('a', ('b', 'c')), "check c row 0")
         self.assertEqual(result[1].id, uuid.UUID('62c36092-82a1-3a00-93d1-46196ee77242'), "check id row 1")
@@ -203,6 +216,8 @@ class MigrationTestBase(Tester):
         self.create_ks_and_cf(node1, None, None, False, query=query)
 
         # load row key1 with value 1
+        # Content created with:
+        # INSERT INTO ks.cf (p1, r1) VALUES ('key1', 1);
         self.load_migrated_tables(node1, 'to_check_consistency/1')
         self.check_number_of_rows(node1, 1)
 
@@ -212,6 +227,10 @@ class MigrationTestBase(Tester):
         self.assertEqual(result[0].r1, 1, "check value")
 
         # load row key1 with value 2
+        # Content created with:
+        # INSERT INTO ks.cf (p1, r1) VALUES ('key1', 1);
+        # nodetool flush
+        # UPDATE SET ks.cf r1 = 2 WHERE p1 = 'key1';
         self.load_migrated_tables(node1, 'to_check_consistency/2')
         self.check_number_of_rows(node1, 1)
 
@@ -320,6 +339,10 @@ class MigrationTestBase(Tester):
         node1.flush()
         self.load_migrated_tables(node1, 'with_variant_data_types')
         self.check_number_of_rows(node1, 3)
+        # Content created using:
+        # INSERT INTO ks.cf (aascii, abigint, ablob, aboolean, adouble, adecimal, afloat, ainet, aint, atext, atimestamp, atimeuuid, auuid, avarchar, avarint, alist, amap, aset) VALUES ('tzach', 1999, 0x0000000000000003, true, 10.10, 10, 11.11, '204.202.130.223', 17, 'text', '2016-08-30 07:01:00.000Z', e23f450f-53a6-11e2-7f7f-7f7f7f7f7f7f, 123e4567-e89b-12d3-a456-426655440000, 'tzachvarchar', 17, [1, 2, 3], {1: 2}, {1, 2, 3, 4});
+        # INSERT INTO ks.cf (aascii, abigint, ablob, aboolean, adouble, adecimal, afloat, ainet, aint, atext, atimestamp, atimeuuid, auuid, avarchar, avarint, alist, amap, aset) VALUES ('tzach', 2000, 0x0000000000000003, true, 10.10, 10, 11.11, '204.202.130.223', 17, 'text', '2016-08-30 07:01:00.000Z', e23f450f-53a6-11e2-7f7f-7f7f7f7f7f7f, 123e4567-e89b-12d3-a456-426655440000, 'tzachvarchar', 17, [1, 2, 3], {1: 2}, {1, 2, 3, 4});
+        # INSERT INTO ks.cf (aascii, abigint, ablob, aboolean, adouble, adecimal, afloat, ainet, aint, atext, atimestamp, atimeuuid, auuid, avarchar, avarint, alist, amap, aset) VALUES ('livyatan', 2001, 0x0000000000000003, true, 10.10, 10, 11.11, '204.202.130.223', 17, 'text', '2016-08-30 07:01:00.000Z', e23f450f-53a6-11e2-7f7f-7f7f7f7f7f7f, 123e4567-e89b-12d3-a456-426655440000, 'tzachvarchar', 17, [1, 2, 3], {1: 2}, {1, 2, 3, 4});
         result = self.get_all_rows_for_check(node1)
         for i in range(0, 3):
             if i == 0 or i == 1:
@@ -386,7 +409,7 @@ class MigrationTestBase(Tester):
         CREATE KEYSPACE ks WITH replication={'class':'SimpleStrategy', 'replication_factor':1};
         CREATE TABLE ks.cf (first_name varchar, last_name varchar, cnt counter, PRIMARY KEY(first_name, last_name));
         UPDATE ks.cf SET cnt = cnt + 1 WHERE first_name='albert' AND last_name='einstein';
-        UPDATE ks.cf SETcnt = cnt + 2 WHERE first_name='thomas' AND last_name='edison';
+        UPDATE ks.cf SET cnt = cnt + 2 WHERE first_name='thomas' AND last_name='edison';
         flush
         UPDATE ks.cf SET cnt = cnt + 10 WHERE first_name='albert' AND last_name='einstein';
         UPDATE ks.cf SET cnt = cnt + 3 WHERE first_name='marie' AND last_name='curie';
@@ -433,15 +456,16 @@ class MigrationTestBase(Tester):
         """
         https://github.com/scylladb/scylla/issues/4331
         Partitioner: org.apache.cassandra.dht.RandomPartitioner
+        initial_token: 1
         CREATE KEYSPACE ks
             WITH replication={
                 'class':'SimpleStrategy', 'replication_factor':1
             };
         CREATE TABLE ks.cf ( pk INT, ck INT, v INT, PRIMARY KEY(pk, ck))
             WITH compression = { 'sstable_compression' : '' };
-        INSERT INTO ks.cf(pk, ck, s, val) VALUES(1, 10, 100);
-        INSERT INTO ks.cf(pk, ck, s, val) VALUES(2, 20, 200);
-        INSERT INTO ks.cf(pk, ck, s, val) VALUES(3, 30, 300);
+        INSERT INTO ks.cf (pk, ck, v) VALUES (1, 10, 100);
+        INSERT INTO ks.cf (pk, ck, v) VALUES (2, 20, 200);
+        INSERT INTO ks.cf (pk, ck, v) VALUES (3, 30, 300);
         flush
         """
         cluster = self.cluster
@@ -757,7 +781,7 @@ class TestMigrationUpgradeSSTables(TestMigration):
         after_sstable_version = self.get_sstable_version(cf_dir)
 
         # check that sstable version was upgraded, or if that version equals latest version `mc`
-        self.assertTrue(after_sstable_version > before_sstable_version or before_sstable_version == after_sstable_version == 'mc',
+        self.assertTrue(after_sstable_version > before_sstable_version or (before_sstable_version == after_sstable_version and after_sstable_version in ['mc', 'md']),
                         "upgradesstable failed to upgrade sstables [before_version={} after_version={}]".format(before_sstable_version, after_sstable_version))
 
 
@@ -1028,7 +1052,7 @@ class TTLWithMigrate(Tester):
         return data_json, data_json_path
 
 
-versions = ['2_1_x', '2_2_x', '3_0_mc']
+versions = ['2_1_x', '2_2_x', '3_0_mc', '3_0_md']
 for version in versions:
     cls_name = ('TestMigration_with_' + version)
     vars()[cls_name] = type(cls_name, (TestMigration,), {'version': version, '__test__': True})
