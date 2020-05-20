@@ -465,14 +465,17 @@ class MigrationTestBase(Tester):
         statement = SimpleStatement(query)
         s = self.patient_cql_connection(node, 'ks')
         result = list(s.execute(statement))
-        self.assertEqual(result[0].count, expected_number_of_rows, str(result))
+        self.assertEqual(result[0].count, expected_number_of_rows,
+                         "Expected {} rows. Got {}".format(expected_number_of_rows, list(s.execute("SELECT * FROM ks.cf"))))
 
     def get_all_rows_for_check(self, node1):
         debug("Checking rows content on node1...")
         query = "SELECT * FROM ks.cf"
         statement = SimpleStatement(query)
         s = self.patient_cql_connection(node1, 'ks')
-        return list(s.execute(statement))
+        result = list(s.execute(statement))
+        debug(result)
+        return result
 
     def _run_basic_migration_test(self, migrated_files_dir, row_content, compression=None, compact_storage=False, sleep=0, query=None):
         node1 = self.start_cluster_and_get_node1()
