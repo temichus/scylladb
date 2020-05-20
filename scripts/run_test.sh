@@ -83,10 +83,11 @@ if [[ ${CASSANDRA_DIR} == */build/* ]]; then
     mode=$(echo $CASSANDRA_DIR | sed 's|.*/build/||')
 fi
 
-export TOOLS_JAVA_DIR=${TOOLS_JAVA_DIR:-`pwd`/../scylla-tools-java}
-export JMX_DIR=${JMX_DIR:-`pwd`/../scylla-jmx}
+SCYLLA_PRODUCT=$(basename ${SCYLLA_ROOT_DIR})
+export TOOLS_JAVA_DIR=${TOOLS_JAVA_DIR:-`pwd`/../${SCYLLA_PRODUCT}-tools-java}
+export JMX_DIR=${JMX_DIR:-`pwd`/../${SCYLLA_PRODUCT}-jmx}
 export DTEST_DIR=${DTEST_DIR:-`pwd`}
-export CCM_DIR=${CCM_DIR:-`pwd`/../scylla-ccm}
+export CCM_DIR=${CCM_DIR:-$(echo ${DTEST_DIR} | sed 's/-dtest$/-ccm/')}
 export SCYLLA_DBUILD_SO_DIR=$( realpath ${SCYLLA_DBUILD_SO_DIR:-${CASSANDRA_DIR}/dynamic_libs} )
 export SCYLLA_EXT_OPTS=${SCYLLA_EXT_OPTS:-"--smp 2 --memory 1024M"}
 if [[ "$mode" == debug ]]; then
