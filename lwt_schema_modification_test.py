@@ -347,14 +347,14 @@ class LWTSchemaModificationTester(Tester):
 
     def _case_epilogue(self):
         """Clean up for next round"""
-        session = self.patient_cql_connection(self.cluster.nodelist()[0])
+        session = self.patient_cql_connection(self.cluster.nodelist()[0], request_timeout=1000)
         session.execute("USE " + KEYSPACE)
         session.execute("DROP TABLE table1")
 
     def _action_thread(self, action, stop):
 
         node     = self.cluster.nodelist()[action.node]
-        session  = self.patient_cql_connection(node)
+        session  = self.patient_cql_connection(node, request_timeout=1000)
         session.execute("USE " + KEYSPACE)
 
         action.run(session, stop)  # Hand over control to action
