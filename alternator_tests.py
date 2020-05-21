@@ -328,7 +328,7 @@ class AlternatorTest(TesterAlternator):
             diff = self.compare_table_data(table_name=table_name, table_data=all_items, node=node1)
             self.assertTrue(expr=not diff, msg=f"The following items are missing:\n{pformat(diff)}")
 
-    def read_system_tables_via_dynamodb_api(self):
+    def test_read_system_tables_via_dynamodb_api(self):
         """
         make sure we could only read system tables via dynamodb api
 
