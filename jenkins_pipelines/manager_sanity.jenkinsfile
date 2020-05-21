@@ -93,7 +93,7 @@ pipeline {
                             # export SCYLLA_EXT_OPTS="--smp 2 --memory 1024M"  # TODO: Figure out why do multi shard nodes cause the repair to extremely slow down
                             echo "NOSE_PROCESSES=${NOSE_PROCESSES}"
 
-                            export INSTALL_CASSANDRA='ccm create scylla-tmp --scylla -n 1 --version=${SCYLLA_VERSION}'
+                            export INSTALL_CASSANDRA='ccm create scylla-tmp --scylla -n 1 --version=\${SCYLLA_VERSION}'
 
                             echo "start test ......."
 
