@@ -68,7 +68,7 @@ class TestInternodeSSL(Tester):
                                                       'org.apache.cassandra.locator.GossipingPropertyFileSnitch'})
             cluster.populate([3 for i in range(dcs)]).start(no_wait=False, wait_for_binary_proto=True, wait_other_notice=True)
         else:
-            raise Exception('Invalid parameter dc: %s' % dc)
+            raise Exception('Invalid parameter dcs: {}. Must be greater than or equal to 1'.format(dcs))
 
         if reload_certs:
             debug("rewriting certs")
