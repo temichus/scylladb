@@ -1,4 +1,5 @@
 # coding: utf-8
+import string
 
 import struct
 import time
@@ -364,6 +365,148 @@ class MiscellaneousCQLTester(CQLTester):
 
         result = list(session.execute(explicit_prepared.bind(None)))
         self.assertEqual(result, [(0, 0, 0, None)])
+
+    def reverse_query_test(self):
+        """
+         Issue: https://github.com/scylladb/scylla/issues/6171
+         Commit: https://github.com/scylladb/scylla/commit/791acc7f3858e5541ee216034f4c7111818510c5
+         Create table with 2 clustering keys
+         Read with filter using "in" restriction on clustering keys and ordered by clustering keys DESC with and without
+         BYPASS CACHE
+        """
+        session = self.prepare(nodes=4, rf=3)
+
+        session.execute("CREATE TABLE cf (pk int, ck int, ck1 int, v text, PRIMARY KEY (pk, ck, ck1))")
+
+        test_value = string.ascii_lowercase * 40
+        for i in range(10000):
+            session.execute(f"INSERT INTO cf(pk, ck, ck1, v) VALUES (0, {i}, {i}, '{test_value}')")
+
+        for node in self.cluster.nodelist():
+            node.flush()
+
+        assert_one(session, "select count(*) from cf", [10000], cl=ConsistencyLevel.QUORUM)
+
+        in_list = [i for i in range(0, 10000, 1000)]
+        in_str = ', '.join(str(i) for i in in_list)
+        expected_results = [[test_value] for _ in reversed(in_list)]
+
+        read_stmt = f"SELECT v FROM cf WHERE pk = 0 and ck in ({in_str}) and ck1 in ({in_str}) ORDER BY ck DESC, ck1 DESC"
+
+        with self.subTest('Read without BYPASS CACHE'):
+            debug(f'Read without BYPASS CACHE with query: {read_stmt}')
+            assert_all(session, read_stmt, expected_results, cl=ConsistencyLevel.QUORUM)
+
+        with self.subTest('Read with BYPASS CACHE'):
+            debug(f'Read with BYPASS CACHE with query: {read_stmt} BYPASS CACHE')
+            assert_all(session, f"{read_stmt} BYPASS CACHE", expected_results, cl=ConsistencyLevel.QUORUM)
+
+    def normal_query_test(self):
+        """
+         Issue: https://github.com/scylladb/scylla/issues/6171
+         Commit: https://github.com/scylladb/scylla/commit/791acc7f3858e5541ee216034f4c7111818510c5
+         Create table with 2 clustering keys
+         Read with filter using "in" restriction on clustering keys and ordered by clustering keys ASC with and without
+         BYPASS CACHE
+        """
+        session = self.prepare(nodes=4, rf=3)
+
+        session.execute("CREATE TABLE cf (pk int, ck int, ck1 int, v text, PRIMARY KEY (pk, ck, ck1))")
+
+        test_value = string.ascii_lowercase * 40
+        for i in range(10000):
+            session.execute(f"INSERT INTO cf(pk, ck, ck1, v) VALUES (0, {i}, {i}, '{test_value}')")
+
+        for node in self.cluster.nodelist():
+            node.flush()
+
+        assert_one(session, "select count(*) from cf", [10000], cl=ConsistencyLevel.QUORUM)
+
+        in_list = [i for i in range(0, 10000, 1000)]
+        in_str = ', '.join(str(i) for i in in_list)
+        expected_results = [[test_value] for _ in in_list]
+
+        read_stmt = f"SELECT v FROM cf WHERE pk = 0 and ck in ({in_str}) and ck1 in ({in_str})"
+
+        with self.subTest('Read without BYPASS CACHE'):
+            debug(f'Read without BYPASS CACHE with query: {read_stmt}')
+            assert_all(session, read_stmt, expected_results, cl=ConsistencyLevel.QUORUM)
+
+        with self.subTest('Read with BYPASS CACHE'):
+            debug(f'Read with BYPASS CACHE with query: {read_stmt} BYPASS CACHE')
+            assert_all(session, f"{read_stmt} BYPASS CACHE", expected_results, cl=ConsistencyLevel.QUORUM)
+
+    def reverse_query_ck_collect_test(self):
+        """
+         Issue: https://github.com/scylladb/scylla/issues/6171
+         Commit: https://github.com/scylladb/scylla/commit/791acc7f3858e5541ee216034f4c7111818510c5
+         Create table where clustering key is frozen collection
+         Read with filter using "in" restriction on clustering key and ordered by clustering key DESC with and without
+         BYPASS CACHE
+        """
+        session = self.prepare(nodes=4, rf=3)
+
+        session.execute("CREATE TABLE cf (pk int, ck frozen<list<text>>, v text, PRIMARY KEY (pk, ck))")
+
+        all_ascii = list(string.ascii_lowercase)
+        text_value = string.ascii_lowercase * 40
+        for i in all_ascii:
+            session.execute(f"INSERT INTO cf(pk, ck, v) VALUES (0, ['{i}'], '{text_value}')")
+
+        for node in self.cluster.nodelist():
+            node.flush()
+
+        assert_one(session, "select count(*) from cf", [len(all_ascii)], cl=ConsistencyLevel.QUORUM)
+
+        in_list = [all_ascii[i] for i in range(0, 26, 10)]
+        in_str = ', '.join(f"['{i}']" for i in in_list)
+        expected_results = [[f'{text_value}'] for _ in reversed(in_list)]
+
+        read_stmt = f"SELECT v FROM cf WHERE pk = 0 and ck in ({in_str}) ORDER BY ck DESC"
+
+        with self.subTest('Read without BYPASS CACHE'):
+            debug(f'Read without BYPASS CACHE with query: {read_stmt}')
+            assert_all(session, read_stmt, expected_results, cl=ConsistencyLevel.QUORUM)
+
+        with self.subTest('Read with BYPASS CACHE'):
+            debug(f'Read with BYPASS CACHE with query: {read_stmt} BYPASS CACHE')
+            assert_all(session, f"{read_stmt} BYPASS CACHE", expected_results, cl=ConsistencyLevel.QUORUM)
+
+    def reverse_query_table_desc_test(self):
+        """
+         Issue: https://github.com/scylladb/scylla/issues/6171
+         Commit: https://github.com/scylladb/scylla/commit/791acc7f3858e5541ee216034f4c7111818510c5
+         Create table with 2 clustering keys and ordered by both clustering keys DESC
+         Read with filter using "in" restriction on clustering keys and ordered by clustering keys DESC with and without
+         BYPASS CACHE
+        """
+        session = self.prepare(nodes=4, rf=3)
+
+        session.execute("CREATE TABLE cf (pk int, ck int, ck1 int, v text, PRIMARY KEY (pk, ck, ck1)) "
+                        "WITH CLUSTERING ORDER BY (ck DESC, ck1 DESC)")
+
+        text_value = string.ascii_lowercase * 40
+        for i in range(10000):
+            session.execute(f"INSERT INTO cf(pk, ck, ck1, v) VALUES (0, {i}, {i}, '{text_value}')")
+
+        for node in self.cluster.nodelist():
+            node.flush()
+
+        assert_one(session, "select count(*) from cf", [10000], cl=ConsistencyLevel.QUORUM)
+
+        in_list = [i for i in range(10000, 0, 1000)]
+        in_str = ', '.join(str(i) for i in in_list)
+        expected_results = [[text_value] for _ in reversed(in_list)]
+
+        read_stmt = f"SELECT v FROM cf WHERE pk = 0 and ck in ({in_str}) and ck1 in ({in_str}) ORDER BY ck DESC, ck1 DESC"
+
+        with self.subTest('Read without BYPASS CACHE'):
+            debug(f'Read without BYPASS CACHE with query: {read_stmt}')
+            assert_all(session, read_stmt, expected_results, cl=ConsistencyLevel.QUORUM)
+
+        with self.subTest('Read with BYPASS CACHE'):
+            debug(f'Read with BYPASS CACHE with query: {read_stmt} BYPASS CACHE')
+            assert_all(session, f"{read_stmt} BYPASS CACHE", expected_results, cl=ConsistencyLevel.QUORUM)
 
     def range_slice_test(self):
         """ Test a regression from #1337 """
