@@ -73,6 +73,10 @@ class TestInternodeSSL(Tester):
         if reload_certs:
             debug("rewriting certs")
 
+            self.ignore_log_patterns += [
+                'server connection dropped: The TLS connection was non-properly terminated',
+                'client connection dropped: The certificate is NOT trusted',
+            ]
             node_marks = {node: node.mark_log() for node in cluster.nodelist()}
 
             os.remove(os.path.join(self.test_path, 'keystore.jks'))
