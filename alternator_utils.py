@@ -13,7 +13,7 @@ from mypy_boto3_dynamodb.type_defs import AttributeValueTypeDef
 from mypy_boto3_dynamodb.service_resource import Table
 from deepdiff import DeepDiff
 from nose.plugins.attrib import attr
-
+from alternator.utils import schemas
 from ccmlib.scylla_node import ScyllaNode
 from dtest import debug, Tester, info
 
@@ -23,19 +23,6 @@ NUM_OF_NODES = 3
 NUM_OF_ITEMS = 100
 ALTERNATOR_PORT = 8080
 DEFAULT_STRING_LENGTH = 5
-DEFAULT_SCHEMA = tuple(dict(
-    KeySchema=[
-        {'AttributeName': 'pk', 'KeyType': 'HASH'},
-    ],
-    AttributeDefinitions=[
-        {'AttributeName': 'pk', 'AttributeType': 'S'},
-        {'AttributeName': 'other', 'AttributeType': 'S'}
-    ]
-).items())
-CONDITION_EXPRESSION_SCHEMA = tuple(dict(
-    KeySchema=[{'AttributeName': 'pk', 'KeyType': 'HASH'}, {'AttributeName': 'c', 'KeyType': 'RANGE'}],
-    AttributeDefinitions=[{'AttributeName': 'pk', 'AttributeType': 'S'}, {'AttributeName': 'c', 'AttributeType': 'N'}]
-).items())
 
 
 class AlternatorApi(NamedTuple):
@@ -96,7 +83,7 @@ class TesterAlternator(Tester):
         super().__init__(*argv, **kwargs)
         self._nodes_url_list = None
         self.keyspace_name_template = "alternator_{}"
-        self._table_primary_key = "pk"
+        self._table_primary_key = schemas.HASH_KEY_NAME
         self._table_primary_key_format = "test{}"
         self._dynamo_params = dict(service_name="dynamodb", aws_access_key_id="None", aws_secret_access_key="None",
                                    region_name="None")
@@ -128,20 +115,20 @@ class TesterAlternator(Tester):
 
     # pylint:disable=too-many-arguments
     def create_table(self, node: ScyllaNode, table_name: str = TABLE_NAME,
-                     base_schema: Union[tuple, Dict] = DEFAULT_SCHEMA,
+                     schema: Union[tuple, Dict] = schemas.HASH_SCHEMA,
                      wait_until_table_exists: bool = True,
                      create_gsi: bool = False, **kwargs) -> Table:
-        if isinstance(base_schema, tuple):
-            base_schema = dict(base_schema)
+        if isinstance(schema, tuple):
+            schema = dict(schema)
         if create_gsi:
-            base_schema['AttributeDefinitions'].append(Gsi.ATTRIBUTE_DEFINITION)
-            base_schema.update(Gsi.CONFIG)
+            schema['AttributeDefinitions'].append(Gsi.ATTRIBUTE_DEFINITION)
+            schema.update(Gsi.CONFIG)
         dynamodb_api = self.get_dynamodb_api(node=node)
         debug(f"Creating a new table '{table_name}' using node '{node.name}'..")
         table = dynamodb_api.resource.create_table(
             TableName=table_name,
             BillingMode="PAY_PER_REQUEST",
-            **base_schema,
+            **schema,
             **kwargs
         )
         if wait_until_table_exists:
@@ -152,14 +139,14 @@ class TesterAlternator(Tester):
         debug(f"Table's schema and configuration are: {response}")
         return table
 
-    def delete_table_items(self, table_name: str, node: ScyllaNode, items: List[Dict[str, str]], primary_key: str = None
-                           ) -> None:
+    def delete_table_items(self, table_name: str, node: ScyllaNode, items: List[Dict[str, str]],
+                           schema: Union[tuple, Dict] = schemas.HASH_SCHEMA) -> None:
         dynamodb_api = self.get_dynamodb_api(node=node)
         table = dynamodb_api.resource.Table(name=table_name)
-        primary_key = primary_key or self._table_primary_key
+        table_keys = [key["AttributeName"] for key in schema[0][1]]
         with table.batch_writer() as batch:
             for item in items:
-                batch.delete_item(Key={primary_key: item[primary_key]})
+                batch.delete_item(Key={key: item[key] for key in table_keys})
         debug(f"Executing flush on node '{node.name}'")
         node.flush()
         info(f"All items of table '{table_name}' successfully removed..")
@@ -187,10 +174,11 @@ class TesterAlternator(Tester):
         return items
 
     # pylint:disable=too-many-arguments
-    def batch_write_actions(self, table_name: str, node: ScyllaNode, primary_key: str = None,
-                            new_items: List[Dict[str, str]] = None, delete_items: List[Dict[str, str]] = None):
+    def batch_write_actions(self, table_name: str, node: ScyllaNode, new_items: List[Dict[str, str]] = None,
+                            delete_items: List[Dict[str, str]] = None,
+                            schema: Union[tuple, Dict] = schemas.HASH_SCHEMA):
         dynamodb_api = self.get_dynamodb_api(node=node)
-        primary_key = primary_key or self._table_primary_key
+        table_keys = [key["AttributeName"] for key in schema[0][1]]
         assert new_items or delete_items, "should pass new_items or delete_items, other it's a no-op"
         new_items, delete_items = new_items or [], delete_items or []
         if new_items:
@@ -203,7 +191,7 @@ class TesterAlternator(Tester):
             for item in new_items:
                 batch.put_item(item)
             for item in delete_items:
-                batch.delete_item({primary_key: item[primary_key]})
+                batch.delete_item({key: item[key] for key in table_keys})
         return table
 
     def update_items(self, table_name: str, node: ScyllaNode, items: List[Dict] = None,
@@ -301,9 +289,10 @@ class TesterAlternator(Tester):
         node.nodetool(refresh_cmd)
         node.repair()
 
-    def compare_table_data(self, table_name: str, table_data: List[Dict[str, str]], node: ScyllaNode) -> DeepDiff:
+    def compare_table_data(self, table_name: str, table_data: List[Dict[str, str]], node: ScyllaNode,
+                           ignore_order: bool = True) -> DeepDiff:
         data = self.scan_table(table_name=table_name, node=node)
-        return DeepDiff(t1=table_data, t2=data, ignore_order=True, ignore_numeric_type_changes=True)
+        return DeepDiff(t1=table_data, t2=data, ignore_order=ignore_order, ignore_numeric_type_changes=True)
 
     def run_stress(self, table_name: str, node: ScyllaNode, num_of_item: int = NUM_OF_ITEMS,
                    verbose: bool = True, consistent_read: bool = True) -> StoppableThread:
@@ -395,7 +384,8 @@ def generate_put_request_items(num_of_items: int = NUM_OF_ITEMS, add_gsi: bool =
     put_request_items = list()  # type: List[Dict[str, Union[str, Dict[str, str]]]]
     for idx in range(num_of_items):
         item = {
-            'pk': f'test{idx}', 'other': random_string(length=DEFAULT_STRING_LENGTH), 'x': {'hello': f'world{idx}'}
+            schemas.HASH_KEY_NAME: f'test{idx}', 'other': random_string(length=DEFAULT_STRING_LENGTH),
+            'x': {'hello': f'world{idx}'}
         }
         if add_gsi:
             item[Gsi.ATTRIBUTE_NAME] = random_string(length=1)

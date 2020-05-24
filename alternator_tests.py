@@ -1,16 +1,19 @@
+import operator
 import os
 import random
 import shutil
 import tempfile
 from decimal import Decimal
+from pprint import pformat
+
 from botocore.exceptions import ClientError, EndpointConnectionError
 from deepdiff import DeepDiff
 from nose.plugins.attrib import attr
-from pprint import pformat
 
+from alternator.utils import schemas
 from alternator.utils.data_generator import AlternatorDataGenerator, TypeMode
 from alternator_utils import TesterAlternator, ALTERNATOR_SNAPSHOT_FOLDER, TABLE_NAME, NUM_OF_ITEMS, random_string, \
-    CONDITION_EXPRESSION_SCHEMA, DEFAULT_STRING_LENGTH, NUM_OF_NODES
+    DEFAULT_STRING_LENGTH, NUM_OF_NODES
 from alternator_utils import generate_put_request_items, Gsi, full_query
 from dtest import debug
 from tools import new_node
@@ -191,26 +194,30 @@ class AlternatorTest(TesterAlternator):
         self.get_table_items(table_name=TABLE_NAME, node=tested_node, consistent_read=False)
 
     def test_read_key_condition_expression(self):
+        hash_key, range_key = schemas.HASH_KEY_NAME, schemas.RANGE_KEY_NAME
         self.prepare_dynamodb_cluster(num_of_nodes=3)
         node1 = self.cluster.nodelist()[0]
-        self.create_table(node=node1, base_schema=CONDITION_EXPRESSION_SCHEMA)
+        self.create_table(node=node1, schema=schemas.HASH_AND_NUM_RANGE_SCHEMA)
         debug("Writing Alternator items of the same partition key")
         pk_condition_value = random_string(length=DEFAULT_STRING_LENGTH)
-        items = [{'pk': pk_condition_value, 'c': Decimal(i), 'a': random_string(length=DEFAULT_STRING_LENGTH)} for i in range(12)]
+        items = [{hash_key: pk_condition_value, range_key: Decimal(i), 'a': random_string(length=DEFAULT_STRING_LENGTH)}
+                 for i in range(12)]
         table = self.batch_write_actions(table_name=TABLE_NAME, node=node1, new_items=items)
         debug("Writing an extra different partition key")
         with table.batch_writer() as batch:
-            batch.put_item({'pk': random_string(length=DEFAULT_STRING_LENGTH), 'c': 123, 'a': random_string(length=DEFAULT_STRING_LENGTH)})
+            batch.put_item({hash_key: random_string(length=DEFAULT_STRING_LENGTH), range_key: 123,
+                            'a': random_string(length=DEFAULT_STRING_LENGTH)})
         node = self.cluster.nodelist()[1]
         debug(f"Stopping {node.name} before testing key condition expression query")
         node.stop()
         debug("Testing and validating a query using key condition expression")
-        got_condition_items = full_query(table, KeyConditionExpression='pk=:pk',
-                                         ExpressionAttributeValues={':pk': pk_condition_value})
+        got_condition_items = full_query(table, KeyConditionExpression=f'hash_key=:hash_key',
+                                         ExpressionAttributeValues={f':hash_key': pk_condition_value})
         diff_result = DeepDiff(t1=items, t2=got_condition_items, ignore_order=True)
         self.assertTrue(expr=not diff_result, msg=f"The following items differs:\n{pformat(diff_result)}")
 
     def test_update_condition_expression(self):
+        hash_key_name = schemas.HASH_KEY_NAME
         self.prepare_dynamodb_cluster(num_of_nodes=3, is_multi_dc=True)
         node1 = self.cluster.nodelist()[0]
         node2 = next(node for node in self.cluster.nodelist() if
@@ -228,21 +235,21 @@ class AlternatorTest(TesterAlternator):
         debug("Testing and validating an update query using key condition expression")
         new_pk_val = random_string(length=DEFAULT_STRING_LENGTH)
         debug("simple update from dc1")
-        table.update_item(Key={'pk': new_pk_val},
+        table.update_item(Key={hash_key_name: new_pk_val},
                           AttributeUpdates={'a': {'Value': 1, 'Action': 'PUT'}})
         debug("ConditionExpression update from dc2")
-        dc2_table.update_item(Key={'pk': new_pk_val},
+        dc2_table.update_item(Key={hash_key_name: new_pk_val},
                               UpdateExpression='SET c = :val',
                               ConditionExpression='attribute_exists (a)',
                               ExpressionAttributeValues={':val': 2})
         debug("ConditionExpression update from dc1")
-        table.update_item(Key={'pk': new_pk_val},
+        table.update_item(Key={hash_key_name: new_pk_val},
                           UpdateExpression='SET c = :val',
                           ConditionExpression='attribute_not_exists (b)',
                           ExpressionAttributeValues={':val': 3})
-        assert table.get_item(Key={'pk': new_pk_val}, ConsistentRead=True)['Item']['c'] == 3
+        assert table.get_item(Key={hash_key_name: new_pk_val}, ConsistentRead=True)['Item']['c'] == 3
         with self.assertRaisesRegexp(ClientError, "ConditionalCheckFailedException"):
-            table.update_item(Key={'pk': new_pk_val},
+            table.update_item(Key={hash_key_name: new_pk_val},
                               UpdateExpression='SET c = :val',
                               ConditionExpression='attribute_not_exists (a)',
                               ExpressionAttributeValues={':val': 4})
@@ -351,3 +358,136 @@ class AlternatorTest(TesterAlternator):
             self.assertRaisesRegex(expected_exception=ClientError, expected_regex=r"ResourceNotFoundException",
                                    callable=self.batch_write_actions,
                                    table_name='.scylla.alternator.system.peers', new_items=[dict(pk=1)], node=node)
+
+    def _check_comparison_query_key_conditions_options(self, scan_index_forward=True):
+        schema = schemas.HASH_AND_NUM_RANGE_SCHEMA
+        python_compare_op_dict = {'LE': operator.le, "LT": operator.lt, "GE": operator.ge, "GT": operator.gt}
+        all_selected_hash_items = []
+        hash_key_name, range_key_name = schemas.HASH_KEY_NAME, schemas.RANGE_KEY_NAME
+        table_name, node_idx = TABLE_NAME, 0
+
+        self.prepare_dynamodb_cluster(num_of_nodes=NUM_OF_NODES)
+        node = self.cluster.nodelist()[node_idx]
+        if self.is_table_exists(table_name=table_name, node=node):
+            self.delete_table(table_name=table_name, node=node)
+        self.create_table(node=node, table_name=table_name, schema=schema)
+
+        items = [{hash_key_name: f"{hash_value}", range_key_name: range_value}
+                 for hash_value in range(random.randint(1, 10))
+                 for range_value in range(random.randint(1, 10))]
+        node_resource_table = self.batch_write_actions(table_name=table_name, node=node, new_items=items, schema=schema)
+        selected_item = random.choice(items)
+        selected_hash_value = selected_item[hash_key_name]
+        selected_range_value = selected_item[range_key_name]
+        all_selected_hash_items = [item for item in items if selected_hash_value == item[hash_key_name]]
+
+        for compare_op in ["EQ", "LE", "LT", "GE", "GT"]:
+            key_condition = {
+                hash_key_name: {'AttributeValueList': [selected_hash_value], 'ComparisonOperator': 'EQ'},
+                range_key_name: {'AttributeValueList': [selected_range_value], 'ComparisonOperator': compare_op},
+            }
+            query_result = full_query(node_resource_table, KeyConditions=key_condition,
+                                      ScanIndexForward=scan_index_forward)
+            if compare_op == "EQ":
+                expected_items = [selected_item]
+            else:
+                py_compare_op = python_compare_op_dict[compare_op]
+                expected_items = [item for item in all_selected_hash_items[::-1 if not scan_index_forward else 1]
+                                  if py_compare_op(item[range_key_name], selected_range_value)]
+
+            debug(f"Running query with key condition '{key_condition}'")
+            diff = DeepDiff(t1=expected_items, t2=query_result, ignore_numeric_type_changes=True)
+            self.assertTrue(expr=not diff, msg=f"The following items differs:\n{pformat(diff)}")
+
+    def test_check_comparison_query_key_condition_options(self):
+        """
+        Check the result of Query for each "EQ", "LE", "LT", "GE" and "GT" comparison operation when ScanIndexForward is
+        True (The resulting order is ascending)
+        """
+        self._check_comparison_query_key_conditions_options()
+
+    def test_check_comparison_query_key_condition_options_without_scan_index_forward(self):
+        """
+        Check the result of Query for each "EQ", "LE", "LT", "GE" and "GT" comparison operation when ScanIndexForward is
+        True (The resulting order is descending)
+        """
+        self._check_comparison_query_key_conditions_options(scan_index_forward=False)
+
+    def _check_string_query_key_conditions_options(self, scan_index_forward=True):
+        secondary_key_values = [chr(char_value) for char_value in range(256)]
+        hash_key_name, range_key_name = schemas.HASH_KEY_NAME, schemas.RANGE_KEY_NAME
+        table_name, node_idx, selected_item_idx = TABLE_NAME, 0, 0
+
+        self.prepare_dynamodb_cluster(num_of_nodes=NUM_OF_NODES)
+        node = self.cluster.nodelist()[node_idx]
+
+        def test_logic(schema):
+            is_binary_mode = bool(schema == schemas.HASH_AND_BINARY_RANGE_SCHEMA)
+            debug(f"Check Query string comparison for item with {'binary' if is_binary_mode else 'string'}")
+            if self.is_table_exists(table_name=table_name, node=node):
+                self.delete_table(table_name=table_name, node=node)
+            self.create_table(node=node, table_name=table_name, schema=schema)
+
+            items = [{hash_key_name: f"{hash_value}",
+                      range_key_name: range_value.encode() if is_binary_mode else range_value}
+                     for hash_value in range(random.randint(1, 10))
+                     for range_value in secondary_key_values]
+            selected_hash_value = random.choice(items)[hash_key_name]
+            all_selected_hash_items = [item for item in items if item[hash_key_name] == selected_hash_value]
+            node_resource_table = self.batch_write_actions(table_name=table_name, node=node, new_items=items)
+
+            for compare_op in ["BEGINS_WITH", "BETWEEN"]:
+                if compare_op == "BETWEEN":
+                    selected_range_value = random.choices(population=secondary_key_values, k=2)
+                    low, high = selected_range_value[0], selected_range_value[1]
+                    if high < low:
+                        low, high = high, low
+                        selected_range_value = [low, high]
+                    expected_items = \
+                        [item for item in all_selected_hash_items[::-1] if low <= item[range_key_name] <= high]
+                elif compare_op == "BEGINS_WITH":
+                    expected_items, selected_range_value = [], [random.choice(secondary_key_values)]
+                    for item in all_selected_hash_items:
+                        _range_value = item[range_key_name].decode() if is_binary_mode else item[range_key_name]
+                        if _range_value.startswith(selected_range_value[0]):
+                            expected_items.append(item)
+                else:
+                    raise ValueError(f"The following value '{compare_op}' not supported")
+
+                key_condition = {
+                    hash_key_name: {'AttributeValueList': [selected_hash_value], 'ComparisonOperator': 'EQ'},
+                    range_key_name: {'AttributeValueList': selected_range_value, 'ComparisonOperator': compare_op},
+                }
+                query_result = full_query(
+                    node_resource_table, KeyConditions=key_condition, ScanIndexForward=scan_index_forward)
+                debug(f"Running query with key condition '{key_condition}'")
+                diff = DeepDiff(t1=expected_items, t2=query_result)
+                self.assertTrue(expr=not diff, msg=f"The following items differs:\n{pformat(diff)}")
+
+        test_logic(schema=schemas.HASH_AND_STR_RANGE_SCHEMA, is_binary_mode=False)
+        try:
+            test_logic(schema=schemas.HASH_AND_BINARY_RANGE_SCHEMA, is_binary_mode=True)
+        except ClientError as e:
+            if str(e):
+                if "JSON error: condition not met: false" in str(e):
+                    raise AssertionError("This is known issue: https://github.com/scylladb/scylla/issues/6495")
+            else:
+                raise e
+
+    def test_check_string_and_binary_query_key_condition_options(self):
+        """
+        Check the result of Query for each "BEGINS_WITH" and "BETWEEN" comparison operation when ScanIndexForward is
+        True (The resulting order is ascending).
+
+        For each HASH key generator all combinations of all digits (0-9) and chars (a-z and A-Z).
+        """
+        self._check_string_query_key_conditions_options()
+
+    def test_check_string_and_binary_query_key_condition_options_without_scan_index_forward(self):
+        """
+        Check the result of Query for each "BEGINS_WITH" and "BETWEEN" comparison operation when ScanIndexForward is
+        True (The resulting order is descending).
+
+        For each HASH key generator all combinations of all digits (0-9) and chars (a-z and A-Z).
+        """
+        self._check_string_query_key_conditions_options(scan_index_forward=False)
