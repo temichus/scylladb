@@ -8,6 +8,7 @@ from nose.plugins.attrib import attr
 from cassandra import ConsistencyLevel, ReadTimeout, Unavailable, ReadFailure
 from cassandra.query import SimpleStatement
 
+from assertions import assert_row_count, assert_all
 from ccmlib.node import NodeError
 from dtest import DISABLE_VNODES, Tester, debug
 from tools import InterruptBootstrap, since, new_node, require, rows_to_list
@@ -114,6 +115,84 @@ class TestReplaceAddress(Tester):
         checkCollision = node1.grep_log("between .*"+self.cluster.get_node_ip(3)+" and .*"+self.cluster.get_node_ip(4)+"; .*"+self.cluster.get_node_ip(4)+" is the new owner")
         debug(checkCollision)
         self.assertEqual(len(checkCollision), 1)
+
+    def serve_writes_during_bootstrap_test(self):
+        """
+        When replacing a node, the new node should serve writes while data is streamed into it, ensuring that when
+        the operation completes it will have up-to-date data.
+        """
+        debug("Starting cluster with 3 nodes.")
+        cluster = self.cluster
+        cluster.populate(3).start()
+        node1, node2, node3 = cluster.nodelist()
+        session = self.patient_cql_connection(node1)
+
+        keyspace_name = 'ks'
+        table_name = 'cf'
+
+        self.create_ks(session, keyspace_name, rf=3)
+        session.execute(f"USE {keyspace_name}")
+
+        session.execute(f"CREATE TABLE {table_name} (pk int, ck int, v int, primary key (pk, ck))")
+
+        debug("Insert 100000 rows.")
+        insert_stmt = session.prepare(f"INSERT INTO {table_name} (pk, ck, v) VALUES (?, ?, ?)")
+        data = []
+        for i in range(300):
+            for k in range(500):
+                data.append([i, k, k])
+                session.execute(insert_stmt, (i, k, k))
+
+        debug("Flush cluster")
+        self.cluster.flush()
+
+        num_tokens = int(node3.get_conf_option('num_tokens'))
+
+        assert_row_count(session, table_name, 150000)
+
+        # stop node
+        debug("Stopping node 3.")
+        node3.stop(gently=True, wait_other_notice=True)
+
+        # replace node 3 with node 4
+        debug("Starting node 4 to replace node 3")
+        node4 = new_node(cluster, bootstrap=True, token=None, remote_debug_port='0', data_center=None)
+        node4.start(replace_address=self.cluster.get_node_ip(3), no_wait=True,
+                    jvm_args=['--logger-log-level','stream_session=debug'])
+
+        node4.watch_log_for("JOINING: Starting to bootstrap")
+        node4.watch_log_for("Beginning stream session|sync data for keyspace=ks, status=started")
+
+        debug("Insert 1000 rows more.")
+        for i in range(300, 310):
+            for k in range(500, 600):
+                data.append([i, k, k])
+                session.execute(insert_stmt, (i, k, k))
+
+        mark_log = node4.mark_log()
+
+        assert_row_count(session, table_name, 151000, consistency_level=ConsistencyLevel.QUORUM)
+
+        debug("Waiting for node4 is up")
+        node4.watch_log_for("initialization completed", from_mark=mark_log)
+
+        debug("Verifying tokens migrated sucessfully")
+        movedTokensList = node4.grep_log(
+            "Token .* changing ownership from .*" + self.cluster.get_node_ip(3) + " to .*" + self.cluster.get_node_ip(
+                4))
+        self.assertGreaterEqual(len(movedTokensList), num_tokens)
+
+        # stop all nodes except new one
+        debug("Stopping nodes 1 and 2")
+        for node in [node1, node2]:
+            node.stop(gently=True, wait_other_notice=True)
+
+        # validate data
+        node4.flush()
+        session = self.patient_cql_connection(node4)
+        session.execute(f"USE {keyspace_name}")
+        assert_row_count(session, table_name, 151000)
+        assert_all(session, f"select * from {table_name}", data, ignore_order=True)
 
     @require('#4325')
     def shutdown_all_and_replace_node_test(self):
