@@ -2,6 +2,8 @@ import os
 import random
 import shutil
 import string
+from enum import Enum
+
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from itertools import chain
@@ -23,6 +25,51 @@ NUM_OF_NODES = 3
 NUM_OF_ITEMS = 100
 ALTERNATOR_PORT = 8080
 DEFAULT_STRING_LENGTH = 5
+
+
+class WriteIsolation(Enum):
+    ALWAYS_USE_LWT = "always_use_lwt"
+    FORBID_RMW = "forbid_rmw"
+    ONLY_RMW_USES_LWT = "only_rmw_uses_lwt"
+    UNSAFE_RMW = "unsafe_rmw"
+
+
+class TableConf:
+    """
+    The dynamodb table meta data of schema and tags as seen by a table of a specific node resource
+    """
+    def __init__(self, table: DynamoDBServiceResource.Table):
+        self.table = table
+        self.describe = table.meta.client.describe_table(TableName=table.name)['Table']
+        self.arn = self.describe['TableArn']
+        self.tags = table.meta.client.list_tags_of_resource(ResourceArn=self.arn)['Tags']
+
+    def update(self):
+        self.describe = self.table.meta.client.describe_table(TableName=self.table.name)['Table']
+        self.tags = self.table.meta.client.list_tags_of_resource(ResourceArn=self.arn)['Tags']
+        debug(f'{self.table.name} {self.table.meta.client.meta.endpoint_url} tags: {self.tags}')
+        debug(f'{self.table.name} {self.table.meta.client.meta.endpoint_url} describe: {self.describe}')
+
+    def __eq__(self, other_table):
+        self.update()
+        other_table.update()
+        if isinstance(other_table, self.__class__):
+            return self.__dict__ == other_table.__dict__
+        else:
+            return False
+
+
+def set_write_isolation(table: DynamoDBServiceResource.Table, isolation: Union[WriteIsolation, str]):
+    isolation = isolation if not isinstance(isolation, WriteIsolation) else isolation.value
+    table_conf = TableConf(table=table)
+    tags = [
+        {
+            'Key': 'system:write_isolation',
+            'Value': isolation
+        }
+    ]
+    table.meta.client.tag_resource(ResourceArn=table_conf.arn, Tags=tags)
+    table_conf.update()
 
 
 class AlternatorApi(NamedTuple):
@@ -237,6 +284,17 @@ class TesterAlternator(Tester):
             return list(chain(*scan_result)) if len(scan_result) > 1 else scan_result
         return _scan_table()
 
+    def is_table_schema_synced(self, table_name: str, nodes: List[ScyllaNode]) -> bool:
+        debug(f"Checking table {table_name} schema sync on nodes:")
+        for node in nodes:
+            debug(node.name)
+        assert len(nodes) > 1, "A minimum of 2 nodes is required for checking schema sync."
+        nodes_table_conf = [TableConf(self.get_table(table_name=table_name, node=node)) for node in nodes]
+        for idx, table_conf in enumerate(nodes_table_conf[:-1]):
+            if not table_conf == nodes_table_conf[idx+1]:
+                return False
+        return True
+
     def is_table_exists(self, table_name: str, node: ScyllaNode) -> bool:
         dynamodb_api = self.get_dynamodb_api(node=node)
         is_table_exists = table_name in dynamodb_api.client.list_tables()["TableNames"]
@@ -294,16 +352,32 @@ class TesterAlternator(Tester):
         data = self.scan_table(table_name=table_name, node=node)
         return DeepDiff(t1=table_data, t2=data, ignore_order=ignore_order, ignore_numeric_type_changes=True)
 
-    def run_stress(self, table_name: str, node: ScyllaNode, num_of_item: int = NUM_OF_ITEMS,
-                   verbose: bool = True, consistent_read: bool = True) -> StoppableThread:
-        debug("Start Alternator stress..")
-        get_items_thread = StoppableThread(target=self.get_table_items, kwargs=dict(
-            table_name=table_name, node=node, num_of_items=num_of_item, verbose=verbose,
-            consistent_read=consistent_read))
+    def _run_stress(self, table_name: str, node: ScyllaNode, target, num_of_item: int = NUM_OF_ITEMS,
+                    **kwargs) -> StoppableThread:
+        params = dict(table_name=table_name, node=node, num_of_items=num_of_item)
+        for key, val in kwargs.items():
+            params.update({key: val})
+        stress_thread = StoppableThread(target=target, kwargs=params)
 
-        self.addCleanup(get_items_thread.join)
-        get_items_thread.start()
-        return get_items_thread
+        self.addCleanup(stress_thread.join)
+        debug(f"Start Alternator stress of {stress_thread.target_name}..\n Using parameters of: {stress_thread.kwargs}")
+        stress_thread.start()
+        return stress_thread
+
+    def run_read_stress(self, table_name: str, node: ScyllaNode, num_of_item: int = NUM_OF_ITEMS,
+                        verbose: bool = True, consistent_read: bool = True) -> StoppableThread:
+        return self._run_stress(table_name=table_name, node=node, target=self.get_table_items, num_of_item=num_of_item,
+                                verbose=verbose, consistent_read=consistent_read)
+
+    def run_write_stress(self, table_name: str, node: ScyllaNode, num_of_item: int = NUM_OF_ITEMS) -> StoppableThread:
+        return self._run_stress(table_name=table_name, node=node, target=self.put_table_items, num_of_item=num_of_item)
+
+    def get_table(self, table_name: str, node: ScyllaNode):
+        return self.get_dynamodb_api(node=node).resource.Table(name=table_name)
+
+    def put_table_items(self, table_name: str, node: ScyllaNode, num_of_items: int = NUM_OF_ITEMS):
+        items = self.create_items(num_of_items=num_of_items)
+        self.batch_write_actions(table_name=table_name, node=node, new_items=items)
 
     def get_table_items(self, table_name: str, node: ScyllaNode, num_of_items: int = NUM_OF_ITEMS,
                         verbose: bool = True, consistent_read: bool = True):

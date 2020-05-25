@@ -41,3 +41,8 @@ HASH_AND_BINARY_RANGE_SCHEMA = tuple(dict(
         {'AttributeName': RANGE_KEY_NAME, 'AttributeType': 'B'},
     ]
 ).items())
+
+CONDITION_EXPRESSION_SCHEMA = tuple(dict(
+    KeySchema=[{'AttributeName': 'pk', 'KeyType': 'HASH'}, {'AttributeName': 'c', 'KeyType': 'RANGE'}],
+    AttributeDefinitions=[{'AttributeName': 'pk', 'AttributeType': 'S'}, {'AttributeName': 'c', 'AttributeType': 'N'}]
+).items())

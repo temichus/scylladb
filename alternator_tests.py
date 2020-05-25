@@ -3,6 +3,8 @@ import os
 import random
 import shutil
 import tempfile
+import time
+
 from decimal import Decimal
 from pprint import pformat
 
@@ -13,9 +15,9 @@ from nose.plugins.attrib import attr
 from alternator.utils import schemas
 from alternator.utils.data_generator import AlternatorDataGenerator, TypeMode
 from alternator_utils import TesterAlternator, ALTERNATOR_SNAPSHOT_FOLDER, TABLE_NAME, NUM_OF_ITEMS, random_string, \
-    DEFAULT_STRING_LENGTH, NUM_OF_NODES
+     DEFAULT_STRING_LENGTH, NUM_OF_NODES, set_write_isolation, WriteIsolation
 from alternator_utils import generate_put_request_items, Gsi, full_query
-from dtest import debug
+from dtest import debug, wait_for
 from tools import new_node
 
 
@@ -99,7 +101,7 @@ class AlternatorTest(TesterAlternator):
 
         items = self.create_items(num_of_items=NUM_OF_ITEMS)
         self.batch_write_actions(table_name=TABLE_NAME, node=node1, new_items=items)
-        get_items_thread = self.run_stress(table_name=TABLE_NAME, node=node1)
+        get_items_thread = self.run_read_stress(table_name=TABLE_NAME, node=node1)
         debug(f'Start drain for: {node3.name}')
         node3.drain()
         debug('Drain finished')
@@ -112,12 +114,12 @@ class AlternatorTest(TesterAlternator):
 
         items = self.create_items(num_of_items=NUM_OF_ITEMS)
         self.batch_write_actions(table_name=TABLE_NAME, node=node1, new_items=items)
-        alternator_consistent_stress = self.run_stress(table_name=TABLE_NAME, node=node1)
+        alternator_consistent_stress = self.run_read_stress(table_name=TABLE_NAME, node=node1)
         debug(f'Start first decommission during consistent Alternator-load for: {node2.name}')
         node2.decommission()
         debug('Decommission finished')
         alternator_consistent_stress.join()
-        alternator_non_consistent_stress = self.run_stress(table_name=TABLE_NAME, node=node1, consistent_read=False)
+        alternator_non_consistent_stress = self.run_read_stress(table_name=TABLE_NAME, node=node1, consistent_read=False)
         debug(f'Start a second decommission during non-consistent alternator-load for: {node3.name}')
         node3.decommission()
         debug('Decommission finished')
@@ -194,30 +196,58 @@ class AlternatorTest(TesterAlternator):
         self.get_table_items(table_name=TABLE_NAME, node=tested_node, consistent_read=False)
 
     def test_read_key_condition_expression(self):
-        hash_key, range_key = schemas.HASH_KEY_NAME, schemas.RANGE_KEY_NAME
         self.prepare_dynamodb_cluster(num_of_nodes=3)
         node1 = self.cluster.nodelist()[0]
-        self.create_table(node=node1, schema=schemas.HASH_AND_NUM_RANGE_SCHEMA)
+        self.create_table(node=node1, schema=schemas.CONDITION_EXPRESSION_SCHEMA)
         debug("Writing Alternator items of the same partition key")
         pk_condition_value = random_string(length=DEFAULT_STRING_LENGTH)
-        items = [{hash_key: pk_condition_value, range_key: Decimal(i), 'a': random_string(length=DEFAULT_STRING_LENGTH)}
-                 for i in range(12)]
+        items = [{'pk': pk_condition_value, 'c': Decimal(i), 'a': random_string(length=DEFAULT_STRING_LENGTH)} for i in range(12)]
         table = self.batch_write_actions(table_name=TABLE_NAME, node=node1, new_items=items)
         debug("Writing an extra different partition key")
         with table.batch_writer() as batch:
-            batch.put_item({hash_key: random_string(length=DEFAULT_STRING_LENGTH), range_key: 123,
+            batch.put_item({'pk': random_string(length=DEFAULT_STRING_LENGTH), 'c': 123,
                             'a': random_string(length=DEFAULT_STRING_LENGTH)})
         node = self.cluster.nodelist()[1]
         debug(f"Stopping {node.name} before testing key condition expression query")
         node.stop()
         debug("Testing and validating a query using key condition expression")
-        got_condition_items = full_query(table, KeyConditionExpression=f'hash_key=:hash_key',
-                                         ExpressionAttributeValues={f':hash_key': pk_condition_value})
+        got_condition_items = full_query(table, KeyConditionExpression='pk=:pk',
+                                         ExpressionAttributeValues={':pk': pk_condition_value})
         diff_result = DeepDiff(t1=items, t2=got_condition_items, ignore_order=True)
         self.assertTrue(expr=not diff_result, msg=f"The following items differs:\n{pformat(diff_result)}")
 
-    def test_update_condition_expression(self):
-        hash_key_name = schemas.HASH_KEY_NAME
+    def test_write_isolation_during_stress(self):
+        """
+        Modify tables write-isolation during stress
+        """
+        self.prepare_dynamodb_cluster(num_of_nodes=3)
+        node1 = self.cluster.nodelist()[0]
+        debug("Adding data for tables of all write-isolation types")
+        conf_workloads = []
+        for isolation in WriteIsolation:
+            table_name=f'{TABLE_NAME}_{isolation.value}'
+            table = self.prefill_dynamodb_table(node=node1, table_name=table_name)
+            set_write_isolation(table=table, isolation=isolation)
+            conf_workloads.append(
+                {'table': table, 'write_stress': self.run_write_stress(table_name=table_name, node=node1),
+                 'read_stress': self.run_read_stress(table_name=table_name, node=node1)})
+
+        cycles = 3
+        for cycle in range(1, cycles+1):
+            for conf in conf_workloads:
+                debug(f"cycle {cycle}/{cycles}: modifying {conf['table']}")
+                set_write_isolation(table=conf['table'], isolation=random.choice(list(WriteIsolation)))
+            time.sleep(5)
+
+        for conf in conf_workloads:
+            conf['write_stress'].join()
+            conf['read_stress'].join()
+
+    def test_update_condition_expression_and_write_isolation(self):
+        """
+        See that using conditional update queries run correctly when LWT is enabled.
+        Check that they can't run when LWT is disabled for table, when using "forbid_lwt" write-isolation.
+        """
         self.prepare_dynamodb_cluster(num_of_nodes=3, is_multi_dc=True)
         node1 = self.cluster.nodelist()[0]
         node2 = next(node for node in self.cluster.nodelist() if
@@ -235,24 +265,53 @@ class AlternatorTest(TesterAlternator):
         debug("Testing and validating an update query using key condition expression")
         new_pk_val = random_string(length=DEFAULT_STRING_LENGTH)
         debug("simple update from dc1")
-        table.update_item(Key={hash_key_name: new_pk_val},
+        table.update_item(Key={self._table_primary_key: new_pk_val},
                           AttributeUpdates={'a': {'Value': 1, 'Action': 'PUT'}})
-        debug("ConditionExpression update from dc2")
-        dc2_table.update_item(Key={hash_key_name: new_pk_val},
-                              UpdateExpression='SET c = :val',
-                              ConditionExpression='attribute_exists (a)',
-                              ExpressionAttributeValues={':val': 2})
-        debug("ConditionExpression update from dc1")
-        table.update_item(Key={hash_key_name: new_pk_val},
-                          UpdateExpression='SET c = :val',
-                          ConditionExpression='attribute_not_exists (b)',
-                          ExpressionAttributeValues={':val': 3})
-        assert table.get_item(Key={hash_key_name: new_pk_val}, ConsistentRead=True)['Item']['c'] == 3
+        debug("ConditionExpression update from dc2:")
+        conditional_update_c_2 = dict(Key={self._table_primary_key: new_pk_val},
+                                      UpdateExpression='SET c = :val',
+                                      ConditionExpression='attribute_exists (a)',
+                                      ExpressionAttributeValues={':val': 2})
+        debug(conditional_update_c_2)
+        debug("Check that conditional update fails on write-isolation 'forbid' mode (dc2)")
+        set_write_isolation(table, WriteIsolation.FORBID_RMW)
+        wait_for(self.is_table_schema_synced, timeout=30, text='Waiting until table schema is updated',
+                 table_name=TABLE_NAME, nodes=[node1, dc2_node])
+        # TODO: adjust this text when new modified alternator commit is merged.
+        msg_rmw_not_supported = 'Read-modify-write operations not supported'
+        with self.assertRaisesRegexp(ClientError, msg_rmw_not_supported):
+            res= dc2_table.update_item(**conditional_update_c_2)
+            debug(res)
+        set_write_isolation(table, WriteIsolation.ALWAYS_USE_LWT)
+        dc2_table.update_item(**conditional_update_c_2)
+        debug("ConditionExpression update from dc1:")
+        conditional_update_c_3 = dict(Key={self._table_primary_key: new_pk_val},
+                                      UpdateExpression='SET c = :val',
+                                      ConditionExpression='attribute_not_exists (b)',
+                                      ExpressionAttributeValues={':val': 3})
+        debug(conditional_update_c_3)
+
+        with self.assertRaisesRegexp(ClientError, msg_rmw_not_supported):
+            set_write_isolation(table, WriteIsolation.FORBID_RMW)
+            table.update_item(**conditional_update_c_3)
+        set_write_isolation(table, WriteIsolation.ONLY_RMW_USES_LWT)
+        table.update_item(**conditional_update_c_3)
+        assert table.get_item(Key={self._table_primary_key: new_pk_val}, ConsistentRead=True)['Item']['c'] == 3
         with self.assertRaisesRegexp(ClientError, "ConditionalCheckFailedException"):
-            table.update_item(Key={hash_key_name: new_pk_val},
+            table.update_item(Key={self._table_primary_key: new_pk_val},
                               UpdateExpression='SET c = :val',
                               ConditionExpression='attribute_not_exists (a)',
                               ExpressionAttributeValues={':val': 4})
+
+    def test_modified_tag_is_propagated_to_other_dc(self):
+        self.prepare_dynamodb_cluster(num_of_nodes=1, is_multi_dc=True)
+        node1 = self.cluster.nodelist()[0]
+        table = self.prefill_dynamodb_table(node=node1)
+        dc2_node = next(node for node in self.cluster.nodelist() if node.data_center != node1.data_center)
+        debug("Check that updating write-isolation tag on one DC is propagated to a node of the other DC (dc2)")
+        set_write_isolation(table, WriteIsolation.FORBID_RMW)
+        res = wait_for(self.is_table_schema_synced, timeout=30, step=3, text='Waiting until table schema is updated',
+                       table_name=TABLE_NAME, nodes=[node1, dc2_node])
 
     def _reboot_nodes_while_running_stress(self, node):
         for _node in self.cluster.nodelist():
