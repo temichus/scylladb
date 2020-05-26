@@ -364,6 +364,7 @@ class TestWideRows(Tester):
             func(session, self.TABLE_NAME, row_number, 1, size, index)
             self.cluster.flush()
             time.sleep(0.5)
+        self.cluster.compact();
         return row_number
 
     @attr('next-gating', 'dtest-debug', 'single_node')
