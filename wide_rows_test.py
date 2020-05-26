@@ -455,7 +455,7 @@ class TestWideRows(Tester):
         self.create_large_partition_table(session=session, table_name=self.TABLE_NAME)
         expected_partition_data_size = self.create_large_partition_data(session=session,
                                                                         table_name=self.TABLE_NAME,
-                                                                        partition_rows=60000,
+                                                                        partition_rows=10000,
                                                                         partitions_num=partition_num,
                                                                         one_blob_size=1024,
                                                                         start_partition_index=0)
@@ -526,7 +526,7 @@ class TestWideRows(Tester):
         Create table with one large partition and one small partition and validate that partition is reported in
         the system.large_partitions table and there are warning in the log
         """
-        partition_rows = 60000
+        partition_rows = 10000
         partition_num = 1
         small_partition_num = 10
         entity_type = 'partition'
@@ -567,7 +567,7 @@ class TestWideRows(Tester):
         Validate that when most of rows in the large partition are expired, this partition is not reported in
         the system.large_partitions table and there are no warning in the log
         """
-        partition_rows = 60000
+        partition_rows = 10000
         partition_num = 1
         extra_partitions = 0
         entity_type = 'partition'
@@ -620,7 +620,7 @@ class TestWideRows(Tester):
         Validate that when all rows in the large partition are expired, this partition is not reported in
         the system.large_partitions table and there are no warning in the log
         """
-        partition_rows = 60000
+        partition_rows = 10000
         partition_num = 1
         extra_partitions = 0
         entity_type = 'partition'
@@ -1457,7 +1457,7 @@ class TestWideRows(Tester):
         Create table with one large partition and one small partition and validate that partition is reported in
         the system.large_partitions table and there are warning in the log with running full compaction
         """
-        partition_rows = 60000
+        partition_rows = 10000
         partition_num = 1
         entity_type = 'partition'
 
