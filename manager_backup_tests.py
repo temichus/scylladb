@@ -220,8 +220,8 @@ class TestScyllaMgmtBackup(Tester):
         mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
 
         debug("Attempting to create a backup task with a location value, expecting it to success")
-        backup_task = mgr_cluster.run_backup_command({"location": ["s3:{}".format(DESTINATION_BUCKET)],
-                                                      "keyspace": list(keyspace_table_and_key_range.keys())})
+        backup_task = mgr_cluster.run_backup_command(location_list=["s3:{}".format(DESTINATION_BUCKET)],
+                                                     keyspace_list=list(keyspace_table_and_key_range.keys()))
         backup_task.wait_for_status(list_status=[TaskStatus.DONE], timeout=1000, step=5)
         self.clean_restore_and_verify_backup(backup_task, self.cluster.nodelist(), mgr_cluster, node1,
                                              keyspace_table_and_key_range)
@@ -233,8 +233,8 @@ class TestScyllaMgmtBackup(Tester):
 
         debug("Attempting to create a backup task with an invalid rate limit value, expecting it to fail")
         try:
-            mgr_cluster.run_backup_command({"location": ["s3:{}".format(DESTINATION_BUCKET)],
-                                           "rate-limit": ['a']})
+            mgr_cluster.run_backup_command(location_list=["s3:{}".format(DESTINATION_BUCKET)],
+                                           rate_limit_list=['a'])
         except ScyllaManagerError as err:
             assert "invalid" in err.args[0] and "limit" in err.args[0], "Unexpected error: {}".format(err.args[0])
         else:
@@ -248,9 +248,9 @@ class TestScyllaMgmtBackup(Tester):
         mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
 
         command_execution_time = datetime.now()
-        backup_task = mgr_cluster.run_backup_command({"location": ["s3:{}".format(DESTINATION_BUCKET)],
-                                                      "keyspace": list(keyspace_table_and_key_range.keys()),
-                                                      "start-date": "now+40s"})
+        backup_task = mgr_cluster.run_backup_command(location_list=["s3:{}".format(DESTINATION_BUCKET)],
+                                                     keyspace_list=list(keyspace_table_and_key_range.keys()),
+                                                     start_date="now+40s")
         next_run_string = backup_task.next_run
         next_run_time = datetime.strptime(next_run_string, "%d %b %y %H:%M:%S %Z")
         assert abs((next_run_time - command_execution_time).seconds) < 50, "The start time is not identical"
@@ -277,8 +277,8 @@ class TestScyllaMgmtBackup(Tester):
 
         debug("Attempting to create a backup task for a cluster with several keyspaces and column families,"
               " expecting it to succeed")
-        backup_task = mgr_cluster.run_backup_command({"location": ["s3:{}".format(DESTINATION_BUCKET)],
-                                                      "keyspace": list(keyspace_table_and_key_range.keys())})
+        backup_task = mgr_cluster.run_backup_command(location_list=["s3:{}".format(DESTINATION_BUCKET)],
+                                                     keyspace_list=list(keyspace_table_and_key_range.keys()))
         backup_task.wait_for_status(list_status=[TaskStatus.DONE], timeout=1000, step=5)
         self.clean_restore_and_verify_backup(backup_task, self.cluster.nodelist(), mgr_cluster, node1,
                                              keyspace_table_and_key_range)
@@ -300,8 +300,8 @@ class TestScyllaMgmtBackup(Tester):
 
         debug("Attempting to create a backup task for a cluster with several keyspaces and column families,"
               " expecting it to succeed")
-        backup_task = mgr_cluster.run_backup_command({"location": ["s3:{}".format(DESTINATION_BUCKET)],
-                                                     "keyspace": ['ks1', "*_for_glob"]})
+        backup_task = mgr_cluster.run_backup_command(location_list=["s3:{}".format(DESTINATION_BUCKET)],
+                                                     keyspace_list=['ks1', "*_for_glob"])
         backup_task.wait_for_status(list_status=[TaskStatus.DONE], timeout=1000, step=5)
         keyspaces_ranges_to_verify = {
             "ks1": keyspace_table_and_key_range["ks1"],
@@ -318,7 +318,7 @@ class TestScyllaMgmtBackup(Tester):
 
         debug("Attempting to create a backup task with a nonexistent bucket in the location value, expecting it to fail")
         try:
-            mgr_cluster.run_backup_command({"location": ["s3:{}".format(FALSE_BUCKET)]})
+            mgr_cluster.run_backup_command(location_list=["s3:{}".format(FALSE_BUCKET)])
         except ScyllaManagerError as err:
             assert "invalid location" in err.args[0], "Unexpected error: {}".format(err.args[0])
         else:
@@ -333,8 +333,8 @@ class TestScyllaMgmtBackup(Tester):
         debug("Attempting to create a backup task with a nonexistent keyspace in the keyspace value,"
               " expecting it to fail")
         try:
-            mgr_cluster.run_backup_command({"location": ["s3:{}".format(DESTINATION_BUCKET)],
-                                            "keyspace": keyspace_filter_string})
+            mgr_cluster.run_backup_command(location_list=["s3:{}".format(DESTINATION_BUCKET)],
+                                           keyspace_list=[keyspace_filter_string])
         except ScyllaManagerError as err:
             assert "no matching keyspaces"\
                    in err.args[0], "The manager justifiably failed to backup a nonexistent keyspace, but the error" \
@@ -360,8 +360,8 @@ class TestScyllaMgmtBackup(Tester):
         debug("Attempting to create a backup task with a nonexistent keyspace in the keyspace value,"
               " expecting it to fail")
         try:
-            mgr_cluster.run_backup_command({"location": ["s3:{}".format(DESTINATION_BUCKET)],
-                                            "dc": dc_filter_string})
+            mgr_cluster.run_backup_command(location_list=["s3:{}".format(DESTINATION_BUCKET)],
+                                           dc_list=[dc_filter_string])
         except ScyllaManagerError as err:
             assert "no matching DCs" in err.args[0]
         else:
@@ -385,7 +385,7 @@ class TestScyllaMgmtBackup(Tester):
         self._create_stress_compatible_table(node=node1)
         self.cluster.stress(['write', 'n=5000K', '-rate', 'threads=50'])
 
-        backup_task = mgr_cluster.run_backup_command({"location": ["s3:{}".format(DESTINATION_BUCKET)]})
+        backup_task = mgr_cluster.run_backup_command(location_list=["s3:{}".format(DESTINATION_BUCKET)])
 
         backup_task.wait_for_status(list_status=[TaskStatus.RUNNING], timeout=100, step=1)
         progress_percentage = backup_task.progress
@@ -426,8 +426,8 @@ class TestScyllaMgmtBackup(Tester):
         per_node_pre_backup_snapshot_lists = {node.name: sorted(self.extract_all_snapshot_names(
             node.nodetool("listsnapshots", capture_output=True)[0])) for node in node_list}
 
-        backup_task = mgr_cluster.run_backup_command({"location": ["s3:{}".format(DESTINATION_BUCKET)],
-                                                      "keyspace": list(keyspace_table_and_key_range.keys())})
+        backup_task = mgr_cluster.run_backup_command(location_list=["s3:{}".format(DESTINATION_BUCKET)],
+                                                     keyspace_list=list(keyspace_table_and_key_range.keys()))
         backup_task.wait_for_status(list_status=[TaskStatus.DONE], timeout=1000, step=5)
         per_node_post_backup_snapshot_lists = {node.name: sorted(self.extract_all_snapshot_names(
             node.nodetool("listsnapshots", capture_output=True)[0])) for node in node_list}
@@ -453,8 +453,8 @@ class TestScyllaMgmtBackup(Tester):
         mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
 
         debug("Attempting to create a backup task with a location value, expecting it to success")
-        backup_task = mgr_cluster.run_backup_command({"location": ["s3:{}".format(DESTINATION_BUCKET)],
-                                                      "keyspace": ['ks']})
+        backup_task = mgr_cluster.run_backup_command(location_list=["s3:{}".format(DESTINATION_BUCKET)],
+                                                     keyspace_list=['ks'])
         backup_task.wait_for_status(list_status=[TaskStatus.DONE], timeout=1000, step=5)
 
         self.insert_data_from_ranges(node1, second_keyspace_table_and_key_range)
@@ -482,7 +482,7 @@ class TestScyllaMgmtBackup(Tester):
 
         mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
 
-        backup_task = mgr_cluster.run_backup_command({"location": ["s3:{}".format(DESTINATION_BUCKET)]})
+        backup_task = mgr_cluster.run_backup_command(location_list=["s3:{}".format(DESTINATION_BUCKET)])
         backup_task.wait_for_status(list_status=[TaskStatus.RUNNING], timeout=600, step=0.1)
 
         node4.stop(wait_other_notice=True)
@@ -508,7 +508,7 @@ class TestScyllaMgmtBackup(Tester):
         mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
         node3.stop(wait_other_notice=True)
 
-        backup_task = mgr_cluster.run_backup_command({"location": ["s3:{}".format(DESTINATION_BUCKET)]})
+        backup_task = mgr_cluster.run_backup_command(location_list=["s3:{}".format(DESTINATION_BUCKET)])
         backup_task.wait_for_status(list_status=[TaskStatus.RUNNING], timeout=600, step=0.1)
 
         backup_task.wait_for_status(list_status=[TaskStatus.DONE])
@@ -583,7 +583,7 @@ class TestScyllaMgmtBackup(Tester):
         node4.start()
         self._wait_until_node_reaches_status(node4, node1, "UJ", tolerate_missing=True)
 
-        backup_task = mgr_cluster.run_backup_command({"location": ["s3:{}".format(DESTINATION_BUCKET)]})
+        backup_task = mgr_cluster.run_backup_command(location_list=["s3:{}".format(DESTINATION_BUCKET)])
         backup_task.wait_for_status(list_status=[TaskStatus.DONE], timeout=600, step=5)
 
         self.clean_restore_and_verify_backup_with_stress(backup_task=backup_task, node_list=self.cluster.nodelist(),
@@ -602,8 +602,8 @@ class TestScyllaMgmtBackup(Tester):
 
         self._wait_until_node_reaches_status(node=node3, functioning_node=node1, desirable_status="DN",
                                              tolerate_missing=False)
-        backup_task = mgr_cluster.run_backup_command({"location": ["s3:{}".format(DESTINATION_BUCKET)],
-                                                     "keyspace": ['ks']})
+        backup_task = mgr_cluster.run_backup_command(location_list=["s3:{}".format(DESTINATION_BUCKET)],
+                                                     keyspace_list=['ks'])
         backup_task.wait_for_status(list_status=[TaskStatus.DONE], timeout=600, step=5)
         node3.stop(wait_other_notice=False)
         node3.start(wait_other_notice=True, wait_for_binary_proto=True)
@@ -618,8 +618,8 @@ class TestScyllaMgmtBackup(Tester):
 
         mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
 
-        backup_task = mgr_cluster.run_backup_command({"location": ["s3:{}".format(DESTINATION_BUCKET)],
-                                                     "keyspace": ['ks']})
+        backup_task = mgr_cluster.run_backup_command(location_list=["s3:{}".format(DESTINATION_BUCKET)],
+                                                     keyspace_list=['ks'])
         backup_task.wait_for_status(list_status=[TaskStatus.RUNNING], timeout=100, step=1)
         node3.stop(wait_other_notice=True)
         node3.start(wait_other_notice=True, wait_for_binary_proto=True)
@@ -633,8 +633,8 @@ class TestScyllaMgmtBackup(Tester):
 
         mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
 
-        backup_task = mgr_cluster.run_backup_command({"location": ["s3:{}".format(DESTINATION_BUCKET)],
-                                                      "keyspace": ['ks']})
+        backup_task = mgr_cluster.run_backup_command(location_list=["s3:{}".format(DESTINATION_BUCKET)],
+                                                     keyspace_list=['ks'])
         backup_task.wait_for_status(list_status=[TaskStatus.RUNNING], timeout=100, step=1)
         node3.restart_scylla_manager_agent(gently=True)
         backup_task.wait_for_status(list_status=[TaskStatus.ERROR], timeout=600, step=5)
@@ -648,8 +648,8 @@ class TestScyllaMgmtBackup(Tester):
         manager_tool = ScyllaManagerTool(scylla_manager=self.cluster._scylla_manager)
         mgr_cluster = manager_tool.add_cluster(node=node1, name=CLUSTER_NAME)
 
-        backup_task = mgr_cluster.run_backup_command({"location": ["s3:{}".format(DESTINATION_BUCKET)],
-                                                     "keyspace": ['ks']})
+        backup_task = mgr_cluster.run_backup_command(location_list=["s3:{}".format(DESTINATION_BUCKET)],
+                                                     keyspace_list=['ks'])
         backup_task.wait_for_status(list_status=[TaskStatus.RUNNING], timeout=100, step=1)
         manager_tool.restart_manager_server(gently=True)
         backup_task.wait_for_status(list_status=[TaskStatus.ABORTED], timeout=100, step=1)
@@ -669,8 +669,8 @@ class TestScyllaMgmtBackup(Tester):
         self._create_stress_compatible_table(node=node1)
         self.cluster.stress(['write', 'n=5000K', '-rate', 'threads=50'])
 
-        backup_task = mgr_cluster.run_backup_command({"location": ["s3:{}".format(DESTINATION_BUCKET)],
-                                                      "keyspace": ['keyspace1']})
+        backup_task = mgr_cluster.run_backup_command(location_list=["s3:{}".format(DESTINATION_BUCKET)],
+                                                     keyspace_list=['keyspace1'])
         backup_task.wait_for_status(list_status=[TaskStatus.RUNNING], timeout=100, step=1)
         self.cluster.nodetool("clearsnapshot")
         backup_task.wait_for_status(list_status=[TaskStatus.ERROR], timeout=100, step=1)
@@ -696,11 +696,11 @@ class TestScyllaMgmtBackup(Tester):
 
         self.insert_data_over_multiple_queries(
             healthy_node=node1, keyspace_table_and_key_range={"ks": {"cf1": (1, 1001)}}, use_clustering_key=True)
-        backup_task = mgr_cluster.run_backup_command({"location": ["s3:{}".format(DESTINATION_BUCKET)],
-                                                      "keyspace": ['ks'],
-                                                      "interval": "1h",
-                                                      "num-retries": "0",
-                                                      "retention": "3"})
+        backup_task = mgr_cluster.run_backup_command(location_list=["s3:{}".format(DESTINATION_BUCKET)],
+                                                     keyspace_list=['ks'],
+                                                     interval="1h",
+                                                     num_retries="0",
+                                                     retention="3")
         backup_task.wait_for_status(list_status=[TaskStatus.DONE], step=5)
         snapshot_tags.append(backup_task.get_snapshot_tag())
         self.delete_range(node1, keyspace="ks", table="cf1", key_range=(1, 1000))
