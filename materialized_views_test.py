@@ -20,7 +20,7 @@ from assertions import assert_all, assert_one, assert_invalid, assert_unavailabl
 from dtest import Tester, debug, flaky_with_tear_down
 from tools import since, new_node, require, rows_to_list, run_query_with_data_processing
 from scylla_tools import TableManager, MaterializedViewManager, flush_by_node, run_in_parallel, remove_node, wait_for_view, \
-                            wait_for_view_build_start
+                            wait_for_view_build_start, scylla_mode, enable_error_injection, disable_all_error_injections
 from cassandra.cluster import NoHostAvailable
 
 from nose.plugins.attrib import attr
@@ -3377,6 +3377,70 @@ class TestMaterializedViews(Tester):
         self.assertEqual(len(result2), 1, "expecting one virtual column")
         self.assertEqual(result1, result2, "expecting same results on both nodes")
 
+    @attr('dtest-debug')
+    @scylla_mode('!release')
+    def injected_noncritical_errors_test(self):
+        self.ignore_log_patterns += [r'.*std::runtime_error.*view.*']
+        cluster = self.cluster
+        cluster.populate([2, 0])
+        cluster.start(wait_other_notice=True, wait_for_binary_proto=True)
+        nodes = self.cluster.nodelist()
+        [node1, node2] = nodes
+        session = self.patient_cql_connection(node1)
+        session2 = self.patient_cql_connection(node2)
+        self.rf = 2
+        self.create_ks(session, 'ks', self.rf)
+        session.execute(
+                ("CREATE TABLE tab (a INT, b INT, c INT,"
+                 "PRIMARY KEY (a));")
+            )
+        # Wait for both nodes to know about the base table
+        session.cluster.control_connection.wait_for_schema_agreement()
+        for node in nodes:
+            disable_all_error_injections(self.get_ip_from_node(node))
+        # Arm the injection points
+        injection_points = [
+            "table_push_view_replica_updates_stale_time_point",
+            "table_push_view_replica_updates_timeout",
+            "view_builder_load_views",
+            "view_builder_check_for_built_views",
+            "view_builder_consume_new_partition",
+            "view_builder_consume_tombstone",
+            "view_builder_consume_static_row",
+            "view_builder_consume_clustering_row",
+            "view_builder_consume_range_tombstone",
+            "view_builder_flush_fragments",
+            "view_builder_consume_end_of_partition",
+            "view_builder_consume_end_of_stream",
+            "view_builder_mark_view_as_built",
+            "view_update_generator_consume_staging_sstable",
+            "view_update_generator_collect_consumed_sstables",
+            "view_update_generator_move_staging_sstable",
+            "view_update_generator_registering_staging_sstable",
+        ]
+        for i, injection_point in enumerate(injection_points):
+            enable_error_injection(self.get_ip_from_node(nodes[i%2]), injection_point, once=True)
+
+        for i in range(10):
+            session.execute(SimpleStatement("INSERT INTO tab (a, b, c) VALUES"
+                            f"({i}, {2*i}, {-i})", consistency_level=ConsistencyLevel.ALL))
+        self.cluster.flush()
+
+        # Create a view and wait until it's built
+        session.execute(
+            ("CREATE MATERIALIZED VIEW mv AS "
+            "SELECT a,b FROM tab WHERE a IS NOT NULL AND b IS NOT NULL "
+            "PRIMARY KEY (b,a)"))
+
+        for i in range(5, 20):
+            session2.execute(SimpleStatement("INSERT INTO ks.tab (a, b, c) VALUES"
+                            f"({i}, {2*i}, {-i})", consistency_level=ConsistencyLevel.ALL))
+        self.cluster.flush()
+
+        def get_all(session):
+            return session.execute(SimpleStatement("SELECT * FROM ks.mv", consistency_level=ConsistencyLevel.ALL))
+        self.eventually(lambda: self.assertEqual(len(get_all(session).current_rows), 20))
+        self.eventually(lambda: self.assertEqual(len(get_all(session2).current_rows), 20))
 
 # For read verification
 class MutationPresence(Enum):
