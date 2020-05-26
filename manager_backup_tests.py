@@ -399,8 +399,8 @@ class TestScyllaMgmtBackup(Tester):
                                                          number_of_rows="5000K", threads=50)
 
     @staticmethod
-    def extract_all_snapshot_names(output):
-        values_only_lines = output.split('\n')[2:-2]
+    def extract_all_snapshot_names(output, ignore_manager_snapshots=True):
+        values_only_lines = output.split('\n')[2:-4]
         # Remove unnecessary lines from:
 
         # Snapshot Details:
@@ -411,6 +411,8 @@ class TestScyllaMgmtBackup(Tester):
         #
         # Total TrueDiskSpaceUsed: 34.38 K
         snapshot_names = [line[:line.find(' ')] for line in values_only_lines]
+        if ignore_manager_snapshots:
+            snapshot_names = [name for name in snapshot_names if "scheduler_task" not in name]
         return snapshot_names
 
     @attr('scylla-manager')
