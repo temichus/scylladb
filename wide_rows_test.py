@@ -545,7 +545,7 @@ class TestWideRows(Tester):
         pk_max_index = partition_num - 1
         self.create_large_partition_data(session=session,
                                          table_name=self.TABLE_NAME,
-                                         partition_rows=4000,
+                                         partition_rows=3000,
                                          partitions_num=small_partition_num,
                                          one_blob_size=1024,
                                          start_partition_index=partition_num+1)
@@ -1475,7 +1475,7 @@ class TestWideRows(Tester):
         pk_max_index = partition_num - 1
         self.create_large_partition_data(session=session,
                                          table_name=self.TABLE_NAME,
-                                         partition_rows=4000,
+                                         partition_rows=3000,
                                          partitions_num=10,
                                          one_blob_size=1024,
                                          start_partition_index=partition_num+1)
@@ -1485,7 +1485,7 @@ class TestWideRows(Tester):
         # adding more data and running flush again to give time to the compaction of the large partition to finish
         self.create_large_partition_data(session=session,
                                          table_name=self.TABLE_NAME,
-                                         partition_rows=4000,
+                                         partition_rows=3000,
                                          partitions_num=10,
                                          one_blob_size=1024,
                                          start_partition_index=partition_num + partition_num + 1)
