@@ -3,7 +3,6 @@
 import time
 import random
 import itertools
-import requests
 
 from threading import Thread, Event
 
@@ -15,7 +14,7 @@ from assertions import assert_unavailable, assert_invalid
 from dtest import Tester, debug
 from tools import no_vnodes, since
 from nose.plugins.attrib import attr
-from scylla_tools import scylla_mode
+from scylla_tools import scylla_mode, enable_error_injection, disable_all_error_injections
 
 
 class LoadThread(Thread):
@@ -319,24 +318,6 @@ class TestPaxos(Tester):
             self._add_random_nodes(stop_start_limit, upper_node_limit, loaders)
             time.sleep(random.uniform(5, 15))
 
-    def enable_error_injection(self, node, injection_name, once=False):
-        ip = self.get_ip_from_node(node)
-        port = 10000 # default REST API port value
-
-        url = f"http://{ip}:{port}/v2/error_injection/injection/{injection_name}"
-        resp = requests.post(url, params={"one_shot": once})
-        if not resp.ok:
-            raise Exception(f"Failed to enable error injection on a node. Error message: {resp.text}")
-
-    def disable_all_error_injections(self, node):
-        ip = self.get_ip_from_node(node)
-        port = 10000 # default REST API port value
-
-        url = f"http://{ip}:{port}/v2/error_injection/injection"
-        resp = requests.delete(url)
-        if not resp.ok:
-            raise Exception(f"Failed to disable error injections on a node. Error message: {resp.text}")
-
     @attr('dtest-debug')
     @scylla_mode('!release')
     def cas_statement_timeout_test(self):
@@ -377,13 +358,13 @@ class TestPaxos(Tester):
 
                 debug("Reset enabled injections on each node in the test cluster")
                 for node in nodes:
-                    self.disable_all_error_injections(node)
+                    disable_all_error_injections(self.get_ip_from_node(node))
 
                 debug(f"Testing combination {combination}")
                 for stage in combination:
                     injection_name = f"paxos_state_{stage}_timeout"
                     for node in nodes:
-                        self.enable_error_injection(node, injection_name, once=True)
+                        enable_error_injection(self.get_ip_from_node(node), injection_name, once=True)
 
                 res = session_node1.execute(stmt, [key])
                 # verify the number of retries of the query is equal to combination_len
