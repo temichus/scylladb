@@ -88,7 +88,7 @@ class TestWideRows(Tester):
         expected_rows = {}
 
         date = datetime.datetime.now()
-        debug('Prefill table {} with {} partitions'.format(table_name, partitions_num))
+        debug('Prefill table {} with {} partition(s), {} row(s) each'.format(table_name, partitions_num, partition_rows))
         for k in range(start_partition_index, start_partition_index+partitions_num):
             user = 'user%d' % k
             for i in range(partition_rows):
