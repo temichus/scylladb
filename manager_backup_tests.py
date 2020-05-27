@@ -593,6 +593,34 @@ class TestScyllaMgmtBackup(Tester):
                                                          number_of_rows="10000K", threads=50)
 
     @attr('scylla-manager')
+    def test_failed_backup_snapshots_deleted_on_rerun(self):
+        node1, node2, node3 = self.config_and_create_cluster(nodes=3)
+        mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
+
+        self._create_stress_compatible_table(node=node1)
+        # C-S for 2.5M rows minutes
+        self.cluster.stress(['write', 'n=2500K', '-rate', 'threads=50'])
+
+        backup_task = mgr_cluster.run_backup_command(location_list=["s3:{}".format(DESTINATION_BUCKET)],
+                                                     keyspace_list=["keyspace1"])
+        backup_task.wait_for_status(list_status=[TaskStatus.RUNNING], timeout=120, step=1)
+        for node in self.cluster.nodelist():
+            node.stop_scylla_manager_agent(gently=False)
+        backup_task.wait_for_status(list_status=[TaskStatus.ERROR], timeout=250, step=10)
+
+        for node in self.cluster.nodelist():
+            node.start_scylla_manager_agent()
+        backup_task.start(continue_attr="false")
+        backup_task.wait_and_get_final_status(timeout=300)
+        assert backup_task.status == TaskStatus.DONE, "The restarted backup task failed!"
+        total_snapshot_list = list()
+        for node in self.cluster.nodelist():
+            total_snapshot_list.extend(self.extract_all_snapshot_names(node.nodetool("listsnapshots",
+                                                                                     capture_output=True)[0]))
+        assert len(total_snapshot_list) == 0, "Some snapshots were not deleted after the second run of the backup"
+
+
+    @attr('scylla-manager')
     def test_backup_while_node_is_drained(self):
         keyspace_table_and_key_range = {"ks": {"cf1": (1, 21)}}
         node1, node2, node3 = self._prepare_cluster_with_data(
