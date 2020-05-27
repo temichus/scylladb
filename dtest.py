@@ -16,6 +16,7 @@ import datetime
 import inspect
 from unittest import TestCase
 import random
+import glob
 
 import psutil
 from cassandra import ConsistencyLevel
@@ -700,16 +701,18 @@ class Tester(TestCase):
         logdir = os.path.join(directory, basedir)
         os.mkdir(logdir)
 
-        logs = [(node.name, node.logfilename(), node.debuglogfilename()) for node in self.cluster.nodes.values()]
-        if len(logs) is not 0:
-            for n, log, debuglog in logs:
-                if os.path.exists(log):
-                    shutil.copyfile(log, os.path.join(logdir, n + ".log"))
-                if os.path.exists(debuglog):
-                    shutil.copyfile(debuglog, os.path.join(logdir, n + "_debug.log"))
-                jmxlog = log + '.jmx'
-                if os.path.exists(jmxlog):
-                    shutil.copyfile(jmxlog, os.path.join(logdir, n + "_jmx.log"))
+        cluster_path = self.cluster.get_path()
+        for log in glob.glob(os.path.join(cluster_path, '**/logs/*'), recursive=True):
+            n = re.search('node\d+', log).group(0)
+            logname = os.path.basename(log)
+            # for backward compatibility, rename the logs:
+            #   nodeX/logs/system.log to nodeX.log
+            #   nodeX/logs/debug.log to nodeX_debug.log
+            if logname == 'system.log':
+                dest = n + '.log'
+            else:
+                dest = "{}_{}".format(n, logname)
+            shutil.copyfile(log, os.path.join(logdir, dest))
 
         if hasattr(self.cluster, '_scylla_manager') and self.cluster._scylla_manager:
             log = os.path.join(self.cluster._scylla_manager._get_path(), 'scylla-manager.log')
