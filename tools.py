@@ -2,6 +2,7 @@ import fileinput
 import functools
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -20,6 +21,7 @@ from cassandra.concurrent import execute_concurrent_with_args
 from cassandra.query import SimpleStatement
 from nose.plugins.attrib import attr
 
+from ccmlib.scylla_node import ScyllaNode
 from dtest import CASSANDRA_DIR, DISABLE_VNODES, IGNORE_REQUIRE, debug, make_execution_profile
 import glob, distutils.dir_util
 
@@ -571,54 +573,119 @@ class ColumnType:
         return value
 
 
-def make_snapshot(node, ks, cf, name):
+def make_snapshot(node: ScyllaNode, ks: str = None, cf: str = None, name: str = None) -> str:
+    """Create snapshot for all keyspaces or for specified ks, ks.cf, with name
+
+    Create snapshot for:
+    - if ks is none, for all keyspaces
+    - if ks is provided, create snapshot for all tables in keyspace
+    - if ks and cf provided, create snapshot for ks.cf table only
+    - if name is set, create snapshot with tag name, datetime otherwise
+
+    and then copy created snapshots to temp directory
+
+    :param node: Scylla Node instance where create snapshot
+    :type node: ScyllaNode
+    :param ks: keyspace name, defaults to None
+    :type ks: str, optional
+    :param cf: column factory name, defaults to None
+    :type cf: str, optional
+    :param name: tag name of snapshot, defaults to None
+    :type name: str, optional
+    :returns: path where all snapshots stored, temp directory
+    :rtype: {str}
+    """
     debug("Making snapshot....")
     node.flush()
-    snapshot_cmd = 'snapshot {ks} -cf {cf} -t {name}'.format(**locals())
+    snapshot_cmd = 'snapshot '
+    if ks:
+        snapshot_cmd += f"{ks} "
+        if cf:
+            snapshot_cmd += f"-cf {cf} "
+        if name:
+            snapshot_cmd += f"-t {name}"
+
     debug("Running snapshot cmd: {snapshot_cmd}".format(snapshot_cmd=snapshot_cmd))
     node.nodetool(snapshot_cmd)
     tmpdir = safe_mkdtemp()
-    os.mkdir(os.path.join(tmpdir, ks))
-    os.mkdir(os.path.join(tmpdir, ks, cf))
     node_dir = node.get_path()
 
-    # Find the snapshot dir, it's different in various C* versions:
-    snapshot_dir = "{node_dir}/data/{ks}/{cf}/snapshots/{name}".format(**locals())
-    if not os.path.isdir(snapshot_dir):
-        snapshot_dir = glob.glob("{node_dir}/data/{ks}/{cf}-*/snapshots/{name}".format(**locals()))[0]
-    debug("snapshot_dir is : " + snapshot_dir)
-    debug("snapshot copy is : " + tmpdir)
+    # # Find the snapshot dir, it's different in various C* versions:
+    snapshot_dir_pattern = f"{node_dir}/data/"
+    if ks:
+        snapshot_dir_pattern += f"{ks}/"
+        if cf:
+            snapshot_dir_pattern += f"{cf}-*/"
+        else:
+            snapshot_dir_pattern += f"*/"
+        if name:
+            snapshot_dir_pattern += f"snapshots/{name}"
+        else:
+            snapshot_dir_pattern += f"snapshots/*"
+    else:
+        snapshot_dir_pattern += f"/*/*/snapshots/*"
 
-    # Copy files from the snapshot dir to existing temp dir
-    distutils.dir_util.copy_tree(str(snapshot_dir), os.path.join(tmpdir, ks, cf))
+    snapshot_dirs = glob.glob(snapshot_dir_pattern)
+
+    debug(f"snapshot_dir is : {snapshot_dirs}")
+    debug(f"snapshot copy is : {tmpdir}")
+
+    # # Copy files from the snapshot dir to existing temp dir
+    for snapshot_dir in snapshot_dirs:
+        save_dir = snapshot_dir.replace('/snapshots', '').replace(os.path.join(node_dir, "data/"), '')
+        os.makedirs(os.path.join(tmpdir, save_dir), exist_ok=False)
+        distutils.dir_util.copy_tree(str(snapshot_dir), os.path.join(tmpdir, save_dir))
 
     return tmpdir
 
 
-def restore_snapshot_files(snapshot_dir, node, ks, cf):
+def get_cf_snapshot_saved_dir(base_snapshot_dir: str, keyspace: str, table: str, name: str = None) -> str:
+    """Get path to specified snapshot of ks.cf by name or first one
+
+    return path to directory with sstables from snapshot store in
+    base_snapshot_dir. base_snapshot_dir is a path to temp folder returned by
+    make_snapshot method or any folder where all snapshots located
+        - <base_snapshot_dir>/ks/cf-*/[name|any]/
+
+    :param base_snapshot_dir: path to folder with snapshots
+    :type base_snapshot_dir: str
+    :param keyspace: keyspace name
+    :type keyspace: str
+    :param table: column family name
+    :type table: str
+    :param name: name of snapshot, defaults to None
+    :type name: str, optional
+    :returns: path to first matched snapshot dir for ks.cf by [name| of first one]
+    :rtype: {str}
+    """
+    path_pattern = f"{base_snapshot_dir}/{keyspace}/{table}-*"
+    if name:
+        path_pattern += f"/{name}"
+    else:
+        path_pattern += f"/*/"
+    return glob.glob(path_pattern)[0]
+
+
+def restore_snapshot_with_refresh(snapshot_dir, node, keyspace, table, name=None):
     debug("Restoring snapshot....")
     node_dir = node.get_path()
-    restore_dir = "{node_dir}/data/{ks}/{cf}/".format(**locals())
-    if not os.path.isdir(restore_dir):
-        restore_dir = glob.glob("{node_dir}/data/{ks}/{cf}-*/".format(**locals()))[0]
-    snapshot_dir = os.path.join(snapshot_dir, ks, cf)
+    restore_dir = glob.glob("{node_dir}/data/{keyspace}/{table}-*/upload/".format(**locals()))[0]
+    snapshot_dir = get_cf_snapshot_saved_dir(base_snapshot_dir=snapshot_dir, keyspace=keyspace, table=table, name=name)
     debug("Copying from %s to %s" % (str(snapshot_dir), str(restore_dir)))
     distutils.dir_util.copy_tree(snapshot_dir, restore_dir)
-
-
-def restore_snapshot_with_refresh(snapshot_dir, node, keyspace, table):
-    restore_snapshot_files(snapshot_dir=snapshot_dir, node=node, ks=keyspace, cf=table)
     node.nodetool("refresh %s %s" % (keyspace, table))
 
 
-def restore_snapshot_with_sstableloader(snapshot_dir, node, keyspace, table):
+def restore_snapshot_with_sstableloader(snapshot_dir, node, keyspace, table, name=None):
     debug("Restoring snapshot....")
-    snapshot_dir = os.path.join(snapshot_dir, keyspace, table)
+    snapshot_dir = get_cf_snapshot_saved_dir(snapshot_dir, keyspace, table, name)
     ip = node.address()
+    # copy sstables to ks.cf folder to properly load with sstableloader
+    tmpdir = safe_mkdtemp()
+    os.makedirs(os.path.join(tmpdir, keyspace, table), exist_ok=True)
+    distutils.dir_util.copy_tree(snapshot_dir, os.path.join(tmpdir, keyspace, table))
 
-    args = [node.get_tool('sstableloader'), '-d', ip, snapshot_dir]
-    sstableloader_cmd = " ".join(args)
-    debug("sstableloader_cmd: "+sstableloader_cmd)
+    args = [node.get_tool('sstableloader'), '-d', ip, os.path.join(tmpdir, keyspace, table)]
     p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     stdout, stderr = p.communicate()
     exit_status = p.wait()
@@ -626,3 +693,4 @@ def restore_snapshot_with_sstableloader(snapshot_dir, node, keyspace, table):
     if exit_status != 0 or 'exception' in str(stderr):
         raise Exception("sstableloader command '%s' failed; exit status: %d'; stdout: %s; stderr: %s" %
                         (" ".join(args), exit_status, stdout, stderr))
+    shutil.rmtree(tmpdir, ignore_errors=True)
