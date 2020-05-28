@@ -1,7 +1,7 @@
 import os
 
 from dtest import Tester, debug
-from tools import generate_ssl_stores, putget
+from tools import generate_ssl_stores, putget, require
 from nose.plugins.attrib import attr
 from native_transport_ssl_test import wait_for_cert_reload
 
@@ -50,6 +50,7 @@ class TestInternodeSSL(Tester):
         """
         self.__putget_with_internode_ssl_test('dc', internode_encryption='rack', dcs=2)
 
+    @require(6507)
     def putget_with_reloaded_certificates_test(self):
         self.__putget_with_internode_ssl_test('all', internode_encryption='all', reload_certs=True)
 
