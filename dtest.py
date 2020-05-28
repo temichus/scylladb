@@ -717,7 +717,7 @@ class Tester(TestCase):
                 shutil.copyfile(log, os.path.join(logdir, 'scylla-manager.log'))
 
             logs = [(node.name, node.logfilename() + ".manager_agent") for node in self.cluster.nodes.values()]
-            if len(logs) is not 0:
+            if len(logs):
                 for name, agent_log in logs:
                     if os.path.exists(agent_log):
                         shutil.copyfile(agent_log, os.path.join(logdir, name + ".log.manager_agent"))
@@ -1118,7 +1118,7 @@ class Tester(TestCase):
                 except FileNotFoundError:
                     pass
                 errors = list(self.__filter_errors(node.grep_log_for_errors(distinct_errors=True)))
-                if len(errors) is not 0:
+                if len(errors):
                     found_errors.append((node.name, errors))
             if critical_errors:
                 raise AssertionError('Critical errors found: {}\nOther errors: {}'.format(critical_errors, found_errors))

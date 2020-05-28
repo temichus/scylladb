@@ -1489,7 +1489,7 @@ class TestCQL(Tester):
 
         unsorted_res = list(session.execute("SELECT k FROM test"))
         res = sorted(unsorted_res)
-        assert rows_to_list(res) == [[k] for k in range(0, 5) if k is not 2], list(res)
+        assert rows_to_list(res) == [[k] for k in range(0, 5) if k != 2], list(res)
 
         # Example from #3505
         session.execute("CREATE KEYSPACE ks1 with replication = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 };")

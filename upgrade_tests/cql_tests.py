@@ -1159,7 +1159,7 @@ class TestCQL(UpgradeTester):
 
             unsorted_res = cursor.execute("SELECT k FROM test")
             res = sorted(unsorted_res)
-            assert rows_to_list(res) == [[k] for k in range(0, 5) if k is not 2], res
+            assert rows_to_list(res) == [[k] for k in range(0, 5) if k != 2], res
 
             # Example from #3505
             cursor.execute("USE ks1")
