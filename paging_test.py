@@ -2917,3 +2917,43 @@ class TestPagingWithIndexingAndAggregation(BasePagingTester, PageAssertionMixin)
 
         session.execute("CREATE INDEX ON paging_test(mybool)")
         self.create_and_verify_id_results(session, ['someint', 'somebigint'], id_val=2)
+
+
+@attr('dtest-full')
+class TestUnpagedQueryLimit(Tester):
+    ignore_log_patterns=['Memory usage of unpaged query exceeds hard limit of [0-9]+ \(configured via max_memory_for_unlimited_query_hard_limit\)']
+
+    def test_unpaged_large_partition(self):
+        self.cluster.set_configuration_options(
+            values={'max_memory_for_unlimited_query_soft_limit': 1024, 'max_memory_for_unlimited_query_hard_limit': 1024 * 1024}
+        )
+        self.cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True)
+        node1 = self.cluster.nodelist()[0]
+        session = self.patient_cql_connection(node1)
+        session.execute("CREATE KEYSPACE TestUnpagedQueryLimit WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}")
+        session.execute("CREATE TABLE TestUnpagedQueryLimit.test_unpaged_large_partition (pk int, ck int, v text, PRIMARY KEY (pk, ck) )")
+
+        prepared_insert = session.prepare("INSERT INTO TestUnpagedQueryLimit.test_unpaged_large_partition (pk, ck, v) VALUES (?, ?, ?)")
+
+        v = 'a' * 1024
+
+        for i in range(4 * 1024):
+            session.execute(prepared_insert.bind((0, i, v)))
+
+        for node in self.cluster.nodelist():
+            session = self.patient_cql_connection(node)
+            session.default_fetch_size = -1
+
+            # Partition scan
+            try:
+                session.execute("SELECT * FROM TestUnpagedQueryLimit.test_unpaged_large_partition WHERE pk = 0")
+                self.fail("Expected query to fail")
+            except Exception as e:
+                debug("Exception caught as expected: {}".format(e))
+
+            # Full scan
+            try:
+                session.execute("SELECT * FROM TestUnpagedQueryLimit.test_unpaged_large_partition")
+                self.fail("Expected query to fail")
+            except Exception as e:
+                debug("Exception caught as expected: {}".format(e))
