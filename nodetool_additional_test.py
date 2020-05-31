@@ -1621,6 +1621,17 @@ class TestNodetool(Tester):
                 "recurrent":self.multi_dc_queries_method_list}]
         self.general_concurrent(tst)
 
+    def stress_node_down_expected_errors(self, node):
+        node_address = "{}{}".format(self.cluster.get_ipprefix(), node)
+        addr_msg = re.escape("{}/{}:9042".format(node_address, node_address))
+        return [
+            "\[{}\] Connection has been closed".format(addr_msg),
+            "Error creating netty channel to {}".format(addr_msg),
+            "Connection refused: {}".format(addr_msg),
+            "Caused by: java.net.ConnectException: Connection refused",
+            "Cassandra timeout during SIMPLE write query",
+        ]
+
     def drain(self, node_to_drain):
         # get_node uses 0-based index into cluster.nodelist()
         node = self.get_node(node_to_drain-1)
@@ -1633,15 +1644,7 @@ class TestNodetool(Tester):
         call drain
         """
         node_to_drain = 2
-        node_address = "{}{}".format(self.cluster.get_ipprefix(), node_to_drain)
-        addr_msg = re.escape("{}/{}:9042".format(node_address, node_address))
-        expected_errors = [
-            "\[{}\] Connection has been closed".format(addr_msg),
-            "Error creating netty channel to {}".format(addr_msg),
-            "Connection refused: {}".format(addr_msg),
-            "Caused by: java.net.ConnectException: Connection refused",
-            "Cassandra timeout during SIMPLE write query",
-        ]
+        expected_errors = self.stress_node_down_expected_errors(node_to_drain)
         tst = [{"operations": [{"func": self.run_cluster}],
                 "recurrent": [{"func": self.verify_all_api, "block": True}, {"func": self.verify_info, "time": 60, "delay": 10}]},
                {"operations": [{"func": self.concurrent_stress, "delay": 5, "args": [None, {"duration": "1m","opt": ["-schema","replication(strategy=SimpleStrategy, replication_factor=2)","-rate","threads=10"]}]}],
@@ -1665,15 +1668,7 @@ class TestNodetool(Tester):
         call drain
         """
         node_to_drain = 2
-        node_address = "{}{}".format(self.cluster.get_ipprefix(), node_to_drain)
-        addr_msg = re.escape("{}/{}:9042".format(node_address, node_address))
-        expected_errors = [
-            "\[{}\] Connection has been closed".format(addr_msg),
-            "Error creating netty channel to {}".format(addr_msg),
-            "Connection refused: {}".format(addr_msg),
-            "Caused by: java.net.ConnectException: Connection refused",
-            "Cassandra timeout during SIMPLE write query",
-        ]
+        expected_errors = self.stress_node_down_expected_errors(node_to_drain)
         tst = [{"operations": [{"func": self.run_cluster}],
                 "recurrent": [{"func": self.verify_all_api, "block": True}, {"func": self.verify_info, "time": 60, "delay": 10}]},
                {"operations": [{"func": self.concurrent_stress, "delay": 5, "args": [None, {"duration": "1m","opt": ["-schema","replication(strategy=SimpleStrategy, replication_factor=2)","-rate","threads=10"]}]}],
