@@ -464,9 +464,9 @@ class AlternatorTest(TesterAlternator):
                 diff = DeepDiff(t1=expected_items, t2=query_result)
                 self.assertTrue(expr=not diff, msg=f"The following items differs:\n{pformat(diff)}")
 
-        test_logic(schema=schemas.HASH_AND_STR_RANGE_SCHEMA, is_binary_mode=False)
+        test_logic(schema=schemas.HASH_AND_STR_RANGE_SCHEMA)
         try:
-            test_logic(schema=schemas.HASH_AND_BINARY_RANGE_SCHEMA, is_binary_mode=True)
+            test_logic(schema=schemas.HASH_AND_BINARY_RANGE_SCHEMA)
         except ClientError as e:
             if str(e):
                 if "JSON error: condition not met: false" in str(e):
