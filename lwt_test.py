@@ -4,6 +4,7 @@ from assertions import assert_one, assert_none, assert_unavailable
 from cassandra import ConsistencyLevel, Unavailable, WriteFailure
 from cassandra.query import SimpleStatement
 from tools import rows_to_list
+from scylla_tools import scylla_mode
 
 class LwtTest(Tester):
 
@@ -368,9 +369,11 @@ error_injections = [
     "paxos_state_learn_timeout",
     "paxos_timeout_after_save_decision" ]
 
+
 class LwtReadLinearizabilityTest(Tester):
 
-    @attr("!dtest-release")
+    @attr('dtest-debug')
+    @scylla_mode('!release')
     def read_linearizability_test(self):
         """Consider 3 nodes A, B and C and a LWT failed write operation that managed to get V
            accepted on A. The value is read twice without writes in the middle. First read access
