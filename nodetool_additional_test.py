@@ -1622,8 +1622,8 @@ class TestNodetool(Tester):
         self.general_concurrent(tst)
 
     def stress_node_down_expected_errors(self, node):
-        node_address = "{}{}".format(self.cluster.get_ipprefix(), node)
-        addr_msg = re.escape("{}/{}:9042".format(node_address, node_address))
+        node_address = re.escape("{}{}".format(self.cluster.get_ipprefix(), node))
+        addr_msg = "({})?/{}:9042".format(node_address, node_address)
         return [
             "\[{}\] Connection has been closed".format(addr_msg),
             "Error creating netty channel to {}".format(addr_msg),
