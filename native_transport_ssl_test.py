@@ -136,7 +136,6 @@ class NativeTransportSSL(Tester):
         session = self.patient_cql_connection(node1, port=9666, ssl_opts={'ca_certs': os.path.join(self.test_path, 'ccm_node.cer')})
         self._putget(cluster, session, ks='ks2')
 
-    @attr('next-gating')
     @attr('dtest-debug')
     def reload_certificates_test(self):
         """
