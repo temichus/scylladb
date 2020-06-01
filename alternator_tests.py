@@ -277,12 +277,13 @@ class AlternatorTest(TesterAlternator):
         set_write_isolation(table, WriteIsolation.FORBID_RMW)
         wait_for(self.is_table_schema_synced, timeout=30, text='Waiting until table schema is updated',
                  table_name=TABLE_NAME, nodes=[node1, dc2_node])
-        # TODO: adjust this text when new modified alternator commit is merged.
-        msg_rmw_not_supported = 'Read-modify-write operations not supported'
-        with self.assertRaisesRegexp(ClientError, msg_rmw_not_supported):
+        msg_rmw_is_disabled = 'Read-modify-write operations are disabled'
+        with self.assertRaisesRegexp(ClientError, msg_rmw_is_disabled):
             res= dc2_table.update_item(**conditional_update_c_2)
             debug(res)
         set_write_isolation(table, WriteIsolation.ALWAYS_USE_LWT)
+        wait_for(self.is_table_schema_synced, timeout=30, text='Waiting until table schema is updated',
+                 table_name=TABLE_NAME, nodes=[node1, dc2_node])
         dc2_table.update_item(**conditional_update_c_2)
         debug("ConditionExpression update from dc1:")
         conditional_update_c_3 = dict(Key={self._table_primary_key: new_pk_val},
@@ -291,7 +292,7 @@ class AlternatorTest(TesterAlternator):
                                       ExpressionAttributeValues={':val': 3})
         debug(conditional_update_c_3)
 
-        with self.assertRaisesRegexp(ClientError, msg_rmw_not_supported):
+        with self.assertRaisesRegexp(ClientError, msg_rmw_is_disabled):
             set_write_isolation(table, WriteIsolation.FORBID_RMW)
             table.update_item(**conditional_update_c_3)
         set_write_isolation(table, WriteIsolation.ONLY_RMW_USES_LWT)
