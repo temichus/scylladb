@@ -101,29 +101,79 @@ class CDCSnapshotOperationTest(Tester, CDCInitializeHelper):
         self.workflow_with_restore_snapshot_with_refresh(value_type='ascii', preimage_enable=True,
                                                          postimage_enable=True, with_delete_rows=True)
 
-    def test_create_snapshot_with_collection_without_base_rows_delete_type(self):
+    def test_create_snapshot_with_collection_list_without_base_rows_delete_type(self):
         self.workflow_with_restore_snapshot_with_refresh(value_type='list<text>')
 
-    def test_create_snapshot_with_collection_with_base_rows_delete_type(self):
+    def test_create_snapshot_with_collection_list_with_base_rows_delete_type(self):
         self.workflow_with_restore_snapshot_with_refresh(value_type='list<text>', with_delete_rows=True)
 
-    def test_create_snapshot_with_collection_type_without_base_rows_delete_preimage(self):
+    def test_create_snapshot_with_collection_list_without_base_rows_delete_preimage(self):
         self.workflow_with_restore_snapshot_with_refresh(value_type='list<varchar>', preimage_enable=True)
 
-    def test_create_snapshot_with_collection_type_with_base_rows_delete_preimage(self):
+    def test_create_snapshot_with_collection_list_with_base_rows_delete_preimage(self):
         self.workflow_with_restore_snapshot_with_refresh(value_type='list<varchar>', preimage_enable=True, with_delete_rows=True)
 
-    def test_create_snapshot_with_collection_type_without_base_rows_delete_postimage(self):
+    def test_create_snapshot_with_collection_list_without_base_rows_delete_postimage(self):
         self.workflow_with_restore_snapshot_with_refresh(value_type='list<varchar>', postimage_enable=True)
 
-    def test_create_snapshot_with_collection_type_with_base_rows_delete_postimage(self):
+    def test_create_snapshot_with_collection_list_with_base_rows_delete_postimage(self):
         self.workflow_with_restore_snapshot_with_refresh(value_type='list<varchar>', postimage_enable=True, with_delete_rows=True)
 
-    def test_create_snapshot_with_collection_type_without_base_rows_delete_preimage_postimage(self):
+    def test_create_snapshot_with_collection_list_without_base_rows_delete_preimage_postimage(self):
         self.workflow_with_restore_snapshot_with_refresh(value_type='list<ascii>', preimage_enable=True, postimage_enable=True)
 
-    def test_create_snapshot_with_collection_type_with_base_rows_delete_preimage_postimage(self):
+    def test_create_snapshot_with_collection_list_with_base_rows_delete_preimage_postimage(self):
         self.workflow_with_restore_snapshot_with_refresh(value_type='list<ascii>', with_delete_rows=True,
+                                                         preimage_enable=True, postimage_enable=True)
+
+    def test_create_snapshot_with_collection_set_without_base_rows_delete_type(self):
+        self.workflow_with_restore_snapshot_with_refresh(value_type='set<text>')
+
+    def test_create_snapshot_with_collection_set_with_base_rows_delete_type(self):
+        self.workflow_with_restore_snapshot_with_refresh(value_type='set<text>', with_delete_rows=True)
+
+    def test_create_snapshot_with_collection_set_without_base_rows_delete_preimage(self):
+        self.workflow_with_restore_snapshot_with_refresh(value_type='set<varchar>', preimage_enable=True)
+
+    def test_create_snapshot_with_collection_set_with_base_rows_delete_preimage(self):
+        self.workflow_with_restore_snapshot_with_refresh(value_type='set<varchar>', preimage_enable=True, with_delete_rows=True)
+
+    def test_create_snapshot_with_collection_set_without_base_rows_delete_postimage(self):
+        self.workflow_with_restore_snapshot_with_refresh(value_type='set<varchar>', postimage_enable=True)
+
+    def test_create_snapshot_with_collection_set_with_base_rows_delete_postimage(self):
+        self.workflow_with_restore_snapshot_with_refresh(value_type='set<varchar>', postimage_enable=True, with_delete_rows=True)
+
+    def test_create_snapshot_with_collection_set_without_base_rows_delete_preimage_postimage(self):
+        self.workflow_with_restore_snapshot_with_refresh(value_type='set<ascii>', preimage_enable=True, postimage_enable=True)
+
+    def test_create_snapshot_with_collection_set_with_base_rows_delete_preimage_postimage(self):
+        self.workflow_with_restore_snapshot_with_refresh(value_type='set<ascii>', with_delete_rows=True,
+                                                         preimage_enable=True, postimage_enable=True)
+
+    def test_create_snapshot_with_collection_map_without_base_rows_delete_type(self):
+        self.workflow_with_restore_snapshot_with_refresh(value_type='map<int,text>')
+
+    def test_create_snapshot_with_collection_map_with_base_rows_delete_type(self):
+        self.workflow_with_restore_snapshot_with_refresh(value_type='map<int,text>', with_delete_rows=True)
+
+    def test_create_snapshot_with_collection_map_without_base_rows_delete_preimage(self):
+        self.workflow_with_restore_snapshot_with_refresh(value_type='map<bigint,varchar>', preimage_enable=True)
+
+    def test_create_snapshot_with_collection_map_with_base_rows_delete_preimage(self):
+        self.workflow_with_restore_snapshot_with_refresh(value_type='map<bigint,varchar>', preimage_enable=True, with_delete_rows=True)
+
+    def test_create_snapshot_with_collection_map_without_base_rows_delete_postimage(self):
+        self.workflow_with_restore_snapshot_with_refresh(value_type='map<smallint,varchar>', postimage_enable=True)
+
+    def test_create_snapshot_with_collection_map_with_base_rows_delete_postimage(self):
+        self.workflow_with_restore_snapshot_with_refresh(value_type='map<smallint,varchar>', postimage_enable=True, with_delete_rows=True)
+
+    def test_create_snapshot_with_collection_map_without_base_rows_delete_preimage_postimage(self):
+        self.workflow_with_restore_snapshot_with_refresh(value_type='map<tinyint,ascii>', preimage_enable=True, postimage_enable=True)
+
+    def test_create_snapshot_with_collection_map_with_base_rows_delete_preimage_postimage(self):
+        self.workflow_with_restore_snapshot_with_refresh(value_type='map<tinyint,ascii>', with_delete_rows=True,
                                                          preimage_enable=True, postimage_enable=True)
 
     def workflow_with_restore_snapshot_with_refresh(self, value_type='text', with_delete_rows=False,
@@ -160,31 +210,49 @@ class CDCSnapshotOperationTest(Tester, CDCInitializeHelper):
         if value_type in ['text', 'varchar', 'ascii']:
             self.populate_base_table_with_native_type(session, delete_rows)
         elif "list" in value_type:
-            self.populate_base_table_with_collection_type(session, delete_rows)
+            self.populate_base_table_with_collection_list_type(session, delete_rows)
+        elif "set" in value_type:
+            self.populate_base_table_with_collection_set_type(session, delete_rows)
+        elif "map" in value_type:
+            self.populate_base_table_with_collection_map_type(session, delete_rows)
         else:
-            self.fail("No value type provided")
+            self.fail("The assigned value_type isn't valid")
 
     def populate_base_table_with_native_type(self, session, delete_rows=False):
         insert_values = [{"pkey": i % 10, "ckey": i, "value": f"{i}"} for i in range(100)]
         update_values = [{"pkey": i % 10, "ckey": i, "value": f"new_{i}"} for i in range(100)]
         delete_values = [{"pkey": i % 10, "ckey": i} for i in range(100)]
 
-        execute_concurrent_with_args(session, self.insert_stm, insert_values)
-        execute_concurrent_with_args(session, self.update_stm, update_values)
-        if delete_rows:
-            execute_concurrent_with_args(session, self.delete_stm, delete_values)
-        execute_concurrent_with_args(session, self.update_stm, update_values)
+        self._execute_queries(session, insert_values, update_values, delete_values, delete_rows)
 
-    def populate_base_table_with_collection_type(self, session, delete_rows=False):
+    def populate_base_table_with_collection_list_type(self, session, delete_rows=False):
         insert_values = [{"pkey": i % 10, "ckey": i, "value": [f"{i}"]} for i in range(100)]
         update_values = [{"pkey": i % 10, "ckey": i, "value": [f"new_{i}"]} for i in range(100)]
         delete_values = [{"pkey": i % 10, "ckey": i} for i in range(100)]
 
-        execute_concurrent_with_args(session, self.insert_stm, insert_values)
-        execute_concurrent_with_args(session, self.update_stm, update_values)
+        self._execute_queries(session, insert_values, update_values, delete_values, delete_rows)
+
+    def populate_base_table_with_collection_map_type(self, session, delete_rows=False):
+        insert_values = [{"pkey": i % 10, "ckey": i, "value": {i: f"{i}"}} for i in range(100)]
+        update_values = [{"pkey": i % 10, "ckey": i, "value": {i: f"new_{i}"}} for i in range(100)]
+        delete_values = [{"pkey": i % 10, "ckey": i} for i in range(100)]
+
+        self._execute_queries(session, insert_values, update_values, delete_values, delete_rows)
+
+    def populate_base_table_with_collection_set_type(self, session, delete_rows=False):
+        insert_values = [{"pkey": i % 10, "ckey": i, "value": set(f"{i}")} for i in range(100)]
+        update_values = [{"pkey": i % 10, "ckey": i, "value": set(f"new_{i}")} for i in range(100)]
+        delete_values = [{"pkey": i % 10, "ckey": i} for i in range(100)]
+
+        self._execute_queries(session, insert_values, update_values, delete_values, delete_rows)
+
+    def _execute_queries(self, session, insert_dataset, update_dataset, delete_dataset, delete_rows):
+        execute_concurrent_with_args(session, self.insert_stm, insert_dataset)
+        execute_concurrent_with_args(session, self.update_stm, update_dataset)
         if delete_rows:
-            execute_concurrent_with_args(session, self.delete_stm, delete_values)
-        execute_concurrent_with_args(session, self.update_stm, update_values)
+            execute_concurrent_with_args(session, self.delete_stm, delete_dataset)
+        execute_concurrent_with_args(session, self.update_stm, update_dataset)
+
 
     def get_base_rows(self, session):
         return list(session.execute(f"SELECT * FROM {self.keyspace}.{self.table}"))
