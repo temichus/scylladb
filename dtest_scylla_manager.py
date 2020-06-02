@@ -536,6 +536,19 @@ class ManagerTask(ScyllaManagerBase):
                 break
         return progress
 
+    def has_percentage_reached_minimum(self, min_percentage):
+        current_percentage = self.progress.strip()
+        current_percentage_num = float(current_percentage[:-1])
+        return current_percentage_num >= min_percentage
+
+    def wait_for_minimal_progress_percentage(self, minimal_percentage, timeout=600, step=20):
+        try:
+            wait_for(func=self.has_percentage_reached_minimum, step=step, timeout=timeout,
+                     min_percentage=minimal_percentage)
+        except WaitTimeoutExpired:
+            warning(f"Task {self.id} failed to reach a progress of {minimal_percentage} in {timeout} seconds")
+            raise
+
     def full_progress_string(self):
         if self.status in [TaskStatus.NEW, TaskStatus.STARTING]:
             return " 0%"
