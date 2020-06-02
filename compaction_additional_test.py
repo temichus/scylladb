@@ -220,6 +220,59 @@ class CompactionAdditionalTest(Tester):
                                                           "Expecting {} but Found {}".format(sstables_files1,
                                                                                              sstables_files2)
 
+    def major_compaction_with_several_timewindows_test(self):
+        """
+            Test major compaction will not bundle sstables from different time windows
+        """
+        debug("Starting a cluster of one node...")
+        cluster = self.cluster
+        cluster.populate(1)
+        [node1] = cluster.nodelist()
+        node1.start(wait_for_binary_proto=True)
+        session = self.patient_cql_connection(node1)
+        debug("Creating keyspace 'ks'...")
+        self.create_ks(session, 'ks', 1)
+        self.create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'},
+                       compaction={'compaction_window_size': '1', 'compaction_window_unit': 'MINUTES',
+                                   'class': 'TimeWindowCompactionStrategy',
+                                   'expired_sstable_check_frequency_seconds': '60'})
+
+        # Wait for new minute to start before inserting data - keep the test consistent
+        self.wait_for_new_minute()
+        # Write data in different time windows.
+        number_of_time_windows = 3
+        for window in range(0, number_of_time_windows):
+            # Assuming writing the files take LESS than a MINUTE
+            self.write_n_data_files(node=node1, session=session, key_space="ks", num_of_files=6,
+                                    num_of_keys=1000)
+            self.wait_for_new_minute()
+
+        # One insert to trigger sstable expiration
+        mark = node1.mark_log()
+        insert_c1c2(session, n=10, consistency=ConsistencyLevel.ONE)
+        node1.flush()
+        # Non mandatory Sleep, just to let any unfinished compaction to finish.
+        time.sleep(5)
+        node1.watch_log_for("compaction - Compacted [0-9]+ sstables to",
+                            timeout=100, from_mark=mark)
+        ks_dir = os.path.join(self.test_path, 'test', 'node1', 'data', 'ks')
+        cf_dir = get_cf_dir(ks_dir, 'cf')
+        sstables_files_before_major_compaction = get_sstables_files(cf_dir, f_type='Data')
+
+        # Run major compaction
+        mark2 = node1.mark_log()
+        cluster.compact()
+        node1.watch_log_for("compaction - Compacted [0-9]+ sstables to",
+                            timeout=100, from_mark=mark2)
+        sstables_files_after_major_compaction = get_sstables_files(cf_dir, f_type='Data')
+
+        # Assertions
+        for sstable_files in [sstables_files_before_major_compaction, sstables_files_after_major_compaction]:
+            # number of sstables greater than number_of_time_windows -1
+            self.assertGreater(len(sstable_files),  number_of_time_windows - 1,
+                               "number of sstables {0} should be greater than number_of_time_windows-1 {{1}}"
+                               .format(sstable_files, number_of_time_windows - 1))
+
     def compaction_removes_ttld_data_by_time_windows_test(self):
         """
         Test that TWCS compaction removes TTLd data after gc_period by time windows
@@ -278,7 +331,7 @@ class CompactionAdditionalTest(Tester):
         # Save the names of the current sstable files
         sstables_files2 = get_sstables_files(cf_dir, f_type='Data')
         debug("sstables AFTER SLEEP: {}".format(sstables_files2))
-        
+
         # Even after the TTL+GC time has passed, the sstables remains till new data is inserted.
         # This assert just verifies that the files are still there.
         assert set(sstables_files1) == set(sstables_files2), \
