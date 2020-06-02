@@ -748,3 +748,44 @@ class TestScyllaMgmtBackup(Tester):
                             snapshot_tag=snapshot_tags[1], keyspace_and_table_list={"ks": ["cf1"]})
 
         self.verify_lack_of_keys(keyspace_table_and_key_range={"ks": {"cf1": (1, 1001)}}, node=node1, key_name="ckey")
+
+    def _get_total_snapshot_set(self):
+        current_snapshot_set = set()
+        for node in self.cluster.nodelist():
+            current_snapshot_set.update(self.extract_all_snapshot_names(
+                node.nodetool("listsnapshots", capture_output=True)[0]))
+
+        return current_snapshot_set
+
+
+    @attr('scylla-manager')
+    def test_snapshot_deleted_upon_rerun(self):
+        node1, node2 = self.config_and_create_cluster(nodes=2)
+        mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
+        self._create_stress_compatible_table(node=node1)
+        self.cluster.stress(['write', 'n=1500K', '-rate', 'threads=50', '-pop', 'seq=1..10000000'])
+
+        backup_task = mgr_cluster.run_backup_command(keyspace_list=["keyspace1"], location_list=["s3:{}".format(DESTINATION_BUCKET)])
+        backup_task.wait_for_status(list_status=[TaskStatus.RUNNING], timeout=180, step=15)
+
+        for node in self.cluster.nodelist():
+            node.stop_scylla_manager_agent(gently=False)
+
+        backup_task.wait_for_status(list_status=[TaskStatus.ERROR], timeout=180, step=5)
+
+        pre_rerun_snapshot_set = self._get_total_snapshot_set()
+
+        for node in self.cluster.nodelist():
+            node.start_scylla_manager_agent()
+
+        session = self.patient_cql_connection(node1)
+        session.execute("TRUNCATE keyspace1.standard1;")
+        self.cluster.stress(['write', 'n=1500K', '-rate', 'threads=50', '-pop', 'seq=10000001..20000000'])  # Modifying the data
+        backup_task.start(continue_attr="false")
+        backup_task.wait_for_status(list_status=[TaskStatus.RUNNING], timeout=180, step=2)
+        post_rerun_snapshot_set = self._get_total_snapshot_set()
+
+        assert not pre_rerun_snapshot_set.intersection(post_rerun_snapshot_set), \
+            f"There are common snapshots between \n{' '.join(pre_rerun_snapshot_set)}\nand" \
+            f"\n{' '.join(post_rerun_snapshot_set)}\neven though all of the failed run's snapshots should have been " \
+            f"deleted before the new ones were created"
