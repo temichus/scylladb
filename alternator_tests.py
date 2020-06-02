@@ -4,10 +4,11 @@ import random
 import shutil
 import tempfile
 import time
-
+from copy import deepcopy
 from decimal import Decimal
 from pprint import pformat
 
+import boto3.dynamodb.types
 from botocore.exceptions import ClientError, EndpointConnectionError
 from deepdiff import DeepDiff
 from nose.plugins.attrib import attr
@@ -15,7 +16,7 @@ from nose.plugins.attrib import attr
 from alternator.utils import schemas
 from alternator.utils.data_generator import AlternatorDataGenerator, TypeMode
 from alternator_utils import TesterAlternator, ALTERNATOR_SNAPSHOT_FOLDER, TABLE_NAME, NUM_OF_ITEMS, random_string, \
-     DEFAULT_STRING_LENGTH, NUM_OF_NODES, set_write_isolation, WriteIsolation
+    DEFAULT_STRING_LENGTH, NUM_OF_NODES, set_write_isolation, WriteIsolation
 from alternator_utils import generate_put_request_items, Gsi, full_query
 from dtest import debug, wait_for
 from tools import new_node
@@ -475,8 +476,15 @@ class AlternatorTest(TesterAlternator):
 
     def _check_string_query_key_conditions_options(self, scan_index_forward=True):
         secondary_key_values = [chr(char_value) for char_value in range(256)]
+        binary_items = []
         hash_key_name, range_key_name = schemas.HASH_KEY_NAME, schemas.RANGE_KEY_NAME
         table_name, node_idx, selected_item_idx = TABLE_NAME, 0, 0
+        regular_items = [{hash_key_name: f"{hash_value}", range_key_name: range_value}
+                         for hash_value in range(random.randint(1, 10))
+                         for range_value in secondary_key_values]
+        for item in deepcopy(regular_items):
+            item[range_key_name] = boto3.dynamodb.types.Binary(item[range_key_name].encode())
+            binary_items.append(item)
 
         self.prepare_dynamodb_cluster(num_of_nodes=NUM_OF_NODES)
         node = self.cluster.nodelist()[node_idx]
@@ -487,36 +495,43 @@ class AlternatorTest(TesterAlternator):
             if self.is_table_exists(table_name=table_name, node=node):
                 self.delete_table(table_name=table_name, node=node)
             self.create_table(node=node, table_name=table_name, schema=schema)
+            items = binary_items if is_binary_mode else regular_items
 
-            items = [{hash_key_name: f"{hash_value}",
-                      range_key_name: range_value.encode() if is_binary_mode else range_value}
-                     for hash_value in range(random.randint(1, 10))
-                     for range_value in secondary_key_values]
             selected_hash_value = random.choice(items)[hash_key_name]
-            all_selected_hash_items = [item for item in items if item[hash_key_name] == selected_hash_value]
+            all_selected_hash_items = [_item for _item in items if _item[hash_key_name] == selected_hash_value]
             node_resource_table = self.batch_write_actions(table_name=table_name, node=node, new_items=items)
 
             for compare_op in ["BEGINS_WITH", "BETWEEN"]:
+                expected_items = []
                 if compare_op == "BETWEEN":
-                    selected_range_value = random.choices(population=secondary_key_values, k=2)
-                    low, high = selected_range_value[0], selected_range_value[1]
+                    selected_range_values = random.choices(population=secondary_key_values, k=2)
+                    low, high = selected_range_values[0], selected_range_values[1]
                     if high < low:
+                        # Swap between 2 variables
                         low, high = high, low
-                        selected_range_value = [low, high]
-                    expected_items = \
-                        [item for item in all_selected_hash_items[::-1] if low <= item[range_key_name] <= high]
+                        selected_range_values = [low, high]
+
+                    for _item in all_selected_hash_items:
+                        range_value = _item[range_key_name].value.decode() if is_binary_mode else _item[range_key_name]
+                        if low <= range_value <= high:
+                            expected_items.append(_item)
                 elif compare_op == "BEGINS_WITH":
-                    expected_items, selected_range_value = [], [random.choice(secondary_key_values)]
-                    for item in all_selected_hash_items:
-                        _range_value = item[range_key_name].decode() if is_binary_mode else item[range_key_name]
-                        if _range_value.startswith(selected_range_value[0]):
-                            expected_items.append(item)
+                    selected_range_values = [random.choice(secondary_key_values)]
+                    for _item in all_selected_hash_items:
+                        range_value = _item[range_key_name].value.decode() if is_binary_mode else _item[range_key_name]
+                        if range_value.startswith(selected_range_values[0]):
+                            expected_items.append(_item)
                 else:
                     raise ValueError(f"The following value '{compare_op}' not supported")
 
+                if not scan_index_forward:
+                    expected_items = expected_items[::-1]
+                if is_binary_mode:
+                    selected_range_values = [boto3.dynamodb.types.Binary(val.encode()) for val in selected_range_values]
+
                 key_condition = {
                     hash_key_name: {'AttributeValueList': [selected_hash_value], 'ComparisonOperator': 'EQ'},
-                    range_key_name: {'AttributeValueList': selected_range_value, 'ComparisonOperator': compare_op},
+                    range_key_name: {'AttributeValueList': selected_range_values, 'ComparisonOperator': compare_op},
                 }
                 query_result = full_query(
                     node_resource_table, KeyConditions=key_condition, ScanIndexForward=scan_index_forward)
@@ -525,14 +540,7 @@ class AlternatorTest(TesterAlternator):
                 self.assertTrue(expr=not diff, msg=f"The following items differs:\n{pformat(diff)}")
 
         test_logic(schema=schemas.HASH_AND_STR_RANGE_SCHEMA)
-        try:
-            test_logic(schema=schemas.HASH_AND_BINARY_RANGE_SCHEMA)
-        except ClientError as e:
-            if str(e):
-                if "JSON error: condition not met: false" in str(e):
-                    raise AssertionError("This is known issue: https://github.com/scylladb/scylla/issues/6495")
-            else:
-                raise e
+        test_logic(schema=schemas.HASH_AND_BINARY_RANGE_SCHEMA)
 
     def test_check_string_and_binary_query_key_condition_options(self):
         """
