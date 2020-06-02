@@ -15,6 +15,7 @@ from dtest import Tester, debug
 from tools import no_vnodes, since
 from nose.plugins.attrib import attr
 from scylla_tools import scylla_mode
+from unittest import skip
 
 
 class LoadThread(Thread):
@@ -372,6 +373,7 @@ class TestPaxos(Tester):
 
                 key += 1
 
+    @skip('Dependent on "utils: inject errors around paxos stages" patch series, skipping until it is merged')
     @attr('dtest-debug', 'single_node')
     @scylla_mode('!release')
     def schema_mismatch_test(self):
@@ -434,6 +436,7 @@ class TestPaxos(Tester):
         debug("Found the expected error pattern in the node logs:")
         debug(expected_exc_msg)
 
+    @skip('Dependent on "utils: inject errors around paxos stages" patch series, skipping until it is merged')
     @attr('dtest-debug', 'single_node')
     @scylla_mode('!release')
     def schema_mismatch_mv_test(self):
@@ -502,6 +505,7 @@ class TestPaxos(Tester):
         debug("Found the expected error pattern in the node logs:")
         debug(expected_exc_msg)
 
+    @skip('Dependent on "utils: inject errors around paxos stages" patch series, skipping until it is merged')
     @attr('dtest-debug', 'single_node')
     @scylla_mode('!release')
     def schema_mismatch_drop_regular_column_test(self):
