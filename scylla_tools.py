@@ -1296,21 +1296,3 @@ def print_table(table):
     debug(tabulate.tabulate(tabular_data=[
         [str(getattr(row, column_name)) for column_name in table.column_names]
         for row in table.current_rows], headers=table.column_names))
-
-
-def enable_error_injection(ip, injection_name, once=False):
-    port = 10000 # default REST API port value
-
-    url = f"http://{ip}:{port}/v2/error_injection/injection/{injection_name}"
-    resp = requests.post(url, params={"one_shot": once})
-    if not resp.ok:
-        raise Exception(f"Failed to enable error injection on a node. Error message: {resp.text}")
-
-
-def disable_all_error_injections(ip):
-    port = 10000 # default REST API port value
-
-    url = f"http://{ip}:{port}/v2/error_injection/injection"
-    resp = requests.delete(url)
-    if not resp.ok:
-        raise Exception(f"Failed to disable error injections on a node. Error message: {resp.text}")

@@ -1331,41 +1331,76 @@ class Tester(TestCase):
                             else metrics_res[metric_name] + val
         return metrics_res
 
-    def enable_error(self, name, node_number, one_shot = False):
-        """Enable error injection"""
-        debug(f'Enabling error injection {name} on node {node_number}')
-        node     = self.cluster.nodelist()[node_number]
+    def enable_error(self, name, node, one_shot=False):
+        """Enable error injection
+
+        Args:
+            name (str): name of error injection to be enabled.
+            node (ScyllaNode|int): either instance of scylla node or node number.
+            one_shot (bool): indicates whether the injection is one-shot
+                             (resets enabled state after triggering the injection).
+
+        """
+        if isinstance(node, int):
+            node = self.cluster.nodelist()[node]
         node_ip  = self.get_ip_from_node(node)
+        debug(f'Enabling error injection "{name}" on node {node_ip}')
         response = requests.post(f"http://{node_ip}:10000/v2/error_injection/injection/{name}",
                                  data = {"one_shot" : one_shot})
         response.raise_for_status()
 
-    def disable_error(self, name, node_number):
-        """Disable error injection"""
-        debug(f'Disabling error injection {name} on node {node_number}')
-        node     = self.cluster.nodelist()[node_number]
+    def disable_error(self, name, node):
+        """Disable error injection
+
+        Args:
+            name (str): name of error injection to be disabled.
+            node (ScyllaNode|int): either instance of scylla node or node number.
+
+        """
+        if isinstance(node, int):
+            node = self.cluster.nodelist()[node]
         node_ip  = self.get_ip_from_node(node)
+        debug(f'Disabling error injection "{name}" on node {node_ip}')
         response = requests.delete(f"http://{node_ip}:10000/v2/error_injection/injection/{name}")
         response.raise_for_status()
 
-    def check_error(self, name, node_number):
-        """Get status of error injection"""
-        node     = self.cluster.nodelist()[node_number]
+    def check_error(self, name, node):
+        """Get status of error injection
+
+        Args:
+            name (str): name of error injection.
+            node (ScyllaNode|int): either instance of scylla node or node number.
+
+        """
+        if isinstance(node, int):
+            node = self.cluster.nodelist()[node]
         node_ip  = self.get_ip_from_node(node)
         response = requests.get(f"http://{node_ip}:10000/v2/error_injection/injection/{name}")
         response.raise_for_status()
 
-    def list_errors(self, node_number):
-        """List enabled error injections"""
-        node     = self.cluster.nodelist()[node_number]
+    def list_errors(self, node):
+        """List enabled error injections
+
+        Args:
+            node (ScyllaNode|int): either instance of scylla node or node number.
+
+        """
+        if isinstance(node, int):
+            node = self.cluster.nodelist()[node]
         node_ip  = self.get_ip_from_node(node)
         response = requests.get(f"http://{node_ip}:10000/v2/error_injection/injection")
         response.raise_for_status()
         return response.json()
 
-    def disable_errors(self, node_number):
-        """Disable all error injections"""
-        node     = self.cluster.nodelist()[node_number]
+    def disable_errors(self, node):
+        """Disable all error injections
+
+        Args:
+            node (ScyllaNode|int): either instance of scylla node or node number.
+
+        """
+        if isinstance(node, int):
+            node = self.cluster.nodelist()[node]
         node_ip  = self.get_ip_from_node(node)
         response = requests.delete(f"http://{node_ip}:10000/v2/error_injection/injection")
         response.raise_for_status()

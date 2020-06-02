@@ -14,7 +14,7 @@ from assertions import assert_unavailable, assert_invalid
 from dtest import Tester, debug
 from tools import no_vnodes, since
 from nose.plugins.attrib import attr
-from scylla_tools import scylla_mode, enable_error_injection, disable_all_error_injections
+from scylla_tools import scylla_mode
 
 
 class LoadThread(Thread):
@@ -358,13 +358,13 @@ class TestPaxos(Tester):
 
                 debug("Reset enabled injections on each node in the test cluster")
                 for node in nodes:
-                    disable_all_error_injections(self.get_ip_from_node(node))
+                    self.disable_errors(node)
 
                 debug(f"Testing combination {combination}")
                 for stage in combination:
                     injection_name = f"paxos_state_{stage}_timeout"
                     for node in nodes:
-                        enable_error_injection(self.get_ip_from_node(node), injection_name, once=True)
+                        self.enable_error(injection_name, node, one_shot=True)
 
                 res = session_node1.execute(stmt, [key])
                 # verify the number of retries of the query is equal to combination_len
@@ -406,7 +406,7 @@ class TestPaxos(Tester):
         # Fail at the end of "accept" stage so that we have commited a proposal but not yet completed the round
         errinj_name = "paxos_error_after_save_proposal"
         debug(f"Enable {errinj_name} injection on the node")
-        self.enable_error_injection(node1, errinj_name, once=True)
+        self.enable_error(errinj_name, node1, one_shot=True)
 
         # Execute the LWT query leaving an unfinished paxos round behind
         key = 0
@@ -419,7 +419,7 @@ class TestPaxos(Tester):
         session.execute("ALTER TABLE test ADD dummy int")
 
         debug("Disable remaining injections on the node (if any)")
-        self.disable_all_error_injections(node1)
+        self.disable_errors(node1)
 
         # Initiate a subsequent round on the same key so that it performs
         # repair of the previous round and it is supposed to fail
@@ -474,7 +474,7 @@ class TestPaxos(Tester):
         # Fail at the end of "accept" stage so that we have commited a proposal but not yet completed the round
         errinj_name = "paxos_error_after_save_proposal"
         debug(f"Enable {errinj_name} injection on the node")
-        self.enable_error_injection(node1, errinj_name, once=True)
+        self.enable_error(errinj_name, node1, one_shot=True)
 
         # Execute the LWT query leaving an unfinished paxos round behind
         key = 0
@@ -487,7 +487,7 @@ class TestPaxos(Tester):
         session.execute("ALTER TABLE test ADD dummy int")
 
         debug("Disable remaining injections on the node (if any)")
-        self.disable_all_error_injections(node1)
+        self.disable_errors(node1)
 
         # Initiate a subsequent round on the same key so that it performs
         # repair of the previous round and it is supposed to fail
@@ -539,7 +539,7 @@ class TestPaxos(Tester):
         # Fail at the end of "accept" stage so that we have commited a proposal but not yet completed the round
         errinj_name = "paxos_error_after_save_proposal"
         debug(f"Enable {errinj_name} injection on the node")
-        self.enable_error_injection(node1, errinj_name, once=True)
+        self.enable_error(errinj_name, node1, one_shot=True)
 
         # Execute the LWT query leaving an unfinished paxos round behind
         key = 0
@@ -552,7 +552,7 @@ class TestPaxos(Tester):
         session.execute("ALTER TABLE test DROP v")
 
         debug("Disable remaining injections on the node (if any)")
-        self.disable_all_error_injections(node1)
+        self.disable_errors(node1)
 
         # Initiate a subsequent round on the same key so that it performs
         # repair of the previous round and it is supposed to fail

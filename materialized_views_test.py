@@ -20,7 +20,7 @@ from assertions import assert_all, assert_one, assert_invalid, assert_unavailabl
 from dtest import Tester, debug, flaky_with_tear_down
 from tools import since, new_node, require, rows_to_list, run_query_with_data_processing
 from scylla_tools import TableManager, MaterializedViewManager, flush_by_node, run_in_parallel, remove_node, wait_for_view, \
-                            wait_for_view_build_start, scylla_mode, enable_error_injection, disable_all_error_injections
+                            wait_for_view_build_start, scylla_mode
 from cassandra.cluster import NoHostAvailable
 
 from nose.plugins.attrib import attr
@@ -3397,7 +3397,7 @@ class TestMaterializedViews(Tester):
         # Wait for both nodes to know about the base table
         session.cluster.control_connection.wait_for_schema_agreement()
         for node in nodes:
-            disable_all_error_injections(self.get_ip_from_node(node))
+            self.disable_errors(node)
         # Arm the injection points
         injection_points = [
             "table_push_view_replica_updates_stale_time_point",
@@ -3419,7 +3419,7 @@ class TestMaterializedViews(Tester):
             "view_update_generator_registering_staging_sstable",
         ]
         for i, injection_point in enumerate(injection_points):
-            enable_error_injection(self.get_ip_from_node(nodes[i%2]), injection_point, once=True)
+            self.enable_error(injection_point, i%2, one_shot=True)
 
         for i in range(10):
             session.execute(SimpleStatement("INSERT INTO tab (a, b, c) VALUES"
