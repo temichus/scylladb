@@ -50,7 +50,6 @@ class TestInternodeSSL(Tester):
         """
         self.__putget_with_internode_ssl_test('dc', internode_encryption='rack', dcs=2)
 
-    @require(6507)
     def putget_with_reloaded_certificates_test(self):
         self.__putget_with_internode_ssl_test('all', internode_encryption='all', reload_certs=True)
 
