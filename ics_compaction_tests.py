@@ -9,8 +9,7 @@ from assertions import assert_row_count
 from dtest import Tester, debug
 from scylla_defines import TABLE_NAME, KEYSPACE_NAME, CompactionStrategy, FULL_TABLE_NAME
 from scylla_tools import get_sstables_files, get_cf_dir
-from tools import make_snapshot, restore_snapshot_files, restore_snapshot_with_refresh, \
-    restore_snapshot_with_sstableloader
+from tools import make_snapshot, restore_snapshot_with_refresh, restore_snapshot_with_sstableloader
 
 NUM_OF_NODES = 2
 RF = NUM_OF_NODES
@@ -282,7 +281,7 @@ class IcsCompactionTest(Tester):
             restore_snapshot_with_sstableloader(snapshot_dir=snapshot_dir, node=node1, keyspace=KEYSPACE_NAME,
                                                 table=TABLE_NAME)
         else:
-            restore_snapshot_files(snapshot_dir, node1, KEYSPACE_NAME, TABLE_NAME)
+            restore_snapshot_with_refresh(snapshot_dir, node1, KEYSPACE_NAME, TABLE_NAME)
         node1.nodetool('refresh {} {}'.format(KEYSPACE_NAME, TABLE_NAME))
         # Check that the number of table entries on snapshot is restored.
         assert_row_count(session=session, table_name=FULL_TABLE_NAME, expected=4)
