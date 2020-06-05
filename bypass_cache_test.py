@@ -11,6 +11,7 @@ class TestBypassCache(Tester):
     Test that will verify if the select statement will skip cache during its read
     Introduced by commit 2a371c2689d327a10f5888f39414ec66efedb093
     '''
+    NUM_OF_QUERY_EXECUTIONS = 100
     def prepare(self, nodes=1, keyspace_name='bypass_cache', rf=1, options_dict=None, table_name='user_events',
                 insert_data=True):
         self.keyspace_name = keyspace_name
@@ -39,10 +40,12 @@ class TestBypassCache(Tester):
             metric = ['scylla_cache_reads']
         if not isinstance(metric, list):
             metric = [metric]
-        cache_read_before_bypass_read = self.get_scylla_cache_reads_metrics(node=node, metrics=metric)
-        session.execute(query)
-        cache_read_after_bypass_read = self.get_scylla_cache_reads_metrics(node=node, metrics=metric)
-        return cache_read_before_bypass_read[metric[0]] == cache_read_after_bypass_read[metric[0]]
+        cache_read_before_bypass_read = self.get_scylla_cache_reads_metrics(node=node, metrics=metric)[metric[0]]
+        for _ in range(self.NUM_OF_QUERY_EXECUTIONS):
+            session.execute(query)
+        cache_read_after_bypass_read = self.get_scylla_cache_reads_metrics(node=node, metrics=metric)[metric[0]]
+        return cache_read_after_bypass_read * 0.95 <= cache_read_before_bypass_read <= \
+            cache_read_after_bypass_read * 1.05
 
     def verify_read_was_from_disk(self, node, query, session, metric=None):
         assert_true(self.is_read_from_disk(node, query, session, metric=metric),
