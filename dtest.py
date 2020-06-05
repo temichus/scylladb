@@ -1346,7 +1346,7 @@ class Tester(TestCase):
         node_ip  = self.get_ip_from_node(node)
         debug(f'Enabling error injection "{name}" on node {node_ip}')
         response = requests.post(f"http://{node_ip}:10000/v2/error_injection/injection/{name}",
-                                 data = {"one_shot" : one_shot})
+                                 params={"one_shot" : one_shot})
         response.raise_for_status()
 
     def disable_error(self, name, node):

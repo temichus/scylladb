@@ -15,7 +15,6 @@ from dtest import Tester, debug
 from tools import no_vnodes, since
 from nose.plugins.attrib import attr
 from scylla_tools import scylla_mode
-from unittest import skip
 
 
 class LoadThread(Thread):
@@ -339,7 +338,10 @@ class TestPaxos(Tester):
         nodes = self.cluster.nodelist()
 
         # Try different combinations of timeouts in each paxos stage
-        paxos_stages = ['prepare', 'accept', 'learn']
+        paxos_stages_injections = {
+            'prepare': 'paxos_prepare_timeout',
+            'accept' : 'paxos_accept_proposal_timeout',
+            'learn'  : 'paxos_state_learn_timeout'}
 
         # Execute the LWT query on the first node, which acts as a coordinator in this case
         session_node1 = self.patient_exclusive_cql_connection(nodes[0], protocol_version=4)
@@ -347,8 +349,8 @@ class TestPaxos(Tester):
         stmt = session_node1.prepare("INSERT INTO test (k, v) VALUES (?, 0) IF NOT EXISTS")
         key = 0
 
-        for combination_len in range(0, len(paxos_stages) + 1):
-            for combination in itertools.combinations(paxos_stages, combination_len):
+        for combination_len in range(0, len(paxos_stages_injections) + 1):
+            for combination in itertools.combinations(paxos_stages_injections.keys(), combination_len):
                 # We need to clear leftover enabled injections from a previous
                 # iteration of the test because each injection is enabled at
                 # each shard on a given node.
@@ -363,7 +365,7 @@ class TestPaxos(Tester):
 
                 debug(f"Testing combination {combination}")
                 for stage in combination:
-                    injection_name = f"paxos_state_{stage}_timeout"
+                    injection_name = paxos_stages_injections[stage]
                     for node in nodes:
                         self.enable_error(injection_name, node, one_shot=True)
 
@@ -373,7 +375,6 @@ class TestPaxos(Tester):
 
                 key += 1
 
-    @skip('Dependent on "utils: inject errors around paxos stages" patch series, skipping until it is merged')
     @attr('dtest-debug', 'single_node')
     @scylla_mode('!release')
     def schema_mismatch_test(self):
@@ -436,7 +437,6 @@ class TestPaxos(Tester):
         debug("Found the expected error pattern in the node logs:")
         debug(expected_exc_msg)
 
-    @skip('Dependent on "utils: inject errors around paxos stages" patch series, skipping until it is merged')
     @attr('dtest-debug', 'single_node')
     @scylla_mode('!release')
     def schema_mismatch_mv_test(self):
@@ -505,7 +505,6 @@ class TestPaxos(Tester):
         debug("Found the expected error pattern in the node logs:")
         debug(expected_exc_msg)
 
-    @skip('Dependent on "utils: inject errors around paxos stages" patch series, skipping until it is merged')
     @attr('dtest-debug', 'single_node')
     @scylla_mode('!release')
     def schema_mismatch_drop_regular_column_test(self):
