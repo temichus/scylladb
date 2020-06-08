@@ -30,8 +30,14 @@ def rows_to_list(rows):
     return new_list
 
 
-def create_c1c2_table(tester, session, cf="cf", read_repair=None, debug_query=True):
-    tester.create_cf(session, cf, columns={'c1': 'text', 'c2': 'text'}, read_repair=read_repair, debug_query=debug_query)
+def chunks_list(lst, num_chunks):
+    for i in range(0, len(lst), num_chunks):
+        yield lst[i:i + num_chunks]
+
+
+def create_c1c2_table(tester, session, cf="cf", read_repair=None, debug_query=True, compaction=None):
+    tester.create_cf(session, cf, columns={'c1': 'text', 'c2': 'text'}, read_repair=read_repair,
+                     debug_query=debug_query, compaction=compaction)
 
 
 def insert_c1c2(session, keys=None, n=None, consistency=ConsistencyLevel.QUORUM, cf="cf"):

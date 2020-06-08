@@ -1393,6 +1393,19 @@ class Tester(TestCase):
         response.raise_for_status()
         return response.json()
 
+    def is_autocompaction_enabled(self, node, ks_name, table_name):
+        """
+        Return if autocompaction is enabled or not
+        :param node: node to execute the API request
+        :param ks_name: Keyspace name to verify if autocompaction is enabled
+        :param table_name: table name to verify if autocompaction is enabled
+        :return: True|False
+        """
+        node_ip = self.get_ip_from_node(node=node)
+        response = requests.get(f'http://{node_ip}:10000/column_family/autocompaction/{ks_name}:{table_name}')
+        response.raise_for_status()
+        return response.json()
+
     def disable_errors(self, node):
         """Disable all error injections
 
