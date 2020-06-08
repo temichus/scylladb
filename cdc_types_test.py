@@ -692,189 +692,101 @@ class CDCCollectionsTmpl(CdcTools):
 
     def verify_cdc_log_rows_after_first_insert_to_base_table(self, cdc_log_data, postimage_enable):
         if postimage_enable:
-            self.check_cdc_log_num_row(cdc_log_data, 6)
-            self.check_cdc_log_row(cdc_log_data[0], operation=CdcLogOperations.UPDATE, batch_seq=0,
-                                   expected_data=self.null_value_dataset)
-            self.check_cdc_log_row(cdc_log_data[1], operation=CdcLogOperations.POSTIMAGE, batch_seq=1,
-                                   expected_data=self.null_value_dataset)
-            self.check_cdc_log_row(cdc_log_data[2], operation=CdcLogOperations.INSERT, batch_seq=0,
-                                   expected_data=self.null_value_dataset)
-            self.check_cdc_log_row(cdc_log_data[3], operation=CdcLogOperations.POSTIMAGE, batch_seq=1,
-                                   expected_data=self.null_value_dataset)
-            self.check_cdc_log_row_collection(cdc_log_data[4], operation=CdcLogOperations.UPDATE, batch_seq=2,
-                                              expected_data=self.inserted_dataset)
-            self.check_cdc_log_row_collection(cdc_log_data[5], operation=CdcLogOperations.POSTIMAGE, batch_seq=3,
+            self.check_cdc_log_num_row(cdc_log_data, 2)
+            self.check_cdc_log_row_collection(cdc_log_data[0], operation=CdcLogOperations.INSERT, batch_seq=0,
+                                              deleted_col=['value'], expected_data=self.inserted_dataset)
+            self.check_cdc_log_row_collection(cdc_log_data[1], operation=CdcLogOperations.POSTIMAGE, batch_seq=1,
                                               expected_data=self.inserted_dataset)
         else:
-            self.check_cdc_log_num_row(cdc_log_data, 3)
-            self.check_cdc_log_row(cdc_log_data[0], operation=CdcLogOperations.UPDATE, batch_seq=0,
-                                   expected_data=self.null_value_dataset, deleted_col=['value'])
-            self.check_cdc_log_row_collection(cdc_log_data[1], operation=CdcLogOperations.INSERT, batch_seq=0,
-                                              expected_data=self.null_value_dataset)
-            self.check_cdc_log_row_collection(cdc_log_data[2], operation=CdcLogOperations.UPDATE, batch_seq=1,
+            self.check_cdc_log_num_row(cdc_log_data, 1)
+            self.check_cdc_log_row_collection(cdc_log_data[0], operation=CdcLogOperations.INSERT, batch_seq=0,
                                               expected_data=self.inserted_dataset)
 
     def verify_cdc_log_rows_after_insert_to_base_table(self, cdc_log_data, preimage_enable, postimage_enable):
         if preimage_enable and postimage_enable:
-            self.check_cdc_log_num_row(cdc_log_data, 9)
+            self.check_cdc_log_num_row(cdc_log_data, 3)
             self.check_cdc_log_row_collection(cdc_log_data[0], operation=CdcLogOperations.PREIMAGE, batch_seq=0,
                                               expected_data=self.inserted_dataset)
-            self.check_cdc_log_row(cdc_log_data[1], operation=CdcLogOperations.UPDATE, batch_seq=1,
-                                   expected_data=self.null_value_dataset, deleted_col=['value'])
-            self.check_cdc_log_row(cdc_log_data[2], operation=CdcLogOperations.POSTIMAGE, batch_seq=2,
-                                   expected_data=self.null_value_dataset)
-            self.check_cdc_log_row(cdc_log_data[3], operation=CdcLogOperations.PREIMAGE, batch_seq=0,
-                                   expected_data=self.null_value_dataset)
-            self.check_cdc_log_row(cdc_log_data[4], operation=CdcLogOperations.INSERT, batch_seq=1,
-                                   expected_data=self.null_value_dataset)
-            self.check_cdc_log_row(cdc_log_data[5], operation=CdcLogOperations.POSTIMAGE, batch_seq=2,
-                                   expected_data=self.null_value_dataset)
-            self.check_cdc_log_row(cdc_log_data[6], operation=CdcLogOperations.PREIMAGE, batch_seq=3,
-                                   expected_data=self.null_value_dataset)
-            self.check_cdc_log_row_collection(cdc_log_data[7], operation=CdcLogOperations.UPDATE, batch_seq=4,
+            self.check_cdc_log_row_collection(cdc_log_data[1], operation=CdcLogOperations.INSERT, batch_seq=1,
+                                              deleted_col=['value'], expected_data=self.inserted_dataset)
+            self.check_cdc_log_row_collection(cdc_log_data[2], operation=CdcLogOperations.POSTIMAGE, batch_seq=2,
                                               expected_data=self.inserted_dataset)
-            self.check_cdc_log_row_collection(cdc_log_data[8], operation=CdcLogOperations.POSTIMAGE, batch_seq=5,
-                                              expected_data=self.inserted_dataset)
+
         elif postimage_enable:
-            self.check_cdc_log_num_row(cdc_log_data, 6)
-            self.check_cdc_log_row(cdc_log_data[0], operation=CdcLogOperations.UPDATE, batch_seq=0,
-                                   expected_data=self.null_value_dataset, deleted_col=['value'])
+            self.check_cdc_log_num_row(cdc_log_data, 2)
+            self.check_cdc_log_row_collection(cdc_log_data[0], operation=CdcLogOperations.INSERT, batch_seq=0,
+                                              deleted_col=['value'], expected_data=self.inserted_dataset)
             self.check_cdc_log_row_collection(cdc_log_data[1], operation=CdcLogOperations.POSTIMAGE, batch_seq=1,
-                                              expected_data=self.null_value_dataset)
-            self.check_cdc_log_row(cdc_log_data[2], operation=CdcLogOperations.INSERT, batch_seq=0,
-                                   expected_data=self.null_value_dataset)
-            self.check_cdc_log_row(cdc_log_data[3], operation=CdcLogOperations.POSTIMAGE, batch_seq=1,
-                                   expected_data=self.null_value_dataset)
-            self.check_cdc_log_row_collection(cdc_log_data[4], operation=CdcLogOperations.UPDATE, batch_seq=2,
-                                              expected_data=self.inserted_dataset)
-            self.check_cdc_log_row_collection(cdc_log_data[5], operation=CdcLogOperations.POSTIMAGE, batch_seq=3,
                                               expected_data=self.inserted_dataset)
 
         elif preimage_enable:
-            self.check_cdc_log_num_row(cdc_log_data, 6)
+            self.check_cdc_log_num_row(cdc_log_data, 2)
             self.check_cdc_log_row_collection(cdc_log_data[0], operation=CdcLogOperations.PREIMAGE, batch_seq=0,
                                               expected_data=self.inserted_dataset)
-            self.check_cdc_log_row(cdc_log_data[1], operation=CdcLogOperations.UPDATE, batch_seq=1,
-                                   expected_data=self.null_value_dataset, deleted_col=['value'])
-            self.check_cdc_log_row(cdc_log_data[2], operation=CdcLogOperations.PREIMAGE, batch_seq=0,
-                                   expected_data=self.null_value_dataset)
-            self.check_cdc_log_row(cdc_log_data[3], operation=CdcLogOperations.INSERT, batch_seq=1,
-                                   expected_data=self.null_value_dataset)
-            self.check_cdc_log_row(cdc_log_data[4], operation=CdcLogOperations.PREIMAGE, batch_seq=2,
-                                   expected_data=self.null_value_dataset)
-            self.check_cdc_log_row_collection(cdc_log_data[5], operation=CdcLogOperations.UPDATE, batch_seq=3,
-                                              expected_data=self.inserted_dataset)
+            self.check_cdc_log_row_collection(cdc_log_data[1], operation=CdcLogOperations.INSERT, batch_seq=1,
+                                              deleted_col=['value'], expected_data=self.inserted_dataset)
+
         else:
-            self.check_cdc_log_num_row(cdc_log_data, 3)
-            self.check_cdc_log_row(cdc_log_data[0], operation=CdcLogOperations.UPDATE, batch_seq=0,
-                                   expected_data=self.null_value_dataset)
-            self.check_cdc_log_row(cdc_log_data[1], operation=CdcLogOperations.INSERT, batch_seq=0,
-                                   expected_data=self.null_value_dataset)
-            self.check_cdc_log_row_collection(cdc_log_data[2], operation=CdcLogOperations.UPDATE, batch_seq=1,
-                                              expected_data=self.inserted_dataset)
+            self.check_cdc_log_num_row(cdc_log_data, 1)
+            self.check_cdc_log_row_collection(cdc_log_data[0], operation=CdcLogOperations.INSERT, batch_seq=0,
+                                              deleted_col=['value'], expected_data=self.inserted_dataset)
 
     def verify_cdc_log_rows_after_first_update_to_base_table(self, cdc_log_data, postimage_enable):
         if postimage_enable:
-            self.check_cdc_log_num_row(cdc_log_data, 4)
-            self.check_cdc_log_row(cdc_log_data[0], operation=CdcLogOperations.UPDATE, batch_seq=0,
-                                   expected_data=self.null_value_dataset)
-            self.check_cdc_log_row(cdc_log_data[1], operation=CdcLogOperations.POSTIMAGE, batch_seq=1,
-                                   expected_data=self.null_value_dataset)
-            self.check_cdc_log_row_collection(cdc_log_data[2], operation=CdcLogOperations.UPDATE, batch_seq=0,
-                                              expected_data=self.inserted_dataset)
-            self.check_cdc_log_row_collection(cdc_log_data[3], operation=CdcLogOperations.POSTIMAGE, batch_seq=1,
-                                              expected_data=self.inserted_dataset)
-        else:
             self.check_cdc_log_num_row(cdc_log_data, 2)
             self.check_cdc_log_row_collection(cdc_log_data[0], operation=CdcLogOperations.UPDATE, batch_seq=0,
-                                              expected_data=self.null_value_dataset, deleted_col=['value'])
-            self.check_cdc_log_row_collection(cdc_log_data[1], operation=CdcLogOperations.UPDATE, batch_seq=0,
+                                              deleted_col=['value'], expected_data=self.inserted_dataset)
+            self.check_cdc_log_row_collection(cdc_log_data[1], operation=CdcLogOperations.POSTIMAGE, batch_seq=1,
                                               expected_data=self.inserted_dataset)
+        else:
+            self.check_cdc_log_num_row(cdc_log_data, 1)
+            self.check_cdc_log_row_collection(cdc_log_data[0], operation=CdcLogOperations.UPDATE, batch_seq=0,
+                                              deleted_col=['value'], expected_data=self.inserted_dataset)
 
     def verify_cdc_log_rows_after_update_to_base_table(self, cdc_log_data, preimage_enable, postimage_enable, add_element, remove_element):
-        if preimage_enable and postimage_enable:
-            if add_element or remove_element:
-                deleted_element = self.deleted_element_dataset["value"] if remove_element else None
-                added_element = self.added_element_dataset if add_element else self.null_value_dataset
-                result_data_set = self.result_dataset_after_add_element if add_element else self.result_dataset_after_delete_element
 
-                self.check_cdc_log_num_row(cdc_log_data, 3)
-                self.check_cdc_log_row_collection(cdc_log_data[0], operation=CdcLogOperations.PREIMAGE, batch_seq=0,
-                                                  expected_data=self.inserted_dataset)
-                self.check_cdc_log_row_collection(cdc_log_data[1], operation=CdcLogOperations.UPDATE, batch_seq=1,
-                                                  expected_data=added_element, deleted_keys=deleted_element)
-                self.check_cdc_log_row_collection(cdc_log_data[2], operation=CdcLogOperations.POSTIMAGE, batch_seq=2,
-                                                  expected_data=result_data_set)
-            else:
-                self.check_cdc_log_num_row(cdc_log_data, 6)
-                self.check_cdc_log_row_collection(cdc_log_data[0], operation=CdcLogOperations.PREIMAGE, batch_seq=0,
-                                                  expected_data=self.inserted_dataset)
-                self.check_cdc_log_row_collection(cdc_log_data[1], operation=CdcLogOperations.UPDATE, batch_seq=1,
-                                                  expected_data=self.null_value_dataset, deleted_col=['value'])
-                self.check_cdc_log_row_collection(cdc_log_data[2], operation=CdcLogOperations.POSTIMAGE, batch_seq=2,
-                                                  expected_data=self.null_value_dataset)
-                self.check_cdc_log_row_collection(cdc_log_data[3], operation=CdcLogOperations.PREIMAGE, batch_seq=0,
-                                                  expected_data=self.null_value_dataset)
-                self.check_cdc_log_row_collection(cdc_log_data[4], operation=CdcLogOperations.UPDATE, batch_seq=1,
-                                                  expected_data=self.updated_dataset)
-                self.check_cdc_log_row_collection(cdc_log_data[5], operation=CdcLogOperations.POSTIMAGE, batch_seq=2,
-                                                  expected_data=self.updated_dataset)
-        elif postimage_enable:
-            if add_element or remove_element:
-                deleted_element = self.deleted_element_dataset["value"] if remove_element else None
-                added_element = self.added_element_dataset if add_element else self.null_value_dataset
-                result_data_set = self.result_dataset_after_add_element if add_element else self.result_dataset_after_delete_element
+        if add_element or remove_element:
+            deleted_element = self.deleted_element_dataset["value"] if remove_element else None
+            updating_dataset = self.added_element_dataset if add_element else self.null_value_dataset
+            postimage_data_set = self.result_dataset_after_add_element if add_element else self.result_dataset_after_delete_element
+            deleted_col = None
 
-                self.check_cdc_log_num_row(cdc_log_data, 2)
-                self.check_cdc_log_row_collection(cdc_log_data[0], operation=CdcLogOperations.UPDATE, batch_seq=0,
-                                                  expected_data=added_element)
-                self.check_cdc_log_row_collection(cdc_log_data[1], operation=CdcLogOperations.POSTIMAGE, batch_seq=1,
-                                                  expected_data=result_data_set)
-            else:
-                self.check_cdc_log_num_row(cdc_log_data, 4)
-                self.check_cdc_log_row_collection(cdc_log_data[0], operation=CdcLogOperations.UPDATE, batch_seq=0,
-                                                  expected_data=self.null_value_dataset)
-                self.check_cdc_log_row_collection(cdc_log_data[1], operation=CdcLogOperations.POSTIMAGE, batch_seq=1,
-                                                  expected_data=self.null_value_dataset)
-                self.check_cdc_log_row_collection(cdc_log_data[2], operation=CdcLogOperations.UPDATE, batch_seq=0,
-                                                  expected_data=self.updated_dataset)
-                self.check_cdc_log_row_collection(cdc_log_data[3], operation=CdcLogOperations.POSTIMAGE, batch_seq=1,
-                                                  expected_data=self.updated_dataset)
-        elif preimage_enable:
-            if add_element or remove_element:
-                deleted_element = self.deleted_element_dataset["value"] if remove_element else None
-                added_element = self.added_element_dataset if add_element else self.null_value_dataset
-
-                self.check_cdc_log_num_row(cdc_log_data, 2)
-                self.check_cdc_log_row_collection(cdc_log_data[0], operation=CdcLogOperations.PREIMAGE, batch_seq=0,
-                                                  expected_data=self.inserted_dataset)
-
-                self.check_cdc_log_row_collection(cdc_log_data[1], operation=CdcLogOperations.UPDATE, batch_seq=1,
-                                                  expected_data=added_element, deleted_keys=deleted_element)
-            else:
-                self.check_cdc_log_num_row(cdc_log_data, 4)
-                self.check_cdc_log_row_collection(cdc_log_data[0], operation=CdcLogOperations.PREIMAGE, batch_seq=0,
-                                                  expected_data=self.inserted_dataset)
-                self.check_cdc_log_row_collection(cdc_log_data[1], operation=CdcLogOperations.UPDATE, batch_seq=1,
-                                                  expected_data=self.null_value_dataset, deleted_col=['value'])
-                self.check_cdc_log_row_collection(cdc_log_data[2], operation=CdcLogOperations.PREIMAGE, batch_seq=0,
-                                                  expected_data=self.null_value_dataset)
-                self.check_cdc_log_row_collection(cdc_log_data[3], operation=CdcLogOperations.UPDATE, batch_seq=1,
-                                                  expected_data=self.updated_dataset)
         else:
-            if add_element or remove_element:
-                deleted_element = self.deleted_element_dataset["value"] if remove_element else None
-                added_element = self.added_element_dataset if add_element else self.null_value_dataset
+            deleted_element = None
+            updating_dataset = self.updated_dataset
+            postimage_data_set = self.updated_dataset
+            deleted_col = ['value']
 
-                self.check_cdc_log_num_row(cdc_log_data, 1)
-                self.check_cdc_log_row_collection(cdc_log_data[0], operation=CdcLogOperations.UPDATE, batch_seq=0,
-                                                  expected_data=added_element, deleted_keys=deleted_element)
-            else:
-                self.check_cdc_log_num_row(cdc_log_data, 2)
-                self.check_cdc_log_row_collection(cdc_log_data[0], operation=CdcLogOperations.UPDATE, batch_seq=0,
-                                                  expected_data=self.null_value_dataset, deleted_col=['value'])
-                self.check_cdc_log_row_collection(cdc_log_data[1], operation=CdcLogOperations.UPDATE, batch_seq=0,
-                                                  expected_data=self.updated_dataset)
+        if preimage_enable and postimage_enable:
+
+            self.check_cdc_log_num_row(cdc_log_data, 3)
+            self.check_cdc_log_row_collection(cdc_log_data[0], operation=CdcLogOperations.PREIMAGE, batch_seq=0,
+                                              expected_data=self.inserted_dataset)
+            self.check_cdc_log_row_collection(cdc_log_data[1], operation=CdcLogOperations.UPDATE, batch_seq=1,
+                                              expected_data=updating_dataset, deleted_keys=deleted_element,
+                                              deleted_col=deleted_col)
+            self.check_cdc_log_row_collection(cdc_log_data[2], operation=CdcLogOperations.POSTIMAGE, batch_seq=2,
+                                              expected_data=postimage_data_set)
+
+        elif postimage_enable:
+            self.check_cdc_log_num_row(cdc_log_data, 2)
+            self.check_cdc_log_row_collection(cdc_log_data[0], operation=CdcLogOperations.UPDATE, batch_seq=0,
+                                              deleted_col=deleted_col, expected_data=updating_dataset)
+            self.check_cdc_log_row_collection(cdc_log_data[1], operation=CdcLogOperations.POSTIMAGE, batch_seq=1,
+                                              expected_data=postimage_data_set)
+        elif preimage_enable:
+            self.check_cdc_log_num_row(cdc_log_data, 2)
+            self.check_cdc_log_row_collection(cdc_log_data[0], operation=CdcLogOperations.PREIMAGE, batch_seq=0,
+                                              expected_data=self.inserted_dataset)
+
+            self.check_cdc_log_row_collection(cdc_log_data[1], operation=CdcLogOperations.UPDATE, batch_seq=1,
+                                              expected_data=updating_dataset, deleted_keys=deleted_element,
+                                              deleted_col=deleted_col)
+        else:
+            self.check_cdc_log_num_row(cdc_log_data, 1)
+            self.check_cdc_log_row_collection(cdc_log_data[0], operation=CdcLogOperations.UPDATE, batch_seq=0,
+                                              expected_data=updating_dataset, deleted_keys=deleted_element,
+                                              deleted_col=deleted_col)
 
     def verify_cdc_log_rows_after_delete_value(self, cdc_log_data, preimage_enable, postimage_enable):
         if preimage_enable and postimage_enable:
