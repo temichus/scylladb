@@ -2,6 +2,7 @@ import os
 import subprocess
 import pprint
 import re
+import time
 
 from nose.plugins.attrib import attr
 from dtest import Tester, debug
@@ -37,13 +38,20 @@ class DataDistributionTest(Tester):
 
         self.cluster.stress(stress_cmd.split(" "))
 
-        self.verify_datasize_with_nodetool_status()
+        # nodetool status load is updated every 60 seconds
+        status_ready_at = time.time() + 60 + 1
 
         for node in self.cluster.nodelist():
             cf_stats = node.nodetool("cfstats keyspace1", capture_output=True, wait=True)
             debug(PP.pformat(cf_stats))
 
         self.verify_datasize_by_check_filesize()
+
+        now = time.time()
+        if now < status_ready_at:
+            debug("sleep for {} seconds until status.load is ready".format(int(status_ready_at - now + 0.5)))
+            time.sleep(status_ready_at - now)
+        self.verify_datasize_with_nodetool_status()
 
     def verify_datasize_with_nodetool_status(self):
         node = self.cluster.nodelist()[0]  # type: ScyllaNode
