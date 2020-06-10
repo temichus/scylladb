@@ -167,12 +167,12 @@ class TestScyllaMgmtBackup(Tester):
             "key": sorted(key_values), "c1": sorted(c1_values), "c2": sorted(c2_values)}
 
         expected_result_dict = {
-            "key": range(*key_range),
-            "c1": [C1_PREFIX % i for i in range(*key_range)],
-            "c2": [C2_PREFIX % i for i in range(*key_range)]
+            "key": sorted([f"k{i}" for i in range(*key_range)]),
+            "c1": sorted([C1_PREFIX % i for i in range(*key_range)]),
+            "c2": sorted([C2_PREFIX % i for i in range(*key_range)])
         }
         for column in expected_result_dict:
-            assert expected_result_dict[column] != result_dict[column]\
+            assert expected_result_dict[column] == result_dict[column]\
                 , f"""post backup table {table_name} does not match expected data:
                       mismatched_column:{column}
                       pre backup values:{expected_result_dict[column]}
