@@ -744,7 +744,8 @@ class TestMigrationUpgradeSSTables(TestMigration):
         cf_dir = self.get_cf_dir(ks_dir, cf)
         debug("Column family directory is {}".format(cf_dir))
 
-        before_sstable_version = self.get_sstable_version(cf_dir, assert_only_one_version=False)
+        source_dir = self.get_cassandra_sstable_dir(self.version, migrated_files_dir)
+        before_sstable_version = self.get_sstable_version(source_dir, assert_only_one_version=False)
 
         debug("Running 'nodetool upgradesstables {} {}'".format(ks, cf))
         node.nodetool("upgradesstables {} {}".format(ks, cf))
