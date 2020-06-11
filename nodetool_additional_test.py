@@ -1233,6 +1233,7 @@ class TestNodetool(Tester):
             node.nodetool(cmd)
             assert False, 'nodetool succeeded unexpectedly!'
         except NodetoolError as error:
+            debug("As expected, {}".format(error))
             if expected_error:
                 assert re.search(expected_error, str(error)), "/{}/ not found in '{}'".format(expected_error, error)
 
@@ -1275,7 +1276,7 @@ class TestNodetool(Tester):
         for f in os.listdir(upload_dir):
             os.chmod(os.path.join(upload_dir, f), 0o044)
         self._nodetool_refresh_expect_fail(node,
-            expected_error=r'File cannot be accessed for read',
+            expected_error=r'File cannot be accessed for read|open failed: Permission denied',
             debug_message='files with no read permission')
         for f in os.listdir(upload_dir):
             os.chmod(os.path.join(upload_dir, f), 0o644)
