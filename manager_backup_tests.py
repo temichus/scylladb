@@ -3,6 +3,7 @@
 from datetime import datetime
 import os
 from glob import glob
+import shutil
 
 from cassandra import ConsistencyLevel
 from nose.plugins.attrib import attr
@@ -13,7 +14,7 @@ from tools import require
 from dtest_scylla_manager import ScyllaManagerTool, ScyllaManagerError
 from dtest_scylla_manager import TaskStatus
 from scylla_tools import insert_c1c2, insert_c1c2_with_clustering
-from dtest import Tester, debug, wait_for
+from dtest import Tester, debug, warning, wait_for
 
 
 CLUSTER_NAME = 'cluster1'
@@ -789,3 +790,136 @@ class TestScyllaMgmtBackup(Tester):
             f"There are common snapshots between \n{' '.join(pre_rerun_snapshot_set)}\nand" \
             f"\n{' '.join(post_rerun_snapshot_set)}\neven though all of the failed run's snapshots should have been " \
             f"deleted before the new ones were created"
+
+    @attr('scylla-manager')
+    def test_delete_nonexisting_backup(self):
+        node1, node2 = self.config_and_create_cluster(nodes=2)
+        mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
+
+        # Have to run a backup before the deletion, so that the manager will know about the s3 location and the bucket
+        backup_task = mgr_cluster.run_backup_command(location_list=[f"s3:{DESTINATION_BUCKET}"])
+        backup_task.wait_and_get_final_status(step=5)
+        print(backup_task.get_snapshot_tag())
+
+        try:
+            mgr_cluster.delete_backup(snapshot_tag="thisdoesnotexist")
+        except ScyllaManagerError as err:
+            if "not found" not in err.args[0]:
+                warning("When trying to delete a nonexistent snapshot, there was no proper error message")
+                raise
+
+    @attr('scylla-manager')
+    def test_delete_backup_twice(self):
+        node1, node2 = self.config_and_create_cluster(nodes=2)
+        mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
+
+        backup_task = mgr_cluster.run_backup_command(location_list=[f"s3:{DESTINATION_BUCKET}"])
+        backup_task.wait_and_get_final_status(step=5)
+        snapshot_tag = backup_task.get_snapshot_tag()
+
+        mgr_cluster.delete_backup(snapshot_tag=snapshot_tag)
+        try:
+            mgr_cluster.delete_backup(snapshot_tag=snapshot_tag)
+        except ScyllaManagerError as err:
+            if "not found" not in err.args[0]:
+                warning("When trying to delete an already deleted snapshot, there was no proper error message")
+                raise
+
+    @attr('scylla-manager')
+    def test_delete_all_backups(self):
+        node1, node2 = self.config_and_create_cluster(nodes=2)
+        mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
+
+        # inserting data and creating a backup three times
+        snapshot_tag_list = list()
+        self.cluster.stress(['write', 'n=50K', '-rate', 'threads=50', '-pop', 'seq=1..100000'])
+        backup_task = mgr_cluster.run_backup_command(keyspace_list=["keyspace1"],
+                                                     location_list=[f"s3:{DESTINATION_BUCKET}"])
+        backup_task.wait_and_get_final_status(step=5)
+        snapshot_tag_list.append(backup_task.get_snapshot_tag())
+
+        for i in range(1, 3):
+            self.cluster.stress(['write', 'n=50K', '-rate', 'threads=50', '-pop',
+                                 f'seq={100000 * i + 1}..{100000 * (i + 1)}'])
+            backup_task.start(continue_attr="false")
+            backup_task.wait_and_get_final_status(step=5)
+            snapshot_tag_list.append(backup_task.get_snapshot_tag())
+
+        for tag in snapshot_tag_list:
+            mgr_cluster.delete_backup(snapshot_tag=tag)
+
+        # Trying to receive the backed up file list of each of the backup tasks, expecting an empty list
+        for tag in snapshot_tag_list:
+            backup_files = mgr_cluster.get_backup_files_dict(snapshot_tag=tag)
+            self.assertFalse(expr=backup_files, msg="There are still backed up files left even after the tag was deleted")
+
+    def _drop_table_and_delete_table_dir(self, keyspace_name, table_name, up_normal_node):
+        # Due to the fact that ccm does not delete the table's directory, to avoid confusion we'll delete it manually
+        session = self.patient_cql_connection(node=up_normal_node)
+        session.execute(f"drop table {keyspace_name}.{table_name};")
+        for node in self.cluster.nodelist():
+            keyspace_path = os.path.join(node.get_path(), 'data', keyspace_name)
+            table_path = glob(os.path.join(keyspace_path, table_name + '-*'))[0]
+            shutil.rmtree(path=table_path)
+
+    def _delete_run_and_restore_others_template(self, backup_run_to_delete):
+        key_ranges = [
+            (1, 11),
+            (11, 21),
+            (21, 31)
+        ]
+        keyspace_name = "ks"
+        table_name = "cf1"
+        node1, node2 = self.config_and_create_cluster(nodes=2)
+        mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
+
+        snapshot_tag_list = list()
+        self.insert_data_from_ranges(healthy_node=node1,
+                                     keyspace_table_and_key_range={keyspace_name: {table_name: key_ranges[0]}})
+        backup_task = mgr_cluster.run_backup_command(keyspace_list=[keyspace_name],
+                                                     location_list=[f"s3:{DESTINATION_BUCKET}"])
+        backup_task.wait_for_status(list_status=[TaskStatus.DONE], step=5)
+        snapshot_tag_list.append(backup_task.get_snapshot_tag())
+
+        for key_range in key_ranges[1:]:
+            self.insert_data_from_ranges(healthy_node=node1,
+                                         keyspace_table_and_key_range={keyspace_name: {table_name: key_range}})
+            backup_task.start(continue_attr="false")
+            backup_task.wait_for_status(list_status=[TaskStatus.DONE], step=5)
+            snapshot_tag_list.append(backup_task.get_snapshot_tag())
+
+        # deleting the chosen backup and making sure there are no files oh it left afterwards
+        mgr_cluster.delete_backup(snapshot_tag=snapshot_tag_list[backup_run_to_delete])
+        backup_files_deleted_snapshot_files = mgr_cluster.get_backup_files_dict(
+            snapshot_tag=snapshot_tag_list[backup_run_to_delete])
+        self.assertFalse(backup_files_deleted_snapshot_files,
+                         f"Even after deletion, there are still files of the snapshot"
+                         f" {snapshot_tag_list[backup_run_to_delete]} in s3:\n{backup_files_deleted_snapshot_files}")
+        session = self.patient_cql_connection(node=node1)
+        for run_num in range(len(snapshot_tag_list)):
+            if run_num == backup_run_to_delete:
+                continue
+            snapshot_tag = snapshot_tag_list[run_num]
+            # Could not use clean_up_tables, since running truncate table twice causes scylla to crash
+            self._drop_table_and_delete_table_dir(keyspace_name, table_name, node1)
+            self.create_cf(session=session, name=f"{keyspace_name}.{table_name}", read_repair=0.0,
+                           columns={'c1': 'text', 'c2': 'text'},
+                           dclocal_read_repair_chance=0.0, speculative_retry='NONE')
+            self.restore_backup(node_list=self.cluster.nodelist(), mgr_cluster=mgr_cluster, snapshot_tag=snapshot_tag,
+                                keyspace_and_table_list={keyspace_name: [table_name]})
+            expected_key_range = [key_ranges[0][0], None]
+            for r in range(0, run_num + 1):
+                expected_key_range[1] = key_ranges[r][1]
+            self.verify_c1c2(keyspace_table_and_key_range={keyspace_name: {table_name: expected_key_range}}, node=node1)
+
+    @attr('scylla-manager')
+    def test_delete_first_run_and_restore_others(self):
+        self._delete_run_and_restore_others_template(backup_run_to_delete=0)
+
+    @attr('scylla-manager')
+    def test_delete_second_run_and_restore_others(self):
+        self._delete_run_and_restore_others_template(backup_run_to_delete=1)
+
+    @attr('scylla-manager')
+    def test_delete_third_run_and_restore_others(self):
+        self._delete_run_and_restore_others_template(backup_run_to_delete=2)

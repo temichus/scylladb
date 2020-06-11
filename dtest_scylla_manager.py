@@ -744,6 +744,9 @@ class ManagerCluster(ScyllaManagerBase):
             per_node_keyspaces_and_tables_backup_files[node_id][keyspace][table].append(s3_file_path)
         return per_node_keyspaces_and_tables_backup_files
 
+    def delete_backup(self, snapshot_tag):
+        self.sctool.run(f"-c {self.id} backup delete --snapshot-tag={snapshot_tag}")
+
     def create_repair_task(self, node=None, dc_list=None, token_ranges=None, keyspace=None, with_hosts=None,
                            interval=None, num_retries=None, fail_fast=None):
         # the interval string:
