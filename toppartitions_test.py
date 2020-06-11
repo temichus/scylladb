@@ -642,14 +642,13 @@ class TestTopPartitions(Tester):
             stress_cmd = "user profile=test_data/c-s-profiles/cs_normal_distribution.yaml duration=30s ops(insert=1) \
                           no-warmup -port jmx=6868 -mode cql3 native -rate threads=1"
             future = excutor.submit(self.cluster.stress, stress_cmd.split(" "))
-            # waite for starting c-s tool
-            time.sleep(5)
-            # result 1 for compare
-            for _ in range(3):
+            for i in range(3):
+                time.sleep(10)
+                if i == 0:
+                    assert future.running(), "Thread running stress command is not running."
                 toppartition_result = self.run_toppartition_for(node, ks='keyspace1', cf='standard1',
                                                                 duration=2000, optional_params='-k 5')
                 top_5_write_partitions_keys_results.append(toppartition_result['WRITES']['partitions'].keys())
-                time.sleep(10)
             self.verify_thread_execution(future)
 
         expected_average_top_partition_keys = ['1500', '1501', '1499', '1502', '1498', '1497', '1503']
@@ -683,13 +682,13 @@ class TestTopPartitions(Tester):
             stress_cmd = "user profile=test_data/c-s-profiles/cs_normal_distribution.yaml duration=30s ops(single=1) \
                           no-warmup -port jmx=6868 -mode cql3 native -rate threads=1"
             future = excutor.submit(self.cluster.stress, stress_cmd.split(" "))
-            time.sleep(5)
-            # result 1 for compare
-            for _ in range(3):
+            for i in range(3):
+                time.sleep(10)
+                if i == 0:
+                    assert future.running(), "Thread running stress command is not running."
                 toppartition_result = self.run_toppartition_for(node, ks='keyspace1', cf='standard1',
                                                                 duration=2000, optional_params='-k 5')
                 top_5_read_partitions_keys_results.append(toppartition_result['READS']['partitions'].keys())
-                time.sleep(10)
             self.verify_thread_execution(future)
 
         expected_average_top_partition_keys = ['1500', '1501', '1499', '1502', '1498']
