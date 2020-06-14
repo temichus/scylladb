@@ -664,7 +664,7 @@ class TestCQL(Tester):
         assert len(res) == 4, list(res)
 
     @attr('single_node')
-    def filter_by_counter(self):
+    def filter_by_counter_test(self):
         session = self.prepare()
 
         session.execute("""
