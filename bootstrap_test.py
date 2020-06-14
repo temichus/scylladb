@@ -5,7 +5,9 @@ import shutil
 import subprocess
 import tempfile
 import time
+from concurrent.futures.thread import ThreadPoolExecutor
 
+from tools import require
 from assertions import assert_almost_equal, assert_one
 from cassandra import ConsistencyLevel
 from cassandra.concurrent import execute_concurrent_with_args
@@ -571,3 +573,79 @@ class TestBootstrap(Tester):
         # data loads.
         for _ in range(5):
             assert_one(session, "SELECT count(*) from keyspace1.standard1", [500000], cl=ConsistencyLevel.ONE)
+
+    def _cluster_become_unavailable_when_kill_node_during_bootstrap(self, is_gracefully=True):
+        """
+        Add n1,n2
+        Create ks with RF =2
+        Insert data with CL = 2
+        Bootstrap n3
+        Kill n3 before n3 finishes bootstrap
+        Check n1 and n2 will notice n3 is gone
+        Check writes with CL = 2 will recover
+
+        https://github.com/scylladb/scylla/issues/4488
+        """
+        executor = ThreadPoolExecutor(max_workers=2)
+        bootstrap_msg = "JOINING: Starting to bootstrap"
+        kill_node_err_msg = "The process is dead, returncode={}"
+        ks_name, consistency_level_key = "keyspace", "TWO"
+        beginning_stream_session_msg = f"Beginning stream session|sync data for keyspace={ks_name}, status=started"
+        removing_from_gossip_msg = r"FatClient {} has been silent for (\d+)ms, removing from gossip"
+        stress_duration_minutes = 3
+        replication_factor, consistency_level = 2, 2
+        cluster_size = 2
+        cassandra_err_msg = f"com.datastax.driver.core.exceptions.WriteTimeoutException: Cassandra timeout during" \
+                            f" SIMPLE write query at consistency {consistency_level_key} ({replication_factor + 1}" \
+                            f" replica were required but only {replication_factor} acknowledged the write)"
+
+        cluster = self.cluster
+        debug(f"Creating new cluster with '{cluster_size}' nodes")
+        cluster.populate(nodes=cluster_size).start(wait_for_binary_proto=True, wait_other_notice=True)
+        node1, node2 = cluster.nodelist()
+
+        write_stress_cmd = ["write", f"cl={consistency_level_key}", f"duration={stress_duration_minutes}m",
+                            "-rate", "threads=10", "-log", "interval=5", "-schema",
+                            f"replication(factor={replication_factor}) keyspace={ks_name}"]
+
+        debug(f"Executing the following write stress command '{write_stress_cmd}'")
+        stress_thread = executor.submit(lambda: node1.stress(stress_options=write_stress_cmd, capture_output=True))
+
+        debug("Adding new node")
+        node3 = cluster.new_node(i=cluster_size + 1, debug=True, auto_bootstrap=True, is_seed=False)
+        start_new_node_thread = executor.submit(lambda: node3.start(
+            wait_for_binary_proto=True, jvm_args=['--logger-log-level', 'stream_session=debug'], no_wait=True))
+        mark_log = node3.mark_log()
+
+        debug(f"Trying to find the following '{bootstrap_msg}' message in logs of node '{node3.name}'")
+        node3.watch_log_for(exprs=bootstrap_msg, from_mark=mark_log)
+        debug(f"Trying to find the following '{beginning_stream_session_msg}' message in logs of node '{node3.name}'")
+        node3.watch_log_for(exprs=beginning_stream_session_msg, from_mark=mark_log)
+
+        nodes = [node1, node2]
+        mark_log_list = [node.mark_log() for node in nodes]
+        debug(f"{'Gracefully' if is_gracefully else 'Force'} killing node'{node3.name}' (PID is '{node3.pid}')")
+        node3.stop(wait=True, gently=is_gracefully)
+        removing_from_gossip_msg = removing_from_gossip_msg.format(self.get_ip_from_node(node=node3))
+        for node, mark_log in zip(nodes, mark_log_list):
+            debug(f"Checking the following message '{removing_from_gossip_msg}' exits in node '{node.name}'")
+            node.watch_log_for(exprs=removing_from_gossip_msg, from_mark=mark_log)
+
+        self.assertEquals(first=kill_node_err_msg.format(1 if is_gracefully else -9),
+                          second=str(start_new_node_thread.exception()),
+                          msg=f"The node '{node3.name}' should be killed by SIGKILL signal")
+        debug("Waiting until stress thread will finish running")
+        stdout, stderr = stress_thread.result()
+        if stderr:
+            debug(f"The output from stdout is:\n{stdout}")
+            debug(f"The following errors occurred during the run:\n{stderr}")
+            self.assertNotIn(member=cassandra_err_msg, container=stderr,
+                             msg=f"The following message '{cassandra_err_msg}' found in stderr")
+
+    @require("#4488")
+    def cluster_become_unavailable_when_force_kill_node_during_bootstrap_test(self):
+        self._cluster_become_unavailable_when_kill_node_during_bootstrap(is_gracefully=False)
+
+    @require("#4488")
+    def cluster_become_unavailable_when_gracefully_kill_node_during_bootstrap_test(self):
+        self._cluster_become_unavailable_when_kill_node_during_bootstrap(is_gracefully=True)
