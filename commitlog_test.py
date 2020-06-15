@@ -688,7 +688,6 @@ class TestCommitLog(Tester):
 
     def prepare_cluster_with_ks_cf(self, jvm_args=None):
         node1 = self.node1
-        node1.set_configuration_options(values={'experimental': True})
         jvm_args = jvm_args or []
         self.cluster.start(jvm_args=jvm_args)
 
