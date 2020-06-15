@@ -1202,6 +1202,7 @@ class Tester(TestCase):
             'fail to connect: Connection refused',
             'fail to connect: Connection reset by peer',
             'server stream connection dropped: invalid type specifier',
+            'server stream connection dropped: Unknown parent connection',
         ]
         patterns += ["rpc - client .*({})".format('|'.join(expected_rpc_errors))]
         pattern = re.compile('|'.join(["({})".format(p) for p in set(patterns)]))
