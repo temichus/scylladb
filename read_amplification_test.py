@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from cassandra.query import SimpleStatement
 from cassandra import ConsistencyLevel
 from dtest import Tester, debug
+from ccmlib.node import TimeoutError
 from upgrade_tests.paging_test import PageFetcher
 import scylla_tools
 
@@ -58,8 +59,9 @@ class ReadAmplificationTest(Tester):
 
         scylla_tools.insert_c1c2(session, keys=range(1,100), consistency=ConsistencyLevel.ALL)
 
-        debug("Stop node2")
-        nodes[1].stop(wait_other_notice=True)
+        node_to_repair = nodes[1]
+        debug("Stop {}".format(node_to_repair.name))
+        node_to_repair.stop(wait_other_notice=True)
 
         cnt = 500000
         size = 2 * KBYTE
@@ -69,10 +71,10 @@ class ReadAmplificationTest(Tester):
         scylla_tools.insert_c1c2(session, keys=range(1,cnt+1), consistency=ConsistencyLevel.QUORUM, c1_values=cs,
                               c2_values=cs)
 
-        debug("Start node2")
-        nodes[1].start(wait_other_notice=True,wait_for_binary_proto=True)
+        debug("Start {}".format(node_to_repair.name))
+        node_to_repair.start(wait_other_notice=True,wait_for_binary_proto=True)
 
-        debug("Start node2 repair")
+        debug("Start {} repair".format(node_to_repair.name))
         executor = ThreadPoolExecutor(max_workers=1)
 
         def repair():
@@ -85,12 +87,17 @@ class ReadAmplificationTest(Tester):
         amplification_rate = 3
         max_val = {}
         metric_names = ['scylla_streaming_total_incoming_bytes', 'scylla_streaming_total_outgoing_bytes']
+        started = time.time()
+        timeout = 600
         while not thr.done():
             bytes_total = self.get_metrics(metric_names, node_ips)
             for param in bytes_total:
                 self.assertLess(bytes_total[param], size * cnt * amplification_rate)
                 max_val[param] = bytes_total[param] if param not in max_val else max(max_val[param], bytes_total[param])
-            time.sleep(3)
+            if time.time() - started >= timeout:
+                node_to_repair.wait_until_stopped(wait_seconds=0, dump_core=True)
+                raise TimeoutError("{} repair timed out after {} seconds".format(node_to_repair.name, timeout))
+            time.sleep(10)
 
         thr.result()
 
