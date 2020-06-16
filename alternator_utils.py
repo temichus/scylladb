@@ -259,10 +259,12 @@ class TesterAlternator(Tester):
                         key: dict(Value=value, Action="PUT") for key, value in update_item.items()
                         if key != primary_key}))
 
-    def scan_table(self, table_name: str, node: ScyllaNode, threads_num: int = None, **kwargs) -> List[Dict[str, AttributeValueTypeDef]]:
+    def scan_table(self, table_name: str, node: ScyllaNode, threads_num: int = None,
+                   consistent_read: bool = True, **kwargs) -> List[Dict[str, AttributeValueTypeDef]]:
         scan_result, is_parallel_scan = [], threads_num and threads_num > 0
         dynamodb_api = self.get_dynamodb_api(node=node)
         table = dynamodb_api.resource.Table(name=table_name)
+        kwargs["ConsistentRead"] = consistent_read
 
         def _scan_table(part_scan_idx=None) -> List[Dict[str, AttributeValueTypeDef]]:
             parallel_params, result, still_running_while = {}, [], True
@@ -349,8 +351,8 @@ class TesterAlternator(Tester):
         node.repair()
 
     def compare_table_data(self, table_name: str, table_data: List[Dict[str, str]], node: ScyllaNode,
-                           ignore_order: bool = True) -> DeepDiff:
-        data = self.scan_table(table_name=table_name, node=node)
+                           ignore_order: bool = True, consistent_read: bool = True) -> DeepDiff:
+        data = self.scan_table(table_name=table_name, node=node, ConsistentRead=consistent_read)
         return DeepDiff(t1=table_data, t2=data, ignore_order=ignore_order, ignore_numeric_type_changes=True)
 
     def _run_stress(self, table_name: str, node: ScyllaNode, target, num_of_item: int = NUM_OF_ITEMS,
@@ -468,15 +470,18 @@ def generate_put_request_items(num_of_items: int = NUM_OF_ITEMS, add_gsi: bool =
     return put_request_items
 
 
-def full_query(table, **kwargs):
+def full_query(table, consistent_read=True, **kwargs):
     """
     A dynamodb table query that can also be extended with parameters like 'KeyConditions'
     :param table:  the dynamodb table object to run query on
+    :param consistent_read: Strongly consistent reads
     :param kwargs: for adding any other optional dynamodb params
     :return: A list of query result items.
     """
     response = table.query(**kwargs)
     items = response['Items']
+    kwargs["ConsistentRead"] = consistent_read
+
     while 'LastEvaluatedKey' in response:
         response = table.query(ExclusiveStartKey=response['LastEvaluatedKey'], **kwargs)
         items.extend(response['Items'])
