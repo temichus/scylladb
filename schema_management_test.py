@@ -1,5 +1,12 @@
 # coding: utf-8
+import string
+import time
+from concurrent import futures
 
+from cassandra.cluster import ThreadPoolExecutor
+from cassandra.concurrent import execute_concurrent_with_args
+
+from assertions import assert_all
 from dtest import Tester
 from unittest import skip
 from nose.plugins.attrib import attr
@@ -257,3 +264,138 @@ class SchemaManagementTest(Tester):
         rows = session.execute(SimpleStatement("SELECT * FROM cf", consistency_level = ConsistencyLevel.ALL))
         expected = [[2, '2']]
         assert rows_to_list(rows) == expected, "Expected %s, got %s" % (expected, rows_to_list(rows))
+
+class LargePartitionAlterSchema(Tester):
+    # Issue scylladb/scylla: #5135:
+    #
+    # Issue: Cache reads may miss some writes if schema alter followed by a read happened concurrently with preempted
+    # partition entry update
+    # Affects only tables with multi-row partitions, which are the only ones that can experience the update of partition
+    # entry being preempted.
+    #
+    # The scenario in which the problem could have happened has to involve:
+    # - a large partition with many rows, large enough for preemption (every 0.5ms) to happen during the scan of the partition.
+    # - appending writes to the partition (not overwrites)
+    # - scans of the partition
+    # - schema alter of that table. The issue is exposed only by adding or dropping a column, such that the added/dropped
+    #   column lands in the middle (in alphabetical order) of the old column set.
+    #
+    # Memtable flush has to happen after a schema alter concurrently with a read.
+    #
+    # The bug could result in cache corruption which manifests as some past writes being missing (not visible to reads).
+
+    PARTITIONS = 50
+    STRING_VALUE = string.ascii_lowercase
+
+    def prepare(self, nodes=1, rf=1):
+        if not self.cluster.nodelist():
+            self.cluster.populate(nodes=nodes)
+            self.cluster.start(wait_other_notice=True)
+
+        node1 = self.cluster.nodelist()[0]
+        session = self.patient_cql_connection(node=node1)
+        self.create_schema(session=session, rf=rf)
+
+        return session
+
+    def create_schema(self, session, rf):
+        debug("Creating schema")
+        self.create_ks(session=session, name="ks", rf=rf)
+
+        session.execute("""
+            CREATE TABLE lp_table (
+                pk int,
+                ck1 int,
+                val1 text,
+                val2 text,
+                PRIMARY KEY (pk, ck1)
+            );           
+        """)
+
+    def populate(self, session, data, ck_start, ck_end):
+        debug(f'Start populate DB: {self.PARTITIONS} partitions with {ck_end-ck_start} records in each partition')
+
+        ck_rows = [ck_start, ck_end]
+
+        stmt = session.prepare("INSERT INTO lp_table (pk, ck1, val1, val2) VALUES (?, ?, ?, ?)")
+
+        for pk in range(0, self.PARTITIONS):
+            for ck in range(ck_rows[0], ck_rows[1]):
+                data.append([pk, ck, self.STRING_VALUE, self.STRING_VALUE])
+
+        execute_concurrent_with_args(session=session, statement=stmt, parameters=data)
+        debug(f'Finish populate DB: {self.PARTITIONS} partitions with {ck_end-ck_start} records in each partition')
+        return data
+
+    def read(self, session, ck_max):
+        debug(f'Start reading..')
+
+        for _ in range(2):
+            for pk in range(0, self.PARTITIONS):
+                for ck in range(0, ck_max):
+                    session.execute(f"select * from lp_table where pk = {pk} and ck1 = {ck}")
+
+        debug(f'Finish reading..')
+
+    def add_column(self, session, column_name, column_type):
+        debug(f"Add {column_name} column")
+        session.execute(f"ALTER TABLE lp_table ADD {column_name} {column_type}")
+
+    def drop_column(self, session, column_name):
+        debug(f"Drop {column_name} column")
+        session.execute(f"ALTER TABLE lp_table DROP {column_name}")
+
+    def large_partition_with_add_column_test(self):
+        session = self.prepare(nodes=1)
+        data = self.populate(session=session, data=[], ck_start=0, ck_end=10)
+
+        threads = []
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            # Insert new rows in background
+            threads.append(executor.submit(fn=self.populate, session=session, data=data, ck_start=10, ck_end=1500))
+            threads.append(executor.submit(fn=self.read, session=session, ck_max=1500))
+            # Wait for running load
+            time.sleep(10)
+            self.add_column(session, 'new_clmn', 'int')
+
+            # Memtable flush has to happen after a schema alter concurrently with a read
+            debug('Flush data')
+            self.cluster.nodelist()[0].flush()
+
+            for future in futures.as_completed(threads, timeout=300):
+                try:
+                    _ = future.result()
+                except Exception as exc:
+                    self.assertFalse(False, f'Generated an exception: {exc}')
+
+        for i, _ in enumerate(data):
+            data[i].append(None)
+
+        assert_all(session, f'select pk, ck1, val1, val2, new_clmn from lp_table', data, ignore_order=True,
+                   print_result_on_failure=False)
+
+    def large_partition_with_drop_column_test(self):
+        session = self.prepare(nodes=1)
+        data = self.populate(session=session, data=[], ck_start=0, ck_end=10)
+
+        threads = []
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            # Insert new rows in background
+            threads.append(executor.submit(fn=self.populate, session=session, data=data, ck_start=10, ck_end=1500))
+            threads.append(executor.submit(fn=self.read, session=session, ck_max=1500))
+            # Wait for running load
+            time.sleep(10)
+            self.drop_column(session=session, column_name='val1')
+
+            # Memtable flush has to happen after a schema alter concurrently with a read
+            debug('Flush data')
+            self.cluster.nodelist()[0].flush()
+
+            result = []
+            for future in futures.as_completed(threads, timeout=300):
+                try:
+                    result.append(future.result())
+                except Exception as exc:
+                    # "Unknown identifier val1" is expected error
+                    if not len(exc.args) or "Unknown identifier val1" not in exc.args[0]:
+                        self.assertFalse(False, f'Generated an exception: {exc}')
