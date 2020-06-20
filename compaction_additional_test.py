@@ -223,6 +223,7 @@ class CompactionAdditionalTest(Tester):
     def major_compaction_with_several_timewindows_test(self):
         """
             Test major compaction will not bundle sstables from different time windows
+            Test each time window (after major compaction) has only one table
         """
         debug("Starting a cluster of one node...")
         cluster = self.cluster
@@ -230,48 +231,61 @@ class CompactionAdditionalTest(Tester):
         [node1] = cluster.nodelist()
         node1.start(wait_for_binary_proto=True)
         session = self.patient_cql_connection(node1)
+
         debug("Creating keyspace 'ks'...")
+        min_threshold = 7
         self.create_ks(session, 'ks', 1)
         self.create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'},
                        compaction={'compaction_window_size': '1', 'compaction_window_unit': 'MINUTES',
                                    'class': 'TimeWindowCompactionStrategy',
-                                   'expired_sstable_check_frequency_seconds': '60'})
+                                   'expired_sstable_check_frequency_seconds': '60',
+                                   'min_threshold': min_threshold})
 
         # Wait for new minute to start before inserting data - keep the test consistent
         self.wait_for_new_minute()
         # Write data in different time windows.
-        number_of_time_windows = 3
+        number_of_time_windows = 5
+        num_of_files = 4
         for window in range(0, number_of_time_windows):
             # Assuming writing the files take LESS than a MINUTE
-            self.write_n_data_files(node=node1, session=session, key_space="ks", num_of_files=6,
+            self.write_n_data_files(node=node1, session=session, key_space="ks", num_of_files=num_of_files,
                                     num_of_keys=1000)
             self.wait_for_new_minute()
 
-        # One insert to trigger sstable expiration
-        mark = node1.mark_log()
-        insert_c1c2(session, n=10, consistency=ConsistencyLevel.ONE)
-        node1.flush()
-        # Non mandatory Sleep, just to let any unfinished compaction to finish.
-        time.sleep(5)
-        node1.watch_log_for("compaction - Compacted [0-9]+ sstables to",
-                            timeout=100, from_mark=mark)
+        # save sstable data (before major compaction
         ks_dir = os.path.join(self.test_path, 'test', 'node1', 'data', 'ks')
         cf_dir = get_cf_dir(ks_dir, 'cf')
         sstables_files_before_major_compaction = get_sstables_files(cf_dir, f_type='Data')
+        time_window_dict_before_major_compaction = self._get_sstables_per_timewindow_dict(cf_dir)
 
         # Run major compaction
-        mark2 = node1.mark_log()
-        cluster.compact()
+        mark = node1.mark_log()
+        self.cluster.compact()
         node1.watch_log_for("compaction - Compacted [0-9]+ sstables to",
-                            timeout=100, from_mark=mark2)
+                            timeout=100, from_mark=mark)
         sstables_files_after_major_compaction = get_sstables_files(cf_dir, f_type='Data')
+        time_window_dict_after_major_compaction = self._get_sstables_per_timewindow_dict(cf_dir)
 
-        # Assertions
-        for sstable_files in [sstables_files_before_major_compaction, sstables_files_after_major_compaction]:
-            # number of sstables greater than number_of_time_windows -1
-            self.assertGreater(len(sstable_files),  number_of_time_windows - 1,
-                               "number of sstables {0} should be greater than number_of_time_windows-1 {{1}}"
-                               .format(sstable_files, number_of_time_windows - 1))
+        # major compaction didn't bundle all sstables together
+        # number off sstables after the major compaction equals number of time windows before major compaction
+        self.assertEqual(len(time_window_dict_before_major_compaction.keys()),
+                         len(sstables_files_after_major_compaction))
+        # each time window (after major compaction) has only one table
+        for sstables in time_window_dict_after_major_compaction.values():
+            self.assertEqual(len(sstables), 1)
+
+    def _get_sstables_per_timewindow_dict(self, cf_dir):
+        # get sstables for each time window dictionary
+        time_window_dict = {}
+        statistics_files = get_sstables_files(cf_dir, f_type='Statistics')
+        ts = TestTimeWindowDataSegregation()
+        for sf in statistics_files:
+            time_window = ts._get_time_window_in_seconds(os.path.join(cf_dir, sf))
+            if time_window not in time_window_dict:
+                time_window_dict[time_window] = [sf]
+            else:
+                time_window_dict[time_window].append(sf)
+        return time_window_dict
 
     def compaction_removes_ttld_data_by_time_windows_test(self):
         """
