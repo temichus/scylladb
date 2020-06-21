@@ -295,7 +295,7 @@ class CompactionAdditionalTest(Tester):
         # CHECK log: should have something like:
         # "Compacted 2 sstables to []. 36623 bytes to 0 (~0% of original) in 2ms = 0.00MB/s.
         #  ~512 total partitions merged to 0."
-        found = node1.watch_log_for("Compacted [0-9]+ sstables to \[\]. [0-9]+ bytes to 0 \(\~0\% of original\) ",
+        found = node1.watch_log_for("Compacted [0-9]+ sstables to \[\]. [0-9]+.* to 0 \(\~0\% of original\) ",
                                     timeout=5, from_mark=mark)
         debug(found)
         # Save the names of the current sstable files
