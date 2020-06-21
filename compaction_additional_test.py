@@ -96,7 +96,7 @@ class CompactionAdditionalTest(Tester):
 
         # reboot and verify that data  is not resurected
         debug("Stopping node1")
-        node1.stop()
+        node1.stop(gently=False)
 
         # verify that only some deletion markers will be kept since we reshard the files
         # and gc_period passed so some tombstones have been removed by compaction
