@@ -397,6 +397,8 @@ class TestPaxos(Tester):
         Refs: #6502
         '''
 
+        self.cluster.set_log_level('TRACE')
+
         session = self.prepare(nodes=1, rf=1)
 
         node1 = self.cluster.nodelist()[0]
