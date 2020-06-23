@@ -15,9 +15,11 @@ Script to run dtest from within docker
         SCYLLA_DBUILD_SO_DIR
             directory of dynamic .so files to be collected. defaults to '\$CASSANDRA_DIR/dynamic_libs'
         TOOLS_JAVA_DIR
-            directory of scylla java tools, should be already compiled. defaults to '../scylla-tools-java'
+            directory of scylla java tools, should be already compiled. defaults to '\$SCYLLA_ROOT_DIR/tools/java',
+            if it exists, or to '../scylla-tools-java', otherwise.
         JMX_DIR
-            directory of scylla jmx, should be already compiled. defaults to '../scylla-jmx'
+            directory of scylla jmx, should be already compiled. defaults to '\$SCYLLA_ROOT_DIR/tools/jmx',
+            if it exists, or to '../scylla-jmx', otherwise.
 
     Running from scylla relocatable packages:
 
@@ -84,8 +86,16 @@ if [[ ${CASSANDRA_DIR} == */build/* ]]; then
 fi
 
 SCYLLA_PRODUCT=$(basename ${SCYLLA_ROOT_DIR})
-export TOOLS_JAVA_DIR=${TOOLS_JAVA_DIR:-`pwd`/../${SCYLLA_PRODUCT}-tools-java}
-export JMX_DIR=${JMX_DIR:-`pwd`/../${SCYLLA_PRODUCT}-jmx}
+export TOOLS_JAVA_DIR=$(
+    { [ -n "${TOOLS_JAVA_DIR}" ] && echo "${TOOLS_JAVA_DIR}"; } ||
+    { [ -d "${SCYLLA_ROOT_DIR}/tools/java" ] && echo "${SCYLLA_ROOT_DIR}/tools/java"; } ||
+    { echo "$(pwd)/../${SCYLLA_PRODUCT}-tools-java"; }
+)
+export JMX_DIR=$(
+    { [ -n "${JMX_DIR}" ] && echo "${JMX_DIR}"; } ||
+    { [ -d "${SCYLLA_ROOT_DIR}/tools/jmx" ] && echo "${SCYLLA_ROOT_DIR}/tools/jmx"; } ||
+    { echo "${SCYLLA_ROOT_DIR}/${SCYLLA_PRODUCT}-jmx"; }
+)
 export DTEST_DIR=${DTEST_DIR:-`pwd`}
 export CCM_DIR=${CCM_DIR:-$(echo ${DTEST_DIR} | sed 's/-dtest$/-ccm/')}
 export SCYLLA_DBUILD_SO_DIR=$( realpath ${SCYLLA_DBUILD_SO_DIR:-${CASSANDRA_DIR}/dynamic_libs} )
