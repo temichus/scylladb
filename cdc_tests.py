@@ -38,6 +38,21 @@ class CdcLogOperations(IntEnum):
 
 class CDCInitializeHelper:
 
+    def populate_sequentially(self, n):
+        cluster = self.cluster
+        debug('Starting node 1')
+        # We need to use populate() for the first node, because it writes
+        # a configuration file that specifies the first node as a seed.
+        # Unless we do that, the first node will try to communicate
+        # with 127.0.0.1 - which is configured to be the default seed - and
+        # might fail, because in some environments the first node might listen
+        # for gossip on a different address.
+        cluster.populate(1).start(wait_for_binary_proto=True)
+        for i in range(2, n + 1):
+            debug('Starting node {}'.format(i))
+            node = new_node(self.cluster, bootstrap=True)
+            node.start(wait_for_binary_proto=True)
+
     def wait_for_last_generation_to_be_active(self, session):
         cdc_descriptions = list(self.get_cdc_description_rows(session))
         self.assertGreater(len(cdc_descriptions), 0, "No CDC generations")
@@ -280,21 +295,6 @@ class TestCdc(Tester, CDCInitializeHelper):
 
     def remove_field_with_cdc_and_preimage_test(self):
         self.schema_change_template("ALTER TABLE ks.cf DROP c", additional_fields=["c int"], with_preimage=True)
-
-    def populate_sequentially(self, n):
-        cluster = self.cluster
-        debug('Starting node 1')
-        # We need to use populate() for the first node, because it writes
-        # a configuration file that specifies the first node as a seed.
-        # Unless we do that, the first node will try to communicate
-        # with 127.0.0.1 - which is configured to be the default seed - and
-        # might fail, because in some environments the first node might listen
-        # for gossip on a different address.
-        cluster.populate(1).start(wait_for_binary_proto=True)
-        for i in range(2, n + 1):
-            debug('Starting node {}'.format(i))
-            node = new_node(self.cluster, bootstrap=True)
-            node.start(wait_for_binary_proto=True)
 
     def run_writes_with_counting(self, node, with_preimage=False, additional_fields=[]):
         cdc_options = "'enabled': true"
