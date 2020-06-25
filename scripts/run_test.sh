@@ -221,7 +221,7 @@ kill_it() {
 
 trap kill_it SIGTERM SIGINT SIGHUP EXIT
 
-docker logs "$container" -f
+docker logs -f "$container"
 
 if [[ -n "$container" ]]; then
     exitcode="$(docker wait "$container")"
