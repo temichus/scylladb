@@ -180,8 +180,8 @@ See more information about dtest here: [Scylla-DTEST](https://github.com/scyllad
 ### Changing the Cluster ID Allocator
 
 The Cluster ID allocator controls the base ip address allocated to each test's cluster.
-Hisrotically, clusters used the localhost subnet such that node1 will use `127.0.0.1`,
-and any node<i> will use `127.0.0.<i>`.
+Historically, clusters used the localhost subnet such that node1 will use `127.0.0.1`,
+and any node \<i> will use `127.0.0.<i>`.
 
 This method may be suitable with no parallelism (and has other drawbacks as well)
 and it naturally can't be used when a number of clusters are started in parallel.
