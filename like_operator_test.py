@@ -1292,6 +1292,9 @@ class TestLikeOperatorForBaseTable(Tester, BaseOperationsHelper):
                     query="SELECT * FROM test WHERE ck LIKE '3teststring_' ALLOW FILTERING")
         assert_none(session,
                     query="SELECT * FROM test WHERE ck LIKE 'test_string3' ALLOW FILTERING")
+        assert_none(session,
+                    query="SELECT * FROM test WHERE ck LIKE '_' and ck = '1teststring' ALLOW FILTERING")
+
 
     def test_cl_filtering_of_ascii_type_with_underscore_sign(self):
         """Test filtering with LIKE operator by column
@@ -1364,12 +1367,6 @@ class TestLikeOperatorForBaseTable(Tester, BaseOperationsHelper):
 
         assert_invalid(session,
                        query="SELECT * FROM test WHERE pk LIKE 'teststring%'")
-
-        assert_invalid(session,
-                       query="SELECT * FROM test WHERE pk LIKE '%%' and pk in ('teststring1', 'teststring2') ALLOW FILTERING")
-
-        assert_invalid(session,
-                       query="SELECT * FROM test WHERE ck LIKE '_' and ck = '1teststring' ALLOW FILTERING")
 
         assert_invalid(session,
                        query="SELECT * FROM test WHERE ck LIKE uuid() ALLOW FILTERING")
@@ -2011,6 +2008,16 @@ class TestLikeOperatorForBaseTable(Tester, BaseOperationsHelper):
                    ignore_order=True)
         assert_none(session,
                     query="SELECT * FROM test WHERE pk LIKE '%4' AND ck LIKE '_teststring' AND test LIKE '%Test%String%' ALLOW FILTERING")
+        assert_all(session,
+                   query="SELECT * FROM test WHERE pk LIKE '%%' and pk in ('teststring1', 'teststring2') ALLOW FILTERING",
+                   expected=[
+                       ['teststring1', '0teststring', 'test0string'],
+                       ['teststring1', '1teststring', 'test1string'],
+                       ['teststring2', '0teststring', 'test0string'],
+                       ['teststring2', '1teststring', 'test1string'],
+                   ],
+                   ignore_order=True)
+
 
     def test_filtering_after_update_values(self):
         session = self.prepare_simple_table_with_column_type()
