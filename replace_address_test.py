@@ -44,6 +44,15 @@ class TestReplaceAddress(Tester):
         """
         self._replace_node_test(gently=False)
 
+    def get_sorted_tokens(self, node):
+        # sorted([line.split()[-1] for line in node3.nodetool('ring')[0].splitlines()
+        #         if node3.address() in line])
+
+        ring_lines = [line for line in node.nodetool('ring')[0].splitlines() if node.address() in line]
+        tokens_list = [token.split()[-1] for token in ring_lines]
+        return sorted(tokens_list)
+
+
     def replace_shutdown_node_test(self):
         """
         @jira_ticket CASSANDRA-9871
@@ -62,13 +71,9 @@ class TestReplaceAddress(Tester):
         cluster.populate(3).start()
         node1, node2, node3 = cluster.nodelist()
 
-        if DISABLE_VNODES:
-            numNodes = 1
-        else:
-            # a little hacky but grep_log returns the whole line...
-            numNodes = int(node3.get_conf_option('num_tokens'))
+        tokens = self.get_sorted_tokens(node3)
 
-        debug(numNodes)
+        debug(len(tokens))
 
         debug("Inserting Data...")
         node1.stress(['write', 'n=10000', '-schema', 'replication(factor=3)'])
@@ -102,10 +107,10 @@ class TestReplaceAddress(Tester):
         finalData = list(session.execute(query))
         self.assertCountEqual(initialData, finalData)
 
-        debug("Verifying tokens migrated sucessfully")
-        movedTokensList = node4.grep_log("Token .* changing ownership from .*"+self.cluster.get_node_ip(3)+" to .*"+self.cluster.get_node_ip(4))
-        debug(movedTokensList[0])
-        self.assertEqual(len(movedTokensList), numNodes)
+        debug("Verifying tokens migrated successfully")
+        moved_tokens_list = self.get_sorted_tokens(node4)
+        debug(len(moved_tokens_list))
+        self.assertEqual(moved_tokens_list, tokens)
 
         # check that restarting node 3 doesn't work
         # FIXME: https://github.com/scylladb/scylla/issues/5523 is fixed
@@ -146,7 +151,7 @@ class TestReplaceAddress(Tester):
         debug("Flush cluster")
         self.cluster.flush()
 
-        num_tokens = int(node3.get_conf_option('num_tokens'))
+        tokens = self.get_sorted_tokens(node3)
 
         assert_row_count(session, table_name, 150000)
 
@@ -176,11 +181,9 @@ class TestReplaceAddress(Tester):
         debug("Waiting for node4 is up")
         node4.watch_log_for("initialization completed", from_mark=mark_log)
 
-        debug("Verifying tokens migrated sucessfully")
-        movedTokensList = node4.grep_log(
-            "Token .* changing ownership from .*" + self.cluster.get_node_ip(3) + " to .*" + self.cluster.get_node_ip(
-                4))
-        self.assertGreaterEqual(len(movedTokensList), num_tokens)
+        debug("Verifying tokens migrated successfully")
+        moved_tokens_list = self.get_sorted_tokens(node4)
+        self.assertGreaterEqual(moved_tokens_list, tokens)
 
         # stop all nodes except new one
         debug("Stopping nodes 1 and 2")
@@ -265,13 +268,9 @@ class TestReplaceAddress(Tester):
         cluster.populate(3).start()
         node1, node2, node3 = cluster.nodelist()
 
-        if DISABLE_VNODES:
-            numNodes = 1
-        else:
-            # a little hacky but grep_log returns the whole line...
-            numNodes = int(node3.get_conf_option('num_tokens'))
+        tokens = self.get_sorted_tokens(node3)
 
-        debug(numNodes)
+        debug(len(tokens))
 
         debug("Inserting Data...")
         node1.stress(['write', 'n=10000', '-schema', 'replication(factor=3)'])
@@ -302,10 +301,10 @@ class TestReplaceAddress(Tester):
         finalData = list(session.execute(query))
         self.assertCountEqual(initialData, finalData)
 
-        debug("Verifying tokens migrated sucessfully")
-        movedTokensList = node4.grep_log("Token .* changing ownership from .*"+self.cluster.get_node_ip(3)+" to .*"+self.cluster.get_node_ip(4))
-        debug(movedTokensList[0])
-        self.assertEqual(len(movedTokensList), numNodes)
+        debug("Verifying tokens migrated successfully")
+        moved_tokens_list = self.get_sorted_tokens(node4)
+        debug(len(moved_tokens_list))
+        self.assertEqual(moved_tokens_list, tokens)
 
         checkCollision = node1.grep_log("between .*"+self.cluster.get_node_ip(3)+" and .*"+self.cluster.get_node_ip(4)+"; .*"+self.cluster.get_node_ip(4)+" is the new owner")
         debug(checkCollision)
@@ -318,7 +317,7 @@ class TestReplaceAddress(Tester):
         # debug("Try to restart node 3 (should fail)")
         # node3.start(no_wait=True)
 
-        # restart node4 (if error's might have to change num_tokens)
+        # restart node4 (if error's might have to change tokens)
         node4.stop(gently=False)
         node4.start(wait_for_binary_proto=True, wait_other_notice=False)
 
@@ -326,11 +325,12 @@ class TestReplaceAddress(Tester):
         finalData = list(session.execute(query))
         self.assertCountEqual(initialData, finalData)
 
-        # we redo this check because restarting node should not result in tokens being moved again, ie number should be same
-        debug("Verifying tokens migrated sucessfully")
-        movedTokensList = node4.grep_log("Token .* changing ownership from .*"+self.cluster.get_node_ip(3)+" to .*"+self.cluster.get_node_ip(4))
-        debug(movedTokensList[0])
-        self.assertEqual(len(movedTokensList), numNodes)
+        # we redo this check because restarting node should not result in tokens being moved again.
+        # ie tokens should be same
+        debug("Verifying tokens migrated successfully")
+        moved_tokens_list = self.get_sorted_tokens(node4)
+        debug(len(moved_tokens_list))
+        self.assertEqual(moved_tokens_list, tokens)
 
     @since('2.2')
     @skip('test hangs: see CASSANDRA-9831')
@@ -449,12 +449,8 @@ class TestReplaceAddress(Tester):
         node2_address = cluster.get_node_ip(2)
         debug(f"Node 2 address is {node2_address}")
 
-        if DISABLE_VNODES:
-            num_tokens = 1
-        else:
-            # A little hacky but grep_log returns the whole line.
-            num_tokens = int(node2.get_conf_option("num_tokens"))
-        debug(f"Detected number of tokens: {num_tokens}")
+        tokens = self.get_sorted_tokens(node2)
+        debug(f"Detected number of tokens: {len(tokens)}")
 
         debug("Inserting Data...")
         node1.stress(["write", "n=10000", "-schema", "replication(factor=2)"])
@@ -497,10 +493,10 @@ class TestReplaceAddress(Tester):
         final_data = list(session.execute(query))
         self.assertCountEqual(initial_data, final_data)
 
-        debug("Verifying tokens migrated sucessfully.")
-        moved_tokens_list = node4.grep_log(f"Token .* changing ownership from .*{node2_address} to .*{node4_address}")
-        debug(moved_tokens_list[0])
-        self.assertEqual(len(moved_tokens_list), num_tokens)
+        debug("Verifying tokens migrated successfully.")
+        moved_tokens_list = self.get_sorted_tokens(node4)
+        debug(len(moved_tokens_list))
+        self.assertEqual(moved_tokens_list, tokens)
 
         debug("Verifying logs for connection refuse messages.")
         connection_refuse_message = f"rpc - client {node3_address}:7000: fail to connect: Connection refused"
