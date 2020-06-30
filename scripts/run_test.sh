@@ -166,6 +166,11 @@ else
 WORKSPACE_MNT=""
 fi
 
+group_args=()
+for gid in $(id -G); do
+    group_args+=(--group-add "$gid")
+done
+
 docker_cmd="docker run --detach=true \
     ${WORKSPACE_MNT} \
     ${DOCKER_COMMAND_PARAMS} \
@@ -195,9 +200,12 @@ docker_cmd="docker run --detach=true \
     -e AWS_SECRET_ACCESS_KEY \
     -e PYTHONUNBUFFERED=1 \
     -w ${DTEST_DIR} \
+    -v /var/run/docker.sock:/var/run/docker.sock \
+    -v /sys/fs/cgroup:/sys/fs/cgroup:ro \
     -v /etc/passwd:/etc/passwd:ro \
     -v /etc/group:/etc/group:ro \
     -u $(id -u ${USER}):$(id -g ${USER}) \
+    ${group_args[@]} \
     --tmpfs ${HOME}/.cache \
     -v ${HOME}/.local:${HOME}/.local \
     -v ${HOME}/.dtest:${HOME}/.dtest \

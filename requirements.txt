@@ -15,3 +15,5 @@ boto3==1.10.46
 boto3-stubs[s3,dynamodb]==1.10.46
 tabulate==0.8.7
 deepdiff==4.3.2
+ldap3==2.7
+docker==4.2.1
