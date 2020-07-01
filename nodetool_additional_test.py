@@ -1634,6 +1634,10 @@ class TestNodetool(Tester):
             "Connection refused: {}".format(addr_msg),
             "Caused by: java.net.ConnectException: Connection refused",
             "Cassandra timeout during SIMPLE write query",
+            "Unexpected error while executing task",
+            "java.lang.NullPointerException: null",
+            "Error creating pool to {}".format(addr_msg),
+            "\[{}\] Cannot connect".format(addr_msg),
         ]
 
     def drain(self, node_to_drain):
