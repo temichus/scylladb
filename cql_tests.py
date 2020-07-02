@@ -5,6 +5,7 @@ import struct
 import time
 from datetime import datetime, timedelta
 from unittest import skip
+from random import randint
 
 from cassandra import ConsistencyLevel, InvalidRequest
 from cassandra.policies import FallthroughRetryPolicy
@@ -658,6 +659,96 @@ class TruncateTester(CQLTester):
             self.insert_data(conn=conn, data=data)
             conn.execute("TRUNCATE ks.test1")
             assert_all(session=conn, query=select_query, expected=[], cl=ConsistencyLevel.ALL)
+
+    def cql_query_filtering_without_indexes_test(self):
+        """
+        https://github.com/scylladb/scylla/issues/2025
+        Testing cql query filtering without the use of indexes
+        use cases:
+        # general use-case
+        # CQL statement with relational operations( =, !=, >, < ).
+        # CQL statement with IN
+        # CQL statement with Limit
+        """
+        loop_size = 500
+        cluster = self.cluster
+        cluster.populate(2).start(wait_other_notice=True, wait_for_binary_proto=True)
+        node1 = cluster.nodelist()[0]
+
+        session = self.patient_exclusive_cql_connection(node1)
+        self.create_ks(session, 'ks', 1)
+        session.execute("""
+                    CREATE TABLE t1 (
+                        p int,
+                        c int,
+                        v int,
+                        PRIMARY KEY (p, c)
+                    );
+                """)
+
+        for i in range(loop_size):
+            session.execute("INSERT INTO t1 (p, c, v) VALUES ({},{},{}) ".format(i, i, i+1))
+
+        rand_num = randint(0, loop_size-1)
+        q1_ls = ["select * from ks.t1 where c = {} and v = {} allow filtering;".format(rand_num, rand_num + 1),
+                "select * from ks.t1 where p = {} and v = {} allow filtering;".format(rand_num, rand_num + 1),
+                   "select * from ks.t1 where p = {0} and c = {0} and v = {1} allow filtering;"
+                                   .format(rand_num, rand_num + 1)]
+
+        for query in q1_ls:
+            result = rows_to_list(session.execute(query))
+            debug(f"Query: {query} Result: {result}")
+            assert result == [[rand_num, rand_num, rand_num+1]], f"Query {query}: failed on assertion," \
+                                                                               f" Result: {result}"
+
+        session.execute("""
+                    CREATE TABLE t2 (
+                        item_id int,
+                        item_name text,
+                        insert_time time,
+                        PRIMARY KEY (item_id,item_name)
+                    );
+                """)
+
+        count_above_selected_time = 0
+        selected_time_str = "{}:{}:{}".format(randint(0, 23),randint(0, 59), randint(0, 59))
+        selected_time = time.strptime(selected_time_str, "%H:%M:%S")
+
+        selected_items_q3 = None
+        for i in range(loop_size):
+            rand_time_str = "{}:{}:{}".format(randint(0, 23),randint(0, 59), randint(0, 59))
+            rand_time = time.strptime(rand_time_str, "%H:%M:%S")
+            count_above_selected_time += 1 if rand_time > selected_time else 0
+            item_name = "name_" + str(i)
+            if randint(1,10) == 1:
+                selected_items_q3 = "'{}'".format(item_name) if selected_items_q3 is None else selected_items_q3 + ", "\
+                                    + "'{}'".format(item_name)
+            session.execute("INSERT INTO t2 (item_id, item_name, insert_time) VALUES ({},'{}','{}')"
+                            .format(i, item_name, rand_time_str))
+
+        # CQL statement with relational operations( =, !=, >, < ).
+        q2 = "Select item_id from t2 where insert_time > '{}' allow filtering;"\
+            .format(selected_time_str)
+        q2_result = rows_to_list(session.execute(q2))
+        debug(f"Query: {q2}, Len_Result: {len(q2_result)}, Result: {q2_result}")
+        assert len(q2_result) == count_above_selected_time, f"The returned list count doesnt match the calculated count"
+
+        # CQL statement with IN
+        q3 = "Select * from t2 where item_name IN ({})  allow filtering;".format(selected_items_q3)
+        q3_result = rows_to_list(session.execute(q3))
+        debug(f"Query: {q3}, Len_Result: {len(q3_result)}, Result: {q3_result}")
+        assert len(q3_result) == len(selected_items_q3.split(",")), f"The returned list count does not match " \
+                                                                 f"the calculated count"
+
+        # CQL statement with Limit
+        rand_limit = randint(1,count_above_selected_time)
+        q4 = "Select item_id from t2 where insert_time >'{}' limit {} allow filtering;"\
+            .format(selected_time_str,rand_limit)
+        q4_result = rows_to_list(session.execute(q4))
+        debug(f"Query: {q4}, Len_Result: {len(q4_result)} Result: {q4_result}")
+        assert len(q4_result) == min(count_above_selected_time,rand_limit), f"The returned rows count doesnt match " \
+                                                                    f"min(count_above_selected_time,rand_limit)" \
+                                                                    f" [{min(count_above_selected_time,rand_limit)}]"
 
 
 @since('3.0')
