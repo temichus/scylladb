@@ -174,11 +174,12 @@ class TestNodetool(Tester):
     def nodetool_status(self, node, keyspace=""):
         res = {}
         out = node.nodetool("status " + keyspace, True)[0]
+        debug(out)
         m = re.findall('Datacenter: ([^\s]+)', out, re.MULTILINE)
         if m:
             res['Datacenter'] = m[0]
         m = re.findall('^([UDNLJM]+)\s+([\d\.]+)\s+([^\s]+\s+[^\s]+)\s+([^\s]+)\s+([^\s]+)(?:\s[^\s]{2})?\s+([^\s]+)\s+([^\s]+)\s*$', out, re.MULTILINE)
-        res["nodes"] = [self._list2status(s) for s in m]
+        res["nodes"] = sorted([self._list2status(s) for s in m], key=lambda s: s["address"])
         return res
 
     def nodetool_info(self, node):
