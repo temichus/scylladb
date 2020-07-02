@@ -1927,7 +1927,13 @@ class TestNodetool(Tester):
         debug('Get node 3 status')
         test_node_tool = TestNodetool()
         status = test_node_tool.nodetool_status(node2)
-        node_3_status = status["nodes"][2]['status']
+        node_3_status = None
+        for s in status["nodes"]:
+            if s['address'] == node3.address():
+                node_3_status = s['status']
+                break
+
+        assert node_3_status is not None, "{} not found in {}".format(node3.address(), status["nodes"])
 
         if not stress_thread.done():
             debug('Cancel stress write')
