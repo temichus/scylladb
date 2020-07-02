@@ -346,7 +346,7 @@ class MaterializedView():
             if self.loop_delay:
                 sleep(self.loop_delay)
 
-        session.execute("""DROP MATERIALIZED VIEW table1_top_v_view""")
+        # NOTE: don't drop materialized view to avoid concurrency issues
 
         if end_event:
             end_event.set()
@@ -380,12 +380,6 @@ class LWTSchemaModificationTester(Tester):
         insert_stmt = session.prepare(insert_cql)
         for i in range(nrows):
             session.execute(insert_stmt, (i, i, i))
-
-    def _case_epilogue(self):
-        """Clean up for next round"""
-        session = self.patient_cql_connection(self.cluster.nodelist()[0], request_timeout=1000)
-        session.execute("USE " + KEYSPACE)
-        session.execute("DROP TABLE table1")
 
     def _action_thread(self, action, stop, start_event, end_event):
 
@@ -440,7 +434,6 @@ class LWTSchemaModificationTester(Tester):
             # Assert that all nodes in the cluster are alive
             for node in cluster.nodelist():
                 assert node.is_live()
-            self._case_epilogue()
 
         cluster.stop()
 
