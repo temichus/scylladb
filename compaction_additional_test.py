@@ -18,6 +18,7 @@ from nose.plugins.attrib import attr
 import sstable_tools.statistics
 
 from ccmlib.node import NodetoolError
+from random import randint
 
 
 @attr('dtest-full', 'single_node')
@@ -241,29 +242,65 @@ class CompactionAdditionalTest(Tester):
                                    'expired_sstable_check_frequency_seconds': '60',
                                    'min_threshold': min_threshold})
 
-        # Wait for new minute to start before inserting data - keep the test consistent
-        self.wait_for_new_minute()
-        # Write data in different time windows.
-        number_of_time_windows = 5
-        num_of_files = 4
-        for window in range(0, number_of_time_windows):
-            # Assuming writing the files take LESS than a MINUTE
-            self.write_n_data_files(node=node1, session=session, key_space="ks", num_of_files=num_of_files,
-                                    num_of_keys=1000)
-            self.wait_for_new_minute()
+        # Write data in different time windows
+        num_of_keys = 1000 * random.randint(1, 10)
+        first_key = 0
+        start = time.time()
+        duration = random.randint(1, 120)
+        debug("Will load data for {} seconds...".format(duration))
+        while time.time() - start < duration:
+            debug("Inserting keys {}..{}".format(first_key, first_key + num_of_keys - 1))
+            insert_c1c2(session, keys=list(range(first_key, first_key + num_of_keys)), ks='ks')
+            node1.flush()
+            first_key += num_of_keys // 2
+
+        def _get_time_window(timestamp):
+            return int(timestamp / 60)
+
+        number_of_time_windows = _get_time_window(time.time() - start)
+
+        node1.stop();
+
+        def _get_sstables_per_timewindow_dict(cf_dir):
+            # get sstables for each time window dictionary
+            time_window_dict = {}
+            statistics_files = get_sstables_files(cf_dir, f_type='Statistics')
+            ts = TestTimeWindowDataSegregation()
+            for sf in statistics_files:
+                stats = ts._get_stats(os.path.join(cf_dir, sf))
+                min_time_window = _get_time_window(micros_to_seconds(stats['min_timestamp']))
+                max_time_window = _get_time_window(micros_to_seconds(stats['max_timestamp']))
+                debug("sf={} min_timestamp={} max_timestamp={} min_time_window={} max_time_window={}".format(sf,
+                      stats['min_timestamp'], stats['max_timestamp'], min_time_window, max_time_window))
+                for time_window in range(min_time_window, max_time_window + 1):
+                    if time_window not in time_window_dict:
+                        time_window_dict[time_window] = [sf]
+                    else:
+                        time_window_dict[time_window].append(sf)
+            return time_window_dict
 
         # save sstable data (before major compaction
         ks_dir = os.path.join(node1.get_path(), 'data', 'ks')
         cf_dir = get_cf_dir(ks_dir, 'cf')
-        time_window_dict_before_major_compaction = self._get_sstables_per_timewindow_dict(cf_dir)
+        time_window_dict_before_major_compaction = _get_sstables_per_timewindow_dict(cf_dir)
+        debug("time_window_dict_before_major_compaction={}".format(time_window_dict_before_major_compaction))
+
+        # another time window may sneak in if we cross the 1-minute window in one of the sstables
+        self.assertGreaterEqual(len(time_window_dict_before_major_compaction.keys()), number_of_time_windows)
+        self.assertLessEqual(len(time_window_dict_before_major_compaction.keys()), number_of_time_windows + 1)
 
         # Run major compaction
-        mark = node1.mark_log()
-        self.cluster.compact()
-        node1.watch_log_for("compaction - Compacted [0-9]+ sstables to",
-                            timeout=100, from_mark=mark)
+        node1.start();
+        node1.compact()
+        node1.wait_for_compactions()
+
         sstables_files_after_major_compaction = get_sstables_files(cf_dir, f_type='Data')
-        time_window_dict_after_major_compaction = self._get_sstables_per_timewindow_dict(cf_dir)
+        time_window_dict_after_major_compaction = _get_sstables_per_timewindow_dict(cf_dir)
+        debug("time_window_dict_after_major_compaction={}".format(time_window_dict_after_major_compaction))
+
+        # no new data and consequently, time windows, are expected
+        # verify that major compaction didn't mess any time windows
+        self.assertEqual(len(time_window_dict_before_major_compaction.keys()), len(time_window_dict_after_major_compaction.keys()))
 
         # major compaction didn't bundle all sstables together
         # number off sstables after the major compaction equals number of time windows before major compaction
@@ -272,19 +309,6 @@ class CompactionAdditionalTest(Tester):
         # each time window (after major compaction) has only one table
         for sstables in time_window_dict_after_major_compaction.values():
             self.assertEqual(len(sstables), 1)
-
-    def _get_sstables_per_timewindow_dict(self, cf_dir):
-        # get sstables for each time window dictionary
-        time_window_dict = {}
-        statistics_files = get_sstables_files(cf_dir, f_type='Statistics')
-        ts = TestTimeWindowDataSegregation()
-        for sf in statistics_files:
-            time_window = ts._get_time_window_in_seconds(os.path.join(cf_dir, sf))
-            if time_window not in time_window_dict:
-                time_window_dict[time_window] = [sf]
-            else:
-                time_window_dict[time_window].append(sf)
-        return time_window_dict
 
     def compaction_removes_ttld_data_by_time_windows_test(self):
         """
