@@ -48,7 +48,7 @@ class LwtTest(Tester):
         # there will be some bounce-to-shard messages.
         # XXX: when python driver supports shard-aware calls, this should be
         # 0.
-        assert after[name] - before[name] < 16, "{}:{}".format(before, after)
+        assert after[name] - before[name] <= 16, "{}:{}".format(before, after)
         before = after
         # Test direct execution as well as failing condition
         cql = "INSERT INTO t (a, b) VALUES ({}, {}) IF NOT EXISTS"
@@ -59,7 +59,7 @@ class LwtTest(Tester):
         # optimization switching to the right shard before starting
         # Paxos
         after = self.get_node_metrics(self.get_ip_from_node(node), metrics=[name])
-        assert after[name] - before[name] < 16, "{}:{}".format(before, after)
+        assert after[name] - before[name] <= 16, "{}:{}".format(before, after)
         cql = "DROP TABLE IF EXISTS t"
         session.execute(cql)
 
