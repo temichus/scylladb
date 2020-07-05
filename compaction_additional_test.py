@@ -253,7 +253,7 @@ class CompactionAdditionalTest(Tester):
             self.wait_for_new_minute()
 
         # save sstable data (before major compaction
-        ks_dir = os.path.join(self.test_path, 'test', 'node1', 'data', 'ks')
+        ks_dir = os.path.join(node1.get_path(), 'data', 'ks')
         cf_dir = get_cf_dir(ks_dir, 'cf')
         sstables_files_before_major_compaction = get_sstables_files(cf_dir, f_type='Data')
         time_window_dict_before_major_compaction = self._get_sstables_per_timewindow_dict(cf_dir)
