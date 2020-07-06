@@ -2,8 +2,10 @@
 
 from datetime import datetime
 import os
+import yaml
 from glob import glob
 import shutil
+from time import sleep
 
 from cassandra import ConsistencyLevel
 from nose.plugins.attrib import attr
@@ -11,10 +13,11 @@ from boto3 import client as boto_client
 from unittest import skip
 
 from tools import require
+from scrub_test import TestHelper
 from dtest_scylla_manager import ScyllaManagerTool, ScyllaManagerError
 from dtest_scylla_manager import TaskStatus
 from scylla_tools import insert_c1c2, insert_c1c2_with_clustering
-from dtest import Tester, debug, warning, wait_for
+from dtest import debug, warning, wait_for
 
 
 CLUSTER_NAME = 'cluster1'
@@ -24,7 +27,7 @@ C1_PREFIX = "value%d"
 C2_PREFIX = "other_value%d"
 
 
-class TestScyllaMgmtBackup(Tester):
+class TestScyllaMgmtBackup(TestHelper):
     __test__ = True
 
     @classmethod
@@ -542,13 +545,13 @@ class TestScyllaMgmtBackup(Tester):
                                      desirable_status=desirable_status, tolerate_missing=tolerate_missing)
         return is_status_reached
 
-    def _create_stress_compatible_table(self, node):
+    def _create_stress_compatible_table(self, node, compaction="{'class': 'SizeTieredCompactionStrategy'}"):
         session = self.patient_cql_connection(node)
         session.execute("""CREATE KEYSPACE "keyspace1" WITH replication = {
         'class': 'SimpleStrategy',
         'replication_factor': '1'};""")
         session.execute("""USE "keyspace1";""")
-        session.execute("""CREATE TABLE "standard1" (
+        session.execute(f"""CREATE TABLE "standard1" (
         key blob,
         "C0" blob,
         "C1" blob,
@@ -568,7 +571,7 @@ class TestScyllaMgmtBackup(Tester):
         default_time_to_live=0 AND
         speculative_retry='99.0PERCENTILE' AND
         memtable_flush_period_in_ms=0 AND
-        compaction={'class': 'SizeTieredCompactionStrategy'};""")
+        compaction={compaction};""")
 
     @skip("will return when minio bandwidth limiting is on")
     @attr('scylla-manager')
@@ -640,6 +643,43 @@ class TestScyllaMgmtBackup(Tester):
         node3.start(wait_other_notice=True, wait_for_binary_proto=True)
         self.clean_restore_and_verify_backup(backup_task, self.cluster.nodelist(), mgr_cluster, node1,
                                              keyspace_table_and_key_range)
+
+    @attr('scylla-manager')
+    def test_backup_files_command_with_many_sstable_files(self):
+        """
+            Added a test that creates a large amount of sstable files by continuously executing
+            Nodetool flush during c-s, and afterwards creates a backup task and restore the keyspace
+            using the backup
+        """
+        self.cluster.set_configuration_options(values={"compaction_enforce_min_threshold": True})
+        node1, node2 = self.config_and_create_cluster(nodes=2)
+        mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
+
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session=session, name='ks', rf=2)
+        self.create_cf(session=session, name='ks.cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'},
+                       dclocal_read_repair_chance=0.1, speculative_retry='99.0PERCENTILE',
+                       compaction={'class': 'SizeTieredCompactionStrategy', 'min_threshold': 99999})
+
+        table_path = glob(os.path.join(node1.get_path(), "data", "ks", "cf-*"))[0]
+        for fill_attempt in range(1, 400):
+            session.execute(f"INSERT INTO ks.cf (key, c1, c2) VALUES "
+                            f"('k{fill_attempt}', '{C1_PREFIX % fill_attempt}', '{C2_PREFIX % fill_attempt}')")
+            print(f"Flush No. {fill_attempt}")
+            self.cluster.nodetool("flush")
+
+            if len(self.get_sstable_files(path=table_path)) >= 2500:
+                break
+        else:
+            assert False, "Failed to fill the cluster with enough files"
+
+        backup_task = mgr_cluster.run_backup_command(location_list=["s3:{}".format(DESTINATION_BUCKET)],
+                                                     keyspace_list=['ks'])
+        backup_task.wait_and_get_final_status()
+        assert backup_task.status == TaskStatus.DONE, "Backup task failed!"
+        self.clean_restore_and_verify_backup(backup_task=backup_task, node_list=self.cluster.nodelist(),
+                                             mgr_cluster=mgr_cluster, healthy_node=node1,
+                                             keyspace_table_and_key_range={"ks": {"cf": (1, fill_attempt+1)}})
 
     @skip("will return when minio bandwidth limiting is on")
     @attr('scylla-manager')
