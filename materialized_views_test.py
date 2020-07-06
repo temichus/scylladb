@@ -2204,22 +2204,26 @@ class TestMaterializedViews(Tester):
             assert_one(session, "SELECT * FROM mv", [1, 3, 1])
 
         # user provided ttl
-        self.update_view(session, "UPDATE t USING TTL 50 SET a = 4 WHERE k = 1", flush)
+        self.update_view(session, "UPDATE t USING TTL 30 SET a = 4 WHERE k = 1", flush)
         self.eventually_assert_one(session, "SELECT * FROM t", [1, 4, 1])
         self.eventually_assert_one(session, "SELECT * FROM mv", [1, 4, 1])
 
-        self.update_view(session, "UPDATE t USING TTL 40 SET a = 5 WHERE k = 1", flush)
+        self.update_view(session, "UPDATE t USING TTL 20 SET a = 5 WHERE k = 1", flush)
         self.eventually_assert_one(session, "SELECT * FROM t", [1, 5, 1])
         self.eventually_assert_one(session, "SELECT * FROM mv", [1, 5, 1])
 
-        self.update_view(session, "UPDATE t USING TTL 30 SET a = 6 WHERE k = 1", flush)
+        last_update = time.time()
+        self.update_view(session, "UPDATE t USING TTL 10 SET a = 6 WHERE k = 1", flush)
         self.eventually_assert_one(session, "SELECT * FROM t", [1, 6, 1])
         self.eventually_assert_one(session, "SELECT * FROM mv", [1, 6, 1])
 
         if flush:
             self.cluster.compact()
-            assert_one(session, "SELECT * FROM t", [1, 6, 1])
-            assert_one(session, "SELECT * FROM mv", [1, 6, 1])
+            now = time.time()
+            if now - last_update < 10:
+                time.sleep(10 - (now - last_update))
+            self.eventually_assert_one(session, "SELECT * FROM t", [1, None, 1])
+            self.eventually_assert_none(session, "SELECT * FROM mv")
 
     def test_no_base_column_in_view_pk_complex_timestamp_with_flush(self):
         self._test_no_base_column_in_view_pk_complex_timestamp(flush=True)
