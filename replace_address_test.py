@@ -183,7 +183,7 @@ class TestReplaceAddress(Tester):
 
         debug("Verifying tokens migrated successfully")
         moved_tokens_list = self.get_sorted_tokens(node4)
-        self.assertGreaterEqual(moved_tokens_list, tokens)
+        self.assertEqual(moved_tokens_list, tokens)
 
         # stop all nodes except new one
         debug("Stopping nodes 1 and 2")
