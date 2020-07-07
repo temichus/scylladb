@@ -358,6 +358,10 @@ class LWTSchemaModificationTester(Tester):
 
     def _setup(self, nodes = 3, rf = 3, jvm_args = None):
         """ Assorted actions in preparation for a test case"""
+
+        # This error might happen on tearDown, ignore it for now
+        self.ignore_log_patterns.extend(["exception during mutation write .*schema_mismatch_error"])
+
         cluster = self.cluster
         cluster.populate(nodes).start(wait_for_binary_proto=True, jvm_args = jvm_args)
         node = cluster.nodelist()[0]
