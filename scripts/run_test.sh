@@ -207,6 +207,7 @@ docker_cmd="docker run --detach=true \
     -v ${HOME}/.cassandra:${HOME}/.cassandra \
     ${DOCKER_NETWORK_PARAM} \
     --privileged \
+    --ulimit nofile=40000:40000 \
     ${DOCKER_IMAGE} bash -c 'sudo rsyslogd; pip3 install --user -e ${CCM_DIR} ; export PATH=\$PATH:\${HOME}/.local/bin ; cp -a /.ccm/repo* \${HOME}/.ccm/ ; bash -c \"${INSTALL_CASSANDRA}\"; python3 -m nose --nologcapture -v -s $*'"
 echo "Running Docker: $docker_cmd"
 container=$(eval $docker_cmd)
