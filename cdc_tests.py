@@ -374,24 +374,20 @@ class TestCdc(Tester, CDCInitializeHelper):
 
         latest_rows = {}
         for _, write in itertools.groupby(log_rows, key=lambda r: r.cdc_time):
-            write_rows = list(write)
-            self.assertIn(len(write_rows), (1, 2))
-            if len(write_rows) == 1:
-                # This is a new row
-                row = write_rows[0]
-                self.assertEqual(row.cdc_operation, CdcLogOperations.INSERT)
-                self.assertNotIn(row.a, latest_rows)
-                latest_rows[row.a] = row
+            preimage_row, update_row = list(write)
+            self.assertEqual(preimage_row.cdc_operation, CdcLogOperations.PREIMAGE)
+            self.assertEqual(update_row.cdc_operation, CdcLogOperations.INSERT)
+            self.assertEqual(preimage_row.a, update_row.a)
+            if update_row.a not in latest_rows:
+                # This is a new row - preimage will contain nulls
+                self.assertIsNone(preimage_row.b)
             else:
                 # The row was updated
-                preimage_row, update_row = write_rows
-                self.assertEqual(preimage_row.cdc_operation, CdcLogOperations.PREIMAGE)
-                self.assertEqual(update_row.cdc_operation, CdcLogOperations.INSERT)
-                self.assertIn(update_row.a, latest_rows)
+                self.assertIsNotNone(preimage_row.b)
                 old_row = latest_rows[update_row.a]
-
                 self.assertEqual(preimage_row.b, old_row.b, "Preimage did not contain previous state of the row")
-                latest_rows[update_row.a] = update_row
+
+            latest_rows[update_row.a] = update_row
 
     def check_that_all_writes_were_recorded(self, session, write_count, update_rows):
         debug('Check that there are as many "insert" operation rows in log table as there were writes')

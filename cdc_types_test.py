@@ -189,6 +189,12 @@ class CDCNativeTypeTmpl(CdcTools):
         return {"pkey": self.columns_data["ins_dataset"],
                 "ckey": self.columns_data["ins_dataset"]}
 
+    @property
+    def null_value_dataset(self):
+        return {"pkey": self.columns_data["ins_dataset"],
+                "ckey": self.columns_data["ins_dataset"],
+                "value": None}
+
     def test_native_type_insert(self):
         self.insert_operation_tmpl()
 
@@ -255,7 +261,7 @@ class CDCNativeTypeTmpl(CdcTools):
         # insert first record
         timestamp = self.insert_one(session, self.inserted_dataset)
         cdc_log_data = self.get_cdc_log_records_by_timestamp(session, timestamp)
-        self.verify_cdc_log_rows_after_first_operation(cdc_log_data, CdcLogOperations.INSERT, postimage_enable)
+        self.verify_cdc_log_rows_after_first_operation(cdc_log_data, CdcLogOperations.INSERT, preimage_enable, postimage_enable)
 
         timestamp = self.insert_one(session, self.inserted_dataset)
         cdc_log_data = self.get_cdc_log_records_by_timestamp(session, timestamp)
@@ -270,7 +276,7 @@ class CDCNativeTypeTmpl(CdcTools):
         # insert first record
         timestamp = self.update_one(session, self.inserted_dataset)
         cdc_log_data = self.get_cdc_log_records_by_timestamp(session, timestamp)
-        self.verify_cdc_log_rows_after_first_operation(cdc_log_data, CdcLogOperations.UPDATE, postimage_enable)
+        self.verify_cdc_log_rows_after_first_operation(cdc_log_data, CdcLogOperations.UPDATE, preimage_enable, postimage_enable)
         # will contain 2 records
         timestamp = self.update_one(session, self.updated_dataset)
         cdc_log_data = self.get_cdc_log_records_by_timestamp(session, timestamp)
@@ -311,11 +317,20 @@ class CDCNativeTypeTmpl(CdcTools):
         cdc_log_data = self.get_all_cdc_log_records(session)
         self.verify_cdc_log_rows_after_several_operations(cdc_log_data, preimage_enable, postimage_enable)
 
-    def verify_cdc_log_rows_after_first_operation(self, cdc_log_data, operation, postimage_enable):
-        if postimage_enable:
+    def verify_cdc_log_rows_after_first_operation(self, cdc_log_data, operation, preimage_enable, postimage_enable):
+        if preimage_enable and postimage_enable:
+            self.check_cdc_log_num_row(cdc_log_data, 3)
+            self.check_cdc_log_row(cdc_log_data[0], operation=CdcLogOperations.PREIMAGE, batch_seq=0, expected_data=self.null_value_dataset)
+            self.check_cdc_log_row(cdc_log_data[1], operation=operation, batch_seq=1, expected_data=self.inserted_dataset)
+            self.check_cdc_log_row(cdc_log_data[2], operation=CdcLogOperations.POSTIMAGE, batch_seq=2, expected_data=self.inserted_dataset)
+        elif postimage_enable:
             self.check_cdc_log_num_row(cdc_log_data, 2)
             self.check_cdc_log_row(cdc_log_data[0], operation=operation, batch_seq=0, expected_data=self.inserted_dataset)
             self.check_cdc_log_row(cdc_log_data[1], operation=CdcLogOperations.POSTIMAGE, batch_seq=1, expected_data=self.inserted_dataset)
+        elif preimage_enable:
+            self.check_cdc_log_num_row(cdc_log_data, 2)
+            self.check_cdc_log_row(cdc_log_data[0], operation=CdcLogOperations.PREIMAGE, batch_seq=0, expected_data=self.null_value_dataset)
+            self.check_cdc_log_row(cdc_log_data[1], operation=operation, batch_seq=1, expected_data=self.inserted_dataset)
         else:
             self.check_cdc_log_num_row(cdc_log_data, 1)
             self.check_cdc_log_row(cdc_log_data[0], operation=operation, batch_seq=0, expected_data=self.inserted_dataset)
@@ -432,36 +447,40 @@ class CDCNativeTypeTmpl(CdcTools):
 
     def verify_cdc_log_rows_after_several_operations(self, cdc_log_data, preimage_enable, postimage_enable):
         if preimage_enable and postimage_enable:
-            self.check_cdc_log_num_row(cdc_log_data, 8)
+            self.check_cdc_log_num_row(cdc_log_data, 9)
             self.check_cdc_log_row(cdc_log_data[0],
-                                   operation=CdcLogOperations.INSERT,
+                                   operation=CdcLogOperations.PREIMAGE,
                                    batch_seq=0,
-                                   expected_data=self.inserted_dataset)
+                                   expected_data=self.null_value_dataset)
             self.check_cdc_log_row(cdc_log_data[1],
-                                   operation=CdcLogOperations.POSTIMAGE,
+                                   operation=CdcLogOperations.INSERT,
                                    batch_seq=1,
                                    expected_data=self.inserted_dataset)
             self.check_cdc_log_row(cdc_log_data[2],
+                                   operation=CdcLogOperations.POSTIMAGE,
+                                   batch_seq=2,
+                                   expected_data=self.inserted_dataset)
+            self.check_cdc_log_row(cdc_log_data[3],
                                    operation=CdcLogOperations.PREIMAGE,
                                    batch_seq=0,
                                    expected_data=self.inserted_dataset)
-            self.check_cdc_log_row(cdc_log_data[3],
+            self.check_cdc_log_row(cdc_log_data[4],
                                    operation=CdcLogOperations.UPDATE,
                                    batch_seq=1,
                                    expected_data=self.updated_dataset)
-            self.check_cdc_log_row(cdc_log_data[4],
+            self.check_cdc_log_row(cdc_log_data[5],
                                    operation=CdcLogOperations.POSTIMAGE,
                                    batch_seq=2,
                                    expected_data=self.updated_dataset)
-            self.check_cdc_log_row(cdc_log_data[5],
+            self.check_cdc_log_row(cdc_log_data[6],
                                    operation=CdcLogOperations.PREIMAGE,
                                    batch_seq=0,
                                    expected_data=self.updated_dataset)
-            self.check_cdc_log_row(cdc_log_data[6],
+            self.check_cdc_log_row(cdc_log_data[7],
                                    operation=CdcLogOperations.UPDATE,
                                    batch_seq=1,
                                    expected_data=self.deleted_dataset)
-            self.check_cdc_log_row(cdc_log_data[7],
+            self.check_cdc_log_row(cdc_log_data[8],
                                    operation=CdcLogOperations.POSTIMAGE,
                                    batch_seq=2,
                                    expected_data=self.deleted_dataset)
@@ -493,25 +512,29 @@ class CDCNativeTypeTmpl(CdcTools):
                                    expected_data=self.deleted_dataset)
 
         elif preimage_enable:
-            self.check_cdc_log_num_row(cdc_log_data, 5)
+            self.check_cdc_log_num_row(cdc_log_data, 6)
 
             self.check_cdc_log_row(cdc_log_data[0],
-                                   operation=CdcLogOperations.INSERT,
+                                   operation=CdcLogOperations.PREIMAGE,
                                    batch_seq=0,
-                                   expected_data=self.inserted_dataset)
+                                   expected_data=self.null_value_dataset)
             self.check_cdc_log_row(cdc_log_data[1],
+                                   operation=CdcLogOperations.INSERT,
+                                   batch_seq=1,
+                                   expected_data=self.inserted_dataset)
+            self.check_cdc_log_row(cdc_log_data[2],
                                    operation=CdcLogOperations.PREIMAGE,
                                    batch_seq=0,
                                    expected_data=self.inserted_dataset)
-            self.check_cdc_log_row(cdc_log_data[2],
+            self.check_cdc_log_row(cdc_log_data[3],
                                    operation=CdcLogOperations.UPDATE,
                                    batch_seq=1,
                                    expected_data=self.updated_dataset)
-            self.check_cdc_log_row(cdc_log_data[3],
+            self.check_cdc_log_row(cdc_log_data[4],
                                    operation=CdcLogOperations.PREIMAGE,
                                    batch_seq=0,
                                    expected_data=self.updated_dataset)
-            self.check_cdc_log_row(cdc_log_data[4],
+            self.check_cdc_log_row(cdc_log_data[5],
                                    operation=CdcLogOperations.UPDATE,
                                    batch_seq=1,
                                    expected_data=self.deleted_dataset)
@@ -653,7 +676,7 @@ class CDCCollectionsTmpl(CdcTools):
         # insert first record to partitions
         timestamp = self.insert_one(session, self.inserted_dataset)
         cdc_log_data = self.get_cdc_log_records_by_timestamp(session, timestamp)
-        self.verify_cdc_log_rows_after_first_insert_to_base_table(cdc_log_data, postimage_enable)
+        self.verify_cdc_log_rows_after_first_insert_to_base_table(cdc_log_data, preimage_enable, postimage_enable)
         # insert record to not empty parition
         timestamp = self.insert_one(session, self.inserted_dataset)
         cdc_log_data = self.get_cdc_log_records_by_timestamp(session, timestamp)
@@ -666,7 +689,7 @@ class CDCCollectionsTmpl(CdcTools):
         # insert first record
         timestamp = self.update_one(session, self.inserted_dataset)
         cdc_log_data = self.get_cdc_log_records_by_timestamp(session, timestamp)
-        self.verify_cdc_log_rows_after_first_update_to_base_table(cdc_log_data, postimage_enable)
+        self.verify_cdc_log_rows_after_first_update_to_base_table(cdc_log_data, preimage_enable, postimage_enable)
 
         if add_element:
             timestamp = self.update_collection_with_element(session, self.added_element_dataset, add=True)
@@ -690,8 +713,22 @@ class CDCCollectionsTmpl(CdcTools):
         cdc_log_data = self.get_cdc_log_records_by_timestamp(session, timestamp)
         self.verify_cdc_log_rows_after_delete_value(cdc_log_data, preimage_enable, postimage_enable)
 
-    def verify_cdc_log_rows_after_first_insert_to_base_table(self, cdc_log_data, postimage_enable):
-        if postimage_enable:
+    def verify_cdc_log_rows_after_first_insert_to_base_table(self, cdc_log_data, preimage_enable, postimage_enable):
+        if preimage_enable and postimage_enable:
+            self.check_cdc_log_num_row(cdc_log_data, 3)
+            self.check_cdc_log_row_collection(cdc_log_data[0], operation=CdcLogOperations.PREIMAGE, batch_seq=0,
+                                              expected_data=self.null_value_dataset)
+            self.check_cdc_log_row_collection(cdc_log_data[1], operation=CdcLogOperations.INSERT, batch_seq=1,
+                                              deleted_col=['value'], expected_data=self.inserted_dataset)
+            self.check_cdc_log_row_collection(cdc_log_data[2], operation=CdcLogOperations.POSTIMAGE, batch_seq=2,
+                                              expected_data=self.inserted_dataset)
+        elif preimage_enable:
+            self.check_cdc_log_num_row(cdc_log_data, 2)
+            self.check_cdc_log_row_collection(cdc_log_data[0], operation=CdcLogOperations.PREIMAGE, batch_seq=0,
+                                              expected_data=self.null_value_dataset)
+            self.check_cdc_log_row_collection(cdc_log_data[1], operation=CdcLogOperations.INSERT, batch_seq=1,
+                                              deleted_col=['value'], expected_data=self.inserted_dataset)
+        elif postimage_enable:
             self.check_cdc_log_num_row(cdc_log_data, 2)
             self.check_cdc_log_row_collection(cdc_log_data[0], operation=CdcLogOperations.INSERT, batch_seq=0,
                                               deleted_col=['value'], expected_data=self.inserted_dataset)
@@ -731,8 +768,22 @@ class CDCCollectionsTmpl(CdcTools):
             self.check_cdc_log_row_collection(cdc_log_data[0], operation=CdcLogOperations.INSERT, batch_seq=0,
                                               deleted_col=['value'], expected_data=self.inserted_dataset)
 
-    def verify_cdc_log_rows_after_first_update_to_base_table(self, cdc_log_data, postimage_enable):
-        if postimage_enable:
+    def verify_cdc_log_rows_after_first_update_to_base_table(self, cdc_log_data, preimage_enable, postimage_enable):
+        if preimage_enable and postimage_enable:
+            self.check_cdc_log_num_row(cdc_log_data, 3)
+            self.check_cdc_log_row_collection(cdc_log_data[0], operation=CdcLogOperations.PREIMAGE, batch_seq=0,
+                                              expected_data=self.null_value_dataset)
+            self.check_cdc_log_row_collection(cdc_log_data[1], operation=CdcLogOperations.UPDATE, batch_seq=1,
+                                              deleted_col=['value'], expected_data=self.inserted_dataset)
+            self.check_cdc_log_row_collection(cdc_log_data[2], operation=CdcLogOperations.POSTIMAGE, batch_seq=2,
+                                              expected_data=self.inserted_dataset)
+        elif preimage_enable:
+            self.check_cdc_log_num_row(cdc_log_data, 2)
+            self.check_cdc_log_row_collection(cdc_log_data[0], operation=CdcLogOperations.PREIMAGE, batch_seq=0,
+                                              expected_data=self.null_value_dataset)
+            self.check_cdc_log_row_collection(cdc_log_data[1], operation=CdcLogOperations.UPDATE, batch_seq=1,
+                                              deleted_col=['value'], expected_data=self.inserted_dataset)
+        elif postimage_enable:
             self.check_cdc_log_num_row(cdc_log_data, 2)
             self.check_cdc_log_row_collection(cdc_log_data[0], operation=CdcLogOperations.UPDATE, batch_seq=0,
                                               deleted_col=['value'], expected_data=self.inserted_dataset)
