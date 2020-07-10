@@ -20,6 +20,7 @@ class ScyllaClusterTest(DSREntity):
     create_keyspace_stmt = None
     create_table_stmt = None
     validation_consistency = ConsistencyLevel.QUORUM  # Consistency level of the workload
+    validation_serial_consistency = None
     loader: LoaderBase = None
     db_configuration: dict = None  # Configuration that is passed down to scylla
     actions = None  # pregenerated/generated actions
@@ -51,6 +52,13 @@ class ScyllaClusterTest(DSREntity):
             current_actions.append(action_instance)
         return current_actions
 
+    def _set_validation_serial_consistency(self):
+        if self.validation_serial_consistency is not None:
+            return
+        if not self.loader:
+            return
+        self.validation_serial_consistency = self.loader.factual_serial_consistency()
+
     def _validate_data_in_cluster(self, tester):
         ks_name = list(self._keyspace_info.keys())[0]
         table_name = list(self._keyspace_info[ks_name]['__tables__'].keys())[0]
@@ -70,11 +78,10 @@ class ScyllaClusterTest(DSREntity):
             if not cluster_node.is_running():
                 cluster_node.start(wait_for_binary_proto=True, wait_other_notice=True)
             cluster_node.nodetool('rebuild --full')
-        with tester.patient_cql_connection(
-                tester.cluster.nodelist()[0],
-                request_timeout=600,
-                consistency_level=self.validation_consistency
-        ) as session:
+        session_params = {'request_timeout': 600, 'consistency_level': self.validation_consistency}
+        if self.validation_serial_consistency is not None:
+            session_params['serial_consistency_level'] = self.validation_serial_consistency
+        with tester.patient_cql_connection(tester.cluster.nodelist()[0], **session_params) as session:
             select_stmt = session.prepare(f"SELECT * FROM {ks_name}.{table_name} WHERE k = ?")
             delete_stmt = session.prepare(f"DELETE FROM {ks_name}.{table_name} WHERE k = ?")
             for key, expected_value in sorted(self._expected_results.items(), key=lambda x: x[0]):
@@ -232,6 +239,7 @@ class ScyllaClusterTest(DSREntity):
     def randomize(self):
         # TBD: Add some logic on generating these parameters
         self.check_validity()
+        self._set_validation_serial_consistency()
         self._keyspace_info = self._parse_create_keyspace_stmt(self.create_keyspace_stmt)
         self._parse_create_table_stmt(self.create_table_stmt, self._keyspace_info)
         ks_name = list(self._keyspace_info.keys())[0]

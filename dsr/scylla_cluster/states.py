@@ -235,11 +235,13 @@ class ClusterState:
         if self._check_if_data_could_be_lost_due_to_node_removal():
             return result
         if self._check_if_there_are_enough_nodes_that_holds_data():
-            result.extend(self.get_node_ids_by_status('UP', 'RUNNING', '!DONT_TOUCH', 'HOLDS_UPTODATE_DATA', 'HOLDS_UPTODATE_SCHEMA', *seed_status))
+            result.extend(self.get_node_ids_by_status('UP', 'RUNNING', '!DONT_TOUCH', 'HOLDS_UPTODATE_DATA',
+                                                      'HOLDS_UPTODATE_SCHEMA', *seed_status))
         # Add running nodes, but only if running nodes in the cluster
         #   more than needed for loaders to operate on given consistency_level level
         if not self._check_if_loaders_could_stop_working():
-            result.extend(self.get_node_ids_by_status('UP', 'RUNNING', '!DONT_TOUCH', '!HOLDS_UPTODATE_DATA', '!HOLDS_UPTODATE_SCHEMA', *seed_status))
+            result.extend(self.get_node_ids_by_status('UP', 'RUNNING', '!DONT_TOUCH', '!HOLDS_UPTODATE_DATA',
+                                                      '!HOLDS_UPTODATE_SCHEMA', *seed_status))
         # Add not running nodes
         result.extend(self.get_node_ids_by_status('UP', '!RUNNING', '!DONT_TOUCH', *seed_status))
         return list(set(result))
@@ -251,10 +253,21 @@ class ClusterState:
         # We can't decomission nodes anymore If reached limit of nodes that are not running, but could have data
         if self._check_if_data_could_be_lost_due_to_node_removal():
             return []
-        # We can remove any running node, but only if running nodes in the cluster more than needed for loaders to operate on given consistency_level level
+        # We can remove any running node, but only if running nodes in the cluster more than
+        #   needed for loaders to operate on given consistency_level level
         if self._check_if_loaders_could_stop_working():
             return []
         return self.get_node_ids_by_status('DECOMMISSIONABLE', '!SEED')
+
+    def get_rebootable_nodes(self):
+        """
+        Returns ids of nodes that could be rebooted
+        """
+        # We can reboot any node only if running nodes in the cluster more than needed for
+        #   loaders to operate on given consistency_level level
+        if self._check_if_loaders_could_stop_working():
+            return []
+        return self.get_node_ids_by_status('STOPABLE', '!SEED')
 
     def get_stoppable_nodes(self):
         """
@@ -269,8 +282,8 @@ class ClusterState:
         return []
 
     def _check_if_data_could_be_lost_due_to_node_removal(self):
-        return self._unavailable_nodes_with_lost_data + 1 >= self._get_node_count_from_cl_and_rf(self._rf,
-                                                                                                 self._loader_consistency_level)
+        return self._unavailable_nodes_with_lost_data + 1 \
+               >= self._get_node_count_from_cl_and_rf(self._rf, self._loader_consistency_level)
 
     def _check_if_loaders_could_stop_working(self):
         running_nodes = self.get_node_ids_by_status('UP', 'RUNNING')
@@ -279,7 +292,8 @@ class ClusterState:
     def _check_if_there_are_enough_nodes_that_holds_data(self):
         nodes_that_holds_data = self.get_node_ids_by_status(
             'UP', 'RUNNING', 'HOLDS_UPTODATE_DATA', 'HOLDS_UPTODATE_SCHEMA')
-        return len(nodes_that_holds_data) >= self._get_node_count_from_cl_and_rf(self._rf, self._loader_consistency_level)
+        return len(nodes_that_holds_data) >= \
+               self._get_node_count_from_cl_and_rf(self._rf, self._loader_consistency_level)
 
     def can_add_node(self):
         return bool(self._max_node_count - self.count_node_states_by_status('ANY'))

@@ -1,4 +1,4 @@
-from .base import LoaderBase, Event
+from .base import LoaderBase, Event, ConsistencyLevel
 
 
 class IntKeyLoader(LoaderBase):
@@ -23,14 +23,24 @@ class IntKeyLoader(LoaderBase):
         self.__class__._global_shift += 1
         self._current_idx = 0
 
+    def factual_serial_consistency(self):
+        if self.serial_consistency_level is not None:
+            return self.serial_consistency_level
+        if self.serial_consistency_level or ' IF ' in self.insert or ' IF ' in self.update:
+            return ConsistencyLevel.SERIAL
+        return None
+
     def check_if_can_operate(self):
         return self._target_node.is_running()
 
     def _create_session(self):
+        create_session_params = {
+            'consistency_level': self.consistency_level
+        }
+        if self.serial_consistency_level is not None:
+            create_session_params['serial_consistency_level'] = self.serial_consistency_level
         try:
-            session = self._tester.patient_cql_connection(
-                self._target_node,
-                consistency_level=self.consistency_level)
+            session = self._tester.patient_cql_connection(self._target_node, **create_session_params)
             self._insert_stmt = session.prepare(self.insert)
             self._update_stmt = session.prepare(self.update)
             return session

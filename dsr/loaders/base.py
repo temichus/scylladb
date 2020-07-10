@@ -11,12 +11,16 @@ class LoaderBase(DEntity, Thread):
     _target_node: Node = None
     _session = None
     consistency_level = ConsistencyLevel.QUORUM
+    serial_consistency_level = None
 
     def __init__(self, **kwargs):
         Thread.__init__(self)
         DEntity.__init__(self, **kwargs)
         self._to_stop = Event()
         self._to_stop.clear()
+
+    def factual_serial_consistency(self):
+        raise NotImplementedError(f'Should be overridden for class {self.__class__.__name__}')
 
     def check_if_can_operate(self):
         raise NotImplementedError(f'Should be overridden for class {self.__class__.__name__}')

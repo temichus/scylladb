@@ -170,7 +170,7 @@ class RebootNode(NodeAction):
 
     @classmethod
     def get_target_nodes(cls, cluster_state: ClusterState, **extra_context):
-        return cluster_state.get_node_ids_by_status('STOPABLE')
+        return cluster_state.get_rebootable_nodes()
 
 
 class RepairNode(NodeAction):
