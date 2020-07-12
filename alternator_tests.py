@@ -2,6 +2,7 @@ import operator
 import os
 import random
 import shutil
+import string
 import tempfile
 import time
 from copy import deepcopy
@@ -16,10 +17,10 @@ from nose.plugins.attrib import attr
 from alternator.utils import schemas
 from alternator.utils.data_generator import AlternatorDataGenerator, TypeMode
 from alternator_utils import TesterAlternator, ALTERNATOR_SNAPSHOT_FOLDER, TABLE_NAME, NUM_OF_ITEMS, random_string, \
-    DEFAULT_STRING_LENGTH, NUM_OF_NODES, set_write_isolation, WriteIsolation
+    DEFAULT_STRING_LENGTH, NUM_OF_NODES, set_write_isolation, WriteIsolation, LONGEST_TABLE_SIZE, SHORTEST_TABLE_SIZE
 from alternator_utils import generate_put_request_items, Gsi, full_query
-from dtest import debug, wait_for
-from tools import new_node
+from dtest import debug, wait_for, info
+from tools import new_node, require
 
 
 @attr('dtest-full')
@@ -559,3 +560,40 @@ class AlternatorTest(TesterAlternator):
         For each HASH key generator all combinations of all digits (0-9) and chars (a-z and A-Z).
         """
         self._check_string_query_key_conditions_options(scan_index_forward=False)
+
+    def test_table_name_length(self):
+        valid_dynamodb_chars = (list(string.digits) + list(string.ascii_uppercase) + ["_", "-", "."])
+        self.prepare_dynamodb_cluster(num_of_nodes=3)
+        node1 = self.cluster.nodelist()[0]
+
+        shortest_table_name = "".join(random.choices(valid_dynamodb_chars, k=SHORTEST_TABLE_SIZE))
+        info(f"Creating new table with following name '{shortest_table_name}' (The shortest table name - "
+             f"'{SHORTEST_TABLE_SIZE}' chars)")
+        self.create_table(node=node1, table_name=shortest_table_name)
+
+        middle_table_name = "".join(random.choices(valid_dynamodb_chars, k=(
+                SHORTEST_TABLE_SIZE + LONGEST_TABLE_SIZE) // 2))
+        info(f"Creating new table with following name '{middle_table_name}' ('{len(middle_table_name)}' chars)")
+        self.create_table(node=node1, table_name=middle_table_name)
+
+        longest_table_name = "".join(random.choices(valid_dynamodb_chars, k=LONGEST_TABLE_SIZE))
+        info(f"Creating new table with following name '{longest_table_name}' (The shortest table name - "
+             f"'{LONGEST_TABLE_SIZE}' chars)")
+        self.create_table(node=node1, table_name=longest_table_name)
+        cmd = f"tablestats alternator_{longest_table_name}"
+        info(f"Executing the following command '{cmd}'")
+        node1.nodetool(cmd)
+
+    @require("#6521")
+    def test_table_name_with_dot_prefix(self):
+        valid_dynamodb_chars = (list(string.digits) + list(string.ascii_uppercase) + ["_", "-", "."])
+        self.prepare_dynamodb_cluster(num_of_nodes=3)
+        node1 = self.cluster.nodelist()[0]
+
+        table_name_with_dot_prefix = "." + "".join(random.choices(valid_dynamodb_chars, k=min(random.choice(range(
+            SHORTEST_TABLE_SIZE, LONGEST_TABLE_SIZE + 1)), 100)))
+        info("Creating new table with dot ('.') char prefix")
+        self.create_table(node=node1, table_name=table_name_with_dot_prefix)
+        cmd = f"tablestats alternator_{table_name_with_dot_prefix}"
+        info(f"Executing the following command '{cmd}'")
+        node1.nodetool(cmd)

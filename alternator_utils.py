@@ -25,6 +25,10 @@ NUM_OF_NODES = 3
 NUM_OF_ITEMS = 100
 ALTERNATOR_PORT = 8080
 DEFAULT_STRING_LENGTH = 5
+# https://github.com/scylladb/scylla/issues/4480 - according Nadav the table name contains dash char and
+# 32-byte UUID string -> 222 + 1 + 32 = 255 (The longest dynanodb's table name)
+LONGEST_TABLE_SIZE = 222
+SHORTEST_TABLE_SIZE = 3
 
 
 class WriteIsolation(Enum):
