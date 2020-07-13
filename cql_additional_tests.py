@@ -697,8 +697,8 @@ class TestCQL(Tester):
 
         with self.subTest("Filter by counter column with more and equal condition", i=3):
             assert_all(session=session,
-                       query=f"select * from clicks where c1 > 3 and c2 = 0 {MSG_ALLOW_FILTERING}",
-                       expected=[[0, 4, 4, None]])
+                       query=f"select * from clicks where c1 > 3 and c2 = 4 {MSG_ALLOW_FILTERING}",
+                       expected=[[1, 4, 4, 4]])
 
         with self.subTest("Filter by counter column with \"in\" and >= condition"):
             assert_all(session=session,
@@ -720,8 +720,11 @@ class TestCQL(Tester):
         with self.subTest("Add new counter column"):
             session.execute("ALTER TABLE clicks ADD c3 counter")
             assert_all(session=session,
+                       query=f"select * from clicks where pk=1 and ck=1",
+                       expected=[[1, 1, 1, 1, None]])
+            assert_all(session=session,
                        query=f"select count(*) from clicks where c3 = 0 {MSG_ALLOW_FILTERING}",
-                       expected=[[10]])
+                       expected=[[0]]) # c3 is null, which cannot be selected with filtering.
 
             session.execute(f"UPDATE clicks SET c3 = c3-1 WHERE pk=0 and ck=1")
             assert_all(session=session,
@@ -736,7 +739,7 @@ class TestCQL(Tester):
 
             assert_all(session=session,
                        query=f"select * from clicks where c1 = 0 {MSG_ALLOW_FILTERING}",
-                       expected=[[1, 0, 0, 0, None], [1, 1, None, 1, None], [0, 0, 0, None, None]])
+                       expected=[[1, 0, 0, 0, None], [0, 0, 0, None, None]])
 
     @attr('single_node')
     def counters_test(self):
