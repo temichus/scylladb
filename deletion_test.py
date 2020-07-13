@@ -227,7 +227,7 @@ class RangeDeletionTester(Tester):
         query = "UPDATE ks.test1 SET v1 = 100 WHERE pk={pk} and ck < '{ck}'".format(pk=data[lower_index][0],
                                                                                     ck=data[lower_index][1])
         debug(query)
-        assert_invalid(session=session, query=query, matching='Invalid operator in where clause Restrictions')
+        assert_invalid(session=session, query=query, matching='Invalid operator in where clause')
 
     @attr('single_node')
     def delete_by_2ck_range_failure_test(self):
