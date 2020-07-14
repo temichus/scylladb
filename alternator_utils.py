@@ -271,16 +271,19 @@ class TesterAlternator(Tester):
         kwargs["ConsistentRead"] = consistent_read
 
         def _scan_table(part_scan_idx=None) -> List[Dict[str, AttributeValueTypeDef]]:
-            parallel_params, result, still_running_while = {}, [], True
+            parallel_params = {}
+
             if is_parallel_scan:
                 parallel_params = {"TotalSegments": threads_num, "Segment": part_scan_idx}
                 debug(f"Starting parallel scan part '{part_scan_idx + 1}' on table '{table_name}'")
             else:
                 debug(f"Starting full scan on table '{table_name}'")
-            while still_running_while:
-                response = table.scan(**parallel_params, **kwargs)
+
+            response = table.scan(**parallel_params, **kwargs)
+            result = response["Items"]
+            while 'LastEvaluatedKey' in response:
+                response = table.scan(ExclusiveStartKey=response['LastEvaluatedKey'], **parallel_params, **kwargs)
                 result.extend(response["Items"])
-                still_running_while = 'LastEvaluatedKey' in response
 
             return result
 
@@ -304,7 +307,12 @@ class TesterAlternator(Tester):
 
     def is_table_exists(self, table_name: str, node: ScyllaNode) -> bool:
         dynamodb_api = self.get_dynamodb_api(node=node)
-        is_table_exists = table_name in dynamodb_api.client.list_tables()["TableNames"]
+        is_table_exists = True
+
+        try:
+            dynamodb_api.client.describe_table(TableName=table_name)
+        except dynamodb_api.client.exceptions.ResourceNotFoundException:
+            is_table_exists = False
         debug(f"The table '{table_name}'{'' if is_table_exists else 'not'} exists in node {node.name}..")
         return is_table_exists
 
