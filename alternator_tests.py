@@ -245,6 +245,29 @@ class AlternatorTest(TesterAlternator):
             conf['write_stress'].join()
             conf['read_stress'].join()
 
+    def test_update_condition_unused_entries_short_circuit(self):
+        """
+        A test for https://github.com/scylladb/scylla/issues/6572
+        """
+        self.prepare_dynamodb_cluster(num_of_nodes=3)
+        node1 = self.cluster.nodelist()[0]
+        debug("Adding data for all nodes..")
+        table = self.prefill_dynamodb_table(node=node1)
+
+        debug("Testing and validating an update query using key condition expression")
+        new_pk_val = random_string(length=DEFAULT_STRING_LENGTH)
+        debug("simple update item")
+        table.update_item(Key={self._table_primary_key: new_pk_val},
+                          AttributeUpdates={'a': {'Value': 1, 'Action': 'PUT'}})
+        conditional_update_short_circuit = dict(Key={self._table_primary_key: new_pk_val},
+                                      ConditionExpression='#name1 = :val1 OR #name2 = :val2',
+                                      UpdateExpression='SET #name1 = :val3',
+                                      ExpressionAttributeNames={'#name1': 'a', '#name2': 'b'},
+                                      ExpressionAttributeValues={':val1': 1, ':val2': 2, ':val3': 3})
+        debug(f"ConditionExpression update of short circuit is: {conditional_update_short_circuit}")
+        res = table.update_item(**conditional_update_short_circuit)
+        # TODO: add assertion of updated value
+
     def test_update_condition_expression_and_write_isolation(self):
         """
         See that using conditional update queries run correctly when LWT is enabled.
@@ -270,23 +293,23 @@ class AlternatorTest(TesterAlternator):
         table.update_item(Key={self._table_primary_key: new_pk_val},
                           AttributeUpdates={'a': {'Value': 1, 'Action': 'PUT'}})
         debug("ConditionExpression update from dc2:")
-        conditional_update_c_2 = dict(Key={self._table_primary_key: new_pk_val},
+        conditional_update_short_circuit = dict(Key={self._table_primary_key: new_pk_val},
                                       UpdateExpression='SET c = :val',
                                       ConditionExpression='attribute_exists (a)',
                                       ExpressionAttributeValues={':val': 2})
-        debug(conditional_update_c_2)
+        debug(conditional_update_short_circuit)
         debug("Check that conditional update fails on write-isolation 'forbid' mode (dc2)")
         set_write_isolation(table, WriteIsolation.FORBID_RMW)
         wait_for(self.is_table_schema_synced, timeout=30, text='Waiting until table schema is updated',
                  table_name=TABLE_NAME, nodes=[node1, dc2_node])
         msg_rmw_is_disabled = 'Read-modify-write operations are disabled'
         with self.assertRaisesRegexp(ClientError, msg_rmw_is_disabled):
-            res= dc2_table.update_item(**conditional_update_c_2)
+            res= dc2_table.update_item(**conditional_update_short_circuit)
             debug(res)
         set_write_isolation(table, WriteIsolation.ALWAYS_USE_LWT)
         wait_for(self.is_table_schema_synced, timeout=30, text='Waiting until table schema is updated',
                  table_name=TABLE_NAME, nodes=[node1, dc2_node])
-        dc2_table.update_item(**conditional_update_c_2)
+        dc2_table.update_item(**conditional_update_short_circuit)
         debug("ConditionExpression update from dc1:")
         conditional_update_c_3 = dict(Key={self._table_primary_key: new_pk_val},
                                       UpdateExpression='SET c = :val',
