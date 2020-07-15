@@ -68,9 +68,14 @@ class HeatWeightedLB(Tester):
                         mean_window = 5
                         mean_avg = sum([metrics[key][node_ind][j]['delta'] for j in range(i, i + mean_window)]) / mean_window
                         node_mean_avg = sum([metrics[key][2][j]['delta'] for j in range(i, i + mean_window)]) / mean_window
-                        self.assertIn(mean_avg // node_mean_avg, range(3, 13),
-                                      'Cache difference between nodes is less then expected: {}/{}, metric {}'.format(
-                                          mean_avg, node_mean_avg, key))
+                        ratio = mean_avg / node_mean_avg
+                        lower_bound = 1 + 2 * (50 - i) / 40
+                        upper_bound = 11 + 2 * (50 - i) / 40
+                        assert(ratio > lower_bound and ratio <= upper_bound,
+                                  'Cache difference between node{} and node2 is out of range: {}/{}={} expected to be {} < ratio <= {}. index={} metric {}'.format(
+                                          node_ind, mean_avg, node_mean_avg, ratio,
+                                          lower_bound, upper_bound,
+                                          i, key))
         key = 'scylla_column_family_cache_hit_rate.*cf=.*standard1'
         last_drop = None
         for i in range(20, 50):
