@@ -257,7 +257,7 @@ class CompactionAdditionalTest(Tester):
         def _get_time_window(timestamp):
             return int(timestamp / 60)
 
-        number_of_time_windows = _get_time_window(time.time() - start)
+        number_of_time_windows = _get_time_window(time.time()) - _get_time_window(start) + 1
 
         node1.stop();
 
@@ -286,8 +286,9 @@ class CompactionAdditionalTest(Tester):
         debug("time_window_dict_before_major_compaction={}".format(time_window_dict_before_major_compaction))
 
         # another time window may sneak in if we cross the 1-minute window in one of the sstables
-        self.assertGreaterEqual(len(time_window_dict_before_major_compaction.keys()), number_of_time_windows)
-        self.assertLessEqual(len(time_window_dict_before_major_compaction.keys()), number_of_time_windows + 1)
+        time_windows_before_major_comapction = len(time_window_dict_before_major_compaction.keys())
+        self.assertGreaterEqual(time_windows_before_major_comapction, number_of_time_windows - 1)
+        self.assertLessEqual(time_windows_before_major_comapction, number_of_time_windows + 1)
 
         # Run major compaction
         node1.start();
