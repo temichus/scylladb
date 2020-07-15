@@ -286,9 +286,9 @@ class CompactionAdditionalTest(Tester):
         debug("time_window_dict_before_major_compaction={}".format(time_window_dict_before_major_compaction))
 
         # another time window may sneak in if we cross the 1-minute window in one of the sstables
-        time_windows_before_major_comapction = len(time_window_dict_before_major_compaction.keys())
-        self.assertGreaterEqual(time_windows_before_major_comapction, number_of_time_windows - 1)
-        self.assertLessEqual(time_windows_before_major_comapction, number_of_time_windows + 1)
+        time_windows_before_major_compaction = len(time_window_dict_before_major_compaction.keys())
+        self.assertGreaterEqual(time_windows_before_major_compaction, number_of_time_windows - 1)
+        self.assertLessEqual(time_windows_before_major_compaction, number_of_time_windows + 1)
 
         # Run major compaction
         node1.start();
@@ -301,15 +301,18 @@ class CompactionAdditionalTest(Tester):
 
         # no new data and consequently, time windows, are expected
         # verify that major compaction didn't mess any time windows
-        self.assertEqual(len(time_window_dict_before_major_compaction.keys()), len(time_window_dict_after_major_compaction.keys()))
+        time_windows_after_major_compaction = len(time_window_dict_after_major_compaction.keys())
+        self.assertEqual(time_windows_before_major_compaction, time_windows_after_major_compaction)
 
         # major compaction didn't bundle all sstables together
         # number off sstables after the major compaction equals number of time windows before major compaction
-        self.assertEqual(len(time_window_dict_before_major_compaction.keys()),
+        number_of_shards = getattr(node1, '_smp', 1)
+        expected_number_of_sstables = time_windows_after_major_compaction * number_of_shards
+        self.assertEqual(expected_number_of_sstables,
                          len(sstables_files_after_major_compaction))
         # each time window (after major compaction) has only one table
         for sstables in time_window_dict_after_major_compaction.values():
-            self.assertEqual(len(sstables), 1)
+            self.assertEqual(len(sstables), number_of_shards)
 
     def compaction_removes_ttld_data_by_time_windows_test(self):
         """
