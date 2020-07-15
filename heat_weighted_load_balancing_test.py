@@ -23,11 +23,11 @@ class HeatWeightedLB(Tester):
                 if not metrics[key][node_ind]:
                     debug('WARNING: no metrics found for {}'.format(key))
                     continue
-            print(key)
-            print('{:10s}   {:10s}   {:10s}'.format('node1', 'node2', 'node3'))
+            debug(key)
+            debug('{:10s}   {:10s}   {:10s}'.format('node1', 'node2', 'node3'))
             for i in range(self._metrics_count):
                 value = 'delta' if 'cache_hit_rate' not in key else 'val'
-                print('{:15s}  {:15s}  {:15s}'.format(str(metrics[key][1][i][value]),
+                debug('{:15s}  {:15s}  {:15s}'.format(str(metrics[key][1][i][value]),
                                                       str(metrics[key][2][i][value]),
                                                       str(metrics[key][3][i][value])))
 
