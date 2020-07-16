@@ -75,6 +75,7 @@ DTEST_CORE_COMPRESS_EXT = os.environ.get('DTEST_CORE_COMPRESS_EXT', 'gz')
 DRY_RUN = os.environ.get('DRY_RUN', '').lower() in ('yes', 'true')
 
 CURRENT_TEST = ""
+CURRENT_TEST_NESTING = 0
 
 logging.basicConfig(filename=os.path.join(LOG_SAVED_DIR, "dtest.log"),
                     filemode='w',
@@ -554,7 +555,7 @@ class Tester(TestCase):
         if DRY_RUN:
             raise SkipTest("Dry run")
 
-        global CURRENT_TEST
+        global CURRENT_TEST, CURRENT_TEST_NESTING
         cls = self.__class__
         qualname = cls.__qualname__
         module = cls.__module__
@@ -564,7 +565,15 @@ class Tester(TestCase):
             m = "{}.py".format(module.replace('.', '/'))
             if os.path.exists(m):
                 module = m
-        CURRENT_TEST = "{}:{}.{}".format(module, qualname, self._testMethodName)
+        CURRENT_TEST_NESTING += 1
+        if CURRENT_TEST_NESTING == 1:
+            if CURRENT_TEST != "":
+                debug("CURRENT_TEST is not empty on setUp")
+            CURRENT_TEST = "{}:{}.{}".format(module, qualname, self._testMethodName)
+        elif CURRENT_TEST == "":
+            CURRENT_TEST = "{}:{}.{}".format(module, qualname, self._testMethodName)
+            debug("CURRENT_TEST was empty on nested setUp. CURRENT_TEST_NESTING={}".format(CURRENT_TEST_NESTING))
+        self.addCleanup(self.cleanUpTest)
 
         self._preserve_cluster = False
         if (getattr(getattr(self,  self._testMethodName), 'reuse-cluster', False) or getattr(self, 'reuse-cluster', False)):
@@ -1152,6 +1161,14 @@ class Tester(TestCase):
                     global PRESERVED_CLUSTER
                     PRESERVED_CLUSTER = self.cluster
                     self.cluster = None
+
+    def cleanUpTest(self):
+        global CURRENT_TEST, CURRENT_TEST_NESTING
+        if CURRENT_TEST == "":
+            debug("CURRENT_TEST is empty on cleanUpTest. CURRENT_TEST_NESTING={}".format(CURRENT_TEST_NESTING))
+        CURRENT_TEST_NESTING -= 1
+        if not CURRENT_TEST_NESTING:
+            CURRENT_TEST = ""
 
     def go(self, func):
         runner = Runner(func)
