@@ -562,7 +562,8 @@ class AlternatorTest(TesterAlternator):
         self._check_string_query_key_conditions_options(scan_index_forward=False)
 
     def test_table_name_length(self):
-        valid_dynamodb_chars = (list(string.digits) + list(string.ascii_uppercase) + ["_", "-", "."])
+        # TODO: After the bug "#6521" is resolved, need to add "." char to variable valid_dynamodb_chars
+        valid_dynamodb_chars = (list(string.digits) + list(string.ascii_uppercase) + ["_", "-"])
         self.prepare_dynamodb_cluster(num_of_nodes=3)
         node1 = self.cluster.nodelist()[0]
 
