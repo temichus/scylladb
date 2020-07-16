@@ -279,19 +279,23 @@ class TestUserTypes(Tester):
            """.format(id=_id)
         session.execute(stmt)
 
+        # Use an exclusive session to serialize list updates for a deterministic insertion order
+        # See https://github.com/scylladb/scylla/issues/4433
+        cs2 = self.patient_cql_cluster_session(node2, keyspace='user_types', exclusive=True)
+        session2 = cs2.session
         stmt = """
               UPDATE bucket
               SET other_containers = other_containers + [{{stuff: 'stuff2', more_stuff: {{sub_one: 'one_other', sub_two: 'two_other'}}}}]
               WHERE id={id};
            """.format(id=_id)
-        session.execute(stmt)
+        session2.execute(stmt)
 
         stmt = """
               UPDATE bucket
               SET other_containers = other_containers + [{{stuff: 'stuff3', more_stuff: {{sub_one: 'one_2_other', sub_two: 'two_2_other'}}}}, {{stuff: 'stuff4', more_stuff: {{sub_one: 'one_3_other', sub_two: 'two_3_other'}}}}]
               WHERE id={id};
            """.format(id=_id)
-        session.execute(stmt)
+        session2.execute(stmt)
 
         stmt = """
               SELECT primary_item, other_items, other_containers from bucket where id={id};
