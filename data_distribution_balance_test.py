@@ -36,7 +36,11 @@ class DataDistributionTest(Tester):
                         -port jmx=6868 -mode cql3 native -rate threads=50 \
                         -col size=fixed(200) n=FIXED(5) -pop seq=1..210000""".format(strategy=self.strategy)
 
+        debug("Writing data...")
         self.cluster.stress(stress_cmd.split(" "))
+        self.cluster.flush()
+        debug("Waiting for compaction...")
+        self.cluster.wait_for_compactions()
 
         # nodetool status load is updated every 60 seconds
         status_ready_at = time.time() + 60 + 1
