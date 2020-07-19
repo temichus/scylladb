@@ -438,7 +438,7 @@ class CompactionAdditionalStrategyTests(Tester):
 
         from_mark = node1.mark_log()
         node1.start()
-        node1.watch_log_for(r'compaction - (Compacted|Resharded|Reshaped) [0-9]+ sstables to \[.+/data/ks/cf-.+\]', from_mark=from_mark)
+        node1.watch_log_for(r'compaction -.*(Compacted|Resharded|Reshaped) [0-9]+ sstables to \[.+/data/ks/cf-.+\]', from_mark=from_mark)
 
         after_start_sstables = sorted(glob.glob(os.path.join(keyspace_dir, 'cf' + '-*', '*-Data.db')))
 

@@ -93,7 +93,7 @@ class TestUpdateableConfig(Tester):
 
         self.change_and_verify_config(node1, 'compaction_enforce_min_threshold', True, 'true')
         mark = node1.mark_log()
-        compact_log = "compaction - Compacting \[%s" % os.path.join(node1.get_path(), "data/ks/cf")
+        compact_log = "compaction -.*Compacting \[%s" % os.path.join(node1.get_path(), "data/ks/cf")
 
         for i in range(min_threshold - 1):
             insert_c1c2(session, n=insert_keys_num)
@@ -102,7 +102,7 @@ class TestUpdateableConfig(Tester):
             node1.watch_log_for(compact_log, from_mark=mark, timeout=10)
         except Exception as ex:
             debug(ex)
-            assert "Missing: ['compaction - Compacting" in str(ex)
+            assert "Missing: ['compaction -.*Compacting" in str(ex)
 
         insert_c1c2(session, n=insert_keys_num)
         node1.flush()
