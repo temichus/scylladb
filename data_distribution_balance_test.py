@@ -167,7 +167,8 @@ class DataDistributionTest(Tester):
         return node_size
 
     def get_avg_size(self, sizes_data):
-        return sum([float(p['size']) for p in sizes_data]) / len(sizes_data)
+        sizes = [float(p['size']) for p in sizes_data]
+        return sum(sizes) / len(sizes)
 
 
 strategies = ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy',
