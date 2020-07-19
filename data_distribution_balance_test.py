@@ -68,13 +68,10 @@ class DataDistributionTest(Tester):
         size_dimensions = {res["dimension"] for res in status_result}
         self.assertEqual(len(size_dimensions), 1, "Dimension is different {}".format(size_dimensions))
 
-        for node_status in status_result:
-            self.assertGreater(node_status['size'],
-                               (1 - ALLOW_BALANCE_DIFF) * avg_size_dataset,
-                               msg="Distribution is suspicisios {}".format(node_status['address']))
-
+        min_size = min([res["size"] for res in status_result])
+        self.assertGreaterEqual(min_size, avg_size_dataset * (1 - ALLOW_BALANCE_DIFF))
         max_size = max([res["size"] for res in status_result])
-        self.assertLessEqual(max_size, avg_size_dataset + (1 - ALLOW_BALANCE_DIFF) * avg_size_dataset)
+        self.assertLessEqual(max_size, avg_size_dataset * (1 + ALLOW_BALANCE_DIFF))
 
     def verify_datasize_by_check_filesize(self):
         fs_sizes = self.parse_fs_size()
@@ -83,13 +80,10 @@ class DataDistributionTest(Tester):
         size_dimensions = {res["dimension"] for res in fs_sizes}
         self.assertEqual(len(size_dimensions), 1, "Dimension is different {}".format(size_dimensions))
 
-        for node_fs_size in fs_sizes:
-            self.assertGreater(node_fs_size['size'],
-                               (1 - ALLOW_BALANCE_DIFF) * avg_size_dataset,
-                               msg="Distribution is suspicisios {}".format(node_fs_size['address']))
-
+        min_size = min([res["size"] for res in fs_sizes])
+        self.assertGreaterEqual(min_size, avg_size_dataset * (1 - ALLOW_BALANCE_DIFF))
         max_size = max([res["size"] for res in fs_sizes])
-        self.assertLessEqual(max_size, avg_size_dataset + (1 - ALLOW_BALANCE_DIFF) * avg_size_dataset)
+        self.assertLessEqual(max_size, avg_size_dataset * (1 + ALLOW_BALANCE_DIFF))
 
     def parse_nodetool_status(self, lines):
         """parse output of nodetool status
