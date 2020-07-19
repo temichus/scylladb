@@ -247,7 +247,7 @@ class AlternatorTest(TesterAlternator):
 
     def test_update_condition_unused_entries_short_circuit(self):
         """
-        A test for https://github.com/scylladb/scylla/issues/6572 plus a cluster configuration
+        A test for https://github.com/scylladb/scylla/issues/6572 plus a multi DC configuration
         """
         self.prepare_dynamodb_cluster(num_of_nodes=3, is_multi_dc=True)
         node1 = self.cluster.nodelist()[0]
