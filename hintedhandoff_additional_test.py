@@ -9,6 +9,10 @@ import time
 from nose.plugins.attrib import attr
 from ccmlib.scylla_cluster import ScyllaCluster
 
+import os
+import signal
+import requests
+
 
 @attr('dtest-full')
 class TestHintedHandoff(Tester):
@@ -456,9 +460,158 @@ class TestHintedHandoff(Tester):
                     node.name, res["scylla_hints_manager_discarded"]))
                 self.assertEqual(res["scylla_hints_manager_discarded"], 0, "There were discarded hints")
 
+    def hintedhandoff_switch_config_in_runtime_template(self, hh_enabled_updater):
+        """
+        A template for testing that switching hinted handoff configuration works in runtime.
+        Ref: https://github.com/scylladb/scylla/issues/5634
+
+        Create a cluster of 3 nodes with hinted handoff disabled, each node is put into separate DC
+        Create a KS with RF=3
+        Create a table
+        Stop node2 and node3
+
+        Case A:
+        Enable hinting on node1 using the provided configuration update function (hh_enabled_updater)
+        Insert some rows with CL=ONE - each write should create one hint towards node2 and one for node3
+
+        Case B:
+        Disable hinting on node1
+        Insert some rows with CL=ONE - no hints should be created during this step
+
+        Case C:
+        Enable hinting on node1, but towards node3's DC only
+        Insert some rows with CL=ONE - each write should create one hint towards node3 only
+
+        Verification:
+        Start node2 and node3
+        Wait until hints are sent to node2 and node3
+        Stop node1 and node3
+        Verify that node2 has rows caused by hints from case A, but not B or C
+        Start node3
+        Stop node2
+        Verify that node3 has rows caused by hints from case A and C, but not B
+        """
+
+        debug("Creating a cluster with hints initially disabled")
+        cluster = self.cluster
+        # If we want to test changing hint generation options through config
+        # reload, we cannot specify --hinted-handoff-parameter in commandline.
+        # A commandline option always overrides configuration options, and
+        # prevents such option to be reloaded from config.
+        cluster.set_configuration_options(values={"endpoint_snitch": "GossipingPropertyFileSnitch",
+                                                  "hinted_handoff_enabled": "false"})
+        cluster.populate(nodes=[1, 1, 1])  # Put each node in a separate DC
+        all_nodes = self.cluster.nodelist()
+        node1, node2, node3 = all_nodes
+
+        for node in all_nodes:
+            # Use multiple shards so that we check that filtering is updated
+            # on all shards
+            jvm_args = ['--logger-log-level', 'hints_manager=trace', '--smp', '3']
+            node.start(wait_for_binary_proto=True, jvm_args=jvm_args)
+
+        keys1 = list(range(0, 100))
+        keys2 = list(range(100, 200))
+        keys3 = list(range(200, 300))
+        expected_hints_count = 0
+
+        session = self.patient_cql_connection(node1)
+        debug("Creating a keyspace...")
+        self.create_ks(session, 'ks', 3)
+
+        debug("Creating a table...")
+        create_c1c2_table(self, session)
+
+        debug("Stopping node2 and node3...")
+        node2.stop(wait_other_notice=True)
+        node3.stop(wait_other_notice=True)
+
+        debug("Enable hints on node1")
+        hh_enabled_updater(node1, "true")
+
+        session = self.patient_cql_connection(node1)
+        session.execute('USE ks')
+
+        debug("Inserting keys...")
+        insert_c1c2(session, keys=keys1, consistency=ConsistencyLevel.ONE)
+        # Each write should generate two hints
+        expected_hints_count += 2 * len(keys1)
+
+        debug("Disable hints on node1")
+        hh_enabled_updater(node1, "false")
+
+        debug("Inserting keys...")
+        insert_c1c2(session, keys=keys2, consistency=ConsistencyLevel.ONE)
+        # No hints should be generated
+
+        debug("Enable hints on node1, but only towards node3")
+        # Add more dummy DCs so that we test parsing commas
+        dcs = ",".join(set([node3.data_center, 'some-dc', 'some-other-dc']))
+        hh_enabled_updater(node1, dcs)
+
+        debug("Inserting keys...")
+        insert_c1c2(session, keys=keys3, consistency=ConsistencyLevel.ONE)
+        # Only hints towards node3 should be generated
+        expected_hints_count += len(keys3)
+
+        debug("Starting node2 and node3...")
+        node2.start(wait_other_notice=True)
+        node3.start(wait_other_notice=True)
+
+        debug("Enable hints on node1")
+        hh_enabled_updater(node1, "true")
+
+        debug("Waiting for hints to be sent...")
+        self.__wait_until_hints_are_sent_from(node_from=node1, count=expected_hints_count)
+
+        # Check rows on node2, should only have keys from keys1
+
+        debug("Stopping node1 and node3...")
+        node1.stop(wait_other_notice=True)
+        node3.stop(wait_other_notice=True)
+
+        session = self.patient_cql_connection(node2)
+        session.execute('USE ks')
+
+        debug("Checking that data inserted when hinted handoff was ENABLED IS present on node2...")
+        for k in keys1:
+            query_c1c2(session, k, ConsistencyLevel.ONE, must_be_missing=False)
+
+        debug("Checking that data inserted when hinted handoff was DISABLED IS NOT present on node2...")
+        for k in keys2:
+            query_c1c2(session, k, ConsistencyLevel.ONE, must_be_missing=True)
+
+        debug("Checking that data inserted when hinted handoff was DISABLED towards node2's DC, IS NOT present on node2...")
+        for k in keys3:
+            query_c1c2(session, k, ConsistencyLevel.ONE, must_be_missing=True)
+
+        # Check rows on node3, should only have keys from keys1 and keys3
+
+        debug("Starting node3...")
+        node3.start(wait_other_notice=True)
+        debug("Stopping node2...")
+        node2.stop(wait_other_notice=True)
+
+        session = self.patient_cql_connection(node3)
+        session.execute('USE ks')
+
+        debug("Checking that data inserted when hinted handoff was ENABLED IS present on node3...")
+        for k in keys1:
+            query_c1c2(session, k, ConsistencyLevel.ONE, must_be_missing=False)
+
+        debug("Checking that data inserted when hinted handoff was DISABLED IS NOT present on node3...")
+        for k in keys2:
+            query_c1c2(session, k, ConsistencyLevel.ONE, must_be_missing=True)
+
+        debug("Checking that data inserted when hinted handoff was ENABLED towards node3's DC IS present on node3...")
+        for k in keys3:
+            query_c1c2(session, k, ConsistencyLevel.ONE, must_be_missing=False)
+
+    def hintedhandoff_switch_config_in_runtime_via_http_api(self):
+        self.hintedhandoff_switch_config_in_runtime_template(self.__update_hh_enabled_via_http_api)
+
 
 ########################################################################################################################
-
 
     @property
     def __hint_flush_threshold(self):
@@ -564,3 +717,28 @@ class TestHintedHandoff(Tester):
                     assert abs(hints_on_nodes[j][i] - hints_on_nodes[j][k]) <= 1, \
                         f"Unexpected number of hint files per shard on node{j+1}: " + \
                         f"abs({hints_on_nodes[j][i]} - {hints_on_nodes[j][k]}) > 1"
+
+    def __update_hh_enabled_via_http_api(self, node, new_value):
+        if new_value in ("true", "false"):
+            ep = 'storage_proxy/hinted_handoff_enabled'
+            url_params = {'enable': new_value}
+            expected = (new_value == "true")
+        else:
+            ep = 'storage_proxy/hinted_handoff_enabled_by_dc'
+            url_params = {'dcs': new_value}
+            expected = sorted(new_value.split(","))
+
+        url = 'http://{}:10000/{}'.format(self.get_ip_from_node(node), ep)
+
+        debug("Changing hint sending options on {} to {}, through HTTP API: {}".format(node.name, new_value, ep))
+        requests.post(url, params=url_params)
+
+        # Sanity check: see if we can fetch the configuration we requested back
+        response = requests.get(url).json()
+        debug("Got response: {}".format(response))
+
+        # List of DCs might be in different order than we specified - that is expected
+        if isinstance(response, list):
+            response.sort()
+
+        self.assertEqual(expected, response)
