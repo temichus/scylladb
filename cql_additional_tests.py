@@ -2387,8 +2387,17 @@ class TestCQL(Tester):
             );
         """)
 
-        session.execute("UPDATE ks.foo SET L = [1, 3, 5] WHERE k = b017f48f-ae67-11e1-9096-005056c00008;")
-        session.execute("UPDATE ks.foo SET L = L + [7, 11, 13] WHERE k = b017f48f-ae67-11e1-9096-005056c00008;")
+        # since in shard-aware scylla-driver we have connection to each shard,
+        # two statements appending to L can happen at the same time, hitting
+        # https://github.com/scylladb/scylla/issues/6846
+        # hence the ordering of L isn't determined for now
+        # for solving this, we changing those two into prepare statements,
+        # so they would both land on the same shard
+        statement1 = session.prepare("UPDATE ks.foo SET L = [1, 3, 5] WHERE k = ?")
+        statement2 = session.prepare("UPDATE ks.foo SET L = L + [7, 11, 13] WHERE k =?")
+
+        session.execute(statement1, parameters=(UUID("b017f48f-ae67-11e1-9096-005056c00008"),))
+        session.execute(statement2, parameters=(UUID("b017f48f-ae67-11e1-9096-005056c00008"),))
         session.execute("UPDATE ks.foo SET S = {1, 3, 5} WHERE k = b017f48f-ae67-11e1-9096-005056c00008;")
         session.execute("UPDATE ks.foo SET S = S + {7, 11, 13} WHERE k = b017f48f-ae67-11e1-9096-005056c00008;")
         session.execute("UPDATE ks.foo SET M = {'foo': 1, 'bar' : 3} WHERE k = b017f48f-ae67-11e1-9096-005056c00008;")
