@@ -84,5 +84,4 @@ cql_prepared_test.py
 alternator_tests.py
 lwt_random_test.py
 lwt_banking_load_test.py
-lwt_banking_test.py
 
