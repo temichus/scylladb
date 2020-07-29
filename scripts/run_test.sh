@@ -168,6 +168,9 @@ else
     export AWS_S3_ENDPOINT="http://MinioServer:9000"
 fi
 
+echo
+env | grep -E '^((DTEST|CCM|SCYLLA_ROOT|CASSANDRA|TOOLS_JAVA|JMX|SCYLLA_DBUILD_SO|LOG_SAVED)_DIR|HOME|SCYLLA_*|(PRINT_)?DEBUG|TRACE|KEEP_*|NOSE_*|CLUSTER_*|DRY_*|NODE_*|AWS_*)='
+echo
 
 # if in jenkins also mount the workspace into docker
 if [[ -d ${WORKSPACE} ]]; then
