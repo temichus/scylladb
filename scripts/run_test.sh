@@ -132,6 +132,19 @@ if [[ -z ${SCYLLA_VERSION} ]]; then
     check_directory_exists TOOLS_JAVA_DIR
     check_directory_exists JMX_DIR
 
+    cas_symlink=${SCYLLA_ROOT_DIR}/resources/cassandra
+    if [ ! -h ${cas_symlink} ]; then
+        echo -e "\e[31mwarning: ${cas_symlink}: symbolic link not found\e[0m"
+    else
+        cas_inode_num=$(ls -Lid ${cas_symlink} | awk '{print $1}')
+        tools_java_inode_num=$(ls -Lid ${TOOLS_JAVA_DIR} | awk '{print $1}')
+        if [ ${cas_inode_num} != ${tools_java_inode_num} ]; then
+            echo -e "\e[31mwarning: ${cas_symlink} mismatches \$TOOLS_JAVA_DIR"
+            echo -e "         $(ls -ld ${cas_symlink})"
+            echo -e "         $(ls -ld ${TOOLS_JAVA_DIR})\e[0m"
+        fi
+    fi
+
     if [[ ! -d ${SCYLLA_DBUILD_SO_DIR} ]] || diff -q ${SCYLLA_ROOT_DIR}/tools/toolchain/image ${SCYLLA_DBUILD_SO_DIR}/image; then
         echo "scylla was built with dbuild, and SCYLLA_DBUILD_SO_DIR wasn't supplied, does not exist, or is outdated"
         ${SCYLLA_ROOT_DIR}/tools/toolchain/dbuild -v ${CASSANDRA_DIR}:${CASSANDRA_DIR} -v ${DTEST_DIR}/scripts/dbuild_collect_so.sh:/bin/dbuild_collect_so.sh -- dbuild_collect_so.sh ${CASSANDRA_DIR}/scylla ${SCYLLA_DBUILD_SO_DIR}
