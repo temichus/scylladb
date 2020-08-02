@@ -677,6 +677,7 @@ class Tester(TestCase):
 
     def find_cores(self):
         cores = []
+        ignored_cores = []
         nodes = []
         for node in self.cluster.nodelist():
             try:
@@ -698,8 +699,9 @@ class Tester(TestCase):
                             cores += [(node.name, path)]
                         else:
                             debug("Ignoring core file {} belonging to {} due to ignore_cores_log_patterns".format(path, node.name))
+                            ignored_cores += [(node.name, path)]
         # returns empty list if no core files found
-        return cores
+        return cores, ignored_cores
 
     def copy_logs(self, directory=LOG_SAVED_DIR, name=LAST_LOG, cores=None):
         """Copy the current cluster's log files somewhere, by default to LOG_SAVED_DIR with a name of 'last'"""
@@ -736,7 +738,8 @@ class Tester(TestCase):
 
         if KEEP_CORES:
             if cores is None:
-                cores = self.find_cores()
+                cores, ignored_cores = self.find_cores()
+                cores += ignored_cores
             if cores:
                 for n, src in cores:
                     dst = os.path.join(logdir, "{}-{}".format(n, os.path.basename(src)))
@@ -1109,7 +1112,8 @@ class Tester(TestCase):
                 debug("Test failed with errors: {}".format(self._outcome.errors))
         if hasattr(self, 'allow_log_errors'):
             warning('allow_log_errors is deprecated. Use ignore_log_patterns instead! {}')
-        found_cores = None
+        found_cores = []
+        ignored_cores = []
         try:
             critical_errors = []
             found_errors = []
@@ -1136,7 +1140,7 @@ class Tester(TestCase):
                 raise AssertionError('Critical errors found: {}\nOther errors: {}'.format(critical_errors, found_errors))
             if found_errors:
                 raise AssertionError('Unexpected errors found: {}'.format(found_errors))
-            found_cores = self.find_cores()
+            found_cores, ignored_cores = self.find_cores()
             if found_cores:
                 raise AssertionError("Core file(s) found.{}".format("" if failed else " Marking test as failed."))
         except:
@@ -1144,8 +1148,8 @@ class Tester(TestCase):
             raise
         finally:
             try:
-                if failed or KEEP_LOGS:
-                    self.copy_logs(cores=found_cores)
+                if failed or KEEP_LOGS or found_cores or ignored_cores:
+                    self.copy_logs(cores=list(found_cores + ignored_cores))
             except Exception as e:
                 print("Error saving log:", str(e))
             finally:
