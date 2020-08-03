@@ -135,7 +135,6 @@ class AlternatorTest(TesterAlternator):
         except ClientError as query_exp:
             self.assertIn('Cannot achieve consistency level for cl LOCAL_QUORUM',
                           query_exp.response['Error']['Message'], msg=query_exp)
-            self.assertIn('Internal Server Error', query_exp.response['Error']['Code'], msg=query_exp)
 
         debug("Check that the correct error is returned for a resource of a decommissioned node")
         dynamodb_api_node2 = self.get_dynamodb_api(node=node2)
