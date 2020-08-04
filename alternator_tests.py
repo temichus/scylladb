@@ -6,6 +6,7 @@ import string
 import tempfile
 import time
 from copy import deepcopy
+from boto3.dynamodb.conditions import Attr
 from decimal import Decimal
 from pprint import pformat
 
@@ -275,6 +276,27 @@ class AlternatorTest(TesterAlternator):
         debug(f"Reading Alternator queries from node {node1.name} on data-center {node1.data_center}")
         item = table.get_item(Key={self._table_primary_key: new_pk_val}, ConsistentRead=True)['Item']
         assert item == {self._table_primary_key: new_pk_val, 'a': 1, 'c': 3}
+
+    def test_filter_expression(self):
+        self.prepare_dynamodb_cluster(is_multi_dc=True)
+        node1 = self.cluster.nodelist()[0]
+        schema = schemas.HASH_AND_NUM_RANGE_SCHEMA
+        self.create_table(node=node1, schema=schema)
+        hash_key_name, range_key_name = schemas.HASH_KEY_NAME, schemas.RANGE_KEY_NAME
+        items = [{hash_key_name: f"{hash_value}", range_key_name: range_value}
+                 for hash_value in range(10)
+                 for range_value in range(10)]
+        self.batch_write_actions(table_name=TABLE_NAME, node=node1, new_items=items, schema=schema)
+        selected_range_value = random.choice(items)[range_key_name]
+        dc2_node = next(node for node in self.cluster.nodelist() if node.data_center != node1.data_center)
+        wait_for(self.is_table_schema_synced, timeout=30, text='Waiting until table schema is updated',
+                 table_name=TABLE_NAME, nodes=[node1, dc2_node])
+        node1.stop()
+        debug("Testing a query using filter expression")
+        expected_items = [item for item in items if item[range_key_name] >= selected_range_value]
+        diff = self.compare_table_data(table_name=TABLE_NAME, table_data=expected_items, node=dc2_node,
+                                FilterExpression=Attr(range_key_name).gte(selected_range_value))
+        self.assertTrue(expr=not diff, msg=f"The following items differs:\n{pformat(diff)}")
 
     def test_update_condition_expression_and_write_isolation(self):
         """

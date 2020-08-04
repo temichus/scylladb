@@ -363,8 +363,8 @@ class TesterAlternator(Tester):
         node.repair()
 
     def compare_table_data(self, table_name: str, table_data: List[Dict[str, str]], node: ScyllaNode,
-                           ignore_order: bool = True, consistent_read: bool = True) -> DeepDiff:
-        data = self.scan_table(table_name=table_name, node=node, ConsistentRead=consistent_read)
+                           ignore_order: bool = True, consistent_read: bool = True, **kwargs) -> DeepDiff:
+        data = self.scan_table(table_name=table_name, node=node, ConsistentRead=consistent_read, **kwargs)
         return DeepDiff(t1=table_data, t2=data, ignore_order=ignore_order, ignore_numeric_type_changes=True)
 
     def _run_stress(self, table_name: str, node: ScyllaNode, target, num_of_item: int = NUM_OF_ITEMS,
