@@ -375,7 +375,7 @@ class CDCNativeTypeTmpl(CdcTools):
                                             deleted_col=None, first_record=False):
         delta_index = 0
         postimage_index = 1
-        preimage_expected_dataset = preimage_expected_dataset if not first_record else self.empty_dataset
+        preimage_expected_dataset = preimage_expected_dataset if not first_record else self.null_value_dataset
 
         if preimage_enable:
 
