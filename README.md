@@ -244,7 +244,7 @@ To change Scylla CPU and memory configuration:
 
 To pass environment variables for running scylla:
 
-    SCYLLA_EXT_ENV="ASAN_OPTIONS=disable_coredump=0,abort_on_error=1;UBSAN_OPTIONS=halt_on_error=1:abort_on_error=1;BOOST_TEST_CATCH_SYSTEM_ERRORS=no"
+    SCYLLA_EXT_ENV="ASAN_OPTIONS=disable_coredump=0:abort_on_error=1:detect_stack_use_after_return=1;UBSAN_OPTIONS=halt_on_error=1:abort_on_error=1;BOOST_TEST_CATCH_SYSTEM_ERRORS=no"
 
 Test Directories
 ----------------
