@@ -9,6 +9,7 @@ from cassandra.policies import FallthroughRetryPolicy
 from cassandra.query import SimpleStatement
 from cassandra.cluster import NoHostAvailable
 from ccmlib.node import NodeError
+from ccmlib.scylla_cluster import ScyllaCluster
 from nose.plugins.attrib import attr
 
 from dtest import Tester, debug
@@ -891,6 +892,8 @@ class TestUpdateClusterLayout(Tester):
         self.assertEqual(find_expected_status, True, "found statuses: %s" % statuses)
 
     def wait_for_nodes_status(self, node, exp_statuses, keyspace="", timeout=30):
+        if isinstance(self.cluster, ScyllaCluster) and self.cluster.scylla_mode == 'debug':
+            timeout *= 3
         timeout = time.time() + timeout
         while True:
             try:
