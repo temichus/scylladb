@@ -848,11 +848,8 @@ class TestUpdateClusterLayout(Tester):
         node1, node2, node3 = cluster.nodelist()
 
         session = self.patient_cql_connection(node1)
-        time.sleep(5)
         self.create_ks(session, 'ks', 1)
-        time.sleep(5)
         self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
-        time.sleep(5)
         insert_c1c2(session, keys=range(1000), consistency=ConsistencyLevel.ONE)
 
         def run():
