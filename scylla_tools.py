@@ -21,6 +21,7 @@ import datetime
 from tools import rows_to_list
 from uuid import UUID
 from concurrent.futures import ThreadPoolExecutor
+from typing import Optional
 import glob
 
 
@@ -262,10 +263,25 @@ def get_all_files_in_dir(dir_path):
     return dir_files
 
 
-def get_cf_dir(ks_dir, cf_name):
+def get_latest_dir(srcdir: str, pattern: Optional[str] = '') -> Optional[str]:
+    """
+    Get latest created directory path, which matches with the pattern
+    """
+    sorted_list = sorted(os.listdir(srcdir), reverse=True,
+                         key=lambda x: os.path.getctime(os.path.join(srcdir, x)))
+    for item in sorted_list:
+        item_path = os.path.join(srcdir, item)
+        if os.path.isdir(item_path) and re.compile(pattern).match(item):
+            return item_path
+
+
+def get_cf_dir(ks_dir, cf_name, latest=False):
     """
     Return the first CF directory for a CF with a given name
     """
+    if latest:
+        return get_latest_dir(ks_dir, cf_name + '-')
+
     cf_pattern = re.compile("{}-".format(cf_name))
     for root, dirs, files in os.walk(ks_dir):
         for d in dirs:
@@ -273,12 +289,12 @@ def get_cf_dir(ks_dir, cf_name):
                 return os.path.join(root, d)
 
 
-def get_node_cf_dir(node, ks_name='ks', cf_name='cf'):
+def get_node_cf_dir(node, ks_name='ks', cf_name='cf', latest=False):
     """
     Return the first CF directory for a CF with a given name
     in the given keyspace and node
     """
-    return get_cf_dir(os.path.join(node.get_path(), 'data', ks_name), cf_name)
+    return get_cf_dir(os.path.join(node.get_path(), 'data', ks_name), cf_name, latest)
 
 
 def flush_by_node(cluster):
@@ -1049,11 +1065,20 @@ def remove_node(cluster, node, wait_other_notice=True, other_nodes=None):
     remove_using_node.nodetool("removenode {}".format(hostid))
 
 
-def copy_files_to(from_dir, to_dir, files_only=False):
+def copy_files_to(from_dir, to_dir, files_only=False, create_to_dir=False):
+    """
+    Copy files from `from_dir` to `to_dir`, optionally create `to_dir`
+
+    :param files_only: if true, only copy files and ignore sub directories
+    :param create_to_dir: if true, create `to_dir` if it doesn't exist
+    """
+    if create_to_dir and not os.path.exists(to_dir):
+        os.makedirs(to_dir)
     for f in os.listdir(from_dir):
-        if files_only and not os.path.isfile(os.path.join(from_dir, f)):
-            continue
-        shutil.copy2(os.path.join(from_dir, f), os.path.join(to_dir, f))
+        if os.path.isfile(os.path.join(from_dir, f)):
+            shutil.copy2(os.path.join(from_dir, f), os.path.join(to_dir, f))
+        elif not files_only:
+            shutil.copytree(os.path.join(from_dir, f), os.path.join(to_dir, f))
 
 
 def get_entity_id(session, table_or_view, keyspace_name, entity_name):
@@ -1365,3 +1390,37 @@ def set_trace_probability(nodes, probability_value):
     with ThreadPoolExecutor(max_workers=len(nodes)) as executor:
         threads = [executor.submit(_set_trace_probability_for_node, node) for node in nodes]
         [thread.result() for thread in threads]
+
+
+def copy_directory(srcdir, destdir, ignore_subdir=True):
+    """
+    Copy file from srcdir to destdir, it supports to optionally ignore sub directories.
+    """
+    if not ignore_subdir:
+        shutil.copytree(srcdir, destdir)
+    for item in os.listdir(srcdir):
+        srcfile = os.path.join(srcdir, item)
+        if not os.path.exists(destdir):
+            os.mkdir(destdir)
+        if os.path.isfile(srcfile):
+            shutil.copy2(srcfile, destdir)
+
+
+def fill_data_by_cs(node, n_range=[500, 550, 600, 650], start=0, duration_range=[],
+                    other_opt=['-rate', 'threads=10', '-col', 'size=FIXED(1024)'],
+                    overlap_rate=0, flush=True):
+    """
+    fill data by multiple cassandra-stress workloads
+    """
+    opts = []
+    for num in n_range:
+        opts.append([f'n={num}', '-pop', f'seq={start}..{start+num}'])
+        start += int(num * (1 - overlap_rate))
+    for t in duration_range:
+        opts.append([f'duration={t}s'])
+    for opt in opts:
+        cs_cmdline = ['write', 'no-warmup'] + opt + other_opt
+        node.stress(cs_cmdline)
+        if flush:
+            debug("Flush after writing data .....")
+            node.flush()

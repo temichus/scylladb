@@ -5,11 +5,13 @@ import shutil
 import glob
 import tools
 import random
+import itertools
 
 from threading import Thread
 
-from dtest import Tester, debug, run_with_params
-from scylla_tools import get_sstables_files, insert_c1c2, get_node_cf_dir
+from dtest import Tester, debug, info, run_with_params
+from scylla_tools import get_sstables_files, insert_c1c2, get_node_cf_dir, copy_files_to
+from scylla_tools import copy_directory, fill_data_by_cs
 from cassandra import ConsistencyLevel, concurrent
 from assertions import assert_none, assert_all
 
@@ -395,6 +397,162 @@ class CompactionAdditionalTest(CompactionAdditionalTester):
             unpurged_files, "PROBLEM Some of original files are still there and were NOT PURGED: {}".format(unpurged_files))
 
         debug("Purge SUCCEEDED, original files are not there {}".format(sstables_files2))
+
+    @attr('single_node')
+    def _refresh_and_restart_after_compaction_strategy_change(self, strategy1, strategy2):
+        """
+        This test tries to loade backup sstable by refresh and restart after changing the compaction strange.
+        refreshing loads sstable from upload directory, and sstable in staging or main sstable directory will
+        be loaded in cf populating during restart.
+
+        Reshaping will only be triggered conditionally if current compaction strategy isn't satisfied.
+
+        LeveledCompactionStrategy:
+        - level 0 has more sstables than min_threshold (covered in the test)
+        - have 10% overlapping sstables on same level
+        - sstable level out of MAX level (9)
+
+        SizeTieredCompactionStrategy:
+        - have more than min_threshold similar-sized SSTables
+
+        TimeWindowCompactionStrategy:
+        - have sstables that span more than 1 window
+        - a given window has more than min_threshold SSTables.
+        - Time-Window Compaction Strategy compacts SSTables within each time window
+          using Size-tiered Compaction Strategy (STCS)
+
+        DateTieredCompactionStrategy:
+        - doesn't support reshaping
+        """
+
+        node1 = self.cluster.nodelist()[0]
+        session = self.patient_cql_connection(node1)
+        session.execute("DROP KEYSPACE IF EXISTS keyspace1")
+
+        debug(f"Create test table with {strategy1}")
+        node1.stress(['write', 'n=0', 'no-warmup', '-schema', 'replication(factor=1)', '-rate', 'threads=1'])
+
+        session.execute(f"ALTER TABLE keyspace1.standard1 WITH compaction={strategy1}")
+
+        debug("Insert test data by cassandra-stress and compact")
+        # Use multiple workload to generate multiple sstables, then it's easy to reach the threshold for reshaping
+
+        fill_data_by_cs(node1, n_range=[500, 550, 600, 650])
+        # Compact initiatively, make sure there are some compacted sstables before disable autocompaction
+        node1.compact()
+
+        # Here we disable autocompaction for leaving all sstables in level 0, then
+        # it's easy to trigger reshape with small dataset during restart (strict mode).
+        # Actually it's not always necessary.
+        #
+        # Refreshing from upload will use relaxed mode reshape, restart population
+        # from staging or main sstable directory will use strict mode reshape.
+        # Only in relaxed mode, all sstables will be mutated to level to 0, reshaping
+        # will be trigger very easily.
+
+        debug('disable autocompaction to leave all sstables to level 0')
+        node1.nodetool('disableautocompaction keyspace1 standard1')
+
+        debug("Insert test data by cassandra-stress without compacting, leave it for next strategy")
+
+        if (strategy2['class'] == 'TimeWindowCompactionStrategy'):
+            # Prepare a sstable spans two 1 window, (window unit is 60 seconds)
+            fill_data_by_cs(node1, n_range=[], duration_range=[70],
+                            other_opt=['-rate', 'threads=1', '-col', 'size=FIXED(1024)'])
+        elif (strategy2['class'] == 'LeveledCompactionStrategy'):
+            # Need more than 10% overlapping sstables on same level
+            fill_data_by_cs(node1, n_range=[500, 550, 600, 650, 1000], start=5000)
+        elif (strategy2['class'] == 'SizeTieredCompactionStrategy'):
+            fill_data_by_cs(node1, n_range=[500, 550, 600, 650, 2000, 5000] * 2, start=10000)
+        else:
+            fill_data_by_cs(node1, n_range=[500, 550, 600, 650], start=5000)
+
+        cf_dir = get_node_cf_dir(node1, 'keyspace1', 'standard1', latest=True)
+        debug(cf_dir)
+
+        # Prepare for cf population during restart # subtest1
+        copy_files_to(cf_dir, os.path.join(cf_dir, './staging/'), files_only=True)
+        # Prepare for refresh  # subtest2
+        copy_files_to(cf_dir, os.path.join(cf_dir, './upload/'), files_only=True)
+
+        # For troubleshot
+        copy_files_to(cf_dir, os.path.join(cf_dir, f'./backup.{time.time()}/'),
+                      files_only=True, create_to_dir=True)
+
+        info(f"Change table compaction strategy to {strategy2}")
+        session.execute(f"ALTER TABLE keyspace1.standard1 WITH compaction={strategy2}")
+
+        def assert_reshape_and_verify_data(srcdir=''):
+            """
+            Check Reshaping really happens and verify the loaded data by cs read
+            """
+            try:
+                res = node1.watch_log_for("Reshape keyspace1.standard1", timeout=5, from_mark=mark)
+                debug(res)
+            except TimeoutError:
+                res = None
+            # DateTieredCompactionStrategy doesn't support to reshape
+            if (strategy2['class'] not in ['DateTieredCompactionStrategy', 'SizeTieredCompactionStrategy']):
+
+                self.assertIsNotNone(res, f"Reshape didn't occurred in loading sstables from {srcdir} directory")
+
+            info(f'Verify data is loaded from {srcdir} directory')
+            node1.stress(['read', 'n=100', 'no-warmup', '-rate', 'threads=10', '-col', 'size=FIXED(1024)'])
+
+        debug("Clean test data & sstables before subtest by TRUNCATE")
+        session.execute("TRUNCATE keyspace1.standard1")
+
+        debug("Re-enable autocompaction, otherwise compaction & reshape wont' work in restart and refresh")
+        node1.nodetool('enableautocompaction keyspace1 standard1')
+        with self.subTest('Load data from upload directory by refresh', i=1):
+            mark = node1.mark_log()
+            info('Refresh keyspace1.standard1 .....')
+            node1.nodetool("refresh -- keyspace1 standard1")
+            assert_reshape_and_verify_data(srcdir='upload/')
+
+        debug("Clean test data & sstables before subtest by TRUNCATE")
+        session.execute("TRUNCATE keyspace1.standard1")
+        with self.subTest('Restart to load sstables from staging directory', i=2):
+            mark = node1.mark_log()
+            info("Restart the node .....")
+            node1.stop(gently=True)
+            node1.start(wait_for_binary_proto=True)
+            session = self.patient_cql_connection(node1)
+            assert_reshape_and_verify_data(srcdir='staging/')
+
+    def refresh_and_restart_after_compaction_strategy_change_test(self):
+        """
+        Change compaction strategy with a matrix, both restart and refresh are tested.
+        """
+        cluster = self.cluster
+        cluster.populate(1)
+        node1 = cluster.nodelist()[0]
+        node1.start(wait_for_binary_proto=True)
+
+        strategies = [
+            # Expect sstables are more than min_threshold in level 0
+            {'class': 'LeveledCompactionStrategy', 'sstable_size_in_mb': 1, 'max_threshold': 1, 'min_threshold': 1},
+            # Expect sstables are generated in multiple minutes for TimeWindowCompactionStrategy
+            {'class': 'TimeWindowCompactionStrategy', 'split_during_flush': False, 'compaction_window_size': 1,
+             'compaction_window_unit': 'MINUTES', 'max_threshold': 1, 'min_threshold': 1},
+            # Expect there are more sstables than min_threshold in same bucket
+            {'class': 'SizeTieredCompactionStrategy', 'bucket_high': 1.5, 'bucket_low': 0.5,
+             'min_sstable_size': 1,  'max_threshold': 1, 'min_threshold': 1},
+            {'class': 'DateTieredCompactionStrategy'}
+        ]
+
+        subtests_errs = []
+        for src, dest in itertools.product(strategies, strategies):
+            try:
+                self._refresh_and_restart_after_compaction_strategy_change(src, dest)
+                debug("################# Subtest succeeded! #################")
+            except Exception as e:
+                debug('################# Subtest failed! #################\n' + str(e))
+                subtests_errs.append(e)
+        self.assertEqual(len(subtests_errs), 0, 'Exception occured in subtest')
+
+        # Clean test data
+        shutil.rmtree(os.path.join(node1.get_path(), 'data', 'keyspace1'))
 
 
 @attr('dtest-full', 'single_node')
