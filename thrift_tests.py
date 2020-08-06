@@ -1384,6 +1384,23 @@ class TestMutations(ThriftTester):
         assert len(result) == 3
         assert list(set(row.columns[0].super_column.name for row in result))[0] == 'sc1'
 
+    def test_get_slice_unsorted_column_names(self):
+        # Reproduces https://github.com/scylladb/scylla/issues/6486
+        _set_keyspace('Keyspace2')
+        for key in ['key1', 'key2', 'key3', 'key4', 'key5']:
+            for cname in ['col1', 'col2', 'col3', 'col4', 'col5']:
+                client.insert(key, ColumnParent('Standard1'), Column(cname, 'v-' + cname, 0), ConsistencyLevel.ONE)
+        cp = ColumnParent('Standard1')
+        predicate = SlicePredicate(column_names=['col4', 'col3', 'col1', 'col5', 'col2'])
+        range = KeyRange(start_token='55', end_token='55', count=100)
+        result = client.get_range_slices(cp, predicate, range, ConsistencyLevel.ONE)
+        assert len(result) == 5
+        assert result[0].columns[0].column.name == b'col1'
+        assert result[0].columns[1].column.name == b'col2'
+        assert result[0].columns[2].column.name == b'col3'
+        assert result[0].columns[3].column.name == b'col4'
+        assert result[0].columns[4].column.name == b'col5'
+
     def test_get_range_slice(self):
         _set_keyspace('Keyspace1')
         # The order of keys with Murmur3 is the following:
