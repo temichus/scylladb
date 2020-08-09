@@ -324,7 +324,7 @@ class IcsCompactionTest(Tester):
         self.create_ks(session=session, name=KEYSPACE_NAME, rf=1)
         self.create_cf(session=session, name=TABLE_NAME, columns={'c1': 'text', 'c2': 'text'})
         compaction = self._get_table_compaction_strategy()
-        assert compaction == CompactionStrategy.SIZE_TIERED, "Default compaction is: {}".format(compaction)
+        assert compaction == CompactionStrategy.INCREMENTAL, "Default compaction is: {}".format(compaction)
 
     def alter_table_stcs_to_lcs_to_ics_test(self):
         self._create_table_and_alter_compaction(new_compaction=CompactionStrategy.LEVELED,
