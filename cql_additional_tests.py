@@ -49,6 +49,11 @@ MSG_ALLOW_FILTERING = "ALLOW FILTERING"
 @attr('dtest-full')
 class TestCQL(Tester):
 
+    def __init__(self, *args, **kwargs):
+        super(TestCQL, self).__init__(*args, **kwargs)
+        if not hasattr(self, 'compaction_strategy_for_migration'):
+            self.compaction_strategy_for_migration = random.choice(['SizeTieredCompactionStrategy', 'TimeWindowCompactionStrategy', 'LeveledCompactionStrategy'])
+
     def prepare(self, create_keyspace=True, use_cache=False, nodes=1, rf=1, protocol_version=None, options={}, **kwargs):
         cluster = self.cluster
 
@@ -5698,7 +5703,7 @@ class TestCQL(Tester):
 
     def mc_prepare_table(self, nodes, keyspace_name, table_name, dataset, data_amount,
                          columns=['"ID"', '"Ck1"', '"cK2"', '"Columnfamily_for_mc_sstables_column1"'],
-                         keys_amount=3, rf=4):
+                         keys_amount=3, rf=4, compaction_options=None):
         session = self.prepare(create_keyspace=False, nodes=nodes, rf=4)
         session.consistency_level = 'QUORUM'
         self.create_ks(session=session, name=keyspace_name, rf=rf)
@@ -5706,6 +5711,11 @@ class TestCQL(Tester):
         columns_desc = ' int, '.join(columns)
         keys_desc = ', '.join(columns[:keys_amount])
         query = 'CREATE TABLE {table_name} ({columns_desc} int, PRIMARY KEY ({keys_desc}))'.format(**locals())
+        if compaction_options:
+            if isinstance(compaction_options, dict):
+                query += " WITH compaction = {}".format(compaction_options)
+            else:
+                query += " WITH compaction = {{'class': '{}'}}".format(compaction_options)
         debug('Create table: "{}"'.format(query))
         session.execute(query=query)
 
@@ -5754,7 +5764,8 @@ class TestCQL(Tester):
                        for i in range(0, data_amount)]
 
         self.mc_prepare_table(nodes=4, keyspace_name=keyspace_name, table_name=table_name,
-                              dataset=dataset, data_amount=data_amount)
+                              dataset=dataset, data_amount=data_amount,
+                              compaction_options=self.compaction_strategy_for_migration)
 
         # Create Cassandra cluster, migrate the Scylla data and validate the migrated data
         self.mc_migrate_scylla_to_cassandra(keyspace_name=keyspace_name, table_name=table_name, dataset=dataset,
@@ -5777,7 +5788,8 @@ class TestCQL(Tester):
                            for i in range(0, data_amount)]
 
         session = self.mc_prepare_table(nodes=4, keyspace_name=keyspace_name, table_name=table_name,
-                                        dataset=dataset, data_amount=data_amount)
+                                        dataset=dataset, data_amount=data_amount,
+                                        compaction_options=self.compaction_strategy_for_migration)
 
 
         debug('Run update')
@@ -5819,7 +5831,8 @@ class TestCQL(Tester):
                        for i in range(0, data_amount)]
 
         session = self.mc_prepare_table(nodes=4, keyspace_name=keyspace_name, table_name=table_name,
-                                        dataset=dataset, data_amount=data_amount)
+                                        dataset=dataset, data_amount=data_amount,
+                                        compaction_options=self.compaction_strategy_for_migration)
 
         debug('Run delete')
         for i in range(2, 5):
@@ -5853,7 +5866,8 @@ class TestCQL(Tester):
         keys_columns_amount = 2
 
         session = self.mc_prepare_table(nodes=4, keyspace_name=keyspace_name, table_name=table_name, columns=columns,
-                                        keys_amount=keys_columns_amount, dataset=dataset, data_amount=data_amount)
+                                        keys_amount=keys_columns_amount, dataset=dataset, data_amount=data_amount,
+                                        compaction_options=self.compaction_strategy_for_migration)
 
         # Add new columns with case sensitive name
         new_column_name = '"Columnfamily_for_mc_sstables_column1"'
