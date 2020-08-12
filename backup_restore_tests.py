@@ -9,6 +9,7 @@ from tools import new_node
 
 from cassandra import ConsistencyLevel
 from cassandra.query import SimpleStatement
+from ccmlib.node import NodetoolError
 
 from dtest import Tester, debug
 from scylla_tools import insert_c1c2, query_c1c2_concurrent, get_sstables_files
@@ -669,6 +670,82 @@ class TestBackupRestore(Tester):
             debug("Check that snapshot{} doesn't exist any more...".format(i))
             test_dir = self.get_snapshot_dir('snapshot{}'.format(i))
             self.assertTrue(test_dir is None, "'snapshot{}' has not been deleted!".format(i))
+
+    def nodetool_refresh_main_sstable_directory(self):
+        """
+        From 4.1 scylla won't support to refresh from main SSTable directory.
+        This test verified that main directory refresh will fail, and only sub-directory refresh will succeed.
+        """
+        cluster = self.cluster
+        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        self.cluster.populate(1).start(wait_for_binary_proto=True)
+        node1 = cluster.nodelist()[0]
+        session = self.patient_cql_connection(node1)
+
+        debug("Prepare test data by cassandra-stress workload")
+        node1.stress(['write', 'n=1000', "no-warmup", '-rate', 'threads=2', "-pop", "seq=1...1000"])
+        node1.flush()
+        # Verify the data is added to cluster
+        rows = list(session.execute('SELECT * from keyspace1.standard1'))
+        self.assertEqual(1000, len(rows))
+
+        debug("Creating a snapshot for test table")
+        snapshot_name = 'test_snapshot'
+        node1.nodetool(f"snapshot -t {snapshot_name} -cf standard1 -- keyspace1")
+        snapshot_dir = self.get_snapshot_dir(snapshot_name)
+        debug(f"Snapshot directory is {snapshot_dir}")
+
+        debug("Adding more data to test table")
+        node1.stress(['write', 'n=1000', "no-warmup", '-rate', 'threads=2', "-pop", "seq=1001...2000"])
+        node1.flush()
+        # Verify the data is added to cluster
+        rows = list(session.execute('SELECT * from keyspace1.standard1'))
+        self.assertEqual(2000, len(rows))
+
+        debug("Removing sstables in main SSTable directory")
+        ks_dir = os.path.join(self.test_path, 'test', 'node1', 'data', 'keyspace1')
+        cf_dir = self.get_cf_dir(ks_dir, 'standard1')
+        self.delete_cf_sstables(cf_dir)
+
+        debug("Copying snapshot to main SSTable directory")
+        for f in os.listdir(snapshot_dir):
+            shutil.copy2(os.path.join(snapshot_dir, f), os.path.join(cf_dir, f))
+        expected_error = r'Loading SSTables from the main SSTable directory is unsafe and no longer supported'
+        self.ignore_log_patterns.append(expected_error)
+        try:
+            node1.nodetool('refresh -- keyspace1 standard1')
+            raise Exception("Refresh in main directory succeeded unexpectedly! It's no longer supported from 4.1")
+        except NodetoolError as error:
+            debug(f"Refresh failed as expected, error:\n{error}")
+            assert re.search(expected_error, str(error)), f"Expected error is not found, expected error:\n{expected_error}"
+
+        rows = list(session.execute('SELECT * from keyspace1.standard1'))
+        self.assertEqual(2000, len(rows))
+
+        # Remove the test data and restart the cluster
+        debug("Kill the node ...")
+        node1.stop(gently=False)
+        debug("Removing sstables in main directory ...")
+        self.delete_cf_sstables(cf_dir)
+        debug("Delete commitlogs ...")
+        commitlog_dir = os.path.join(self.test_path, 'test', 'node1', 'commitlogs')
+        for f in os.listdir(commitlog_dir):
+            os.remove(os.path.join(commitlog_dir, f))
+        debug("Restart the node ...")
+        node1.start(wait_for_binary_proto=True)
+        session = self.patient_cql_connection(node1)
+        rows = list(session.execute('SELECT * from keyspace1.standard1'))
+        self.assertEqual(0, len(rows))
+
+        # Restore data by refreshing the snapshot in sub-directory
+        debug("Copying the snapshot to right sub-directory, and restore the data by refreshing")
+        for f in os.listdir(snapshot_dir):
+            shutil.copy2(os.path.join(snapshot_dir, f), os.path.join(cf_dir, 'upload', f))
+        node1.nodetool('refresh -- keyspace1 standard1')
+        rows = list(session.execute('SELECT * from keyspace1.standard1'))
+        self.assertEqual(1000, len(rows))
+        debug(len(rows))
+        node1.stress(['read', 'n=1000', "no-warmup", '-rate', 'threads=2', "-pop", "seq=1...1000"])
 
 # ######################## Helper functions ####################################
 
