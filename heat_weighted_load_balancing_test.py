@@ -71,11 +71,11 @@ class HeatWeightedLB(Tester):
                         ratio = mean_avg / node_mean_avg
                         lower_bound = 1 + 2 * (50 - i) / 40
                         upper_bound = 11 + 2 * (50 - i) / 40
-                        assert(ratio > lower_bound and ratio <= upper_bound,
-                                  'Cache difference between node{} and node2 is out of range: {}/{}={} expected to be {} < ratio <= {}. index={} metric {}'.format(
-                                          node_ind, mean_avg, node_mean_avg, ratio,
-                                          lower_bound, upper_bound,
-                                          i, key))
+                        err_msg = 'Cache difference between node{} and node2 is out of range: {}/{}={} expected to be {} < ratio <= {}. index={} metric {}'.format(
+                                    node_ind, mean_avg, node_mean_avg, ratio,
+                                    lower_bound, upper_bound,
+                                    i, key)
+                        assert ratio > lower_bound and ratio <= upper_bound, err_msg
         key = 'scylla_column_family_cache_hit_rate.*cf=.*standard1'
         last_drop = None
         for i in range(20, 50):
