@@ -70,11 +70,6 @@ class CompactionAdditionalTest(Tester):
             session.execute('delete from cf where key = ' + str(x))
         node1.flush()
 
-        debug("Waiting gc_grace_seconds={} to pass".format(gc_grace_seconds))
-        time.sleep(gc_grace_seconds + 1)
-
-        # we passed gc_period and force an update so that compaction will
-        # be triggered on a single shard (removing data and tombstone)
         def compactions_count():
             rows = session.execute("select count(*) from system.compaction_history "
                                    "where keyspace_name='ks' and columnfamily_name='cf' "
@@ -84,6 +79,11 @@ class CompactionAdditionalTest(Tester):
         compactions_1 = compactions_count()
         compactions_2 = compactions_1
 
+        debug("Waiting gc_grace_seconds={} to pass".format(gc_grace_seconds))
+        time.sleep(gc_grace_seconds + 1)
+
+        # we passed gc_period and force an update so that compaction will
+        # be triggered on a single shard (removing data and tombstone)
         debug("Inserting data and waiting for new compaction")
         while compactions_1 == compactions_2:
             session.execute('insert into ks.cf (key, val) values ({},1);'.format(keys + 1))
