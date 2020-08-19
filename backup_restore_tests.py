@@ -671,7 +671,7 @@ class TestBackupRestore(Tester):
             test_dir = self.get_snapshot_dir('snapshot{}'.format(i))
             self.assertTrue(test_dir is None, "'snapshot{}' has not been deleted!".format(i))
 
-    def nodetool_refresh_main_sstable_directory(self):
+    def test_nodetool_refresh_main_sstable_directory(self):
         """
         From 4.1 scylla won't support to refresh from main SSTable directory.
         This test verified that main directory refresh will fail, and only sub-directory refresh will succeed.
