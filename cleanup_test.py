@@ -12,15 +12,19 @@ class TestCleanup(Tester):
         cluster = self.cluster
         cluster.populate(1).start(wait_for_binary_proto=True)
         node1 = cluster.nodelist()[0]
+        debug('Inserting data')
         session = self.patient_cql_connection(node1)
         self.create_ks(session, 'ks', 1)
         self.create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'})
         insert_c1c2(session, keys=range(100000), consistency=ConsistencyLevel.ALL)
         session.shutdown()
 
+        debug('Restarting node')
         node1.stop()
         node1.start(wait_for_binary_proto=True)
+        debug('Running cleanup')
         node1.cleanup()
+        debug('Verifying number of rows')
         session = self.patient_cql_connection(node1)
         rows = session.execute("select count(*) from ks.cf;");
         self.assertEqual(rows[0][0],100000)
