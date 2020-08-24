@@ -2,6 +2,7 @@ from dtest import Tester, debug
 from cassandra import ConsistencyLevel
 from tools import insert_c1c2, new_node
 from nose.plugins.attrib import attr
+from ccmlib.scylla_cluster import ScyllaCluster
 
 
 @attr('dtest-full')
@@ -13,10 +14,11 @@ class TestCleanup(Tester):
         cluster.populate(1).start(wait_for_binary_proto=True)
         node1 = cluster.nodelist()[0]
         debug('Inserting data')
+        num_keys = 100000 if isinstance(self.cluster, ScyllaCluster) and self.cluster.scylla_mode != 'debug' else 10000
         with self.patient_cql_cluster_session(node1) as session:
             self.create_ks(session, 'ks', 1)
             self.create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'})
-            insert_c1c2(session, keys=range(100000), consistency=ConsistencyLevel.ALL)
+            insert_c1c2(session, keys=range(num_keys), consistency=ConsistencyLevel.ALL)
 
         debug('Restarting node')
         node1.stop()
@@ -26,7 +28,7 @@ class TestCleanup(Tester):
         debug('Verifying number of rows')
         session = self.patient_cql_connection(node1)
         rows = session.execute("select count(*) from ks.cf;");
-        self.assertEqual(rows[0][0],100000)
+        self.assertEqual(rows[0][0], num_keys)
 
     def cluster_cleanup_test(self):
         cluster = self.cluster
