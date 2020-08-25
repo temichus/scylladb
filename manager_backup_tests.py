@@ -46,9 +46,11 @@ class TestScyllaMgmtBackup(TestHelper):
         self.cluster.populate(nodes).start(wait_for_binary_proto=True, wait_other_notice=True)
         return self.cluster.nodelist()
 
-    def _prepare_cluster_with_data(self, keyspace_table_and_key_range, number_of_nodes=2):
+    def _prepare_cluster_with_data(self, keyspace_table_and_key_range, rf=2, number_of_nodes=2):
         node_list = self.config_and_create_cluster(nodes=number_of_nodes)
-        self.insert_data_from_ranges(healthy_node=node_list[0], keyspace_table_and_key_range=keyspace_table_and_key_range)
+        self.insert_data_from_ranges(healthy_node=node_list[0],
+                                     keyspace_table_and_key_range=keyspace_table_and_key_range,
+                                     rf=rf)
         return node_list
 
     def create_c1_c2_with_clustering_key(self, session, keyspace_name, table_name, partition_key_name="pkey",
@@ -57,7 +59,7 @@ class TestScyllaMgmtBackup(TestHelper):
                         f"{clustering_key_name} {clustering_key_type}, c1 text, c2 text, "
                         f"PRIMARY KEY({partition_key_name}, {clustering_key_name}));")
 
-    def insert_data_from_ranges(self, healthy_node, keyspace_table_and_key_range, use_clustering_key=False, partition_key_value=1):
+    def insert_data_from_ranges(self, healthy_node, keyspace_table_and_key_range, rf=2, use_clustering_key=False, partition_key_value=1):
         """
 
         :param healthy_node: node in UN status
@@ -78,7 +80,7 @@ class TestScyllaMgmtBackup(TestHelper):
 
         for keyspace in keyspace_table_and_key_range:
             if keyspace not in keyspace_list:
-                self.create_ks(session=session, name=keyspace, rf=2)
+                self.create_ks(session=session, name=keyspace, rf=rf)
             table_list_rows = session.execute(
                 f"SELECT table_name FROM system_schema.tables where keyspace_name='{keyspace}';")
             table_list = [row.table_name for row in table_list_rows]
@@ -145,8 +147,10 @@ class TestScyllaMgmtBackup(TestHelper):
         """
         per_node_backup_file_paths = mgr_cluster.get_backup_files_dict(snapshot_tag)
         for node in node_list:
-            node_data_path = os.path.join(node.get_path(), 'data')
             node_id = node.hostid()
+            if node_id not in per_node_backup_file_paths:
+                continue
+            node_data_path = os.path.join(node.get_path(), 'data')
             for keyspace, tables in keyspace_and_table_list.items():
                 keyspace_path = os.path.join(node_data_path, keyspace)
                 for table in tables:
@@ -183,7 +187,7 @@ class TestScyllaMgmtBackup(TestHelper):
                       post backup values:{result_dict[column]}"""
 
     def verify_c1c2(self, keyspace_table_and_key_range, node):
-        session = self.patient_cql_connection(node)
+        session = self.patient_cql_connection(node, consistency_level=ConsistencyLevel.QUORUM)
         for keyspace in keyspace_table_and_key_range:
             for table_name, key_range in keyspace_table_and_key_range.get(keyspace, {}).items():
                 results = session.execute(f"select * from {keyspace}.{table_name}")
@@ -504,21 +508,22 @@ class TestScyllaMgmtBackup(TestHelper):
         self.clean_restore_and_verify_backup(backup_task, self.cluster.nodelist(), mgr_cluster, node1,
                                              keyspace_table_and_key_range)
 
-    @require("#1551")
     @attr('scylla-manager')
     def test_shutting_down_node_before_backup(self):
         keyspace_table_and_key_range = {"ks": {"cf1": (1, 21)}}
         node1, node2, node3 = self._prepare_cluster_with_data(keyspace_table_and_key_range=keyspace_table_and_key_range,
-                                                              number_of_nodes=3)
+                                                              rf=3, number_of_nodes=3)
 
         mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
         node3.stop(wait_other_notice=True)
-
-        backup_task = mgr_cluster.run_backup_command(location_list=["s3:{}".format(DESTINATION_BUCKET)])
-        backup_task.wait_for_status(list_status=[TaskStatus.RUNNING], timeout=600, step=0.1)
-
-        backup_task.wait_for_status(list_status=[TaskStatus.DONE])
-        self.clean_restore_and_verify_backup(backup_task, self.cluster.nodelist(), mgr_cluster, node1, keyspace_table_and_key_range)
+        backup_task = mgr_cluster.run_backup_command(location_list=["s3:{}".format(DESTINATION_BUCKET)],
+                                                     keyspace_list=["ks"])
+        backup_task.wait_and_get_final_status(step=5)
+        assert backup_task.status == TaskStatus.DONE, f"The backup task did not end in the given time, current " \
+                                                      f"progress:\n{backup_task.full_progress_string()}"
+        node3.start(wait_other_notice=True, wait_for_binary_proto=True)
+        self.clean_restore_and_verify_backup(backup_task, self.cluster.nodelist(), mgr_cluster, node1,
+                                             keyspace_table_and_key_range)
 
     @staticmethod
     def _get_node_status(node_address, functioning_node, tolerate_missing):
