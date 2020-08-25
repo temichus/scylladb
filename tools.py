@@ -317,6 +317,11 @@ class since(object):
         if self.max_version and version > self.max_version:
             return "%s > %s" % (version, self.max_version)
 
+    def _maybe_skip(self, obj, version):
+        msg = self._skip_msg(version)
+        if msg:
+            debug("Marked for skipping: {}. Ignored.".format(msg))
+
     def _wrap_setUp(self, cls):
         orig_setUp = cls.setUp
 
@@ -324,9 +329,7 @@ class since(object):
         def wrapped_setUp(obj, *args, **kwargs):
             orig_setUp(obj, *args, **kwargs)
             version = LooseVersion(obj.cluster.version())
-            msg = self._skip_msg(version)
-            if msg:
-                obj.skip(msg)
+            self._maybe_skip(obj, version)
 
         cls.setUp = wrapped_setUp
         return cls
@@ -335,9 +338,7 @@ class since(object):
         @functools.wraps(f)
         def wrapped(obj):
             version = LooseVersion(obj.cluster.version())
-            msg = self._skip_msg(version)
-            if msg:
-                obj.skip(msg)
+            self._maybe_skip(obj, version)
             f(obj)
         return wrapped
 
