@@ -65,7 +65,7 @@ class RepairAdditionalBase(Tester):
     def check_repair_tx_rx_rows(self, node_to_check, expected_tx_row_nr, expected_rx_row_nr):
         tx = 0
         rx = 0
-        for line in node_to_check.grep_log("stats: ranges_nr"):
+        for line in node_to_check.grep_log("stats: repair_reason=repair"):
             line = line[0]
             debug(line)
             kv = re.findall("tx_row_nr=\d*", line)[0].split('=')
