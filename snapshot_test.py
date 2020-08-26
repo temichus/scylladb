@@ -11,6 +11,7 @@ from cassandra.concurrent import execute_concurrent_with_args
 from threading import Thread, Event
 from typing import List
 
+from ccmlib.node import NodetoolError
 from dtest import Tester, debug
 from nose.plugins.attrib import attr
 from unittest import skip
@@ -121,10 +122,25 @@ class SnapshotTester(Tester):
 
         return node, session
 
-    def insert_rows(self, session, start, end, cf="cf"):
-        insert_statement = session.prepare("INSERT INTO ks.{} (key, val) VALUES (?, 'asdf')".format(cf))
-        args = [(r,) for r in range(start, end)]
-        execute_concurrent_with_args(session, insert_statement, args, concurrency=20)
+    def create_tables(self, session, tables_number):
+        tables = []
+        for i in range(tables_number):
+            name = f"cf{i}"
+            self.create_cf(session=session, name=name, key_type='int', columns={'val': 'text'})
+            tables.append(name)
+        return tables
+
+    def insert_rows(self, session, start, end, cf=None):
+        cfs = ['cf'] if cf == None else [cf] if isinstance(cf, str) else cf
+        for cf_name in cfs:
+            insert_statement = session.prepare(f"INSERT INTO ks.{cf_name} (key, val) VALUES (?, 'asdf')")
+            args = [(r,) for r in range(start, end)]
+            execute_concurrent_with_args(session, insert_statement, args, concurrency=20)
+
+    def validate_rows_count_in_all_tables(self, session, tables, expected_rows_count):
+        for table in tables:
+            rows = session.execute(f'SELECT count(*) from ks.{table}')
+            self.assertEqual(rows[0][0], expected_rows_count)
 
     def clear_snapshot_per_keyspace_per_table(self, ip, tag, ks, cf):
         requests.delete("http://{}:10000/storage_service/snapshots?tag={}&kn={}&cf={}".format(ip, tag, ks, cf))
@@ -143,7 +159,7 @@ class TestSnapshot(SnapshotTester):
         """
         Test basic snapshot and restore using an sstable loader.
         """
-        self.basic_snapshot_and_restore(use_sstableloader=True)
+        self.basic_snapshot_and_restore(use_sstableloader=True, tables_number=1, cf_param_name='')
 
     @attr('next-gating')
     @attr('dtest-debug')
@@ -151,9 +167,41 @@ class TestSnapshot(SnapshotTester):
         """
         Test basic snapshot and restore without an sstable loader.
         """
-        self.basic_snapshot_and_restore(use_sstableloader=False)
+        self.basic_snapshot_and_restore(use_sstableloader=False, tables_number=1, cf_param_name='')
 
-    def basic_snapshot_and_restore(self, use_sstableloader):
+    @attr('next-gating')
+    @attr('dtest-debug')
+    def test_basic_mulitple_tables_snapshot_and_restore_with_refresh(self):
+        """
+        Test basic snapshot and restore without an sstable loader.
+        """
+        self.basic_snapshot_and_restore(use_sstableloader=False, tables_number=5, cf_param_name='-cf')
+
+    @attr('next-gating')
+    @attr('dtest-debug')
+    def test_basic_mulitple_tables_snapshot_and_restore_with_sstableloader(self):
+        """
+        Test basic snapshot and restore using an sstable loader.
+        """
+        self.basic_snapshot_and_restore(use_sstableloader=True, tables_number=5, cf_param_name='-cf')
+
+    @attr('next-gating')
+    @attr('dtest-debug')
+    def test_basic_mulitple_tables_snapshot_using_column_family(self):
+        """
+        Test basic snapshot and restore without an sstable loader.
+        """
+        self.basic_snapshot_and_restore(use_sstableloader=False, tables_number=5, cf_param_name='--column-family')
+
+    @attr('next-gating')
+    @attr('dtest-debug')
+    def test_basic_mulitple_tables_snapshot_using_table(self):
+        """
+        Test basic snapshot and restore without an sstable loader.
+        """
+        self.basic_snapshot_and_restore(use_sstableloader=False, tables_number=5, cf_param_name='--table')
+
+    def basic_snapshot_and_restore(self, use_sstableloader, tables_number, cf_param_name):
         """
         Base testing method:
 
@@ -174,38 +222,77 @@ class TestSnapshot(SnapshotTester):
         (node1,) = cluster.nodelist()
         session = self.patient_cql_connection(node1)
         self.create_ks(session, 'ks', 1)
-        session.execute('CREATE TABLE ks.cf ( key int PRIMARY KEY, val text);')
+        tables = self.create_tables(session=session, tables_number=tables_number)
 
-        self.insert_rows(session, 0, 100)
-        snapshot_dir = make_snapshot(node1, 'ks', 'cf', 'basic')
+        self.insert_rows(session, 0, 100, cf=tables)
+
+        if cf_param_name:
+            tables_for_snapshot = ','.join(table for table in tables)
+            snapshot_dir = make_snapshot(node1, ks='ks', cf=tables_for_snapshot, cf_param_name=cf_param_name,
+                                         name='basic')
+        else:
+            snapshot_dir = make_snapshot(node1, ks='ks', name='basic')
 
         # Write more data after the snapshot, this will get thrown
         # away when we restore:
-        self.insert_rows(session, 100, 200)
-        rows = session.execute('SELECT count(*) from ks.cf')
-        self.assertEqual(rows[0][0], 200)
+        self.insert_rows(session, 100, 200, cf=tables)
+        self.validate_rows_count_in_all_tables(session=session, tables=tables, expected_rows_count=200)
 
         # Drop the keyspace, make sure we have no data:
         session.execute('DROP KEYSPACE ks')
         shutil.rmtree(os.path.join(node1.get_path(), 'data', 'ks'))
         self.create_ks(session, 'ks', 1)
-        session.execute('CREATE TABLE ks.cf ( key int PRIMARY KEY, val text);')
-        rows = session.execute('SELECT count(*) from ks.cf')
-        self.assertEqual(rows[0][0], 0)
+        self.create_tables(session=session, tables_number=tables_number)
+        self.validate_rows_count_in_all_tables(session=session, tables=tables, expected_rows_count=0)
 
         # Restore data from snapshot:
-        if use_sstableloader:
-            restore_snapshot_with_sstableloader(snapshot_dir, node1, 'ks', 'cf')
-        else:
-            restore_snapshot_with_refresh(snapshot_dir, node1, 'ks', 'cf')
-        node1.nodetool('refresh ks cf')
-        rows = session.execute('SELECT count(*) from ks.cf')
+        for table in tables:
+            if use_sstableloader:
+                restore_snapshot_with_sstableloader(snapshot_dir, node1, 'ks', table)
+            else:
+                restore_snapshot_with_refresh(snapshot_dir, node1, 'ks', table)
+
+            node1.nodetool(f'refresh ks {table}')
 
         # clean up
         debug("removing snapshot_dir: " + snapshot_dir)
         shutil.rmtree(snapshot_dir)
 
-        self.assertEqual(rows[0][0], 100)
+        self.validate_rows_count_in_all_tables(session=session, tables=tables, expected_rows_count=100)
+
+    def test_snapshot_for_2kc_and_cf_failure(self):
+        """
+        Base testing method:
+
+        1. Create a 2 keyspaces
+        2. Create a column family in every ks
+        3. Insert 100 rows into the column family
+        4. Try take a snapshot
+        5. Verify error message: Only one keyspace allowed when specifying a column family
+        """
+        cluster = self.cluster
+        cluster.populate(1).start()
+        (node1,) = cluster.nodelist()
+        session = self.patient_cql_connection(node1)
+        session1 = self.patient_cql_connection(node1)
+
+        self.create_ks(session, 'ks', 1)
+        self.create_ks(session1, 'ks1', 1)
+        tables = self.create_tables(session=session, tables_number=1)
+        tables1 = self.create_tables(session=session1, tables_number=1)
+
+        self.insert_rows(session, 0, 100, cf=tables)
+        self.insert_rows(session1, 0, 100, cf=tables1)
+
+        self.validate_rows_count_in_all_tables(session=session, tables=tables, expected_rows_count=100)
+        self.validate_rows_count_in_all_tables(session=session1, tables=tables1, expected_rows_count=100)
+
+        tables_for_snapshot = ','.join(table for table in tables)
+
+        with self.assertRaises(NodetoolError) as ne:
+            make_snapshot(node1, ks='ks,ks1', cf=tables_for_snapshot, name='basic')
+
+        self.assertTrue('Only one keyspace allowed when specifying a column family' in ne.exception.stdout, ne.exception)
 
     def restore_snapshot_with_alter_table(self, drop=False):
         """
@@ -236,7 +323,7 @@ class TestSnapshot(SnapshotTester):
         session.execute(query)
         node1.nodetool("flush -- ks")
 
-        snapshot_dir = make_snapshot(node1, 'ks', 'cf', 'basic')
+        snapshot_dir = make_snapshot(node1, ks='ks', cf='cf', name='basic')
 
         # clear data
         cluster.stop(gently=True)
@@ -354,14 +441,19 @@ class TestSnapshot(SnapshotTester):
 
         compaction_thread.join()
 
+    def test_cleaning_snapshot_created_by_ks(self):
+        self.cleaning_snapshot_by_cf(snapshot_by_multiple_cf=False)
 
-    def test_cleaning_snapshot_by_cf(self):
+    def test_cleaning_snapshot_created_by_multiple_cf(self):
+        self.cleaning_snapshot_by_cf(snapshot_by_multiple_cf=True)
+
+    def cleaning_snapshot_by_cf(self, snapshot_by_multiple_cf):
         """Test deleting specific table from snapshot
            The test create a keyspace and two tables
            it take a snapshot, make sure that both tables are part of the backup
            It then delete on table and make sure that it is deleted but the other one is not.
         """
-        def search_cf_in_snapthot(node, cf, tag):
+        def search_cf_in_snapshot(node, cf, tag):
             snapshot_dir = os.path.join(node.get_path(), 'data', 'ks')
             cf_id = [s for s in os.listdir(snapshot_dir) if s.startswith(cf + "-")][0]
 
@@ -384,16 +476,21 @@ class TestSnapshot(SnapshotTester):
 
         debug("all KSes and CFes are created")
         node.flush()
-        node.nodetool('snapshot ks -t per_cf')
+        if snapshot_by_multiple_cf:
+            # Take snapshot by multiple tables
+            node.nodetool('snapshot ks -cf cf,cf1 -t per_cf')
+        else:
+            # Take snapshot for all tables in keyspace
+            node.nodetool('snapshot ks -t per_cf')
 
-        self.assertTrue(search_cf_in_snapthot(node, "cf", "per_cf"), "cf {} is not found in snapshot".format("cf"))
-        self.assertTrue(search_cf_in_snapthot(node, "cf1", "per_cf"), "cf {} is not found in snapshot".format("cf1"))
+        self.assertTrue(search_cf_in_snapshot(node, "cf", "per_cf"), "cf {} is not found in snapshot".format("cf"))
+        self.assertTrue(search_cf_in_snapshot(node, "cf1", "per_cf"), "cf {} is not found in snapshot".format("cf1"))
         debug("all KSes and CFes are part of the snapshot")
 
         self.clear_snapshot_per_keyspace_per_table(self.cluster.get_node_ip(1), 'per_cf', "ks", "cf")
 
-        self.assertFalse(search_cf_in_snapthot(node, "cf", "per_cf"), "cf {} is found in snapshot but should be deleted".format("cf"))
-        self.assertTrue(search_cf_in_snapthot(node, "cf1", "per_cf"), "cf {} is not found in snapshot but should be remain".format("cf1"))
+        self.assertFalse(search_cf_in_snapshot(node, "cf", "per_cf"), "cf {} is found in snapshot but should be deleted".format("cf"))
+        self.assertTrue(search_cf_in_snapshot(node, "cf1", "per_cf"), "cf {} is not found in snapshot but should be remain".format("cf1"))
 
 @attr('dtest-full', 'single_node')
 class TestArchiveCommitlog(SnapshotTester):
@@ -438,7 +535,8 @@ class TestArchiveCommitlog(SnapshotTester):
         """
         self.run_archive_commitlog(restore_point_in_time=True, archive_active_commitlogs=True)
 
-    def run_archive_commitlog(self, restore_point_in_time=False, restore_archived_commitlog=True, archive_active_commitlogs=False):
+    def run_archive_commitlog(self, restore_point_in_time=False, restore_archived_commitlog=True,
+                              archive_active_commitlogs=False):
         """
         Run archive commit log restoration test
         """
@@ -471,27 +569,27 @@ class TestArchiveCommitlog(SnapshotTester):
         for f in glob.glob(tmp_commitlog + "/*"):
             os.remove(f)
 
-        snapshot_dir = make_snapshot(node1, 'ks', 'cf', 'basic')
+        snapshot_dir = make_snapshot(node1, ks='ks', cf='cf', name='basic')
 
         if self.cluster.version() >= '3.0':
-            system_ks_snapshot_dir = make_snapshot(node1, 'system_schema', 'keyspaces', 'keyspaces')
+            system_ks_snapshot_dir = make_snapshot(node1, ks='system_schema', cf='keyspaces', name='keyspaces')
         else:
-            system_ks_snapshot_dir = make_snapshot(node1, 'system', 'schema_keyspaces', 'keyspaces')
+            system_ks_snapshot_dir = make_snapshot(node1, ks='system', cf='schema_keyspaces', name='keyspaces')
 
         if self.cluster.version() >= '3.0':
-            system_col_snapshot_dir = make_snapshot(node1, 'system_schema', 'columns', 'columns')
+            system_col_snapshot_dir = make_snapshot(node1, ks='system_schema', cf='columns', name='columns')
         else:
-            system_col_snapshot_dir = make_snapshot(node1, 'system', 'schema_columns', 'columns')
+            system_col_snapshot_dir = make_snapshot(node1, ks='system', cf='schema_columns', name='columns')
 
         if self.cluster.version() >= '3.0':
-            system_ut_snapshot_dir = make_snapshot(node1, 'system_schema', 'types', 'usertypes')
+            system_ut_snapshot_dir = make_snapshot(node1, ks='system_schema', cf='types', name='usertypes')
         else:
-            system_ut_snapshot_dir = make_snapshot(node1, 'system', 'schema_usertypes', 'usertypes')
+            system_ut_snapshot_dir = make_snapshot(node1, ks='system', cf='schema_usertypes', name='usertypes')
 
         if self.cluster.version() >= '3.0':
-            system_cfs_snapshot_dir = make_snapshot(node1, 'system_schema', 'tables', 'cfs')
+            system_cfs_snapshot_dir = make_snapshot(node1, ks='system_schema', cf='tables', name='cfs')
         else:
-            system_cfs_snapshot_dir = make_snapshot(node1, 'system', 'schema_columnfamilies', 'cfs')
+            system_cfs_snapshot_dir = make_snapshot(node1, ks='system', cf='schema_columnfamilies', name='cfs')
 
         try:
             # Write more data:
@@ -867,7 +965,7 @@ class TestSchemaFileInSnapshot(SnapshotTester):
         self.create_cf(session, name="cf", key_type="int", columns={"val": "text"})
         self.insert_rows(session, 0, 100)
 
-        base_snapshot_dir = make_snapshot(node1, "ks", "cf", "basic")
+        base_snapshot_dir = make_snapshot(node1, ks="ks", cf="cf", name="basic")
         schema_file = self.get_schema_file_from_snapshot(base_snapshot_dir, "ks", "cf", "basic")
 
         table_desc = self.get_table_description(node1, "ks", "cf")
@@ -879,46 +977,84 @@ class TestSchemaFileInSnapshot(SnapshotTester):
 
         self.assertEqual(table_desc, restored_table_desc)
 
+    def test_schema_file_created_by_multiple_tables(self):
+        """Check that schema.cql file is in snapshot
+
+        """
+        node1, session = self.init_cluster()
+        self.create_ks(session, "ks", 1)
+        tables = self.create_tables(session=session, tables_number=5)
+        self.insert_rows(session, 0, 100, cf=tables)
+
+        tables_for_snapshot = ','.join(t for t in tables)
+        base_snapshot_dir = make_snapshot(node1, ks="ks", cf=tables_for_snapshot, name="basic")
+        schema_files = []
+        tables_desc = []
+        for table in tables:
+            schema_files.append(self.get_schema_file_from_snapshot(base_snapshot_dir, "ks", table, "basic"))
+            tables_desc.append(self.get_table_description(node1, "ks", table))
+
+        self.drop_keyspaces_and_clear_files(session, "ks", node1)
+        self.create_ks(session, "ks", 1)
+
+        for table, schema_file, desc  in zip(tables, schema_files, tables_desc):
+            self.restore_table_by_schema_file(session, schema_file)
+            restored_table_desc = self.get_table_description(node1, "ks", table)
+
+            self.assertEqual(desc, restored_table_desc)
+
     def test_restore_snapshot_by_table_schema_file_with_sstableloader(self):
         self.create_restore_data_with_snapshot(use_sstableloader=True)
 
     def test_restoring_by_schema_file_with_refresh(self):
         self.create_restore_data_with_snapshot(use_sstableloader=False)
 
-    @require("#5686")
     def test_restoring_by_schema_with_mv_use_sstableloader(self):
-        self.create_restore_data_with_snapshot_with_mv(use_sstableloader=True)
+        self.create_restore_data_with_snapshot_with_mv(use_sstableloader=True, multiple_tables=False)
 
-    @require("#5686")
     def test_restoring_by_schema_with_mv_use_refresh(self):
-        self.create_restore_data_with_snapshot_with_mv(use_sstableloader=False)
+        self.create_restore_data_with_snapshot_with_mv(use_sstableloader=False, multiple_tables=False)
 
-    @require("#5686")
+    def test_restoring_by_schema_with_mv_use_sstableloader_multiple_tables(self):
+        self.create_restore_data_with_snapshot_with_mv(use_sstableloader=True, multiple_tables=True)
+
+    def test_restoring_by_schema_with_mv_use_refresh_multiple_tables(self):
+        self.create_restore_data_with_snapshot_with_mv(use_sstableloader=False, multiple_tables=True)
+
     def test_restoring_snapshot_with_indexes_use_sstableloader(self):
-        self.create_and_restore_data_with_snapshot_and_si(use_sstableloader=True)
+        self.create_and_restore_data_with_snapshot_and_si(use_sstableloader=True, multiple_tables=False)
 
-    @require("#5686")
     def test_restoring_snapshot_with_indexes_use_refresh(self):
-        self.create_and_restore_data_with_snapshot_and_si(use_sstableloader=False)
+        self.create_and_restore_data_with_snapshot_and_si(use_sstableloader=False, multiple_tables=False)
 
-    @require("#5686")
+    def test_restoring_snapshot_with_indexes_use_sstableloader_multiple_tables(self):
+        self.create_and_restore_data_with_snapshot_and_si(use_sstableloader=True, multiple_tables=True)
+
+    def test_restoring_snapshot_with_indexes_use_refresh_multiple_tables(self):
+        self.create_and_restore_data_with_snapshot_and_si(use_sstableloader=False, multiple_tables=True)
+
     def test_restoring_snapshot_for_lsi_use_sstablesloader(self):
-        self.create_restore_data_with_lsi_from_snapshot(use_sstableloader=True)
+        self.create_restore_data_with_lsi_from_snapshot(use_sstableloader=True, multiple_tables=False)
 
-    @require("#5686")
     def test_restoring_snapshot_for_lsi_use_refresh(self):
-        self.create_restore_data_with_lsi_from_snapshot(use_sstableloader=False)
+        self.create_restore_data_with_lsi_from_snapshot(use_sstableloader=False, multiple_tables=False)
+
+    def test_restoring_snapshot_for_lsi_use_sstablesloader_multiple_tables(self):
+        self.create_restore_data_with_lsi_from_snapshot(use_sstableloader=True, multiple_tables=True)
+
+    def test_restoring_snapshot_for_lsi_use_refresh_multiple_tables(self):
+        self.create_restore_data_with_lsi_from_snapshot(use_sstableloader=False, multiple_tables=True)
 
     def test_schema_file_contains_altering_table_changes(self):
         node1, session = self.init_cluster_and_create_schema('ks', 'cf')
 
         self.insert_rows(session, 0, 100)
-        base_snapshot_dir = make_snapshot(node1, 'ks', 'cf', 'basic')
+        base_snapshot_dir = make_snapshot(node1, ks='ks', cf='cf', name='basic')
         schema_file = self.get_schema_file_from_snapshot(base_snapshot_dir, 'ks', 'cf', 'basic')
         table_desc = self.get_table_description(node1, 'ks', 'cf')
 
         session.execute('ALTER TABLE ks.cf ADD val1 text')
-        base_snapshot_dir = make_snapshot(node1, 'ks', 'cf', 'basic1')
+        base_snapshot_dir = make_snapshot(node1, ks='ks', cf='cf', name='basic1')
         new_schema_file = self.get_schema_file_from_snapshot(base_snapshot_dir, 'ks', 'cf', 'basic1')
         altered_table_desc = self.get_table_description(node1, 'ks', 'cf')
 
@@ -958,7 +1094,7 @@ class TestSchemaFileInSnapshot(SnapshotTester):
         session.execute('CREATE TABLE "UPPER_CASE_CF" ( "KEY" int PRIMARY KEY, "VAL" text);')
         session.execute("INSERT INTO \"UPPER_CASE_CF\" (\"KEY\", \"VAL\") VALUES (1, 'ASDFG');")
 
-        base_snapshot_dir = make_snapshot(node1, 'ks', 'UPPER_CASE_CF', 'basic')
+        base_snapshot_dir = make_snapshot(node1, ks='ks', cf='UPPER_CASE_CF', name='basic')
         schema_file = self.get_schema_file_from_snapshot(base_snapshot_dir, 'ks', 'UPPER_CASE_CF', 'basic')
         table_desc = self.get_table_description(node1, 'ks', '\"UPPER_CASE_CF\"')
         self.drop_keyspaces_and_clear_files(session, 'ks', node1)
@@ -968,12 +1104,38 @@ class TestSchemaFileInSnapshot(SnapshotTester):
 
         self.assertEqual(table_desc, restored_table_desc)
 
+    def test_upper_case_of_table_name_is_saved_mixed_case(self):
+        node1, session = self.init_cluster()
+        self.create_ks(session, 'ks', 1)
+        session.execute('CREATE TABLE "UPPER_CASE_CF" ( "KEY" int PRIMARY KEY, "VAL" text);')
+        session.execute("INSERT INTO \"UPPER_CASE_CF\" (\"KEY\", \"VAL\") VALUES (1, 'ASDFG');")
+        self.create_cf(session=session, name='cf', key_type='int', columns={'val': 'text'})
+        self.insert_rows(session, 0, 10)
+
+        base_snapshot_dir = make_snapshot(node1, ks='ks', cf='UPPER_CASE_CF,cf', name='basic')
+
+        upper_schema_file = self.get_schema_file_from_snapshot(base_snapshot_dir, 'ks', 'UPPER_CASE_CF', 'basic')
+        upper_table_desc = self.get_table_description(node1, 'ks', '\"UPPER_CASE_CF\"')
+
+        lower_schema_file = self.get_schema_file_from_snapshot(base_snapshot_dir, 'ks', 'cf', 'basic')
+        lower_table_desc = self.get_table_description(node1, 'ks', 'cf')
+
+        self.drop_keyspaces_and_clear_files(session, 'ks', node1)
+        self.create_ks(session, 'ks', 1)
+        self.restore_table_by_schema_file(session, upper_schema_file)
+        upper_restored_table_desc = self.get_table_description(node1, 'ks', '\"UPPER_CASE_CF\"')
+        self.restore_table_by_schema_file(session, lower_schema_file)
+        lower_restored_table_desc = self.get_table_description(node1, 'ks', 'cf')
+
+        self.assertEqual(upper_table_desc, upper_restored_table_desc)
+        self.assertEqual(lower_table_desc, lower_restored_table_desc)
+
     def create_restore_data_with_snapshot(self, use_sstableloader=True):
         node1, session = self.init_cluster_and_create_schema("ks", "cf")
         self.insert_rows(session, 0, 100)
         self.check_rows_number_in_table(session, "ks", "cf", 100)
 
-        snapshot_dir = make_snapshot(node1, 'ks', 'cf', 'basic')
+        snapshot_dir = make_snapshot(node1, ks='ks', cf='cf', name='basic')
 
         # get table schema from schema file saved in snapshot
         schema_cql_file = self.get_schema_file_from_snapshot(snapshot_dir, 'ks', 'cf', 'basic')
@@ -1008,13 +1170,16 @@ class TestSchemaFileInSnapshot(SnapshotTester):
         # check data correctly restored and updated
         self.check_rows_number_in_table(session, "ks", "cf", 100)
 
-    def create_restore_data_with_snapshot_with_mv(self, use_sstableloader=True):
+    def create_restore_data_with_snapshot_with_mv(self, use_sstableloader, multiple_tables):
         node1, session = self.init_cluster_and_create_schema("ks", "cf", mv=True)
 
         self.insert_rows(session, 0, 100)
 
         # create snapshot for keyspace
-        snapshot_dir_base_table = make_snapshot(node1, 'ks')
+        if not multiple_tables:
+            snapshot_dir_base_table = make_snapshot(node1, ks='ks')
+        else:
+            snapshot_dir_base_table = make_snapshot(node1, ks='ks', cf='cf,cf_mv')
 
         # get schema.cql files for base table and mv
         schema_cql_file_basic_table = self.get_schema_file_from_snapshot(snapshot_dir_base_table, 'ks', 'cf')
@@ -1055,13 +1220,12 @@ class TestSchemaFileInSnapshot(SnapshotTester):
             restore_snapshot_with_sstableloader(snapshot_dir_base_table, node1, 'ks', 'cf_mv')
         else:
             restore_snapshot_with_refresh(snapshot_dir_base_table, node1, 'ks', 'cf')
-            restore_snapshot_with_refresh(snapshot_dir_base_table, node1, 'ks', 'cf_mv')
-        # check data have been restored
 
+        # check data have been restored
         self.check_rows_number_in_table(session, "ks", "cf", 100)
         self.check_rows_number_in_table(session, "ks", "cf_mv", 100)
 
-    def create_and_restore_data_with_snapshot_and_si(self, use_sstableloader=True):
+    def create_and_restore_data_with_snapshot_and_si(self, use_sstableloader, multiple_tables):
         node1, session = self.init_cluster_and_create_schema('ks', 'cf', si=True)
 
         self.insert_rows(session, 0, 100)
@@ -1070,7 +1234,11 @@ class TestSchemaFileInSnapshot(SnapshotTester):
         # check secondary index
         self.check_rows_number_in_index(session, 'ks', 'cf', 100, "val", "'asdf'")
 
-        snapshot_dir = make_snapshot(node1, 'ks')
+        if not multiple_tables:
+            snapshot_dir = make_snapshot(node1, ks='ks')
+        else:
+            snapshot_dir = make_snapshot(node1, ks='ks', cf='cf,cf_ind_index')
+
         schema_cql_file_basic_table = self.get_schema_file_from_snapshot(snapshot_dir, 'ks', 'cf')
         base_table_desc = self.get_table_description(node1, 'ks', 'cf')
         schema_cql_file_index_table = self.get_schema_file_from_snapshot(snapshot_dir, 'ks', 'cf_ind_index')
@@ -1108,7 +1276,6 @@ class TestSchemaFileInSnapshot(SnapshotTester):
             restore_snapshot_with_sstableloader(snapshot_dir, node1, 'ks', 'cf_ind_index')
         else:
             restore_snapshot_with_refresh(snapshot_dir, node1, 'ks', 'cf')
-            restore_snapshot_with_refresh(snapshot_dir, node1, 'ks', 'cf_ind_index')
 
         self.check_rows_number_in_table(session, "ks", "cf", 100)
         self.check_rows_number_in_index(session, "ks", "cf", 100, index_column="val", value="'asdf'")
@@ -1116,13 +1283,16 @@ class TestSchemaFileInSnapshot(SnapshotTester):
         self.check_rows_number_in_table(session, "ks", "cf", 200)
         self.check_rows_number_in_index(session, "ks", "cf", 200, index_column="val", value="'asdf'")
 
-    def create_restore_data_with_lsi_from_snapshot(self, use_sstableloader=True):
+    def create_restore_data_with_lsi_from_snapshot(self, use_sstableloader, multiple_tables):
         node1, session = self.init_cluster_and_create_schema("ks", "cf", lsi=True)
 
         self.insert_rows(session, 0, 100)
         self.check_rows_number_in_table(session, "ks", "cf", 100)
 
-        snapshot_dir_base_table = make_snapshot(node1, 'ks')
+        if not multiple_tables:
+            snapshot_dir_base_table = make_snapshot(node1, ks='ks')
+        else:
+            snapshot_dir_base_table = make_snapshot(node1, ks='ks', cf='cf,cf_val_index')
 
         schema_cql_file_basic_table = self.get_schema_file_from_snapshot(snapshot_dir_base_table, 'ks', 'cf')
         table_desc = self.get_table_description(node1, "ks", "cf")
@@ -1157,7 +1327,6 @@ class TestSchemaFileInSnapshot(SnapshotTester):
             restore_snapshot_with_sstableloader(snapshot_dir_base_table, node1, 'ks', 'cf_val_index')
         else:
             restore_snapshot_with_refresh(snapshot_dir_base_table, node1, 'ks', 'cf')
-            restore_snapshot_with_refresh(snapshot_dir_base_table, node1, 'ks', 'cf_val_index')
 
         self.insert_rows(session, 0, 100)
         self.check_rows_number_in_table(session, 'ks', 'cf', 100)
@@ -1179,7 +1348,7 @@ class TestSchemaFileInSnapshot(SnapshotTester):
 
         self.check_rows_number_in_table(session, 'ks', 'native_types_table', 3)
 
-        snapshots_dir = make_snapshot(node1, 'ks', name='basic')
+        snapshots_dir = make_snapshot(node1, ks='ks', name='basic')
         table_desc = self.get_table_description(node1, 'ks', 'native_types_table')
         schema_file = self.get_schema_file_from_snapshot(snapshots_dir, 'ks', 'native_types_table', 'basic')
 
@@ -1220,7 +1389,7 @@ class TestSchemaFileInSnapshot(SnapshotTester):
 
         self.check_rows_number_in_table(session, 'ks', 'table_with_udt', 3)
 
-        snapshots_dir = make_snapshot(node1, 'ks', name='basic')
+        snapshots_dir = make_snapshot(node1, ks='ks', name='basic')
         table_desc = self.get_table_description(node1, 'ks', 'table_with_udt')
         schema_file = self.get_schema_file_from_snapshot(snapshots_dir, 'ks', 'table_with_udt', 'basic')
 

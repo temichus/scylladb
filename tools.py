@@ -580,7 +580,7 @@ class ColumnType:
         return value
 
 
-def make_snapshot(node: ScyllaNode, ks: str = None, cf: str = None, name: str = None) -> str:
+def make_snapshot(node: ScyllaNode, ks: str = None, cf: str = None, cf_param_name: str = '-cf', name: str = None) -> str:
     """Create snapshot for all keyspaces or for specified ks, ks.cf, with name
 
     Create snapshot for:
@@ -608,7 +608,7 @@ def make_snapshot(node: ScyllaNode, ks: str = None, cf: str = None, name: str = 
     if ks:
         snapshot_cmd += f"{ks} "
         if cf:
-            snapshot_cmd += f"-cf {cf} "
+            snapshot_cmd += f"{cf_param_name} {cf} "
         if name:
             snapshot_cmd += f"-t {name}"
 
@@ -618,21 +618,24 @@ def make_snapshot(node: ScyllaNode, ks: str = None, cf: str = None, name: str = 
     node_dir = node.get_path()
 
     # # Find the snapshot dir, it's different in various C* versions:
-    snapshot_dir_pattern = f"{node_dir}/data/"
-    if ks:
-        snapshot_dir_pattern += f"{ks}/"
-        if cf:
-            snapshot_dir_pattern += f"{cf}-*/"
+    snapshot_dirs = []
+    tables = [f"{t}-*/" for t in cf.split(',')] if cf else ['*/']
+    for table in tables:
+        snapshot_dir_pattern = f"{node_dir}/data/"
+        if ks:
+            snapshot_dir_pattern += f"{ks}/"
+            snapshot_dir_pattern += f"{table}"
+            if name:
+                snapshot_dir_pattern += f"snapshots/{name}"
+            else:
+                snapshot_dir_pattern += f"snapshots/*"
         else:
-            snapshot_dir_pattern += f"*/"
-        if name:
-            snapshot_dir_pattern += f"snapshots/{name}"
+            snapshot_dir_pattern += f"/*/*/snapshots/*"
+        snapshot_dir = glob.glob(snapshot_dir_pattern)
+        if snapshot_dir:
+            snapshot_dirs.extend(snapshot_dir)
         else:
-            snapshot_dir_pattern += f"snapshots/*"
-    else:
-        snapshot_dir_pattern += f"/*/*/snapshots/*"
-
-    snapshot_dirs = glob.glob(snapshot_dir_pattern)
+            snapshot_dirs.append('')
 
     debug(f"snapshot_dir is : {snapshot_dirs}")
     debug(f"snapshot copy is : {tmpdir}")
