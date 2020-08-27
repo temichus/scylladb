@@ -10,7 +10,7 @@ from nose.plugins.attrib import attr
 from cassandra import ConsistencyLevel, WriteTimeout, WriteFailure
 from cassandra.query import SimpleStatement
 
-from assertions import assert_unavailable, assert_invalid
+from assertions import assert_unavailable, assert_invalid, assert_one
 from dtest import Tester, debug
 from tools import no_vnodes, since
 from nose.plugins.attrib import attr
@@ -375,6 +375,51 @@ class TestPaxos(Tester):
 
                 key += 1
 
+    # Schema mismatch tests
+
+    def _schema_mismatch_test_tpl(self, clear_schema_cache, setup_test_env_action,
+            insert_action, ddl_action, second_insert_action, verify_results_action):
+        # set TRACE log level for the test node to be able
+        # to catch schema_mismatch_error exceptions
+        self.cluster.set_log_level('TRACE')
+        session = self.prepare(nodes=1, rf=1)
+        # Create test tables and configure other necessary stuff
+        setup_test_env_action(session)
+
+        node1 = self.cluster.nodelist()[0]
+
+        # Fail at the end of "accept" stage so that we have commited a proposal but not yet completed the round
+        errinj_name = "paxos_error_after_save_proposal"
+        debug(f"Enable {errinj_name} injection on the test node")
+        self.enable_error(errinj_name, node1, one_shot=True)
+
+        # Execute the LWT query leaving an unfinished paxos round behind
+        key = 0
+        with self.assertRaises(WriteFailure):
+            debug(f"Execute the first INSERT query on key {key}")
+            insert_action(session, key)
+
+        # perform DDL action to change test table schema version
+        ddl_action(session)
+
+        debug("Disable remaining injections on the node (if any)")
+        self.disable_errors(node1)
+
+        if clear_schema_cache:
+            debug(f"Restart the node to clear up schema_registry cache");
+            node1.stop(wait=True)
+            node1.start()
+            # re-open the session to the node
+            session = self.patient_cql_connection(node1)
+            session.execute("USE ks")
+
+        # Initiate a subsequent round on the same key so that it performs
+        # repair of the previous round and it is supposed to fail
+        debug(f"Execute the second INSERT on key {key} (supposed to trigger repair of the previous round)")
+        second_insert_action(session, key)
+        # Execute additional actions to verify that the test executed successfully (check logs and data)
+        verify_results_action(session, node1)
+
     @attr('dtest-debug', 'single_node')
     @scylla_mode('!release')
     def schema_mismatch_test(self):
@@ -391,53 +436,34 @@ class TestPaxos(Tester):
         3. Start a new LWT query against the same key so that the coordinator node tries to
         repair the previous unfinished paxos round.
 
-        It will try to apply the stored mutation (which has an invalid schema version) and should
-        fail with "schema_mismatch_error" exception.
+        It will try to apply the stored mutation (which has an obsolete schema version) and should
+        try to look up the old schema in a history table.
 
         Refs: #6502
         '''
 
-        self.cluster.set_log_level('TRACE')
+        def create_test_table(session):
+            session.execute("CREATE TABLE test (k int PRIMARY KEY, v int)")
 
-        session = self.prepare(nodes=1, rf=1)
-
-        node1 = self.cluster.nodelist()[0]
-
-        debug("Create the test table")
-        session.execute("CREATE TABLE test (k int PRIMARY KEY, v int)")
-
-        stmt = session.prepare("INSERT INTO test (k, v) VALUES (?, ?) IF NOT EXISTS")
-
-        # Fail at the end of "accept" stage so that we have commited a proposal but not yet completed the round
-        errinj_name = "paxos_error_after_save_proposal"
-        debug(f"Enable {errinj_name} injection on the node")
-        self.enable_error(errinj_name, node1, one_shot=True)
-
-        # Execute the LWT query leaving an unfinished paxos round behind
-        key = 0
-        with self.assertRaises(WriteFailure):
-            debug(f"Execute the first INSERT query on key {key}")
+        def insert_action(session, key):
+            stmt = session.prepare("INSERT INTO test (k, v) VALUES (?, ?) IF NOT EXISTS")
             session.execute(stmt, [key, 0])
 
-        # then perform ddl
-        debug("Alter test table in order to change its schema version")
-        session.execute("ALTER TABLE test ADD dummy int")
+        def add_dummy_column(session):
+            session.execute("ALTER TABLE test ADD dummy int")
 
-        debug("Disable remaining injections on the node (if any)")
-        self.disable_errors(node1)
+        def check_schema_mismatch_exc(session, node):
+            exc_msg = node.grep_log("<schema_mismatch_error>")
+            if exc_msg:
+                raise Exception(f"Unexpected \"schema_mismatch_error\" exception: {exc_msg}")
 
-        # Initiate a subsequent round on the same key so that it performs
-        # repair of the previous round and it is supposed to fail
-        debug(f"Execute the second INSERT on key {key} (supposed to trigger repair of the previous round)")
-        # Expected to trigger "schema_mismatch_error" exception
-        session.execute(stmt, [key, 0])
-        # FIXME: for some reason the query above doesn't fail and silently retries(?)
-        # again so that we don't even get a retry on the client side and everything is fine on our end
-        expected_exc_msg = node1.grep_log("<schema_mismatch_error>")
-        if not expected_exc_msg:
-            raise Exception("Expected to have \"schema_mismatch_error\" exception")
-        debug("Found the expected error pattern in the node logs:")
-        debug(expected_exc_msg)
+        self._schema_mismatch_test_tpl(clear_schema_cache=False,
+            setup_test_env_action=create_test_table,
+            insert_action=insert_action,
+            ddl_action=add_dummy_column,
+            second_insert_action=insert_action,
+            verify_results_action=check_schema_mismatch_exc
+        )
 
     @attr('dtest-debug', 'single_node')
     @scylla_mode('!release')
@@ -457,55 +483,35 @@ class TestPaxos(Tester):
         4. Start a new LWT query against the same key so that the coordinator node tries to
         repair the previous unfinished paxos round.
 
-        It will try to apply the stored mutation (which has an invalid schema version) and should
-        fail with "schema_mismatch_error" exception.
+        It will try to apply the stored mutation (which has an obsolete schema version) and should
+        try to look up the old schema in a history table.
 
         Refs: scylladb/scylla#6074
         '''
 
-        expected_exc_msg = "<schema_mismatch_error>"
-        self.ignore_log_patterns = [expected_exc_msg]
+        def create_test_table_and_mv(session):
+            session.execute("CREATE TABLE test (k int PRIMARY KEY, v int)")
+            session.execute("CREATE MATERIALIZED VIEW test_view AS SELECT * from test where k > 0 PRIMARY KEY(k)")
 
-        session = self.prepare(nodes=1, rf=1)
-
-        node1 = self.cluster.nodelist()[0]
-
-        debug("Create the test table")
-        session.execute("CREATE TABLE test (k int PRIMARY KEY, v int)")
-        session.execute("CREATE MATERIALIZED VIEW test_view AS SELECT * from test where k > 0 PRIMARY KEY(k)")
-
-        stmt = session.prepare("INSERT INTO test (k, v) VALUES (?, ?) IF NOT EXISTS")
-
-        # Fail at the end of "accept" stage so that we have commited a proposal but not yet completed the round
-        errinj_name = "paxos_error_after_save_proposal"
-        debug(f"Enable {errinj_name} injection on the node")
-        self.enable_error(errinj_name, node1, one_shot=True)
-
-        # Execute the LWT query leaving an unfinished paxos round behind
-        key = 0
-        with self.assertRaises(WriteFailure):
-            debug(f"Execute the first INSERT query on key {key}")
+        def insert_action(session, key):
+            stmt = session.prepare("INSERT INTO test (k, v) VALUES (?, ?) IF NOT EXISTS")
             session.execute(stmt, [key, 0])
 
-        # then perform ddl
-        debug("Alter test table in order to change its schema version")
-        session.execute("ALTER TABLE test ADD dummy int")
+        def add_dummy_column(session):
+            session.execute("ALTER TABLE test ADD dummy int")
 
-        debug("Disable remaining injections on the node (if any)")
-        self.disable_errors(node1)
+        def check_schema_mismatch_exc(session, node):
+            exc_msg = node.grep_log("<schema_mismatch_error>")
+            if exc_msg:
+                raise Exception(f"Unexpected \"schema_mismatch_error\" exception: {exc_msg}")
 
-        # Initiate a subsequent round on the same key so that it performs
-        # repair of the previous round and it is supposed to fail
-        debug(f"Execute the second INSERT on key {key} (supposed to trigger repair of the previous round)")
-        # Expected to trigger "schema_mismatch_error" exception (Propagated to the client as WriteFailure)
-        with self.assertRaises(WriteFailure):
-            session.execute(stmt, [key, 0])
-
-        expected_exc_msg = node1.grep_log(expected_exc_msg)
-        if not expected_exc_msg:
-            raise Exception("Expected to have \"schema_mismatch_error\" exception")
-        debug("Found the expected error pattern in the node logs:")
-        debug(expected_exc_msg)
+        self._schema_mismatch_test_tpl(clear_schema_cache=False,
+            setup_test_env_action=create_test_table_and_mv,
+            insert_action=insert_action,
+            ddl_action=add_dummy_column,
+            second_insert_action=insert_action,
+            verify_results_action=check_schema_mismatch_exc
+        )
 
     @attr('dtest-debug', 'single_node')
     @scylla_mode('!release')
@@ -523,50 +529,90 @@ class TestPaxos(Tester):
         3. Start a new LWT query against the same key so that the coordinator node tries to
         repair the previous unfinished paxos round.
 
-        It will try to apply the stored mutation (which has an invalid schema version and
-        references a non-existent column) and should fail with an exception.
+        It will try to apply the stored mutation (which has an obsolete schema version) and should
+        try to look up the old schema in a history table.
 
         Refs: #6467
         '''
 
-        expected_exc_msg = r"exception during mutation write to ([0-9.]+): std::out_of_range \(regular column id 0 >= 0\)"
-        self.ignore_log_patterns = [expected_exc_msg]
+        def create_test_table(session):
+            session.execute("CREATE TABLE test (k int PRIMARY KEY, v int)")
 
-        session = self.prepare(nodes=1, rf=1)
-
-        node1 = self.cluster.nodelist()[0]
-
-        debug("Create the test table")
-        session.execute("CREATE TABLE test (k int PRIMARY KEY, v int)")
-
-        stmt = session.prepare("INSERT INTO test (k, v) VALUES (?, ?) IF NOT EXISTS")
-
-        # Fail at the end of "accept" stage so that we have commited a proposal but not yet completed the round
-        errinj_name = "paxos_error_after_save_proposal"
-        debug(f"Enable {errinj_name} injection on the node")
-        self.enable_error(errinj_name, node1, one_shot=True)
-
-        # Execute the LWT query leaving an unfinished paxos round behind
-        key = 0
-        with self.assertRaises(WriteFailure):
-            debug(f"Execute the first INSERT query on key {key}")
+        def insert_action(session, key):
+            stmt = session.prepare("INSERT INTO test (k, v) VALUES (?, ?) IF NOT EXISTS")
             session.execute(stmt, [key, 0])
 
-        # then perform ddl
-        debug("Drop a regular column in the test table")
-        session.execute("ALTER TABLE test DROP v")
+        def drop_column(session):
+            session.execute("ALTER TABLE test DROP v")
 
-        debug("Disable remaining injections on the node (if any)")
-        self.disable_errors(node1)
-
-        # Initiate a subsequent round on the same key so that it performs
-        # repair of the previous round and it is supposed to fail
-        debug(f"Execute the second INSERT on key {key} (supposed to trigger repair of the previous round)")
-        stmt = session.prepare("INSERT INTO test (k) VALUES (?) IF NOT EXISTS")
-        # Expected to fail
-        with self.assertRaises(WriteFailure):
+        def second_insert_action(session, key):
+            stmt = session.prepare("INSERT INTO test (k) VALUES (?) IF NOT EXISTS")
             session.execute(stmt, [key])
 
-            failure = node1.grep_log(expected_exc_msg)
-            debug(expected_exc_msg)
-            self.assertTrue(failure, "Cannot find the exception message in the node logs")
+        def check_exc_and_table_data(session, node):
+            exc_msg = r"exception during mutation write to ([0-9.]+): std::out_of_range \(regular column id 0 >= 0\)"
+            exc_msg = node.grep_log(exc_msg)
+            if exc_msg:
+                raise Exception(f"Unexpected exception during mutation write: {exc_msg}")
+            debug("Selecting table contents to verify that insert was applied successfully")
+            assert_one(session, "SELECT * from test", [0])
+
+        self._schema_mismatch_test_tpl(clear_schema_cache=False,
+            setup_test_env_action=create_test_table,
+            insert_action=insert_action,
+            ddl_action=drop_column,
+            second_insert_action=second_insert_action,
+            verify_results_action=check_exc_and_table_data
+        )
+
+    @attr('dtest-debug', 'single_node')
+    @scylla_mode('!release')
+    def schema_mismatch_drop_regular_column_in_the_middle_test(self):
+        '''
+        Tests for the following scenario:
+
+        1. Execute an LWT query against a key. Suppose the transaction failed for
+        some reason but did manage to save its paxos proposal (along with the associated mutation)
+        before failing.
+
+        2. Change the table schema so that the mutation from the saved paxos proposal holds the
+        reference to an invalid schema version (drop one of the columns participating in the query).
+
+        3. Start a new LWT query against the same key so that the coordinator node tries to
+        repair the previous unfinished paxos round.
+
+        It will try to apply the stored mutation (which has an obsolete schema version) and should
+        try to look up the old schema in a history table.
+
+        Refs: #6467
+        '''
+
+        def create_test_table(session):
+            session.execute("CREATE TABLE test (k int PRIMARY KEY, v int, v2 int)")
+
+        def insert_action(session, key):
+            stmt = session.prepare("INSERT INTO test (k, v2) VALUES (?, ?) IF NOT EXISTS")
+            session.execute(stmt, [key, 0])
+
+        def drop_column(session):
+            session.execute("ALTER TABLE test DROP v")
+
+        def second_insert_action(session, key):
+            stmt = session.prepare("INSERT INTO test (k) VALUES (?) IF NOT EXISTS")
+            session.execute(stmt, [key])
+
+        def check_exc_and_table_data(session, node):
+            exc_msg = r"exception during mutation write to ([0-9.]+): std::out_of_range \(regular column id 0 >= 0\)"
+            exc_msg = node.grep_log(exc_msg)
+            if exc_msg:
+                raise Exception(f"Unexpected exception during mutation write: {exc_msg}")
+            debug("Selecting table contents to verify that insert was applied successfully")
+            assert_one(session, "SELECT * from test", [0, 0])
+
+        self._schema_mismatch_test_tpl(clear_schema_cache=False,
+            setup_test_env_action=create_test_table,
+            insert_action=insert_action,
+            ddl_action=drop_column,
+            second_insert_action=second_insert_action,
+            verify_results_action=check_exc_and_table_data
+        )
