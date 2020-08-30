@@ -929,7 +929,7 @@ class TestNodetool(Tester):
 
     @staticmethod
     def getendpoints(node, ks, cf, value):
-        return node.nodetool('getendpoints ' + ks + ' ' + cf + ' value', True)[0]
+        return node.nodetool('getendpoints ' + ks + ' ' + cf + ' ' + value, True)[0]
 
     def getendpoints_test(self):
         """Test the nodetool getendpoints command
