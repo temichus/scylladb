@@ -23,8 +23,7 @@ BANS = 1000
 TOTAL_ACCOUNTS = BICS * BANS
 TOTAL_TRANSFERS = 50000            # Total transfers to test
 RF = 3
-NODES = min(8, psutil.cpu_count()) #   More make test much slower - TODO
-LOGICAL_CPU_SKIP = 2               # How many logical cpus per physical cpu
+NODES = min(8, psutil.cpu_count(logical=False)) #   More nodes make test much slower - TODO
 MAX_WORKERS = 200                  # Workers block so make more than cores/threads
 BALANCE_INIT_MIN =  1000
 BALANCE_INIT_MAX = 10000
@@ -432,16 +431,16 @@ def node_affinity(node_pids):
     python_proc = psutil.Process(pid=getpid())
     threads = psutil.cpu_count()
     cores = psutil.cpu_count(logical=False)
-    threads_per_core = threads / cores
+    threads_per_core = threads // cores
 
     assert len(node_pids) <= threads - 1
     # Run Python dtest *and its workers* in last thread of last core
-    python_proc.cpu_affinity(range(len(node_pids) * LOGICAL_CPU_SKIP, threads - 1))
+    python_proc.cpu_affinity(range(len(node_pids) * threads_per_core, threads - 1))
     debug(f"python pid {python_proc.pid}, affinity {python_proc.cpu_affinity()}")
     debug(f"nodes {len(node_pids)}, cores {cores}")
     for i in range(len(node_pids)):
         node_proc = psutil.Process(pid=node_pids[i])
-        node_proc.cpu_affinity([i * LOGICAL_CPU_SKIP]) # [i * threads_per_core])
+        node_proc.cpu_affinity([i * threads_per_core])
         debug(f"node.pid {node_pids[i]} new affinity {node_proc.cpu_affinity()}")
 
 @attr("dtest-debug")
