@@ -22,6 +22,9 @@ from tools import new_node
 
 TOKENS_PER_NODE = 256
 
+CDC_GENERATIONS_TABLE = 'system_distributed.cdc_generation_descriptions'
+CDC_STREAMS_TABLE = 'system_distributed.cdc_streams_descriptions'
+
 
 class CdcLogOperations(IntEnum):
     PREIMAGE = 0
@@ -64,7 +67,7 @@ class CDCInitializeHelper:
         return last_timestamp
 
     def get_cdc_description_rows(self, session):
-        query = SimpleStatement("SELECT * FROM system_distributed.cdc_streams_descriptions",
+        query = SimpleStatement(f"SELECT * FROM {CDC_STREAMS_TABLE}",
                                 consistency_level=ConsistencyLevel.ONE)
         return session.execute(query)
 
@@ -510,7 +513,7 @@ class TestCdc(Tester, CDCInitializeHelper):
         return min(desc.time for desc in cdc_descriptions if desc.time > timestamp)
 
     def get_cdc_topology_description_for_timestamp(self, session, timestamp):
-        query = session.prepare("SELECT description FROM system_distributed.cdc_generation_descriptions WHERE time = ?")
+        query = session.prepare(f"SELECT description FROM {CDC_GENERATIONS_TABLE} WHERE time = ?")
         query.consistency_level = ConsistencyLevel.ALL
         rows = session.execute(query, (timestamp,))
         return list(rows)[0].description
