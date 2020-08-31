@@ -377,7 +377,7 @@ class CDCNativeTypeTmpl(CdcTools):
         postimage_index = 1
         preimage_expected_dataset = preimage_expected_dataset if not first_record else self.null_value_dataset
 
-        if preimage_enable:
+        if preimage_enable and not first_record:
 
             delta_index += 1
             postimage_index += 1
@@ -390,11 +390,16 @@ class CDCNativeTypeTmpl(CdcTools):
 
     def verify_cdc_log_rows_after_several_operations(self, cdc_log_data, preimage_enable, postimage_enable):
         if preimage_enable and postimage_enable:
-            self.check_cdc_log_num_row(cdc_log_data, 9)
-            cdc_log_insert_rows = cdc_log_data[:3]
-            cdc_log_update_rows = cdc_log_data[3:6]
-            cdc_log_deleted_rows = cdc_log_data[6:]
-        elif preimage_enable or postimage_enable:
+            self.check_cdc_log_num_row(cdc_log_data, 8)
+            cdc_log_insert_rows = cdc_log_data[:2]
+            cdc_log_update_rows = cdc_log_data[2:5]
+            cdc_log_deleted_rows = cdc_log_data[5:]
+        elif preimage_enable:
+            self.check_cdc_log_num_row(cdc_log_data, 5)
+            cdc_log_insert_rows = cdc_log_data[:1]
+            cdc_log_update_rows = cdc_log_data[1:3]
+            cdc_log_deleted_rows = cdc_log_data[3:]
+        elif postimage_enable:
             self.check_cdc_log_num_row(cdc_log_data, 6)
             cdc_log_insert_rows = cdc_log_data[:2]
             cdc_log_update_rows = cdc_log_data[2:4]
@@ -590,7 +595,7 @@ class CDCCollectionsTmpl(CdcTools):
 
     def verify_cdc_log_rows_after_insert_to_base_table(self, cdc_log_data, preimage_enable, postimage_enable, first_record=False):
         if preimage_enable:
-            preimage_dataset = self.inserted_dataset if not first_record else self.null_value_dataset
+            preimage_dataset = self.inserted_dataset if not first_record else None
         else:
             preimage_dataset = None
 
@@ -603,7 +608,7 @@ class CDCCollectionsTmpl(CdcTools):
     def verify_cdc_log_rows_after_update_to_base_table(self, cdc_log_data, preimage_enable, postimage_enable,
                                                        add_element=None, remove_element=None, first_record=False):
         if preimage_enable:
-            preimage_dataset = self.inserted_dataset if not first_record else self.null_value_dataset
+            preimage_dataset = self.inserted_dataset if not first_record else None
         else:
             preimage_dataset = None
 
@@ -639,7 +644,7 @@ class CDCCollectionsTmpl(CdcTools):
         delta_index = 0
         postimage_index = 1
 
-        if preimage_enable:
+        if preimage_enable and preimage_expected_data:
             delta_index += 1
             postimage_index += 1
             self.check_cdc_log_row_collection(cdc_log_rows[0], operation=CdcLogOperations.PREIMAGE, batch_seq=0,
@@ -778,13 +783,12 @@ class CdcUDTTmpl(CdcTools):
         timestamp = self.insert_one(session, self.insert_dataset)
 
         res_log_rows = self.get_cdc_log_records_by_timestamp(session, timestamp)
-        # first record in partition will have preimage with None
+        # first record in partition will have no preimage
         self.verify_cdc_log_rows_with_udt(CdcLogOperations.INSERT, res_log_rows, {
-                                          "preimage": None,
                                           "delta": self.columns_data['ins_dataset'],
                                           "postimage": self.columns_data['ins_dataset']
                                           },
-                                          preimage_enable,
+                                          False,
                                           postimage_enable)
 
         timestamp = self.insert_one(session, self.update_dataset)
@@ -804,12 +808,11 @@ class CdcUDTTmpl(CdcTools):
         timestamp = self.update_one(session, self.insert_dataset)
 
         res_log_rows = self.get_cdc_log_records_by_timestamp(session, timestamp)
-        # first record in partition will have preimage with None
+        # first record in partition will have no preimage
         self.verify_cdc_log_rows_with_udt(CdcLogOperations.UPDATE, res_log_rows, {
-                                          "preimage": None,
                                           "delta": self.columns_data['ins_dataset'],
                                           "postimage": self.columns_data['ins_dataset']
-                                          }, preimage_enable, postimage_enable)
+                                          }, False, postimage_enable)
 
         timestamp = self.update_one(session, self.update_dataset)
         res_log_rows = self.get_cdc_log_records_by_timestamp(session, timestamp)

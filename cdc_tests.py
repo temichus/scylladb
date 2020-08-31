@@ -374,18 +374,20 @@ class TestCdc(Tester, CDCInitializeHelper):
 
         latest_rows = {}
         for _, write in itertools.groupby(log_rows, key=lambda r: r.cdc_time):
-            preimage_row, update_row = list(write)
-            self.assertEqual(preimage_row.cdc_operation, CdcLogOperations.PREIMAGE)
-            self.assertEqual(update_row.cdc_operation, CdcLogOperations.INSERT)
-            self.assertEqual(preimage_row.a, update_row.a)
-            if update_row.a not in latest_rows:
-                # This is a new row - preimage will contain nulls
-                self.assertIsNone(preimage_row.b)
-            else:
+            writes = list(write)
+            if len(writes) > 1:
                 # The row was updated
+                preimage_row, update_row = writes
+                self.assertEqual(preimage_row.cdc_operation, CdcLogOperations.PREIMAGE)
+                self.assertEqual(update_row.cdc_operation, CdcLogOperations.INSERT)
+                self.assertEqual(preimage_row.a, update_row.a)
                 self.assertIsNotNone(preimage_row.b)
                 old_row = latest_rows[update_row.a]
                 self.assertEqual(preimage_row.b, old_row.b, "Preimage did not contain previous state of the row")
+            else:
+                # This is a new row - no preimage
+                update_row = writes[0]
+                self.assertEqual(update_row.cdc_operation, CdcLogOperations.INSERT)
 
             latest_rows[update_row.a] = update_row
 
