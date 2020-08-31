@@ -1,0 +1,43 @@
+# See https://pre-commit.com for more information
+# See https://pre-commit.com/hooks.html for more hooks
+repos:
+-   repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v2.4.0
+    hooks:
+    -   id: trailing-whitespace
+        exclude: >
+            (?x)^(
+                .git/*|
+                test_data/.*|
+                cassandra-sstables/.*|
+                alternator/.*
+            )$
+    -   id: end-of-file-fixer
+        exclude: >
+            (?x)^(
+                .git/*|
+                test_data/.*|
+                cassandra-sstables/.*|
+                alternator/.*
+            )$
+    -   id: check-yaml
+        args:
+        - --allow-multiple-documents
+    -   id: check-added-large-files
+    -   id: check-json
+    -   id: detect-aws-credentials
+    -   id: detect-private-key
+
+-   repo: local
+    hooks:
+    -   id: autopep8
+        name: autopep8
+        entry: autopep8 -i -j 2 -v --max-line-length=120 --ignore=E226,E24,W50,W690,E402
+        language: system
+        types: [python]
+
+#    -   id: pylint
+#        name: pylint
+#        entry: pylint -j 2 -E
+#        language: system
+#        types: [python]
