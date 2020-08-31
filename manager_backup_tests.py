@@ -334,7 +334,7 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
             mgr_cluster.run_backup_command(location_list=["s3:{}".format(DESTINATION_BUCKET)],
                                            keyspace_list=[keyspace_filter_string])
         except ScyllaManagerError as err:
-            assert "no matching keyspaces"\
+            assert "no keyspace matched"\
                    in err.args[0], "The manager justifiably failed to backup a nonexistent keyspace, but the error" \
                                    " message does not describe the error properly"
         else:
@@ -379,9 +379,8 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
         node1, node2 = self.config_and_create_cluster(nodes=2)
 
         mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
-
-        self._create_stress_compatible_table(node=node1)
-        self.cluster.stress(['write', 'n=5000K', '-rate', 'threads=50'])
+        self.cluster.stress(
+            ['write', 'n=5000K', '-rate', 'threads=50', '-schema', 'compaction(strategy=SizeTieredCompactionStrategy)'])
 
         backup_task = mgr_cluster.run_backup_command(location_list=["s3:{}".format(DESTINATION_BUCKET)])
 
@@ -540,34 +539,6 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
                                      desirable_status=desirable_status, tolerate_missing=tolerate_missing)
         return is_status_reached
 
-    def _create_stress_compatible_table(self, node, compaction="{'class': 'SizeTieredCompactionStrategy'}"):
-        session = self.patient_cql_connection(node)
-        session.execute("""CREATE KEYSPACE "keyspace1" WITH replication = {
-        'class': 'SimpleStrategy',
-        'replication_factor': '1'};""")
-        session.execute("""USE "keyspace1";""")
-        session.execute(f"""CREATE TABLE "standard1" (
-        key blob,
-        "C0" blob,
-        "C1" blob,
-        "C2" blob,
-        "C3" blob,
-        "C4" blob,
-        PRIMARY KEY (key)
-        ) WITH
-        bloom_filter_fp_chance=0.010000 AND
-        caching='KEYS_ONLY' AND
-        comment='' AND
-        dclocal_read_repair_chance=0.000000 AND
-        gc_grace_seconds=864000 AND
-        index_interval=128 AND
-        read_repair_chance=0.000000 AND
-        replicate_on_write='true' AND
-        default_time_to_live=0 AND
-        speculative_retry='99.0PERCENTILE' AND
-        memtable_flush_period_in_ms=0 AND
-        compaction={compaction};""")
-
     @skip("will return when minio bandwidth limiting is on")
     @attr('scylla-manager')
     def test_backup_while_adding_node_to_cluster(self):
@@ -575,10 +546,10 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
 
         mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
 
-        self._create_stress_compatible_table(node=node1)
 
         # C-S for two minutes
-        self.cluster.stress(['write', 'n=10000K', '-rate', 'threads=50'])
+        self.cluster.stress(['write', 'n=10000K', '-rate', 'threads=50',
+                             '-schema', 'compaction(strategy=SizeTieredCompactionStrategy)'])
 
         node4 = self.cluster.new_node(4, auto_bootstrap=True, add_node=True, is_seed=False)
         node4.start()
@@ -596,9 +567,9 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
         node1, node2, node3 = self.config_and_create_cluster(nodes=3)
         mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
 
-        self._create_stress_compatible_table(node=node1)
         # C-S for 2.5M rows minutes
-        self.cluster.stress(['write', 'n=2500K', '-rate', 'threads=50'])
+        self.cluster.stress(['write', 'n=2500K', '-rate', 'threads=50',
+                             '-schema', 'compaction(strategy=SizeTieredCompactionStrategy)'])
 
         backup_task = mgr_cluster.run_backup_command(location_list=["s3:{}".format(DESTINATION_BUCKET)],
                                                      keyspace_list=["keyspace1"])
@@ -732,8 +703,8 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
 
         mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
 
-        self._create_stress_compatible_table(node=node1)
-        self.cluster.stress(['write', 'n=5000K', '-rate', 'threads=50'])
+        self.cluster.stress(['write', 'n=5000K', '-rate', 'threads=50',
+                             '-schema', 'compaction(strategy=SizeTieredCompactionStrategy)'])
 
         backup_task = mgr_cluster.run_backup_command(location_list=["s3:{}".format(DESTINATION_BUCKET)],
                                                      keyspace_list=['keyspace1'])
@@ -798,11 +769,11 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
     def test_snapshot_deleted_upon_rerun(self):
         node1, node2 = self.config_and_create_cluster(nodes=2)
         mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
-        self._create_stress_compatible_table(node=node1)
-        self.cluster.stress(['write', 'n=1500K', '-rate', 'threads=50', '-pop', 'seq=1..10000000'])
+        self.cluster.stress(['write', 'n=1500K', '-rate', 'threads=50', '-pop', 'seq=1..10000000',
+                             '-schema', 'compaction(strategy=SizeTieredCompactionStrategy)'])
 
         backup_task = mgr_cluster.run_backup_command(keyspace_list=["keyspace1"], location_list=["s3:{}".format(DESTINATION_BUCKET)])
-        backup_task.wait_for_status(list_status=[TaskStatus.RUNNING], timeout=180, step=15)
+        backup_task.wait_for_status(list_status=[TaskStatus.RUNNING], timeout=180, step=.5)
 
         for node in self.cluster.nodelist():
             node.stop_scylla_manager_agent(gently=False)
