@@ -2707,6 +2707,7 @@ class RepairAdditionalTest(RepairAdditionalBase):
     def repair_option_seq_test(self):
        return RepairAdditionalBase._repair_option_seq_test(self)
 
+    @attr('next-gating')
     def repair_kill_1_test(self, kill_master=True):
        return RepairAdditionalBase._repair_kill_1_test(self)
 
@@ -2716,8 +2717,7 @@ class RepairAdditionalTest(RepairAdditionalBase):
     def repair_kill_3_test(self):
        return RepairAdditionalBase._repair_kill_3_test(self)
 
-    # @attr('next-gating')
-    # removed from next-gating due to https://github.com/scylladb/scylla/issues/4394
+    @attr('next-gating')
     def repair_during_update_test(self, more_options=[]):
        return RepairAdditionalBase._repair_during_update_test(self,more_options)
 
@@ -2736,15 +2736,18 @@ class RepairAdditionalTest(RepairAdditionalBase):
     def repair_with_down_nodes_2b_test(self, more_options=[]):
        return RepairAdditionalBase._repair_with_down_nodes_2b_test(self,more_options)
 
+    @attr('next-gating')
     def repair_abort_test(self):
        return RepairAdditionalBase._repair_abort_test(self)
 
+    @attr('next-gating')
     def repair_one_missing_row_test(self):
        return RepairAdditionalBase._repair_one_missing_row_test(self)
 
     def repair_one_deleted_row_test(self):
        return RepairAdditionalBase._repair_one_deleted_row_test(self)
 
+    @attr('next-gating')
     def repair_disjoint_row_2nodes_test(self):
        return RepairAdditionalBase._repair_disjoint_row_2nodes_test(self)
 
@@ -2754,6 +2757,7 @@ class RepairAdditionalTest(RepairAdditionalBase):
     def repair_joint_row_3nodes_1_test(self):
        return RepairAdditionalBase._repair_joint_row_3nodes_same_key_same_value_test(self)
 
+    @attr('next-gating')
     def repair_joint_row_3nodes_2_test(self):
        return RepairAdditionalBase._repair_joint_row_3nodes_same_key_diff_value_test(self)
 
