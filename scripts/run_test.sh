@@ -114,6 +114,7 @@ chmod 0700 ${HOME}/.certs
 mkdir -p ${HOME}/.config
 mkdir -p ${HOME}/.local/lib
 mkdir -p ${HOME}/.cassandra
+mkdir -p ${HOME}/.cache/pre-commit
 
 function check_directory_exists()
 {
@@ -192,10 +193,26 @@ else
 WORKSPACE_MNT=""
 fi
 
+# export all BUILD_* env vars into the docker run
+BUILD_OPTIONS=$(env | grep BUILD_ | cut -d "=" -f 1 | xargs -i echo "--env {}")
+
+# export all AWS_* env vars into the docker run
+AWS_OPTIONS=$(env | grep AWS_ | cut -d "=" -f 1 | xargs -i echo "--env {}")
+
+# export all JENKINS_* env vars into the docker run
+JENKINS_OPTIONS=$(env | grep JENKINS_ | cut -d "=" -f 1 | xargs -i echo "--env {}")
+
 group_args=()
 for gid in $(id -G); do
     group_args+=(--group-add "$gid")
 done
+
+subcommand="$*"
+if [[ ${subcommand} == *'bash'* ]] || [[ ${subcommand} == *'python'* ]]; then
+    CMD=${subcommand}
+else
+    CMD="bash -c 'sudo rsyslogd; pip3 install --user -e ${CCM_DIR} ; export PATH=\$PATH:\${HOME}/.local/bin ; cp -a /.ccm/repo* \${HOME}/.ccm/ ; bash -c \"${INSTALL_CASSANDRA}\"; python3 -m nose --nologcapture -v -s $*'"
+fi
 
 docker_cmd="docker run --detach=true \
     ${WORKSPACE_MNT} \
@@ -233,16 +250,21 @@ docker_cmd="docker run --detach=true \
     -u $(id -u ${USER}):$(id -g ${USER}) \
     ${group_args[@]} \
     --tmpfs ${HOME}/.cache \
+    -v ${HOME}/.cache/pre-commit:${HOME}/.cache/pre-commit \
     -v ${HOME}/.local:${HOME}/.local \
     -v ${HOME}/.dtest:${HOME}/.dtest \
     -v ${HOME}/.ccm:${HOME}/.ccm \
     -v ${HOME}/.certs:${HOME}/.certs \
     -v ${HOME}/.config:${HOME}/.config \
     -v ${HOME}/.cassandra:${HOME}/.cassandra \
+    -v ${HOME}/.aws:${HOME}/.aws \
     ${DOCKER_NETWORK_PARAM} \
+    ${BUILD_OPTIONS} \
+    ${AWS_OPTIONS} \
+    ${JENKINS_OPTIONS} \
     --privileged \
     --ulimit nofile=40000:40000 \
-    ${DOCKER_IMAGE} bash -c 'sudo rsyslogd; pip3 install --user -e ${CCM_DIR} ; export PATH=\$PATH:\${HOME}/.local/bin ; cp -a /.ccm/repo* \${HOME}/.ccm/ ; bash -c \"${INSTALL_CASSANDRA}\"; python3 -m nose --nologcapture -v -s $*'"
+    ${DOCKER_IMAGE} $CMD"
 echo "Running Docker: $docker_cmd"
 container=$(eval $docker_cmd)
 
