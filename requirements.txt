@@ -20,4 +20,3 @@ docker==4.2.1
 pre-commit==2.7.1
 pylint==2.6.0  # Needed for pre-commit hooks
 autopep8==1.5.4  # Needed for pre-commit hooks
-

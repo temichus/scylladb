@@ -21,4 +21,3 @@ echo 'KEEP_TEST_DIR=true REUSE_CLUSTER=false nosetests -v -s simple_boot_shutdow
 echo
 echo "=== To remove dtest produced clsuter data"
 echo "ls -l ~/.dtest; rm -rf ~/.dtest"
-

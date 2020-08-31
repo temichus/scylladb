@@ -6,4 +6,3 @@ This is a set of cassandra-dtest exclude configuration files for use with nose-t
 The files are for each C* branch and are run with:
 
   nosetests --test-select-config=conf/${C_BRANCH}_test-select.cfg
-
