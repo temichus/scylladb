@@ -43,7 +43,6 @@ class TestRandomPaxos(Tester):
                     """
         return super().shortDescription()
 
-    @since('3.3')
     def test_topology_add_decommission_reboot(self):
         """
         Test on add, decommission and reboot node
@@ -68,7 +67,6 @@ class TestRandomPaxos(Tester):
         self.test_info.randomize()
         self.test_info.execute(tester=self)
 
-    @since('3.3')
     def test_topology_grow(self):
         """
         Test on add nodes to the cluster, covers following cases:
@@ -117,7 +115,6 @@ class TestRandomPaxos(Tester):
         self.test_info.randomize()
         self.test_info.execute(tester=self)
 
-    @since('3.3')
     def test_topology_replace(self):
         """
         Test on node replacing
@@ -148,7 +145,6 @@ class TestRandomPaxos(Tester):
         self.test_info.execute(tester=self)
 
     @skip('Fails on couple of corner cases. To be fixed.')
-    @since('3.3')
     def test_topology_change_all_random(self):
         self.test_info = ScyllaClusterTest(
             debug=True,
