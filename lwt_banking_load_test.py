@@ -1,7 +1,7 @@
 import uuid
 from random import seed, random, randint, choice, randrange
 from dtest import Tester, debug
-from nose.plugins.attrib import attr
+from scylla_tools import scylla_mode
 from cassandra import ConsistencyLevel, OperationTimedOut, WriteFailure, ReadFailure, Unavailable
 import multiprocessing as mp
 from time import sleep, time, time_ns
@@ -443,7 +443,7 @@ def node_affinity(node_pids):
         node_proc.cpu_affinity([i * threads_per_core])
         debug(f"node.pid {node_pids[i]} new affinity {node_proc.cpu_affinity()}")
 
-@attr("dtest-debug")
+@scylla_mode("!debug")
 class LWTBankingLoadTest(Tester):
     """Emulate a series of money transfers and perform validation"""
     def prepare(self, num_nodes=NODES):
