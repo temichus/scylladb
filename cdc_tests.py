@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from enum import IntEnum
 from threading import Event
+import multiprocessing
 
 from cassandra import ConsistencyLevel, InvalidRequest
 from cassandra.connection import ConnectionException
@@ -304,6 +305,44 @@ class TestCdc(Tester, CDCInitializeHelper):
 
     def remove_field_with_cdc_and_preimage_test(self):
         self.schema_change_template("ALTER TABLE ks.cf DROP c", additional_fields=["c int"], with_preimage=True)
+
+    # Regression test for Scylla issue #7127
+    def check_and_repair_cdc_streams_liveness_test(self):
+        debug('Setup a single node cluster')
+        self.populate_sequentially(n=1)
+        node = self.cluster.nodes['node1']
+        session = self.patient_cql_connection(node)
+
+        debug('Wait for the last generation to become active')
+        gen_timestamp = self.wait_for_last_generation_to_be_active(session)
+
+        debug(f'Deleting generation {gen_timestamp}')
+        query = session.prepare(f"DELETE FROM {CDC_GENERATIONS_TABLE} WHERE time = ?")
+        session.execute(query, (gen_timestamp,))
+
+        self.ignore_log_patterns = ['Could not find CDC generation']
+
+        def check_and_repair():
+            node.nodetool('checkAndRepairCdcStreams')
+        debug(f'Running checkAndRepairCdcStreams...')
+        p = multiprocessing.Process(target=check_and_repair)
+        p.start()
+
+        # The command should terminate immediately; we give it 10 seconds
+        # to account for scheduling delays etc.
+        p.join(10)
+
+        if p.is_alive():
+            # Still running -- we have a liveness problem.
+            p.terminate()
+            p.join()
+            assert False, "checkAndRepairCdcStreams did not terminate in time"
+
+        # Ok, let's also check if the command actually created a generation just in casse
+        rows = list(session.execute(f"SELECT description FROM {CDC_GENERATIONS_TABLE}"))
+        self.assertGreater(len(rows), 0, "No CDC generations")
+
+        debug('Test finished')
 
     def run_writes_with_counting(self, node, with_preimage=False, additional_fields=[]):
         cdc_options = "'enabled': true"
