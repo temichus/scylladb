@@ -6444,10 +6444,10 @@ class CQLAdditionalTests(Tester):
         """
         self.cluster.populate(3).start()
         nodes = self.cluster.nodelist()
-        schema_file = "test_data/c-s-profiles/create_100tables.yaml"
+        schema_file = "test_data/c-s-profiles/create_100tables.cql"
         assert os.path.exists(schema_file), "schema file doesn't exist"
 
-        debug("Create 100+ tables by simple_test_100tables.yaml")
+        debug("Create 100+ tables by simple_test_100tables.cql")
         nodes[0].run_cqlsh(cmds="SOURCE '%s'" % schema_file, show_output=True, return_output=True)
 
         debug("Check created tables in KEYSPACE `veraminetest`")
