@@ -458,12 +458,12 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
         backup_task.wait_for_status(list_status=[TaskStatus.DONE], timeout=1000, step=5)
 
         self.insert_data_from_ranges(node1, second_keyspace_table_and_key_range)
-        backup_task.start(continue_attr="false")
+        backup_task.start(continue_task=False)
         backup_task.wait_for_status(list_status=[TaskStatus.DONE], timeout=1000, step=5)
         second_run_snapshot_tag = backup_task.get_snapshot_tag()
 
         self.insert_data_from_ranges(node1, third_keyspace_table_and_key_range)
-        backup_task.start(continue_attr="false")
+        backup_task.start(continue_task=False)
         backup_task.wait_for_status(list_status=[TaskStatus.DONE], timeout=1000, step=5)
 
         self.clean_up_tables(node1, {"ks": ["cf1"]})
@@ -492,7 +492,7 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
         node5.start(wait_other_notice=True, wait_for_binary_proto=True)
 
         backup_task.wait_for_status(list_status=[TaskStatus.ERROR])
-        backup_task.start(continue_attr="true")
+        backup_task.start(continue_task=True)
 
         backup_task.wait_for_status(list_status=[TaskStatus.DONE])
         self.clean_restore_and_verify_backup(backup_task, self.cluster.nodelist(), mgr_cluster, node1,
@@ -609,7 +609,7 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
 
         for node in self.cluster.nodelist():
             node.start_scylla_manager_agent()
-        backup_task.start(continue_attr="false")
+        backup_task.start(continue_task=False)
         backup_task.wait_and_get_final_status(timeout=300)
         assert backup_task.status == TaskStatus.DONE, "The restarted backup task failed!"
         total_snapshot_list = list()
@@ -720,7 +720,7 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
         manager_tool.restart_manager_server(gently=True)
         backup_task.wait_for_status(list_status=[TaskStatus.ABORTED], timeout=100, step=1)
 
-        backup_task.start(continue_attr="true")
+        backup_task.start(continue_task=True)
         backup_task.wait_for_status(list_status=[TaskStatus.DONE], timeout=600, step=5)
         self.clean_restore_and_verify_backup(backup_task, self.cluster.nodelist(), mgr_cluster, node1,
                                              keyspace_table_and_key_range)
@@ -775,7 +775,7 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
             self.insert_data_over_multiple_queries(
                 healthy_node=node1, keyspace_table_and_key_range={"ks": {"cf1": (i*1000+1, i*1000 + 1001)}},
                 use_clustering_key=True)
-            backup_task.start(continue_attr=False)
+            backup_task.start(continue_task=False)
             backup_task.wait_for_status(list_status=[TaskStatus.DONE], step=5)
             snapshot_tags.append(backup_task.get_snapshot_tag())
 
@@ -817,7 +817,7 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
         session = self.patient_cql_connection(node1)
         session.execute("TRUNCATE keyspace1.standard1;")
         self.cluster.stress(['write', 'n=1500K', '-rate', 'threads=50', '-pop', 'seq=10000001..20000000'])  # Modifying the data
-        backup_task.start(continue_attr="false")
+        backup_task.start(continue_task=False)
         backup_task.wait_for_status(list_status=[TaskStatus.RUNNING], timeout=180, step=2)
         post_rerun_snapshot_set = self._get_total_snapshot_set()
 
@@ -876,7 +876,7 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
         for i in range(1, 3):
             self.cluster.stress(['write', 'n=50K', '-rate', 'threads=50', '-pop',
                                  f'seq={100000 * i + 1}..{100000 * (i + 1)}'])
-            backup_task.start(continue_attr="false")
+            backup_task.start(continue_task=False)
             backup_task.wait_and_get_final_status(step=5)
             snapshot_tag_list.append(backup_task.get_snapshot_tag())
 
@@ -919,7 +919,7 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
         for key_range in key_ranges[1:]:
             self.insert_data_from_ranges(healthy_node=node1,
                                          keyspace_table_and_key_range={keyspace_name: {table_name: key_range}})
-            backup_task.start(continue_attr="false")
+            backup_task.start(continue_task=False)
             backup_task.wait_for_status(list_status=[TaskStatus.DONE], step=5)
             snapshot_tag_list.append(backup_task.get_snapshot_tag())
 

@@ -421,9 +421,11 @@ class ManagerTask(ScyllaManagerBase):
         res = self.sctool.run(cmd=cmd, is_verify_errorless_result=True)
         return self.wait_and_get_final_status(timeout=30, step=3)
 
-    def start(self, cmd=None, continue_attr="true"):
-        cmd = cmd or "task start {} -c {} --continue={}".format(self.id, self.cluster_id, continue_attr)
-        res = self.sctool.run(cmd=cmd, is_verify_errorless_result=True)
+    def start(self, continue_task=True):
+        cmd = "task start {} -c {}".format(self.id, self.cluster_id)
+        if not continue_task:
+            cmd += " --no-continue"
+        self.sctool.run(cmd=cmd, is_verify_errorless_result=True)
         list_expected_task_status = [status for status in TaskStatus.all_members() if status != TaskStatus.STOPPED]
         return self.wait_for_status(list_status=list_expected_task_status, timeout=30, step=3)
 
@@ -621,14 +623,6 @@ class ManagerTask(ScyllaManagerBase):
 class RepairTask(ManagerTask):
     def __init__(self, task_id, cluster_id, scylla_manager):
         ManagerTask.__init__(self, task_id=task_id, cluster_id=cluster_id, scylla_manager=scylla_manager)
-
-    def start(self, use_continue=False, **kwargs):
-        str_continue = '--continue=true' if use_continue else '--continue=false'
-        cmd = "task start {} -c {} {}".format(self.id, self.cluster_id, str_continue)
-        ManagerTask.start(self, cmd=cmd)
-
-    def continue_repair(self):
-        self.start(use_continue=True)
 
 
 class HealthcheckTask(ManagerTask):
@@ -932,7 +926,7 @@ class ManagerCluster(ScyllaManagerBase):
                 debug("Cluster: {} - {} has no hosts health report".format(self.id, dc_name))
             else:
                 list_titles_row = hosts_table[0]
-                host_col_idx = list_titles_row.index("Host")
+                host_col_idx = list_titles_row.index("Address")
                 cql_status_col_idx = list_titles_row.index("CQL")
                 rest_col_idx = list_titles_row.index("REST")
 
