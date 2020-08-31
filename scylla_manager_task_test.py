@@ -5,10 +5,10 @@ from cassandra.query import SimpleStatement
 from nose.plugins.attrib import attr
 
 from dtest import Tester, debug
-from dtest_scylla_manager import ScyllaManagerTool
+from dtest_scylla_manager import ScyllaManagerTool, ScyllaManagerMixin
 
 
-class ScyllaManagerTaskTest(Tester):
+class ScyllaManagerTaskTest(Tester, ScyllaManagerMixin):
 
     def _initiate_cluster(self):
         debug("Starting cluster...")

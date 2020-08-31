@@ -6,6 +6,7 @@ import yaml
 from glob import glob
 import shutil
 from time import sleep
+import re
 
 from cassandra import ConsistencyLevel
 from nose.plugins.attrib import attr
@@ -14,8 +15,7 @@ from unittest import skip
 
 from tools import require
 from scrub_test import TestHelper
-from dtest_scylla_manager import ScyllaManagerTool, ScyllaManagerError
-from dtest_scylla_manager import TaskStatus
+from dtest_scylla_manager import ScyllaManagerTool, ScyllaManagerError, TaskStatus, ScyllaManagerMixin
 from scylla_tools import insert_c1c2, insert_c1c2_with_clustering
 from dtest import debug, warning, wait_for
 
@@ -27,7 +27,7 @@ C1_PREFIX = "value%d"
 C2_PREFIX = "other_value%d"
 
 
-class TestScyllaMgmtBackup(TestHelper):
+class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
     __test__ = True
 
     @classmethod
@@ -41,10 +41,6 @@ class TestScyllaMgmtBackup(TestHelper):
             cls.boto_client.create_bucket(Bucket=DESTINATION_BUCKET)
         except cls.boto_client.exceptions.BucketAlreadyOwnedByYou:
             pass
-
-    def config_and_create_cluster(self, nodes):
-        self.cluster.populate(nodes).start(wait_for_binary_proto=True, wait_other_notice=True)
-        return self.cluster.nodelist()
 
     def _prepare_cluster_with_data(self, keyspace_table_and_key_range, rf=2, number_of_nodes=2):
         node_list = self.config_and_create_cluster(nodes=number_of_nodes)
@@ -116,12 +112,6 @@ class TestScyllaMgmtBackup(TestHelper):
         query = f"DELETE from {keyspace}.{table} where {clustering_key_name} >= {key_range[0]} and " \
                 f"{clustering_key_name} <= {key_range[1]} and {partition_key_name} = {partition_key_set_value}"
         session.execute(query)
-
-    def _create_mgr_cluster(self, node, name):
-        manager_tool = ScyllaManagerTool(scylla_manager=self.cluster._scylla_manager)
-        mgr_cluster = manager_tool.add_cluster(node=node, name=name)
-
-        return mgr_cluster
 
     def clean_up_tables(self, node, keyspace_and_tables_dict):
         """
@@ -968,3 +958,46 @@ class TestScyllaMgmtBackup(TestHelper):
     @attr('scylla-manager')
     def test_delete_third_run_and_restore_others(self):
         self._delete_run_and_restore_others_template(backup_run_to_delete=2)
+
+    @attr('scylla-manager')
+    def test_compare_backup_list_size(self):
+        """
+        The test runs a backup and let it run until its completion,
+        and afterwards checks that the size of the backup the manager reports on in the backup list command
+        matches the actual size of the backup in s3
+        """
+        node1, node2 = self.config_and_create_cluster(nodes=2)
+        mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
+        self.insert_data_from_ranges(healthy_node=node1,
+                                     keyspace_table_and_key_range={"keyspace1": {"table1": [1, 11]}})
+        backup_task = mgr_cluster.run_backup_command(keyspace_list=["keyspace1"],
+                                                     location_list=[f"s3:{DESTINATION_BUCKET}"])
+        backup_task.wait_for_status(list_status=[TaskStatus.DONE], step=5)
+        backup_size_under_test = self.get_backup_size_from_backup_list(mgr_cluster=mgr_cluster,
+                                                                       snapshot_tag=backup_task.get_snapshot_tag())
+        actual_backup_size = self.get_backup_size_in_practice(cluster_id=mgr_cluster.id)
+        assert backup_size_under_test == actual_backup_size, \
+            f"The size of the backup in practice is not identical to the actual size of the backup in s3:\n\tSize of " \
+            f"the backup as reported by the manager: {backup_size_under_test} KiB\n\tSize of the backup as seen in " \
+            f"S3: {actual_backup_size} KiB"
+
+    def get_backup_size_in_practice(self, cluster_id):
+        total_size_in_bytes = 0
+        sst_files = self.boto_client.list_objects(Bucket=DESTINATION_BUCKET,
+                                                  Prefix=f"backup/sst/cluster/{cluster_id}/dc/datacenter1/node")
+        total_size_in_bytes += sum([object_dict["Size"] for object_dict in sst_files["Contents"]])
+        complete_kib = round(total_size_in_bytes/1024)  # Manager rounds the size to KiB
+        return complete_kib
+
+    @staticmethod
+    def get_backup_size_from_backup_list(mgr_cluster, snapshot_tag):
+        backup_list_output = mgr_cluster.sctool.run(f" -c {mgr_cluster.id} backup list")[0]
+        relevant_line = [line[0] for line in backup_list_output if snapshot_tag in line[0]][0]
+        result = re.search(r"\(.+\)", relevant_line)[0][1:-1]  # Getting rid of parentheses
+        if "KiB" in result:
+            return int(result[:result.find("K")])
+        if "MiB" in result:
+            return int(result[:result.find("M")]) * 1024
+        if "GiB" in result:
+            return int(result[:result.find("G")]) * 1024 ** 2
+        raise ValueError("The size string does not contain any known file size unit")

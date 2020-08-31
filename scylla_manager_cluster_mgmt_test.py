@@ -4,11 +4,11 @@ from datetime import datetime, timedelta
 
 from nose.plugins.attrib import attr
 
-from dtest_scylla_manager import ScyllaManagerTool, ScyllaManagerError, TaskStatus, HostStatus
+from dtest_scylla_manager import ScyllaManagerTool, ScyllaManagerError, TaskStatus, HostStatus, ScyllaManagerMixin
 from dtest import Tester, debug
 
 
-class TestScyllaManagerClusterMgmt(Tester):
+class TestScyllaManagerClusterMgmt(Tester, ScyllaManagerMixin):
 
     @attr('scylla-manager')
     def adding_cluster_while_its_down_test(self):

@@ -8,6 +8,7 @@ from enum import Enum
 from re import findall
 
 from ccmlib import common
+from scrub_test import TestHelper
 from dtest import warning, debug, wait_for, WaitTimeoutExpired
 from distutils.version import LooseVersion
 
@@ -748,7 +749,7 @@ class ManagerCluster(ScyllaManagerBase):
         self.sctool.run(f"-c {self.id} backup delete --snapshot-tag={snapshot_tag}")
 
     def create_repair_task(self, node=None, dc_list=None, token_ranges=None, keyspace=None, with_hosts=None,
-                           interval=None, num_retries=None, fail_fast=None):
+                           interval=None, num_retries=None, fail_fast=None, intensity=None):
         # the interval string:
         # Amount of time after which a successfully completed task would be run again. Supported time units include:
         #
@@ -775,6 +776,8 @@ class ManagerCluster(ScyllaManagerBase):
             cmd += " --num-retries {}".format(num_retries)
         if fail_fast is not None:
             cmd += " --fail-fast"
+        if intensity is not None:
+            cmd += f" --intensity {intensity}"
 
         debug("Repair command to execute is: {}".format(cmd))
         stdout, stderr = self.sctool.run(cmd=cmd, parse_table_res=False)
@@ -899,7 +902,7 @@ class ManagerCluster(ScyllaManagerBase):
                                                      identifier="healthcheck_rest/", is_search_substring=True)
         return RestTask(task_id=rest_id, cluster_id=self.id, scylla_manager=self.scylla_manager)  # return the manager's rest-task object with the found id
 
-    def get_hosts_health(self):
+    def get_hosts_health(self, translate_minus_to_down=True):
         """
         Gets the Manager's Cluster Nodes status
         """
@@ -949,10 +952,16 @@ class ManagerCluster(ScyllaManagerBase):
                     ssl = line[cql_status_col_idx]
                     # Whether or not SSL is on is now described in the cql column
                     # If SSL is on the column value will include "SSL" in it, and if not it will not.
-                    dict_hosts_health[host] = self._HostHealth(status=HostStatus.from_str(status), rtt=rtt,
-                                                               rest_status=HostRestStatus.from_str(rest_status),
-                                                               rest_rtt=rest_rtt, ssl=HostSsl.from_str(ssl),
-                                                               rest_http_status_code=rest_http_status_code)
+                    if translate_minus_to_down:
+                        dict_hosts_health[host] = self._HostHealth(status=HostStatus.from_str(status), rtt=rtt,
+                                                                   rest_status=HostRestStatus.from_str(rest_status),
+                                                                   rest_rtt=rest_rtt, ssl=HostSsl.from_str(ssl),
+                                                                   rest_http_status_code=rest_http_status_code)
+                    else:
+                        dict_hosts_health[host] = self._HostHealth(status=status, rtt=rtt,
+                                                                   rest_status=rest_status,
+                                                                   rest_rtt=rest_rtt, ssl=HostSsl.from_str(ssl),
+                                                                   rest_http_status_code=rest_http_status_code)
             debug("Cluster {} Hosts Health is:".format(self.id))
             for ip, health in dict_hosts_health.items():
                 debug("{}: {},{},{},{},{}".format(ip, health.status, health.rtt, health.rest_status, health.rest_rtt, health.ssl))
@@ -974,3 +983,15 @@ class ManagerCluster(ScyllaManagerBase):
             return value_list[0]
         return default_value
 
+
+class ScyllaManagerMixin:
+    def config_and_create_cluster(self, nodes):
+        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        self.cluster.populate(nodes).start(wait_for_binary_proto=True, wait_other_notice=True)
+        return self.cluster.nodelist()
+
+    def _create_mgr_cluster(self, node, name):
+        manager_tool = ScyllaManagerTool(scylla_manager=self.cluster._scylla_manager)
+        mgr_cluster = manager_tool.add_cluster(node=node, name=name)
+
+        return mgr_cluster

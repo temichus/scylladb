@@ -7,7 +7,7 @@ from cassandra.query import SimpleStatement
 from nose.plugins.attrib import attr
 from unittest import skip
 
-from dtest_scylla_manager import HostStatus, HostRestStatus, ScyllaManagerTool, ScyllaManagerError
+from dtest_scylla_manager import HostStatus, HostRestStatus, ScyllaManagerTool, ScyllaManagerError, ScyllaManagerMixin
 from dtest import debug, WaitTimeoutExpired
 from dtest_scylla_manager import TaskStatus
 from scylla_tools import insert_c1c2
@@ -17,7 +17,7 @@ from assertions import assert_row_count, assert_all
 from repair_additional_test import RepairAdditionalBase
 
 
-class TestScyllaMgmtRepair(RepairAdditionalBase):
+class TestScyllaMgmtRepair(RepairAdditionalBase, ScyllaManagerMixin):
     __test__ = True
     KEYSPACE_NAME = 'ks'
 
@@ -92,15 +92,10 @@ class TestScyllaMgmtRepair(RepairAdditionalBase):
     def repair_partition_delete_test(self):
        return RepairAdditionalBase._repair_partition_delete_test(self)
 
-    def config_and_create_cluster(self, nodes):
-        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
-        self.cluster.populate(nodes).start(wait_for_binary_proto=True, wait_other_notice=True)
-
     def _initiate_cluster_with_data(self):
         debug("Starting cluster and inserting data...")
-        self.config_and_create_cluster(nodes=3)
+        node1, node2, node3 = self.config_and_create_cluster(nodes=3)
         # Start a cluster of three nodes, and create a keyspace with RF=3, and
-        node1, node2, node3 = self.cluster.nodelist()
 
         session = self.patient_cql_connection(node1)
         self.create_ks(session, 'ks', 3)
@@ -164,8 +159,7 @@ class TestScyllaMgmtRepair(RepairAdditionalBase):
         """
         # Start a cluster of two nodes, and create a keyspace ks with RF=2, and a table cf.
         # Hinted handoff and read repair are disabled so they don't fix the problems which repair is suppose to fix.
-        self.config_and_create_cluster(nodes=2)
-        node1, node2 = self.cluster.nodelist()
+        node1, node2 = self.config_and_create_cluster(nodes=2)
         session = self.patient_cql_connection(node1)
         self.create_ks(session, self.KEYSPACE_NAME, 2)
         self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
@@ -254,8 +248,7 @@ class TestScyllaMgmtRepair(RepairAdditionalBase):
         Repairing all of the cfs in a keyspace (The entire token range)
         """
         # Start a cluster of two nodes, and create a keyspace ks with RF=2, and a table cf.
-        self.config_and_create_cluster(nodes=2)
-        node1, node2 = self.cluster.nodelist()
+        node1, node2 = self.config_and_create_cluster(nodes=2)
         session = self.patient_cql_connection(node1)
         self.create_ks(session, self.KEYSPACE_NAME, 2)
 
@@ -300,8 +293,7 @@ class TestScyllaMgmtRepair(RepairAdditionalBase):
         # Start a cluster of two nodes, and create a keyspace ks with RF=2,
         # and a table cf. Hinted handoff and read repair are disabled so
         # they don't fix the problems which repair is supposed to fix.
-        self.config_and_create_cluster(nodes=2)
-        node1, node2 = self.cluster.nodelist()
+        node1, node2 = self.config_and_create_cluster(nodes=2)
         session = self.patient_cql_connection(node1)
 
         # Create 2 keyspaces, with 1 table in each
@@ -342,8 +334,7 @@ class TestScyllaMgmtRepair(RepairAdditionalBase):
         Test the parameter --with_hosts with a specific node, to see that when it's being used,
         the repair will only use the specified node and not others.
         """
-        self.config_and_create_cluster(nodes=3)
-        node1, node2, node3 = self.cluster.nodelist()
+        node1, node2, node3 = self.config_and_create_cluster(nodes=3)
 
         session = self.patient_cql_connection(node1)
         self.create_ks(session, self.KEYSPACE_NAME, 3)
@@ -384,8 +375,7 @@ class TestScyllaMgmtRepair(RepairAdditionalBase):
         Test the parameter --with_hosts with several nodes, to see that when it's being used,
         the repair will only use the specified nodes, and not others.
         """
-        self.config_and_create_cluster(nodes=4)
-        node1, node2, node3, node4 = self.cluster.nodelist()
+        node1, node2, node3, node4 = self.config_and_create_cluster(nodes=4)
 
         session = self.patient_cql_connection(node1)
         self.create_ks(session, self.KEYSPACE_NAME, 4)
@@ -435,8 +425,7 @@ class TestScyllaMgmtRepair(RepairAdditionalBase):
         Test the parameter --with_hosts with no nodes specified, to see that when it's being used,
         the repair will fail.
         """
-        self.config_and_create_cluster(nodes=2)
-        node1, node2 = self.cluster.nodelist()
+        node1, node2 = self.config_and_create_cluster(nodes=2)
 
         session = self.patient_cql_connection(node1)
         self.create_ks(session, self.KEYSPACE_NAME, 2)
@@ -460,8 +449,7 @@ class TestScyllaMgmtRepair(RepairAdditionalBase):
         """
         Executing a repair while the repairing node is dow, expecting a the repair to reach an 'ERROR' status
         """
-        self.config_and_create_cluster(nodes=3)
-        node1, node2, node3 = self.cluster.nodelist()
+        node1, node2, node3 = self.config_and_create_cluster(nodes=3)
 
         session = self.patient_cql_connection(node1)
         self.create_ks(session, self.KEYSPACE_NAME, 3)
@@ -489,8 +477,7 @@ class TestScyllaMgmtRepair(RepairAdditionalBase):
         """
         Test that when the repair is executed on a stopped node, the task will fail
         """
-        self.config_and_create_cluster(nodes=3)
-        node1, node2, node3 = self.cluster.nodelist()
+        node1, node2, node3 = self.config_and_create_cluster(nodes=3)
 
         session = self.patient_cql_connection(node1)
         self.create_ks(session, self.KEYSPACE_NAME, 3)
@@ -516,8 +503,7 @@ class TestScyllaMgmtRepair(RepairAdditionalBase):
         """
         Test that when executing a repair on a specific node, other nodes in the cluster won't be repaired
         """
-        self.config_and_create_cluster(nodes=3)
-        node1, node2, node3 = self.cluster.nodelist()
+        node1, node2, node3 = self.config_and_create_cluster(nodes=3)
 
         session = self.patient_cql_connection(node1)
         self.create_ks(session, self.KEYSPACE_NAME, 3)
@@ -555,8 +541,7 @@ class TestScyllaMgmtRepair(RepairAdditionalBase):
         '--host' or '--with-hosts'. This test tries to execute a repair with the '--token-ranges' flag, but without
         '--host' or '--with-hosts', and expects a failure right on the command execution
         """
-        self.config_and_create_cluster(nodes=3)
-        node1, node2, node3 = self.cluster.nodelist()
+        node1, node2, node3 = self.config_and_create_cluster(nodes=3)
 
         session = self.patient_cql_connection(node1)
         self.create_ks(session, self.KEYSPACE_NAME, 3)
@@ -582,8 +567,8 @@ class TestScyllaMgmtRepair(RepairAdditionalBase):
         """
         number_of_dcs = 3
         amount_of_nodes_in_dc = 2
-        self.config_and_create_cluster(nodes=[amount_of_nodes_in_dc]*number_of_dcs)
-        dc1_node1, dc1_node2, dc2_node1, dc2_node2, dc3_node1, dc3_node2 = self.cluster.nodelist()
+        dc1_node1, dc1_node2, dc2_node1, dc2_node2, dc3_node1, dc3_node2 = self.config_and_create_cluster(
+            nodes=[amount_of_nodes_in_dc]*number_of_dcs)
 
         session = self.patient_cql_connection(dc1_node1)
         dc_replication_dict = {"dc{}".format(i): amount_of_nodes_in_dc for i in range(1, number_of_dcs + 1)}
@@ -622,8 +607,8 @@ class TestScyllaMgmtRepair(RepairAdditionalBase):
         """
         number_of_dcs = 4
         amount_of_nodes_in_dc = 1
-        self.config_and_create_cluster(nodes=[amount_of_nodes_in_dc]*number_of_dcs)
-        dc1_node, dc2_node, dc3_node, dc4_node = self.cluster.nodelist()
+        dc1_node, dc2_node, dc3_node, dc4_node = self.config_and_create_cluster(
+            nodes=[amount_of_nodes_in_dc]*number_of_dcs)
 
         session = self.patient_cql_connection(dc1_node)
         dc_replication_dict = {"dc{}".format(i): amount_of_nodes_in_dc for i in range(1, number_of_dcs + 1)}
@@ -663,8 +648,7 @@ class TestScyllaMgmtRepair(RepairAdditionalBase):
         """
         number_of_dcs = 2
         amount_of_nodes_in_dc = 1
-        self.config_and_create_cluster(nodes=[amount_of_nodes_in_dc]*number_of_dcs)
-        dc1_node, dc2_node = self.cluster.nodelist()
+        dc1_node, dc2_node = self.config_and_create_cluster(nodes=[amount_of_nodes_in_dc]*number_of_dcs)
 
         session = self.patient_cql_connection(dc1_node)
         dc_replication_dict = {"dc{}".format(i): amount_of_nodes_in_dc for i in range(1, number_of_dcs + 1)}
@@ -695,8 +679,8 @@ class TestScyllaMgmtRepair(RepairAdditionalBase):
         """
         number_of_dcs = 2
         amount_of_nodes_in_dc = 2
-        self.config_and_create_cluster(nodes=[amount_of_nodes_in_dc]*number_of_dcs)
-        dc1_node1, dc1_node2, dc2_node1, dc2_node2 = self.cluster.nodelist()
+        dc1_node1, dc1_node2, dc2_node1, dc2_node2 = self.config_and_create_cluster(
+            nodes=[amount_of_nodes_in_dc]*number_of_dcs)
 
         session = self.patient_cql_connection(dc1_node1)
         dc_replication_dict = {"dc{}".format(i): amount_of_nodes_in_dc for i in range(1, number_of_dcs + 1)}
@@ -735,8 +719,7 @@ class TestScyllaMgmtRepair(RepairAdditionalBase):
         When the '--fail-fast' flag is used on a repair command, the task should immediately fail upon error,
         and if it's not used, the task will not immediately fail. The following test checks both cases.
         """
-        self.config_and_create_cluster(nodes=3)
-        node1, node2, node3 = self.cluster.nodelist()
+        node1, node2, node3 = self.config_and_create_cluster(nodes=3)
 
         session = self.patient_cql_connection(node1)
         self.create_ks(session, self.KEYSPACE_NAME, 3)

@@ -1,13 +1,12 @@
 # coding: utf-8
 from datetime import datetime, timedelta
 
-from dtest_scylla_manager import TaskStatus, ScyllaManagerTool
+from dtest_scylla_manager import TaskStatus, ScyllaManagerTool, ScyllaManagerMixin
 from dtest import Tester, debug
 from nose.plugins.attrib import attr
 
 
-class ManagerHealthCheckTest(Tester):
-
+class ManagerHealthCheckTest(Tester, ScyllaManagerMixin):
     def create_x_nodes_cluster(self, node_amount=2):
         self.cluster.populate(node_amount).start(wait_for_binary_proto=True, wait_other_notice=True)
 
@@ -65,3 +64,20 @@ class ManagerHealthCheckTest(Tester):
         healthcheck_task.update(enabled='false')
         assert healthcheck_task.status != TaskStatus.ERROR, "Task enabled update failed"
         assert healthcheck_task.is_task_disabled(), "The healthcheck test was not disabled"
+
+    @attr('scylla-manager')
+    def test_down_node_isnt_pinged(self):
+        """
+        When a node is DN, the manager should not ping the agent to check the node's CQL and REST statuses,
+        but instead it should just skip them, and in the output sctool cluster status it should just mark them as '-'
+        """
+        node1, node2, node3 = self.config_and_create_cluster(nodes=3)
+        mgr_cluster = self._create_mgr_cluster(node=node1, name="cluster1")
+        node3.stop(wait_other_notice=True)
+        cluster_status = mgr_cluster.get_hosts_health(translate_minus_to_down=False)
+        downed_node_data = cluster_status[node3.address()]
+        regular_node_data = cluster_status[node1.address()]
+        assert downed_node_data.status == '-' and downed_node_data.rest_status == '-',\
+            "The manager pinged a node while it was DN, while it should skip any DN nodes"
+        assert regular_node_data.status == 'UP' and regular_node_data.rest_status == 'UP',\
+            "The status of an UN node is not UP"
