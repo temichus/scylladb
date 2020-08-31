@@ -42,5 +42,5 @@ pip install -r requirements.txt
 pip install -e git+https://github.com/scylladb/scylla-ccm.git
 
 ccm create <CLUSTER_NAME> --scylla --version='unstable/master:<NUM>'
-   
+
 ```

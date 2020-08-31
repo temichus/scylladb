@@ -425,7 +425,7 @@ class TestPaxos(Tester):
     def schema_mismatch_test(self):
         '''
         Tests for the following scenario:
-        
+
         1. Execute an LWT query against a key. Suppose the transaction failed for
         some reason but did manage to save its paxos proposal (along with the associated mutation)
         before failing.

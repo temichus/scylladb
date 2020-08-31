@@ -309,7 +309,7 @@ class LargePartitionAlterSchema(Tester):
                 val1 text,
                 val2 text,
                 PRIMARY KEY (pk, ck1)
-            );           
+            );
         """)
 
     def populate(self, session, data, ck_start, ck_end):

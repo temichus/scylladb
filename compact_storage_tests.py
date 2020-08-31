@@ -60,10 +60,10 @@ class TestCompactStorage(Tester):
         cluster.populate(1).start(wait_for_binary_proto=True);
         node1 = cluster.nodelist()[0]
         session = self.patient_cql_connection(node1)
- 
+
         session.execute("CREATE KEYSPACE ks WITH replication = {'class': 'SimpleStrategy', 'replication_factor': '1'};");
         session.execute("CREATE TABLE ks.tb (key1 int, key2 int, val blob, PRIMARY KEY (key1,key2)) WITH COMPACT STORAGE;");
-        
+
         blob = ("a" * 10000)
 
         insert = session.prepare("INSERT INTO ks.tb (key1,key2,val) values (1,?,textAsBlob(?));")
@@ -80,7 +80,7 @@ class TestCompactStorage(Tester):
         node1.flush();
         node1.stop();
         node1.start(wait_for_binary_proto=True)
-        
+
         session = self.patient_cql_connection(node1)
         result = list(session.execute("SELECT * FROM ks.tb"))
         self.assertEqual(len(result), self.row_size-100, len(result))

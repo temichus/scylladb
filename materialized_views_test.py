@@ -311,7 +311,7 @@ class TestMaterializedViews(Tester):
         for node in self.cluster.nodelist():
             if (by_dc_name and node.data_center == by_dc_name) or (by_node_names and node.name in by_node_names):
                 stop_nodes.append(node)
-                other_nodes.remove(node) 
+                other_nodes.remove(node)
 
         for node in stop_nodes:
             self._node_action_with_delay('stop', node, wait=wait, wait_other_notice=wait_other_notice, other_nodes=other_nodes, gently=gently)

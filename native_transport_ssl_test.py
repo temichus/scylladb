@@ -147,7 +147,7 @@ class NativeTransportSSL(Tester):
         cluster.start(jvm_args=['--logger-log-level','cql_server=debug'])
 
         tmpdir = safe_mkdtemp()
-        try: 
+        try:
             # create new certs
             generate_ssl_stores(tmpdir)
 
@@ -169,7 +169,7 @@ class NativeTransportSSL(Tester):
             # now we should match
             session = self.patient_cql_connection(node1, ssl_opts={'ca_certs': os.path.join(self.test_path, 'ccm_node.cer'), "cert_reqs":ssl.CERT_REQUIRED})
             self._putget(cluster, session)
-        finally: 
+        finally:
             shutil.rmtree(tmpdir)
 
     def _populateCluster(self, enableSSL=False, nativePort=None, nativePortSSL=None, sslOptional=False, requireAuth=False):

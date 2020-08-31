@@ -3379,7 +3379,7 @@ class multiget_slice_result:
       if fid == 0:
         if ftype == TType.MAP:
           self.success = {}
-          (_ktype183, _vtype184, _size182 ) = iprot.readMapBegin() 
+          (_ktype183, _vtype184, _size182 ) = iprot.readMapBegin()
           for _i186 in range(_size182):
             _key187 = iprot.readString();
             _val188 = []
@@ -3610,7 +3610,7 @@ class multiget_count_result:
       if fid == 0:
         if ftype == TType.MAP:
           self.success = {}
-          (_ktype206, _vtype207, _size205 ) = iprot.readMapBegin() 
+          (_ktype206, _vtype207, _size205 ) = iprot.readMapBegin()
           for _i209 in range(_size205):
             _key210 = iprot.readString();
             _val211 = iprot.readI32();
@@ -5107,11 +5107,11 @@ class batch_mutate_args:
       if fid == 1:
         if ftype == TType.MAP:
           self.mutation_map = {}
-          (_ktype236, _vtype237, _size235 ) = iprot.readMapBegin() 
+          (_ktype236, _vtype237, _size235 ) = iprot.readMapBegin()
           for _i239 in range(_size235):
             _key240 = iprot.readString();
             _val241 = {}
-            (_ktype243, _vtype244, _size242 ) = iprot.readMapBegin() 
+            (_ktype243, _vtype244, _size242 ) = iprot.readMapBegin()
             for _i246 in range(_size242):
               _key247 = iprot.readString();
               _val248 = []
@@ -5489,7 +5489,7 @@ class describe_schema_versions_result:
       if fid == 0:
         if ftype == TType.MAP:
           self.success = {}
-          (_ktype261, _vtype262, _size260 ) = iprot.readMapBegin() 
+          (_ktype261, _vtype262, _size260 ) = iprot.readMapBegin()
           for _i264 in range(_size260):
             _key265 = iprot.readString();
             _val266 = []

@@ -2795,7 +2795,7 @@ class TestPagingWithIndexingAndAggregation(BasePagingTester, PageAssertionMixin)
         self.create_ks(session, 'test_paging_size', 2)
         session.execute("CREATE TABLE paging_test (id int, mybool boolean, sometext text, someint int, somebigint bigint, "
                         "PRIMARY KEY (id, sometext) )")
-    
+
     def create_and_insert_data(self, data, session, table_name='paging_test', cl=CL.ALL):
         def random_txt(unused_text):
             return str(uuid.uuid4())
@@ -2815,7 +2815,7 @@ class TestPagingWithIndexingAndAggregation(BasePagingTester, PageAssertionMixin)
                           'someint': random_int, 'somebigint': random_bigint}
         )
         return all_data
-    
+
     def execute_query_and_compare_results(self, session, query, expected_data, assert_msg=''):
         debug("Validating '{}'. Expected result: '{}'".format(query, expected_data))
         future = session.execute_async(
@@ -2857,7 +2857,7 @@ class TestPagingWithIndexingAndAggregation(BasePagingTester, PageAssertionMixin)
         all_data = self.create_and_insert_data(self.data, session)
         filtered_list = [entry for entry in all_data if filter_func(entry) is True]
         if not isinstance(cols, list):
-            cols = [cols] 
+            cols = [cols]
         for col in cols:
             self._verify_col_results(session, filtered_list, col, where_clause, allow_filtering)
 

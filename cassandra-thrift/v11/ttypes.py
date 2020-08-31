@@ -2333,7 +2333,7 @@ class AuthenticationRequest:
       if fid == 1:
         if ftype == TType.MAP:
           self.credentials = {}
-          (_ktype64, _vtype65, _size63 ) = iprot.readMapBegin() 
+          (_ktype64, _vtype65, _size63 ) = iprot.readMapBegin()
           for _i67 in range(_size63):
             _key68 = iprot.readString();
             _val69 = iprot.readString();
@@ -2437,7 +2437,7 @@ class ColumnDef:
       elif fid == 5:
         if ftype == TType.MAP:
           self.index_options = {}
-          (_ktype73, _vtype74, _size72 ) = iprot.readMapBegin() 
+          (_ktype73, _vtype74, _size72 ) = iprot.readMapBegin()
           for _i76 in range(_size72):
             _key77 = iprot.readString();
             _val78 = iprot.readString();
@@ -2720,7 +2720,7 @@ class CfDef:
       elif fid == 30:
         if ftype == TType.MAP:
           self.compaction_strategy_options = {}
-          (_ktype88, _vtype89, _size87 ) = iprot.readMapBegin() 
+          (_ktype88, _vtype89, _size87 ) = iprot.readMapBegin()
           for _i91 in range(_size87):
             _key92 = iprot.readString();
             _val93 = iprot.readString();
@@ -2731,7 +2731,7 @@ class CfDef:
       elif fid == 32:
         if ftype == TType.MAP:
           self.compression_options = {}
-          (_ktype95, _vtype96, _size94 ) = iprot.readMapBegin() 
+          (_ktype95, _vtype96, _size94 ) = iprot.readMapBegin()
           for _i98 in range(_size94):
             _key99 = iprot.readString();
             _val100 = iprot.readString();
@@ -3052,7 +3052,7 @@ class KsDef:
       elif fid == 3:
         if ftype == TType.MAP:
           self.strategy_options = {}
-          (_ktype114, _vtype115, _size113 ) = iprot.readMapBegin() 
+          (_ktype114, _vtype115, _size113 ) = iprot.readMapBegin()
           for _i117 in range(_size113):
             _key118 = iprot.readString();
             _val119 = iprot.readString();
@@ -3268,7 +3268,7 @@ class CqlMetadata:
       if fid == 1:
         if ftype == TType.MAP:
           self.name_types = {}
-          (_ktype137, _vtype138, _size136 ) = iprot.readMapBegin() 
+          (_ktype137, _vtype138, _size136 ) = iprot.readMapBegin()
           for _i140 in range(_size136):
             _key141 = iprot.readString();
             _val142 = iprot.readString();
@@ -3279,7 +3279,7 @@ class CqlMetadata:
       elif fid == 2:
         if ftype == TType.MAP:
           self.value_types = {}
-          (_ktype144, _vtype145, _size143 ) = iprot.readMapBegin() 
+          (_ktype144, _vtype145, _size143 ) = iprot.readMapBegin()
           for _i147 in range(_size143):
             _key148 = iprot.readString();
             _val149 = iprot.readString();

@@ -81,11 +81,11 @@ class TestInternodeSSL(Tester):
 
             os.remove(os.path.join(self.test_path, 'keystore.jks'))
             os.remove(os.path.join(self.test_path, 'truststore.jks'))
-            mtime = os.path.getmtime(os.path.join(self.test_path, 'ccm_node.key'))            
+            mtime = os.path.getmtime(os.path.join(self.test_path, 'ccm_node.key'))
             # overwrite old certs
             generate_ssl_stores(self.test_path)
 
-            mtime2 = os.path.getmtime(os.path.join(self.test_path, 'ccm_node.key'))            
+            mtime2 = os.path.getmtime(os.path.join(self.test_path, 'ccm_node.key'))
             self.assertGreater(mtime2, mtime, "Cert regen failed?")
 
             cluster.enable_internode_ssl(self.test_path, internode_encryption=internode_encryption)

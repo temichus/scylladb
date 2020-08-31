@@ -5727,7 +5727,7 @@ class TestCQL(Tester):
                               columns=columns, keys_columns_amount=2)
         return session
 
-    def mc_migrate_scylla_to_cassandra(self, keyspace_name, table_name, dataset, data_amount, 
+    def mc_migrate_scylla_to_cassandra(self, keyspace_name, table_name, dataset, data_amount,
                                        columns=['"ID"', '"Ck1"', '"cK2"', '"Columnfamily_for_mc_sstables_column1"'],
                                        keys_columns_amount=3):
         cc = None

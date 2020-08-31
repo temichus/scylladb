@@ -601,7 +601,7 @@ class TestWideRows(Tester):
                                                                     partition_num=partition_num,
                                                                     expected_partitions=expected_partition_data_size,
                                                                     ttl_rows_amount=partition_rows-1000)
-        extra_partitions += self.trigger_compaction_by_data_write_and_flush(session, entity_type, partition_num + 
+        extra_partitions += self.trigger_compaction_by_data_write_and_flush(session, entity_type, partition_num +
                                                                            extra_partitions)
 
         mark_logs = self.mark_log_on_all_nodes()
@@ -654,7 +654,7 @@ class TestWideRows(Tester):
                                                                     partition_num=partition_num,
                                                                     expected_partitions=expected_partition_data_size,
                                                                     ttl_rows_amount=partition_rows)
-        extra_partitions += self.trigger_compaction_by_data_write_and_flush(session, entity_type, partition_num + 
+        extra_partitions += self.trigger_compaction_by_data_write_and_flush(session, entity_type, partition_num +
                                                                             extra_partitions)
 
         mark_logs = self.mark_log_on_all_nodes()

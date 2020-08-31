@@ -51,5 +51,5 @@ echo "PYTHON = $PYTHON"
 rm -rf $VIRTUALENV_ROOT
 $PYTHON -m venv $VIRTUALENV_OPTS $VIRTUALENV_ROOT
 source $VIRTUALENV_ROOT/bin/activate
-pip install setuptools==45.1.0 pip==20.0.2 
+pip install setuptools==45.1.0 pip==20.0.2
 pip install -r requirements.txt

@@ -255,9 +255,9 @@ The test directory holds:
 * `cluster.conf`: The cluster ccm configuration file.
 * `current_test`: A file holding the name of the current test.
 * `node<n>/`: Cluster node directories, each containing a complete node hierarchy, including:
-    * `node.conf`: The node ccm configuration file. 
-    * `cassandra.pid`: Containing the process ID of the running scylla process. 
-    * `scylla-jmx.pid`: Containing the process ID of the running scylla-jmx java-management interface process. 
+    * `node.conf`: The node ccm configuration file.
+    * `cassandra.pid`: Containing the process ID of the running scylla process.
+    * `scylla-jmx.pid`: Containing the process ID of the running scylla-jmx java-management interface process.
     * `bin/`: A directory containing the scylal and scylla-jmx binaries as well as other scripts.
     * `conf/`: Containing the node configuration files, `scylla.yaml` in particular.
     * `commitlogs/`, `data/`, `hints/`, `view_hints/`: The database (meta)data directories.
@@ -329,7 +329,7 @@ To disable coredump collection altogether, set:
 
 Uploading docker images
 -----------------------
-   
+
 when doing changes to requirements.txt, or any other change to docker image, it can be uploaded like this:
 
 ```bash

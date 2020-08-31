@@ -90,7 +90,7 @@ class HeatWeightedLB(Tester):
                 # parameter's value on the restarted node may drop, but just a bit
                 ratio = metrics[key][2][i]['val'] / metrics[key][2][i-1]['val']
                 if ratio < 1.0:
-                    # allow one slight drop and then plateau at most 
+                    # allow one slight drop and then plateau at most
                     self.assertGreaterEqual(ratio, 0.98)
                     self.assertEqual(last_drop, None)
                     last_drop = i

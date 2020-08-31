@@ -225,7 +225,7 @@ class BatchTester(Tester):
         row_02 = (1, 1, 1, 2, 1, 2)       # static sval
         clustering_insert = "INSERT INTO clustering_static(id, clustering1, clustering2, clustering3, val) VALUES(1, 1, 1, 2, 2)"
         batch.add(clustering_insert) # row_02)
-        row_03 = (1, 1, 1, 1, 1, 11)      # changed row_01     
+        row_03 = (1, 1, 1, 1, 1, 11)      # changed row_01
         clustering_static_conditional_update = "UPDATE clustering_static SET val=11 WHERE id=1 AND clustering1=1 AND clustering2=1 AND clustering3=1 IF sval=1"
         batch.add(clustering_static_conditional_update) # (11,) + row_01[:-2] + row_01[-1:])
         session.execute(batch)

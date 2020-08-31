@@ -78,28 +78,28 @@ class TestGroupFunctions(Tester):
         value = self.generate_all_types(column_name=column_name)
         query = 'INSERT INTO {} (id, {}) VALUES ({}, {});'.format(table_name, 'my_{}'.format(column_name), index, value)
         session.execute(query)
-    
+
     def generate_all_types(self, column_name):
-        return ColumnType(column_name).get_value() 
+        return ColumnType(column_name).get_value()
 
     def test_numeric_type_group(self):
         session = self.prepare()
         for single_type in self.numeric_type_list:
             self.create_tables_and_run_group_functions(session=session, table_name=self.table_name,
                                                        single_type=single_type)
-    
+
     def test_text_type_group(self):
         session = self.prepare()
         for single_type in self.text_types_list:
             self.create_tables_and_run_group_functions(session=session, table_name=self.table_name,
                                                        single_type=single_type)
-    
+
     def test_lists_type_group(self):
         session = self.prepare()
         for single_type in self.lists_types_list:
             self.create_tables_and_run_group_functions(session=session, table_name=self.table_name,
                                                        single_type=single_type)
-    
+
     def test_dates_type_group(self):
         session = self.prepare()
         for single_type in self.dates_type_list:

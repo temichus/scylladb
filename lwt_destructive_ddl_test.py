@@ -143,7 +143,7 @@ class LwtDestructiveDDLTest(Tester):
             except DriverException as exc:
                 debug(f'Failure during disruption thread operation (thread "{thread_name}"). Driver error: {exc}')
         debug(f'Finished DDL stress workload (thread "{thread_name}")')
-    
+
     def _case_template(self, session, ddl_fn, test_duration_sec=60, tolerate_unavailable=False, ddl_user=None, ddl_pass=None, lwt_user=None, lwt_pass=None):
 
         create_test_table_stmt = session.prepare('''
@@ -159,7 +159,7 @@ class LwtDestructiveDDLTest(Tester):
 
         need_to_stop = threading.Event()
 
-        # Use 4 worker threads to emulate lwt load with dml statements and 4 threads for DDL workload 
+        # Use 4 worker threads to emulate lwt load with dml statements and 4 threads for DDL workload
         lwt_load_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix='lwt_wrk_thr')
         ddl_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix='ddl_thr')
         for i in range(0, 4):

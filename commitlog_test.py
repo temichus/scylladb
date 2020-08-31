@@ -976,4 +976,3 @@ class TestCommitLog(Tester):
         assert_row_count_in_select(session=session, query='select * from Test.cf',
                                    num_rows_expected=249)
         assert_all(session=session, query='select * from Test.cf', expected=expected_result, ignore_order=True)
-        

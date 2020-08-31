@@ -1732,7 +1732,7 @@ class TestNodetool(Tester):
     def get_sstable_test(self):
         """
         get sstables get a keyspace, table and a key and return the sstables that contain that key
-        
+
         Start a cluster
         Add create a keyspace/table
         insert a value

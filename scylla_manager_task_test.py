@@ -27,7 +27,7 @@ class ScyllaManagerTaskTest(Tester, ScyllaManagerMixin):
         session.execute("""CREATE TABLE cf (
         name text,
         pet text,
-        age int, 
+        age int,
         PRIMARY KEY ((name), pet)
         ) WITH compression = {} AND read_repair_chance = 0.0;""")
 
