@@ -42,6 +42,7 @@ class TableConf:
     """
     The dynamodb table meta data of schema and tags as seen by a table of a specific node resource
     """
+
     def __init__(self, table: DynamoDBServiceResource.Table):
         self.table = table
         self.describe = table.meta.client.describe_table(TableName=table.name)['Table']
@@ -468,7 +469,7 @@ def random_string(length: int, chars=string.ascii_uppercase + string.digits):
 
 
 def generate_put_request_items(num_of_items: int = NUM_OF_ITEMS, add_gsi: bool = False) -> List[
-    Dict[str, Union[str, Dict[str, str]]]]:
+        Dict[str, Union[str, Dict[str, str]]]]:
     debug(f"Generating {num_of_items} put request items..")
     put_request_items = list()  # type: List[Dict[str, Union[str, Dict[str, str]]]]
     for idx in range(num_of_items):

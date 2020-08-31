@@ -10,6 +10,8 @@ from tools import safe_mkdtemp
 from nose.plugins.attrib import attr
 
 # @tools.istest
+
+
 @attr('dtest-full', 'single_node')
 class TestSSTableLoader(MigrationTestBase):
 
@@ -90,7 +92,7 @@ class TestSSTableLoader(MigrationTestBase):
                 assert message in str(stderr), stderr
             else:
                 raise Exception("sstableloader command '%s' failed; exit status: %d'; stdout: %s; stderr: %s" %
-                            (" ".join(args), exit_status, stdout, stderr))
+                                (" ".join(args), exit_status, stdout, stderr))
 
     def get_wrong_partitioner_error_message(self):
         return "partitioner org.apache.cassandra.dht.RandomPartitioner" + \
@@ -174,8 +176,10 @@ class TestSSTableLoader(MigrationTestBase):
 
         self.load_migrated_tables(node1, 'with_counter')
 
+
 versions = ['2_1_x', '2_2_x', '3_0_x', '3_0_mc']
 for version in versions:
     for prepared in ['-nx', '']:
         cls_name = ('TestMigration_with_{0}{1}'.format(version, '' if prepared else '_prepared'))
-        vars()[cls_name] = type(cls_name, (TestSSTableLoader,), {'version': version, 'prepared':prepared, '__test__': True})
+        vars()[cls_name] = type(cls_name, (TestSSTableLoader,), {
+            'version': version, 'prepared': prepared, '__test__': True})

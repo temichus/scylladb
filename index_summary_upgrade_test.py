@@ -30,7 +30,8 @@ class TestUpgradeIndexSummary(Tester):
         # operation will remove every 128th entry in the summary.  So, we need
         # to have 128 entries in the summary, which means 128 * 128 partitions.
         session = self.patient_cql_connection(node, protocol_version=2)
-        session.execute("CREATE KEYSPACE testindexsummary WITH replication = {'class': 'SimpleStrategy', 'replication_factor': '1'}")
+        session.execute(
+            "CREATE KEYSPACE testindexsummary WITH replication = {'class': 'SimpleStrategy', 'replication_factor': '1'}")
         session.set_keyspace("testindexsummary")
         session.execute("CREATE TABLE test (k int PRIMARY KEY, v int)")
 

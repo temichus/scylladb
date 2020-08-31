@@ -18,9 +18,11 @@ class ReshardingTestBase(Tester):
     MURMUR3_PARTITIONER_FOR_DECREASE = 10
     MURMUR3_PARTITIONER_FOR_INCREASE = 17
     __test__ = False
+
     def __init__(self, *args, **kwargs):
         super(ReshardingTestBase, self).__init__(*args, **kwargs)
-        self.compaction_strategy = self.compaction_strategy if hasattr(self, 'compaction_strategy') else 'LeveledCompactionStrategy'
+        self.compaction_strategy = self.compaction_strategy if hasattr(
+            self, 'compaction_strategy') else 'LeveledCompactionStrategy'
         cpu_count = multiprocessing.cpu_count()
         assert cpu_count >= 4, "Resharding tests require a minimum of 4 cpus"
         self.smp = min(cpu_count // 2 + 1, 5)
@@ -30,14 +32,15 @@ class ReshardingTestBase(Tester):
         self.murmur3 = self.murmur3 if hasattr(self, 'murmur3') else self.DEFAULT_MURMUR3_PARTITIONER
         self.nodes = self.nodes if hasattr(self, 'nodes') else self.DEFAULT_NODES
         self.rf = 1 if self.nodes < 3 else 3
-        self.mem =  self.set_memory_param(self.smp)
+        self.mem = self.set_memory_param(self.smp)
 
     def setUp(self):
         super(ReshardingTestBase, self).setUp()
         cluster = self.cluster
         cluster = cluster.populate(self.nodes)
         cluster.set_configuration_options(values={'murmur3_partitioner_ignore_msb_bits': self.murmur3})
-        cluster.start(wait_for_binary_proto=True, wait_other_notice=True, jvm_args=['--smp', str(self.smp), '--memory', self.mem])
+        cluster.start(wait_for_binary_proto=True, wait_other_notice=True,
+                      jvm_args=['--smp', str(self.smp), '--memory', self.mem])
         self.node = cluster.nodelist()[0]
 
     @staticmethod
@@ -46,7 +49,7 @@ class ReshardingTestBase(Tester):
 
     def _reload_with_resharding(self, murmur3=DEFAULT_MURMUR3_PARTITIONER, smp=None, data_dir='data/keyspace1/standard1-*'):
         debug('Reload node with resharding:\n CPU: from {0} to {1}\n murmur3 parameter: from {2} to {3}'.format(
-                                    self.smp, smp, self.murmur3, murmur3))
+            self.smp, smp, self.murmur3, murmur3))
         smp = self.smp if not smp else smp
         self.node.stop(wait_other_notice=True)
 
@@ -116,8 +119,8 @@ class ReshardingTestBase(Tester):
 
     def _run_stress(self, op_cnt, stress_cmd):
         res = self.node.stress_object(stress_cmd)
-        if not isinstance(res,dict):
-             raise Exception('Error running cassandra-stress: {}'.format(res))
+        if not isinstance(res, dict):
+            raise Exception('Error running cassandra-stress: {}'.format(res))
         self.assertEquals(res['total errors'], 0)
         self.assertGreaterEqual(res['total partitions'], op_cnt)
 
@@ -149,8 +152,8 @@ class ReshardingTestBase(Tester):
 
         res = self._wait_for_resharding()
         exp_res, msg = (False, 'Unexpected re-sharding recognized') \
-                       if reshard_to == self.smp and murmur3 == self.murmur3 \
-                       else (True, 'Failed to recognize re-sharding finish')
+            if reshard_to == self.smp and murmur3 == self.murmur3 \
+            else (True, 'Failed to recognize re-sharding finish')
         self.assertEquals(res, exp_res, msg)
         self.check_errors_all_nodes()
 
@@ -168,6 +171,7 @@ class ReshardingTestBase(Tester):
         # Verify data files number after resharding and compaction
         self._verify_number_of_data_files(data_files_num_before=data_files_num_before, reshard_to=reshard_to)
 
+
 @attr('next-gating')
 @attr('single_node')
 class ReshardingSingleNodeGatingTest(ReshardingTestBase):
@@ -179,6 +183,7 @@ class ReshardingSingleNodeGatingTest(ReshardingTestBase):
         and restarting the cluster
         """
         self._resharding_basic(self.SMP_FOR_INCREASE, rows=1000, murmur3=self.MURMUR3_PARTITIONER_FOR_INCREASE)
+
 
 @attr('dtest-full', 'dtest-heavy')
 class ReshardingVariantsTest(ReshardingTestBase):
@@ -338,6 +343,7 @@ class ReshardingVariantsTest(ReshardingTestBase):
                                  session, query.format(tm.keyspace, tm.table_name),
                                  consistency_level=ConsistencyLevel.ALL, session_timeout=120,
                                  group=True, groupby_column1=mv_pk_name, groupby_column2=mv_pk_name)
+
 
 strategies = ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy',
               'TimeWindowCompactionStrategy']

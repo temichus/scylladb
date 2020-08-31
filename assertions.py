@@ -5,6 +5,7 @@ from tools import rows_to_list, run_query_with_data_processing
 import time
 from dtest import retry_with_func_attempts
 
+
 def assert_unavailable(fun, *args):
     try:
         if len(args) == 0:
@@ -28,7 +29,8 @@ def assert_invalid_case_insensitive_matching(session, query, matching=None, expe
     except expected as e:
         msg = str(e).upper()
         if matching is not None:
-            assert re.search(matching.upper(), msg), "Error message does not contain " + matching + " (error = " + msg + ")"
+            assert re.search(matching.upper(), msg), "Error message does not contain " + \
+                matching + " (error = " + msg + ")"
 
 
 def assert_invalid(session, query, matching=None, expected=InvalidRequest):
@@ -56,6 +58,7 @@ def _get_list_res(session, query, cl, ignore_order=False, result_as_string=False
         list_res = str(list_res)
     return list_res
 
+
 @retry_with_func_attempts
 def assert_one(session, query, expected, cl=ConsistencyLevel.ONE, timeout=60, num_attempts=1):
     """
@@ -64,11 +67,13 @@ def assert_one(session, query, expected, cl=ConsistencyLevel.ONE, timeout=60, nu
     list_res = _get_list_res(session, query, cl, timeout=timeout)
     assert list_res == [expected], "Expected %s from %s, but got %s" % ([expected], query, list_res)
 
+
 @retry_with_func_attempts
 def assert_one_prepared(session, stmt, expected, parameters, cl=ConsistencyLevel.ONE, timeout=60, num_attempts=1):
     res = session.execute(stmt, parameters=parameters, timeout=timeout)
     list_res = rows_to_list(res)
     assert list_res == [expected], 'Expected %s from "%s", but got %s' % ([expected], stmt.query_string, list_res)
+
 
 @retry_with_func_attempts
 def assert_none(session, query, cl=ConsistencyLevel.ONE, num_attempts=1):
@@ -77,6 +82,7 @@ def assert_none(session, query, cl=ConsistencyLevel.ONE, num_attempts=1):
     """
     list_res = _get_list_res(session, query, cl)
     assert list_res == [], "Expected nothing from %s, but got %s" % (query, list_res)
+
 
 @retry_with_func_attempts
 def assert_all(session, query, expected, cl=ConsistencyLevel.ONE, ignore_order=False, num_attempts=1,
@@ -91,6 +97,7 @@ def assert_all(session, query, expected, cl=ConsistencyLevel.ONE, ignore_order=F
         else f'Actual result ({len(list_res)} rows) is not as expected ({len(expected)} rows). Query: {query}'
     assert list_res == expected, error
 
+
 def assert_all_or_none(session, query, expected, cl=ConsistencyLevel.ONE, ignore_order=False, num_attempts=1, result_as_string=False):
     """
     :param num_attempts: defines how many time try to assert data in case failure. Used in retry_with_func_attempts decorator
@@ -99,6 +106,7 @@ def assert_all_or_none(session, query, expected, cl=ConsistencyLevel.ONE, ignore
     if ignore_order:
         expected = sorted(expected)
     assert (list_res == expected or list_res == []), "Expected %s or [] from %s, but got %s" % (expected, query, list_res)
+
 
 def assert_almost_equal(*args, **kwargs):
     try:
@@ -109,6 +117,7 @@ def assert_almost_equal(*args, **kwargs):
     vmax = max(args)
     vmin = min(args)
     assert vmin > vmax * (1.0 - error) or vmin == vmax, "values not within %.2f%% of the max: %s" % (error * 100, args)
+
 
 @retry_with_func_attempts
 def assert_row_count(session, table_name, expected, consistency_level=ConsistencyLevel.ONE, num_attempts=1):
@@ -122,7 +131,8 @@ def assert_row_count(session, table_name, expected, consistency_level=Consistenc
     if isinstance(count, list):
         count = count[0][0]
     assert count == expected, "Expected a row count of {} in table '{}', but got {}".format(
-            expected, table_name, count)
+        expected, table_name, count)
+
 
 @retry_with_func_attempts
 def assert_row_count_in_select(session, query, num_rows_expected, consistency_level=ConsistencyLevel.ONE, num_attempts=1):
@@ -132,7 +142,8 @@ def assert_row_count_in_select(session, query, num_rows_expected, consistency_le
     """
     count = len(_get_list_res(session, query, consistency_level))
     assert count == num_rows_expected, "Expected a row count of {} in query \"{}\", but got {}".format(
-            num_rows_expected, query, count)
+        num_rows_expected, query, count)
+
 
 @retry_with_func_attempts
 def assert_row_count_in_select_less(session, query, max_rows_expected, consistency_level=ConsistencyLevel.ONE,
@@ -144,6 +155,7 @@ def assert_row_count_in_select_less(session, query, max_rows_expected, consisten
     count = len(_get_list_res(session, query, consistency_level))
     assert count < max_rows_expected, "Expected a row count < of {} in query \"{}\", but got {}".format(
         max_rows_expected, query, count)
+
 
 def assert_crc_check_chance_equal(session, table, expected, ks="ks", view=False):
     """
@@ -161,6 +173,7 @@ def assert_crc_check_chance_equal(session, table, expected, ks="ks", view=False)
                    "table_name = '{table}';".format(table=table, ks=ks),
                    [expected])
 
+
 @retry_with_func_attempts
 def assert_two_queries_equal(session1, query1, session2, query2, consistency_level=ConsistencyLevel.ONE, session_timeout=120,
                              group=False, groupby_column1=None, groupby_column2=None, restrict_column1=None,
@@ -171,10 +184,12 @@ def assert_two_queries_equal(session1, query1, session2, query2, consistency_lev
                                              groupby_column=groupby_column2, restrict_column=restrict_column2, restrict_value=restrict_value2)
     assert exp_res == act_res, "Expected %s, but got %s. Query1: %s; Query2: %s" % (exp_res, act_res, query1, query2)
 
+
 @retry_with_func_attempts
 def assert_two_queries_equal_ignore_order(session1, query1, session2, query2, consistency_level=ConsistencyLevel.ONE, session_timeout=120, num_attempts=1):
     expected = rows_to_list(session1.execute(query1))
     assert_all(session2, query2, expected, consistency_level, ignore_order=True)
+
 
 def assert_expected_error(func, expected_error, args, kwargs):
     try:
@@ -188,10 +203,12 @@ def assert_expected_error(func, expected_error, args, kwargs):
         else:
             raise
 
+
 def assert_equal_more_with_deviation(actual, expect, deviation_perc):
     deviation_high = (expect * (100 + deviation_perc))/100
     assert expect <= actual < deviation_high, 'Expect that result will be between %d and %d, but received ' \
-                                                           '%d' % (expect, deviation_high, actual)
+        '%d' % (expect, deviation_high, actual)
+
 
 def assert_less_equal_lists(actual_list, expected_list, msg=None):
     standardMsg = msg or '{actual_list} not less than or equal to {expected_list}'.format(**locals())

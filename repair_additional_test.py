@@ -18,6 +18,7 @@ import random
 import re
 from subprocess import getoutput
 
+
 class RepairAdditionalBase(Tester):
     __test__ = False
 
@@ -139,8 +140,8 @@ class RepairAdditionalBase(Tester):
         self.create_ks(session, 'ks', rf=rf)
         return session
 
-    def prefill_table_data(self, session, partition_range_end, rows_in_partition, partition_range_start = 1,
-                           table_name = TABLE_NAME, num_of_columns = NUM_OF_COLUMNS):
+    def prefill_table_data(self, session, partition_range_end, rows_in_partition, partition_range_start=1,
+                           table_name=TABLE_NAME, num_of_columns=NUM_OF_COLUMNS):
 
         debug('Create {} partitions of {} columns with {} rows'.format(partition_range_end, num_of_columns,
                                                                        rows_in_partition))
@@ -161,16 +162,16 @@ class RepairAdditionalBase(Tester):
                 session.execute(stmt)
 
     def write_table_updates(self, node, partitions_range_end, rows_in_partition, num_of_updates,
-                            partitions_range_start = 1, keyspace = KEYSPACE_NAME,
-                            int_columns = NUM_OF_COLUMNS):
+                            partitions_range_start=1, keyspace=KEYSPACE_NAME,
+                            int_columns=NUM_OF_COLUMNS):
         debug("Updating table data through node {}...".format(node.name))
         session = self.patient_cql_connection(node)
         session.set_keyspace(keyspace)
         stmts = []
-        debug("Going to generate {} CQL updates, via node {} " \
-        "for partition range of: {} - {}".format(num_of_updates, node.name, partitions_range_start,
-                                                 partitions_range_end))
-        for i in range(1,num_of_updates+1):
+        debug("Going to generate {} CQL updates, via node {} "
+              "for partition range of: {} - {}".format(num_of_updates, node.name, partitions_range_start,
+                                                       partitions_range_end))
+        for i in range(1, num_of_updates+1):
             # Update/delete int columns to a random big partition
             column = random.randint(1, int_columns-1)
             column_name = 'c{}'.format(column)
@@ -233,7 +234,7 @@ class RepairAdditionalBase(Tester):
         # Run repair on (arbitrarily), node 3
         time.sleep(10)  # see CASSANDRA-4373
         debug("starting repair...")
-        info = self._repair(node3,more_options + ['ks'])
+        info = self._repair(node3, more_options + ['ks'])
         debug(info[0])
         debug(info[1])
 
@@ -271,7 +272,7 @@ class RepairAdditionalBase(Tester):
         node2.start(wait_other_notice=True, wait_for_binary_proto=True)
         time.sleep(10)  # see CASSANDRA-4373
         debug("starting repair on node1...")
-        info = self._repair(node1,['ks'])
+        info = self._repair(node1, ['ks'])
         debug(info[0])
         debug(info[1])
 
@@ -282,7 +283,6 @@ class RepairAdditionalBase(Tester):
         self.check_rows_on_node(node2, 1000)
 
         self.ignore_log_patterns.append(r'.*migration_task - Can\'t send migration request.*')
-
 
     def _repair_schema_2_test(self):
         """
@@ -317,7 +317,7 @@ class RepairAdditionalBase(Tester):
         node2.start(wait_other_notice=True, wait_for_binary_proto=True)
         time.sleep(10)  # see CASSANDRA-4373
         debug("starting repair on node2...")
-        info = self._repair(node2,['ks'])
+        info = self._repair(node2, ['ks'])
         debug(info[0])
         debug(info[1])
 
@@ -345,7 +345,8 @@ class RepairAdditionalBase(Tester):
         with self.patient_cql_connection(node1) as session:
             self.create_ks(session, 'ks', 2)
             self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
-            query = SimpleStatement("INSERT INTO cf (key, c1, c2) VALUES ('key', 'hello', 'hi')", consistency_level=ConsistencyLevel.ALL)
+            query = SimpleStatement("INSERT INTO cf (key, c1, c2) VALUES ('key', 'hello', 'hi')",
+                                    consistency_level=ConsistencyLevel.ALL)
             session.execute(query)
 
         # Bring down node2, and change the existing data on node 1
@@ -353,7 +354,8 @@ class RepairAdditionalBase(Tester):
         node2.flush()
         node2.stop(wait_other_notice=True)
         with self.patient_exclusive_cql_connection(node1, 'ks') as session1:
-            query = SimpleStatement("INSERT INTO cf (key, c1, c2) VALUES ('key', 'new', 'yo')", consistency_level=ConsistencyLevel.ONE)
+            query = SimpleStatement("INSERT INTO cf (key, c1, c2) VALUES ('key', 'new', 'yo')",
+                                    consistency_level=ConsistencyLevel.ONE)
             session1.execute(query)
 
             # Confirm that node1 has new data, and (by bringing only node 2 up) that
@@ -376,7 +378,7 @@ class RepairAdditionalBase(Tester):
         # Finally bring both nodes up, repair, and confirm (by bringing up only
         # node 2) that the data on node2 is now up to date.
         node1.start(wait_other_notice=True, wait_for_binary_proto=True)
-        info = self._repair(node2,['ks'])
+        info = self._repair(node2, ['ks'])
         debug(info[0])
         debug(info[1])
         node1.flush()
@@ -404,7 +406,8 @@ class RepairAdditionalBase(Tester):
         with self.patient_cql_connection(node1) as session:
             self.create_ks(session, 'ks', 2)
             self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
-            query = SimpleStatement("INSERT INTO cf (key, c1, c2) VALUES ('key', 'hello', 'hi')", consistency_level=ConsistencyLevel.ALL)
+            query = SimpleStatement("INSERT INTO cf (key, c1, c2) VALUES ('key', 'hello', 'hi')",
+                                    consistency_level=ConsistencyLevel.ALL)
             session.execute(query)
 
         # Bring down node2, and change the existing data on node 1
@@ -435,7 +438,7 @@ class RepairAdditionalBase(Tester):
         # Finally bring both nodes up, repair, and confirm (by bringing up only
         # node 2) that the data on node2 is now up to date.
         node1.start(wait_other_notice=True, wait_for_binary_proto=True)
-        info = self._repair(node2,['ks'])
+        info = self._repair(node2, ['ks'])
         debug(info[0])
         debug(info[1])
         node1.flush()
@@ -463,11 +466,14 @@ class RepairAdditionalBase(Tester):
         node1, node2 = self.cluster.nodelist()
         with self.patient_cql_connection(node1) as session:
             self.create_ks(session, 'ks', 2)
-            session.execute("CREATE TABLE cf (name text, pet text, age int, PRIMARY KEY ((name), pet)) WITH compression = {} AND read_repair_chance = 0.0;")
+            session.execute(
+                "CREATE TABLE cf (name text, pet text, age int, PRIMARY KEY ((name), pet)) WITH compression = {} AND read_repair_chance = 0.0;")
 
-            query = SimpleStatement("INSERT INTO cf (name, pet, age) VALUES ('nadav', 'kitty', 5)", consistency_level=ConsistencyLevel.ALL)
+            query = SimpleStatement("INSERT INTO cf (name, pet, age) VALUES ('nadav', 'kitty', 5)",
+                                    consistency_level=ConsistencyLevel.ALL)
             session.execute(query)
-            query = SimpleStatement("INSERT INTO cf (name, pet, age) VALUES ('nadav', 'adamdami', 1)", consistency_level=ConsistencyLevel.ALL)
+            query = SimpleStatement("INSERT INTO cf (name, pet, age) VALUES ('nadav', 'adamdami', 1)",
+                                    consistency_level=ConsistencyLevel.ALL)
             session.execute(query)
 
         # Bring down node2, and change the existing data on node 1
@@ -475,7 +481,8 @@ class RepairAdditionalBase(Tester):
         node2.flush()
         node2.stop(wait_other_notice=True)
         with self.patient_exclusive_cql_connection(node1, 'ks') as session1:
-            query = SimpleStatement("DELETE FROM cf WHERE name = 'nadav' AND pet = 'kitty'", consistency_level=ConsistencyLevel.ONE)
+            query = SimpleStatement("DELETE FROM cf WHERE name = 'nadav' AND pet = 'kitty'",
+                                    consistency_level=ConsistencyLevel.ONE)
             session1.execute(query)
 
             # Confirm that node1 has new data, and (by bringing only node 2 up) that
@@ -495,7 +502,7 @@ class RepairAdditionalBase(Tester):
         # Finally bring both nodes up, repair, and confirm (by bringing up only
         # node 2) that the data on node2 is now up to date.
         node1.start(wait_other_notice=True, wait_for_binary_proto=True)
-        info = self._repair(node2,['ks'])
+        info = self._repair(node2, ['ks'])
         debug(info[0])
         debug(info[1])
         node1.flush()
@@ -523,11 +530,14 @@ class RepairAdditionalBase(Tester):
         with self.patient_cql_connection(node1) as session:
             self.create_ks(session, 'ks', 2)
             self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
-            query = SimpleStatement("INSERT INTO cf (key, c1, c2) VALUES ('k1', 'v11', 'v12')", consistency_level=ConsistencyLevel.ALL)
+            query = SimpleStatement("INSERT INTO cf (key, c1, c2) VALUES ('k1', 'v11', 'v12')",
+                                    consistency_level=ConsistencyLevel.ALL)
             session.execute(query)
-            query = SimpleStatement("INSERT INTO cf (key, c1, c2) VALUES ('k2', 'v21', 'v22')", consistency_level=ConsistencyLevel.ALL)
+            query = SimpleStatement("INSERT INTO cf (key, c1, c2) VALUES ('k2', 'v21', 'v22')",
+                                    consistency_level=ConsistencyLevel.ALL)
             session.execute(query)
-            query = SimpleStatement("INSERT INTO cf (key, c1, c2) VALUES ('k3', 'v31', 'v32')", consistency_level=ConsistencyLevel.ALL)
+            query = SimpleStatement("INSERT INTO cf (key, c1, c2) VALUES ('k3', 'v31', 'v32')",
+                                    consistency_level=ConsistencyLevel.ALL)
             session.execute(query)
 
         # Bring down node2, and change the existing data on node 1
@@ -557,7 +567,7 @@ class RepairAdditionalBase(Tester):
         # Finally bring both nodes up, repair, and confirm (by bringing up only
         # node 2) that the data on node2 is now up to date.
         node1.start(wait_other_notice=True, wait_for_binary_proto=True)
-        info = self._repair(node2,['ks'])
+        info = self._repair(node2, ['ks'])
         debug(info[0])
         debug(info[1])
         node1.flush()
@@ -592,14 +602,16 @@ class RepairAdditionalBase(Tester):
         with self.patient_cql_connection(node1) as session:
             self.create_ks(session, 'ks', 2)
             self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
-            query = SimpleStatement("INSERT INTO cf (key, c1, c2) VALUES ('key', 'hello', 'hi')", consistency_level=ConsistencyLevel.ALL)
+            query = SimpleStatement("INSERT INTO cf (key, c1, c2) VALUES ('key', 'hello', 'hi')",
+                                    consistency_level=ConsistencyLevel.ALL)
             session.execute(query)
 
         # Bring down node2, and change the existing data on node 1
         node2.flush()
         node2.stop(wait_other_notice=True)
         with self.patient_exclusive_cql_connection(node1, 'ks') as session1:
-            query = SimpleStatement("UPDATE cf using TTL 1234 SET c1='new' WHERE key = 'key'", consistency_level=ConsistencyLevel.ONE)
+            query = SimpleStatement("UPDATE cf using TTL 1234 SET c1='new' WHERE key = 'key'",
+                                    consistency_level=ConsistencyLevel.ONE)
             session1.execute(query)
 
             # Confirm that node1 has the new data, with the TTL. Unfortunately, to
@@ -652,7 +664,7 @@ class RepairAdditionalBase(Tester):
         # Finally bring both nodes up, repair, and confirm (by bringing up only
         # node 2) that the data on node2 is now up to date.
         node1.start(wait_other_notice=True, wait_for_binary_proto=True)
-        info = self._repair(node2,['ks'])
+        info = self._repair(node2, ['ks'])
         debug(info[0])
         debug(info[1])
         node1.flush()
@@ -680,7 +692,7 @@ class RepairAdditionalBase(Tester):
         count_query = SimpleStatement("SELECT count(*) from cf", consistency_level=consistency_level)
         count = session.execute(count_query)[0][0]
         self.assertEqual(count, len(rows),
-                        "count {} must be equal to len(rows)\nrows: {}".format(count, rows))
+                         "count {} must be equal to len(rows)\nrows: {}".format(count, rows))
         debug("Asserting pr repair count: {} in [{}..{}]".format(count, min_count, max_count))
         self.assertTrue(count >= min_count and count <= max_count,
                         "expected pr repair to repair between {} to {} rows, but count is {}\nrows: {}".format(min_count, max_count, count, rows))
@@ -777,7 +789,7 @@ class RepairAdditionalBase(Tester):
         # Hinted handoff and read repair are disabled so they don't fix the
         # problems which repair is supposed to fix.
         self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
-        self.cluster.populate([2,2,2]).start(wait_for_binary_proto=True, wait_other_notice=True)
+        self.cluster.populate([2, 2, 2]).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1_1, node1_2, node2_1, node2_2, node3_1, node3_2 = self.cluster.nodelist()
         with self.patient_cql_cluster_session(node1_1) as session:
             self.create_ks(session, 'ks', {'dc1': 2, 'dc2': 2, 'dc3': 2})
@@ -902,7 +914,7 @@ class RepairAdditionalBase(Tester):
         # problems which repair is supposed to fix.
         debug("Starting 6 nodes...")
         self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
-        self.cluster.populate([2,2,2]).start(wait_for_binary_proto=True, wait_other_notice=True)
+        self.cluster.populate([2, 2, 2]).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1_1, node1_2, node2_1, node2_2, node3_1, node3_2 = self.cluster.nodelist()
         with self.patient_cql_cluster_session(node1_1) as session:
             self.create_ks(session, 'ks', {'dc1': 2, 'dc2': 2, 'dc3': 2})
@@ -945,7 +957,8 @@ class RepairAdditionalBase(Tester):
         node1_2.flush()
         node1_2.stop(wait_other_notice=True)
         with self.patient_cql_cluster_session(node1_1, 'ks', exclusive=True, consistency_level=ConsistencyLevel.LOCAL_ONE) as session1:
-            self.assert_repair_option_pr_rows(session1, int(num_keys * 1.05), int(num_keys * 1.667), consistency_level=ConsistencyLevel.LOCAL_ONE)
+            self.assert_repair_option_pr_rows(session1, int(num_keys * 1.05),
+                                              int(num_keys * 1.667), consistency_level=ConsistencyLevel.LOCAL_ONE)
 
         debug("Restarting node1_2")
         node1_2.start(wait_other_notice=True, wait_for_binary_proto=True)
@@ -987,22 +1000,28 @@ class RepairAdditionalBase(Tester):
         node2.flush()
         node2.stop(wait_other_notice=True)
         with self.patient_exclusive_cql_connection(node1, 'ks') as session1:
-            query = SimpleStatement("INSERT INTO cf1 (key, c1) VALUES ('k11', 'v11')", consistency_level=ConsistencyLevel.ONE)
+            query = SimpleStatement("INSERT INTO cf1 (key, c1) VALUES ('k11', 'v11')",
+                                    consistency_level=ConsistencyLevel.ONE)
             session1.execute(query)
-            query = SimpleStatement("INSERT INTO cf2 (key, c1) VALUES ('k21', 'v21')", consistency_level=ConsistencyLevel.ONE)
+            query = SimpleStatement("INSERT INTO cf2 (key, c1) VALUES ('k21', 'v21')",
+                                    consistency_level=ConsistencyLevel.ONE)
             session1.execute(query)
-            query = SimpleStatement("INSERT INTO cf3 (key, c1) VALUES ('k31', 'v31')", consistency_level=ConsistencyLevel.ONE)
+            query = SimpleStatement("INSERT INTO cf3 (key, c1) VALUES ('k31', 'v31')",
+                                    consistency_level=ConsistencyLevel.ONE)
             session1.execute(query)
         self.cluster.flush()
         node2.start(wait_other_notice=True, wait_for_binary_proto=True)
         node1.flush()
         node1.stop(wait_other_notice=True)
         with self.patient_exclusive_cql_connection(node2, 'ks') as session2:
-            query = SimpleStatement("INSERT INTO cf1 (key, c1) VALUES ('k11a', 'v11a')", consistency_level=ConsistencyLevel.ONE)
+            query = SimpleStatement("INSERT INTO cf1 (key, c1) VALUES ('k11a', 'v11a')",
+                                    consistency_level=ConsistencyLevel.ONE)
             session2.execute(query)
-            query = SimpleStatement("INSERT INTO cf2 (key, c1) VALUES ('k21a', 'v21a')", consistency_level=ConsistencyLevel.ONE)
+            query = SimpleStatement("INSERT INTO cf2 (key, c1) VALUES ('k21a', 'v21a')",
+                                    consistency_level=ConsistencyLevel.ONE)
             session2.execute(query)
-            query = SimpleStatement("INSERT INTO cf3 (key, c1) VALUES ('k31a', 'v31a')", consistency_level=ConsistencyLevel.ONE)
+            query = SimpleStatement("INSERT INTO cf3 (key, c1) VALUES ('k31a', 'v31a')",
+                                    consistency_level=ConsistencyLevel.ONE)
             session2.execute(query)
 
         # Bring up both nodes, each should have different data
@@ -1082,7 +1101,8 @@ class RepairAdditionalBase(Tester):
         self.cluster.populate([2, 1, 1]).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2, node3, node4 = self.cluster.nodelist()
         with self.patient_cql_connection(node1) as session:
-            session.execute("CREATE KEYSPACE ks WITH replication = {'class': 'NetworkTopologyStrategy', 'dc1': 2, 'dc2' : 1, 'dc3': 1};")
+            session.execute(
+                "CREATE KEYSPACE ks WITH replication = {'class': 'NetworkTopologyStrategy', 'dc1': 2, 'dc2' : 1, 'dc3': 1};")
             session.set_keyspace('ks')
             self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text'})
 
@@ -1095,7 +1115,8 @@ class RepairAdditionalBase(Tester):
             node3.stop(wait_other_notice=True)
             node4.flush()
             node4.stop(wait_other_notice=True)
-            query = SimpleStatement("INSERT INTO cf (key, c1) VALUES ('k11', 'v11')", consistency_level=ConsistencyLevel.ONE)
+            query = SimpleStatement("INSERT INTO cf (key, c1) VALUES ('k11', 'v11')",
+                                    consistency_level=ConsistencyLevel.ONE)
             session.execute(query)
 
         # Start all nodes, do a repair limited to dc1 and dc3, and confirm the
@@ -1158,7 +1179,8 @@ class RepairAdditionalBase(Tester):
         node3.flush()
         node3.stop(wait_other_notice=True)
         with self.patient_exclusive_cql_connection(node1, 'ks') as session1:
-            query = SimpleStatement("INSERT INTO cf (key, c1) VALUES ('k12', 'v12')", consistency_level=ConsistencyLevel.ONE)
+            query = SimpleStatement("INSERT INTO cf (key, c1) VALUES ('k12', 'v12')",
+                                    consistency_level=ConsistencyLevel.ONE)
             session1.execute(query)
         self.cluster.start_nodes([node2, node3, node4], wait_other_notice=True, wait_for_binary_proto=True)
         info = node1.repair(['-local', 'ks'])
@@ -1938,7 +1960,7 @@ class RepairAdditionalBase(Tester):
         node2.start(wait_other_notice=True, wait_for_binary_proto=True)
 
         debug("starting repair...")
-        info = self._repair(node2,more_options + ['ks'])
+        info = self._repair(node2, more_options + ['ks'])
         debug(info[0])
         debug(info[1])
 
@@ -1969,7 +1991,7 @@ class RepairAdditionalBase(Tester):
         if not same_shard_count:
             node1.set_smp(2)
             node2.set_smp(3)
-            debug("Set node1.smp=2, node2.smp=3");
+            debug("Set node1.smp=2, node2.smp=3")
         self.cluster.start(wait_for_binary_proto=True, wait_other_notice=True)
 
         nr_rows = 10000
@@ -1992,7 +2014,7 @@ class RepairAdditionalBase(Tester):
         node2.start(wait_other_notice=True, wait_for_binary_proto=True)
 
         debug("starting repair...")
-        info = self._repair(node2,more_options + ['ks'])
+        info = self._repair(node2, more_options + ['ks'])
         debug(info[0])
         debug(info[1])
 
@@ -2021,7 +2043,7 @@ class RepairAdditionalBase(Tester):
         if not same_shard_count:
             node1.set_smp(2)
             node2.set_smp(3)
-            debug("Set node1.smp=2, node2.smp=3");
+            debug("Set node1.smp=2, node2.smp=3")
         self.cluster.start(wait_for_binary_proto=True, wait_other_notice=True)
 
         with self.patient_cql_connection(node1) as session:
@@ -2048,7 +2070,7 @@ class RepairAdditionalBase(Tester):
 
         # Run repair on (arbitrarily), node 2
         debug("starting repair...")
-        info = self._repair(node2,more_options + ['ks'])
+        info = self._repair(node2, more_options + ['ks'])
         debug(info[0])
         debug(info[1])
 
@@ -2061,7 +2083,6 @@ class RepairAdditionalBase(Tester):
         debug("Check rows on node 2...")
         self.check_rows_on_node(node2, 2000)
         debug("Check rows done")
-
 
     def _repair_disjoint_row_3nodes_test(self, same_shard_count=True, more_options=[]):
         '''
@@ -2079,7 +2100,7 @@ class RepairAdditionalBase(Tester):
             node1.set_smp(2)
             node2.set_smp(2)
             node3.set_smp(3)
-            debug("Set node1.smp=2, node2.smp=2, node3.smp=3");
+            debug("Set node1.smp=2, node2.smp=2, node3.smp=3")
         self.cluster.start(wait_for_binary_proto=True, wait_other_notice=True)
 
         with self.patient_cql_connection(node1) as session:
@@ -2169,7 +2190,7 @@ class RepairAdditionalBase(Tester):
             node1.set_smp(2)
             node2.set_smp(2)
             node3.set_smp(3)
-            debug("Set node1.smp=2, node2.smp=2, node3.smp=3");
+            debug("Set node1.smp=2, node2.smp=2, node3.smp=3")
         self.cluster.start(wait_for_binary_proto=True, wait_other_notice=True)
 
         with self.patient_cql_connection(node1) as session:
@@ -2250,7 +2271,7 @@ class RepairAdditionalBase(Tester):
             node1.set_smp(2)
             node2.set_smp(2)
             node3.set_smp(3)
-            debug("Set node1.smp=2, node2.smp=2, node3.smp=3");
+            debug("Set node1.smp=2, node2.smp=2, node3.smp=3")
         self.cluster.start(wait_for_binary_proto=True, wait_other_notice=True)
 
         with self.patient_cql_connection(node1) as session:
@@ -2300,7 +2321,7 @@ class RepairAdditionalBase(Tester):
 
     def _setup_cluster_prefilled_with_large_partitions(self):
         test_session = self.create_cluster_and_keyspace(num_of_nodes=self.NUM_OF_NODES, rf=self.RF,
-                                                         configuration_options={'hinted_handoff_enabled': False})
+                                                        configuration_options={'hinted_handoff_enabled': False})
 
         stmt = 'create table {} (pk int, ck int, {}, clist list<int>, cset set<text>, cmap map<int, text>, ' \
                'PRIMARY KEY(pk, ck))'.format(self.TABLE_NAME,
@@ -2405,7 +2426,6 @@ class RepairAdditionalBase(Tester):
         self.write_table_updates(node=node1, partitions_range_end=partitions, rows_in_partition=rows_in_partition,
                                  num_of_updates=num_of_updates)
 
-
         self.write_table_updates(node=node1, partitions_range_end=big_partition, partitions_range_start=big_partition,
                                  rows_in_partition=big_partition_rows, num_of_updates=num_of_updates)
 
@@ -2416,7 +2436,6 @@ class RepairAdditionalBase(Tester):
         debug("starting repair on {}".format(repaired_node.name))
         info = self._repair(repaired_node, [self.KEYSPACE_NAME])
 
-
         # repaired_node is expected to receive up-to num_of_updates rows from other nodes,
         # and transfer as twice(NUM_OF_PEERS) much.
         self.verify_repair_tx_rx_rows(node_idx=2, expected_tx_row_nr=num_of_total_updates * self.NUM_OF_PEERS,
@@ -2424,8 +2443,6 @@ class RepairAdditionalBase(Tester):
                                       list_metrics=self.LIST_ROW_LEVEL_REPAIR_METRICS)
 
         self.verify_num_of_rows_on_nodes(list_nodes=[node1, repaired_node], total_rows=total_rows)
-
-
 
     @skip('unimplemented')
     def _repair_of_cluster_all_nodes_are_out_of_sync(self):
@@ -2650,7 +2667,7 @@ class RepairAdditionalTest(RepairAdditionalBase):
     __test__ = True
 
     def repair_disjoint_data_test(self, more_options=[]):
-        return RepairAdditionalBase._repair_disjoint_data_test(self,more_options)
+        return RepairAdditionalBase._repair_disjoint_data_test(self, more_options)
 
     @attr('next-gating')
     @attr('dtest-debug')
@@ -2662,125 +2679,125 @@ class RepairAdditionalTest(RepairAdditionalBase):
         return RepairAdditionalBase._repair_schema_2_test(self)
 
     def repair_cell_update_test(self):
-       return RepairAdditionalBase._repair_cell_update_test(self)
+        return RepairAdditionalBase._repair_cell_update_test(self)
 
     def repair_cell_delete_test(self):
-       return RepairAdditionalBase._repair_cell_delete_test(self)
+        return RepairAdditionalBase._repair_cell_delete_test(self)
 
     def repair_row_delete_test(self):
-       return RepairAdditionalBase._repair_row_delete_test(self)
+        return RepairAdditionalBase._repair_row_delete_test(self)
 
     def repair_partition_delete_test(self):
-       return RepairAdditionalBase._repair_partition_delete_test(self)
+        return RepairAdditionalBase._repair_partition_delete_test(self)
 
     @attr('next-gating')
     @attr('dtest-debug')
     def repair_ttl_update_test(self):
-       return RepairAdditionalBase._repair_ttl_update_test(self)
+        return RepairAdditionalBase._repair_ttl_update_test(self)
 
     def repair_option_pr_test(self):
-       return RepairAdditionalBase._repair_option_pr_test(self)
+        return RepairAdditionalBase._repair_option_pr_test(self)
 
     @attr('dtest-debug')
     def repair_option_pr_dc_host_test(self):
-       return RepairAdditionalBase._repair_option_pr_dc_host_test(self)
+        return RepairAdditionalBase._repair_option_pr_dc_host_test(self)
 
     @attr('dtest-debug')
     def repair_option_pr_multi_dc_test(self):
-       return RepairAdditionalBase._repair_option_pr_multi_dc_test(self)
+        return RepairAdditionalBase._repair_option_pr_multi_dc_test(self)
 
     def repair_option_cf_test(self):
-       return RepairAdditionalBase._repair_option_cf_test(self)
+        return RepairAdditionalBase._repair_option_cf_test(self)
 
     def repair_option_invalid_ks_cf_test(self):
-       return RepairAdditionalBase._repair_option_invalid_ks_cf_test(self)
+        return RepairAdditionalBase._repair_option_invalid_ks_cf_test(self)
 
     def repair_option_dc_test(self):
-       return RepairAdditionalBase._repair_option_dc_test(self)
+        return RepairAdditionalBase._repair_option_dc_test(self)
 
     def repair_multiple_test(self, more_options=[]):
-       return RepairAdditionalBase._repair_multiple_test(self)
+        return RepairAdditionalBase._repair_multiple_test(self)
 
     def repair_multiple_pr_test(self):
-       return RepairAdditionalBase._repair_multiple_pr_test(self)
+        return RepairAdditionalBase._repair_multiple_pr_test(self)
 
     def repair_option_seq_test(self):
-       return RepairAdditionalBase._repair_option_seq_test(self)
+        return RepairAdditionalBase._repair_option_seq_test(self)
 
     @attr('next-gating')
     def repair_kill_1_test(self, kill_master=True):
-       return RepairAdditionalBase._repair_kill_1_test(self)
+        return RepairAdditionalBase._repair_kill_1_test(self)
 
     def repair_kill_2_test(self):
-       return RepairAdditionalBase._repair_kill_2_test(self)
+        return RepairAdditionalBase._repair_kill_2_test(self)
 
     def repair_kill_3_test(self):
-       return RepairAdditionalBase._repair_kill_3_test(self)
+        return RepairAdditionalBase._repair_kill_3_test(self)
 
     @attr('next-gating')
     def repair_during_update_test(self, more_options=[]):
-       return RepairAdditionalBase._repair_during_update_test(self,more_options)
+        return RepairAdditionalBase._repair_during_update_test(self, more_options)
 
     def repair_with_down_nodes_1_test(self, more_options=[]):
-       return RepairAdditionalBase._repair_with_down_nodes_1_test(self,more_options)
+        return RepairAdditionalBase._repair_with_down_nodes_1_test(self, more_options)
 
     def repair_with_down_nodes_1a_test(self, more_options=[]):
-       return RepairAdditionalBase._repair_with_down_nodes_1a_test(self,more_options)
+        return RepairAdditionalBase._repair_with_down_nodes_1a_test(self, more_options)
 
     def repair_with_down_nodes_2_test(self, more_options=[]):
-       return RepairAdditionalBase._repair_with_down_nodes_2_test(self,more_options)
+        return RepairAdditionalBase._repair_with_down_nodes_2_test(self, more_options)
 
     def repair_with_down_nodes_2a_test(self, more_options=[]):
-       return RepairAdditionalBase._repair_with_down_nodes_2a_test(self,more_options)
+        return RepairAdditionalBase._repair_with_down_nodes_2a_test(self, more_options)
 
     def repair_with_down_nodes_2b_test(self, more_options=[]):
-       return RepairAdditionalBase._repair_with_down_nodes_2b_test(self,more_options)
+        return RepairAdditionalBase._repair_with_down_nodes_2b_test(self, more_options)
 
     @attr('next-gating')
     def repair_abort_test(self):
-       return RepairAdditionalBase._repair_abort_test(self)
+        return RepairAdditionalBase._repair_abort_test(self)
 
     @attr('next-gating')
     def repair_one_missing_row_test(self):
-       return RepairAdditionalBase._repair_one_missing_row_test(self)
+        return RepairAdditionalBase._repair_one_missing_row_test(self)
 
     def repair_one_deleted_row_test(self):
-       return RepairAdditionalBase._repair_one_deleted_row_test(self)
+        return RepairAdditionalBase._repair_one_deleted_row_test(self)
 
     @attr('next-gating')
     def repair_disjoint_row_2nodes_test(self):
-       return RepairAdditionalBase._repair_disjoint_row_2nodes_test(self)
+        return RepairAdditionalBase._repair_disjoint_row_2nodes_test(self)
 
     def repair_disjoint_row_3nodes_test(self):
-       return RepairAdditionalBase._repair_disjoint_row_3nodes_test(self)
+        return RepairAdditionalBase._repair_disjoint_row_3nodes_test(self)
 
     def repair_joint_row_3nodes_1_test(self):
-       return RepairAdditionalBase._repair_joint_row_3nodes_same_key_same_value_test(self)
+        return RepairAdditionalBase._repair_joint_row_3nodes_same_key_same_value_test(self)
 
     @attr('next-gating')
     def repair_joint_row_3nodes_2_test(self):
-       return RepairAdditionalBase._repair_joint_row_3nodes_same_key_diff_value_test(self)
+        return RepairAdditionalBase._repair_joint_row_3nodes_same_key_diff_value_test(self)
 
     @attr('dtest-heavy')
     def repair_one_missing_row_diff_shard_count_test(self):
-       return RepairAdditionalBase._repair_one_missing_row_test(self, same_shard_count=False)
+        return RepairAdditionalBase._repair_one_missing_row_test(self, same_shard_count=False)
 
     @attr('dtest-heavy')
     def repair_one_deleted_row_diff_shard_count_test(self):
-       return RepairAdditionalBase._repair_one_deleted_row_test(self, same_shard_count=False)
+        return RepairAdditionalBase._repair_one_deleted_row_test(self, same_shard_count=False)
 
     @attr('dtest-heavy')
     def repair_disjoint_row_2nodes_diff_shard_count_test(self):
-       return RepairAdditionalBase._repair_disjoint_row_2nodes_test(self, same_shard_count=False)
+        return RepairAdditionalBase._repair_disjoint_row_2nodes_test(self, same_shard_count=False)
 
     @attr('dtest-heavy')
     def repair_disjoint_row_3nodes_diff_shard_count_test(self):
-       return RepairAdditionalBase._repair_disjoint_row_3nodes_test(self, same_shard_count=False)
+        return RepairAdditionalBase._repair_disjoint_row_3nodes_test(self, same_shard_count=False)
 
     @attr('dtest-heavy')
     def repair_joint_row_3nodes_1_diff_shard_count_test(self):
-       return RepairAdditionalBase._repair_joint_row_3nodes_same_key_same_value_test(self, same_shard_count=False)
+        return RepairAdditionalBase._repair_joint_row_3nodes_same_key_same_value_test(self, same_shard_count=False)
 
     @attr('dtest-heavy')
     def repair_joint_row_3nodes_2_diff_shard_count_test(self):
-       return RepairAdditionalBase._repair_joint_row_3nodes_same_key_diff_value_test(self, same_shard_count=False)
+        return RepairAdditionalBase._repair_joint_row_3nodes_same_key_diff_value_test(self, same_shard_count=False)

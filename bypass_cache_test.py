@@ -13,6 +13,7 @@ class TestBypassCache(Tester):
     Introduced by commit 2a371c2689d327a10f5888f39414ec66efedb093
     '''
     NUM_OF_QUERY_EXECUTIONS = 100
+
     def prepare(self, nodes=1, keyspace_name='bypass_cache', rf=1, options_dict=None, table_name='user_events',
                 insert_data=True):
         self.keyspace_name = keyspace_name
@@ -82,7 +83,8 @@ class TestBypassCache(Tester):
         self.verify_read_was_from_disk(node=node, query=bypass_query, session=session)
 
     def insert_data_for_scan_range(self):
-        import random, string
+        import random
+        import string
         session = self.prepare(insert_data=False)
         # create a table
         self.create_cf(session=session, name='cf', key_type='int')

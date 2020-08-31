@@ -144,7 +144,7 @@ class TestRebuild(Tester):
         self.create_ks(session, ks, {dc: 1})
 
         debug("Creating {} tables".format(num_tables))
-        tables = [ 'cf_{:04d}'.format(i) for i in range(0, num_tables) ]
+        tables = ['cf_{:04d}'.format(i) for i in range(0, num_tables)]
         for cf in tables:
             create_c1c2_table(self, session, cf=cf, debug_query=False)
             insert_c1c2(session, n=num_keys, cf=cf, consistency=ConsistencyLevel.ALL)
@@ -159,7 +159,8 @@ class TestRebuild(Tester):
 
         debug("Adjusting replication")
         session = self.patient_exclusive_cql_connection(node2)
-        session.execute("ALTER KEYSPACE {} WITH REPLICATION = {{ 'class':'NetworkTopologyStrategy', '{}':2 }};".format(ks, dc))
+        session.execute(
+            "ALTER KEYSPACE {} WITH REPLICATION = {{ 'class':'NetworkTopologyStrategy', '{}':2 }};".format(ks, dc))
 
         debug("Rebuilding node2")
         node2.nodetool('rebuild')
@@ -189,12 +190,12 @@ class TestRebuild(Tester):
         session = self.patient_exclusive_cql_connection(node1)
         dc = 'dc1'
         debug("Creating {} keyspaces".format(num_keyspaces))
-        keyspaces = [ 'ks_{:04d}'.format(i) for i in range(0, num_keyspaces) ]
+        keyspaces = ['ks_{:04d}'.format(i) for i in range(0, num_keyspaces)]
         for ks in keyspaces:
             self.create_ks(session, ks, {dc: 1})
 
         debug("Creating {} table(s) in each ks".format(num_tables))
-        tables = [ 'cf_{:04d}'.format(i) for i in range(0, num_tables) ]
+        tables = ['cf_{:04d}'.format(i) for i in range(0, num_tables)]
         for ks in keyspaces:
             for cf in tables:
                 cf_name = '{}.{}'.format(ks, cf)
@@ -212,7 +213,8 @@ class TestRebuild(Tester):
         debug("Adjusting replication")
         session = self.patient_exclusive_cql_connection(node2)
         for ks in keyspaces:
-            session.execute("ALTER KEYSPACE {} WITH REPLICATION = {{ 'class':'NetworkTopologyStrategy', '{}':2 }};".format(ks, dc))
+            session.execute(
+                "ALTER KEYSPACE {} WITH REPLICATION = {{ 'class':'NetworkTopologyStrategy', '{}':2 }};".format(ks, dc))
 
         debug("Rebuilding node2")
         node2.nodetool('rebuild')

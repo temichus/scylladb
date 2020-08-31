@@ -57,8 +57,8 @@ class TestCompaction(Tester):
 
         numfound = jsoninfo.count("marked_deleted")
 
-        self.assertEqual(numfound, 10, "Error: expected {} deleted partitions but found {}:\n{}".format(10, numfound, jsoninfo))
-
+        self.assertEqual(numfound, 10, "Error: expected {} deleted partitions but found {}:\n{}".format(
+            10, numfound, jsoninfo))
 
     @since('2.2.X')
     def compaction_delete_test(self):
@@ -67,7 +67,6 @@ class TestCompaction(Tester):
         Insert data, delete a partition of data and check that the requisite rows are tombstoned.
         """
         self._compaction_delete_test()
-
 
     @since('2.2.X')
     def compaction_delete_2_test(self):
@@ -99,9 +98,11 @@ class TestCompaction(Tester):
 
         time_to_expire = self.tombstone_expiry_time - time.time()
         debug("Time left to expire: {}".format(time_to_expire))
-        self.assertTrue(time_to_expire > 0, "Error: missed tombstone expiration time: {} >= {}".format(time.time(), self.tombstone_expiry_time))
+        self.assertTrue(time_to_expire > 0, "Error: missed tombstone expiration time: {} >= {}".format(
+            time.time(), self.tombstone_expiry_time))
 
-        self.assertEqual(numfound, 10, "Error: expected {} deleted partitions but found {}:\n{}".format(10, numfound, jsoninfo))
+        self.assertEqual(numfound, 10, "Error: expected {} deleted partitions but found {}:\n{}".format(
+            10, numfound, jsoninfo))
 
         time.sleep(time_to_expire + 1)
 
@@ -121,7 +122,8 @@ class TestCompaction(Tester):
 
         numfound = jsoninfo.count("marked_deleted")
 
-        self.assertEqual(numfound, 0, "Error: expected {} deleted partitions but found {}:\n{}".format(0, numfound, jsoninfo))
+        self.assertEqual(
+            numfound, 0, "Error: expected {} deleted partitions but found {}:\n{}".format(0, numfound, jsoninfo))
 
     def data_size_test(self):
         """

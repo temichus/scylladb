@@ -90,7 +90,8 @@ class TestSimpleCluster(Tester):
                     read_pass = read_pass + 1
                 except Exception as ex:
                     read_fail = read_fail + 1
-            assert (read_fail == 0 or not read_cls_pass_all), "Expected all reads to pass, pass %s, fail %s" % (read_pass, read_fail)
+            assert (read_fail == 0 or not read_cls_pass_all), "Expected all reads to pass, pass %s, fail %s" % (
+                read_pass, read_fail)
             assert (read_fail > 0 or read_cls_pass_all), "Expected some reads to fail, pass %s, fail %s" % (read_pass, read_fail)
 
         for cl in read_cls_fail:
@@ -109,13 +110,16 @@ class TestSimpleCluster(Tester):
             write_fail = 0
             for key in write_keys:
                 try:
-                    insert = SimpleStatement("insert into ks.test1  (k,c) values (%s,%s)" % (key, key), consistency_level=cl)
+                    insert = SimpleStatement("insert into ks.test1  (k,c) values (%s,%s)" %
+                                             (key, key), consistency_level=cl)
                     res = list(session.execute(insert))
                     write_pass = write_pass + 1
                 except Exception as ex:
                     write_fail = write_fail + 1
-            assert (write_fail == 0 or not write_cls_pass_all), "Expected all writes to pass, pass %s, fail %s" % (write_pass, write_fail)
-            assert (write_fail > 0 or write_cls_pass_all), "Expected some writes to fail, pass %s, fail %s" % (write_pass, write_fail)
+            assert (write_fail == 0 or not write_cls_pass_all), "Expected all writes to pass, pass %s, fail %s" % (
+                write_pass, write_fail)
+            assert (write_fail > 0 or write_cls_pass_all), "Expected some writes to fail, pass %s, fail %s" % (
+                write_pass, write_fail)
 
         for cl in write_cls_fail:
             insert = SimpleStatement("insert into ks.test1 (k,c) values (101,101)", consistency_level=cl)
@@ -157,15 +161,21 @@ class TestSimpleCluster(Tester):
 
         keys = range(1, 100)
         for val in keys:
-            insert = SimpleStatement("insert into ks.test1  (k,c) values (%s,%s)" % (val, val), consistency_level=ConsistencyLevel.ALL)
+            insert = SimpleStatement("insert into ks.test1  (k,c) values (%s,%s)" %
+                                     (val, val), consistency_level=ConsistencyLevel.ALL)
             session1.execute(insert)
 
         debug("3 nodes, node1,node2,node3 are running")
-        read_cls_pass = [ConsistencyLevel.ONE, ConsistencyLevel.TWO, ConsistencyLevel.THREE, ConsistencyLevel.QUORUM, ConsistencyLevel.ALL]
-        write_cls_pass = [ConsistencyLevel.ANY, ConsistencyLevel.ONE, ConsistencyLevel.TWO, ConsistencyLevel.THREE, ConsistencyLevel.QUORUM, ConsistencyLevel.ALL]
-        self.simple_consistency_level_validate(session1, "node 1", keys, read_cls_pass, [], True, range(101, 200), write_cls_pass, [], True)
-        self.simple_consistency_level_validate(session2, "node 2", keys, read_cls_pass, [], True, range(201, 300), write_cls_pass, [], True)
-        self.simple_consistency_level_validate(session3, "node 3", keys, read_cls_pass, [], True, range(301, 400), write_cls_pass, [], True)
+        read_cls_pass = [ConsistencyLevel.ONE, ConsistencyLevel.TWO,
+                         ConsistencyLevel.THREE, ConsistencyLevel.QUORUM, ConsistencyLevel.ALL]
+        write_cls_pass = [ConsistencyLevel.ANY, ConsistencyLevel.ONE, ConsistencyLevel.TWO,
+                          ConsistencyLevel.THREE, ConsistencyLevel.QUORUM, ConsistencyLevel.ALL]
+        self.simple_consistency_level_validate(session1, "node 1", keys, read_cls_pass, [
+        ], True, range(101, 200), write_cls_pass, [], True)
+        self.simple_consistency_level_validate(session2, "node 2", keys, read_cls_pass, [
+        ], True, range(201, 300), write_cls_pass, [], True)
+        self.simple_consistency_level_validate(session3, "node 3", keys, read_cls_pass, [
+        ], True, range(301, 400), write_cls_pass, [], True)
 
         node1.stop()
         # FIXME - currently used to make sure that the gossiper has concluded the node is dead - on origin it works without this
@@ -175,8 +185,10 @@ class TestSimpleCluster(Tester):
         read_cls_fail = [ConsistencyLevel.THREE, ConsistencyLevel.ALL]
         write_cls_pass = [ConsistencyLevel.ANY, ConsistencyLevel.ONE, ConsistencyLevel.TWO, ConsistencyLevel.QUORUM]
         write_cls_fail = [ConsistencyLevel.THREE, ConsistencyLevel.ALL]
-        self.simple_consistency_level_validate(session2, "node 2", keys, read_cls_pass, read_cls_fail, True, range(401, 500), write_cls_pass, write_cls_fail, True)
-        self.simple_consistency_level_validate(session3, "node 3", keys, read_cls_pass, read_cls_fail, True, range(501, 600), write_cls_pass, write_cls_fail, True)
+        self.simple_consistency_level_validate(session2, "node 2", keys, read_cls_pass, read_cls_fail, True, range(
+            401, 500), write_cls_pass, write_cls_fail, True)
+        self.simple_consistency_level_validate(session3, "node 3", keys, read_cls_pass, read_cls_fail, True, range(
+            501, 600), write_cls_pass, write_cls_fail, True)
 
         node2.stop()
         # FIXME - currently used to make sure that the gossiper has concluded the node is dead - on origin it works without this
@@ -186,7 +198,8 @@ class TestSimpleCluster(Tester):
         read_cls_fail = [ConsistencyLevel.TWO, ConsistencyLevel.THREE, ConsistencyLevel.QUORUM, ConsistencyLevel.ALL]
         write_cls_pass = [ConsistencyLevel.ANY, ConsistencyLevel.ONE]
         write_cls_fail = [ConsistencyLevel.TWO, ConsistencyLevel.THREE, ConsistencyLevel.QUORUM, ConsistencyLevel.ALL]
-        self.simple_consistency_level_validate(session3, "node 3", keys, read_cls_pass, read_cls_fail, True, range(601, 700), write_cls_pass, write_cls_fail, True)
+        self.simple_consistency_level_validate(session3, "node 3", keys, read_cls_pass, read_cls_fail, True, range(
+            601, 700), write_cls_pass, write_cls_fail, True)
 
         # should add additional tests once a node can be entered back into a cluster
 
@@ -199,7 +212,8 @@ class TestSimpleCluster(Tester):
 
         keys = range(1, 100)
         for val in keys:
-            insert = SimpleStatement("insert into ks.test1  (k,c) values (%s,%s)" % (val, val), consistency_level=ConsistencyLevel.ALL)
+            insert = SimpleStatement("insert into ks.test1  (k,c) values (%s,%s)" %
+                                     (val, val), consistency_level=ConsistencyLevel.ALL)
             session1.execute(insert)
 
         debug("3 nodes, node1,node2,node3 are running")
@@ -207,9 +221,12 @@ class TestSimpleCluster(Tester):
         read_cls_fail = [ConsistencyLevel.TWO, ConsistencyLevel.THREE]
         write_cls_pass = [ConsistencyLevel.ANY, ConsistencyLevel.ONE, ConsistencyLevel.QUORUM, ConsistencyLevel.ALL]
         write_cls_fail = [ConsistencyLevel.TWO, ConsistencyLevel.THREE]
-        self.simple_consistency_level_validate(session1, "node 1", keys, read_cls_pass, read_cls_fail, True, range(101, 200), write_cls_pass, write_cls_fail, True)
-        self.simple_consistency_level_validate(session2, "node 2", keys, read_cls_pass, read_cls_fail, True, range(201, 300), write_cls_pass, write_cls_fail, True)
-        self.simple_consistency_level_validate(session3, "node 3", keys, read_cls_pass, read_cls_fail, True, range(301, 400), write_cls_pass, write_cls_fail, True)
+        self.simple_consistency_level_validate(session1, "node 1", keys, read_cls_pass, read_cls_fail, True, range(
+            101, 200), write_cls_pass, write_cls_fail, True)
+        self.simple_consistency_level_validate(session2, "node 2", keys, read_cls_pass, read_cls_fail, True, range(
+            201, 300), write_cls_pass, write_cls_fail, True)
+        self.simple_consistency_level_validate(session3, "node 3", keys, read_cls_pass, read_cls_fail, True, range(
+            301, 400), write_cls_pass, write_cls_fail, True)
 
         node1.stop()
         debug("node 1 stopped, node2,node3 are running")
@@ -217,8 +234,10 @@ class TestSimpleCluster(Tester):
         read_cls_fail = [ConsistencyLevel.TWO, ConsistencyLevel.THREE]
         write_cls_pass = [ConsistencyLevel.ONE, ConsistencyLevel.QUORUM, ConsistencyLevel.ALL]
         write_cls_fail = [ConsistencyLevel.TWO, ConsistencyLevel.THREE]
-        self.simple_consistency_level_validate(session2, "node 2", keys, read_cls_pass, read_cls_fail, False, range(401, 500), write_cls_pass, write_cls_fail, False)
-        self.simple_consistency_level_validate(session3, "node 3", keys, read_cls_pass, read_cls_fail, False, range(501, 600), write_cls_pass, write_cls_fail, False)
+        self.simple_consistency_level_validate(session2, "node 2", keys, read_cls_pass, read_cls_fail, False, range(
+            401, 500), write_cls_pass, write_cls_fail, False)
+        self.simple_consistency_level_validate(session3, "node 3", keys, read_cls_pass, read_cls_fail, False, range(
+            501, 600), write_cls_pass, write_cls_fail, False)
 
         node2.stop()
         debug("node 2 stopped, node3 is running")
@@ -226,7 +245,8 @@ class TestSimpleCluster(Tester):
         read_cls_fail = [ConsistencyLevel.TWO, ConsistencyLevel.THREE]
         write_cls_pass = [ConsistencyLevel.ONE, ConsistencyLevel.QUORUM, ConsistencyLevel.ALL]
         write_cls_fail = [ConsistencyLevel.TWO, ConsistencyLevel.THREE]
-        self.simple_consistency_level_validate(session3, "node 3", keys, read_cls_pass, read_cls_fail, False, range(601, 700), write_cls_pass, write_cls_fail, False)
+        self.simple_consistency_level_validate(session3, "node 3", keys, read_cls_pass, read_cls_fail, False, range(
+            601, 700), write_cls_pass, write_cls_fail, False)
 
         # should add additional tests once a node can be entered back into a cluster
 
@@ -244,7 +264,8 @@ class TestSimpleCluster(Tester):
             except Exception as ex:
                 read_fail = read_fail + 1
                 errors = errors + [ex]
-            assert (read_fail == 0 or not read_cls_pass_all), "Expected all reads to pass, pass %s, fail %s" % (read_pass, read_fail) + str(errors)
+            assert (read_fail == 0 or not read_cls_pass_all), "Expected all reads to pass, pass %s, fail %s" % (
+                read_pass, read_fail) + str(errors)
             assert (read_fail > 0 or read_cls_pass_all), "Expected some reads to fail, pass %s, fail %s" % (read_pass, read_fail)
 
         for cl in read_cls_fail:
@@ -267,18 +288,25 @@ class TestSimpleCluster(Tester):
 
         keys = range(1, 100)
         for val in keys:
-            insert = SimpleStatement("insert into ks.test1  (k,c) values (%s,%s)" % (val, val), consistency_level=ConsistencyLevel.ALL)
+            insert = SimpleStatement("insert into ks.test1  (k,c) values (%s,%s)" %
+                                     (val, val), consistency_level=ConsistencyLevel.ALL)
             session1.execute(insert)
 
         debug("3 nodes, node1,node2,node3 are running")
         read_cls_pass = [ConsistencyLevel.ONE, ConsistencyLevel.QUORUM, ConsistencyLevel.ALL]
         read_cls_fail = [ConsistencyLevel.TWO, ConsistencyLevel.THREE]
-        self.simple_query_validate(session1, "node 1", len(keys), "SELECT * FROM ks.test1", read_cls_pass, read_cls_fail, True)
-        self.simple_query_validate(session1, "node 1", 10, "SELECT * FROM ks.test1 where k in (1,10,20,30,40,50,60,70,80,90) ", read_cls_pass, read_cls_fail, True)
-        self.simple_query_validate(session2, "node 2", len(keys), "SELECT * FROM ks.test1", read_cls_pass, read_cls_fail, True)
-        self.simple_query_validate(session2, "node 2", 10, "SELECT * FROM ks.test1 where k in (1,10,20,30,40,50,60,70,80,90) ", read_cls_pass, read_cls_fail, True)
-        self.simple_query_validate(session3, "node 3", len(keys), "SELECT * FROM ks.test1", read_cls_pass, read_cls_fail, True)
-        self.simple_query_validate(session3, "node 3", 10, "SELECT * FROM ks.test1 where k in (1,10,20,30,40,50,60,70,80,90) ", read_cls_pass, read_cls_fail, True)
+        self.simple_query_validate(session1, "node 1", len(
+            keys), "SELECT * FROM ks.test1", read_cls_pass, read_cls_fail, True)
+        self.simple_query_validate(
+            session1, "node 1", 10, "SELECT * FROM ks.test1 where k in (1,10,20,30,40,50,60,70,80,90) ", read_cls_pass, read_cls_fail, True)
+        self.simple_query_validate(session2, "node 2", len(
+            keys), "SELECT * FROM ks.test1", read_cls_pass, read_cls_fail, True)
+        self.simple_query_validate(
+            session2, "node 2", 10, "SELECT * FROM ks.test1 where k in (1,10,20,30,40,50,60,70,80,90) ", read_cls_pass, read_cls_fail, True)
+        self.simple_query_validate(session3, "node 3", len(
+            keys), "SELECT * FROM ks.test1", read_cls_pass, read_cls_fail, True)
+        self.simple_query_validate(
+            session3, "node 3", 10, "SELECT * FROM ks.test1 where k in (1,10,20,30,40,50,60,70,80,90) ", read_cls_pass, read_cls_fail, True)
 
     def simple_rf_3_query_tests(self):
         cluster = self.prepare_cluster(3)
@@ -290,14 +318,19 @@ class TestSimpleCluster(Tester):
 
         keys = range(1, 100)
         for val in keys:
-            insert = SimpleStatement("insert into ks.test1  (k,c) values (%s,%s)" % (val, val), consistency_level=ConsistencyLevel.ALL)
+            insert = SimpleStatement("insert into ks.test1  (k,c) values (%s,%s)" %
+                                     (val, val), consistency_level=ConsistencyLevel.ALL)
             session1.execute(insert)
 
         debug("3 nodes, node1,node2,node3 are running")
-        read_cls_pass = [ConsistencyLevel.ONE, ConsistencyLevel.TWO, ConsistencyLevel.THREE, ConsistencyLevel.QUORUM, ConsistencyLevel.ALL]
+        read_cls_pass = [ConsistencyLevel.ONE, ConsistencyLevel.TWO,
+                         ConsistencyLevel.THREE, ConsistencyLevel.QUORUM, ConsistencyLevel.ALL]
         self.simple_query_validate(session1, "node 1", len(keys), "SELECT * FROM ks.test1", read_cls_pass, [], True)
-        self.simple_query_validate(session1, "node 1", 10, "SELECT * FROM ks.test1 where k in (1,10,20,30,40,50,60,70,80,90) ", read_cls_pass, [], True)
+        self.simple_query_validate(
+            session1, "node 1", 10, "SELECT * FROM ks.test1 where k in (1,10,20,30,40,50,60,70,80,90) ", read_cls_pass, [], True)
         self.simple_query_validate(session2, "node 2", len(keys), "SELECT * FROM ks.test1", read_cls_pass, [], True)
-        self.simple_query_validate(session2, "node 2", 10, "SELECT * FROM ks.test1 where k in (1,10,20,30,40,50,60,70,80,90) ", read_cls_pass, [], True)
+        self.simple_query_validate(
+            session2, "node 2", 10, "SELECT * FROM ks.test1 where k in (1,10,20,30,40,50,60,70,80,90) ", read_cls_pass, [], True)
         self.simple_query_validate(session3, "node 3", len(keys), "SELECT * FROM ks.test1", read_cls_pass, [], True)
-        self.simple_query_validate(session3, "node 3", 10, "SELECT * FROM ks.test1 where k in (1,10,20,30,40,50,60,70,80,90) ", read_cls_pass, [], True)
+        self.simple_query_validate(
+            session3, "node 3", 10, "SELECT * FROM ks.test1 where k in (1,10,20,30,40,50,60,70,80,90) ", read_cls_pass, [], True)

@@ -100,4 +100,3 @@ class TestPreparedStatements(Tester):
             for row in list(session.execute(query_statement)):
                 self.assertTrue(hasattr(row, 'c'), "row missing c column")
                 self.assertTrue(not hasattr(row, 'b'), "row shouldn't have b column")
-

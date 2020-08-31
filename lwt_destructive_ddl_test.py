@@ -7,6 +7,7 @@ import time
 
 from concurrent.futures import ThreadPoolExecutor
 
+
 class LwtDestructiveDDLTest(Tester):
     '''
     Destructive DDL in presence of LWT: execute destructive DDL
@@ -109,7 +110,7 @@ class LwtDestructiveDDLTest(Tester):
                 break
             try:
                 session.execute(random.choice(dml_statements),
-                    {'pk': random.randint(0, 10000), 'v': random.randint(-1000, 1000)})
+                                {'pk': random.randint(0, 10000), 'v': random.randint(-1000, 1000)})
             except Unavailable as exc:
                 debug(f'Failed to execute LWT statement (thread "{thread_name}"). Unavailable error: {exc}')
                 if not tolerate_unavailable:
@@ -164,7 +165,8 @@ class LwtDestructiveDDLTest(Tester):
         ddl_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix='ddl_thr')
         for i in range(0, 4):
             node_idx = (len(self.nodes) % (i + 1)) - 1
-            lwt_load_executor.submit(self._lwt_load_run, self.nodes[node_idx], need_to_stop, tolerate_unavailable, lwt_user, lwt_pass)
+            lwt_load_executor.submit(
+                self._lwt_load_run, self.nodes[node_idx], need_to_stop, tolerate_unavailable, lwt_user, lwt_pass)
             ddl_executor.submit(self._ddl_run, self.nodes[node_idx], need_to_stop, ddl_fn, ddl_user, ddl_pass)
 
         # Test duration is restricted to 60 seconds by default
@@ -206,7 +208,6 @@ class LwtDestructiveDDLTest(Tester):
 
         self._case_template(session, drop_create_table_fn)
 
-
     def test_drop_keyspace(self):
         '''
         Tests that Scylla doesn't crash when there is concurrent LWT load in one
@@ -235,7 +236,6 @@ class LwtDestructiveDDLTest(Tester):
             session.execute(create_test_table_stmt)
 
         self._case_template(session, drop_create_ks_fn)
-
 
     def test_rename_column(self):
         '''
@@ -316,7 +316,7 @@ class LwtDestructiveDDLTest(Tester):
                 AND superuser=false AND login=true''')
 
         revoke_permissions_stmt = session.prepare(f'REVOKE ALL ON TABLE test FROM {lwt_user}')
-        grant_permissions_stmt  = session.prepare(f'GRANT ALL ON TABLE test TO {lwt_user}')
+        grant_permissions_stmt = session.prepare(f'GRANT ALL ON TABLE test TO {lwt_user}')
 
         def revoke_permissions_fn(session):
             '''REVOKE + GRANT PERMISSION ON TABLE'''
@@ -324,5 +324,5 @@ class LwtDestructiveDDLTest(Tester):
             session.execute(grant_permissions_stmt)
 
         self._case_template(session, revoke_permissions_fn,
-            ddl_user=ddl_user, ddl_pass=ddl_pass,
-            lwt_user=lwt_user, lwt_pass=lwt_pass)
+                            ddl_user=ddl_user, ddl_pass=ddl_pass,
+                            lwt_user=lwt_user, lwt_pass=lwt_pass)

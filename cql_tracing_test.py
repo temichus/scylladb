@@ -14,6 +14,7 @@ import time
 import re
 from nose.plugins.attrib import attr
 
+
 @attr('next-gating')
 @attr('dtest-debug')
 @attr('dtest-full')
@@ -64,7 +65,8 @@ class TestCqlTracing(Tester):
         out, err = node1.run_cqlsh('TRACING ON', return_output=True, cqlsh_options=['--no-color'])
         self.assertIn('Tracing is enabled', out)
 
-        out, err = node1.run_cqlsh('TRACING ON; SELECT * from ks.users', return_output=True, cqlsh_options=['--no-color'])
+        out, err = node1.run_cqlsh('TRACING ON; SELECT * from ks.users',
+                                   return_output=True, cqlsh_options=['--no-color'])
         self.assertIn('Tracing session: ', out)
         self.assertIn('Request complete ', out)
 
@@ -114,7 +116,8 @@ class TestCqlTracing(Tester):
         node1, node2 = self.cluster.nodelist()
 
         # FIXME: remove when https://github.com/scylladb/scylla/issues/5697 issue is fixed
-        self.ignore_log_patterns += [r'seastar - Timer callback failed: seastar::metrics::double_registration \(registering metrics twice for metrics: storage_proxy_coordinator_background_replica_writes_failed_remote_node\)']
+        self.ignore_log_patterns += [
+            r'seastar - Timer callback failed: seastar::metrics::double_registration \(registering metrics twice for metrics: storage_proxy_coordinator_background_replica_writes_failed_remote_node\)']
 
         debug("Enable tracing for all CQL requests on node1 and node2...")
         node1.nodetool('settraceprobability 1.0')
@@ -140,7 +143,8 @@ class TestCqlTracing(Tester):
         pattern = re.compile("INSERT INTO")
         all_tracing_sessions_query = SimpleStatement('SELECT parameters FROM system_traces.sessions')
         rows = list(session.execute(all_tracing_sessions_query))
-        count = functools.reduce(lambda x, y: x + y, map(lambda row: self.grep_one_line(row[0]['query'], pattern), rows))
+        count = functools.reduce(
+            lambda x, y: x + y, map(lambda row: self.grep_one_line(row[0]['query'], pattern), rows))
         self.assertEqual(count, num_keys)
 
         debug("Start node1...")
@@ -155,7 +159,8 @@ class TestCqlTracing(Tester):
             try:
                 q.put(True)
                 debug("Populating a table with {} more keys...".format(additional_keys))
-                insert_c1c2_no_prepared(session, keys=range(num_keys, num_keys + additional_keys), consistency=ConsistencyLevel.ONE)
+                insert_c1c2_no_prepared(session, keys=range(num_keys, num_keys +
+                                                            additional_keys), consistency=ConsistencyLevel.ONE)
                 debug("insertion of {} keys is done".format(additional_keys))
             except:
                 debug("insertions was killed")
@@ -192,7 +197,8 @@ class TestCqlTracing(Tester):
         node1, node2 = self.cluster.nodelist()
 
         # FIXME: remove when https://github.com/scylladb/scylla/issues/5697 issue is fixed
-        self.ignore_log_patterns += [r'seastar - Timer callback failed: seastar::metrics::double_registration \(registering metrics twice for metrics: storage_proxy_coordinator_background_replica_writes_failed_remote_node\)']
+        self.ignore_log_patterns += [
+            r'seastar - Timer callback failed: seastar::metrics::double_registration \(registering metrics twice for metrics: storage_proxy_coordinator_background_replica_writes_failed_remote_node\)']
 
         debug("Enable tracing for all CQL requests on node1...")
         node1.nodetool('settraceprobability 1.0')
@@ -312,4 +318,4 @@ class TestCqlTracing(Tester):
 #        self.assertIn("Default constructor for Tracing class "
 #                      "'org.apache.cassandra.tracing.TracingImpl' is inaccessible.",
 #                      err)
-#----------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------

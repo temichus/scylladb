@@ -12,7 +12,6 @@ from tools import since, require
 from nose.plugins.attrib import attr
 
 
-
 def build_doc_context(tester, test_name, prepare=True, connection=None, nodes=None):
     """
     Takes an instance of dtest.Tester (or a subclass), completes some basic setup, and returns a
@@ -32,7 +31,8 @@ def build_doc_context(tester, test_name, prepare=True, connection=None, nodes=No
         tester.cluster.populate(1).start()
         nodes = tester.cluster.nodelist()
         connection = tester.patient_cql_connection(nodes[0])
-        connection.execute("CREATE KEYSPACE {} WITH REPLICATION = {{'class': 'SimpleStrategy', 'replication_factor': 1}};".format(default_ks_name))
+        connection.execute(
+            "CREATE KEYSPACE {} WITH REPLICATION = {{'class': 'SimpleStrategy', 'replication_factor': 1}};".format(default_ks_name))
         connection.execute("USE {}".format(default_ks_name))
     else:
         if not (connection and nodes):
@@ -70,7 +70,8 @@ def build_doc_context(tester, test_name, prepare=True, connection=None, nodes=No
             port = nodes[0].network_interfaces['thrift'][1]
         args = [host, str(port)]
         sys.stdout.flush()
-        p = subprocess.Popen([cli] + args, env=env, stdin=subprocess.PIPE, stderr=subprocess.PIPE, stdout=subprocess.PIPE, universal_newlines=True)
+        p = subprocess.Popen([cli] + args, env=env, stdin=subprocess.PIPE, stderr=subprocess.PIPE,
+                             stdout=subprocess.PIPE, universal_newlines=True)
         p.stdin.write("USE {};".format(enabled_ks()))
         for cmd in cmds.split(';'):
             p.stdin.write(cmd + ';\n')
@@ -1248,6 +1249,7 @@ class FromJsonDeleteTests(Tester):
     """
     Tests using fromJson within DELETE statements.
     """
+
     def delete_using_pkey_json_test(self):
         """
         Schema setup:
@@ -1307,6 +1309,7 @@ class JsonFullRowInsertSelect(Tester):
     """
     Tests for creating full rows from json documents, selecting full rows back as json documents, and related functionality.
     """
+
     def simple_schema_test(self):
         """
         Create schema:

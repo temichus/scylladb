@@ -110,7 +110,8 @@ class DataDistributionTest(Tester):
         """
         keys = ["status", "address", "size", "dimension"]
         nodes_statuses = []
-        line_re = re.compile(r"(?P<status>[UND]{2}?)\s+(?P<address>[\d]{1,3}\.[\d]{1,3}\.[\d]{1,3}\.[\d]{1,3}?)\s+(?P<size>[\d]+\.[\d]+?)\s(?P<dimension>[KMGT]B)")
+        line_re = re.compile(
+            r"(?P<status>[UND]{2}?)\s+(?P<address>[\d]{1,3}\.[\d]{1,3}\.[\d]{1,3}\.[\d]{1,3}?)\s+(?P<size>[\d]+\.[\d]+?)\s(?P<dimension>[KMGT]B)")
         for line in lines:
             node_status = {}
             res = line_re.search(line)
@@ -145,7 +146,8 @@ class DataDistributionTest(Tester):
 
 
         """
-        size_re = re.compile(r"^(?P<size>[\d]+?)(?P<dimension>[KMGT]?)\s.*\/{ks}\/{cf}-[0-9a-f]*$".format(ks=self.ks, cf=self.cf))
+        size_re = re.compile(
+            r"^(?P<size>[\d]+?)(?P<dimension>[KMGT]?)\s.*\/{ks}\/{cf}-[0-9a-f]*$".format(ks=self.ks, cf=self.cf))
         node_size = []
         for node in self.cluster.nodelist():  # type: ScyllaNode
             data_dir = os.path.join(node.get_path(), "data", self.ks)

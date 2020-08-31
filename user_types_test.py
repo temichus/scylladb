@@ -35,6 +35,7 @@ def listify(item):
 
     return decoded
 
+
 @attr('dtest-full')
 class TestUserTypes(Tester):
 
@@ -95,7 +96,8 @@ class TestUserTypes(Tester):
         stmt = """
               DROP TYPE simple_type;
            """
-        assert_invalid(session, stmt, 'Cannot drop user type user_type_dropping.simple_type as it is still used by table user_type_dropping.simple_table')
+        assert_invalid(
+            session, stmt, 'Cannot drop user type user_type_dropping.simple_type as it is still used by table user_type_dropping.simple_table')
 
         # now that we've confirmed that a user type cannot be dropped while in use
         # let's remove the offending table
@@ -151,7 +153,8 @@ class TestUserTypes(Tester):
         stmt = """
               DROP TYPE simple_type;
            """
-        assert_invalid(session, stmt, 'Cannot drop user type nested_user_type_dropping.simple_type as it is still used by user type another_type')
+        assert_invalid(
+            session, stmt, 'Cannot drop user type nested_user_type_dropping.simple_type as it is still used by user type another_type')
 
         # drop the type that's impeding the drop, and then try again
         stmt = """
@@ -305,7 +308,8 @@ class TestUserTypes(Tester):
         primary_item, other_items, other_containers = rows[0]
         self.assertEqual(listify(primary_item), [['test', 'test2']])
         self.assertEqual(listify(other_items), [['stuff', ['one', 'two']]])
-        self.assertEqual(listify(other_containers), [[['stuff2', ['one_other', 'two_other']], ['stuff3', ['one_2_other', 'two_2_other']], ['stuff4', ['one_3_other', 'two_3_other']]]])
+        self.assertEqual(listify(other_containers), [[['stuff2', ['one_other', 'two_other']], [
+                         'stuff3', ['one_2_other', 'two_2_other']], ['stuff4', ['one_3_other', 'two_3_other']]]])
 
         #  Generate some repetitive data and check it for it's contents:
         for x in range(50):
@@ -328,7 +332,8 @@ class TestUserTypes(Tester):
             rows = list(session.execute(stmt))
 
             items = rows[0][0]
-            self.assertEqual(listify(items), [[['stuff3', ['one_2_other', 'two_2_other']], ['stuff4', ['one_3_other', 'two_3_other']]]])
+            self.assertEqual(listify(items), [[['stuff3', ['one_2_other', 'two_2_other']], [
+                             'stuff4', ['one_3_other', 'two_3_other']]]])
 
     def test_type_as_part_of_pkey(self):
         """Tests user types as part of a composite pkey"""
@@ -548,9 +553,11 @@ class TestUserTypes(Tester):
         user2_session = self.patient_cql_connection(node1, user='ks2_user', password='cassandra')
 
         # first make sure the users can't create types in each other's ks
-        self.assertUnauthorized(user1_session, "CREATE TYPE ks2.simple_type (user_number int, user_text text );", 'User ks1_user has no CREATE permission on <keyspace ks2> or any of its parents')
+        self.assertUnauthorized(user1_session, "CREATE TYPE ks2.simple_type (user_number int, user_text text );",
+                                'User ks1_user has no CREATE permission on <keyspace ks2> or any of its parents')
 
-        self.assertUnauthorized(user2_session, "CREATE TYPE ks1.simple_type (user_number int, user_text text );", 'User ks2_user has no CREATE permission on <keyspace ks1> or any of its parents')
+        self.assertUnauthorized(user2_session, "CREATE TYPE ks1.simple_type (user_number int, user_text text );",
+                                'User ks2_user has no CREATE permission on <keyspace ks1> or any of its parents')
 
         # now, actually create the types in the correct keyspaces
         user1_session.execute("CREATE TYPE ks1.simple_type (user_number int, user_text text );")
@@ -559,14 +566,18 @@ class TestUserTypes(Tester):
         # each user now has a type belonging to their granted keyspace
         # let's make sure they can't drop each other's types (for which they have no permissions)
 
-        self.assertUnauthorized(user1_session, "DROP TYPE ks2.simple_type;", 'User ks1_user has no DROP permission on <keyspace ks2> or any of its parents')
+        self.assertUnauthorized(user1_session, "DROP TYPE ks2.simple_type;",
+                                'User ks1_user has no DROP permission on <keyspace ks2> or any of its parents')
 
-        self.assertUnauthorized(user2_session, "DROP TYPE ks1.simple_type;", 'User ks2_user has no DROP permission on <keyspace ks1> or any of its parents')
+        self.assertUnauthorized(user2_session, "DROP TYPE ks1.simple_type;",
+                                'User ks2_user has no DROP permission on <keyspace ks1> or any of its parents')
 
         # let's make sure they can't rename each other's types (for which they have no permissions)
-        self.assertUnauthorized(user1_session, "ALTER TYPE ks2.simple_type RENAME user_number TO user_num;", 'User ks1_user has no ALTER permission on <keyspace ks2> or any of its parents')
+        self.assertUnauthorized(user1_session, "ALTER TYPE ks2.simple_type RENAME user_number TO user_num;",
+                                'User ks1_user has no ALTER permission on <keyspace ks2> or any of its parents')
 
-        self.assertUnauthorized(user2_session, "ALTER TYPE ks1.simple_type RENAME user_number TO user_num;", 'User ks2_user has no ALTER permission on <keyspace ks1> or any of its parents')
+        self.assertUnauthorized(user2_session, "ALTER TYPE ks1.simple_type RENAME user_number TO user_num;",
+                                'User ks2_user has no ALTER permission on <keyspace ks1> or any of its parents')
 
         # rename the types using the correct user w/permissions to do so
         user1_session.execute("ALTER TYPE ks1.simple_type RENAME user_number TO user_num;")
@@ -1002,7 +1013,7 @@ class TestUserTypes(Tester):
         keyspace_name = 'abcinfo'
         self.create_ks(session, keyspace_name, 1)
 
-        debug('Create user_refs type' )
+        debug('Create user_refs type')
         session.execute('create type if not exists user_refs (id text, alt_name text, firstname text,'
                         'lastname text, email text)')
 
@@ -1132,7 +1143,7 @@ class TestUserTypes(Tester):
         keyspace_name = 'abcinfo'
         self.create_ks(session, keyspace_name, 1)
 
-        debug('Create user_refs type' )
+        debug('Create user_refs type')
         session.execute('create type if not exists user_refs (id text, alt_name text)')
 
         debug('Create obs_entity type')
@@ -1194,7 +1205,8 @@ class TestUserTypes(Tester):
 
         session.execute("INSERT INTO cf (pk, pn) VALUES (0, {country_code: 86, number: '123'})")
         session.execute("INSERT INTO cf2 (pk, pn) VALUES (0, {country_code: 87, number: '456'})")
-        session.execute("INSERT INTO cf3 (pk, pn) VALUES (0, [{country_code: 86, number: '123'}, {country_code: 88, number: '789'}])")
+        session.execute(
+            "INSERT INTO cf3 (pk, pn) VALUES (0, [{country_code: 86, number: '123'}, {country_code: 88, number: '789'}])")
 
         rows = list(session.execute("SELECT pn FROM cf WHERE pk=0"))
         self.assertEqual(listify(rows[0]), [[86, '123']])
@@ -1214,7 +1226,8 @@ class TestUserTypes(Tester):
 
         session.execute("INSERT INTO new_cf (pk, pn) VALUES (0, {country_code: '86', number: 123})")
         session.execute("INSERT INTO new_cf2 (pk, pn) VALUES (0, {country_code: '87', number: 456})")
-        session.execute("INSERT INTO new_cf3 (pk, pn) VALUES (0, [{country_code: '86', number: 123}, {country_code: '88', number: 789}])")
+        session.execute(
+            "INSERT INTO new_cf3 (pk, pn) VALUES (0, [{country_code: '86', number: 123}, {country_code: '88', number: 789}])")
 
         rows = list(session.execute("SELECT pn FROM new_cf WHERE pk=0"))
         self.assertEqual(listify(rows[0]), [['86', 123]])

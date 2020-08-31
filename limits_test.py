@@ -33,6 +33,7 @@ MAX_CELLS = 16777216
 #MAX_CELLS_BATCH_SIZE = 100
 #MAX_CELLS = 1000
 
+
 @attr('dtest-full', 'single_node')
 class TestLimits(Tester):
 
@@ -144,7 +145,8 @@ class TestLimits(Tester):
             self._do_test_blob_size(session, node, size - 1)
 
     def _do_test_max_columns(self, session, count, expect_failure=False):
-        print("Testing maximum numbers of columns with count {}.{}".format(count, " Expected failure..." if expect_failure else ""))
+        print("Testing maximum numbers of columns with count {}.{}".format(
+            count, " Expected failure..." if expect_failure else ""))
 
         # we must count the primary key
         count -= 1

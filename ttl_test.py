@@ -228,7 +228,8 @@ class TestTTL(Tester):
                 rows = get_rows(self.session1)
             debug("Got {} after {} seconds".format(rows, delta))
             assert_rows(rows, expected_next)
-            assert ttl - 1 <= delta, "Expected delta time to be greater than {} seconds, but got {}".format(ttl - 1, delta)
+            assert ttl - \
+                1 <= delta, "Expected delta time to be greater than {} seconds, but got {}".format(ttl - 1, delta)
             return rows
 
         expected_next = [[1, 2, 2, 2]]
@@ -527,9 +528,11 @@ class TestTTL(Tester):
         start_time = time.time()
         boundary_ttl = MAX_DELETE_TIME - int(start_time)
         if DEBUG_WITH_BUG_TTL:
-            self.session1.execute("insert into session (id, usr) values ('def', 'def') USING TTL %s" % (boundary_ttl + 1))
+            self.session1.execute("insert into session (id, usr) values ('def', 'def') USING TTL %s" %
+                                  (boundary_ttl + 1))
         else:
-            assert_invalid(self.session1, "insert into session (id, usr) values ('def', 'def') USING TTL %s" % boundary_ttl + 1)
+            assert_invalid(self.session1, "insert into session (id, usr) values ('def', 'def') USING TTL %s" %
+                           boundary_ttl + 1)
         assert_row_count(self.session1, 'session', 1)
 
         start_time = time.time()
@@ -571,7 +574,7 @@ class TestTTL(Tester):
             debug('================  Run with {} ==============='.format(strategy))
             drop_table(session=self.session1, table_name=table_name, if_exists=True)
 
-            self.session1.execute('CREATE TABLE %s (key int, col1 int, col2 int, col3 int, PRIMARY KEY (key, col1)) ' \
+            self.session1.execute('CREATE TABLE %s (key int, col1 int, col2 int, col3 int, PRIMARY KEY (key, col1)) '
                                   'WITH compaction = {\'class\': \'%s\'}' % (table_name, strategy))
 
             # debug('Insert 20 rows with default TTL')
@@ -584,28 +587,28 @@ class TestTTL(Tester):
             # Update rows with key 5-10 with TTL 20
             ttl = ttls[1]
             steps = {
-                      ttl: {'expected_result': [[i] for i in range(1, 21) if i not in [5, 6, 7, 8, 10]],
+                ttl: {'expected_result': [[i] for i in range(1, 21) if i not in [5, 6, 7, 8, 10]],
                       'execute_time': self.execute_statement(action='INSERT', ttl=ttl, start_key_value=5, end_key_value=10, table_name=table_name)
-                     }
-                    }
+                      }
+            }
 
             # Update rows with key 9-13 with TTL 25
             ttl = ttls[2]
             steps[ttl] = {'expected_result': [[i] for i in range(1, 21) if i < 5 or i > 10],
                           'execute_time': self.execute_statement(action='INSERT', ttl=ttl, start_key_value=9, end_key_value=13, table_name=table_name)
-                         }
+                          }
 
             # Update rows with key 10-11 with TTL 13
             ttl = ttls[0]
             steps[ttl] = {'expected_result': [[i] for i in range(1, 21) if i != 10],
                           'execute_time': self.execute_statement(action='INSERT', ttl=ttl, start_key_value=10, end_key_value=11, table_name=table_name)
-                         }
+                          }
 
             # Update rows with key 11-15 with TTL 30
             ttl = ttls[3]
             steps[ttl] = {'expected_result': [[i] for i in range(1, 21) if i < 5 or i > 15],
                           'execute_time': self.execute_statement(action='INSERT', ttl=ttl, start_key_value=11, end_key_value=15, table_name=table_name)
-                         }
+                          }
 
             for ttl in ttls:
                 debug('*******Assert records with TTL {}'.format(ttl))

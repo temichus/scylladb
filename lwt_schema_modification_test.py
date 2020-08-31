@@ -1,11 +1,11 @@
-from   dtest             import  Tester, debug
-from   cassandra         import  ConsistencyLevel
-from   cassandra.query   import  BatchStatement
-from   random            import  randint
-from   time              import  sleep, time
-from   threading         import  Thread, Event
-from   unittest          import  skip
-from   nose.tools        import  eq_
+from dtest import Tester, debug
+from cassandra import ConsistencyLevel
+from cassandra.query import BatchStatement
+from random import randint
+from time import sleep, time
+from threading import Thread, Event
+from unittest import skip
+from nose.tools import eq_
 
 KEYSPACE = "lwt_load_ks"
 
@@ -16,6 +16,8 @@ KEYSPACE = "lwt_load_ks"
 #
 
 # TODO: fix for case of selecting only 1 column
+
+
 def listify(item):
     """
     listify a query result consisting of user types
@@ -36,13 +38,15 @@ def listify(item):
 
     return decoded
 
+
 class InsertRows():
     """Insert rows in table"""
-    def __init__(self, name = None, wait_for = None, node = 0, nrows = 1000, start_value = 0):
-        self.name        = name         # Name of this action
-        self.wait_for    = wait_for     # Start after dependency finished
-        self.node        = node         # Node for this action
-        self.nrows       = nrows        # How many rows to insert
+
+    def __init__(self, name=None, wait_for=None, node=0, nrows=1000, start_value=0):
+        self.name = name         # Name of this action
+        self.wait_for = wait_for     # Start after dependency finished
+        self.node = node         # Node for this action
+        self.nrows = nrows        # How many rows to insert
         self.start_value = start_value  # Starting value
 
     def run(self, session, stop, start_event, end_event):
@@ -50,7 +54,7 @@ class InsertRows():
             start_event.wait()   # Wait for other action to signal done
 
         session.execute("TRUNCATE TABLE table1")
-        insert_cql  = "INSERT INTO table1 (pk, v, int_col) VALUES (?, ?, ?)"
+        insert_cql = "INSERT INTO table1 (pk, v, int_col) VALUES (?, ?, ?)"
         insert_stmt = session.prepare(insert_cql)
         for i in range(self.start_value, self.start_value + self.nrows):
             session.execute(insert_stmt, (i, i, i))
@@ -58,24 +62,27 @@ class InsertRows():
         if end_event:
             end_event.set()
 
+
 class ReadRows():
     """Read a range of rows and see if they changed"""
-    def __init__(self, name = None, wait_for = None, end = None, node = 0,
-            loop_delay = 0, row_start = 0, row_end = 10):
-        self.name        = name         # Name of this action
-        self.wait_for    = wait_for     # Start after dependency finished
-        self.end         = end          # Stop after seconds
-        self.node        = node         # Node for this action
-        self.loop_delay  = loop_delay   # Sleep time between runs
-        self.row_start   = row_start    # Range start for rows selected
-        self.row_end     = row_end      # Range end   for rows selected
+
+    def __init__(self, name=None, wait_for=None, end=None, node=0,
+                 loop_delay=0, row_start=0, row_end=10):
+        self.name = name         # Name of this action
+        self.wait_for = wait_for     # Start after dependency finished
+        self.end = end          # Stop after seconds
+        self.node = node         # Node for this action
+        self.loop_delay = loop_delay   # Sleep time between runs
+        self.row_start = row_start    # Range start for rows selected
+        self.row_end = row_end      # Range end   for rows selected
 
     def run(self, session, stop, start_event, end_event):
         if start_event:
             start_event.wait()   # Wait for other action to signal done
 
-        select_cql    = "SELECT pk, v FROM table1 WHERE pk > %i AND pk < %i ALLOW FILTERING" % (self.row_start, self.row_end)
-        select_stmt   = session.prepare(select_cql)
+        select_cql = "SELECT pk, v FROM table1 WHERE pk > %i AND pk < %i ALLOW FILTERING" % (
+            self.row_start, self.row_end)
+        select_stmt = session.prepare(select_cql)
         select_stmt.consistency_level = ConsistencyLevel.ALL
         rows_expected = listify(sorted(session.execute(select_stmt).current_rows))
 
@@ -90,15 +97,16 @@ class ReadRows():
         if end_event:
             end_event.set()
 
+
 class LWTLoad():
-    def __init__(self, name = None, wait_for = None, end = None, node = 0,
-            row_start = 0, row_end = 10):
-        self.name        = name         # Name of this action
-        self.wait_for    = wait_for     # Start after dependency finished
-        self.end         = end          # Stop after seconds
-        self.node        = node         # Node for this action
-        self.row_start   = row_start    # Range start for rows modified
-        self.row_end     = row_end      # Range end   for rows modified
+    def __init__(self, name=None, wait_for=None, end=None, node=0,
+                 row_start=0, row_end=10):
+        self.name = name         # Name of this action
+        self.wait_for = wait_for     # Start after dependency finished
+        self.end = end          # Stop after seconds
+        self.node = node         # Node for this action
+        self.row_start = row_start    # Range start for rows modified
+        self.row_end = row_end      # Range end   for rows modified
 
     def run(self, session, stop, start_event, end_event):
         insert_stmt = session.prepare("INSERT INTO table1 (pk, v) VALUES (:pk, :v) IF NOT EXISTS")
@@ -121,16 +129,18 @@ class LWTLoad():
         if end_event:
             end_event.set()
 
+
 class LWTLoadCheck():
     """Perform LWT inserts and check results"""
-    def __init__(self, name = None, wait_for = None, end = None, node = 0,
-            row_start = 1000, row_end = 10000):
-        self.name        = name         # Name of this action
-        self.wait_for    = wait_for     # Start after dependency finished
-        self.end         = end          # Stop after seconds
-        self.node        = node         # Node for this action
-        self.row_start   = row_start    # Range start for rows modified
-        self.row_end     = row_end      # Range end   for rows modified
+
+    def __init__(self, name=None, wait_for=None, end=None, node=0,
+                 row_start=1000, row_end=10000):
+        self.name = name         # Name of this action
+        self.wait_for = wait_for     # Start after dependency finished
+        self.end = end          # Stop after seconds
+        self.node = node         # Node for this action
+        self.row_start = row_start    # Range start for rows modified
+        self.row_end = row_end      # Range end   for rows modified
 
     def run(self, session, stop, start_event, end_event):
         insert_stmt = session.prepare("INSERT INTO table1 (pk, v) VALUES (:pk, :v)  IF NOT EXISTS")
@@ -142,7 +152,7 @@ class LWTLoadCheck():
         if start_event:
             start_event.wait()   # Wait for other action to signal done
 
-        i     = self.row_start
+        i = self.row_start
         fails = 0
         while i <= self.row_end:
             if stop.is_set() or (end_time and time() > end_time):
@@ -150,7 +160,7 @@ class LWTLoadCheck():
                 break
             result = session.execute(insert_stmt, (i, i))
             if result.current_rows[0].applied:
-                i     += 1      # success
+                i += 1      # success
             else:
                 fails += 1      # retry
 
@@ -169,14 +179,16 @@ class LWTLoadCheck():
         if end_event:
             end_event.set()
 
+
 class DropAddColumn():
     """Alter table by removing and adding back again a column
      in a way that doesn"t render the queries incompatible"""
-    def __init__(self, name = None, wait_for = None, node = 0, inter_delay = 0):
-        self.name        = name        # Name of this action
-        self.wait_for    = wait_for    # Start after dependency finished
-        self.node        = node        # Node for this action
-        self.inter_delay = inter_delay # Sleep time between drop and add
+
+    def __init__(self, name=None, wait_for=None, node=0, inter_delay=0):
+        self.name = name        # Name of this action
+        self.wait_for = wait_for    # Start after dependency finished
+        self.node = node        # Node for this action
+        self.inter_delay = inter_delay  # Sleep time between drop and add
 
     def run(self, session, stop, start_event, end_event):
         if start_event:
@@ -195,13 +207,15 @@ class DropAddColumn():
         if end_event:
             end_event.set()
 
+
 class AlterColumnType():
     """Alter column v type while used in another query,
      in a way that doesn"t render the queries incompatible"""
-    def __init__(self, name = None, wait_for = None, node = 0):
-        self.name        = name         # Name of this action
-        self.wait_for    = wait_for     # Start after dependency finished
-        self.node        = node         # Node for this action
+
+    def __init__(self, name=None, wait_for=None, node=0):
+        self.name = name         # Name of this action
+        self.wait_for = wait_for     # Start after dependency finished
+        self.node = node         # Node for this action
 
     def run(self, session, stop, start_event, end_event):
         if start_event:
@@ -213,21 +227,23 @@ class AlterColumnType():
         if end_event:
             end_event.set()
 
+
 class DeleteRows():
     """Delete rows from table"""
-    def __init__(self, name = None, wait_for = None, node = 0,
-            row_start = 11, row_end = 1000, lwt = True):
+
+    def __init__(self, name=None, wait_for=None, node=0,
+                 row_start=11, row_end=1000, lwt=True):
         """Params
            row_start: range start
            row_end:   range end
            lwt:       enable LWT
         """
-        self.name        = name         # Name of this action
-        self.wait_for    = wait_for     # Start after dependency finished
-        self.node        = node         # Node for this action
-        self.row_start   = row_start    # Range start of rows deleted
-        self.row_end     = row_end      # Range end   of rows deleted
-        self.lwt         = "IF EXISTS" if lwt else ""  # LWT condition
+        self.name = name         # Name of this action
+        self.wait_for = wait_for     # Start after dependency finished
+        self.node = node         # Node for this action
+        self.row_start = row_start    # Range start of rows deleted
+        self.row_end = row_end      # Range end   of rows deleted
+        self.lwt = "IF EXISTS" if lwt else ""  # LWT condition
 
     def run(self, session, stop, start_event, end_event):
         if start_event:
@@ -245,14 +261,16 @@ class DeleteRows():
         if end_event:
             end_event.set()
 
+
 class Truncate():
     """Truncate table
        NOTE: should be the only operation running
     """
-    def __init__(self, name = None, wait_for = None, node = 0):
-        self.name        = name         # Name of this action
-        self.wait_for    = wait_for     # Start after dependency finished
-        self.node        = node         # Node for this action
+
+    def __init__(self, name=None, wait_for=None, node=0):
+        self.name = name         # Name of this action
+        self.wait_for = wait_for     # Start after dependency finished
+        self.node = node         # Node for this action
 
     def run(self, session, stop, start_event, end_event):
         if start_event:
@@ -263,25 +281,27 @@ class Truncate():
         if end_event:
             end_event.set()
 
+
 class BatchInserts():
     """Batch reads"""
-    def __init__(self, name = None, wait_for = None, node = 0, loops = 100,
-            row_start = 0, row_end = 10, lwt = True, loop_delay = .5):
-        self.name        = name         # Name of this action
-        self.wait_for    = wait_for     # Start after dependency finished
-        self.node        = node         # Node for this action
-        self.loops       = loops        # How many loops
-        self.row_start   = row_start    # Range start of rows deleted
-        self.row_end     = row_end      # Range end   of rows deleted
-        self.loop_delay  = loop_delay   # Sleep time between loops
+
+    def __init__(self, name=None, wait_for=None, node=0, loops=100,
+                 row_start=0, row_end=10, lwt=True, loop_delay=.5):
+        self.name = name         # Name of this action
+        self.wait_for = wait_for     # Start after dependency finished
+        self.node = node         # Node for this action
+        self.loops = loops        # How many loops
+        self.row_start = row_start    # Range start of rows deleted
+        self.row_end = row_end      # Range end   of rows deleted
+        self.loop_delay = loop_delay   # Sleep time between loops
 
     def run(self, session, stop, start_event, end_event):
         if start_event:
             start_event.wait()   # Wait for other action to signal done
 
         for _ in range(self.loops):
-            batch       = BatchStatement()
-            insert_cql  = "INSERT INTO table1 (pk, v, int_col) VALUES (?, ?, ?)"
+            batch = BatchStatement()
+            insert_cql = "INSERT INTO table1 (pk, v, int_col) VALUES (?, ?, ?)"
             insert_stmt = session.prepare(insert_cql)
             for i in range(self.row_start, self.row_end):
                 session.execute(insert_stmt, (i, i, i))
@@ -293,13 +313,15 @@ class BatchInserts():
         if end_event:
             end_event.set()
 
+
 class IndexDropAdd():
     """Drop an existing index and add it again"""
-    def __init__(self, name = None, wait_for = None, node = 0, inter_delay = 0):
-        self.name        = name         # Name of this action
-        self.wait_for    = wait_for     # Start after dependency finished
-        self.node        = node         # Node for this action
-        self.inter_delay = inter_delay # Sleep time between drop and add
+
+    def __init__(self, name=None, wait_for=None, node=0, inter_delay=0):
+        self.name = name         # Name of this action
+        self.wait_for = wait_for     # Start after dependency finished
+        self.node = node         # Node for this action
+        self.inter_delay = inter_delay  # Sleep time between drop and add
 
     def run(self, session, stop, start_event, end_event):
         if start_event:
@@ -312,15 +334,17 @@ class IndexDropAdd():
         if end_event:
             end_event.set()
 
+
 class MaterializedView():
     """Drop an existing index and add it again"""
-    def __init__(self, name = None, wait_for = None, node = 0, row_max = 10,
-            loop_delay = None):
-        self.name        = name         # Name of this action
-        self.wait_for    = wait_for     # Start after dependency finished
-        self.node        = node         # Node for this action
-        self.row_max     = row_max      # Read x rows from top
-        self.loop_delay  = loop_delay   # Delay across loops of reads
+
+    def __init__(self, name=None, wait_for=None, node=0, row_max=10,
+                 loop_delay=None):
+        self.name = name         # Name of this action
+        self.wait_for = wait_for     # Start after dependency finished
+        self.node = node         # Node for this action
+        self.row_max = row_max      # Read x rows from top
+        self.loop_delay = loop_delay   # Delay across loops of reads
 
     def run(self, session, stop, start_event, end_event):
         if start_event:
@@ -335,8 +359,8 @@ class MaterializedView():
                     WITH CLUSTERING ORDER BY (v ASC)
                 """)
 
-        select_cql    = "SELECT pk, v FROM table1_top_v_view LIMIT %i" % (self.row_max)
-        select_stmt   = session.prepare(select_cql)
+        select_cql = "SELECT pk, v FROM table1_top_v_view LIMIT %i" % (self.row_max)
+        select_stmt = session.prepare(select_cql)
         select_stmt.consistency_level = ConsistencyLevel.ALL
         rows_expected = listify(sorted(session.execute(select_stmt).current_rows))
 
@@ -351,19 +375,20 @@ class MaterializedView():
         if end_event:
             end_event.set()
 
+
 class LWTSchemaModificationTester(Tester):
     """
     Tests LWT schema change under load
     """
 
-    def _setup(self, nodes = 3, rf = 3, jvm_args = None):
+    def _setup(self, nodes=3, rf=3, jvm_args=None):
         """ Assorted actions in preparation for a test case"""
 
         # This error might happen on tearDown, ignore it for now
         self.ignore_log_patterns.extend(["exception during mutation write .*schema_mismatch_error"])
 
         cluster = self.cluster
-        cluster.populate(nodes).start(wait_for_binary_proto=True, jvm_args = jvm_args)
+        cluster.populate(nodes).start(wait_for_binary_proto=True, jvm_args=jvm_args)
         node = cluster.nodelist()[0]
 
         session = self.patient_cql_connection(node)
@@ -372,28 +397,27 @@ class LWTSchemaModificationTester(Tester):
 
     def _case_prologue(self, nrows):
         """Prepare for round"""
-        session     = self.patient_cql_connection(self.cluster.nodelist()[0])
+        session = self.patient_cql_connection(self.cluster.nodelist()[0])
         session.execute("USE " + KEYSPACE)
         session.execute("CREATE TABLE table1 (pk int PRIMARY KEY, v int, int_col int)")
         session.execute("CREATE INDEX table1_v_idx ON table1 (v)")
-        insert_cql  = "INSERT INTO table1 (pk, v, int_col) VALUES (?, ?, ?)"
+        insert_cql = "INSERT INTO table1 (pk, v, int_col) VALUES (?, ?, ?)"
         insert_stmt = session.prepare(insert_cql)
         for i in range(nrows):
             session.execute(insert_stmt, (i, i, i))
 
     def _action_thread(self, action, stop, start_event, end_event):
 
-        node     = self.cluster.nodelist()[action.node]
-        session  = self.patient_cql_connection(node, request_timeout=1000)
+        node = self.cluster.nodelist()[action.node]
+        session = self.patient_cql_connection(node, request_timeout=1000)
         session.execute("USE " + KEYSPACE)
 
         action.run(session, stop, start_event, end_event)  # Hand over control to action
 
-    def _test_combine(self, actions, smp = 4, nodes = 4, rf = 3,
-            nrows            =  1000,
-            loops            =     1,
-            run_s            =    10):
-
+    def _test_combine(self, actions, smp=4, nodes=4, rf=3,
+                      nrows=1000,
+                      loops=1,
+                      run_s=10):
         """Remove and add a column while table is queried
             actions:          iterable with action objects
             smp:              cores
@@ -401,8 +425,8 @@ class LWTSchemaModificationTester(Tester):
             run_s:            test run seconds
         """
 
-        cluster = self._setup(nodes = nodes, rf = rf, jvm_args=["--smp", str(smp)])
-        stop    = Event()
+        cluster = self._setup(nodes=nodes, rf=rf, jvm_args=["--smp", str(smp)])
+        stop = Event()
 
         for _ in range(loops):
             self._case_prologue(nrows)
@@ -415,7 +439,7 @@ class LWTSchemaModificationTester(Tester):
             action_deps = {action.wait_for for action in actions if action.wait_for}
             assert len(action_deps - action_names) == 0          # All dependent actions present and named
             # Each action signals when it's done, other actions can wait for that to start
-            action_done = {action.name : Event() for action in actions if action.name in action_deps}
+            action_done = {action.name: Event() for action in actions if action.name in action_deps}
             for action in actions:
                 start_event = action_done.get(action.wait_for, None)  # Action to wait for
                 end_event = action_done[action.name] if action.name and action.name in action_deps else None
@@ -439,17 +463,16 @@ class LWTSchemaModificationTester(Tester):
 
     @skip("issue #6151    alter column type vs reads")
     def table_alter_col_type_test(self):
-        self._test_combine([ReadRows(row_start = 0, row_end = 9),
+        self._test_combine([ReadRows(row_start=0, row_end=9),
                             AlterColumnType()],
-                           run_s = 10)
+                           run_s=10)
 
     @skip("issue #6174  add/remove column changing type vs LWT deletes")
     def table_alter_delete_test(self):
         """Table alter test"""
         self._test_combine([DropAddColumn(),
-                            DeleteRows(row_start = 1, row_end = 1000, lwt = True)],
-                           loops = 3, run_s = 10)
-
+                            DeleteRows(row_start=1, row_end=1000, lwt=True)],
+                           loops=3, run_s=10)
 
     @skip("issue #6185 alter columns in parallel bug")
     def schema_both_test(self):
@@ -457,49 +480,48 @@ class LWTSchemaModificationTester(Tester):
            change type on one and remove/add on the second one"""
         self._test_combine([DropAddColumn(),
                             AlterColumnType()],
-                           run_s = 10)
+                           run_s=10)
 
     @skip("issue #6151    alter column type vs reads")
     def all_test(self):
-        self._test_combine([ReadRows(row_start = 0, row_end = 99),   # NOTE: change to 9 for more fun
+        self._test_combine([ReadRows(row_start=0, row_end=99),   # NOTE: change to 9 for more fun
                             LWTLoad(),
-                            DropAddColumn(inter_delay = .2),
+                            DropAddColumn(inter_delay=.2),
                             AlterColumnType(),
-                            DeleteRows(row_start = 100, row_end = 1000, lwt = True)],
-                           loops = 2, run_s = 10)
+                            DeleteRows(row_start=100, row_end=1000, lwt=True)],
+                           loops=2, run_s=10)
 
     def lwt_truncate_test(self):
-        self._test_combine([LWTLoad(end = 1),
-                            Truncate(name = "truncate"),
-                            InsertRows(name = "insert", wait_for = "truncate", start_value = 10000),
-                            LWTLoad(wait_for = "truncate", row_start = 100, row_end = 999),
-                            ReadRows(wait_for = "insert")],
-                           smp = 8, nodes = 8, loops = 1, run_s = 10)
+        self._test_combine([LWTLoad(end=1),
+                            Truncate(name="truncate"),
+                            InsertRows(name="insert", wait_for="truncate", start_value=10000),
+                            LWTLoad(wait_for="truncate", row_start=100, row_end=999),
+                            ReadRows(wait_for="insert")],
+                           smp=8, nodes=8, loops=1, run_s=10)
 
     def lwt_load_test(self):
-        self._test_combine([ReadRows(row_start = 0, row_end = 1000),
-                            LWTLoad(row_start = 1001, row_end = 9999)],
-                           smp = 8, nodes = 8, nrows = 10000, loops = 8,
-                           run_s = 30)
+        self._test_combine([ReadRows(row_start=0, row_end=1000),
+                            LWTLoad(row_start=1001, row_end=9999)],
+                           smp=8, nodes=8, nrows=10000, loops=8,
+                           run_s=30)
 
     def lwt_batch_insert_test(self):
-        self._test_combine([LWTLoad(end = 1),
-                            BatchInserts(node = 1)],
-                           smp = 8, nodes = 8, loops = 1, run_s = 10)
+        self._test_combine([LWTLoad(end=1),
+                            BatchInserts(node=1)],
+                           smp=8, nodes=8, loops=1, run_s=10)
 
     def index_drop_add_test(self):
-        self._test_combine([LWTLoad(row_start = 1001, row_end = 9999),
-                            ReadRows(row_end = 1000),
-                            IndexDropAdd(inter_delay = .5)],
-                           nrows = 10000, loops = 20, run_s = 10)
+        self._test_combine([LWTLoad(row_start=1001, row_end=9999),
+                            ReadRows(row_end=1000),
+                            IndexDropAdd(inter_delay=.5)],
+                           nrows=10000, loops=20, run_s=10)
 
     def materialized_view_test(self):
-        self._test_combine([LWTLoad(row_start = 1001, row_end = 9999),
-                            MaterializedView(row_max = 1000)],
-                           nrows = 10000, loops = 1, run_s = 10)
+        self._test_combine([LWTLoad(row_start=1001, row_end=9999),
+                            MaterializedView(row_max=1000)],
+                           nrows=10000, loops=1, run_s=10)
 
     def lwt_load_check_test(self):
-        self._test_combine([LWTLoad(row_start = 1, row_end = 99),
-                            LWTLoadCheck(row_start = 100, row_end = 99999999)],
-                           smp = 8, nodes = 8, nrows = 0, loops = 1, run_s = 30, rf = 3)
-
+        self._test_combine([LWTLoad(row_start=1, row_end=99),
+                            LWTLoadCheck(row_start=100, row_end=99999999)],
+                           smp=8, nodes=8, nrows=0, loops=1, run_s=30, rf=3)

@@ -122,7 +122,8 @@ class AlternatorTest(TesterAlternator):
         node2.decommission()
         debug('Decommission finished')
         alternator_consistent_stress.join()
-        alternator_non_consistent_stress = self.run_read_stress(table_name=TABLE_NAME, node=node1, consistent_read=False)
+        alternator_non_consistent_stress = self.run_read_stress(
+            table_name=TABLE_NAME, node=node1, consistent_read=False)
         debug(f'Start a second decommission during non-consistent alternator-load for: {node3.name}')
         node3.decommission()
         debug('Decommission finished')
@@ -203,7 +204,8 @@ class AlternatorTest(TesterAlternator):
         self.create_table(node=node1, schema=schemas.CONDITION_EXPRESSION_SCHEMA)
         debug("Writing Alternator items of the same partition key")
         pk_condition_value = random_string(length=DEFAULT_STRING_LENGTH)
-        items = [{'pk': pk_condition_value, 'c': Decimal(i), 'a': random_string(length=DEFAULT_STRING_LENGTH)} for i in range(12)]
+        items = [{'pk': pk_condition_value, 'c': Decimal(i), 'a': random_string(
+            length=DEFAULT_STRING_LENGTH)} for i in range(12)]
         table = self.batch_write_actions(table_name=TABLE_NAME, node=node1, new_items=items)
         debug("Writing an extra different partition key")
         with table.batch_writer() as batch:
@@ -227,7 +229,7 @@ class AlternatorTest(TesterAlternator):
         debug("Adding data for tables of all write-isolation types")
         conf_workloads = []
         for isolation in WriteIsolation:
-            table_name=f'{TABLE_NAME}_{isolation.value}'
+            table_name = f'{TABLE_NAME}_{isolation.value}'
             table = self.prefill_dynamodb_table(node=node1, table_name=table_name)
             set_write_isolation(table=table, isolation=isolation)
             conf_workloads.append(
@@ -294,7 +296,7 @@ class AlternatorTest(TesterAlternator):
         debug("Testing a query using filter expression")
         expected_items = [item for item in items if item[range_key_name] >= selected_range_value]
         diff = self.compare_table_data(table_name=TABLE_NAME, table_data=expected_items, node=dc2_node,
-                                FilterExpression=Attr(range_key_name).gte(selected_range_value))
+                                       FilterExpression=Attr(range_key_name).gte(selected_range_value))
         self.assertTrue(expr=not diff, msg=f"The following items differs:\n{pformat(diff)}")
 
     def test_update_condition_expression_and_write_isolation(self):
@@ -333,7 +335,7 @@ class AlternatorTest(TesterAlternator):
                  table_name=TABLE_NAME, nodes=[node1, dc2_node])
         msg_rmw_is_disabled = 'Read-modify-write operations are disabled'
         with self.assertRaisesRegexp(ClientError, msg_rmw_is_disabled):
-            res= dc2_table.update_item(**conditional_update_c_2)
+            res = dc2_table.update_item(**conditional_update_c_2)
             debug(res)
         set_write_isolation(table, WriteIsolation.ALWAYS_USE_LWT)
         wait_for(self.is_table_schema_synced, timeout=30, text='Waiting until table schema is updated',
@@ -625,7 +627,7 @@ class AlternatorTest(TesterAlternator):
         self.create_table(node=node1, table_name=shortest_table_name)
 
         middle_table_name = "".join(random.choices(valid_dynamodb_chars, k=(
-                SHORTEST_TABLE_SIZE + LONGEST_TABLE_SIZE) // 2))
+            SHORTEST_TABLE_SIZE + LONGEST_TABLE_SIZE) // 2))
         info(f"Creating new table with following name '{middle_table_name}' ('{len(middle_table_name)}' chars)")
         self.create_table(node=node1, table_name=middle_table_name)
 

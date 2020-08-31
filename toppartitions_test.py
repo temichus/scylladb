@@ -141,7 +141,8 @@ class TestTopPartitions(Tester):
         self.cluster.populate([1]).start()
         node = self.cluster.nodelist()[0]
 
-        query = 'CREATE TABLE IF NOT EXISTS {ks}.{cf} (key1 int, key2 int, ckey int, val text, PRIMARY KEY ((key1, key2), ckey));'.format(ks=ks, cf=cf)
+        query = 'CREATE TABLE IF NOT EXISTS {ks}.{cf} (key1 int, key2 int, ckey int, val text, PRIMARY KEY ((key1, key2), ckey));'.format(
+            ks=ks, cf=cf)
         session = self.patient_cql_connection(node)
         self.create_ks(session, ks, 1)
         session.execute(query)
@@ -228,9 +229,9 @@ class TestTopPartitions(Tester):
             raise exc
 
     def verify_error_message(self, details):
-            error_msg = "nodetool: toppartitions requires keyspace, column family name, and duration"
-            self.assertNotEqual(details.exit_status, 0)
-            self.assertIn(error_msg, details.stdout)
+        error_msg = "nodetool: toppartitions requires keyspace, column family name, and duration"
+        self.assertNotEqual(details.exit_status, 0)
+        self.assertIn(error_msg, details.stdout)
 
     def verify_empty_result(self, out):
         self.assertFalse(out['WRITES']['partitions'])

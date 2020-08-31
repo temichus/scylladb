@@ -98,10 +98,12 @@ def reset_environment_vars():
     os.environ.clear()
     os.environ.update(initial_environment)
 
+
 def log_message(msg):
     if CURRENT_TEST != "":
         msg = CURRENT_TEST + ' - ' + str(msg)
-    return msg;
+    return msg
+
 
 def warning(msg, add_timestamp=True):
     msg = log_message(msg)
@@ -118,11 +120,13 @@ def debug(msg, add_timestamp=True):
     if PRINT_DEBUG:
         print(msg)
 
+
 def info(msg, add_timestamp=True):
     msg = log_message(msg)
     LOG.info(msg)
     msg = '{0}{1}'.format('{} '.format(datetime.datetime.now()) if add_timestamp else '', msg)
     print(msg)
+
 
 def retry_till_success(fun, *args, **kwargs):
     timeout = kwargs.pop('timeout', 60)
@@ -310,6 +314,7 @@ class MultiProcessClusterIdAllocator(ClusterIdAllocator):
         with self._lock:
             self._id.put(id)
 
+
 class RandomClusterIdAllocator(ClusterIdAllocator):
     def __init__(self):
         self._range = list(range(1, 100))
@@ -356,8 +361,10 @@ class RandomClusterIdAllocator(ClusterIdAllocator):
         except OSError as e:
             warning("Could not remove link {}: {}".format(link, e))
 
+
 def parallel_tests():
     return NOSE_PROCESSES > 0
+
 
 debug("going to run tests {}".format("in parallel" if parallel_tests() else "sequentially"))
 
@@ -373,11 +380,15 @@ elif CLUSTER_ID_ALLOCATOR == 'single':
 else:
     raise AssertionError("Unsupported CLUSTER_ID_ALLOCATOR={}".format(CLUSTER_ID_ALLOCATOR))
 
+
 def make_execution_profile(retry_policy=FlakyRetryPolicy(), consistency_level=ConsistencyLevel.ONE, **kwargs):
     return ExecutionProfile(retry_policy=retry_policy,
                             consistency_level=consistency_level,
                             **kwargs)
+
+
 PRESERVED_CLUSTER = None
+
 
 class Tester(TestCase):
     _multiprocess_can_split_ = True
@@ -405,7 +416,7 @@ class Tester(TestCase):
         global PRESERVED_CLUSTER
         if self._preserve_cluster and PRESERVED_CLUSTER is not None:
             self.cluster = PRESERVED_CLUSTER
-            self.test_path = os.path.join(PRESERVED_CLUSTER.get_path(),"..")
+            self.test_path = os.path.join(PRESERVED_CLUSTER.get_path(), "..")
             PRESERVED_CLUSTER = None
             return True
         return False
@@ -423,7 +434,8 @@ class Tester(TestCase):
         # ccm on cygwin needs absolute path to directory - it crosses from cygwin space into
         # regular Windows space on wmic calls which will otherwise break pathing
         if sys.platform == "cygwin":
-            self.test_path = subprocess.Popen(["cygpath", "-m", self.test_path], stdout=subprocess.PIPE, stderr=subprocess.STDOUT).communicate()[0].rstrip()
+            self.test_path = subprocess.Popen(["cygpath", "-m", self.test_path],
+                                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT).communicate()[0].rstrip()
         debug("cluster ccm directory: " + self.test_path)
         if not version:
             version = os.environ.get('CASSANDRA_VERSION')
@@ -480,7 +492,8 @@ class Tester(TestCase):
         self.var_trace(cluster)
 
     def _cleanup_cluster(self, remove=True):
-        Tester._cls_cleanup_cluster(self.cluster, self.test_path,self._preserve_cluster, self.cluster_id_allocator, remove)
+        Tester._cls_cleanup_cluster(self.cluster, self.test_path, self._preserve_cluster,
+                                    self.cluster_id_allocator, remove)
 
     def _cls_cleanup_cluster(cluster, test_path, preserve_cluster, cluster_id_allocator, remove=True):
         if SILENCE_DRIVER_ON_SHUTDOWN:
@@ -612,14 +625,14 @@ class Tester(TestCase):
                 # after a restart, /tmp will be emptied so we'll get an IOError when loading the old cluster here
                 pass
 
-        new_cluster=False
+        new_cluster = False
         if not hasattr(self, 'cluster') or self.cluster is None:
             if not self._reuse_preserved_cluster():
-                 new_cluster=True
-                 self.cluster = self._get_cluster(version=self.cassandra_version)
+                new_cluster = True
+                self.cluster = self._get_cluster(version=self.cassandra_version)
         self.addCleanup(self.cleanUpCluster)
 
-        annotate =  os.path.join(self.cluster.get_path(), 'current_test')
+        annotate = os.path.join(self.cluster.get_path(), 'current_test')
         with open(annotate, 'a') as f:
             f.write(self.id() + '\n')
 
@@ -749,7 +762,8 @@ class Tester(TestCase):
                             cmd = "mv {} {}".format(src, dst)
                             shutil.move(src, dst)
                         else:
-                            cmd = "{} < {} > {}.{} && rm {}".format(DTEST_CORE_COMPRESS_TOOL, src, dst, DTEST_CORE_COMPRESS_EXT, src)
+                            cmd = "{} < {} > {}.{} && rm {}".format(
+                                DTEST_CORE_COMPRESS_TOOL, src, dst, DTEST_CORE_COMPRESS_EXT, src)
                             subprocess.check_call(cmd, shell=True)
                     except Exception as e:
                         print("`{}` failed: {}. Keeping directory.".format(cmd, e))
@@ -914,10 +928,10 @@ class Tester(TestCase):
 
         if exclusive:
             node_ip = self.get_ip_from_node(node)
-            topology_event_refresh_window=-1
+            topology_event_refresh_window = -1
             load_balancing_policy = WhiteListRoundRobinPolicy([node_ip])
         else:
-            load_balancing_policy=default_lbp_factory()
+            load_balancing_policy = default_lbp_factory()
 
         session = self._create_session(node, keyspace, user, password, compression, protocol_version,
                                        port=port, ssl_opts=ssl_opts,
@@ -1000,9 +1014,11 @@ class Tester(TestCase):
                 additional_columns = "%s, %s %s" % (additional_columns, k, v)
 
         if additional_columns == "":
-            query = 'CREATE COLUMNFAMILY %s (key %s, c varchar, v varchar, PRIMARY KEY(key, c)) WITH comment=\'test cf\'' % (name, key_type)
+            query = 'CREATE COLUMNFAMILY %s (key %s, c varchar, v varchar, PRIMARY KEY(key, c)) WITH comment=\'test cf\'' % (
+                name, key_type)
         else:
-            query = 'CREATE COLUMNFAMILY %s (key %s PRIMARY KEY%s) WITH comment=\'test cf\'' % (name, key_type, additional_columns)
+            query = 'CREATE COLUMNFAMILY %s (key %s PRIMARY KEY%s) WITH comment=\'test cf\'' % (
+                name, key_type, additional_columns)
 
         if compression is not None:
             query = '%s AND compression = { \'sstable_compression\': \'%sCompressor\' }' % (query, compression)
@@ -1059,7 +1075,7 @@ class Tester(TestCase):
     def tearDownClass(cls):
         global PRESERVED_CLUSTER
         if PRESERVED_CLUSTER is not None:
-            cls._cls_cleanup_cluster(PRESERVED_CLUSTER, PRESERVED_CLUSTER.get_path(),False,cluster_id_allocator)
+            cls._cls_cleanup_cluster(PRESERVED_CLUSTER, PRESERVED_CLUSTER.get_path(), False, cluster_id_allocator)
             PRESERVED_CLUSTER = None
 
         reset_environment_vars()
@@ -1139,7 +1155,8 @@ class Tester(TestCase):
                 if len(errors):
                     found_errors.append((node.name, errors))
             if critical_errors:
-                raise AssertionError('Critical errors found: {}\nOther errors: {}'.format(critical_errors, found_errors))
+                raise AssertionError('Critical errors found: {}\nOther errors: {}'.format(
+                    critical_errors, found_errors))
             if found_errors:
                 raise AssertionError('Unexpected errors found: {}'.format(found_errors))
             found_cores, ignored_cores = self.find_cores()
@@ -1367,10 +1384,10 @@ class Tester(TestCase):
         """
         if isinstance(node, int):
             node = self.cluster.nodelist()[node]
-        node_ip  = self.get_ip_from_node(node)
+        node_ip = self.get_ip_from_node(node)
         debug(f'Enabling error injection "{name}" on node {node_ip}')
         response = requests.post(f"http://{node_ip}:10000/v2/error_injection/injection/{name}",
-                                 params={"one_shot" : one_shot})
+                                 params={"one_shot": one_shot})
         response.raise_for_status()
 
     def disable_error(self, name, node):
@@ -1383,7 +1400,7 @@ class Tester(TestCase):
         """
         if isinstance(node, int):
             node = self.cluster.nodelist()[node]
-        node_ip  = self.get_ip_from_node(node)
+        node_ip = self.get_ip_from_node(node)
         debug(f'Disabling error injection "{name}" on node {node_ip}')
         response = requests.delete(f"http://{node_ip}:10000/v2/error_injection/injection/{name}")
         response.raise_for_status()
@@ -1398,7 +1415,7 @@ class Tester(TestCase):
         """
         if isinstance(node, int):
             node = self.cluster.nodelist()[node]
-        node_ip  = self.get_ip_from_node(node)
+        node_ip = self.get_ip_from_node(node)
         response = requests.get(f"http://{node_ip}:10000/v2/error_injection/injection/{name}")
         response.raise_for_status()
 
@@ -1411,7 +1428,7 @@ class Tester(TestCase):
         """
         if isinstance(node, int):
             node = self.cluster.nodelist()[node]
-        node_ip  = self.get_ip_from_node(node)
+        node_ip = self.get_ip_from_node(node)
         response = requests.get(f"http://{node_ip}:10000/v2/error_injection/injection")
         response.raise_for_status()
         return response.json()
@@ -1438,7 +1455,7 @@ class Tester(TestCase):
         """
         if isinstance(node, int):
             node = self.cluster.nodelist()[node]
-        node_ip  = self.get_ip_from_node(node)
+        node_ip = self.get_ip_from_node(node)
         response = requests.delete(f"http://{node_ip}:10000/v2/error_injection/injection")
         response.raise_for_status()
 
@@ -1446,6 +1463,7 @@ class Tester(TestCase):
 @attr('reuse-cluster')
 class TesterReuseCluster(Tester):
     _multiprocess_can_split_ = not REUSE_CLUSTER
+
 
 class MultiError(Exception):
     """
@@ -1493,12 +1511,14 @@ def run_scenarios(scenarios, handler, deferred_exceptions=tuple()):
             handler(scenario)
         except deferred_exceptions as e:
             tracebacks.append(traceback.format_exc(sys.exc_info()))
-            errors.append(type(e)('encountered {} {} running scenario:\n  {}\n'.format(e.__class__.__name__, str(e), scenario)))
+            errors.append(type(e)('encountered {} {} running scenario:\n  {}\n'.format(
+                e.__class__.__name__, str(e), scenario)))
             debug("scenario {}/{} encountered a deferrable exception, continuing".format(i, len(scenarios)))
         except Exception as e:
             # catch-all for any exceptions not intended to be deferred
             tracebacks.append(traceback.format_exc(sys.exc_info()))
-            errors.append(type(e)('encountered {} {} running scenario:\n  {}\n'.format(e.__class__.__name__, str(e), scenario)))
+            errors.append(type(e)('encountered {} {} running scenario:\n  {}\n'.format(
+                e.__class__.__name__, str(e), scenario)))
             debug("scenario {}/{} encountered a non-deferrable exception, aborting".format(i, len(scenarios)))
             raise MultiError(errors, tracebacks)
 
@@ -1510,6 +1530,7 @@ class retrying(object):
     """
         Used as a decorator to retry function run that can possibly fail with allowed exceptions list
     """
+
     def __init__(self, num_attempts=3, sleep_time=1, allowed_exceptions=(Exception,), message="", tear_down_on_failure=False):
         self.num_attempts = num_attempts  # number of times to retry
         self.sleep_time = sleep_time  # number seconds to sleep between retries
@@ -1540,7 +1561,8 @@ class retrying(object):
                         args[0].tearDown()
                         args[0].setUp()
                         args[0].ignore_log_patterns = tmp_ignore_log_patterns
-                    debug("{} [{}/{}]: {}: will retry in {} second(s)".format(func.__name__, i+1, num_attempts, e, self.sleep_time))
+                    debug("{} [{}/{}]: {}: will retry in {} second(s)".format(func.__name__,
+                                                                              i+1, num_attempts, e, self.sleep_time))
                     time.sleep(self.sleep_time)
             if self.message:
                 debug("trying {} [last try] ({})".format(func.__name__, self.message))
@@ -1548,7 +1570,9 @@ class retrying(object):
 
         return inner
 
-retry_with_func_attempts = retrying(num_attempts=1, sleep_time=10) # Ignore decorator's num_attempts. Take num_attempts from function arguments
+
+# Ignore decorator's num_attempts. Take num_attempts from function arguments
+retry_with_func_attempts = retrying(num_attempts=1, sleep_time=10)
 flaky = retrying(num_attempts=5, sleep_time=3, message="Flaky test")
 flaky_with_tear_down = retrying(num_attempts=5, sleep_time=3, message="Flaky test", tear_down_on_failure=True)
 
@@ -1576,9 +1600,10 @@ class run_with_params(object):
             Giving 3 pastila to Nastya
         Decorator is inspired by Pytest's parameterize
     """
+
     def __init__(self, *args, **kwargs):
-         self.args = args
-         self.kwargs = kwargs
+        self.args = args
+        self.kwargs = kwargs
 
     def __call__(self, func):
         @wraps(func)
@@ -1592,5 +1617,3 @@ class run_with_params(object):
                 kwargs.update({k: v for k, v in arg})
                 func(*(args + self.args), **kwargs)
         return inner
-
-

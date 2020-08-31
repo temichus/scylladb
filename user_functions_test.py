@@ -130,10 +130,14 @@ class TestUserFunctions(Tester):
         session.execute("INSERT INTO tab (k, v) VALUES ('foo' , 1);")
 
         # create overloaded udfs
-        session.execute("CREATE FUNCTION overloaded(v varchar) called on null input RETURNS text LANGUAGE java AS 'return \"f1\";'")
-        session.execute("CREATE OR REPLACE FUNCTION overloaded(i int) called on null input RETURNS text LANGUAGE java AS 'return \"f2\";'")
-        session.execute("CREATE OR REPLACE FUNCTION overloaded(v1 text, v2 text) called on null input RETURNS text LANGUAGE java AS 'return \"f3\";'")
-        session.execute("CREATE OR REPLACE FUNCTION overloaded(v ascii) called on null input RETURNS text LANGUAGE java AS 'return \"f1\";'")
+        session.execute(
+            "CREATE FUNCTION overloaded(v varchar) called on null input RETURNS text LANGUAGE java AS 'return \"f1\";'")
+        session.execute(
+            "CREATE OR REPLACE FUNCTION overloaded(i int) called on null input RETURNS text LANGUAGE java AS 'return \"f2\";'")
+        session.execute(
+            "CREATE OR REPLACE FUNCTION overloaded(v1 text, v2 text) called on null input RETURNS text LANGUAGE java AS 'return \"f3\";'")
+        session.execute(
+            "CREATE OR REPLACE FUNCTION overloaded(v ascii) called on null input RETURNS text LANGUAGE java AS 'return \"f1\";'")
 
         # ensure that works with correct specificity
         assert_invalid(session, "SELECT v FROM tab WHERE k = overloaded('foo')")
@@ -163,17 +167,20 @@ class TestUserFunctions(Tester):
         for x in range(1, 4):
             session.execute("INSERT INTO nums (key, val) VALUES (%d, %d)" % (x, float(x)))
 
-        session.execute("CREATE FUNCTION x_sin(val double) called on null input returns double language javascript as 'Math.sin(val)'")
+        session.execute(
+            "CREATE FUNCTION x_sin(val double) called on null input returns double language javascript as 'Math.sin(val)'")
 
         assert_one(session, "SELECT key, val, x_sin(val) FROM nums where key = %d" % 1, [1, 1.0, math.sin(1.0)])
         assert_one(session, "SELECT key, val, x_sin(val) FROM nums where key = %d" % 2, [2, 2.0, math.sin(2.0)])
         assert_one(session, "SELECT key, val, x_sin(val) FROM nums where key = %d" % 3, [3, 3.0, math.sin(3.0)])
 
-        session.execute("create function y_sin(val double) called on null input returns double language javascript as 'Math.sin(val).toString()'")
+        session.execute(
+            "create function y_sin(val double) called on null input returns double language javascript as 'Math.sin(val).toString()'")
 
         assert_invalid(session, "select y_sin(val) from nums where key = 1", expected=FunctionFailure)
 
-        assert_invalid(session, "create function compilefail(key int) called on null input returns double language javascript as 'foo bar';")
+        assert_invalid(
+            session, "create function compilefail(key int) called on null input returns double language javascript as 'foo bar';")
 
         session.execute("create function plustwo(key int) called on null input returns double language javascript as 'key+2'")
 
@@ -198,13 +205,16 @@ class TestUserFunctions(Tester):
 
         for x in range(1, 4):
             session.execute("INSERT INTO nums (key, val) VALUES (%d, %d)" % (x, x))
-        session.execute("create function plus(key int, val int) called on null input returns int language java as 'return Integer.valueOf(key.intValue() + val.intValue());'")
-        session.execute("create function stri(key int) called on null input returns text language java as 'return key.toString();'")
+        session.execute(
+            "create function plus(key int, val int) called on null input returns int language java as 'return Integer.valueOf(key.intValue() + val.intValue());'")
+        session.execute(
+            "create function stri(key int) called on null input returns text language java as 'return key.toString();'")
         session.execute("create aggregate suma (int) sfunc plus stype int finalfunc stri initcond 10")
 
         assert_one(session, "select suma(val) from nums", ["16"])
 
-        session.execute("create function test(a int, b double) called on null input returns int language javascript as 'a + b;'")
+        session.execute(
+            "create function test(a int, b double) called on null input returns int language javascript as 'a + b;'")
         session.execute("create aggregate aggy(double) sfunc test stype int")
 
         assert_invalid(session, "create aggregate aggtwo(int) sfunc aggy stype int")
@@ -224,7 +234,8 @@ class TestUserFunctions(Tester):
         session.execute("insert into tab (key, udt) values (2, {a: 'deux', b:2});")
         session.execute("insert into tab (key, udt) values (3, {a: 'trois', b:3});")
 
-        session.execute("create function funk(udt test) called on null input returns int language java as 'return Integer.valueOf(udt.getInt(\"b\"));';")
+        session.execute(
+            "create function funk(udt test) called on null input returns int language java as 'return Integer.valueOf(udt.getInt(\"b\"));';")
 
         assert_one(session, "select sum(funk(udt)) from tab", [6])
 

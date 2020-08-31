@@ -18,6 +18,7 @@ from tools import require
 import scylla_tools
 import collections
 
+
 @attr('dtest-full')
 class TestUpdateClusterLayout(Tester):
 
@@ -236,7 +237,8 @@ class TestUpdateClusterLayout(Tester):
             # lets check that it detected there was another bootstrapping in progress
             try:
                 debug("Waiting until node3 notices other node was booting")
-                node3.watch_log_for("Checking bootstrapping/leaving/moving nodes: node={}.* sleep 1 second and check again".format(node2.address()), timeout=5)
+                node3.watch_log_for(
+                    "Checking bootstrapping/leaving/moving nodes: node={}.* sleep 1 second and check again".format(node2.address()), timeout=5)
                 debug('Node3 noticed other node was booting')
             except:
                 debug('Node3 did not notice other node was booting')
@@ -293,7 +295,7 @@ class TestUpdateClusterLayout(Tester):
 
         debug("Start node 4...")
         node4 = new_node(cluster)
-        node4.start(jvm_args=['--logger-log-level','stream_session=debug'], no_wait=True)
+        node4.start(jvm_args=['--logger-log-level', 'stream_session=debug'], no_wait=True)
         node4.watch_log_for("JOINING: Starting to bootstrap")
         node4.watch_log_for("Beginning stream session|sync data for keyspace=ks, status=started")
 
@@ -344,7 +346,7 @@ class TestUpdateClusterLayout(Tester):
             # creating an additional node without actually adding it to the cluster
             new_node = cluster.new_node(i, auto_bootstrap=True, add_node=False)
             debug("Start Node %d" % i)
-            new_node.start(jvm_args=['--logger-log-level','stream_session=debug'], no_wait=True)
+            new_node.start(jvm_args=['--logger-log-level', 'stream_session=debug'], no_wait=True)
             new_node.watch_log_for("JOINING: Starting to bootstrap")
             new_node.watch_log_for("Beginning stream session|sync data for keyspace=ks, status=started")
             debug("Stop Node %d" % i)
@@ -444,7 +446,7 @@ class TestUpdateClusterLayout(Tester):
             executor = ThreadPoolExecutor(max_workers=1)
 
             debug("Start Node %d" % i)
-            new_node.start(jvm_args=['--logger-log-level','stream_session=debug'], no_wait=True)
+            new_node.start(jvm_args=['--logger-log-level', 'stream_session=debug'], no_wait=True)
             new_node.watch_log_for("JOINING: Starting to bootstrap")
             t = executor.submit(run)
             new_node.watch_log_for("JOINING: Starting to bootstrap")
@@ -519,7 +521,7 @@ class TestUpdateClusterLayout(Tester):
         executor = ThreadPoolExecutor(max_workers=1)
 
         debug("Start Node")
-        a_new_node.start(jvm_args=['--logger-log-level','stream_session=debug'], no_wait=True)
+        a_new_node.start(jvm_args=['--logger-log-level', 'stream_session=debug'], no_wait=True)
         a_new_node.watch_log_for("JOINING: Starting to bootstrap")
         time.sleep(1)
         t = executor.submit(run)
@@ -560,7 +562,7 @@ class TestUpdateClusterLayout(Tester):
         insert_c1c2(session, keys=range(2000), consistency=consistency)
 
         node4 = new_node(cluster)
-        node4.start(jvm_args=['--logger-log-level','stream_session=debug'], no_wait=True)
+        node4.start(jvm_args=['--logger-log-level', 'stream_session=debug'], no_wait=True)
         node4.watch_log_for("JOINING: Starting to bootstrap")
         node4.watch_log_for("Beginning stream session|sync data for keyspace=ks, status=started")
         insert_c1c2(session, keys=range(2000, 4000), consistency=consistency)
@@ -603,20 +605,20 @@ class TestUpdateClusterLayout(Tester):
         insert_c1c2(session, keys=range(4000), consistency=consistency)
 
         def run():
-                query = SimpleStatement("DROP KEYSPACE ks")
-                result = list(session.execute(query))
+            query = SimpleStatement("DROP KEYSPACE ks")
+            result = list(session.execute(query))
 
-                self.create_ks(session, 'ks1', rf)
-                self.create_cf(session, 'cf1', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
-                for i in range(0, 100):
-                    insert = SimpleStatement("insert into ks1.cf1 (key,c1,c2) values ('%d','%d','%d')" % (i, i, i),
-                                             consistency_level=consistency)
-                    session.execute(insert)
+            self.create_ks(session, 'ks1', rf)
+            self.create_cf(session, 'cf1', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+            for i in range(0, 100):
+                insert = SimpleStatement("insert into ks1.cf1 (key,c1,c2) values ('%d','%d','%d')" % (i, i, i),
+                                         consistency_level=consistency)
+                session.execute(insert)
 
         executor = ThreadPoolExecutor(max_workers=1)
 
         node4 = new_node(cluster)
-        node4.start(jvm_args=['--logger-log-level','stream_session=debug'], no_wait=True)
+        node4.start(jvm_args=['--logger-log-level', 'stream_session=debug'], no_wait=True)
         node4.watch_log_for("JOINING: Starting to bootstrap")
         node4.watch_log_for("Beginning stream session|sync data for keyspace=ks, status=started")
         t = executor.submit(run)
@@ -661,7 +663,7 @@ class TestUpdateClusterLayout(Tester):
         executor = ThreadPoolExecutor(max_workers=1)
 
         node4 = new_node(cluster)
-        node4.start(jvm_args=['--logger-log-level','stream_session=debug'], no_wait=True)
+        node4.start(jvm_args=['--logger-log-level', 'stream_session=debug'], no_wait=True)
         node4.watch_log_for("JOINING: Starting to bootstrap")
         node4.watch_log_for("Beginning stream session|sync data for keyspace=ks, status=started")
         t = executor.submit(run)
@@ -762,7 +764,8 @@ class TestUpdateClusterLayout(Tester):
         self.assertEqual(len(result), 1000, "expected 1000 lines got %d" % len(result))
 
         for i in range(0, 1000, 100):
-            session_node1.execute("DELETE from ks.cf where key in (\'k%s\');" % "\',\'k".join(str(x) for x in range(i, i+100)))
+            session_node1.execute("DELETE from ks.cf where key in (\'k%s\');" %
+                                  "\',\'k".join(str(x) for x in range(i, i+100)))
 
         result = list(session_node1.execute("SELECT * FROM ks.cf limit 2000;"))
         self.assertEqual(len(result), 0, "expected 0 lines got %d %s" % (len(result), result))
@@ -795,7 +798,8 @@ class TestUpdateClusterLayout(Tester):
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfer with the test (this must be after the populate)
         cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
-        cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True,jvm_args=['--logger-log-level','stream_session=debug'])
+        cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True,
+                                  jvm_args=['--logger-log-level', 'stream_session=debug'])
         node1, node2, node3 = cluster.nodelist()
 
         session = self.patient_cql_connection(node1)
@@ -823,9 +827,9 @@ class TestUpdateClusterLayout(Tester):
         node2.stop(gently=False)
 
         # starting node2 - it should reconnect and run as is
-        debug("Start node2 ");
+        debug("Start node2 ")
         node2.start(wait_other_notice=False, wait_for_binary_proto=True)
-        session2= self.patient_cql_connection(node2)
+        session2 = self.patient_cql_connection(node2)
         result = list(session2.execute("SELECT * FROM ks.cf"))
         self.assertEqual(len(result), 10000, len(result))
 
@@ -845,7 +849,8 @@ class TestUpdateClusterLayout(Tester):
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfer with the test (this must be after the populate)
         cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
-        cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True,jvm_args=['--logger-log-level','stream_session=debug'])
+        cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True,
+                                  jvm_args=['--logger-log-level', 'stream_session=debug'])
         node1, node2, node3 = cluster.nodelist()
 
         session = self.patient_cql_connection(node1)
@@ -875,8 +880,8 @@ class TestUpdateClusterLayout(Tester):
 
         self.wait_for_nodes_status(node3, ['UN', 'UL', 'UN'])
 
-        node2.stop();
-        node2.start(no_wait=True);
+        node2.stop()
+        node2.start(no_wait=True)
 
         self.wait_for_nodes_status(node3, ['UN', 'UN', 'UN'])
 
@@ -910,7 +915,8 @@ class TestUpdateClusterLayout(Tester):
         m = re.findall('Datacenter: ([^\s]+)', out, re.MULTILINE)
         if m:
             res['Datacenter'] = m[0]
-        m = re.findall('^([UDNLJM]+)\s+([\d\.]+)\s+([^\s]+\s+[^\s]+)\s+([^\s]+)\s+([^\s]+)(?:\s[^\s]{2})?\s+([^\s]+)\s+([^\s]+)\s*', out, re.MULTILINE)
+        m = re.findall(
+            '^([UDNLJM]+)\s+([\d\.]+)\s+([^\s]+\s+[^\s]+)\s+([^\s]+)\s+([^\s]+)(?:\s[^\s]{2})?\s+([^\s]+)\s+([^\s]+)\s*', out, re.MULTILINE)
         res["nodes"] = [self._list2status(s) for s in m]
         return res
 
@@ -1127,13 +1133,12 @@ class TestUpdateClusterLayout(Tester):
 
         executor = ThreadPoolExecutor(max_workers=1)
 
-
         # Create table and insert data before bootstrapping of the new node
         if when == "before":
             t = executor.submit(run)
 
         node4 = new_node(cluster)
-        node4.start(jvm_args=['--logger-log-level','stream_session=debug'], no_wait=True)
+        node4.start(jvm_args=['--logger-log-level', 'stream_session=debug'], no_wait=True)
         node4.watch_log_for("JOINING: Starting to bootstrap")
         node4.watch_log_for("Beginning stream session|sync data for keyspace=ks, status=started")
         # Create table and insert data during bootstrapping of the new node
@@ -1221,7 +1226,7 @@ class TestUpdateClusterLayout(Tester):
         debug("Start node 4...")
         self.ignore_log_patterns += ['Startup failed']
         node4 = new_node(cluster)
-        node4.start(jvm_args=['--logger-log-level','stream_session=debug'], no_wait=True)
+        node4.start(jvm_args=['--logger-log-level', 'stream_session=debug'], no_wait=True)
         node4.watch_log_for("JOINING: Starting to bootstrap")
         node4.watch_log_for("Beginning stream session|sync data for keyspace=ks, status=started")
 
@@ -1447,7 +1452,6 @@ class TestUpdateClusterLayout(Tester):
         """
         cluster = self.cluster
 
-
         cluster.populate(3).start()
         nodes = cluster.nodelist()
 
@@ -1537,7 +1541,8 @@ class TestUpdateClusterLayout(Tester):
         """
         cluster = self.cluster
 
-        cluster.set_configuration_options(values={'enable_repair_based_node_ops': True, 'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.set_configuration_options(
+            values={'enable_repair_based_node_ops': True, 'hinted_handoff_enabled': False}, batch_commitlog=True)
         cluster.populate(2).start()
         node1, node2 = cluster.nodelist()
 
@@ -1547,14 +1552,16 @@ class TestUpdateClusterLayout(Tester):
         self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
         cs = ['0'] * 1000
         debug("Insert data on node 1 and node 2")
-        scylla_tools.insert_c1c2(session, keys=range(0, 1000), consistency=ConsistencyLevel.TWO, c1_values=cs, c2_values=cs)
+        scylla_tools.insert_c1c2(session, keys=range(
+            0, 1000), consistency=ConsistencyLevel.TWO, c1_values=cs, c2_values=cs)
 
         # Insert on node1 only
         node2.stop()
         session = self.patient_cql_connection(node1)
         cs = ['1'] * 500
         debug("Insert data on node 1")
-        scylla_tools.insert_c1c2(session, keys=range(0, 500), consistency=ConsistencyLevel.ONE, c1_values=cs, c2_values=cs)
+        scylla_tools.insert_c1c2(session, keys=range(
+            0, 500), consistency=ConsistencyLevel.ONE, c1_values=cs, c2_values=cs)
 
         # Insert on node2 only
         node2.start(wait_for_binary_proto=True)
@@ -1562,7 +1569,8 @@ class TestUpdateClusterLayout(Tester):
         session = self.patient_cql_connection(node2)
         cs = ['2'] * 500
         debug("Insert data on node 2")
-        scylla_tools.insert_c1c2(session, keys=range(500, 1000), consistency=ConsistencyLevel.ONE, c1_values=cs, c2_values=cs)
+        scylla_tools.insert_c1c2(session, keys=range(500, 1000),
+                                 consistency=ConsistencyLevel.ONE, c1_values=cs, c2_values=cs)
         node1.start(wait_for_binary_proto=True)
 
         # Bootstrap a new node
@@ -1578,13 +1586,16 @@ class TestUpdateClusterLayout(Tester):
 
         debug("Check rows on node 3 have latest copy")
         cs = ['1'] * 500
-        scylla_tools.query_c1c2_concurrent(session, keys=range(0, 500), consistency=ConsistencyLevel.ONE, c1_values=cs, c2_values=cs)
+        scylla_tools.query_c1c2_concurrent(session, keys=range(
+            0, 500), consistency=ConsistencyLevel.ONE, c1_values=cs, c2_values=cs)
         cs = ['2'] * 500
-        scylla_tools.query_c1c2_concurrent(session, keys=range(500, 1000), consistency=ConsistencyLevel.ONE, c1_values=cs, c2_values=cs)
+        scylla_tools.query_c1c2_concurrent(session, keys=range(
+            500, 1000), consistency=ConsistencyLevel.ONE, c1_values=cs, c2_values=cs)
 
     def verify_latest_copy_replace_node_test(self):
         cluster = self.cluster
-        cluster.set_configuration_options(values={'enable_repair_based_node_ops': True, 'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.set_configuration_options(
+            values={'enable_repair_based_node_ops': True, 'hinted_handoff_enabled': False}, batch_commitlog=True)
         debug("Starting cluster with 3 nodes.")
         cluster.populate(3).start(wait_for_binary_proto=True)
         node1, node2, node3 = cluster.nodelist()
@@ -1595,7 +1606,8 @@ class TestUpdateClusterLayout(Tester):
         self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
         cs = ['0'] * 1000
         debug("Insert data on node 1 and node 2")
-        scylla_tools.insert_c1c2(session, keys=range(0, 1000), consistency=ConsistencyLevel.THREE, c1_values=cs, c2_values=cs)
+        scylla_tools.insert_c1c2(session, keys=range(
+            0, 1000), consistency=ConsistencyLevel.THREE, c1_values=cs, c2_values=cs)
 
         # Stop node 3
         node3.stop()
@@ -1605,7 +1617,8 @@ class TestUpdateClusterLayout(Tester):
         session = self.patient_cql_connection(node1)
         cs = ['1'] * 500
         debug("Insert data on node 1")
-        scylla_tools.insert_c1c2(session, keys=range(0, 500), consistency=ConsistencyLevel.ONE, c1_values=cs, c2_values=cs)
+        scylla_tools.insert_c1c2(session, keys=range(
+            0, 500), consistency=ConsistencyLevel.ONE, c1_values=cs, c2_values=cs)
 
         # Insert on node2 only
         node2.start(wait_for_binary_proto=True)
@@ -1613,7 +1626,8 @@ class TestUpdateClusterLayout(Tester):
         session = self.patient_cql_connection(node2)
         cs = ['2'] * 500
         debug("Insert data on node 2")
-        scylla_tools.insert_c1c2(session, keys=range(500, 1000), consistency=ConsistencyLevel.ONE, c1_values=cs, c2_values=cs)
+        scylla_tools.insert_c1c2(session, keys=range(500, 1000),
+                                 consistency=ConsistencyLevel.ONE, c1_values=cs, c2_values=cs)
         node1.start(wait_for_binary_proto=True)
 
         # Replacing node3 with node4
@@ -1630,13 +1644,16 @@ class TestUpdateClusterLayout(Tester):
 
         debug("Check rows on node 4 have latest copy")
         cs = ['1'] * 500
-        scylla_tools.query_c1c2_concurrent(session, keys=range(0, 500), consistency=ConsistencyLevel.ONE, c1_values=cs, c2_values=cs)
+        scylla_tools.query_c1c2_concurrent(session, keys=range(
+            0, 500), consistency=ConsistencyLevel.ONE, c1_values=cs, c2_values=cs)
         cs = ['2'] * 500
-        scylla_tools.query_c1c2_concurrent(session, keys=range(500, 1000), consistency=ConsistencyLevel.ONE, c1_values=cs, c2_values=cs)
+        scylla_tools.query_c1c2_concurrent(session, keys=range(
+            500, 1000), consistency=ConsistencyLevel.ONE, c1_values=cs, c2_values=cs)
 
     def verify_latest_copy_rebuild_node_test(self):
         cluster = self.cluster
-        cluster.set_configuration_options(values={'enable_repair_based_node_ops': True, 'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.set_configuration_options(
+            values={'enable_repair_based_node_ops': True, 'hinted_handoff_enabled': False}, batch_commitlog=True)
         debug("Starting cluster with 3 nodes.")
         cluster.populate(3).start(wait_for_binary_proto=True)
         node1, node2, node3 = cluster.nodelist()
@@ -1647,7 +1664,8 @@ class TestUpdateClusterLayout(Tester):
         self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
         cs = ['0'] * 1000
         debug("Insert data on node 1 and node 2")
-        scylla_tools.insert_c1c2(session, keys=range(0, 1000), consistency=ConsistencyLevel.THREE, c1_values=cs, c2_values=cs)
+        scylla_tools.insert_c1c2(session, keys=range(
+            0, 1000), consistency=ConsistencyLevel.THREE, c1_values=cs, c2_values=cs)
 
         # Stop node 3
         node3.stop()
@@ -1657,7 +1675,8 @@ class TestUpdateClusterLayout(Tester):
         session = self.patient_cql_connection(node1)
         cs = ['1'] * 500
         debug("Insert data on node 1")
-        scylla_tools.insert_c1c2(session, keys=range(0, 500), consistency=ConsistencyLevel.ONE, c1_values=cs, c2_values=cs)
+        scylla_tools.insert_c1c2(session, keys=range(
+            0, 500), consistency=ConsistencyLevel.ONE, c1_values=cs, c2_values=cs)
 
         # Insert on node2 only
         node2.start(wait_for_binary_proto=True)
@@ -1665,7 +1684,8 @@ class TestUpdateClusterLayout(Tester):
         session = self.patient_cql_connection(node2)
         cs = ['2'] * 500
         debug("Insert data on node 2")
-        scylla_tools.insert_c1c2(session, keys=range(500, 1000), consistency=ConsistencyLevel.ONE, c1_values=cs, c2_values=cs)
+        scylla_tools.insert_c1c2(session, keys=range(500, 1000),
+                                 consistency=ConsistencyLevel.ONE, c1_values=cs, c2_values=cs)
         node1.start(wait_for_binary_proto=True)
 
         # Replacing node3 with node4
@@ -1682,13 +1702,16 @@ class TestUpdateClusterLayout(Tester):
 
         debug("Check rows on node 3 have latest copy")
         cs = ['1'] * 500
-        scylla_tools.query_c1c2_concurrent(session, keys=range(0, 500), consistency=ConsistencyLevel.ONE, c1_values=cs, c2_values=cs)
+        scylla_tools.query_c1c2_concurrent(session, keys=range(
+            0, 500), consistency=ConsistencyLevel.ONE, c1_values=cs, c2_values=cs)
         cs = ['2'] * 500
-        scylla_tools.query_c1c2_concurrent(session, keys=range(500, 1000), consistency=ConsistencyLevel.ONE, c1_values=cs, c2_values=cs)
+        scylla_tools.query_c1c2_concurrent(session, keys=range(
+            500, 1000), consistency=ConsistencyLevel.ONE, c1_values=cs, c2_values=cs)
 
     def verify_latest_copy_decommission_node_test(self):
         cluster = self.cluster
-        cluster.set_configuration_options(values={'enable_repair_based_node_ops': True, 'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.set_configuration_options(
+            values={'enable_repair_based_node_ops': True, 'hinted_handoff_enabled': False}, batch_commitlog=True)
         debug("Starting cluster with 3 nodes.")
         cluster.populate(3).start(wait_for_binary_proto=True)
         node1, node2, node3 = cluster.nodelist()
@@ -1699,7 +1722,8 @@ class TestUpdateClusterLayout(Tester):
         self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
         cs = ['0'] * 1000
         debug("Insert data on node 1 and node 2")
-        scylla_tools.insert_c1c2(session, keys=range(0, 1000), consistency=ConsistencyLevel.THREE, c1_values=cs, c2_values=cs)
+        scylla_tools.insert_c1c2(session, keys=range(
+            0, 1000), consistency=ConsistencyLevel.THREE, c1_values=cs, c2_values=cs)
 
         # Stop node 3
         node3.stop()
@@ -1709,7 +1733,8 @@ class TestUpdateClusterLayout(Tester):
         session = self.patient_cql_connection(node1)
         cs = ['1'] * 500
         debug("Insert data on node 1")
-        scylla_tools.insert_c1c2(session, keys=range(0, 500), consistency=ConsistencyLevel.ONE, c1_values=cs, c2_values=cs)
+        scylla_tools.insert_c1c2(session, keys=range(
+            0, 500), consistency=ConsistencyLevel.ONE, c1_values=cs, c2_values=cs)
 
         # Insert on node2 only
         node2.start(wait_for_binary_proto=True)
@@ -1717,7 +1742,8 @@ class TestUpdateClusterLayout(Tester):
         session = self.patient_cql_connection(node2)
         cs = ['2'] * 500
         debug("Insert data on node 2")
-        scylla_tools.insert_c1c2(session, keys=range(500, 1000), consistency=ConsistencyLevel.ONE, c1_values=cs, c2_values=cs)
+        scylla_tools.insert_c1c2(session, keys=range(500, 1000),
+                                 consistency=ConsistencyLevel.ONE, c1_values=cs, c2_values=cs)
         node1.start(wait_for_binary_proto=True)
 
         # Decommission node 1
@@ -1730,13 +1756,16 @@ class TestUpdateClusterLayout(Tester):
 
         debug("Check rows on node 2 and 3 have latest copy")
         cs = ['1'] * 500
-        scylla_tools.query_c1c2_concurrent(session, keys=range(0, 500), consistency=ConsistencyLevel.TWO, c1_values=cs, c2_values=cs)
+        scylla_tools.query_c1c2_concurrent(session, keys=range(
+            0, 500), consistency=ConsistencyLevel.TWO, c1_values=cs, c2_values=cs)
         cs = ['2'] * 500
-        scylla_tools.query_c1c2_concurrent(session, keys=range(500, 1000), consistency=ConsistencyLevel.TWO, c1_values=cs, c2_values=cs)
+        scylla_tools.query_c1c2_concurrent(session, keys=range(
+            500, 1000), consistency=ConsistencyLevel.TWO, c1_values=cs, c2_values=cs)
 
     def verify_latest_copy_removenode_node_test(self):
         cluster = self.cluster
-        cluster.set_configuration_options(values={'enable_repair_based_node_ops': True, 'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.set_configuration_options(
+            values={'enable_repair_based_node_ops': True, 'hinted_handoff_enabled': False}, batch_commitlog=True)
         debug("Starting cluster with 4 nodes.")
         cluster.populate(4).start(wait_for_binary_proto=True)
         node1, node2, node3, node4 = cluster.nodelist()
@@ -1747,14 +1776,16 @@ class TestUpdateClusterLayout(Tester):
         self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
         cs = ['0'] * 1000
         debug("Insert data on node 1, node 2, node 3 and node 4")
-        scylla_tools.insert_c1c2(session, keys=range(0, 1000), consistency=ConsistencyLevel.THREE, c1_values=cs, c2_values=cs)
+        scylla_tools.insert_c1c2(session, keys=range(
+            0, 1000), consistency=ConsistencyLevel.THREE, c1_values=cs, c2_values=cs)
 
         # Insert on node1, node2 and node3
         node4.stop()
         session = self.patient_cql_connection(node1)
         cs = ['1'] * 250
         debug("Insert data on node 1, node 2 and node 3")
-        scylla_tools.insert_c1c2(session, keys=range(0, 250), consistency=ConsistencyLevel.TWO, c1_values=cs, c2_values=cs)
+        scylla_tools.insert_c1c2(session, keys=range(
+            0, 250), consistency=ConsistencyLevel.TWO, c1_values=cs, c2_values=cs)
 
         # Insert on node1, node2 and node4
         node4.start(wait_for_binary_proto=True)
@@ -1762,7 +1793,8 @@ class TestUpdateClusterLayout(Tester):
         session = self.patient_cql_connection(node4)
         cs = ['2'] * 250
         debug("Insert data on node 1, node 2 and node 4")
-        scylla_tools.insert_c1c2(session, keys=range(250, 500), consistency=ConsistencyLevel.TWO, c1_values=cs, c2_values=cs)
+        scylla_tools.insert_c1c2(session, keys=range(
+            250, 500), consistency=ConsistencyLevel.TWO, c1_values=cs, c2_values=cs)
 
         # Insert on node1, node3 and node4
         node3.start(wait_for_binary_proto=True)
@@ -1770,7 +1802,8 @@ class TestUpdateClusterLayout(Tester):
         session = self.patient_cql_connection(node3)
         cs = ['3'] * 250
         debug("Insert data on node 1, node 3 and node 4")
-        scylla_tools.insert_c1c2(session, keys=range(500, 750), consistency=ConsistencyLevel.TWO, c1_values=cs, c2_values=cs)
+        scylla_tools.insert_c1c2(session, keys=range(
+            500, 750), consistency=ConsistencyLevel.TWO, c1_values=cs, c2_values=cs)
 
         # Insert on node2, node3 and node4
         node2.start(wait_for_binary_proto=True)
@@ -1778,7 +1811,8 @@ class TestUpdateClusterLayout(Tester):
         session = self.patient_cql_connection(node2)
         cs = ['4'] * 250
         debug("Insert data on node 2, node 3 and node 4")
-        scylla_tools.insert_c1c2(session, keys=range(750, 1000), consistency=ConsistencyLevel.TWO, c1_values=cs, c2_values=cs)
+        scylla_tools.insert_c1c2(session, keys=range(750, 1000),
+                                 consistency=ConsistencyLevel.TWO, c1_values=cs, c2_values=cs)
 
         hostid = node2.hostid()
         node2.stop()
@@ -1793,13 +1827,18 @@ class TestUpdateClusterLayout(Tester):
 
         debug("Check rows on node 1 and node 3 have latest copy")
         cs = ['1'] * 250
-        scylla_tools.query_c1c2_concurrent(session, keys=range(0, 250), consistency=ConsistencyLevel.TWO, c1_values=cs, c2_values=cs)
+        scylla_tools.query_c1c2_concurrent(session, keys=range(
+            0, 250), consistency=ConsistencyLevel.TWO, c1_values=cs, c2_values=cs)
         cs = ['2'] * 250
-        scylla_tools.query_c1c2_concurrent(session, keys=range(250, 500), consistency=ConsistencyLevel.TWO, c1_values=cs, c2_values=cs)
+        scylla_tools.query_c1c2_concurrent(session, keys=range(
+            250, 500), consistency=ConsistencyLevel.TWO, c1_values=cs, c2_values=cs)
         cs = ['3'] * 250
-        scylla_tools.query_c1c2_concurrent(session, keys=range(500, 750), consistency=ConsistencyLevel.TWO, c1_values=cs, c2_values=cs)
+        scylla_tools.query_c1c2_concurrent(session, keys=range(
+            500, 750), consistency=ConsistencyLevel.TWO, c1_values=cs, c2_values=cs)
         cs = ['4'] * 250
-        scylla_tools.query_c1c2_concurrent(session, keys=range(750, 1000), consistency=ConsistencyLevel.TWO, c1_values=cs, c2_values=cs)
+        scylla_tools.query_c1c2_concurrent(session, keys=range(
+            750, 1000), consistency=ConsistencyLevel.TWO, c1_values=cs, c2_values=cs)
+
 
 @attr('dtest-full', 'dtest-long', 'dtest-heavy')
 class TestLargeScaleCluster(Tester):
@@ -1823,7 +1862,7 @@ class TestLargeScaleCluster(Tester):
         debug("just before first insert")
         insert_c1c2(session, keys=range(starting_size * 100 + 1000), consistency=ConsistencyLevel.ONE)
 
-        query = SimpleStatement("SELECT key FROM ks.cf",fetch_size=100, consistency_level=consistency)
+        query = SimpleStatement("SELECT key FROM ks.cf", fetch_size=100, consistency_level=consistency)
         for i in range(starting_size + 1, node_count + 1):
             node_i = new_node(cluster)
             node_i.start(wait_for_binary_proto=True, wait_other_notice=True)

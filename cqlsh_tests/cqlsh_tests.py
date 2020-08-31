@@ -122,7 +122,8 @@ class TestCqlsh(Tester):
         session = self.patient_cql_connection(node)
 
         def verify_varcharmap(map_name, expected):
-            rows = list(session.execute(("SELECT %s FROM testks.varcharmaptable WHERE varcharkey= '᚛᚛ᚉᚑᚅᚔᚉᚉᚔᚋ ᚔᚈᚔ ᚍᚂᚐᚅᚑ ᚅᚔᚋᚌᚓᚅᚐ᚜';" % map_name)))
+            rows = list(session.execute(
+                ("SELECT %s FROM testks.varcharmaptable WHERE varcharkey= '᚛᚛ᚉᚑᚅᚔᚉᚉᚔᚋ ᚔᚈᚔ ᚍᚂᚐᚅᚑ ᚅᚔᚋᚌᚓᚅᚐ᚜';" % map_name)))
 
             got = {k: v for k, v in rows[0][0].items()}
             self.assertEqual(got, expected)
@@ -440,7 +441,8 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
         blobAsDouble(0x), blobAsFloat(0x), '', blobAsTimestamp(0x), blobAsUuid(0x), '',
         blobAsVarint(0x))""")
 
-        output, err = self.run_cqlsh(node1, "select intcol, bigintcol, varintcol from CASSANDRA_7196.has_all_types where num in (0, 1, 2, 3, 4)")
+        output, err = self.run_cqlsh(
+            node1, "select intcol, bigintcol, varintcol from CASSANDRA_7196.has_all_types where num in (0, 1, 2, 3, 4)")
         if common.is_win():
             output = output.replace('\r', '')
 
@@ -508,7 +510,8 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
             VALUES (62c36092-82a1-3a00-93d1-46196ee77204, {firstname: 'Marie-Claude', lastname: 'Josset'});
             """)
 
-        out, err = self.run_cqlsh(node1, "SELECT name.lastname FROM ks.users WHERE id=62c36092-82a1-3a00-93d1-46196ee77204")
+        out, err = self.run_cqlsh(
+            node1, "SELECT name.lastname FROM ks.users WHERE id=62c36092-82a1-3a00-93d1-46196ee77204")
         self.assertNotIn('list index out of range', err)
         # If this assertion fails check CASSANDRA-7891
 
@@ -627,19 +630,31 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
         self.execute(cql="USE test; DESCRIBE users2", expected_err="'users2' not found in keyspace 'test'")
 
         # Describe index
-        self.execute(cql='DESCRIBE INDEX test.myindex', expected_output=self.get_index_output('myindex', 'test', 'users', 'age'))
-        self.execute(cql='DESCRIBE INDEX test.test_col_idx', expected_output=self.get_index_output('test_col_idx', 'test', 'test', 'col'))
-        self.execute(cql='DESCRIBE INDEX test.test_val_idx', expected_output=self.get_index_output('test_val_idx', 'test', 'test', 'val'))
-        self.execute(cql='DESCRIBE test.myindex', expected_output=self.get_index_output('myindex', 'test', 'users', 'age'))
-        self.execute(cql='DESCRIBE test.test_col_idx', expected_output=self.get_index_output('test_col_idx', 'test', 'test', 'col'))
-        self.execute(cql='DESCRIBE test.test_val_idx', expected_output=self.get_index_output('test_val_idx', 'test', 'test', 'val'))
+        self.execute(cql='DESCRIBE INDEX test.myindex',
+                     expected_output=self.get_index_output('myindex', 'test', 'users', 'age'))
+        self.execute(cql='DESCRIBE INDEX test.test_col_idx',
+                     expected_output=self.get_index_output('test_col_idx', 'test', 'test', 'col'))
+        self.execute(cql='DESCRIBE INDEX test.test_val_idx',
+                     expected_output=self.get_index_output('test_val_idx', 'test', 'test', 'val'))
+        self.execute(cql='DESCRIBE test.myindex', expected_output=self.get_index_output(
+            'myindex', 'test', 'users', 'age'))
+        self.execute(cql='DESCRIBE test.test_col_idx', expected_output=self.get_index_output(
+            'test_col_idx', 'test', 'test', 'col'))
+        self.execute(cql='DESCRIBE test.test_val_idx', expected_output=self.get_index_output(
+            'test_val_idx', 'test', 'test', 'val'))
         self.execute(cql='DESCRIBE test.myindex2', expected_err="'myindex2' not found in keyspace 'test'")
-        self.execute(cql='USE test; DESCRIBE INDEX myindex', expected_output=self.get_index_output('myindex', 'test', 'users', 'age'))
-        self.execute(cql='USE test; DESCRIBE INDEX test_col_idx', expected_output=self.get_index_output('test_col_idx', 'test', 'test', 'col'))
-        self.execute(cql='USE test; DESCRIBE INDEX test_val_idx', expected_output=self.get_index_output('test_val_idx', 'test', 'test', 'val'))
-        self.execute(cql='USE test; DESCRIBE myindex', expected_output=self.get_index_output('myindex', 'test', 'users', 'age'))
-        self.execute(cql='USE test; DESCRIBE test_col_idx', expected_output=self.get_index_output('test_col_idx', 'test', 'test', 'col'))
-        self.execute(cql='USE test; DESCRIBE test_val_idx', expected_output=self.get_index_output('test_val_idx', 'test', 'test', 'val'))
+        self.execute(cql='USE test; DESCRIBE INDEX myindex',
+                     expected_output=self.get_index_output('myindex', 'test', 'users', 'age'))
+        self.execute(cql='USE test; DESCRIBE INDEX test_col_idx',
+                     expected_output=self.get_index_output('test_col_idx', 'test', 'test', 'col'))
+        self.execute(cql='USE test; DESCRIBE INDEX test_val_idx',
+                     expected_output=self.get_index_output('test_val_idx', 'test', 'test', 'val'))
+        self.execute(cql='USE test; DESCRIBE myindex',
+                     expected_output=self.get_index_output('myindex', 'test', 'users', 'age'))
+        self.execute(cql='USE test; DESCRIBE test_col_idx',
+                     expected_output=self.get_index_output('test_col_idx', 'test', 'test', 'col'))
+        self.execute(cql='USE test; DESCRIBE test_val_idx',
+                     expected_output=self.get_index_output('test_val_idx', 'test', 'test', 'val'))
         self.execute(cql='USE test; DESCRIBE myindex2', expected_err="'myindex2' not found in keyspace 'test'")
 
         # Drop table and recreate
@@ -651,19 +666,22 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
                 CREATE INDEX myindex ON test.users (age)
                 """)
         self.execute(cql="DESCRIBE test.users", expected_output=self.get_users_table_output())
-        self.execute(cql='DESCRIBE test.myindex', expected_output=self.get_index_output('myindex', 'test', 'users', 'age'))
+        self.execute(cql='DESCRIBE test.myindex', expected_output=self.get_index_output(
+            'myindex', 'test', 'users', 'age'))
 
         # Drop index and recreate
         self.execute(cql='DROP INDEX test.myindex')
         self.execute(cql='DESCRIBE test.myindex', expected_err="'myindex' not found in keyspace 'test'")
         self.execute(cql='CREATE INDEX myindex ON test.users (age)')
-        self.execute(cql='DESCRIBE INDEX test.myindex', expected_output=self.get_index_output('myindex', 'test', 'users', 'age'))
+        self.execute(cql='DESCRIBE INDEX test.myindex',
+                     expected_output=self.get_index_output('myindex', 'test', 'users', 'age'))
 
         # Alter table. Renaming indexed columns is not allowed, and since 3.0 neither is dropping them
         # Prior to 3.0 the index would have been automatically dropped, but now we need to explicitly do that.
         self.execute(cql='DROP INDEX test.test_val_idx')
         self.execute(cql='ALTER TABLE test.test DROP val')
-        self.execute(cql="DESCRIBE test.test", expected_output=self.get_test_table_output(has_val=False, has_val_idx=False))
+        self.execute(cql="DESCRIBE test.test", expected_output=self.get_test_table_output(
+            has_val=False, has_val_idx=False))
         self.execute(cql='DESCRIBE test.test_val_idx', expected_err="'test_val_idx' not found in keyspace 'test'")
         self.execute(cql='ALTER TABLE test.test ADD val text')
         self.execute(cql="DESCRIBE test.test", expected_output=self.get_test_table_output(has_val=True, has_val_idx=False))
@@ -723,14 +741,18 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
         output = self.execute(cql="DESCRIBE KEYSPACE test")
         self.assertIn("users_by_state", output)
 
-        self.execute(cql='DESCRIBE MATERIALIZED VIEW test.users_by_state', expected_output=self.get_users_by_state_mv_output())
+        self.execute(cql='DESCRIBE MATERIALIZED VIEW test.users_by_state',
+                     expected_output=self.get_users_by_state_mv_output())
         self.execute(cql='DESCRIBE test.users_by_state', expected_output=self.get_users_by_state_mv_output())
-        self.execute(cql='USE test; DESCRIBE MATERIALIZED VIEW test.users_by_state', expected_output=self.get_users_by_state_mv_output())
-        self.execute(cql='USE test; DESCRIBE MATERIALIZED VIEW users_by_state', expected_output=self.get_users_by_state_mv_output())
+        self.execute(cql='USE test; DESCRIBE MATERIALIZED VIEW test.users_by_state',
+                     expected_output=self.get_users_by_state_mv_output())
+        self.execute(cql='USE test; DESCRIBE MATERIALIZED VIEW users_by_state',
+                     expected_output=self.get_users_by_state_mv_output())
         self.execute(cql='USE test; DESCRIBE users_by_state', expected_output=self.get_users_by_state_mv_output())
 
         # test quotes
-        self.execute(cql='USE test; DESCRIBE MATERIALIZED VIEW "users_by_state"', expected_output=self.get_users_by_state_mv_output())
+        self.execute(cql='USE test; DESCRIBE MATERIALIZED VIEW "users_by_state"',
+                     expected_output=self.get_users_by_state_mv_output())
         self.execute(cql='USE test; DESCRIBE "users_by_state"', expected_output=self.get_users_by_state_mv_output())
 
     def get_keyspace_output(self):
@@ -1366,7 +1388,8 @@ Unlogged batch covering 2 partitions detected against table [client_warnings.tes
         self.assertEqual(0, len(err), err)
         debug(select_out)
 
-        out, err = self.run_cqlsh(node1, "DROP MATERIALIZED VIEW test.users_by_state; DESCRIBE KEYSPACE test; DESCRIBE table test.users")
+        out, err = self.run_cqlsh(
+            node1, "DROP MATERIALIZED VIEW test.users_by_state; DESCRIBE KEYSPACE test; DESCRIBE table test.users")
         self.assertEqual(0, len(err), err)
         self.assertNotIn("CREATE MATERIALIZED VIEW users_by_state", out)
 
@@ -1808,10 +1831,11 @@ class CqlshSmokeTest(Tester):
             " at <= '2017-01-01T00:00:00.000' AND at >= '2016-01-01T00:00:00.000';",
             return_output=True)
 
-        self.assertEqual(cqlsh_stderr[1], """<stdin>:2:InvalidRequest: Error from server: code=2200 [Invalid query] message="PRIMARY KEY column "b" cannot be restricted (preceding column "at" is restricted by a non-EQ relation)"\n""")
-
+        self.assertEqual(
+            cqlsh_stderr[1], """<stdin>:2:InvalidRequest: Error from server: code=2200 [Invalid query] message="PRIMARY KEY column "b" cannot be restricted (preceding column "at" is restricted by a non-EQ relation)"\n""")
 
     # @attr('next-gating') - https://github.com/scylladb/scylla/issues/5679
+
     def select_all_cl_quorum_test(self):
         """
          https://github.com/scylladb/scylla/issues/2593
@@ -1832,7 +1856,8 @@ class CqlshSmokeTest(Tester):
         ks1_stdout, ks1_stderr = self.node1.run_cqlsh('select * from keyspace1.standard1 LIMIT 10;', return_output=True)
         self.assertEqual(ks1_stderr, '')
         self.assertEqual(10, len([x for x in ks1_stdout.split("\n") if x and x.startswith(' 0x')]))
-        ks1_stdout, ks1_stderr = self.node1.run_cqlsh("alter KEYSPACE keyspace1 WITH replication = {'class': 'SimpleStrategy', 'replication_factor' : '4'};", return_output=True)
+        ks1_stdout, ks1_stderr = self.node1.run_cqlsh(
+            "alter KEYSPACE keyspace1 WITH replication = {'class': 'SimpleStrategy', 'replication_factor' : '4'};", return_output=True)
         self.assertEqual(ks1_stderr, '')
         self.assertEqual(ks1_stdout, '')
         ks1_stdout, ks1_stderr = self.node1.run_cqlsh('select * from keyspace1.standard1 LIMIT 10;', return_output=True)

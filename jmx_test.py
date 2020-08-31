@@ -110,9 +110,12 @@ class TestJMX(Tester):
         debug('Version {} typeName {}'.format(version, typeName))
 
         # TODO the keyspace and table name are capitalized in 2.0
-        memtable_size = make_mbean('metrics', type=typeName, keyspace='keyspace1', scope='standard1', name='AllMemtablesHeapSize')
-        disk_size = make_mbean('metrics', type=typeName, keyspace='keyspace1', scope='standard1', name='LiveDiskSpaceUsed')
-        sstable_count = make_mbean('metrics', type=typeName, keyspace='keyspace1', scope='standard1', name='LiveSSTableCount')
+        memtable_size = make_mbean('metrics', type=typeName, keyspace='keyspace1',
+                                   scope='standard1', name='AllMemtablesHeapSize')
+        disk_size = make_mbean('metrics', type=typeName, keyspace='keyspace1',
+                               scope='standard1', name='LiveDiskSpaceUsed')
+        sstable_count = make_mbean('metrics', type=typeName, keyspace='keyspace1',
+                                   scope='standard1', name='LiveSSTableCount')
 
         with JolokiaAgent(node1) as jmx:
             mem_size = jmx.read_attribute(memtable_size, "Value")

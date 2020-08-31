@@ -60,7 +60,8 @@ class DeleteInsertTest(Tester):
         # querying across all nodes:
 
         def run_query(connection):
-            query = SimpleStatement("SELECT * FROM delete_insert_search_test.test WHERE group = 'group2'", consistency_level=ConsistencyLevel.LOCAL_QUORUM)
+            query = SimpleStatement("SELECT * FROM delete_insert_search_test.test WHERE group = 'group2'",
+                                    consistency_level=ConsistencyLevel.LOCAL_QUORUM)
             rows = connection.execute(query)
             assert len(rows) == len(deleted)
 

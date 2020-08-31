@@ -52,7 +52,6 @@ class TestReplaceAddress(Tester):
         tokens_list = [token.split()[-1] for token in ring_lines]
         return sorted(tokens_list)
 
-
     def replace_shutdown_node_test(self):
         """
         @jira_ticket CASSANDRA-9871
@@ -90,7 +89,8 @@ class TestReplaceAddress(Tester):
         debug("Testing node stoppage (query should fail).")
         with self.assertRaises(NodeUnavailable):
             try:
-                query = SimpleStatement('select * from %s LIMIT 1' % stress_table, consistency_level=ConsistencyLevel.THREE)
+                query = SimpleStatement('select * from %s LIMIT 1' % stress_table,
+                                        consistency_level=ConsistencyLevel.THREE)
                 session.execute(query)
             except (Unavailable, ReadTimeout, ReadFailure):
                 raise NodeUnavailable("Node could not be queried.")
@@ -117,7 +117,8 @@ class TestReplaceAddress(Tester):
         # need to verify that the node doesn't start listening
         debug("Try to restart node 3 (should fail)")
         node3.start(no_wait=True)
-        checkCollision = node1.grep_log("between .*"+self.cluster.get_node_ip(3)+" and .*"+self.cluster.get_node_ip(4)+"; .*"+self.cluster.get_node_ip(4)+" is the new owner")
+        checkCollision = node1.grep_log("between .*"+self.cluster.get_node_ip(3)+" and .*" +
+                                        self.cluster.get_node_ip(4)+"; .*"+self.cluster.get_node_ip(4)+" is the new owner")
         debug(checkCollision)
         self.assertEqual(len(checkCollision), 1)
 
@@ -163,7 +164,7 @@ class TestReplaceAddress(Tester):
         debug("Starting node 4 to replace node 3")
         node4 = new_node(cluster, bootstrap=True, token=None, remote_debug_port='0', data_center=None)
         node4.start(replace_address=self.cluster.get_node_ip(3), no_wait=True,
-                    jvm_args=['--logger-log-level','stream_session=debug'])
+                    jvm_args=['--logger-log-level', 'stream_session=debug'])
 
         node4.watch_log_for("JOINING: Starting to bootstrap")
         node4.watch_log_for("Beginning stream session|sync data for keyspace=ks, status=started")
@@ -294,7 +295,8 @@ class TestReplaceAddress(Tester):
         # replace node 3 with node 4
         debug("Starting node 4 to replace node 3")
         node4 = new_node(cluster, bootstrap=True, token=None, remote_debug_port='0', data_center=None)
-        node4.start(jvm_args=["-Dcassandra.replace_address_first_boot="+self.cluster.get_node_ip(3)], wait_for_binary_proto=True)
+        node4.start(jvm_args=["-Dcassandra.replace_address_first_boot=" +
+                              self.cluster.get_node_ip(3)], wait_for_binary_proto=True)
 
         # query should work again
         debug("Verifying querying works again.")
@@ -306,7 +308,8 @@ class TestReplaceAddress(Tester):
         debug(len(moved_tokens_list))
         self.assertEqual(moved_tokens_list, tokens)
 
-        checkCollision = node1.grep_log("between .*"+self.cluster.get_node_ip(3)+" and .*"+self.cluster.get_node_ip(4)+"; .*"+self.cluster.get_node_ip(4)+" is the new owner")
+        checkCollision = node1.grep_log("between .*"+self.cluster.get_node_ip(3)+" and .*" +
+                                        self.cluster.get_node_ip(4)+"; .*"+self.cluster.get_node_ip(4)+" is the new owner")
         debug(checkCollision)
         self.assertEqual(len(checkCollision), 1)
 
@@ -527,7 +530,8 @@ class TestReplaceAddress(Tester):
         def workload_thread():
             debug('workload thread: start')
             # The added scylla 3.1 node can be up quicker than latest master, 140s workload is enough for scylla 3.1
-            node1.stress(['write', 'duration=320s', 'no-warmup', 'cl=QUORUM', '-rate', 'threads=1', '-schema', 'replication(factor=3)', '-pop', 'seq=1..1000'])
+            node1.stress(['write', 'duration=320s', 'no-warmup', 'cl=QUORUM', '-rate',
+                          'threads=1', '-schema', 'replication(factor=3)', '-pop', 'seq=1..1000'])
             debug('workload thread: completed')
             expect_msg = 'Expect workload continue running more than 30 seconds after new node is added'
             assert self.replace_done_time, expect_msg

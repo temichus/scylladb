@@ -23,34 +23,34 @@ BANS = 1000
 TOTAL_ACCOUNTS = BICS * BANS
 TOTAL_TRANSFERS = 50000            # Total transfers to test
 RF = 3
-NODES = min(8, psutil.cpu_count(logical=False)) #   More nodes make test much slower - TODO
+NODES = min(8, psutil.cpu_count(logical=False))  # More nodes make test much slower - TODO
 MAX_WORKERS = 200                  # Workers block so make more than cores/threads
-BALANCE_INIT_MIN =  1000
+BALANCE_INIT_MIN = 1000
 BALANCE_INIT_MAX = 10000
 LOCK_RETRY_SLEEP_INITIAL = .001   # Start sleeping for 10ms  (note it should grow over error duration)
-LOCK_RETRY_SLEEP_FACTOR =  .003   # sleep+factor*random, should be bigger than nemesis duration
+LOCK_RETRY_SLEEP_FACTOR = .003   # sleep+factor*random, should be bigger than nemesis duration
 LOCK_RETRY_SLEEP_MAX = 3          # Maximum sleep for lock retry
 MAX_LOCK_RETRIES = 20
 TRANSFER_MIN = 800
 TRANFER_MAX = 1200
 NEMESIS_ERROR_DURATION = .001     # How long an error injection on a given node lasts
 TRANSFER_CLIENT_TTL = 5           # Seconds duration of client set on transfer
-INSERT_BATCH_LEN = min(100, BANS) # How many accounts to create per batch (accounts divisible by x)
+INSERT_BATCH_LEN = min(100, BANS)  # How many accounts to create per batch (accounts divisible by x)
 assert BANS % INSERT_BATCH_LEN == 0 and INSERT_BATCH_LEN <= 100
 RECOVERY_LAST_RETRY_LIMIT = 10    # After workers done, retry recovery at most X times
 
 ERROR_INJECTIONS = [
-        # TODO: test with timeouts
-        #"paxos_prepare_timeout",
-        "paxos_error_before_save_promise",
-        "paxos_error_after_save_promise",
-        #"paxos_accept_proposal_timeout",
-        "paxos_error_before_save_proposal",
-        "paxos_error_after_save_proposal",
-        "paxos_error_before_learn",
-        #"paxos_state_learn_timeout",
-        "paxos_timeout_after_save_decision",
-        ]
+    # TODO: test with timeouts
+    # "paxos_prepare_timeout",
+    "paxos_error_before_save_promise",
+    "paxos_error_after_save_promise",
+    # "paxos_accept_proposal_timeout",
+    "paxos_error_before_save_proposal",
+    "paxos_error_after_save_proposal",
+    "paxos_error_before_learn",
+    # "paxos_state_learn_timeout",
+    "paxos_timeout_after_save_decision",
+]
 
 # NOTE: could use iso3166 but it would add a dependency, also 8 fit in 3 bits
 COUNTRY_CODE = ["AR", "BR", "FR", "GB", "IL", "PL", "RU", "US"]
@@ -232,22 +232,28 @@ DROP_KS = f"""
 DROP KEYSPACE IF EXISTS {KEYSPACE}
 """
 
+
 def t4(x):
     """Return trailing 4 chars of string representation"""
     return str(x)[-4:]
+
 
 def t5(x):
     """Return trailing 5 chars of string representation"""
     return str(x)[-5:]
 
 # Recipe from itertools docs, pick n at a time; warning: skips last if not even!
+
+
 def grouped(iterable, n):
     "s -> (s0,s1,s2,...sn-1), (sn,sn+1,sn+2,...s2n-1), (s2n,s2n+1,s2n+2,...s3n-1), ..."
     return zip(*[iter(iterable)]*n)
 
+
 class Account():
     """Representation of an account within a transfer"""
-    def __init__(self, bic_n = None, ban_n = None):
+
+    def __init__(self, bic_n=None, ban_n=None):
         """Initialize account from numeric bic and ban, using proper encoding"""
         self.bic = self.create_bic(bic_n if bic_n else randrange(0, BICS))
         self.ban = self.create_ban(ban_n if ban_n else randrange(0, BANS))
@@ -271,7 +277,7 @@ class Account():
     def create_bic(cls, bic_n):
         """Create deterministic/sequential Bank Identification Code"""
         # Bank code 4, country 2 (3b), (location 2, branch 3) (4b)
-        assert 0 <= (bic_n>>(4+3)) <= 0x1FFF
+        assert 0 <= (bic_n >> (4+3)) <= 0x1FFF
         return f"{bic_n>>(4+3):04x}-{COUNTRY_CODE[(bic_n>>4)&7]}-{bic_n&0xF:05x}"
 
     @classmethod
@@ -280,8 +286,9 @@ class Account():
         assert 0 <= ban_n <= 0xFFFFFFFFFFFF   # hex 12 chars, no negative sign
         return f"00000000-0000-0000-0000-{ban_n:012x}"
 
+
 class Transfer():
-    def __init__(self, id_int = None, id_uuid = None, set_amount=True):
+    def __init__(self, id_int=None, id_uuid=None, set_amount=True):
         if id_int:
             self.id = uuid.UUID(f"00000000-0000-0000-0000-{id_int:012x}")
         elif id_uuid:
@@ -307,6 +314,7 @@ class Transfer():
 
 class TrackingAccount():
     """Representation of an account for consistency checks (Oracle)"""
+
     def __init__(self, bic, ban, balance):
         self.bic = bic
         self.ban = ban
@@ -315,8 +323,8 @@ class TrackingAccount():
 
     def set_transfer(self, tx_id):
         assert not self.tx_id or self.tx_id == tx_id, \
-                f"set_transfer: on {t4(self.bic)}:{t4(self.ban)} " \
-                f"current transfer id {self.tx_id}, setting {t5(tx_id)}"
+            f"set_transfer: on {t4(self.bic)}:{t4(self.ban)} " \
+            f"current transfer id {self.tx_id}, setting {t5(tx_id)}"
         self.tx_id = tx_id
 
     def clear_transfer(self):
@@ -339,8 +347,10 @@ class TrackingAccount():
     def __repr__(self):
         return f"TrackingAccount(bic={t4(self.bic)}, ban={t4(self.ban)})"
 
+
 class Oracle():
     """State consistency tracking (independent of DB) shared across all workers"""
+
     def __init__(self, session):
         manager = mp.Manager()
         self.lock = manager.Lock()
@@ -378,7 +388,7 @@ class Oracle():
         # Lock while both accounts are being updated
         with self.lock:
             if t.id in self.transfers:
-                return   #  Have processed this transfer already
+                return  # Have processed this transfer already
             self.transfers[t.id] = True
             src, dst = self.lookup_accounts(client_id, t.src, t.dst)
             debug(f"{t4(client_id)} {t5(t.id)} oracle.complete_transfer: before {src.balance} {dst.balance}")
@@ -390,7 +400,7 @@ class Oracle():
             else:
                 debug(f"{t4(client_id)} {t5(t.id)} oracle.complete_transfer: not updated {t}")
 
-            self.accounts.update({src.bic + src.ban : src, dst.bic + dst.ban : dst})
+            self.accounts.update({src.bic + src.ban: src, dst.bic + dst.ban: dst})
 
     # One process
     def find_broken_accounts(self, sessions):
@@ -443,9 +453,11 @@ def node_affinity(node_pids):
         node_proc.cpu_affinity([i * threads_per_core])
         debug(f"node.pid {node_pids[i]} new affinity {node_proc.cpu_affinity()}")
 
+
 @scylla_mode("!debug")
 class LWTBankingLoadTest(Tester):
     """Emulate a series of money transfers and perform validation"""
+
     def prepare(self, num_nodes=NODES):
         """Set up cluster, schema, tables"""
         cluster = self.cluster
@@ -456,7 +468,7 @@ class LWTBankingLoadTest(Tester):
         jvm_args = ["--smp", str(num_nodes)]
         if not cluster.nodelist():
             cluster.populate(num_nodes)
-            cluster.start(wait_other_notice=True, wait_for_binary_proto=True, jvm_args = jvm_args)
+            cluster.start(wait_other_notice=True, wait_for_binary_proto=True, jvm_args=jvm_args)
 
         node_list = cluster.nodelist()
         for node in node_list:
@@ -538,9 +550,9 @@ class LWTBankingLoadTest(Tester):
                 # Flatten INSERT_BATCH_LEN rows
                 bic = Account.create_bic(bic_n)
                 session.execute(account_stmt,
-                    [x for row in
-                        [(bic, Account.create_ban(ban_n), new_random_balance()) for ban_n in ban_n_batch]
-                            for x in row])
+                                [x for row in
+                                 [(bic, Account.create_ban(ban_n), new_random_balance()) for ban_n in ban_n_batch]
+                                    for x in row])
 
     def populate_accounts(self):
         """Populate accounts with pool for workers"""
@@ -607,7 +619,8 @@ class LWTBankingLoadTest(Tester):
                 debug(f"{t4(client_id)} {tx_id} clear_transfer_client: the transfer is already gone")
                 return True
             else:
-                debug(f"{t4(client_id)} {t5(tx_id)} clear_transfer_client: client id mismatch {ret[0].client_id} != {tx_id}")
+                debug(
+                    f"{t4(client_id)} {t5(tx_id)} clear_transfer_client: client id mismatch {ret[0].client_id} != {tx_id}")
                 return False
         return True
 
@@ -615,7 +628,7 @@ class LWTBankingLoadTest(Tester):
         """Once accounts are properly locked perform the actual transfer"""
 
         assert t.state == "locked" or t.state == "completed", \
-                f"{t4(client_id)} {t5(t.id)} Incorrect transfer state {t.state}"
+            f"{t4(client_id)} {t5(t.id)} Incorrect transfer state {t.state}"
 
         #debug(f"{t4(client_id)} {t5(t.id)} complete_transfer: state: {t.state}")
 
@@ -648,7 +661,7 @@ class LWTBankingLoadTest(Tester):
                     except (OperationTimedOut, WriteFailure, Unavailable) as exc:
                         debug(f"{t4(client_id)} {t5(t.id)} complete_transfer: failed to update balance for {acct} {exc}")
                         debug(f"{t4(client_id)} {t5(t.id)} complete_transfer: adding {t} to the recovery queue +++++++++++++++++++")
-                        self.clear_transfer_client(client_id, session, t.id) # Leave to recovery
+                        self.clear_transfer_client(client_id, session, t.id)  # Leave to recovery
                         recovery_queue.put((t.id, client_id))
                         return "failed_to_complete"
 
@@ -668,10 +681,9 @@ class LWTBankingLoadTest(Tester):
             if not self.set_transfer_state(client_id, session, t, "completed"):
                 debug(f"{t4(client_id)} {t5(t.id)} complete_transfer: failed to set state completed")
                 debug(f"{t4(client_id)} {t5(t.id)} complete_transfer: adding {t} to the recovery queue +++++++++++++++++++")
-                self.clear_transfer_client(client_id, session, t.id) # clear for recovery
+                self.clear_transfer_client(client_id, session, t.id)  # clear for recovery
                 recovery_queue.put((t.id, client_id))
                 return False
-
 
         for account in [t.src, t.dst]:
             #debug(f"{t4(client_id)} {t5(t.id)} Unlocking {t4(account.bic)} {t4(account.ban)}")
@@ -683,21 +695,21 @@ class LWTBankingLoadTest(Tester):
                 res = False
             if res and not res[0].applied:
                 debug(f"{t4(client_id)} {t5(t.id)} complete_transfer: "
-                          f"Failed to unlock account {t4(account.bic)} {t4(account.ban)} {res[0]}")
+                      f"Failed to unlock account {t4(account.bic)} {t4(account.ban)} {res[0]}")
             if not res or not res[0].applied:
                 debug(f"{t4(client_id)} {t5(t.id)} complete_transfer: adding {t} to the recovery queue +++++++++++++++++++")
-                self.clear_transfer_client(client_id, session, t.id) # clear for recovery
+                self.clear_transfer_client(client_id, session, t.id)  # clear for recovery
                 recovery_queue.put((t.id, client_id))
                 return False
 
         ret = self.delete_transfer(client_id, session, t.id)
         if not ret:
             debug(f"{t4(client_id)} {t5(t.id)} complete_transfer: could not delete, adding {t} to the recovery queue +++++++++++++++++++")
-            self.clear_transfer_client(client_id, session, t.id) # clear for recovery
+            self.clear_transfer_client(client_id, session, t.id)  # clear for recovery
             recovery_queue.put((t.id, client_id))
         return True
 
-    def lock_accounts(self, client_id, session, recovery_queue, t, wait = True):
+    def lock_accounts(self, client_id, session, recovery_queue, t, wait=True):
         """Set accounts with in progress values for transfer id and pending amount to credit/debit"""
 
         # Locking from recovery
@@ -728,6 +740,7 @@ class LWTBankingLoadTest(Tester):
         retries = 0
 
         acct1, acct2 = sorted([t.src, t.dst])
+
         def lock_account(account):
             try:
                 # UPDATE {KEYSPACE}.accounts
@@ -741,7 +754,7 @@ class LWTBankingLoadTest(Tester):
             if res[0].applied or res[0].pending_transfer == t.id:
                 # Either locked or already locked (prev lock query reported failure but it went through)
                 account.balance = res[0].balance
-                #debug(f"{t4(client_id)} {t5(t.id)} lock_accounts: locked {account} "
+                # debug(f"{t4(client_id)} {t5(t.id)} lock_accounts: locked {account} "
                 #      f"pending_amount {account.pending_amount} res: {res[0]} ****")
                 return True
             else:
@@ -777,13 +790,13 @@ class LWTBankingLoadTest(Tester):
                             return False  # Failed but doesn't need to fix accounts or transfer
                         # Either accounts need unlocking or transfer needs to be deleted
                         debug(f"{t4(client_id)} {t5(t.id)} lock_accounts: adding {t} to the recovery queue +++++++++++++++++++")
-                        self.clear_transfer_client(client_id, session, t.id) # Leave to recovery
+                        self.clear_transfer_client(client_id, session, t.id)  # Leave to recovery
                         recovery_queue.put((t.id, client_id))
                         return False
                 else:
                     if not unlock_account(acct1, t, client_id):  # Unsets found and balance
                         debug(f"{t4(client_id)} {t5(t.id)} lock_accounts: adding {t} to the recovery queue +++++++++++++++++++")
-                        self.clear_transfer_client(client_id, session, t.id) # Leave to recovery
+                        self.clear_transfer_client(client_id, session, t.id)  # Leave to recovery
                         recovery_queue.put((t.id, client_id))
                         return False
 
@@ -797,7 +810,7 @@ class LWTBankingLoadTest(Tester):
             retries += 1
             if retries > MAX_LOCK_RETRIES:
                 debug(f"{t4(client_id)} {t5(t.id)} lock_accounts: max retries reached {MAX_LOCK_RETRIES}")
-                self.clear_transfer_client(client_id, session, t.id) # Leave to recovery
+                self.clear_transfer_client(client_id, session, t.id)  # Leave to recovery
                 recovery_queue.put((t.id, client_id))
                 return False
 
@@ -805,7 +818,7 @@ class LWTBankingLoadTest(Tester):
         """Register a new transfer in the database"""
         try:
             ret = session.execute(self.insert_transfer_stmt,
-                    [t.id, t.src.bic, t.src.ban, t.dst.bic, t.dst.ban, t.amount])
+                                  [t.id, t.src.bic, t.src.ban, t.dst.bic, t.dst.ban, t.amount])
         except (OperationTimedOut, WriteFailure, Unavailable) as exc:
             debug(f"{t4(client_id)} {t5(t.id)} register_transfer: query failed: {exc}")
             return False
@@ -835,7 +848,8 @@ class LWTBankingLoadTest(Tester):
             return False
         if not ret[0].applied:
             if not ret[0].client_id:
-                debug(f"{t4(client_id)} {t5(tx_id)} set_transfer_client: Failed to set client: no such transfer {ret[0]}")
+                debug(
+                    f"{t4(client_id)} {t5(tx_id)} set_transfer_client: Failed to set client: no such transfer {ret[0]}")
             elif ret[0].client_id != client_id:
                 # The still has set original worker client_id (no TTL)
                 debug(f"{t4(client_id)} {t5(tx_id)} set_transfer_client: previous id {t4(ret[0].client_id)} {ret[0]}")
@@ -844,7 +858,7 @@ class LWTBankingLoadTest(Tester):
                 debug(f"{t4(client_id)} {t5(tx_id)} set_transfer_client: ???? {ret[0]}")
                 return True   # Already set   client_id == prev client id
 
-        else: # applied
+        else:  # applied
             #debug(f"{t4(client_id)} {t5(tx_id)} set_transfer_client: success {ret[0]}")
             return True
 
@@ -1018,15 +1032,15 @@ class LWTBankingLoadTest(Tester):
 
         if not self.set_transfer_client(client_id, session, tx_id):
             debug(f"{t4(client_id)} recover_transfer: Failed to set client for {t5(tx_id)} re-adding to recovery queue")
-            self.clear_transfer_client(client_id, session, tx_id) # clear for next recovery?
+            self.clear_transfer_client(client_id, session, tx_id)  # clear for next recovery?
             recovery_queue.put((tx_id, client_id))
             return False
 
         t.init_accounts()
 
-        if not self.lock_accounts(client_id, session, recovery_queue, t, wait = False):
+        if not self.lock_accounts(client_id, session, recovery_queue, t, wait=False):
             debug(f"{t4(client_id)} recover_transfer: Failed to lock accounts for {t5(tx_id)}")
-            self.clear_transfer_client(client_id, session, tx_id) # clear for next recovery
+            self.clear_transfer_client(client_id, session, tx_id)  # clear for next recovery
             return False
 
         if not self.complete_transfer(client_id, session, recovery_queue, t):
@@ -1046,7 +1060,8 @@ class LWTBankingLoadTest(Tester):
             node_id = randrange(0, node_len)
             error_name = choice(ERROR_INJECTIONS)
             #debug(f"nemesis enabling {error_name} on {node_id}")
-            self.disable_errors(node_id) # First disable other errors, avoid piling up
+            self.disable_errors(node_id)  # First disable other errors, avoid piling up
+
             self.enable_error(error_name, node_id, one_shot=True)
             sleep(sleep_sec)
             count += 1
@@ -1061,16 +1076,17 @@ class LWTBankingLoadTest(Tester):
         start = time()
         self.populate_accounts()
         result = session.execute(self.count_account_stmt)
-        debug(f"workers done populating database {time()-start:.02f} seconds {result[0].count} accounts - {BICS * BANS}")
+        debug(
+            f"workers done populating database {time()-start:.02f} seconds {result[0].count} accounts - {BICS * BANS}")
         assert result[0].count == BICS * BANS
 
         settings = {
-                "bics": BICS,
-                "bans": BANS,
-                "accounts": BICS * BANS,
-                "workers": MAX_WORKERS,
-                "oracle": with_oracle,
-                }
+            "bics": BICS,
+            "bans": BANS,
+            "accounts": BICS * BANS,
+            "workers": MAX_WORKERS,
+            "oracle": with_oracle,
+        }
 
         self.initial_settings(session, settings)
 
@@ -1085,7 +1101,8 @@ class LWTBankingLoadTest(Tester):
         nemesis_proc.start()
         start_pay = time()
         transfers = mp.Value('i', 0)  # Shared counter
-        self.run_pay_workers(session, transfers, oracle, recovery_queue, stats_queue)    # Returns when all done and joined
+        self.run_pay_workers(session, transfers, oracle, recovery_queue,
+                             stats_queue)    # Returns when all done and joined
         pay_time = time() - start_pay
         debug(f"pay workers {pay_time:.02f} seconds, {(BICS*BANS)/pay_time:.02f} transfers/second")
         stop.set()                                               # Stop nemesis
@@ -1104,7 +1121,7 @@ class LWTBankingLoadTest(Tester):
             for k, v in w_stats.items():
                 if k in ["pay_total", "retries", "retry_limit_reached", "success",
                          "not_enough_balance", "failed_to_complete", "failed_to_lock",
-                          "failed_to_register", "recovery_failed", "recovered"]:
+                         "failed_to_register", "recovery_failed", "recovered"]:
                     stats[k] += v
             stats["pay_total"] += w_stats["pay_total"]
             if stats["pay_max"] < w_stats["pay_max"]:

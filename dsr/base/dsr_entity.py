@@ -1,5 +1,6 @@
 from .d_entity import DEntity
 
+
 class DSREntity(DEntity):
     """
         Deterministic State-Aware Randomization Entity

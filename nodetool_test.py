@@ -38,7 +38,8 @@ class TestNodetool(Tester):
 
         cluster = self.cluster
         cluster.populate([2, 2])
-        cluster.set_configuration_options(values={'endpoint_snitch': 'org.apache.cassandra.locator.GossipingPropertyFileSnitch'})
+        cluster.set_configuration_options(
+            values={'endpoint_snitch': 'org.apache.cassandra.locator.GossipingPropertyFileSnitch'})
 
         for i, node in enumerate(cluster.nodelist()):
             with open(os.path.join(node.get_conf_dir(), 'cassandra-rackdc.properties'), 'w') as snitch_file:
@@ -63,7 +64,7 @@ class TestNodetool(Tester):
     def _background_workload(self, node):
         debug('start write workload in background...')
         cs_result, cs_err = node.stress(['write', 'duration=180s', 'no-warmup', '-schema', 'replication(factor=3)', '-rate', 'threads=10', '-log', 'interval=10'],
-                                         capture_output=True)
+                                        capture_output=True)
         debug('background workload finished')
         debug(cs_result)
         debug(cs_err)

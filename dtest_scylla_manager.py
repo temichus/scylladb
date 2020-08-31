@@ -211,7 +211,7 @@ class ScyllaManagerTool(ScyllaManagerBase):
         if not any([node, db_cluster]):
             raise ScyllaManagerError("Neither host or db_cluster parameter were given to Manager add_cluster")
         debug("Adding a cluster to scylla-manager, named: {}".format(name))
-        node = node or self._get_cluster_hosts_ip(db_cluster=db_cluster)[0] #TODO: adjust  _get_cluster_hosts_ip()
+        node = node or self._get_cluster_hosts_ip(db_cluster=db_cluster)[0]  # TODO: adjust  _get_cluster_hosts_ip()
         user = user or self.DEFAULT_USER
         ssh_user = create_user or 'scylla-manager'
         host = node.address()
@@ -222,7 +222,8 @@ class ScyllaManagerTool(ScyllaManagerBase):
             cluster_add_cmd += " --auth-token {}".format(node.scylla_manager.auth_token)
         res_cluster_add, stderr = self.sctool.run(cmd=cluster_add_cmd)
         if not res_cluster_add or 'Cluster added' not in stderr:
-            raise ScyllaManagerError("Encountered an error on 'sctool cluster add' command response: {}".format(res_cluster_add))
+            raise ScyllaManagerError(
+                "Encountered an error on 'sctool cluster add' command response: {}".format(res_cluster_add))
         # cluster_id = res_cluster_add.stdout.split('\n')[0]  # return ManagerCluster instance with the manager's new cluster-id
         cluster_id = res_cluster_add[0][0]
         return ManagerCluster(scylla_manager=self.scylla_manager, cluster_id=cluster_id, client_encrypt=client_encrypt)
@@ -454,7 +455,8 @@ class ManagerTask(ScyllaManagerBase):
         for k, v in kwargs.items():
             cmd_arguments.append("{0}={1}".format(cmd_mapping[k], v))
 
-        cmd = "task update {0.id} -c {0.cluster_id} {update_arguments}".format(self, update_arguments=" ".join(cmd_arguments))
+        cmd = "task update {0.id} -c {0.cluster_id} {update_arguments}".format(
+            self, update_arguments=" ".join(cmd_arguments))
         stdout, _ = self.sctool.run(cmd=cmd, is_verify_errorless_result=True)
         return stdout
 
@@ -601,7 +603,7 @@ class ManagerTask(ScyllaManagerBase):
         """
         list_final_status = [TaskStatus.ERROR, TaskStatus.STOPPED, TaskStatus.DONE, TaskStatus.ABORTED]
         debug("Waiting for task: {} getting to a final status ({})..".format(self.id, [str(s) for s in
-                                                                                              list_final_status]))
+                                                                                       list_final_status]))
         res = self.wait_for_status(list_status=list_final_status, timeout=timeout, step=step)
         if not res:
             raise ScyllaManagerError("Unexpected result on waiting for task {} status".format(self.id))
@@ -780,7 +782,8 @@ class ManagerCluster(ScyllaManagerBase):
         task_id = stdout.strip()
         debug("Created task id is: {}".format(task_id))
 
-        return RepairTask(task_id=task_id, cluster_id=self.id, scylla_manager=self.scylla_manager)  # return the manager's object with new repair-task-id
+        # return the manager's object with new repair-task-id
+        return RepairTask(task_id=task_id, cluster_id=self.id, scylla_manager=self.scylla_manager)
 
     def delete(self):
         """
@@ -874,23 +877,27 @@ class ManagerCluster(ScyllaManagerBase):
         if len(table_res) > 1:  # if there are any tasks in list - add them as RepairTask generated objects.
             repair_task_rows_list = [row for row in table_res[1:] if row[0].startswith("repair/")]
             for row in repair_task_rows_list:
-                repair_task_list.append(RepairTask(task_id=row[0], cluster_id=self.id, scylla_manager=self.scylla_manager))
+                repair_task_list.append(RepairTask(
+                    task_id=row[0], cluster_id=self.id, scylla_manager=self.scylla_manager))
         return repair_task_list
 
     def get_healthcheck_task(self):
         healthcheck_id = self.sctool.get_table_value(parsed_table=self._get_task_list(), column_name="task",
                                                      identifier="healthcheck/", is_search_substring=True)
-        return HealthcheckTask(task_id=healthcheck_id, cluster_id=self.id, scylla_manager=self.scylla_manager)  # return the manager's health-check-task object with the found id
+        # return the manager's health-check-task object with the found id
+        return HealthcheckTask(task_id=healthcheck_id, cluster_id=self.id, scylla_manager=self.scylla_manager)
 
     def get_healthcheck_alternator_task(self):
         healthcheck_id = self.sctool.get_table_value(parsed_table=self._get_task_list(), column_name="task",
                                                      identifier="healthcheck_alternator/", is_search_substring=True)
-        return HealthcheckTask(task_id=healthcheck_id, cluster_id=self.id, scylla_manager=self.scylla_manager)  # return the manager's health-check-task object with the found id
+        # return the manager's health-check-task object with the found id
+        return HealthcheckTask(task_id=healthcheck_id, cluster_id=self.id, scylla_manager=self.scylla_manager)
 
     def get_rest_task(self):
         rest_id = self.sctool.get_table_value(parsed_table=self._get_task_list(), column_name="task",
-                                                     identifier="healthcheck_rest/", is_search_substring=True)
-        return RestTask(task_id=rest_id, cluster_id=self.id, scylla_manager=self.scylla_manager)  # return the manager's rest-task object with the found id
+                                              identifier="healthcheck_rest/", is_search_substring=True)
+        # return the manager's rest-task object with the found id
+        return RestTask(task_id=rest_id, cluster_id=self.id, scylla_manager=self.scylla_manager)
 
     def get_hosts_health(self, translate_minus_to_down=True):
         """
@@ -968,7 +975,8 @@ class ManagerCluster(ScyllaManagerBase):
                                                                    alternator_rtt=alternator_rtt)
             debug("Cluster {} Hosts Health is:".format(self.id))
             for ip, health in dict_hosts_health.items():
-                debug("{}: {},{},{},{},{}".format(ip, health.status, health.rtt, health.rest_status, health.rest_rtt, health.ssl))
+                debug("{}: {},{},{},{},{}".format(ip, health.status, health.rtt,
+                                                  health.rest_status, health.rest_rtt, health.ssl))
         return dict_hosts_health
 
     class _HostHealth():

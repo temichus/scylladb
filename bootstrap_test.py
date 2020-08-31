@@ -132,7 +132,6 @@ class TestBootstrap(Tester):
         self.create_ks(session, 'ks', 1)
         self.create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'})
 
-
         insert_statement = session.prepare("INSERT INTO ks.cf (key, c1, c2) VALUES (?, 'value1', 'value2')")
         execute_concurrent_with_args(session, insert_statement, [['k%d' % k] for k in range(keys)])
 
@@ -162,7 +161,8 @@ class TestBootstrap(Tester):
         data_total_size_node1_after = self.get_space_used(node1)
         data_total_size_node2_after = self.get_space_used(node2)
 
-        debug("before={}, after={} + {}={}".format(data_total_size_node1, data_total_size_node1_after, data_total_size_node2_after, data_total_size_node1_after+data_total_size_node2_after));
+        debug("before={}, after={} + {}={}".format(data_total_size_node1, data_total_size_node1_after,
+                                                   data_total_size_node2_after, data_total_size_node1_after+data_total_size_node2_after))
         assert_almost_equal(data_total_size_node1, data_total_size_node1_after + data_total_size_node2_after, error=0.3)
         assert_almost_equal(data_total_size_node1_after, data_total_size_node2_after, error=0.3)
 

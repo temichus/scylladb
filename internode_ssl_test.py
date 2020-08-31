@@ -5,6 +5,7 @@ from tools import generate_ssl_stores, putget, require
 from nose.plugins.attrib import attr
 from native_transport_ssl_test import wait_for_cert_reload
 
+
 @attr('next-gating')
 @attr('dtest-debug')
 @attr('dtest-full')
@@ -66,7 +67,8 @@ class TestInternodeSSL(Tester):
         elif dcs > 1:
             cluster.set_configuration_options(values={'endpoint_snitch':
                                                       'org.apache.cassandra.locator.GossipingPropertyFileSnitch'})
-            cluster.populate([3 for i in range(dcs)]).start(no_wait=False, wait_for_binary_proto=True, wait_other_notice=True)
+            cluster.populate([3 for i in range(dcs)]).start(
+                no_wait=False, wait_for_binary_proto=True, wait_other_notice=True)
         else:
             raise Exception('Invalid parameter dcs: {}. Must be greater than or equal to 1'.format(dcs))
 
@@ -92,7 +94,8 @@ class TestInternodeSSL(Tester):
 
             for node, mark in node_marks.items():
                 debug("waiting for {} to reload certs".format(node.get_path()))
-                wait_for_cert_reload(node, "messaging_service", ["internode-ccm_node.pem", "internode-ccm_node.key"], from_mark=mark)
+                wait_for_cert_reload(node, "messaging_service", [
+                                     "internode-ccm_node.pem", "internode-ccm_node.key"], from_mark=mark)
                 debug("done")
 
         session = self.patient_cql_connection(cluster.nodelist()[0])

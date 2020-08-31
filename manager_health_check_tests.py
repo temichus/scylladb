@@ -131,5 +131,5 @@ class ManagerHealthCheckTest(Tester, ScyllaManagerMixin):
             downed_node_data.alternator_status == '-', \
             "The manager pinged a node while it was DN, while it should skip any DN nodes"
         assert regular_node_data.status == regular_node_data.rest_status == \
-               regular_node_data.alternator_status == 'UP',\
-               "The status of an UN node is not UP"
+            regular_node_data.alternator_status == 'UP',\
+            "The status of an UN node is not UP"

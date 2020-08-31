@@ -377,7 +377,7 @@ class TestCdc(Tester, CDCInitializeHelper):
                     confirmed_writes += 1
                 except ConnectionException as e:
                     debug('Got ConnectionException, probably because the cluster is being downsized, retrying; ' +
-                            'exception was {}'.format(e))
+                          'exception was {}'.format(e))
                     # We cannot determine if the write was successful.
                     unconfirmed_writes += 1
                 except InvalidRequest as e:
@@ -522,13 +522,14 @@ class TestCdc(Tester, CDCInitializeHelper):
         debug('Checking that all vnodes have a stream')
         prev_token = gen_description[-1][0]
         for entry in gen_description:
-            vnode_size = 0;
+            vnode_size = 0
             if entry[0] > prev_token:
                 vnode_size = entry[0] - prev_token
             else:
                 vnode_size = 2**63 - 1 - prev_token + entry[0]
             if vnode_size > 1:
-                self.assertTrue(any(int.from_bytes(stream[0:8], byteorder='big', signed=True) != entry[0] for stream in entry[1]))
+                self.assertTrue(any(int.from_bytes(stream[0:8], byteorder='big',
+                                                   signed=True) != entry[0] for stream in entry[1]))
             prev_token = entry[0]
 
     def get_sorted_update_rows(self, session, log_rows):

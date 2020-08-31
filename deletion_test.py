@@ -112,8 +112,8 @@ class RangeDeletionTester(Tester):
         data = list()
         sub_partition_rows = 2
         # Data for first and second partitions
-        for p in [0, 1]: # pk1 value
-            for k in range(rows_in_pk): # ck1 and ck2 values
+        for p in [0, 1]:  # pk1 value
+            for k in range(rows_in_pk):  # ck1 and ck2 values
                 data.append([p, p, 'ck%d' % k, k])
 
         for (pk1, ck1, ck2, v1) in data:
@@ -136,13 +136,13 @@ class RangeDeletionTester(Tester):
         assert_all(session=session, query=select_query, expected=data, cl=ConsistencyLevel.QUORUM, ignore_order=True)
         self.cluster.flush()
 
-        range_indexes = [4, 6, 8] # indexes of element in "data" variable - all these rows should be deleted
+        range_indexes = [4, 6, 8]  # indexes of element in "data" variable - all these rows should be deleted
         pk_index = range_indexes[0]
         query = "DELETE FROM ks.test1 WHERE pk1={pk1} and ck1 in ({ck1}) and ck2 in ({ck2})" \
-                        .format(pk1=data[pk_index][0],
-                                ck1=', '.join(str(data[indx][1]) for indx in range_indexes),
-                                ck2=', '.join("'%s'" % data[indx][2] for indx in range_indexes)
-                                )
+            .format(pk1=data[pk_index][0],
+                    ck1=', '.join(str(data[indx][1]) for indx in range_indexes),
+                    ck2=', '.join("'%s'" % data[indx][2] for indx in range_indexes)
+                    )
         debug(query)
         session.execute(query)
         self.cluster.flush()
@@ -170,12 +170,12 @@ class RangeDeletionTester(Tester):
         assert_all(session=session, query=select_query, expected=data, cl=ConsistencyLevel.QUORUM, ignore_order=True)
         self.cluster.flush()
 
-        lower_index = 4 # index of element in "data" variable - all rows before it should be deleted
+        lower_index = 4  # index of element in "data" variable - all rows before it should be deleted
         query = "DELETE FROM ks.test1 WHERE pk1={pk1} and ck1 = {ck1} and ck2 >= '{ck2}'" \
-                        .format(pk1=data[lower_index][0],
-                                ck1=data[lower_index][1],
-                                ck2=data[lower_index][2]
-                                )
+            .format(pk1=data[lower_index][0],
+                    ck1=data[lower_index][1],
+                    ck2=data[lower_index][2]
+                    )
         debug(query)
         session.execute(query)
         self.cluster.flush()
@@ -200,11 +200,11 @@ class RangeDeletionTester(Tester):
         assert_all(session=session, query=select_query, expected=data, cl=ConsistencyLevel.QUORUM, ignore_order=True)
         self.cluster.flush()
 
-        lower_index = 4 # index of element in "data" variable - select rows for deleted
+        lower_index = 4  # index of element in "data" variable - select rows for deleted
         query = "DELETE FROM ks.test1 WHERE pk1={pk1} and ck1 >= {ck1}" \
-                        .format(pk1=data[lower_index][0],
-                                ck1=data[lower_index][1]
-                                )
+            .format(pk1=data[lower_index][0],
+                    ck1=data[lower_index][1]
+                    )
         debug(query)
         session.execute(query)
         self.cluster.flush()
@@ -223,7 +223,7 @@ class RangeDeletionTester(Tester):
 
         data = self.insert_data_cf_1pk_1ck(conn=session, rows_in_pk=10)
 
-        lower_index = 4 # index of element in "data" variable
+        lower_index = 4  # index of element in "data" variable
         query = "UPDATE ks.test1 SET v1 = 100 WHERE pk={pk} and ck < '{ck}'".format(pk=data[lower_index][0],
                                                                                     ck=data[lower_index][1])
         debug(query)
@@ -277,11 +277,11 @@ class RangeDeletionTester(Tester):
         select_query = "SELECT pk, cast(ck as text), v1 FROM ks.test1"
         assert_all(session=session, query=select_query, expected=data, cl=ConsistencyLevel.QUORUM, ignore_order=True)
 
-        first_index = 4 # index of element in "data" variable - this row should be deleted
-        second_index = 12 # index of element in "data" variable - this row should be deleted
+        first_index = 4  # index of element in "data" variable - this row should be deleted
+        second_index = 12  # index of element in "data" variable - this row should be deleted
         query = "DELETE FROM ks.test1 WHERE pk in ({pk1}, {pk2}) and ck in ('{ck1}', '{ck2}')" \
-                        .format(pk1=data[first_index][0], pk2=data[second_index][0],
-                                ck1=data[first_index][1], ck2=data[second_index][1])
+            .format(pk1=data[first_index][0], pk2=data[second_index][0],
+                    ck1=data[first_index][1], ck2=data[second_index][1])
         debug(query)
         session.execute(query)
         self.cluster.flush()
@@ -309,9 +309,9 @@ class RangeDeletionTester(Tester):
         select_query = "SELECT pk, cast(ck as text), v1 FROM ks.test1"
         assert_all(session=session, query=select_query, expected=data, cl=ConsistencyLevel.QUORUM, ignore_order=True)
 
-        lower_index = 4 # index of element in "data" variable - all rows before it should be deleted
+        lower_index = 4  # index of element in "data" variable - all rows before it should be deleted
         query = "DELETE FROM ks.test1 WHERE pk={pk} and ck < '{ck}'".format(pk=data[lower_index][0],
-                                                                                    ck=data[lower_index][1])
+                                                                            ck=data[lower_index][1])
         debug(query)
         session.execute(query)
         self.cluster.flush()
@@ -336,8 +336,8 @@ class RangeDeletionTester(Tester):
         select_query = "SELECT pk, cast(ck as text), v1 FROM ks.test1"
         assert_all(session=session, query=select_query, expected=data, cl=ConsistencyLevel.QUORUM, ignore_order=True)
 
-        lower_index = 4 # index of element in "data" variable - all rows before it should be deleted
-        upper_index = 6 # index of element in "data" variable - all rows before it should be deleted
+        lower_index = 4  # index of element in "data" variable - all rows before it should be deleted
+        upper_index = 6  # index of element in "data" variable - all rows before it should be deleted
         query = "DELETE FROM ks.test1 WHERE pk={pk} and ck < '{upper_ck}' and ck >= '{lower_ck}'" \
                 .format(pk=data[lower_index][0],
                         lower_ck=data[lower_index][1],
@@ -370,7 +370,7 @@ class RangeDeletionTester(Tester):
         debug('Stop node {}'.format(node2.name))
         node2.stop(wait_other_notice=True)
 
-        lower_index = 16 # index of element in "data" variable - all rows after it should be deleted
+        lower_index = 16  # index of element in "data" variable - all rows after it should be deleted
         query = "DELETE FROM ks.test1 WHERE pk={pk} and ck > '{ck}'".format(pk=data[lower_index][0],
                                                                             ck=data[lower_index][1])
         debug(query)
@@ -415,7 +415,7 @@ class RangeDeletionTester(Tester):
         debug('Decommission node {}'.format(node2.name))
         node2.decommission()
 
-        lower_index = 16 # index of element in "data" variable - all rows after it should be deleted
+        lower_index = 16  # index of element in "data" variable - all rows after it should be deleted
         query = "DELETE FROM ks.test1 WHERE pk={pk} and ck > '{ck}'".format(pk=data[lower_index][0],
                                                                             ck=data[lower_index][1])
         debug(query)
@@ -488,7 +488,6 @@ class RangeDeletionTester(Tester):
                        matching='DELETE statements must restrict all PRIMARY KEY columns with equality relations in order to delete non static columns')
 
     def delete_by_1ck_range_conditional_batch_test(self):
-
         """ if in batch at least one operation with IF, whole batch is conditional
         """
         num_rows = 5
@@ -560,7 +559,7 @@ class RangeDeletionTester(Tester):
         query += "APPLY BATCH;"
         debug(query)
         # execute batch and verify it is applied
-        conditinal_batch_result = [[True] + [None] * len(data[upper_index])] # result row for the first DELETE
+        conditinal_batch_result = [[True] + [None] * len(data[upper_index])]  # result row for the first DELETE
         for row in data[upper_index: num_rows]:
             batch_row = row[:]
             batch_row[1] = datetime.strptime(batch_row[1], "%Y-%m-%d").date()
@@ -668,6 +667,7 @@ def table_metric(node, keyspace, table, name):
         value = jmx.read_attribute(mbean, 'Value')
 
     return value
+
 
 strategies = ['SizeTieredCompactionStrategy', 'TimeWindowCompactionStrategy']
 # SMP value should be according to the monster environment

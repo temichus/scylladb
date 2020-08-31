@@ -566,13 +566,13 @@ class TestBatch(Tester):
         debug('Upgrading sstables')
         node.nodetool('upgradesstables -a')
 
-
     def _base_batchlog_manager_issue(self, rack_names):
         if not self.cluster:
             self.cluster = self._get_cluster(version=self.cassandra_version)
         cluster = self.cluster
         cluster.populate([4])
-        cluster.set_configuration_options(values={'endpoint_snitch': 'org.apache.cassandra.locator.GossipingPropertyFileSnitch'})
+        cluster.set_configuration_options(
+            values={'endpoint_snitch': 'org.apache.cassandra.locator.GossipingPropertyFileSnitch'})
 
         for i, node in enumerate(cluster.nodelist()):
             with open(os.path.join(node.get_conf_dir(), 'cassandra-rackdc.properties'), 'w') as snitch_file:
@@ -585,7 +585,7 @@ class TestBatch(Tester):
 
         debug('Running stress ...')
         node.stress(["user", "no-warmup", "profile=%s" % os.path.realpath('test_data/batch-test/complex_schema.yaml'), "ops(insert=1)", "cl=ALL",
-        #node.stress(["user", "no-warmup", "profile=/tmp/complex_schema.yaml", "ops(insert=1)", "cl=ALL",
+                     # node.stress(["user", "no-warmup", "profile=/tmp/complex_schema.yaml", "ops(insert=1)", "cl=ALL",
                      "duration=5s", "-mode", "cql3", "native", "-rate", "threads=100", "-pop", "seq=1..500"])
 
         debug('Stopping cluster ...')

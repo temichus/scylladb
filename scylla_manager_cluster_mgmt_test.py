@@ -24,7 +24,8 @@ class TestScyllaManagerClusterMgmt(Tester, ScyllaManagerMixin):
         try:
             manager_tool.add_cluster(node=node1, name=cluster_name)
         except ScyllaManagerError as err:
-            assert "connection refused" in err.args[0].lower(), "Received an irrelevant ScyllaManagerError when trying to add an offline cluster"
+            assert "connection refused" in err.args[0].lower(
+            ), "Received an irrelevant ScyllaManagerError when trying to add an offline cluster"
             return
         assert False, "Expected to fail when adding an offline cluster to the manager, but didn't"
 

@@ -27,12 +27,12 @@ class TestCleanup(Tester):
         node1.cleanup()
         debug('Verifying number of rows')
         session = self.patient_cql_connection(node1)
-        rows = session.execute("select count(*) from ks.cf;");
+        rows = session.execute("select count(*) from ks.cf;")
         self.assertEqual(rows[0][0], num_keys)
 
     def cluster_cleanup_test(self):
         cluster = self.cluster
-        cluster.populate(3).start(wait_for_binary_proto=True,wait_other_notice=True)
+        cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1 = cluster.nodelist()[0]
         session = self.patient_cql_connection(node1)
         self.create_ks(session, 'ks', 3)
@@ -44,10 +44,9 @@ class TestCleanup(Tester):
         node4.start(wait_for_binary_proto=True, wait_other_notice=True)
         cluster.flush()
         cluster.stop()
-        cluster.start(wait_for_binary_proto=True,wait_other_notice=True)
+        cluster.start(wait_for_binary_proto=True, wait_other_notice=True)
         for node in cluster.nodelist():
             node.cleanup()
         session = self.patient_cql_connection(node1)
-        rows = session.execute("select count(*) from ks.cf;");
-        self.assertEqual(rows[0][0],100000)
-
+        rows = session.execute("select count(*) from ks.cf;")
+        self.assertEqual(rows[0][0], 100000)

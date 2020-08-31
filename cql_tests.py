@@ -18,7 +18,7 @@ from dtest import Tester
 from thrift_bindings.thrift010.ttypes import \
     ConsistencyLevel as ThriftConsistencyLevel
 from thrift_bindings.thrift010.ttypes import (CfDef, Column, ColumnOrSuperColumn,
-                                        Mutation)
+                                              Mutation)
 from thrift_tests import get_thrift_client
 from tools import debug, require, rows_to_list, since, new_node
 from scylla_tools import get_entity_id, get_truncated_time_from_system_local, get_truncated_time_from_system_truncated
@@ -71,11 +71,13 @@ class StorageProxyCQLTester(CQLTester):
         """
         session = self.prepare(create_keyspace=False)
 
-        session.execute("CREATE KEYSPACE ks WITH replication = { 'class':'SimpleStrategy', 'replication_factor':1} AND DURABLE_WRITES = true")
+        session.execute(
+            "CREATE KEYSPACE ks WITH replication = { 'class':'SimpleStrategy', 'replication_factor':1} AND DURABLE_WRITES = true")
 
         session.execute("USE ks")
 
-        session.execute("ALTER KEYSPACE ks WITH replication = { 'class' : 'NetworkTopologyStrategy', 'dc1' : 1 } AND DURABLE_WRITES = false")
+        session.execute(
+            "ALTER KEYSPACE ks WITH replication = { 'class' : 'NetworkTopologyStrategy', 'dc1' : 1 } AND DURABLE_WRITES = false")
 
         session.execute("DROP KEYSPACE ks")
         assert_invalid(session, "USE ks", expected=InvalidRequest)
@@ -151,7 +153,8 @@ class StorageProxyCQLTester(CQLTester):
         session.execute("DROP TABLE test4")
         session.execute("DROP TABLE test5")
         session.execute("DROP TYPE address_t")
-        assert_invalid(session, "CREATE TABLE test6 (id int PRIMARY KEY, address frozen<address_t>)", expected=InvalidRequest)
+        assert_invalid(session, "CREATE TABLE test6 (id int PRIMARY KEY, address frozen<address_t>)",
+                       expected=InvalidRequest)
 
     def user_test(self):
         """
@@ -296,7 +299,8 @@ class MiscellaneousCQLTester(CQLTester):
         column_name = b'\x00\x04' + column_name_component + b'\x00' + b'\x00\x01' + 'v'.encode() + b'\x00'
         value = struct.pack('>i', 8)
         client.batch_mutate(
-            {key: {'test': [Mutation(ColumnOrSuperColumn(column=Column(name=column_name, value=value, timestamp=100)))]}},
+            {key: {'test': [Mutation(ColumnOrSuperColumn(
+                column=Column(name=column_name, value=value, timestamp=100)))]}},
             ThriftConsistencyLevel.ONE)
 
         res = session.execute("SELECT * FROM test")
@@ -691,15 +695,15 @@ class TruncateTester(CQLTester):
 
         rand_num = randint(0, loop_size-1)
         q1_ls = ["select * from ks.t1 where c = {} and v = {} allow filtering;".format(rand_num, rand_num + 1),
-                "select * from ks.t1 where p = {} and v = {} allow filtering;".format(rand_num, rand_num + 1),
-                   "select * from ks.t1 where p = {0} and c = {0} and v = {1} allow filtering;"
-                                   .format(rand_num, rand_num + 1)]
+                 "select * from ks.t1 where p = {} and v = {} allow filtering;".format(rand_num, rand_num + 1),
+                 "select * from ks.t1 where p = {0} and c = {0} and v = {1} allow filtering;"
+                 .format(rand_num, rand_num + 1)]
 
         for query in q1_ls:
             result = rows_to_list(session.execute(query))
             debug(f"Query: {query} Result: {result}")
             assert result == [[rand_num, rand_num, rand_num+1]], f"Query {query}: failed on assertion," \
-                                                                               f" Result: {result}"
+                f" Result: {result}"
 
         session.execute("""
                     CREATE TABLE t2 (
@@ -711,16 +715,16 @@ class TruncateTester(CQLTester):
                 """)
 
         count_above_selected_time = 0
-        selected_time_str = "{}:{}:{}".format(randint(0, 23),randint(0, 59), randint(0, 59))
+        selected_time_str = "{}:{}:{}".format(randint(0, 23), randint(0, 59), randint(0, 59))
         selected_time = time.strptime(selected_time_str, "%H:%M:%S")
 
         selected_items_q3 = None
         for i in range(loop_size):
-            rand_time_str = "{}:{}:{}".format(randint(0, 23),randint(0, 59), randint(0, 59))
+            rand_time_str = "{}:{}:{}".format(randint(0, 23), randint(0, 59), randint(0, 59))
             rand_time = time.strptime(rand_time_str, "%H:%M:%S")
             count_above_selected_time += 1 if rand_time > selected_time else 0
             item_name = "name_" + str(i)
-            if randint(1,10) == 1:
+            if randint(1, 10) == 1:
                 selected_items_q3 = "'{}'".format(item_name) if selected_items_q3 is None else selected_items_q3 + ", "\
                                     + "'{}'".format(item_name)
             session.execute("INSERT INTO t2 (item_id, item_name, insert_time) VALUES ({},'{}','{}')"
@@ -738,17 +742,17 @@ class TruncateTester(CQLTester):
         q3_result = rows_to_list(session.execute(q3))
         debug(f"Query: {q3}, Len_Result: {len(q3_result)}, Result: {q3_result}")
         assert len(q3_result) == len(selected_items_q3.split(",")), f"The returned list count does not match " \
-                                                                 f"the calculated count"
+            f"the calculated count"
 
         # CQL statement with Limit
-        rand_limit = randint(1,count_above_selected_time)
+        rand_limit = randint(1, count_above_selected_time)
         q4 = "Select item_id from t2 where insert_time >'{}' limit {} allow filtering;"\
-            .format(selected_time_str,rand_limit)
+            .format(selected_time_str, rand_limit)
         q4_result = rows_to_list(session.execute(q4))
         debug(f"Query: {q4}, Len_Result: {len(q4_result)} Result: {q4_result}")
-        assert len(q4_result) == min(count_above_selected_time,rand_limit), f"The returned rows count doesnt match " \
-                                                                    f"min(count_above_selected_time,rand_limit)" \
-                                                                    f" [{min(count_above_selected_time,rand_limit)}]"
+        assert len(q4_result) == min(count_above_selected_time, rand_limit), f"The returned rows count doesnt match " \
+            f"min(count_above_selected_time,rand_limit)" \
+            f" [{min(count_above_selected_time,rand_limit)}]"
 
 
 @since('3.0')
@@ -788,7 +792,8 @@ class AbortedQueriesTester(CQLTester):
             session.execute("INSERT INTO test1 (id, val) VALUES ({}, 'foo')".format(i))
 
         mark = node.mark_log()
-        statement = SimpleStatement("SELECT * from test1", consistency_level=ConsistencyLevel.ONE, retry_policy=FallthroughRetryPolicy())
+        statement = SimpleStatement("SELECT * from test1", consistency_level=ConsistencyLevel.ONE,
+                                    retry_policy=FallthroughRetryPolicy())
         assert_unavailable(lambda c: debug(c.execute(statement)), session)
         node.watch_log_for("Some operations timed out", from_mark=mark, timeout=60)
 
@@ -824,16 +829,20 @@ class AbortedQueriesTester(CQLTester):
 
         mark = node2.mark_log()
 
-        statement = SimpleStatement("SELECT * from test2", consistency_level=ConsistencyLevel.ONE, retry_policy=FallthroughRetryPolicy())
+        statement = SimpleStatement("SELECT * from test2", consistency_level=ConsistencyLevel.ONE,
+                                    retry_policy=FallthroughRetryPolicy())
         assert_unavailable(lambda c: debug(c.execute(statement)), session)
 
-        statement = SimpleStatement("SELECT * from test2 where id = 1", consistency_level=ConsistencyLevel.ONE, retry_policy=FallthroughRetryPolicy())
+        statement = SimpleStatement("SELECT * from test2 where id = 1",
+                                    consistency_level=ConsistencyLevel.ONE, retry_policy=FallthroughRetryPolicy())
         assert_unavailable(lambda c: debug(c.execute(statement)), session)
 
-        statement = SimpleStatement("SELECT * from test2 where id IN (1, 10,  20) AND col < 10", consistency_level=ConsistencyLevel.ONE, retry_policy=FallthroughRetryPolicy())
+        statement = SimpleStatement("SELECT * from test2 where id IN (1, 10,  20) AND col < 10",
+                                    consistency_level=ConsistencyLevel.ONE, retry_policy=FallthroughRetryPolicy())
         assert_unavailable(lambda c: debug(c.execute(statement)), session)
 
-        statement = SimpleStatement("SELECT * from test2 where col > 5 ALLOW FILTERING", consistency_level=ConsistencyLevel.ONE, retry_policy=FallthroughRetryPolicy())
+        statement = SimpleStatement("SELECT * from test2 where col > 5 ALLOW FILTERING",
+                                    consistency_level=ConsistencyLevel.ONE, retry_policy=FallthroughRetryPolicy())
         assert_unavailable(lambda c: debug(c.execute(statement)), session)
 
         node2.watch_log_for("Some operations timed out", from_mark=mark, timeout=60)
@@ -904,6 +913,7 @@ class AbortedQueriesTester(CQLTester):
             session.execute("INSERT INTO test4 (id, col, val) VALUES ({}, {}, 'foo')".format(i, i // 10))
 
         mark = node2.mark_log()
-        statement = SimpleStatement("SELECT * FROM mv WHERE col = 50", consistency_level=ConsistencyLevel.ONE, retry_policy=FallthroughRetryPolicy())
+        statement = SimpleStatement("SELECT * FROM mv WHERE col = 50",
+                                    consistency_level=ConsistencyLevel.ONE, retry_policy=FallthroughRetryPolicy())
         assert_unavailable(lambda c: debug(c.execute(statement)), session)
         node2.watch_log_for("Some operations timed out", from_mark=mark, timeout=60)

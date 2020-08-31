@@ -103,7 +103,8 @@ class TestConfiguration(Tester):
             if 'compression' in result:
                 params = result
 
-        assert params is not '', "Looking for the string 'sstable_compression', but could not find it in {str}".format(str=result)
+        assert params is not '', "Looking for the string 'sstable_compression', but could not find it in {str}".format(
+            str=result)
 
         chunk_string = "chunk_length_kb" if self.cluster.version() < '3.0' else "chunk_length_in_kb"
         chunk_length = int(re.search("{chunk}.*?:.*?'(\d*?)'".format(chunk=chunk_string), result).groups()[0])
@@ -119,7 +120,8 @@ def write_to_trigger_fsync(session, ks, table):
     (key int, a int, b int, c int).
     """
     execute_concurrent_with_args(session,
-                                 session.prepare('INSERT INTO "{ks}"."{table}" (key, a, b, c) VALUES (?, ?, ?, ?)'.format(ks=ks, table=table)),
+                                 session.prepare(
+                                     'INSERT INTO "{ks}"."{table}" (key, a, b, c) VALUES (?, ?, ?, ?)'.format(ks=ks, table=table)),
                                  ((x, x + 1, x + 2, x + 3) for x in range(50000)))
 
 

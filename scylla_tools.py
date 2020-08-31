@@ -12,7 +12,8 @@ from ccmlib import common
 from ccmlib.node import NodetoolError
 import re
 from dtest import debug, Tester
-import random, string
+import random
+import string
 import itertools
 from copy import deepcopy
 from threading import Thread
@@ -37,7 +38,8 @@ def build_insert_params(keys, n, c1_values, c2_values):
         c2_values.extend(['value2'] * len(keys))
 
     if len(c1_values) != len(c2_values) or len(c1_values) != len(keys):
-        raise ValueError("Inconsistent 'c1/c2_values' contents. 'c1/c2_values' should be either a '[]' value or a list of the same length as a requested number of keys.")
+        raise ValueError(
+            "Inconsistent 'c1/c2_values' contents. 'c1/c2_values' should be either a '[]' value or a list of the same length as a requested number of keys.")
 
 
 def insert_c1c2(session, keys=None, n=None, consistency=ConsistencyLevel.QUORUM, c1_values=None, c2_values=None, ks='ks', cf='cf'):
@@ -152,7 +154,8 @@ def check_c1c2_result_one(success, rows, tolerate_missing, must_be_missing, c1_v
         assert len(rows) == 1, 'Wrong length, %s' % len(rows)
         res = rows[0]
         assert len(res) == 2, "Expected 2 columns in result, but got: {}".format(res)
-        assert res[0] == c1_value and res[1] == c2_value, "Expected Row(c1='{}', c2='{}'), but got: {}".format(c1_value, c2_value, res)
+        assert res[0] == c1_value and res[1] == c2_value, "Expected Row(c1='{}', c2='{}'), but got: {}".format(
+            c1_value, c2_value, res)
 
     if must_be_missing:
         assert len(rows) == 0
@@ -172,7 +175,8 @@ def query_c1c2_concurrent(session, keys, consistency=ConsistencyLevel.QUORUM, to
         c2_values = ['value2'] * len(keys)
 
     if len(c1_values) != len(c2_values) or len(c1_values) != len(keys):
-        raise ValueError("Inconsistent 'c1/c2_values' contents. 'c1/c2_values' should be either a 'None' value or a list of the same length as a requested number of keys.")
+        raise ValueError(
+            "Inconsistent 'c1/c2_values' contents. 'c1/c2_values' should be either a 'None' value or a list of the same length as a requested number of keys.")
 
     # prepare a query statement
     query = 'SELECT c1, c2 FROM cf WHERE key=?'
@@ -183,11 +187,14 @@ def query_c1c2_concurrent(session, keys, consistency=ConsistencyLevel.QUORUM, to
     for result, c1, c2 in zip(results, c1_values, c2_values):
         check_c1c2_result_one(result[0], list(result[1]), tolerate_missing, must_be_missing, c1, c2)
 
+
 def generate_random_text(length=10):
     return ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(length))
 
+
 def drop_table(session, table_name, if_exists=False):
     session.execute("DROP TABLE {} {}".format('IF EXISTS' if if_exists else '', table_name))
+
 
 def scylla_mode(modes):
     """
@@ -223,6 +230,7 @@ def scylla_mode(modes):
         do_skip = found
     return unittest.skipIf(do_skip, 'Test disabled for scylla %s' % mode)
 
+
 def get_sstables_files(cf_dir, f_type=''):
     """
     Returns a set of sstable(s) files for a given KS and CF
@@ -253,9 +261,11 @@ def get_cf_dir(ks_dir, cf_name):
             if cf_pattern.match(d):
                 return os.path.join(root, d)
 
+
 def flush_by_node(cluster):
     for node in cluster.nodelist():
         node.flush()
+
 
 class TableManager(object):
     """Class provides interface to create and prefill tables and materialized views by user demand"""
@@ -355,11 +365,11 @@ class TableManager(object):
             return ''
         elif 'names' in c_def and len(c_def['names']) != c_def['amount']:
             debug('Names amount does not coincides with coulmns amount. Asked create {0} columns, supplied {1} names'
-                        .format(c_def['amount'], len(c_def['names'])))
+                  .format(c_def['amount'], len(c_def['names'])))
 
         return c_def['prefix'] if 'prefix' in c_def else \
-               '{clmn_prefix}_{clmn_suffix}'.format(clmn_prefix=self.CLMN_PREFIX,
-                                            clmn_suffix=''.join([s[0] for s in ctype.split('<')]) if '<' in ctype else ctype)
+            '{clmn_prefix}_{clmn_suffix}'.format(clmn_prefix=self.CLMN_PREFIX,
+                                                 clmn_suffix=''.join([s[0] for s in ctype.split('<')]) if '<' in ctype else ctype)
 
     def _set_column_as_key(self, definition_dict, set_list, c_type, clmn_name, exclude_list=None):
         """
@@ -379,7 +389,7 @@ class TableManager(object):
         if not exclude_list or (exclude_list and clmn_name not in exclude_list):
             if c_type in definition_dict:
                 if 'by name' in definition_dict[c_type] and definition_dict[c_type]['by name'] and not set(definition_dict[c_type]['by name']).issubset(set_list):
-                        set_list.extend(definition_dict[c_type]['by name'])
+                    set_list.extend(definition_dict[c_type]['by name'])
                 elif 'by count' in definition_dict[c_type] and definition_dict[c_type]['by count'] > 0:
                     set_list.append(clmn_name)
                     definition_dict[c_type]['by count'] -= 1
@@ -391,11 +401,11 @@ class TableManager(object):
         # TODO: decide if columns order is important for PK and CK
         statement = 'CREATE TABLE IF NOT EXISTS {keyspace_name}.{table_name} ' \
                     '({columns_definition}, PRIMARY KEY(({pks}){cls}))'\
-                        .format(keyspace_name=self.keyspace,
-                        table_name=self.table_name,
-                        columns_definition=', '.join([s for s in self.columns_list]),
-                        pks=', '.join([s for s in self.pk_list]),
-                        cls=', {}'.format(', '.join([s for s in self.cl_list])) if self.cl_list else '')
+            .format(keyspace_name=self.keyspace,
+                    table_name=self.table_name,
+                    columns_definition=', '.join([s for s in self.columns_list]),
+                    pks=', '.join([s for s in self.pk_list]),
+                    cls=', {}'.format(', '.join([s for s in self.cl_list])) if self.cl_list else '')
         if self.table_options:
             statement = statement + ' WITH'
             for op, value in self.table_options.items():
@@ -411,8 +421,8 @@ class TableManager(object):
                 clmn_name = '{clmn_prefix}{num}' .format(clmn_prefix=preffix, num=i) if preffix else c_def['names'][i]
 
                 self.columns_list.append('{clmn_name} {frozen}{clmn_type}'
-                                 .format(clmn_name=clmn_name, clmn_type=c_type,
-                                         frozen='frozen ' if c_def['frozen'] else ''))
+                                         .format(clmn_name=clmn_name, clmn_type=c_type,
+                                                 frozen='frozen ' if c_def['frozen'] else ''))
                 # Select column as PRIMARY KEY
                 self._set_column_as_key(self.pk_columns_dict, self.pk_list, c_type, clmn_name)
                 # Select column as CLUSTERING
@@ -432,16 +442,16 @@ class TableManager(object):
         data_arr = self._create_data_array(rows, ready_data=data)
         using_str = ' USING {0} {1}'.format(using.keys()[0], using[using.keys()[0]]) if using else ''
         st = 'INSERT INTO {ks}.{table_name} ({columns}) VALUES ({values}){using}'\
-                                         .format(ks=self.keyspace, table_name=self.table_name,
-                                                 columns=', '.join([c.split(' ')[0] for c in self.columns_list]),
-                                                 values=('?,'*len(self.columns_list))[:-1], using=using_str)
+            .format(ks=self.keyspace, table_name=self.table_name,
+                    columns=', '.join([c.split(' ')[0] for c in self.columns_list]),
+                    values=('?,'*len(self.columns_list))[:-1], using=using_str)
         debug(st)
         statement = self.session.prepare(st)
         statement.consistency_level = consistency
 
         execute_concurrent_with_args(self.session, statement,
                                      map(lambda k: [k+start_id_from]+[data_arr[t][k] for t in range(0, len(data_arr))],
-                                         [ k for k in range(0,rows)]))
+                                         [k for k in range(0, rows)]))
         if flush:
             flush_by_node(self.cluster)
 
@@ -463,7 +473,8 @@ class TableManager(object):
         :param filter: {<column_name1>: <value>, <column_name2>: <value>, ..}
         """
         where_statement = ['{0}={1}'.format(column, self.prepare_value(str(value))) for column, value in filter.items()]
-        query = 'delete from {tbl} where {where}'.format(tbl=self.table_name, where=' and '.join(s for s in where_statement))
+        query = 'delete from {tbl} where {where}'.format(
+            tbl=self.table_name, where=' and '.join(s for s in where_statement))
         debug(query)
         self.session.execute(query)
 
@@ -478,14 +489,14 @@ class TableManager(object):
                 return ready_data[c_type]
             data = []
             value = None
-            #TODO: add UDT and collection types
+            # TODO: add UDT and collection types
             for i in range(0, dupl):
                 if 'int' in c_type:
                     value = random.randint(c_def['value length']['min'], c_def['value length']['max'])
                 elif c_type in ['text', 'ascii', 'varchar']:
                     value = ''.join(random.choice(string.ascii_lowercase)
-                                     for _ in range(c_def['value length']['min'], c_def['value length']['max']))
-                elif c_type in ['float','decimal', 'double']:
+                                    for _ in range(c_def['value length']['min'], c_def['value length']['max']))
+                elif c_type in ['float', 'decimal', 'double']:
                     value = random.uniform(c_def['value length']['min'], c_def['value length']['max'])
                 elif c_type == 'decimal':
                     value = random.uniform(c_def['value length']['min'], c_def['value length']['max'])
@@ -547,17 +558,19 @@ class TableManager(object):
 
         if filter_dict:
             set_str = ' and '.join('{0} = {1}'.format(name, self.prepare_value(value))
-                                      for name, value in set_dict.items())
+                                   for name, value in set_dict.items())
             filter_str = ' and '.join('{0} {1} {2}'.format(name, value['operator'],
-                                '({})'.format(', '.join([self.prepare_value(str(i)) for i in value['value']]))
-                                if isinstance(value['value'], list) and value['operator'] == 'in' else
-                                self.prepare_value(value['value']) )for name, value in filter_dict.items())
-            using_str = ' USING {0} {1}'.format(list(using_clause.keys())[0], using_clause[list(using_clause.keys())[0]]) if using_clause else ''
+                                                           '({})'.format(
+                                                               ', '.join([self.prepare_value(str(i)) for i in value['value']]))
+                                                           if isinstance(value['value'], list) and value['operator'] == 'in' else
+                                                           self.prepare_value(value['value']))for name, value in filter_dict.items())
+            using_str = ' USING {0} {1}'.format(
+                list(using_clause.keys())[0], using_clause[list(using_clause.keys())[0]]) if using_clause else ''
 
             statement = 'UPDATE {ks}.{table_name}{using} SET {set_clause} WHERE {filter}' \
-                            .format(ks=self.keyspace, table_name=self.table_name,
-                                   using='' if not using_clause else using_str,
-                                   set_clause=set_str, filter=filter_str)
+                .format(ks=self.keyspace, table_name=self.table_name,
+                        using='' if not using_clause else using_str,
+                        set_clause=set_str, filter=filter_str)
             self.session.execute(statement)
             return (set_dict, filter_str)
         return (None, None)
@@ -567,7 +580,7 @@ class TableManager(object):
         time.sleep(delay)
         query = 'select * from {}'.format(self.table_name)
         updated_columns = updated_columns or [c for c in self.column_names_list
-                                            if '{} int'.format(c) in self.columns_list
+                                              if '{} int'.format(c) in self.columns_list
                                               and c not in self.pk_list+self.cl_list]
 
         res = list(self.session.execute(query + ' LIMIT 1'))
@@ -614,7 +627,7 @@ class TableManager(object):
             i = random.randint(0, len(self.materialized_views)-1)
             mv_name = [name for j, name in enumerate(self.materialized_views.keys()) if j == i][0]
             statement = statement_template.format(mv_name, random.randint(0, max_id)) if by_id else \
-                                 statement_template.format(mv_name)
+                statement_template.format(mv_name)
             debug(statement)
             self.session.execute(statement)
         debug('Finish reads from MVs')
@@ -654,7 +667,8 @@ class TableManager(object):
                             and name not in self.pk_list + self.cl_list + list(clause.keys()):
                         update_item = name
                 elif by == 'type':
-                    update_item = self._get_column_by_type(name, exclude_list=self.pk_list + self.cl_list + list(clause.keys()) +exclude_columns)
+                    update_item = self._get_column_by_type(
+                        name, exclude_list=self.pk_list + self.cl_list + list(clause.keys()) + exclude_columns)
                 if update_item:
                     clause.update({update_item: new_value})
         return clause
@@ -670,7 +684,7 @@ class TableManager(object):
 
     def get_value_for_filter(self, row_index=0):
         statement = 'SELECT {pks} FROM {ks}.{table_name}'.format(ks=self.keyspace,
-                                    table_name=self.table_name, pks=', '.join(name for name in self.pk_list+self.cl_list))
+                                                                 table_name=self.table_name, pks=', '.join(name for name in self.pk_list+self.cl_list))
 
         res = self.session.execute(statement)
         result = {}
@@ -688,9 +702,11 @@ class TableManager(object):
     def remove_mv(self, mv_name):
         del self.materialized_views[mv_name]
 
+
 class MaterializedViewManager(object):
     """Class provides interface to create and manage materialized views"""
     TEMPLATE_MV_NAME = '{0}_mv_{1}'
+
     def __init__(self, parent_table, mv_name=None):
         self.parent_table = parent_table
         self.mv_name = mv_name or self.TEMPLATE_MV_NAME.format(self.parent_table.table_name, 0)
@@ -756,31 +772,31 @@ class MaterializedViewManager(object):
                                                  if c not in self.mv_where_restriction])
             if self.mv_where_restriction:
                 where_str = ' and '.join(['{0} {1} {2}'.format(name, value['operator'],
-                                                         '({})'.format(', '.join([self.parent_table.prepare_value(str(i))
-                                                                                  for i in value['value']])
-                                                                       if isinstance(value['value'], list) else value['value'] )
-                                                         if value['operator'] == 'in' else value['value'])
-                                    for name, value in self.mv_where_restriction.items()])
+                                                               '({})'.format(', '.join([self.parent_table.prepare_value(str(i))
+                                                                                        for i in value['value']])
+                                                                             if isinstance(value['value'], list) else value['value'])
+                                                               if value['operator'] == 'in' else value['value'])
+                                          for name, value in self.mv_where_restriction.items()])
                 self.mv_where_clause = '{0} and {1}'.format(self.mv_where_clause, where_str)
             # TODO: add option to filter
             # TODO: ADD CLUSTERING OPTION
             # self.mv_options =
             statement = "CREATE MATERIALIZED VIEW {ks}.{mv_name} AS SELECT {mv_columns} FROM {ks}.{table_name} " \
-                             "WHERE {where_clause} PRIMARY KEY ({pk}{cl})".format(
-                                mv_name=self.mv_name,
-                                ks=self.parent_table.keyspace,
-                                mv_columns=', '.join([k for k in self.mv_columns_list]),
-                                table_name=self.parent_table.table_name,
-                                where_clause=self.mv_where_clause,
-                                pk=', '.join([k for k in self.mv_pk_list]),
-                                cl='' if not self.parent_table.cl_list or set(self.parent_table.cl_list).issubset(self.mv_pk_list)
-                                      else ', {}'.format(', '.join([k for k in self.mv_cl_list])))
+                "WHERE {where_clause} PRIMARY KEY ({pk}{cl})".format(
+                    mv_name=self.mv_name,
+                    ks=self.parent_table.keyspace,
+                    mv_columns=', '.join([k for k in self.mv_columns_list]),
+                    table_name=self.parent_table.table_name,
+                    where_clause=self.mv_where_clause,
+                    pk=', '.join([k for k in self.mv_pk_list]),
+                    cl='' if not self.parent_table.cl_list or set(self.parent_table.cl_list).issubset(self.mv_pk_list)
+                    else ', {}'.format(', '.join([k for k in self.mv_cl_list])))
             debug(statement+';')
             self.parent_table.session.execute(statement)
 
             if wait_for_view_built:
                 wait_for_view(cluster=self.parent_table.cluster, session=self.parent_table.session,
-                               ks=self.parent_table.keyspace, view=self.mv_name)
+                              ks=self.parent_table.keyspace, view=self.mv_name)
 
             if options:
                 for op, value in options.items():
@@ -831,9 +847,8 @@ class MaterializedViewManager(object):
         exclude_list = exclude_list or []
         mv_columns_list = []
         mv_columns_list.extend(list(itertools.chain.from_iterable([self._build_columns_list(c_type, c_def, mv_columns_list+exclude_list)
-                                for c_type, c_def in mv_columns.items()])))
+                                                                   for c_type, c_def in mv_columns.items()])))
         return mv_columns_list
-
 
     def _build_columns_list(self, c_type, c_def, exclude_list):
         column_names = []
@@ -843,7 +858,7 @@ class MaterializedViewManager(object):
         else:
             for i in range(c_def['amount']):
                 column_names.append([clmn.split(' ')[0] for clmn in self.parent_table.columns_list if ' {}'.format(c_type) in clmn
-                                    and clmn.split(' ')[0] not in column_names + exclude_list][0])
+                                     and clmn.split(' ')[0] not in column_names + exclude_list][0])
         return column_names
 
     def create_mv_pk_list(self, mv_pk_column):
@@ -867,15 +882,16 @@ class MaterializedViewManager(object):
                     mv_pk_column_list.append(name)
         elif 'type' in mv_pk_column:
             clmns = [clmn.split(' ')[0] for clmn in self.parent_table.columns_list if ' {}'.format(mv_pk_column['type']) in clmn
-                                    and clmn.split(' ')[0] not in mv_pk_column_list+(self.parent_table.cl_list or [])]
+                     and clmn.split(' ')[0] not in mv_pk_column_list+(self.parent_table.cl_list or [])]
             if not clmns:
-                debug('ERROR: new column for Materialized View PK is not found. Received parameters: {}'.format(mv_pk_column['type']))
+                debug('ERROR: new column for Materialized View PK is not found. Received parameters: {}'.format(
+                    mv_pk_column['type']))
             else:
                 mv_pk_column_list.append(clmns[0])
         return mv_pk_column_list
 
     def my_count_query(self, filter=None):
-        #TODO: handle filter
+        # TODO: handle filter
         return 'SELECT COUNT(*) FROM {my_name}{where_clause}'.format(my_name=self.mv_name, where_clause=filter or '')
 
 
@@ -909,19 +925,23 @@ def view_built_status_query(ks='', view='', select_column='status'):
     query = "SELECT {} FROM system_distributed.view_build_status".format(select_column)
     if ks or view:
         query = "{} WHERE ".format(query)
-        where = ' AND '.join(['{0} = \'{1}\''.format(k, v) for k, v in {'keyspace_name': ks, 'view_name': view}.items() if v])
+        where = ' AND '.join(['{0} = \'{1}\''.format(k, v)
+                              for k, v in {'keyspace_name': ks, 'view_name': view}.items() if v])
         if ks:
             query = "{0} {1}".format(query, where)
     return query
 
+
 def get_index_view_name(index_name):
     return '{}_index'.format(index_name)
+
 
 def get_view_id(session, keyspace_name, view_name):
     res = session.execute('select id from system_schema.views where keyspace_name=\'{0}\' and view_name=\'{1}\''
                           .format(keyspace_name, view_name))
     assert res, 'Secondary index view named {} has not built'.format(view_name)
     return rows_to_list(res)[0][0]
+
 
 def index_is_built(cluster, session, ks_name, table_name, index_name, raise_exception=True):
     wait_for_view(cluster, session, ks_name, get_index_view_name(index_name), raise_exception=raise_exception)
@@ -935,11 +955,13 @@ def index_is_built(cluster, session, ks_name, table_name, index_name, raise_exce
 # implementation choice - we also know the state of the build for dead nodes,
 # but waiting only for live nodes makes it easier to write tests which check
 # how view building and dead nodes interact.
+
+
 def wait_for_view(cluster, session, ks, view, raise_exception=True):
     debug("Waiting for view {}.{} to finish building...".format(ks, view))
 
     def _view_build_finished_on_live_nodes():
-        done=set()
+        done = set()
         for entry in rows_to_list(session.execute(view_built_status_query(ks, view, 'host_id,status'))):
             if entry[1] == 'SUCCESS':
                 done.add(entry[0])
@@ -968,7 +990,8 @@ def wait_for_view(cluster, session, ks, view, raise_exception=True):
     else:
         debug(error_msg)
 
-def wait_for_view_build_start(session, ks, view, seconds_to_wait = 20):
+
+def wait_for_view_build_start(session, ks, view, seconds_to_wait=20):
 
     def _check_build_started():
         result = rows_to_list(session.execute("SELECT last_token FROM system.views_builds_in_progress "
@@ -980,6 +1003,7 @@ def wait_for_view_build_start(session, ks, view, seconds_to_wait = 20):
     while not _check_build_started():
         if time.time() - start > seconds_to_wait:
             raise Exception("View building didn't start in {} seconds".format(seconds_to_wait))
+
 
 def wait_for_schema_agreement(session):
     rows = list(session.execute("SELECT schema_version FROM system.local"))
@@ -998,17 +1022,20 @@ def wait_for_schema_agreement(session):
         time.sleep(1)
         wait_for_schema_agreement(session)
 
+
 def remove_node(cluster, node, wait_other_notice=True, other_nodes=None):
     hostid = node.hostid()
     cluster.remove(node, wait_other_notice=wait_other_notice, other_nodes=other_nodes)
     remove_using_node = cluster.nodelist()[0]
     remove_using_node.nodetool("removenode {}".format(hostid))
 
+
 def copy_files_to(from_dir, to_dir, files_only=False):
     for f in os.listdir(from_dir):
         if files_only and not os.path.isfile(os.path.join(from_dir, f)):
             continue
         shutil.copy2(os.path.join(from_dir, f), os.path.join(to_dir, f))
+
 
 def get_entity_id(session, table_or_view, keyspace_name, entity_name):
     system_table = table_or_view + 's'
@@ -1017,10 +1044,12 @@ def get_entity_id(session, table_or_view, keyspace_name, entity_name):
     entity_id = rows_to_list(session.execute(query))
     return entity_id[0][0]
 
+
 def get_truncated_time_from_system_local(session):
     query = "SELECT truncated_at FROM system.local"
     truncated_time = rows_to_list(session.execute(query))
     return truncated_time
+
 
 def get_truncated_time_from_system_truncated(session, table_id):
     query = "SELECT truncated_at FROM system.truncated WHERE table_uuid={}".format(table_id)
@@ -1051,7 +1080,7 @@ class CassandraCluster(object):
         # Stop Scylla cluster before create new Cassandra cluster because of it's impossible to run two clusters simultaneously
         if self.scylla_cluster:
             self.scylla_cluster.stop(wait_other_notice=True)
-        #Set up Cassandra cluster
+        # Set up Cassandra cluster
         self.tester.setUp()
         self.cluster = self.tester.cluster
         self.cluster.set_configuration_options(values=config_options)
@@ -1095,12 +1124,13 @@ class CassandraCluster(object):
         create dictionary with keyspace(s) and their table(s) that its data will be migrated
         """
         self.folders_tree = {}
-        keyspace_names_list = self.create_entites_list(obj=keyspace_names_list, func_for_empty=[self.ddl_obj.get_keyspaces, None])
+        keyspace_names_list = self.create_entites_list(obj=keyspace_names_list, func_for_empty=[
+                                                       self.ddl_obj.get_keyspaces, None])
 
         for keyspace_name in keyspace_names_list:
             self.folders_tree[keyspace_name] = []
             table_names_list = self.create_entites_list(obj=table_names_list, func_for_empty=[self.ddl_obj.get_entity_list,
-                                "select table_name from system_schema.tables where keyspace_name='{}'".format(keyspace_name.replace('"', ''))])
+                                                                                              "select table_name from system_schema.tables where keyspace_name='{}'".format(keyspace_name.replace('"', ''))])
             for table_name in table_names_list:
                 self.folders_tree[keyspace_name].append(table_name)
 
@@ -1129,13 +1159,16 @@ class CassandraCluster(object):
         for node in nodes:
             for ks, tables in self.folders_tree.items():
                 for table in tables:
-                    copy_from = self.get_table_folder(base_path=from_base_path, node=node, keyspace_name=ks, table_name=table)
-                    copy_to = self.get_table_folder(base_path=to_base_path, node=node, keyspace_name=ks, table_name=table, create=create_to_folder)
+                    copy_from = self.get_table_folder(base_path=from_base_path, node=node,
+                                                      keyspace_name=ks, table_name=table)
+                    copy_to = self.get_table_folder(base_path=to_base_path, node=node,
+                                                    keyspace_name=ks, table_name=table, create=create_to_folder)
                     debug('Copy data files for {ks}.{table} table: from {copy_from} to {copy_to}'.format(**locals()))
                     copy_files_to(from_dir=copy_from, to_dir=copy_to, files_only=True)
 
     def copy_scylla_data_to_cassandra(self, nodes=None):
-        self.copy_table_data_all_nodes(from_base_path=self.scylla_data_tmp_folder, to_base_path=self.test_path, nodes=nodes)
+        self.copy_table_data_all_nodes(from_base_path=self.scylla_data_tmp_folder,
+                                       to_base_path=self.test_path, nodes=nodes)
 
     def create_test_schema(self, node):
         for ks, cmds in self.scylla_schema_ddl.items():
@@ -1189,8 +1222,10 @@ class CassandraCluster(object):
             self.cluster.stop(wait_other_notice=True)
         self.tester.tearDown()
 
+
 class SchemaDDL(object):
     """Class provides interface to fetch schema DDL"""
+
     def __init__(self, node, keyspace_names_list='', table_names_list='', get_system_keyspaces=False):
         """
         :param node: node object to run the statements on
@@ -1236,7 +1271,8 @@ class SchemaDDL(object):
         return ks_ddl
 
     def remove_view_of_indexes(self, keyspace, ks_ddl):
-        indexes = self.get_entity_list(cmd="select index_name from system_schema.indexes where keyspace_name='{}'".format(keyspace))
+        indexes = self.get_entity_list(
+            cmd="select index_name from system_schema.indexes where keyspace_name='{}'".format(keyspace))
         if indexes:
             for index in indexes:
                 for cmd in ks_ddl:
@@ -1261,7 +1297,7 @@ class SchemaDDL(object):
         return [self.wrap_case_sensitive_string(entity.strip()) for entity in out[0].split('\n')[3:-3]]
 
     def get_keyspaces(self):
-        if hasattr(self,'_keyspace_names_list') and self._keyspace_names_list:
+        if hasattr(self, '_keyspace_names_list') and self._keyspace_names_list:
             return self._keyspace_names_list
         out = self.node.run_cqlsh(cmds='select keyspace_name from system_schema.keyspaces', return_output=True)
         keyspaces = []

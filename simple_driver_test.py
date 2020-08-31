@@ -5,6 +5,7 @@ from ccmlib.scylla_cluster import ScyllaCluster
 from dtest import Tester
 from nose.plugins.attrib import attr
 
+
 @attr('next-gating', 'dtest-debug', 'dtest-full', 'single_node')
 class TestSimple(Tester):
 

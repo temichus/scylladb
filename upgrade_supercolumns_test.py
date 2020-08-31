@@ -4,8 +4,8 @@ import time
 from ccmlib.common import get_version_from_build
 
 from thrift_bindings.thrift010.ttypes import (KsDef, CfDef, Mutation, ColumnOrSuperColumn,
-                                        Column, SuperColumn, SliceRange, SlicePredicate,
-                                        ColumnParent, CounterColumn)
+                                              Column, SuperColumn, SliceRange, SlicePredicate,
+                                              ColumnParent, CounterColumn)
 from thrift_bindings.thrift010.ttypes import ConsistencyLevel as ThriftConsistencyLevel
 
 from thrift_tests import get_thrift_client
@@ -83,7 +83,8 @@ class TestSCUpgrade(Tester):
                 col_name = 'c%d' % j
                 column = Column(name=col_name, value='v', timestamp=100)
                 client.batch_mutate(
-                    {'k0': {'sc_test': [Mutation(ColumnOrSuperColumn(super_column=SuperColumn(supercol_name, [column])))]}},
+                    {'k0': {'sc_test': [Mutation(ColumnOrSuperColumn(
+                        super_column=SuperColumn(supercol_name, [column])))]}},
                     ThriftConsistencyLevel.ONE)
 
         session.cluster.shutdown()

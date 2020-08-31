@@ -34,7 +34,7 @@ class SSTableDump(Tester):
 
         with open(json_path, 'r') as fdr:
             data = fdr.read()
-        data_json = json.loads(data.replace("][",","))
+        data_json = json.loads(data.replace("][", ","))
 
         os.unlink(json_path)
         return data_json

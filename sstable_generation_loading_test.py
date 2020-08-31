@@ -132,17 +132,17 @@ class TestSSTableGenerationAndLoading(Tester):
         os.system('mkdir %s/snapshots' % path)
 
         self.ignore_log_patterns += [r"database - Exception while populating keyspace 'keyspace1' with column family 'standard1' from file '.*': "
-                                      "sstables::malformed_sstable_exception \(.*: file not found\)",
+                                     "sstables::malformed_sstable_exception \(.*: file not found\)",
                                      r"database - Exception while populating keyspace 'keyspace1' with column family 'standard1' from file '.*': "
-                                      "sstables::malformed_sstable_exception \(.*: No such file or directory\)",
+                                     "sstables::malformed_sstable_exception \(.*: No such file or directory\)",
                                      r"database - Exception while populating keyspace 'keyspace1' with column family 'standard1' from file '.*': "
-                                      "std::filesystem::__cxx11::filesystem_error \(error system:2, filesystem error: (open|stat) failed: No such file or directory \[.*\]\)",
+                                     "std::filesystem::__cxx11::filesystem_error \(error system:2, filesystem error: (open|stat) failed: No such file or directory \[.*\]\)",
                                      r"database - Unrecognized error while processing .*: std::filesystem::__cxx11::filesystem_error "
-                                      "\(error system:2, filesystem error: (open|stat) failed: No such file or directory \[.*\]\)",
+                                     "\(error system:2, filesystem error: (open|stat) failed: No such file or directory \[.*\]\)",
                                      r"database - malformed sstable .*: .*: file not found",
                                      r"database - malformed sstable .*: .*: No such file or directory",
                                      r"init - Startup failed: std::runtime_error"
-                                    ]
+                                     ]
 
         timeout = 10 if cluster.scylla_mode != 'debug' else 90
 
@@ -220,7 +220,8 @@ class TestSSTableGenerationAndLoading(Tester):
         for compression_option in (pre_compression, post_compression):
             assert compression_option in (None, 'Snappy', 'Deflate')
 
-        debug("Testing sstableloader with pre_compression=%s and post_compression=%s" % (pre_compression, post_compression))
+        debug("Testing sstableloader with pre_compression=%s and post_compression=%s" %
+              (pre_compression, post_compression))
 
         cluster = self.cluster
 

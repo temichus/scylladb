@@ -161,7 +161,8 @@ class TestScrubIndexes(TestHelper):
     """
 
     def create_users(self, session):
-        columns = {"password": "varchar", "gender": "varchar", "session_token": "varchar", "state": "varchar", "birth_year": "bigint"}
+        columns = {"password": "varchar", "gender": "varchar",
+                   "session_token": "varchar", "state": "varchar", "birth_year": "bigint"}
         self.create_cf(session, 'users', columns=columns)
 
         session.execute("CREATE INDEX gender_idx ON users (gender)")
@@ -169,14 +170,22 @@ class TestScrubIndexes(TestHelper):
         session.execute("CREATE INDEX birth_year_idx ON users (birth_year)")
 
     def update_users(self, session):
-        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user1', 'ch@ngem3a', 'f', 'TX', 1978)")
-        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user2', 'ch@ngem3b', 'm', 'CA', 1982)")
-        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user3', 'ch@ngem3c', 'f', 'TX', 1978)")
-        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user4', 'ch@ngem3d', 'm', 'CA', 1982)")
-        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user5', 'ch@ngem3e', 'f', 'TX', 1978)")
-        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user6', 'ch@ngem3f', 'm', 'CA', 1982)")
-        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user7', 'ch@ngem3g', 'f', 'TX', 1978)")
-        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user8', 'ch@ngem3h', 'm', 'CA', 1982)")
+        session.execute(
+            "INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user1', 'ch@ngem3a', 'f', 'TX', 1978)")
+        session.execute(
+            "INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user2', 'ch@ngem3b', 'm', 'CA', 1982)")
+        session.execute(
+            "INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user3', 'ch@ngem3c', 'f', 'TX', 1978)")
+        session.execute(
+            "INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user4', 'ch@ngem3d', 'm', 'CA', 1982)")
+        session.execute(
+            "INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user5', 'ch@ngem3e', 'f', 'TX', 1978)")
+        session.execute(
+            "INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user6', 'ch@ngem3f', 'm', 'CA', 1982)")
+        session.execute(
+            "INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user7', 'ch@ngem3g', 'f', 'TX', 1978)")
+        session.execute(
+            "INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user8', 'ch@ngem3h', 'm', 'CA', 1982)")
 
         session.execute("DELETE FROM users where KEY = 'user1'")
         session.execute("DELETE FROM users where KEY = 'user5'")
@@ -271,10 +280,13 @@ class TestScrubIndexes(TestHelper):
         num_users = 100
         for i in range(0, num_users):
             user_uuid = uuid.uuid4()
-            session.execute(("INSERT INTO users (user_id, email) values ({user_id}, 'test@example.com')").format(user_id=user_uuid))
-            session.execute(("UPDATE users set uuids = [{id}] where user_id = {user_id}").format(id=_id, user_id=user_uuid))
+            session.execute(
+                ("INSERT INTO users (user_id, email) values ({user_id}, 'test@example.com')").format(user_id=user_uuid))
+            session.execute(("UPDATE users set uuids = [{id}] where user_id = {user_id}").format(
+                id=_id, user_id=user_uuid))
 
-        initial_users = list(session.execute(("SELECT * from users where uuids contains {some_uuid}").format(some_uuid=_id)))
+        initial_users = list(session.execute(
+            ("SELECT * from users where uuids contains {some_uuid}").format(some_uuid=_id)))
         self.assertEqual(num_users, len(initial_users))
 
         initial_sstables = self.flush('users', 'user_uuids_idx')
@@ -302,18 +314,27 @@ class TestScrub(TestHelper):
     """
 
     def create_users(self, session):
-        columns = {"password": "varchar", "gender": "varchar", "session_token": "varchar", "state": "varchar", "birth_year": "bigint"}
+        columns = {"password": "varchar", "gender": "varchar",
+                   "session_token": "varchar", "state": "varchar", "birth_year": "bigint"}
         self.create_cf(session, 'users', columns=columns)
 
     def update_users(self, session):
-        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user1', 'ch@ngem3a', 'f', 'TX', 1978)")
-        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user2', 'ch@ngem3b', 'm', 'CA', 1982)")
-        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user3', 'ch@ngem3c', 'f', 'TX', 1978)")
-        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user4', 'ch@ngem3d', 'm', 'CA', 1982)")
-        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user5', 'ch@ngem3e', 'f', 'TX', 1978)")
-        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user6', 'ch@ngem3f', 'm', 'CA', 1982)")
-        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user7', 'ch@ngem3g', 'f', 'TX', 1978)")
-        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user8', 'ch@ngem3h', 'm', 'CA', 1982)")
+        session.execute(
+            "INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user1', 'ch@ngem3a', 'f', 'TX', 1978)")
+        session.execute(
+            "INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user2', 'ch@ngem3b', 'm', 'CA', 1982)")
+        session.execute(
+            "INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user3', 'ch@ngem3c', 'f', 'TX', 1978)")
+        session.execute(
+            "INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user4', 'ch@ngem3d', 'm', 'CA', 1982)")
+        session.execute(
+            "INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user5', 'ch@ngem3e', 'f', 'TX', 1978)")
+        session.execute(
+            "INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user6', 'ch@ngem3f', 'm', 'CA', 1982)")
+        session.execute(
+            "INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user7', 'ch@ngem3g', 'f', 'TX', 1978)")
+        session.execute(
+            "INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user8', 'ch@ngem3h', 'm', 'CA', 1982)")
 
         session.execute("DELETE FROM users where KEY = 'user1'")
         session.execute("DELETE FROM users where KEY = 'user5'")
@@ -428,7 +449,8 @@ class TestScrub(TestHelper):
         node1 = cluster.nodelist()[0]
 
         session = self.patient_cql_connection(node1)
-        session.execute("CREATE KEYSPACE test WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1 };")
+        session.execute(
+            "CREATE KEYSPACE test WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1 };")
         session.execute("use test;")
         session.execute("CREATE TYPE point_t (x double, y double);")
 

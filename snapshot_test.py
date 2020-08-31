@@ -489,8 +489,11 @@ class TestSnapshot(SnapshotTester):
 
         self.clear_snapshot_per_keyspace_per_table(self.cluster.get_node_ip(1), 'per_cf', "ks", "cf")
 
-        self.assertFalse(search_cf_in_snapshot(node, "cf", "per_cf"), "cf {} is found in snapshot but should be deleted".format("cf"))
-        self.assertTrue(search_cf_in_snapshot(node, "cf1", "per_cf"), "cf {} is not found in snapshot but should be remain".format("cf1"))
+        self.assertFalse(search_cf_in_snapshot(node, "cf", "per_cf"),
+                         "cf {} is found in snapshot but should be deleted".format("cf"))
+        self.assertTrue(search_cf_in_snapshot(node, "cf1", "per_cf"),
+                        "cf {} is not found in snapshot but should be remain".format("cf1"))
+
 
 @attr('dtest-full', 'single_node')
 class TestArchiveCommitlog(SnapshotTester):
@@ -997,7 +1000,7 @@ class TestSchemaFileInSnapshot(SnapshotTester):
         self.drop_keyspaces_and_clear_files(session, "ks", node1)
         self.create_ks(session, "ks", 1)
 
-        for table, schema_file, desc  in zip(tables, schema_files, tables_desc):
+        for table, schema_file, desc in zip(tables, schema_files, tables_desc):
             self.restore_table_by_schema_file(session, schema_file)
             restored_table_desc = self.get_table_description(node1, "ks", table)
 
@@ -1379,11 +1382,13 @@ class TestSchemaFileInSnapshot(SnapshotTester):
         columns = [f"cl_{cl_type} {cl_type}" for cl_type in cl_types]
         session.execute(f"CREATE TYPE all_native_types ({', '.join(columns)})")
         udt_type = "frozen<all_native_types>" if use_frozen else "all_native_types"
-        session.execute(f"CREATE TABLE table_with_udt (cl_{cl_types[0]} {cl_types[0]}, data {udt_type}, PRIMARY KEY (cl_{cl_types[0]}))")
+        session.execute(
+            f"CREATE TABLE table_with_udt (cl_{cl_types[0]} {cl_types[0]}, data {udt_type}, PRIMARY KEY (cl_{cl_types[0]}))")
 
         for i in range(3):
             columns = [f"cl_{cl_type}" for cl_type in cl_types]
-            udt_values = [f"cl_{cl_type}: {values[i]}" for cl_type, values in self.native_column_types_and_values.items()]
+            udt_values = [f"cl_{cl_type}: {values[i]}" for cl_type,
+                          values in self.native_column_types_and_values.items()]
             session.execute(f"INSERT INTO table_with_udt (cl_{cl_types[0]}, data) VALUES ({self.native_column_types_and_values[cl_types[0]][i]}, \
                             {{{', '.join(udt_values)}}})")
 

@@ -19,14 +19,15 @@ from cassandra.util import SortedSet
 from ccmlib.common import is_win
 
 from .cqlsh_tools import (DummyColorMap, assert_csvs_items_equal, csv_rows,
-                         monkeypatch_driver, random_list,
-                         strip_timezone_if_time_string, unmonkeypatch_driver,
-                         write_rows_to_csv)
+                          monkeypatch_driver, random_list,
+                          strip_timezone_if_time_string, unmonkeypatch_driver,
+                          write_rows_to_csv)
 from dtest import Tester, debug, warning
 from tools import rows_to_list, require
 
 DEFAULT_FLOAT_PRECISION = 5  # magic number copied from cqlsh script
 DEFAULT_TIME_FORMAT = '%Y-%m-%d %H:%M:%S%z'  # based on cqlsh script
+
 
 class UTC(datetime.tzinfo):
     """

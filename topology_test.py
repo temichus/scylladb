@@ -12,6 +12,7 @@ from ccmlib.node import NodeError
 from cassandra import ConsistencyLevel
 from threading import Thread
 
+
 @attr('dtest-full')
 class TestTopology(Tester):
 
@@ -198,7 +199,7 @@ class TestTopology(Tester):
         self.assertFalse(node3.is_running())
 
     # Scylla suports this
-    #@since('3.0')
+    # @since('3.0')
     @attr('next-gating')
     @attr('dtest-debug')
     def crash_during_decommission_test(self):

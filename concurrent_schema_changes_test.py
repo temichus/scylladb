@@ -140,11 +140,13 @@ class TestConcurrentSchemaChanges(Tester):
 
         node1, node2, node3 = cluster.nodelist()
         session = self.cql_connection(node1)
-        session.execute("create keyspace lots_o_tables WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};")
+        session.execute(
+            "create keyspace lots_o_tables WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};")
         session.execute("use lots_o_tables")
         wait(5)
 
-        cmds = [("create table t_{0} (id uuid primary key, c1 text, c2 text, c3 text, c4 text)".format(n), ()) for n in range(250)]
+        cmds = [("create table t_{0} (id uuid primary key, c1 text, c2 text, c3 text, c4 text)".format(
+            n), ()) for n in range(250)]
         results = execute_concurrent(session, cmds, raise_on_first_error=True, concurrency=200)
 
         for (success, result) in results:
@@ -168,7 +170,8 @@ class TestConcurrentSchemaChanges(Tester):
 
         node1, node2, node3 = cluster.nodelist()
         session = self.cql_connection(node1)
-        session.execute("create keyspace lots_o_alters WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};")
+        session.execute(
+            "create keyspace lots_o_alters WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};")
         session.execute("use lots_o_alters")
         for n in range(10):
             session.execute("create table base_{0} (id uuid primary key)".format(n))
@@ -205,7 +208,8 @@ class TestConcurrentSchemaChanges(Tester):
 
         node1, node2 = cluster.nodelist()
         session = self.cql_connection(node1)
-        session.execute("create keyspace lots_o_indexes WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};")
+        session.execute(
+            "create keyspace lots_o_indexes WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};")
         session.execute("use lots_o_indexes")
         for n in range(5):
             session.execute("create table base_{0} (id uuid primary key, c1 int, c2 int)".format(n))
@@ -255,11 +259,14 @@ class TestConcurrentSchemaChanges(Tester):
         cluster.populate(3).start()
         node1, node2, node3 = cluster.nodelist()
         session = self.cql_connection(node1)
-        session.execute("create keyspace lots_o_views WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};")
+        session.execute(
+            "create keyspace lots_o_views WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};")
         session.execute("use lots_o_views")
         wait(10)
-        session.execute("create table source_data (id uuid primary key, c1 int, c2 int, c3 int, c4 int, c5 int, c6 int, c7 int, c8 int, c9 int, c10 int);")
-        insert_stmt = session.prepare("insert into source_data (id, c1, c2, c3, c4, c5, c6, c7, c8, c9, c10) values (uuid(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);")
+        session.execute(
+            "create table source_data (id uuid primary key, c1 int, c2 int, c3 int, c4 int, c5 int, c6 int, c7 int, c8 int, c9 int, c10 int);")
+        insert_stmt = session.prepare(
+            "insert into source_data (id, c1, c2, c3, c4, c5, c6, c7, c8, c9, c10) values (uuid(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);")
         wait(10)
         for n in range(4000):
             session.execute(insert_stmt, [n] * 10)
@@ -283,13 +290,16 @@ class TestConcurrentSchemaChanges(Tester):
 
     def _do_lots_of_schema_actions(self, session):
         for n in range(20):
-            session.execute("create table alter_me_{0} (id uuid primary key, s1 int, s2 int, s3 int, s4 int, s5 int, s6 int, s7 int);".format(n))
-            session.execute("create table index_me_{0} (id uuid primary key, c1 int, c2 int, c3 int, c4 int, c5 int, c6 int, c7 int);".format(n))
+            session.execute(
+                "create table alter_me_{0} (id uuid primary key, s1 int, s2 int, s3 int, s4 int, s5 int, s6 int, s7 int);".format(n))
+            session.execute(
+                "create table index_me_{0} (id uuid primary key, c1 int, c2 int, c3 int, c4 int, c5 int, c6 int, c7 int);".format(n))
 
         wait(10)
         cmds = []
         for n in range(20):
-            cmds.append(("create table new_table_{0} (id uuid primary key, c1 int, c2 int, c3 int, c4 int);".format(n), ()))
+            cmds.append(
+                ("create table new_table_{0} (id uuid primary key, c1 int, c2 int, c3 int, c4 int);".format(n), ()))
             for a in range(1, 8):
                 cmds.append(("alter table alter_me_{0} drop s{1};".format(n, a), ()))
                 cmds.append(("alter table alter_me_{0} add c{1} int;".format(n, a), ()))
@@ -333,7 +343,8 @@ class TestConcurrentSchemaChanges(Tester):
         cluster.populate(3).start()
         node1, node2, node3 = cluster.nodelist()
         session = self.cql_connection(node1)
-        session.execute("create keyspace lots_o_churn WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};")
+        session.execute(
+            "create keyspace lots_o_churn WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};")
         session.execute("use lots_o_churn")
 
         self._do_lots_of_schema_actions(session)
@@ -351,7 +362,8 @@ class TestConcurrentSchemaChanges(Tester):
         cluster.populate(3).start()
         node1, node2, node3 = cluster.nodelist()
         session = self.cql_connection(node1)
-        session.execute("create keyspace lots_o_churn WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};")
+        session.execute(
+            "create keyspace lots_o_churn WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};")
         session.execute("use lots_o_churn")
 
         node2.stop()
@@ -520,8 +532,10 @@ class TestConcurrentSchemaChanges(Tester):
                     os.unlink(f)
 
         # copy the snapshot. TODO: This could be replaced with the creation of hard links.
-        os.system('cp -p %s/data/ks_ns2/cf_*/snapshots/testsnapshot/* %s/data/ks_ns2/cf_*/' % (node1.get_path(), node1.get_path()))
-        os.system('cp -p %s/data/ks_ns2/cf_*/snapshots/testsnapshot/* %s/data/ks_ns2/cf_*/' % (node2.get_path(), node2.get_path()))
+        os.system('cp -p %s/data/ks_ns2/cf_*/snapshots/testsnapshot/* %s/data/ks_ns2/cf_*/' %
+                  (node1.get_path(), node1.get_path()))
+        os.system('cp -p %s/data/ks_ns2/cf_*/snapshots/testsnapshot/* %s/data/ks_ns2/cf_*/' %
+                  (node2.get_path(), node2.get_path()))
 
         # restart the cluster
         cluster.start()

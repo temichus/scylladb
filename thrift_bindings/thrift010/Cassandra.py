@@ -1367,7 +1367,8 @@ class Client(Iface):
             return result.success
         if result.ire is not None:
             raise result.ire
-        raise TApplicationException(TApplicationException.MISSING_RESULT, "describe_schema_versions failed: unknown result")
+        raise TApplicationException(TApplicationException.MISSING_RESULT,
+                                    "describe_schema_versions failed: unknown result")
 
     def describe_keyspaces(self):
         """
@@ -1427,7 +1428,8 @@ class Client(Iface):
         iprot.readMessageEnd()
         if result.success is not None:
             return result.success
-        raise TApplicationException(TApplicationException.MISSING_RESULT, "describe_cluster_name failed: unknown result")
+        raise TApplicationException(TApplicationException.MISSING_RESULT,
+                                    "describe_cluster_name failed: unknown result")
 
     def describe_version(self):
         """
@@ -1812,7 +1814,8 @@ class Client(Iface):
             raise result.ire
         if result.sde is not None:
             raise result.sde
-        raise TApplicationException(TApplicationException.MISSING_RESULT, "system_add_column_family failed: unknown result")
+        raise TApplicationException(TApplicationException.MISSING_RESULT,
+                                    "system_add_column_family failed: unknown result")
 
     def system_drop_column_family(self, column_family):
         """
@@ -1849,7 +1852,8 @@ class Client(Iface):
             raise result.ire
         if result.sde is not None:
             raise result.sde
-        raise TApplicationException(TApplicationException.MISSING_RESULT, "system_drop_column_family failed: unknown result")
+        raise TApplicationException(TApplicationException.MISSING_RESULT,
+                                    "system_drop_column_family failed: unknown result")
 
     def system_add_keyspace(self, ks_def):
         """
@@ -1960,7 +1964,8 @@ class Client(Iface):
             raise result.ire
         if result.sde is not None:
             raise result.sde
-        raise TApplicationException(TApplicationException.MISSING_RESULT, "system_update_keyspace failed: unknown result")
+        raise TApplicationException(TApplicationException.MISSING_RESULT,
+                                    "system_update_keyspace failed: unknown result")
 
     def system_update_column_family(self, cf_def):
         """
@@ -1997,7 +2002,8 @@ class Client(Iface):
             raise result.ire
         if result.sde is not None:
             raise result.sde
-        raise TApplicationException(TApplicationException.MISSING_RESULT, "system_update_column_family failed: unknown result")
+        raise TApplicationException(TApplicationException.MISSING_RESULT,
+                                    "system_update_column_family failed: unknown result")
 
     def execute_cql_query(self, query, compression):
         """
@@ -2206,7 +2212,8 @@ class Client(Iface):
             raise result.te
         if result.sde is not None:
             raise result.sde
-        raise TApplicationException(TApplicationException.MISSING_RESULT, "execute_prepared_cql_query failed: unknown result")
+        raise TApplicationException(TApplicationException.MISSING_RESULT,
+                                    "execute_prepared_cql_query failed: unknown result")
 
     def execute_prepared_cql3_query(self, itemId, values, consistency):
         """
@@ -2252,7 +2259,8 @@ class Client(Iface):
             raise result.te
         if result.sde is not None:
             raise result.sde
-        raise TApplicationException(TApplicationException.MISSING_RESULT, "execute_prepared_cql3_query failed: unknown result")
+        raise TApplicationException(TApplicationException.MISSING_RESULT,
+                                    "execute_prepared_cql3_query failed: unknown result")
 
     def set_cql_version(self, version):
         """
@@ -2437,7 +2445,8 @@ class Processor(Iface, TProcessor):
         iprot.readMessageEnd()
         result = get_slice_result()
         try:
-            result.success = self._handler.get_slice(args.key, args.column_parent, args.predicate, args.consistency_level)
+            result.success = self._handler.get_slice(
+                args.key, args.column_parent, args.predicate, args.consistency_level)
             msg_type = TMessageType.REPLY
         except (TTransport.TTransportException, KeyboardInterrupt, SystemExit):
             raise
@@ -2465,7 +2474,8 @@ class Processor(Iface, TProcessor):
         iprot.readMessageEnd()
         result = get_count_result()
         try:
-            result.success = self._handler.get_count(args.key, args.column_parent, args.predicate, args.consistency_level)
+            result.success = self._handler.get_count(
+                args.key, args.column_parent, args.predicate, args.consistency_level)
             msg_type = TMessageType.REPLY
         except (TTransport.TTransportException, KeyboardInterrupt, SystemExit):
             raise
@@ -2493,7 +2503,8 @@ class Processor(Iface, TProcessor):
         iprot.readMessageEnd()
         result = multiget_slice_result()
         try:
-            result.success = self._handler.multiget_slice(args.keys, args.column_parent, args.predicate, args.consistency_level)
+            result.success = self._handler.multiget_slice(
+                args.keys, args.column_parent, args.predicate, args.consistency_level)
             msg_type = TMessageType.REPLY
         except (TTransport.TTransportException, KeyboardInterrupt, SystemExit):
             raise
@@ -2521,7 +2532,8 @@ class Processor(Iface, TProcessor):
         iprot.readMessageEnd()
         result = multiget_count_result()
         try:
-            result.success = self._handler.multiget_count(args.keys, args.column_parent, args.predicate, args.consistency_level)
+            result.success = self._handler.multiget_count(
+                args.keys, args.column_parent, args.predicate, args.consistency_level)
             msg_type = TMessageType.REPLY
         except (TTransport.TTransportException, KeyboardInterrupt, SystemExit):
             raise
@@ -2549,7 +2561,8 @@ class Processor(Iface, TProcessor):
         iprot.readMessageEnd()
         result = get_range_slices_result()
         try:
-            result.success = self._handler.get_range_slices(args.column_parent, args.predicate, args.range, args.consistency_level)
+            result.success = self._handler.get_range_slices(
+                args.column_parent, args.predicate, args.range, args.consistency_level)
             msg_type = TMessageType.REPLY
         except (TTransport.TTransportException, KeyboardInterrupt, SystemExit):
             raise
@@ -2577,7 +2590,8 @@ class Processor(Iface, TProcessor):
         iprot.readMessageEnd()
         result = get_paged_slice_result()
         try:
-            result.success = self._handler.get_paged_slice(args.column_family, args.range, args.start_column, args.consistency_level)
+            result.success = self._handler.get_paged_slice(
+                args.column_family, args.range, args.start_column, args.consistency_level)
             msg_type = TMessageType.REPLY
         except (TTransport.TTransportException, KeyboardInterrupt, SystemExit):
             raise
@@ -2605,7 +2619,8 @@ class Processor(Iface, TProcessor):
         iprot.readMessageEnd()
         result = get_indexed_slices_result()
         try:
-            result.success = self._handler.get_indexed_slices(args.column_parent, args.index_clause, args.column_predicate, args.consistency_level)
+            result.success = self._handler.get_indexed_slices(
+                args.column_parent, args.index_clause, args.column_predicate, args.consistency_level)
             msg_type = TMessageType.REPLY
         except (TTransport.TTransportException, KeyboardInterrupt, SystemExit):
             raise
@@ -2689,7 +2704,8 @@ class Processor(Iface, TProcessor):
         iprot.readMessageEnd()
         result = cas_result()
         try:
-            result.success = self._handler.cas(args.key, args.column_family, args.expected, args.updates, args.serial_consistency_level, args.commit_consistency_level)
+            result.success = self._handler.cas(args.key, args.column_family, args.expected,
+                                               args.updates, args.serial_consistency_level, args.commit_consistency_level)
             msg_type = TMessageType.REPLY
         except (TTransport.TTransportException, KeyboardInterrupt, SystemExit):
             raise
@@ -3096,7 +3112,8 @@ class Processor(Iface, TProcessor):
         iprot.readMessageEnd()
         result = describe_splits_result()
         try:
-            result.success = self._handler.describe_splits(args.cfName, args.start_token, args.end_token, args.keys_per_split)
+            result.success = self._handler.describe_splits(
+                args.cfName, args.start_token, args.end_token, args.keys_per_split)
             msg_type = TMessageType.REPLY
         except (TTransport.TTransportException, KeyboardInterrupt, SystemExit):
             raise
@@ -3137,7 +3154,8 @@ class Processor(Iface, TProcessor):
         iprot.readMessageEnd()
         result = describe_splits_ex_result()
         try:
-            result.success = self._handler.describe_splits_ex(args.cfName, args.start_token, args.end_token, args.keys_per_split)
+            result.success = self._handler.describe_splits_ex(
+                args.cfName, args.start_token, args.end_token, args.keys_per_split)
             msg_type = TMessageType.REPLY
         except (TTransport.TTransportException, KeyboardInterrupt, SystemExit):
             raise
@@ -3658,7 +3676,8 @@ class set_keyspace_args(object):
                 break
             if fid == 1:
                 if ftype == TType.STRING:
-                    self.keyspace = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                    self.keyspace = iprot.readString().decode(
+                        'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
             else:
@@ -4500,7 +4519,8 @@ class multiget_slice_result(object):
     """
 
     thrift_spec = (
-        (0, TType.MAP, 'success', (TType.STRING, 'BINARY', TType.LIST, (TType.STRUCT, (ColumnOrSuperColumn, ColumnOrSuperColumn.thrift_spec), False), False), None, ),  # 0
+        (0, TType.MAP, 'success', (TType.STRING, 'BINARY', TType.LIST, (TType.STRUCT,
+                                                                        (ColumnOrSuperColumn, ColumnOrSuperColumn.thrift_spec), False), False), None, ),  # 0
         (1, TType.STRUCT, 'ire', (InvalidRequestException, InvalidRequestException.thrift_spec), None, ),  # 1
         (2, TType.STRUCT, 'ue', (UnavailableException, UnavailableException.thrift_spec), None, ),  # 2
         (3, TType.STRUCT, 'te', (TimedOutException, TimedOutException.thrift_spec), None, ),  # 3
@@ -5077,7 +5097,8 @@ class get_paged_slice_args(object):
                 break
             if fid == 1:
                 if ftype == TType.STRING:
-                    self.column_family = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                    self.column_family = iprot.readString().decode(
+                        'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
             elif fid == 2:
@@ -5900,7 +5921,8 @@ class cas_args(object):
                     iprot.skip(ftype)
             elif fid == 2:
                 if ftype == TType.STRING:
-                    self.column_family = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                    self.column_family = iprot.readString().decode(
+                        'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
             elif fid == 3:
@@ -6477,7 +6499,8 @@ class batch_mutate_args(object):
 
     thrift_spec = (
         None,  # 0
-        (1, TType.MAP, 'mutation_map', (TType.STRING, 'BINARY', TType.MAP, (TType.STRING, 'UTF8', TType.LIST, (TType.STRUCT, (Mutation, Mutation.thrift_spec), False), False), False), None, ),  # 1
+        (1, TType.MAP, 'mutation_map', (TType.STRING, 'BINARY', TType.MAP, (TType.STRING, 'UTF8',
+                                                                            TType.LIST, (TType.STRUCT, (Mutation, Mutation.thrift_spec), False), False), False), None, ),  # 1
         (2, TType.I32, 'consistency_level', None, 1, ),  # 2
     )
 
@@ -6503,7 +6526,8 @@ class batch_mutate_args(object):
                         _val285 = {}
                         (_ktype287, _vtype288, _size286) = iprot.readMapBegin()
                         for _i290 in range(_size286):
-                            _key291 = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                            _key291 = iprot.readString().decode(
+                                'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                             _val292 = []
                             (_etype296, _size293) = iprot.readListBegin()
                             for _i297 in range(_size293):
@@ -6669,7 +6693,8 @@ class atomic_batch_mutate_args(object):
 
     thrift_spec = (
         None,  # 0
-        (1, TType.MAP, 'mutation_map', (TType.STRING, 'BINARY', TType.MAP, (TType.STRING, 'UTF8', TType.LIST, (TType.STRUCT, (Mutation, Mutation.thrift_spec), False), False), False), None, ),  # 1
+        (1, TType.MAP, 'mutation_map', (TType.STRING, 'BINARY', TType.MAP, (TType.STRING, 'UTF8',
+                                                                            TType.LIST, (TType.STRUCT, (Mutation, Mutation.thrift_spec), False), False), False), None, ),  # 1
         (2, TType.I32, 'consistency_level', None, 1, ),  # 2
     )
 
@@ -6695,7 +6720,8 @@ class atomic_batch_mutate_args(object):
                         _val310 = {}
                         (_ktype312, _vtype313, _size311) = iprot.readMapBegin()
                         for _i315 in range(_size311):
-                            _key316 = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                            _key316 = iprot.readString().decode(
+                                'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                             _val317 = []
                             (_etype321, _size318) = iprot.readListBegin()
                             for _i322 in range(_size318):
@@ -7247,7 +7273,8 @@ class describe_schema_versions_result(object):
                         _val342 = []
                         (_etype346, _size343) = iprot.readListBegin()
                         for _i347 in range(_size343):
-                            _elem348 = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                            _elem348 = iprot.readString().decode(
+                                'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                             _val342.append(_elem348)
                         iprot.readListEnd()
                         self.success[_key341] = _val342
@@ -7492,7 +7519,8 @@ class describe_cluster_name_result(object):
                 break
             if fid == 0:
                 if ftype == TType.STRING:
-                    self.success = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                    self.success = iprot.readString().decode(
+                        'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
             else:
@@ -7593,7 +7621,8 @@ class describe_version_result(object):
                 break
             if fid == 0:
                 if ftype == TType.STRING:
-                    self.success = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                    self.success = iprot.readString().decode(
+                        'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
             else:
@@ -7653,7 +7682,8 @@ class describe_ring_args(object):
                 break
             if fid == 1:
                 if ftype == TType.STRING:
-                    self.keyspace = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                    self.keyspace = iprot.readString().decode(
+                        'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
             else:
@@ -7796,7 +7826,8 @@ class describe_local_ring_args(object):
                 break
             if fid == 1:
                 if ftype == TType.STRING:
-                    self.keyspace = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                    self.keyspace = iprot.readString().decode(
+                        'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
             else:
@@ -8104,7 +8135,8 @@ class describe_partitioner_result(object):
                 break
             if fid == 0:
                 if ftype == TType.STRING:
-                    self.success = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                    self.success = iprot.readString().decode(
+                        'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
             else:
@@ -8205,7 +8237,8 @@ class describe_snitch_result(object):
                 break
             if fid == 0:
                 if ftype == TType.STRING:
-                    self.success = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                    self.success = iprot.readString().decode(
+                        'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
             else:
@@ -8265,7 +8298,8 @@ class describe_keyspace_args(object):
                 break
             if fid == 1:
                 if ftype == TType.STRING:
-                    self.keyspace = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                    self.keyspace = iprot.readString().decode(
+                        'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
             else:
@@ -8427,12 +8461,14 @@ class describe_splits_args(object):
                     iprot.skip(ftype)
             elif fid == 2:
                 if ftype == TType.STRING:
-                    self.start_token = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                    self.start_token = iprot.readString().decode(
+                        'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
             elif fid == 3:
                 if ftype == TType.STRING:
-                    self.end_token = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                    self.end_token = iprot.readString().decode(
+                        'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
             elif fid == 4:
@@ -8522,7 +8558,8 @@ class describe_splits_result(object):
                     self.success = []
                     (_etype385, _size382) = iprot.readListBegin()
                     for _i386 in range(_size382):
-                        _elem387 = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                        _elem387 = iprot.readString().decode(
+                            'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                         self.success.append(_elem387)
                     iprot.readListEnd()
                 else:
@@ -8712,12 +8749,14 @@ class describe_splits_ex_args(object):
                     iprot.skip(ftype)
             elif fid == 2:
                 if ftype == TType.STRING:
-                    self.start_token = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                    self.start_token = iprot.readString().decode(
+                        'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
             elif fid == 3:
                 if ftype == TType.STRING:
-                    self.end_token = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                    self.end_token = iprot.readString().decode(
+                        'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
             elif fid == 4:
@@ -8951,7 +8990,8 @@ class system_add_column_family_result(object):
                 break
             if fid == 0:
                 if ftype == TType.STRING:
-                    self.success = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                    self.success = iprot.readString().decode(
+                        'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
             elif fid == 1:
@@ -9031,7 +9071,8 @@ class system_drop_column_family_args(object):
                 break
             if fid == 1:
                 if ftype == TType.STRING:
-                    self.column_family = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                    self.column_family = iprot.readString().decode(
+                        'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
             else:
@@ -9098,7 +9139,8 @@ class system_drop_column_family_result(object):
                 break
             if fid == 0:
                 if ftype == TType.STRING:
-                    self.success = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                    self.success = iprot.readString().decode(
+                        'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
             elif fid == 1:
@@ -9246,7 +9288,8 @@ class system_add_keyspace_result(object):
                 break
             if fid == 0:
                 if ftype == TType.STRING:
-                    self.success = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                    self.success = iprot.readString().decode(
+                        'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
             elif fid == 1:
@@ -9326,7 +9369,8 @@ class system_drop_keyspace_args(object):
                 break
             if fid == 1:
                 if ftype == TType.STRING:
-                    self.keyspace = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                    self.keyspace = iprot.readString().decode(
+                        'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
             else:
@@ -9393,7 +9437,8 @@ class system_drop_keyspace_result(object):
                 break
             if fid == 0:
                 if ftype == TType.STRING:
-                    self.success = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                    self.success = iprot.readString().decode(
+                        'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
             elif fid == 1:
@@ -9541,7 +9586,8 @@ class system_update_keyspace_result(object):
                 break
             if fid == 0:
                 if ftype == TType.STRING:
-                    self.success = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                    self.success = iprot.readString().decode(
+                        'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
             elif fid == 1:
@@ -9689,7 +9735,8 @@ class system_update_column_family_result(object):
                 break
             if fid == 0:
                 if ftype == TType.STRING:
-                    self.success = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                    self.success = iprot.readString().decode(
+                        'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
             elif fid == 1:
@@ -10863,7 +10910,8 @@ class set_cql_version_args(object):
                 break
             if fid == 1:
                 if ftype == TType.STRING:
-                    self.version = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                    self.version = iprot.readString().decode(
+                        'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
             else:

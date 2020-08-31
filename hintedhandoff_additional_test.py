@@ -40,8 +40,9 @@ class TestHintedHandoff(Tester):
 
         debug("Populating the data...")
         op_cnt = 1000000
-        stress_cmd = ['write', 'n={}'.format(op_cnt), 'no-warmup', 'cl=QUORUM', '-rate', 'threads=300', '-schema', 'replication(factor=3)']
-        resp = node1.stress_object(stress_cmd, ignore_errors = True)
+        stress_cmd = ['write', 'n={}'.format(op_cnt), 'no-warmup', 'cl=QUORUM',
+                      '-rate', 'threads=300', '-schema', 'replication(factor=3)']
+        resp = node1.stress_object(stress_cmd, ignore_errors=True)
 
         if not resp or 'total partitions:write' not in resp:
             raise Exception('Error running stress test: {}'.format(resp))
@@ -60,7 +61,7 @@ class TestHintedHandoff(Tester):
 
         debug("Check that shard 2 directories are gone")
         assert self.__check_hints_dir_present(node_from=node1, node_to=node3, must_be_present=False, shard=2) and \
-               self.__check_hints_dir_present(node_from=node2, node_to=node3, must_be_present=False, shard=2)
+            self.__check_hints_dir_present(node_from=node2, node_to=node3, must_be_present=False, shard=2)
 
         debug("Check data consistency")
         self.__stop_all([node2, node3, node1])
@@ -75,8 +76,9 @@ class TestHintedHandoff(Tester):
 
         self.__stop_all([node2, node1])
         debug("Reading data")
-        stress_cmd = ['read', 'n={}'.format(op_cnt), 'no-warmup', 'cl=ONE', '-rate', 'threads=300', '-schema', 'replication(factor=3)']
-        resp = node3.stress_object(stress_cmd, ignore_errors = True)
+        stress_cmd = ['read', 'n={}'.format(op_cnt), 'no-warmup', 'cl=ONE', '-rate',
+                      'threads=300', '-schema', 'replication(factor=3)']
+        resp = node3.stress_object(stress_cmd, ignore_errors=True)
         if not resp or 'total partitions:read' not in resp:
             raise Exception('Error running stress test: {}'.format(resp))
 
@@ -140,7 +142,7 @@ class TestHintedHandoff(Tester):
 
         debug("Check that the directories have been cleaned up...")
         assert self.__check_hints_dir_present(node_from=node1, node_to=node3, must_be_present=False) and \
-               self.__check_hints_dir_present(node_from=node2, node_to=node3, must_be_present=False)
+            self.__check_hints_dir_present(node_from=node2, node_to=node3, must_be_present=False)
 
     @attr('next-gating')
     @attr('dtest-debug')
@@ -179,7 +181,7 @@ class TestHintedHandoff(Tester):
         time.sleep(5)
 
         assert self.__check_hints_dir_present(node_from=node3, node_to=node1) or \
-               self.__check_hints_dir_present(node_from=node2, node_to=node1)
+            self.__check_hints_dir_present(node_from=node2, node_to=node1)
 
         debug("Starting node1...")
         node1.start(wait_for_binary_proto=True, jvm_args=self.__jvm_args(node1))
@@ -192,7 +194,6 @@ class TestHintedHandoff(Tester):
 
         debug("Checking the key...")
         query_c1c2(session, 0, ConsistencyLevel.ONE)
-
 
     def hintedhandoff_decom_test(self):
         """
@@ -234,7 +235,7 @@ class TestHintedHandoff(Tester):
 
         debug("Check that the directories have been cleaned up...")
         assert self.__check_hints_dir_present(node_from=node1, node_to=node3, must_be_present=False) and \
-               self.__check_hints_dir_present(node_from=node2, node_to=node3, must_be_present=False)
+            self.__check_hints_dir_present(node_from=node2, node_to=node3, must_be_present=False)
 
         debug("Reading the data...")
         for x in range(0, 100):
@@ -276,7 +277,7 @@ class TestHintedHandoff(Tester):
         time.sleep(5)
 
         assert self.__check_hints_dir_present(node_from=node3, node_to=node1) or \
-               self.__check_hints_dir_present(node_from=node2, node_to=node1)
+            self.__check_hints_dir_present(node_from=node2, node_to=node1)
 
         debug("Stopping the node that has the hint...")
         hinting_node = None
@@ -321,7 +322,6 @@ class TestHintedHandoff(Tester):
         session.execute('USE ks')
         query_c1c2(session, 0, ConsistencyLevel.ONE, must_be_missing=True)
 
-
     def hintedhandoff_retransmit_test(self):
         """
         Test sending consistency. There should be no discarded hints.
@@ -336,10 +336,12 @@ class TestHintedHandoff(Tester):
 
         # Make node2 slower than others in order to trigger hints generation
         debug("Starting node2 with \"trace\" log level...")
-        node2.start(wait_for_binary_proto=True, jvm_args=self.__jvm_args(node2) + ["--logger-log-level", "hints_manager=trace"])
+        node2.start(wait_for_binary_proto=True, jvm_args=self.__jvm_args(
+            node2) + ["--logger-log-level", "hints_manager=trace"])
 
         debug("starting a stress...")
-        stress_cmd = ['write', 'duration=4m', 'no-warmup', 'cl=ONE', '-rate', 'threads=300', '-schema', 'replication(factor=3)']
+        stress_cmd = ['write', 'duration=4m', 'no-warmup', 'cl=ONE',
+                      '-rate', 'threads=300', '-schema', 'replication(factor=3)']
         node1.stress_object(stress_cmd, ignore_errors=True)
         debug("stress finished")
 
@@ -350,11 +352,14 @@ class TestHintedHandoff(Tester):
             assert "scylla_hints_manager_discarded" in res
             debug("checking that scylla_hints_manager_discarded is zero")
             if res["scylla_hints_manager_discarded"] != 0:
-                debug("{}: scylla_hints_manager_discarded = {}".format(node.name, res["scylla_hints_manager_discarded"]))
+                debug("{}: scylla_hints_manager_discarded = {}".format(
+                    node.name, res["scylla_hints_manager_discarded"]))
                 self.assertEqual(res["scylla_hints_manager_discarded"], 0, "There were discarded hints")
 
 
 ########################################################################################################################
+
+
     @property
     def __hint_flush_threshold(self):
         """

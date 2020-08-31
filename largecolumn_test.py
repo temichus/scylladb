@@ -13,13 +13,16 @@ class TestLargeColumn(Tester):
 
     def stress_with_col_size(self, cluster, node, size):
         size = str(size)
-        node.stress(['write', 'n=5', "no-warmup", "cl=ALL", "-pop", "seq=1...5", "-schema", "replication(factor=2)", "-col", "n=fixed(1)", "size=fixed(" + size + ")", "-rate", "threads=1"])
-        node.stress(['read', 'n=5', "no-warmup", "cl=ALL", "-pop", "seq=1...5", "-schema", "replication(factor=2)", "-col", "n=fixed(1)", "size=fixed(" + size + ")", "-rate", "threads=1"])
+        node.stress(['write', 'n=5', "no-warmup", "cl=ALL", "-pop", "seq=1...5", "-schema",
+                     "replication(factor=2)", "-col", "n=fixed(1)", "size=fixed(" + size + ")", "-rate", "threads=1"])
+        node.stress(['read', 'n=5', "no-warmup", "cl=ALL", "-pop", "seq=1...5", "-schema",
+                     "replication(factor=2)", "-col", "n=fixed(1)", "size=fixed(" + size + ")", "-rate", "threads=1"])
 
     def directbytes(self, node):
         output = node.nodetool("gcstats", capture_output=True)
         output = output[0].split("\n")
-        assert output[0].strip().startswith("Interval"), "Expected output from nodetool gcstats starts with a header line with first column Interval"
+        assert output[0].strip().startswith(
+            "Interval"), "Expected output from nodetool gcstats starts with a header line with first column Interval"
         fields = output[1].split()
         assert len(fields) >= 6, "Expected output from nodetool gcstats has at least six fields"
         for field in fields:
@@ -70,4 +73,5 @@ class TestLargeColumn(Tester):
         cluster.populate(1).start()
         node1 = cluster.nodelist()[0]
         node1.stress(['write', 'n=10000', "no-warmup", "-col", "n=fixed(1)", "size=fixed(40000)", "-rate", "threads=2"])
-        node1.stress(['mixed', "no-warmup", 'duration=15s', '-pop', 'seq=1..10000', "-col", "n=fixed(1)", "size=fixed(40000)", "-rate", "threads=8"])
+        node1.stress(['mixed', "no-warmup", 'duration=15s', '-pop', 'seq=1..10000',
+                      "-col", "n=fixed(1)", "size=fixed(40000)", "-rate", "threads=8"])

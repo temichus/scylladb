@@ -20,7 +20,7 @@ try:
         JNA_PATH = JNA_IN_LIB[0]
 except KeyError:
     if glob.glob('%s/lib/jna-*.jar' % DEFAULT_DIR):
-        print ('Using jna.jar in DEFAULT_DIR/lib/..')
+        print('Using jna.jar in DEFAULT_DIR/lib/..')
         JNA_IN_LIB = glob.glob('%s/lib/jna-*.jar' % DEFAULT_DIR)
         JNA_PATH = JNA_IN_LIB[0]
 
@@ -69,7 +69,8 @@ class ThriftHSHATest(Tester):
             for pool in pools:
                 pool.dispose()
             for i in range(0, 3):
-                stdout = subprocess.Popen(["lsof -a -p %s -iTCP -sTCP:CLOSE_WAIT" % node1.pid], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True).communicate()[0]
+                stdout = subprocess.Popen(["lsof -a -p %s -iTCP -sTCP:CLOSE_WAIT" % node1.pid],
+                                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True).communicate()[0]
                 lines = stdout.splitlines()
                 if len(lines) == 0:
                     break

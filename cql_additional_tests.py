@@ -52,7 +52,8 @@ class TestCQL(Tester):
     def __init__(self, *args, **kwargs):
         super(TestCQL, self).__init__(*args, **kwargs)
         if not hasattr(self, 'compaction_strategy_for_migration'):
-            self.compaction_strategy_for_migration = random.choice(['SizeTieredCompactionStrategy', 'TimeWindowCompactionStrategy', 'LeveledCompactionStrategy'])
+            self.compaction_strategy_for_migration = random.choice(
+                ['SizeTieredCompactionStrategy', 'TimeWindowCompactionStrategy', 'LeveledCompactionStrategy'])
 
     def prepare(self, create_keyspace=True, use_cache=False, nodes=1, rf=1, protocol_version=None, options={}, **kwargs):
         cluster = self.cluster
@@ -97,11 +98,14 @@ class TestCQL(Tester):
         """)
 
         # Inserts
-        session.execute("INSERT INTO users (userid, firstname, lastname, age) VALUES (550e8400-e29b-41d4-a716-446655440000, 'Frodo', 'Baggins', 32)")
-        session.execute("UPDATE users SET firstname = 'Samwise', lastname = 'Gamgee', age = 33 WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479")
+        session.execute(
+            "INSERT INTO users (userid, firstname, lastname, age) VALUES (550e8400-e29b-41d4-a716-446655440000, 'Frodo', 'Baggins', 32)")
+        session.execute(
+            "UPDATE users SET firstname = 'Samwise', lastname = 'Gamgee', age = 33 WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479")
 
         # Queries
-        res = session.execute("SELECT firstname, lastname FROM users WHERE userid = 550e8400-e29b-41d4-a716-446655440000")
+        res = session.execute(
+            "SELECT firstname, lastname FROM users WHERE userid = 550e8400-e29b-41d4-a716-446655440000")
         assert rows_to_list(res) == [['Frodo', 'Baggins']], list(res)
 
         res = session.execute("SELECT * FROM users WHERE userid = 550e8400-e29b-41d4-a716-446655440000")
@@ -178,11 +182,14 @@ class TestCQL(Tester):
         """)
 
         # Inserts
-        session.execute("INSERT INTO users (userid, firstname, lastname, age) VALUES (550e8400-e29b-41d4-a716-446655440000, 'Frodo', 'Baggins', 32)")
-        session.execute("UPDATE users SET firstname = 'Samwise', lastname = 'Gamgee', age = 33 WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479")
+        session.execute(
+            "INSERT INTO users (userid, firstname, lastname, age) VALUES (550e8400-e29b-41d4-a716-446655440000, 'Frodo', 'Baggins', 32)")
+        session.execute(
+            "UPDATE users SET firstname = 'Samwise', lastname = 'Gamgee', age = 33 WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479")
 
         # Queries
-        res = session.execute("SELECT firstname, lastname FROM users WHERE userid = 550e8400-e29b-41d4-a716-446655440000")
+        res = session.execute(
+            "SELECT firstname, lastname FROM users WHERE userid = 550e8400-e29b-41d4-a716-446655440000")
         assert rows_to_list(res) == [['Frodo', 'Baggins']], list(res)
 
         res = session.execute("SELECT * FROM users WHERE userid = 550e8400-e29b-41d4-a716-446655440000")
@@ -227,8 +234,10 @@ class TestCQL(Tester):
                 PRIMARY KEY (userid, url)
             );
         """)
-        session.execute("INSERT INTO clicks (userid, url, time) VALUES (550e8400-e29b-41d4-a716-446655440000, 'http://foo.bar', 42)")
-        session.execute("INSERT INTO clicks (userid, url, time) VALUES (550e8400-e29b-41d4-a716-446655440000, 'http://foo-2.bar', 24)")
+        session.execute(
+            "INSERT INTO clicks (userid, url, time) VALUES (550e8400-e29b-41d4-a716-446655440000, 'http://foo.bar', 42)")
+        session.execute(
+            "INSERT INTO clicks (userid, url, time) VALUES (550e8400-e29b-41d4-a716-446655440000, 'http://foo-2.bar', 24)")
         # In case #1367 reproduces, we'll get
         # NoHostAvailable: ('Unable to complete the operation against any hosts', {})
         # And in the scylla log, we'll get the assertion failure
@@ -252,15 +261,21 @@ class TestCQL(Tester):
         """)
 
         # Inserts
-        session.execute("INSERT INTO clicks (userid, url, time) VALUES (550e8400-e29b-41d4-a716-446655440000, 'http://foo.bar', 42)")
-        session.execute("INSERT INTO clicks (userid, url, time) VALUES (550e8400-e29b-41d4-a716-446655440000, 'http://foo-2.bar', 24)")
-        session.execute("INSERT INTO clicks (userid, url, time) VALUES (550e8400-e29b-41d4-a716-446655440000, 'http://bar.bar', 128)")
-        session.execute("UPDATE clicks SET time = 24 WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479 and url = 'http://bar.foo'")
-        session.execute("UPDATE clicks SET time = 12 WHERE userid IN (f47ac10b-58cc-4372-a567-0e02b2c3d479, 550e8400-e29b-41d4-a716-446655440000) and url = 'http://foo-3'")
+        session.execute(
+            "INSERT INTO clicks (userid, url, time) VALUES (550e8400-e29b-41d4-a716-446655440000, 'http://foo.bar', 42)")
+        session.execute(
+            "INSERT INTO clicks (userid, url, time) VALUES (550e8400-e29b-41d4-a716-446655440000, 'http://foo-2.bar', 24)")
+        session.execute(
+            "INSERT INTO clicks (userid, url, time) VALUES (550e8400-e29b-41d4-a716-446655440000, 'http://bar.bar', 128)")
+        session.execute(
+            "UPDATE clicks SET time = 24 WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479 and url = 'http://bar.foo'")
+        session.execute(
+            "UPDATE clicks SET time = 12 WHERE userid IN (f47ac10b-58cc-4372-a567-0e02b2c3d479, 550e8400-e29b-41d4-a716-446655440000) and url = 'http://foo-3'")
 
         # Queries
         res = session.execute("SELECT url, time FROM clicks WHERE userid = 550e8400-e29b-41d4-a716-446655440000")
-        assert rows_to_list(res) == [['http://bar.bar', 128], ['http://foo-2.bar', 24], ['http://foo-3', 12], ['http://foo.bar', 42]], list(res)
+        assert rows_to_list(res) == [['http://bar.bar', 128], ['http://foo-2.bar', 24],
+                                     ['http://foo-3', 12], ['http://foo.bar', 42]], list(res)
 
         res = session.execute("SELECT * FROM clicks WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479")
         assert rows_to_list(res) == [
@@ -293,36 +308,50 @@ class TestCQL(Tester):
         """)
 
         # Inserts
-        session.execute("INSERT INTO connections (userid, ip, port, time) VALUES (550e8400-e29b-41d4-a716-446655440000, '192.168.0.1', 80, 42)")
-        session.execute("INSERT INTO connections (userid, ip, port, time) VALUES (550e8400-e29b-41d4-a716-446655440000, '192.168.0.2', 80, 24)")
-        session.execute("INSERT INTO connections (userid, ip, port, time) VALUES (550e8400-e29b-41d4-a716-446655440000, '192.168.0.2', 90, 42)")
-        session.execute("UPDATE connections SET time = 24 WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479 AND ip = '192.168.0.2' AND port = 80")
+        session.execute(
+            "INSERT INTO connections (userid, ip, port, time) VALUES (550e8400-e29b-41d4-a716-446655440000, '192.168.0.1', 80, 42)")
+        session.execute(
+            "INSERT INTO connections (userid, ip, port, time) VALUES (550e8400-e29b-41d4-a716-446655440000, '192.168.0.2', 80, 24)")
+        session.execute(
+            "INSERT INTO connections (userid, ip, port, time) VALUES (550e8400-e29b-41d4-a716-446655440000, '192.168.0.2', 90, 42)")
+        session.execute(
+            "UPDATE connections SET time = 24 WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479 AND ip = '192.168.0.2' AND port = 80")
 
         # we don't have to include all of the clustering columns (see CASSANDRA-7990)
-        session.execute("INSERT INTO connections (userid, ip, time) VALUES (f47ac10b-58cc-4372-a567-0e02b2c3d479, '192.168.0.3', 42)")
-        session.execute("UPDATE connections SET time = 42 WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479 AND ip = '192.168.0.4'")
+        session.execute(
+            "INSERT INTO connections (userid, ip, time) VALUES (f47ac10b-58cc-4372-a567-0e02b2c3d479, '192.168.0.3', 42)")
+        session.execute(
+            "UPDATE connections SET time = 42 WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479 AND ip = '192.168.0.4'")
 
         # Queries
-        res = session.execute("SELECT ip, port, time FROM connections WHERE userid = 550e8400-e29b-41d4-a716-446655440000")
-        assert rows_to_list(res) == [['192.168.0.1', 80, 42], ['192.168.0.2', 80, 24], ['192.168.0.2', 90, 42]], list(res)
+        res = session.execute(
+            "SELECT ip, port, time FROM connections WHERE userid = 550e8400-e29b-41d4-a716-446655440000")
+        assert rows_to_list(res) == [['192.168.0.1', 80, 42], ['192.168.0.2', 80, 24],
+                                     ['192.168.0.2', 90, 42]], list(res)
 
-        res = session.execute("SELECT ip, port, time FROM connections WHERE userid = 550e8400-e29b-41d4-a716-446655440000 and ip >= '192.168.0.2'")
+        res = session.execute(
+            "SELECT ip, port, time FROM connections WHERE userid = 550e8400-e29b-41d4-a716-446655440000 and ip >= '192.168.0.2'")
         assert rows_to_list(res) == [['192.168.0.2', 80, 24], ['192.168.0.2', 90, 42]], list(res)
 
-        res = session.execute("SELECT ip, port, time FROM connections WHERE userid = 550e8400-e29b-41d4-a716-446655440000 and ip = '192.168.0.2'")
+        res = session.execute(
+            "SELECT ip, port, time FROM connections WHERE userid = 550e8400-e29b-41d4-a716-446655440000 and ip = '192.168.0.2'")
         assert rows_to_list(res) == [['192.168.0.2', 80, 24], ['192.168.0.2', 90, 42]], list(res)
 
-        res = session.execute("SELECT ip, port, time FROM connections WHERE userid = 550e8400-e29b-41d4-a716-446655440000 and ip > '192.168.0.2'")
+        res = session.execute(
+            "SELECT ip, port, time FROM connections WHERE userid = 550e8400-e29b-41d4-a716-446655440000 and ip > '192.168.0.2'")
         assert rows_to_list(res) == [], list(res)
 
-        res = session.execute("SELECT ip, port, time FROM connections WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479 AND ip = '192.168.0.3'")
+        res = session.execute(
+            "SELECT ip, port, time FROM connections WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479 AND ip = '192.168.0.3'")
         self.assertEqual([['192.168.0.3', None, 42]], rows_to_list(res))
 
-        res = session.execute("SELECT ip, port, time FROM connections WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479 AND ip = '192.168.0.4'")
+        res = session.execute(
+            "SELECT ip, port, time FROM connections WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479 AND ip = '192.168.0.4'")
         self.assertEqual([['192.168.0.4', None, 42]], rows_to_list(res))
 
         # Deletion
-        session.execute("DELETE time FROM connections WHERE userid = 550e8400-e29b-41d4-a716-446655440000 AND ip = '192.168.0.2' AND port = 80")
+        session.execute(
+            "DELETE time FROM connections WHERE userid = 550e8400-e29b-41d4-a716-446655440000 AND ip = '192.168.0.2' AND port = 80")
         res = list(session.execute("SELECT * FROM connections WHERE userid = 550e8400-e29b-41d4-a716-446655440000"))
         assert len(res) == 2, res
 
@@ -331,7 +360,8 @@ class TestCQL(Tester):
         assert len(res) == 0, res
 
         session.execute("DELETE FROM connections WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479 AND ip = '192.168.0.3'")
-        res = list(session.execute("SELECT * FROM connections WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479 AND ip = '192.168.0.3'"))
+        res = list(session.execute(
+            "SELECT * FROM connections WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479 AND ip = '192.168.0.3'"))
         self.assertEqual([], res)
 
     @attr('single_node')
@@ -353,22 +383,29 @@ class TestCQL(Tester):
         """)
 
         # Inserts
-        session.execute("INSERT INTO timeline (userid, posted_month, posted_day, body, posted_by) VALUES (550e8400-e29b-41d4-a716-446655440000, 1, 12, 'Something else', 'Frodo Baggins')")
-        session.execute("INSERT INTO timeline (userid, posted_month, posted_day, body, posted_by) VALUES (550e8400-e29b-41d4-a716-446655440000, 1, 24, 'Something something', 'Frodo Baggins')")
-        session.execute("UPDATE timeline SET body = 'Yo Froddo', posted_by = 'Samwise Gamgee' WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479 AND posted_month = 1 AND posted_day = 3")
-        session.execute("UPDATE timeline SET body = 'Yet one more message' WHERE userid = 550e8400-e29b-41d4-a716-446655440000 AND posted_month = 1 and posted_day = 30")
+        session.execute(
+            "INSERT INTO timeline (userid, posted_month, posted_day, body, posted_by) VALUES (550e8400-e29b-41d4-a716-446655440000, 1, 12, 'Something else', 'Frodo Baggins')")
+        session.execute(
+            "INSERT INTO timeline (userid, posted_month, posted_day, body, posted_by) VALUES (550e8400-e29b-41d4-a716-446655440000, 1, 24, 'Something something', 'Frodo Baggins')")
+        session.execute(
+            "UPDATE timeline SET body = 'Yo Froddo', posted_by = 'Samwise Gamgee' WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479 AND posted_month = 1 AND posted_day = 3")
+        session.execute(
+            "UPDATE timeline SET body = 'Yet one more message' WHERE userid = 550e8400-e29b-41d4-a716-446655440000 AND posted_month = 1 and posted_day = 30")
 
         # Queries
-        res = session.execute("SELECT body, posted_by FROM timeline WHERE userid = 550e8400-e29b-41d4-a716-446655440000 AND posted_month = 1 AND posted_day = 24")
+        res = session.execute(
+            "SELECT body, posted_by FROM timeline WHERE userid = 550e8400-e29b-41d4-a716-446655440000 AND posted_month = 1 AND posted_day = 24")
         assert rows_to_list(res) == [['Something something', 'Frodo Baggins']], list(res)
 
-        res = session.execute("SELECT posted_day, body, posted_by FROM timeline WHERE userid = 550e8400-e29b-41d4-a716-446655440000 AND posted_month = 1 AND posted_day > 12")
+        res = session.execute(
+            "SELECT posted_day, body, posted_by FROM timeline WHERE userid = 550e8400-e29b-41d4-a716-446655440000 AND posted_month = 1 AND posted_day > 12")
         assert rows_to_list(res) == [
             [24, 'Something something', 'Frodo Baggins'],
             [30, 'Yet one more message', None]
         ], list(res)
 
-        res = session.execute("SELECT posted_day, body, posted_by FROM timeline WHERE userid = 550e8400-e29b-41d4-a716-446655440000 AND posted_month = 1")
+        res = session.execute(
+            "SELECT posted_day, body, posted_by FROM timeline WHERE userid = 550e8400-e29b-41d4-a716-446655440000 AND posted_month = 1")
         assert rows_to_list(res) == [
             [12, 'Something else', 'Frodo Baggins'],
             [24, 'Something something', 'Frodo Baggins'],
@@ -394,7 +431,8 @@ class TestCQL(Tester):
         assert_invalid(session, "CREATE TABLE test (key text PRIMARY KEY, key int)")
         assert_invalid(session, "CREATE TABLE test (key text PRIMARY KEY, c int, c text)")
 
-        assert_invalid(session, "CREATE TABLE test (key text, key2 text, c int, d text, PRIMARY KEY (key, key2)) WITH COMPACT STORAGE")
+        assert_invalid(
+            session, "CREATE TABLE test (key text, key2 text, c int, d text, PRIMARY KEY (key, key2)) WITH COMPACT STORAGE")
 
     @attr('single_node')
     def limit_ranges_test(self):
@@ -423,7 +461,6 @@ class TestCQL(Tester):
 
         res = session.execute("SELECT * FROM clicks WHERE token(userid) > token(2) LIMIT 1")
         assert rows_to_list(res) == [[45, 'http://foo.com', 42]], list(res)
-
 
     @attr('single_node')
     def limit_multiget_test(self):
@@ -472,7 +509,6 @@ class TestCQL(Tester):
         session.execute("""INSERT INTO foo (a, b, c, d, e) VALUES (0, 0, 2, 0, 3);""")
         session.execute("""INSERT INTO foo (a, b, c, d, e) VALUES (0, -1, 2, 2, 2);""")
 
-
     @attr('single_node')
     def tuple_query_mixed_order_columns_test(self):
         """
@@ -488,7 +524,6 @@ class TestCQL(Tester):
         rows_list = rows_to_list(res)
         assert rows_list == [[0, 2, 0, 0, 0], [0, 1, 0, 0, 0], [0, 0, 1, 2, -1],
                              [0, 0, 1, 1, 1], [0, 0, 2, 1, -3], [0, 0, 2, 0, 3]], rows_list
-
 
     @attr('single_node')
     def tuple_query_mixed_order_columns_test2(self):
@@ -506,7 +541,6 @@ class TestCQL(Tester):
         assert rows_list == [[0, 2, 0, 0, 0], [0, 1, 0, 0, 0], [0, 0, 2, 1, -3],
                              [0, 0, 2, 0, 3], [0, 0, 1, 2, -1], [0, 0, 1, 1, 1]], rows_list
 
-
     @attr('single_node')
     def tuple_query_mixed_order_columns_test3(self):
         """
@@ -523,7 +557,6 @@ class TestCQL(Tester):
         assert rows_list == [[0, 0, 2, 1, -3], [0, 0, 2, 0, 3], [0, 0, 1, 2, -1],
                              [0, 0, 1, 1, 1], [0, 1, 0, 0, 0], [0, 2, 0, 0, 0]], rows_list
 
-
     @attr('single_node')
     def tuple_query_mixed_order_columns_test4(self):
         """
@@ -539,7 +572,6 @@ class TestCQL(Tester):
         rows_list = rows_to_list(res)
         assert rows_list == [[0, 2, 0, 0, 0], [0, 1, 0, 0, 0], [0, 0, 1, 1, 1],
                              [0, 0, 1, 2, -1], [0, 0, 2, 0, 3], [0, 0, 2, 1, -3]], rows_list
-
 
     @attr('single_node')
     def tuple_query_mixed_order_columns_test5(self):
@@ -569,7 +601,6 @@ class TestCQL(Tester):
         assert rows_list == [[0, 0, 1, 1, 1], [0, 0, 1, 2, -1], [0, 0, 2, 0, 3],
                              [0, 0, 2, 1, -3], [0, 1, 0, 0, 0], [0, 2, 0, 0, 0]], rows_list
 
-
     @attr('single_node')
     def tuple_query_mixed_order_columns_test7(self):
         """
@@ -585,7 +616,6 @@ class TestCQL(Tester):
         assert rows_list == [[0, 0, 0, 0, 0], [0, 0, 1, 1, -1], [0, 0, 1, 1, 0],
                              [0, 0, 1, 0, 2], [0, -1, 2, 2, 2]], rows_list
 
-
     @attr('single_node')
     def tuple_query_mixed_order_columns_test8(self):
         """
@@ -600,7 +630,6 @@ class TestCQL(Tester):
         rows_list = rows_to_list(res)
         assert rows_list == [[0, -1, 2, 2, 2], [0, 0, 1, 1, -1], [0, 0, 1, 1, 0],
                              [0, 0, 1, 0, 2], [0, 0, 0, 0, 0]], rows_list
-
 
     @attr('single_node')
     def tuple_query_mixed_order_columns_test9(self):
@@ -661,7 +690,8 @@ class TestCQL(Tester):
         # Inserts
         for id in range(0, 100):
             for tld in ['com', 'org', 'net']:
-                session.execute("INSERT INTO clicks (userid, url, day, month, year) VALUES (%i, 'http://foo.%s', 1, 'jan', 2012)" % (id, tld))
+                session.execute(
+                    "INSERT INTO clicks (userid, url, day, month, year) VALUES (%i, 'http://foo.%s', 1, 'jan', 2012)" % (id, tld))
 
         # Queries
         # Check we do get as many rows as requested
@@ -729,7 +759,7 @@ class TestCQL(Tester):
                        expected=[[1, 1, 1, 1, None]])
             assert_all(session=session,
                        query=f"select count(*) from clicks where c3 = 0 {MSG_ALLOW_FILTERING}",
-                       expected=[[0]]) # c3 is null, which cannot be selected with filtering.
+                       expected=[[0]])  # c3 is null, which cannot be selected with filtering.
 
             session.execute(f"UPDATE clicks SET c3 = c3-1 WHERE pk=0 and ck=1")
             assert_all(session=session,
@@ -797,14 +827,18 @@ class TestCQL(Tester):
         session.execute("CREATE INDEX byAge ON users(age)")
 
         # Inserts
-        session.execute("INSERT INTO users (userid, firstname, lastname, age) VALUES (550e8400-e29b-41d4-a716-446655440000, 'Frodo', 'Baggins', 32)")
-        session.execute("UPDATE users SET firstname = 'Samwise', lastname = 'Gamgee', age = 33 WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479")
+        session.execute(
+            "INSERT INTO users (userid, firstname, lastname, age) VALUES (550e8400-e29b-41d4-a716-446655440000, 'Frodo', 'Baggins', 32)")
+        session.execute(
+            "UPDATE users SET firstname = 'Samwise', lastname = 'Gamgee', age = 33 WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479")
 
         # Queries
-        res = session.execute("SELECT firstname FROM users WHERE userid = 550e8400-e29b-41d4-a716-446655440000 AND age = 33")
+        res = session.execute(
+            "SELECT firstname FROM users WHERE userid = 550e8400-e29b-41d4-a716-446655440000 AND age = 33")
         assert rows_to_list(res) == [], list(res)
 
-        res = session.execute("SELECT firstname FROM users WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479 AND age = 33")
+        res = session.execute(
+            "SELECT firstname FROM users WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479 AND age = 33")
         assert rows_to_list(res) == [['Samwise']], list(res)
 
     @attr('single_node')
@@ -1126,7 +1160,8 @@ class TestCQL(Tester):
         """ Check obsolete properties from CQL2 are rejected """
         session = self.prepare()
 
-        assert_invalid(session, "CREATE TABLE test (foo text PRIMARY KEY, c int) WITH default_validation=timestamp", expected=SyntaxException)
+        assert_invalid(
+            session, "CREATE TABLE test (foo text PRIMARY KEY, c int) WITH default_validation=timestamp", expected=SyntaxException)
 
         session.execute("CREATE TABLE test (foo text PRIMARY KEY, c int)")
         assert_invalid(session, "ALTER TABLE test WITH default_validation=int;", expected=SyntaxException)
@@ -1190,7 +1225,8 @@ class TestCQL(Tester):
         """)
 
         # Insert and verify test data:
-        session.execute("INSERT INTO test (key, i, l, s, m, t, u) VALUES (0, 1, [1, 2, 3], {1, 2, 3}, {1: 2}, (1, 2), {number: 1})")
+        session.execute(
+            "INSERT INTO test (key, i, l, s, m, t, u) VALUES (0, 1, [1, 2, 3], {1, 2, 3}, {1: 2}, (1, 2), {number: 1})")
         res = session.execute("SELECT key, i, l, s, m, t, u FROM test")
         assert_equal(rows_to_list(res), [[0, 1, list([1, 2, 3]), set([1, 2, 3]), dict({1: 2}), (1, 2), simple_type(1)]])
 
@@ -1356,14 +1392,17 @@ class TestCQL(Tester):
         assert_invalid(session, "CREATE KEYSPACE test1",
                        expected=SyntaxException,
                        matching="code=2000")
-        session.execute("CREATE KEYSPACE test2 WITH replication = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 }")
-        assert_invalid(session, "CREATE KEYSPACE My_much_much_too_long_identifier_that_should_not_work WITH replication = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 }")
+        session.execute(
+            "CREATE KEYSPACE test2 WITH replication = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 }")
+        assert_invalid(
+            session, "CREATE KEYSPACE My_much_much_too_long_identifier_that_should_not_work WITH replication = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 }")
 
         session.execute("DROP KEYSPACE test2")
         assert_invalid(session, "DROP KEYSPACE non_existing",
                        expected=ConfigurationException,
                        matching="code=2300")
-        session.execute("CREATE KEYSPACE test2 WITH replication = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 }")
+        session.execute(
+            "CREATE KEYSPACE test2 WITH replication = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 }")
 
     @attr('single_node')
     def table_test(self):
@@ -1468,7 +1507,8 @@ class TestCQL(Tester):
         # make sure comparing tokens to int literals doesn't fall down
         session.execute("SELECT k FROM test WHERE token(k) >= 0")
 
-        res = session.execute("SELECT k FROM test WHERE token(k) >= token(%d) AND token(k) < token(%d)" % (inOrder[32], inOrder[65]))
+        res = session.execute("SELECT k FROM test WHERE token(k) >= token(%d) AND token(k) < token(%d)" %
+                              (inOrder[32], inOrder[65]))
         assert rows_to_list(res) == [[inOrder[x]] for x in range(32, 65)], "%s [all: %s]" % (str(res), str(inOrder))
 
     @attr('single_node')
@@ -1576,7 +1616,8 @@ class TestCQL(Tester):
         assert rows_to_list(res) == [[k] for k in range(0, 5) if k != 2], list(res)
 
         # Example from #3505
-        session.execute("CREATE KEYSPACE ks1 with replication = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 };")
+        session.execute(
+            "CREATE KEYSPACE ks1 with replication = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 };")
         session.execute("USE ks1")
         session.execute("""
             CREATE COLUMNFAMILY users (
@@ -1653,7 +1694,8 @@ class TestCQL(Tester):
             for j in range(0, col1):
                 for k in range(0, col2):
                     n = (i * cpr) + (j * col2) + k
-                    session.execute("INSERT INTO test1 (k, c1, c2, v1, v2) VALUES (%d, %d, %d, %d, %d)" % (i, j, k, n, n))
+                    session.execute("INSERT INTO test1 (k, c1, c2, v1, v2) VALUES (%d, %d, %d, %d, %d)" %
+                                    (i, j, k, n, n))
 
         for i in range(0, rows):
             res = session.execute("SELECT v1, v2 FROM test1 where k = %d" % i)
@@ -1690,7 +1732,8 @@ class TestCQL(Tester):
 
         for c1 in range(0, 4):
             for c2 in range(0, 2):
-                session.execute("INSERT INTO test1 (k, c1, c2, v1) VALUES (0, %d, %d, '%s')" % (c1, c2, '%i%i' % (c1, c2)))
+                session.execute("INSERT INTO test1 (k, c1, c2, v1) VALUES (0, %d, %d, '%s')" %
+                                (c1, c2, '%i%i' % (c1, c2)))
 
         self.cluster.flush()
 
@@ -1700,7 +1743,8 @@ class TestCQL(Tester):
         self.cluster.compact()
 
         res = session.execute("SELECT v1 FROM test1 WHERE k = 0")
-        assert rows_to_list(res) == [['%i%i' % (c1, c2)] for c1 in range(0, 4) for c2 in range(0, 2) if c1 != 1], list(res)
+        assert rows_to_list(res) == [['%i%i' % (c1, c2)] for c1 in range(0, 4)
+                                     for c2 in range(0, 2) if c1 != 1], list(res)
 
     @attr('single_node')
     def delete_row_test(self):
@@ -2116,7 +2160,8 @@ class TestCQL(Tester):
         column_name = b'\x00\x04' + column_name_component + b'\x00' + b'\x00\x01' + 'v'.encode('utf-8') + b'\x00'
         value = struct.pack('>i', 8)
         client.batch_mutate(
-            {key: {'test': [Mutation(ColumnOrSuperColumn(column=Column(name=column_name, value=value, timestamp=100)))]}},
+            {key: {'test': [Mutation(ColumnOrSuperColumn(
+                column=Column(name=column_name, value=value, timestamp=100)))]}},
             ThriftConsistencyLevel.ONE)
 
         res = session.execute("SELECT * FROM test")
@@ -2339,13 +2384,16 @@ class TestCQL(Tester):
         res = session.execute("SELECT blog_id, content FROM blogs WHERE time1 = 1 AND author='foo' ALLOW FILTERING")
         assert rows_to_list(res) == [[2, 'baz']], list(res)
 
-        res = session.execute("SELECT blog_id, content FROM blogs WHERE time1 = 1 AND time2 = 0 AND author='foo' ALLOW FILTERING")
+        res = session.execute(
+            "SELECT blog_id, content FROM blogs WHERE time1 = 1 AND time2 = 0 AND author='foo' ALLOW FILTERING")
         assert rows_to_list(res) == [[2, 'baz']], list(res)
 
-        res = session.execute("SELECT content FROM blogs WHERE time1 = 1 AND time2 = 1 AND author='foo' ALLOW FILTERING")
+        res = session.execute(
+            "SELECT content FROM blogs WHERE time1 = 1 AND time2 = 1 AND author='foo' ALLOW FILTERING")
         assert rows_to_list(res) == [], list(res)
 
-        res = session.execute("SELECT content FROM blogs WHERE time1 = 1 AND time2 > 0 AND author='foo' ALLOW FILTERING")
+        res = session.execute(
+            "SELECT content FROM blogs WHERE time1 = 1 AND time2 > 0 AND author='foo' ALLOW FILTERING")
         assert rows_to_list(res) == [], list(res)
 
         assert_invalid(session, "SELECT content FROM blogs WHERE time2 >= 0 AND author='foo'")
@@ -2475,7 +2523,8 @@ class TestCQL(Tester):
         res = session.execute("SELECT col1 FROM test WHERE my_id in('key1', 'key2', 'key3') ORDER BY col1;")
         assert rows_to_list(res) == [[1], [2], [3]], list(res)
 
-        res = session.execute("SELECT col1, value, my_id, col2 FROM test WHERE my_id in('key3', 'key4') ORDER BY col1, col2;")
+        res = session.execute(
+            "SELECT col1, value, my_id, col2 FROM test WHERE my_id in('key3', 'key4') ORDER BY col1, col2;")
         assert rows_to_list(res) == [[2, 'b', 'key4', 1], [2, 'b', 'key3', 2]], list(res)
 
         assert_invalid(session, "SELECT col1 FROM test ORDER BY col1;")
@@ -2487,10 +2536,12 @@ class TestCQL(Tester):
         session = self.prepare(create_keyspace=False)
 
         assert_invalid(session, "CREATE KEYSPACE ks1", expected=SyntaxException)
-        assert_invalid(session, "CREATE KEYSPACE ks1 WITH replication= { 'replication_factor' : 1 }", expected=ConfigurationException)
+        assert_invalid(
+            session, "CREATE KEYSPACE ks1 WITH replication= { 'replication_factor' : 1 }", expected=ConfigurationException)
 
         session.execute("CREATE KEYSPACE ks1 WITH replication={ 'class' : 'SimpleStrategy', 'replication_factor' : 1 }")
-        session.execute("CREATE KEYSPACE ks2 WITH replication={ 'class' : 'SimpleStrategy', 'replication_factor' : 1 } AND durable_writes=false")
+        session.execute(
+            "CREATE KEYSPACE ks2 WITH replication={ 'class' : 'SimpleStrategy', 'replication_factor' : 1 } AND durable_writes=false")
 
         if self.cluster.version() >= '2.2':
             assert_all(session, "SELECT keyspace_name, durable_writes FROM system.schema_keyspaces",
@@ -2499,7 +2550,8 @@ class TestCQL(Tester):
             assert_all(session, "SELECT keyspace_name, durable_writes FROM system.schema_keyspaces",
                        [['ks1', True], ['system', True], ['system_traces', True], ['ks2', False]])
 
-        session.execute("ALTER KEYSPACE ks1 WITH replication = { 'class' : 'NetworkTopologyStrategy', 'dc1' : 1 } AND durable_writes=False")
+        session.execute(
+            "ALTER KEYSPACE ks1 WITH replication = { 'class' : 'NetworkTopologyStrategy', 'dc1' : 1 } AND durable_writes=False")
         session.execute("ALTER KEYSPACE ks2 WITH durable_writes=true")
 
         if self.cluster.version() >= '2.2':
@@ -2519,9 +2571,12 @@ class TestCQL(Tester):
 
         session.execute("USE ks1")
 
-        assert_invalid(session, "CREATE TABLE cf1 (a int PRIMARY KEY, b int) WITH compaction = { 'min_threshold' : 4 }", expected=ConfigurationException)
-        session.execute("CREATE TABLE cf1 (a int PRIMARY KEY, b int) WITH compaction = { 'class' : 'SizeTieredCompactionStrategy', 'min_threshold' : 7 }")
-        assert_one(session, "SELECT columnfamily_name, min_compaction_threshold FROM system.schema_columnfamilies WHERE keyspace_name='ks1'", ['cf1', 7])
+        assert_invalid(
+            session, "CREATE TABLE cf1 (a int PRIMARY KEY, b int) WITH compaction = { 'min_threshold' : 4 }", expected=ConfigurationException)
+        session.execute(
+            "CREATE TABLE cf1 (a int PRIMARY KEY, b int) WITH compaction = { 'class' : 'SizeTieredCompactionStrategy', 'min_threshold' : 7 }")
+        assert_one(
+            session, "SELECT columnfamily_name, min_compaction_threshold FROM system.schema_columnfamilies WHERE keyspace_name='ks1'", ['cf1', 7])
 
     @attr('single_node')
     def remove_range_slice_test(self):
@@ -2697,7 +2752,8 @@ class TestCQL(Tester):
         # The \ in this query string is not forwarded to cassandra.
         # The ' is being escaped in python, but only ' is forwarded
         # over the wire instead of \'.
-        assert_invalid(session, "INSERT INTO test (k, c) VALUES ('foo', 'CQL is cassandra\'s best friend')", expected=SyntaxException)
+        assert_invalid(session, "INSERT INTO test (k, c) VALUES ('foo', 'CQL is cassandra\'s best friend')",
+                       expected=SyntaxException)
 
     @attr('single_node')
     def reversed_compact_multikey_test(self):
@@ -2880,12 +2936,17 @@ class TestCQL(Tester):
     def multiordering_validation_test(self):
         session = self.prepare()
 
-        assert_invalid(session, "CREATE TABLE test (k int, c1 int, c2 int, PRIMARY KEY (k, c1, c2)) WITH CLUSTERING ORDER BY (c2 DESC)")
-        assert_invalid(session, "CREATE TABLE test (k int, c1 int, c2 int, PRIMARY KEY (k, c1, c2)) WITH CLUSTERING ORDER BY (c2 ASC, c1 DESC)")
-        assert_invalid(session, "CREATE TABLE test (k int, c1 int, c2 int, PRIMARY KEY (k, c1, c2)) WITH CLUSTERING ORDER BY (c1 DESC, c2 DESC, c3 DESC)")
+        assert_invalid(
+            session, "CREATE TABLE test (k int, c1 int, c2 int, PRIMARY KEY (k, c1, c2)) WITH CLUSTERING ORDER BY (c2 DESC)")
+        assert_invalid(
+            session, "CREATE TABLE test (k int, c1 int, c2 int, PRIMARY KEY (k, c1, c2)) WITH CLUSTERING ORDER BY (c2 ASC, c1 DESC)")
+        assert_invalid(
+            session, "CREATE TABLE test (k int, c1 int, c2 int, PRIMARY KEY (k, c1, c2)) WITH CLUSTERING ORDER BY (c1 DESC, c2 DESC, c3 DESC)")
 
-        session.execute("CREATE TABLE test1 (k int, c1 int, c2 int, PRIMARY KEY (k, c1, c2)) WITH CLUSTERING ORDER BY (c1 DESC, c2 DESC)")
-        session.execute("CREATE TABLE test2 (k int, c1 int, c2 int, PRIMARY KEY (k, c1, c2)) WITH CLUSTERING ORDER BY (c1 ASC, c2 DESC)")
+        session.execute(
+            "CREATE TABLE test1 (k int, c1 int, c2 int, PRIMARY KEY (k, c1, c2)) WITH CLUSTERING ORDER BY (c1 DESC, c2 DESC)")
+        session.execute(
+            "CREATE TABLE test2 (k int, c1 int, c2 int, PRIMARY KEY (k, c1, c2)) WITH CLUSTERING ORDER BY (c1 ASC, c2 DESC)")
 
     @attr('single_node')
     def bug_4882_test(self):
@@ -2951,7 +3012,8 @@ class TestCQL(Tester):
         session.execute(req % (3, 0, 1, 'gux', "{ 'qux' }"))
 
         res = session.execute("SELECT blog_id, content FROM blogs WHERE author='foo'")
-        assert rows_to_list(res) == [[1, set(['bar1', 'bar2'])], [1, set(['bar2', 'bar3'])], [2, set(['baz'])]], list(res)
+        assert rows_to_list(res) == [[1, set(['bar1', 'bar2'])], [
+            1, set(['bar2', 'bar3'])], [2, set(['baz'])]], list(res)
 
     @attr('single_node')
     def truncate_clean_cache_test(self):
@@ -3228,7 +3290,8 @@ class TestCQL(Tester):
         assert_invalid(session, "SELECT dateOf(k) FROM test WHERE k = 0 AND t = %s" % dates[0])
 
         session.execute("SELECT dateOf(t), unixTimestampOf(t) FROM test WHERE k = 0 AND t = %s" % dates[0])
-        session.execute("SELECT t FROM test WHERE k = 0 AND t > maxTimeuuid(1234567) AND t < minTimeuuid('2012-11-07 18:18:22-0800')")
+        session.execute(
+            "SELECT t FROM test WHERE k = 0 AND t > maxTimeuuid(1234567) AND t < minTimeuuid('2012-11-07 18:18:22-0800')")
         # not sure what to check exactly so just checking the query returns
 
     @attr('single_node')
@@ -3461,7 +3524,8 @@ class TestCQL(Tester):
         res = session.execute("SELECT value FROM indexed WHERE pk0 = 3 AND pk1 = 4 AND ck1 = 0")
         self.assertEqual([[2]], rows_to_list(res))
 
-        res = session.execute("SELECT value FROM indexed WHERE pk0 = 5 AND pk1 = 0 AND ck0 = 1 AND ck2 = 3 ALLOW FILTERING")
+        res = session.execute(
+            "SELECT value FROM indexed WHERE pk0 = 5 AND pk1 = 0 AND ck0 = 1 AND ck2 = 3 ALLOW FILTERING")
         self.assertEqual([[4]], rows_to_list(res))
 
     @skip('indexes')
@@ -3664,10 +3728,12 @@ class TestCQL(Tester):
         assert_one(session, "UPDATE test SET v1 = 3, v2 = 'bar' WHERE k = 0 IF EXISTS", [False, None, None, None, None])
 
         # Should apply
-        assert_one(session, "INSERT INTO test (k, v1, v2) VALUES (0, 2, 'foo') IF NOT EXISTS", [True, None, None, None, None])
+        assert_one(session, "INSERT INTO test (k, v1, v2) VALUES (0, 2, 'foo') IF NOT EXISTS",
+                   [True, None, None, None, None])
 
         # Shouldn't apply
-        assert_one(session, "INSERT INTO test (k, v1, v2) VALUES (0, 5, 'bar') IF NOT EXISTS", [False, 0, 2, 'foo', None])
+        assert_one(session, "INSERT INTO test (k, v1, v2) VALUES (0, 5, 'bar') IF NOT EXISTS",
+                   [False, 0, 2, 'foo', None])
         assert_one(session, "SELECT * FROM test", [0, 2, 'foo', None])
 
         # Should not apply
@@ -3680,11 +3746,13 @@ class TestCQL(Tester):
         assert_one(session, "SELECT * FROM test", [0, 3, 'bar', None])
 
         # Shouldn't apply, only one condition is ok
-        assert_one(session, "UPDATE test SET v1 = 5, v2 = 'foobar' WHERE k = 0 IF v1 = 3 AND v2 = 'foo'", [False, 3, 'bar'])
+        assert_one(session, "UPDATE test SET v1 = 5, v2 = 'foobar' WHERE k = 0 IF v1 = 3 AND v2 = 'foo'",
+                   [False, 3, 'bar'])
         assert_one(session, "SELECT * FROM test", [0, 3, 'bar', None])
 
         # Should apply
-        assert_one(session, "UPDATE test SET v1 = 5, v2 = 'foobar' WHERE k = 0 IF v1 = 3 AND v2 = 'bar'", [True, 3, 'bar'])
+        assert_one(session, "UPDATE test SET v1 = 5, v2 = 'foobar' WHERE k = 0 IF v1 = 3 AND v2 = 'bar'",
+                   [True, 3, 'bar'])
         assert_one(session, "SELECT * FROM test", [0, 5, 'foobar', None])
 
         # Shouldn't apply
@@ -3848,10 +3916,12 @@ class TestCQL(Tester):
         self.assertEqual(b'\x00\x00\x00\x00', res[0].id_blob)
 
         # test that select throws a meaningful exception for aliases in where clause
-        assert_invalid(session, 'SELECT id AS user_id, name AS user_name FROM users WHERE user_id = 0', matching="Aliases aren't allowed in the where clause")
+        assert_invalid(session, 'SELECT id AS user_id, name AS user_name FROM users WHERE user_id = 0',
+                       matching="Aliases aren't allowed in the where clause")
 
         # test that select throws a meaningful exception for aliases in order by clause
-        assert_invalid(session, 'SELECT id AS user_id, name AS user_name FROM users WHERE id IN (0) ORDER BY user_name', matching="Aliases are not allowed in order by clause")
+        assert_invalid(session, 'SELECT id AS user_id, name AS user_name FROM users WHERE id IN (0) ORDER BY user_name',
+                       matching="Aliases are not allowed in order by clause")
 
     @attr('single_node')
     def nonpure_function_collection_test(self):
@@ -3969,8 +4039,10 @@ class TestCQL(Tester):
         self.assertEqual([[0], [1], [2]], rows_to_list(sorted(res)))
 
         # Test selection validation.
-        assert_invalid(session, 'SELECT DISTINCT pk0 FROM regular', matching="queries must request all the partition key columns")
-        assert_invalid(session, 'SELECT DISTINCT pk0, pk1, ck0 FROM regular', matching="queries must only request partition key columns")
+        assert_invalid(session, 'SELECT DISTINCT pk0 FROM regular',
+                       matching="queries must request all the partition key columns")
+        assert_invalid(session, 'SELECT DISTINCT pk0, pk1, ck0 FROM regular',
+                       matching="queries must only request partition key columns")
 
     @attr('single_node')
     def select_distinct_with_deletions_test(self):
@@ -4014,10 +4086,13 @@ class TestCQL(Tester):
         session.execute("CREATE TABLE tkns (tkn int, consumed boolean, PRIMARY KEY (tkn));")
 
         for i in range(1, 10):
-            query = SimpleStatement("INSERT INTO tkns (tkn, consumed) VALUES (%i,FALSE);" % i, consistency_level=ConsistencyLevel.QUORUM)
+            query = SimpleStatement("INSERT INTO tkns (tkn, consumed) VALUES (%i,FALSE);" %
+                                    i, consistency_level=ConsistencyLevel.QUORUM)
             session.execute(query)
-            assert_one(session, "UPDATE tkns SET consumed = TRUE WHERE tkn = %i IF consumed = FALSE;" % i, [True, False], cl=ConsistencyLevel.QUORUM)
-            assert_one(session, "UPDATE tkns SET consumed = TRUE WHERE tkn = %i IF consumed = FALSE;" % i, [False, True], cl=ConsistencyLevel.QUORUM)
+            assert_one(session, "UPDATE tkns SET consumed = TRUE WHERE tkn = %i IF consumed = FALSE;" %
+                       i, [True, False], cl=ConsistencyLevel.QUORUM)
+            assert_one(session, "UPDATE tkns SET consumed = TRUE WHERE tkn = %i IF consumed = FALSE;" %
+                       i, [False, True], cl=ConsistencyLevel.QUORUM)
 
     @skip('indexes')
     @attr('single_node')
@@ -4244,7 +4319,8 @@ class TestCQL(Tester):
         # Test that INSERT IF NOT EXISTS concerns only the static column if no clustering nor regular columns
         # is provided, but concerns the CQL3 row targetted by the clustering columns otherwise
         session.execute("INSERT INTO test(id, k, v) VALUES (1, 'foo', 'foo')")
-        assert_one(session, "INSERT INTO test(id, k, version) VALUES (1, 'foo', 1) IF NOT EXISTS", [False, 1, 'foo', None, 'foo'])
+        assert_one(session, "INSERT INTO test(id, k, version) VALUES (1, 'foo', 1) IF NOT EXISTS",
+                   [False, 1, 'foo', None, 'foo'])
         assert_one(session, "INSERT INTO test(id, version) VALUES (1, 1) IF NOT EXISTS", [True, 1, 'foo', None, 'foo'])
         assert_one(session, "SELECT * FROM test", [1, 'foo', 1, 'foo'])
         session.execute("DELETE FROM test WHERE id = 1")
@@ -4341,7 +4417,8 @@ class TestCQL(Tester):
                        INSERT INTO TEST (id, k, v, version) VALUES(1, 'k3', 'val3', 1) IF NOT EXISTS;
                      APPLY BATCH
                    """, [[True, 1, 'k2', None, 'val2'], [True, None, None, None, None]])
-        assert_all(session, "SELECT * FROM test WHERE id=1", [[1, 'k1', 1, 'val1'], [1, 'k2', 1, 'newVal'], [1, 'k3', 1, 'val3']])
+        assert_all(session, "SELECT * FROM test WHERE id=1",
+                   [[1, 'k1', 1, 'val1'], [1, 'k2', 1, 'newVal'], [1, 'k3', 1, 'val3']])
 
         if self.cluster.version() >= '2.1':
             assert_all(session,
@@ -4449,7 +4526,8 @@ class TestCQL(Tester):
         for i in range(10):
             for j in range(5):
                 for k in range(5):
-                    session.execute("INSERT INTO test2 (k, c1, c2, s1, s2) VALUES (%s, %s, %s, %s, %s)", (i, j, k, i, i + 1))
+                    session.execute("INSERT INTO test2 (k, c1, c2, s1, s2) VALUES (%s, %s, %s, %s, %s)",
+                                    (i, j, k, i, i + 1))
 
         for fetch_size in (None, 2, 5, 7, 10, 24, 25, 26, 1000):
             session.default_fetch_size = fetch_size
@@ -4527,7 +4605,8 @@ class TestCQL(Tester):
         cursor.execute("INSERT INTO test(k, c1, c2, v) VALUES (1, 1, 2, 5)")
 
         assert_all(cursor, "SELECT * FROM test WHERE k=0 AND c1 = 0 AND c2 IN (2, 0)", [[0, 0, 0, 0], [0, 0, 2, 2]])
-        assert_all(cursor, "SELECT * FROM test WHERE k=0 AND c1 = 0 AND c2 IN (2, 0) ORDER BY c1 ASC, c2 ASC", [[0, 0, 0, 0], [0, 0, 2, 2]])
+        assert_all(cursor, "SELECT * FROM test WHERE k=0 AND c1 = 0 AND c2 IN (2, 0) ORDER BY c1 ASC, c2 ASC",
+                   [[0, 0, 0, 0], [0, 0, 2, 2]])
 
         # check that we don't need to select the column on which we order
         assert_all(cursor, "SELECT v FROM test WHERE k=0 AND c1 = 0 AND c2 IN (2, 0)", [[0], [2]])
@@ -4568,9 +4647,11 @@ class TestCQL(Tester):
                                                                         [1, 1, 0],
                                                                         [1, 1, 1]])
 
-        assert_all(session, "SELECT v1, v2, v3 FROM test WHERE k = 0 AND (v1, v2, v3) >= (1, 0, 1)", [[1, 0, 1], [1, 1, 0], [1, 1, 1]])
+        assert_all(session, "SELECT v1, v2, v3 FROM test WHERE k = 0 AND (v1, v2, v3) >= (1, 0, 1)",
+                   [[1, 0, 1], [1, 1, 0], [1, 1, 1]])
         assert_all(session, "SELECT v1, v2, v3 FROM test WHERE k = 0 AND (v1, v2) >= (1, 1)", [[1, 1, 0], [1, 1, 1]])
-        assert_all(session, "SELECT v1, v2, v3 FROM test WHERE k = 0 AND (v1, v2) > (0, 1) AND (v1, v2, v3) <= (1, 1, 0)", [[1, 0, 0], [1, 0, 1], [1, 1, 0]])
+        assert_all(session, "SELECT v1, v2, v3 FROM test WHERE k = 0 AND (v1, v2) > (0, 1) AND (v1, v2, v3) <= (1, 1, 0)", [
+                   [1, 0, 0], [1, 0, 1], [1, 1, 0]])
 
         assert_invalid(session, "SELECT v1, v2, v3 FROM test WHERE k = 0 AND (v1, v3) > (1, 0)")
 
@@ -4602,8 +4683,10 @@ class TestCQL(Tester):
         assert_all(session, "SELECT c1, c2, v FROM test WHERE k = 0 AND c1 = 0 and c2 >= 1 and c2 < 2", [[0, 1, 0]])
         assert_all(session, "SELECT c1, c2, v FROM test WHERE k = 0 AND c1 = 0 and c2 > 1", [[0, 2, 0]])
         assert_all(session, "SELECT c1, c2, v FROM test WHERE k = 0 AND c1 = 0 and c2 >= 1", [[0, 1, 0], [0, 2, 0]])
-        assert_all(session, "SELECT c1, c2, v FROM test WHERE k = 0 AND c1 = 0 and c2 < 2", [[0, None, 1], [0, 0, 0], [0, 1, 0]])
-        assert_all(session, "SELECT c1, c2, v FROM test WHERE k = 0 AND c1 = 0 and c2 <= 2", [[0, None, 1], [0, 0, 0], [0, 1, 0], [0, 2, 0]])
+        assert_all(session, "SELECT c1, c2, v FROM test WHERE k = 0 AND c1 = 0 and c2 < 2",
+                   [[0, None, 1], [0, 0, 0], [0, 1, 0]])
+        assert_all(session, "SELECT c1, c2, v FROM test WHERE k = 0 AND c1 = 0 and c2 <= 2",
+                   [[0, None, 1], [0, 0, 0], [0, 1, 0], [0, 2, 0]])
 
         assert_all(session, "SELECT c1, c2, v FROM test WHERE k = 0 AND c1 = 0 and c2 < 1 and c2 > 2", [])
         assert_all(session, "SELECT c1, c2, v FROM test WHERE k = 0 AND c1 = 0 and c2 < 1 and c2 >= 2", [])
@@ -4612,10 +4695,12 @@ class TestCQL(Tester):
 
         assert_all(session, "SELECT c1, c2, v FROM test WHERE k = 0 AND (c1, c2) < (0, 1) and (c1, c2) > (0, 2)", [])
         assert_all(session, "SELECT c1, c2, v FROM test WHERE k = 0 AND (c1, c2) >= (0, 1) and (c1) < (0)", [])
-        assert_all(session, "SELECT c1, c2, v FROM test WHERE k = 0 AND (c1, c2) >= (0, 1) and (c1) <= (0)", [[0, 1, 0], [0, 2, 0]])
+        assert_all(session, "SELECT c1, c2, v FROM test WHERE k = 0 AND (c1, c2) >= (0, 1) and (c1) <= (0)",
+                   [[0, 1, 0], [0, 2, 0]])
         assert_all(session, "SELECT c1, c2, v FROM test WHERE k = 0 AND (c1, c2) < (0, 1) and (c1, c2) >= (0, 2)", [])
         assert_all(session, "SELECT c1, c2, v FROM test WHERE k = 0 AND (c1, c2) < (0, 2) and (c1, c2) > (0, 1)", [])
-        assert_all(session, "SELECT c1, c2, v FROM test WHERE k = 0 AND (c1, c2) < (0, 3) and (c1, c2) > (0, 1)", [[0, 2, 0]])
+        assert_all(
+            session, "SELECT c1, c2, v FROM test WHERE k = 0 AND (c1, c2) < (0, 3) and (c1, c2) > (0, 1)", [[0, 2, 0]])
 
         assert_all(session, "SELECT c1, c2, v FROM test WHERE k = 0 AND c1 >= 0", [[0, None, 1],
                                                                                    [0, 0, 0],
@@ -4648,7 +4733,8 @@ class TestCQL(Tester):
         session.execute("INSERT INTO test(k, c1, c2) VALUES (0, 0, 1)")
         session.execute("INSERT INTO test(k, c1, c2) VALUES (0, 0, 2)")
 
-        assert_all(session, "SELECT * FROM test WHERE k=0 AND c1 = 0 AND c2 IN (2, 0) ORDER BY c1 DESC", [[0, 0, 2], [0, 0, 0]])
+        assert_all(session, "SELECT * FROM test WHERE k=0 AND c1 = 0 AND c2 IN (2, 0) ORDER BY c1 DESC",
+                   [[0, 0, 2], [0, 0, 0]])
 
     @attr('single_node')
     def cas_and_compact_test(self):
@@ -4674,7 +4760,8 @@ class TestCQL(Tester):
         assert_one(session, "UPDATE lock SET owner='b' WHERE partition='a' AND key='b' IF owner='a'", [False, 'z'])
         assert_one(session, "UPDATE lock SET owner='b' WHERE partition='a' AND key='b' IF owner='z'", [True, 'z'])
 
-        assert_one(session, "INSERT INTO lock(partition, key, owner) VALUES ('a', 'c', 'x') IF NOT EXISTS", [True, None, None, None])
+        assert_one(session, "INSERT INTO lock(partition, key, owner) VALUES ('a', 'c', 'x') IF NOT EXISTS",
+                   [True, None, None, None])
 
     @attr('single_node')
     def whole_list_conditional_test(self):
@@ -4699,7 +4786,8 @@ class TestCQL(Tester):
             def check_applies(condition):
                 assert_one(session, "UPDATE {} SET l = ['foo', 'bar', 'foobar'] WHERE k=0 IF {}".format(table, condition),
                            [True, ['foo', 'bar', 'foobar']])
-                assert_one(session, "SELECT * FROM {}".format(table), [0, ['foo', 'bar', 'foobar']])  # read back at default cl.one
+                assert_one(session, "SELECT * FROM {}".format(table),
+                           [0, ['foo', 'bar', 'foobar']])  # read back at default cl.one
 
             check_applies("l = ['foo', 'bar', 'foobar']")
             check_applies("l != ['baz']")
@@ -4715,7 +4803,8 @@ class TestCQL(Tester):
             def check_does_not_apply(condition):
                 assert_one(session, "UPDATE {} SET l = ['foo', 'bar', 'foobar'] WHERE k=0 IF {}".format(table, condition),
                            [False, ['foo', 'bar', 'foobar']])
-                assert_one(session, "SELECT * FROM {}".format((table)), [0, ['foo', 'bar', 'foobar']])  # read back at default cl.one
+                assert_one(session, "SELECT * FROM {}".format((table)),
+                           [0, ['foo', 'bar', 'foobar']])  # read back at default cl.one
 
             # should not apply
             check_does_not_apply("l = ['baz']")
@@ -4731,7 +4820,8 @@ class TestCQL(Tester):
             check_does_not_apply("l > ['zzz'] AND l < ['zzz']")
 
             def check_invalid(condition, expected=InvalidRequest):
-                assert_invalid(session, "UPDATE {} SET l = ['foo', 'bar', 'foobar'] WHERE k=0 IF {}".format(table, condition), expected=expected)
+                assert_invalid(session, "UPDATE {} SET l = ['foo', 'bar', 'foobar'] WHERE k=0 IF {}".format(
+                    table, condition), expected=expected)
                 assert_one(session, "SELECT * FROM {}".format(table), [0, ['foo', 'bar', 'foobar']])
 
             check_invalid("l = [null]")
@@ -4817,7 +4907,8 @@ class TestCQL(Tester):
             check_applies("l[3] IN (null, 'xxx', 'bar')")
 
             def check_does_not_apply(condition):
-                assert_one(session, "UPDATE %s SET l = ['foo', 'bar', 'foobar'] WHERE k=0 IF %s" % (table, condition), [False, ['foo', 'bar', 'foobar']])
+                assert_one(session, "UPDATE %s SET l = ['foo', 'bar', 'foobar'] WHERE k=0 IF %s" % (
+                    table, condition), [False, ['foo', 'bar', 'foobar']])
                 assert_one(session, "SELECT * FROM %s" % (table,), [0, ['foo', 'bar', 'foobar']])
 
             check_does_not_apply("l[1] < 'aaa'")
@@ -4833,7 +4924,8 @@ class TestCQL(Tester):
             check_does_not_apply("l[3] = 'xxx'")
 
             def check_invalid(condition, expected=InvalidRequest):
-                assert_invalid(session, "UPDATE %s SET l = ['foo', 'bar', 'foobar'] WHERE k=0 IF %s" % (table, condition), expected=expected)
+                assert_invalid(session, "UPDATE %s SET l = ['foo', 'bar', 'foobar'] WHERE k=0 IF %s" % (
+                    table, condition), expected=expected)
                 assert_one(session, "SELECT * FROM %s" % (table,), [0, ['foo', 'bar', 'foobar']])
 
             check_invalid("l[1] < null")
@@ -4865,10 +4957,12 @@ class TestCQL(Tester):
 
         for frozen in (False, True):
             table = "frozentset" if frozen else "tset"
-            assert_one(session, "INSERT INTO %s(k, s) VALUES (0, {'bar', 'foo'}) IF NOT EXISTS" % (table,), [True, None, None])
+            assert_one(session, "INSERT INTO %s(k, s) VALUES (0, {'bar', 'foo'}) IF NOT EXISTS" % (
+                table,), [True, None, None])
 
             def check_applies(condition):
-                assert_one(session, "UPDATE %s SET s = {'bar', 'foo'} WHERE k=0 IF %s" % (table, condition), [True, set({'bar', 'foo'})])
+                assert_one(session, "UPDATE %s SET s = {'bar', 'foo'} WHERE k=0 IF %s" % (
+                    table, condition), [True, set({'bar', 'foo'})])
                 assert_one(session, "SELECT * FROM %s" % (table,), [0, set(['bar', 'foo'])], cl=ConsistencyLevel.QUORUM)
 
             check_applies("s = {'bar', 'foo'}")
@@ -4900,7 +4994,8 @@ class TestCQL(Tester):
             check_does_not_apply("s != null AND s IN ()")
 
             def check_invalid(condition, expected=InvalidRequest):
-                assert_invalid(session, "UPDATE %s SET s = {'bar', 'foo'} WHERE k=0 IF %s" % (table, condition), expected=expected)
+                assert_invalid(session, "UPDATE %s SET s = {'bar', 'foo'} WHERE k=0 IF %s" % (
+                    table, condition), expected=expected)
                 assert_one(session, "SELECT * FROM %s" % (table,), [0, {'bar', 'foo'}], cl=ConsistencyLevel.QUORUM)
 
             check_invalid("s = {null}")
@@ -4954,7 +5049,8 @@ class TestCQL(Tester):
             check_applies("m != null AND m IN (null, {'a': 'a'}, {'foo': 'bar'})")
 
             def check_does_not_apply(condition):
-                assert_one(session, "UPDATE %s SET m = {'foo': 'bar'} WHERE k=0 IF %s" % (table, condition), [False, {'foo': 'bar'}])
+                assert_one(session, "UPDATE %s SET m = {'foo': 'bar'} WHERE k=0 IF %s" % (
+                    table, condition), [False, {'foo': 'bar'}])
                 assert_one(session, "SELECT * FROM %s" % (table,), [0, {'foo': 'bar'}], cl=ConsistencyLevel.QUORUM)
 
             # should not apply
@@ -4969,7 +5065,8 @@ class TestCQL(Tester):
             check_does_not_apply("m = null AND m != null")
 
             def check_invalid(condition, expected=InvalidRequest):
-                assert_invalid(session, "UPDATE %s SET m = {'foo': 'bar'} WHERE k=0 IF %s" % (table, condition), expected=expected)
+                assert_invalid(session, "UPDATE %s SET m = {'foo': 'bar'} WHERE k=0 IF %s" % (
+                    table, condition), expected=expected)
                 assert_one(session, "SELECT * FROM %s" % (table,), [0, {'foo': 'bar'}], cl=ConsistencyLevel.QUORUM)
 
             check_invalid("m = {null: null}")
@@ -5010,9 +5107,11 @@ class TestCQL(Tester):
             if self.cluster.version() > "2.1.1":
                 session.execute("INSERT INTO tmap(k, m) VALUES (1, null)")
                 if frozen:
-                    assert_invalid(session, "UPDATE tmap set m['foo'] = 'bar', m['bar'] = 'foo' WHERE k = 1 IF m['foo'] IN ('blah', null)")
+                    assert_invalid(
+                        session, "UPDATE tmap set m['foo'] = 'bar', m['bar'] = 'foo' WHERE k = 1 IF m['foo'] IN ('blah', null)")
                 else:
-                    assert_one(session, "UPDATE tmap set m['foo'] = 'bar', m['bar'] = 'foo' WHERE k = 1 IF m['foo'] IN ('blah', null)", [True, None])
+                    assert_one(
+                        session, "UPDATE tmap set m['foo'] = 'bar', m['bar'] = 'foo' WHERE k = 1 IF m['foo'] IN ('blah', null)", [True, None])
 
     @attr('single_node')
     def expanded_map_item_conditional_test(self):
@@ -5057,7 +5156,8 @@ class TestCQL(Tester):
             check_applies("m['foo'] < 'zzz' AND m['foo'] > 'aaa'")
 
             def check_does_not_apply(condition):
-                assert_one(session, "UPDATE %s SET m = {'foo': 'bar'} WHERE k=0 IF %s" % (table, condition), [False, {'foo': 'bar'}])
+                assert_one(session, "UPDATE %s SET m = {'foo': 'bar'} WHERE k=0 IF %s" % (
+                    table, condition), [False, {'foo': 'bar'}])
                 assert_one(session, "SELECT * FROM {}".format(table), [0, {'foo': 'bar'}], cl=ConsistencyLevel.QUORUM)
 
             check_does_not_apply("m['foo'] < 'aaa'")
@@ -5071,7 +5171,8 @@ class TestCQL(Tester):
             check_does_not_apply("m['foo'] != null AND m['foo'] = null")
 
             def check_invalid(condition, expected=InvalidRequest):
-                assert_invalid(session, "UPDATE %s SET m = {'foo': 'bar'} WHERE k=0 IF %s" % (table, condition), expected=expected)
+                assert_invalid(session, "UPDATE %s SET m = {'foo': 'bar'} WHERE k=0 IF %s" % (
+                    table, condition), expected=expected)
                 assert_one(session, "SELECT * FROM {}".format(table), [0, {'foo': 'bar'}])
 
             check_invalid("m['foo'] < null")
@@ -5185,7 +5286,8 @@ class TestCQL(Tester):
 
         assert_all(session, "SELECT * FROM test WHERE k IN (0, 1, 2) AND v > 0 AND v <= 4 LIMIT 2", [[0, 1], [0, 2]])
         assert_all(session, "SELECT * FROM test WHERE k IN (0, 1, 2) AND v > -1 AND v <= 4 LIMIT 2", [[0, 0], [0, 1]])
-        assert_all(session, "SELECT * FROM test WHERE k IN (0, 1, 2) AND v > 0 AND v <= 4 LIMIT 6", [[0, 1], [0, 2], [0, 3], [1, 1], [1, 2], [1, 3]])
+        assert_all(session, "SELECT * FROM test WHERE k IN (0, 1, 2) AND v > 0 AND v <= 4 LIMIT 6",
+                   [[0, 1], [0, 2], [0, 3], [1, 1], [1, 2], [1, 3]])
 
         # Introduced in CASSANDRA-7059
         assert_invalid(session, "SELECT * FROM test WHERE v > 1 AND v <= 3 LIMIT 6 ALLOW FILTERING")
@@ -5219,7 +5321,8 @@ class TestCQL(Tester):
         session.execute("INSERT INTO test(k1, k2, v) VALUES (2, 1, 8)")
         session.execute("INSERT INTO test(k1, k2, v) VALUES (3, 0, 1)")
 
-        assert_all(session, "SELECT * FROM test WHERE k2 = 0 AND v >= 2 ALLOW FILTERING", [[2, 0, 7], [0, 0, 3], [1, 0, 4]])
+        assert_all(session, "SELECT * FROM test WHERE k2 = 0 AND v >= 2 ALLOW FILTERING",
+                   [[2, 0, 7], [0, 0, 3], [1, 0, 4]])
 
     @attr('single_node')
     def clustering_order_in_test(self):
@@ -5410,11 +5513,14 @@ class TestCQL(Tester):
         session.execute("create index sessionAppName ON session_data (app_name)")
         session.execute("create index lastAccessIndex ON session_data (last_access)")
 
-        assert_one(session, "select count(*) from session_data where app_name='foo' and account='bar' and last_access > 4 allow filtering", [0])
+        assert_one(
+            session, "select count(*) from session_data where app_name='foo' and account='bar' and last_access > 4 allow filtering", [0])
 
-        session.execute("insert into session_data (username, session_id, app_name, account, last_access, created_on) values ('toto', 'foo', 'foo', 'bar', 12, 13)")
+        session.execute(
+            "insert into session_data (username, session_id, app_name, account, last_access, created_on) values ('toto', 'foo', 'foo', 'bar', 12, 13)")
 
-        assert_one(session, "select count(*) from session_data where app_name='foo' and account='bar' and last_access > 4 allow filtering", [1])
+        assert_one(
+            session, "select count(*) from session_data where app_name='foo' and account='bar' and last_access > 4 allow filtering", [1])
 
     @attr('single_node')
     def blobAs_functions_test(self):
@@ -5498,7 +5604,6 @@ class TestCQL(Tester):
         assert_invalid(session, "insert into invalid_string_literals (k, a) VALUES (0, '\xE0\x80\x80')",
                        expected=InvalidRequest, matching='Invalid ASCII character in string literal')
 
-
     @attr('single_node')
     def negative_timestamp_test(self):
         session = self.prepare()
@@ -5513,7 +5618,8 @@ class TestCQL(Tester):
         session = self.prepare()
         node1 = self.cluster.nodelist()[0]
 
-        session.execute("CREATE  KEYSPACE space1 WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}")
+        session.execute(
+            "CREATE  KEYSPACE space1 WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}")
         session.execute("CREATE  TABLE space1.table1(a int, b int, c text,primary key(a,b))")
         session.execute("INSERT INTO space1.table1(a,b,c) VALUES(1,1,'1')")
         node1.nodetool('flush')
@@ -5542,7 +5648,8 @@ class TestCQL(Tester):
         # wait for the index to be fully built
         start = time.time()
         while True:
-            results = session.execute("""SELECT * FROM system."IndexInfo" WHERE table_name = 'ks' AND index_name = 'test.testindex'""")
+            results = session.execute(
+                """SELECT * FROM system."IndexInfo" WHERE table_name = 'ks' AND index_name = 'test.testindex'""")
             if results:
                 break
 
@@ -5664,7 +5771,6 @@ class TestCQL(Tester):
         res = session.execute("SELECT v FROM test")
         assert rows_to_list(res) == [[3], [0], [2], [6], [4], [7], [1], [5]], list(res)
 
-
     @attr('single_node')
     def collection_column_can_replace_dropped_non_collection_column(self):
         session = self.prepare()
@@ -5700,7 +5806,6 @@ class TestCQL(Tester):
 
         assert_invalid(session, "ALTER TABLE test ADD v list<text>", expected=InvalidRequest)
 
-
     def mc_prepare_table(self, nodes, keyspace_name, table_name, dataset, data_amount,
                          columns=['"ID"', '"Ck1"', '"cK2"', '"Columnfamily_for_mc_sstables_column1"'],
                          keys_amount=3, rf=4, compaction_options=None):
@@ -5719,7 +5824,8 @@ class TestCQL(Tester):
         debug('Create table: "{}"'.format(query))
         session.execute(query=query)
 
-        query = session.prepare('INSERT INTO {} ({}) VALUES ({})'.format(table_name, ', '.join(columns), ', '.join(['?' for _ in columns])))
+        query = session.prepare('INSERT INTO {} ({}) VALUES ({})'.format(
+            table_name, ', '.join(columns), ', '.join(['?' for _ in columns])))
         debug('Insert data into {}.{}'.format(keyspace_name, table_name))
         execute_concurrent_with_args(session, query, dataset)
 
@@ -5761,7 +5867,7 @@ class TestCQL(Tester):
         table_name = '"Columnfamily_For_Mc_Sstables"'
         data_amount = 10
         dataset = [(i, i, i, random.randint(124571, 236283618))
-                       for i in range(0, data_amount)]
+                   for i in range(0, data_amount)]
 
         self.mc_prepare_table(nodes=4, keyspace_name=keyspace_name, table_name=table_name,
                               dataset=dataset, data_amount=data_amount,
@@ -5785,19 +5891,18 @@ class TestCQL(Tester):
         table_name = '"Columnfamily_For_Mc_Sstables"'
         data_amount = 10
         dataset = [(i, i, i, random.randint(124571, 23628361))
-                           for i in range(0, data_amount)]
+                   for i in range(0, data_amount)]
 
         session = self.mc_prepare_table(nodes=4, keyspace_name=keyspace_name, table_name=table_name,
                                         dataset=dataset, data_amount=data_amount,
                                         compaction_options=self.compaction_strategy_for_migration)
 
-
         debug('Run update')
         for i, row_data in enumerate(dataset):
             new_value = random.randint(23628361, 456283616)
             dataset[i] = (row_data[0], row_data[1], row_data[2], new_value)
-            session.execute(query='UPDATE {table_name} SET "Columnfamily_for_mc_sstables_column1"={new_value} WHERE "ID"={row_data[0]} ' \
-                'AND "Ck1"={row_data[1]} AND "cK2"={row_data[2]}'.format(**locals()))
+            session.execute(query='UPDATE {table_name} SET "Columnfamily_for_mc_sstables_column1"={new_value} WHERE "ID"={row_data[0]} '
+                            'AND "Ck1"={row_data[1]} AND "cK2"={row_data[2]}'.format(**locals()))
 
         self.mc_validate_data(session=session, table_name=table_name, data_amount=data_amount, dataset=dataset)
 
@@ -5828,7 +5933,7 @@ class TestCQL(Tester):
         table_name = '"Columnfamily_For_Mc_Sstables"'
         data_amount = 10
         dataset = [(i, i, i, random.randint(124571, 236283618))
-                       for i in range(0, data_amount)]
+                   for i in range(0, data_amount)]
 
         session = self.mc_prepare_table(nodes=4, keyspace_name=keyspace_name, table_name=table_name,
                                         dataset=dataset, data_amount=data_amount,
@@ -5900,7 +6005,8 @@ class TestCQL(Tester):
                    cl=ConsistencyLevel.QUORUM, ignore_order=True)
 
         for row in dataset:
-            where_clause = ' and '.join('{}={}'.format(column, row[i]) for i, column in enumerate(columns[:keys_columns_amount]))
+            where_clause = ' and '.join('{}={}'.format(column, row[i])
+                                        for i, column in enumerate(columns[:keys_columns_amount]))
             assert_one(session=session,
                        query='select {} from {} where {}'.format(columns[-1], table_name, where_clause),
                        expected=[row[-1]])
@@ -5921,8 +6027,8 @@ class TestCQL(Tester):
 
         # create a materialized view
         session.execute("CREATE MATERIALIZED VIEW users_by_state AS "
-                         "SELECT * FROM users WHERE STATE IS NOT NULL AND username IS NOT NULL "
-                         "PRIMARY KEY (state, username)")
+                        "SELECT * FROM users WHERE STATE IS NOT NULL AND username IS NOT NULL "
+                        "PRIMARY KEY (state, username)")
 
         insert_stmt = "INSERT INTO users (username, password, gender, state, birth_year) VALUES "
         session.execute(insert_stmt + "('user1', 'ch@ngem3a', 'f', 'TX', 1968);")
@@ -5961,8 +6067,8 @@ class TestCQL(Tester):
                 PRIMARY KEY ((k1, k2), ck1)
             )
         """)
-        for k1 in [0,1]:
-            for k2 in [0,1]:
+        for k1 in [0, 1]:
+            for k2 in [0, 1]:
                 for ck1 in range(4):
                     session.execute("INSERT INTO test_filter (k1, k2, ck1, v) VALUES ({}, {}, {}, 0)".format(k1, k2, ck1))
 
@@ -6085,7 +6191,7 @@ class TestCQL(Tester):
             res = session.execute(query)
             self.assertTrue(type(res) == ResultSet)
         except AssertionError as e:
-            debug("CQL query validation failed: {} - {}".format(query,e))
+            debug("CQL query validation failed: {} - {}".format(query, e))
             raise e
 
 
@@ -6389,12 +6495,12 @@ class CQLAdditionalTests(Tester):
         for i in range(10000):
             session.execute("insert into ks.hour_data (bucket, hour_ts, ug, user) "
                             "values ('2017-29-03', %s, %s, %s);" % (
-                            random.randint(0, 23), random.randint(1, 17), random.randint(0, 9999999999)))
+                                random.randint(0, 23), random.randint(1, 17), random.randint(0, 9999999999)))
         # A little more data from another bucket
         for i in range(100):
             session.execute("insert into ks.hour_data (bucket, hour_ts, ug, user) "
                             "values ('2017-29-04', %s, %s, %s);" % (
-                            random.randint(0, 23), random.randint(1, 17), random.randint(0, 9999999999)))
+                                random.randint(0, 23), random.randint(1, 17), random.randint(0, 9999999999)))
         # filter only by bucket
         sql = """
         SELECT hour_ts, ug, user
@@ -6486,7 +6592,7 @@ class MultiColumnRestrictionSimpleTests(Tester):
                  [2, 2, 'text3', 398793781719, True, '354dsfsd', 'de5cba0d-41a2-4f39-8834-35130d8b5d86', 'b'*10],
                  [3, 3, 'text4', 398793781719, False, '897dfjka9', 'fa80080c-a4c5-46d6-afe4-5e184fec35ae', 'a'*10],
                  [4, 4]
-                ]
+                 ]
 
     EXPECTED_DATA = [[0, 0, 'text1', '1970-05-23T21:21:14.987000', True, '045asciitext',
                       'de5cba0d-41a2-4f39-8834-35130d8b5d86', b'c'*10],
@@ -6497,7 +6603,7 @@ class MultiColumnRestrictionSimpleTests(Tester):
                      [3, 3, 'text4', '1982-08-21T16:03:01.719000', False, '897dfjka9',
                       'fa80080c-a4c5-46d6-afe4-5e184fec35ae', b'a'*10],
                      [4, 4, None, None, None, None, None, None]
-                    ]
+                     ]
     TABLE_NAME = 'cf'
     MV_NAME = 'cf_mv'
 
@@ -6531,10 +6637,10 @@ class MultiColumnRestrictionSimpleTests(Tester):
                                  table_with_ck=True):
         query = 'CREATE MATERIALIZED VIEW {view_name} as SELECT * FROM {table_name} '\
                 'WHERE key IS NOT NULL {ck}and {view_column} IS NOT NULL PRIMARY KEY (key{ckey}, {view_column})' \
-                        .format(view_name=view_name, table_name=table_name,
-                         ck='AND clmn_int IS NOT NULL ' if table_with_ck else '',
-                         ckey=', clmn_int' if table_with_ck else '',
-                         view_column=view_column)
+            .format(view_name=view_name, table_name=table_name,
+                    ck='AND clmn_int IS NOT NULL ' if table_with_ck else '',
+                    ckey=', clmn_int' if table_with_ck else '',
+                    view_column=view_column)
         debug(query)
         session.execute(query)
         wait_for_view(cluster=self.cluster, session=session, ks='ks', view=view_name)
@@ -6547,7 +6653,7 @@ class MultiColumnRestrictionSimpleTests(Tester):
                 insert_columns = self.INSERT_2COLUMNS
             elif len(data) == 8:
                 data_str = '{data[0]},{data[1]},\'{data[2]}\',\'{data[3]}\',{data[4]},\'{data[5]}\',' \
-                            '{data[6]},textAsBlob(\'{data[7]}\')'.format(data=data)
+                    '{data[6]},textAsBlob(\'{data[7]}\')'.format(data=data)
                 insert_columns = self.INSERT_COLUMNS
             else:
                 assert False, 'Expected data set with 2 or 8, but received {}'.format(len(data))
@@ -6564,7 +6670,7 @@ class MultiColumnRestrictionSimpleTests(Tester):
         self.insert_data_in_8_columns_table(session=session)
 
         select_stmt = 'select {select_columns} from {table_name} '.format(select_columns=self.SELECT_COLUMNS,
-                                                                         table_name=self.TABLE_NAME)
+                                                                          table_name=self.TABLE_NAME)
 
         debug('Filter by integer non-indexed column')
         assert_all(session=session, query=select_stmt + 'where clmn_int = 0 ALLOW FILTERING',
@@ -6608,7 +6714,7 @@ class MultiColumnRestrictionSimpleTests(Tester):
         self.insert_data_in_8_columns_table(session=session)
 
         select_stmt = 'select {select_columns} from {table_name} '.format(select_columns=self.SELECT_COLUMNS,
-                                                                         table_name=self.TABLE_NAME)
+                                                                          table_name=self.TABLE_NAME)
 
         debug('Filter by integer & uuid & timestamp non-indexed columns')
         assert_all(session=session, query=select_stmt + 'where clmn_int = 2 and '
@@ -6619,7 +6725,8 @@ class MultiColumnRestrictionSimpleTests(Tester):
         debug('Filter by ascii & text & blob non-indexed columns')
         assert_all(session=session, query=select_stmt + 'where clmn_ascii = \'897dfjka9\' and '
                                                         'clmn_text = \'text4\' '
-                                                        'and clmn_blob = textAsBlob(\'{}\') ALLOW FILTERING'.format('a'*10),
+                                                        'and clmn_blob = textAsBlob(\'{}\') ALLOW FILTERING'.format(
+                                                            'a'*10),
                    expected=[self.EXPECTED_DATA[3]], ignore_order=True)
 
     def filter_by_pk_ck_and_non_indexed_columns_test(self):
@@ -6629,7 +6736,7 @@ class MultiColumnRestrictionSimpleTests(Tester):
         self.insert_data_in_8_columns_table(session=session)
 
         select_stmt = 'select {select_columns} from {table_name} '.format(select_columns=self.SELECT_COLUMNS,
-                                                                         table_name=self.TABLE_NAME)
+                                                                          table_name=self.TABLE_NAME)
 
         debug('Filter by PK and one non-indexed column')
         assert_all(session=session, query=select_stmt + 'where key = 0 and clmn_timestamp = 12345674987 ALLOW FILTERING',
@@ -6647,19 +6754,20 @@ class MultiColumnRestrictionSimpleTests(Tester):
 
         debug('Filter by PK, CK and two non-indexed column')
         assert_all(session=session, query=select_stmt + 'where key = 0 and clmn_int = 0 and clmn_timestamp = 12345674987 '
-                                                    'and clmn_uuid=de5cba0d-41a2-4f39-8834-35130d8b5d86 ALLOW FILTERING',
+                   'and clmn_uuid=de5cba0d-41a2-4f39-8834-35130d8b5d86 ALLOW FILTERING',
                    expected=[self.EXPECTED_DATA[0]], ignore_order=True)
 
     def filter_by_pk_ck_globalSI_and_non_indexed_columns_test(self):
         session = self.prepare()
         self.create_8_columns_table(session=session, add_ck=True)
 
-        self.create_index(session=session, table_name=self.TABLE_NAME, index_column='clmn_text', index_name='global_idx')
+        self.create_index(session=session, table_name=self.TABLE_NAME,
+                          index_column='clmn_text', index_name='global_idx')
 
         self.insert_data_in_8_columns_table(session=session)
 
         select_stmt = 'select {select_columns} from {table_name} '.format(select_columns=self.SELECT_COLUMNS,
-                                                                         table_name=self.TABLE_NAME)
+                                                                          table_name=self.TABLE_NAME)
 
         debug('Filter by PK, SI and one non-indexed column')
         assert_all(session=session, query=select_stmt + 'where key = 1 and clmn_text = \'text2\' and '
@@ -6693,7 +6801,7 @@ class MultiColumnRestrictionSimpleTests(Tester):
         self.insert_data_in_8_columns_table(session=session)
 
         select_stmt = 'select {select_columns} from {table_name} '.format(select_columns=self.SELECT_COLUMNS,
-                                                                         table_name=self.TABLE_NAME)
+                                                                          table_name=self.TABLE_NAME)
 
         debug('Filter by PK, SI and one non-indexed column')
         assert_all(session=session, query=select_stmt + 'where key = 1 and clmn_text = \'text2\' and '
@@ -6724,7 +6832,7 @@ class MultiColumnRestrictionSimpleTests(Tester):
         self.insert_data_in_8_columns_table(session=session)
 
         select_stmt = 'select {select_columns} from {table_name} '.format(select_columns=self.SELECT_COLUMNS,
-                                                                         table_name=self.TABLE_NAME)
+                                                                          table_name=self.TABLE_NAME)
 
         debug('Filter by integer & uuid non-indexed columns with "=<" operator')
         assert_all(session=session, query=select_stmt + 'where clmn_int < 2 and '
@@ -6736,12 +6844,13 @@ class MultiColumnRestrictionSimpleTests(Tester):
         session = self.prepare()
         self.create_8_columns_table(session=session, add_ck=True)
 
-        self.create_index(session=session, table_name=self.TABLE_NAME, index_column='clmn_text', index_name='global_idx')
+        self.create_index(session=session, table_name=self.TABLE_NAME,
+                          index_column='clmn_text', index_name='global_idx')
 
         self.insert_data_in_8_columns_table(session=session, insert_data=self.TEST_DATA[:4])
 
         select_stmt = 'select {select_columns} from {table_name} '.format(select_columns=self.SELECT_COLUMNS,
-                                                                         table_name=self.TABLE_NAME)
+                                                                          table_name=self.TABLE_NAME)
 
         debug('Filter by PK, CK, SI and one non-indexed column')
         assert_all(session=session, query=select_stmt + 'where key > 1 and clmn_int < 5 and clmn_text >= \'text2\' and '
@@ -6758,7 +6867,7 @@ class MultiColumnRestrictionSimpleTests(Tester):
         self.insert_data_in_8_columns_table(session=session, insert_data=self.TEST_DATA[:4])
 
         select_stmt = 'select {select_columns} from {table_name} '.format(select_columns=self.SELECT_COLUMNS,
-                                                                         table_name=self.TABLE_NAME)
+                                                                          table_name=self.TABLE_NAME)
 
         debug('Filter by PK, CK, SI and one non-indexed column')
         assert_all(session=session, query=select_stmt + 'where key > 1 and clmn_int < 5 and clmn_text >= \'text2\' and '
@@ -6778,7 +6887,7 @@ class MultiColumnRestrictionSimpleTests(Tester):
         self.insert_data_in_8_columns_table(session=session, insert_data=[self.TEST_DATA[4]])
 
         select_stmt = 'select {select_columns} from {table_name} '.format(select_columns=self.SELECT_COLUMNS,
-                                                                         table_name=self.TABLE_NAME)
+                                                                          table_name=self.TABLE_NAME)
 
         debug('Filter by one empty non-indexed column')
         assert_all(session=session, query=select_stmt + 'where clmn_text = null ALLOW FILTERING',
@@ -6791,7 +6900,7 @@ class MultiColumnRestrictionSimpleTests(Tester):
         self.insert_data_in_8_columns_table(session=session)
 
         select_stmt = 'select {select_columns} from {table_name} '.format(select_columns=self.SELECT_COLUMNS,
-                                                                         table_name=self.MV_NAME)
+                                                                          table_name=self.MV_NAME)
 
         # Issue #4776
         # debug('Filter by one empty non-indexed column')
@@ -6846,7 +6955,7 @@ class MultiColumnRestrictionCollectionTests(Tester):
                   "{'a': f34f6a76-b383-11e9-a2a3-2a2ae2dbcce4, 'c': f34f6cec-b383-11e9-a2a3-2a2ae2dbcce4}",
                   "[5, 6]", "['f1', 'f2']", "{7, 9}", "{'f3', 'f4', 'f5'}", "{'fa': 'b', 'fc': 'd'}",
                   "{'fa': 1, 'fb': 2, 'fc':3}"
-                 ],
+                  ],
 
                  [1, "[3, 4, 5]", "[textAsBlob('t3'), textAsBlob('t4')]",
                   "{8e4fe826-b383-11e9-a2a3-2a2ae2dbcce4, 8e4fea9c-b383-11e9-a2a3-2a2ae2dbcce4}",
@@ -6854,8 +6963,8 @@ class MultiColumnRestrictionCollectionTests(Tester):
                   "{'a1': 26a8e352-b384-11e9-a2a3-2a2ae2dbcce4, 'b1': 26a8e5be-b384-11e9-a2a3-2a2ae2dbcce4, 'c1': 26a8e712-b384-11e9-a2a3-2a2ae2dbcce4}",
                   "[7, 8]", "['f3', 'f4']", "{9, 10}", "{'f6', 'f7', 'f8'}",
                   "{'f1': 'c', 'f2': 'e'}", "{'f1': 1, 'f2': 2, 'f3': 3}"
+                  ]
                  ]
-                ]
     INSERT_COLUMNS = 'id, list_int, list_blob, set_uuid, set_text, map_bool, map_uuid, f_list_int, f_list_text, ' \
                      'f_set_int, f_set_text, f_map_text, f_map_int'
 
@@ -6879,10 +6988,10 @@ class MultiColumnRestrictionCollectionTests(Tester):
 
     def create_all_collections_table(self, session):
         stmt = 'CREATE TABLE {0} (id int PRIMARY KEY, list_int list<int>, list_blob list<blob>, ' \
-                    'set_uuid set<uuid>, set_text set<text>, map_bool map<text, boolean>, ' \
-                    'map_uuid map<text, uuid>, f_list_int frozen<list<int>>, f_list_text frozen<list<text>>, ' \
-                    'f_set_int frozen<set<int>>, f_set_text frozen<set<text>>,f_map_text frozen<map<text, text>>, ' \
-                    'f_map_int frozen<map<text, int>>)'.format(self.TABLE_NAME)
+            'set_uuid set<uuid>, set_text set<text>, map_bool map<text, boolean>, ' \
+            'map_uuid map<text, uuid>, f_list_int frozen<list<int>>, f_list_text frozen<list<text>>, ' \
+            'f_set_int frozen<set<int>>, f_set_text frozen<set<text>>,f_map_text frozen<map<text, text>>, ' \
+            'f_map_int frozen<map<text, int>>)'.format(self.TABLE_NAME)
         debug(stmt)
         session.execute(stmt)
 
@@ -6890,7 +6999,7 @@ class MultiColumnRestrictionCollectionTests(Tester):
         debug('Insert data')
         for data in insert_data:
             data_str = '{data[0]},{data[1]},{data[2]},{data[3]},{data[4]},{data[5]},{data[6]},{data[7]},{data[8]},' \
-                        '{data[9]},{data[10]},{data[11]},{data[12]}'.format(data=data)
+                '{data[9]},{data[10]},{data[11]},{data[12]}'.format(data=data)
 
             stmt = 'INSERT INTO {table_name}({columns}) VALUES({data_str})'.format(table_name=self.TABLE_NAME,
                                                                                    columns=self.INSERT_COLUMNS,
@@ -6979,7 +7088,6 @@ class MultiColumnRestrictionCollectionTests(Tester):
                                                         'ALLOW FILTERING',
                    expected=[[0], [1]], ignore_order=True)
 
-
     def filter_by_pk_and_two_non_indexed_collection_column_test(self):
         session = self.prepare()
         self.create_all_collections_table(session=session)
@@ -7001,7 +7109,6 @@ class MultiColumnRestrictionCollectionTests(Tester):
                                                         'and f_map_int = {\'f1\': 1, \'f2\': 2, \'f3\': 3} '
                                                         'ALLOW FILTERING',
                    expected=[[1]], ignore_order=True)
-
 
     def empty_data_set_result_test(self):
         session = self.prepare()
@@ -7057,7 +7164,8 @@ class TestLWTWithCQL(Tester):
 
         assert_one(session, "SELECT * FROM lwt_with_static WHERE a = 1", [1, None, 1, None])
 
-        assert_one(session, "INSERT INTO lwt_with_static (a, s) VALUES (2, 2) IF NOT EXISTS", [True, None, None, None, None])
+        assert_one(session, "INSERT INTO lwt_with_static (a, s) VALUES (2, 2) IF NOT EXISTS",
+                   [True, None, None, None, None])
 
         assert_one(session, "SELECT * FROM lwt_with_static WHERE a = 2", [2, None, 2, None])
 
@@ -7107,7 +7215,8 @@ class TestLWTWithCQL(Tester):
         assert_one(session, "SELECT * FROM {} WHERE a = 3".format(table_name), [3, 3, None, None])
 
         for operator in [">", "<", ">=", "<=", "="]:
-            assert_one(session, "UPDATE {} SET s = 50 WHERE a = 5 IF s {} 3".format(table_name, operator), [False, None])
+            assert_one(session, "UPDATE {} SET s = 50 WHERE a = 5 IF s {} 3".format(
+                table_name, operator), [False, None])
 
             assert_one(session, "SELECT * FROM {} WHERE a = 5".format(table_name), [5, 5, None, None])
 
@@ -7126,7 +7235,8 @@ class TestLWTWithCQL(Tester):
         assert_none(session, "SELECT * FROM {} WHERE a = 3".format(table_name))
 
         for operator in [">", "<", ">=", "<=", "="]:
-            assert_one(session, "UPDATE {} SET s = 50 WHERE a = 5 IF s {} 3".format(table_name, operator), [False, None])
+            assert_one(session, "UPDATE {} SET s = 50 WHERE a = 5 IF s {} 3".format(
+                table_name, operator), [False, None])
 
             assert_none(session, "SELECT * FROM {} WHERE a = 5".format(table_name))
 
@@ -7183,7 +7293,8 @@ class TestLWTWithCQL(Tester):
                     UPDATE {table_name} SET s = 30 WHERE a = 3 IF s {operator} 5;
                 APPLY BATCH""".format(table_name=table_name, operator=operator), [[False, 3, 3, None], [False, 3, 3, None]])
 
-            assert_one(session, "SELECT * FROM {table_name} WHERE a = 3".format(table_name=table_name), [3, 3, None, None])
+            assert_one(
+                session, "SELECT * FROM {table_name} WHERE a = 3".format(table_name=table_name), [3, 3, None, None])
 
         assert_all(session, """
                 BEGIN BATCH
@@ -7246,7 +7357,7 @@ class TestLWTWithCQL(Tester):
                     INSERT INTO {table_name} (a, b, s1, v) values (3, 3, 3, 3);
                     DELETE s1 FROM {table_name} WHERE a = 3 IF s2 {operator} 5;
                 APPLY BATCH""".format(table_name=table_name, operator=operator),
-                [[False, None, None, None], [False, None, None, None]])
+                       [[False, None, None, None], [False, None, None, None]])
 
             assert_none(session, "SELECT * FROM {} WHERE a = 3".format(table_name))
 
@@ -7309,7 +7420,8 @@ class TestLWTWithCQL(Tester):
                         CREATE COLUMNFAMILY {cf} (key bigint, ck int, cv set<text>, PRIMARY KEY ((key), ck))
                         """.format(cf=table_name))
         assert_one(session,
-                   """INSERT INTO {cf} (key, ck, cv) VALUES (1, 0, {{'a', 'b'}}) if not exists;""".format(cf=table_name),
+                   """INSERT INTO {cf} (key, ck, cv) VALUES (1, 0, {{'a', 'b'}}) if not exists;""".format(
+                       cf=table_name),
                    [True, None, None, None])
 
         assert_all(session,
@@ -7334,7 +7446,8 @@ class TestLWTWithCQL(Tester):
                         CREATE COLUMNFAMILY {cf} (key bigint, ck int, cv set<text>, PRIMARY KEY ((key), ck))
                         """.format(cf=table_name))
         assert_one(session,
-                   """INSERT INTO {cf} (key, ck, cv) VALUES (1, 0, {{'a', 'b'}}) if not exists;""".format(cf=table_name),
+                   """INSERT INTO {cf} (key, ck, cv) VALUES (1, 0, {{'a', 'b'}}) if not exists;""".format(
+                       cf=table_name),
                    [True, None, None, None])
 
         assert_all(session,
@@ -7356,7 +7469,8 @@ class TestLWTWithCQL(Tester):
                         CREATE COLUMNFAMILY {cf} (key bigint, ck int, cv set<text>, PRIMARY KEY ((key), ck))
                         """.format(cf=table_name))
         assert_one(session,
-                   """INSERT INTO {cf} (key, ck, cv) VALUES (1, 0, {{'a', 'b'}}) if not exists;""".format(cf=table_name),
+                   """INSERT INTO {cf} (key, ck, cv) VALUES (1, 0, {{'a', 'b'}}) if not exists;""".format(
+                       cf=table_name),
                    [True, None, None, None])
 
         assert_all(session,
@@ -7383,7 +7497,8 @@ class TestLWTWithCQL(Tester):
                         """.format(cf=table_name))
 
         assert_one(session,
-                   """INSERT INTO {cf} (key, ck, cv) VALUES (1, 0, {{'a', 'b'}}) if not exists;""".format(cf=table_name),
+                   """INSERT INTO {cf} (key, ck, cv) VALUES (1, 0, {{'a', 'b'}}) if not exists;""".format(
+                       cf=table_name),
                    [True, None, None, None])
 
         assert_all(session,

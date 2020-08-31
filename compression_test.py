@@ -29,7 +29,8 @@ class TestCompression(TestHelper):
 
         session = self.patient_cql_connection(node)
         self.create_ks(session, 'ks', 1)
-        session.execute("create table disabled_compression_table (id uuid PRIMARY KEY ) WITH compression = {'enabled': false};")
+        session.execute(
+            "create table disabled_compression_table (id uuid PRIMARY KEY ) WITH compression = {'enabled': false};")
         session.cluster.refresh_schema_metadata()
         meta = session.cluster.metadata.keyspaces['ks'].tables['disabled_compression_table']
         self.assertEqual('false', meta.options['compression']['enabled'])
@@ -40,7 +41,8 @@ class TestCompression(TestHelper):
         sstables = self.flush('disabled_compression_table')
         sstable_path = self.get_table_path('disabled_compression_table')
 
-        self.assertEqual('NONE', self._get_compression_type(os.path.join(sstable_path, sstables['disabled_compression_table'][1])))
+        self.assertEqual('NONE', self._get_compression_type(
+            os.path.join(sstable_path, sstables['disabled_compression_table'][1])))
 
     @since("3.0")
     def compression_cql_options_test(self):
@@ -95,7 +97,8 @@ class TestCompression(TestHelper):
 
         sstables = self.flush('compression_opts_table')
         sstable_path = self.get_table_path('compression_opts_table')
-        self.assertEqual('DEFLATE', self._get_compression_type(os.path.join(sstable_path, sstables['compression_opts_table'][1])))
+        self.assertEqual('DEFLATE', self._get_compression_type(
+            os.path.join(sstable_path, sstables['compression_opts_table'][1])))
 
     @since("3.0")
     def compression_cql_disabled_with_alter_test(self):
@@ -140,7 +143,8 @@ class TestCompression(TestHelper):
 
         session = self.patient_cql_connection(node)
         self.create_ks(session, 'ks', 1)
-        session.execute("create table start_disabled_compression_table (id uuid PRIMARY KEY ) WITH compression = {'enabled': false};")
+        session.execute(
+            "create table start_disabled_compression_table (id uuid PRIMARY KEY ) WITH compression = {'enabled': false};")
         meta = session.cluster.metadata.keyspaces['ks'].tables['start_disabled_compression_table']
         self.assertEqual('false', meta.options['compression']['enabled'])
         session.execute("""alter table start_disabled_compression_table

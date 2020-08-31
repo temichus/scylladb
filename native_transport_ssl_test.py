@@ -12,9 +12,11 @@ from unittest import skip
 from nose.plugins.attrib import attr
 from ccmlib import common
 
+
 def wait_for_cert_reload(node, module, files, from_mark=None):
     for f in files:
         node.watch_log_for("^.*{}.*Reloaded.*{}\.*".format(module, f.replace('.', '\.')), from_mark=from_mark)
+
 
 @attr('dtest-full', 'single_node')
 class NativeTransportSSL(Tester):
@@ -31,7 +33,7 @@ class NativeTransportSSL(Tester):
         cluster = self._populateCluster(enableSSL=True)
         node1 = cluster.nodelist()[0]
 
-        cluster.start(jvm_args=['--logger-log-level','cql_server=debug'])
+        cluster.start(jvm_args=['--logger-log-level', 'cql_server=debug'])
 
         try:  # hack around assertRaise's lack of msg parameter
             # try to connect without ssl options
@@ -44,7 +46,8 @@ class NativeTransportSSL(Tester):
             "Missing SSL handshake exception while connecting with non-SSL enabled client"
 
         # enabled ssl on the client and try again (this should work)
-        session = self.patient_cql_connection(node1, ssl_opts={'ca_certs': os.path.join(self.test_path, 'ccm_node.cer')})
+        session = self.patient_cql_connection(
+            node1, ssl_opts={'ca_certs': os.path.join(self.test_path, 'ccm_node.cer')})
         self._putget(cluster, session)
 
     def connect_to_ssl_test_client_auth(self):
@@ -55,7 +58,7 @@ class NativeTransportSSL(Tester):
         cluster = self._populateCluster(enableSSL=True, requireAuth=True)
         node1 = cluster.nodelist()[0]
 
-        cluster.start(jvm_args=['--logger-log-level','cql_server=debug'])
+        cluster.start(jvm_args=['--logger-log-level', 'cql_server=debug'])
 
         try:  # hack around assertRaise's lack of msg parameter
             # try to connect without ssl options
@@ -77,8 +80,8 @@ class NativeTransportSSL(Tester):
         # enabled ssl + auth on the client and try again (this should work)
         session = self.patient_cql_connection(node1, ssl_opts={
             'ca_certs': os.path.join(self.test_path, 'ccm_node.cer'),
-            'keyfile' : os.path.join(self.test_path, 'ccm_node.key'),
-            'certfile' : os.path.join(self.test_path, 'ccm_node.pem')
+            'keyfile': os.path.join(self.test_path, 'ccm_node.key'),
+            'certfile': os.path.join(self.test_path, 'ccm_node.pem')
         })
         self._putget(cluster, session)
 
@@ -97,7 +100,8 @@ class NativeTransportSSL(Tester):
         self._putget(cluster, session)
 
         # enabled ssl on the client and try again (this should work)
-        session = self.patient_cql_connection(node1, ssl_opts={'ca_certs': os.path.join(self.test_path, 'ccm_node.cer')})
+        session = self.patient_cql_connection(
+            node1, ssl_opts={'ca_certs': os.path.join(self.test_path, 'ccm_node.cer')})
         self._putget(cluster, session, ks='ks2')
 
     def use_custom_port_test(self):
@@ -133,7 +137,8 @@ class NativeTransportSSL(Tester):
         self._putget(cluster, session)
 
         # connect to additional dedicated ssl port
-        session = self.patient_cql_connection(node1, port=9666, ssl_opts={'ca_certs': os.path.join(self.test_path, 'ccm_node.cer')})
+        session = self.patient_cql_connection(node1, port=9666, ssl_opts={
+                                              'ca_certs': os.path.join(self.test_path, 'ccm_node.cer')})
         self._putget(cluster, session, ks='ks2')
 
     @attr('dtest-debug')
@@ -144,7 +149,7 @@ class NativeTransportSSL(Tester):
         cluster = self._populateCluster(enableSSL=True)
         node1 = cluster.nodelist()[0]
 
-        cluster.start(jvm_args=['--logger-log-level','cql_server=debug'])
+        cluster.start(jvm_args=['--logger-log-level', 'cql_server=debug'])
 
         tmpdir = safe_mkdtemp()
         try:
@@ -153,7 +158,8 @@ class NativeTransportSSL(Tester):
 
             try:  # hack around assertRaise's lack of msg parameter
                 # try to connect without new, mismatched cert truststore (and required verification). Should fail
-                self.patient_cql_connection(node1, ssl_opts={'ca_certs': os.path.join(tmpdir, 'ccm_node.cer'), "cert_reqs":ssl.CERT_REQUIRED})
+                self.patient_cql_connection(node1, ssl_opts={'ca_certs': os.path.join(
+                    tmpdir, 'ccm_node.cer'), "cert_reqs": ssl.CERT_REQUIRED})
                 self.fail('Should not be able to connect to SSL socket with mismatched trust store')
             except NoHostAvailable:
                 pass
@@ -167,7 +173,8 @@ class NativeTransportSSL(Tester):
             wait_for_cert_reload(node1, "cql_server", ["ccm_node.pem", "ccm_node.key"], from_mark=mark)
 
             # now we should match
-            session = self.patient_cql_connection(node1, ssl_opts={'ca_certs': os.path.join(self.test_path, 'ccm_node.cer'), "cert_reqs":ssl.CERT_REQUIRED})
+            session = self.patient_cql_connection(node1, ssl_opts={'ca_certs': os.path.join(
+                self.test_path, 'ccm_node.cer'), "cert_reqs": ssl.CERT_REQUIRED})
             self._putget(cluster, session)
         finally:
             shutil.rmtree(tmpdir)
@@ -191,8 +198,8 @@ class NativeTransportSSL(Tester):
                 })
                 if requireAuth:
                     options.update({
-                        'truststore' : os.path.join(self.test_path, 'ccm_node.cer'),
-                        'require_client_auth' : True
+                        'truststore': os.path.join(self.test_path, 'ccm_node.cer'),
+                        'require_client_auth': True
                     })
             else:
                 options.update({
@@ -201,9 +208,9 @@ class NativeTransportSSL(Tester):
                 })
                 if requireAuth:
                     options.update({
-                        'truststore' : os.path.join(self.test_path, 'truststore.jks'),
+                        'truststore': os.path.join(self.test_path, 'truststore.jks'),
                         'truststore_password': 'cassandra',
-                        'require_client_auth' : True
+                        'require_client_auth': True
                     })
 
             cluster.set_configuration_options({'client_encryption_options': options})

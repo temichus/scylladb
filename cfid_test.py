@@ -2,6 +2,7 @@ from dtest import Tester
 import os
 from nose.plugins.attrib import attr
 
+
 @attr('dtest-full', 'single_node')
 class TestCFID(Tester):
 

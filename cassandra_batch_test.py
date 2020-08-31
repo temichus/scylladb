@@ -29,21 +29,21 @@ class BatchTester(Tester):
         session = self.prepare()
 
         session.execute("CREATE KEYSPACE IF NOT EXISTS %s WITH replication = "
-                "{ 'class': 'SimpleStrategy', 'replication_factor': '1' }" % KEYSPACE)
+                        "{ 'class': 'SimpleStrategy', 'replication_factor': '1' }" % KEYSPACE)
 
         session.set_keyspace(KEYSPACE)
         session.execute("CREATE TABLE clustering (id int, clustering1 int, "
-                "clustering2 int, clustering3 int, val int, "
-                "PRIMARY KEY(id, clustering1, clustering2, clustering3))")
+                        "clustering2 int, clustering3 int, val int, "
+                        "PRIMARY KEY(id, clustering1, clustering2, clustering3))")
 
         clustering_insert = session.prepare("INSERT INTO clustering(id, clustering1, "
-                "clustering2, clustering3, val) VALUES(?, ?, ?, ?, ?)")
+                                            "clustering2, clustering3, val) VALUES(?, ?, ?, ?, ?)")
         clustering_conditional_update = session.prepare("UPDATE clustering SET val=? "
-                "WHERE id=? AND clustering1=? AND clustering2=? AND clustering3=? "
-                "IF val=?")
+                                                        "WHERE id=? AND clustering1=? AND clustering2=? AND clustering3=? "
+                                                        "IF val=?")
         clustering_delete = session.prepare("DELETE FROM clustering "
-                "WHERE id=? AND clustering1=? AND clustering2=? "
-                "AND clustering3=?")
+                                            "WHERE id=? AND clustering1=? AND clustering2=? "
+                                            "AND clustering3=?")
         clustering_range_delete = "DELETE FROM clustering WHERE id=? AND clustering1=?"
         clustering_update = "UPDATE clustering SET val=? WHERE id=? AND clustering1=? AND clustering2=? AND clustering3=?"
         clustering_conditional_delete = "DELETE FROM clustering WHERE id=? AND clustering1=? AND clustering2=? AND clustering3=? IF val=?"
@@ -58,7 +58,6 @@ class BatchTester(Tester):
         session.execute(clustering_insert, row_01)
         rows = session.execute(get_rows_pk, (1,)).current_rows
         assert rows == [row_01]
-
 
         batch = BatchStatement()
         row_02 = (1, 1, 1, 2, 2)
@@ -79,7 +78,6 @@ class BatchTester(Tester):
         rows = session.execute(get_rows_pk, (1,)).current_rows
         assert sorted(rows) == sorted([row_04, row_05])
 
-
         batch = BatchStatement()
         row_06 = (1, 2, 3, 4, 1234)
         batch.add(clustering_insert, row_06)
@@ -92,7 +90,7 @@ class BatchTester(Tester):
         # cmd5
         batch = BatchStatement()
         clustering_range_delete = "DELETE FROM clustering WHERE id=1 AND clustering1=2"
-        batch.add(clustering_range_delete) #  row_06[:2]
+        batch.add(clustering_range_delete)  # row_06[:2]
         batch.add(clustering_conditional_update, (1234,) + row_07)
         row_08 = (1, 1, 1, 2, 1234)     # changed row 07
         session.execute(batch)
@@ -100,9 +98,9 @@ class BatchTester(Tester):
         assert sorted(rows) == sorted([row_04, row_08])
 
         batch = BatchStatement()
-        clustering_update = "UPDATE clustering SET val=345 WHERE id=1 AND clustering1=3 AND clustering2=4 AND clustering3=5";
+        clustering_update = "UPDATE clustering SET val=345 WHERE id=1 AND clustering1=3 AND clustering2=4 AND clustering3=5"
         row_09 = (1, 3, 4, 5, 345)      # new row from update
-        batch.add(clustering_update) # row_09[-1:] + row_09[:-1])
+        batch.add(clustering_update)  # row_09[-1:] + row_09[:-1])
         batch.add(clustering_conditional_update, (1,) + row_08)
         row_10 = (1, 1, 1, 2, 1)        # changed row_08
         session.execute(batch)
@@ -120,20 +118,19 @@ class BatchTester(Tester):
 
         batch = BatchStatement()
         clustering_conditional_delete = "DELETE FROM clustering WHERE id=1 AND clustering1=3 AND clustering2=4 AND clustering3=5 IF val=345"
-        batch.add(clustering_conditional_delete) # row_09)
+        batch.add(clustering_conditional_delete)  # row_09)
         clustering_range_delete = "DELETE FROM clustering WHERE id=1 AND clustering1=1"
-        batch.add(clustering_range_delete) #, (1, 1))  # deletes row_04, row_05
+        batch.add(clustering_range_delete)  # , (1, 1))  # deletes row_04, row_05
         row_11 = (1, 2, 3, 4, 5)
         batch.add(clustering_insert, row_11)
         session.execute(batch)
         rows = session.execute(get_rows_pk, (1,)).current_rows
         assert sorted(rows) == sorted([row_11])
 
-
         # cmd9
         batch = BatchStatement()
         clustering_conditional_insert = "INSERT INTO clustering (id, clustering1, clustering2, clustering3, val) VALUES(1, 3, 4, 5, 345) IF NOT EXISTS"
-        batch.add(clustering_conditional_insert) # row_09)
+        batch.add(clustering_conditional_insert)  # row_09)
         batch.add(clustering_delete, row_11[:-1])
         session.execute(batch)
         rows = session.execute(get_rows_pk, (1,)).current_rows
@@ -141,9 +138,9 @@ class BatchTester(Tester):
 
         batch = BatchStatement()
         clustering_ttl_insert = "INSERT INTO clustering(id, clustering1, clustering2, clustering3, val) VALUES(1, 2, 3, 4, 5) USING TTL 5"
-        batch.add(clustering_ttl_insert) # row_11 + (5,))
+        batch.add(clustering_ttl_insert)  # row_11 + (5,))
         clustering_conditional_ttl_update = "UPDATE clustering USING TTL 10 SET val=5 WHERE id=1 AND clustering1=3 AND clustering2=4 AND clustering3=5 IF val=345"
-        batch.add(clustering_conditional_ttl_update) # (10, 5) + row_09)
+        batch.add(clustering_conditional_ttl_update)  # (10, 5) + row_09)
         row_13 = (1, 3, 4, 5, 5)      # changed row_09
         session.execute(batch)
         rows = session.execute(get_rows_pk, (1,)).current_rows
@@ -155,7 +152,7 @@ class BatchTester(Tester):
         # cmd11
         batch = BatchStatement()
         clustering_conditional_ttl_insert = "INSERT INTO clustering(id, clustering1, clustering2, clustering3, val) VALUES(1, 2, 3, 4, 5)  IF NOT EXISTS USING TTL 5"
-        batch.add(clustering_conditional_ttl_insert) # row_11 + (5,))
+        batch.add(clustering_conditional_ttl_insert)  # row_11 + (5,))
         row_14 = (1, 4, 5, 6, 7)
         batch.add(clustering_insert, row_14)
         session.execute(batch)
@@ -168,11 +165,11 @@ class BatchTester(Tester):
 
         batch = BatchStatement()
         clustering_conditional_ttl_update = "UPDATE clustering USING TTL 5 SET val=5 WHERE id=1 AND clustering1=3 AND clustering2=4 AND clustering3=5 IF val=NULL"
-        batch.add(clustering_conditional_ttl_update) # (5, 5) + row_15) # row_13
+        batch.add(clustering_conditional_ttl_update)  # (5, 5) + row_15) # row_13
         clustering_ttl_update = "UPDATE clustering USING TTL 5 SET val=8 WHERE id=1 AND clustering1=4 AND clustering2=5 AND clustering3=6"
         row_16 = (1, 4, 5, 6, 8)    # row_14[:-1] + [8]
-        row_17 = (1, 4, 5, 6, None) # row_16[:-1] + [None]
-        batch.add(clustering_ttl_update) # (5, 8) + row_14[:-1])
+        row_17 = (1, 4, 5, 6, None)  # row_16[:-1] + [None]
+        batch.add(clustering_ttl_update)  # (5, 8) + row_14[:-1])
         session.execute(batch)
         rows = session.execute(get_rows_pk, (1,)).current_rows
         assert sorted(rows) == sorted([row_13, row_16])
@@ -180,20 +177,19 @@ class BatchTester(Tester):
         rows = session.execute(get_rows_pk, (1,)).current_rows
         assert sorted(rows) == sorted([row_15, row_17])
 
-
     def batch_static_ttl_conditional_interaction_test(self):
 
         session = self.prepare()
 
         session.execute("CREATE KEYSPACE IF NOT EXISTS %s WITH replication = "
-                "{ 'class': 'SimpleStrategy', 'replication_factor': '1' }" % KEYSPACE)
+                        "{ 'class': 'SimpleStrategy', 'replication_factor': '1' }" % KEYSPACE)
 
         session.set_keyspace(KEYSPACE)
         session.execute("CREATE TABLE clustering_static (id int, "
-                "clustering1 int, clustering2 int, clustering3 int, "
-                "sval int static, val int, PRIMARY KEY(id, clustering1, "
-                "clustering2, clustering3))")
-        session.execute("DELETE FROM clustering_static WHERE id=1");
+                        "clustering1 int, clustering2 int, clustering3 int, "
+                        "sval int static, val int, PRIMARY KEY(id, clustering1, "
+                        "clustering2, clustering3))")
+        session.execute("DELETE FROM clustering_static WHERE id=1")
 
         get_rows_pk = session.prepare("SELECT * FROM clustering_static WHERE id=?")
         clustering_static_insert = "INSERT INTO clustering_static(id, clustering1, clustering2, clustering3, sval, val) VALUES(?, ?, ?, ?, ?, ?)"
@@ -210,13 +206,14 @@ class BatchTester(Tester):
         clustering_conditional_ttl_update = "UPDATE clustering_static USING TTL ? SET val=? WHERE id=? AND clustering1=? AND clustering2=? AND clustering3=? IF val=?"
         clustering_conditional_ttl_insert = "INSERT INTO clustering_static(id, clustering1, clustering2, clustering3, val) VALUES(?, ?, ?, ?, ?)  IF NOT EXISTS USING TTL ?"
         clustering_ttl_update = "UPDATE clustering_static USING TTL ? SET val=? WHERE id=? AND clustering1=? AND clustering2=? AND clustering3=?"
-        clustering_static_conditional_delete = "DELETE FROM " + KEYSPACE + ".clustering_static WHERE id=%s AND clustering1=%s AND clustering2=%s AND clustering3=%s IF sval=%s";
+        clustering_static_conditional_delete = "DELETE FROM " + KEYSPACE + \
+            ".clustering_static WHERE id=%s AND clustering1=%s AND clustering2=%s AND clustering3=%s IF sval=%s"
         clustering_static_conditional_static_update = "UPDATE clustering_static SET sval=? WHERE id=? IF sval=?"
 
         batch = BatchStatement()
         row_01 = (1, 1, 1, 1, 1, 1)
         clustering_static_insert = "INSERT INTO clustering_static(id, clustering1, clustering2, clustering3, sval, val) VALUES(1, 1, 1, 1, 1, 1)"
-        batch.add(clustering_static_insert) # row_01)
+        batch.add(clustering_static_insert)  # row_01)
         session.execute(batch)
         rows = session.execute(get_rows_pk, (1,)).current_rows
         assert sorted(rows) == sorted([row_01])
@@ -224,25 +221,24 @@ class BatchTester(Tester):
         batch = BatchStatement()
         row_02 = (1, 1, 1, 2, 1, 2)       # static sval
         clustering_insert = "INSERT INTO clustering_static(id, clustering1, clustering2, clustering3, val) VALUES(1, 1, 1, 2, 2)"
-        batch.add(clustering_insert) # row_02)
+        batch.add(clustering_insert)  # row_02)
         row_03 = (1, 1, 1, 1, 1, 11)      # changed row_01
         clustering_static_conditional_update = "UPDATE clustering_static SET val=11 WHERE id=1 AND clustering1=1 AND clustering2=1 AND clustering3=1 IF sval=1"
-        batch.add(clustering_static_conditional_update) # (11,) + row_01[:-2] + row_01[-1:])
+        batch.add(clustering_static_conditional_update)  # (11,) + row_01[:-2] + row_01[-1:])
         session.execute(batch)
         rows = session.execute(get_rows_pk, (1,)).current_rows
         assert sorted(rows) == sorted([row_02, row_03])
 
-
         batch = BatchStatement()
         row_04 = (1, 1, 2, 3, 1, 23)     # static sval
         clustering_insert = "INSERT INTO clustering_static(id, clustering1, clustering2, clustering3, val) VALUES(1, 1, 2, 3, 23)"
-        batch.add(clustering_insert) # row_04 no sval
+        batch.add(clustering_insert)  # row_04 no sval
         clustering_static_update = "UPDATE clustering_static SET sval=22 WHERE id=1"
-        batch.add(clustering_static_update) # (22, 1))
+        batch.add(clustering_static_update)  # (22, 1))
         row_04 = (1, 1, 1, 2, 22, 2)     # row_02 changed
         row_05 = (1, 1, 2, 3, 22, 23)    # row_04 changed
         clustering_delete = "DELETE FROM clustering_static WHERE id=1 AND clustering1=1 AND clustering2=1 AND clustering3=1"
-        batch.add(clustering_delete) # row_03[:-2])
+        batch.add(clustering_delete)  # row_03[:-2])
         session.execute(batch)
         rows = session.execute(get_rows_pk, (1,)).current_rows
         assert sorted(rows) == sorted([row_04, row_05])
@@ -284,7 +280,6 @@ class BatchTester(Tester):
         rows = session.execute(get_rows_pk, (1,)).current_rows
         assert sorted(rows) == sorted([row_05, row_10, row_11])
 
-
         # cmd7
         batch = BatchStatement()
         clustering_delete = "DELETE FROM clustering_static WHERE id=1 AND clustering1=3 AND clustering2=4 AND clustering3=5"
@@ -297,33 +292,32 @@ class BatchTester(Tester):
 
         batch = BatchStatement()
         clustering_conditional_delete = "DELETE FROM clustering_static WHERE id=1 AND clustering1=3 AND clustering2=4 AND clustering3=5 IF val=345"
-        batch.add(clustering_conditional_delete) # (1, 3, 4, 5, 345))  # row_10
+        batch.add(clustering_conditional_delete)  # (1, 3, 4, 5, 345))  # row_10
         clustering_range_delete = "DELETE FROM clustering_static WHERE id=1 AND clustering1=1"
-        batch.add(clustering_range_delete) # (1, 1)  # row_05/11
+        batch.add(clustering_range_delete)  # (1, 1)  # row_05/11
         clustering_insert = "INSERT INTO clustering_static(id, clustering1, clustering2, clustering3, val) VALUES(1, 2, 3, 4, 5)"
-        batch.add(clustering_insert)  #  (1, 2, 3, 4, 5)
+        batch.add(clustering_insert)  # (1, 2, 3, 4, 5)
         row_12 = (1, 2, 3, 4, 22, 5)
         session.execute(batch)
         rows = session.execute(get_rows_pk, (1,)).current_rows
         assert sorted(rows) == sorted([row_12])
 
-
         batch = BatchStatement()
         clustering_conditional_insert = "INSERT INTO clustering_static(id, clustering1, clustering2, clustering3, val) VALUES(1, 3, 4, 5, 345) IF NOT EXISTS"
-        batch.add(clustering_conditional_insert) # (1, 3, 4, 5, 345))
+        batch.add(clustering_conditional_insert)  # (1, 3, 4, 5, 345))
         row_13 = (1, 3, 4, 5, 22, 345)
         clustering_delete = "DELETE FROM clustering_static WHERE id=1 AND clustering1=2 AND clustering2=3 AND clustering3=4"
-        batch.add(clustering_delete) # (1, 2, 3, 4))
+        batch.add(clustering_delete)  # (1, 2, 3, 4))
         session.execute(batch)
         rows = session.execute(get_rows_pk, (1,)).current_rows
         assert sorted(rows) == sorted([row_13])
 
         batch = BatchStatement()
         clustering_ttl_insert = "INSERT INTO clustering_static(id, clustering1, clustering2, clustering3, val) VALUES(1, 2, 3, 4, 5) USING TTL 5"
-        batch.add(clustering_ttl_insert) # (1, 2, 3, 4, 5, 5))
+        batch.add(clustering_ttl_insert)  # (1, 2, 3, 4, 5, 5))
         row_14 = (1, 2, 3, 4, 22, 5)
         clustering_conditional_ttl_update = "UPDATE clustering_static USING TTL 10 SET val=5 WHERE id=1 AND clustering1=3 AND clustering2=4 AND clustering3=5 IF val=345"
-        batch.add(clustering_conditional_ttl_update) # (10, 5, 1, 3, 4, 5, 345))
+        batch.add(clustering_conditional_ttl_update)  # (10, 5, 1, 3, 4, 5, 345))
         row_15 = (1, 3, 4, 5, 22, 5)    # changed row_13
         session.execute(batch)
         rows = session.execute(get_rows_pk, (1,)).current_rows
@@ -335,9 +329,9 @@ class BatchTester(Tester):
         batch = BatchStatement()
         row_16 = (1, 2, 3, 4, 22, 5)
         clustering_conditional_ttl_insert = "INSERT INTO clustering_static(id, clustering1, clustering2, clustering3, val) VALUES(1, 2, 3, 4, 5)  IF NOT EXISTS USING TTL 5"
-        batch.add(clustering_conditional_ttl_insert) # row_16[:-2] + (5,) + (5,)) # val, ttl
+        batch.add(clustering_conditional_ttl_insert)  # row_16[:-2] + (5,) + (5,)) # val, ttl
         clustering_insert = "INSERT INTO clustering_static(id, clustering1, clustering2, clustering3, val) VALUES(1, 4, 5, 6, 7)"
-        batch.add(clustering_insert) # (1, 4, 5, 6, 7))
+        batch.add(clustering_insert)  # (1, 4, 5, 6, 7))
         row_17 = (1, 4, 5, 6, 22, 7)
         session.execute(batch)
         rows = session.execute(get_rows_pk, (1,)).current_rows
@@ -353,7 +347,7 @@ class BatchTester(Tester):
         row_19 = (1, 3, 4, 5, 22, 5)    # changed row_18
         batch.add(clustering_conditional_ttl_update)
         clustering_ttl_update = "UPDATE clustering_static USING TTL 5 SET val=8 WHERE id=1 AND clustering1=4 AND clustering2=5 AND clustering3=6"
-        batch.add(clustering_ttl_update) # (5, 8, 1, 4, 5, 6))
+        batch.add(clustering_ttl_update)  # (5, 8, 1, 4, 5, 6))
         row_20 = (1, 4, 5, 6, 22, 8)    # changed row_17
         session.execute(batch)
         rows = session.execute(get_rows_pk, (1,)).current_rows
@@ -369,18 +363,17 @@ class BatchTester(Tester):
         batch.add(clustering_static_conditional_delete, (1, 3, 4, 5, 22))
         clustering_insert = "INSERT INTO clustering_static(id, clustering1, clustering2, clustering3, val) VALUES(1, 2, 3, 4, 5)"
         row_23 = (1, 2, 3, 4, 22, 5)       # changed row_21
-        batch.add(clustering_insert) # (1, 2, 3, 4, 5))
+        batch.add(clustering_insert)  # (1, 2, 3, 4, 5))
         session.execute(batch)
         rows = session.execute(get_rows_pk, (1,)).current_rows
         assert sorted(rows) == sorted([row_22, row_23])
 
         batch = BatchStatement()
         clustering_static_conditional_static_update = "UPDATE clustering_static SET sval=23 WHERE id=1 IF sval=22"
-        batch.add(clustering_static_conditional_static_update) # (23, 1, 22))
+        batch.add(clustering_static_conditional_static_update)  # (23, 1, 22))
         row_24 = (1, 2, 3, 4, 23, 5)       # changed row_23
         clustering_delete = "DELETE FROM clustering_static WHERE id=1 AND clustering1=4 AND clustering2=5 AND clustering3=6"
         batch.add(clustering_delete)       # delete row_22
         session.execute(batch)
         rows = session.execute(get_rows_pk, (1,)).current_rows
         assert sorted(rows) == sorted([row_24])
-

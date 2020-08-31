@@ -66,7 +66,8 @@ class TestGlobalRowKeyCache(Tester):
                         session, session.prepare("UPDATE test SET v1 = ?, v2 = ? WHERE k = ?"),
                         [(i, validation_round, i) for i in range(validation_round + 1, num_updates)])
 
-                    session.execute("DELETE FROM test_clustering WHERE k = %s AND v1 = %s", (validation_round, validation_round))
+                    session.execute("DELETE FROM test_clustering WHERE k = %s AND v1 = %s",
+                                    (validation_round, validation_round))
                     execute_concurrent_with_args(
                         session, session.prepare("UPDATE test_clustering SET v2 = ? WHERE k = ? AND v1 = ?"),
                         [(validation_round, i, i) for i in range(validation_round + 1, num_updates)])
@@ -77,7 +78,8 @@ class TestGlobalRowKeyCache(Tester):
                         concurrency=2)
 
                     execute_concurrent_with_args(
-                        session, session.prepare("UPDATE test_counter_clustering SET v2 = v2 + ? WHERE k = ? AND v1 = ?"),
+                        session, session.prepare(
+                            "UPDATE test_counter_clustering SET v2 = v2 + ? WHERE k = ? AND v1 = ?"),
                         [(1, i, i) for i in range(num_updates)],
                         concurrency=2)
 

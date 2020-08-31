@@ -71,7 +71,8 @@ class TestWideRows(Tester):
 
             # Search warning in the log
             self.search_warning(node=node,
-                                warning_text='Writing large {entity_type} {keyspace_name}/{table_name}'.format(**locals()),
+                                warning_text='Writing large {entity_type} {keyspace_name}/{table_name}'.format(
+                                    **locals()),
                                 marked_logs_dict={},
                                 expect_warning=False)
 
@@ -239,7 +240,7 @@ class TestWideRows(Tester):
                                         'Actual sstables: {sstables_from_system}'.format(**locals()))
 
     def validate_system_table(self, entity_type, keyspace_name, table_name, expected_entity_number,
-                                    expected_entity_data_size, pk_max_index=None):
+                              expected_entity_data_size, pk_max_index=None):
         cluster_state = self.get_cluster_system_state(entity_type=entity_type,
                                                       keyspace_name=keyspace_name, table_name=table_name)
         self.validate_entities_recognized_as_large(entity_type=entity_type, cluster_state=cluster_state,
@@ -364,7 +365,7 @@ class TestWideRows(Tester):
             func(session, self.TABLE_NAME, row_number, 1, size, index)
             self.cluster.flush()
             time.sleep(0.5)
-        self.cluster.compact();
+        self.cluster.compact()
         return row_number
 
     @attr('next-gating', 'dtest-debug', 'single_node')
@@ -602,7 +603,7 @@ class TestWideRows(Tester):
                                                                     expected_partitions=expected_partition_data_size,
                                                                     ttl_rows_amount=partition_rows-1000)
         extra_partitions += self.trigger_compaction_by_data_write_and_flush(session, entity_type, partition_num +
-                                                                           extra_partitions)
+                                                                            extra_partitions)
 
         mark_logs = self.mark_log_on_all_nodes()
 
@@ -1036,7 +1037,6 @@ class TestWideRows(Tester):
         self.validate_log_warnings(cluster_state=cluster_state, entity_type=entity_type,
                                    keyspace_name=self.KEYSPACE_NAME,
                                    table_name=self.TABLE_NAME)
-
 
     def test_multiple_rows_with_large_cells_detector(self):
         """

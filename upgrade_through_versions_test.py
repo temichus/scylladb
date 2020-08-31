@@ -124,7 +124,8 @@ def latest_tag_matching(ver_tuple):
     # if it's a match add it to wrappers and when we complete this process give back the latest version found
     for t in MAPPED_REFS['tags'].keys():
         # let's short circuit if the tag we are checking matches the cassandra-x.y.z format, otherwise make another attempt for x.y.z-foo in case it's something line 1.2.3-tentative
-        match = re.match('^cassandra-({ver_str}\.\d+(-+\w+)*)$'.format(ver_str=ver_str), t) or re.match('^({ver_str}\.\d*(-+\w+)*)$'.format(ver_str=ver_str), t)
+        match = re.match('^cassandra-({ver_str}\.\d+(-+\w+)*)$'.format(ver_str=ver_str),
+                         t) or re.match('^({ver_str}\.\d*(-+\w+)*)$'.format(ver_str=ver_str), t)
         if match:
             gsv = GitSemVer(t, match.group(1))
             bisect.insort(wrappers, gsv)
@@ -489,8 +490,10 @@ class TestUpgradeThroughVersions(Tester):
 
         if rolling:
             # start up processes to write and verify data
-            write_proc, verify_proc, verification_queue = self._start_continuous_write_and_verify(wait_for_rowcount=5000)
-            increment_proc, incr_verify_proc, incr_verify_queue = self._start_continuous_counter_increment_and_verify(wait_for_rowcount=5000)
+            write_proc, verify_proc, verification_queue = self._start_continuous_write_and_verify(
+                wait_for_rowcount=5000)
+            increment_proc, incr_verify_proc, incr_verify_queue = self._start_continuous_counter_increment_and_verify(
+                wait_for_rowcount=5000)
 
             # upgrade through versions
             for tag in self.test_versions[1:]:
@@ -513,9 +516,12 @@ class TestUpgradeThroughVersions(Tester):
             write_proc.terminate()
             increment_proc.terminate()
             # wait for the verification queue's to empty (and check all rows) before continuing
-            self._wait_until_queue_condition('writes pending verification', verification_queue, operator.le, 0, max_wait_s=600)
-            self._wait_until_queue_condition('counters pending verification', incr_verify_queue, operator.le, 0, max_wait_s=600)
-            self._check_on_subprocs([verify_proc, incr_verify_proc])  # make sure the verification processes are running still
+            self._wait_until_queue_condition('writes pending verification',
+                                             verification_queue, operator.le, 0, max_wait_s=600)
+            self._wait_until_queue_condition('counters pending verification',
+                                             incr_verify_queue, operator.le, 0, max_wait_s=600)
+            # make sure the verification processes are running still
+            self._check_on_subprocs([verify_proc, incr_verify_proc])
 
             self._terminate_subprocs()
         # not a rolling upgrade, do everything in parallel:
@@ -583,7 +589,8 @@ class TestUpgradeThroughVersions(Tester):
         that are specified by *nodes*, otherwise ignore *nodes* specified
         and upgrade all nodes.
         """
-        debug('Upgrading {nodes} to {tag}'.format(nodes=[n.name for n in nodes] if nodes is not None else 'all nodes', tag=tag))
+        debug('Upgrading {nodes} to {tag}'.format(
+            nodes=[n.name for n in nodes] if nodes is not None else 'all nodes', tag=tag))
         switch_jdks(tag)
         debug(os.environ['JAVA_HOME'])
         if not partial:
@@ -657,7 +664,8 @@ class TestUpgradeThroughVersions(Tester):
         """
         session = self.patient_cql_connection(self.node2, protocol_version=PROTOCOL_VERSION)
 
-        session.execute("CREATE KEYSPACE upgrade WITH replication = {'class':'SimpleStrategy', 'replication_factor':3};")
+        session.execute(
+            "CREATE KEYSPACE upgrade WITH replication = {'class':'SimpleStrategy', 'replication_factor':3};")
 
         session.execute('use upgrade')
         session.execute('CREATE TABLE cf ( k uuid PRIMARY KEY, v uuid )')
@@ -673,7 +681,8 @@ class TestUpgradeThroughVersions(Tester):
     def _create_schema(self):
         session = self.patient_cql_connection(self.node2, protocol_version=PROTOCOL_VERSION)
 
-        session.execute("CREATE KEYSPACE upgrade WITH replication = {'class':'SimpleStrategy', 'replication_factor':2};")
+        session.execute(
+            "CREATE KEYSPACE upgrade WITH replication = {'class':'SimpleStrategy', 'replication_factor':2};")
 
         session.execute('use upgrade')
         session.execute('CREATE TABLE cf ( k int PRIMARY KEY, v text )')
@@ -729,12 +738,14 @@ class TestUpgradeThroughVersions(Tester):
                 break
 
             if divmod(round(time.time()), 30)[1] == 0:
-                debug("{} queue size is at {}, target is to reach '{}' {}".format(label, qsize, opfunc.__name__, required_len))
+                debug("{} queue size is at {}, target is to reach '{}' {}".format(
+                    label, qsize, opfunc.__name__, required_len))
 
             time.sleep(0.1)
             continue
         else:
-            raise RuntimeError("Ran out of time waiting for queue size ({}) to be '{}' to {}. Aborting.".format(qsize, opfunc.__name__, required_len))
+            raise RuntimeError("Ran out of time waiting for queue size ({}) to be '{}' to {}. Aborting.".format(
+                qsize, opfunc.__name__, required_len))
 
     def _start_continuous_write_and_verify(self, wait_for_rowcount=0, max_wait_s=300):
         """
@@ -757,7 +768,8 @@ class TestUpgradeThroughVersions(Tester):
         writer.start()
 
         if wait_for_rowcount > 0:
-            self._wait_until_queue_condition('rows written (but not verified)', to_verify_queue, operator.ge, wait_for_rowcount, max_wait_s=max_wait_s)
+            self._wait_until_queue_condition('rows written (but not verified)',
+                                             to_verify_queue, operator.ge, wait_for_rowcount, max_wait_s=max_wait_s)
 
         verifier = Process(target=data_checker, args=(self, to_verify_queue, verification_done_queue))
         # daemon subprocesses are killed automagically when the parent process exits
@@ -786,7 +798,8 @@ class TestUpgradeThroughVersions(Tester):
         incrementer.start()
 
         if wait_for_rowcount > 0:
-            self._wait_until_queue_condition('counters incremented (but not verified)', to_verify_queue, operator.ge, wait_for_rowcount, max_wait_s=max_wait_s)
+            self._wait_until_queue_condition('counters incremented (but not verified)',
+                                             to_verify_queue, operator.ge, wait_for_rowcount, max_wait_s=max_wait_s)
 
         count_verifier = Process(target=data_checker, args=(self, to_verify_queue, verification_done_queue))
         # daemon subprocesses are killed automagically when the parent process exits
@@ -813,7 +826,8 @@ class TestUpgradeThroughVersions(Tester):
             key1 = random.choice(self.expected_counts.keys())
             key2 = random.randint(1, 10)
             try:
-                query = SimpleStatement(update_counter_query.format(key1=key1, key2=key2), consistency_level=ConsistencyLevel.ALL)
+                query = SimpleStatement(update_counter_query.format(key1=key1, key2=key2),
+                                        consistency_level=ConsistencyLevel.ALL)
                 session.execute(query)
             except WriteTimeout:
                 fail_count += 1
@@ -843,7 +857,8 @@ class TestUpgradeThroughVersions(Tester):
                     # counter wasn't found
                     actual_value = None
 
-                assert actual_value == expected_value, "Counter not at expected value. Got %s, expected %s" % (actual_value, expected_value)
+                assert actual_value == expected_value, "Counter not at expected value. Got %s, expected %s" % (
+                    actual_value, expected_value)
 
     def _check_select_count(self, consistency_level=ConsistencyLevel.ALL):
         debug("Checking SELECT COUNT(*)")
@@ -857,7 +872,8 @@ class TestUpgradeThroughVersions(Tester):
 
         if result is not None:
             actual_num_rows = result[0][0]
-            self.assertEqual(actual_num_rows, expected_num_rows, "SELECT COUNT(*) returned %s when expecting %s" % (actual_num_rows, expected_num_rows))
+            self.assertEqual(actual_num_rows, expected_num_rows,
+                             "SELECT COUNT(*) returned %s when expecting %s" % (actual_num_rows, expected_num_rows))
         else:
             self.fail("Count query did not return")
 
@@ -923,14 +939,16 @@ class PointToPointUpgradeBase(TestUpgradeThroughVersions):
         cluster.populate([2, 2])
         [node.start(use_jna=True, wait_for_binary_proto=True) for node in self.cluster.nodelist()]
         self._multidc_schema_create()
-        self.upgrade_scenario(populate=False, create_schema=False, after_upgrade_call=(self._bootstrap_new_node_multidc,))
+        self.upgrade_scenario(populate=False, create_schema=False,
+                              after_upgrade_call=(self._bootstrap_new_node_multidc,))
 
     def _multidc_schema_create(self):
         session = self.patient_cql_connection(self.cluster.nodelist()[0], protocol_version=PROTOCOL_VERSION)
 
         if self.cluster.version() >= '1.2':
             # DDL for C* 1.2+
-            session.execute("CREATE KEYSPACE upgrade WITH replication = {'class':'NetworkTopologyStrategy', 'dc1':1, 'dc2':2};")
+            session.execute(
+                "CREATE KEYSPACE upgrade WITH replication = {'class':'NetworkTopologyStrategy', 'dc1':1, 'dc2':2};")
         else:
             # DDL for C* 1.1
             session.execute("""CREATE KEYSPACE upgrade WITH strategy_class = 'NetworkTopologyStrategy'
@@ -950,14 +968,17 @@ class PointToPointUpgradeBase(TestUpgradeThroughVersions):
                 PRIMARY KEY (k1, k2)
                 );""")
 
+
 # create test classes for upgrading from latest tag on branch to the head of that same branch
 for from_ver in UPGRADE_PATH:
     # we only want to do single upgrade tests for 1.2+
     # and trunk is the final version, so there's no test where trunk is upgraded to something else
     if make_ver_str(from_ver) >= '1.2' and from_ver != TRUNK_VER:
-        cls_name = ('TestUpgrade_from_' + make_ver_str(from_ver) + '_latest_tag_to_' + make_ver_str(from_ver) + '_HEAD').replace('-', '_').replace('.', '_')
+        cls_name = ('TestUpgrade_from_' + make_ver_str(from_ver) + '_latest_tag_to_' +
+                    make_ver_str(from_ver) + '_HEAD').replace('-', '_').replace('.', '_')
         start_ver_latest_tag = latest_tag_matching(from_ver)
-        debug('Creating test upgrade class: {} with start tag of: {} ({})'.format(cls_name, start_ver_latest_tag, sha_for_ref_name(start_ver_latest_tag)))
+        debug('Creating test upgrade class: {} with start tag of: {} ({})'.format(
+            cls_name, start_ver_latest_tag, sha_for_ref_name(start_ver_latest_tag)))
         vars()[cls_name] = type(
             cls_name,
             (PointToPointUpgradeBase,),
@@ -976,9 +997,11 @@ for i, _ in enumerate(points):
 
 # create test classes for upgrading from latest tag on one branch, to head of the next branch (see comment above)
 for (from_ver, to_branch) in POINT_UPGRADES:
-    cls_name = ('TestUpgrade_from_' + make_ver_str(from_ver) + '_latest_tag_to_' + make_branch_str(to_branch) + '_HEAD').replace('-', '_').replace('.', '_')
+    cls_name = ('TestUpgrade_from_' + make_ver_str(from_ver) + '_latest_tag_to_' +
+                make_branch_str(to_branch) + '_HEAD').replace('-', '_').replace('.', '_')
     from_ver_latest_tag = latest_tag_matching(from_ver)
-    debug('Creating test upgrade class: {} with start tag of: {} ({})'.format(cls_name, from_ver_latest_tag, sha_for_ref_name(from_ver_latest_tag)))
+    debug('Creating test upgrade class: {} with start tag of: {} ({})'.format(
+        cls_name, from_ver_latest_tag, sha_for_ref_name(from_ver_latest_tag)))
     vars()[cls_name] = type(
         cls_name,
         (PointToPointUpgradeBase,),
@@ -986,7 +1009,8 @@ for (from_ver, to_branch) in POINT_UPGRADES:
 
 # create test classes for upgrading from HEAD of one branch to HEAD of next.
 for (from_branch, to_branch) in POINT_UPGRADES:
-    cls_name = ('TestUpgrade_from_' + make_branch_str(from_branch) + '_HEAD_to_' + make_branch_str(to_branch) + '_HEAD').replace('-', '_').replace('.', '_')
+    cls_name = ('TestUpgrade_from_' + make_branch_str(from_branch) + '_HEAD_to_' +
+                make_branch_str(to_branch) + '_HEAD').replace('-', '_').replace('.', '_')
     debug('Creating test upgrade class: {}'.format(cls_name))
     vars()[cls_name] = type(
         cls_name,
@@ -995,13 +1019,15 @@ for (from_branch, to_branch) in POINT_UPGRADES:
 
 # create test classes for upgrading from HEAD of one branch, to latest tag of next branch
 for (from_branch, to_branch) in POINT_UPGRADES:
-    cls_name = ('TestUpgrade_from_' + make_branch_str(from_branch) + '_HEAD_to_' + make_branch_str(to_branch) + '_latest_tag').replace('-', '_').replace('.', '_')
+    cls_name = ('TestUpgrade_from_' + make_branch_str(from_branch) + '_HEAD_to_' +
+                make_branch_str(to_branch) + '_latest_tag').replace('-', '_').replace('.', '_')
     to_ver_latest_tag = latest_tag_matching(to_branch)
     # in some cases we might not find a tag (like when the to_branch is trunk)
     # so these will be skipped.
     if to_ver_latest_tag is None:
         continue
-    debug('Creating test upgrade class: {} with end tag of: {} ({})'.format(cls_name, to_ver_latest_tag, sha_for_ref_name(to_ver_latest_tag)))
+    debug('Creating test upgrade class: {} with end tag of: {} ({})'.format(
+        cls_name, to_ver_latest_tag, sha_for_ref_name(to_ver_latest_tag)))
 
     vars()[cls_name] = type(
         cls_name,

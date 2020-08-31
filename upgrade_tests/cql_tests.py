@@ -45,11 +45,14 @@ class TestCQL(UpgradeTester):
             cursor.execute("TRUNCATE users")
 
             # Inserts
-            cursor.execute("INSERT INTO users (userid, firstname, lastname, age) VALUES (550e8400-e29b-41d4-a716-446655440000, 'Frodo', 'Baggins', 32)")
-            cursor.execute("UPDATE users SET firstname = 'Samwise', lastname = 'Gamgee', age = 33 WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479")
+            cursor.execute(
+                "INSERT INTO users (userid, firstname, lastname, age) VALUES (550e8400-e29b-41d4-a716-446655440000, 'Frodo', 'Baggins', 32)")
+            cursor.execute(
+                "UPDATE users SET firstname = 'Samwise', lastname = 'Gamgee', age = 33 WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479")
 
             # Queries
-            res = cursor.execute("SELECT firstname, lastname FROM users WHERE userid = 550e8400-e29b-41d4-a716-446655440000")
+            res = cursor.execute(
+                "SELECT firstname, lastname FROM users WHERE userid = 550e8400-e29b-41d4-a716-446655440000")
             assert rows_to_list(res) == [['Frodo', 'Baggins']], res
 
             res = cursor.execute("SELECT * FROM users WHERE userid = 550e8400-e29b-41d4-a716-446655440000")
@@ -127,21 +130,26 @@ class TestCQL(UpgradeTester):
             cursor.execute("TRUNCATE users")
 
             # Inserts
-            cursor.execute("INSERT INTO users (userid, firstname, lastname, age) VALUES (550e8400-e29b-41d4-a716-446655440000, 'Frodo', 'Baggins', 32)")
-            cursor.execute("UPDATE users SET firstname = 'Samwise', lastname = 'Gamgee', age = 33 WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479")
+            cursor.execute(
+                "INSERT INTO users (userid, firstname, lastname, age) VALUES (550e8400-e29b-41d4-a716-446655440000, 'Frodo', 'Baggins', 32)")
+            cursor.execute(
+                "UPDATE users SET firstname = 'Samwise', lastname = 'Gamgee', age = 33 WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479")
 
             # Queries
-            res = cursor.execute("SELECT firstname, lastname FROM users WHERE userid = 550e8400-e29b-41d4-a716-446655440000")
+            res = cursor.execute(
+                "SELECT firstname, lastname FROM users WHERE userid = 550e8400-e29b-41d4-a716-446655440000")
             self.assertEqual([['Frodo', 'Baggins']], rows_to_list(res))
 
             res = cursor.execute("SELECT * FROM users WHERE userid = 550e8400-e29b-41d4-a716-446655440000")
-            self.assertEqual([[UUID('550e8400-e29b-41d4-a716-446655440000'), 32, 'Frodo', 'Baggins']], rows_to_list(res))
+            self.assertEqual([[UUID('550e8400-e29b-41d4-a716-446655440000'),
+                               32, 'Frodo', 'Baggins']], rows_to_list(res))
 
             # FIXME There appears to be some sort of problem with reusable cells
             # when executing this query.  It's likely that CASSANDRA-9705 will
             # fix this, but I'm not 100% sure.
             res = cursor.execute("SELECT * FROM users WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479")
-            self.assertEqual([[UUID('f47ac10b-58cc-4372-a567-0e02b2c3d479'), 33, 'Samwise', 'Gamgee']], rows_to_list(res))
+            self.assertEqual([[UUID('f47ac10b-58cc-4372-a567-0e02b2c3d479'),
+                               33, 'Samwise', 'Gamgee']], rows_to_list(res))
 
             res = cursor.execute("SELECT * FROM users")
             self.assertEqual([
@@ -183,15 +191,21 @@ class TestCQL(UpgradeTester):
             cursor.execute("TRUNCATE clicks")
 
             # Inserts
-            cursor.execute("INSERT INTO clicks (userid, url, time) VALUES (550e8400-e29b-41d4-a716-446655440000, 'http://foo.bar', 42)")
-            cursor.execute("INSERT INTO clicks (userid, url, time) VALUES (550e8400-e29b-41d4-a716-446655440000, 'http://foo-2.bar', 24)")
-            cursor.execute("INSERT INTO clicks (userid, url, time) VALUES (550e8400-e29b-41d4-a716-446655440000, 'http://bar.bar', 128)")
-            cursor.execute("UPDATE clicks SET time = 24 WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479 and url = 'http://bar.foo'")
-            cursor.execute("UPDATE clicks SET time = 12 WHERE userid IN (f47ac10b-58cc-4372-a567-0e02b2c3d479, 550e8400-e29b-41d4-a716-446655440000) and url = 'http://foo-3'")
+            cursor.execute(
+                "INSERT INTO clicks (userid, url, time) VALUES (550e8400-e29b-41d4-a716-446655440000, 'http://foo.bar', 42)")
+            cursor.execute(
+                "INSERT INTO clicks (userid, url, time) VALUES (550e8400-e29b-41d4-a716-446655440000, 'http://foo-2.bar', 24)")
+            cursor.execute(
+                "INSERT INTO clicks (userid, url, time) VALUES (550e8400-e29b-41d4-a716-446655440000, 'http://bar.bar', 128)")
+            cursor.execute(
+                "UPDATE clicks SET time = 24 WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479 and url = 'http://bar.foo'")
+            cursor.execute(
+                "UPDATE clicks SET time = 12 WHERE userid IN (f47ac10b-58cc-4372-a567-0e02b2c3d479, 550e8400-e29b-41d4-a716-446655440000) and url = 'http://foo-3'")
 
             # Queries
             res = cursor.execute("SELECT url, time FROM clicks WHERE userid = 550e8400-e29b-41d4-a716-446655440000")
-            assert rows_to_list(res) == [['http://bar.bar', 128], ['http://foo-2.bar', 24], ['http://foo-3', 12], ['http://foo.bar', 42]], res
+            assert rows_to_list(res) == [['http://bar.bar', 128], ['http://foo-2.bar', 24],
+                                         ['http://foo-3', 12], ['http://foo.bar', 42]], res
 
             res = cursor.execute("SELECT * FROM clicks WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479")
             assert rows_to_list(res) == [
@@ -204,7 +218,8 @@ class TestCQL(UpgradeTester):
             assert rows_to_list(res) == [[24], [12], [128], [24], [12], [42]], res
 
             # Check we don't allow empty values for url since this is the full underlying cell name (#6152)
-            assert_invalid(cursor, "INSERT INTO clicks (userid, url, time) VALUES (810e8500-e29b-41d4-a716-446655440000, '', 42)")
+            assert_invalid(
+                cursor, "INSERT INTO clicks (userid, url, time) VALUES (810e8500-e29b-41d4-a716-446655440000, '', 42)")
 
     def dense_cf_test(self):
         """ Test composite 'dense' CF syntax """
@@ -225,36 +240,49 @@ class TestCQL(UpgradeTester):
             cursor.execute("TRUNCATE connections")
 
             # Inserts
-            cursor.execute("INSERT INTO connections (userid, ip, port, time) VALUES (550e8400-e29b-41d4-a716-446655440000, '192.168.0.1', 80, 42)")
-            cursor.execute("INSERT INTO connections (userid, ip, port, time) VALUES (550e8400-e29b-41d4-a716-446655440000, '192.168.0.2', 80, 24)")
-            cursor.execute("INSERT INTO connections (userid, ip, port, time) VALUES (550e8400-e29b-41d4-a716-446655440000, '192.168.0.2', 90, 42)")
-            cursor.execute("UPDATE connections SET time = 24 WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479 AND ip = '192.168.0.2' AND port = 80")
+            cursor.execute(
+                "INSERT INTO connections (userid, ip, port, time) VALUES (550e8400-e29b-41d4-a716-446655440000, '192.168.0.1', 80, 42)")
+            cursor.execute(
+                "INSERT INTO connections (userid, ip, port, time) VALUES (550e8400-e29b-41d4-a716-446655440000, '192.168.0.2', 80, 24)")
+            cursor.execute(
+                "INSERT INTO connections (userid, ip, port, time) VALUES (550e8400-e29b-41d4-a716-446655440000, '192.168.0.2', 90, 42)")
+            cursor.execute(
+                "UPDATE connections SET time = 24 WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479 AND ip = '192.168.0.2' AND port = 80")
 
             # we don't have to include all of the clustering columns (see CASSANDRA-7990)
-            cursor.execute("INSERT INTO connections (userid, ip, time) VALUES (f47ac10b-58cc-4372-a567-0e02b2c3d479, '192.168.0.3', 42)")
-            cursor.execute("UPDATE connections SET time = 42 WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479 AND ip = '192.168.0.4'")
+            cursor.execute(
+                "INSERT INTO connections (userid, ip, time) VALUES (f47ac10b-58cc-4372-a567-0e02b2c3d479, '192.168.0.3', 42)")
+            cursor.execute(
+                "UPDATE connections SET time = 42 WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479 AND ip = '192.168.0.4'")
 
             # Queries
-            res = cursor.execute("SELECT ip, port, time FROM connections WHERE userid = 550e8400-e29b-41d4-a716-446655440000")
+            res = cursor.execute(
+                "SELECT ip, port, time FROM connections WHERE userid = 550e8400-e29b-41d4-a716-446655440000")
             assert rows_to_list(res) == [['192.168.0.1', 80, 42], ['192.168.0.2', 80, 24], ['192.168.0.2', 90, 42]], res
 
-            res = cursor.execute("SELECT ip, port, time FROM connections WHERE userid = 550e8400-e29b-41d4-a716-446655440000 and ip >= '192.168.0.2'")
+            res = cursor.execute(
+                "SELECT ip, port, time FROM connections WHERE userid = 550e8400-e29b-41d4-a716-446655440000 and ip >= '192.168.0.2'")
             assert rows_to_list(res) == [['192.168.0.2', 80, 24], ['192.168.0.2', 90, 42]], res
 
-            res = cursor.execute("SELECT ip, port, time FROM connections WHERE userid = 550e8400-e29b-41d4-a716-446655440000 and ip = '192.168.0.2'")
+            res = cursor.execute(
+                "SELECT ip, port, time FROM connections WHERE userid = 550e8400-e29b-41d4-a716-446655440000 and ip = '192.168.0.2'")
             assert rows_to_list(res) == [['192.168.0.2', 80, 24], ['192.168.0.2', 90, 42]], res
 
-            res = cursor.execute("SELECT ip, port, time FROM connections WHERE userid = 550e8400-e29b-41d4-a716-446655440000 and ip > '192.168.0.2'")
+            res = cursor.execute(
+                "SELECT ip, port, time FROM connections WHERE userid = 550e8400-e29b-41d4-a716-446655440000 and ip > '192.168.0.2'")
             assert rows_to_list(res) == [], res
 
-            res = cursor.execute("SELECT ip, port, time FROM connections WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479 AND ip = '192.168.0.3'")
+            res = cursor.execute(
+                "SELECT ip, port, time FROM connections WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479 AND ip = '192.168.0.3'")
             self.assertEqual([['192.168.0.3', None, 42]], rows_to_list(res))
 
-            res = cursor.execute("SELECT ip, port, time FROM connections WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479 AND ip = '192.168.0.4'")
+            res = cursor.execute(
+                "SELECT ip, port, time FROM connections WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479 AND ip = '192.168.0.4'")
             self.assertEqual([['192.168.0.4', None, 42]], rows_to_list(res))
 
             # Deletion
-            cursor.execute("DELETE time FROM connections WHERE userid = 550e8400-e29b-41d4-a716-446655440000 AND ip = '192.168.0.2' AND port = 80")
+            cursor.execute(
+                "DELETE time FROM connections WHERE userid = 550e8400-e29b-41d4-a716-446655440000 AND ip = '192.168.0.2' AND port = 80")
             res = list(cursor.execute("SELECT * FROM connections WHERE userid = 550e8400-e29b-41d4-a716-446655440000"))
             assert len(res) == 2, res
 
@@ -262,8 +290,10 @@ class TestCQL(UpgradeTester):
             res = list(cursor.execute("SELECT * FROM connections WHERE userid = 550e8400-e29b-41d4-a716-446655440000"))
             assert len(res) == 0, res
 
-            cursor.execute("DELETE FROM connections WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479 AND ip = '192.168.0.3'")
-            res = list(cursor.execute("SELECT * FROM connections WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479 AND ip = '192.168.0.3'"))
+            cursor.execute(
+                "DELETE FROM connections WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479 AND ip = '192.168.0.3'")
+            res = list(cursor.execute(
+                "SELECT * FROM connections WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479 AND ip = '192.168.0.3'"))
             self.assertEqual([], res)
 
     def sparse_cf_test(self):
@@ -289,22 +319,29 @@ class TestCQL(UpgradeTester):
             sam_id = UUID('f47ac10b-58cc-4372-a567-0e02b2c3d479')
 
             # Inserts
-            cursor.execute("INSERT INTO timeline (userid, posted_month, posted_day, body, posted_by) VALUES (%s, 1, 12, 'Something else', 'Frodo Baggins')", (frodo_id,))
-            cursor.execute("INSERT INTO timeline (userid, posted_month, posted_day, body, posted_by) VALUES (%s, 1, 24, 'Something something', 'Frodo Baggins')", (frodo_id,))
-            cursor.execute("UPDATE timeline SET body = 'Yo Froddo', posted_by = 'Samwise Gamgee' WHERE userid = %s AND posted_month = 1 AND posted_day = 3", (sam_id,))
-            cursor.execute("UPDATE timeline SET body = 'Yet one more message' WHERE userid = %s AND posted_month = 1 and posted_day = 30", (frodo_id,))
+            cursor.execute(
+                "INSERT INTO timeline (userid, posted_month, posted_day, body, posted_by) VALUES (%s, 1, 12, 'Something else', 'Frodo Baggins')", (frodo_id,))
+            cursor.execute(
+                "INSERT INTO timeline (userid, posted_month, posted_day, body, posted_by) VALUES (%s, 1, 24, 'Something something', 'Frodo Baggins')", (frodo_id,))
+            cursor.execute(
+                "UPDATE timeline SET body = 'Yo Froddo', posted_by = 'Samwise Gamgee' WHERE userid = %s AND posted_month = 1 AND posted_day = 3", (sam_id,))
+            cursor.execute(
+                "UPDATE timeline SET body = 'Yet one more message' WHERE userid = %s AND posted_month = 1 and posted_day = 30", (frodo_id,))
 
             # Queries
-            res = cursor.execute("SELECT body, posted_by FROM timeline WHERE userid = %s AND posted_month = 1 AND posted_day = 24", (frodo_id,))
+            res = cursor.execute(
+                "SELECT body, posted_by FROM timeline WHERE userid = %s AND posted_month = 1 AND posted_day = 24", (frodo_id,))
             self.assertEqual([['Something something', 'Frodo Baggins']], rows_to_list(res))
 
-            res = cursor.execute("SELECT posted_day, body, posted_by FROM timeline WHERE userid = %s AND posted_month = 1 AND posted_day > 12", (frodo_id,))
+            res = cursor.execute(
+                "SELECT posted_day, body, posted_by FROM timeline WHERE userid = %s AND posted_month = 1 AND posted_day > 12", (frodo_id,))
             self.assertEqual([
                 [24, 'Something something', 'Frodo Baggins'],
                 [30, 'Yet one more message', None]
             ], rows_to_list(res))
 
-            res = cursor.execute("SELECT posted_day, body, posted_by FROM timeline WHERE userid = %s AND posted_month = 1", (frodo_id,))
+            res = cursor.execute(
+                "SELECT posted_day, body, posted_by FROM timeline WHERE userid = %s AND posted_month = 1", (frodo_id,))
             self.assertEqual([
                 [12, 'Something else', 'Frodo Baggins'],
                 [24, 'Something something', 'Frodo Baggins'],
@@ -416,7 +453,8 @@ class TestCQL(UpgradeTester):
             # Inserts
             for id in range(0, 100):
                 for tld in ['com', 'org', 'net']:
-                    cursor.execute("INSERT INTO clicks (userid, url, day, month, year) VALUES (%i, 'http://foo.%s', 1, 'jan', 2012)" % (id, tld))
+                    cursor.execute(
+                        "INSERT INTO clicks (userid, url, day, month, year) VALUES (%i, 'http://foo.%s', 1, 'jan', 2012)" % (id, tld))
 
             # Queries
             # Check we do get as many rows as requested
@@ -477,14 +515,18 @@ class TestCQL(UpgradeTester):
             cursor.execute("TRUNCATE users")
 
             # Inserts
-            cursor.execute("INSERT INTO users (userid, firstname, lastname, age) VALUES (550e8400-e29b-41d4-a716-446655440000, 'Frodo', 'Baggins', 32)")
-            cursor.execute("UPDATE users SET firstname = 'Samwise', lastname = 'Gamgee', age = 33 WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479")
+            cursor.execute(
+                "INSERT INTO users (userid, firstname, lastname, age) VALUES (550e8400-e29b-41d4-a716-446655440000, 'Frodo', 'Baggins', 32)")
+            cursor.execute(
+                "UPDATE users SET firstname = 'Samwise', lastname = 'Gamgee', age = 33 WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479")
 
             # Queries
-            res = cursor.execute("SELECT firstname FROM users WHERE userid = 550e8400-e29b-41d4-a716-446655440000 AND age = 33")
+            res = cursor.execute(
+                "SELECT firstname FROM users WHERE userid = 550e8400-e29b-41d4-a716-446655440000 AND age = 33")
             assert rows_to_list(res) == [], res
 
-            res = cursor.execute("SELECT firstname FROM users WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479 AND age = 33")
+            res = cursor.execute(
+                "SELECT firstname FROM users WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479 AND age = 33")
             assert rows_to_list(res) == [['Samwise']], res
 
     def select_key_in_test(self):
@@ -740,13 +782,15 @@ class TestCQL(UpgradeTester):
             res = cursor.execute("SELECT number, number2 FROM test2 WHERE row='a' AND number < 3 ORDER BY number DESC;")
             assert rows_to_list(res) == [[2, 1], [2, 0], [1, 0]], res
 
-            res = cursor.execute("SELECT number, number2 FROM test2 WHERE row='a' AND number >= 3 ORDER BY number DESC;")
+            res = cursor.execute(
+                "SELECT number, number2 FROM test2 WHERE row='a' AND number >= 3 ORDER BY number DESC;")
             assert rows_to_list(res) == [[4, 0], [3, 1], [3, 0]], res
 
             res = cursor.execute("SELECT number, number2 FROM test2 WHERE row='a' AND number > 3 ORDER BY number DESC;")
             assert rows_to_list(res) == [[4, 0]], res
 
-            res = cursor.execute("SELECT number, number2 FROM test2 WHERE row='a' AND number <= 3 ORDER BY number DESC;")
+            res = cursor.execute(
+                "SELECT number, number2 FROM test2 WHERE row='a' AND number <= 3 ORDER BY number DESC;")
             assert rows_to_list(res) == [[3, 1], [3, 0], [2, 1], [2, 0], [1, 0]], res
 
     def order_by_validation_test(self):
@@ -1069,7 +1113,8 @@ class TestCQL(UpgradeTester):
             # assert_invalid(cursor, "SELECT k FROM test WHERE token(k) >= 0")
             # cursor.execute("SELECT k FROM test WHERE token(k) >= 0")
 
-            res = cursor.execute("SELECT k FROM test WHERE token(k) >= token(%d) AND token(k) < token(%d)" % (inOrder[32], inOrder[65]))
+            res = cursor.execute("SELECT k FROM test WHERE token(k) >= token(%d) AND token(k) < token(%d)" %
+                                 (inOrder[32], inOrder[65]))
             assert rows_to_list(res) == [[inOrder[x]] for x in range(32, 65)], "%s [all: %s]" % (str(res), str(inOrder))
 
     def timestamp_and_ttl_test(self):
@@ -1134,7 +1179,8 @@ class TestCQL(UpgradeTester):
         """)
 
         # Example from #3505
-        cursor.execute("CREATE KEYSPACE ks1 with replication = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 };")
+        cursor.execute(
+            "CREATE KEYSPACE ks1 with replication = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 };")
         cursor.execute("""
             CREATE COLUMNFAMILY ks1.users (
                 KEY varchar PRIMARY KEY,
@@ -1231,7 +1277,8 @@ class TestCQL(UpgradeTester):
                 for j in range(0, col1):
                     for k in range(0, col2):
                         n = (i * cpr) + (j * col2) + k
-                        cursor.execute("INSERT INTO test1 (k, c1, c2, v1, v2) VALUES (%d, %d, %d, %d, %d)" % (i, j, k, n, n))
+                        cursor.execute("INSERT INTO test1 (k, c1, c2, v1, v2) VALUES (%d, %d, %d, %d, %d)" %
+                                       (i, j, k, n, n))
 
             for i in range(0, rows):
                 res = cursor.execute("SELECT v1, v2 FROM test1 where k = %d" % i)
@@ -1271,7 +1318,8 @@ class TestCQL(UpgradeTester):
 
             for c1 in range(0, 4):
                 for c2 in range(0, 2):
-                    cursor.execute("INSERT INTO test1 (k, c1, c2, v1) VALUES (0, %d, %d, '%s')" % (c1, c2, '%i%i' % (c1, c2)))
+                    cursor.execute("INSERT INTO test1 (k, c1, c2, v1) VALUES (0, %d, %d, '%s')" %
+                                   (c1, c2, '%i%i' % (c1, c2)))
 
             self.cluster.flush()
 
@@ -1281,7 +1329,8 @@ class TestCQL(UpgradeTester):
             self.cluster.compact()
 
             res = cursor.execute("SELECT v1 FROM test1 WHERE k = 0")
-            assert rows_to_list(res) == [['%i%i' % (c1, c2)] for c1 in range(0, 4) for c2 in range(0, 2) if c1 != 1], res
+            assert rows_to_list(res) == [['%i%i' % (c1, c2)] for c1 in range(0, 4)
+                                         for c2 in range(0, 2) if c1 != 1], res
 
     def delete_row_test(self):
         """ Test deletion of rows """
@@ -1486,7 +1535,8 @@ class TestCQL(UpgradeTester):
             cursor.execute("UPDATE ks.foo SET L = L + [7, 11, 13] WHERE k = b017f48f-ae67-11e1-9096-005056c00008;")
             cursor.execute("UPDATE ks.foo SET S = {1, 3, 5} WHERE k = b017f48f-ae67-11e1-9096-005056c00008;")
             cursor.execute("UPDATE ks.foo SET S = S + {7, 11, 13} WHERE k = b017f48f-ae67-11e1-9096-005056c00008;")
-            cursor.execute("UPDATE ks.foo SET M = {'foo': 1, 'bar' : 3} WHERE k = b017f48f-ae67-11e1-9096-005056c00008;")
+            cursor.execute(
+                "UPDATE ks.foo SET M = {'foo': 1, 'bar' : 3} WHERE k = b017f48f-ae67-11e1-9096-005056c00008;")
             cursor.execute("UPDATE ks.foo SET M = M + {'foobar' : 4} WHERE k = b017f48f-ae67-11e1-9096-005056c00008;")
 
             res = cursor.execute("SELECT L, M, S FROM foo WHERE k = b017f48f-ae67-11e1-9096-005056c00008")
@@ -1512,7 +1562,8 @@ class TestCQL(UpgradeTester):
             cursor.execute("INSERT INTO test (a, b, c, d, e, f) VALUES (1, 1, 1, 1, 3, '3');")
             cursor.execute("INSERT INTO test (a, b, c, d, e, f) VALUES (1, 1, 1, 1, 5, '5');")
 
-            res = cursor.execute("SELECT a, b, c, d, e, f FROM test WHERE a = 1 AND b = 1 AND c = 1 AND d = 1 AND e >= 2;")
+            res = cursor.execute(
+                "SELECT a, b, c, d, e, f FROM test WHERE a = 1 AND b = 1 AND c = 1 AND d = 1 AND e >= 2;")
             assert rows_to_list(res) == [[1, 1, 1, 1, 2, u'2'], [1, 1, 1, 1, 3, u'3'], [1, 1, 1, 1, 5, u'5']], res
 
     def composite_row_key_test(self):
@@ -1582,7 +1633,8 @@ class TestCQL(UpgradeTester):
             column_name = '\x00\x04' + column_name_component + '\x00' + '\x00\x01' + 'v' + '\x00'
             value = struct.pack('>i', 8)
             client.batch_mutate(
-                {key: {'test': [Mutation(ColumnOrSuperColumn(column=Column(name=column_name, value=value, timestamp=100)))]}},
+                {key: {'test': [Mutation(ColumnOrSuperColumn(
+                    column=Column(name=column_name, value=value, timestamp=100)))]}},
                 ThriftConsistencyLevel.ONE)
 
             res = cursor.execute("SELECT * FROM test")
@@ -1761,13 +1813,16 @@ class TestCQL(UpgradeTester):
             res = cursor.execute("SELECT blog_id, content FROM blogs WHERE time1 = 1 AND author='foo' ALLOW FILTERING")
             assert rows_to_list(res) == [[2, 'baz']], res
 
-            res = cursor.execute("SELECT blog_id, content FROM blogs WHERE time1 = 1 AND time2 = 0 AND author='foo' ALLOW FILTERING")
+            res = cursor.execute(
+                "SELECT blog_id, content FROM blogs WHERE time1 = 1 AND time2 = 0 AND author='foo' ALLOW FILTERING")
             assert rows_to_list(res) == [[2, 'baz']], res
 
-            res = cursor.execute("SELECT content FROM blogs WHERE time1 = 1 AND time2 = 1 AND author='foo' ALLOW FILTERING")
+            res = cursor.execute(
+                "SELECT content FROM blogs WHERE time1 = 1 AND time2 = 1 AND author='foo' ALLOW FILTERING")
             assert rows_to_list(res) == [], res
 
-            res = cursor.execute("SELECT content FROM blogs WHERE time1 = 1 AND time2 > 0 AND author='foo' ALLOW FILTERING")
+            res = cursor.execute(
+                "SELECT content FROM blogs WHERE time1 = 1 AND time2 > 0 AND author='foo' ALLOW FILTERING")
             assert rows_to_list(res) == [], res
 
             assert_invalid(cursor, "SELECT content FROM blogs WHERE time2 >= 0 AND author='foo'")
@@ -1878,8 +1933,10 @@ class TestCQL(UpgradeTester):
             cursor.execute("INSERT INTO compositetest(status,ctime,key,nil) VALUES ('C',12345679,'key5','')")
             cursor.execute("INSERT INTO compositetest(status,ctime,key,nil) VALUES ('C',12345680,'key6','')")
 
-            assert_invalid(cursor, "SELECT * FROM compositetest WHERE ctime>=12345679 AND key='key3' AND ctime<=12345680 LIMIT 3;")
-            assert_invalid(cursor, "SELECT * FROM compositetest WHERE ctime=12345679  AND key='key3' AND ctime<=12345680 LIMIT 3")
+            assert_invalid(
+                cursor, "SELECT * FROM compositetest WHERE ctime>=12345679 AND key='key3' AND ctime<=12345680 LIMIT 3;")
+            assert_invalid(
+                cursor, "SELECT * FROM compositetest WHERE ctime=12345679  AND key='key3' AND ctime<=12345680 LIMIT 3")
 
     def order_by_multikey_test(self):
         """ Test for #4612 bug and more generaly order by when multiple C* rows are queried """
@@ -1908,7 +1965,8 @@ class TestCQL(UpgradeTester):
             res = cursor.execute("SELECT col1 FROM test WHERE my_id in('key1', 'key2', 'key3') ORDER BY col1;")
             assert rows_to_list(res) == [[1], [2], [3]], res
 
-            res = cursor.execute("SELECT col1, value, my_id, col2 FROM test WHERE my_id in('key3', 'key4') ORDER BY col1, col2;")
+            res = cursor.execute(
+                "SELECT col1, value, my_id, col2 FROM test WHERE my_id in('key3', 'key4') ORDER BY col1, col2;")
             assert rows_to_list(res) == [[2, 'b', 'key4', 1], [2, 'b', 'key3', 2]], res
 
             assert_invalid(cursor, "SELECT col1 FROM test ORDER BY col1;")
@@ -2473,7 +2531,8 @@ class TestCQL(UpgradeTester):
             cursor.execute("TRUNCATE zipcodes")
 
             for d in data:
-                cursor.execute("INSERT INTO zipcodes (group, zipcode, state, fips_regions, city) VALUES ('%s', '%s', '%s', %i, '%s')" % d)
+                cursor.execute(
+                    "INSERT INTO zipcodes (group, zipcode, state, fips_regions, city) VALUES ('%s', '%s', '%s', %i, '%s')" % d)
 
             res = list(cursor.execute("select zipcode from zipcodes"))
             assert len(res) == 16, res
@@ -2492,22 +2551,28 @@ class TestCQL(UpgradeTester):
             if is_upgraded:
                 # the coordinator is the upgraded 2.2+ node
 
-                res = list(cursor.execute("select zipcode from zipcodes where group='test' and zipcode IN ('06902','73301','94102')"))
+                res = list(cursor.execute(
+                    "select zipcode from zipcodes where group='test' and zipcode IN ('06902','73301','94102')"))
                 assert len(res) == 3, res
 
-                res = list(cursor.execute("select zipcode from zipcodes where group='test' AND zipcode IN ('06902','73301','94102') and state IN ('CT','CA')"))
+                res = list(cursor.execute(
+                    "select zipcode from zipcodes where group='test' AND zipcode IN ('06902','73301','94102') and state IN ('CT','CA')"))
                 assert len(res) == 2, res
 
-                res = list(cursor.execute("select zipcode from zipcodes where group='test' AND zipcode IN ('06902','73301','94102') and state IN ('CT','CA') and fips_regions = 9"))
+                res = list(cursor.execute(
+                    "select zipcode from zipcodes where group='test' AND zipcode IN ('06902','73301','94102') and state IN ('CT','CA') and fips_regions = 9"))
                 assert len(res) == 1, res
 
-                res = list(cursor.execute("select zipcode from zipcodes where group='test' AND zipcode IN ('06902','73301','94102') and state IN ('CT','CA') ORDER BY zipcode DESC"))
+                res = list(cursor.execute(
+                    "select zipcode from zipcodes where group='test' AND zipcode IN ('06902','73301','94102') and state IN ('CT','CA') ORDER BY zipcode DESC"))
                 assert len(res) == 2, res
 
-                res = list(cursor.execute("select zipcode from zipcodes where group='test' AND zipcode IN ('06902','73301','94102') and state IN ('CT','CA') and fips_regions > 0"))
+                res = list(cursor.execute(
+                    "select zipcode from zipcodes where group='test' AND zipcode IN ('06902','73301','94102') and state IN ('CT','CA') and fips_regions > 0"))
                 assert len(res) == 2, res
 
-                res = list(cursor.execute("select zipcode from zipcodes where group='test' AND zipcode IN ('06902','73301','94102') and state IN ('CT','CA') and fips_regions < 0"))
+                res = list(cursor.execute(
+                    "select zipcode from zipcodes where group='test' AND zipcode IN ('06902','73301','94102') and state IN ('CT','CA') and fips_regions < 0"))
                 assert len(res) == 0, res
 
     @since('2.2')
@@ -2587,7 +2652,8 @@ class TestCQL(UpgradeTester):
             debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
             cursor.execute("TRUNCATE test")
 
-            assert_invalid(cursor, "INSERT INTO test (k, t) VALUES (0, 2012-11-07 18:18:22-0800)", expected=SyntaxException)
+            assert_invalid(cursor, "INSERT INTO test (k, t) VALUES (0, 2012-11-07 18:18:22-0800)",
+                           expected=SyntaxException)
 
             for i in range(4):
                 cursor.execute("INSERT INTO test (k, t) VALUES (0, now())")
@@ -2612,7 +2678,8 @@ class TestCQL(UpgradeTester):
             assert_invalid(cursor, "SELECT dateOf(k) FROM test WHERE k = 0 AND t = %s" % dates[0])
 
             cursor.execute("SELECT dateOf(t), unixTimestampOf(t) FROM test WHERE k = 0 AND t = %s" % dates[0])
-            cursor.execute("SELECT t FROM test WHERE k = 0 AND t > maxTimeuuid(1234567) AND t < minTimeuuid('2012-11-07 18:18:22-0800')")
+            cursor.execute(
+                "SELECT t FROM test WHERE k = 0 AND t > maxTimeuuid(1234567) AND t < minTimeuuid('2012-11-07 18:18:22-0800')")
             # not sure what to check exactly so just checking the query returns
 
     def float_with_exponent_test(self):
@@ -2739,7 +2806,8 @@ class TestCQL(UpgradeTester):
             res = cursor.execute("SELECT value FROM indexed WHERE pk0 = 3 AND pk1 = 4 AND ck1 = 0")
             self.assertEqual([[2]], rows_to_list(res))
 
-            res = cursor.execute("SELECT value FROM indexed WHERE pk0 = 5 AND pk1 = 0 AND ck0 = 1 AND ck2 = 3 ALLOW FILTERING")
+            res = cursor.execute(
+                "SELECT value FROM indexed WHERE pk0 = 5 AND pk1 = 0 AND ck0 = 1 AND ck2 = 3 ALLOW FILTERING")
             self.assertEqual([[4]], rows_to_list(res))
 
     def bug_5240_test(self):
@@ -2947,7 +3015,8 @@ class TestCQL(UpgradeTester):
             assert_one(cursor, "INSERT INTO test (k, v1, v2) VALUES (0, 2, 'foo') IF NOT EXISTS", [True])
 
             # Shouldn't apply
-            assert_one(cursor, "INSERT INTO test (k, v1, v2) VALUES (0, 5, 'bar') IF NOT EXISTS", [False, 0, 2, 'foo', None])
+            assert_one(cursor, "INSERT INTO test (k, v1, v2) VALUES (0, 5, 'bar') IF NOT EXISTS",
+                       [False, 0, 2, 'foo', None])
             assert_one(cursor, "SELECT * FROM test", [0, 2, 'foo', None])
 
             # Should not apply
@@ -2960,7 +3029,8 @@ class TestCQL(UpgradeTester):
             assert_one(cursor, "SELECT * FROM test", [0, 3, 'bar', None])
 
             # Shouldn't apply, only one condition is ok
-            assert_one(cursor, "UPDATE test SET v1 = 5, v2 = 'foobar' WHERE k = 0 IF v1 = 3 AND v2 = 'foo'", [False, 3, 'bar'])
+            assert_one(cursor, "UPDATE test SET v1 = 5, v2 = 'foobar' WHERE k = 0 IF v1 = 3 AND v2 = 'foo'",
+                       [False, 3, 'bar'])
             assert_one(cursor, "SELECT * FROM test", [0, 3, 'bar', None])
 
             # Should apply
@@ -3142,10 +3212,12 @@ class TestCQL(UpgradeTester):
             self.assertEqual('\x00\x00\x00\x00', res[0].id_blob)
 
             # test that select throws a meaningful exception for aliases in where clause
-            assert_invalid(cursor, 'SELECT id AS user_id, name AS user_name FROM users WHERE user_id = 0', matching="Aliases aren't allowed in the where clause")
+            assert_invalid(cursor, 'SELECT id AS user_id, name AS user_name FROM users WHERE user_id = 0',
+                           matching="Aliases aren't allowed in the where clause")
 
             # test that select throws a meaningful exception for aliases in order by clause
-            assert_invalid(cursor, 'SELECT id AS user_id, name AS user_name FROM users WHERE id IN (0) ORDER BY user_name', matching="Aliases are not allowed in order by clause")
+            assert_invalid(cursor, 'SELECT id AS user_id, name AS user_name FROM users WHERE id IN (0) ORDER BY user_name',
+                           matching="Aliases are not allowed in order by clause")
 
     def nonpure_function_collection_test(self):
         """ Test for bug #5795 """
@@ -3269,8 +3341,10 @@ class TestCQL(UpgradeTester):
             self.assertEqual([[0], [1], [2]], rows_to_list(sorted(res)))
 
             # Test selection validation.
-            assert_invalid(cursor, 'SELECT DISTINCT pk0 FROM regular', matching="queries must request all the partition key columns")
-            assert_invalid(cursor, 'SELECT DISTINCT pk0, pk1, ck0 FROM regular', matching="queries must only request partition key columns")
+            assert_invalid(cursor, 'SELECT DISTINCT pk0 FROM regular',
+                           matching="queries must request all the partition key columns")
+            assert_invalid(cursor, 'SELECT DISTINCT pk0, pk1, ck0 FROM regular',
+                           matching="queries must only request partition key columns")
 
     def select_distinct_with_deletions_test(self):
         cursor = self.prepare()
@@ -3326,10 +3400,13 @@ class TestCQL(UpgradeTester):
             cursor.execute("TRUNCATE tkns")
 
             for i in range(1, 10):
-                query = SimpleStatement("INSERT INTO tkns (tkn, consumed) VALUES (%i,FALSE);" % i, consistency_level=ConsistencyLevel.QUORUM)
+                query = SimpleStatement("INSERT INTO tkns (tkn, consumed) VALUES (%i,FALSE);" %
+                                        i, consistency_level=ConsistencyLevel.QUORUM)
                 cursor.execute(query)
-                assert_one(cursor, "UPDATE tkns SET consumed = TRUE WHERE tkn = %i IF consumed = FALSE;" % i, [True], cl=ConsistencyLevel.QUORUM)
-                assert_one(cursor, "UPDATE tkns SET consumed = TRUE WHERE tkn = %i IF consumed = FALSE;" % i, [False, True], cl=ConsistencyLevel.QUORUM)
+                assert_one(cursor, "UPDATE tkns SET consumed = TRUE WHERE tkn = %i IF consumed = FALSE;" %
+                           i, [True], cl=ConsistencyLevel.QUORUM)
+                assert_one(cursor, "UPDATE tkns SET consumed = TRUE WHERE tkn = %i IF consumed = FALSE;" %
+                           i, [False, True], cl=ConsistencyLevel.QUORUM)
 
     def bug_6050_test(self):
         cursor = self.prepare()
@@ -3375,7 +3452,8 @@ class TestCQL(UpgradeTester):
             cursor.execute("TRUNCATE test")
 
             cursor.execute("INSERT INTO test (k, v) VALUES (0, 1)")
-            cursor.execute("BEGIN BATCH DELETE FROM test WHERE k=0 AND v=1; INSERT INTO test (k, v) VALUES (0, 2); APPLY BATCH")
+            cursor.execute(
+                "BEGIN BATCH DELETE FROM test WHERE k=0 AND v=1; INSERT INTO test (k, v) VALUES (0, 2); APPLY BATCH")
 
             assert_one(cursor, "SELECT * FROM test", [0, 2])
 
@@ -3488,7 +3566,8 @@ class TestCQL(UpgradeTester):
             debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
             cursor.execute("TRUNCATE test")
 
-            cursor.execute("INSERT INTO test(id, val) VALUES (0, { s : {{ s : {'foo', 'bar'}, m : { 'foo' : 'bar' }, l : ['foo', 'bar']} }})")
+            cursor.execute(
+                "INSERT INTO test(id, val) VALUES (0, { s : {{ s : {'foo', 'bar'}, m : { 'foo' : 'bar' }, l : ['foo', 'bar']} }})")
 
             # TODO: check result once we have an easy way to do it. For now we just check it doesn't crash
             cursor.execute("SELECT * FROM test")
@@ -3758,7 +3837,8 @@ class TestCQL(UpgradeTester):
             # Test that INSERT IF NOT EXISTS concerns only the static column if no clustering nor regular columns
             # is provided, but concerns the CQL3 row targetted by the clustering columns otherwise
             cursor.execute("INSERT INTO test(id, k, v) VALUES (1, 'foo', 'foo')")
-            assert_one(cursor, "INSERT INTO test(id, k, version) VALUES (1, 'foo', 1) IF NOT EXISTS", [False, 1, 'foo', None, 'foo'])
+            assert_one(cursor, "INSERT INTO test(id, k, version) VALUES (1, 'foo', 1) IF NOT EXISTS",
+                       [False, 1, 'foo', None, 'foo'])
             assert_one(cursor, "INSERT INTO test(id, version) VALUES (1, 1) IF NOT EXISTS", [True])
             assert_one(cursor, "SELECT * FROM test", [1, 'foo', 1, 'foo'])
             cursor.execute("DELETE FROM test WHERE id = 1")
@@ -3854,7 +3934,8 @@ class TestCQL(UpgradeTester):
                            INSERT INTO TEST (id, k, v, version) VALUES(1, 'k3', 'val3', 1) IF NOT EXISTS;
                          APPLY BATCH
                        """, [True])
-            assert_all(cursor, "SELECT * FROM test WHERE id=1", [[1, 'k1', 1, 'val1'], [1, 'k2', 1, 'newVal'], [1, 'k3', 1, 'val3']])
+            assert_all(cursor, "SELECT * FROM test WHERE id=1",
+                       [[1, 'k1', 1, 'val1'], [1, 'k2', 1, 'newVal'], [1, 'k3', 1, 'val3']])
 
             assert_one(cursor,
                        """
@@ -3960,7 +4041,8 @@ class TestCQL(UpgradeTester):
             for i in range(10):
                 for j in range(5):
                     for k in range(5):
-                        cursor.execute("INSERT INTO test2 (k, c1, c2, s1, s2) VALUES (%s, %s, %s, %s, %s)", (i, j, k, i, i + 1))
+                        cursor.execute("INSERT INTO test2 (k, c1, c2, s1, s2) VALUES (%s, %s, %s, %s, %s)",
+                                       (i, j, k, i, i + 1))
 
             for fetch_size in (None, 2, 5, 7, 10, 24, 25, 26, 1000):
                 cursor.default_fetch_size = fetch_size
@@ -4050,9 +4132,11 @@ class TestCQL(UpgradeTester):
                                                                            [1, 1, 0],
                                                                            [1, 1, 1]])
 
-            assert_all(cursor, "SELECT v1, v2, v3 FROM test WHERE k = 0 AND (v1, v2, v3) >= (1, 0, 1)", [[1, 0, 1], [1, 1, 0], [1, 1, 1]])
+            assert_all(cursor, "SELECT v1, v2, v3 FROM test WHERE k = 0 AND (v1, v2, v3) >= (1, 0, 1)",
+                       [[1, 0, 1], [1, 1, 0], [1, 1, 1]])
             assert_all(cursor, "SELECT v1, v2, v3 FROM test WHERE k = 0 AND (v1, v2) >= (1, 1)", [[1, 1, 0], [1, 1, 1]])
-            assert_all(cursor, "SELECT v1, v2, v3 FROM test WHERE k = 0 AND (v1, v2) > (0, 1) AND (v1, v2, v3) <= (1, 1, 0)", [[1, 0, 0], [1, 0, 1], [1, 1, 0]])
+            assert_all(cursor, "SELECT v1, v2, v3 FROM test WHERE k = 0 AND (v1, v2) > (0, 1) AND (v1, v2, v3) <= (1, 1, 0)", [
+                       [1, 0, 0], [1, 0, 1], [1, 1, 0]])
 
             assert_invalid(cursor, "SELECT v1, v2, v3 FROM test WHERE k = 0 AND (v1, v3) > (1, 0)")
 
@@ -4098,10 +4182,14 @@ class TestCQL(UpgradeTester):
 
             assert_all(cursor, "SELECT * FROM test WHERE k=0 AND c1 = 0 AND c2 IN (0, 2)", [[0, 0, 0], [0, 0, 2]])
             assert_all(cursor, "SELECT * FROM test WHERE k=0 AND c1 = 0 AND c2 IN (2, 0)", [[0, 0, 0], [0, 0, 2]])
-            assert_all(cursor, "SELECT * FROM test WHERE k=0 AND c1 = 0 AND c2 IN (2, 0) ORDER BY c1 ASC", [[0, 0, 0], [0, 0, 2]])
-            assert_all(cursor, "SELECT * FROM test WHERE k=0 AND c1 = 0 AND c2 IN (2, 0) ORDER BY c1 DESC", [[0, 0, 2], [0, 0, 0]])
-            assert_all(cursor, "SELECT * FROM test WHERE k=0 AND c1 = 0 AND c2 IN (0, 2) ORDER BY c1 ASC", [[0, 0, 0], [0, 0, 2]])
-            assert_all(cursor, "SELECT * FROM test WHERE k=0 AND c1 = 0 AND c2 IN (0, 2) ORDER BY c1 DESC", [[0, 0, 2], [0, 0, 0]])
+            assert_all(cursor, "SELECT * FROM test WHERE k=0 AND c1 = 0 AND c2 IN (2, 0) ORDER BY c1 ASC",
+                       [[0, 0, 0], [0, 0, 2]])
+            assert_all(cursor, "SELECT * FROM test WHERE k=0 AND c1 = 0 AND c2 IN (2, 0) ORDER BY c1 DESC",
+                       [[0, 0, 2], [0, 0, 0]])
+            assert_all(cursor, "SELECT * FROM test WHERE k=0 AND c1 = 0 AND c2 IN (0, 2) ORDER BY c1 ASC",
+                       [[0, 0, 0], [0, 0, 2]])
+            assert_all(cursor, "SELECT * FROM test WHERE k=0 AND c1 = 0 AND c2 IN (0, 2) ORDER BY c1 DESC",
+                       [[0, 0, 2], [0, 0, 0]])
 
     def in_order_by_without_selecting_test(self):
         """ Test that columns don't need to be selected for ORDER BY when there is a IN (#4911) """
@@ -4122,7 +4210,8 @@ class TestCQL(UpgradeTester):
             cursor.execute("INSERT INTO test(k, c1, c2, v) VALUES (1, 1, 2, 5)")
 
             assert_all(cursor, "SELECT * FROM test WHERE k=0 AND c1 = 0 AND c2 IN (2, 0)", [[0, 0, 0, 0], [0, 0, 2, 2]])
-            assert_all(cursor, "SELECT * FROM test WHERE k=0 AND c1 = 0 AND c2 IN (2, 0) ORDER BY c1 ASC, c2 ASC", [[0, 0, 0, 0], [0, 0, 2, 2]])
+            assert_all(cursor, "SELECT * FROM test WHERE k=0 AND c1 = 0 AND c2 IN (2, 0) ORDER BY c1 ASC, c2 ASC",
+                       [[0, 0, 0, 0], [0, 0, 2, 2]])
 
             # check that we don't need to select the column on which we order
             assert_all(cursor, "SELECT v FROM test WHERE k=0 AND c1 = 0 AND c2 IN (2, 0)", [[0], [2]])
@@ -4193,7 +4282,8 @@ class TestCQL(UpgradeTester):
                 cursor.execute("INSERT INTO %s(k, l) VALUES (0, ['foo', 'bar', 'foobar'])" % (table,))
 
                 def check_applies(condition):
-                    assert_one(cursor, "UPDATE %s SET l = ['foo', 'bar', 'foobar'] WHERE k=0 IF %s" % (table, condition), [True])
+                    assert_one(cursor, "UPDATE %s SET l = ['foo', 'bar', 'foobar'] WHERE k=0 IF %s" % (
+                        table, condition), [True])
                     assert_one(cursor, "SELECT * FROM %s" % (table,), [0, ['foo', 'bar', 'foobar']])
 
                 check_applies("l = ['foo', 'bar', 'foobar']")
@@ -4228,7 +4318,8 @@ class TestCQL(UpgradeTester):
                 check_does_not_apply("l > ['zzz'] AND l < ['zzz']")
 
                 def check_invalid(condition, expected=InvalidRequest):
-                    assert_invalid(cursor, "UPDATE %s SET l = ['foo', 'bar', 'foobar'] WHERE k=0 IF %s" % (table, condition), expected=expected)
+                    assert_invalid(cursor, "UPDATE %s SET l = ['foo', 'bar', 'foobar'] WHERE k=0 IF %s" % (
+                        table, condition), expected=expected)
                     assert_one(cursor, "SELECT * FROM %s" % (table,), [0, ['foo', 'bar', 'foobar']])
 
                 check_invalid("l = [null]")
@@ -4272,8 +4363,10 @@ class TestCQL(UpgradeTester):
 
                 assert_invalid(cursor, "DELETE FROM %s WHERE k=0 IF l[null] = 'foobar'" % (table,))
                 assert_invalid(cursor, "DELETE FROM %s WHERE k=0 IF l[-2] = 'foobar'" % (table,))
-                assert_one(cursor, "DELETE FROM %s WHERE k=0 IF l[1] = null" % (table,), [False, ['foo', 'bar', 'foobar']])
-                assert_one(cursor, "DELETE FROM %s WHERE k=0 IF l[1] = 'foobar'" % (table,), [False, ['foo', 'bar', 'foobar']])
+                assert_one(cursor, "DELETE FROM %s WHERE k=0 IF l[1] = null" % (
+                    table,), [False, ['foo', 'bar', 'foobar']])
+                assert_one(cursor, "DELETE FROM %s WHERE k=0 IF l[1] = 'foobar'" % (
+                    table,), [False, ['foo', 'bar', 'foobar']])
                 assert_one(cursor, "SELECT * FROM %s" % (table,), [0, ['foo', 'bar', 'foobar']])
 
                 assert_one(cursor, "DELETE FROM %s WHERE k=0 IF l[1] = 'bar'" % (table,), [True])
@@ -4309,7 +4402,8 @@ class TestCQL(UpgradeTester):
                 cursor.execute("INSERT INTO %s(k, l) VALUES (0, ['foo', 'bar', 'foobar'])" % (table,))
 
                 def check_applies(condition):
-                    assert_one(cursor, "UPDATE %s SET l = ['foo', 'bar', 'foobar'] WHERE k=0 IF %s" % (table, condition), [True])
+                    assert_one(cursor, "UPDATE %s SET l = ['foo', 'bar', 'foobar'] WHERE k=0 IF %s" % (
+                        table, condition), [True])
                     assert_one(cursor, "SELECT * FROM %s" % (table,), [0, ['foo', 'bar', 'foobar']])
 
                 check_applies("l[1] < 'zzz'")
@@ -4326,7 +4420,8 @@ class TestCQL(UpgradeTester):
                 check_applies("l[3] IN (null, 'xxx', 'bar')")
 
                 def check_does_not_apply(condition):
-                    assert_one(cursor, "UPDATE %s SET l = ['foo', 'bar', 'foobar'] WHERE k=0 IF %s" % (table, condition), [False, ['foo', 'bar', 'foobar']])
+                    assert_one(cursor, "UPDATE %s SET l = ['foo', 'bar', 'foobar'] WHERE k=0 IF %s" % (
+                        table, condition), [False, ['foo', 'bar', 'foobar']])
                     assert_one(cursor, "SELECT * FROM %s" % (table,), [0, ['foo', 'bar', 'foobar']])
 
                 check_does_not_apply("l[1] < 'aaa'")
@@ -4343,7 +4438,8 @@ class TestCQL(UpgradeTester):
                 check_does_not_apply("l[3] = 'xxx'")
 
                 def check_invalid(condition, expected=InvalidRequest):
-                    assert_invalid(cursor, "UPDATE %s SET l = ['foo', 'bar', 'foobar'] WHERE k=0 IF %s" % (table, condition), expected=expected)
+                    assert_invalid(cursor, "UPDATE %s SET l = ['foo', 'bar', 'foobar'] WHERE k=0 IF %s" % (
+                        table, condition), expected=expected)
                     assert_one(cursor, "SELECT * FROM %s" % (table,), [0, ['foo', 'bar', 'foobar']])
 
                 check_invalid("l[1] < null")
@@ -4417,7 +4513,8 @@ class TestCQL(UpgradeTester):
                 check_does_not_apply("s != null AND s IN ()")
 
                 def check_invalid(condition, expected=InvalidRequest):
-                    assert_invalid(cursor, "UPDATE %s SET s = {'bar', 'foo'} WHERE k=0 IF %s" % (table, condition), expected=expected)
+                    assert_invalid(cursor, "UPDATE %s SET s = {'bar', 'foo'} WHERE k=0 IF %s" % (
+                        table, condition), expected=expected)
                     assert_one(cursor, "SELECT * FROM %s" % (table,), [0, {'bar', 'foo'}])
 
                 check_invalid("s = {null}")
@@ -4479,7 +4576,8 @@ class TestCQL(UpgradeTester):
                 check_applies("m != null AND m IN (null, {'a': 'a'}, {'foo': 'bar'})")
 
                 def check_does_not_apply(condition):
-                    assert_one(cursor, "UPDATE %s SET m = {'foo': 'bar'} WHERE k=0 IF %s" % (table, condition), [False, {'foo': 'bar'}])
+                    assert_one(cursor, "UPDATE %s SET m = {'foo': 'bar'} WHERE k=0 IF %s" % (
+                        table, condition), [False, {'foo': 'bar'}])
                     assert_one(cursor, "SELECT * FROM %s" % (table,), [0, {'foo': 'bar'}])
 
                 # should not apply
@@ -4494,7 +4592,8 @@ class TestCQL(UpgradeTester):
                 check_does_not_apply("m = null AND m != null")
 
                 def check_invalid(condition, expected=InvalidRequest):
-                    assert_invalid(cursor, "UPDATE %s SET m = {'foo': 'bar'} WHERE k=0 IF %s" % (table, condition), expected=expected)
+                    assert_invalid(cursor, "UPDATE %s SET m = {'foo': 'bar'} WHERE k=0 IF %s" % (
+                        table, condition), expected=expected)
                     assert_one(cursor, "SELECT * FROM %s" % (table,), [0, {'foo': 'bar'}])
 
                 check_invalid("m = {null: null}")
@@ -4544,9 +4643,11 @@ class TestCQL(UpgradeTester):
                 if self.get_version() > "2.1.1":
                     cursor.execute("INSERT INTO %s(k, m) VALUES (1, null)" % (table,))
                     if frozen:
-                        assert_invalid(cursor, "UPDATE %s set m['foo'] = 'bar', m['bar'] = 'foo' WHERE k = 1 IF m['foo'] IN ('blah', null)" % (table,))
+                        assert_invalid(
+                            cursor, "UPDATE %s set m['foo'] = 'bar', m['bar'] = 'foo' WHERE k = 1 IF m['foo'] IN ('blah', null)" % (table,))
                     else:
-                        assert_one(cursor, "UPDATE %s set m['foo'] = 'bar', m['bar'] = 'foo' WHERE k = 1 IF m['foo'] IN ('blah', null)" % (table,), [True])
+                        assert_one(
+                            cursor, "UPDATE %s set m['foo'] = 'bar', m['bar'] = 'foo' WHERE k = 1 IF m['foo'] IN ('blah', null)" % (table,), [True])
 
     @since('2.1.1')
     def expanded_map_item_conditional_test(self):
@@ -4594,7 +4695,8 @@ class TestCQL(UpgradeTester):
                 check_applies("m['foo'] < 'zzz' AND m['foo'] > 'aaa'")
 
                 def check_does_not_apply(condition):
-                    assert_one(cursor, "UPDATE %s SET m = {'foo': 'bar'} WHERE k=0 IF %s" % (table, condition), [False, {'foo': 'bar'}])
+                    assert_one(cursor, "UPDATE %s SET m = {'foo': 'bar'} WHERE k=0 IF %s" % (
+                        table, condition), [False, {'foo': 'bar'}])
                     assert_one(cursor, "SELECT * FROM %s" % (table,), [0, {'foo': 'bar'}])
 
                 check_does_not_apply("m['foo'] < 'aaa'")
@@ -4608,7 +4710,8 @@ class TestCQL(UpgradeTester):
                 check_does_not_apply("m['foo'] != null AND m['foo'] = null")
 
                 def check_invalid(condition, expected=InvalidRequest):
-                    assert_invalid(cursor, "UPDATE %s SET m = {'foo': 'bar'} WHERE k=0 IF %s" % (table, condition), expected=expected)
+                    assert_invalid(cursor, "UPDATE %s SET m = {'foo': 'bar'} WHERE k=0 IF %s" % (
+                        table, condition), expected=expected)
                     assert_one(cursor, "SELECT * FROM %s" % (table,), [0, {'foo': 'bar'}])
 
                 check_invalid("m['foo'] < null")
@@ -4721,8 +4824,10 @@ class TestCQL(UpgradeTester):
             assert_all(cursor, "SELECT v FROM test WHERE k=0 AND v > -1 AND v <= 4 LIMIT 2", [[0], [1]])
 
             assert_all(cursor, "SELECT * FROM test WHERE k IN (0, 1, 2) AND v > 0 AND v <= 4 LIMIT 2", [[0, 1], [0, 2]])
-            assert_all(cursor, "SELECT * FROM test WHERE k IN (0, 1, 2) AND v > -1 AND v <= 4 LIMIT 2", [[0, 0], [0, 1]])
-            assert_all(cursor, "SELECT * FROM test WHERE k IN (0, 1, 2) AND v > 0 AND v <= 4 LIMIT 6", [[0, 1], [0, 2], [0, 3], [1, 1], [1, 2], [1, 3]])
+            assert_all(cursor, "SELECT * FROM test WHERE k IN (0, 1, 2) AND v > -1 AND v <= 4 LIMIT 2",
+                       [[0, 0], [0, 1]])
+            assert_all(cursor, "SELECT * FROM test WHERE k IN (0, 1, 2) AND v > 0 AND v <= 4 LIMIT 6",
+                       [[0, 1], [0, 2], [0, 3], [1, 1], [1, 2], [1, 3]])
 
             # This doesn't work -- see #7059
             # assert_all(cursor, "SELECT * FROM test WHERE v > 1 AND v <= 3 LIMIT 6 ALLOW FILTERING", [[1, 2], [1, 3], [0, 2], [0, 3], [2, 2], [2, 3]])
@@ -4755,7 +4860,8 @@ class TestCQL(UpgradeTester):
             cursor.execute("INSERT INTO test(k1, k2, v) VALUES (2, 1, 8)")
             cursor.execute("INSERT INTO test(k1, k2, v) VALUES (3, 0, 1)")
 
-            assert_all(cursor, "SELECT * FROM test WHERE k2 = 0 AND v >= 2 ALLOW FILTERING", [[2, 0, 7], [0, 0, 3], [1, 0, 4]])
+            assert_all(cursor, "SELECT * FROM test WHERE k2 = 0 AND v >= 2 ALLOW FILTERING",
+                       [[2, 0, 7], [0, 0, 3], [1, 0, 4]])
 
     def invalid_custom_timestamp_test(self):
         cursor = self.prepare()
@@ -4770,9 +4876,12 @@ class TestCQL(UpgradeTester):
             cursor.execute("TRUNCATE test")
             cursor.execute("TRUNCATE counters")
 
-            cursor.execute("BEGIN BATCH INSERT INTO test(k, v) VALUES(0, 0) IF NOT EXISTS; INSERT INTO test(k, v) VALUES(0, 1) IF NOT EXISTS; APPLY BATCH")
-            assert_invalid(cursor, "BEGIN BATCH INSERT INTO test(k, v) VALUES(0, 2) IF NOT EXISTS USING TIMESTAMP 1; INSERT INTO test(k, v) VALUES(0, 3) IF NOT EXISTS; APPLY BATCH")
-            assert_invalid(cursor, "BEGIN BATCH USING TIMESTAMP 1 INSERT INTO test(k, v) VALUES(0, 4) IF NOT EXISTS; INSERT INTO test(k, v) VALUES(0, 1) IF NOT EXISTS; APPLY BATCH")
+            cursor.execute(
+                "BEGIN BATCH INSERT INTO test(k, v) VALUES(0, 0) IF NOT EXISTS; INSERT INTO test(k, v) VALUES(0, 1) IF NOT EXISTS; APPLY BATCH")
+            assert_invalid(
+                cursor, "BEGIN BATCH INSERT INTO test(k, v) VALUES(0, 2) IF NOT EXISTS USING TIMESTAMP 1; INSERT INTO test(k, v) VALUES(0, 3) IF NOT EXISTS; APPLY BATCH")
+            assert_invalid(
+                cursor, "BEGIN BATCH USING TIMESTAMP 1 INSERT INTO test(k, v) VALUES(0, 4) IF NOT EXISTS; INSERT INTO test(k, v) VALUES(0, 1) IF NOT EXISTS; APPLY BATCH")
 
             cursor.execute("INSERT INTO test(k, v) VALUES(1, 0) IF NOT EXISTS")
             assert_invalid(cursor, "INSERT INTO test(k, v) VALUES(1, 1) IF NOT EXISTS USING TIMESTAMP 5")
@@ -4781,9 +4890,12 @@ class TestCQL(UpgradeTester):
             cursor.execute("UPDATE counters SET c = c + 1 WHERE k = 0")
             assert_invalid(cursor, "UPDATE counters USING TIMESTAMP 10 SET c = c + 1 WHERE k = 0")
 
-            cursor.execute("BEGIN COUNTER BATCH UPDATE counters SET c = c + 1 WHERE k = 0; UPDATE counters SET c = c + 1 WHERE k = 0; APPLY BATCH")
-            assert_invalid(cursor, "BEGIN COUNTER BATCH UPDATE counters USING TIMESTAMP 3 SET c = c + 1 WHERE k = 0; UPDATE counters SET c = c + 1 WHERE k = 0; APPLY BATCH")
-            assert_invalid(cursor, "BEGIN COUNTER BATCH USING TIMESTAMP 3 UPDATE counters SET c = c + 1 WHERE k = 0; UPDATE counters SET c = c + 1 WHERE k = 0; APPLY BATCH")
+            cursor.execute(
+                "BEGIN COUNTER BATCH UPDATE counters SET c = c + 1 WHERE k = 0; UPDATE counters SET c = c + 1 WHERE k = 0; APPLY BATCH")
+            assert_invalid(
+                cursor, "BEGIN COUNTER BATCH UPDATE counters USING TIMESTAMP 3 SET c = c + 1 WHERE k = 0; UPDATE counters SET c = c + 1 WHERE k = 0; APPLY BATCH")
+            assert_invalid(
+                cursor, "BEGIN COUNTER BATCH USING TIMESTAMP 3 UPDATE counters SET c = c + 1 WHERE k = 0; UPDATE counters SET c = c + 1 WHERE k = 0; APPLY BATCH")
 
     def clustering_order_in_test(self):
         """Test for #7105 bug"""
@@ -4854,11 +4966,14 @@ class TestCQL(UpgradeTester):
             debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
             cursor.execute("TRUNCATE session_data")
 
-            assert_one(cursor, "select count(*) from session_data where app_name='foo' and account='bar' and last_access > 4 allow filtering", [0])
+            assert_one(
+                cursor, "select count(*) from session_data where app_name='foo' and account='bar' and last_access > 4 allow filtering", [0])
 
-            cursor.execute("insert into session_data (username, session_id, app_name, account, last_access, created_on) values ('toto', 'foo', 'foo', 'bar', 12, 13)")
+            cursor.execute(
+                "insert into session_data (username, session_id, app_name, account, last_access, created_on) values ('toto', 'foo', 'foo', 'bar', 12, 13)")
 
-            assert_one(cursor, "select count(*) from session_data where app_name='foo' and account='bar' and last_access > 4 allow filtering", [1])
+            assert_one(
+                cursor, "select count(*) from session_data where app_name='foo' and account='bar' and last_access > 4 allow filtering", [1])
 
     def blobAs_functions_test(self):
         cursor = self.prepare()
@@ -5036,7 +5151,8 @@ class TestCQL(UpgradeTester):
             cursor.execute("INSERT INTO test (k, v) VALUES ( 0, {'e', 'a', 'd', 'b'})")
             cursor.execute("INSERT INTO test (k, v) VALUES ( 1, {'c', 'f', 'd', 'b'})")
 
-            assert_all(cursor, "SELECT v FROM test", [[sortedset(['b', 'c', 'd', 'f'])], [sortedset(['a', 'b', 'd', 'e'])]])
+            assert_all(cursor, "SELECT v FROM test", [
+                       [sortedset(['b', 'c', 'd', 'f'])], [sortedset(['a', 'b', 'd', 'e'])]])
             assert_all(cursor, "SELECT v['a'] FROM test", [[True], [False]])
             assert_all(cursor, "SELECT v['c'] FROM test", [[False], [True]])
 
@@ -5084,7 +5200,8 @@ class TestCQL(UpgradeTester):
         cursor = self.prepare()
         node1 = self.cluster.nodelist()[0]
 
-        cursor.execute("CREATE  KEYSPACE space1 WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}")
+        cursor.execute(
+            "CREATE  KEYSPACE space1 WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}")
         cursor.execute("CREATE  TABLE space1.table1(a int, b int, c text,primary key(a,b))")
 
         for is_upgraded, cursor in self.do_upgrade(cursor):
@@ -5120,9 +5237,11 @@ class TestCQL(UpgradeTester):
         start = time.time()
         while True:
             if self.node_version_above('3.0'):
-                results = cursor.execute("""SELECT * FROM system_schema.indexes WHERE keyspace_name = 'ks' AND table_name = 'test' AND index_name = 'testindex'""")
+                results = cursor.execute(
+                    """SELECT * FROM system_schema.indexes WHERE keyspace_name = 'ks' AND table_name = 'test' AND index_name = 'testindex'""")
             else:
-                results = cursor.execute("""SELECT * FROM system."IndexInfo" WHERE table_name = 'ks' AND index_name = 'test.testindex'""")
+                results = cursor.execute(
+                    """SELECT * FROM system."IndexInfo" WHERE table_name = 'ks' AND index_name = 'test.testindex'""")
             if results:
                 break
 

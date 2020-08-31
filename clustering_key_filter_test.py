@@ -26,7 +26,8 @@ class ClusteringKeyFilterTest(Tester):
     def check_consistence_after_row_tombstone_test(self):
         node1 = self.start_cluster_and_get_node1()
 
-        query = 'CREATE COLUMNFAMILY ks.cf (p1 text, c1 text, r1 int, PRIMARY KEY (p1, c1)) WITH compaction= {' + self._strategy_props() + '};'
+        query = 'CREATE COLUMNFAMILY ks.cf (p1 text, c1 text, r1 int, PRIMARY KEY (p1, c1)) WITH compaction= {' + self._strategy_props(
+        ) + '};'
         self.create_ks_and_cf(node1, query)
 
         query = 'INSERT INTO ks.cf (p1, c1, r1) VALUES (\'key1\', \'a\', 1);'
@@ -53,15 +54,16 @@ class ClusteringKeyFilterTest(Tester):
     def check_non_composite_test(self):
         node1 = self.start_cluster_and_get_node1()
 
-        query = 'CREATE COLUMNFAMILY ks.cf (p1 text, c1 text, r1 int, PRIMARY KEY (p1, c1)) WITH compaction= {' + self._strategy_props() + '};'
-        #print query
+        query = 'CREATE COLUMNFAMILY ks.cf (p1 text, c1 text, r1 int, PRIMARY KEY (p1, c1)) WITH compaction= {' + self._strategy_props(
+        ) + '};'
+        # print query
         self.create_ks_and_cf(node1, query)
 
         query = 'INSERT INTO ks.cf (p1, c1, r1) VALUES (\'key1\', \'a\', 1);'
-        #print query
+        # print query
         self.insert(node1, query)
         query = 'INSERT INTO ks.cf (p1, c1, r1) VALUES (\'key1\', \'b\', 1);'
-        #print query
+        # print query
         self.insert(node1, query)
 
         self.check_number_of_rows(node1, 2)
@@ -99,7 +101,8 @@ class ClusteringKeyFilterTest(Tester):
     def check_composite_test(self):
         node1 = self.start_cluster_and_get_node1()
 
-        query = 'CREATE COLUMNFAMILY ks.cf (p1 text, c1 text, c2 text, r1 int, PRIMARY KEY (p1, c1, c2)) WITH compaction= {' + self._strategy_props() + '};'
+        query = 'CREATE COLUMNFAMILY ks.cf (p1 text, c1 text, c2 text, r1 int, PRIMARY KEY (p1, c1, c2)) WITH compaction= {' + self._strategy_props(
+        ) + '};'
         self.create_ks_and_cf(node1, query)
 
         query = 'INSERT INTO ks.cf (p1, c1, c2, r1) VALUES (\'key1\', \'a\', \'1\', 1);'
@@ -168,7 +171,8 @@ class ClusteringKeyFilterTest(Tester):
     def check_composite_2_test(self):
         node1 = self.start_cluster_and_get_node1()
 
-        query = 'CREATE COLUMNFAMILY ks.cf (p1 text, c1 text, c2 text, r1 int, PRIMARY KEY (p1, c1, c2)) WITH compaction= {' + self._strategy_props() + '};'
+        query = 'CREATE COLUMNFAMILY ks.cf (p1 text, c1 text, c2 text, r1 int, PRIMARY KEY (p1, c1, c2)) WITH compaction= {' + self._strategy_props(
+        ) + '};'
         self.create_ks_and_cf(node1, query)
 
         # This will create a sstable with min max ranges [a, a] and [c, c].
@@ -254,6 +258,7 @@ class ClusteringKeyFilterTest(Tester):
         if flush:
             node1.nodetool("flush -- ks")
             time.sleep(0.2)
+
 
 strategies = ['DateTieredCompactionStrategy', 'NullCompactionStrategy']
 for strategy in strategies:

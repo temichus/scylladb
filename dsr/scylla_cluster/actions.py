@@ -233,6 +233,7 @@ class FlushNode(NodeAction):
     """
     Not tested
     """
+
     def perform_action(self, tester, target_node):
         target_node.flush()
 
@@ -249,6 +250,7 @@ class DecommissionNode(NodeAction):
     """
     Not tested
     """
+
     def perform_action(self, tester, target_node):
         target_node.decommission()
 
@@ -408,7 +410,7 @@ class ReplaceNode(NodeAction):
                 gently=self.gently,
                 wait=self.wait,
                 wait_other_notice=self.wait_other_notice
-                )
+            )
             new_node.set_configuration_options(values={'auto_bootstrap': ''})
             new_node.start(replace_address=replaced_host_address)
         else:

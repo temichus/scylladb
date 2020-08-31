@@ -46,7 +46,8 @@ class TokenGenerator(Tester):
                     node_num = int(m.group(1))
                     node_token = int(m.group(2))
                     dc_tokens.append(node_token)
-                    self.assertEqual(node_num, dc_tokens.__len__(), "invalid token count from token-generator %r" % args)
+                    self.assertEqual(node_num, dc_tokens.__len__(),
+                                     "invalid token count from token-generator %r" % args)
         self.assertIsNotNone(dc_tokens, "No tokens from token-generator %r" % args)
         self.assertGreater(dc_tokens.__len__(), 0, "No tokens from token-generator %r" % args)
         generated_tokens.append(dc_tokens)
@@ -133,14 +134,16 @@ class TokenGenerator(Tester):
                 tokens = generated_tokens[n]
                 self.assertEqual(nodes, tokens.__len__())
                 for tok in tokens:
-                    self.assertTrue(t_min <= tok < t_max, "Generated token %r out of Murmur3Partitioner range %r..%r" % (tok, t_min, t_max - 1))
-                    self.assertTrue(not all_tokens.__contains__(tok), "Duplicate token %r for nodes-counts %r" % (tok, dc_nodes))
+                    self.assertTrue(t_min <= tok < t_max,
+                                    "Generated token %r out of Murmur3Partitioner range %r..%r" % (tok, t_min, t_max - 1))
+                    self.assertTrue(not all_tokens.__contains__(
+                        tok), "Duplicate token %r for nodes-counts %r" % (tok, dc_nodes))
                     all_tokens.add(tok)
-            self.assertEqual(all_tokens.__len__(), node_count, "Number of tokens %r and number of nodes %r does not match for %r" % (all_tokens.__len__(), node_count, dc_nodes))
+            self.assertEqual(all_tokens.__len__(), node_count, "Number of tokens %r and number of nodes %r does not match for %r" % (
+                all_tokens.__len__(), node_count, dc_nodes))
 
     def multi_dc_tokens_default_test(self):
         self._multi_dc_tokens()
 
     def multi_dc_tokens_murmur3_test(self):
         self._multi_dc_tokens(False)
-

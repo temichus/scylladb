@@ -178,7 +178,8 @@ class BaseOperationsHelper():
         return all_data
 
     def populate_table_with_static_field(self, session):
-        all_data = [['teststring{0}'.format(i), '{0}teststring'.format(i), 'test{0}string'.format(i), 'static teststring'] for i in range(5)]
+        all_data = [['teststring{0}'.format(i), '{0}teststring'.format(
+            i), 'test{0}string'.format(i), 'static teststring'] for i in range(5)]
 
         for data in all_data:
             session.execute("INSERT INTO test (pk, ck, test, cl_static) \
@@ -1295,7 +1296,6 @@ class TestLikeOperatorForBaseTable(Tester, BaseOperationsHelper):
         assert_none(session,
                     query="SELECT * FROM test WHERE ck LIKE '_' and ck = '1teststring' ALLOW FILTERING")
 
-
     def test_cl_filtering_of_ascii_type_with_underscore_sign(self):
         """Test filtering with LIKE operator by column
 
@@ -1439,7 +1439,8 @@ class TestLikeOperatorForBaseTable(Tester, BaseOperationsHelper):
                            matching="LIKE is allowed only on string types")
 
             assert_invalid(session,
-                           query="SELECT * FROM t_{0} WHERE cl_{0} LIKE '_' AND cl_text LIKE '%1%' ALLOW FILTERING".format(data_type),
+                           query="SELECT * FROM t_{0} WHERE cl_{0} LIKE '_' AND cl_text LIKE '%1%' ALLOW FILTERING".format(
+                               data_type),
                            matching="LIKE is allowed only on string types"
                            )
 
@@ -1523,12 +1524,14 @@ class TestLikeOperatorForBaseTable(Tester, BaseOperationsHelper):
         self.assertEqual(len(row), 1)
         self.assertIn(row[0], all_data)
 
-        rows = rows_to_list(session.execute("SELECT * FROM test WHERE test LIKE 'test%' PER PARTITION LIMIT 1 ALLOW FILTERING"))
+        rows = rows_to_list(session.execute(
+            "SELECT * FROM test WHERE test LIKE 'test%' PER PARTITION LIMIT 1 ALLOW FILTERING"))
         self.assertEqual(len(rows), 5)
         for row in rows:
             self.assertIn(row, all_data)
 
-        rows = rows_to_list(session.execute("SELECT * FROM test WHERE test LIKE 'test%' PER PARTITION LIMIT 2 ALLOW FILTERING"))
+        rows = rows_to_list(session.execute(
+            "SELECT * FROM test WHERE test LIKE 'test%' PER PARTITION LIMIT 2 ALLOW FILTERING"))
         self.assertEqual(len(rows), 10)
         for row in rows:
             self.assertIn(row, all_data)
@@ -2001,7 +2004,8 @@ class TestLikeOperatorForBaseTable(Tester, BaseOperationsHelper):
         assert_none(session,
                     query="SELECT * FROM test WHERE pk in ('teststring1', 'teststring0') AND ck > '0teststring' AND test LIKE 'test0string' ALLOW FILTERING")
 
-        expected_rows = list(filter(lambda x: ("0" in x[0] or "1" in x[0]) and "1" in x[1] and ("1" in x[2] or "0" in x[2]), all_data))
+        expected_rows = list(filter(lambda x: ("0" in x[0] or "1" in x[0])
+                                    and "1" in x[1] and ("1" in x[2] or "0" in x[2]), all_data))
         assert_all(session,
                    query="SELECT * FROM test WHERE pk in ('teststring1', 'teststring0') AND ck > '0teststring' AND test LIKE 'test_string' ALLOW FILTERING",
                    expected=expected_rows,
@@ -2017,7 +2021,6 @@ class TestLikeOperatorForBaseTable(Tester, BaseOperationsHelper):
                        ['teststring2', '1teststring', 'test1string'],
                    ],
                    ignore_order=True)
-
 
     def test_filtering_after_update_values(self):
         session = self.prepare_simple_table_with_column_type()

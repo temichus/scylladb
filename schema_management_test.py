@@ -76,14 +76,16 @@ class SchemaManagementTest(Tester):
         node1 = self.cluster.nodelist()[0]
         session = self.patient_cql_connection(node1)
 
-        session.execute("CREATE KEYSPACE testxyz WITH replication = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 }")
+        session.execute(
+            "CREATE KEYSPACE testxyz WITH replication = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 }")
         for i in range(8):
             session.execute("CREATE TABLE testxyz.test_%d (k int, c int, PRIMARY KEY (k),)" % i)
         session.execute("drop keyspace testxyz")
 
         for node in self.cluster.nodelist():
             s = self.patient_cql_connection(node)
-            s.execute("CREATE KEYSPACE testxyz WITH replication = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 }")
+            s.execute(
+                "CREATE KEYSPACE testxyz WITH replication = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 }")
             s.execute("drop keyspace testxyz")
 
     @skip('unimplemented')
@@ -203,7 +205,7 @@ class SchemaManagementTest(Tester):
         raise NotImplementedError
 
     def test_reads_schema_recreated_while_node_down(self):
-        self.cluster.set_configuration_options(values={ 'ring_delay_ms': 5000 })
+        self.cluster.set_configuration_options(values={'ring_delay_ms': 5000})
         self.cluster.populate(2)
         self.cluster.start(wait_other_notice=True)
 
@@ -216,7 +218,8 @@ class SchemaManagementTest(Tester):
         session.execute("CREATE TABLE cf (p int PRIMARY KEY, v text);")
 
         debug('Populating')
-        session.execute(SimpleStatement("INSERT INTO cf (p, v) VALUES (1, '1')", consistency_level = ConsistencyLevel.ALL))
+        session.execute(SimpleStatement("INSERT INTO cf (p, v) VALUES (1, '1')",
+                                        consistency_level=ConsistencyLevel.ALL))
 
         debug("Stopping node2")
         node2.stop(gently=True)
@@ -228,13 +231,13 @@ class SchemaManagementTest(Tester):
         debug("Restarting node2")
         node2.start(wait_for_binary_proto=True)
 
-        rows = session.execute(SimpleStatement("SELECT * FROM cf", consistency_level = ConsistencyLevel.ALL))
+        rows = session.execute(SimpleStatement("SELECT * FROM cf", consistency_level=ConsistencyLevel.ALL))
         assert rows_to_list(rows) == [], "Expected an empty result set, got %s" % (rows)
 
     @attr('next-gating')
     @attr('dtest-debug')
     def test_writes_schema_recreated_while_node_down(self):
-        self.cluster.set_configuration_options(values={ 'ring_delay_ms': 5000 })
+        self.cluster.set_configuration_options(values={'ring_delay_ms': 5000})
         self.cluster.populate(2)
         self.cluster.start(wait_other_notice=True)
 
@@ -247,7 +250,8 @@ class SchemaManagementTest(Tester):
         session.execute("CREATE TABLE cf (p int PRIMARY KEY, v text);")
 
         debug('Populating')
-        session.execute(SimpleStatement("INSERT INTO cf (p, v) VALUES (1, '1')", consistency_level = ConsistencyLevel.ALL))
+        session.execute(SimpleStatement("INSERT INTO cf (p, v) VALUES (1, '1')",
+                                        consistency_level=ConsistencyLevel.ALL))
 
         debug("Stopping node2")
         node2.stop(gently=True)
@@ -259,11 +263,13 @@ class SchemaManagementTest(Tester):
         debug("Restarting node2")
         node2.start(wait_for_binary_proto=True)
 
-        session.execute(SimpleStatement("INSERT INTO cf (p, v) VALUES (2, '2')", consistency_level = ConsistencyLevel.ALL))
+        session.execute(SimpleStatement("INSERT INTO cf (p, v) VALUES (2, '2')",
+                                        consistency_level=ConsistencyLevel.ALL))
 
-        rows = session.execute(SimpleStatement("SELECT * FROM cf", consistency_level = ConsistencyLevel.ALL))
+        rows = session.execute(SimpleStatement("SELECT * FROM cf", consistency_level=ConsistencyLevel.ALL))
         expected = [[2, '2']]
         assert rows_to_list(rows) == expected, "Expected %s, got %s" % (expected, rows_to_list(rows))
+
 
 class LargePartitionAlterSchema(Tester):
     # Issue scylladb/scylla: #5135:

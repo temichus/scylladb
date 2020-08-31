@@ -82,7 +82,8 @@ class TestOfflineTools(Tester):
         # test by writing small amount of data and flushing (all sstables should be level 0)
         cluster.start(wait_for_binary_proto=True)
         session = self.patient_cql_connection(node1)
-        session.execute("ALTER TABLE keyspace1.standard1 with compaction={'class': 'LeveledCompactionStrategy', 'sstable_size_in_mb':1};")
+        session.execute(
+            "ALTER TABLE keyspace1.standard1 with compaction={'class': 'LeveledCompactionStrategy', 'sstable_size_in_mb':1};")
         node1.stress(['write', 'n=1K', '-schema', 'replication(factor=1)'])
         node1.flush()
         cluster.stop(gently=False)
@@ -166,7 +167,8 @@ class TestOfflineTools(Tester):
         # test by flushing (sstable should be level 0)
         cluster.start(wait_for_binary_proto=True)
         session = self.patient_cql_connection(node1)
-        session.execute("ALTER TABLE keyspace1.standard1 with compaction={'class': 'LeveledCompactionStrategy', 'sstable_size_in_mb':1};")
+        session.execute(
+            "ALTER TABLE keyspace1.standard1 with compaction={'class': 'LeveledCompactionStrategy', 'sstable_size_in_mb':1};")
 
         node1.stress(['write', 'n=1K', '-schema', 'replication(factor=1)'])
 

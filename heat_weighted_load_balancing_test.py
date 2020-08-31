@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 from nose.plugins.attrib import attr
 from tools import create_stress_compatible_table
 
+
 @attr('dtest-full')
 class HeatWeightedLB(Tester):
 
@@ -66,15 +67,17 @@ class HeatWeightedLB(Tester):
                     else:
                         # parameter's delta on the restarted node is less from 3 to 13 times
                         mean_window = 5
-                        mean_avg = sum([metrics[key][node_ind][j]['delta'] for j in range(i, i + mean_window)]) / mean_window
-                        node_mean_avg = sum([metrics[key][2][j]['delta'] for j in range(i, i + mean_window)]) / mean_window
+                        mean_avg = sum([metrics[key][node_ind][j]['delta']
+                                        for j in range(i, i + mean_window)]) / mean_window
+                        node_mean_avg = sum([metrics[key][2][j]['delta']
+                                             for j in range(i, i + mean_window)]) / mean_window
                         ratio = mean_avg / node_mean_avg
                         lower_bound = 1 + 2 * (50 - i) / 40
                         upper_bound = 11 + 2 * (50 - i) / 40
                         err_msg = 'Cache difference between node{} and node2 is out of range: {}/{}={} expected to be {} < ratio <= {}. index={} metric {}'.format(
-                                    node_ind, mean_avg, node_mean_avg, ratio,
-                                    lower_bound, upper_bound,
-                                    i, key)
+                            node_ind, mean_avg, node_mean_avg, ratio,
+                            lower_bound, upper_bound,
+                            i, key)
                         assert ratio > lower_bound and ratio <= upper_bound, err_msg
         key = 'scylla_column_family_cache_hit_rate.*cf=.*standard1'
         last_drop = None
@@ -121,7 +124,7 @@ class HeatWeightedLB(Tester):
         def run_read():
             debug('Run stress read')
             resp = self.node1.stress_object(
-                ['read', 'cl=QUORUM', 'duration=1m','-schema', 'replication(factor=3)', '-rate', 'threads>=4', 'threads<=64',
+                ['read', 'cl=QUORUM', 'duration=1m', '-schema', 'replication(factor=3)', '-rate', 'threads>=4', 'threads<=64',
                  '-pop', 'seq=1..{}'.format(self._op_cnt)])
             if not resp or 'total partitions:read' not in resp:
                 raise Exception('Error running stress test: {}'.format(resp))

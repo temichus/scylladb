@@ -112,7 +112,8 @@ class TestIncRepair(Tester):
 
         debug("replace node and check data integrity")
         node3.stop(gently=False)
-        node5 = Node('node5', cluster, True, ('127.0.0.5', 9160), ('127.0.0.5', 7000), '7500', '0', None, ('127.0.0.5', 9042))
+        node5 = Node('node5', cluster, True, ('127.0.0.5', 9160),
+                     ('127.0.0.5', 7000), '7500', '0', None, ('127.0.0.5', 9042))
         cluster.add(node5, False)
         node5.start(replace_address='127.0.0.3', wait_other_notice=True)
 

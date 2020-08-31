@@ -110,7 +110,8 @@ class CompactionAdditionalTest(Tester):
             jsoninfo = g.read()
 
         numfound = jsoninfo.count("marked_deleted")
-        debug("{} keys are now marked_deleted (0 {} expected < {})".format(numfound, "<" if num_compactions < 2 else "<=", keys))
+        debug("{} keys are now marked_deleted (0 {} expected < {})".format(
+            numfound, "<" if num_compactions < 2 else "<=", keys))
         self.assertLess(numfound, keys)
         if num_compactions < 2:
             self.assertGreater(numfound, 0)
@@ -196,7 +197,8 @@ class CompactionAdditionalTest(Tester):
         # Write data for x4 time than the window_size (i.e. 4 mins) - to have 4 different windows.
         for minute in range(0, window_size_mins * 4):
             # Assuming writing the files take LESS than a MINUTE
-            self.write_n_data_files(node=node1, session=session, key_space=key_space_name, num_of_files=7, num_of_keys=10)
+            self.write_n_data_files(node=node1, session=session, key_space=key_space_name,
+                                    num_of_files=7, num_of_keys=10)
             self.wait_for_new_minute()
 
         # Get list of sstables names
@@ -208,7 +210,8 @@ class CompactionAdditionalTest(Tester):
         # (to verify that the original files remain the same and aren't compacted).
         for minute in range(0, window_size_mins * 2):
             # Assuming writing the files take LESS than a MINUTE
-            self.write_n_data_files(node=node1, session=session,  key_space=key_space_name,num_of_files=7, num_of_keys=10)
+            self.write_n_data_files(node=node1, session=session,  key_space=key_space_name,
+                                    num_of_files=7, num_of_keys=10)
             self.wait_for_new_minute()
 
         # Get list of sstables names
@@ -259,7 +262,7 @@ class CompactionAdditionalTest(Tester):
 
         number_of_time_windows = _get_time_window(time.time()) - _get_time_window(start) + 1
 
-        node1.stop();
+        node1.stop()
 
         def _get_sstables_per_timewindow_dict(cf_dir):
             # get sstables for each time window dictionary
@@ -271,7 +274,7 @@ class CompactionAdditionalTest(Tester):
                 min_time_window = _get_time_window(micros_to_seconds(stats['min_timestamp']))
                 max_time_window = _get_time_window(micros_to_seconds(stats['max_timestamp']))
                 debug("sf={} min_timestamp={} max_timestamp={} min_time_window={} max_time_window={}".format(sf,
-                      stats['min_timestamp'], stats['max_timestamp'], min_time_window, max_time_window))
+                                                                                                             stats['min_timestamp'], stats['max_timestamp'], min_time_window, max_time_window))
                 for time_window in range(min_time_window, max_time_window + 1):
                     if time_window not in time_window_dict:
                         time_window_dict[time_window] = [sf]
@@ -291,7 +294,7 @@ class CompactionAdditionalTest(Tester):
         self.assertLessEqual(time_windows_before_major_compaction, number_of_time_windows + 1)
 
         # Run major compaction
-        node1.start();
+        node1.start()
         node1.compact()
         node1.wait_for_compactions()
 
@@ -334,7 +337,7 @@ class CompactionAdditionalTest(Tester):
         NUMBER_OF_FILES = 11
         NUMBER_OF_KEYS = 10
         TTL = 70
-        GC_GRACE=10
+        GC_GRACE = 10
 
         session = self.patient_cql_connection(node1)
         debug("Creating keyspace 'ks'...")
@@ -397,7 +400,8 @@ class CompactionAdditionalTest(Tester):
         debug("sstables AFTER INSERT more data and EXPIRATION OF older sstables: {}".format(sstables_files2))
 
         unpurged_files = set(sstables_files1).intersection(sstables_files2)
-        self.assertFalse(unpurged_files, "PROBLEM Some of original files are still there and were NOT PURGED: {}".format(unpurged_files))
+        self.assertFalse(
+            unpurged_files, "PROBLEM Some of original files are still there and were NOT PURGED: {}".format(unpurged_files))
 
         debug("Purge SUCCEEDED, original files are not there {}".format(sstables_files2))
 
@@ -442,7 +446,8 @@ class CompactionAdditionalStrategyTests(Tester):
 
         from_mark = node1.mark_log()
         node1.start()
-        node1.watch_log_for(r'compaction -.*(Compacted|Resharded|Reshaped) [0-9]+ sstables to \[.+/data/ks/cf-.+\]', from_mark=from_mark)
+        node1.watch_log_for(
+            r'compaction -.*(Compacted|Resharded|Reshaped) [0-9]+ sstables to \[.+/data/ks/cf-.+\]', from_mark=from_mark)
 
         after_start_sstables = sorted(glob.glob(os.path.join(keyspace_dir, 'cf' + '-*', '*-Data.db')))
 
@@ -576,7 +581,8 @@ class TestTimeWindowDataSegregation(Tester):
 
     def _create_ks_cl_with_twcs(self, session, rf=1):
 
-        session.execute("CREATE KEYSPACE {} WITH replication = {{'class': 'SimpleStrategy', 'replication_factor': {}}}".format(self.keyspace_name, rf))
+        session.execute("CREATE KEYSPACE {} WITH replication = {{'class': 'SimpleStrategy', 'replication_factor': {}}}".format(
+            self.keyspace_name, rf))
         session.execute(
             "CREATE TABLE {0.keyspace_name}.{0.table_name} (pk int, ck int, v int, PRIMARY KEY(pk, ck))"
             "WITH compaction = {{"
@@ -720,7 +726,8 @@ class TestTimeWindowDataSegregation(Tester):
         node2.watch_log_for("init - Scylla.*initialization completed")
         # alter keyspace to replicate to dc2
         session = self.patient_exclusive_cql_connection(node2)
-        session.execute("ALTER KEYSPACE {} WITH replication = {{'class':'NetworkTopologyStrategy', 'dc1':1, 'dc2':1}};".format(self.keyspace_name))
+        session.execute("ALTER KEYSPACE {} WITH replication = {{'class':'NetworkTopologyStrategy', 'dc1':1, 'dc2':1}};".format(
+            self.keyspace_name))
 
         self.rebuild_errors = 0
         self.unexpected_errors = 0

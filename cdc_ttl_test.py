@@ -69,7 +69,8 @@ class TestCDCTTLFunctionality(Tester, CDCInitializeHelper):
                      PRIMARY KEY (pkey, ckey)\
                     ) WITH {cdc_properties}"
 
-        session.execute(f"ALTER keyspace system_distributed with replication={{'class': 'SimpleStrategy', 'replication_factor': {rf}}}")
+        session.execute(
+            f"ALTER keyspace system_distributed with replication={{'class': 'SimpleStrategy', 'replication_factor': {rf}}}")
         self.create_ks(session, self.keyspace, rf=rf)
         session.execute(statement)
 
@@ -479,7 +480,8 @@ class TestCDCTTLFunctionality(Tester, CDCInitializeHelper):
 
     def insert_rows_to_base_table_with_text_value(self, session, inserting_column='cval1', ttl=None):
         for i in range(10):
-            session.execute(self.get_insert_stm(inserting_column, ttl), {"pkey": i % 2, "ckey": i, inserting_column: f"text{i}"})
+            session.execute(self.get_insert_stm(inserting_column, ttl), {
+                            "pkey": i % 2, "ckey": i, inserting_column: f"text{i}"})
 
     def insert_rows_to_base_table_with_list_value(self, session, inserting_column='cval1', ttl=None):
         for i in range(10):

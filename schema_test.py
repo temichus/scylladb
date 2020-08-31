@@ -6,6 +6,7 @@ from tools import since, rows_to_list
 from assertions import assert_invalid
 from cassandra.concurrent import execute_concurrent
 
+
 @since('2.0')
 @attr('dtest-full', 'single_node')
 class TestSchema(Tester):
@@ -44,7 +45,8 @@ class TestSchema(Tester):
         # test that c1 values have been compacted away.
         session = self.patient_cql_connection(node)
         rows = session.execute("SELECT c1 FROM ks.cf")
-        self.assertEqual([[None], [None], [None], [4]], sorted(rows_to_list(rows), key=lambda x: (x and x[0] is not None, x)))
+        self.assertEqual([[None], [None], [None], [4]], sorted(
+            rows_to_list(rows), key=lambda x: (x and x[0] is not None, x)))
 
     @attr('next-gating')
     @attr('dtest-debug')
@@ -70,10 +72,12 @@ class TestSchema(Tester):
 
         # test that old (pre-drop) c1 values aren't returned and new ones are.
         rows = session.execute("SELECT c1 FROM cf")
-        self.assertEqual([[None], [None], [None], [4]], sorted(rows_to_list(rows), key=lambda x: (x and x[0] is not None, x)))
+        self.assertEqual([[None], [None], [None], [4]], sorted(
+            rows_to_list(rows), key=lambda x: (x and x[0] is not None, x)))
 
         rows = session.execute("SELECT * FROM cf")
-        self.assertEqual([[0, None, 2], [1, None, 3], [2, None, 4], [3, 4, 5]], sorted(rows_to_list(rows), key=lambda x: (x and x[0] is not None, x)))
+        self.assertEqual([[0, None, 2], [1, None, 3], [2, None, 4], [3, 4, 5]], sorted(
+            rows_to_list(rows), key=lambda x: (x and x[0] is not None, x)))
 
         rows = session.execute("SELECT c1 FROM cf WHERE key = 0")
         self.assertEqual([[None]], rows_to_list(rows))
@@ -111,7 +115,7 @@ class TestSchema(Tester):
         session.execute("USE ks")
         cmds = [("CREATE TABLE cf_{} (key int PRIMARY KEY, {} int)".format(i, col_name), ()) for i in range(n_tables)]
 
-        nodes= cluster.nodelist()
+        nodes = cluster.nodelist()
         execute_concurrent(session, cmds, raise_on_first_error=True, concurrency=10)
 
         nodes[0].stop()

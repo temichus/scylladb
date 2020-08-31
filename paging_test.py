@@ -117,7 +117,7 @@ class PageFetcher(object):
         """
         def error_message(msg):
             return "{}. Requested: {}; retrieved: {}; empty retrieved {}".format(
-                    msg, self.requested_pages, self.retrieved_pages, self.retrieved_empty_pages)
+                msg, self.requested_pages, self.retrieved_pages, self.retrieved_empty_pages)
 
         def missing_pages():
             n = self.requested_pages - (self.retrieved_pages + self.retrieved_empty_pages)
@@ -331,7 +331,8 @@ class TestPagingSize(BasePagingTester, PageAssertionMixin):
                +--------+--------+
           *5001| [uuid] |testing |
             """
-        expected_data = create_rows(data, session, 'paging_test', cl=CL.ALL, format_funcs={'id': random_txt, 'value': str})
+        expected_data = create_rows(data, session, 'paging_test', cl=CL.ALL,
+                                    format_funcs={'id': random_txt, 'value': str})
 
         future = session.execute_async(
             SimpleStatement("select * from paging_test", consistency_level=CL.ALL)
@@ -385,7 +386,8 @@ class TestPagingWithModifiers(BasePagingTester, PageAssertionMixin):
         expected_data = create_rows(data, session, 'paging_test', cl=CL.ALL, format_funcs={'id': int, 'value': str})
 
         future = session.execute_async(
-            SimpleStatement("select * from paging_test where id = 1 order by value asc", fetch_size=5, consistency_level=CL.ALL)
+            SimpleStatement("select * from paging_test where id = 1 order by value asc",
+                            fetch_size=5, consistency_level=CL.ALL)
         )
 
         pf = PageFetcher(future).request_all()
@@ -398,7 +400,8 @@ class TestPagingWithModifiers(BasePagingTester, PageAssertionMixin):
 
         # make sure we don't allow paging over multiple partitions with order because that's weird
         with self.assertRaisesRegexp(InvalidRequest, 'Cannot page queries with both ORDER BY and a IN restriction on the partition key'):
-            stmt = SimpleStatement("select * from paging_test where id in (1,2) order by value asc", consistency_level=CL.ALL)
+            stmt = SimpleStatement(
+                "select * from paging_test where id in (1,2) order by value asc", consistency_level=CL.ALL)
             session.execute(stmt)
 
     def test_with_order_by_reversed(self):
@@ -432,10 +435,12 @@ class TestPagingWithModifiers(BasePagingTester, PageAssertionMixin):
             |1 |j    |j     |
             """
 
-        expected_data = create_rows(data, session, 'paging_test', cl=CL.ALL, format_funcs={'id': int, 'value': str, 'value2': str})
+        expected_data = create_rows(data, session, 'paging_test', cl=CL.ALL,
+                                    format_funcs={'id': int, 'value': str, 'value2': str})
 
         future = session.execute_async(
-            SimpleStatement("select * from paging_test where id = 1 order by value asc", fetch_size=3, consistency_level=CL.ALL)
+            SimpleStatement("select * from paging_test where id = 1 order by value asc",
+                            fetch_size=3, consistency_level=CL.ALL)
         )
 
         pf = PageFetcher(future).request_all()
@@ -477,34 +482,53 @@ class TestPagingWithModifiers(BasePagingTester, PageAssertionMixin):
             *20| 5  | [random text] |
             *30| 6  | [random text] |
             """
-        expected_data = create_rows(data, session, 'paging_test', cl=CL.ALL, format_funcs={'id': int, 'value': random_txt})
+        expected_data = create_rows(data, session, 'paging_test', cl=CL.ALL,
+                                    format_funcs={'id': int, 'value': random_txt})
 
         scenarios = [
             # using equals clause w/single partition
-            {'limit': 10, 'fetch': 20, 'data_size': 30, 'whereclause': 'WHERE id = 6', 'expect_pgcount': 1, 'expect_pgsizes': [10]},      # limit < fetch < data
-            {'limit': 10, 'fetch': 30, 'data_size': 20, 'whereclause': 'WHERE id = 5', 'expect_pgcount': 1, 'expect_pgsizes': [10]},      # limit < data < fetch
-            {'limit': 20, 'fetch': 10, 'data_size': 30, 'whereclause': 'WHERE id = 6', 'expect_pgcount': 2, 'expect_pgsizes': [10, 10]},  # fetch < limit < data
-            {'limit': 30, 'fetch': 10, 'data_size': 20, 'whereclause': 'WHERE id = 5', 'expect_pgcount': 2, 'expect_pgsizes': [10, 10]},  # fetch < data < limit
-            {'limit': 20, 'fetch': 30, 'data_size': 10, 'whereclause': 'WHERE id = 3', 'expect_pgcount': 1, 'expect_pgsizes': [10]},      # data < limit < fetch
-            {'limit': 30, 'fetch': 20, 'data_size': 10, 'whereclause': 'WHERE id = 3', 'expect_pgcount': 1, 'expect_pgsizes': [10]},      # data < fetch < limit
+            {'limit': 10, 'fetch': 20, 'data_size': 30, 'whereclause': 'WHERE id = 6',
+                'expect_pgcount': 1, 'expect_pgsizes': [10]},      # limit < fetch < data
+            {'limit': 10, 'fetch': 30, 'data_size': 20, 'whereclause': 'WHERE id = 5',
+                'expect_pgcount': 1, 'expect_pgsizes': [10]},      # limit < data < fetch
+            {'limit': 20, 'fetch': 10, 'data_size': 30, 'whereclause': 'WHERE id = 6',
+                'expect_pgcount': 2, 'expect_pgsizes': [10, 10]},  # fetch < limit < data
+            {'limit': 30, 'fetch': 10, 'data_size': 20, 'whereclause': 'WHERE id = 5',
+                'expect_pgcount': 2, 'expect_pgsizes': [10, 10]},  # fetch < data < limit
+            {'limit': 20, 'fetch': 30, 'data_size': 10, 'whereclause': 'WHERE id = 3',
+                'expect_pgcount': 1, 'expect_pgsizes': [10]},      # data < limit < fetch
+            {'limit': 30, 'fetch': 20, 'data_size': 10, 'whereclause': 'WHERE id = 3',
+                'expect_pgcount': 1, 'expect_pgsizes': [10]},      # data < fetch < limit
 
             # using 'in' clause w/multi partitions
-            {'limit': 9, 'fetch': 20, 'data_size': 80, 'whereclause': 'WHERE id in (1,2,3,4,5,6)', 'expect_pgcount': 1, 'expect_pgsizes': [9]},  # limit < fetch < data
-            {'limit': 10, 'fetch': 30, 'data_size': 20, 'whereclause': 'WHERE id in (3,4)', 'expect_pgcount': 1, 'expect_pgsizes': [10]},      # limit < data < fetch
-            {'limit': 20, 'fetch': 10, 'data_size': 30, 'whereclause': 'WHERE id in (4,5)', 'expect_pgcount': 2, 'expect_pgsizes': [10, 10]},  # fetch < limit < data
-            {'limit': 30, 'fetch': 10, 'data_size': 20, 'whereclause': 'WHERE id in (3,4)', 'expect_pgcount': 2, 'expect_pgsizes': [10, 10]},  # fetch < data < limit
-            {'limit': 20, 'fetch': 30, 'data_size': 10, 'whereclause': 'WHERE id in (1,2)', 'expect_pgcount': 1, 'expect_pgsizes': [10]},      # data < limit < fetch
-            {'limit': 30, 'fetch': 20, 'data_size': 10, 'whereclause': 'WHERE id in (1,2)', 'expect_pgcount': 1, 'expect_pgsizes': [10]},      # data < fetch < limit
+            {'limit': 9, 'fetch': 20, 'data_size': 80, 'whereclause': 'WHERE id in (1,2,3,4,5,6)', 'expect_pgcount': 1, 'expect_pgsizes': [
+                9]},  # limit < fetch < data
+            {'limit': 10, 'fetch': 30, 'data_size': 20, 'whereclause': 'WHERE id in (3,4)', 'expect_pgcount': 1, 'expect_pgsizes': [
+                10]},      # limit < data < fetch
+            {'limit': 20, 'fetch': 10, 'data_size': 30, 'whereclause': 'WHERE id in (4,5)', 'expect_pgcount': 2, 'expect_pgsizes': [
+                10, 10]},  # fetch < limit < data
+            {'limit': 30, 'fetch': 10, 'data_size': 20, 'whereclause': 'WHERE id in (3,4)', 'expect_pgcount': 2, 'expect_pgsizes': [
+                10, 10]},  # fetch < data < limit
+            {'limit': 20, 'fetch': 30, 'data_size': 10, 'whereclause': 'WHERE id in (1,2)', 'expect_pgcount': 1, 'expect_pgsizes': [
+                10]},      # data < limit < fetch
+            {'limit': 30, 'fetch': 20, 'data_size': 10, 'whereclause': 'WHERE id in (1,2)', 'expect_pgcount': 1, 'expect_pgsizes': [
+                10]},      # data < fetch < limit
 
             # no limit but with a defined pagesize. Scenarios added for CASSANDRA-8408.
-            {'limit': None, 'fetch': 20, 'data_size': 80, 'whereclause': 'WHERE id in (1,2,3,4,5,6)', 'expect_pgcount': 4, 'expect_pgsizes': [20, 20, 20, 20]},  # fetch < data
-            {'limit': None, 'fetch': 30, 'data_size': 20, 'whereclause': 'WHERE id in (3,4)', 'expect_pgcount': 1, 'expect_pgsizes': [20]},          # data < fetch
-            {'limit': None, 'fetch': 10, 'data_size': 30, 'whereclause': 'WHERE id in (4,5)', 'expect_pgcount': 3, 'expect_pgsizes': [10, 10, 10]},  # fetch < data
-            {'limit': None, 'fetch': 30, 'data_size': 10, 'whereclause': 'WHERE id in (1,2)', 'expect_pgcount': 1, 'expect_pgsizes': [10]},          # data < fetch
+            {'limit': None, 'fetch': 20, 'data_size': 80, 'whereclause': 'WHERE id in (1,2,3,4,5,6)', 'expect_pgcount': 4, 'expect_pgsizes': [
+                20, 20, 20, 20]},  # fetch < data
+            {'limit': None, 'fetch': 30, 'data_size': 20, 'whereclause': 'WHERE id in (3,4)', 'expect_pgcount': 1, 'expect_pgsizes': [
+                20]},          # data < fetch
+            {'limit': None, 'fetch': 10, 'data_size': 30, 'whereclause': 'WHERE id in (4,5)', 'expect_pgcount': 3, 'expect_pgsizes': [
+                10, 10, 10]},  # fetch < data
+            {'limit': None, 'fetch': 30, 'data_size': 10, 'whereclause': 'WHERE id in (1,2)', 'expect_pgcount': 1, 'expect_pgsizes': [
+                10]},          # data < fetch
 
             # not setting fetch_size (unpaged) but using limit. Scenarios added for CASSANDRA-8408.
-            {'limit': 9, 'fetch': None, 'data_size': 80, 'whereclause': 'WHERE id in (1,2,3,4,5,6)', 'expect_pgcount': 1, 'expect_pgsizes': [9]},  # limit < data
-            {'limit': 30, 'fetch': None, 'data_size': 10, 'whereclause': 'WHERE id in (1,2)', 'expect_pgcount': 1, 'expect_pgsizes': [10]},        # data < limit
+            {'limit': 9, 'fetch': None, 'data_size': 80,
+                'whereclause': 'WHERE id in (1,2,3,4,5,6)', 'expect_pgcount': 1, 'expect_pgsizes': [9]},  # limit < data
+            {'limit': 30, 'fetch': None, 'data_size': 10, 'whereclause': 'WHERE id in (1,2)', 'expect_pgcount': 1, 'expect_pgsizes': [
+                10]},        # data < limit
         ]
 
         def handle_scenario(scenario):
@@ -564,7 +588,8 @@ class TestPagingWithModifiers(BasePagingTester, PageAssertionMixin):
         create_rows(data, session, 'paging_test', cl=CL.ALL, format_funcs={'id': int, 'value': str})
 
         future = session.execute_async(
-            SimpleStatement("select * from paging_test where value = 'and more testing' ALLOW FILTERING", fetch_size=4, consistency_level=CL.ALL)
+            SimpleStatement("select * from paging_test where value = 'and more testing' ALLOW FILTERING",
+                            fetch_size=4, consistency_level=CL.ALL)
         )
 
         pf = PageFetcher(future).request_all()
@@ -607,7 +632,8 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
               +----+------------------------+
         *10000| 1  | [replaced with random] |
             """
-        expected_data = create_rows(data, session, 'paging_test', cl=CL.ALL, format_funcs={'id': int, 'value': random_txt})
+        expected_data = create_rows(data, session, 'paging_test', cl=CL.ALL,
+                                    format_funcs={'id': int, 'value': random_txt})
 
         future = session.execute_async(
             SimpleStatement("select * from paging_test where id = 1", fetch_size=3000, consistency_level=CL.ALL)
@@ -635,7 +661,8 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
          *5000| 1  | [replaced with random] |
          *5000| 2  | [replaced with random] |
             """
-        expected_data = create_rows(data, session, 'paging_test', cl=CL.ALL, format_funcs={'id': int, 'value': random_txt})
+        expected_data = create_rows(data, session, 'paging_test', cl=CL.ALL,
+                                    format_funcs={'id': int, 'value': random_txt})
 
         future = session.execute_async(
             SimpleStatement("select * from paging_test where id in (1,2)", fetch_size=3000, consistency_level=CL.ALL)
@@ -1516,7 +1543,7 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
             res = session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a = 2 GROUP BY a, b LIMIT 1")[:]
             # FIXME: EXPECTED RESULT MUST BE UPDATED --> https://github.com/scylladb/scylla/issues/5361
             self.assertEqual(res, [{u'a': 2, u'b': 2, u's': 2, u'system.count(b)': 1, u'system.count(s)': 1},
-                                  {u'a': 2, u'b': 4, u's': 2, u'system.count(b)': 1, u'system.count(s)': 1}])
+                                   {u'a': 2, u'b': 4, u's': 2, u'system.count(b)': 1, u'system.count(s)': 1}])
 
             res = session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE a = 2 LIMIT 1")[:]
             self.assertEqual(res, [{u'a': 2, u'b': 2, u's': 2, u'system.count(b)': 2, u'system.count(s)': 2}])
@@ -1801,7 +1828,8 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
         for page_size in (2, 3, 4, 5, 15, 16, 17, 100):
             session.default_fetch_size = page_size
             for selector in selectors:
-                results = list(session.execute("SELECT %s FROM test WHERE a = 99 AND b IN (3, 4, 8, 14, 15) ORDER BY b DESC" % selector))
+                results = list(session.execute(
+                    "SELECT %s FROM test WHERE a = 99 AND b IN (3, 4, 8, 14, 15) ORDER BY b DESC" % selector))
                 self.assertEqual(5, len(results))
                 self.assertEqual([99] * 5, [r.a for r in results])
                 self.assertEqual(list(reversed([3, 4, 8, 14, 15])), [r.b for r in results])
@@ -1885,7 +1913,8 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
         for page_size in (2, 3, 4, 5, 15, 16, 17, 100):
             session.default_fetch_size = page_size
             for selector in selectors:
-                results = list(session.execute("SELECT %s FROM test WHERE a = 99 AND b > 3 AND b < 14 ORDER BY b DESC" % selector))
+                results = list(session.execute(
+                    "SELECT %s FROM test WHERE a = 99 AND b > 3 AND b < 14 ORDER BY b DESC" % selector))
                 self.assertEqual(10, len(results))
                 self.assertEqual([99] * 10, [r.a for r in results])
                 self.assertEqual(list(reversed(range(4, 14))), [r.b for r in results])
@@ -1898,7 +1927,8 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
     def test_paging_using_secondary_indexes_with_static_cols(self):
         session = self.prepare()
         self.create_ks(session, 'test_paging_size', 2)
-        session.execute("CREATE TABLE paging_test ( id int, s1 int static, s2 int static, mybool boolean, sometext text, PRIMARY KEY (id, sometext) )")
+        session.execute(
+            "CREATE TABLE paging_test ( id int, s1 int static, s2 int static, mybool boolean, sometext text, PRIMARY KEY (id, sometext) )")
         session.execute("CREATE INDEX ON paging_test(mybool)")
 
         def random_txt(text):
@@ -1953,7 +1983,6 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
         self.assertEqual([0, 1, 2, 3, 4], sorted([r.s for r in results]))
 
     def test_paging_on_compact_table_with_tombstone_on_first_column(self):
-
         """
         test paging, on  COMPACT tables without clustering columns, when the first column has a tombstone
         @jira_ticket CASSANDRA-11467
@@ -2075,12 +2104,12 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
         query_and_results = []
         query_and_results.append({'query': "SELECT * FROM test {}",
                                   'expected_result': [[0, 0, 0], [0, 1, 1], [1, 0, 0], [1, 1, 1], [2, 0, 0],
-                                                    [2, 1, 1], [3, 0, 0], [3, 1, 1], [4, 0, 0], [4, 1, 1]],
+                                                      [2, 1, 1], [3, 0, 0], [3, 1, 1], [4, 0, 0], [4, 1, 1]],
                                   'per_partition_limit': 2,
                                   'ignore_order': True})
         query_and_results.append({'query': "SELECT * FROM test WHERE a IN (1,2,3) {}",
                                   'expected_result': [[1, 0, 0], [1, 1, 1], [1, 2, 2], [2, 0, 0], [2, 1, 1],
-                                                     [2, 2, 2], [3, 0, 0], [3, 1, 1], [3, 2, 2]],
+                                                      [2, 2, 2], [3, 0, 0], [3, 1, 1], [3, 2, 2]],
                                   'per_partition_limit': 3,
                                   'ignore_order': True})
         query_and_results.append({'query': "SELECT * FROM test WHERE a = 1 {}",
@@ -2138,7 +2167,8 @@ class TestPagingDatasetChanges(BasePagingTester, PageAssertionMixin):
           *500| 1  | [random] |
           *500| 2  | [random] |
             """
-        expected_data = create_rows(data, session, 'paging_test', cl=CL.ALL, format_funcs={'id': int, 'mytext': random_txt})
+        expected_data = create_rows(data, session, 'paging_test', cl=CL.ALL,
+                                    format_funcs={'id': int, 'mytext': random_txt})
 
         # get 501 rows so we have definitely got the 1st row of the second partition
         future = session.execute_async(
@@ -2150,7 +2180,8 @@ class TestPagingDatasetChanges(BasePagingTester, PageAssertionMixin):
 
         # we got one page and should be done with the first partition (for id=1)
         # let's add another row for that first partition (id=1) and make sure it won't sneak into results
-        session.execute(SimpleStatement("insert into paging_test (id, mytext) values (1, 'foo')", consistency_level=CL.ALL))
+        session.execute(SimpleStatement(
+            "insert into paging_test (id, mytext) values (1, 'foo')", consistency_level=CL.ALL))
 
         pf.request_all()
         self.assertEqual(pf.pagecount(), 2)
@@ -2172,7 +2203,8 @@ class TestPagingDatasetChanges(BasePagingTester, PageAssertionMixin):
           *500| 1  | [random] |
           *499| 2  | [random] |
             """
-        expected_data = create_rows(data, session, 'paging_test', cl=CL.ALL, format_funcs={'id': int, 'mytext': random_txt})
+        expected_data = create_rows(data, session, 'paging_test', cl=CL.ALL,
+                                    format_funcs={'id': int, 'mytext': random_txt})
 
         future = session.execute_async(
             SimpleStatement("select * from paging_test where id in (1,2)", fetch_size=500, consistency_level=CL.ALL)
@@ -2183,7 +2215,8 @@ class TestPagingDatasetChanges(BasePagingTester, PageAssertionMixin):
 
         # we've already paged the first partition, but adding a row for the second (id=2)
         # should still result in the row being seen on the subsequent pages
-        session.execute(SimpleStatement("insert into paging_test (id, mytext) values (2, 'foo')", consistency_level=CL.ALL))
+        session.execute(SimpleStatement(
+            "insert into paging_test (id, mytext) values (2, 'foo')", consistency_level=CL.ALL))
 
         pf.request_all()
         self.assertEqual(pf.pagecount(), 2)
@@ -2324,7 +2357,8 @@ class TestPagingDatasetChanges(BasePagingTester, PageAssertionMixin):
         )
 
         future = session.execute_async(
-            SimpleStatement("select * from paging_test where mytext = 'foo' allow filtering", fetch_size=2000, consistency_level=CL.ALL)
+            SimpleStatement("select * from paging_test where mytext = 'foo' allow filtering",
+                            fetch_size=2000, consistency_level=CL.ALL)
         )
 
         pf = PageFetcher(future)
@@ -2369,7 +2403,8 @@ class TestPagingQueryIsolation(BasePagingTester, PageAssertionMixin):
           *5000| 9  | [random] |
           *5000| 10 | [random] |
             """
-        expected_data = create_rows(data, session, 'paging_test', cl=CL.ALL, format_funcs={'id': int, 'mytext': random_txt})
+        expected_data = create_rows(data, session, 'paging_test', cl=CL.ALL,
+                                    format_funcs={'id': int, 'mytext': random_txt})
 
         stmts = [
             SimpleStatement("select * from paging_test where id in (1)", fetch_size=500, consistency_level=CL.ALL),
@@ -2382,7 +2417,8 @@ class TestPagingQueryIsolation(BasePagingTester, PageAssertionMixin):
             SimpleStatement("select * from paging_test where id in (3)", fetch_size=1200, consistency_level=CL.ALL),
             SimpleStatement("select * from paging_test where id in (4)", fetch_size=1300, consistency_level=CL.ALL),
             SimpleStatement("select * from paging_test where id in (5)", fetch_size=1400, consistency_level=CL.ALL),
-            SimpleStatement("select * from paging_test where id in (1,2,3,4,5,6,7,8,9,10)", fetch_size=1500, consistency_level=CL.ALL)
+            SimpleStatement("select * from paging_test where id in (1,2,3,4,5,6,7,8,9,10)",
+                            fetch_size=1500, consistency_level=CL.ALL)
         ]
 
         page_fetchers = []
@@ -2413,17 +2449,28 @@ class TestPagingQueryIsolation(BasePagingTester, PageAssertionMixin):
         self.assertEqual(page_fetchers[9].pagecount(), 4)
         self.assertEqual(page_fetchers[10].pagecount(), 34)
 
-        self.assertEqualIgnoreOrder(flatten_into_set(page_fetchers[0].all_data()), flatten_into_set(expected_data[:5000]))
-        self.assertEqualIgnoreOrder(flatten_into_set(page_fetchers[1].all_data()), flatten_into_set(expected_data[5000:10000]))
-        self.assertEqualIgnoreOrder(flatten_into_set(page_fetchers[2].all_data()), flatten_into_set(expected_data[10000:15000]))
-        self.assertEqualIgnoreOrder(flatten_into_set(page_fetchers[3].all_data()), flatten_into_set(expected_data[15000:20000]))
-        self.assertEqualIgnoreOrder(flatten_into_set(page_fetchers[4].all_data()), flatten_into_set(expected_data[20000:25000]))
-        self.assertEqualIgnoreOrder(flatten_into_set(page_fetchers[5].all_data()), flatten_into_set(expected_data[:5000]))
-        self.assertEqualIgnoreOrder(flatten_into_set(page_fetchers[6].all_data()), flatten_into_set(expected_data[5000:10000]))
-        self.assertEqualIgnoreOrder(flatten_into_set(page_fetchers[7].all_data()), flatten_into_set(expected_data[10000:15000]))
-        self.assertEqualIgnoreOrder(flatten_into_set(page_fetchers[8].all_data()), flatten_into_set(expected_data[15000:20000]))
-        self.assertEqualIgnoreOrder(flatten_into_set(page_fetchers[9].all_data()), flatten_into_set(expected_data[20000:25000]))
-        self.assertEqualIgnoreOrder(flatten_into_set(page_fetchers[10].all_data()), flatten_into_set(expected_data[:50000]))
+        self.assertEqualIgnoreOrder(flatten_into_set(
+            page_fetchers[0].all_data()), flatten_into_set(expected_data[:5000]))
+        self.assertEqualIgnoreOrder(flatten_into_set(
+            page_fetchers[1].all_data()), flatten_into_set(expected_data[5000:10000]))
+        self.assertEqualIgnoreOrder(flatten_into_set(
+            page_fetchers[2].all_data()), flatten_into_set(expected_data[10000:15000]))
+        self.assertEqualIgnoreOrder(flatten_into_set(
+            page_fetchers[3].all_data()), flatten_into_set(expected_data[15000:20000]))
+        self.assertEqualIgnoreOrder(flatten_into_set(
+            page_fetchers[4].all_data()), flatten_into_set(expected_data[20000:25000]))
+        self.assertEqualIgnoreOrder(flatten_into_set(
+            page_fetchers[5].all_data()), flatten_into_set(expected_data[:5000]))
+        self.assertEqualIgnoreOrder(flatten_into_set(
+            page_fetchers[6].all_data()), flatten_into_set(expected_data[5000:10000]))
+        self.assertEqualIgnoreOrder(flatten_into_set(
+            page_fetchers[7].all_data()), flatten_into_set(expected_data[10000:15000]))
+        self.assertEqualIgnoreOrder(flatten_into_set(
+            page_fetchers[8].all_data()), flatten_into_set(expected_data[15000:20000]))
+        self.assertEqualIgnoreOrder(flatten_into_set(
+            page_fetchers[9].all_data()), flatten_into_set(expected_data[20000:25000]))
+        self.assertEqualIgnoreOrder(flatten_into_set(
+            page_fetchers[10].all_data()), flatten_into_set(expected_data[:50000]))
 
 
 @attr('dtest-full')
@@ -2728,7 +2775,8 @@ class TestPagingWithDeletions(BasePagingTester, PageAssertionMixin):
                 consistency_level=CL.ALL
             ))
 
-        assert_invalid(self.session, SimpleStatement("select * from paging_test", fetch_size=1000, consistency_level=CL.ALL), expected=ReadTimeout if self.cluster.version() < '2.2' else ReadFailure)
+        assert_invalid(self.session, SimpleStatement("select * from paging_test", fetch_size=1000,
+                                                     consistency_level=CL.ALL), expected=ReadTimeout if self.cluster.version() < '2.2' else ReadFailure)
 
         if self.cluster.version() < "3.0":
             failure_msg = ("Scanned over.* tombstones in test_paging_size."
@@ -2776,6 +2824,7 @@ class TestPagingWithDeletions(BasePagingTester, PageAssertionMixin):
             # finish paging
             fetcher.request_all()
             self.assertEqual([2, 2], fetcher.num_results_all())
+
 
 @attr('dtest-full')
 class TestPagingWithIndexingAndAggregation(BasePagingTester, PageAssertionMixin):
@@ -2841,9 +2890,12 @@ class TestPagingWithIndexingAndAggregation(BasePagingTester, PageAssertionMixin)
     def _verify_col_results(self, session, filtered_list, col, where_clause, allow_filtering):
         query_fmt = '{query_func}({col})'
         result_fmt = 'system.{query_func}({col})'
-        self._verify_col_func_results(session, filtered_list, query_fmt, result_fmt, col, 'count', len, where_clause, allow_filtering)
-        self._verify_col_func_results(session, filtered_list, query_fmt, result_fmt, col, 'min', min, where_clause, allow_filtering)
-        self._verify_col_func_results(session, filtered_list, query_fmt, result_fmt, col, 'max', max, where_clause, allow_filtering)
+        self._verify_col_func_results(session, filtered_list, query_fmt, result_fmt,
+                                      col, 'count', len, where_clause, allow_filtering)
+        self._verify_col_func_results(session, filtered_list, query_fmt, result_fmt,
+                                      col, 'min', min, where_clause, allow_filtering)
+        self._verify_col_func_results(session, filtered_list, query_fmt, result_fmt,
+                                      col, 'max', max, where_clause, allow_filtering)
         if col.endswith('int'):
             if col.endswith('bigint'):
                 query_fmt = '{query_func}(cast({col} as varint))'
@@ -2851,7 +2903,8 @@ class TestPagingWithIndexingAndAggregation(BasePagingTester, PageAssertionMixin)
             else:
                 query_fmt = '{query_func}(cast({col} as bigint))'
                 result_fmt = 'system.{query_func}(system.castasbigint({col}))'
-            self._verify_col_func_results(session, filtered_list, query_fmt, result_fmt, col, 'sum', sum, where_clause, allow_filtering)
+            self._verify_col_func_results(session, filtered_list, query_fmt, result_fmt,
+                                          col, 'sum', sum, where_clause, allow_filtering)
 
     def _create_and_verify_results(self, session, cols, filter_func, where_clause, allow_filtering):
         all_data = self.create_and_insert_data(self.data, session)
@@ -2862,13 +2915,13 @@ class TestPagingWithIndexingAndAggregation(BasePagingTester, PageAssertionMixin)
             self._verify_col_results(session, filtered_list, col, where_clause, allow_filtering)
 
     def create_and_verify_mybool_results(self, session, cols, mybool_val=True, allow_filtering=False):
-        filter_func = lambda entry: entry[u'mybool'] == mybool_val
-        where_clause='mybool = {}'.format('true' if mybool_val else 'false')
+        def filter_func(entry): return entry[u'mybool'] == mybool_val
+        where_clause = 'mybool = {}'.format('true' if mybool_val else 'false')
         self._create_and_verify_results(session, cols, filter_func, where_clause, allow_filtering=allow_filtering)
 
     def create_and_verify_id_results(self, session, cols, id_val=2, allow_filtering=False):
-        filter_func = lambda entry: entry[u'id'] == id_val
-        where_clause='id = {}'.format(id_val)
+        def filter_func(entry): return entry[u'id'] == id_val
+        where_clause = 'id = {}'.format(id_val)
         self._create_and_verify_results(session, cols, filter_func, where_clause, allow_filtering=allow_filtering)
 
     def test_filter_indexed_column(self):
@@ -2921,19 +2974,24 @@ class TestPagingWithIndexingAndAggregation(BasePagingTester, PageAssertionMixin)
 
 @attr('dtest-full')
 class TestUnpagedQueryLimit(Tester):
-    ignore_log_patterns=['Memory usage of unpaged query exceeds hard limit of [0-9]+ \(configured via max_memory_for_unlimited_query_hard_limit\)']
+    ignore_log_patterns = [
+        'Memory usage of unpaged query exceeds hard limit of [0-9]+ \(configured via max_memory_for_unlimited_query_hard_limit\)']
 
     def test_unpaged_large_partition(self):
         self.cluster.set_configuration_options(
-            values={'max_memory_for_unlimited_query_soft_limit': 1024, 'max_memory_for_unlimited_query_hard_limit': 1024 * 1024}
+            values={'max_memory_for_unlimited_query_soft_limit': 1024,
+                    'max_memory_for_unlimited_query_hard_limit': 1024 * 1024}
         )
         self.cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1 = self.cluster.nodelist()[0]
         session = self.patient_cql_connection(node1)
-        session.execute("CREATE KEYSPACE TestUnpagedQueryLimit WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}")
-        session.execute("CREATE TABLE TestUnpagedQueryLimit.test_unpaged_large_partition (pk int, ck int, v text, PRIMARY KEY (pk, ck) )")
+        session.execute(
+            "CREATE KEYSPACE TestUnpagedQueryLimit WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}")
+        session.execute(
+            "CREATE TABLE TestUnpagedQueryLimit.test_unpaged_large_partition (pk int, ck int, v text, PRIMARY KEY (pk, ck) )")
 
-        prepared_insert = session.prepare("INSERT INTO TestUnpagedQueryLimit.test_unpaged_large_partition (pk, ck, v) VALUES (?, ?, ?)")
+        prepared_insert = session.prepare(
+            "INSERT INTO TestUnpagedQueryLimit.test_unpaged_large_partition (pk, ck, v) VALUES (?, ?, ?)")
 
         v = 'a' * 1024
 

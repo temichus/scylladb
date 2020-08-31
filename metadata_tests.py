@@ -48,7 +48,8 @@ class TestMetadata(Tester):
         node1.nodetool("setcompactionthroughput 1")
 
         for i in range(3):
-            node1.stress(['write', 'no-warmup', 'n=30000', '-schema', 'replication(factor=2)', 'compression=LZ4Compressor', '-rate', 'threads=5', '-pop', 'seq=1..30000'])
+            node1.stress(['write', 'no-warmup', 'n=30000', '-schema', 'replication(factor=2)',
+                          'compression=LZ4Compressor', '-rate', 'threads=5', '-pop', 'seq=1..30000'])
             node1.flush()
 
         executor = ThreadPoolExecutor(max_workers=3)

@@ -207,7 +207,8 @@ class TestPaxos(Tester):
                                 prev = res[0][3]
                                 if res[0][2] is not None:
                                     if verbose:
-                                        print("[%3d] Update was inserted on previous try (res = %s)" % (self.wid, str(res)))
+                                        print("[%3d] Update was inserted on previous try (res = %s)" %
+                                              (self.wid, str(res)))
                                     done = True
                         except WriteTimeout as e:
                             if verbose:
@@ -265,7 +266,8 @@ class TestPaxos(Tester):
             errors = errors + w.errors
             retries = retries + w.retries
 
-        assert (value == threads * iterations) and (errors == 0), "value=%d, errors=%d, retries=%d" % (value, errors, retries)
+        assert (value == threads * iterations) and (errors ==
+                                                    0), "value=%d, errors=%d, retries=%d" % (value, errors, retries)
 
     def _add_random_nodes(self, max_limit, upper_node_limit, loaders):
         debug(f"_add_random_nodes(self, max_limit={max_limit}")
@@ -340,8 +342,8 @@ class TestPaxos(Tester):
         # Try different combinations of timeouts in each paxos stage
         paxos_stages_injections = {
             'prepare': 'paxos_prepare_timeout',
-            'accept' : 'paxos_accept_proposal_timeout',
-            'learn'  : 'paxos_state_learn_timeout'}
+            'accept': 'paxos_accept_proposal_timeout',
+            'learn': 'paxos_state_learn_timeout'}
 
         # Execute the LWT query on the first node, which acts as a coordinator in this case
         session_node1 = self.patient_exclusive_cql_connection(nodes[0], protocol_version=4)
@@ -378,7 +380,7 @@ class TestPaxos(Tester):
     # Schema mismatch tests
 
     def _schema_mismatch_test_tpl(self, clear_schema_cache, setup_test_env_action,
-            insert_action, ddl_action, second_insert_action, verify_results_action):
+                                  insert_action, ddl_action, second_insert_action, verify_results_action):
         # set TRACE log level for the test node to be able
         # to catch schema_mismatch_error exceptions
         self.cluster.set_log_level('TRACE')
@@ -406,7 +408,7 @@ class TestPaxos(Tester):
         self.disable_errors(node1)
 
         if clear_schema_cache:
-            debug(f"Restart the node to clear up schema_registry cache");
+            debug(f"Restart the node to clear up schema_registry cache")
             node1.stop(wait=True)
             node1.start()
             # re-open the session to the node
@@ -458,12 +460,12 @@ class TestPaxos(Tester):
                 raise Exception(f"Unexpected \"schema_mismatch_error\" exception: {exc_msg}")
 
         self._schema_mismatch_test_tpl(clear_schema_cache=False,
-            setup_test_env_action=create_test_table,
-            insert_action=insert_action,
-            ddl_action=add_dummy_column,
-            second_insert_action=insert_action,
-            verify_results_action=check_schema_mismatch_exc
-        )
+                                       setup_test_env_action=create_test_table,
+                                       insert_action=insert_action,
+                                       ddl_action=add_dummy_column,
+                                       second_insert_action=insert_action,
+                                       verify_results_action=check_schema_mismatch_exc
+                                       )
 
     @attr('dtest-debug', 'single_node')
     @scylla_mode('!release')
@@ -506,12 +508,12 @@ class TestPaxos(Tester):
                 raise Exception(f"Unexpected \"schema_mismatch_error\" exception: {exc_msg}")
 
         self._schema_mismatch_test_tpl(clear_schema_cache=False,
-            setup_test_env_action=create_test_table_and_mv,
-            insert_action=insert_action,
-            ddl_action=add_dummy_column,
-            second_insert_action=insert_action,
-            verify_results_action=check_schema_mismatch_exc
-        )
+                                       setup_test_env_action=create_test_table_and_mv,
+                                       insert_action=insert_action,
+                                       ddl_action=add_dummy_column,
+                                       second_insert_action=insert_action,
+                                       verify_results_action=check_schema_mismatch_exc
+                                       )
 
     @attr('dtest-debug', 'single_node')
     @scylla_mode('!release')
@@ -558,12 +560,12 @@ class TestPaxos(Tester):
             assert_one(session, "SELECT * from test", [0])
 
         self._schema_mismatch_test_tpl(clear_schema_cache=False,
-            setup_test_env_action=create_test_table,
-            insert_action=insert_action,
-            ddl_action=drop_column,
-            second_insert_action=second_insert_action,
-            verify_results_action=check_exc_and_table_data
-        )
+                                       setup_test_env_action=create_test_table,
+                                       insert_action=insert_action,
+                                       ddl_action=drop_column,
+                                       second_insert_action=second_insert_action,
+                                       verify_results_action=check_exc_and_table_data
+                                       )
 
     @attr('dtest-debug', 'single_node')
     @scylla_mode('!release')
@@ -610,9 +612,9 @@ class TestPaxos(Tester):
             assert_one(session, "SELECT * from test", [0, 0])
 
         self._schema_mismatch_test_tpl(clear_schema_cache=False,
-            setup_test_env_action=create_test_table,
-            insert_action=insert_action,
-            ddl_action=drop_column,
-            second_insert_action=second_insert_action,
-            verify_results_action=check_exc_and_table_data
-        )
+                                       setup_test_env_action=create_test_table,
+                                       insert_action=insert_action,
+                                       ddl_action=drop_column,
+                                       second_insert_action=second_insert_action,
+                                       verify_results_action=check_exc_and_table_data
+                                       )

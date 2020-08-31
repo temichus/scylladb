@@ -6,9 +6,10 @@ from cassandra.query import SimpleStatement
 from tools import rows_to_list
 from scylla_tools import scylla_mode
 
+
 class LwtTest(Tester):
 
-    def case_prologue(self, jvm_args = None):
+    def case_prologue(self, jvm_args=None):
         """ Assorted actions in preparation for a test case"""
         cluster = self.cluster
         cluster.set_configuration_options(values={"hinted_handoff_enabled": False})
@@ -87,7 +88,7 @@ class LwtTest(Tester):
         check1(name, cql, 1)
         name = "scylla_cql_batches"
         check1(name, cql, 0)
-        cql = "BEGIN BATCH " + cql  + " APPLY BATCH"
+        cql = "BEGIN BATCH " + cql + " APPLY BATCH"
         check1(name, cql, 1)
         name = "scylla_cql_statements_in_batches"
         check1(name, cql, 1)
@@ -146,8 +147,7 @@ class LwtTest(Tester):
         cql = "CREATE TABLE IF NOT EXISTS t (a INT PRIMARY KEY, b INT)"
         session.execute(cql)
         cql = "INSERT INTO t (a,b) VALUES (1,0) IF NOT EXISTS"
-        stmt = SimpleStatement(cql, consistency_level =
-                               ConsistencyLevel.QUORUM)
+        stmt = SimpleStatement(cql, consistency_level=ConsistencyLevel.QUORUM)
         session.execute(cql)
         cql = "UPDATE t SET b = ? WHERE a = 1 IF b = ?"
         stmt = session.prepare(cql)
@@ -157,7 +157,7 @@ class LwtTest(Tester):
         for i in range(10):
             session.execute(stmt, (i+1, i))
         after = self.get_node_metrics(self.get_ip_from_node(node), metrics=[name])
-        assert after[name] - before[name] ==  0, "{} {}".format(before, after)
+        assert after[name] - before[name] == 0, "{} {}".format(before, after)
         cql = "DROP TABLE t"
         session.execute(cql)
         #
@@ -171,7 +171,7 @@ class LwtTest(Tester):
         stmt = session.prepare(cql)
         stmt.consistency_level = ConsistencyLevel.ALL
         for i in range(KEY_COUNT):
-            session.execute(stmt, (i,i))
+            session.execute(stmt, (i, i))
 
         non_paxos_stmt = session.prepare("UPDATE t SET b = 2 WHERE a = ?")
         non_paxos_stmt.consistency_level = ConsistencyLevel.QUORUM
@@ -188,8 +188,7 @@ class LwtTest(Tester):
         for i in range(KEY_COUNT):
             session.execute(paxos_stmt, (i,))
         after = self.get_node_metrics(self.get_ip_from_node(node), metrics=[name])
-        assert after[name] - before[name] ==  KEY_COUNT, "{} {}".format(before, after)
-
+        assert after[name] - before[name] == KEY_COUNT, "{} {}".format(before, after)
 
     def basic_distributed_test(self):
         """Basic distributed tests (3.1 - 3.4 from the test plan). """
@@ -234,8 +233,8 @@ class LwtTest(Tester):
         assert_none(session2, cql, cl=ConsistencyLevel.ONE)
         node1.start(wait_for_binary_proto=True)
         node3.start(wait_for_binary_proto=True)
-        assert_one(session2, cql, [2,2], cl=ConsistencyLevel.SERIAL)
-        assert_one(session2, cql, [2,2], cl=ConsistencyLevel.ONE)
+        assert_one(session2, cql, [2, 2], cl=ConsistencyLevel.SERIAL)
+        assert_one(session2, cql, [2, 2], cl=ConsistencyLevel.ONE)
 
         # 3.3. Power off two nodes. Try to insert data. Get the correct
         # error (lack of quorum). Power up one of the nodes. Try to
@@ -257,7 +256,7 @@ class LwtTest(Tester):
         # Have to specify custom seeds not because we need new vnodes,
         # but because the old seed node is down and we need to discocver
         # the rest of the cluster
-        node2.start(wait_for_binary_proto=True, jvm_args = [
+        node2.start(wait_for_binary_proto=True, jvm_args=[
             "--seed-provider-parameters", "seeds={}".format(self.get_ip_from_node(node3))])
         cql = "SELECT * FROM t WHERE a=3"
         assert_none(session3, cql, cl=ConsistencyLevel.SERIAL)
@@ -267,7 +266,7 @@ class LwtTest(Tester):
         node1.start(wait_for_binary_proto=True)
         session1 = self.patient_exclusive_cql_connection(node1, keyspace="lwt")
         cql = "SELECT * FROM t WHERE a=3"
-        assert_one(session1, cql, [3,3], cl=ConsistencyLevel.SERIAL)
+        assert_one(session1, cql, [3, 3], cl=ConsistencyLevel.SERIAL)
 
         # 3.4 Power off one node. Insert records using Paxos. Let paxos table
         # expire (truncate system.paxos for the sake of the test). Bring the
@@ -296,7 +295,7 @@ class LwtTest(Tester):
         # available.
         cluster = self.cluster
         cluster.set_configuration_options(values={"hinted_handoff_enabled": False})
-        cluster.populate([3,3]).start(wait_for_binary_proto=True)
+        cluster.populate([3, 3]).start(wait_for_binary_proto=True)
         node1 = cluster.nodelist()[0]
         session1 = self.patient_cql_connection(node1)
         self.create_ks(session=session1, name="lwt", rf={"dc1": 3, "dc2": 3})
@@ -311,27 +310,27 @@ class LwtTest(Tester):
         stmt2 = session2.prepare(cql)
         stmt2.serial_consistency_level = ConsistencyLevel.LOCAL_SERIAL
         session2.execute(stmt2, (2,))
-        for i in range(2,6):
+        for i in range(2, 6):
             cluster.nodelist()[i].stop()
         session1.execute(stmt1, (3,))
         try:
             stmt1.serial_consistency_level = ConsistencyLevel.SERIAL
             session1.execute(stmt1, (4,))
-            assert  False, "Successfully executed a Paxos query in absence of quorum"
+            assert False, "Successfully executed a Paxos query in absence of quorum"
         except Unavailable as e:
             pass
         # 4.2 Issue two Paxos LOCAL_QUORUM writes in parallel at different DC.
         # Follow up by PAXOS QUORUM read, to ensure the latest write wins.
-        for i in range(4,6):
+        for i in range(4, 6):
             cluster.nodelist()[i].start(wait_for_binary_proto=True)
-        for i in range(0,2):
+        for i in range(0, 2):
             cluster.nodelist()[i].stop()
         session2 = self.patient_exclusive_cql_connection(node2, keyspace="lwt")
         session2.execute(stmt2, (4,))
         stmt2.serial_consistency_level = ConsistencyLevel.SERIAL
         try:
             session2.execute(stmt2, (5,))
-            assert  False, "Successfully executed a Paxos query in absence of quorum"
+            assert False, "Successfully executed a Paxos query in absence of quorum"
         except Unavailable as e:
             pass
         cluster.nodelist()[0].start(wait_for_binary_proto=True)
@@ -344,16 +343,17 @@ class LwtTest(Tester):
         stmt1.serial_consistency_level = ConsistencyLevel.LOCAL_SERIAL
         try:
             session1.execute(stmt1, (6,))
-            assert  False, "Successfully executed a Paxos query in absence of quorum"
+            assert False, "Successfully executed a Paxos query in absence of quorum"
         except Unavailable as e:
             pass
         stmt1.serial_consistency_level = ConsistencyLevel.SERIAL
         session1.execute(stmt1, (7,))
 
+
 #
 # Read Linearizability Test
 #
-NODES  = 3
+NODES = 3
 NODE_A = 0
 NODE_B = 1
 NODE_C = 2
@@ -367,7 +367,7 @@ error_injections = [
     "paxos_error_after_save_proposal",
     "paxos_error_before_learn",
     "paxos_state_learn_timeout",
-    "paxos_timeout_after_save_decision" ]
+    "paxos_timeout_after_save_decision"]
 
 
 class LwtReadLinearizabilityTest(Tester):
@@ -447,4 +447,3 @@ class LwtReadLinearizabilityTest(Tester):
 
         # 7. verify that read does not return V
         assert ret == []
-

@@ -1139,7 +1139,8 @@ class ColumnParent(object):
                 break
             if fid == 3:
                 if ftype == TType.STRING:
-                    self.column_family = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                    self.column_family = iprot.readString().decode(
+                        'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
             elif fid == 4:
@@ -1227,7 +1228,8 @@ class ColumnPath(object):
                 break
             if fid == 3:
                 if ftype == TType.STRING:
-                    self.column_family = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                    self.column_family = iprot.readString().decode(
+                        'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
             elif fid == 4:
@@ -1741,12 +1743,14 @@ class KeyRange(object):
                     iprot.skip(ftype)
             elif fid == 3:
                 if ftype == TType.STRING:
-                    self.start_token = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                    self.start_token = iprot.readString().decode(
+                        'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
             elif fid == 4:
                 if ftype == TType.STRING:
-                    self.end_token = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                    self.end_token = iprot.readString().decode(
+                        'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
             elif fid == 6:
@@ -2190,7 +2194,8 @@ class EndpointDetails(object):
                     iprot.skip(ftype)
             elif fid == 2:
                 if ftype == TType.STRING:
-                    self.datacenter = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                    self.datacenter = iprot.readString().decode(
+                        'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
             elif fid == 3:
@@ -2365,12 +2370,14 @@ class TokenRange(object):
                 break
             if fid == 1:
                 if ftype == TType.STRING:
-                    self.start_token = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                    self.start_token = iprot.readString().decode(
+                        'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
             elif fid == 2:
                 if ftype == TType.STRING:
-                    self.end_token = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                    self.end_token = iprot.readString().decode(
+                        'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
             elif fid == 3:
@@ -2583,7 +2590,8 @@ class ColumnDef(object):
                     iprot.skip(ftype)
             elif fid == 2:
                 if ftype == TType.STRING:
-                    self.validation_class = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                    self.validation_class = iprot.readString().decode(
+                        'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
             elif fid == 3:
@@ -2593,7 +2601,8 @@ class ColumnDef(object):
                     iprot.skip(ftype)
             elif fid == 4:
                 if ftype == TType.STRING:
-                    self.index_name = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                    self.index_name = iprot.readString().decode(
+                        'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
             elif fid == 5:
@@ -2625,7 +2634,8 @@ class ColumnDef(object):
             oprot.writeFieldEnd()
         if self.validation_class is not None:
             oprot.writeFieldBegin('validation_class', TType.STRING, 2)
-            oprot.writeString(self.validation_class.encode('utf-8') if sys.version_info[0] == 2 else self.validation_class)
+            oprot.writeString(self.validation_class.encode('utf-8')
+                              if sys.version_info[0] == 2 else self.validation_class)
             oprot.writeFieldEnd()
         if self.index_type is not None:
             oprot.writeFieldBegin('index_type', TType.I32, 3)
@@ -2905,7 +2915,8 @@ class CfDef(object):
                 break
             if fid == 1:
                 if ftype == TType.STRING:
-                    self.keyspace = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                    self.keyspace = iprot.readString().decode(
+                        'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
             elif fid == 2:
@@ -2915,22 +2926,26 @@ class CfDef(object):
                     iprot.skip(ftype)
             elif fid == 3:
                 if ftype == TType.STRING:
-                    self.column_type = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                    self.column_type = iprot.readString().decode(
+                        'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
             elif fid == 5:
                 if ftype == TType.STRING:
-                    self.comparator_type = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                    self.comparator_type = iprot.readString().decode(
+                        'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
             elif fid == 6:
                 if ftype == TType.STRING:
-                    self.subcomparator_type = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                    self.subcomparator_type = iprot.readString().decode(
+                        'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
             elif fid == 8:
                 if ftype == TType.STRING:
-                    self.comment = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                    self.comment = iprot.readString().decode(
+                        'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
             elif fid == 12:
@@ -2956,7 +2971,8 @@ class CfDef(object):
                     iprot.skip(ftype)
             elif fid == 15:
                 if ftype == TType.STRING:
-                    self.default_validation_class = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                    self.default_validation_class = iprot.readString().decode(
+                        'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
             elif fid == 16:
@@ -2976,7 +2992,8 @@ class CfDef(object):
                     iprot.skip(ftype)
             elif fid == 26:
                 if ftype == TType.STRING:
-                    self.key_validation_class = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                    self.key_validation_class = iprot.readString().decode(
+                        'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
             elif fid == 28:
@@ -2986,7 +3003,8 @@ class CfDef(object):
                     iprot.skip(ftype)
             elif fid == 29:
                 if ftype == TType.STRING:
-                    self.compaction_strategy = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                    self.compaction_strategy = iprot.readString().decode(
+                        'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
             elif fid == 30:
@@ -3018,7 +3036,8 @@ class CfDef(object):
                     iprot.skip(ftype)
             elif fid == 34:
                 if ftype == TType.STRING:
-                    self.caching = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                    self.caching = iprot.readString().decode(
+                        'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
             elif fid == 37:
@@ -3038,7 +3057,8 @@ class CfDef(object):
                     iprot.skip(ftype)
             elif fid == 42:
                 if ftype == TType.STRING:
-                    self.speculative_retry = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                    self.speculative_retry = iprot.readString().decode(
+                        'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
             elif fid == 43:
@@ -3054,7 +3074,8 @@ class CfDef(object):
                     iprot.skip(ftype)
             elif fid == 44:
                 if ftype == TType.STRING:
-                    self.cells_per_row_to_cache = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                    self.cells_per_row_to_cache = iprot.readString().decode(
+                        'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
             elif fid == 45:
@@ -3114,7 +3135,8 @@ class CfDef(object):
                     iprot.skip(ftype)
             elif fid == 27:
                 if ftype == TType.STRING:
-                    self.row_cache_provider = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                    self.row_cache_provider = iprot.readString().decode(
+                        'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
             elif fid == 31:
@@ -3156,11 +3178,13 @@ class CfDef(object):
             oprot.writeFieldEnd()
         if self.comparator_type is not None:
             oprot.writeFieldBegin('comparator_type', TType.STRING, 5)
-            oprot.writeString(self.comparator_type.encode('utf-8') if sys.version_info[0] == 2 else self.comparator_type)
+            oprot.writeString(self.comparator_type.encode('utf-8')
+                              if sys.version_info[0] == 2 else self.comparator_type)
             oprot.writeFieldEnd()
         if self.subcomparator_type is not None:
             oprot.writeFieldBegin('subcomparator_type', TType.STRING, 6)
-            oprot.writeString(self.subcomparator_type.encode('utf-8') if sys.version_info[0] == 2 else self.subcomparator_type)
+            oprot.writeString(self.subcomparator_type.encode('utf-8')
+                              if sys.version_info[0] == 2 else self.subcomparator_type)
             oprot.writeFieldEnd()
         if self.comment is not None:
             oprot.writeFieldBegin('comment', TType.STRING, 8)
@@ -3191,7 +3215,8 @@ class CfDef(object):
             oprot.writeFieldEnd()
         if self.default_validation_class is not None:
             oprot.writeFieldBegin('default_validation_class', TType.STRING, 15)
-            oprot.writeString(self.default_validation_class.encode('utf-8') if sys.version_info[0] == 2 else self.default_validation_class)
+            oprot.writeString(self.default_validation_class.encode('utf-8')
+                              if sys.version_info[0] == 2 else self.default_validation_class)
             oprot.writeFieldEnd()
         if self.id is not None:
             oprot.writeFieldBegin('id', TType.I32, 16)
@@ -3235,11 +3260,13 @@ class CfDef(object):
             oprot.writeFieldEnd()
         if self.key_validation_class is not None:
             oprot.writeFieldBegin('key_validation_class', TType.STRING, 26)
-            oprot.writeString(self.key_validation_class.encode('utf-8') if sys.version_info[0] == 2 else self.key_validation_class)
+            oprot.writeString(self.key_validation_class.encode('utf-8')
+                              if sys.version_info[0] == 2 else self.key_validation_class)
             oprot.writeFieldEnd()
         if self.row_cache_provider is not None:
             oprot.writeFieldBegin('row_cache_provider', TType.STRING, 27)
-            oprot.writeString(self.row_cache_provider.encode('utf-8') if sys.version_info[0] == 2 else self.row_cache_provider)
+            oprot.writeString(self.row_cache_provider.encode('utf-8')
+                              if sys.version_info[0] == 2 else self.row_cache_provider)
             oprot.writeFieldEnd()
         if self.key_alias is not None:
             oprot.writeFieldBegin('key_alias', TType.STRING, 28)
@@ -3247,7 +3274,8 @@ class CfDef(object):
             oprot.writeFieldEnd()
         if self.compaction_strategy is not None:
             oprot.writeFieldBegin('compaction_strategy', TType.STRING, 29)
-            oprot.writeString(self.compaction_strategy.encode('utf-8') if sys.version_info[0] == 2 else self.compaction_strategy)
+            oprot.writeString(self.compaction_strategy.encode('utf-8')
+                              if sys.version_info[0] == 2 else self.compaction_strategy)
             oprot.writeFieldEnd()
         if self.compaction_strategy_options is not None:
             oprot.writeFieldBegin('compaction_strategy_options', TType.MAP, 30)
@@ -3299,7 +3327,8 @@ class CfDef(object):
             oprot.writeFieldEnd()
         if self.speculative_retry is not None:
             oprot.writeFieldBegin('speculative_retry', TType.STRING, 42)
-            oprot.writeString(self.speculative_retry.encode('utf-8') if sys.version_info[0] == 2 else self.speculative_retry)
+            oprot.writeString(self.speculative_retry.encode('utf-8')
+                              if sys.version_info[0] == 2 else self.speculative_retry)
             oprot.writeFieldEnd()
         if self.triggers is not None:
             oprot.writeFieldBegin('triggers', TType.LIST, 43)
@@ -3310,7 +3339,8 @@ class CfDef(object):
             oprot.writeFieldEnd()
         if self.cells_per_row_to_cache is not None:
             oprot.writeFieldBegin('cells_per_row_to_cache', TType.STRING, 44)
-            oprot.writeString(self.cells_per_row_to_cache.encode('utf-8') if sys.version_info[0] == 2 else self.cells_per_row_to_cache)
+            oprot.writeString(self.cells_per_row_to_cache.encode('utf-8')
+                              if sys.version_info[0] == 2 else self.cells_per_row_to_cache)
             oprot.writeFieldEnd()
         if self.min_index_interval is not None:
             oprot.writeFieldBegin('min_index_interval', TType.I32, 45)
@@ -3387,7 +3417,8 @@ class KsDef(object):
                     iprot.skip(ftype)
             elif fid == 2:
                 if ftype == TType.STRING:
-                    self.strategy_class = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                    self.strategy_class = iprot.readString().decode(
+                        'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
             elif fid == 3:
@@ -3635,12 +3666,14 @@ class CqlMetadata(object):
                     iprot.skip(ftype)
             elif fid == 3:
                 if ftype == TType.STRING:
-                    self.default_name_type = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                    self.default_name_type = iprot.readString().decode(
+                        'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
             elif fid == 4:
                 if ftype == TType.STRING:
-                    self.default_value_type = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                    self.default_value_type = iprot.readString().decode(
+                        'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
             else:
@@ -3671,11 +3704,13 @@ class CqlMetadata(object):
             oprot.writeFieldEnd()
         if self.default_name_type is not None:
             oprot.writeFieldBegin('default_name_type', TType.STRING, 3)
-            oprot.writeString(self.default_name_type.encode('utf-8') if sys.version_info[0] == 2 else self.default_name_type)
+            oprot.writeString(self.default_name_type.encode('utf-8')
+                              if sys.version_info[0] == 2 else self.default_name_type)
             oprot.writeFieldEnd()
         if self.default_value_type is not None:
             oprot.writeFieldBegin('default_value_type', TType.STRING, 4)
-            oprot.writeString(self.default_value_type.encode('utf-8') if sys.version_info[0] == 2 else self.default_value_type)
+            oprot.writeString(self.default_value_type.encode('utf-8')
+                              if sys.version_info[0] == 2 else self.default_value_type)
             oprot.writeFieldEnd()
         oprot.writeFieldStop()
         oprot.writeStructEnd()
@@ -3858,7 +3893,8 @@ class CqlPreparedResult(object):
                     self.variable_types = []
                     (_etype180, _size177) = iprot.readListBegin()
                     for _i181 in range(_size177):
-                        _elem182 = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                        _elem182 = iprot.readString().decode(
+                            'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                         self.variable_types.append(_elem182)
                     iprot.readListEnd()
                 else:
@@ -3868,7 +3904,8 @@ class CqlPreparedResult(object):
                     self.variable_names = []
                     (_etype186, _size183) = iprot.readListBegin()
                     for _i187 in range(_size183):
-                        _elem188 = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                        _elem188 = iprot.readString().decode(
+                            'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                         self.variable_names.append(_elem188)
                     iprot.readListEnd()
                 else:
@@ -3960,12 +3997,14 @@ class CfSplit(object):
                 break
             if fid == 1:
                 if ftype == TType.STRING:
-                    self.start_token = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                    self.start_token = iprot.readString().decode(
+                        'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
             elif fid == 2:
                 if ftype == TType.STRING:
-                    self.end_token = iprot.readString().decode('utf-8') if sys.version_info[0] == 2 else iprot.readString()
+                    self.end_token = iprot.readString().decode(
+                        'utf-8') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
             elif fid == 3:

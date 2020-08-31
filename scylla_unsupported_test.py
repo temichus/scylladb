@@ -29,4 +29,3 @@ class ScyllaUnsupportedTest(Tester):
         Check that a batch with IF returns an informative error
         """
         raise NotImplementedError
-

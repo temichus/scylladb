@@ -34,8 +34,10 @@ class TestJson(Tester):
             );
         """)
 
-        session.execute("INSERT INTO Test. users (user_name, password, gender, state, birth_year) VALUES('frodo', 'pass@', 'male', 'CA', 1985);")
-        session.execute("INSERT INTO Test. users (user_name, password, gender, state, birth_year) VALUES('sam', '@pass', 'male', 'NY', 1980);")
+        session.execute(
+            "INSERT INTO Test. users (user_name, password, gender, state, birth_year) VALUES('frodo', 'pass@', 'male', 'CA', 1985);")
+        session.execute(
+            "INSERT INTO Test. users (user_name, password, gender, state, birth_year) VALUES('sam', '@pass', 'male', 'NY', 1980);")
 
         res = session.execute("SELECT * FROM Test. users")
 
@@ -76,7 +78,8 @@ class TestJson(Tester):
             );
         """)
 
-        session.execute("INSERT INTO Test. users (user_name, password, gender, state, birth_year) VALUES('gandalf', 'p@$$', 'male', 'WA', 1955);")
+        session.execute(
+            "INSERT INTO Test. users (user_name, password, gender, state, birth_year) VALUES('gandalf', 'p@$$', 'male', 'WA', 1955);")
         node1.flush()
         cluster.stop()
 

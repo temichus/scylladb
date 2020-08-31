@@ -74,4 +74,3 @@ class ScyllaManagerTaskTest(Tester, ScyllaManagerMixin):
         assert len(list_next_run) == 6
         assert int(list_next_run[0]) in [now.day+1, 1]  # repair starts the next day of the month
         assert list_next_run[5] == '(+7d)'
-

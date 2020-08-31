@@ -122,8 +122,8 @@ class TestPutGet(Tester):
         cluster.set_configuration_options(values={'partitioner': 'org.apache.cassandra.dht.Murmur3Partitioner'})
         cluster.populate(2, use_vnodes=False)
         node1, node2 = cluster.nodelist()
-        node1.set_configuration_options(values={'initial_token': '-9103060099726885728'}) # key05
-        node2.set_configuration_options(values={'initial_token': '1530895188695377504'}) # key03
+        node1.set_configuration_options(values={'initial_token': '-9103060099726885728'})  # key05
+        node2.set_configuration_options(values={'initial_token': '1530895188695377504'})  # key03
         cluster.start()
         time.sleep(.5)
         session = self.patient_cql_connection(node1)

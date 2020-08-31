@@ -180,7 +180,8 @@ class ReplicationTest(Tester):
         time.sleep(5)
 
         for key, token in murmur3_hashes.items():
-            query = SimpleStatement("INSERT INTO test (id, value) VALUES (%s, 'asdf')" % key, consistency_level=ConsistencyLevel.ALL)
+            query = SimpleStatement("INSERT INTO test (id, value) VALUES (%s, 'asdf')" %
+                                    key, consistency_level=ConsistencyLevel.ALL)
             future = session.execute_async(query, trace=True)
             future.result()
             trace = future.get_query_trace(max_wait=120)
@@ -219,7 +220,8 @@ class ReplicationTest(Tester):
         forwarders_used = set()
 
         for key, token in murmur3_hashes.items():
-            query = SimpleStatement("INSERT INTO test (id, value) VALUES (%s, 'asdf')" % key, consistency_level=ConsistencyLevel.ALL)
+            query = SimpleStatement("INSERT INTO test (id, value) VALUES (%s, 'asdf')" %
+                                    key, consistency_level=ConsistencyLevel.ALL)
             future = session.execute_async(query, trace=True)
             future.result()
             trace = future.get_query_trace(max_wait=120)
@@ -287,7 +289,8 @@ class SnitchConfigurationUpdateTest(Tester):
             debug(out)
             ips_found = re.findall('(\d+\.\d+\.\d+\.\d+)', out)
 
-            self.assertEqual(len(ips_found), expected_count, "wrong number of endpoints found ({}), should be: {}".format(len(ips_found), expected_count))
+            self.assertEqual(len(ips_found), expected_count,
+                             "wrong number of endpoints found ({}), should be: {}".format(len(ips_found), expected_count))
 
     def wait_for_nodes_on_racks(self, nodes, expected_racks):
         """
@@ -365,8 +368,10 @@ class SnitchConfigurationUpdateTest(Tester):
         self._test_rf_on_snitch_update(nodes=[3, 3], rf={'class': '\'NetworkTopologyStrategy\'', 'dc1': 3, 'dc2': 3},
                                        snitch_class_name='GossipingPropertyFileSnitch',
                                        snitch_config_file='cassandra-rackdc.properties',
-                                       snitch_lines_before=lambda i, node: ["dc={}".format(node.data_center), "rack=rack{}".format(i % 3)],
-                                       snitch_lines_after=lambda i, node: ["dc={}".format(node.data_center), "rack=rack1"],
+                                       snitch_lines_before=lambda i, node: ["dc={}".format(
+                                           node.data_center), "rack=rack{}".format(i % 3)],
+                                       snitch_lines_after=lambda i, node: [
+                                           "dc={}".format(node.data_center), "rack=rack1"],
                                        final_racks=["rack1", "rack1", "rack1", "rack1", "rack1", "rack1"],
                                        nodes_to_shutdown=[0, 2, 3, 5])
 
@@ -382,8 +387,10 @@ class SnitchConfigurationUpdateTest(Tester):
         self._test_rf_on_snitch_update(nodes=[3, 3], rf={'class': '\'NetworkTopologyStrategy\'', 'dc1': 3, 'dc2': 3},
                                        snitch_class_name='GossipingPropertyFileSnitch',
                                        snitch_config_file='cassandra-rackdc.properties',
-                                       snitch_lines_before=lambda i, node: ["dc={}".format(node.data_center), "rack=rack1"],
-                                       snitch_lines_after=lambda i, node: ["dc={}".format(node.data_center), "rack=rack{}".format(i % 3)],
+                                       snitch_lines_before=lambda i, node: [
+                                           "dc={}".format(node.data_center), "rack=rack1"],
+                                       snitch_lines_after=lambda i, node: ["dc={}".format(
+                                           node.data_center), "rack=rack{}".format(i % 3)],
                                        final_racks=["rack0", "rack1", "rack2", "rack0", "rack1", "rack2"],
                                        nodes_to_shutdown=[0, 2, 3, 5])
 
@@ -399,7 +406,8 @@ class SnitchConfigurationUpdateTest(Tester):
         self._test_rf_on_snitch_update(nodes=[3], rf={'class': '\'NetworkTopologyStrategy\'', 'dc1': 3},
                                        snitch_class_name='PropertyFileSnitch',
                                        snitch_config_file='cassandra-topology.properties',
-                                       snitch_lines_before=lambda i, node: ["127.0.0.1=dc1:rack0", "127.0.0.2=dc1:rack1", "127.0.0.3=dc1:rack2"],
+                                       snitch_lines_before=lambda i, node: [
+                                           "127.0.0.1=dc1:rack0", "127.0.0.2=dc1:rack1", "127.0.0.3=dc1:rack2"],
                                        snitch_lines_after=lambda i, node: ["default=dc1:rack0"],
                                        final_racks=["rack0", "rack0", "rack0"],
                                        nodes_to_shutdown=[1, 2])
@@ -417,7 +425,8 @@ class SnitchConfigurationUpdateTest(Tester):
                                        snitch_class_name='PropertyFileSnitch',
                                        snitch_config_file='cassandra-topology.properties',
                                        snitch_lines_before=lambda i, node: ["default=dc1:rack0"],
-                                       snitch_lines_after=lambda i, node: ["127.0.0.1=dc1:rack0", "127.0.0.2=dc1:rack1", "127.0.0.3=dc1:rack2"],
+                                       snitch_lines_after=lambda i, node: [
+                                           "127.0.0.1=dc1:rack0", "127.0.0.2=dc1:rack1", "127.0.0.3=dc1:rack2"],
                                        final_racks=["rack0", "rack1", "rack2"],
                                        nodes_to_shutdown=[1, 2])
 
@@ -497,7 +506,8 @@ class SnitchConfigurationUpdateTest(Tester):
                                   snitch_lines_before, snitch_lines_after, final_racks, nodes_to_shutdown):
         cluster = self.cluster
         cluster.populate(nodes)
-        cluster.set_configuration_options(values={'endpoint_snitch': 'org.apache.cassandra.locator.{}'.format(snitch_class_name)})
+        cluster.set_configuration_options(
+            values={'endpoint_snitch': 'org.apache.cassandra.locator.{}'.format(snitch_class_name)})
 
         # start with separate racks
         for i, node in enumerate(cluster.nodelist()):
@@ -702,7 +712,8 @@ class SnitchConfigurationUpdateTest(Tester):
 
         cluster = self.cluster
         cluster.populate(1)
-        cluster.set_configuration_options(values={'endpoint_snitch': 'org.apache.cassandra.locator.GossipingPropertyFileSnitch'})
+        cluster.set_configuration_options(
+            values={'endpoint_snitch': 'org.apache.cassandra.locator.GossipingPropertyFileSnitch'})
 
         node = cluster.nodelist()[0]
         with open(os.path.join(node.get_conf_dir(), 'cassandra-rackdc.properties'), 'w') as topo_file:

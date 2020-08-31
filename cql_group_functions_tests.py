@@ -105,4 +105,3 @@ class TestGroupFunctions(Tester):
         for single_type in self.dates_type_list:
             self.create_tables_and_run_group_functions(session=session, table_name=self.table_name,
                                                        single_type=single_type)
-

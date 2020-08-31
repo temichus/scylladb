@@ -525,7 +525,8 @@ class TestBackupRestore(Tester):
         debug("Flushing a keyspace...")
         node1.nodetool("flush -- ks")
 
-        cassandra_snapshot_dir = "{}/cassandra-sstables/restore-snapshot-from-cassandra".format(os.path.dirname(os.path.realpath(__file__)))
+        cassandra_snapshot_dir = "{}/cassandra-sstables/restore-snapshot-from-cassandra".format(
+            os.path.dirname(os.path.realpath(__file__)))
         debug("cassandra snapshot dir is {}".format(cassandra_snapshot_dir))
 
         ks_dir = os.path.join(self.test_path, 'test', 'node1', 'data', 'ks')
@@ -614,7 +615,8 @@ class TestBackupRestore(Tester):
         for i in range(2):
             for j in [1, 2]:
                 ks_snapshot_dir[i][j] = self.get_snapshot_dir('snapshot{}'.format(j), ks_dir=ks_dir[i])
-                self.assertTrue(ks_snapshot_dir[i][j] is not None, "Can't find a snapshot directory for 'ks{}.snapshot{}'".format(i, j))
+                self.assertTrue(ks_snapshot_dir[i][j] is not None,
+                                "Can't find a snapshot directory for 'ks{}.snapshot{}'".format(i, j))
 
         ks_snapshot_files = [[None, None, None], [None, None, None]]
         for i in range(2):
@@ -637,7 +639,8 @@ class TestBackupRestore(Tester):
                 test_dir = self.get_snapshot_dir('snapshot{}'.format(j), ks_dir=ks_dir[i])
                 self.assertTrue(test_dir is not None, "'ks{}' snapshot 'snapshot{}' has not been deleted!".format(i, j))
                 test_files = self.get_all_files_in_dir(ks_snapshot_dir[i][j])
-                self.assertEqual(test_files, ks_snapshot_files[i][j], "'ks{}' snapshot 'snapshot{}' direcotry contents has changed!".format(i, j))
+                self.assertEqual(
+                    test_files, ks_snapshot_files[i][j], "'ks{}' snapshot 'snapshot{}' direcotry contents has changed!".format(i, j))
 
         # Call 'nodetool clearsnapshot -t snapshot1 -- ks1'
         debug("Call 'nodetool clearsnapshot -t snapshot1 -- ks1'")
@@ -653,7 +656,8 @@ class TestBackupRestore(Tester):
         test_dir = self.get_snapshot_dir('snapshot1', ks_dir=ks_dir[0])
         self.assertTrue(test_dir is not None, "'ks0' snapshot 'snapshot1' has been deleted!")
         test_files = self.get_all_files_in_dir(ks_snapshot_dir[0][1])
-        self.assertEqual(test_files, ks_snapshot_files[0][1], "'ks0' snapshot 'snapshot1' direcotry contents has changed!")
+        self.assertEqual(test_files, ks_snapshot_files[0][1],
+                         "'ks0' snapshot 'snapshot1' direcotry contents has changed!")
 
         # ...then check that snapshot2 is intact
         for i in range(2):
@@ -661,7 +665,8 @@ class TestBackupRestore(Tester):
             test_dir = self.get_snapshot_dir('snapshot2', ks_dir=ks_dir[i])
             self.assertTrue(test_dir is not None, "'ks{}' snapshot 'snapshot2' has not been deleted!".format(i))
             test_files = self.get_all_files_in_dir(ks_snapshot_dir[i][2])
-            self.assertEqual(test_files, ks_snapshot_files[i][2], "'ks{}' snapshot 'snapshot2' direcotry contents has changed!".format(i))
+            self.assertEqual(
+                test_files, ks_snapshot_files[i][2], "'ks{}' snapshot 'snapshot2' direcotry contents has changed!".format(i))
 
         # Call 'nodetool clearsnapshot' and check that all snapshots has been cleared
         debug("Call 'nodetool clearsnapshot'")
@@ -749,7 +754,8 @@ class TestBackupRestore(Tester):
         except NodetoolError as error:
             if expect_refresh_fail:
                 debug(f"Refresh failed as expected, error:\n{error}")
-                assert re.search(expected_error, str(error)), f"Expected error is not found, expected error:\n{expected_error}"
+                assert re.search(expected_error, str(
+                    error)), f"Expected error is not found, expected error:\n{expected_error}"
             else:
                 raise error
 

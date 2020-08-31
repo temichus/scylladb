@@ -256,7 +256,8 @@ class TestCommitLog(Tester):
             session.execute("INSERT INTO Test.cf (pk1, ck1, r2, r3, r5) VALUES(%d, 0, 1, 'two', {3, 4});" % (key))
         session.execute("ALTER TABLE Test.cf ADD r1 int;")
         for key in range(n_partitions):
-            session.execute("INSERT INTO Test.cf (pk1, ck1, r1, r2, r3, r5) VALUES(%d, 1, 2, 3, 'four', {5, 6, 7});" % (key))
+            session.execute(
+                "INSERT INTO Test.cf (pk1, ck1, r1, r2, r3, r5) VALUES(%d, 1, 2, 3, 'four', {5, 6, 7});" % (key))
         session.execute("ALTER TABLE Test.cf DROP r2;")
         for key in range(n_partitions):
             session.execute("INSERT INTO Test.cf (pk1, ck1, r1, r3) VALUES(%d, 2, 3, 'four');" % (key))
@@ -423,7 +424,8 @@ class TestCommitLog(Tester):
         if is_win():
             # We expect this to succeed
             self.session1.execute(query)
-            self.assertFalse(self.node1.grep_log("terminating thread"), "thread was terminated but CL error should have been ignored.")
+            self.assertFalse(self.node1.grep_log("terminating thread"),
+                             "thread was terminated but CL error should have been ignored.")
             self.assertTrue(self.node1.is_running(), "Node1 should still be running after an ignore error on CL")
         else:
             with self.assertRaises((OperationTimedOut, WriteTimeout)):

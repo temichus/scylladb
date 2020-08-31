@@ -1002,7 +1002,7 @@ class TestConsistency(Tester):
             session.execute(truncate_statement)
 
     @attr('next-gating')
-    @attr('dtest-debug') # https://github.com/scylladb/scylla/issues/4384
+    @attr('dtest-debug')  # https://github.com/scylladb/scylla/issues/4384
     def quorum_available_during_failure_test(self):
         CL = ConsistencyLevel.QUORUM
         RF = 3
@@ -1063,19 +1063,23 @@ class TestConsistency(Tester):
         self.create_ks(session1, 'ks', 2)
         session1.execute('create table ks.cf1 (p int, c int, r int, primary key (p, c))')
 
-        session1.execute(SimpleStatement('insert into ks.cf1 (p, c, r) values (0, 1, 1)', consistency_level=ConsistencyLevel.ALL))
-        session1.execute(SimpleStatement('insert into ks.cf1 (p, c, r) values (0, 2, 1)', consistency_level=ConsistencyLevel.ALL))
+        session1.execute(SimpleStatement('insert into ks.cf1 (p, c, r) values (0, 1, 1)',
+                                         consistency_level=ConsistencyLevel.ALL))
+        session1.execute(SimpleStatement('insert into ks.cf1 (p, c, r) values (0, 2, 1)',
+                                         consistency_level=ConsistencyLevel.ALL))
 
         debug('Updating node1')
         node2.stop()
-        session1.execute(SimpleStatement('delete from ks.cf1 where p = 0 and c = 1', consistency_level=ConsistencyLevel.ONE))
+        session1.execute(SimpleStatement('delete from ks.cf1 where p = 0 and c = 1',
+                                         consistency_level=ConsistencyLevel.ONE))
 
         debug('Updating node2')
         node2.start(wait_for_binary_proto=True)
         node1.stop()
 
         session2 = self.patient_cql_connection(node2)
-        session2.execute(SimpleStatement('insert into ks.cf1 (p, c, r) values (0, 2, 2)', consistency_level=ConsistencyLevel.ONE))
+        session2.execute(SimpleStatement('insert into ks.cf1 (p, c, r) values (0, 2, 2)',
+                                         consistency_level=ConsistencyLevel.ONE))
 
         debug('Querying whole cluster')
         node1.start(wait_other_notice=True)
@@ -1103,19 +1107,23 @@ class TestConsistency(Tester):
         self.create_ks(session1, 'ks', 2)
         session1.execute('create table ks.cf1 (p int, c text, r text, primary key (p, c)) with compact storage')
 
-        session1.execute(SimpleStatement("insert into ks.cf1 (p, c, r) values (1, '1', '0')", consistency_level=ConsistencyLevel.ALL))
-        session1.execute(SimpleStatement("insert into ks.cf1 (p, c, r) values (2, '1', '1')", consistency_level=ConsistencyLevel.ALL))
+        session1.execute(SimpleStatement("insert into ks.cf1 (p, c, r) values (1, '1', '0')",
+                                         consistency_level=ConsistencyLevel.ALL))
+        session1.execute(SimpleStatement("insert into ks.cf1 (p, c, r) values (2, '1', '1')",
+                                         consistency_level=ConsistencyLevel.ALL))
 
         debug('Updating node1')
         node2.stop()
-        session1.execute(SimpleStatement("delete from ks.cf1 where p = 1 and c = '1'", consistency_level=ConsistencyLevel.ONE))
+        session1.execute(SimpleStatement("delete from ks.cf1 where p = 1 and c = '1'",
+                                         consistency_level=ConsistencyLevel.ONE))
 
         debug('Updating node2')
         node2.start()
         node1.stop()
 
         session2 = self.patient_cql_connection(node2)
-        session2.execute(SimpleStatement("insert into ks.cf1 (p, c, r) values (2, '1', '2')", consistency_level=ConsistencyLevel.ONE))
+        session2.execute(SimpleStatement("insert into ks.cf1 (p, c, r) values (2, '1', '2')",
+                                         consistency_level=ConsistencyLevel.ONE))
 
         debug('Querying whole cluster')
         node1.start(wait_other_notice=True)
@@ -1127,7 +1135,8 @@ class TestConsistency(Tester):
         client.set_keyspace('ks')
 
         cp = ColumnParent('cf1')
-        res = client.get_range_slices(cp, SlicePredicate(column_names=['1']), KeyRange(start_token=str(-(1 << 63)), end_token=str(-(1 << 63)), count=1), ConsistencyLevel.ALL)
+        res = client.get_range_slices(cp, SlicePredicate(column_names=['1']), KeyRange(
+            start_token=str(-(1 << 63)), end_token=str(-(1 << 63)), count=1), ConsistencyLevel.ALL)
 
         assert len(res) == 1, 'Expecting 1 row, got %d (%s)' % (len(res), str(res))
         assert len(res[0].columns) == 1, 'Expecting 1 cell, got %d (%s)' % (len(res[0].columns), str(res[0].columns))
@@ -1148,19 +1157,23 @@ class TestConsistency(Tester):
         self.create_ks(session1, 'ks', 2)
         session1.execute('create table ks.cf1 (p int, c text, r text, primary key (p, c)) with compact storage')
 
-        session1.execute(SimpleStatement("insert into ks.cf1 (p, c, r) values (1, '1', '0')", consistency_level=ConsistencyLevel.ALL))
-        session1.execute(SimpleStatement("insert into ks.cf1 (p, c, r) values (1, '2', '1')", consistency_level=ConsistencyLevel.ALL))
+        session1.execute(SimpleStatement("insert into ks.cf1 (p, c, r) values (1, '1', '0')",
+                                         consistency_level=ConsistencyLevel.ALL))
+        session1.execute(SimpleStatement("insert into ks.cf1 (p, c, r) values (1, '2', '1')",
+                                         consistency_level=ConsistencyLevel.ALL))
 
         debug('Updating node1')
         node2.stop()
-        session1.execute(SimpleStatement("delete from ks.cf1 where p = 1 and c = '1'", consistency_level=ConsistencyLevel.ONE))
+        session1.execute(SimpleStatement("delete from ks.cf1 where p = 1 and c = '1'",
+                                         consistency_level=ConsistencyLevel.ONE))
 
         debug('Updating node2')
         node2.start()
         node1.stop()
 
         session2 = self.patient_cql_connection(node2)
-        session2.execute(SimpleStatement("insert into ks.cf1 (p, c, r) values (1, '2', '2')", consistency_level=ConsistencyLevel.ONE))
+        session2.execute(SimpleStatement("insert into ks.cf1 (p, c, r) values (1, '2', '2')",
+                                         consistency_level=ConsistencyLevel.ONE))
 
         debug('Querying whole cluster')
         node1.start(wait_other_notice=True)
@@ -1173,7 +1186,7 @@ class TestConsistency(Tester):
 
         cp = ColumnParent('cf1')
         res = client.get_range_slices(cp,
-                SlicePredicate(slice_range=SliceRange(start='', finish='', count=1)), KeyRange(start_token=str(-(1 << 63)), end_token=str(-(1 << 63))), ConsistencyLevel.ALL)
+                                      SlicePredicate(slice_range=SliceRange(start='', finish='', count=1)), KeyRange(start_token=str(-(1 << 63)), end_token=str(-(1 << 63))), ConsistencyLevel.ALL)
 
         assert len(res) == 1, 'Expecting 1 row, got %d (%s)' % (len(res), str(res))
         assert len(res[0].columns) == 1, 'Expecting 1 cell, got %d (%s)' % (len(res[0].columns), str(res[0].columns))
@@ -1192,9 +1205,12 @@ class TestConsistency(Tester):
         self.create_ks(session1, 'ks', 2)
         session1.execute('create table ks.cf1 (p int, r int, primary key (p))')
 
-        session1.execute(SimpleStatement("insert into ks.cf1 (p, r) values (1, 1)", consistency_level=ConsistencyLevel.ALL))
-        session1.execute(SimpleStatement("insert into ks.cf1 (p, r) values (2, 2)", consistency_level=ConsistencyLevel.ALL))
-        session1.execute(SimpleStatement("insert into ks.cf1 (p, r) values (3, 3)", consistency_level=ConsistencyLevel.ALL))
+        session1.execute(SimpleStatement("insert into ks.cf1 (p, r) values (1, 1)",
+                                         consistency_level=ConsistencyLevel.ALL))
+        session1.execute(SimpleStatement("insert into ks.cf1 (p, r) values (2, 2)",
+                                         consistency_level=ConsistencyLevel.ALL))
+        session1.execute(SimpleStatement("insert into ks.cf1 (p, r) values (3, 3)",
+                                         consistency_level=ConsistencyLevel.ALL))
 
         debug('Updating node1')
         node2.stop(wait_other_notice=True)
@@ -1231,10 +1247,14 @@ class TestConsistency(Tester):
         self.create_ks(session1, 'ks', 2)
         session1.execute('create table ks.cf1 (p int, r int, primary key (p))')
 
-        session1.execute(SimpleStatement("insert into ks.cf1 (p, r) values (1, 1)", consistency_level=ConsistencyLevel.ALL))
-        session1.execute(SimpleStatement("insert into ks.cf1 (p, r) values (2, 2)", consistency_level=ConsistencyLevel.ALL))
-        session1.execute(SimpleStatement("insert into ks.cf1 (p, r) values (3, 3)", consistency_level=ConsistencyLevel.ALL))
-        session1.execute(SimpleStatement("insert into ks.cf1 (p, r) values (4, 4)", consistency_level=ConsistencyLevel.ALL))
+        session1.execute(SimpleStatement("insert into ks.cf1 (p, r) values (1, 1)",
+                                         consistency_level=ConsistencyLevel.ALL))
+        session1.execute(SimpleStatement("insert into ks.cf1 (p, r) values (2, 2)",
+                                         consistency_level=ConsistencyLevel.ALL))
+        session1.execute(SimpleStatement("insert into ks.cf1 (p, r) values (3, 3)",
+                                         consistency_level=ConsistencyLevel.ALL))
+        session1.execute(SimpleStatement("insert into ks.cf1 (p, r) values (4, 4)",
+                                         consistency_level=ConsistencyLevel.ALL))
 
         debug('Updating node1')
         node2.stop(wait_other_notice=True)
@@ -1275,10 +1295,14 @@ class TestConsistency(Tester):
         self.create_ks(session1, 'ks', 2)
         session1.execute('create table ks.cf1 (p int, c text, r text, primary key (p, c)) with compact storage')
 
-        session1.execute(SimpleStatement("insert into ks.cf1 (p, c, r) values (1, '1', '1')", consistency_level=ConsistencyLevel.ALL))
-        session1.execute(SimpleStatement("insert into ks.cf1 (p, c, r) values (2, '1', '2')", consistency_level=ConsistencyLevel.ALL))
-        session1.execute(SimpleStatement("insert into ks.cf1 (p, c, r) values (3, '1', '3')", consistency_level=ConsistencyLevel.ALL))
-        session1.execute(SimpleStatement("insert into ks.cf1 (p, c, r) values (4, '1', '4')", consistency_level=ConsistencyLevel.ALL))
+        session1.execute(SimpleStatement("insert into ks.cf1 (p, c, r) values (1, '1', '1')",
+                                         consistency_level=ConsistencyLevel.ALL))
+        session1.execute(SimpleStatement("insert into ks.cf1 (p, c, r) values (2, '1', '2')",
+                                         consistency_level=ConsistencyLevel.ALL))
+        session1.execute(SimpleStatement("insert into ks.cf1 (p, c, r) values (3, '1', '3')",
+                                         consistency_level=ConsistencyLevel.ALL))
+        session1.execute(SimpleStatement("insert into ks.cf1 (p, c, r) values (4, '1', '4')",
+                                         consistency_level=ConsistencyLevel.ALL))
 
         debug('Updating node1')
         node2.stop(wait_other_notice=True)
@@ -1301,7 +1325,8 @@ class TestConsistency(Tester):
         client.set_keyspace('ks')
 
         cp = ColumnParent('cf1')
-        res = client.get_range_slices(cp, SlicePredicate(column_names=['1']), KeyRange(start_token=str(-(1 << 63)), end_token=str(-(1 << 63)), count=2), ConsistencyLevel.ALL)
+        res = client.get_range_slices(cp, SlicePredicate(column_names=['1']), KeyRange(
+            start_token=str(-(1 << 63)), end_token=str(-(1 << 63)), count=2), ConsistencyLevel.ALL)
 
         assert len(res) == 2, 'Expecting 2 rows, got %d (%s)' % (len(res), str(res))
 
@@ -1325,10 +1350,14 @@ class TestConsistency(Tester):
         self.create_ks(session1, 'ks', 2)
         session1.execute('create table ks.cf1 (p int, r int, primary key (p))')
 
-        session1.execute(SimpleStatement('insert into ks.cf1 (p, r) values (0, 0)', consistency_level=ConsistencyLevel.ALL))
-        session1.execute(SimpleStatement('insert into ks.cf1 (p, r) values (1, 1)', consistency_level=ConsistencyLevel.ALL))
-        session1.execute(SimpleStatement('insert into ks.cf1 (p, r) values (2, 2)', consistency_level=ConsistencyLevel.ALL))
-        session1.execute(SimpleStatement('insert into ks.cf1 (p, r) values (3, 3)', consistency_level=ConsistencyLevel.ALL))
+        session1.execute(SimpleStatement('insert into ks.cf1 (p, r) values (0, 0)',
+                                         consistency_level=ConsistencyLevel.ALL))
+        session1.execute(SimpleStatement('insert into ks.cf1 (p, r) values (1, 1)',
+                                         consistency_level=ConsistencyLevel.ALL))
+        session1.execute(SimpleStatement('insert into ks.cf1 (p, r) values (2, 2)',
+                                         consistency_level=ConsistencyLevel.ALL))
+        session1.execute(SimpleStatement('insert into ks.cf1 (p, r) values (3, 3)',
+                                         consistency_level=ConsistencyLevel.ALL))
 
         debug('Updating node2')
         node1.stop()
@@ -1337,8 +1366,10 @@ class TestConsistency(Tester):
         session2.execute(SimpleStatement('delete from ks.cf1 where p = 0', consistency_level=ConsistencyLevel.ONE))
         session2.execute(SimpleStatement('delete from ks.cf1 where p = 1', consistency_level=ConsistencyLevel.ONE))
         session2.execute(SimpleStatement('delete from ks.cf1 where p = 2', consistency_level=ConsistencyLevel.ONE))
-        session2.execute(SimpleStatement('insert into ks.cf1 (p, r) values (4, 4)', consistency_level=ConsistencyLevel.ONE))
-        session2.execute(SimpleStatement('insert into ks.cf1 (p, r) values (5, 5)', consistency_level=ConsistencyLevel.ONE))
+        session2.execute(SimpleStatement('insert into ks.cf1 (p, r) values (4, 4)',
+                                         consistency_level=ConsistencyLevel.ONE))
+        session2.execute(SimpleStatement('insert into ks.cf1 (p, r) values (5, 5)',
+                                         consistency_level=ConsistencyLevel.ONE))
 
         debug('Querying whole cluster')
         node1.start(wait_other_notice=True)

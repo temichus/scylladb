@@ -7,7 +7,6 @@ from dtest import Tester, debug
 from nose.plugins.attrib import attr
 
 
-
 def human_size(size, units=['bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB']):
     """ Returns a human readable string reprentation of bytes"""
     if size < 1024.0:
@@ -26,6 +25,7 @@ class TestNodetoolListSnapshots(Tester):
     Extends:
         Tester
     """
+
     def __init__(self, *args, **kwargs):
         super(TestNodetoolListSnapshots, self).__init__(*args, **kwargs)
 
@@ -110,7 +110,7 @@ class TestNodetoolListSnapshots(Tester):
                     [os.path.getsize(os.path.join(path, f))
                         for f in files
                         if 'manifest.json' not in f and 'schema.cql' not in f]
-                    )
+                )
                 debug('Snapshot ks:{} cf:{} name:{} size is {}, human size is {}'.format(
                     ks,
                     cf_name[0],
@@ -148,7 +148,8 @@ class TestNodetoolListSnapshots(Tester):
             output {string} -- result of command output
         """
 
-        output_regexp = re.compile('^(?P<snsh_name>[\w]+)\s+(?P<ks>[\w]+)\s+(?P<cf>[\w]+)\s+(?P<true_size>[0-9.]+)\s\w+\s+(?P<size_on_disk>[0-9.]+\s+\w+)\s+$', re.MULTILINE)
+        output_regexp = re.compile(
+            '^(?P<snsh_name>[\w]+)\s+(?P<ks>[\w]+)\s+(?P<cf>[\w]+)\s+(?P<true_size>[0-9.]+)\s\w+\s+(?P<size_on_disk>[0-9.]+\s+\w+)\s+$', re.MULTILINE)
         debug('Output of nodetool listsnapshots:\n{}'.format(output))
         return output_regexp.findall(output)
 

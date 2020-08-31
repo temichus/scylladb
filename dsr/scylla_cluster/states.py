@@ -283,7 +283,7 @@ class ClusterState:
 
     def _check_if_data_could_be_lost_due_to_node_removal(self):
         return self._unavailable_nodes_with_lost_data + 1 \
-               >= self._get_node_count_from_cl_and_rf(self._rf, self._loader_consistency_level)
+            >= self._get_node_count_from_cl_and_rf(self._rf, self._loader_consistency_level)
 
     def _check_if_loaders_could_stop_working(self):
         running_nodes = self.get_node_ids_by_status('UP', 'RUNNING')
@@ -293,7 +293,7 @@ class ClusterState:
         nodes_that_holds_data = self.get_node_ids_by_status(
             'UP', 'RUNNING', 'HOLDS_UPTODATE_DATA', 'HOLDS_UPTODATE_SCHEMA')
         return len(nodes_that_holds_data) >= \
-               self._get_node_count_from_cl_and_rf(self._rf, self._loader_consistency_level)
+            self._get_node_count_from_cl_and_rf(self._rf, self._loader_consistency_level)
 
     def can_add_node(self):
         return bool(self._max_node_count - self.count_node_states_by_status('ANY'))
@@ -409,4 +409,3 @@ class ClusterState:
 
     def resetlocalschema(self, node_id):
         self.get_node_state_by_node_id(node_id).resetlocalschema()
-

@@ -14,6 +14,7 @@ from collections import namedtuple
 import time
 import uuid
 
+
 @attr('single_node')
 class TestCQL(Tester):
 
@@ -100,8 +101,8 @@ class TestCQL(Tester):
                 args_per_test_case.append((init_val, upd_v, pattern))
 
         table_name = self._lwt_create_table(session,
-            column_type,
-            enumerate(raw_init_values))
+                                            column_type,
+                                            enumerate(raw_init_values))
 
         for key, entry in enumerate(args_per_test_case):
             init_val, upd_v, pattern_entry = entry
@@ -151,8 +152,8 @@ class TestCQL(Tester):
                     'value=:v',
                     'value in (:v)',
                     {'p': 'value in :v', 'v': (init_val,)}
-                ]
-            }
+                    ]
+                    }
 
         PRIMITIVE_TYPES_MAP = {
             'boolean': {
@@ -344,8 +345,8 @@ class TestCQL(Tester):
                     {'p': 'value[:i]=:v', 'i': 0, 'v': init_val, 'coll_type_filter': ['list']},
                     {'p': 'value[:i] in (:v)', 'i': 0, 'v': init_val, 'coll_type_filter': ['list']},
                     {'p': 'value[:i] in :v', 'i': 0, 'v': [init_val], 'coll_type_filter': ['list']}
-                ]
-            }
+                    ]
+                    }
 
         PRIMITIVE_TYPES_MAP = {
             'boolean': {
@@ -489,8 +490,9 @@ class TestCQL(Tester):
                 for column_type, test_data in PRIMITIVE_TYPES_MAP.items():
                     additional_test_data = {'collection_type': collection_type}
                     self._lwt_execute_single_type_update_case(session,
-                        self._build_collection_typename(column_type, is_frozen, collection_type),
-                        {**test_data, **additional_test_data})
+                                                              self._build_collection_typename(
+                                                                  column_type, is_frozen, collection_type),
+                                                              {**test_data, **additional_test_data})
 
     @require('#5855')
     def lwt_compare_collection_with_null_test(self):
@@ -504,7 +506,6 @@ class TestCQL(Tester):
         """
 
         session = self.prepare()
-
 
         # Create test table and prepare data
 
@@ -522,8 +523,7 @@ class TestCQL(Tester):
 
         session.execute('''
             INSERT INTO test (k) VALUES (0)
-        ''') # leave collection cells == null
-
+        ''')  # leave collection cells == null
 
         # Prepare statements
 
@@ -615,28 +615,28 @@ class TestCQL(Tester):
             UPDATE test SET list_set=:update_val WHERE k=1 IF list_set=:v
         ''')
         assert_one_prepared(session, stmt, [True, [SortedSet([1, 2]), SortedSet([1, 2])]],
-            {'update_val': [SortedSet([3, 4]), SortedSet([4, 5])], 'v': [SortedSet([1, 2]), SortedSet([1, 2])]})
+                            {'update_val': [SortedSet([3, 4]), SortedSet([4, 5])], 'v': [SortedSet([1, 2]), SortedSet([1, 2])]})
 
         # UPDATE test SET list_set=[{3,4,5}, {4,5,6}] WHERE k = 1 IF list_set > [{3,3}, {4,4}]
         stmt = prepare_statement(session, '''
             UPDATE test SET list_set=:update_val WHERE k=1 IF list_set > :v
         ''')
         assert_one_prepared(session, stmt, [True, [SortedSet([3, 4]), SortedSet([4, 5])]],
-            {'update_val': [SortedSet([3, 4, 5]), SortedSet([4, 5, 6])], 'v': [SortedSet([3, 3]), SortedSet([4, 4])]})
+                            {'update_val': [SortedSet([3, 4, 5]), SortedSet([4, 5, 6])], 'v': [SortedSet([3, 3]), SortedSet([4, 4])]})
 
         # UPDATE test SET list_set=[{5,6,7}, {7,8,9}] WHERE k = 1 IF list_set >= [{3,3}, {5,4}]
         stmt = prepare_statement(session, '''
             UPDATE test SET list_set=:update_val WHERE k=1 IF list_set >= :v
         ''')
         assert_one_prepared(session, stmt, [True, [SortedSet([3, 4, 5]), SortedSet([4, 5, 6])]],
-            {'update_val': [SortedSet([5, 6, 7]), SortedSet([7, 8, 9])], 'v': [SortedSet([3, 3]), SortedSet([5, 4])]})
+                            {'update_val': [SortedSet([5, 6, 7]), SortedSet([7, 8, 9])], 'v': [SortedSet([3, 3]), SortedSet([5, 4])]})
 
         # UPDATE test SET list_set=[{5,6,7}, {7,8,9}] WHERE k = 1 IF list_set >= [{3,4}, {4,5}]
         stmt = prepare_statement(session, '''
             UPDATE test SET list_set=:update_val WHERE k=1 IF list_set >= :v
         ''')
         assert_one_prepared(session, stmt, [True, [SortedSet([5, 6, 7]), SortedSet([7, 8, 9])]],
-            {'update_val': [SortedSet([5, 6, 7]), SortedSet([7, 8, 9])], 'v': [SortedSet([3, 4]), SortedSet([4, 5])]})
+                            {'update_val': [SortedSet([5, 6, 7]), SortedSet([7, 8, 9])], 'v': [SortedSet([3, 4]), SortedSet([4, 5])]})
 
     def lwt_nested_collections_set_list_test(self):
         """
@@ -669,18 +669,18 @@ class TestCQL(Tester):
             UPDATE test SET set_list=:update_val WHERE k=1 IF set_list=:v
         ''')
         assert_one_prepared(session, stmt, [True, SortedSet([[1, 2]])],
-            {'update_val': SortedSet([[3, 3], [4, 4]]), 'v': SortedSet([[1, 2], [1, 2]])})
+                            {'update_val': SortedSet([[3, 3], [4, 4]]), 'v': SortedSet([[1, 2], [1, 2]])})
 
         # UPDATE test SET set_list={[5,5,5], [4,4,4]} WHERE k = 1 if set_list > {[3,3], [4,4]}
         stmt = prepare_statement(session, '''
             UPDATE test SET set_list=:update_val WHERE k=1 IF set_list > :v
         ''')
         assert_one_prepared(session, stmt, [False, SortedSet([[3, 3], [4, 4]])],
-            {'update_val': SortedSet([[5, 5, 5], [4, 4, 4]]), 'v': SortedSet([[3, 3], [4, 4]])})
+                            {'update_val': SortedSet([[5, 5, 5], [4, 4, 4]]), 'v': SortedSet([[3, 3], [4, 4]])})
 
         # UPDATE test SET set_list={[5,5,5], [4,4,4]} WHERE k = 1 IF set_list >= {[3,3], [4,4]}
         stmt = prepare_statement(session, '''
             UPDATE test SET set_list=:update_val WHERE k=1 IF set_list >= :v
         ''')
         assert_one_prepared(session, stmt, [True, SortedSet([[3, 3], [4, 4]])],
-            {'update_val': SortedSet([[5, 5, 5], [4, 4, 4]]), 'v': SortedSet([[3, 3], [4, 4]])})
+                            {'update_val': SortedSet([[5, 5, 5], [4, 4, 4]]), 'v': SortedSet([[3, 3], [4, 4]])})

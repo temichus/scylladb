@@ -217,7 +217,7 @@ class ScyllaClusterTest(DSREntity):
                 output[ks_name] = {
                     '__tables__': {table_name: {
                         '__columns__': groups['column_definition']
-                        }
+                    }
                     }
                 }
                 return output
@@ -307,5 +307,3 @@ class ScyllaClusterTest(DSREntity):
         if self.actions:
             for action in self.actions:
                 action.check_validity()
-
-

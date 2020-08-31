@@ -170,8 +170,7 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
             "c2": sorted([C2_PREFIX % i for i in range(*key_range)])
         }
         for column in expected_result_dict:
-            assert expected_result_dict[column] == result_dict[column]\
-                , f"""post backup table {table_name} does not match expected data:
+            assert expected_result_dict[column] == result_dict[column], f"""post backup table {table_name} does not match expected data:
                       mismatched_column:{column}
                       pre backup values:{expected_result_dict[column]}
                       post backup values:{result_dict[column]}"""
@@ -543,7 +542,6 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
 
         mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
 
-
         # C-S for two minutes
         self.cluster.stress(['write', 'n=10000K', '-rate', 'threads=50',
                              '-schema', 'compaction(strategy=SizeTieredCompactionStrategy)'])
@@ -585,7 +583,6 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
             total_snapshot_list.extend(self.extract_all_snapshot_names(node.nodetool("listsnapshots",
                                                                                      capture_output=True)[0]))
         assert len(total_snapshot_list) == 0, "Some snapshots were not deleted after the second run of the backup"
-
 
     @attr('scylla-manager')
     def test_backup_while_node_is_drained(self):
@@ -713,11 +710,11 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
                                           use_clustering_key=False, partition_key_value=1):
         for keyspace in keyspace_table_and_key_range:
             for table, key_range in keyspace_table_and_key_range.get(keyspace, {}).items():
-                split_key_ranges = list(range(key_range[0], key_range[1], (key_range[1] - key_range[0]) // num_of_queries))
+                split_key_ranges = list(range(key_range[0], key_range[1],
+                                              (key_range[1] - key_range[0]) // num_of_queries))
                 split_key_ranges.append(key_range[1])
                 for n in range(len(split_key_ranges[:-1])):
-                    self.insert_data_from_ranges(healthy_node=healthy_node, keyspace_table_and_key_range=
-                                                 {keyspace: {table: (split_key_ranges[n], split_key_ranges[n + 1])}},
+                    self.insert_data_from_ranges(healthy_node=healthy_node, keyspace_table_and_key_range={keyspace: {table: (split_key_ranges[n], split_key_ranges[n + 1])}},
                                                  use_clustering_key=use_clustering_key,
                                                  partition_key_value=partition_key_value)
                     healthy_node.nodetool("flush")
@@ -761,7 +758,6 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
 
         return current_snapshot_set
 
-
     @attr('scylla-manager')
     def test_snapshot_deleted_upon_rerun(self):
         node1, node2 = self.config_and_create_cluster(nodes=2)
@@ -769,7 +765,8 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
         self.cluster.stress(['write', 'n=2500K', '-rate', 'threads=50', '-pop', 'seq=1..10000000',
                              '-schema', 'compaction(strategy=SizeTieredCompactionStrategy)'])
 
-        backup_task = mgr_cluster.run_backup_command(keyspace_list=["keyspace1"], location_list=["s3:{}".format(DESTINATION_BUCKET)])
+        backup_task = mgr_cluster.run_backup_command(keyspace_list=["keyspace1"], location_list=[
+                                                     "s3:{}".format(DESTINATION_BUCKET)])
         backup_task.wait_for_status(list_status=[TaskStatus.RUNNING], timeout=180, step=.5)
 
         for node in self.cluster.nodelist():
@@ -784,7 +781,8 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
 
         session = self.patient_cql_connection(node1)
         session.execute("TRUNCATE keyspace1.standard1;")
-        self.cluster.stress(['write', 'n=2500K', '-rate', 'threads=50', '-pop', 'seq=10000001..20000000'])  # Modifying the data
+        self.cluster.stress(['write', 'n=2500K', '-rate', 'threads=50', '-pop',
+                             'seq=10000001..20000000'])  # Modifying the data
         backup_task.start(continue_task=False)
         backup_task.wait_for_status(list_status=[TaskStatus.RUNNING], timeout=180, step=.5)
         post_rerun_snapshot_set = self._get_total_snapshot_set()

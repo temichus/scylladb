@@ -127,7 +127,8 @@ class JolokiaAgent(object):
         url = 'http://%s:8778/jolokia/' % (self.node.network_interfaces['binary'][0],)
         response = urlopen(url, data=request_data, timeout=10.0)
         if response.code != 200:
-            raise Exception("Failed to query Jolokia agent; HTTP response code: %d; response: %s" % (response.code, response.readlines()))
+            raise Exception("Failed to query Jolokia agent; HTTP response code: %d; response: %s" %
+                            (response.code, response.readlines()))
 
         raw_response = response.readline()
         response = json.loads(raw_response)

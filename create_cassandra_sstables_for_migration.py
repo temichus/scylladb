@@ -34,9 +34,11 @@ def create_folder_if_not_exists(folder_name):
     if not os.path.exists(folder_name):
         os.makedirs(folder_name)
 
+
 def parse_args():
     parser = argparse.ArgumentParser(description='Create Cassandra sstables for migration test')
-    parser.add_argument('-v', '--cassandra-version', type=str, dest='cassandra_version', required=True, help='Cassandra version')
+    parser.add_argument('-v', '--cassandra-version', type=str, dest='cassandra_version',
+                        required=True, help='Cassandra version')
     parser.add_argument('-s', '--sstables-folder', type=str, dest='cassandra_sstables_folder', required=True,
                         help='Path to folder where the created Cassandra sstables will be saved')
     parser.add_argument('-d', '--tests-data-file-path', type=str, dest='tests_def',
@@ -45,6 +47,7 @@ def parse_args():
     args = vars(parser.parse_args())
 
     return args
+
 
 def main(args):
     cassandra_version = args['cassandra_version']
@@ -99,6 +102,7 @@ def main(args):
     finally:
         if cc:
             cc.tearDown()
+
 
 if __name__ == "__main__":
     args = parse_args()

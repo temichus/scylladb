@@ -57,28 +57,33 @@ class CdcTools(Tester, CDCInitializeHelper):
         if postimage_enable:
             statement += ", 'postimage': true"
         statement += "}"
-        session.execute(f"ALTER keyspace system_distributed with replication={{'class': 'SimpleStrategy', 'replication_factor': {rf}}}")
+        session.execute(
+            f"ALTER keyspace system_distributed with replication={{'class': 'SimpleStrategy', 'replication_factor': {rf}}}")
         self.create_ks(session, self.keyspace, rf=rf)
         session.execute(statement)
 
     def insert_one(self, session, data):
         timestamp = int(time.time() * 1000000)
-        stm = SimpleStatement(f"INSERT INTO {self.keyspace}.{self.table} (pkey, ckey, value) VALUES (%(pkey)s, %(ckey)s, %(value)s) USING TIMESTAMP {timestamp}")
+        stm = SimpleStatement(
+            f"INSERT INTO {self.keyspace}.{self.table} (pkey, ckey, value) VALUES (%(pkey)s, %(ckey)s, %(value)s) USING TIMESTAMP {timestamp}")
         session.execute(stm, data)
         return timestamp
 
     def update_one(self, session, data):
         timestamp = int(time.time() * 1000000)
-        stm = SimpleStatement(f"UPDATE {self.keyspace}.{self.table} USING TIMESTAMP {timestamp} SET value = %(value)s WHERE pkey=%(pkey)s and ckey=%(ckey)s")
+        stm = SimpleStatement(
+            f"UPDATE {self.keyspace}.{self.table} USING TIMESTAMP {timestamp} SET value = %(value)s WHERE pkey=%(pkey)s and ckey=%(ckey)s")
         session.execute(stm, data)
         return timestamp
 
     def update_collection_with_element(self, session, data, add=True):
         timestamp = int(time.time() * 1000000)
         if not add:
-            stm = SimpleStatement(f"UPDATE {self.keyspace}.{self.table} USING TIMESTAMP {timestamp} SET value = value - %(value)s WHERE pkey=%(pkey)s and ckey=%(ckey)s")
+            stm = SimpleStatement(
+                f"UPDATE {self.keyspace}.{self.table} USING TIMESTAMP {timestamp} SET value = value - %(value)s WHERE pkey=%(pkey)s and ckey=%(ckey)s")
         else:
-            stm = SimpleStatement(f"UPDATE {self.keyspace}.{self.table} USING TIMESTAMP {timestamp} SET value = value + %(value)s WHERE pkey=%(pkey)s and ckey=%(ckey)s")
+            stm = SimpleStatement(
+                f"UPDATE {self.keyspace}.{self.table} USING TIMESTAMP {timestamp} SET value = value + %(value)s WHERE pkey=%(pkey)s and ckey=%(ckey)s")
 
         session.execute(stm, data)
         return timestamp
@@ -96,7 +101,8 @@ class CdcTools(Tester, CDCInitializeHelper):
 
     def delete_one(self, session, data):
         timestamp = int(time.time() * 1000000)
-        stm = SimpleStatement(f"DELETE value FROM {self.keyspace}.{self.table} USING TIMESTAMP {timestamp} WHERE pkey=%(pkey)s and ckey=%(ckey)s")
+        stm = SimpleStatement(
+            f"DELETE value FROM {self.keyspace}.{self.table} USING TIMESTAMP {timestamp} WHERE pkey=%(pkey)s and ckey=%(ckey)s")
         session.execute(stm, data)
         return timestamp
 
@@ -282,7 +288,8 @@ class CDCNativeTypeTmpl(CdcTools):
         self.all_operation_tmpl(preimage_enable=True, postimage_enable=True)
 
     def insert_operation_tmpl(self, preimage_enable=False, postimage_enable=False):
-        node, session = self.prepare_cluster_and_schema(preimage_enable=preimage_enable, postimage_enable=postimage_enable)
+        node, session = self.prepare_cluster_and_schema(
+            preimage_enable=preimage_enable, postimage_enable=postimage_enable)
         # insert first record
         timestamp = self.insert_one(session, self.inserted_dataset)
         cdc_log_data = self.get_cdc_log_records_by_timestamp(session, timestamp)
@@ -306,7 +313,8 @@ class CDCNativeTypeTmpl(CdcTools):
                                                  postimage_expected_dataset=self.inserted_dataset)
 
     def update_operation_tmpl(self, preimage_enable=False, postimage_enable=False):
-        node, session = self.prepare_cluster_and_schema(preimage_enable=preimage_enable, postimage_enable=postimage_enable)
+        node, session = self.prepare_cluster_and_schema(
+            preimage_enable=preimage_enable, postimage_enable=postimage_enable)
         # insert first record
         timestamp = self.update_one(session, self.inserted_dataset)
         cdc_log_data = self.get_cdc_log_records_by_timestamp(session, timestamp)
@@ -331,7 +339,8 @@ class CDCNativeTypeTmpl(CdcTools):
                                                  postimage_expected_dataset=self.updated_dataset)
 
     def update_with_null(self, preimage_enable=False, postimage_enable=False):
-        node, session = self.prepare_cluster_and_schema(preimage_enable=preimage_enable, postimage_enable=postimage_enable)
+        node, session = self.prepare_cluster_and_schema(
+            preimage_enable=preimage_enable, postimage_enable=postimage_enable)
         # insert first record
         self.update_one(session, self.inserted_dataset)
         # sleep for second to generate new timestamp
@@ -347,7 +356,8 @@ class CDCNativeTypeTmpl(CdcTools):
                                                  postimage_expected_dataset=self.updated_with_null_dataset)
 
     def delete_operation_tmpl(self, preimage_enable=False, postimage_enable=False):
-        node, session = self.prepare_cluster_and_schema(preimage_enable=preimage_enable, postimage_enable=postimage_enable)
+        node, session = self.prepare_cluster_and_schema(
+            preimage_enable=preimage_enable, postimage_enable=postimage_enable)
         # insert first record
         self.insert_one(session, self.inserted_dataset)
         # sleep for second to generate new timestamp
@@ -361,7 +371,8 @@ class CDCNativeTypeTmpl(CdcTools):
                                                  deleted_col=["value"])
 
     def all_operation_tmpl(self, preimage_enable=False, postimage_enable=False):
-        node, session = self.prepare_cluster_and_schema(preimage_enable=preimage_enable, postimage_enable=postimage_enable)
+        node, session = self.prepare_cluster_and_schema(
+            preimage_enable=preimage_enable, postimage_enable=postimage_enable)
         # insert first record
         self.insert_one(session, self.inserted_dataset)
         self.update_one(session, self.updated_dataset)
@@ -381,12 +392,15 @@ class CDCNativeTypeTmpl(CdcTools):
 
             delta_index += 1
             postimage_index += 1
-            self.check_cdc_log_row(cdc_log_data[0], operation=CdcLogOperations.PREIMAGE, batch_seq=0, expected_data=preimage_expected_dataset)
+            self.check_cdc_log_row(cdc_log_data[0], operation=CdcLogOperations.PREIMAGE,
+                                   batch_seq=0, expected_data=preimage_expected_dataset)
 
-        self.check_cdc_log_row(cdc_log_data[delta_index], operation=operation, batch_seq=delta_index, expected_data=delta_expected_dataset)
+        self.check_cdc_log_row(cdc_log_data[delta_index], operation=operation,
+                               batch_seq=delta_index, expected_data=delta_expected_dataset)
 
         if postimage_enable:
-            self.check_cdc_log_row(cdc_log_data[postimage_index], operation=CdcLogOperations.POSTIMAGE, batch_seq=postimage_index, expected_data=postimage_expected_dataset)
+            self.check_cdc_log_row(cdc_log_data[postimage_index], operation=CdcLogOperations.POSTIMAGE,
+                                   batch_seq=postimage_index, expected_data=postimage_expected_dataset)
 
     def verify_cdc_log_rows_after_several_operations(self, cdc_log_data, preimage_enable, postimage_enable):
         if preimage_enable and postimage_enable:
@@ -556,7 +570,8 @@ class CDCCollectionsTmpl(CdcTools):
         timestamp = self.insert_one(session, self.inserted_dataset)
         cdc_log_data = self.get_cdc_log_records_by_timestamp(session, timestamp)
 
-        self.verify_cdc_log_rows_after_insert_to_base_table(cdc_log_data, preimage_enable, postimage_enable, first_record=True)
+        self.verify_cdc_log_rows_after_insert_to_base_table(
+            cdc_log_data, preimage_enable, postimage_enable, first_record=True)
         # insert record to not empty parition
         timestamp = self.insert_one(session, self.inserted_dataset)
         cdc_log_data = self.get_cdc_log_records_by_timestamp(session, timestamp)
@@ -569,7 +584,8 @@ class CDCCollectionsTmpl(CdcTools):
         # insert first record
         timestamp = self.update_one(session, self.inserted_dataset)
         cdc_log_data = self.get_cdc_log_records_by_timestamp(session, timestamp)
-        self.verify_cdc_log_rows_after_update_to_base_table(cdc_log_data, preimage_enable, postimage_enable, first_record=True)
+        self.verify_cdc_log_rows_after_update_to_base_table(
+            cdc_log_data, preimage_enable, postimage_enable, first_record=True)
 
         if add_element:
             timestamp = self.update_collection_with_element(session, self.added_element_dataset, add=True)
@@ -578,7 +594,8 @@ class CDCCollectionsTmpl(CdcTools):
         else:
             timestamp = self.update_one(session, self.updated_dataset)
         cdc_log_data = self.get_cdc_log_records_by_timestamp(session, timestamp)
-        self.verify_cdc_log_rows_after_update_to_base_table(cdc_log_data, preimage_enable, postimage_enable, add_element, remove_element)
+        self.verify_cdc_log_rows_after_update_to_base_table(
+            cdc_log_data, preimage_enable, postimage_enable, add_element, remove_element)
 
     def collection_delete_tmpl(self, preimage_enable=False, postimage_enable=False):
         node, session = self.prepare_cluster_and_schema(preimage_enable=preimage_enable,
@@ -722,7 +739,8 @@ class CdcUDTTmpl(CdcTools):
         if postimage_enable:
             statement += ", 'postimage': true"
         statement += "}"
-        session.execute("ALTER keyspace system_distributed with replication={'class': 'SimpleStrategy', 'replication_factor': '1'}")
+        session.execute(
+            "ALTER keyspace system_distributed with replication={'class': 'SimpleStrategy', 'replication_factor': '1'}")
         self.create_ks(session, self.keyspace, rf=rf)
         self._create_udt(session)
         session.cluster.register_user_type(self.keyspace, self.udt_name, CustomUDT)
@@ -780,7 +798,8 @@ class CdcUDTTmpl(CdcTools):
 
     def insert_udt_tpl(self, preimage_enable=False, postimage_enable=False):
 
-        node, session = self.prepare_cluster_and_schema(preimage_enable=preimage_enable, postimage_enable=postimage_enable)
+        node, session = self.prepare_cluster_and_schema(
+            preimage_enable=preimage_enable, postimage_enable=postimage_enable)
 
         timestamp = self.insert_one(session, self.insert_dataset)
 
@@ -805,7 +824,8 @@ class CdcUDTTmpl(CdcTools):
                                           postimage_enable)
 
     def update_udt_tpl(self, preimage_enable=False, postimage_enable=False):
-        node, session = self.prepare_cluster_and_schema(preimage_enable=preimage_enable, postimage_enable=postimage_enable)
+        node, session = self.prepare_cluster_and_schema(
+            preimage_enable=preimage_enable, postimage_enable=postimage_enable)
 
         timestamp = self.update_one(session, self.insert_dataset)
 
@@ -831,7 +851,8 @@ class CdcUDTTmpl(CdcTools):
 
         using_data_set = self.deleting_field_dataset if remove_field_value else self.updating_field_dataset
 
-        node, session = self.prepare_cluster_and_schema(preimage_enable=preimage_enable, postimage_enable=postimage_enable)
+        node, session = self.prepare_cluster_and_schema(
+            preimage_enable=preimage_enable, postimage_enable=postimage_enable)
         timestamp = self.update_one(session, self.insert_dataset)
 
         timestamp = self.update_udt_with_element(session, using_data_set, remove_field_value)
@@ -840,7 +861,8 @@ class CdcUDTTmpl(CdcTools):
 
         res_log_rows = self.get_cdc_log_records_by_timestamp(session, timestamp)
 
-        self.verify_cdc_log_rows_with_udt(CdcLogOperations.UPDATE, res_log_rows, expected_udt_result, preimage_enable, postimage_enable)
+        self.verify_cdc_log_rows_with_udt(CdcLogOperations.UPDATE, res_log_rows,
+                                          expected_udt_result, preimage_enable, postimage_enable)
 
     def _skip_test_if_frozen_is_used(self):
         if self.columns_data['cl_type']['frozen']:
@@ -849,7 +871,8 @@ class CdcUDTTmpl(CdcTools):
     def parse_udt_type_name(self):
         self.udt_name = self.columns_data['cl_type']["udt_name"]
         self.udt_type = f"frozen<{self.udt_name}>" if self.columns_data['cl_type']["frozen"] else self.udt_name
-        self.udt_fields = [f"{field_name} {field_type}" for field_name, field_type in self.columns_data['cl_type']['fields'].items()]
+        self.udt_fields = [f"{field_name} {field_type}" for field_name,
+                           field_type in self.columns_data['cl_type']['fields'].items()]
 
     def _create_udt(self, session):
         stm = f"""CREATE TYPE {self.keyspace}.{self.udt_name} ("""
@@ -906,8 +929,10 @@ native_types_values = [
     {"cl_type": "float", "ins_dataset": 33.33000183105469, "upd_dataset": 44.44000244140625},
     {"cl_type": "inet", "ins_dataset": "1.1.1.1", "upd_dataset": "2.2.2.2"},
     {"cl_type": "time", "ins_dataset": Time('02:02:02.222'), "upd_dataset": Time('12:12:12.121')},
-    {"cl_type": "timestamp", "ins_dataset": datetime(2020, 2, 2, 2, 2, 2), "upd_dataset": datetime(2020, 3, 3, 3, 3, 3)},
-    {"cl_type": "timeuuid", "ins_dataset": UUID('b478b7c2-5d3c-11ea-84b5-5aa95d83d60f'), "upd_dataset": UUID('c2ecebac-5d3c-11ea-9fd2-3cd5439c36c3')},
+    {"cl_type": "timestamp", "ins_dataset": datetime(
+        2020, 2, 2, 2, 2, 2), "upd_dataset": datetime(2020, 3, 3, 3, 3, 3)},
+    {"cl_type": "timeuuid", "ins_dataset": UUID(
+        'b478b7c2-5d3c-11ea-84b5-5aa95d83d60f'), "upd_dataset": UUID('c2ecebac-5d3c-11ea-9fd2-3cd5439c36c3')},
     {"cl_type": "uuid", "ins_dataset": uuid1(), "upd_dataset": uuid1()},
     {"cl_type": "varint", "ins_dataset": 1, "upd_dataset": 4},
     {"cl_type": "text", "ins_dataset": "aaaaaaa", "upd_dataset": "bbbbbbb"},
@@ -955,7 +980,8 @@ collections_types = [
 ]
 
 frozen_collections = [
-    {"cl_type": "frozen<map<text, text>>", "ins_dataset": {'key1': "value1", "key2": "value2"}, "upd_dataset": {'key3': "value3", "key4": "value4"}},
+    {"cl_type": "frozen<map<text, text>>", "ins_dataset": {'key1': "value1",
+                                                           "key2": "value2"}, "upd_dataset": {'key3': "value3", "key4": "value4"}},
     {"cl_type": "frozen<set<text>>", "ins_dataset": {"value1", "value2"}, "upd_dataset": {"value3", "value4"}},
     {"cl_type": "frozen<list<text>>", "ins_dataset": ["value1", "value2"], "upd_dataset": ["value3", "value4"]},
     {"cl_type": "frozen<list<int>>", "ins_dataset": [1, 12], "upd_dataset": [3, 13]},

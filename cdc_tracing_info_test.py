@@ -85,7 +85,8 @@ class CDCTraceInfoMatcher:
             # if expected line will be missing in output,  pattern will not match it
             assert line, f"{pattern} doesn't match any line"
             # assert cdc line order and correctnes
-            assert re.match(pattern.format(token_id=token), line), f"{pattern.format(token_id=token)} not matched {line}"
+            assert re.match(pattern.format(token_id=token),
+                            line), f"{pattern.format(token_id=token)} not matched {line}"
 
 
 class CDCTraceInfoTest(Tester, CDCInitializeHelper):
@@ -129,7 +130,8 @@ class CDCTraceInfoTest(Tester, CDCInitializeHelper):
         if postimage_enable:
             statement += ", 'postimage': true"
         statement += "}"
-        session.execute(f"ALTER keyspace system_distributed with replication={{'class': 'SimpleStrategy', 'replication_factor': {rf}}}")
+        session.execute(
+            f"ALTER keyspace system_distributed with replication={{'class': 'SimpleStrategy', 'replication_factor': {rf}}}")
         self.create_ks(session, self.keyspace, rf=rf)
         session.execute(statement)
 
@@ -163,7 +165,8 @@ class CDCTraceInfoTest(Tester, CDCInitializeHelper):
         self.check_tracing_info_for_operation(operation=CdcLogOperations.ROW_DELETE)
 
     def test_tracing_insert_collection(self):
-        self.check_tracing_info_for_operation(operation=CdcLogOperations.INSERT, value_type='list<text>', expect_splitting=True)
+        self.check_tracing_info_for_operation(operation=CdcLogOperations.INSERT,
+                                              value_type='list<text>', expect_splitting=True)
 
     def test_tracing_insert_collection_preimage_postimage(self):
         self.check_tracing_info_for_operation(operation=CdcLogOperations.INSERT, value_type='list<text>',
@@ -177,7 +180,8 @@ class CDCTraceInfoTest(Tester, CDCInitializeHelper):
                                               preimage_enable=True, postimage_enable=True)
 
     def test_tracing_delete_partition_collection(self):
-        self.check_tracing_info_for_operation(operation=CdcLogOperations.PARTITION_DELETE, value_type='list<text>', expect_splitting=True)
+        self.check_tracing_info_for_operation(operation=CdcLogOperations.PARTITION_DELETE,
+                                              value_type='list<text>', expect_splitting=True)
 
     def test_tracing_delete_partition_collection_preimage_postimage(self):
         self.check_tracing_info_for_operation(operation=CdcLogOperations.PARTITION_DELETE, value_type='list<text>',
@@ -256,7 +260,8 @@ class CDCTraceInfoTest(Tester, CDCInitializeHelper):
     def check_tracing_info_for_operation(self, operation=CdcLogOperations.INSERT, value_type='text',
                                          preimage_enable=False, postimage_enable=False,
                                          use_batch=False, expect_splitting=False):
-        self.prepare_cluster_and_schema(value_type=value_type, preimage_enable=preimage_enable, postimage_enable=postimage_enable)
+        self.prepare_cluster_and_schema(
+            value_type=value_type, preimage_enable=preimage_enable, postimage_enable=postimage_enable)
 
         node = self.cluster.nodelist()[0]
         session = self.patient_cql_connection(node)
@@ -398,7 +403,8 @@ class CDCTraceInfoTest(Tester, CDCInitializeHelper):
     def generate_partitions_with_5_rows(self, session, value_type='text', p_num=2):
         value = self.generate_value(value_type)
         for i in range(p_num * 5):
-            session.execute(f"INSERT INTO {self.keyspace}.{self.table} (pkey, ckey, value) VALUES ({i % p_num}, {i % 5}, {value});")
+            session.execute(
+                f"INSERT INTO {self.keyspace}.{self.table} (pkey, ckey, value) VALUES ({i % p_num}, {i % 5}, {value});")
 
     def get_tokens(self, session):
         base_rows = list(session.execute(f"SELECT token(pkey) as tkn from {self.keyspace}.{self.table}"))

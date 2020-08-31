@@ -28,7 +28,7 @@ class TestScyllaMgmtRepair(RepairAdditionalBase, ScyllaManagerMixin):
 
         debug("Create Manager Tool instance to run scylla-manager operations")
         manager_tool = ScyllaManagerTool(scylla_manager=self.cluster._scylla_manager)
-        cluster_name =  "cluster1"
+        cluster_name = "cluster1"
         debug("Add a cluster to scylla-manager, named: {}".format(cluster_name))
         mgr_cluster = manager_tool.add_cluster(node=node1, name=cluster_name)
 
@@ -40,7 +40,8 @@ class TestScyllaMgmtRepair(RepairAdditionalBase, ScyllaManagerMixin):
         debug("Test cluster Repair task")
         mgr_task = mgr_cluster.create_repair_task()
         task_final_status = mgr_task.wait_and_get_final_status()
-        assert task_final_status == TaskStatus.DONE, 'Task: {} final status is: {}.'.format(mgr_task.id, str(mgr_task.status))
+        assert task_final_status == TaskStatus.DONE, 'Task: {} final status is: {}.'.format(
+            mgr_task.id, str(mgr_task.status))
 
         debug("Test cluster Health-Check task")
         healthcheck_task = mgr_cluster.get_healthcheck_task()
@@ -58,15 +59,17 @@ class TestScyllaMgmtRepair(RepairAdditionalBase, ScyllaManagerMixin):
         time.sleep(sleep)
 
         dict_host_health = mgr_cluster.get_hosts_health()
-        assert dict_host_health[node2.address()].status == HostStatus.DOWN, "Host: {} status is not 'DOWN'".format(node2.address())
-        assert dict_host_health[node2.address()].rest_status == HostRestStatus.DOWN, "Host: {} REST status is not 'DOWN'".format(node2.address())
+        assert dict_host_health[node2.address(
+        )].status == HostStatus.DOWN, "Host: {} status is not 'DOWN'".format(node2.address())
+        assert dict_host_health[node2.address(
+        )].rest_status == HostRestStatus.DOWN, "Host: {} REST status is not 'DOWN'".format(node2.address())
 
         node2.start()
 
     # TODO: adjust (to dtest_scylla_manager.py) or delete all RepairAdditionalBase related tests
     @attr('scylla-manager')
     def repair_disjoint_data_test(self, more_options=[]):
-        return RepairAdditionalBase._repair_disjoint_data_test(self,more_options)
+        return RepairAdditionalBase._repair_disjoint_data_test(self, more_options)
 
     @attr('scylla-manager')
     def repair_schema_test(self):
@@ -78,19 +81,19 @@ class TestScyllaMgmtRepair(RepairAdditionalBase, ScyllaManagerMixin):
 
     @attr('scylla-manager')
     def repair_cell_update_test(self):
-       return RepairAdditionalBase._repair_cell_update_test(self)
+        return RepairAdditionalBase._repair_cell_update_test(self)
 
     @attr('scylla-manager')
     def repair_cell_delete_test(self):
-       return RepairAdditionalBase._repair_cell_delete_test(self)
+        return RepairAdditionalBase._repair_cell_delete_test(self)
 
     @attr('scylla-manager')
     def repair_row_delete_test(self):
-       return RepairAdditionalBase._repair_row_delete_test(self)
+        return RepairAdditionalBase._repair_row_delete_test(self)
 
     @attr('scylla-manager')
     def repair_partition_delete_test(self):
-       return RepairAdditionalBase._repair_partition_delete_test(self)
+        return RepairAdditionalBase._repair_partition_delete_test(self)
 
     def _initiate_cluster_with_data(self):
         debug("Starting cluster and inserting data...")
@@ -167,8 +170,7 @@ class TestScyllaMgmtRepair(RepairAdditionalBase, ScyllaManagerMixin):
         # Checking that all of tables that are stored on node2 are empty
         self._assert_multiple_row_ranges_from_specific_node(node_to_query=node2, nodes_to_shut_down=[node1],
                                                             keyspace_name=self.KEYSPACE_NAME,
-                                                            tables_and_row_count_dict=
-                                                            {table_name: [] for table_name, key_range in data_range.items()})
+                                                            tables_and_row_count_dict={table_name: [] for table_name, key_range in data_range.items()})
 
         manager_tool = ScyllaManagerTool(scylla_manager=self.cluster._scylla_manager)
         cluster_name = "cluster1"
@@ -212,8 +214,7 @@ class TestScyllaMgmtRepair(RepairAdditionalBase, ScyllaManagerMixin):
                                                  data_ranges=data_range)
 
         self._assert_multiple_row_ranges_from_specific_node(node_to_query=node2, nodes_to_shut_down=[node1],
-                                                            keyspace_name=None, tables_and_row_count_dict=
-                                                            {table_name: [] for table_name, key_range in data_range.items()})
+                                                            keyspace_name=None, tables_and_row_count_dict={table_name: [] for table_name, key_range in data_range.items()})
 
         manager_tool = ScyllaManagerTool(scylla_manager=self.cluster._scylla_manager)
         cluster_name = "cluster1"
@@ -271,10 +272,9 @@ class TestScyllaMgmtRepair(RepairAdditionalBase, ScyllaManagerMixin):
 
         # Each of nodes 1-3 inserted a few set of rows, and after the repair node4 should contain all rows
         self._assert_multiple_row_ranges_from_specific_node(node_to_query=node4, nodes_to_shut_down=[node1, node2, node3],
-                                                            keyspace_name=self.KEYSPACE_NAME, tables_and_row_count_dict=
-                                                            dict(list(first_range_to_repair.items()) +
-                                                                 list(second_range_to_repair.items()) +
-                                                                 list(third_range_to_repair.items())))
+                                                            keyspace_name=self.KEYSPACE_NAME, tables_and_row_count_dict=dict(list(first_range_to_repair.items()) +
+                                                                                                                             list(second_range_to_repair.items()) +
+                                                                                                                             list(third_range_to_repair.items())))
 
     @attr('scylla-manager')
     def test_repairing_a_downed_node(self):
@@ -331,13 +331,13 @@ class TestScyllaMgmtRepair(RepairAdditionalBase, ScyllaManagerMixin):
         repair_task = mgr_cluster.create_repair_task(dc_list=['dc1', 'dc2'], keyspace=self.KEYSPACE_NAME)
         repair_task.wait_for_status(list_status=[TaskStatus.DONE])
         self._assert_multiple_row_ranges_from_specific_node(node_to_query=dc2_node1,
-                                                            nodes_to_shut_down=
-                                                            [dc1_node1, dc1_node2, dc3_node1, dc3_node2],
+                                                            nodes_to_shut_down=[dc1_node1,
+                                                                                dc1_node2, dc3_node1, dc3_node2],
                                                             keyspace_name=self.KEYSPACE_NAME,
                                                             tables_and_row_count_dict=data_range)
         self._assert_multiple_row_ranges_from_specific_node(node_to_query=dc3_node1,
-                                                            nodes_to_shut_down=
-                                                            [dc1_node1, dc1_node2, dc2_node1, dc2_node2],
+                                                            nodes_to_shut_down=[dc1_node1,
+                                                                                dc1_node2, dc2_node1, dc2_node2],
                                                             keyspace_name=self.KEYSPACE_NAME,
                                                             tables_and_row_count_dict={"cf1": []})
 
@@ -451,8 +451,7 @@ class TestScyllaMgmtRepair(RepairAdditionalBase, ScyllaManagerMixin):
         self._assert_multiple_row_ranges_from_specific_node(node_to_query=dc2_node2,
                                                             nodes_to_shut_down=[dc1_node1, dc1_node2, dc2_node1],
                                                             keyspace_name=self.KEYSPACE_NAME,
-                                                            tables_and_row_count_dict=
-                                                            dict(second_data_range, **{"cf_dc1": []}))
+                                                            tables_and_row_count_dict=dict(second_data_range, **{"cf_dc1": []}))
 
     @skip("Times out in the jenkins job")
     @attr('scylla-manager')

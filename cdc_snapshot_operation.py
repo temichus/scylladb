@@ -53,7 +53,8 @@ class CDCSnapshotOperationTest(Tester, CDCInitializeHelper):
         if postimage_enable:
             statement += ", 'postimage': true"
         statement += "}"
-        session.execute(f"ALTER keyspace system_distributed with replication={{'class': 'SimpleStrategy', 'replication_factor': {rf} }}")
+        session.execute(
+            f"ALTER keyspace system_distributed with replication={{'class': 'SimpleStrategy', 'replication_factor': {rf} }}")
         self.create_ks(session, self.keyspace, rf=rf)
         session.execute(statement)
 
@@ -86,16 +87,19 @@ class CDCSnapshotOperationTest(Tester, CDCInitializeHelper):
         self.workflow_with_restore_snapshot_with_refresh(value_type='varchar', preimage_enable=True)
 
     def test_create_snapshot_with_native_type_with_base_rows_delete_preimage(self):
-        self.workflow_with_restore_snapshot_with_refresh(value_type='varchar', preimage_enable=True, with_delete_rows=True)
+        self.workflow_with_restore_snapshot_with_refresh(
+            value_type='varchar', preimage_enable=True, with_delete_rows=True)
 
     def test_create_snapshot_with_native_type_without_base_rows_delete_postimage(self):
         self.workflow_with_restore_snapshot_with_refresh(value_type='varchar', postimage_enable=True)
 
     def test_create_snapshot_with_native_type_with_base_rows_delete_postimage(self):
-        self.workflow_with_restore_snapshot_with_refresh(value_type='varchar', postimage_enable=True, with_delete_rows=True)
+        self.workflow_with_restore_snapshot_with_refresh(
+            value_type='varchar', postimage_enable=True, with_delete_rows=True)
 
     def test_create_snapshot_with_native_type_without_base_rows_delete_preimage_postimage(self):
-        self.workflow_with_restore_snapshot_with_refresh(value_type='ascii', preimage_enable=True, postimage_enable=True)
+        self.workflow_with_restore_snapshot_with_refresh(
+            value_type='ascii', preimage_enable=True, postimage_enable=True)
 
     @attr('next-gating')
     def test_create_snapshot_with_native_type_with_base_rows_delete_preimage_postimage(self):
@@ -112,16 +116,19 @@ class CDCSnapshotOperationTest(Tester, CDCInitializeHelper):
         self.workflow_with_restore_snapshot_with_refresh(value_type='list<varchar>', preimage_enable=True)
 
     def test_create_snapshot_with_collection_list_with_base_rows_delete_preimage(self):
-        self.workflow_with_restore_snapshot_with_refresh(value_type='list<varchar>', preimage_enable=True, with_delete_rows=True)
+        self.workflow_with_restore_snapshot_with_refresh(
+            value_type='list<varchar>', preimage_enable=True, with_delete_rows=True)
 
     def test_create_snapshot_with_collection_list_without_base_rows_delete_postimage(self):
         self.workflow_with_restore_snapshot_with_refresh(value_type='list<varchar>', postimage_enable=True)
 
     def test_create_snapshot_with_collection_list_with_base_rows_delete_postimage(self):
-        self.workflow_with_restore_snapshot_with_refresh(value_type='list<varchar>', postimage_enable=True, with_delete_rows=True)
+        self.workflow_with_restore_snapshot_with_refresh(
+            value_type='list<varchar>', postimage_enable=True, with_delete_rows=True)
 
     def test_create_snapshot_with_collection_list_without_base_rows_delete_preimage_postimage(self):
-        self.workflow_with_restore_snapshot_with_refresh(value_type='list<ascii>', preimage_enable=True, postimage_enable=True)
+        self.workflow_with_restore_snapshot_with_refresh(
+            value_type='list<ascii>', preimage_enable=True, postimage_enable=True)
 
     def test_create_snapshot_with_collection_list_with_base_rows_delete_preimage_postimage(self):
         self.workflow_with_restore_snapshot_with_refresh(value_type='list<ascii>', with_delete_rows=True,
@@ -137,16 +144,19 @@ class CDCSnapshotOperationTest(Tester, CDCInitializeHelper):
         self.workflow_with_restore_snapshot_with_refresh(value_type='set<varchar>', preimage_enable=True)
 
     def test_create_snapshot_with_collection_set_with_base_rows_delete_preimage(self):
-        self.workflow_with_restore_snapshot_with_refresh(value_type='set<varchar>', preimage_enable=True, with_delete_rows=True)
+        self.workflow_with_restore_snapshot_with_refresh(
+            value_type='set<varchar>', preimage_enable=True, with_delete_rows=True)
 
     def test_create_snapshot_with_collection_set_without_base_rows_delete_postimage(self):
         self.workflow_with_restore_snapshot_with_refresh(value_type='set<varchar>', postimage_enable=True)
 
     def test_create_snapshot_with_collection_set_with_base_rows_delete_postimage(self):
-        self.workflow_with_restore_snapshot_with_refresh(value_type='set<varchar>', postimage_enable=True, with_delete_rows=True)
+        self.workflow_with_restore_snapshot_with_refresh(
+            value_type='set<varchar>', postimage_enable=True, with_delete_rows=True)
 
     def test_create_snapshot_with_collection_set_without_base_rows_delete_preimage_postimage(self):
-        self.workflow_with_restore_snapshot_with_refresh(value_type='set<ascii>', preimage_enable=True, postimage_enable=True)
+        self.workflow_with_restore_snapshot_with_refresh(
+            value_type='set<ascii>', preimage_enable=True, postimage_enable=True)
 
     def test_create_snapshot_with_collection_set_with_base_rows_delete_preimage_postimage(self):
         self.workflow_with_restore_snapshot_with_refresh(value_type='set<ascii>', with_delete_rows=True,
@@ -162,16 +172,19 @@ class CDCSnapshotOperationTest(Tester, CDCInitializeHelper):
         self.workflow_with_restore_snapshot_with_refresh(value_type='map<bigint,varchar>', preimage_enable=True)
 
     def test_create_snapshot_with_collection_map_with_base_rows_delete_preimage(self):
-        self.workflow_with_restore_snapshot_with_refresh(value_type='map<bigint,varchar>', preimage_enable=True, with_delete_rows=True)
+        self.workflow_with_restore_snapshot_with_refresh(
+            value_type='map<bigint,varchar>', preimage_enable=True, with_delete_rows=True)
 
     def test_create_snapshot_with_collection_map_without_base_rows_delete_postimage(self):
         self.workflow_with_restore_snapshot_with_refresh(value_type='map<smallint,varchar>', postimage_enable=True)
 
     def test_create_snapshot_with_collection_map_with_base_rows_delete_postimage(self):
-        self.workflow_with_restore_snapshot_with_refresh(value_type='map<smallint,varchar>', postimage_enable=True, with_delete_rows=True)
+        self.workflow_with_restore_snapshot_with_refresh(
+            value_type='map<smallint,varchar>', postimage_enable=True, with_delete_rows=True)
 
     def test_create_snapshot_with_collection_map_without_base_rows_delete_preimage_postimage(self):
-        self.workflow_with_restore_snapshot_with_refresh(value_type='map<tinyint,ascii>', preimage_enable=True, postimage_enable=True)
+        self.workflow_with_restore_snapshot_with_refresh(
+            value_type='map<tinyint,ascii>', preimage_enable=True, postimage_enable=True)
 
     def test_create_snapshot_with_collection_map_with_base_rows_delete_preimage_postimage(self):
         self.workflow_with_restore_snapshot_with_refresh(value_type='map<tinyint,ascii>', with_delete_rows=True,
@@ -179,7 +192,8 @@ class CDCSnapshotOperationTest(Tester, CDCInitializeHelper):
 
     def workflow_with_restore_snapshot_with_refresh(self, value_type='text', with_delete_rows=False,
                                                     preimage_enable=False, postimage_enable=False):
-        self.prepare_cluster_and_schema(value_type=value_type, preimage_enable=preimage_enable, postimage_enable=postimage_enable)
+        self.prepare_cluster_and_schema(
+            value_type=value_type, preimage_enable=preimage_enable, postimage_enable=postimage_enable)
 
         node: ScyllaNode = self.cluster.nodelist()[0]
         session: Session = self.patient_cql_connection(node)
@@ -193,7 +207,8 @@ class CDCSnapshotOperationTest(Tester, CDCInitializeHelper):
 
         self.drop_keyspaces_and_clear_files(session, self.keyspace, node)
 
-        self.create_schema_with_cdc(session, value_type=value_type, preimage_enable=preimage_enable, postimage_enable=postimage_enable)
+        self.create_schema_with_cdc(session, value_type=value_type,
+                                    preimage_enable=preimage_enable, postimage_enable=postimage_enable)
 
         restore_snapshot_with_refresh(snapshot_dir, node, self.keyspace, self.table, name="basic")
         restored_base_rows = self.get_base_rows(session)
@@ -253,7 +268,6 @@ class CDCSnapshotOperationTest(Tester, CDCInitializeHelper):
         if delete_rows:
             execute_concurrent_with_args(session, self.delete_stm, delete_dataset)
         execute_concurrent_with_args(session, self.update_stm, update_dataset)
-
 
     def get_base_rows(self, session):
         return list(session.execute(f"SELECT * FROM {self.keyspace}.{self.table}"))

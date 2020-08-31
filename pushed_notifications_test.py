@@ -246,7 +246,8 @@ class TestPushedNotifications(Tester):
         session.execute("create TABLE t (k int PRIMARY KEY , v int)")
         session.execute("alter TABLE t add v1 int;")
 
-        session.execute("create MATERIALIZED VIEW mv as select * from t WHERE v IS NOT NULL AND t IS NOT NULL PRIMARY KEY (v, k)")
+        session.execute(
+            "create MATERIALIZED VIEW mv as select * from t WHERE v IS NOT NULL AND t IS NOT NULL PRIMARY KEY (v, k)")
         session.execute(" alter materialized view mv with min_index_interval = 100")
 
         session.execute("drop MATERIALIZED VIEW mv")
@@ -258,17 +259,23 @@ class TestPushedNotifications(Tester):
         self.assertEquals(14, len(notifications))
         self.assertDictContainsSubset({'change_type': u'CREATED', 'target_type': u'KEYSPACE'}, notifications[0])
         self.assertDictContainsSubset({'change_type': u'UPDATED', 'target_type': u'KEYSPACE'}, notifications[1])
-        self.assertDictContainsSubset({'change_type': u'CREATED', 'target_type': u'TABLE', u'table': u't'}, notifications[2])
+        self.assertDictContainsSubset(
+            {'change_type': u'CREATED', 'target_type': u'TABLE', u'table': u't'}, notifications[2])
         self.assertDictContainsSubset({'change_type': u'UPDATED', 'target_type': u'KEYSPACE'}, notifications[3])
-        self.assertDictContainsSubset({'change_type': u'UPDATED', 'target_type': u'TABLE', u'table': u't'}, notifications[4])
+        self.assertDictContainsSubset(
+            {'change_type': u'UPDATED', 'target_type': u'TABLE', u'table': u't'}, notifications[4])
         self.assertDictContainsSubset({'change_type': u'UPDATED', 'target_type': u'KEYSPACE'}, notifications[5])
-        self.assertDictContainsSubset({'change_type': u'CREATED', 'target_type': u'TABLE', u'table': u'mv'}, notifications[6])
+        self.assertDictContainsSubset({'change_type': u'CREATED', 'target_type': u'TABLE',
+                                       u'table': u'mv'}, notifications[6])
         self.assertDictContainsSubset({'change_type': u'UPDATED', 'target_type': u'KEYSPACE'}, notifications[7])
-        self.assertDictContainsSubset({'change_type': u'UPDATED', 'target_type': u'TABLE', u'table': u'mv'}, notifications[8])
+        self.assertDictContainsSubset({'change_type': u'UPDATED', 'target_type': u'TABLE',
+                                       u'table': u'mv'}, notifications[8])
         self.assertDictContainsSubset({'change_type': u'UPDATED', 'target_type': u'KEYSPACE'}, notifications[9])
-        self.assertDictContainsSubset({'change_type': u'DROPPED', 'target_type': u'TABLE', u'table': u'mv'}, notifications[10])
+        self.assertDictContainsSubset({'change_type': u'DROPPED', 'target_type': u'TABLE',
+                                       u'table': u'mv'}, notifications[10])
         self.assertDictContainsSubset({'change_type': u'UPDATED', 'target_type': u'KEYSPACE'}, notifications[11])
-        self.assertDictContainsSubset({'change_type': u'DROPPED', 'target_type': u'TABLE', u'table': u't'}, notifications[12])
+        self.assertDictContainsSubset({'change_type': u'DROPPED', 'target_type': u'TABLE',
+                                       u'table': u't'}, notifications[12])
         self.assertDictContainsSubset({'change_type': u'DROPPED', 'target_type': u'KEYSPACE'}, notifications[13])
 
 

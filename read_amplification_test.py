@@ -42,9 +42,10 @@ class ReadAmplificationTest(Tester):
 
     def no_read_amplification_on_repair(self, with_mv):
         cluster = self.cluster
-        cluster.set_configuration_options(values={'hinted_handoff_enabled': False, 'compaction_enforce_min_threshold': True})
+        cluster.set_configuration_options(
+            values={'hinted_handoff_enabled': False, 'compaction_enforce_min_threshold': True})
         debug("Starting cluster..")
-        cluster.populate(4).start(wait_for_binary_proto=True,wait_other_notice=True)
+        cluster.populate(4).start(wait_for_binary_proto=True, wait_other_notice=True)
         nodes = cluster.nodelist()
 
         session = self.patient_cql_connection(nodes[0])
@@ -57,7 +58,7 @@ class ReadAmplificationTest(Tester):
             session.execute(statement)
             session.execute('ALTER MATERIALIZED VIEW ks.cf_mv WITH read_repair_chance=0.0')
 
-        scylla_tools.insert_c1c2(session, keys=range(1,100), consistency=ConsistencyLevel.ALL)
+        scylla_tools.insert_c1c2(session, keys=range(1, 100), consistency=ConsistencyLevel.ALL)
 
         node_to_repair = nodes[1]
         debug("Stop {}".format(node_to_repair.name))
@@ -65,14 +66,14 @@ class ReadAmplificationTest(Tester):
 
         cnt = 500000
         size = 2 * KBYTE
-        c = 'a' * 1024  * 1 # 1KB
+        c = 'a' * 1024 * 1  # 1KB
         cs = [c] * cnt
         debug("Insert data")
-        scylla_tools.insert_c1c2(session, keys=range(1,cnt+1), consistency=ConsistencyLevel.QUORUM, c1_values=cs,
-                              c2_values=cs)
+        scylla_tools.insert_c1c2(session, keys=range(1, cnt+1), consistency=ConsistencyLevel.QUORUM, c1_values=cs,
+                                 c2_values=cs)
 
         debug("Start {}".format(node_to_repair.name))
-        node_to_repair.start(wait_other_notice=True,wait_for_binary_proto=True)
+        node_to_repair.start(wait_other_notice=True, wait_for_binary_proto=True)
 
         debug("Start {} repair".format(node_to_repair.name))
         executor = ThreadPoolExecutor(max_workers=1)

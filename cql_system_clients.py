@@ -42,6 +42,7 @@ def get_system_clients_records(session, protocol_version=None, user=None, ssl_op
 
 class CQLSession:
     _session = None
+
     def __init__(self,
                  node=None,
                  user=None,
@@ -67,7 +68,7 @@ class CQLSession:
         test_instance._remember_session(self)
 
     def __str__(self):
-        body = ','.join([ n + '=' + str(getattr(self, n)) for n in ['user', 'port', 'ssl_opts', 'protocol_version']])
+        body = ','.join([n + '=' + str(getattr(self, n)) for n in ['user', 'port', 'ssl_opts', 'protocol_version']])
         return f"CQLSession<{body}>"
 
     def check_if_in_system_clients(self):
@@ -141,7 +142,7 @@ class SystemClientsTest(Tester):
         for session in self._opened_sessions:
             try:
                 session.shutdown()
-            except Exception:  #pylint: disable=broad-except
+            except Exception:  # pylint: disable=broad-except
                 pass
         self._opened_sessions = []
 
@@ -358,4 +359,3 @@ class SystemClientsTest(Tester):
                 self.fail("Should not be able to connect when ssl auth is enabled")
             except:  # pylint: disable=bare-exception
                 self.assertEqual(original_sessions_count, self.get_total_records_in_system_clients(session))
-

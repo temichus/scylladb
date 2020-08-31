@@ -23,7 +23,9 @@ from nose.plugins.attrib import attr
 
 from ccmlib.scylla_node import ScyllaNode
 from dtest import CASSANDRA_DIR, DISABLE_VNODES, IGNORE_REQUIRE, debug, make_execution_profile
-import glob, distutils.dir_util
+import glob
+import distutils.dir_util
+
 
 def rows_to_list(rows):
     new_list = [list(row) for row in rows]
@@ -51,6 +53,7 @@ def insert_c1c2(session, keys=None, n=None, consistency=ConsistencyLevel.QUORUM,
     statement.consistency_level = consistency
 
     execute_concurrent_with_args(session, statement, [['k{}'.format(k)] for k in keys])
+
 
 def delete_c1c2(session, keys=None, n=None, consistency=ConsistencyLevel.QUORUM, cf="cf"):
     if (keys is None and n is None) or (keys is not None and n is not None):
@@ -93,14 +96,16 @@ def new_node(cluster, bootstrap=True, token=None, remote_debug_port='0', data_ce
 
 
 def insert_columns(tester, session, key, columns_count, consistency=ConsistencyLevel.QUORUM, offset=0):
-    upds = ["UPDATE cf SET v=\'value%d\' WHERE key=\'k%s\' AND c=\'c%06d\'" % (i, key, i) for i in range(offset * columns_count, columns_count * (offset + 1))]
+    upds = ["UPDATE cf SET v=\'value%d\' WHERE key=\'k%s\' AND c=\'c%06d\'" %
+            (i, key, i) for i in range(offset * columns_count, columns_count * (offset + 1))]
     query = 'BEGIN BATCH %s; APPLY BATCH' % '; '.join(upds)
     simple_query = SimpleStatement(query, consistency_level=consistency)
     session.execute(simple_query)
 
 
 def query_columns(tester, session, key, columns_count, consistency=ConsistencyLevel.QUORUM, offset=0):
-    query = SimpleStatement('SELECT c, v FROM cf WHERE key=\'k%s\' AND c >= \'c%06d\' AND c <= \'c%06d\'' % (key, offset, columns_count + offset - 1), consistency_level=consistency)
+    query = SimpleStatement('SELECT c, v FROM cf WHERE key=\'k%s\' AND c >= \'c%06d\' AND c <= \'c%06d\'' % (
+        key, offset, columns_count + offset - 1), consistency_level=consistency)
     res = list(session.execute(query))
     assert len(res) == columns_count, "%s != %s (%s-%s)" % (len(res), columns_count, offset, columns_count + offset - 1)
     for i in range(0, columns_count):
@@ -152,13 +157,15 @@ def _put_with_overwrite(cluster, session, nb_keys, cl=ConsistencyLevel.QUORUM):
         time.sleep(.01)
     cluster.flush()
     for k in range(0, nb_keys):
-        kvs = ["UPDATE cf SET v=\'value%d\' WHERE key=\'k%s\' AND c=\'c%02d\'" % (i * 4, k, i * 2) for i in range(0, 50)]
+        kvs = ["UPDATE cf SET v=\'value%d\' WHERE key=\'k%s\' AND c=\'c%02d\'" %
+               (i * 4, k, i * 2) for i in range(0, 50)]
         query = SimpleStatement('BEGIN BATCH %s APPLY BATCH' % '; '.join(kvs), consistency_level=cl)
         session.execute(query)
         time.sleep(.01)
     cluster.flush()
     for k in range(0, nb_keys):
-        kvs = ["UPDATE cf SET v=\'value%d\' WHERE key=\'k%s\' AND c=\'c%02d\'" % (i * 20, k, i * 5) for i in range(0, 20)]
+        kvs = ["UPDATE cf SET v=\'value%d\' WHERE key=\'k%s\' AND c=\'c%02d\'" %
+               (i * 20, k, i * 5) for i in range(0, 20)]
         query = SimpleStatement('BEGIN BATCH %s APPLY BATCH' % '; '.join(kvs), consistency_level=cl)
         session.execute(query)
         time.sleep(.01)
@@ -414,8 +421,9 @@ def require(require_pattern, broken_in=None):
     else:
         return tagging_decorator
 
+
 def run_query_with_data_processing(session, query, consistency_level=ConsistencyLevel.ONE, session_timeout=120,
-                             group=False, groupby_column=None, restrict_column=None, restrict_value=None):
+                                   group=False, groupby_column=None, restrict_column=None, restrict_value=None):
     result = list(session.execute(SimpleStatement(query, consistency_level=consistency_level), timeout=session_timeout))
     if result:
         if restrict_column:
@@ -425,12 +433,13 @@ def run_query_with_data_processing(session, query, consistency_level=Consistency
         if group:
             groupby_column_index = [i for i, clmn in enumerate(result[0]._fields) if clmn == groupby_column][0]
             result = [item[groupby_column_index] for item in result if item[restrict_column_index] in restrict_value] \
-                             if restrict_value and restrict_column \
-                             else [item[groupby_column_index] for item in result]
+                if restrict_value and restrict_column \
+                else [item[groupby_column_index] for item in result]
             result = [[key, len(list(group))] for key, group in groupby(sorted(result))]
         elif restrict_value and restrict_column:
             result = [item for item in result if item[restrict_column_index] in restrict_value]
     return result
+
 
 def cassandra_git_branch(cdir=None):
     '''Get the name of the git branch at CASSANDRA_DIR.

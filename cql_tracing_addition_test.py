@@ -40,7 +40,8 @@ class TracingReadAccessHelper:
         if not rf:
             rf = nodes
         self.create_ks(session, self.keyspace, rf)
-        self.create_cf(session, self.table, key_type="text", columns={"name": "text", "rate": "int"}, compaction=compaction)
+        self.create_cf(session, self.table, key_type="text", columns={
+                       "name": "text", "rate": "int"}, compaction=compaction)
         if create_index:
             session.execute("CREATE INDEX ON {0.keyspace}.{0.table} (rate)".format(self))
         if create_mv:

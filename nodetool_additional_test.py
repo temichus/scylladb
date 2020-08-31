@@ -24,9 +24,11 @@ from tools import new_node
 from tools import insert_c1c2
 from tools import no_vnodes, rows_to_list, require
 
+
 def randbytes(n):
     for _ in range(n):
         yield random.getrandbits(8)
+
 
 @attr('dtest-full')
 class TestNodetool(Tester):
@@ -36,12 +38,16 @@ class TestNodetool(Tester):
         super(TestNodetool, self).__init__(*args, **kwargs)
         self.width = 160
         self.multi_dc_queries_method_list = [{"func": self.verify_info, "time": 60, "args": [None, 'dc1', 'RAC1']},
-                                             {"func": self.verify_status, "time": 25}, {"func": self.verify_netstats, "time": 40},
-                                             {"func": self.verify_cfhistograms, "time": 25}, {"func": self.verify_cfstats, "time": 25, "args": [None, "keyspace1"]},
+                                             {"func": self.verify_status, "time": 25}, {
+                                                 "func": self.verify_netstats, "time": 40},
+                                             {"func": self.verify_cfhistograms, "time": 25}, {
+                                                 "func": self.verify_cfstats, "time": 25, "args": [None, "keyspace1"]},
                                              {"func": self.verify_describering, "time": 25}, {"func": self.verify_decribecluster, "time": 25}]
         self.queries_method_list = [{"func": self.verify_info, "time": 60},
-                                    {"func": self.verify_status, "time": 25}, {"func": self.verify_netstats, "time": 40},
-                                    {"func": self.verify_cfhistograms, "time": 25}, {"func": self.verify_cfstats, "time": 25, "args": [None, "keyspace1"]},
+                                    {"func": self.verify_status, "time": 25}, {
+                                        "func": self.verify_netstats, "time": 40},
+                                    {"func": self.verify_cfhistograms, "time": 25}, {
+                                        "func": self.verify_cfstats, "time": 25, "args": [None, "keyspace1"]},
                                     {"func": self.verify_describering, "time": 25}, {"func": self.verify_decribecluster, "time": 25}]
         self.reserved_names = ['view_pending_updates']
         self.cluster_started = False
@@ -84,7 +90,8 @@ class TestNodetool(Tester):
         if msg is None:
             super(TestNodetool, self).assertEqual(expect, second, "Expecting " + str(expect) + " got " + str(second))
         else:
-            super(TestNodetool, self).assertEqual(expect, second, msg + " (Expecting " + str(expect) + " got " + str(second) + ")")
+            super(TestNodetool, self).assertEqual(expect, second, msg +
+                                                  " (Expecting " + str(expect) + " got " + str(second) + ")")
 
     def assertMapGreatEqual(self, container, key, val, msg=None):
         if msg is None:
@@ -178,7 +185,8 @@ class TestNodetool(Tester):
         m = re.findall('Datacenter: ([^\s]+)', out, re.MULTILINE)
         if m:
             res['Datacenter'] = m[0]
-        m = re.findall('^([UDNLJM]+)\s+([\d\.]+)\s+([^\s]+\s+[^\s]+)\s+([^\s]+)\s+([^\s]+)(?:\s[^\s]{2})?\s+([^\s]+)\s+([^\s]+)\s*$', out, re.MULTILINE)
+        m = re.findall(
+            '^([UDNLJM]+)\s+([\d\.]+)\s+([^\s]+\s+[^\s]+)\s+([^\s]+)\s+([^\s]+)(?:\s[^\s]{2})?\s+([^\s]+)\s+([^\s]+)\s*$', out, re.MULTILINE)
         res["nodes"] = sorted([self._list2status(s) for s in m], key=lambda s: s["address"])
         return res
 
@@ -213,7 +221,7 @@ class TestNodetool(Tester):
         one node remains
         """
         cluster = self.cluster
-        cluster.populate(2).start(wait_for_binary_proto=True,wait_other_notice=True)
+        cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
         [node1, node2] = cluster.nodelist()
         status = self.nodetool_status(node1)
         self.assertEqual(2, len(status["nodes"]), "wrong number of nodes")
@@ -231,7 +239,8 @@ class TestNodetool(Tester):
         self.assertIn("SSTable count", cf, "SSTable count is missing in column family")
         self.assertIn("Space used (live)", cf, "Space used (live) is missing in column family")
         self.assertIn("Space used (total)", cf, "Space used (total) is missing in column family")
-        self.assertIn("Space used by snapshots (total)", cf, "Space used by snapshots (total) is missing in column family")
+        self.assertIn("Space used by snapshots (total)", cf,
+                      "Space used by snapshots (total) is missing in column family")
         self.assertIn("Off heap memory used (total)", cf, "Off heap memory used (total) is missing in column family")
         self.assertIn("SSTable Compression Ratio", cf, "SSTable Compression Ratio is missing in column family")
         self.assertIn("Number of keys (estimate)", cf, "Number of keys (estimate) is missing in column family")
@@ -247,16 +256,26 @@ class TestNodetool(Tester):
         self.assertIn("Bloom filter false positives", cf, "Bloom filter false positives is missing in column family")
         self.assertIn("Bloom filter false ratio", cf, "Bloom filter false ratio is missing in column family")
         self.assertIn("Bloom filter space used", cf, "Bloom filter space used is missing in column family")
-        self.assertIn("Bloom filter off heap memory used", cf, "Bloom filter off heap memory used is missing in column family")
-        self.assertIn("Index summary off heap memory used", cf, "Index summary off heap memory used is missing in column family")
-        self.assertIn("Compression metadata off heap memory used", cf, "Compression metadata off heap memory used is missing in column family")
-        self.assertIn("Compacted partition minimum bytes", cf, "Compacted partition minimum bytes is missing in column family")
-        self.assertIn("Compacted partition maximum bytes", cf, "Compacted partition maximum bytes is missing in column family")
-        self.assertIn("Compacted partition mean bytes", cf, "Compacted partition mean bytes is missing in column family")
-        self.assertIn("Average live cells per slice (last five minutes)", cf, "Average live cells per slice (last five minutes) is missing in column family")
-        self.assertIn("Maximum live cells per slice (last five minutes)", cf, "Maximum live cells per slice (last five minutes) is missing in column family")
-        self.assertIn("Average tombstones per slice (last five minutes)", cf, "Average tombstones per slice (last five minutes) is missing in column family")
-        self.assertIn("Maximum tombstones per slice (last five minutes)", cf, "Maximum tombstones per slice (last five minutes) is missing in column family")
+        self.assertIn("Bloom filter off heap memory used", cf,
+                      "Bloom filter off heap memory used is missing in column family")
+        self.assertIn("Index summary off heap memory used", cf,
+                      "Index summary off heap memory used is missing in column family")
+        self.assertIn("Compression metadata off heap memory used", cf,
+                      "Compression metadata off heap memory used is missing in column family")
+        self.assertIn("Compacted partition minimum bytes", cf,
+                      "Compacted partition minimum bytes is missing in column family")
+        self.assertIn("Compacted partition maximum bytes", cf,
+                      "Compacted partition maximum bytes is missing in column family")
+        self.assertIn("Compacted partition mean bytes", cf,
+                      "Compacted partition mean bytes is missing in column family")
+        self.assertIn("Average live cells per slice (last five minutes)", cf,
+                      "Average live cells per slice (last five minutes) is missing in column family")
+        self.assertIn("Maximum live cells per slice (last five minutes)", cf,
+                      "Maximum live cells per slice (last five minutes) is missing in column family")
+        self.assertIn("Average tombstones per slice (last five minutes)", cf,
+                      "Average tombstones per slice (last five minutes) is missing in column family")
+        self.assertIn("Maximum tombstones per slice (last five minutes)", cf,
+                      "Maximum tombstones per slice (last five minutes) is missing in column family")
 
     def verify_cfstats(self, node=None, ks=""):
         res = self.cfstats(node, ks)
@@ -314,7 +333,8 @@ class TestNodetool(Tester):
         table = ks["tables"][table_name]
 
         self.assertMapEqual(table, "Space used by snapshots (total)", 0)
-        self.assertMapGreatEqual(table, "Off heap memory used (total)", float(table["Bloom filter off heap memory used"]) + float(table["Index summary off heap memory used"]))
+        self.assertMapGreatEqual(table, "Off heap memory used (total)", float(
+            table["Bloom filter off heap memory used"]) + float(table["Index summary off heap memory used"]))
         self.assertMapEqual(table, "SSTable Compression Ratio", 0)
         #self.assertGreaterEqual(strs["latency mean:read"], TestNodetool._parse_time(ks["Read Latency"]))
         #self.assertGreaterEqual(strs["latency mean:write"], TestNodetool._parse_time(ks["Write Latency"]))
@@ -371,16 +391,20 @@ class TestNodetool(Tester):
         self.assertTrue(m, "No directory found in node snapshot command: '" + out + "'")
         snapshot = m[0]
         data_dir = os.path.join(node1.get_path(), "data")
-        keyspaces = [f for f in os.listdir(data_dir) if os.path.isdir(os.path.join(data_dir, f)) and f not in self.reserved_names]
+        keyspaces = [f for f in os.listdir(data_dir) if os.path.isdir(
+            os.path.join(data_dir, f)) and f not in self.reserved_names]
         self.assertEqual(6, len(keyspaces), "wrong number of directories in the data dir")
         for ks in keyspaces:
             keyspace_dir = os.path.join(data_dir, ks)
-            column_families = [os.path.join(keyspace_dir, f) for f in os.listdir(keyspace_dir) if os.path.isdir(os.path.join(keyspace_dir, f))]
+            column_families = [os.path.join(keyspace_dir, f) for f in os.listdir(
+                keyspace_dir) if os.path.isdir(os.path.join(keyspace_dir, f))]
             for cf in column_families:
                 if ks == "system" and "schema" in cf:
                     continue
-                self.assertTrue(os.path.isdir(os.path.join(cf, "snapshots", snapshot)), "Missing snapshot dir under ks=" + ks + " cf " + cf)
-                self.assertIn("manifest.json", os.listdir(os.path.join(cf, "snapshots", snapshot)), "Missing manifest.json in " + os.path.join(cf, "snapshots", snapshot))
+                self.assertTrue(os.path.isdir(os.path.join(cf, "snapshots", snapshot)),
+                                "Missing snapshot dir under ks=" + ks + " cf " + cf)
+                self.assertIn("manifest.json", os.listdir(os.path.join(cf, "snapshots", snapshot)),
+                              "Missing manifest.json in " + os.path.join(cf, "snapshots", snapshot))
         self.verify_snapshot(node1, "keyspace1", snapshot)
         self.verify_snapshot(node1, "system", snapshot)
         node1.nodetool("clearsnapshot")
@@ -407,7 +431,8 @@ class TestNodetool(Tester):
         snapshot = m[0]
         self.assertEqual(tag, snapshot, "wrong directory found in node snapshot command: '" + out + "'")
         data_dir = os.path.join(node1.get_path(), "data")
-        keyspaces = [f for f in os.listdir(data_dir) if os.path.isdir(os.path.join(data_dir, f)) and f not in self.reserved_names]
+        keyspaces = [f for f in os.listdir(data_dir) if os.path.isdir(
+            os.path.join(data_dir, f)) and f not in self.reserved_names]
         self.assertEqual(6, len(keyspaces), "wrong number of directories in the data dir")
         if kc:
             brk = kc.split('.')
@@ -421,10 +446,13 @@ class TestNodetool(Tester):
                 if ks == "system" and "schema" in cf:
                     continue
                 if not keyspace or (keyspace == ks and (not column_family or c.startswith(column_family))):
-                    self.assertTrue(os.path.isdir(os.path.join(cf, "snapshots", snapshot)), "Missing snapshot dir under ks=" + ks + " cf " + cf)
-                    self.assertIn("manifest.json", os.listdir(os.path.join(cf, "snapshots", snapshot)), "Missing manifest.json in " + os.path.join(cf, "snapshots", snapshot))
+                    self.assertTrue(os.path.isdir(os.path.join(cf, "snapshots", snapshot)),
+                                    "Missing snapshot dir under ks=" + ks + " cf " + cf)
+                    self.assertIn("manifest.json", os.listdir(os.path.join(cf, "snapshots", snapshot)),
+                                  "Missing manifest.json in " + os.path.join(cf, "snapshots", snapshot))
                 else:
-                    self.assertFalse(os.path.isdir(os.path.join(cf, "snapshots", snapshot)), "Snapshot dir found under wrong ks=" + ks + " cf " + cf)
+                    self.assertFalse(os.path.isdir(os.path.join(cf, "snapshots", snapshot)),
+                                     "Snapshot dir found under wrong ks=" + ks + " cf " + cf)
 
         if keyspace:
             self.verify_snapshot(node1, keyspace, snapshot)
@@ -460,7 +488,8 @@ class TestNodetool(Tester):
 
     def get_ring(self, node):
         out = node.nodetool("ring", True)[0]
-        m = re.findall("^\s*([\d\.]+)\s+([^\s]+)\s+([^\s]+)\s+([^\s]+)\s+([\d\.]+)\s+([^\s]+)\s+([^\s]+)\s+([^\s].*)\s*$", out, re.MULTILINE)
+        m = re.findall(
+            "^\s*([\d\.]+)\s+([^\s]+)\s+([^\s]+)\s+([^\s]+)\s+([\d\.]+)\s+([^\s]+)\s+([^\s]+)\s+([^\s].*)\s*$", out, re.MULTILINE)
         return [self._list2ring(r) for r in m]
 
     @attr('single_node')
@@ -486,13 +515,15 @@ class TestNodetool(Tester):
         self.verify_snapshot(node1, "keyspace1", snapshot)
 
     def _compactionhistory_entry(self, lst):
-        res = TestNodetool._list2dic(lst, ["id", "keyspace_name", "columnfamily_name", "compacted_at", "bytes_in", "bytes_out", "rows_merged"])
+        res = TestNodetool._list2dic(lst, ["id", "keyspace_name", "columnfamily_name",
+                                           "compacted_at", "bytes_in", "bytes_out", "rows_merged"])
         self._verify_compaction_history(res)
         return res
 
     def compactionhistory(self, node):
         out = node.nodetool('compactionhistory', True)[0]
-        merged = re.findall("^\s*([\d\-abcdef]+)\s+([^\s]+)\s+([^\s]+)\s+(\d+)\s+(\d+)\s+(\d+)\s+([^\s]+)?\s*$", out, re.MULTILINE)
+        merged = re.findall(
+            "^\s*([\d\-abcdef]+)\s+([^\s]+)\s+([^\s]+)\s+(\d+)\s+(\d+)\s+(\d+)\s+([^\s]+)?\s*$", out, re.MULTILINE)
         res = {}
         res["merged"] = [self._compactionhistory_entry(m) for m in merged]
 
@@ -595,7 +626,8 @@ class TestNodetool(Tester):
         dc = re.findall("^\s*Datacenter: ([^\s]+)\s*$", out, re.MULTILINE)
         self.assertEqual(1, len(dc), "Failed searching for datacenter")
         res["datacenter"] = dc[0]
-        tokens = re.findall("^\s*([\d\.]+)\s+([^\s]+)\s+([^\s]+)\s+([^\s]+)\s+([^\s]+)(?:\s[^\s]{2})?\s+([^\s]+)(?:\s[^\s]{2})?\s+(\-?[\d]+)\s*$", out, re.MULTILINE)
+        tokens = re.findall(
+            "^\s*([\d\.]+)\s+([^\s]+)\s+([^\s]+)\s+([^\s]+)\s+([^\s]+)(?:\s[^\s]{2})?\s+([^\s]+)(?:\s[^\s]{2})?\s+(\-?[\d]+)\s*$", out, re.MULTILINE)
         res["tokens"] = [self._get_ring_entry(m) for m in tokens]
         return res
 
@@ -687,7 +719,8 @@ class TestNodetool(Tester):
                          "SStable count should be 1")
 
     def _describering_val(self, v):
-        vals = re.findall('^\s*start_token:(-?\d+), end_token:(-?\d+), endpoints:\[([\d\., ]+)\], rpc_endpoints:\[([\d\., ]+)\], endpoint_details:\[(.*)\]\s*$', v, re.MULTILINE)
+        vals = re.findall(
+            '^\s*start_token:(-?\d+), end_token:(-?\d+), endpoints:\[([\d\., ]+)\], rpc_endpoints:\[([\d\., ]+)\], endpoint_details:\[(.*)\]\s*$', v, re.MULTILINE)
         heads = ['start_token', 'end_token', 'endpoints', 'rpc_endpoints']
         res = {}
         self.assertTrue(vals, "wrong format of token range: " + v)
@@ -820,7 +853,7 @@ class TestNodetool(Tester):
         cluster = self.cluster
         cluster.populate(2).start(wait_for_binary_proto=True)
         node = cluster.nodelist()[0]
-        strs = self.stress_write(node, 10000, duration='10s',pop='seq=1..10000',opt=["-rate threads=10"])
+        strs = self.stress_write(node, 10000, duration='10s', pop='seq=1..10000', opt=["-rate threads=10"])
         res = self._get_cfhistogram(node, "keyspace1", "standard1")
 
         self.assertMapEqual(res, "ks", "keyspace1", "wrong keysyapce")
@@ -833,7 +866,7 @@ class TestNodetool(Tester):
                 if v != "Max":
                     self.assertMapLess(res["vals"][v], "Write Latency", ltnc * 1000, "unexpected write latency")
 
-        strs = self.stress_mixed(node, 10000, duration='10s',pop='seq=1..10000',opt=["-rate threads=10"])
+        strs = self.stress_mixed(node, 10000, duration='10s', pop='seq=1..10000', opt=["-rate threads=10"])
         res = self._get_cfhistogram(node, "keyspace1", "standard1")
         self.verify_cfhistograms(res=res, ltype='mixed')
         if 'latency max:read' in strs:
@@ -857,7 +890,7 @@ class TestNodetool(Tester):
                 self.assertNotEqual(float(latency_val), 0.0, "unexpected {} 0 for {} load".format(latency_type, v))
                 self.assertGreaterEqual(latency_val, cur,
                                         "{} is not monotonic: {}({} load), was {}\n{}".format(latency_type, latency_val,
-                                                                                          v, cur,res["out"]))
+                                                                                              v, cur, res["out"]))
                 cur = latency_val
 
     @staticmethod
@@ -881,7 +914,8 @@ class TestNodetool(Tester):
         self.assertMapEqual(cluster, "Name", "test")
         self.assertMapEqual(cluster, "Partitioner", "org.apache.cassandra.dht.Murmur3Partitioner")
         self.assertIn("Snitch", cluster)
-        self.assertTrue(cluster["Snitch"].startswith("org.apache.cassandra.locator."), "invalid snitch name:" + cluster["Snitch"])
+        self.assertTrue(cluster["Snitch"].startswith("org.apache.cassandra.locator."),
+                        "invalid snitch name:" + cluster["Snitch"])
         self.assertIn("Schema versions", cluster)
         schema = cluster["Schema versions"]
         for k in schema:
@@ -895,7 +929,8 @@ class TestNodetool(Tester):
         for ks in obj:
             cls = obj[ks]["class"] if "class" in obj[ks] else 'SimpleStrategy'
             rf = obj[ks]["rf"] if "rf" in obj[ks] else 1
-            session.execute("CREATE KEYSPACE " + ks + " WITH replication = { 'class':'" + cls + "', 'replication_factor':" + str(rf) + "}")
+            session.execute("CREATE KEYSPACE " + ks +
+                            " WITH replication = { 'class':'" + cls + "', 'replication_factor':" + str(rf) + "}")
             session.execute("USE " + ks)
             for table in obj[ks]["tables"]:
                 t = obj[ks]["tables"][table]
@@ -908,7 +943,7 @@ class TestNodetool(Tester):
     def _sql_val(val):
         try:
             if val.startswith('0x'):
-                return val;
+                return val
             return "'" + val + "'"
         except:
             return str(val)
@@ -924,7 +959,8 @@ class TestNodetool(Tester):
                 for val in t:
                     ins = "INSERT INTO " + table + " ("
                     ins = ins + functools.reduce(lambda a, b: a + "," + b, val.keys()) + ") VALUES ("
-                    ins = ins + functools.reduce(lambda a, b: a + "," + b, [self._sql_val(val[a]) for a in val.keys()]) + ")"
+                    ins = ins + functools.reduce(lambda a, b: a + "," + b,
+                                                 [self._sql_val(val[a]) for a in val.keys()]) + ")"
                     session.execute(ins)
 
     @staticmethod
@@ -1269,16 +1305,16 @@ class TestNodetool(Tester):
         debug("Testing loading sstables in a dir with no write permission. nodetool expected to fail...")
         os.chmod(upload_dir, 0o555)
         self._nodetool_refresh_expect_fail(node,
-            expected_error=r'Directory cannot be accessed .* write',
-            debug_message='dir with no write permission')
+                                           expected_error=r'Directory cannot be accessed .* write',
+                                           debug_message='dir with no write permission')
         os.chmod(upload_dir, 0o755)
 
         debug("Testing loading sstables with no read permission. nodetool expected to fail...")
         for f in os.listdir(upload_dir):
             os.chmod(os.path.join(upload_dir, f), 0o044)
         self._nodetool_refresh_expect_fail(node,
-            expected_error=r'File cannot be accessed for read|open failed: Permission denied',
-            debug_message='files with no read permission')
+                                           expected_error=r'File cannot be accessed for read|open failed: Permission denied',
+                                           debug_message='files with no read permission')
         for f in os.listdir(upload_dir):
             os.chmod(os.path.join(upload_dir, f), 0o644)
 
@@ -1286,15 +1322,16 @@ class TestNodetool(Tester):
         symlink_path = os.path.join(upload_dir, 'test_symlink')
         os.symlink('broken', symlink_path)
         self._nodetool_refresh_expect_fail(node,
-            expected_error=r'Must be either a regular file or a directory',
-            debug_message='with symlink')
+                                           expected_error=r'Must be either a regular file or a directory',
+                                           debug_message='with symlink')
         os.remove(symlink_path)
 
     def proxyhistograms(self, node=None):
         if node is None:
             node = self.cluster.nodelist()[0]
         out = node.nodetool("proxyhistograms", True)[0]
-        histogram = re.findall("^\s*([^\s]+)\s+(\d+\.\d+)\s+(\d+\.\d+)\s+([^\s]+)\s+([^\s]+)\s+([^\s]+)\s+([^\s]+)\s*$", out, re.MULTILINE)
+        histogram = re.findall(
+            "^\s*([^\s]+)\s+(\d+\.\d+)\s+(\d+\.\d+)\s+([^\s]+)\s+([^\s]+)\s+([^\s]+)\s+([^\s]+)\s*$", out, re.MULTILINE)
         return {m[0]: self._list2dic(m[1:], ["Read Latency", "Write Latency", "Range Latency", "CAS Read", "CAS Write", "View Write"]) for m in histogram}
 
     def _verify_proxyhistogram(self, res):
@@ -1352,7 +1389,7 @@ class TestNodetool(Tester):
         cluster = self.cluster
         if configuration is not None:
             cluster.set_configuration_options(values=configuration)
-        cluster.populate(nodes).start(wait_other_notice=True,wait_for_binary_proto=True)
+        cluster.populate(nodes).start(wait_other_notice=True, wait_for_binary_proto=True)
         self.cluster_started = True
         return cluster.nodelist()
 
@@ -1612,11 +1649,11 @@ class TestNodetool(Tester):
         call rebuild
         """
         expected_errors = ["No schema agreement from live replicas after"]
-        tst = [{"operations": [{"func": self.run_cluster, "args": [[2, 2], {'hinted_handoff_enabled': False, 'compaction_enforce_min_threshold': True}], "block": True}, {"func": self.stop, "delay": 5, "args": [ [2, 3]]}],
+        tst = [{"operations": [{"func": self.run_cluster, "args": [[2, 2], {'hinted_handoff_enabled': False, 'compaction_enforce_min_threshold': True}], "block": True}, {"func": self.stop, "delay": 5, "args": [[2, 3]]}],
                 "recurrent":[{"func": self.verify_all_api, "block": True}, {"func": self.verify_info, "time": 60, "delay": 10, "args": [None, 'dc1', 'RAC1']}]},
                {"operations": [{"func": self.concurrent_stress, "delay": 15,
-                                "args": [None, {"cl":"ONE","duration": "1m",
-                                                "opt": ["-schema","replication(strategy=NetworkTopologyStrategy, dc1=1,dc2=1)","-rate","threads=10"],
+                                "args": [None, {"cl": "ONE", "duration": "1m",
+                                                "opt": ["-schema", "replication(strategy=NetworkTopologyStrategy, dc1=1,dc2=1)", "-rate", "threads=10"],
                                                 "expected_errors": expected_errors}]}],
                 "recurrent": [{"func": self.verify_info, "time": 60, "delay": 10, "args": [None, 'dc1', 'RAC1']}]},
                {"operations": [{"func": self.start, "delay": 5, "args": [[2, 3], {"wait_for_binary_proto": True}]}],
@@ -1655,9 +1692,9 @@ class TestNodetool(Tester):
         expected_errors = self.stress_node_down_expected_errors(node_to_drain)
         tst = [{"operations": [{"func": self.run_cluster}],
                 "recurrent": [{"func": self.verify_all_api, "block": True}, {"func": self.verify_info, "time": 60, "delay": 10}]},
-               {"operations": [{"func": self.concurrent_stress, "delay": 5, "args": [None, {"duration": "1m","opt": ["-schema","replication(strategy=SimpleStrategy, replication_factor=2)","-rate","threads=10"]}]}],
+               {"operations": [{"func": self.concurrent_stress, "delay": 5, "args": [None, {"duration": "1m", "opt": ["-schema", "replication(strategy=SimpleStrategy, replication_factor=2)", "-rate", "threads=10"]}]}],
                 "recurrent": [{"func": self.verify_info, "time": 60, "delay": 10}]},
-               {"operations": [{"func": self.concurrent_stress, "delay": 5, "args": [None, {"cl":"ONE", "duration": "2m", "expected_errors": expected_errors}]},
+               {"operations": [{"func": self.concurrent_stress, "delay": 5, "args": [None, {"cl": "ONE", "duration": "2m", "expected_errors": expected_errors}]},
                                {"func": self.drain, "delay": 90, "args": [node_to_drain]}],
                 "recurrent": self. queries_method_list}]
         self.general_concurrent(tst)
@@ -1679,9 +1716,9 @@ class TestNodetool(Tester):
         expected_errors = self.stress_node_down_expected_errors(node_to_drain)
         tst = [{"operations": [{"func": self.run_cluster}],
                 "recurrent": [{"func": self.verify_all_api, "block": True}, {"func": self.verify_info, "time": 60, "delay": 10}]},
-               {"operations": [{"func": self.concurrent_stress, "delay": 5, "args": [None, {"duration": "1m","opt": ["-schema","replication(strategy=SimpleStrategy, replication_factor=2)","-rate","threads=10"]}]}],
+               {"operations": [{"func": self.concurrent_stress, "delay": 5, "args": [None, {"duration": "1m", "opt": ["-schema", "replication(strategy=SimpleStrategy, replication_factor=2)", "-rate", "threads=10"]}]}],
                 "recurrent": [{"func": self.verify_info, "time": 60, "delay": 10}]},
-               {"operations": [{"func": self.concurrent_stress, "delay": 5, "args": [None, {"cl":"ONE", "duration": "2m", "expected_errors": expected_errors}]},
+               {"operations": [{"func": self.concurrent_stress, "delay": 5, "args": [None, {"cl": "ONE", "duration": "2m", "expected_errors": expected_errors}]},
                                {"func": self.restart, "delay": 10, "args": [node_to_drain]}],
                 "recurrent": self. queries_method_list}]
         self.general_concurrent(tst)
@@ -1801,7 +1838,7 @@ class TestNodetool(Tester):
             'Failed to allocate',
         ]
 
-        node.start(wait_for_binary_proto=True,wait_other_notice=True)
+        node.start(wait_for_binary_proto=True, wait_other_notice=True)
 
         session = self.patient_cql_connection(node)
         try:
@@ -1854,7 +1891,7 @@ class TestNodetool(Tester):
             'Failed to allocate',
         ]
 
-        node.start(wait_for_binary_proto=True,wait_other_notice=True)
+        node.start(wait_for_binary_proto=True, wait_other_notice=True)
 
         session = self.patient_cql_connection(node)
         debug('Rebuild sstables by storage_service/keyspace_scrub API')
@@ -1865,7 +1902,6 @@ class TestNodetool(Tester):
 
         rows = list(session.execute('SELECT * FROM ks.cf'))
         assert len(rows) == 100
-
 
     def node_graceful_stop_during_stress_and_decommission_test(self, starting_size=4, node_count=10, rf=1):
         """

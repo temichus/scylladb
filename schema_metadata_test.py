@@ -230,18 +230,21 @@ def verify_nondefault_table_settings(created_on_version, current_version, keyspa
     if current_version >= '3.0':
         assert_equal('org.apache.cassandra.io.compress.DeflateCompressor', meta.options['compression']['class'])
         assert_equal('128', meta.options['compression']['chunk_length_in_kb'])
-        assert_equal('org.apache.cassandra.db.compaction.LeveledCompactionStrategy', meta.options['compaction']['class'])
+        assert_equal('org.apache.cassandra.db.compaction.LeveledCompactionStrategy',
+                     meta.options['compaction']['class'])
 
     if '2.1' <= current_version < '3.0':
         assert_equal('{"keys":"NONE", "rows_per_partition":"ALL"}', meta.options['caching'])
         assert_in('"chunk_length_kb":"128"', meta.options['compression_parameters'])
-        assert_in('"sstable_compression":"org.apache.cassandra.io.compress.DeflateCompressor"', meta.options['compression_parameters'])
+        assert_in('"sstable_compression":"org.apache.cassandra.io.compress.DeflateCompressor"',
+                  meta.options['compression_parameters'])
     elif current_version >= '3.0':
         assert_equal('NONE', meta.options['caching']['keys'])
         assert_equal('ALL', meta.options['caching']['rows_per_partition'])
         assert_equal('org.apache.cassandra.io.compress.DeflateCompressor', meta.options['compression']['class'])
         assert_equal('128', meta.options['compression']['chunk_length_in_kb'])
-        assert_equal('org.apache.cassandra.db.compaction.LeveledCompactionStrategy', meta.options['compaction']['class'])
+        assert_equal('org.apache.cassandra.db.compaction.LeveledCompactionStrategy',
+                     meta.options['compaction']['class'])
     else:
         assert_equal('ROWS_ONLY', meta.options['caching'])
 
