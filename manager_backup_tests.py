@@ -769,7 +769,7 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
     def test_snapshot_deleted_upon_rerun(self):
         node1, node2 = self.config_and_create_cluster(nodes=2)
         mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
-        self.cluster.stress(['write', 'n=1500K', '-rate', 'threads=50', '-pop', 'seq=1..10000000',
+        self.cluster.stress(['write', 'n=2500K', '-rate', 'threads=50', '-pop', 'seq=1..10000000',
                              '-schema', 'compaction(strategy=SizeTieredCompactionStrategy)'])
 
         backup_task = mgr_cluster.run_backup_command(keyspace_list=["keyspace1"], location_list=["s3:{}".format(DESTINATION_BUCKET)])
@@ -787,9 +787,9 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
 
         session = self.patient_cql_connection(node1)
         session.execute("TRUNCATE keyspace1.standard1;")
-        self.cluster.stress(['write', 'n=1500K', '-rate', 'threads=50', '-pop', 'seq=10000001..20000000'])  # Modifying the data
+        self.cluster.stress(['write', 'n=2500K', '-rate', 'threads=50', '-pop', 'seq=10000001..20000000'])  # Modifying the data
         backup_task.start(continue_task=False)
-        backup_task.wait_for_status(list_status=[TaskStatus.RUNNING], timeout=180, step=2)
+        backup_task.wait_for_status(list_status=[TaskStatus.RUNNING], timeout=180, step=.5)
         post_rerun_snapshot_set = self._get_total_snapshot_set()
 
         assert not pre_rerun_snapshot_set.intersection(post_rerun_snapshot_set), \
