@@ -662,7 +662,7 @@ class ManagerCluster(ScyllaManagerBase):
         self.client_encrypt = client_encrypt
 
     def run_backup_command(self, dc_list=None,  # pylint: disable=too-many-arguments,too-many-locals,too-many-branches
-                           token_ranges=None, dry_run=None, force=None, interval=None, keyspace_list=None,
+                           dry_run=None, force=None, interval=None, keyspace_list=None,
                            location_list=None, num_retries=None, rate_limit_list=None, retention=None, show_tables=None,
                            snapshot_parallel_list=None, start_date=None, upload_parallel_list=None):
         cmd = "backup -c {}".format(self.id)
@@ -670,8 +670,6 @@ class ManagerCluster(ScyllaManagerBase):
         if dc_list is not None:
             dc_names = ','.join(dc_list)
             cmd += " --dc {} ".format(dc_names)
-        if token_ranges is not None:
-            cmd += " --token-ranges {} ".format(token_ranges)
         if dry_run is not None:
             cmd += " --dry-run"
         if force is not None:
@@ -742,8 +740,9 @@ class ManagerCluster(ScyllaManagerBase):
     def delete_backup(self, snapshot_tag):
         self.sctool.run(f"-c {self.id} backup delete --snapshot-tag={snapshot_tag}")
 
-    def create_repair_task(self, node=None, dc_list=None, token_ranges=None, keyspace=None, with_hosts=None,
-                           interval=None, num_retries=None, fail_fast=None, intensity=None):
+    def create_repair_task(self, dc_list=None, keyspace=None, interval=None, num_retries=None, fail_fast=None,
+                           intensity=None):
+
         # the interval string:
         # Amount of time after which a successfully completed task would be run again. Supported time units include:
         #
@@ -752,18 +751,11 @@ class ManagerCluster(ScyllaManagerBase):
         # m - minutes,
         # s - seconds.
         cmd = "repair -c {}".format(self.id)
-        if node is not None:
-            cmd += " --host {} ".format(node.address())
         if dc_list is not None:
             dc_names = ','.join([dc_name for dc_name in dc_list])
             cmd += " --dc {} ".format(dc_names)
-        if token_ranges is not None:
-            cmd += " --token-ranges {} ".format(token_ranges)
         if keyspace is not None:
             cmd += " --keyspace {} ".format(keyspace)
-        if with_hosts is not None:
-            host_addresses = ','.join([host.address() for host in with_hosts])
-            cmd += " --with-hosts {} ".format(host_addresses)
         if interval is not None:
             cmd += " --interval {}".format(interval)
         if num_retries is not None:

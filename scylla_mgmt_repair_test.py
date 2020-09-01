@@ -245,7 +245,7 @@ class TestScyllaMgmtRepair(RepairAdditionalBase, ScyllaManagerMixin):
     @attr('scylla-manager')
     def test_manager_repair_multi_cfs(self):
         """
-        Repairing all of the cfs in a keyspace (The entire token range)
+        Repairing all of the cfs in a keyspace
         """
         # Start a cluster of two nodes, and create a keyspace ks with RF=2, and a table cf.
         node1, node2 = self.config_and_create_cluster(nodes=2)
@@ -276,7 +276,7 @@ class TestScyllaMgmtRepair(RepairAdditionalBase, ScyllaManagerMixin):
         mgr_cluster = manager_tool.add_cluster(node=node1, name=cluster_name)
 
         debug("Run repair on node 2")
-        repair_task = mgr_cluster.create_repair_task(node=node2, keyspace=self.KEYSPACE_NAME, token_ranges='all')
+        repair_task = mgr_cluster.create_repair_task(keyspace=self.KEYSPACE_NAME)
 
         repair_task.wait_for_status(list_status=[TaskStatus.DONE], timeout=300, step=10)
 
@@ -321,7 +321,7 @@ class TestScyllaMgmtRepair(RepairAdditionalBase, ScyllaManagerMixin):
         mgr_cluster = manager_tool.add_cluster(node=node1, name=cluster_name)
 
         debug("Run repair on node 2")
-        repair_task = mgr_cluster.create_repair_task(node=node2, token_ranges='all')
+        repair_task = mgr_cluster.create_repair_task(keyspace="ks*")
 
         repair_task.wait_for_status(list_status=[TaskStatus.DONE], timeout=300, step=10)
 
@@ -385,13 +385,13 @@ class TestScyllaMgmtRepair(RepairAdditionalBase, ScyllaManagerMixin):
                        dclocal_read_repair_chance=0.0, speculative_retry='NONE')
         self.create_cf(session, 'second_cf_to_repair', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'},
                        dclocal_read_repair_chance=0.0, speculative_retry='NONE')
-        self.create_cf(session, 'cf_to_not_be_repaired', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'},
+        self.create_cf(session, 'third_cf_to_repair', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'},
                        dclocal_read_repair_chance=0.0, speculative_retry='NONE')
 
         # Data for each table. Will be used to validate the repaired data
         first_range_to_repair = {"first_cf_to_repair": range(1, 11)}
         second_range_to_repair = {"second_cf_to_repair": range(11, 21)}
-        range_to_not_be_repaired = {"cf_to_not_be_repaired": range(21, 31)}
+        third_range_to_repair = {"third_cf_to_repair": range(21, 31)}
 
         self.cluster.flush()
 
@@ -400,24 +400,22 @@ class TestScyllaMgmtRepair(RepairAdditionalBase, ScyllaManagerMixin):
         self._insert_data_range_to_specific_node(node_to_insert=node2, nodes_to_shut_down=[node1, node3, node4],
                                                  keyspace_name=self.KEYSPACE_NAME, data_ranges=second_range_to_repair)
         self._insert_data_range_to_specific_node(node_to_insert=node3, nodes_to_shut_down=[node1, node2, node4],
-                                                 keyspace_name=self.KEYSPACE_NAME, data_ranges=range_to_not_be_repaired)
+                                                 keyspace_name=self.KEYSPACE_NAME, data_ranges=third_range_to_repair)
 
         manager_tool = ScyllaManagerTool(scylla_manager=self.cluster._scylla_manager)
         cluster_name = "cluster1"
         debug("Add a cluster to scylla-manager, named: {}".format(cluster_name))
         mgr_cluster = manager_tool.add_cluster(node=node1, name=cluster_name)
 
-        repair_task = mgr_cluster.create_repair_task(node=node4, token_ranges='all', keyspace=self.KEYSPACE_NAME,
-                                                     with_hosts=[node1, node2])
+        repair_task = mgr_cluster.create_repair_task(keyspace=self.KEYSPACE_NAME)
         repair_task.wait_for_status(list_status=[TaskStatus.DONE], timeout=300, step=10)
 
-        # Since only node1 and node2 were used to repair node4, the range that node3 contains (for the table
-        # cf_to_not_be_repaired should not appear in node4, unlike the others
+        # Each of nodes 1-3 inserted a few set of rows, and after the repair node4 should contain all rows
         self._assert_multiple_row_ranges_from_specific_node(node_to_query=node4, nodes_to_shut_down=[node1, node2, node3],
                                                             keyspace_name=self.KEYSPACE_NAME, tables_and_row_count_dict=
                                                             dict(list(first_range_to_repair.items()) +
                                                                  list(second_range_to_repair.items()) +
-                                                                 [("cf_to_not_be_repaired", [])]))
+                                                                 list(third_range_to_repair.items())))
 
     @attr('scylla-manager')
     def test_repair_with_empty_host_list(self):
@@ -493,8 +491,7 @@ class TestScyllaMgmtRepair(RepairAdditionalBase, ScyllaManagerMixin):
                            dclocal_read_repair_chance=0.0, speculative_retry='NONE')
 
         node3.stop(wait_other_notice=True)
-        repair_task = mgr_cluster.create_repair_task(node=node3, token_ranges='all', keyspace=self.KEYSPACE_NAME,
-                                                     with_hosts=[node1, node2])
+        repair_task = mgr_cluster.create_repair_task(keyspace=self.KEYSPACE_NAME)
         assert repair_task.wait_for_status(list_status=[TaskStatus.ERROR], timeout=300, step=5), \
             "Repairing an unavailable node did not fail as expected"
 
@@ -665,7 +662,7 @@ class TestScyllaMgmtRepair(RepairAdditionalBase, ScyllaManagerMixin):
         debug("Add a cluster to scylla-manager, named: {}".format(cluster_name))
         mgr_cluster = manager_tool.add_cluster(node=dc1_node, name=cluster_name)
 
-        repair_task = mgr_cluster.create_repair_task(node=dc2_node, keyspace=self.KEYSPACE_NAME, with_hosts=[dc1_node])
+        repair_task = mgr_cluster.create_repair_task(keyspace=self.KEYSPACE_NAME)
         repair_task.wait_for_status(list_status=[TaskStatus.DONE])
         self._assert_multiple_row_ranges_from_specific_node(node_to_query=dc2_node, nodes_to_shut_down=[dc1_node],
                                                             keyspace_name=self.KEYSPACE_NAME,
@@ -734,9 +731,7 @@ class TestScyllaMgmtRepair(RepairAdditionalBase, ScyllaManagerMixin):
         debug("Add a cluster to scylla-manager, named: {}".format(cluster_name))
         mgr_cluster = manager_tool.add_cluster(node=node1, name=cluster_name)
 
-        repair_task_fail_fast = mgr_cluster.create_repair_task(node=node3, token_ranges='all',
-                                                               keyspace=self.KEYSPACE_NAME, with_hosts=[node1],
-                                                               fail_fast=True)
+        repair_task_fail_fast = mgr_cluster.create_repair_task(keyspace=self.KEYSPACE_NAME, fail_fast=True)
         debug("Stopping the node used for the repair, "
               "expecting the repair task (that uses fail-fast) to reach the status of 'ERROR' soon after")
         repair_task_fail_fast.wait_for_status(list_status=[TaskStatus.RUNNING], timeout=300, step=10)
@@ -747,8 +742,7 @@ class TestScyllaMgmtRepair(RepairAdditionalBase, ScyllaManagerMixin):
 
         node1.start(wait_for_binary_proto=False, wait_other_notice=False)
 
-        repair_task = mgr_cluster.create_repair_task(node=node2, token_ranges='all', keyspace=self.KEYSPACE_NAME,
-                                                     with_hosts=[node1])
+        repair_task = mgr_cluster.create_repair_task(keyspace=self.KEYSPACE_NAME)
         debug("Stopping the node used for the repair. Since The repair does not use the 'fail-fast' flag,"
               " the new task, {}, is not expected to reach the 'ERROR' status soon".format(repair_task.id))
         repair_task.wait_for_status(list_status=[TaskStatus.RUNNING], timeout=300, step=10)
