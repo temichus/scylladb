@@ -5,6 +5,7 @@ from unittest import skip
 import time
 import tools
 
+
 @attr('dtest-full', 'single_node')
 class TestBypassCache(Tester):
     '''
@@ -142,3 +143,36 @@ class TestBypassCache(Tester):
         self.run_query_compare_select_metrics(session=session, node=node, query=full_scan_bypass_cache,
                                               bypass_cache=True, metrics=[partition_range_scan_metric,
                                                                           partition_range_scan_no_bypass_cache_metric])
+
+    def test_create_table_caching_disabled(self):
+        session = self.prepare(insert_data=False)
+        node = self.cluster.nodelist()[0]
+        tools.create_c1c2_table(self, session, cf=self.table_name, caching=False)
+        tools.insert_c1c2(session, n=100, cf=self.table_name)
+        node.flush()
+        query = f'select * from {self.table_name}'
+        self.verify_read_was_from_disk(node=node, query=query, session=session)
+
+    def test_alter_table_caching_disable(self):
+        session = self.prepare(insert_data=False)
+        node = self.cluster.nodelist()[0]
+        tools.create_c1c2_table(self, session, cf=self.table_name)
+        tools.insert_c1c2(session, n=100, cf=self.table_name)
+        node.flush()
+        query = f'select * from {self.table_name}'
+        self.verify_read_was_from_cache(node=node, query=query, session=session)
+        # disabling caching for table and checking read comes from disk
+        session.execute(f"ALTER TABLE {self.table_name} WITH caching = {{'enabled':false}}")
+        self.verify_read_was_from_disk(node=node, query=query, session=session)
+
+    def test_alter_table_caching_enable(self):
+        session = self.prepare(insert_data=False)
+        node = self.cluster.nodelist()[0]
+        tools.create_c1c2_table(self, session, cf=self.table_name, caching=False)
+        tools.insert_c1c2(session, n=100, cf=self.table_name)
+        node.flush()
+        query = f'select * from {self.table_name}'
+        self.verify_read_was_from_disk(node=node, query=query, session=session)
+        # enabling caching for table and checking read comes from cache
+        session.execute(f"ALTER TABLE {self.table_name} WITH caching = {{'enabled':true}}")
+        self.verify_read_was_from_cache(node=node, query=query, session=session)

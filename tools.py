@@ -35,9 +35,9 @@ def chunks_list(lst, num_chunks):
         yield lst[i:i + num_chunks]
 
 
-def create_c1c2_table(tester, session, cf="cf", read_repair=None, debug_query=True, compaction=None):
+def create_c1c2_table(tester, session, cf="cf", read_repair=None, debug_query=True, compaction=None, caching=True):
     tester.create_cf(session, cf, columns={'c1': 'text', 'c2': 'text'}, read_repair=read_repair,
-                     debug_query=debug_query, compaction=compaction)
+                     debug_query=debug_query, compaction=compaction, caching=caching)
 
 
 def insert_c1c2(session, keys=None, n=None, consistency=ConsistencyLevel.QUORUM, cf="cf"):
