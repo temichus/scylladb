@@ -498,11 +498,6 @@ class TestReplaceAddress(Tester):
         debug(len(moved_tokens_list))
         self.assertEqual(moved_tokens_list, tokens)
 
-        debug("Verifying logs for connection refuse messages.")
-        connection_refuse_message = f"rpc - client {node3_address}:7000: fail to connect: Connection refused"
-        self.assertEqual(node1.grep_log(connection_refuse_message), [])
-        self.assertEqual(node4.grep_log(connection_refuse_message), [])
-
         debug("Verifying system.peers table.")
         peers = rows_to_list(session.execute("SELECT * FROM system.peers"))
         self.assertEqual(len(peers), 1, "There are more peers than expected.")
