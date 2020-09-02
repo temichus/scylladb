@@ -834,8 +834,10 @@ class TestCountersOnMultipleNodes(Tester):
         self.node3.stop(wait_other_notice=True)
 
         debug('Remove sstables and commit log for node3')
-        for dir_name in ('commitlogs', 'data'):
+        # We should keep the system tables and delete user tables
+        for dir_name in ('commitlogs', 'data/test'):
             data_dir = os.path.join(self.node3.get_path(), dir_name)
+            debug("Removing {}".format(data_dir))
             shutil.rmtree(data_dir)
 
         debug('Start node3 and rebuild it')
