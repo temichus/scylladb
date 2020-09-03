@@ -621,6 +621,7 @@ class SnitchConfigurationUpdateTest(Tester):
                                         error='Cannot update data center or rack')
 
     @since('2.0', max_version='2.1.x')
+    @skip('obsolete from 2.2')
     def test_failed_snitch_update_yaml_file_snitch(self):
         """
         @jira_ticket CASSANDRA-10243

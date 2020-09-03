@@ -150,6 +150,7 @@ class TestAuth(Tester):
     # from 2.2 role creation is granted by CREATE_ROLE permissions, not superuser status
     @since('1.2', max_version='2.1.x')
     @attr('single_node')
+    @skip('obsolete from 2.2')
     def only_superuser_can_create_users_test(self):
         """
         Originally from dtest.
@@ -184,6 +185,7 @@ class TestAuth(Tester):
 
     @since('1.2', max_version='2.1.x')
     @attr('single_node')
+    @skip('obsolete from 2.2')
     def password_authenticator_create_user_requires_password_test(self):
         """
         Originally from dtest.
@@ -254,6 +256,7 @@ class TestAuth(Tester):
     # from 2.2 role deletion is granted by DROP_ROLE permissions, not superuser status
     @since('1.2', max_version='2.1.x')
     @attr('single_node')
+    @skip('obsolete from 2.2')
     def only_superusers_can_drop_users_test(self):
         """
         Originally from dtest.
