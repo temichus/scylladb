@@ -742,7 +742,6 @@ class ManagerCluster(ScyllaManagerBase):
 
     def create_repair_task(self, dc_list=None, keyspace=None, interval=None, num_retries=None, fail_fast=None,
                            intensity=None):
-
         # the interval string:
         # Amount of time after which a successfully completed task would be run again. Supported time units include:
         #

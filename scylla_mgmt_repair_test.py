@@ -142,106 +142,6 @@ class TestScyllaMgmtRepair(RepairAdditionalBase, ScyllaManagerMixin):
         debug("Starting the following nodes (again) : {}".format([node.name for node in nodes_to_shut_down]))
         [node.start(wait_other_notice=True, wait_for_binary_proto=True) for node in nodes_to_shut_down]
 
-    def _manager_repair_token_ranges_template(self, token_range):
-        """
-        Test the "partitioner range" (--token-ranges <token_range>) option. We start two nodes and a
-        keyspace with RF=2, and put <num_of_keys> different rows on each of the nodes
-        (as in repair_disjoint_data_set). Each node has in "partitioner ranges"
-        only half the key space.
-        So that starting a repair with "--token-ranges <token_range>" when token_range is either 'pr' or 'npr' on one
-        node will bring in around <num_of_keys>/2 missing partitions, but the other <num_of_keys>/2
-        will continue to be missing until we start a repair with "--token-ranges <token_range>" on the
-        second node as well. After both repairs, each nodes should contain <num_of_keys>*2 rows, which means that both
-        of them should contain all of the rows in the table.
-
-        On the other hand, starting a repair with "--token-ranges <token_range>" when token_range is 'all' on one
-        node should repair all of the rows on both nodes, so they both will contain all of the rows after the repair.
-        """
-        # Start a cluster of two nodes, and create a keyspace ks with RF=2, and a table cf.
-        # Hinted handoff and read repair are disabled so they don't fix the problems which repair is suppose to fix.
-        node1, node2 = self.config_and_create_cluster(nodes=2)
-        session = self.patient_cql_connection(node1)
-        self.create_ks(session, self.KEYSPACE_NAME, 2)
-        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
-
-        num_of_keys = 1000
-        delta = int(num_of_keys * 20 / 100)
-        first_range_start = num_of_keys
-        second_range_start = num_of_keys * 2
-        second_range_end = second_range_start + num_of_keys
-        # Insert 1000 keys *only* on node 1, another 1000 keys *only* on node 2:
-        debug("Adding data only on node 1...")
-        self._insert_data_range_to_specific_node(node_to_insert=node1, nodes_to_shut_down=[node2],
-                                                 keyspace_name=self.KEYSPACE_NAME,
-                                                 data_ranges={'cf': range(first_range_start, second_range_start)})
-        debug("Adding data only on node 2...")
-        self._insert_data_range_to_specific_node(node_to_insert=node2, nodes_to_shut_down=[node1],
-                                                 keyspace_name=self.KEYSPACE_NAME,
-                                                 data_ranges={'cf': range(second_range_start, second_range_end)})
-
-        manager_tool = ScyllaManagerTool(scylla_manager=self.cluster._scylla_manager)
-        cluster_name = "cluster1"
-        debug("Add a cluster to scylla-manager, named: {}".format(cluster_name))
-        mgr_cluster = manager_tool.add_cluster(node=node1, name=cluster_name)
-
-        debug("Run partitioner-range repair on node 1")
-        mgr_task = mgr_cluster.create_repair_task(node=node1, token_ranges=token_range, keyspace=self.KEYSPACE_NAME)
-
-        task_final_status = mgr_task.wait_and_get_final_status()
-        assert task_final_status == TaskStatus.DONE, 'Task: {} final status is: {}.'.format(mgr_task.id, str(mgr_task.status))
-
-        if token_range != 'all':
-            # We expect "--token_ranges <token_range>" repair to have repaired only half of the ranges
-            # (those for which node 1 is their primary replica), so both nodes
-            # should now have around 1.5 * keys-number partitions. We don't know the exact
-            # number, but given the assumed random distribution of tokens and keys,
-            # it is unlikely to be far from %20 delta  - let's assert it is between a delta around
-            node1.flush()
-            node1.stop(wait_other_notice=True)
-            session = self.patient_cql_connection(node2, self.KEYSPACE_NAME)
-            count = len(list(session.execute("SELECT * FROM cf LIMIT 2000")))
-            self.assertTrue((first_range_start * 1.5 - delta) < count < (first_range_start * 1.5 + delta),
-                            "expected {} repair to repair part, but not everything ({} keys exist)".format(
-                                token_range, count))
-            node1.start(wait_other_notice=True, wait_for_binary_proto=True)
-            node2.flush()
-            node2.stop(wait_other_notice=True)
-            session = self.patient_cql_connection(node1, self.KEYSPACE_NAME)
-            count = len(list(session.execute("SELECT * FROM cf LIMIT 2000")))
-            self.assertTrue((first_range_start * 1.5 - delta) < count < (first_range_start * 1.5 + delta),
-                            "expected {} repair to repair part, but not everything ({} keys exist)".format(
-                                token_range, count))
-            node2.start(wait_other_notice=True, wait_for_binary_proto=True)
-
-            # Run a second "--token_ranges <token_range>" repair, this time on node 2. This should repair
-            # all the ranges not previously repaired (i.e., this times the ranges
-            # whose primary/ non-primary is node 2), and at the end, all data should be on both nodes.
-            debug("Run partioner-range repair on node 2")
-            mgr_task2 = mgr_cluster.create_repair_task(node=node2, token_ranges=token_range,
-                                                       keyspace=self.KEYSPACE_NAME)
-
-            task_final_status = mgr_task2.wait_and_get_final_status()
-            assert task_final_status == TaskStatus.DONE, 'Task: {} final status is: {}.'.format(mgr_task2.id,
-                                                                                                str(mgr_task.status))
-        # Whether we ran 2 repairs with "--token_ranges pr/npr" on each node
-        # or only one repair with "--token_ranges all", the final result should be the same: both of the nodes should
-        # should contain all of the rows
-        debug("Check for the eventual total number of keys to be: {}".format(num_of_keys*2))
-        self.check_rows_on_node(node1, num_of_keys*2)
-        self.check_rows_on_node(node2, num_of_keys*2)
-
-    @attr('scylla-manager')
-    def test_manager_repair_token_ranges_pr(self):
-        self._manager_repair_token_ranges_template('pr')
-
-    @attr('scylla-manager')
-    def test_manager_repair_token_ranges_npr(self):
-        self._manager_repair_token_ranges_template('npr')
-
-    @attr('scylla-manager')
-    def test_manager_repair_token_ranges_all(self):
-        self._manager_repair_token_ranges_template('all')
-
     @attr('scylla-manager')
     def test_manager_repair_multi_cfs(self):
         """
@@ -329,47 +229,6 @@ class TestScyllaMgmtRepair(RepairAdditionalBase, ScyllaManagerMixin):
                                                             keyspace_name=None, tables_and_row_count_dict=data_range)
 
     @attr('scylla-manager')
-    def test_repairing_host_with_specific_host(self):
-        """
-        Test the parameter --with_hosts with a specific node, to see that when it's being used,
-        the repair will only use the specified node and not others.
-        """
-        node1, node2, node3 = self.config_and_create_cluster(nodes=3)
-
-        session = self.patient_cql_connection(node1)
-        self.create_ks(session, self.KEYSPACE_NAME, 3)
-
-        # Create 2 tables
-        self.create_cf(session, 'cf_to_be_repaired', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'},
-                       dclocal_read_repair_chance=0.0, speculative_retry='NONE')
-        self.create_cf(session, 'other_cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'},
-                       dclocal_read_repair_chance=0.0, speculative_retry='NONE')
-
-        # Data for each table. Will be used to validate the repaired data
-        range_to_repair = {"cf_to_be_repaired": range(1, 11)}
-        other_range = {"other_cf": range(11, 21)}
-
-        self.cluster.flush()
-
-        self._insert_data_range_to_specific_node(node_to_insert=node1, nodes_to_shut_down=[node2, node3],
-                                                 keyspace_name=self.KEYSPACE_NAME, data_ranges=range_to_repair)
-        self._insert_data_range_to_specific_node(node_to_insert=node2, nodes_to_shut_down=[node1, node3],
-                                                 keyspace_name=self.KEYSPACE_NAME, data_ranges=other_range)
-
-        manager_tool = ScyllaManagerTool(scylla_manager=self.cluster._scylla_manager)
-        cluster_name = "cluster1"
-        debug("Add a cluster to scylla-manager, named: {}".format(cluster_name))
-        mgr_cluster = manager_tool.add_cluster(node=node1, name=cluster_name)
-
-        repair_task = mgr_cluster.create_repair_task(node=node3, token_ranges='all', keyspace=self.KEYSPACE_NAME,
-                                                     with_hosts=[node1])
-        repair_task.wait_for_status(list_status=[TaskStatus.DONE], timeout=300, step=10)
-
-        self._assert_multiple_row_ranges_from_specific_node(node_to_query=node3, nodes_to_shut_down=[node1, node2],
-                                                            keyspace_name=self.KEYSPACE_NAME, tables_and_row_count_dict=
-                                                            dict(range_to_repair, **{"other_cf": []}))
-
-    @attr('scylla-manager')
     def test_repairing_host_with_several_hosts(self):
         """
         Test the parameter --with_hosts with several nodes, to see that when it's being used,
@@ -418,60 +277,7 @@ class TestScyllaMgmtRepair(RepairAdditionalBase, ScyllaManagerMixin):
                                                                  list(third_range_to_repair.items())))
 
     @attr('scylla-manager')
-    def test_repair_with_empty_host_list(self):
-        """
-        Test the parameter --with_hosts with no nodes specified, to see that when it's being used,
-        the repair will fail.
-        """
-        node1, node2 = self.config_and_create_cluster(nodes=2)
-
-        session = self.patient_cql_connection(node1)
-        self.create_ks(session, self.KEYSPACE_NAME, 2)
-
-        manager_tool = ScyllaManagerTool(scylla_manager=self.cluster._scylla_manager)
-        cluster_name = "cluster1"
-        debug("Add a cluster to scylla-manager, named: {}".format(cluster_name))
-        mgr_cluster = manager_tool.add_cluster(node=node1, name=cluster_name)
-
-        try:
-            mgr_cluster.create_repair_task(node=node1, token_ranges='all', keyspace=self.KEYSPACE_NAME,
-                                           with_hosts=[])
-        except ScyllaManagerError as err:
-            if "flag needs an argument: --with-hosts" not in err.args[0]:
-                raise
-            return
-        assert False, 'A repair command with an empty "with-hosts" list did not raise an exception'
-
-    @attr('scylla-manager')
-    def test_repair_with_unavailable_host(self):
-        """
-        Executing a repair while the repairing node is dow, expecting a the repair to reach an 'ERROR' status
-        """
-        node1, node2, node3 = self.config_and_create_cluster(nodes=3)
-
-        session = self.patient_cql_connection(node1)
-        self.create_ks(session, self.KEYSPACE_NAME, 3)
-
-        manager_tool = ScyllaManagerTool(scylla_manager=self.cluster._scylla_manager)
-        cluster_name = "cluster1"
-        debug("Add a cluster to scylla-manager, named: {}".format(cluster_name))
-        mgr_cluster = manager_tool.add_cluster(node=node1, name=cluster_name)
-
-        # Create 2 tables
-        for i in range(1, 3):
-            self.create_cf(session, 'cf%d' % i, read_repair=0.0, columns={'c1': 'text', 'c2': 'text'},
-                           dclocal_read_repair_chance=0.0, speculative_retry='NONE')
-
-        data_range = {'cf{}'.format(i): range(i*i, i*i+10) for i in range(1, 3)}
-        self._insert_data_range_to_specific_node(node_to_insert=node1, nodes_to_shut_down=[node3],
-                                                 keyspace_name=self.KEYSPACE_NAME, data_ranges=data_range)
-        node1.stop(wait_other_notice=True)
-        repair_task = mgr_cluster.create_repair_task(node=node3, token_ranges='all', keyspace=self.KEYSPACE_NAME,
-                                                     with_hosts=[node1], fail_fast=True)
-        repair_task.wait_for_status(list_status=[TaskStatus.ERROR], timeout=300, step=10)
-
-    @attr('scylla-manager')
-    def test_repairing_an_unavailable_host(self):
+    def test_repairing_a_downed_node(self):
         """
         Test that when the repair is executed on a stopped node, the task will fail
         """
@@ -494,67 +300,6 @@ class TestScyllaMgmtRepair(RepairAdditionalBase, ScyllaManagerMixin):
         repair_task = mgr_cluster.create_repair_task(keyspace=self.KEYSPACE_NAME)
         assert repair_task.wait_for_status(list_status=[TaskStatus.ERROR], timeout=300, step=5), \
             "Repairing an unavailable node did not fail as expected"
-
-    @attr('scylla-manager')
-    def test_repairing_only_specific_node(self):
-        """
-        Test that when executing a repair on a specific node, other nodes in the cluster won't be repaired
-        """
-        node1, node2, node3 = self.config_and_create_cluster(nodes=3)
-
-        session = self.patient_cql_connection(node1)
-        self.create_ks(session, self.KEYSPACE_NAME, 3)
-
-        self.create_cf(session, 'cf1', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'},
-                       dclocal_read_repair_chance=0.0, speculative_retry='NONE')
-
-        # Data for each table. Will be used to validate the repaired data
-        number_of_keys = 10
-        data_range = {"cf1": range(1, number_of_keys+1)}
-
-        self._insert_data_range_to_specific_node(node_to_insert=node1, nodes_to_shut_down=[node2, node3],
-                                                 keyspace_name=self.KEYSPACE_NAME, data_ranges=data_range)
-
-        manager_tool = ScyllaManagerTool(scylla_manager=self.cluster._scylla_manager)
-        cluster_name = "cluster1"
-        debug("Add a cluster to scylla-manager, named: {}".format(cluster_name))
-        mgr_cluster = manager_tool.add_cluster(node=node1, name=cluster_name)
-
-        repair_task = mgr_cluster.create_repair_task(node=node2, token_ranges='all', keyspace=self.KEYSPACE_NAME,
-                                                     with_hosts=[node1])
-        repair_task.wait_for_status(list_status=[TaskStatus.DONE], timeout=300, step=10)
-
-        self._assert_multiple_row_ranges_from_specific_node(node_to_query=node2, nodes_to_shut_down=[node1, node3],
-                                                            keyspace_name=self.KEYSPACE_NAME,
-                                                            tables_and_row_count_dict=data_range)
-        self._assert_multiple_row_ranges_from_specific_node(node_to_query=node3, nodes_to_shut_down=[node1, node2],
-                                                            keyspace_name=self.KEYSPACE_NAME,
-                                                            tables_and_row_count_dict={'cf1': []})
-
-    @attr('scylla-manager')
-    def test_repair_token_ranges_flag_without_host(self):
-        """
-        Executing a repair with the flag '--token-ranges' should only be possible if alongside either
-        '--host' or '--with-hosts'. This test tries to execute a repair with the '--token-ranges' flag, but without
-        '--host' or '--with-hosts', and expects a failure right on the command execution
-        """
-        node1, node2, node3 = self.config_and_create_cluster(nodes=3)
-
-        session = self.patient_cql_connection(node1)
-        self.create_ks(session, self.KEYSPACE_NAME, 3)
-
-        manager_tool = ScyllaManagerTool(scylla_manager=self.cluster._scylla_manager)
-        cluster_name = "cluster1"
-        debug("Add a cluster to scylla-manager, named: {}".format(cluster_name))
-        mgr_cluster = manager_tool.add_cluster(node=node1, name=cluster_name)
-
-        try:
-            mgr_cluster.create_repair_task(token_ranges='all', keyspace=self.KEYSPACE_NAME)
-        except ScyllaManagerError as err:
-            if 'token-ranges is only available with "host" and "with-hosts" flags' not in err.args[0]:
-                raise
-            return
-        assert False, 'A repair command with the flag "token-ranges" alone did not raise an exception'
 
     @attr('scylla-manager')
     def test_repair_dc_by_name(self):
