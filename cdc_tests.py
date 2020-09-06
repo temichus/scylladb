@@ -135,6 +135,7 @@ class TestCdc(Tester, CDCInitializeHelper):
     def simple_cdc_test(self):
         self.simple_cdc_template(with_preimage=False)
 
+    @attr('next-gating')
     def simple_cdc_with_preimage_test(self):
         self.simple_cdc_template(with_preimage=True)
 
@@ -193,6 +194,7 @@ class TestCdc(Tester, CDCInitializeHelper):
 
         debug('Test finished')
 
+    @attr('next-gating')
     def cluster_expansion_with_cdc_test(self):
         self.cluster_expansion_with_cdc_template(with_preimage=False)
 
@@ -236,6 +238,7 @@ class TestCdc(Tester, CDCInitializeHelper):
 
         debug('Test finished')
 
+    @attr('next-gating')
     def cluster_reduction_with_cdc_test(self):
         self.cluster_reduction_with_cdc_template(with_preimage=False)
 
@@ -278,18 +281,21 @@ class TestCdc(Tester, CDCInitializeHelper):
 
         debug('Test finished')
 
+    @attr('next-gating')
     def change_field_type_with_cdc_test(self):
         self.schema_change_template("ALTER TABLE ks.cf ALTER b TYPE blob")
 
     def change_field_type_with_cdc_and_preimage_test(self):
         self.schema_change_template("ALTER TABLE ks.cf ALTER b TYPE blob", with_preimage=True)
 
+    @attr('next-gating')
     def add_field_with_cdc_test(self):
         self.schema_change_template("ALTER TABLE ks.cf ADD c int")
 
     def add_field_with_cdc_and_preimage_test(self):
         self.schema_change_template("ALTER TABLE ks.cf ADD c int", with_preimage=True)
 
+    @attr('next-gating')
     def remove_field_with_cdc_test(self):
         self.schema_change_template("ALTER TABLE ks.cf DROP c", additional_fields=["c int"])
 

@@ -749,6 +749,7 @@ class CdcUDTTmpl(CdcTools):
     def test_update_udt_postimage(self):
         self.update_udt_tpl(postimage_enable=True)
 
+    @attr('next-gating')
     def test_update_udt_preimage_postimage(self):
         self.update_udt_tpl(preimage_enable=True, postimage_enable=True)
 
@@ -773,6 +774,7 @@ class CdcUDTTmpl(CdcTools):
     def test_delete_field_value_in_non_frozen_udt_postimage(self):
         self.udt_update_field_on_non_frozen(postimage_enable=True, remove_field_value=True)
 
+    @attr('next-gating')
     def test_delete_value_in_non_frozen_udt_field_preimage_postimage(self):
         self.udt_update_field_on_non_frozen(preimage_enable=True, postimage_enable=True, remove_field_value=True)
 
