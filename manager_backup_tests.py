@@ -472,30 +472,27 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
         self.verify_c1c2(second_keyspace_table_and_key_range, node1)
         self.verify_lack_of_keys(third_keyspace_table_and_key_range, node1)
 
-    @require("#1551")
     @attr('scylla-manager')
-    def test_shutting_down_nodes_during_backup(self):
-        keyspace_table_and_key_range = {"ks": {"cf1": (1, 21)}}
-        node1, node2, node3, node4, node5 = self._prepare_cluster_with_data(
-            keyspace_table_and_key_range=keyspace_table_and_key_range, number_of_nodes=5)
+    def test_shutting_down_node_during_backup(self):
+        node1, node2, node3, node4 = self.config_and_create_cluster(nodes=4)
+        self.cluster.stress(['write', 'cl=ALL', 'n=5000K', '-rate', 'threads=50', '-schema', 'replication(factor=4)'])
 
         mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
-
-        backup_task = mgr_cluster.run_backup_command(location_list=["s3:{}".format(DESTINATION_BUCKET)])
-        backup_task.wait_for_status(list_status=[TaskStatus.RUNNING], timeout=600, step=0.1)
+        backup_task = mgr_cluster.run_backup_command(location_list=["s3:{}".format(DESTINATION_BUCKET)],
+                                                     keyspace_list=['keyspace1'])
+        backup_task.wait_for_status(list_status=[TaskStatus.RUNNING], timeout=600, step=1)
 
         node4.stop(wait_other_notice=True)
-        node5.stop(wait_other_notice=True)
-        backup_task.wait_for_status(list_status=[TaskStatus.ERROR])
+
+        backup_task.wait_for_status(list_status=[TaskStatus.ERROR], step=5)
         node4.start(wait_other_notice=True, wait_for_binary_proto=True)
-        node5.start(wait_other_notice=True, wait_for_binary_proto=True)
 
-        backup_task.wait_for_status(list_status=[TaskStatus.ERROR])
-        backup_task.start(continue_task=True)
-
-        backup_task.wait_for_status(list_status=[TaskStatus.DONE])
-        self.clean_restore_and_verify_backup(backup_task, self.cluster.nodelist(), mgr_cluster, node1,
-                                             keyspace_table_and_key_range)
+        backup_task.start()
+        backup_task.wait_and_get_final_status(step=5)
+        assert backup_task.status != TaskStatus.ERROR, "After starting the nodes again, the task still failed"
+        self.clean_restore_and_verify_backup_with_stress(backup_task=backup_task, node_list=self.cluster.nodelist(),
+                                                         mgr_cluster=mgr_cluster, healthy_node=node1,
+                                                         number_of_rows="5000K", threads=50)
 
     @attr('scylla-manager')
     def test_shutting_down_node_before_backup(self):
