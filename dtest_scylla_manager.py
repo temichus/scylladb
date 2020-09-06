@@ -882,6 +882,11 @@ class ManagerCluster(ScyllaManagerBase):
                                                      identifier="healthcheck/", is_search_substring=True)
         return HealthcheckTask(task_id=healthcheck_id, cluster_id=self.id, scylla_manager=self.scylla_manager)  # return the manager's health-check-task object with the found id
 
+    def get_healthcheck_alternator_task(self):
+        healthcheck_id = self.sctool.get_table_value(parsed_table=self._get_task_list(), column_name="task",
+                                                     identifier="healthcheck_alternator/", is_search_substring=True)
+        return HealthcheckTask(task_id=healthcheck_id, cluster_id=self.id, scylla_manager=self.scylla_manager)  # return the manager's health-check-task object with the found id
+
     def get_rest_task(self):
         rest_id = self.sctool.get_table_value(parsed_table=self._get_task_list(), column_name="task",
                                                      identifier="healthcheck_rest/", is_search_substring=True)
@@ -920,6 +925,7 @@ class ManagerCluster(ScyllaManagerBase):
                 host_col_idx = list_titles_row.index("Address")
                 cql_status_col_idx = list_titles_row.index("CQL")
                 rest_col_idx = list_titles_row.index("REST")
+                alternator_status_idx = list_titles_row.index("Alternator") if "Alternator" in list_titles_row else None
 
                 for line in hosts_table[1:]:
                     host = line[host_col_idx]
@@ -937,29 +943,45 @@ class ManagerCluster(ScyllaManagerBase):
                     ssl = line[cql_status_col_idx]
                     # Whether or not SSL is on is now described in the cql column
                     # If SSL is on the column value will include "SSL" in it, and if not it will not.
+                    if alternator_status_idx is not None:
+                        list_alternator = line[alternator_status_idx].split()
+                        alternator_status = list_alternator[0]
+                        alternator_rtt = self._extract_value_with_regex(string=list_alternator[-1],
+                                                                        regex_pattern=r"\(([^)]+ms)")
+                    else:
+                        alternator_status = None
+                        alternator_rtt = None
+
                     if translate_minus_to_down:
                         dict_hosts_health[host] = self._HostHealth(status=HostStatus.from_str(status), rtt=rtt,
                                                                    rest_status=HostRestStatus.from_str(rest_status),
                                                                    rest_rtt=rest_rtt, ssl=HostSsl.from_str(ssl),
-                                                                   rest_http_status_code=rest_http_status_code)
+                                                                   rest_http_status_code=rest_http_status_code,
+                                                                   alternator_status=alternator_status,
+                                                                   alternator_rtt=alternator_rtt)
                     else:
                         dict_hosts_health[host] = self._HostHealth(status=status, rtt=rtt,
                                                                    rest_status=rest_status,
                                                                    rest_rtt=rest_rtt, ssl=HostSsl.from_str(ssl),
-                                                                   rest_http_status_code=rest_http_status_code)
+                                                                   rest_http_status_code=rest_http_status_code,
+                                                                   alternator_status=alternator_status,
+                                                                   alternator_rtt=alternator_rtt)
             debug("Cluster {} Hosts Health is:".format(self.id))
             for ip, health in dict_hosts_health.items():
                 debug("{}: {},{},{},{},{}".format(ip, health.status, health.rtt, health.rest_status, health.rest_rtt, health.ssl))
         return dict_hosts_health
 
     class _HostHealth():
-        def __init__(self, status, rtt, ssl, rest_status, rest_rtt, rest_http_status_code=None):
+        def __init__(self, status, rtt, ssl, rest_status, rest_rtt, rest_http_status_code=None,
+                     alternator_status=None, alternator_rtt=None):
             self.status = status
             self.rtt = rtt
             self.rest_status = rest_status
             self.rest_rtt = rest_rtt
             self.ssl = ssl
             self.rest_http_status_code = rest_http_status_code
+            self.alternator_status = alternator_status
+            self.alternator_rtt = alternator_rtt
 
     @staticmethod
     def _extract_value_with_regex(string, regex_pattern, default_value="N/A"):
@@ -970,8 +992,9 @@ class ManagerCluster(ScyllaManagerBase):
 
 
 class ScyllaManagerMixin:
-    def config_and_create_cluster(self, nodes):
-        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+    def config_and_create_cluster(self, nodes, extra_config_options=None):
+        extra_config_options = extra_config_options if extra_config_options else dict()
+        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False, **extra_config_options})
         self.cluster.populate(nodes).start(wait_for_binary_proto=True, wait_other_notice=True)
         return self.cluster.nodelist()
 
