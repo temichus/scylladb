@@ -8,6 +8,8 @@ import shutil
 from time import sleep
 import re
 
+from pprint import pformat
+
 from cassandra import ConsistencyLevel
 from nose.plugins.attrib import attr
 from boto3 import client as boto_client
@@ -1045,3 +1047,57 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
         list_status = [TaskStatus.DONE]
         info(f"Waiting until the status of backup task '{backup_task.id}' will be '{list_status}'")
         backup_task.wait_for_status(list_status=list_status, timeout=20, step=1)
+
+    def test_update_backup_parameters(self):
+        """
+        Executing a backup task, waiting for it to end, and using sctool backup update to update the task’ parameters
+         (target table, keyspace, etc.) and rerunning the task afterwards, to completion.
+        Expected:
+         The task will be updated and its second run will be executed using the updated args rather than the ones it
+          received in its creation.
+        """
+        node1, *_ = self.config_and_create_cluster(nodes=2)
+        mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
+        keyspace_name = "keyspace1"
+        new_keyspace_name = f"new_{keyspace_name}"
+        keyspace_table_and_key_range = {keyspace_name: {"cf1": (1, 21)}}
+        location = "s3:{}".format(DESTINATION_BUCKET)
+        new_location = location.replace(DESTINATION_BUCKET, f"new_{DESTINATION_BUCKET}")
+        num_retries = 11
+        rate_limit_list = 1
+        retention = 12
+        snapshot_parallel_list = "1,2,3"
+        upload_parallel_list = "4,5,6"
+
+        info(f"Creating a new table with following values: '{pformat(keyspace_table_and_key_range)}")
+        self.insert_data_from_ranges(healthy_node=node1, keyspace_table_and_key_range=keyspace_table_and_key_range)
+        info(f"Creating a backup task with following values:"
+             f"\nLocation: '{location}"
+             f"\nKeyspace: '{keyspace_name}")
+        backup_task = mgr_cluster.backup_api.backup(
+            keyspace_list=keyspace_name, location_list=location, cluster_name=mgr_cluster.id)
+
+        info("Waiting until backup task is done")
+        backup_task.wait_for_status(list_status=[TaskStatus.DONE], timeout=1000, step=5)
+
+        info(f"Changing the backup table name to '{new_keyspace_name}' from '{keyspace_name}'")
+        backup_task.update(
+            keyspace_list=new_keyspace_name, location_list=new_location, cluster_name=CLUSTER_NAME,
+            num_retries=num_retries, rate_limit_list=rate_limit_list, retention=retention,
+            snapshot_parallel_list=snapshot_parallel_list, upload_parallel_list=upload_parallel_list)
+
+        info(f"Validating the 'keyspace', 'location', 'retention', 'rate_limit', 'retention', 'snapshot-parallel' and "
+             f"'upload-parallel' fields are updated")
+        arguments = backup_task.arguments
+        err_msg = "The expected '{}' value should to be '{}' and not '{}'"
+        assert arguments["keyspace_list"] == new_keyspace_name, err_msg.format(
+            "keyspace", arguments["keyspace_list"], new_keyspace_name)
+        assert arguments["location_list"] == new_location, err_msg.format(
+            "location", arguments["location_list"], new_location)
+        assert arguments["retention"] == retention, err_msg.format("retention", arguments["retention"], retention)
+        assert arguments["rate_limit"] == rate_limit_list, err_msg.format(
+            "rate_limit", arguments["rate_limit"], rate_limit_list)
+        assert arguments["snapshot_parallel_list"] == list(map(int, snapshot_parallel_list.split(","))), err_msg.format(
+            "snapshot_parallel_list", arguments["snapshot_parallel_list"], snapshot_parallel_list)
+        assert arguments['upload_parallel_list'] == list(map(int, upload_parallel_list.split(","))), err_msg.format(
+            'upload_parallel_list', arguments['upload_parallel_list'], 'upload_parallel_list')

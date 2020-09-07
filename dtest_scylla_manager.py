@@ -1,12 +1,17 @@
 # coding: utf-8
 # ccm clusters
 import os
+import re
 
 import time
+from pprint import pformat
+from typing import Union, List
+
 import yaml
 from enum import Enum
 from re import findall
 
+from ast import literal_eval
 from ccmlib import common
 from scrub_test import TestHelper
 from dtest import warning, debug, wait_for, WaitTimeoutExpired
@@ -17,6 +22,10 @@ class ScyllaManagerError(Exception):
     """
     A custom exception for Manager related errors
     """
+    pass
+
+
+class ScyllaManagerParserError(ScyllaManagerError):
     pass
 
 
@@ -98,11 +107,251 @@ class MgrUtils(object):
             raise ScyllaManagerError("Encountered an error on '{}' command response: {}".format(cmd, stderr))
 
 
+class ScyllaManagerApiBase:
+    def __init__(self, sctool, cmd_translate_dict, parsers=None):
+        self.sctool = sctool
+        self.cmd_translate_dict = cmd_translate_dict
+        self.parsers = parsers or {}
+
+    @staticmethod
+    def create_sctool_command(cmd_options: dict, cmd_hierarchy: list or str):
+        if isinstance(cmd_hierarchy, list):
+            options_list = cmd_hierarchy.copy()
+        else:
+            options_list = str(cmd_hierarchy).split()
+        for option_key, option_value in cmd_options.items():
+            if option_value is None:
+                continue
+            options_list.append(option_key)
+            if isinstance(option_value, list):
+                options_list.append(','.join(map(str, option_value)))
+            elif not isinstance(option_value, bool):
+                options_list.append(str(option_value))
+        return options_list
+
+    def create_command_options(self, cmd_options_dict: dict):
+        return {self.cmd_translate_dict[option_key]: option_value
+                for option_key, option_value in cmd_options_dict.items()
+                if option_value is not None and option_key in self.cmd_translate_dict}
+
+    def parse_output(self, output, regex_name):
+        result = {}
+
+        if regex_name not in self.parsers:
+            raise ScyllaManagerParserError(f"There is no parser named '{regex_name}'."
+                                           f"\nThe following parsers are exists: '{list(self.parsers)}'")
+        parser_result = self.parsers.get(regex_name).match(output)
+        if not parser_result:
+            raise ScyllaManagerParserError(f"The following output could not be parsed:\n'{output}'")
+
+        def convert_to_real_type(_field):
+            try:
+                return literal_eval(_field)
+            except (ValueError, SyntaxError):
+                return _field
+
+        for field_name, field_value in parser_result.groupdict().items():
+            if "," in field_value:
+                result[field_name] = [convert_to_real_type(field) for field in field_value.split(",")]
+            else:
+                result[field_name] = convert_to_real_type(field_value)
+        return result
+
+
+class ScyllaManagerBackupApi(ScyllaManagerApiBase):
+    def __init__(self, sctool):
+        cmd_translate_dict = {
+            'dc_names': '--dc',
+            'dry_run': '--dry-run',
+            'interval': '--interval',
+            'keyspace_list': '--keyspace',
+            'location_list': '--location',
+            'num_retries': '--num-retries',
+            'rate_limit_list': '--rate-limit',
+            'retention': '--retention',
+            'is_show_tables': '--show-tables',
+            'snapshot_parallel_list': '--snapshot-parallel',
+            'start_date': '--start-date',
+            'upload_parallel_list': '--upload-parallel',
+            'cluster_name': '--cluster',
+            'enabled': '--enabled',
+            'show_all_clusters': '--all-clusters',
+            'delimiter': '--delimiter',
+            'snapshot_tag': '--snapshot-tag',
+            'with_version': '--with-version',
+            'max_date': '--max-date',
+            'min_date': '--min-date'
+        }
+        super().__init__(sctool=sctool, cmd_translate_dict=cmd_translate_dict)
+
+    def backup(self,  # pylint: disable=too-many-arguments
+               dc_names: list or str = None, dry_run: bool = None, interval: str = None,
+               keyspace_list: list or str = None, location_list: list or str = None, num_retries: int = None,
+               rate_limit_list: list or str = None, retention: int = None, is_show_tables: bool = None,
+               snapshot_parallel_list: list or str = None, start_date: str = None,
+               upload_parallel_list: list or str = None, cluster_name: str = None, sctool_kwargs: dict = None):
+        """
+        Schedules backups
+        Usage:
+          sctool backup [flags]
+          sctool backup [command]
+        Available Commands:
+          delete      Deletes backup snapshot
+          files       Lists files in backup
+          list        Lists available backups
+          update      Modifies a backup task
+        Flags:
+          --dc list                  a comma-separated list of datacenter glob patterns, e.g. 'dc1,!otherdc*' used
+            to specify the DCs to include or exclude from backup
+          --dry-run                  validates and prints backup information without scheduling a backup
+          -i, --interval string          task schedule interval e.g. 3d2h10m, valid units are d, h, m, s (default "0")
+          -K, --keyspace list            a comma-separated list of keyspace/tables glob patterns, e.g.
+           'keyspace,!keyspace.table_prefix_*' used to include or exclude keyspaces from backup
+          -L, --location list            a comma-separated list of backup locations in the format
+           [<dc>:]<provider>:<name> ex. s3:my-bucket. The <dc>: part is optional and is only needed when different
+           datacenters are being used to upload data to different locations. <name> must be an alphanumeric string
+           and may contain a dash and or a dot, but other characters are forbidden. The only supported storage
+           <provider> at the moment is s3
+          -r, --num-retries int          the number of times a scheduled task will retry to run before failing
+           (default 3)
+          --rate-limit list          a comma-separated list of megabytes (MiB) per second rate limits expressed in the
+            format [<dc>:]<limit>. The <dc>: part is optional and only needed when different datacenters need different
+            upload limits. Set to 0 for no limit (default 100)
+          --retention int            The number of backups which are to be stored (default 3)
+          --show-tables              print all table names for a keyspace
+          --snapshot-parallel list   a comma-separated list of snapshot parallelism limits in the format
+            [<dc>:]<limit>. The <dc>: part is optional and allows for specifying different limits in selected
+            datacenters. If The <dc>: part is not set, the limit is global (e.g. 'dc1:2,5') the runs are parallel in n
+            nodes (2 in dc1) and n nodes in all the other datacenters
+          -s, --start-date string        specifies the task start date expressed in the RFC3339 format or
+           now[+duration], e.g. now+3d2h10m, valid units are d, h, m, s (default "now")
+          --upload-parallel list     a comma-separated list of upload parallelism limits in the format
+          [<dc>:]<limit>. The <dc>: part is optional and allows for specifying different limits in selected
+          datacenters. If The <dc>: part is not set the limit is global (e.g. 'dc1:2,5') the runs are parallel in n
+          nodes (2 in dc1) and n nodes in all the other datacenters
+        Global Flags:
+              --api-cert-file path   path to HTTPS client certificate to access Scylla Manager server
+              --api-key-file path    path to HTTPS client key to access Scylla Manager server
+              --api-url URL          URL of Scylla Manager server (default "http://127.0.0.1:5080/api/v1")
+          -c, --cluster name         Specifies the target cluster name or ID
+        Use "sctool backup [command] --help" for more information about a command.
+        Scylla Docs:
+          https://docs.scylladb.com/operating-scylla/manager/2.1/sctool/#backup
+        """
+        options = self.create_command_options(cmd_options_dict=locals())
+        stdout = self.sctool.run(
+            cmd=self.create_sctool_command(cmd_options=options, cmd_hierarchy="backup"),
+            **(sctool_kwargs or {"is_verify_errorless_result": True}))[0]
+        return BackupTask(
+            task_id=stdout[0][0].strip(), cluster_id=cluster_name, scylla_manager=self.sctool.scylla_manager)
+
+    def update(self,  # pylint: disable=too-many-arguments
+               backup_id: str, dc_names: list or str = None, dry_run: bool = None, enabled: str = None,
+               interval: str = None, keyspace_list: list or str = None, location_list: list or str = None,
+               num_retries: int = None, rate_limit_list: list or str = None, retention: int = None,
+               is_show_tables: bool = None, snapshot_parallel_list: list or str = None, start_date: str = None,
+               upload_parallel_list: list or str = None, cluster_name: str = None, sctool_kwargs: dict = None):
+        """
+        Modifies a backup task
+        Usage:
+          sctool backup update <type/task-id> [flags]
+        Flags:
+          --dc list                  a comma-separated list of datacenter glob patterns, e.g. 'dc1,!otherdc*' used
+             to specify the DCs to include or exclude from backup
+          --dry-run                  validates and prints backup information without scheduling a backup
+          -e, --enabled string           enabled (default "true")
+          -i, --interval string          task schedule interval e.g. 3d2h10m, valid units are d, h, m, s
+            (default "0")
+          -K, --keyspace list            a comma-separated list of keyspace/tables glob patterns, e.g.
+            'keyspace,!keyspace.table_prefix_*' used to include or exclude keyspaces from backup
+          -L, --location list            a comma-separated list of backup locations in the format
+            [<dc>:]<provider>:<name> ex. s3:my-bucket. The <dc>: part is optional and is only needed when different
+            datacenters are being used to upload data to different locations. <name> must be an alphanumeric string
+            and may contain a dash and or a dot, but other characters are forbidden. The only supported storage
+            <provider> at the moment is s3
+          -r, --num-retries int          the number of times a scheduled task will retry to run before failing (
+            default 3)
+          --rate-limit list          a comma-separated list of megabytes (MiB) per second rate limits expressed in
+            the format [<dc>:]<limit>. The <dc>: part is optional and only needed when different datacenters need
+            different upload limits. Set to 0 for no limit (default 100)
+          --retention int            The number of backups which are to be stored (default 3)
+          --show-tables              print all table names for a keyspace
+          --snapshot-parallel list   a comma-separated list of snapshot parallelism limits in the format
+            [<dc>:]<limit>. The <dc>: part is optional and allows for specifying different limits in selected
+            datacenters. If The <dc>: part is not set, the limit is global (e.g. 'dc1:2,5') the runs are parallel
+            in n nodes (2 in dc1) and n nodes in all the other datacenters
+          -s, --start-date string        specifies the task start date expressed in the RFC3339 format or
+            now[+duration], e.g. now+3d2h10m, valid units are d, h, m, s (default "now")
+          --upload-parallel list     a comma-separated list of upload parallelism limits in the format
+            [<dc>:]<limit>. The <dc>: part is optional and allows for specifying different limits in selected
+            datacenters. If The <dc>: part is not set the limit is global (e.g. 'dc1:2,5') the runs are parallel
+            in n nodes (2 in dc1) and n nodes in all the other datacenters
+        Global Flags:
+              --api-cert-file path   path to HTTPS client certificate to access Scylla Manager server
+              --api-key-file path    path to HTTPS client key to access Scylla Manager server
+              --api-url URL          URL of Scylla Manager server (default "http://127.0.0.1:5080/api/v1")
+          -c, --cluster name         Specifies the target cluster name or ID
+        Scylla Docs:
+          https://docs.scylladb.com/operating-scylla/manager/2.1/sctool/#backup-update
+        """
+        options = self.create_command_options(cmd_options_dict=locals())
+        return self.sctool.run(
+            cmd=self.create_sctool_command(cmd_options=options, cmd_hierarchy=["backup", "update", backup_id]),
+            **(sctool_kwargs or {"is_verify_errorless_result": True}))
+
+
+class ScyllaManagerTaskApi(ScyllaManagerApiBase):
+    def __init__(self, sctool):
+        cmd_translate_dict = {
+            "is_show_all_tasks": "--all",
+            "sort": "--sort",
+            "status": "--status",
+            "task_type": "--type",
+            "cluster_name": "--cluster",
+        }
+        parsers = {
+            "arguments": re.compile(
+                r"-K\s(\')?(?P<keyspace_list>[\d\w,]+)?'\s-L\s(\')?(?P<location_list>[\d\w:-]+)(\')?"
+                r"(\s--retention\s(\')?(?P<retention>\d+)(\')?)?(\s--rate-limit\s(\')?(?P<rate_limit>[\d,]+)(\')?)?"
+                r"(\s--snapshot-parallel\s(\')?(?P<snapshot_parallel_list>[\d,]+)(\')?)?(\s--upload-parallel\s(\')?"
+                r"(?P<upload_parallel_list>[\d,]+)(\')?)?"),
+        }
+        super().__init__(sctool=sctool, cmd_translate_dict=cmd_translate_dict, parsers=parsers)
+
+    def list(self,  # pylint: disable=too-many-arguments
+             is_show_all_tasks: bool = None, sort: str = None, status: str = None, task_type: str = None,
+             cluster_name: str = None, sctool_kwargs: dict = None):
+        """
+        Shows available tasks and their last run status
+        Usage:
+          sctool task list [flags]
+        Flags:
+          -a, --all             list disabled tasks as well
+          --sort string     returned results will be sorted by given key, valid values:
+          [start-time next-activation end-time status]
+          -s, --status string   filter tasks according to last run status
+          -t, --type string     task type
+        Global Flags:
+              --api-cert-file path   path to HTTPS client certificate to access Scylla Manager server
+              --api-key-file path    path to HTTPS client key to access Scylla Manager server
+              --api-url URL          URL of Scylla Manager server (default "http://127.0.0.1:5080/api/v1")
+          -c, --cluster name         Specifies the target cluster name or ID
+        Scylla Docs:
+          https://docs.scylladb.com/operating-scylla/manager/2.1/sctool/#task-list
+        """
+        options = self.create_command_options(cmd_options_dict=locals())
+        return self.sctool.run(
+            cmd=self.create_sctool_command(cmd_options=options, cmd_hierarchy=["task", "list"]),
+            **(sctool_kwargs or {"is_verify_errorless_result": True}))
+
+
 class ScyllaManagerBase(object):
 
     def __init__(self, id, scylla_manager):
         self.id = id
         self.sctool = SCTool(scylla_manager=scylla_manager)
+        self.backup_api = ScyllaManagerBackupApi(sctool=self.sctool)
+        self.task_api = ScyllaManagerTaskApi(sctool=self.sctool)
         self.scylla_manager = scylla_manager
 
     def get_property(self, parsed_table, column_name, is_search_substring=False, identifier=None):
@@ -270,8 +519,9 @@ class SCTool(object):
     def __init__(self, scylla_manager):
         self.scylla_manager = scylla_manager
 
-    def run(self, cmd, is_verify_errorless_result=False, parse_table_res=True, is_multiple_tables=False):
-        list_cmd = cmd.split()
+    def run(self, cmd: Union[str, List[str]], is_verify_errorless_result=False, parse_table_res=True,
+            is_multiple_tables=False):
+        list_cmd = cmd.copy() if isinstance(cmd, list) else cmd.split()
         debug("Issuing: 'sctool {}'".format(list_cmd))
         try:
             stdout, stderr = self.scylla_manager.sctool(cmd=list_cmd)
@@ -281,6 +531,11 @@ class SCTool(object):
 
         debug("sctool command result:")
         debug(msg=stdout)
+        # Sometimes, the "stderr" variable contains a NOTICE message (The command ran successfully and this message
+        # is not an error)
+        if stderr.startswith("NOTICE"):
+            warning(stderr)
+            stderr = ""
         if is_verify_errorless_result:
             MgrUtils.verify_errorless_result(cmd=list_cmd, stdout=stdout, stderr=stderr)
         if parse_table_res:
@@ -479,6 +734,24 @@ class ManagerTask(ScyllaManagerBase):
         return stdout  # or can be specified like: self.get_property(parsed_table=res, column_name='status')
 
     @property
+    def arguments(self):
+        """
+        Gets the task's arguments
+        """
+        # ╭───────────────────────────────────────────────────────┬───────────┬───────────────────────────────┬────────╮
+        # │ Task                                                  │ Arguments │ Next run                      │ Status │
+        # ├───────────────────────────────────────────────────────┼───────────┼───────────────────────────────┼────────┤
+        # │ healthcheck/49a8215e-fb49-4922-9dbc-10ba81feb6a1      │           │ 09 Sep 20 10:48:23 IDT (+15s) │ DONE   │
+        # │ healthcheck_rest/203191b9-550c-4469-9899-1ca832aa063b │           │ 09 Sep 20 10:49:08 IDT (+1m)  │ DONE   │
+        # │ repair/0a922f7d-74dc-4fe4-9439-daf3804f84d4           │           │ 16 Sep 20 00:00:00 IDT (+7d)  │ DONE   │
+        # │ repair/53d4afe0-d740-4c73-adb2-ab4c686b6b99           │ -K 'ks'   │                               │ DONE   │
+        # ╰───────────────────────────────────────────────────────┴───────────┴───────────────────────────────┴────────╯
+        field_name = "arguments"
+        arguments = self.get_property(
+            parsed_table=self.task_api.list(cluster_name=self.cluster_id)[0], column_name=field_name)
+        return self.task_api.parse_output(output=arguments, regex_name=field_name)
+
+    @property
     def next_run(self):
         """
         Gets the task's next run value
@@ -652,6 +925,21 @@ class BackupTask(ManagerTask):
         # (when executed manually, the title and value is separated by \t instead
         snapshot_tag = snapshot_line[0].split(":")[1].strip()
         return snapshot_tag
+
+    def update(self, dc_names: list or str = None, dry_run: bool = None, enabled: str = None,
+               interval: str = None, keyspace_list: list or str = None, location_list: list or str = None,
+               num_retries: int = None, rate_limit_list: list or str = None, retention: int = None,
+               is_show_tables: bool = None, snapshot_parallel_list: list or str = None, start_date: str = None,
+               upload_parallel_list: list or str = None, cluster_name: str = None, sctool_kwargs: dict = None,
+               **kwargs):
+        if kwargs:
+            raise ScyllaManagerError(f"The following variables are unused '{pformat(kwargs)}'")
+        return self.backup_api.update(
+            backup_id=self.id, dc_names=dc_names, dry_run=dry_run, enabled=enabled, interval=interval,
+            keyspace_list=keyspace_list, location_list=location_list, num_retries=num_retries,
+            rate_limit_list=rate_limit_list, retention=retention, is_show_tables=is_show_tables,
+            snapshot_parallel_list=snapshot_parallel_list, start_date=start_date,
+            upload_parallel_list=upload_parallel_list, cluster_name=cluster_name, sctool_kwargs=sctool_kwargs)
 
 
 class RestTask(ManagerTask):
