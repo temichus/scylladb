@@ -5,7 +5,7 @@ from nose.plugins.attrib import attr
 
 from dtest_scylla_manager import TaskStatus, ScyllaManagerTool, ScyllaManagerMixin
 from dtest import Tester, debug
-from alternator_utils import ALTERNATOR_PORT
+from alternator_utils import ALTERNATOR_PORT, WriteIsolation
 
 
 @attr('scylla-manager')
@@ -92,7 +92,8 @@ class ManagerHealthCheckTest(Tester, ScyllaManagerMixin):
         default_interval = "+15s"  # seconds
 
         self.config_and_create_cluster(nodes=2,
-                                       extra_config_options=dict(alternator_port=ALTERNATOR_PORT))
+                                       extra_config_options=dict(alternator_port=ALTERNATOR_PORT,
+                                                                 alternator_write_isolation=WriteIsolation.ALWAYS_USE_LWT.value))
         manager_cluster = self.get_manager_cluster()
 
         healthcheck_alternator_task = manager_cluster.get_healthcheck_alternator_task()
@@ -105,7 +106,8 @@ class ManagerHealthCheckTest(Tester, ScyllaManagerMixin):
             verify that auto generated alternator health check task can be updated
         """
         self.config_and_create_cluster(nodes=2,
-                                       extra_config_options=dict(alternator_port=ALTERNATOR_PORT))
+                                       extra_config_options=dict(alternator_port=ALTERNATOR_PORT,
+                                                                 alternator_write_isolation=WriteIsolation.ALWAYS_USE_LWT.value))
         manager_cluster = self.get_manager_cluster()
         healthcheck_alternator_task = manager_cluster.get_healthcheck_alternator_task()
 
@@ -118,7 +120,8 @@ class ManagerHealthCheckTest(Tester, ScyllaManagerMixin):
         but instead it should just skip them, and in the output sctool cluster status it should just mark them as '-'
         """
         node1, _, node3 = self.config_and_create_cluster(nodes=3,
-                                                         extra_config_options=dict(alternator_port=ALTERNATOR_PORT))
+                                                         extra_config_options=dict(alternator_port=ALTERNATOR_PORT,
+                                                                                   alternator_write_isolation=WriteIsolation.ALWAYS_USE_LWT.value))
         mgr_cluster = self._create_mgr_cluster(node=node1, name="cluster1")
         node3.stop(wait_other_notice=True)
         cluster_status = mgr_cluster.get_hosts_health(translate_minus_to_down=False)
