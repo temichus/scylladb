@@ -521,8 +521,8 @@ class RangeDeletionTester(Tester):
         query += "APPLY BATCH;"
         debug(query)
         # execute batch and verify it is applied
-        assert_one(session, query,
-                   expected=[True, None, None, None],
+        assert_all(session, query,
+                   expected=[[True, None, None, None], [True, None, None, None], [True, None, None, None]],
                    cl=ConsistencyLevel.QUORUM)
 
         assert_all(session=session, query=select_query, expected=data, cl=ConsistencyLevel.QUORUM, ignore_order=True)
@@ -560,7 +560,7 @@ class RangeDeletionTester(Tester):
         query += "APPLY BATCH;"
         debug(query)
         # execute batch and verify it is applied
-        conditinal_batch_result = []
+        conditinal_batch_result = [[True] + [None] * len(data[upper_index])] # result row for the first DELETE
         for row in data[upper_index: num_rows]:
             batch_row = row[:]
             batch_row[1] = datetime.strptime(batch_row[1], "%Y-%m-%d").date()
@@ -569,8 +569,7 @@ class RangeDeletionTester(Tester):
 
         assert_all(session, query,
                    expected=conditinal_batch_result,
-                   cl=ConsistencyLevel.QUORUM,
-                   ignore_order=True)
+                   cl=ConsistencyLevel.QUORUM)
 
         for row in data[upper_index: num_rows]:
             row[2] *= num_rows

@@ -4261,23 +4261,23 @@ class TestCQL(Tester):
         assert_all(session, "SELECT * FROM test", [[0, 'k1', 2, 'foo'], [0, 'k2', 2, 'bar']])
 
         # Testing batches
-        assert_one(session,
+        assert_all(session,
                    """
                      BEGIN BATCH
                        UPDATE test SET v='foobar' WHERE id=0 AND k='k1';
                        UPDATE test SET v='barfoo' WHERE id=0 AND k='k2';
                        UPDATE test SET version=3 WHERE id=0 IF version=1;
                      APPLY BATCH
-                   """, [False, 0, 'k1', 2])
+                   """, [[False, 0, 'k1', 2], [False, None, None, None], [False, 0, 'k1', 2]])
 
-        assert_one(session,
+        assert_all(session,
                    """
                      BEGIN BATCH
                        UPDATE test SET v='foobar' WHERE id=0 AND k='k1';
                        UPDATE test SET v='barfoo' WHERE id=0 AND k='k2';
                        UPDATE test SET version=3 WHERE id=0 IF version=2;
                      APPLY BATCH
-                   """, [True, 0, 'k1', 2])
+                   """, [[True, 0, 'k1', 2], [True, None, None, None], [True, 0, 'k1', 2]])
         assert_all(session, "SELECT * FROM test", [[0, 'k1', 3, 'foobar'], [0, 'k2', 3, 'barfoo']])
 
         assert_all(session,
@@ -4287,7 +4287,7 @@ class TestCQL(Tester):
                        UPDATE test SET v='row1' WHERE id=0 AND k='k1' IF v='foo';
                        UPDATE test SET v='row2' WHERE id=0 AND k='k2' IF v='bar';
                    APPLY BATCH
-                   """, [[False, 0, 'k1', 3, 'foobar'], [False, 0, 'k2', 3, 'barfoo']])
+                   """, [[False, 0, 'k1', 3, 'foobar'], [False, 0, 'k1', 3, 'foobar'], [False, 0, 'k2', 3, 'barfoo']])
 
         assert_all(session,
                    """
@@ -4296,7 +4296,7 @@ class TestCQL(Tester):
                        UPDATE test SET v='row1' WHERE id=0 AND k='k1' IF v='foobar';
                        UPDATE test SET v='row2' WHERE id=0 AND k='k2' IF v='barfoo';
                      APPLY BATCH
-                   """, [[True, 0, 'k1', 3, 'foobar'], [True, 0, 'k2', 3, 'barfoo']])
+                   """, [[True, 0, 'k1', 3, 'foobar'], [True, 0, 'k1', 3, 'foobar'], [True, 0, 'k2', 3, 'barfoo']])
         assert_all(session, "SELECT * FROM test", [[0, 'k1', 4, 'row1'], [0, 'k2', 4, 'row2']])
 
         assert_invalid(session,
@@ -4308,49 +4308,49 @@ class TestCQL(Tester):
                          APPLY BATCH
                        """)
 
-        assert_one(session,
+        assert_all(session,
                    """
                      BEGIN BATCH
                        INSERT INTO TEST (id, k, v) VALUES(1, 'k1', 'val1') IF NOT EXISTS;
                        INSERT INTO TEST (id, k, v) VALUES(1, 'k2', 'val2') IF NOT EXISTS;
                      APPLY BATCH
-                   """, [True, None, None, None, None])
+                   """, [[True, None, None, None, None], [True, None, None, None, None]])
         assert_all(session, "SELECT * FROM test WHERE id=1", [[1, 'k1', None, 'val1'], [1, 'k2', None, 'val2']])
 
-        assert_one(session,
+        assert_all(session,
                    """
                      BEGIN BATCH
                        INSERT INTO TEST (id, k, v) VALUES(1, 'k2', 'val2') IF NOT EXISTS;
                        INSERT INTO TEST (id, k, v) VALUES(1, 'k3', 'val3') IF NOT EXISTS;
                      APPLY BATCH
-                   """, [False, 1, 'k2', None, 'val2'])
+                   """, [[False, 1, 'k2', None, 'val2'], [False, None, None, None, None]])
 
-        assert_one(session,
+        assert_all(session,
                    """
                      BEGIN BATCH
                        UPDATE test SET v='newVal' WHERE id=1 AND k='k2' IF v='val0';
                        INSERT INTO TEST (id, k, v) VALUES(1, 'k3', 'val3') IF NOT EXISTS;
                      APPLY BATCH
-                   """, [False, 1, 'k2', None, 'val2'])
+                   """, [[False, 1, 'k2', None, 'val2'], [False, None, None, None, None]])
         assert_all(session, "SELECT * FROM test WHERE id=1", [[1, 'k1', None, 'val1'], [1, 'k2', None, 'val2']])
 
-        assert_one(session,
+        assert_all(session,
                    """
                      BEGIN BATCH
                        UPDATE test SET v='newVal' WHERE id=1 AND k='k2' IF v='val2';
                        INSERT INTO TEST (id, k, v, version) VALUES(1, 'k3', 'val3', 1) IF NOT EXISTS;
                      APPLY BATCH
-                   """, [True, 1, 'k2', None, 'val2'])
+                   """, [[True, 1, 'k2', None, 'val2'], [True, None, None, None, None]])
         assert_all(session, "SELECT * FROM test WHERE id=1", [[1, 'k1', 1, 'val1'], [1, 'k2', 1, 'newVal'], [1, 'k3', 1, 'val3']])
 
         if self.cluster.version() >= '2.1':
-            assert_one(session,
+            assert_all(session,
                        """
                          BEGIN BATCH
                            UPDATE test SET v='newVal1' WHERE id=1 AND k='k2' IF v='val2';
                            UPDATE test SET v='newVal2' WHERE id=1 AND k='k2' IF v='val3';
                          APPLY BATCH
-                       """, [False, 1, 'k2', 'newVal'])
+                       """, [[False, 1, 'k2', 'newVal'], [False, 1, 'k2', 'newVal']])
         else:
             assert_invalid(session,
                            """
@@ -7061,18 +7061,18 @@ class TestLWTWithCQL(Tester):
 
         assert_one(session, "SELECT * FROM lwt_with_static WHERE a = 2", [2, None, 2, None])
 
-        assert_one(session, "BEGIN BATCH\n" +
+        assert_all(session, "BEGIN BATCH\n" +
                    "INSERT INTO lwt_with_static (a, b, d) values (3, 3, 'a');\n" +
                    "UPDATE lwt_with_static SET s = 3 WHERE a = 3 IF s = null;\n" +
-                   "APPLY BATCH;", [True, None, None, None])
+                   "APPLY BATCH;", [[True, None, None, None], [True, None, None, None]])
 
         assert_one(session, "SELECT * FROM lwt_with_static WHERE a = 3", [3, 3, 3, "a"])
 
         # LWT applies before INSERT
-        assert_one(session, "BEGIN BATCH\n" +
+        assert_all(session, "BEGIN BATCH\n" +
                    "INSERT INTO lwt_with_static (a, b, d) values (4, 4, 'a');\n" +
                    "UPDATE lwt_with_static SET s = 4 WHERE a = 4 IF s = null;\n" +
-                   "APPLY BATCH;", [True, None, None, None])
+                   "APPLY BATCH;", [[True, None, None, None], [True, None, None, None]])
 
         assert_one(session, "SELECT * FROM lwt_with_static WHERE a = 4", [4, 4, 4, "a"])
 
@@ -7131,35 +7131,35 @@ class TestLWTWithCQL(Tester):
             assert_none(session, "SELECT * FROM {} WHERE a = 5".format(table_name))
 
     def _validate_non_existing_or_null_values_batch(self, table_name, session):
-        assert_one(session, """
+        assert_all(session, """
             BEGIN BATCH
                 INSERT INTO {table_name} (a, b, d) values (2, 2, 'a');
                 UPDATE {table_name} SET s = 2 WHERE a = 2 IF s = null;
-            APPLY BATCH""".format(table_name=table_name), [True, 2, 2, None])
+            APPLY BATCH""".format(table_name=table_name), [[True, 2, 2, None], [True, 2, 2, None]])
 
         assert_one(session, "SELECT * FROM {table_name} WHERE a = 2".format(table_name=table_name), [2, 2, 2, "a"])
 
-        assert_one(session, """
+        assert_all(session, """
             BEGIN BATCH
                 INSERT INTO {table_name} (a, b, s, d) values (4, 4, 4, 'a')
                 UPDATE {table_name} SET s = 5 WHERE a = 4 IF s = null;
-            APPLY BATCH""".format(table_name=table_name), [True, 4, 4, None])
+            APPLY BATCH""".format(table_name=table_name), [[True, 4, 4, None], [True, 4, 4, None]])
 
         assert_one(session, "SELECT * FROM {table_name} WHERE a = 4".format(table_name=table_name), [4, 4, 5, "a"])
 
-        assert_one(session, """
+        assert_all(session, """
             BEGIN BATCH
                 INSERT INTO {table_name} (a, b, s, d) values (5, 5, 5, 'a')
                 UPDATE {table_name} SET s = 6 WHERE a = 5 IF s IN (1,2,null)
-            APPLY BATCH""".format(table_name=table_name), [True, 5, 5, None])
+            APPLY BATCH""".format(table_name=table_name), [[True, 5, 5, None], [True, 5, 5, None]])
 
         assert_one(session, "SELECT * FROM {table_name} WHERE a = 5".format(table_name=table_name), [5, 5, 6, "a"])
 
-        assert_one(session, """
+        assert_all(session, """
             BEGIN BATCH
                 INSERT INTO {table_name} (a, b, s, d) values (7, 7, 7, 'a')
                 UPDATE {table_name} SET s = 8 WHERE a = 7 IF s != 7;
-            APPLY BATCH""".format(table_name=table_name), [True, None, None, None])
+            APPLY BATCH""".format(table_name=table_name), [[True, None, None, None], [True, None, None, None]])
 
         assert_one(session, "SELECT * FROM {table_name} WHERE a = 7".format(table_name=table_name), [7, 7, 8, "a"])
 
@@ -7177,19 +7177,19 @@ class TestLWTWithCQL(Tester):
         self._validate_non_existing_or_null_values_batch(table_name, session)
 
         for operator in [">", "<", ">=", "<=", "="]:
-            assert_one(session, """
+            assert_all(session, """
                 BEGIN BATCH
                     INSERT INTO {table_name} (a, b, s, d) values (3, 3, 40, 'a')
                     UPDATE {table_name} SET s = 30 WHERE a = 3 IF s {operator} 5;
-                APPLY BATCH""".format(table_name=table_name, operator=operator), [False, 3, 3, None])
+                APPLY BATCH""".format(table_name=table_name, operator=operator), [[False, 3, 3, None], [False, 3, 3, None]])
 
             assert_one(session, "SELECT * FROM {table_name} WHERE a = 3".format(table_name=table_name), [3, 3, None, None])
 
-        assert_one(session, """
+        assert_all(session, """
                 BEGIN BATCH
                     INSERT INTO {table_name} (a, b, s, d) values (6, 6, 70, 'a')
                     UPDATE {table_name} SET s = 60 WHERE a = 6 IF s IN (1,2,3)
-                APPLY BATCH""".format(table_name=table_name), [False, 6, 6, None])
+                APPLY BATCH""".format(table_name=table_name), [[False, 6, 6, None], [False, 6, 6, None]])
 
         assert_one(session, "SELECT * FROM {table_name} WHERE a = 6".format(table_name=table_name), [6, 6, None, None])
 
@@ -7232,52 +7232,53 @@ class TestLWTWithCQL(Tester):
             CREATE TABLE {} (a int, b int, s1 int static, s2 int static, v int, PRIMARY KEY (a, b))
         """.format(table_name))
 
-        assert_one(session, """
+        assert_all(session, """
              BEGIN BATCH
                  INSERT INTO {table_name} (a, b, s1, v) values (2, 2, 2, 2);
                  DELETE s1 FROM {table_name} WHERE a = 2 IF s2 = null;
-             APPLY BATCH""".format(table_name=table_name), [True, None, None, None])
+             APPLY BATCH""".format(table_name=table_name), [[True, None, None, None], [True, None, None, None]])
 
         assert_one(session, "SELECT * FROM {} WHERE a = 2".format(table_name), [2, 2, None, None, 2])
 
         for operator in [">", "<", ">=", "<=", "="]:
-            assert_one(session, """
+            assert_all(session, """
                 BEGIN BATCH
                     INSERT INTO {table_name} (a, b, s1, v) values (3, 3, 3, 3);
                     DELETE s1 FROM {table_name} WHERE a = 3 IF s2 {operator} 5;
-                APPLY BATCH""".format(table_name=table_name, operator=operator), [False, None, None, None])
+                APPLY BATCH""".format(table_name=table_name, operator=operator),
+                [[False, None, None, None], [False, None, None, None]])
 
             assert_none(session, "SELECT * FROM {} WHERE a = 3".format(table_name))
 
-        assert_one(session, """
+        assert_all(session, """
              BEGIN BATCH
                  INSERT INTO {table_name} (a, b, s1, v) values (6, 6, 6, 6);
                  DELETE s1 FROM {table_name} WHERE a = 6 IF s2 IN (1,2,3);
-             APPLY BATCH""".format(table_name=table_name), [False, None, None, None])
+             APPLY BATCH""".format(table_name=table_name), [[False, None, None, None], [False, None, None, None]])
 
         assert_none(session, "SELECT * FROM {} WHERE a = 6".format(table_name))
 
-        assert_one(session, """
+        assert_all(session, """
              BEGIN BATCH
                  INSERT INTO {table_name} (a, b, s1, v) values (4, 4, 4, 4);
                  DELETE s1 FROM {table_name} WHERE a = 4 IF s2 = null;
-             APPLY BATCH""".format(table_name=table_name), [True, None, None, None])
+             APPLY BATCH""".format(table_name=table_name), [[True, None, None, None], [True, None, None, None]])
 
         assert_one(session, "SELECT * FROM {} WHERE a = 4".format(table_name), [4, 4, None, None, 4])
 
-        assert_one(session, """
+        assert_all(session, """
             BEGIN BATCH
                 INSERT INTO {table_name} (a, b, s1, v) VALUES (5, 5, 5, 5);
                 DELETE s1 FROM {table_name} WHERE a = 5 IF s1 IN (1,2,null);
-            APPLY BATCH""".format(table_name=table_name), [True, None, None, None])
+            APPLY BATCH""".format(table_name=table_name), [[True, None, None, None], [True, None, None, None]])
 
         assert_one(session, "SELECT * FROM {} WHERE a = 5".format(table_name), [5, 5, None, None, 5])
 
-        assert_one(session, """
+        assert_all(session, """
             BEGIN BATCH
                 INSERT INTO {table_name} (a, b, s1, v) values (7, 7, 7, 7);
                 DELETE s1 FROM {table_name} WHERE a = 7 IF s2 != 7;
-            APPLY BATCH""".format(table_name=table_name), [True, None, None, None])
+            APPLY BATCH""".format(table_name=table_name), [[True, None, None, None], [True, None, None, None]])
 
         assert_one(session, "SELECT * FROM {} WHERE a = 7".format(table_name), [7, 7, None, None, 7])
 
@@ -7311,12 +7312,12 @@ class TestLWTWithCQL(Tester):
                    """INSERT INTO {cf} (key, ck, cv) VALUES (1, 0, {{'a', 'b'}}) if not exists;""".format(cf=table_name),
                    [True, None, None, None])
 
-        assert_one(session,
+        assert_all(session,
                    """BEGIN BATCH
                         DELETE FROM {cf} WHERE key=1 and ck=0 if exists;
                         INSERT INTO {cf} (key, ck, cv) VALUES (1, 0, {{'b', 'c'}});
                       APPLY BATCH;""".format(cf=table_name),
-                   [True, 1, 0, {'a', 'b'}])
+                   [[True, 1, 0, {'a', 'b'}], [True, 1, 0, {'a', 'b'}]])
 
         assert_none(session,
                     "SELECT * FROM {cf}".format(cf=table_name))
@@ -7336,12 +7337,12 @@ class TestLWTWithCQL(Tester):
                    """INSERT INTO {cf} (key, ck, cv) VALUES (1, 0, {{'a', 'b'}}) if not exists;""".format(cf=table_name),
                    [True, None, None, None])
 
-        assert_one(session,
+        assert_all(session,
                    """BEGIN BATCH
                         INSERT INTO {cf} (key, ck, cv) VALUES (1, 0, {{'b', 'c'}});
                         DELETE FROM {cf} WHERE key=1 and ck=0 if exists;
                       APPLY BATCH;""".format(cf=table_name),
-                   [True, 1, 0, {'a', 'b'}])
+                   [[True, 1, 0, {'a', 'b'}], [True, 1, 0, {'a', 'b'}]])
 
         assert_none(session,
                     "SELECT * FROM {cf}".format(cf=table_name))
@@ -7358,12 +7359,12 @@ class TestLWTWithCQL(Tester):
                    """INSERT INTO {cf} (key, ck, cv) VALUES (1, 0, {{'a', 'b'}}) if not exists;""".format(cf=table_name),
                    [True, None, None, None])
 
-        assert_one(session,
+        assert_all(session,
                    """BEGIN BATCH
                         INSERT INTO {cf} (key, ck, cv) VALUES (1, 1, {{'b', 'c'}}) IF NOT EXISTS;
                         DELETE FROM {cf} WHERE key=1 and ck=0 if exists;
                       APPLY BATCH;""".format(cf=table_name),
-                   [True, 1, 0, {'a', 'b'}])
+                   [[True, None, None, None], [True, 1, 0, {'a', 'b'}]])
 
         assert_one(session,
                    "SELECT * FROM {cf}".format(cf=table_name),
@@ -7385,12 +7386,12 @@ class TestLWTWithCQL(Tester):
                    """INSERT INTO {cf} (key, ck, cv) VALUES (1, 0, {{'a', 'b'}}) if not exists;""".format(cf=table_name),
                    [True, None, None, None])
 
-        assert_one(session,
+        assert_all(session,
                    """BEGIN BATCH
                         UPDATE {cf} SET cv=null WHERE key=1 and ck=0 if exists;
                         INSERT INTO {cf} (key, ck, cv) VALUES (1, 0, {{'b', 'c'}});
                       APPLY BATCH;""".format(cf=table_name),
-                   [True, 1, 0, {"a", "b"}])
+                   [[True, 1, 0, {"a", "b"}], [True, 1, 0, {"a", "b"}]])
 
         assert_one(session,
                    "SELECT * FROM {cf}".format(cf=table_name),
