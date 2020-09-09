@@ -1,7 +1,7 @@
 pipeline {
     agent {
         label {
-            label "gce-qavpc"
+            label "gce-sct-builders"
         }
     }
      parameters {
