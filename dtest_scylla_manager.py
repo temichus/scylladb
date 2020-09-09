@@ -785,14 +785,21 @@ class ManagerTask(ScyllaManagerBase):
         # ╰─────────────────────────────────────────────┴───────────────────────────────┴──────┴────────────┴────────╯
 
     @property
+    def progress_details(self):
+        """
+        Gets the repair task's progress details
+        """
+        cmd = "task progress {} -c {}".format(self.id, self.cluster_id)
+        stdout = self.sctool.run(cmd=cmd, is_verify_errorless_result=True)[0]
+        return stdout
+
+    @property
     def progress(self):
         """
         Gets the repair task's progress
         """
         if self.status in [TaskStatus.NEW, TaskStatus.STARTING]:
             return " 0%"
-        cmd = "task progress {} -c {}".format(self.id, self.cluster_id)
-        stdout, stderr = self.sctool.run(cmd=cmd)
         # expecting output of:
         #  Status:           RUNNING
         #  Start time:       26 Mar 19 19:40:21 UTC
@@ -808,7 +815,7 @@ class ManagerTask(ScyllaManagerBase):
         #  ╰────────────────────┴───────╯
         # [['Status: RUNNING'], ['Start time: 26 Mar 19 19:40:21 UTC'], ['Duration: 6s'], ['Progress: 0.12%'], ... ]
         progress = "N/A"
-        for task_property in stdout:
+        for task_property in self.progress_details:
             if task_property[0].startswith("Progress"):
                 progress = task_property[0].split()[1]
                 break
@@ -902,6 +909,48 @@ class ManagerTask(ScyllaManagerBase):
 class RepairTask(ManagerTask):
     def __init__(self, task_id, cluster_id, scylla_manager):
         ManagerTask.__init__(self, task_id=task_id, cluster_id=cluster_id, scylla_manager=scylla_manager)
+
+    def repair_update(self, **kwargs):
+        """
+          Usage:
+          sctool repair update <type/task-id> [flags]
+
+        Flags:
+              --dc list                        a comma-separated list of datacenter glob patterns, e.g. 'dc1,!otherdc*',
+               used to specify the DCs to include or exclude from repair
+              --dry-run                        validate and print repair information without scheduling a repair
+          -e, --enabled string                 enabled (default "true")
+              --fail-fast                      stop repair on first error
+          -h, --help                           help for update
+              --intensity float                integer >= 1 or a float between (0-1), higher values may result in higher
+               speed or cluster load, values between (0, 1) specify percentage of nodes that are repaired at once.
+          -i, --interval string                task schedule interval e.g. 3d2h10m, valid units are d, h, m,
+            s (default "0")
+          -K, --keyspace list                  a comma-separated list of keyspace/tables glob patterns, e.g. 'keyspace,
+            !keyspace.table_prefix_*' used to include or exclude keyspaces from backup
+          -r, --num-retries int                the number of times a scheduled task will retry to run before failing
+            (default 3)
+              --show-tables                    print all table names for a keyspace
+              --small-table-threshold string   enable small table optimization for tables of size lower than given
+                threshold. Supported units [B, MiB, GiB, TiB] (default "1GiB")
+          -s, --start-date string              specifies the task start date expressed in the RFC3339 format or
+            now[+duration], e.g. now+3d2h10m, valid units are d, h, m, s (default "now")
+        """
+
+        cmd_mapping = {'keyspace': '--keyspace',
+                       'dc': '--dc',
+                       'enabled': '--enabled',
+                       'interval': '--interval',
+                       'start_date': '--start-date',
+                       'num_retries': '--num-retries'}
+        cmd_arguments = []
+        for k, v in kwargs.items():
+            cmd_arguments.append("{0}={1}".format(cmd_mapping[k], v))
+
+        cmd = "repair update {0.id} -c {0.cluster_id} {update_arguments}".format(
+            self, update_arguments=" ".join(cmd_arguments))
+        stdout, _ = self.sctool.run(cmd=cmd, is_verify_errorless_result=True)
+        return stdout
 
 
 class HealthcheckTask(ManagerTask):
