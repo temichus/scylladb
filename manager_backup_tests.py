@@ -1,5 +1,5 @@
 # coding: utf-8
-
+import time
 from datetime import datetime
 import os
 import yaml
@@ -19,6 +19,8 @@ from dtest_scylla_manager import ScyllaManagerTool, ScyllaManagerError, TaskStat
 from scylla_tools import insert_c1c2, insert_c1c2_with_clustering
 from dtest import debug, warning, wait_for
 
+from scylla_tools import insert_c1c2, insert_c1c2_with_clustering, run_in_parallel
+from dtest import debug, warning, wait_for, info
 
 CLUSTER_NAME = 'cluster1'
 DESTINATION_BUCKET = 'backup-bucket'
@@ -967,3 +969,79 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
         if "GiB" in result:
             return int(result[:result.find("G")]) * 1024 ** 2
         raise ValueError("The size string does not contain any known file size unit")
+
+    def test_disable_backup_task_before_run_before_executed(self):
+        """
+        Create a backup task that will run in the near future, and disable it.
+        Expected: The task will not be executed
+        """
+        node1, *_ = self.config_and_create_cluster(nodes=2)
+        mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
+        keyspace_name = "keyspace1"
+        location = "s3:{}".format(DESTINATION_BUCKET)
+        interval = 30
+        start_date = f"now+0d0h0m{interval}s"
+
+        info(f"Creating a backup task with following values:"
+             f"\nLocation: '{location}"
+             f"\nKeyspace: '{keyspace_name}"
+             f"\nstart_date: '{start_date}")
+        self.insert_data_from_ranges(healthy_node=node1, keyspace_table_and_key_range={keyspace_name: {"cf1": (1, 10)}})
+        backup_task = mgr_cluster.backup_api.backup(
+            keyspace_list=keyspace_name, location_list=location, start_date=start_date, cluster_name=mgr_cluster.id)
+        start_time = time.time()
+        info(f"Disabling the backup task '{backup_task.id}'")
+        backup_task.enabled(is_enabled=False)
+        info(f"Verifying the backup task '{backup_task.id}' is disabled")
+        backup_task.is_task_disabled()
+        sleep_time = int(interval - (time.time() - start_time)) + 1
+        info(f"Sleeping '{sleep_time}' seconds before verifying the status of back is '{TaskStatus.NEW}'")
+        sleep(sleep_time)
+        backup_task.wait_for_status(list_status=[TaskStatus.NEW], timeout=interval, step=1)
+
+    def test_disable_backup_task_during_its_run(self):
+        """
+        Create a backup task and update it during its run, and letting the task run until completion
+        Expected: The task will not stop due to the update
+        """
+        node1, *_ = self.config_and_create_cluster(nodes=2)
+        mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
+        keyspace_name = "keyspace1"
+        location = "s3:{}".format(DESTINATION_BUCKET)
+        interval = 30
+        start_date = f"now+0d0h0m{interval}s"
+        stress_command = ['write', f'duration={interval - 1}s', '-rate', 'threads=50', '-schema',
+                          f'keyspace={keyspace_name}', 'compaction(strategy=SizeTieredCompactionStrategy)']
+
+        def insert_data_with_casandra_stress():
+            info(f"Starting a stress command with following parameters: '{stress_command}")
+            node1.stress(stress_command)
+            info("Finished entering all the data")
+
+        def disabled_backup_task(_backup_task):
+            sleep_time = interval - 1
+            info(f"Sleeping '{sleep_time}' seconds before checking the backup status")
+            sleep(sleep_time)
+            _list_status = [TaskStatus.STARTING, TaskStatus.RUNNING]
+            info(f"Waiting until the status of backup task '{_backup_task.id}' will be one of '{_list_status}'")
+            _backup_task.wait_for_status(list_status=_list_status, timeout=20, step=1)
+
+        info(f"Creating a backup task with following values:"
+             f"\nLocation: '{location}"
+             f"\nKeyspace: '{keyspace_name}"
+             f"\nstart_date: '{start_date}")
+        self.insert_data_from_ranges(healthy_node=node1, keyspace_table_and_key_range={keyspace_name: {"cf1": (1, 10)}})
+        backup_task = mgr_cluster.backup_api.backup(
+            keyspace_list=keyspace_name, location_list=location, start_date=start_date, cluster_name=mgr_cluster.id)
+        run_in_parallel([{"func": insert_data_with_casandra_stress},
+                         {"func": disabled_backup_task, "args": [backup_task]}])
+
+        info(f"Disabling the backup task {backup_task.id}")
+        backup_task.enabled(is_enabled=False)
+        info(f"Verifying the backup task '{backup_task.id}' is disabled")
+        backup_task.is_task_disabled()
+        info(f"Verifying the backup task '{backup_task.id}' is still running")
+        backup_task.wait_for_status(list_status=[TaskStatus.RUNNING], timeout=10, step=1)
+        list_status = [TaskStatus.DONE]
+        info(f"Waiting until the status of backup task '{backup_task.id}' will be '{list_status}'")
+        backup_task.wait_for_status(list_status=list_status, timeout=20, step=1)

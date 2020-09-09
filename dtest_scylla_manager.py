@@ -621,6 +621,10 @@ class ManagerTask(ScyllaManagerBase):
                 return False
             raise err
 
+    def enabled(self, is_enabled):
+        return self.backup_api.update(
+            backup_id=self.id, cluster_name=self.cluster_id, enabled="true" if is_enabled else "false")
+
 
 class RepairTask(ManagerTask):
     def __init__(self, task_id, cluster_id, scylla_manager):
