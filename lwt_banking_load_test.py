@@ -453,7 +453,7 @@ class LWTBankingLoadTest(Tester):
             "hinted_handoff_enabled": False,
             "skip_wait_for_gossip_to_settle": 0,
         })
-        jvm_args = ["--smp", str(num_nodes), '--default-log-level', 'trace']
+        jvm_args = ["--smp", str(num_nodes)]
         if not cluster.nodelist():
             cluster.populate(num_nodes)
             cluster.start(wait_other_notice=True, wait_for_binary_proto=True, jvm_args = jvm_args)
