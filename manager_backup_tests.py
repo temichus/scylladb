@@ -2,6 +2,8 @@
 import time
 from datetime import datetime
 import os
+from pprint import pformat
+
 import yaml
 from glob import glob
 import shutil
@@ -1101,3 +1103,53 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
             "snapshot_parallel_list", arguments["snapshot_parallel_list"], snapshot_parallel_list)
         assert arguments['upload_parallel_list'] == list(map(int, upload_parallel_list.split(","))), err_msg.format(
             'upload_parallel_list', arguments['upload_parallel_list'], 'upload_parallel_list')
+
+    def test_small_table_threshold_parameter(self):
+        """
+        * Check the small table threshold setting is working correctly.
+        Expected: Only one repair command has been executed for a table with a threshold less or equal than that
+         specified in the command.
+        """
+        nodes = self.config_and_create_cluster(nodes=2)
+        mgr_cluster = self._create_mgr_cluster(node=nodes[0], name=CLUSTER_NAME)
+        keyspace_name = "keyspace1"
+        table_name = "cf1"
+        keyspace_table_and_key_range = {keyspace_name: {table_name: (1, 21)}}
+        repair_log_message = f"starting user-requested repair for keyspace {keyspace_name}, repair id"
+
+        info(f"Creating a new table with following values: '{pformat(keyspace_table_and_key_range)}")
+        self.insert_data_from_ranges(healthy_node=nodes[1], keyspace_table_and_key_range=keyspace_table_and_key_range)
+        info(f"Stopping the node '{nodes[0].name}")
+        nodes[0].stop()
+        stress_command = ['write', 'no-warmup', 'n=3000', '-schema', f'keyspace={keyspace_name}', '-rate', 'threads=50',
+                          '-pop', 'seq=1..3000']
+        info(f"Starting a stress command form node '{nodes[0].name}' with following parameters: "
+             f"\n'{pformat(stress_command)}")
+        nodes[1].stress(stress_command)
+
+        marks = [node.mark_log() for node in nodes]
+        info(f"Starting the node '{nodes[0].name}")
+        nodes[0].start()
+        info(f"Starting a stress command with following parameters: '{stress_command}")
+        repair_task = mgr_cluster.create_repair_task(keyspace=keyspace_name, small_table_threshold="100MiB")
+        list_status = [TaskStatus.RUNNING]
+        info(f"Waiting until the status of the repair task will be '{list_status}'")
+        repair_task.wait_for_status(list_status=list_status, timeout=40, step=3)
+        list_status = [TaskStatus.DONE]
+        info(f"Waiting until the status of the repair task will be '{list_status}'")
+        repair_task.wait_for_status(list_status=list_status, timeout=40, step=3)
+        info(f"Verifying that the '{repair_log_message}' message appears only once in node logs")
+
+        table_names = []
+        logs = []
+        for node, mark in zip(nodes, marks):
+            for line in node.grep_log(repair_log_message, from_mark=mark):
+                if line:
+                    line = line[0]
+                    logs.append(line)
+                    table_names.append(line.rsplit("->", maxsplit=1)[1].split("}", maxsplit=1)[0].strip())
+
+        assert len(table_names) == len(set(logs)), "More than one repair was executed"
+        assert table_name in table_names, \
+            f"The '{repair_log_message}' message for keyspace '{keyspace_name}.{table_name}' not found!" \
+            f"\nThe following logs are found {pformat(logs)} "

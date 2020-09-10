@@ -1084,7 +1084,7 @@ class ManagerCluster(ScyllaManagerBase):
         self.sctool.run(f"-c {self.id} backup delete --snapshot-tag={snapshot_tag}")
 
     def create_repair_task(self, dc_list=None, keyspace=None, interval=None, num_retries=None, fail_fast=None,
-                           intensity=None):
+                           intensity=None, small_table_threshold=None):
         # the interval string:
         # Amount of time after which a successfully completed task would be run again. Supported time units include:
         #
@@ -1106,6 +1106,8 @@ class ManagerCluster(ScyllaManagerBase):
             cmd += " --fail-fast"
         if intensity is not None:
             cmd += f" --intensity {intensity}"
+        if small_table_threshold is not None:
+            cmd += f" --small-table-threshold {small_table_threshold}"
 
         debug("Repair command to execute is: {}".format(cmd))
         stdout, stderr = self.sctool.run(cmd=cmd, parse_table_res=False)
