@@ -12,7 +12,7 @@ from cassandra.query import SimpleStatement
 
 from assertions import assert_unavailable, assert_invalid, assert_one
 from dtest import Tester, debug
-from tools import no_vnodes, since
+from tools import no_vnodes, since, require
 from nose.plugins.attrib import attr
 from scylla_tools import scylla_mode
 
@@ -467,6 +467,7 @@ class TestPaxos(Tester):
                                        verify_results_action=check_schema_mismatch_exc
                                        )
 
+    @require('7225')
     @attr('dtest-debug', 'single_node')
     @scylla_mode('!release')
     def schema_mismatch_mv_test(self):
