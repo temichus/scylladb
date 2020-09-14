@@ -187,6 +187,25 @@ with_range_tombstone:
  table_name: 'cf'
 
 
+with_clustering_key_range_tombstone:
+ cmds: [["cqlsh", "CREATE KEYSPACE ks WITH replication={'class':'SimpleStrategy', 'replication_factor':1}"],
+          ["cqlsh", "CREATE COLUMNFAMILY ks.cf (pk int, ck int, v int, PRIMARY KEY (pk, ck)) WITH comment='test cf' AND compression = {} AND read_repair_chance=0.000000"],
+          ["cqlsh", "INSERT INTO ks.cf (pk, ck, v) VALUES (1, 1, 1)"],
+          ["cqlsh", "INSERT INTO ks.cf (pk, ck, v) VALUES (1, 2, 1)"],
+          ["cqlsh", "INSERT INTO ks.cf (pk, ck, v) VALUES (1, 3, 1)"],
+          ["cqlsh", "INSERT INTO ks.cf (pk, ck, v) VALUES (1, 4, 1)"],
+          ["cqlsh", "INSERT INTO ks.cf (pk, ck, v) VALUES (1, 5, 1)"],
+          ["nodetool", "flush"],
+          ["cqlsh", "DELETE FROM ks.cf WHERE pk = 1 AND ck >= 2 AND ck <= 4"],
+          ["nodetool", "flush"],
+          ["subfolder", ""],
+          ["cqlsh", "DROP KEYSPACE ks"],
+          ["delete folder"]
+         ]
+ keyspace_name: 'ks'
+ table_name: 'cf'
+
+
 with_row_tombstone:
  cmds: [["cqlsh", "CREATE KEYSPACE ks WITH replication={'class':'SimpleStrategy', 'replication_factor':1}"],
           ["cqlsh", "CREATE COLUMNFAMILY ks.cf (key varchar PRIMARY KEY, c2 text, c1 text) WITH comment='test cf' AND compression = {} AND read_repair_chance=0.000000"],

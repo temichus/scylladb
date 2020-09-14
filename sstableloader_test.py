@@ -177,7 +177,7 @@ class TestSSTableLoader(MigrationTestBase):
         self.load_migrated_tables(node1, 'with_counter')
 
 
-versions = ['2_1_x', '2_2_x', '3_0_x', '3_0_mc']
+versions = ['2_1_x', '2_2_x', '3_0_x', '3_0_mc', '3_0_md']
 for version in versions:
     for prepared in ['-nx', '']:
         cls_name = ('TestMigration_with_{0}{1}'.format(version, '' if prepared else '_prepared'))

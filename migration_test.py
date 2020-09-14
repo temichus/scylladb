@@ -112,6 +112,39 @@ class MigrationTestBase(Tester):
         # DELETE FROM ks.cf WHERE key IN ('a', 'b');
         self._run_basic_migration_test('with_range_tombstone', {'key': 'c', 'c1': 'abc', 'c2': 'cde'})
 
+    def migrate_sstable_with_clustering_key_range_tombstone_test(self):
+        if self.version == '2_1_x' or self.version == '2_2_x':
+            self.skipTest('Test not supported in version 2.1.x or 2.2.x')
+
+        node1 = self.start_cluster_and_get_node1()
+
+        query = 'CREATE COLUMNFAMILY ks.cf (pk int, ck int, v int, PRIMARY KEY (pk, ck))'
+        self.create_ks_and_cf(node1, None, None, False, query=query)
+
+        self.load_migrated_tables(node1, 'with_clustering_key_range_tombstone')
+
+        self.check_number_of_rows(node1, 2)
+
+        result = self.get_all_rows_for_check(node1)
+        # https://github.com/scylladb/scylla-tools-java/issues/204
+        # Content generated with:
+        # CREATE COLUMNFAMILY ks.cf (pk int, ck int, v int, PRIMARY KEY (pk, ck));
+        # INSERT INTO ks.cf (pk, ck, v) VALUES (1, 1, 1);
+        # INSERT INTO ks.cf (pk, ck, v) VALUES (1, 2, 1);
+        # INSERT INTO ks.cf (pk, ck, v) VALUES (1, 3, 1);
+        # INSERT INTO ks.cf (pk, ck, v) VALUES (1, 4, 1);
+        # INSERT INTO ks.cf (pk, ck, v) VALUES (1, 5, 1);
+        # nodetool flush
+        # DELETE FROM ks.cf WHERE pk = 1 AND ck >= 2 AND ck <= 4;
+
+        self.assertEqual(result[0].pk, 1, "check partition key of row 1")
+        self.assertEqual(result[0].ck, 1, "check clustering key of row 1")
+        self.assertEqual(result[0].v, 1, "check data of row 1")
+
+        self.assertEqual(result[1].pk, 1, "check partition key of row 2")
+        self.assertEqual(result[1].ck, 5, "check clustering key of row 2")
+        self.assertEqual(result[1].v, 1, "check data of row 2")
+
     def migrate_sstable_with_wide_row_test(self):
         node1 = self.start_cluster_and_get_node1()
 
