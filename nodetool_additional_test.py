@@ -1672,6 +1672,7 @@ class TestNodetool(Tester):
             "Caused by: java.net.ConnectException: Connection refused",
             "Cassandra timeout during SIMPLE write query",
             "Unexpected error while executing task",
+            "Unexpected error while querying {}".format(node_address),
             "java.lang.NullPointerException: null",
             "Error creating pool to {}".format(addr_msg),
             "\[{}\] Cannot connect".format(addr_msg),
