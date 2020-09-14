@@ -17,7 +17,7 @@ host.
 
 Contribution (pre-commit setup)
 -------------------------------
-Since we are trying to keep the code neat, please install this git precommit hooks, 
+Since we are trying to keep the code neat, please install this git precommit hooks,
 that would fix the code style, and run more checks:
 
 ```bash
