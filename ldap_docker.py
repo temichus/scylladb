@@ -1,6 +1,16 @@
+import os
 import time
 import docker
 from ldap3 import Server, Connection, ALL, ALL_ATTRIBUTES
+
+
+def running_in_docker():
+    path = '/proc/self/cgroup'
+    with open(path) as cgroup:
+        return (
+            os.path.exists('/.dockerenv') or
+            os.path.isfile(path) and any('docker' in line for line in cgroup)
+        )
 
 
 class ContainerAlreadyStarted(Exception):
@@ -29,6 +39,7 @@ class LdapDocker(object):
         self.conn = None
         self.ldap_server = None
         self.ldap_base_object = None
+        self.ldap_address = None
 
     def create_ldap_container(self, name, ldap_port=0, ldap_ssl_port=0, image='osixia/openldap:1.4.0',
                               organisation='ScyllaDB', domain='scylladb.com', password='scylla'):
@@ -45,8 +56,14 @@ class LdapDocker(object):
         for container in self.docker.containers.list():
             if self.name in container.name:
                 self.container = container
-                self.ldap_port = container.ports['389/tcp'][0]['HostPort']
-                self.ldap_ssl_port = container.ports['636/tcp'][0]['HostPort']
+                if running_in_docker():
+                    self.ldap_port = '389'
+                    self.ldap_ssl_port = '636'
+                    self.ldap_address = container.attrs['NetworkSettings']['IPAddress']
+                else:
+                    self.ldap_port = container.ports['389/tcp'][0]['HostPort']
+                    self.ldap_ssl_port = container.ports['636/tcp'][0]['HostPort']
+                    self.ldap_address = 'localhost'
 
     def is_container_running(self):
         if not self.container:
@@ -61,8 +78,8 @@ class LdapDocker(object):
         if self.conn:
             self.disconnect_ldap()
 
-    def create_ldap_connection(self, user='cn=admin,dc=scylladb,dc=com', password='scylla', ip='localhost'):
-        self.ldap_server = Server(host=f'ldap://{ip}:{self.ldap_port}', get_info=ALL)
+    def create_ldap_connection(self, user='cn=admin,dc=scylladb,dc=com', password='scylla'):
+        self.ldap_server = Server(host=f'ldap://{self.ldap_address}:{self.ldap_port}', get_info=ALL)
         self.conn = Connection(server=self.ldap_server, user=user, password=password)
         time.sleep(3)
         self.conn.open()
