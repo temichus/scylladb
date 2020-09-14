@@ -297,11 +297,11 @@ class TestUpdateClusterLayout(Tester):
         node4 = new_node(cluster)
         node4.start(jvm_args=['--logger-log-level', 'stream_session=debug'], no_wait=True)
         node4.watch_log_for("JOINING: Starting to bootstrap")
-        node4.watch_log_for("Beginning stream session|sync data for keyspace=ks, status=started")
+        node4.watch_log_for("Beginning stream session|sync data for keyspace=ks[1-3]?, status=started")
 
         self.ignore_log_patterns += [
             r'Repair .* status=failed: mandatory neighbor={} is not alive'.format(node2.address()),
-            r'Startup failed:.*Failed to repair for keyspace=ks',
+            r'Startup failed:.*Failed to repair for keyspace=ks[1-3]?',
             r'Startup failed: std::runtime_error .* \(repair .* failed',
         ]
 
@@ -311,7 +311,7 @@ class TestUpdateClusterLayout(Tester):
         debug("Look for Stream/Startup failed in node 4...")
         # The keep alive timer expires in 10 minutes.
         # Wait 5 minutes more in the test to wait for the stream to fail
-        node4.watch_log_for("Stream failed|Startup failed|sync data for keyspace=ks, status=failed", timeout=300)
+        node4.watch_log_for("Stream failed|Startup failed|sync data for keyspace=ks[1-3]?, status=failed", timeout=300)
 
     def simple_kill_new_node_while_bootstrapping_test(self):
         """
