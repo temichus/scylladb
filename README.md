@@ -15,6 +15,36 @@ For running dtests in `scylla-dtest` docker container,
 Note that when using docker, the other prerequisites are _not_ needed on the
 host.
 
+Contribution (pre-commit setup)
+-------------------------------
+Since we are trying to keep the code neat, please install this git precommit hooks, 
+that would fix the code style, and run more checks:
+
+```bash
+pre-commit install
+```
+
+If you want to remove the hook
+```bash
+pre-commit uninstall
+
+```
+
+few helpers to know
+```bash
+# running all checks on all files
+pre-commit run -a
+
+# running specific check on all files
+pre-commit run -a autopep8
+
+# Doing a commit without the hook checks
+git commit ... -n
+
+# running pre-commit from inside docker (if you don't have virtualenv for dtests)
+./scripts/run_test.sh 'bash -c "pre-commit run -a"'
+```
+
 Running using docker
 --------------------
 
