@@ -347,6 +347,62 @@ class ScyllaManagerTaskApi(ScyllaManagerApiBase):
             **(sctool_kwargs or {"is_verify_errorless_result": True}))
 
 
+class ScyllaManagerRepairApi(ScyllaManagerApiBase):
+    def __init__(self, sctool):
+        cmd_translate_dict = {
+            "dc_names": "--dc",
+            "dry_run": "--dry-run",
+            "enabled": "--enabled",
+            "is_fail_fast": "--fail-fast",
+            "intensity": "--intensity",
+            "keyspace_list": "--keyspace",
+            "num_retries": "--num-retries",
+            "is_show_tables": "--show-tables",
+            "small_table_threshold": "--small-table-threshold",
+            "start_date": "--start-date",
+            "cluster_name": "--cluster",
+        }
+        parsers = {}
+        super().__init__(sctool=sctool, cmd_translate_dict=cmd_translate_dict, parsers=parsers)
+
+    def update(self,  # pylint: disable=too-many-arguments
+               repair_id: str, dc_names: list or str = None, dry_run: bool = None, enabled: str = None,
+               is_fail_fast: bool = None, intensity: float = None, interval: str = None,
+               keyspace_list: list or str = None, num_retries: int = None, is_show_tables: bool = None,
+               small_table_threshold: str = None, start_date: str = None, cluster_name: str = None,
+               sctool_kwargs: dict = None):
+        """
+        Usage:
+        sctool repair update <type/task-id> [flags]
+
+        Flags:
+              --dc list                        a comma-separated list of datacenter glob patterns, e.g. 'dc1,!otherdc*', used to specify the DCs to include or exclude from repair
+              --dry-run                        validate and print repair information without scheduling a repair
+          -e, --enabled string                 enabled (default "true")
+              --fail-fast                      stop repair on first error
+              --intensity float                integer >= 1 or a float between (0-1), higher values may result in higher speed or cluster load, values between (0, 1) specify percentage of nodes that are repaired at once.
+          -i, --interval string                task schedule interval e.g. 3d2h10m, valid units are d, h, m, s (default "0")
+          -K, --keyspace list                  a comma-separated list of keyspace/tables glob patterns, e.g. 'keyspace,!keyspace.table_prefix_*' used to include or exclude keyspaces from backup
+          -r, --num-retries int                the number of times a scheduled task will retry to run before failing (default 3)
+              --show-tables                    print all table names for a keyspace. Used only in conjunction with --dry-run
+              --small-table-threshold string   enable small table optimization for tables of size lower than given threshold. Supported units [B, MiB, GiB, TiB] (default "1GiB")
+          -s, --start-date string              specifies the task start date expressed in the RFC3339 format or now[+duration], e.g. now+3d2h10m, valid units are d, h, m, s (default "now")
+
+        Global Flags:
+              --api-cert-file path   path to HTTPS client certificate to access Scylla Manager server
+              --api-key-file path    path to HTTPS client key to access Scylla Manager server
+              --api-url URL          URL of Scylla Manager server (default "http://127.0.0.1:5080/api/v1")
+          -c, --cluster name         Specifies the target cluster name or ID
+
+        Scylla Docs:
+          https://docs.scylladb.com/operating-scylla/manager/2.1/sctool/#repair-update
+        """
+        options = self.create_command_options(cmd_options_dict=locals())
+        return self.sctool.run(
+            cmd=self.create_sctool_command(cmd_options=options, cmd_hierarchy=["repair", "update", repair_id]),
+            **(sctool_kwargs or {"is_verify_errorless_result": True}))
+
+
 class ScyllaManagerBase(object):
 
     def __init__(self, id, scylla_manager):
@@ -354,6 +410,7 @@ class ScyllaManagerBase(object):
         self.sctool = SCTool(scylla_manager=scylla_manager)
         self.backup_api = ScyllaManagerBackupApi(sctool=self.sctool)
         self.task_api = ScyllaManagerTaskApi(sctool=self.sctool)
+        self.repair_api = ScyllaManagerRepairApi(sctool=self.sctool)
         self.scylla_manager = scylla_manager
 
     def get_property(self, parsed_table, column_name, is_search_substring=False, identifier=None):
@@ -911,47 +968,18 @@ class RepairTask(ManagerTask):
     def __init__(self, task_id, cluster_id, scylla_manager):
         ManagerTask.__init__(self, task_id=task_id, cluster_id=cluster_id, scylla_manager=scylla_manager)
 
-    def repair_update(self, **kwargs):
-        """
-          Usage:
-          sctool repair update <type/task-id> [flags]
-
-        Flags:
-              --dc list                        a comma-separated list of datacenter glob patterns, e.g. 'dc1,!otherdc*',
-               used to specify the DCs to include or exclude from repair
-              --dry-run                        validate and print repair information without scheduling a repair
-          -e, --enabled string                 enabled (default "true")
-              --fail-fast                      stop repair on first error
-          -h, --help                           help for update
-              --intensity float                integer >= 1 or a float between (0-1), higher values may result in higher
-               speed or cluster load, values between (0, 1) specify percentage of nodes that are repaired at once.
-          -i, --interval string                task schedule interval e.g. 3d2h10m, valid units are d, h, m,
-            s (default "0")
-          -K, --keyspace list                  a comma-separated list of keyspace/tables glob patterns, e.g. 'keyspace,
-            !keyspace.table_prefix_*' used to include or exclude keyspaces from backup
-          -r, --num-retries int                the number of times a scheduled task will retry to run before failing
-            (default 3)
-              --show-tables                    print all table names for a keyspace
-              --small-table-threshold string   enable small table optimization for tables of size lower than given
-                threshold. Supported units [B, MiB, GiB, TiB] (default "1GiB")
-          -s, --start-date string              specifies the task start date expressed in the RFC3339 format or
-            now[+duration], e.g. now+3d2h10m, valid units are d, h, m, s (default "now")
-        """
-
-        cmd_mapping = {'keyspace': '--keyspace',
-                       'dc': '--dc',
-                       'enabled': '--enabled',
-                       'interval': '--interval',
-                       'start_date': '--start-date',
-                       'num_retries': '--num-retries'}
-        cmd_arguments = []
-        for k, v in kwargs.items():
-            cmd_arguments.append("{0}={1}".format(cmd_mapping[k], v))
-
-        cmd = "repair update {0.id} -c {0.cluster_id} {update_arguments}".format(
-            self, update_arguments=" ".join(cmd_arguments))
-        stdout, _ = self.sctool.run(cmd=cmd, is_verify_errorless_result=True)
-        return stdout
+    def update(self, dc_names: list or str = None, dry_run: bool = None, enabled: str = None, is_fail_fast: bool = None,
+               intensity: float = None, interval: str = None, keyspace_list: list or str = None,
+               num_retries: int = None, is_show_tables: bool = None, small_table_threshold: str = None,
+               start_date: str = None, sctool_kwargs: dict = None, **kwargs):
+        if kwargs:
+            raise ScyllaManagerError(f"The following variables are unused '{pformat(kwargs)}'")
+        return self.repair_api.update(
+            repair_id=self.id, dc_names=dc_names, dry_run=dry_run, enabled=enabled,
+            is_fail_fast=is_fail_fast, intensity=intensity, interval=interval,
+            keyspace_list=keyspace_list, num_retries=num_retries,  is_show_tables=is_show_tables,
+            small_table_threshold=small_table_threshold, start_date=start_date, cluster_name=self.cluster_id,
+            sctool_kwargs=sctool_kwargs)
 
 
 class HealthcheckTask(ManagerTask):

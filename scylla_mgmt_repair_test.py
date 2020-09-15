@@ -514,18 +514,18 @@ class TestScyllaMgmtRepair(RepairAdditionalBase, ScyllaManagerMixin):
         debug("Create Manager Tool instance to run scylla-manager operations")
         manager_tool = ScyllaManagerTool(scylla_manager=self.cluster._scylla_manager)
         mgr_cluster = manager_tool.add_cluster(node=node1, name="cluster1")
-        mgr_cluster.repair_task_list[0].update(enabled=False)
+        mgr_cluster.repair_task_list[0].enabled(is_enabled=False)
         debug("Create repair task with keyspace ks1")
         repair_task = mgr_cluster.create_repair_task(keyspace='ks1')
         debug("Verify the repair runs for keyspace ks1")
         repair_task.wait_for_status(list_status=[TaskStatus.RUNNING, TaskStatus.DONE], timeout=100, step=5)
         assert 'ks1' in repair_task.progress_details[-1], "keyspace 'ks1' table is not reported by repair task progress"
-        assert repair_task.arguments == "-K 'ks1'"
+        assert repair_task.arguments["keyspace_list"] == "ks1"
         debug("Update repair task with a different keyspace: ks2")
         repair_task.stop()
-        repair_task.repair_update(keyspace='ks2')
+        repair_task.update(keyspace_list='ks2')
         repair_task.start()
         debug("Test repair task updated argument values keyspace: ks2")
-        assert repair_task.arguments == "-K 'ks2'"
+        assert repair_task.arguments["keyspace_list"] == "ks2"
         repair_task.wait_for_status(list_status=[TaskStatus.RUNNING, TaskStatus.DONE], timeout=100, step=5)
         assert 'ks2' in repair_task.progress_details[-1], "keyspace 'ks2' table is not reported by repair task progress"
