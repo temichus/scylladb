@@ -1854,9 +1854,7 @@ class RepairAdditionalBase(Tester):
         debug("starting repair...")
 
         try:
-            # RANGE_TOMBSTONES_FEATURE is a feature supported long time ago
-            node3.watch_log_for("Feature RANGE_TOMBSTONES is enabled", timeout=3)
-            node3.watch_log_for("Feature ROW_LEVEL_REPAIR is enabled", timeout=1)
+            node3.watch_log_for("Feature ROW_LEVEL_REPAIR is enabled", timeout=3)
             debug("Feature ROW_LEVEL_REPAIR is enabled")
             repair_uses_stream = False
         except Exception as ex:
