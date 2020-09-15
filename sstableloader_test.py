@@ -6,8 +6,10 @@ import os
 from migration_test import MigrationTestBase
 from dtest import Tester, debug
 from tools import safe_mkdtemp
+from scylla_tools import insert_c1c2
 # from nose import tools
 from nose.plugins.attrib import attr
+from assertions import assert_none
 
 # @tools.istest
 
@@ -183,3 +185,52 @@ for version in versions:
         cls_name = ('TestMigration_with_{0}{1}'.format(version, '' if prepared else '_prepared'))
         vars()[cls_name] = type(cls_name, (TestSSTableLoader,), {
             'version': version, 'prepared': prepared, '__test__': True})
+
+
+@attr('dtest-full', 'single_node')
+class AdditionalTestSSTableLoader(MigrationTestBase):
+
+    __test__ = True
+
+    def option_ignore_missing_columns_test(self):
+        """
+        Verify `--ignore-missing-columns` option of sstableloader works
+        Related issue: https://github.com/scylladb/scylla/issues/6990
+        """
+        cluster = self.cluster
+        cluster.populate(1).start(wait_for_binary_proto=True)
+        node1 = cluster.nodelist()[0]
+
+        # Prepare test table and test data
+        self.create_ks_and_cf(node1, {'c1': 'text', 'c2': 'text'}, None, None)
+        session = self.patient_cql_connection(node1)
+        insert_c1c2(session, n=10)
+        node1.flush()
+
+        # Create snapshot
+        snapshot_name = 'test_snapshot'
+        node1.nodetool(f"snapshot -t {snapshot_name} -cf cf -- ks")
+
+        snapshot_dir = None
+        for root, dirs, files in os.walk(os.path.join(self.test_path, 'test', 'node1', 'data', 'ks')):
+            for name in dirs:
+                if name == snapshot_name:
+                    snapshot_dir = os.path.join(root, name)
+        assert snapshot_dir is not None, 'snapshot_dir is not found'
+        cf_dir = os.path.join(snapshot_dir, '..')
+
+        # Clean data and drop one column
+        session.execute("TRUNCATE ks.cf")
+        session.execute("ALTER TABLE ks.cf DROP c2")
+
+        # Load snapshot by sstableloader
+        ip = node1.address()
+        debug('Run sstableloader on node1')
+        cmd = [node1.get_tool('sstableloader'), '-d', ip, '--ignore-missing-columns', 'c2', f'{snapshot_dir}']
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdout, stderr = p.communicate()
+        exit_status = p.wait()
+        if exit_status != 0:
+            raise Exception(
+                f"sstableloader command failed, exit status: {exit_status}, stdout: {stdout}, stderr: {stderr}")
+        assert_none(session, 'SELECT * FROM ks.cf')
