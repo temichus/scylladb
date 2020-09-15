@@ -1,9 +1,9 @@
 from unittest import skip
 from cassandra import ConsistencyLevel
 
-from dtest import Tester, debug
+from dtest import Tester, debug, wait_for
 import glob
-from tools import create_c1c2_table, insert_c1c2, query_c1c2, delete_c1c2
+from tools import create_c1c2_table, insert_c1c2, query_c1c2, delete_c1c2, new_node
 import time
 from nose.plugins.attrib import attr
 
@@ -195,6 +195,101 @@ class TestHintedHandoff(Tester):
         debug("Checking the key...")
         query_c1c2(session, 0, ConsistencyLevel.ONE)
 
+    def hintedhandoff_counter_test(self):
+        """
+        Tests that counter updates are sent correctly as hints.
+
+        Create a 2 node cluster with hinted handoff enabled
+        Create a KS with RF=2
+        Create a table with counters
+        Shut down node2
+        Insert 100 rows with CL=ONE. Counters need at least consistency ONE, we can't use ANY.
+        Restart node1 with hinted handoff disabled
+        Bring the node2 up
+        Add node3 to the cluster
+        Restart node1 with hinted handoff enabled
+        Wait till hints are sent out from node1
+        Stop node1
+        Read all 100 rows with CL=ONE - it should succeed and have values that were written by us.
+        """
+        self.__start_cluster_with_hints(num=2)
+
+        [node1, node2] = self.cluster.nodelist()
+        session = self.patient_cql_connection(node1)
+
+        debug("Preparing a KS and a CF...")
+        self.create_ks(session, 'ks', 2)
+        session.execute("CREATE TABLE ks.tbl (pk int PRIMARY KEY, c counter) " +
+                        "WITH speculative_retry = 'NONE' " +
+                        "AND read_repair_chance = 0 " +
+                        "AND dclocal_read_repair_chance = 0")
+
+        debug("Stopping node2...")
+        node2.stop(wait_other_notice=True)
+
+        debug("Populating the data...")
+        stmt = session.prepare("UPDATE ks.tbl SET c = c + ? WHERE pk = ?")
+        stmt.consistency_level = ConsistencyLevel.ONE
+
+        expected_values = [100 * i for i in range(100)]
+        for i, v in enumerate(expected_values):
+            session.execute(stmt.bind((v, i)))
+
+        debug("Restarting node1 with hinted handoff disabled...")
+        node1.stop()
+        node1.start(wait_for_binary_proto=True, jvm_args=self.__jvm_args(node1, hh_enabled_value='false'))
+
+        debug("Starting node2...")
+        node2.start(wait_for_binary_proto=True, jvm_args=self.__jvm_args(node2))
+
+        debug("Adding node3...")
+        node3 = new_node(self.cluster, bootstrap=True)
+        node3.start(wait_for_binary_proto=True, jvm_args=self.__jvm_args(node3))
+
+        debug("Restarting node1 with hinted handoff enabled...")
+        node1.stop()
+        node1.start(wait_for_binary_proto=True, jvm_args=self.__jvm_args(node1, hh_enabled_value='true'))
+
+        debug("Waiting for hints to be sent...".format(self.__hint_flush_threshold))
+        self.__wait_until_hints_are_sent_from(node_from=node1, count=len(expected_values))
+
+        # We want to check that hints for counters are sent correctly.
+        # At this point, there should be 100 hints sent from node1 and node2.
+        # There was a topology change between hints storing and sending, so
+        # node2 might no longer be a replica for some of them (those hints are
+        # orphaned in a sense). Non-orphaned and orphaned hints use a slightly
+        # different code path for sending and we want to test them both.
+        #
+        # We can check if values written by both paths have sensible values
+        # by stopping node1 and reading with CL=ONE.
+        # - Rows with nodes 1 & 2 as replicas were written to node2
+        #   by non-orphaned hints. We will read those rows from node2 only,
+        #   because node1 is down.
+        # - Rows with nodes 1 & 3 as replicas were written to node3
+        #   by orphaned hints. If they were sent incorrectly, they
+        #   will overwrite what node3 previously had. We will read
+        #   those rows from node3 only, because node1 is down.
+        # - Rows with nodes 2 & 3 as replicas will be read from either node2
+        #   or node3. They should have correct value, but it won't be obvious
+        #   from which node the value came if it is incorrect.
+        debug("Stopping node1...")
+        node1.stop(wait_other_notice=True)
+
+        debug("Reading the data from nodes 2 and 3...")
+        session = self.patient_cql_connection(node3)
+        stmt = session.prepare("SELECT c FROM ks.tbl WHERE pk = ?")
+        stmt.consistency_level = ConsistencyLevel.ONE
+
+        # Collect all rows into a list and then compare with data that we expect
+        actual_values = []
+        for i, v in enumerate(expected_values):
+            row = list(session.execute(stmt.bind((i,))))[0]
+            if row.c != v:
+                debug("pk={}; actual c={}, expected c={}".format(i, row.c, v))
+            actual_values.append(row.c)
+
+        self.assertListEqual(actual_values, expected_values)
+
     def hintedhandoff_decom_test(self):
         """
         Test hints draining when node is decommissioned (nodetool decommission).
@@ -381,6 +476,14 @@ class TestHintedHandoff(Tester):
 
         for node in nodes:
             node.start(wait_for_binary_proto=True, jvm_args=self.__jvm_args(node, hh_enabled_value) + custom_args)
+
+    def __wait_until_hints_are_sent_from(self, node_from, count):
+        def check():
+            res = self.get_node_metrics(self.get_ip_from_node(node_from), metrics=["scylla_hints_manager_sent"])
+            sent_count = res["scylla_hints_manager_sent"]
+            debug("There were {} hints sent".format(sent_count))
+            return sent_count >= count
+        wait_for(check, timeout=60, text="Waiting until there are {} hints sent from {}...".format(count, node_from.name))
 
     def __check_hints_dir_present(self, node_from, node_to, must_be_present=True, shard=None):
         dir_name = ""
