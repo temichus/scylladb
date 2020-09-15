@@ -146,6 +146,8 @@ class ScyllaManagerApiBase:
 
         def convert_to_real_type(_field):
             try:
+                if _field is None:
+                    return None
                 return literal_eval(_field)
             except (ValueError, SyntaxError):
                 return _field
@@ -311,7 +313,7 @@ class ScyllaManagerTaskApi(ScyllaManagerApiBase):
         }
         parsers = {
             "arguments": re.compile(
-                r"-K\s(\')?(?P<keyspace_list>[\d\w,]+)?'\s-L\s(\')?(?P<location_list>[\d\w:-]+)(\')?"
+                r"-K\s(\')?(?P<keyspace_list>[\d\w,]+)?'(\s-L\s(\')?(?P<location_list>[\d\w:-]+)(\')?)?"
                 r"(\s--retention\s(\')?(?P<retention>\d+)(\')?)?(\s--rate-limit\s(\')?(?P<rate_limit>[\d,]+)(\')?)?"
                 r"(\s--snapshot-parallel\s(\')?(?P<snapshot_parallel_list>[\d,]+)(\')?)?(\s--upload-parallel\s(\')?"
                 r"(?P<upload_parallel_list>[\d,]+)(\')?)?"),
@@ -902,8 +904,7 @@ class ManagerTask(ScyllaManagerBase):
             raise err
 
     def enabled(self, is_enabled):
-        return self.backup_api.update(
-            backup_id=self.id, cluster_name=self.cluster_id, enabled="true" if is_enabled else "false")
+        return self.update(enabled="true" if is_enabled else "false")
 
 
 class RepairTask(ManagerTask):
@@ -979,7 +980,7 @@ class BackupTask(ManagerTask):
                interval: str = None, keyspace_list: list or str = None, location_list: list or str = None,
                num_retries: int = None, rate_limit_list: list or str = None, retention: int = None,
                is_show_tables: bool = None, snapshot_parallel_list: list or str = None, start_date: str = None,
-               upload_parallel_list: list or str = None, cluster_name: str = None, sctool_kwargs: dict = None,
+               upload_parallel_list: list or str = None, sctool_kwargs: dict = None,
                **kwargs):
         if kwargs:
             raise ScyllaManagerError(f"The following variables are unused '{pformat(kwargs)}'")
@@ -988,7 +989,7 @@ class BackupTask(ManagerTask):
             keyspace_list=keyspace_list, location_list=location_list, num_retries=num_retries,
             rate_limit_list=rate_limit_list, retention=retention, is_show_tables=is_show_tables,
             snapshot_parallel_list=snapshot_parallel_list, start_date=start_date,
-            upload_parallel_list=upload_parallel_list, cluster_name=cluster_name, sctool_kwargs=sctool_kwargs)
+            upload_parallel_list=upload_parallel_list, cluster_name=self.cluster_id, sctool_kwargs=sctool_kwargs)
 
 
 class RestTask(ManagerTask):
