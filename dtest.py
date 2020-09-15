@@ -1233,7 +1233,10 @@ class Tester(TestCase):
             patterns = []
         patterns += self.ignore_log_patterns
         patterns += self.ignore_cores_log_patterns
-        patterns.append(r'.*Compaction for .* deliberately stopped.*')
+        patterns += [
+            r'Compaction for .* deliberately stopped',
+            r'update compaction history failed:.*ignored',
+        ]
         # ignore expected rpc errors when nodes are stopped.
         expected_rpc_errors = [
             'connection dropped: connection is closed',
