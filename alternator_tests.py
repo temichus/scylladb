@@ -5,6 +5,7 @@ import shutil
 import string
 import tempfile
 import time
+from threading import Thread
 from copy import deepcopy
 from boto3.dynamodb.conditions import Attr
 from decimal import Decimal
@@ -652,3 +653,71 @@ class AlternatorTest(TesterAlternator):
         cmd = f"tablestats alternator_{table_name_with_dot_prefix}"
         info(f"Executing the following command '{cmd}'")
         node1.nodetool(cmd)
+
+    def test_putitem_contention(self):
+        """
+        This test reproduces issue #7218, where PutItem operations sometimes
+        lost part of the item being written - some attributes were lost, and
+        the name of other attributes replaced by empty strings. The problem
+        happenes when the write-isolation policy is LWT and there is
+        contention of writes to the same partition (not necessarily the same
+        item) happening on more than one coordinator.
+        To reproduce this contention, we need to start (at least) two nodes,
+        and connect to them concurrently from two threads.
+        """
+        self.prepare_dynamodb_cluster(num_of_nodes=2)
+        [node1, node2] = self.cluster.nodelist()
+        r1 = self.get_dynamodb_api(node=node1).resource
+        r2 = self.get_dynamodb_api(node=node2).resource
+        # Create the table, access it through the two connections, r1 and r2:
+        table_name = "test_putitem_contention_table"
+        table_r1 = r1.create_table(
+            TableName=table_name,
+            KeySchema=[{"AttributeName": "p", "KeyType": "HASH"},
+                       {"AttributeName": "c", "KeyType": "RANGE"}],
+            AttributeDefinitions=[
+                {"AttributeName": "p", "AttributeType": "S"},
+                {"AttributeName": "c", "AttributeType": "S"}],
+            BillingMode='PAY_PER_REQUEST')
+        waiter = r1.meta.client.get_waiter('table_exists')
+        waiter.wait(TableName=table_name)
+        table_r2 = r2.Table(table_name)
+
+        def writes(tab, rang):
+            for i in rang:
+                tab.put_item(Item={
+                    'p': 'hi',
+                    'c': 'item{}'.format(i),
+                    'v1': 'dog',
+                    'v2': 'cat'})
+        # Create two writing threads, each writing 1000 *different* rows to
+        # one different connection:
+        total_items = 2000
+        t1 = Thread(target=writes, args=(table_r1, range(0, 1000)), daemon=True)
+        t2 = Thread(target=writes, args=(table_r2, range(1000, 2000)), daemon=True)
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
+        # Scan the table, looking for broken items (issue #7218)
+        n_items = 0
+        n_bad_items = 0
+
+        def check_item(item):
+            nonlocal n_items
+            nonlocal n_bad_items
+            n_items = n_items + 1
+            if not 'v1' in item or not 'v2' in item:
+                n_bad_items = n_bad_items + 1
+                print('Bad item: {}'.format(item))
+
+        def check_items(items):
+            for item in items:
+                check_item(item)
+        response = table_r1.scan(ConsistentRead=True)
+        check_items(response['Items'])
+        while 'LastEvaluatedKey' in response:
+            response = table_r1.scan(ExclusiveStartKey=response['LastEvaluatedKey'], ConsistentRead=True)
+            check_items(response['Items'])
+        self.assertTrue(n_items == total_items)
+        self.assertTrue(n_bad_items == 0)
