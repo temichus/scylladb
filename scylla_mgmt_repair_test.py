@@ -9,8 +9,9 @@ from unittest import skip
 
 from dtest_scylla_manager import HostRestStatus, ScyllaManagerTool, ScyllaManagerError, ScyllaManagerMixin, \
     NodeStatus, HostHealth, Status
-from dtest import debug, WaitTimeoutExpired
+from dtest import debug, WaitTimeoutExpired, info
 from dtest_scylla_manager import TaskStatus
+from manager_backup_tests import CLUSTER_NAME
 from scylla_tools import insert_c1c2
 from assertions import assert_row_count, assert_all
 
@@ -533,3 +534,46 @@ class TestScyllaMgmtRepair(RepairAdditionalBase, ScyllaManagerMixin):
         assert repair_task.arguments["keyspace_list"] == "ks2"
         repair_task.wait_for_status(list_status=[TaskStatus.RUNNING, TaskStatus.DONE], timeout=100, step=5)
         assert 'ks2' in repair_task.progress_details[-1], "keyspace 'ks2' table is not reported by repair task progress"
+
+    def test_intensity_and_parallel(self):
+        """
+        Executing a repair with a specified intensity, and executing a task status
+        Expected:
+         The value of the intensity arg of the task status will be included in the output of task progress
+        """
+        cluster_size = 2
+        node1, *_ = self.config_and_create_cluster(nodes=cluster_size)
+        mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
+        keyspace_name = "keyspace1"
+        table_name = "cf1"
+        intensity = 2
+        parallel_value = 1
+
+        with self.patient_cql_cluster_session(node1) as session:
+            self.create_ks(session=session, name=keyspace_name, rf=cluster_size)
+            self.create_cf(session=session, name=table_name)
+
+        info(f"Creating new repair task with following values: 'keyspace'={keyspace_name}, intensity='{intensity}'"
+             f"and parallel='{parallel_value}'")
+        repair_task = mgr_cluster.repair_api.repair(
+            keyspace_list=keyspace_name, intensity=intensity, parallel=parallel_value, cluster_name=mgr_cluster.id)
+        info(f"Checking the 'intensity' and 'keyspace' parameters are exists under task arguments")
+        arguments = repair_task.arguments
+        assert arguments["keyspace_list"] == keyspace_name, \
+            "The expected `keysapce` should be '{}' and not '{}'".format(keyspace_name, arguments["keyspace_list"])
+        assert arguments["intensity"] == intensity, \
+            "The expected `intensity` should be '{}' and not '{}'".format(intensity, arguments["intensity"])
+        assert arguments["parallel"] == parallel_value, \
+            "The expected `parallel` should be '{}' and not '{}'".format(parallel_value, arguments["parallel"])
+
+        list_status = [TaskStatus.DONE]
+        info(f"Waiting until the task will be in '{list_status}' state")
+        repair_task.wait_for_status(list_status=list_status, timeout=40, step=2)
+        info(f"Checking the 'intensity' is exists under 'task progress' command")
+        intensity_field = f"--intensity {intensity}"
+        parallel_field = f"--parallel {parallel_value}"
+        full_progress_string = repair_task.full_progress_string()
+        assert intensity_field in full_progress_string, \
+            f"The '{intensity_field}' not found under 'task progress' command"
+        assert parallel_field in full_progress_string, \
+            f"The '{parallel_field}' not found under 'task progress' command"

@@ -332,6 +332,7 @@ class ScyllaManagerTaskApi(ScyllaManagerApiBase):
                 re.compile(r".*\s--snapshot-parallel\s(\')?(?P<snapshot_parallel_list>[\d,]+)(\')?($|\s)"),
                 re.compile(r".*\s--upload-parallel\s(\')?(?P<upload_parallel_list>[\d,]+)(\')?($|\s)"),
                 re.compile(r".*\s--intensity\s(\')?(?P<intensity>[\d]+)(\')?($|\s)"),
+                re.compile(r".*\s--parallel\s(\')?(?P<parallel>[\d]+)(\')?($|\s)"),
 
             ],
         }
@@ -420,6 +421,7 @@ class ScyllaManagerRepairApi(ScyllaManagerApiBase):
             "intensity": "--intensity",
             "keyspace_list": "--keyspace",
             "num_retries": "--num-retries",
+            "parallel": "--parallel",
             "is_show_tables": "--show-tables",
             "small_table_threshold": "--small-table-threshold",
             "start_date": "--start-date",
@@ -431,26 +433,39 @@ class ScyllaManagerRepairApi(ScyllaManagerApiBase):
     def update(self,  # pylint: disable=too-many-arguments
                repair_id: str, dc_names: list or str = None, dry_run: bool = None, enabled: str = None,
                is_fail_fast: bool = None, intensity: float = None, interval: str = None,
-               keyspace_list: list or str = None, num_retries: int = None, is_show_tables: bool = None,
-               small_table_threshold: str = None, start_date: str = None, cluster_name: str = None,
-               sctool_kwargs: dict = None):
+               keyspace_list: list or str = None, num_retries: int = None, parallel: int = None,
+               is_show_tables: bool = None, small_table_threshold: str = None, start_date: str = None,
+               cluster_name: str = None, sctool_kwargs: dict = None):
         """
         Usage:
-        sctool repair update <type/task-id> [flags]
-
+          sctool repair update <type/task-id> [flags]
         Flags:
-              --dc list                        a comma-separated list of datacenter glob patterns, e.g. 'dc1,!otherdc*', used to specify the DCs to include or exclude from repair
+              --dc list                        a comma-separated list of datacenter glob patterns, e.g.
+                                                'dc1,!otherdc*', used to specify the DCs to include or exclude from
+                                                 repair
               --dry-run                        validate and print repair information without scheduling a repair
           -e, --enabled string                 enabled (default "true")
               --fail-fast                      stop repair on first error
-              --intensity float                integer >= 1 or a float between (0-1), higher values may result in higher speed or cluster load, values between (0, 1) specify percentage of nodes that are repaired at once.
-          -i, --interval string                task schedule interval e.g. 3d2h10m, valid units are d, h, m, s (default "0")
-          -K, --keyspace list                  a comma-separated list of keyspace/tables glob patterns, e.g. 'keyspace,!keyspace.table_prefix_*' used to include or exclude keyspaces from backup
-          -r, --num-retries int                the number of times a scheduled task will retry to run before failing (default 3)
-              --show-tables                    print all table names for a keyspace. Used only in conjunction with --dry-run
-              --small-table-threshold string   enable small table optimization for tables of size lower than given threshold. Supported units [B, MiB, GiB, TiB] (default "1GiB")
-          -s, --start-date string              specifies the task start date expressed in the RFC3339 format or now[+duration], e.g. now+3d2h10m, valid units are d, h, m, s (default "now")
-
+              --intensity float                integer >= 1 or a decimal between (0,1), higher values may result in
+                                                higher speed and cluster load. 0 value means repair at maximum
+                                                intensity (default 1)
+          -i, --interval string                task schedule interval e.g. 3d2h10m, valid units are d, h, m, s
+                                                (default "0")
+          -K, --keyspace list                  a comma-separated list of keyspace/tables glob patterns, e.g.
+                                                'keyspace,!keyspace.table_prefix_*' used to include or exclude keyspaces
+                                                 from backup
+          -r, --num-retries int                the number of times a scheduled task will retry to run before failing
+                                                (default 3)
+              --parallel int                   The maximum number of repair jobs to run in parallel, each node can
+                                                participate in at most one repair at any given time.
+                                               Default is means system will repair at maximum parallelism
+              --show-tables                    print all table names for a keyspace. Used only in conjunction with
+                                                --dry-run
+              --small-table-threshold string   enable small table optimization for tables of size lower than given
+                                                threshold. Supported units [B, MiB, GiB, TiB] (default "1GiB")
+          -s, --start-date string              specifies the task start date expressed in the RFC3339 format or
+                                                now[+duration], e.g. now+3d2h10m, valid units are d, h, m, s
+                                                (default "now")
         Global Flags:
               --api-cert-file path   path to HTTPS client certificate to access Scylla Manager server
               --api-key-file path    path to HTTPS client key to access Scylla Manager server
