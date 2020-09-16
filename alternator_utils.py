@@ -10,11 +10,11 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from itertools import chain
 from pprint import pformat
-from typing import List, Dict, Union, Optional
+from typing import List, Dict, Union, Optional, NamedTuple, Any, Set
+from decimal import Decimal
 
 import boto3
 from mypy_boto3_dynamodb import DynamoDBClient, DynamoDBServiceResource
-from mypy_boto3_dynamodb.type_defs import AttributeValueTypeDef
 from mypy_boto3_dynamodb.service_resource import Table
 from deepdiff import DeepDiff
 from nose.plugins.attrib import attr
@@ -23,6 +23,12 @@ from ccmlib.scylla_node import ScyllaNode
 
 from cdc_tests import CDCInitializeHelper
 from dtest import debug, Tester, info, retrying
+
+# DynamoDB's "AttributeValue", but as decoded by boto3 into Python types,
+# not the JSON serialization.
+AttributeValueTypeDef = Union[bytes, bytearray, str, int, Decimal, bool,
+                              Set[int], Set[Decimal], Set[str], Set[bytes], Set[bytearray], List[Any],
+                              Dict[str, Any], None]
 
 ALTERNATOR_SNAPSHOT_FOLDER = os.path.join(os.getcwd(), "alternator", "snapshot")
 TABLE_NAME = 'user_table'
