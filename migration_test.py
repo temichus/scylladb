@@ -74,6 +74,35 @@ class MigrationTestBase(Tester):
         # DELETE FROM ks.cf where key = 'a';
         self._run_basic_migration_test('with_row_tombstone', None)
 
+    def migrate_sstable_with_range_boundary_tombstone_test(self):
+        if self.version == '2_1_x' or self.version == '2_2_x':
+            self.skipTest('Test not supported in version 2.1.x or 2.2.x')
+
+        node1 = self.start_cluster_and_get_node1()
+
+        query = 'CREATE COLUMNFAMILY ks.cf (pk int, ck int, PRIMARY KEY (pk, ck))'
+        self.create_ks_and_cf(node1, None, None, False, query=query)
+
+        self.load_migrated_tables(node1, 'with_range_boundary_tombstone')
+
+        self.check_number_of_rows(node1, 1)
+
+        result = self.get_all_rows_for_check(node1)
+        # https://github.com/scylladb/scylla-tools-java/issues/205
+        # Content generated with:
+        # CREATE COLUMNFAMILY ks.cf (pk int, ck int, PRIMARY KEY (pk, ck));
+        # INSERT INTO ks.cf (pk, ck) VALUES (1, 1);
+        # INSERT INTO ks.cf (pk, ck) VALUES (1, 2);
+        # INSERT INTO ks.cf (pk, ck) VALUES (1, 3);
+        # INSERT INTO ks.cf (pk, ck) VALUES (1, 4);
+        # INSERT INTO ks.cf (pk, ck) VALUES (1, 5);
+        # nodetool flush
+        # DELETE FROM ks.cf WHERE pk = 1 AND ck >= 2 AND ck < 3;
+        # DELETE FROM ks.cf WHERE pk = 1 AND ck >= 3;
+
+        self.assertEqual(result[0].pk, 1, "check partition key")
+        self.assertEqual(result[0].ck, 1, "check clustering key")
+
     def migrate_sstable_with_range_tombstone_test(self):
         # Content generated with:
         # INSERT INTO ks.cf (key, c1, c2) VALUES ('a', 'abc', 'cde');
