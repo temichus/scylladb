@@ -297,10 +297,11 @@ class TestUpdateClusterLayout(Tester):
         node4 = new_node(cluster)
         node4.start(jvm_args=['--logger-log-level', 'stream_session=debug'], no_wait=True)
         node4.watch_log_for("JOINING: Starting to bootstrap")
-        log_timeout=600
+        log_timeout = 600
         if isinstance(self.cluster, ScyllaCluster) and self.cluster.scylla_mode == 'debug':
             log_timeout *= 3
-        node4.watch_log_for("Beginning stream session|sync data for keyspace=ks[1-3]?, status=started", timeout=log_timeout)
+        node4.watch_log_for(
+            "Beginning stream session|sync data for keyspace=ks[1-3]?, status=started", timeout=log_timeout)
 
         self.ignore_log_patterns += [
             r'Repair .* status=failed: mandatory neighbor={} is not alive'.format(node2.address()),
