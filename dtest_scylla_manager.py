@@ -146,11 +146,29 @@ class ScyllaManagerApiBase:
             except (ValueError, SyntaxError):
                 return _field
 
-        for field_name, field_value in parser_result.groupdict().items():
-            if "," in field_value:
-                result[field_name] = [convert_to_real_type(field) for field in field_value.split(",")]
-            else:
-                result[field_name] = convert_to_real_type(field_value)
+        result, regex_result = {}, {}
+        if regex_name not in self.parsers:
+            raise ScyllaManagerParserError(f"There is no parser named '{regex_name}'."
+                                           f"\nThe following parsers are exists: '{list(self.parsers)}'")
+        regexes = self.parsers[regex_name]
+        if isinstance(regexes, list):
+            for field_regex in regexes:
+                parser_result = field_regex.match(output)
+                if parser_result:
+                    regex_result.update(parser_result.groupdict())
+        else:
+            parser_result = regexes.match(output)
+            if parser_result:
+                regex_result.update(parser_result.groupdict())
+        if not regex_result:
+            raise ScyllaManagerParserError(f"The following output could not be parsed:\n'{output}'")
+
+        for field_name, field_value in regex_result.items():
+            if field_value is not None:
+                if "," in field_value:
+                    result[field_name] = [convert_to_real_type(field) for field in field_value.split(",")]
+                else:
+                    result[field_name] = convert_to_real_type(field_value)
         return result
 
 
@@ -306,11 +324,16 @@ class ScyllaManagerTaskApi(ScyllaManagerApiBase):
             "cluster_name": "--cluster",
         }
         parsers = {
-            "arguments": re.compile(
-                r"-K\s(\')?(?P<keyspace_list>[\d\w,]+)?'(\s-L\s(\')?(?P<location_list>[\d\w:-]+)(\')?)?"
-                r"(\s--retention\s(\')?(?P<retention>\d+)(\')?)?(\s--rate-limit\s(\')?(?P<rate_limit>[\d,]+)(\')?)?"
-                r"(\s--snapshot-parallel\s(\')?(?P<snapshot_parallel_list>[\d,]+)(\')?)?(\s--upload-parallel\s(\')?"
-                r"(?P<upload_parallel_list>[\d,]+)(\')?)?"),
+            "arguments": [
+                re.compile(r".*-K\s(\')?(?P<keyspace_list>[\d\w,]+)(\')?($|\s)"),
+                re.compile(r".*L\s(\')?(?P<location_list>[\d\w:-]+)(\')?($|\s)"),
+                re.compile(r".*\s--retention\s(\')?(?P<retention>\d+)(\')?($|\s)"),
+                re.compile(r".*\s--rate-limit\s(\')?(?P<rate_limit>[\d,]+)(\')?($|\s)"),
+                re.compile(r".*\s--snapshot-parallel\s(\')?(?P<snapshot_parallel_list>[\d,]+)(\')?($|\s)"),
+                re.compile(r".*\s--upload-parallel\s(\')?(?P<upload_parallel_list>[\d,]+)(\')?($|\s)"),
+                re.compile(r".*\s--intensity\s(\')?(?P<intensity>[\d]+)(\')?($|\s)"),
+
+            ],
         }
         super().__init__(sctool=sctool, cmd_translate_dict=cmd_translate_dict, parsers=parsers)
 
