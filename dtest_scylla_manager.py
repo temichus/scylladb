@@ -5,8 +5,8 @@ import re
 
 import time
 from pprint import pformat
-from typing import Union, List
-
+from typing import Union, List, Dict
+from collections import namedtuple
 import yaml
 from enum import Enum
 from re import findall
@@ -16,6 +16,10 @@ from ccmlib import common
 from scrub_test import TestHelper
 from dtest import warning, debug, wait_for, WaitTimeoutExpired
 from distutils.version import LooseVersion
+
+Status = namedtuple("Status", ["status", "time", "time_type"], defaults=[None, None, None])
+Uptime = namedtuple("Uptime", ["hours", "minutes", "seconds"], defaults=[None, None, None])
+Memory = namedtuple("Memory", ["size", "type"], defaults=[None, None])
 
 
 class ScyllaManagerError(Exception):
@@ -38,22 +42,6 @@ class HostSsl(Enum):
         if "SSL" in output_str:
             return HostSsl.ON
         return HostSsl.OFF
-
-
-class HostStatus(Enum):
-    UP = "UP"
-    DOWN = "DOWN"
-    TIMEOUT = "TIMEOUT"
-
-    @classmethod
-    def from_str(cls, output_str):
-        try:
-            output_str = output_str.upper()
-            if output_str == "-":
-                return cls.DOWN
-            return getattr(cls, output_str)
-        except AttributeError:
-            raise ScyllaManagerError("Could not recognize returned host status: {}".format(output_str))
 
 
 class HostRestStatus(Enum):
@@ -98,6 +86,21 @@ class TaskStatus(Enum):
         return cls._member_map_.values()
 
 
+class AlternatorStatus(Enum):
+    UP = "UP"
+    DOWN = "DOWN"
+
+
+class CqlStatus(Enum):
+    UP = "UP"
+    DOWN = "DOWN"
+
+
+class NodeStatus(Enum):
+    UP = "UN"
+    DOWN = "DN"
+
+
 class MgrUtils(object):
 
     @staticmethod
@@ -135,15 +138,6 @@ class ScyllaManagerApiBase:
                 if option_value is not None and option_key in self.cmd_translate_dict}
 
     def parse_output(self, output, regex_name):
-        result = {}
-
-        if regex_name not in self.parsers:
-            raise ScyllaManagerParserError(f"There is no parser named '{regex_name}'."
-                                           f"\nThe following parsers are exists: '{list(self.parsers)}'")
-        parser_result = self.parsers.get(regex_name).match(output)
-        if not parser_result:
-            raise ScyllaManagerParserError(f"The following output could not be parsed:\n'{output}'")
-
         def convert_to_real_type(_field):
             try:
                 if _field is None:
@@ -347,6 +341,52 @@ class ScyllaManagerTaskApi(ScyllaManagerApiBase):
             **(sctool_kwargs or {"is_verify_errorless_result": True}))
 
 
+class ScyllaManagerStatusApi(ScyllaManagerApiBase):
+    def __init__(self, sctool):
+        cmd_translate_dict = {
+            "cluster_name": "--cluster",
+        }
+        parsers = {
+            "Datacenter": re.compile(r"(?P<data_center>[\w\d]+)"),
+            "": re.compile(r"(?P<status>\w+)"),
+            "Alternator": re.compile(r"(?P<alternator_status>\w+)\s\((?P<alternator_time>\d+)"
+                                     r"(?P<alternator_time_type>\w+)\)"),
+            "CQL": re.compile(r"(?P<cql_status>\w+)\s\((?P<cql_time>\d+)(?P<cql_time_type>\w+)\)"),
+            "REST": re.compile(r"(?P<rest_status>\w+)\s\((?P<rest_time>\d+)(?P<rest_time_type>\w+)\)"),
+            "Address": re.compile(r"(?P<address>[\d.]+)"),
+            "Uptime": re.compile(r"((?P<hours>\d+)h)?((?P<minutes>\d+)m)?((?P<seconds>\d+)s)?"),
+            "CPUs": re.compile(r"(?P<cpus>\d+)"),
+            "Memory": re.compile(r"((?P<memory_size>[\d.]+)(?P<memory_type>\w+))"),
+            "Scylla": re.compile(r"(?P<scylla_version>[\w\d.-]+)"),
+            "Agent": re.compile(r"(?P<agent_version>[\w\d.-]+)"),
+            "Host ID": re.compile(r"(?P<host_id>[\w\d.-]+)"),
+        }
+        super().__init__(sctool=sctool, cmd_translate_dict=cmd_translate_dict, parsers=parsers)
+
+    def status(self, cluster_name: str = None, sctool_kwargs: dict = None):
+        """
+        Shows cluster status
+
+        Usage:
+          sctool status [flags]
+
+        Flags:
+
+        Global Flags:
+              --api-cert-file path   path to HTTPS client certificate to access Scylla Manager server
+              --api-key-file path    path to HTTPS client key to access Scylla Manager server
+              --api-url URL          URL of Scylla Manager server (default "http://127.0.0.1:5080/api/v1")
+          -c, --cluster name         Specifies the target cluster name or ID
+
+        Scylla Docs:
+          https://docs.scylladb.com/operating-scylla/manager/2.1/sctool/#status
+        """
+        options = self.create_command_options(cmd_options_dict=locals())
+        return self.sctool.run(
+            cmd=self.create_sctool_command(cmd_options=options, cmd_hierarchy=["status"]),
+            **(sctool_kwargs or {"is_verify_errorless_result": True}))
+
+
 class ScyllaManagerRepairApi(ScyllaManagerApiBase):
     def __init__(self, sctool):
         cmd_translate_dict = {
@@ -410,6 +450,7 @@ class ScyllaManagerBase(object):
         self.sctool = SCTool(scylla_manager=scylla_manager)
         self.backup_api = ScyllaManagerBackupApi(sctool=self.sctool)
         self.task_api = ScyllaManagerTaskApi(sctool=self.sctool)
+        self.status_api = ScyllaManagerStatusApi(sctool=self.sctool)
         self.repair_api = ScyllaManagerRepairApi(sctool=self.sctool)
         self.scylla_manager = scylla_manager
 
@@ -1025,6 +1066,31 @@ class RestTask(ManagerTask):
         ManagerTask.__init__(self, task_id=task_id, cluster_id=cluster_id, scylla_manager=scylla_manager)
 
 
+class HostHealth:
+    def __init__(self, datacenter_name, **kwargs):
+        self.datacenter = datacenter_name
+        self.node_status = NodeStatus(kwargs.pop("status"))
+        self.alternator = Status(
+            status=(kwargs.get("alternator_status") and AlternatorStatus(kwargs.pop("alternator_status")) or None),
+            time=kwargs.pop("alternator_time", None), time_type=kwargs.pop("alternator_time_type", None))
+        self.cql = Status(status=(kwargs.get("cql_status") and CqlStatus(kwargs.pop("cql_status")) or None),
+                          time=kwargs.pop("cql_time", None),
+                          time_type=kwargs.pop("cql_time_type", None))
+        self.rest = Status(status=(kwargs.get("rest_status") and HostRestStatus(kwargs.pop("rest_status"))) or None,
+                           time=kwargs.pop("rest_time", None), time_type=kwargs.pop("rest_time_type", None))
+        self.address = kwargs.pop("address")
+        self.uptime = Uptime(hours=kwargs.pop("hours", None), minutes=kwargs.pop("minutes", None),
+                             seconds=kwargs.pop("seconds", None))
+        self.cpus = kwargs.pop("cpus", None)
+        self.memory = Memory(size=kwargs.pop("memory_size", None), type=kwargs.pop("memory_type", None))
+        self.scylla_version = kwargs.pop("scylla_version", None)
+        self.agent_version = kwargs.pop("agent_version", None)
+        self.host_id = kwargs.pop("host_id")
+
+        if kwargs:
+            raise ValueError(f"The following variables are unused: {pformat(kwargs)}")
+
+
 class ManagerCluster(ScyllaManagerBase):
 
     def __init__(self, scylla_manager, cluster_id, client_encrypt=False):
@@ -1271,97 +1337,35 @@ class ManagerCluster(ScyllaManagerBase):
         # return the manager's rest-task object with the found id
         return RestTask(task_id=rest_id, cluster_id=self.id, scylla_manager=self.scylla_manager)
 
-    def get_hosts_health(self, translate_minus_to_down=True):
+    def get_hosts_health(self) -> Dict[str, HostHealth]:
         """
         Gets the Manager's Cluster Nodes status
+
+        $ sctool status -c bla
+        Datacenter: dc1
+        +----+------------+----------+----------+-----------+-----------+------+----------+--------+--------+----------+
+        |    | Alternator | CQL      | REST     | Address   | Uptime    | CPUs | Memory   | Scylla | Agent  | Host ID  |
+        +----+------------+----------+----------+-----------+-----------+------+----------+--------+--------+----------+
+        | UN | UP (0ms)   | UP (0ms) | UP (0ms) | 127.0.2.1 | 98h50m49s | 8    | 31.18GiB | 4.1... | 666... | c684b... |
+        | UN | UP (1ms)   | UP (0ms) | UP (1ms) | 127.0.2.2 | 98h50m49s | 8    | 31.18GiB | 4.1... | 666... | 7aa22... |
+        | DN | -          | -        | -        | 127.0.2.3 | -         | -    | -        | -      | -      | 3e748... |
+        +----+------------+----------+----------+-----------+-----------+------+----------+--------+--------+----------+
         """
-        # $ sctool status -c bla
-        # Datacenter: dc1
-        # ╭────┬─────────────────────────┬───────────┬────────────────┬──────────────────────────────────────╮
-        # │    │ CQL                     │ REST      │ Host           │ Host ID                              │
-        # ├────┼─────────────────────────┼───────────┼────────────────┼──────────────────────────────────────┤
-        # │ UN │ UP SSL (58ms)           │ UP (2ms)  │ 192.168.100.11 │ a2b4200a-4157-4b47-9c10-b102246fe7ff │
-        # │ UN │ UP SSL (60ms)           │ UP (3ms)  │ 192.168.100.12 │ aa1d8329-a66e-4500-bb38-ed9c4f236a0d │
-        # │ UN │ DOWN SSL (40ms)         │ UP (11ms) │ 192.168.100.13 │ b583255c-4029-4207-8237-e40996985f29 │
-        # ╰────┴─────────────────────────┴───────────┴────────────────┴──────────────────────────────────────╯
-        # Datacenter: dc2
-        # ╭────┬─────────────────────────┬───────────────────┬────────────────┬──────────────────────────────────────╮
-        # │    │ CQL                     │ REST              │ Host           │ Host ID                              │
-        # ├────┼─────────────────────────┼───────────────────┼────────────────┼──────────────────────────────────────┤
-        # │ UN │ TIMEOUT SSL             │ UP (4ms)          │ 192.168.100.21 │ 9b91b800-f74d-47ed-973c-7a8ef8088c77 │
-        # │ UN │ TIMEOUT SSL             │ TIMEOUT           │ 192.168.100.22 │ 56d2f4c0-9327-487e-b115-c96d3e5c014b │
-        # │ UN │ UP SSL (40ms)           │ HTTP (503) (7ms)  │ 192.168.100.23 │ 08152d3d-ed30-469e-bc19-5ab9f4248e9a │
-        # ╰────┴─────────────────────────┴───────────────────┴────────────────┴──────────────────────────────────────╯
-        cmd = "status -c {}".format(self.id)
-        dict_status_tables, stderr = self.sctool.run(cmd=cmd, is_verify_errorless_result=True, is_multiple_tables=True)
+        dict_hosts_health, health_details = {}, {}
+        output = self.status_api.status(cluster_name=self.id)[0]
 
-        dict_hosts_health = {}
-        for dc_name, hosts_table in dict_status_tables.items():
-            if len(hosts_table) < 2:
-                debug("Cluster: {} - {} has no hosts health report".format(self.id, dc_name))
-            else:
-                list_titles_row = hosts_table[0]
-                host_col_idx = list_titles_row.index("Address")
-                cql_status_col_idx = list_titles_row.index("CQL")
-                rest_col_idx = list_titles_row.index("REST")
-                alternator_status_idx = list_titles_row.index("Alternator") if "Alternator" in list_titles_row else None
+        datacenter_key, datacenter_value = output[0][0].split(":", maxsplit=1)
+        datacenter_name = self.status_api.parse_output(
+            output=datacenter_value.strip(), regex_name=datacenter_key.strip())
+        table_headers = output[1]
+        for line in output[2:]:
+            [health_details.update(self.status_api.parse_output(output=value, regex_name=name))
+             for value, name in zip(line, table_headers) if value != "-"]
+            host_health_object = HostHealth(datacenter_name=datacenter_name, **health_details)
+            health_details.clear()
+            dict_hosts_health[host_health_object.address] = host_health_object
 
-                for line in hosts_table[1:]:
-                    host = line[host_col_idx]
-                    list_cql = line[cql_status_col_idx].split()
-                    status = list_cql[0]
-                    rtt = self._extract_value_with_regex(string=list_cql[-1], regex_pattern=r"\(([^)]+ms)")
-                    rest_value = line[rest_col_idx]
-                    if rest_value == '-':
-                        rest_status = rest_value
-                    else:
-                        rest_status = rest_value[:rest_value.find("(")].strip()
-                    rest_rtt = self._extract_value_with_regex(string=rest_value, regex_pattern=r"\(([^)]+ms)")
-                    rest_http_status_code = self._extract_value_with_regex(string=rest_value,
-                                                                           regex_pattern=r"\(([0-9]*?)\)")
-                    ssl = line[cql_status_col_idx]
-                    # Whether or not SSL is on is now described in the cql column
-                    # If SSL is on the column value will include "SSL" in it, and if not it will not.
-                    if alternator_status_idx is not None:
-                        list_alternator = line[alternator_status_idx].split()
-                        alternator_status = list_alternator[0]
-                        alternator_rtt = self._extract_value_with_regex(string=list_alternator[-1],
-                                                                        regex_pattern=r"\(([^)]+ms)")
-                    else:
-                        alternator_status = None
-                        alternator_rtt = None
-
-                    if translate_minus_to_down:
-                        dict_hosts_health[host] = self._HostHealth(status=HostStatus.from_str(status), rtt=rtt,
-                                                                   rest_status=HostRestStatus.from_str(rest_status),
-                                                                   rest_rtt=rest_rtt, ssl=HostSsl.from_str(ssl),
-                                                                   rest_http_status_code=rest_http_status_code,
-                                                                   alternator_status=alternator_status,
-                                                                   alternator_rtt=alternator_rtt)
-                    else:
-                        dict_hosts_health[host] = self._HostHealth(status=status, rtt=rtt,
-                                                                   rest_status=rest_status,
-                                                                   rest_rtt=rest_rtt, ssl=HostSsl.from_str(ssl),
-                                                                   rest_http_status_code=rest_http_status_code,
-                                                                   alternator_status=alternator_status,
-                                                                   alternator_rtt=alternator_rtt)
-            debug("Cluster {} Hosts Health is:".format(self.id))
-            for ip, health in dict_hosts_health.items():
-                debug("{}: {},{},{},{},{}".format(ip, health.status, health.rtt,
-                                                  health.rest_status, health.rest_rtt, health.ssl))
         return dict_hosts_health
-
-    class _HostHealth():
-        def __init__(self, status, rtt, ssl, rest_status, rest_rtt, rest_http_status_code=None,
-                     alternator_status=None, alternator_rtt=None):
-            self.status = status
-            self.rtt = rtt
-            self.rest_status = rest_status
-            self.rest_rtt = rest_rtt
-            self.ssl = ssl
-            self.rest_http_status_code = rest_http_status_code
-            self.alternator_status = alternator_status
-            self.alternator_rtt = alternator_rtt
 
     @staticmethod
     def _extract_value_with_regex(string, regex_pattern, default_value="N/A"):

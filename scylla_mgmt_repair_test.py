@@ -7,7 +7,8 @@ from cassandra.query import SimpleStatement
 from nose.plugins.attrib import attr
 from unittest import skip
 
-from dtest_scylla_manager import HostStatus, HostRestStatus, ScyllaManagerTool, ScyllaManagerError, ScyllaManagerMixin
+from dtest_scylla_manager import HostRestStatus, ScyllaManagerTool, ScyllaManagerError, ScyllaManagerMixin, \
+    NodeStatus, HostHealth, Status
 from dtest import debug, WaitTimeoutExpired
 from dtest_scylla_manager import TaskStatus
 from scylla_tools import insert_c1c2
@@ -48,8 +49,9 @@ class TestScyllaMgmtRepair(RepairAdditionalBase, ScyllaManagerMixin):
         debug("Health-check task history is: {}".format(healthcheck_task.history))
         dict_host_health = mgr_cluster.get_hosts_health()
         for host_health in dict_host_health.values():
-            assert host_health.status == HostStatus.UP, "Not all hosts status is 'UP'"
-            assert host_health.rest_status == HostRestStatus.UP, "Not all hosts REST status is 'UP'"
+            host_health: HostHealth = host_health
+            assert host_health.node_status == NodeStatus.UP, "Not all hosts status is 'UP'"
+            assert host_health.rest.status == HostRestStatus.UP, "Not all hosts REST status is 'UP'"
 
         # Check for sctool status change after scylla node down
         sleep = 20
@@ -59,17 +61,19 @@ class TestScyllaMgmtRepair(RepairAdditionalBase, ScyllaManagerMixin):
         time.sleep(sleep)
 
         dict_host_health = mgr_cluster.get_hosts_health()
-        assert dict_host_health[node2.address(
-        )].status == HostStatus.DOWN, "Host: {} status is not 'DOWN'".format(node2.address())
-        assert dict_host_health[node2.address(
-        )].rest_status == HostRestStatus.DOWN, "Host: {} REST status is not 'DOWN'".format(node2.address())
+        empty_status = Status()
+        node_ip = node2.address()
+        node_details: HostHealth = dict_host_health[node_ip]
+        assert node_details.node_status == NodeStatus.DOWN, "Host: {} status is not 'DOWN'".format(node_ip)
+        assert node_details.cql == empty_status, "Host: {} CQL status is not 'DOWN'".format(node_ip)
+        assert node_details.rest == empty_status, "Host: {} REST status is not 'DOWN'".format(node_ip)
 
         node2.start()
 
     # TODO: adjust (to dtest_scylla_manager.py) or delete all RepairAdditionalBase related tests
     @attr('scylla-manager')
-    def repair_disjoint_data_test(self, more_options=[]):
-        return RepairAdditionalBase._repair_disjoint_data_test(self, more_options)
+    def repair_disjoint_data_test(self, more_options=None):
+        return RepairAdditionalBase._repair_disjoint_data_test(self, more_options or [])
 
     @attr('scylla-manager')
     def repair_schema_test(self):

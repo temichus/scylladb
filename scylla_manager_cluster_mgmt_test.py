@@ -4,8 +4,9 @@ from datetime import datetime, timedelta
 from nose.plugins.attrib import attr
 
 from tools import require
-from dtest_scylla_manager import ScyllaManagerTool, ScyllaManagerError, TaskStatus, HostStatus, ScyllaManagerMixin
-from dtest import Tester, debug
+from dtest_scylla_manager import ScyllaManagerTool, ScyllaManagerError, TaskStatus, ScyllaManagerMixin, NodeStatus, \
+    CqlStatus, HostRestStatus, HostHealth
+from dtest import Tester, debug, wait_for, info
 
 
 class TestScyllaManagerClusterMgmt(Tester, ScyllaManagerMixin):
@@ -99,6 +100,8 @@ class TestScyllaManagerClusterMgmt(Tester, ScyllaManagerMixin):
     def removing_node_from_managed_cluster_test(self):
         self.cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2, node3 = self.cluster.nodelist()
+        step = 3
+        timeout = 10 * step
 
         manager_tool = ScyllaManagerTool(scylla_manager=self.cluster._scylla_manager)
         cluster_name = "cluster1"
@@ -106,8 +109,17 @@ class TestScyllaManagerClusterMgmt(Tester, ScyllaManagerMixin):
 
         self.cluster.remove(node3)
         cluster_status = mgr_cluster.get_hosts_health()
-        assert cluster_status[node3.address()].status == HostStatus.DOWN, \
-            "The status of the downed node was not updated in the cluster's status by the manager"
+        node_details: HostHealth = cluster_status[node3.address()]
+        info(f"Checking the status of CQL and REST after node '{node3.name}' is removed")
+        assert node_details.cql.status == CqlStatus.DOWN, \
+            f"The CQL status of node '{node3.name}' should be '{CqlStatus.DOWN}'"
+        assert node_details.rest.status == HostRestStatus.DOWN, \
+            f"The CQL status of node '{node3.name}' should be '{HostRestStatus.DOWN}'"
+        info(f"Waiting until the status node '{node3.name}' changing to '{NodeStatus.DOWN}'")
+
+        err_msg = f"The status of node '{node3.name}' should be '{NodeStatus.DOWN}'"
+        wait_for(func=lambda: mgr_cluster.get_hosts_health()[node3.address()].node_status == NodeStatus.DOWN,
+                 text=err_msg, step=step, timeout=timeout)
 
     def cluster_list(self):
         pass
