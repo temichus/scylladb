@@ -11,7 +11,7 @@ from threading import Thread
 from dtest import Tester, debug, run_with_params
 from scylla_tools import get_sstables_files, insert_c1c2, get_cf_dir
 from cassandra import ConsistencyLevel, concurrent
-from assertions import assert_none
+from assertions import assert_none, assert_all
 
 from datetime import datetime as dt
 from nose.plugins.attrib import attr
@@ -796,3 +796,48 @@ class TestTimeWindowDataSegregation(Tester):
                             "rebuild_with_repair: finished with keyspace=ks", from_mark=mark)
         node3.wait_for_compactions()
         self._check_sstable_timestamps(node3)
+
+class TestGarabageCollected(Tester):
+
+    def garbage_collected_sstable_test(self):
+        """
+        Test garbage collected SSTables
+        Related issue: https://github.com/scylladb/scylla/issues/6275
+        """
+        cluster = self.cluster
+        cluster.populate(1).start(wait_for_binary_proto=True)
+        node1 = cluster.nodelist()[0]
+
+        # Prepare test table and test data
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 1)
+
+        # Use IncrementalCompactionStrategy for Enterprise
+        session.execute(
+            "CREATE TABLE ks.cf (key varchar PRIMARY KEY, c1 text, c2 text) "
+            "WITH compaction = {'class': 'LeveledCompactionStrategy'}")
+
+        insert_c1c2(session, n=3)
+        node1.flush()
+
+        from_mark = node1.mark_log()
+
+        # Set a short gc_grace_seconds, and delete one key
+        gc_grace_seconds = 10
+        session.execute(f"ALTER TABLE ks.cf WITH gc_grace_seconds = {gc_grace_seconds}")
+        session.execute("DELETE from ks.cf WHERE key = 'k2'")
+
+        # Sleep until the garbage collected SSTables are expired
+        time.sleep(gc_grace_seconds + 1)
+        node1.compact()
+
+        # Verify the data by queries
+        assert_none(session, "SELECT * FROM ks.cf WHERE key = 'k2'")
+        assert_all(session, "SELECT * FROM ks.cf", [['k1', 'value1', 'value2'], ['k0', 'value1', 'value2']])
+
+        try:
+            res = node.watch_log_for(exprs="sstable - Unable to delete", from_mark=from_mark, timeout=10)
+        except Exception:
+            res = None
+
+        self.assertFalse(res, "Don't expect the 'Unable to delete' error")
