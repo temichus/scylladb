@@ -1847,11 +1847,10 @@ class TestNodetool(Tester):
         except:
             pass
 
-        debug('Rebuild sstables by storage_service/keyspace_scrub API')
+        debug('Rebuild sstables by nodetool scrub')
         # Currently, scrub may fail with random corruption, e.g. on OOM
-        p = run(args=['curl', 'http://{}:10000/storage_service/keyspace_scrub/ks?skip_corrupted=true'.format(self.get_ip_from_node(node))],
-                capture_output=True, check=False, timeout=60)
-        debug("Scrub output: {}".format(p.stdout))
+        out = node.nodetool('scrub ks')
+        debug("Scrub output: {out}")
 
         try:
             list(session.execute('SELECT * FROM ks.cf'))
@@ -1895,11 +1894,11 @@ class TestNodetool(Tester):
         node.start(wait_for_binary_proto=True, wait_other_notice=True)
 
         session = self.patient_cql_connection(node)
-        debug('Rebuild sstables by storage_service/keyspace_scrub API')
+
+        debug('Rebuild sstables by nodetool scrub')
         # Currently, scrub may fail with random corruption, e.g. on OOM
-        p = run(args=['curl', 'http://{}:10000/storage_service/keyspace_scrub/ks?skip_corrupted=true'.format(self.get_ip_from_node(node))],
-                capture_output=True, check=False, timeout=60)
-        debug("Scrub output: {}".format(p.stdout))
+        out = node.nodetool('scrub ks')
+        debug("Scrub output: {out}")
 
         rows = list(session.execute('SELECT * FROM ks.cf'))
         assert len(rows) == 100
