@@ -9,7 +9,7 @@ from tools import safe_mkdtemp
 from scylla_tools import insert_c1c2
 # from nose import tools
 from nose.plugins.attrib import attr
-from assertions import assert_none
+from assertions import assert_none, assert_one, assert_all
 
 # @tools.istest
 
@@ -234,3 +234,48 @@ class AdditionalTestSSTableLoader(MigrationTestBase):
             raise Exception(
                 f"sstableloader command failed, exit status: {exit_status}, stdout: {stdout}, stderr: {stderr}")
         assert_none(session, 'SELECT * FROM ks.cf')
+
+    def invalid_sstable_test(self):
+        """Test with unsupported version and index missing, sstable won't success"""
+        self.cluster.populate(1).start(wait_for_binary_proto=True)
+        node1 = self.cluster.nodelist()[0]
+
+        # Prepare test table and test data
+        self.create_ks_and_cf(node1, {'c1': 'text', 'c2': 'text'}, None, None)
+        session = self.patient_cql_connection(node1)
+
+        def run_sstableloader(sstable_dir, err, completed=True):
+            """Execute sstableloader to load the sstables"""
+            ip = node1.address()
+            debug(f'Run sstableloader on node1, sstable_dir: {sstable_dir}')
+            cmd = [node1.get_tool('sstableloader'), '-d', ip, sstable_dir, '-v']
+            p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            stdout, stderr = p.communicate()
+            exit_status = p.wait()
+
+            debug(f"sstableloader stderr: {stderr}")
+            if completed:
+                assert '100% done.' in str(stdout)
+            else:
+                assert ' 0% done.' in str(stdout)
+            if err is not None:
+                assert err in str(stderr)
+            if exit_status != 0:
+                raise Exception("sstableloader command failed, "
+                                f"exit status: {exit_status}, stdout: {stdout}, stderr: {stderr}")
+
+        # Missing index
+        # INFO: "Skipping file md-2-big-Data.db - missing index"
+        run_sstableloader('test-sstables/missing_index/ks/cf-test',
+                          None, completed=False)
+        assert_none(session, "SELECT * FROM ks.cf")
+
+        # Unknown format / unsupported version
+        run_sstableloader('test-sstables/unknown_format/ks/cf-test',
+                          'Skipping file md---big-Data.db - unsupported SSTable format or version',
+                          completed=False)
+        assert_none(session, "SELECT * FROM ks.cf")
+
+        # Test with right sstable
+        run_sstableloader('test-sstables/original/ks/cf-test', None, completed=True)
+        assert_all(session, "SELECT * FROM ks.cf", [['k0', 'c1', 'c2']])
