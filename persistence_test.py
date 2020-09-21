@@ -93,7 +93,7 @@ class PersistenceTest(Tester):
         keyspace_cmd = "CREATE KEYSPACE %s WITH replication = {'class': 'SimpleStrategy', 'replication_factor': " \
                        "'1'}  AND durable_writes = true;" % keyspace_name
         new_table_cmd = f"CREATE TABLE {table_name} ( user_id text PRIMARY KEY, clients_usage map<text, text>, " \
-                        f"last_seen timestamp );"
+            f"last_seen timestamp );"
         add_new_row_cmd = "Insert into {} (user_id, clients_usage) values ('{}', {});"
         show_table_cmd = f"Select * from {table_name};"
 
@@ -120,5 +120,5 @@ class PersistenceTest(Tester):
         row_after_reboot = table_after_reboot.current_rows[0]
         print_table(table=table_after_reboot)
         msg_error = f"The data before reboot ('{row_before_reboot}') should be equal to data after reboot ('" \
-                    f"{row_after_reboot}')"
+            f"{row_after_reboot}')"
         self.assertEqual(first=row_before_reboot, second=row_after_reboot, msg=msg_error)

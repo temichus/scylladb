@@ -146,16 +146,16 @@ class ScyllaClusterTest(DSREntity):
             if error_list:
                 if name == 'dont_match':
                     error_output += f'{len(error_list)} of {len(self._expected_results)} ' \
-                                    'records does not match expected values\n'
+                        'records does not match expected values\n'
                 elif name == 'dont_exists':
                     error_output += f'{len(error_list)} of {len(self._expected_results)} ' \
-                                    'records does not exist in database\n'
+                        'records does not exist in database\n'
                 elif name == 'extra_rows':
                     error_output += f'{len(error_list)} of {len(self._expected_results)} ' \
-                                    'records exists in database that should not be there\n'
+                        'records exists in database that should not be there\n'
                 elif name == 'cant_read':
                     error_output += f'{len(error_list)} of {len(self._expected_results)} ' \
-                                    'could not be read due to the error\n'
+                        'could not be read due to the error\n'
                 elif name == 'io_errors':
                     error_output += '\n'.join(error_list)
         if error_output:

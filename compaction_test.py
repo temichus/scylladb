@@ -387,7 +387,7 @@ class TestCompaction(Tester):
         Make sure we can disable compaction via the schema compaction parameter 'enabled' = false
         """
         node = self.prepate_testbed(with_compaction=f'WITH compaction = {{\'class\':\'{self.strategy}\', '
-                                                    f'\'enabled\':\'false\'}}')
+                                    f'\'enabled\':\'false\'}}')
         disable_mark = self.disable_autocompaction(node=node, ks=self.primary_ks, table=self.primary_table)
         self.fill_table_with_data(node=node, ks=self.primary_ks, table=self.primary_table, keys=1000)
         self.fill_table_with_data(node=node, ks=self.secondary_ks, table=self.secondary_table, keys=1000)

@@ -116,7 +116,7 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
         """
         session = self.patient_cql_connection(healthy_node)
         query = f"DELETE from {keyspace}.{table} where {clustering_key_name} >= {key_range[0]} and " \
-                f"{clustering_key_name} <= {key_range[1]} and {partition_key_name} = {partition_key_set_value}"
+            f"{clustering_key_name} <= {key_range[1]} and {partition_key_name} = {partition_key_set_value}"
         session.execute(query)
 
     def clean_up_tables(self, node, keyspace_and_tables_dict):
@@ -511,7 +511,7 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
                                                      keyspace_list=["ks"])
         backup_task.wait_and_get_final_status(step=5)
         assert backup_task.status == TaskStatus.DONE, f"The backup task did not end in the given time, current " \
-                                                      f"progress:\n{backup_task.full_progress_string()}"
+            f"progress:\n{backup_task.full_progress_string()}"
         node3.start(wait_other_notice=True, wait_for_binary_proto=True)
         self.clean_restore_and_verify_backup(backup_task, self.cluster.nodelist(), mgr_cluster, node1,
                                              keyspace_table_and_key_range)

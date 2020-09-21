@@ -653,8 +653,8 @@ class TestBootstrap(Tester):
         replication_factor, consistency_level = 2, 2
         cluster_size = 2
         cassandra_err_msg = f"com.datastax.driver.core.exceptions.WriteTimeoutException: Cassandra timeout during" \
-                            f" SIMPLE write query at consistency {consistency_level_key} ({replication_factor + 1}" \
-                            f" replica were required but only {replication_factor} acknowledged the write)"
+            f" SIMPLE write query at consistency {consistency_level_key} ({replication_factor + 1}" \
+            f" replica were required but only {replication_factor} acknowledged the write)"
 
         cluster = self.cluster
         debug(f"Creating new cluster with '{cluster_size}' nodes")
