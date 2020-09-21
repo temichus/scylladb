@@ -12,7 +12,7 @@ from cassandra.query import SimpleStatement
 
 from assertions import assert_unavailable, assert_invalid, assert_one
 from dtest import Tester, debug
-from tools import no_vnodes, since, require
+from tools import no_vnodes, since
 from nose.plugins.attrib import attr
 from scylla_tools import scylla_mode
 
@@ -381,6 +381,10 @@ class TestPaxos(Tester):
 
     def _schema_mismatch_test_tpl(self, clear_schema_cache, setup_test_env_action,
                                   insert_action, ddl_action, second_insert_action, verify_results_action):
+        # Increase time period for which cached schema definitions will live before
+        # being evicted from the node cache.
+        # The tests depend on this cache being not empty, so set to some sufficiently large value, e.g. 1000 seconds.
+        self.cluster.set_configuration_options(values={'schema_registry_grace_period': 1000})
         # set TRACE log level for the test node to be able
         # to catch schema_mismatch_error exceptions
         self.cluster.set_log_level('TRACE')
@@ -467,7 +471,6 @@ class TestPaxos(Tester):
                                        verify_results_action=check_schema_mismatch_exc
                                        )
 
-    @require('7225')
     @attr('dtest-debug', 'single_node')
     @scylla_mode('!release')
     def schema_mismatch_mv_test(self):
