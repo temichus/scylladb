@@ -14,6 +14,7 @@ from ccmlib.node import NodetoolError
 from dtest import Tester, debug
 from scylla_tools import insert_c1c2, query_c1c2_concurrent, get_sstables_files
 from nose.plugins.attrib import attr
+from unittest import skip
 
 
 @attr('dtest-full')
@@ -676,6 +677,10 @@ class TestBackupRestore(Tester):
             test_dir = self.get_snapshot_dir('snapshot{}'.format(i))
             self.assertTrue(test_dir is None, "'snapshot{}' has not been deleted!".format(i))
 
+    @skip('#7022')
+    # nodetool refresh does not examine the main directory since
+    # refresh was changed to use off-strategy compaction
+    # in scylla@7351db7cab7bbf907172940d0bbf8b90afde90ba
     def test_nodetool_refresh_main_sstable_directory(self):
         """
         From 4.1 scylla won't support to refresh from main SSTable directory.
