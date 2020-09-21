@@ -1131,7 +1131,8 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
         info(f"Starting the node '{nodes[0].name}")
         nodes[0].start()
         info(f"Starting a stress command with following parameters: '{stress_command}")
-        repair_task = mgr_cluster.create_repair_task(keyspace=keyspace_name, small_table_threshold="100MiB")
+        repair_task = mgr_cluster.repair_api.repair(
+            keyspace_list=self.KEYSPACE_NAME, small_table_threshold="100MiB", cluster_name=mgr_cluster.id)
         list_status = [TaskStatus.RUNNING]
         info(f"Waiting until the status of the repair task will be '{list_status}'")
         repair_task.wait_for_status(list_status=list_status, timeout=40, step=3)

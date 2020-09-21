@@ -81,7 +81,7 @@ class TestScyllaManagerClusterMgmt(Tester, ScyllaManagerMixin):
         manager_tool = ScyllaManagerTool(scylla_manager=self.cluster._scylla_manager)
         cluster_name = "cluster1"
         mgr_cluster = manager_tool.add_cluster(node=node1, name=cluster_name)
-        repair_task = mgr_cluster.create_repair_task()
+        repair_task = mgr_cluster.repair_api.repair(cluster_name=mgr_cluster.id)
         is_status_reached = repair_task.wait_for_status([TaskStatus.RUNNING])
         assert is_status_reached, "Timeout: The task {} did not start".format(repair_task.task_id)
 

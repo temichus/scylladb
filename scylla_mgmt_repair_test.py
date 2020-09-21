@@ -40,7 +40,7 @@ class TestScyllaMgmtRepair(RepairAdditionalBase, ScyllaManagerMixin):
         assert mgr_cluster.name == cluster_orig_name+"_renamed", "Cluster name wasn't changed after update command"
 
         debug("Test cluster Repair task")
-        mgr_task = mgr_cluster.create_repair_task()
+        mgr_task = mgr_cluster.repair_api.repair(cluster_name=mgr_cluster.id)
         task_final_status = mgr_task.wait_and_get_final_status()
         assert task_final_status == TaskStatus.DONE, 'Task: {} final status is: {}.'.format(
             mgr_task.id, str(mgr_task.status))
@@ -183,8 +183,7 @@ class TestScyllaMgmtRepair(RepairAdditionalBase, ScyllaManagerMixin):
         mgr_cluster = manager_tool.add_cluster(node=node1, name=cluster_name)
 
         debug("Run repair on node 2")
-        repair_task = mgr_cluster.create_repair_task(keyspace=self.KEYSPACE_NAME)
-
+        repair_task = mgr_cluster.repair_api.repair(cluster_name=mgr_cluster.id, keyspace_list=self.KEYSPACE_NAME)
         repair_task.wait_for_status(list_status=[TaskStatus.DONE], timeout=300, step=10)
 
         self._assert_multiple_row_ranges_from_specific_node(node_to_query=node2, nodes_to_shut_down=[node1],
@@ -227,7 +226,7 @@ class TestScyllaMgmtRepair(RepairAdditionalBase, ScyllaManagerMixin):
         mgr_cluster = manager_tool.add_cluster(node=node1, name=cluster_name)
 
         debug("Run repair on node 2")
-        repair_task = mgr_cluster.create_repair_task(keyspace="ks*")
+        repair_task = mgr_cluster.repair_api.repair(keyspace_list="ks*", cluster_name=mgr_cluster.id)
 
         repair_task.wait_for_status(list_status=[TaskStatus.DONE], timeout=300, step=10)
 
@@ -272,7 +271,7 @@ class TestScyllaMgmtRepair(RepairAdditionalBase, ScyllaManagerMixin):
         debug("Add a cluster to scylla-manager, named: {}".format(cluster_name))
         mgr_cluster = manager_tool.add_cluster(node=node1, name=cluster_name)
 
-        repair_task = mgr_cluster.create_repair_task(keyspace=self.KEYSPACE_NAME)
+        repair_task = mgr_cluster.repair_api.repair(cluster_name=mgr_cluster.id, keyspace_list=self.KEYSPACE_NAME)
         repair_task.wait_for_status(list_status=[TaskStatus.DONE], timeout=300, step=10)
 
         # Each of nodes 1-3 inserted a few set of rows, and after the repair node4 should contain all rows
@@ -302,7 +301,7 @@ class TestScyllaMgmtRepair(RepairAdditionalBase, ScyllaManagerMixin):
                            dclocal_read_repair_chance=0.0, speculative_retry='NONE')
 
         node3.stop(wait_other_notice=True)
-        repair_task = mgr_cluster.create_repair_task(keyspace=self.KEYSPACE_NAME)
+        repair_task = mgr_cluster.repair_api.repair(keyspace_list=self.KEYSPACE_NAME, cluster_name=mgr_cluster.id)
         assert repair_task.wait_for_status(list_status=[TaskStatus.ERROR], timeout=300, step=5), \
             "Repairing an unavailable node did not fail as expected"
 
@@ -333,7 +332,8 @@ class TestScyllaMgmtRepair(RepairAdditionalBase, ScyllaManagerMixin):
         debug("Add a cluster to scylla-manager, named: {}".format(cluster_name))
         mgr_cluster = manager_tool.add_cluster(node=dc1_node1, name=cluster_name)
 
-        repair_task = mgr_cluster.create_repair_task(dc_list=['dc1', 'dc2'], keyspace=self.KEYSPACE_NAME)
+        repair_task = mgr_cluster.repair_api.repair(
+            dc_names=['dc1', 'dc2'], keyspace=self.KEYSPACE_NAME, cluster_name=mgr_cluster.id)
         repair_task.wait_for_status(list_status=[TaskStatus.DONE])
         self._assert_multiple_row_ranges_from_specific_node(node_to_query=dc2_node1,
                                                             nodes_to_shut_down=[dc1_node1,
@@ -373,7 +373,8 @@ class TestScyllaMgmtRepair(RepairAdditionalBase, ScyllaManagerMixin):
         debug("Add a cluster to scylla-manager, named: {}".format(cluster_name))
         mgr_cluster = manager_tool.add_cluster(node=dc1_node, name=cluster_name)
 
-        repair_task = mgr_cluster.create_repair_task(dc_list=['dc1', 'dc2', 'dc3'], keyspace=self.KEYSPACE_NAME)
+        repair_task = mgr_cluster.repair_api.repair(
+            dc_names=['dc1', 'dc2', 'dc3'], keyspace=self.KEYSPACE_NAME, cluster_name=mgr_cluster.id)
         repair_task.wait_for_status(list_status=[TaskStatus.DONE])
         self._assert_multiple_row_ranges_from_specific_node(node_to_query=dc2_node,
                                                             nodes_to_shut_down=[dc1_node, dc3_node, dc4_node],
@@ -412,7 +413,7 @@ class TestScyllaMgmtRepair(RepairAdditionalBase, ScyllaManagerMixin):
         debug("Add a cluster to scylla-manager, named: {}".format(cluster_name))
         mgr_cluster = manager_tool.add_cluster(node=dc1_node, name=cluster_name)
 
-        repair_task = mgr_cluster.create_repair_task(keyspace=self.KEYSPACE_NAME)
+        repair_task = mgr_cluster.repair_api.repair(keyspace_list=self.KEYSPACE_NAME, cluster_name=mgr_cluster.id)
         repair_task.wait_for_status(list_status=[TaskStatus.DONE])
         self._assert_multiple_row_ranges_from_specific_node(node_to_query=dc2_node, nodes_to_shut_down=[dc1_node],
                                                             keyspace_name=self.KEYSPACE_NAME,
@@ -451,7 +452,8 @@ class TestScyllaMgmtRepair(RepairAdditionalBase, ScyllaManagerMixin):
         debug("Add a cluster to scylla-manager, named: {}".format(cluster_name))
         mgr_cluster = manager_tool.add_cluster(node=dc1_node1, name=cluster_name)
 
-        repair_task = mgr_cluster.create_repair_task(dc_list=['dc2'], keyspace=self.KEYSPACE_NAME)
+        repair_task = mgr_cluster.repair_api.repair(
+            dc_names=['dc2'], keyspace_list=self.KEYSPACE_NAME,  cluster_name=mgr_cluster.id)
         repair_task.wait_for_status(list_status=[TaskStatus.DONE])
         self._assert_multiple_row_ranges_from_specific_node(node_to_query=dc2_node2,
                                                             nodes_to_shut_down=[dc1_node1, dc1_node2, dc2_node1],
@@ -480,7 +482,8 @@ class TestScyllaMgmtRepair(RepairAdditionalBase, ScyllaManagerMixin):
         debug("Add a cluster to scylla-manager, named: {}".format(cluster_name))
         mgr_cluster = manager_tool.add_cluster(node=node1, name=cluster_name)
 
-        repair_task_fail_fast = mgr_cluster.create_repair_task(keyspace=self.KEYSPACE_NAME, fail_fast=True)
+        repair_task_fail_fast = mgr_cluster.repair_api.repair(
+            keyspace_list=self.KEYSPACE_NAME, is_fail_fast=True, cluster_name=mgr_cluster.id)
         debug("Stopping the node used for the repair, "
               "expecting the repair task (that uses fail-fast) to reach the status of 'ERROR' soon after")
         repair_task_fail_fast.wait_for_status(list_status=[TaskStatus.RUNNING], timeout=300, step=10)
@@ -491,7 +494,7 @@ class TestScyllaMgmtRepair(RepairAdditionalBase, ScyllaManagerMixin):
 
         node1.start(wait_for_binary_proto=False, wait_other_notice=False)
 
-        repair_task = mgr_cluster.create_repair_task(keyspace=self.KEYSPACE_NAME)
+        repair_task = mgr_cluster.repair_api.repair(keyspace_list=self.KEYSPACE_NAME, cluster_name=mgr_cluster.id)
         debug("Stopping the node used for the repair. Since The repair does not use the 'fail-fast' flag,"
               " the new task, {}, is not expected to reach the 'ERROR' status soon".format(repair_task.id))
         repair_task.wait_for_status(list_status=[TaskStatus.RUNNING], timeout=300, step=10)
@@ -521,7 +524,7 @@ class TestScyllaMgmtRepair(RepairAdditionalBase, ScyllaManagerMixin):
         mgr_cluster = manager_tool.add_cluster(node=node1, name="cluster1")
         mgr_cluster.repair_task_list[0].enabled(is_enabled=False)
         debug("Create repair task with keyspace ks1")
-        repair_task = mgr_cluster.create_repair_task(keyspace='ks1')
+        repair_task = mgr_cluster.repair_api.repair(keyspace_list='ks1', cluster_name=mgr_cluster.id)
         debug("Verify the repair runs for keyspace ks1")
         repair_task.wait_for_status(list_status=[TaskStatus.RUNNING, TaskStatus.DONE], timeout=100, step=5)
         assert 'ks1' in repair_task.progress_details[-1], "keyspace 'ks1' table is not reported by repair task progress"

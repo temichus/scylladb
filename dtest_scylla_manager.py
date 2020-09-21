@@ -430,6 +430,61 @@ class ScyllaManagerRepairApi(ScyllaManagerApiBase):
         parsers = {}
         super().__init__(sctool=sctool, cmd_translate_dict=cmd_translate_dict, parsers=parsers)
 
+    def repair(self,  # pylint: disable=too-many-arguments
+               dc_names: list or str = None, dry_run: bool = None,
+               is_fail_fast: bool = None, intensity: float = None, interval: str = None,
+               keyspace_list: list or str = None, num_retries: int = None, parallel: int = None,
+               is_show_tables: bool = None, small_table_threshold: str = None, start_date: str = None,
+               cluster_name: str = None, sctool_kwargs: dict = None):
+        """
+        Usage:
+          sctool repair [flags]
+          sctool repair [command]
+        Available Commands:
+          control     Changes settings of running repairs to control speed and load
+          update      Modifies a repair task
+        Flags:
+              --dc list                        a comma-separated list of datacenter glob patterns, e.g. 'dc1,!otherdc*',
+                                                used to specify the DCs to include or exclude from repair
+              --dry-run                        validate and print repair information without scheduling a repair
+              --fail-fast                      stop repair on first error
+              --intensity float                integer >= 1 or a decimal between (0,1), higher values may result in
+                                                higher speed and cluster load. 0 value means repair at maximum intensity
+                                                 (default 1)
+          -i, --interval string                task schedule interval e.g. 3d2h10m, valid units are d, h, m, s
+                                                (default "0")
+          -K, --keyspace list                  a comma-separated list of keyspace/tables glob patterns, e.g.
+                                                'keyspace,!keyspace.table_prefix_*' used to include or exclude
+                                                keyspaces from backup
+          -r, --num-retries int                the number of times a scheduled task will retry to run before failing
+                                                (default 3)
+              --parallel int                   The maximum number of repair jobs to run in parallel, each node can
+                                                participate in at most one repair at any given time.
+                                               Default is means system will repair at maximum parallelism
+              --show-tables                    print all table names for a keyspace. Used only in conjunction with
+                                                --dry-run
+              --small-table-threshold string   enable small table optimization for tables of size lower than given
+                                                threshold. Supported units [B, MiB, GiB, TiB] (default "1GiB")
+          -s, --start-date string              specifies the task start date expressed in the RFC3339 format or
+                                                now[+duration], e.g. now+3d2h10m, valid units are d, h, m, s
+                                                (default "now")
+        Global Flags:
+              --api-cert-file path   path to HTTPS client certificate to access Scylla Manager server
+              --api-key-file path    path to HTTPS client key to access Scylla Manager server
+              --api-url URL          URL of Scylla Manager server (default "http://127.0.0.1:5080/api/v1")
+          -c, --cluster name         Specifies the target cluster name or ID
+
+        Use "sctool repair [command] --help" for more information about a command.
+        Scylla Docs:
+          https://docs.scylladb.com/operating-scylla/manager/2.1/sctool/#repair
+        """
+        options = self.create_command_options(cmd_options_dict=locals())
+        stdout = self.sctool.run(
+            cmd=self.create_sctool_command(cmd_options=options, cmd_hierarchy="repair"),
+            **(sctool_kwargs or {"is_verify_errorless_result": True}))[0]
+        return RepairTask(
+            task_id=stdout[0][0].strip(), cluster_id=cluster_name, scylla_manager=self.sctool.scylla_manager)
+
     def update(self,  # pylint: disable=too-many-arguments
                repair_id: str, dc_names: list or str = None, dry_run: bool = None, enabled: str = None,
                is_fail_fast: bool = None, intensity: float = None, interval: str = None,
@@ -1215,51 +1270,6 @@ class ManagerCluster(ScyllaManagerBase):
 
     def delete_backup(self, snapshot_tag):
         self.sctool.run(f"-c {self.id} backup delete --snapshot-tag={snapshot_tag}")
-
-    def create_repair_task(self, dc_list=None, keyspace=None, interval=None, num_retries=None, fail_fast=None,
-                           intensity=None, small_table_threshold=None):
-        # the interval string:
-        # Amount of time after which a successfully completed task would be run again. Supported time units include:
-        #
-        # d - days,
-        # h - hours,
-        # m - minutes,
-        # s - seconds.
-        cmd = "repair -c {}".format(self.id)
-        if dc_list is not None:
-            dc_names = ','.join([dc_name for dc_name in dc_list])
-            cmd += " --dc {} ".format(dc_names)
-        if keyspace is not None:
-            cmd += " --keyspace {} ".format(keyspace)
-        if interval is not None:
-            cmd += " --interval {}".format(interval)
-        if num_retries is not None:
-            cmd += " --num-retries {}".format(num_retries)
-        if fail_fast is not None:
-            cmd += " --fail-fast"
-        if intensity is not None:
-            cmd += f" --intensity {intensity}"
-        if small_table_threshold is not None:
-            cmd += f" --small-table-threshold {small_table_threshold}"
-
-        debug("Repair command to execute is: {}".format(cmd))
-        stdout, stderr = self.sctool.run(cmd=cmd, parse_table_res=False)
-        if not stdout:
-            raise ScyllaManagerError("Unknown failure for sctool '{}' command".format(cmd))
-
-        if "no matching units found" in stderr:
-            raise ScyllaManagerError("Manager cannot run repair where no keyspace exists.")
-
-        # expected result output is to have a format of: "repair/2a4125d6-5d5a-45b9-9d8d-dec038b3732d"
-        if 'repair' not in stdout:
-            debug("Encountered an error on '{}' command response".format(cmd))
-            raise ScyllaManagerError(stderr)
-
-        task_id = stdout.strip()
-        debug("Created task id is: {}".format(task_id))
-
-        # return the manager's object with new repair-task-id
-        return RepairTask(task_id=task_id, cluster_id=self.id, scylla_manager=self.scylla_manager)
 
     def delete(self):
         """
