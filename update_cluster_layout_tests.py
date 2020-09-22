@@ -304,7 +304,7 @@ class TestUpdateClusterLayout(Tester):
             "Beginning stream session|sync data for keyspace=ks[1-3]?, status=started", timeout=log_timeout)
 
         self.ignore_log_patterns += [
-            r'Repair .* status=failed: mandatory neighbor={} is not alive'.format(node2.address()),
+            r'[Rr]epair.*mandatory neighbor={} is not alive'.format(node2.address()),
             r'Startup failed:.*Failed to repair for keyspace=ks[1-3]?',
             r'Startup failed: std::runtime_error .* \(repair .* failed',
         ]
