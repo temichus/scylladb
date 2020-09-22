@@ -18,6 +18,7 @@ repos:
                 .git/*|
                 test_data/.*|
                 cassandra-sstables/.*|
+                test-sstables/.*|
                 alternator/.*
             )$
     -   id: check-yaml
