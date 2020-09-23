@@ -428,8 +428,8 @@ class LWTSchemaModificationTester(Tester):
         cluster = self._setup(nodes=nodes, rf=rf, jvm_args=["--smp", str(smp)])
         stop = Event()
 
+        self._case_prologue(nrows)
         for _ in range(loops):
-            self._case_prologue(nrows)
             # For each action create a thread
             threads = []
             action_names = [action.name for action in actions if action.name]
