@@ -505,7 +505,7 @@ class LWTSchemaModificationTester(Tester):
     def lwt_load_test(self):
         self._test_combine([ReadRows(row_start=0, row_end=1000),
                             LWTLoad(row_start=1001, row_end=9999)],
-                           smp=8, nodes=8, nrows=10000, loops=8,
+                           smp=8, nodes=8, nrows=10000, loops=4,
                            run_s=30)
 
     def lwt_batch_insert_test(self):
@@ -517,7 +517,7 @@ class LWTSchemaModificationTester(Tester):
         self._test_combine([LWTLoad(row_start=1001, row_end=9999),
                             ReadRows(row_end=1000),
                             IndexDropAdd(inter_delay=.5)],
-                           nrows=10000, loops=20, run_s=10)
+                           nrows=10000, loops=4, run_s=10)
 
     def materialized_view_test(self):
         self._test_combine([LWTLoad(row_start=1001, row_end=9999),
