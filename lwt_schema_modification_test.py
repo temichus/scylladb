@@ -397,12 +397,14 @@ class LWTSchemaModificationTester(Tester):
 
     def _case_prologue(self, nrows):
         """Prepare for round"""
+        debug("Preparing {}.{} with index {}".format(KEYSPACE, "table1", "table1_v_idx"))
         session = self.patient_cql_connection(self.cluster.nodelist()[0])
         session.execute("USE " + KEYSPACE)
         session.execute("CREATE TABLE table1 (pk int PRIMARY KEY, v int, int_col int)")
         session.execute("CREATE INDEX table1_v_idx ON table1 (v)")
         insert_cql = "INSERT INTO table1 (pk, v, int_col) VALUES (?, ?, ?)"
         insert_stmt = session.prepare(insert_cql)
+        debug("Inserting {} rows into {}.{}".format(nrows, KEYSPACE, "table1"))
         for i in range(nrows):
             session.execute(insert_stmt, (i, i, i))
 
@@ -429,7 +431,8 @@ class LWTSchemaModificationTester(Tester):
         stop = Event()
 
         self._case_prologue(nrows)
-        for _ in range(loops):
+        for i in range(loops):
+            debug("Staring loop {}/{}".format(i, loops))
             # For each action create a thread
             threads = []
             action_names = [action.name for action in actions if action.name]
