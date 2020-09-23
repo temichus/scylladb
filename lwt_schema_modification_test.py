@@ -6,6 +6,7 @@ from time import sleep, time
 from threading import Thread, Event
 from unittest import skip
 from nose.tools import eq_
+from psutil import cpu_count
 
 KEYSPACE = "lwt_load_ks"
 
@@ -427,7 +428,11 @@ class LWTSchemaModificationTester(Tester):
             run_s:            test run seconds
         """
 
-        cluster = self._setup(nodes=nodes, rf=rf, jvm_args=["--smp", str(smp)])
+        actual_smp = min(smp, cpu_count())
+        if actual_smp != smp:
+            debug("smp limited to {}".format(actual_smp))
+
+        cluster = self._setup(nodes=nodes, rf=rf, jvm_args=["--smp", str(actual_smp)])
         stop = Event()
 
         self._case_prologue(nrows)
