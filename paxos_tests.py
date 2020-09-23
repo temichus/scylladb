@@ -15,6 +15,7 @@ from dtest import Tester, debug
 from tools import no_vnodes, since
 from nose.plugins.attrib import attr
 from scylla_tools import scylla_mode
+from tools import require
 
 
 class LoadThread(Thread):
@@ -299,6 +300,7 @@ class TestPaxos(Tester):
             del loaders[node]
 
     @since('3.3')
+    @require('#7087')
     def test_topology_change_in_presence_of_down_node(self):
         session = self.prepare(nodes=6, rf=4)
         lower_node_limit = 3
