@@ -328,9 +328,9 @@ class TestCdc(Tester, CDCInitializeHelper):
         p = multiprocessing.Process(target=check_and_repair)
         p.start()
 
-        # The command should terminate immediately; we give it 10 seconds
+        # The command should terminate immediately; we give it 60 seconds
         # to account for scheduling delays etc.
-        p.join(10)
+        p.join(60)
 
         if p.is_alive():
             # Still running -- we have a liveness problem.
