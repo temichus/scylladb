@@ -188,7 +188,7 @@ for version in versions:
 
 
 @attr('dtest-full', 'single_node')
-class AdditionalTestSSTableLoader(MigrationTestBase):
+class AdditionalTestSSTableLoader(Tester):
 
     __test__ = True
 
@@ -202,8 +202,9 @@ class AdditionalTestSSTableLoader(MigrationTestBase):
         node1 = cluster.nodelist()[0]
 
         # Prepare test table and test data
-        self.create_ks_and_cf(node1, {'c1': 'text', 'c2': 'text'}, None, None)
         session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 1)
+        self.create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'})
         insert_c1c2(session, n=10)
         node1.flush()
 
@@ -241,8 +242,9 @@ class AdditionalTestSSTableLoader(MigrationTestBase):
         node1 = self.cluster.nodelist()[0]
 
         # Prepare test table and test data
-        self.create_ks_and_cf(node1, {'c1': 'text', 'c2': 'text'}, None, None)
         session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 1)
+        self.create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'})
 
         def run_sstableloader(sstable_dir, err, completed=True):
             """Execute sstableloader to load the sstables"""
