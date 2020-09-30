@@ -6,6 +6,7 @@ import time
 import uuid
 from functools import wraps
 from ccmlib.node import NodeError
+from cassandra.cluster import NoHostAvailable
 from tools import new_node
 from cassandra import ConsistencyLevel
 from dtest import Tester, debug, run_with_params
@@ -22,7 +23,7 @@ class expected_failure(object):
         @wraps(func)
         def inner(*args, **kwargs):
             tester_obj = args[0]
-            tester_obj.allow_log_errors = True
+            tester_obj.ignore_log_patterns.append(self.err_log_msg)
             try:
                 func(*args, **kwargs)
             except self.exception:
@@ -284,7 +285,7 @@ class InMemoryTest(Tester):
         session = self.patient_cql_connection(node1, keyspace=key_space_name)
         self.validate_in_memory_data(node1, session, num_keys=num_keys + num_additional_keys)
 
-    @expected_failure(err_log_msg="In-Memory disk is out of space", exception=(NodeError,))
+    @expected_failure(err_log_msg="In-Memory disk is out of space", exception=(NoHostAvailable,))
     def alter_table_to_in_memory_more_data_then_available_test(self):
         num_keys = int((self.in_memory_amount_kb * 0.57) // self.memory_usage_per_key_factor)
         self.alter_table_to_in_memory_test(num_additional_keys=num_keys)
