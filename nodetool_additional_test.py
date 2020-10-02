@@ -1954,6 +1954,8 @@ class TestNodetool(Tester):
             except Exception:
                 pass
 
+        self.ignore_log_patterns.append("Failed to handle STREAM_MUTATION_FRAGMENTS.*peer={}".format(re.escape(node4.address())))
+
         stress_thread = executor.submit(run_stress_write)
         decommission_thread = executor.submit(run_decommission)
 
