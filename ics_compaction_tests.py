@@ -528,11 +528,12 @@ class IcsCompactionTest(Tester):
 
         def is_compaction_executed():
             sstables_files1, _ = self._get_sstable_files_and_sizes()
-            debug("Found {} sstables, out of {} originally created".format(len(sstables_files1), num_of_generated_sstables))
+            debug("Found {} sstables, out of {} originally created".format(
+                len(sstables_files1), num_of_generated_sstables))
             return len(sstables_files1) < num_of_generated_sstables
 
         wait_for(func=is_compaction_executed, text=str(is_compaction_executed),
-                       timeout=100)
+                 timeout=100)
         sstables_files1, files_size = self._get_sstable_files_and_sizes()
         max_found_file_size = max(files_size)
         debug("Number of files after {} flushes is: {} , {}".format(num_of_generated_sstables, len(sstables_files1),
