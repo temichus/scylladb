@@ -14,6 +14,10 @@ class TestLdap(Tester):
         Tester.tearDown(self)
         self.test_ldap_docker.remove_container(force=True)
 
+    def setUp(self):
+        Tester.setUp(self)
+        self.create_ldap_container()
+
     def get_default_scylla_yaml_ldap_config(self):
         return {'role_manager': 'com.scylladb.auth.LDAPRoleManager',
                 'ldap_url_template': f'{self.test_ldap_docker.ldap_server.name}/'
@@ -113,7 +117,6 @@ class TestLdap(Tester):
             session.execute('SELECT * from ks.cf LIMIT 1')
 
     def test_simple_ldap_connection(self):
-        self.create_ldap_container()
         self.prepare()
         self.prepare_ldap_server()
         permission = {'user': self.LDAP_USER,
@@ -124,7 +127,6 @@ class TestLdap(Tester):
         self.check_user_permissions(permission_dict=permission)
 
     def test_user_login_only(self):
-        self.create_ldap_container()
         self.prepare()
         self.prepare_ldap_server()
         session = self.patient_cql_connection(self.nodes[0], user=self.LDAP_USER, password=self.LDAP_PASSWORD)
@@ -137,7 +139,6 @@ class TestLdap(Tester):
         self.check_user_permissions(permission_dict=permission)
 
     def test_wrong_user(self):
-        self.create_ldap_container()
         self.prepare()
         self.prepare_ldap_server()
         failed = False
@@ -150,7 +151,6 @@ class TestLdap(Tester):
             raise Exception('User succeeded to create a session, instead of failing')
 
     def test_partial_permissions(self):
-        self.create_ldap_container()
         self.prepare()
         create_permission = {'user': 'create_user',
                              'password': 'create_user',
@@ -196,7 +196,6 @@ class TestLdap(Tester):
             info(f'Finished with {k}')
 
     def test_hard_restart_scylla(self):
-        self.create_ldap_container()
         self.prepare()
         self.prepare_ldap_server()
         permission = {'user': self.LDAP_USER,
@@ -210,7 +209,6 @@ class TestLdap(Tester):
         self.check_user_permissions(permission_dict=permission)
 
     def test_soft_restart_scylla(self):
-        self.create_ldap_container()
         self.prepare()
         self.prepare_ldap_server()
         permission = {'user': self.LDAP_USER,
@@ -224,7 +222,6 @@ class TestLdap(Tester):
         self.check_user_permissions(permission_dict=permission)
 
     def test_multiple_roles_superuser(self):
-        self.create_ldap_container()
         self.prepare()
         list_of_roles = ['r1', 'r2', 'r3', 'r4', 'r5', 'cassandra']
         cassandra_session = self.patient_cql_connection(node=self.nodes[0], user='cassandra', password='cassandra')
@@ -240,7 +237,6 @@ class TestLdap(Tester):
             self.check_user_permissions(permission_dict=permission)
 
     def test_multiple_roles_single_permission(self):
-        self.create_ldap_container()
         self.prepare(create_role=False)
         actions_list = ['create', 'modify', 'select']
         permission = random.choice(actions_list)
@@ -260,7 +256,6 @@ class TestLdap(Tester):
             self.check_user_permissions(permission_dict=permission_dict)
 
     def test_multiple_roles_permissions_combination(self):
-        self.create_ldap_container()
         self.prepare(create_role=False)
         actions_list = ['create', 'modify', 'select']
         list_of_roles = ['r1', 'r2', 'r3', 'r4', 'r5', 'r6']
@@ -279,7 +274,6 @@ class TestLdap(Tester):
         self.check_user_permissions(permission_dict=permission)
 
     def test_add_ldap_after_regular_work(self):
-        self.create_ldap_container()
         self.prepare(create_role=False, configure_ldap=False)
         cassandra_session = self.patient_cql_connection(node=self.nodes[0], user='cassandra', password='cassandra')
         cassandra_session.execute(f'create role \'{self.LDAP_USER}\' with login=true and '
@@ -304,7 +298,6 @@ class TestLdap(Tester):
         self.check_user_permissions(permission_dict=permission)
 
     def test_multiple_users_superuser_role(self):
-        self.create_ldap_container()
         self.prepare()
         list_of_unique_members = [f'user_{i}' for i in range(10)]
         self.prepare_ldap_server(unique_members=list_of_unique_members)
@@ -319,7 +312,6 @@ class TestLdap(Tester):
             self.check_user_permissions(permission_dict=permission)
 
     def test_multiple_users_with_modify_role(self):
-        self.create_ldap_container()
         self.prepare()
         session = self.patient_cql_connection(self.nodes[0], user='cassandra', password='cassandra')
         permission = {'password': self.LDAP_PASSWORD,
@@ -335,7 +327,6 @@ class TestLdap(Tester):
             self.check_user_permissions(permission_dict=permission)
 
     def test_grant_role_permissions(self):
-        self.create_ldap_container()
         self.prepare()
         permission = {'user': self.LDAP_USER,
                       'password': self.LDAP_PASSWORD,
@@ -355,7 +346,6 @@ class TestLdap(Tester):
         self.check_user_permissions(permission_dict=permission)
 
     def test_revoke_role_permissions(self):
-        self.create_ldap_container()
         self.prepare()
         permission = {'user': self.LDAP_USER,
                       'password': self.LDAP_PASSWORD,
@@ -374,7 +364,6 @@ class TestLdap(Tester):
         self.check_user_permissions(permission_dict=permission)
 
     def test_remove_user_from_ldap(self):
-        self.create_ldap_container()
         self.prepare()
         self.prepare_ldap_server()
         permission = {'user': self.LDAP_USER,
@@ -394,7 +383,6 @@ class TestLdap(Tester):
         self.check_user_permissions(permission_dict=permission)
 
     def test_modify_username_on_ldap(self):
-        self.create_ldap_container()
         self.prepare()
         self.prepare_ldap_server()
         permission = {'user': self.LDAP_USER,
@@ -423,7 +411,6 @@ class TestLdap(Tester):
         self.check_user_permissions(permission_dict=new_permission)
 
     def test_add_user_to_ldap(self):
-        self.create_ldap_container()
         self.prepare()
         self.prepare_ldap_server()
         permission = {'user': self.LDAP_USER,
