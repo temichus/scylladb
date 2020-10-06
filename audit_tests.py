@@ -112,9 +112,11 @@ class CQLAuditTester(AuditTester):
         self.assertLastAuditRow(session, "DML", "USE ks", match='DML' in audit_settings['audit_categories'])
 
         count_before = self.getAuditEntriesCount(session)
-        session.execute("CREATE KEYSPACE ks2 WITH replication = { 'class':'SimpleStrategy', 'replication_factor':1} AND DURABLE_WRITES = true")
+        session.execute(
+            "CREATE KEYSPACE ks2 WITH replication = { 'class':'SimpleStrategy', 'replication_factor':1} AND DURABLE_WRITES = true")
         session.execute("USE ks2")
-        session.execute("ALTER KEYSPACE ks2 WITH replication = { 'class' : 'NetworkTopologyStrategy', 'dc1' : 1 } AND DURABLE_WRITES = false")
+        session.execute(
+            "ALTER KEYSPACE ks2 WITH replication = { 'class' : 'NetworkTopologyStrategy', 'dc1' : 1 } AND DURABLE_WRITES = false")
         session.execute("DROP KEYSPACE ks2")
         assert_invalid(session, "USE ks2", expected=InvalidRequest)
         count_after = self.getAuditEntriesCount(session)
@@ -184,7 +186,8 @@ class CQLAuditTester(AuditTester):
         assert_invalid(session, "SELECT * FROM test2", expected=InvalidRequest)
 
         count_before = self.getAuditEntriesCount(session)
-        session.execute("CREATE KEYSPACE ks2 WITH replication = { 'class':'SimpleStrategy', 'replication_factor':1} AND DURABLE_WRITES = true")
+        session.execute(
+            "CREATE KEYSPACE ks2 WITH replication = { 'class':'SimpleStrategy', 'replication_factor':1} AND DURABLE_WRITES = true")
         session.execute("CREATE TABLE ks2.test1 (k int PRIMARY KEY, v1 int)")
         session.execute("ALTER TABLE ks2.test1 ADD v2 int")
         for i in range(0, 10):
