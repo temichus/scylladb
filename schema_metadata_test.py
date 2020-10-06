@@ -1,4 +1,5 @@
 import re
+from pkg_resources import parse_version
 
 from nose.tools import assert_equal, assert_in
 
@@ -440,7 +441,7 @@ def establish_basic_datatype_table(version, session, table_name_prefix=""):
             m uuid,
             n varchar,
             o varint,'''
-    if version > '2.2':
+    if parse_version(version) > parse_version('2.2'):
         cql += ''' p date,
                    q smallint,
                    r time,
@@ -454,7 +455,7 @@ def establish_basic_datatype_table(version, session, table_name_prefix=""):
 def verify_basic_datatype_table(created_on_version, current_version, keyspace, session, table_name_prefix=""):
     table_name = _table_name_builder(table_name_prefix, "test_basic_datatypes")
     meta = session.cluster.metadata.keyspaces[keyspace].tables[table_name]
-    if created_on_version > '2.2':
+    if parse_version(created_on_version) > parse_version('2.2'):
         assert_equal(19, len(meta.columns))
     else:
         assert_equal(15, len(meta.columns))
@@ -477,7 +478,7 @@ def verify_basic_datatype_table(created_on_version, current_version, keyspace, s
     assert_equal('uuid', meta.columns['m'].cql_type)
     assert_equal('text', meta.columns['n'].cql_type)
     assert_equal('varint', meta.columns['o'].cql_type)
-    if created_on_version > '2.2':
+    if parse_version(created_on_version) > parse_version('2.2'):
         assert_equal('date', meta.columns['p'].cql_type)
         assert_equal('smallint', meta.columns['q'].cql_type)
         assert_equal('time', meta.columns['r'].cql_type)
@@ -498,10 +499,10 @@ class TestSchemaMetadata(Tester):
         cluster = self.cluster
         cluster.schema_event_refresh_window = 0
 
-        if cluster.version() >= '3.0':
+        if parse_version(cluster.version()) >= parse_version('3.0'):
             cluster.set_configuration_options({'enable_user_defined_functions': 'true',
                                                'enable_scripted_user_defined_functions': 'true'})
-        elif cluster.version() >= '2.2':
+        elif parse_version(cluster.version()) >= parse_version('2.2'):
             cluster.set_configuration_options({'enable_user_defined_functions': 'true'})
         cluster.populate(1).start()
 

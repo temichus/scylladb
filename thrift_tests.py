@@ -3,6 +3,7 @@ import struct
 import time
 import uuid
 from threading import Thread
+from pkg_resources import parse_version
 
 from thrift.protocol import TBinaryProtocol
 from thrift.transport import TSocket, TTransport
@@ -1657,10 +1658,10 @@ class TestMutations(ThriftTester):
 
     def test_describe_keyspace(self):
         kspaces = client.describe_keyspaces()
-        if self.cluster.version() >= '3.0':
+        if parse_version(self.cluster.version()) >= parse_version('3.0'):
             # ['Keyspace2', 'Keyspace1', 'system', 'system_traces', 'system_schema', 'system_auth', 'system_distributed']
             assert len(kspaces) == 7, [x.name for x in kspaces]
-        elif self.cluster.version() >= '2.2':
+        elif parse_version(self.cluster.version()) >= parse_version('2.2'):
             # Scylla does not have system_auth or system_distributed keyspaces.
             assert len(kspaces) == 5, [x.name for x in kspaces]  # ['Keyspace2', 'Keyspace1', 'system', 'system_traces']
         else:

@@ -6,6 +6,7 @@ import struct
 import time
 import os
 import traceback
+from pkg_resources import parse_version
 
 from collections import OrderedDict, defaultdict
 from collections import namedtuple
@@ -422,7 +423,7 @@ class TestCQL(Tester):
 
         assert_invalid(session, "CREATE TABLE test ()", expected=SyntaxException)
 
-        if self.cluster.version() < "1.2":
+        if parse_version(self.cluster.version()) < parse_version("1.2"):
             assert_invalid(session, "CREATE TABLE test (key text PRIMARY KEY)")
 
         assert_invalid(session, "CREATE TABLE test (c1 text, c2 text, c3 text)")
@@ -486,7 +487,7 @@ class TestCQL(Tester):
         # Check that we do limit the output to 1 *and* that we respect query
         # order of keys (even though 48 is after 2)
         res = session.execute("SELECT * FROM clicks WHERE userid IN (48, 2) LIMIT 1")
-        if self.cluster.version() >= '2.2':  # Scylla reports 3.0, but has <2.2 behavior.
+        if parse_version(self.cluster.version()) >= parse_version('2.2'):  # Scylla reports 3.0, but has <2.2 behavior.
             assert rows_to_list(res) == [[2, 'http://foo.com', 42]], list(res)
         else:
             assert rows_to_list(res) == [[48, 'http://foo.com', 42]], list(res)
@@ -938,7 +939,7 @@ class TestCQL(Tester):
             session.execute("INSERT INTO test1 (k, c, v) VALUES (0, %i, %i)" % (x, x))
 
         res = session.execute("SELECT v FROM test1 WHERE k = 0 AND c IN (5, 2, 8)")
-        if self.cluster.version() <= "1.2":
+        if parse_version(self.cluster.version()) <= parse_version("1.2"):
             assert rows_to_list(res) == [[5], [2], [8]], list(res)
         else:
             assert rows_to_list(res) == [[2], [5], [8]], list(res)
@@ -959,7 +960,7 @@ class TestCQL(Tester):
             session.execute("INSERT INTO test2 (k, c1, c2, v) VALUES (0, 0, %i, %i)" % (x, x))
 
         # Check first we don't allow IN everywhere
-        if self.cluster.version() >= '2.2':
+        if parse_version(self.cluster.version()) >= parse_version('2.2'):
             assert_none(session, "SELECT v FROM test2 WHERE k = 0 AND c1 IN (5, 2, 8) AND c2 = 3")
         else:
             assert_invalid(session, "SELECT v FROM test2 WHERE k = 0 AND c1 IN (5, 2, 8) AND c2 = 3")
@@ -1319,7 +1320,7 @@ class TestCQL(Tester):
         assert rows_to_list(res) == [list(row1), list(row2)], list(res)
 
         # Won't be allowed until #3708 is in
-        if self.cluster.version() < "1.2":
+        if parse_version(self.cluster.version()) < parse_version("1.2"):
             assert_invalid(session, "DELETE FROM testcf2 WHERE username='abc' AND id=2")
 
     @attr('single_node')
@@ -1497,7 +1498,7 @@ class TestCQL(Tester):
         inOrder = [x[0] for x in rows]
         assert len(inOrder) == c, 'Expecting %d elements, got %d' % (c, len(inOrder))
 
-        if self.cluster.version() < '1.2':
+        if parse_version(self.cluster.version()) < parse_version('1.2'):
             session.execute("SELECT k FROM test WHERE token(k) >= 0")
         else:
             min_token = -2 ** 63
@@ -1801,7 +1802,7 @@ class TestCQL(Tester):
           WITH compression_parameters:sstable_compressor = 'DeflateCompressor';
         """, expected=SyntaxException)
 
-        if self.cluster.version() >= '1.2':
+        if parse_version(self.cluster.version()) >= parse_version('1.2'):
             assert_invalid(session, """
               CREATE TABLE users (key varchar PRIMARY KEY, password varchar, gender varchar)
               WITH compression = { 'sstable_compressor' : 'DeflateCompressor' };
@@ -1813,7 +1814,7 @@ class TestCQL(Tester):
         session = self.prepare()
 
         # we just want to make sure the following is valid
-        if self.cluster.version() >= '1.2':
+        if parse_version(self.cluster.version()) >= parse_version('1.2'):
             session.execute("""
                 CREATE KEYSPACE Foo
                     WITH replication = { 'class' : 'NetworkTopologyStrategy',
@@ -1868,7 +1869,7 @@ class TestCQL(Tester):
 
         session.execute("DELETE tags FROM user WHERE fn='Bilbo' AND ln='Baggins'")
         res = session.execute("SELECT tags FROM user WHERE fn='Bilbo' AND ln='Baggins'")
-        if self.cluster.version() <= "1.2":
+        if parse_version(self.cluster.version()) <= parse_version("1.2"):
             assert rows_to_list(res) == [None], list(res)
         else:
             assert rows_to_list(res) == [], list(res)
@@ -1910,7 +1911,7 @@ class TestCQL(Tester):
 
         session.execute(q % "m = {}")
         res = session.execute("SELECT m FROM user WHERE fn='Bilbo' AND ln='Baggins'")
-        if self.cluster.version() <= "1.2":
+        if parse_version(self.cluster.version()) <= parse_version("1.2"):
             assert rows_to_list(res) == [None], list(res)
         else:
             assert rows_to_list(res) == [], list(res)
@@ -2091,7 +2092,7 @@ class TestCQL(Tester):
         res = session.execute("SELECT * FROM test")
         assert rows_to_list(res) == [['ɸ', 'ɸ', set(['ɸ']), 'ɸ']], list(res)
 
-        if self.cluster.version() < "2.1":
+        if parse_version(self.cluster.version()) < parse_version("2.1"):
             assert_invalid(session, "ALTER TABLE test ALTER s TYPE set<blob>", expected=ConfigurationException)
         else:
             session.execute("ALTER TABLE test ALTER s TYPE set<blob>")
@@ -2124,8 +2125,8 @@ class TestCQL(Tester):
 
         assert_invalid(session, "SELECT * FROM test WHERE k2 = 3")
 
-        v = self.cluster.version()
-        if v < "2.2.0":
+        v = parse_version(self.cluster.version())
+        if v < parse_version("2.2.0"):
             # still failed in 3.0: https://github.com/scylladb/scylla/issues/1735
             assert_invalid(session, "SELECT * FROM test WHERE k1 IN (0, 1) and k2 = 3")
 
@@ -2400,8 +2401,8 @@ class TestCQL(Tester):
 
         # as discussed in CASSANDRA-8148, some queries that should have required ALLOW FILTERING
         # in 2.0 have been fixed for 2.2
-        v = self.cluster.version()
-        if v < "2.2.0":
+        v = parse_version(self.cluster.version())
+        if v < parse_version("2.2.0"):
             session.execute("SELECT blog_id, content FROM blogs WHERE time1 > 0 AND author='foo'")
             session.execute("SELECT blog_id, content FROM blogs WHERE time1 = 1 AND author='foo'")
             session.execute("SELECT blog_id, content FROM blogs WHERE time1 = 1 AND time2 = 0 AND author='foo'")
@@ -2543,7 +2544,7 @@ class TestCQL(Tester):
         session.execute(
             "CREATE KEYSPACE ks2 WITH replication={ 'class' : 'SimpleStrategy', 'replication_factor' : 1 } AND durable_writes=false")
 
-        if self.cluster.version() >= '2.2':
+        if parse_version(self.cluster.version()) >= parse_version('2.2'):
             assert_all(session, "SELECT keyspace_name, durable_writes FROM system.schema_keyspaces",
                        [['system_auth', True], ['ks1', True], ['system_distributed', True], ['system', True], ['system_traces', True], ['ks2', False]])
         else:
@@ -2554,7 +2555,7 @@ class TestCQL(Tester):
             "ALTER KEYSPACE ks1 WITH replication = { 'class' : 'NetworkTopologyStrategy', 'dc1' : 1 } AND durable_writes=False")
         session.execute("ALTER KEYSPACE ks2 WITH durable_writes=true")
 
-        if self.cluster.version() >= '2.2':
+        if parse_version(self.cluster.version()) >= parse_version('2.2'):
             assert_all(session, "SELECT keyspace_name, durable_writes, strategy_class FROM system.schema_keyspaces",
                        [[u'system_auth', True, 'org.apache.cassandra.locator.SimpleStrategy'],
                         [u'ks1', False, 'org.apache.cassandra.locator.NetworkTopologyStrategy'],
@@ -3781,7 +3782,7 @@ class TestCQL(Tester):
         # Shouldn't apply
         assert_one(session, "UPDATE test SET v1 = 3, v2 = 'bar' WHERE k = 0 IF EXISTS", [False, None, None, None, None])
 
-        if self.cluster.version() > "2.1.1":
+        if parse_version(self.cluster.version()) > parse_version("2.1.1"):
             # Should apply
             assert_one(session, "DELETE FROM test WHERE k = 0 IF v1 IN (null)", [True, None])
 
@@ -3861,8 +3862,8 @@ class TestCQL(Tester):
         assert_one(session, "DELETE FROM test2 WHERE k='k' AND i=0 IF EXISTS", [False, None, None, None, None])
 
         # CASSANDRA-6430
-        v = self.cluster.version()
-        if v >= "2.1.1" or v < "2.1" and v >= "2.0.11":
+        v = parse_version(self.cluster.version())
+        if v >= parse_version("2.1.1") or v < parse_version("2.1") and v >= parse_version("2.0.11"):
             assert_invalid(session, "DELETE FROM test2 WHERE k = 'k' IF EXISTS")
             assert_invalid(session, "DELETE FROM test2 WHERE k = 'k' IF v = 'foo'")
             assert_invalid(session, "DELETE FROM test2 WHERE i = 0 IF EXISTS")
@@ -4420,7 +4421,7 @@ class TestCQL(Tester):
         assert_all(session, "SELECT * FROM test WHERE id=1",
                    [[1, 'k1', 1, 'val1'], [1, 'k2', 1, 'newVal'], [1, 'k3', 1, 'val3']])
 
-        if self.cluster.version() >= '2.1':
+        if parse_version(self.cluster.version()) >= parse_version('2.1'):
             assert_all(session,
                        """
                          BEGIN BATCH
@@ -4574,7 +4575,7 @@ class TestCQL(Tester):
         session.execute("insert into test(field1, field2, field3) values ('hola', now(), false);")
         session.execute("insert into test(field1, field2, field3) values ('hola', now(), false);")
 
-        if self.cluster.version() > '2.2':
+        if parse_version(self.cluster.version()) > parse_version('2.2'):
             assert_one(session, "select count(*) from test where field3 = false limit 1;", [2])
         else:
             assert_one(session, "select count(*) from test where field3 = false limit 1;", [1])
@@ -4612,7 +4613,7 @@ class TestCQL(Tester):
         assert_all(cursor, "SELECT v FROM test WHERE k=0 AND c1 = 0 AND c2 IN (2, 0)", [[0], [2]])
         assert_all(cursor, "SELECT v FROM test WHERE k=0 AND c1 = 0 AND c2 IN (2, 0) ORDER BY c1 ASC", [[0], [2]])
         assert_all(cursor, "SELECT v FROM test WHERE k=0 AND c1 = 0 AND c2 IN (2, 0) ORDER BY c1 DESC", [[2], [0]])
-        if self.cluster.version() >= '2.2':  # Scylla reports 2.2, but has 2.1 behavior.
+        if parse_version(self.cluster.version()) >= parse_version('2.2'):  # Scylla reports 2.2, but has 2.1 behavior.
             assert_all(cursor, "SELECT v FROM test WHERE k IN (1, 0)", [[0], [1], [2], [3], [4], [5]])
         else:
             assert_all(cursor, "SELECT v FROM test WHERE k IN (1, 0)", [[3], [4], [5], [0], [1], [2]])
@@ -4840,7 +4841,7 @@ class TestCQL(Tester):
         # Lists
         session = self.prepare()
 
-        frozen_values = (False, True) if self.cluster.version() >= "2.1.3" else (False,)
+        frozen_values = (False, True) if parse_version(self.cluster.version()) >= parse_version("2.1.3") else (False,)
         for frozen in frozen_values:
 
             session.execute("DROP TABLE IF EXISTS tlist")
@@ -4855,7 +4856,7 @@ class TestCQL(Tester):
 
             assert_invalid(session, "DELETE FROM tlist WHERE k=0 IF l[null] = 'foobar'")
             assert_invalid(session, "DELETE FROM tlist WHERE k=0 IF l[-2] = 'foobar'")
-            if self.cluster.version() < "2.1":
+            if parse_version(self.cluster.version()) < parse_version("2.1"):
                 # no longer invalid after CASSANDRA-6839
                 assert_invalid(session, "DELETE FROM tlist WHERE k=0 IF l[3] = 'foobar'")
             assert_one(session, "DELETE FROM tlist WHERE k=0 IF l[1] = null", [False, ['foo', 'bar', 'foobar']])
@@ -5084,7 +5085,7 @@ class TestCQL(Tester):
     def map_item_conditional_test(self):
         session = self.prepare()
 
-        frozen_values = (False, True) if self.cluster.version() >= "2.1.3" else (False,)
+        frozen_values = (False, True) if parse_version(self.cluster.version()) >= parse_version("2.1.3") else (False,)
         for frozen in frozen_values:
 
             session.execute("DROP TABLE IF EXISTS tmap")
@@ -5104,7 +5105,7 @@ class TestCQL(Tester):
             assert_one(session, "DELETE FROM tmap WHERE k=0 IF m['foo'] = 'bar'", [True, {'foo': 'bar'}])
             assert_none(session, "SELECT * FROM tmap")
 
-            if self.cluster.version() > "2.1.1":
+            if parse_version(self.cluster.version()) > parse_version("2.1.1"):
                 session.execute("INSERT INTO tmap(k, m) VALUES (1, null)")
                 if frozen:
                     assert_invalid(

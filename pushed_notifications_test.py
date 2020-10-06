@@ -9,6 +9,7 @@ from dtest import Tester, debug
 from tools import no_vnodes, since
 from threading import Event
 from assertions import assert_invalid
+from pkg_resources import parse_version
 
 
 class NotificationWaiter(object):
@@ -330,7 +331,7 @@ class TestVariousNotifications(Tester):
         def read_failure_query():
             assert_invalid(
                 session, SimpleStatement("select * from test where id in (1,2,3,4,5)", consistency_level=CL.ALL),
-                expected=ReadTimeout if self.cluster.version() < '3' else ReadFailure,
+                expected=ReadTimeout if parse_version(self.cluster.version()) < parse_version('3.0') else ReadFailure,
             )
 
         read_failure_query()
@@ -349,7 +350,7 @@ class TestVariousNotifications(Tester):
         def range_request_failure_query():
             assert_invalid(
                 session, SimpleStatement("select * from test", consistency_level=CL.ALL),
-                expected=ReadTimeout if self.cluster.version() < '3' else ReadFailure,
+                expected=ReadTimeout if parse_version(self.cluster.version()) < parse_version('3.0') else ReadFailure,
             )
 
         range_request_failure_query()

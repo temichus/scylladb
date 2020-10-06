@@ -1,6 +1,8 @@
 import os
 import re
 import time
+from pkg_resources import parse_version
+
 from cassandra import ConsistencyLevel
 from cassandra.query import SimpleStatement
 from cassandra.util import OrderedMapSerializedKey
@@ -594,7 +596,7 @@ class SnitchConfigurationUpdateTest(Tester):
         # check node not running
         debug("Waiting for error message in log file")
 
-        if cluster.version() >= '2.2':
+        if parse_version(cluster.version()) >= parse_version('2.2'):
             node1.watch_log_for("Cannot start node if snitch's rack(.*) differs from previous rack(.*)",
                                 from_mark=mark)
         else:

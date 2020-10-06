@@ -8,7 +8,7 @@ import time
 import subprocess
 import sys
 from decimal import Decimal
-from distutils.version import LooseVersion
+from pkg_resources import parse_version
 from tempfile import NamedTemporaryFile
 from uuid import UUID, uuid4
 
@@ -53,7 +53,7 @@ class TestCqlsh(Tester):
         """
         cluster = self.cluster
 
-        if cluster.version() < '2.2':
+        if parse_version(cluster.version()) < parse_version('2.2'):
             cqlsh_path = os.path.join(cluster.get_install_dir(), 'bin', 'cqlsh')
         else:
             cqlsh_path = os.path.join(cluster.get_install_dir(), 'bin', 'cqlsh.py')
@@ -542,7 +542,7 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
         conn.execute("CREATE USER user1 WITH PASSWORD 'user1'")
         conn.execute("GRANT ALL ON ks.t1 TO user1")
 
-        if self.cluster.version() >= '3.0':
+        if parse_version(self.cluster.version()) >= parse_version('3.0'):
             self.verify_output("LIST USERS", node1, """
  name      | super
 -----------+-------
@@ -561,7 +561,7 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
 (2 rows)
 """)
 
-        if self.cluster.version() >= '3.0':
+        if parse_version(self.cluster.version()) >= parse_version('3.0'):
             self.verify_output("LIST ALL PERMISSIONS OF user1", node1, """
  role  | username | resource      | permission
 -------+----------+---------------+------------
@@ -817,7 +817,7 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
 
         if has_val_idx:
             val_idx_def = self.get_index_output('test_val_idx', 'test', 'test', 'val')
-            if LooseVersion(self.cluster.version()) >= LooseVersion('2.2'):
+            if parse_version(self.cluster.version()) >= parse_version('2.2'):
                 return ret + "\n" + val_idx_def + "\n" + col_idx_def
             else:
                 return ret + "\n" + col_idx_def + "\n" + val_idx_def
@@ -825,7 +825,7 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
             return ret + "\n" + col_idx_def
 
     def get_users_table_output(self):
-        if LooseVersion(self.cluster.version()) >= LooseVersion('3.0'):
+        if parse_version(self.cluster.version()) >= parse_version('3.0'):
             return """
         CREATE TABLE test.users (
             userid text PRIMARY KEY,
@@ -1481,7 +1481,7 @@ Unlogged batch covering 2 partitions detected against table [client_warnings.tes
         env = node.get_env()
         env['LANG'] = 'en_US.UTF-8'
         env.update(env_vars)
-        if LooseVersion(self.cluster.version()) >= LooseVersion('2.1'):
+        if parse_version(self.cluster.version()) >= parse_version('2.1'):
             host = node.network_interfaces['binary'][0]
             port = node.network_interfaces['binary'][1]
         else:
@@ -1929,7 +1929,7 @@ class CqlLoginTest(Tester):
         self.create_cf(self.session, 'ks1table')
         self.session.execute("CREATE USER user1 WITH PASSWORD 'changeme';")
 
-        if self.cluster.version() >= '3.0':
+        if parse_version(self.cluster.version()) >= parse_version('3.0'):
             query = '''
                     LOGIN user1 'changeme';
                     CREATE USER user2 WITH PASSWORD 'fail' SUPERUSER;

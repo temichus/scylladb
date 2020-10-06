@@ -5,7 +5,7 @@ import re
 import subprocess
 import sys
 from time import sleep
-from distutils.version import LooseVersion
+from pkg_resources import parse_version
 from ccmlib.common import is_win
 from dtest import Tester
 from tools import since, require
@@ -62,7 +62,7 @@ def build_doc_context(tester, test_name, prepare=True, connection=None, nodes=No
         cli = nodes[0].get_tool('cqlsh')
         env = nodes[0].get_env()
         env['LANG'] = 'en_US.UTF-8'
-        if LooseVersion(tester.cluster.version()) >= LooseVersion('2.1'):
+        if parse_version(tester.cluster.version()) >= parse_version('2.1'):
             host = nodes[0].network_interfaces['binary'][0]
             port = nodes[0].network_interfaces['binary'][1]
         else:

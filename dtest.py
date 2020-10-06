@@ -17,6 +17,7 @@ import inspect
 from unittest import TestCase
 import random
 import glob
+from pkg_resources import parse_version
 
 import psutil
 from cassandra import ConsistencyLevel
@@ -779,11 +780,12 @@ class Tester(TestCase):
         Returns the highest protocol version accepted
         by the given C* version
         """
-        if cassandra_version >= '2.2':
+        v = parse_version(cassandra_version)
+        if v >= parse_version('2.2'):
             protocol_version = 4
-        elif cassandra_version >= '2.1':
+        elif v >= parse_version('2.1'):
             protocol_version = 3
-        elif cassandra_version >= '2.0':
+        elif v >= parse_version('2.0'):
             protocol_version = 2
         else:
             protocol_version = 1

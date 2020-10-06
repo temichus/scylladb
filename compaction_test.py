@@ -3,6 +3,7 @@ import re
 import tempfile
 import time
 import random
+from pkg_resources import parse_version
 
 from assertions import assert_none, assert_one
 from dtest import Tester, debug
@@ -574,7 +575,7 @@ class TestCompaction(Tester):
         return node
 
     def skip_if_no_major_compaction(self):
-        if self.cluster.version() < '2.2' and self.strategy == 'LeveledCompactionStrategy':
+        if parse_version(self.cluster.version()) < parse_version('2.2') and self.strategy == 'LeveledCompactionStrategy':
             self.skipTest('major compaction not implemented for LCS in this version of Cassandra')
 
 
