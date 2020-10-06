@@ -15,6 +15,7 @@ from scylla_tools import insert_c1c2, query_c1c2_concurrent, get_cf_dir
 
 class expected_failure(object):
     """decorator that verifies expected failure in system.log and exception/s that should happen"""
+
     def __init__(self, err_log_msg, exception):
         self.err_log_msg = err_log_msg
         self.exception = exception
@@ -148,12 +149,13 @@ class InMemoryTest(Tester):
         if validate_in_memory_used:
             debug("Validating used memory amounts...")
             expected_memory_usage = num_keys * self.memory_usage_per_key_factor
-            self.assertGreaterEqual(used_mem, expected_memory_usage, msg="Used memory ({}) is less than expected ({})".format(used_mem, expected_memory_usage))
+            self.assertGreaterEqual(used_mem, expected_memory_usage, msg="Used memory ({}) is less than expected ({})".format(
+                used_mem, expected_memory_usage))
             debug("Validating total memory...")
             delta = 2  # when smp is odd we get 2 bytes less
             self.assertAlmostEqual(total_mem, self.in_memory_amount_kb, delta=delta,
-                                    msg="Total memory is incorrect, expected {}+/-{}  but got {}"
-                                   .format( self.in_memory_amount_kb, delta, total_mem))
+                                   msg="Total memory is incorrect, expected {}+/-{}  but got {}"
+                                   .format(self.in_memory_amount_kb, delta, total_mem))
             debug("Used memory and total memory amounts are correct.")
 
     @run_with_params(restart_node=[True, False])
@@ -246,7 +248,7 @@ class InMemoryTest(Tester):
             3. Scylla should stop with IO error
         """
         num_keys = int((self.in_memory_amount_kb * 0.57) / self.memory_usage_per_key_factor)
-        self.populate_and_read(restart_node=True, num_keys = num_keys)
+        self.populate_and_read(restart_node=True, num_keys=num_keys)
 
     def alter_table_to_in_memory(self, session, key_space_name, table_name):
         debug("Altering table to in-memory...")
