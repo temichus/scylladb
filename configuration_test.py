@@ -107,7 +107,8 @@ class TestConfiguration(Tester):
         assert params is not '', "Looking for the string 'sstable_compression', but could not find it in {str}".format(
             str=result)
 
-        chunk_string = "chunk_length_kb" if parse_version(self.cluster.version()) < parse_version('3.0') else "chunk_length_in_kb"
+        chunk_string = "chunk_length_kb" if parse_version(
+            self.cluster.version()) < parse_version('3.0') else "chunk_length_in_kb"
         chunk_length = int(re.search("{chunk}.*?:.*?'(\d*?)'".format(chunk=chunk_string), result).groups()[0])
 
         assert chunk_length == value, "Expected chunk_length: %s.  We got: %s" % (value, chunk_length)

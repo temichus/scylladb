@@ -11,7 +11,7 @@ import unittest
 import random
 import string
 from itertools import groupby
-from distutils.version import LooseVersion
+from pkg_resources import parse_version
 from threading import Thread
 from uuid import uuid1, uuid4
 import errno
@@ -313,15 +313,18 @@ def create_stress_compatible_table(self, node, rf=1, dclocal_read_repair_chance=
 class since(object):
 
     def __init__(self, cass_version, max_version=None):
-        self.cass_version = LooseVersion(cass_version)
-        self.max_version = max_version
-        if self.max_version is not None:
-            self.max_version = LooseVersion(self.max_version)
+        self.cass_version = cass_version
+        self.max_version = None
+        if max_version is not None:
+            v = max_version
+            if v.endswith('.x') or v.endswith('.X'):
+                v = v[0:-2]
+            self.max_version = v
 
     def _skip_msg(self, version):
-        if version < self.cass_version:
+        if parse_version(version) < parse_version(self.cass_version):
             return "%s < %s" % (version, self.cass_version)
-        if self.max_version and version > self.max_version:
+        if self.max_version and parse_version(version) > parse_version(self.max_version):
             return "%s > %s" % (version, self.max_version)
 
     def _maybe_skip(self, obj, version):
@@ -335,8 +338,7 @@ class since(object):
         @functools.wraps(cls.setUp)
         def wrapped_setUp(obj, *args, **kwargs):
             orig_setUp(obj, *args, **kwargs)
-            version = LooseVersion(obj.cluster.version())
-            self._maybe_skip(obj, version)
+            self._maybe_skip(obj, obj.cluster.version())
 
         cls.setUp = wrapped_setUp
         return cls
@@ -344,8 +346,7 @@ class since(object):
     def _wrap_function(self, f):
         @functools.wraps(f)
         def wrapped(obj):
-            version = LooseVersion(obj.cluster.version())
-            self._maybe_skip(obj, version)
+            self._maybe_skip(obj, obj.cluster.version())
             f(obj)
         return wrapped
 
