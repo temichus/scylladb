@@ -5,6 +5,7 @@ from dtest import Tester, ServiceLevel, Role, User
 from dtest import DEFAULT_SERVICE_LEVEL_SHARES
 from tools import require
 
+
 class SLATests(Tester):
 
     DEFAULT_SHARES = 1000
@@ -227,7 +228,7 @@ class SLATests(Tester):
         Create one more SLA with shares=100 and attach to user
         """
         session = self.prepare()
-        service_levels = [ServiceLevel(session=session, name='sla%d' % s, service_shares=s) for s in  [50, 300, 100]]
+        service_levels = [ServiceLevel(session=session, name='sla%d' % s, service_shares=s) for s in [50, 300, 100]]
         role_sl = [[Role(session=session, name='role%d' % i), service_levels[i]] for i in range(1, 3)]
         user_sl = [[User(session=session, name='user100'), service_levels[2]]]
 
@@ -327,7 +328,7 @@ class SLATests(Tester):
                               entity=role)
 
         # Validate user
-        #TODO: not clear, what is the effective SLA here, because of both SLAs have same SHARES amount?
+        # TODO: not clear, what is the effective SLA here, because of both SLAs have same SHARES amount?
         self.validate_sla(expected_slas_list=service_levels,
                           expected_attached_slas_list=[],
                           expected_attached_all_slas_list=role_sl,
@@ -475,7 +476,7 @@ class SLATests(Tester):
                                                                             name='',
                                                                             service_shares=DEFAULT_SERVICE_LEVEL_SHARES)
                                                          ]
-                                                       ],
+                                                        ],
                           entity=user)
 
     def two_roles_one_slas_to_user_test(self):
@@ -576,7 +577,6 @@ class SLATests(Tester):
         self.create_entity_with_service_level(entity=user, service_level=slas[-1])
         roles_slas[200]['role'].grant_me_to(grant_to=user)
 
-
         expected_attached_all_sla_list = [role_sl['role'] for _, role_sl in roles_slas.items()] + [user]
 
         for _, role_sl in roles_slas.items():
@@ -596,7 +596,7 @@ class SLATests(Tester):
 
     def inherit_4_slas_test(self):
         """
-        -Create 4 SLAs: 50, 200, 500, 1000. 
+        -Create 4 SLAs: 50, 200, 500, 1000.
         -Create 4 role
         -Assign SLAs to the roles
         -Grant role with "200" to role "50".
@@ -964,10 +964,10 @@ class SLATests(Tester):
                           expected_effective_slas_list=[[role, sl200]],
                           entity=role)
 
-
     #####
     # Negative tests
     #####
+
     def attach_not_exists_sla_to_role_test(self):
         """
         Create role and attach not existing service level
