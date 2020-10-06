@@ -18,12 +18,14 @@ class InMemoryTest(Tester):
     Test in memory sstable when Encryption at-rest is enabled.
     a reproducer for scylla-enterprise/issues/925
     """
+
     def restart_query_test(self):
         self.cluster.set_configuration_options(values={'in_memory_storage_size_mb': 100})
         self.cluster.populate(1).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1 = self.cluster.nodelist()[0]
         session = self.patient_cql_connection(node1)
-        session.execute("CREATE KEYSPACE rest WITH replication = {'class': 'SimpleStrategy', 'replication_factor': '1'}")
+        session.execute(
+            "CREATE KEYSPACE rest WITH replication = {'class': 'SimpleStrategy', 'replication_factor': '1'}")
         session.execute("""CREATE TABLE rest.table1(key text PRIMARY KEY, name text) WITH scylla_encryption_options =
             {'key_provider': 'LocalFileSystemKeyProviderFactory', 'secret_key_file': '/tmp/secret_key'} AND
             in_memory=true AND compaction={'class': 'InMemoryCompactionStrategy'}""")
@@ -45,7 +47,8 @@ class InMemoryTest(Tester):
         self.cluster.populate(1).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1 = self.cluster.nodelist()[0]
         session = self.patient_cql_connection(node1)
-        session.execute("CREATE KEYSPACE keyspace1 WITH replication = {'class': 'SimpleStrategy', 'replication_factor': '1'}")
+        session.execute(
+            "CREATE KEYSPACE keyspace1 WITH replication = {'class': 'SimpleStrategy', 'replication_factor': '1'}")
         session.execute("""CREATE TABLE keyspace1.standard1 (key blob PRIMARY KEY,"C0" blob,"C1" blob,"C2" blob,"C3" blob,"C4" blob)
             WITH scylla_encryption_options = {'key_provider': 'LocalFileSystemKeyProviderFactory', 'secret_key_file': '/tmp/secret_key'} AND
             in_memory=true AND compaction={'class': 'InMemoryCompactionStrategy'} """)
@@ -110,7 +113,8 @@ class BaseKeyProviderFactory(Tester):
         else:
             src = '/etc/dse/conf/system_key_tmp'
             subprocess.getoutput('sudo rm -f %s' % src)
-            subprocess.getoutput("sudo /home/amos/.ccm/repository/5.1.5/bin/dsetool createsystemkey '%s' %d system_key_tmp" % (cipher_algorithm, secret_key_strength))
+            subprocess.getoutput("sudo /home/amos/.ccm/repository/5.1.5/bin/dsetool createsystemkey '%s' %d system_key_tmp" %
+                                 (cipher_algorithm, secret_key_strength))
             subprocess.getoutput('sudo cp %s %s' % (src, dest))
             subprocess.getoutput('sudo chown $USER:$USER %s' % dest)
 
@@ -262,7 +266,8 @@ class EncryptionAtRestBase(Tester):
             self.rolling_restart()
         session = self.get_session()
         for ks in kss:
-            session.execute("CREATE KEYSPACE IF NOT EXISTS %s WITH REPLICATION = {'class' : 'SimpleStrategy', 'replication_factor' : %d }" % (ks, n))
+            session.execute(
+                "CREATE KEYSPACE IF NOT EXISTS %s WITH REPLICATION = {'class' : 'SimpleStrategy', 'replication_factor' : %d }" % (ks, n))
         return session
 
     def cleanup(self, kss=['ks']):
@@ -299,7 +304,7 @@ class EncryptionAtRestBase(Tester):
     def _smoke_test(self, key_provider=KeyProviderEnum.local, cipher_algorithm=None, secret_key_strength=None, compression=None):
         kp = self.get_key_provider(key_provider)
         kp.prepare_conf()
-        session = self.prepare(restart=key_provider==KeyProviderEnum.kmip)
+        session = self.prepare(restart=key_provider == KeyProviderEnum.kmip)
         if cipher_algorithm and secret_key_strength:
             kp.create_encrypted_cf(session, name='ks.cf', cipher_algorithm=cipher_algorithm,
                                    secret_key_strength=secret_key_strength, compression=compression)
@@ -318,7 +323,7 @@ class EncryptionAtRestBase(Tester):
     def _alter_test(self, key_provider=KeyProviderEnum.local):
         kp = self.get_key_provider(key_provider)
         kp.prepare_conf()
-        session = self.prepare(restart=key_provider==KeyProviderEnum.kmip)
+        session = self.prepare(restart=key_provider == KeyProviderEnum.kmip)
         options = kp.create_encrypted_cf(session, name='ks.cf')
         query = "ALTER TABLE ks.cf with scylla_encryption_options=%s"
 
@@ -393,7 +398,8 @@ class EncryptionAtRestBase(Tester):
             elif key_provider == KeyProviderEnum.replicated:
                 system_key_file = 'system_key_' + ks
 
-            kp.create_encrypted_cf(session, name=ks + '.cf', system_key_file=system_key_file, secret_key_file=secret_key_file)
+            kp.create_encrypted_cf(session, name=ks + '.cf', system_key_file=system_key_file,
+                                   secret_key_file=secret_key_file)
             kp.prepare_write_workload(session, ks=ks)
         session = self.rolling_restart()
         for ks in kss:
@@ -404,7 +410,7 @@ class EncryptionAtRestBase(Tester):
         cfs = ['cf_%d' % i for i in range(self.multiple_num)]
         kp = self.get_key_provider(key_provider)
         kp.prepare_conf()
-        session = self.prepare(restart=key_provider==KeyProviderEnum.kmip)
+        session = self.prepare(restart=key_provider == KeyProviderEnum.kmip)
         secret_key_file = None
         system_key_file = None
         for cf in cfs:
@@ -412,7 +418,8 @@ class EncryptionAtRestBase(Tester):
                 secret_key_file = './resources/secret_key_file_' + cf
             elif key_provider == KeyProviderEnum.replicated:
                 system_key_file = 'system_key_' + cf
-            kp.create_encrypted_cf(session, name='ks.' + cf, system_key_file=system_key_file, secret_key_file=secret_key_file)
+            kp.create_encrypted_cf(session, name='ks.' + cf, system_key_file=system_key_file,
+                                   secret_key_file=secret_key_file)
             kp.prepare_write_workload(session, cf=cf)
         session = self.rolling_restart()
         for cf in cfs:
@@ -421,7 +428,7 @@ class EncryptionAtRestBase(Tester):
     def _reboot_test(self, key_provider=KeyProviderEnum.local):
         kp = self.get_key_provider(key_provider)
         kp.prepare_conf()
-        self.prepare(n=3, restart=key_provider==KeyProviderEnum.kmip)
+        self.prepare(n=3, restart=key_provider == KeyProviderEnum.kmip)
 
         session = self.get_session()
         kp.create_encrypted_cf(session, name='ks.cf')
@@ -450,7 +457,8 @@ class EncryptionAtRestTest(EncryptionAtRestBase):
                 debug('---- Test with %s , length %s ----' % (k, i))
                 for name, value in KeyProviderEnum.__members__.items():
                     try:
-                        EncryptionAtRestBase._smoke_test(self, key_provider=value, cipher_algorithm=k, secret_key_strength=i)
+                        EncryptionAtRestBase._smoke_test(self, key_provider=value,
+                                                         cipher_algorithm=k, secret_key_strength=i)
                     except Exception as e:
                         debug(str(e))
                     finally:
