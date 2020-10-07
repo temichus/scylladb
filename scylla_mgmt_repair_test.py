@@ -333,7 +333,7 @@ class TestScyllaMgmtRepair(RepairAdditionalBase, ScyllaManagerMixin):
         mgr_cluster = manager_tool.add_cluster(node=dc1_node1, name=cluster_name)
 
         repair_task = mgr_cluster.repair_api.repair(
-            dc_names=['dc1', 'dc2'], keyspace=self.KEYSPACE_NAME, cluster_name=mgr_cluster.id)
+            dc_names=['dc1', 'dc2'], keyspace_list=self.KEYSPACE_NAME, cluster_name=mgr_cluster.id)
         repair_task.wait_for_status(list_status=[TaskStatus.DONE])
         self._assert_multiple_row_ranges_from_specific_node(node_to_query=dc2_node1,
                                                             nodes_to_shut_down=[dc1_node1,
@@ -374,7 +374,7 @@ class TestScyllaMgmtRepair(RepairAdditionalBase, ScyllaManagerMixin):
         mgr_cluster = manager_tool.add_cluster(node=dc1_node, name=cluster_name)
 
         repair_task = mgr_cluster.repair_api.repair(
-            dc_names=['dc1', 'dc2', 'dc3'], keyspace=self.KEYSPACE_NAME, cluster_name=mgr_cluster.id)
+            dc_names=['dc1', 'dc2', 'dc3'], keyspace_list=self.KEYSPACE_NAME, cluster_name=mgr_cluster.id)
         repair_task.wait_for_status(list_status=[TaskStatus.DONE])
         self._assert_multiple_row_ranges_from_specific_node(node_to_query=dc2_node,
                                                             nodes_to_shut_down=[dc1_node, dc3_node, dc4_node],
