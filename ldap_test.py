@@ -1,6 +1,8 @@
 import uuid
 import ldap_docker
+import os
 import random
+import subprocess
 
 from dtest import Tester, info
 from cassandra import Unauthorized
@@ -11,12 +13,18 @@ class TestLdap(Tester):
     LDAP_PASSWORD = 'cassandra'
 
     def tearDown(self):
+        if self.saslauthd_proc is not None:
+            self.saslauthd_proc.terminate()
+            self.saslauthd_proc.wait()
+            os.remove(self.saslauthd_conf_path)
         Tester.tearDown(self)
         self.test_ldap_docker.remove_container(force=True)
 
     def setUp(self):
         Tester.setUp(self)
         self.create_ldap_container()
+        self.saslauthd_conf_path = os.path.join(self.test_path, 'saslauthd.conf')
+        self.saslauthd_proc = None
 
     def get_default_scylla_yaml_ldap_config(self):
         return {'role_manager': 'com.scylladb.auth.LDAPRoleManager',
@@ -40,6 +48,12 @@ class TestLdap(Tester):
         if configure_ldap:
             ldap_options = kwargs.get('ldap_options', None)
             self.test_ldap_docker.create_ldap_connection()
+            with open(self.saslauthd_conf_path, 'w') as f:
+                f.write(f'ldap_servers: ldap://{self.test_ldap_docker.ldap_server.name}\n'
+                        f'ldap_search_base: {self.test_ldap_docker.ldap_base_object}')
+            self.saslauthd_proc = subprocess.Popen(
+                ['saslauthd', '-d', '-n', '1', '-a', 'ldap', '-O', self.saslauthd_conf_path, '-m', 'mux'],
+                stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
             if ldap_options:
                 config.update(ldap_options)
             else:
