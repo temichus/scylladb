@@ -17,6 +17,7 @@ from concurrent.futures import ThreadPoolExecutor
 import yaml
 from nose.plugins.attrib import attr
 from ccmlib.node import NodetoolError
+from ccmlib.scylla_cluster import ScyllaCluster
 
 from dtest import Tester
 from tools import debug
@@ -1623,14 +1624,18 @@ class TestNodetool(Tester):
         node = self.get_node(node)
         node.nodetool('rebuild ' + dc)
 
-    def verify_all_api(self, giveup=120):
+    def verify_all_api(self, giveup=360):
         """ Check that the cluster is available
         """
-        while giveup > 0:
+        if type(self.cluster) is ScyllaCluster and self.cluster.scylla_mode == 'debug':
+            giveup *= 3
+
+        wait_until = time.time() + giveup
+        while time.time() < wait_until:
             if self.cluster_started:
                 return
             time.sleep(1)
-            giveup -= 1
+
         raise Exception("Cluster did not start")
 
     def get_node(self, node):
