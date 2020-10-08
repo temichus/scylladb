@@ -82,7 +82,7 @@ class TestLdap(Tester):
         self.test_ldap_docker = ldap_docker.LdapDocker()
         self.test_ldap_docker.create_ldap_container(name=docker_name)
 
-    def prepare_ldap_server(self, ldap_role='cassandra', ldap_password=LDAP_PASSWORD, unique_members=None):
+    def add_role_to_ldap(self, ldap_role='cassandra', ldap_password=LDAP_PASSWORD, unique_members=None):
         unique_members_list = []
         if not unique_members:
             unique_members = [self.LDAP_USER, 'qa-user']
@@ -132,7 +132,7 @@ class TestLdap(Tester):
 
     def test_simple_ldap_connection(self):
         self.prepare()
-        self.prepare_ldap_server()
+        self.add_role_to_ldap()
         permission = {'user': self.LDAP_USER,
                       'password': self.LDAP_PASSWORD,
                       'role': 'cassandra',
@@ -142,7 +142,7 @@ class TestLdap(Tester):
 
     def test_user_login_only(self):
         self.prepare()
-        self.prepare_ldap_server()
+        self.add_role_to_ldap()
         session = self.patient_cql_connection(self.nodes[0], user=self.LDAP_USER, password=self.LDAP_PASSWORD)
         session.execute('CREATE ROLE \'login_user\' with login=true and password=\'test\'')
         permission = {'user': 'login_user',
@@ -154,7 +154,7 @@ class TestLdap(Tester):
 
     def test_wrong_user(self):
         self.prepare()
-        self.prepare_ldap_server()
+        self.add_role_to_ldap()
         failed = False
         try:
             self.cql_connection(self.nodes[0], user='abcd', password=self.LDAP_PASSWORD)
@@ -205,13 +205,13 @@ class TestLdap(Tester):
             self.create_role_grant_permission(session=session, permission_dict=permission_dict)
             session.execute(f"CREATE ROLE \'{permission_dict['user']}\' WITH login=true AND "
                             f"password=\'{permission_dict['password']}\'")
-            self.prepare_ldap_server(ldap_role=permission_dict['role'], unique_members=[permission_dict['user']])
+            self.add_role_to_ldap(ldap_role=permission_dict['role'], unique_members=[permission_dict['user']])
             self.check_user_permissions(permission_dict=permission_dict)
             info(f'Finished with {k}')
 
     def test_hard_restart_scylla(self):
         self.prepare()
-        self.prepare_ldap_server()
+        self.add_role_to_ldap()
         permission = {'user': self.LDAP_USER,
                       'password': self.LDAP_PASSWORD,
                       'role': 'empty_role',
@@ -224,7 +224,7 @@ class TestLdap(Tester):
 
     def test_soft_restart_scylla(self):
         self.prepare()
-        self.prepare_ldap_server()
+        self.add_role_to_ldap()
         permission = {'user': self.LDAP_USER,
                       'password': self.LDAP_PASSWORD,
                       'role': 'empty_role',
@@ -247,7 +247,7 @@ class TestLdap(Tester):
                           'resource': 'ALL KEYSPACES'}
             if not role == 'cassandra':
                 self.create_role_grant_permission(session=cassandra_session, permission_dict=permission)
-            self.prepare_ldap_server(ldap_role=role)
+            self.add_role_to_ldap(ldap_role=role)
             self.check_user_permissions(permission_dict=permission)
 
     def test_multiple_roles_single_permission(self):
@@ -266,7 +266,7 @@ class TestLdap(Tester):
         for role in list_of_roles:
             permission_dict['role'] = role
             self.create_role_grant_permission(session=cassandra_session, permission_dict=permission_dict)
-            self.prepare_ldap_server(ldap_role=role)
+            self.add_role_to_ldap(ldap_role=role)
             self.check_user_permissions(permission_dict=permission_dict)
 
     def test_multiple_roles_permissions_combination(self):
@@ -283,7 +283,7 @@ class TestLdap(Tester):
             permission['role'] = role
             permission['permissions'] = [action]
             self.create_role_grant_permission(session=cassandra_session, permission_dict=permission)
-            self.prepare_ldap_server(ldap_role=f'{role}')
+            self.add_role_to_ldap(ldap_role=f'{role}')
         permission['permissions'] = actions_list[:]
         self.check_user_permissions(permission_dict=permission)
 
@@ -303,7 +303,7 @@ class TestLdap(Tester):
         self.cluster.set_configuration_options(values=self.get_default_scylla_yaml_ldap_config())
         self.nodes[0].stop()
         self.nodes[0].start(wait_other_notice=True, wait_for_binary_proto=True)
-        self.prepare_ldap_server()
+        self.add_role_to_ldap()
         permission = {'user': self.LDAP_USER,
                       'password': self.LDAP_PASSWORD,
                       'role': 'cassandra',
@@ -314,7 +314,7 @@ class TestLdap(Tester):
     def test_multiple_users_superuser_role(self):
         self.prepare()
         list_of_unique_members = [f'user_{i}' for i in range(10)]
-        self.prepare_ldap_server(unique_members=list_of_unique_members)
+        self.add_role_to_ldap(unique_members=list_of_unique_members)
         session = self.patient_cql_connection(self.nodes[0], user='cassandra', password='cassandra')
         for user in list_of_unique_members:
             session.execute(f'create role \'{user}\' with login=true and password=\'{self.LDAP_PASSWORD}\'')
@@ -334,7 +334,7 @@ class TestLdap(Tester):
                       'resource': 'ALL KEYSPACES'}
         self.create_role_grant_permission(session=session, permission_dict=permission)
         list_of_unique_members = [f'user_{i}' for i in range(10)]
-        self.prepare_ldap_server(ldap_role='modify_role', unique_members=list_of_unique_members)
+        self.add_role_to_ldap(ldap_role='modify_role', unique_members=list_of_unique_members)
         for user in list_of_unique_members:
             session.execute(f'create role \'{user}\' with login=true and password=\'{self.LDAP_PASSWORD}\'')
             permission['user'] = user
@@ -350,7 +350,7 @@ class TestLdap(Tester):
 
         session = self.patient_cql_connection(self.nodes[0], user='cassandra', password='cassandra')
         self.create_role_grant_permission(session=session, permission_dict=permission)
-        self.prepare_ldap_server(ldap_role=permission['role'], unique_members=[permission['user']])
+        self.add_role_to_ldap(ldap_role=permission['role'], unique_members=[permission['user']])
         self.check_user_permissions(permission_dict=permission)
         session.execute(f'GRANT modify ON {permission["resource"]} TO \'{permission["role"]}\'')
         permission['permissions'].append('modify')
@@ -368,7 +368,7 @@ class TestLdap(Tester):
                       'resource': 'all keyspaces'}
         session = self.patient_cql_connection(self.nodes[0], user='cassandra', password='cassandra')
         self.create_role_grant_permission(session=session, permission_dict=permission)
-        self.prepare_ldap_server(ldap_role=permission['role'], unique_members=[permission['user']])
+        self.add_role_to_ldap(ldap_role=permission['role'], unique_members=[permission['user']])
         self.check_user_permissions(permission_dict=permission)
         revoke_permission = permission['permissions'].pop(-1)
         session.execute(f'REVOKE {revoke_permission} ON {permission["resource"]} FROM \'{permission["role"]}\'')
@@ -379,7 +379,7 @@ class TestLdap(Tester):
 
     def test_remove_user_from_ldap(self):
         self.prepare()
-        self.prepare_ldap_server()
+        self.add_role_to_ldap()
         permission = {'user': self.LDAP_USER,
                       'password': self.LDAP_PASSWORD,
                       'role': 'cassandra',
@@ -398,7 +398,7 @@ class TestLdap(Tester):
 
     def test_modify_username_on_ldap(self):
         self.prepare()
-        self.prepare_ldap_server()
+        self.add_role_to_ldap()
         permission = {'user': self.LDAP_USER,
                       'password': self.LDAP_PASSWORD,
                       'role': 'cassandra',
@@ -426,7 +426,7 @@ class TestLdap(Tester):
 
     def test_add_user_to_ldap(self):
         self.prepare()
-        self.prepare_ldap_server()
+        self.add_role_to_ldap()
         permission = {'user': self.LDAP_USER,
                       'password': self.LDAP_PASSWORD,
                       'role': 'cassandra',
