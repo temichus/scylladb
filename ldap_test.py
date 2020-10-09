@@ -18,7 +18,7 @@ class TestLdap(Tester):
             self.saslauthd_proc.kill() # Using terminate() here somehow terminates nosetests itself. o_O
             self.saslauthd_proc.wait()
         shutil.rmtree(self.saslauthd_dir) # Next line requires self.test_path directory to be empty.
-        Tester.tearDown(self)
+        Tester.tearDown(self) # Keep LDAP up to avoid Scylla shutdown logging errors, failing the test.
         self.test_ldap_docker.remove_container(force=True)
 
     def setUp(self):
