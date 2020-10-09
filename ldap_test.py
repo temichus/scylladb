@@ -2,6 +2,7 @@ import uuid
 import ldap_docker
 import os
 import random
+import shutil
 import subprocess
 
 from dtest import Tester, info
@@ -14,16 +15,17 @@ class TestLdap(Tester):
 
     def tearDown(self):
         if self.saslauthd_proc is not None:
-            self.saslauthd_proc.terminate()
+            self.saslauthd_proc.kill() # Using terminate() here somehow terminates nosetests itself. o_O
             self.saslauthd_proc.wait()
-            os.remove(self.saslauthd_conf_path)
+        shutil.rmtree(self.saslauthd_dir) # Next line requires self.test_path directory to be empty.
         Tester.tearDown(self)
         self.test_ldap_docker.remove_container(force=True)
 
     def setUp(self):
         Tester.setUp(self)
         self.create_ldap_container()
-        self.saslauthd_conf_path = os.path.join(self.test_path, 'saslauthd.conf')
+        self.saslauthd_dir = os.path.join(self.test_path, 'saslauthd')
+        os.mkdir(self.saslauthd_dir)
         self.saslauthd_proc = None
 
     def get_default_scylla_yaml_ldap_config(self):
@@ -48,11 +50,12 @@ class TestLdap(Tester):
         if configure_ldap:
             ldap_options = kwargs.get('ldap_options', None)
             self.test_ldap_docker.create_ldap_connection()
-            with open(self.saslauthd_conf_path, 'w') as f:
+            saslauthd_conf_path = os.path.join(self.saslauthd_dir, 'saslauthd.conf')
+            with open(saslauthd_conf_path, 'w') as f:
                 f.write(f'ldap_servers: ldap://{self.test_ldap_docker.ldap_server.name}\n'
                         f'ldap_search_base: {self.test_ldap_docker.ldap_base_object}')
             self.saslauthd_proc = subprocess.Popen(
-                ['saslauthd', '-d', '-n', '1', '-a', 'ldap', '-O', self.saslauthd_conf_path, '-m', 'mux'],
+                ['saslauthd', '-d', '-n', '1', '-a', 'ldap', '-O', saslauthd_conf_path, '-m', self.saslauthd_dir],
                 stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
             if ldap_options:
                 config.update(ldap_options)
