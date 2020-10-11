@@ -7,6 +7,7 @@ import subprocess
 
 from dtest import Tester, info
 from cassandra import Unauthorized
+from cassandra.cluster import NoHostAvailable
 
 
 class TestLdap(Tester):
@@ -38,7 +39,7 @@ class TestLdap(Tester):
                 'ldap_bind_passwd': 'scylla'}
 
     def prepare(self, nodes=1, user='cassandra', password='cassandra', configure_ldap=True, create_role=True,
-                create_ks_and_table=True, **kwargs):
+                create_ks_and_table=True, use_saslauthd=False, **kwargs):
         self.nodes = []
         config = dict()
         options = kwargs.get('options', None)
@@ -52,8 +53,10 @@ class TestLdap(Tester):
             self.test_ldap_docker.create_ldap_connection()
             saslauthd_conf_path = os.path.join(self.saslauthd_dir, 'saslauthd.conf')
             with open(saslauthd_conf_path, 'w') as f:
-                f.write(f'ldap_servers: ldap://{self.test_ldap_docker.ldap_server.name}\n'
-                        f'ldap_search_base: {self.test_ldap_docker.ldap_base_object}')
+                f.write(f'ldap_servers: {self.test_ldap_docker.ldap_server.name}\n'
+                        f'ldap_search_base: {self.test_ldap_docker.ldap_base_object}\n'
+                        f'ldap_bind_dn: cn=admin,{self.test_ldap_docker.ldap_base_object}\n'
+                        f'ldap_bind_pw: scylla\n')
             self.saslauthd_proc = subprocess.Popen(
                 ['saslauthd', '-d', '-n', '1', '-a', 'ldap', '-O', saslauthd_conf_path, '-m', self.saslauthd_dir],
                 stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
@@ -63,9 +66,13 @@ class TestLdap(Tester):
                 config.update(self.get_default_scylla_yaml_ldap_config())
         if kwargs.get('start_rpc', False):
             config.update(values={'start_rpc': True})
-        config.update({'authenticator': 'org.apache.cassandra.auth.PasswordAuthenticator',
-                       'authorizer': 'org.apache.cassandra.auth.CassandraAuthorizer',
+        config.update({'authorizer': 'org.apache.cassandra.auth.CassandraAuthorizer',
                        'permissions_validity_in_ms': 0})
+        if use_saslauthd:
+            config.update({'authenticator': 'com.scylladb.auth.SaslauthdAuthenticator',
+                            'saslauthd_socket_path': os.path.join(self.saslauthd_dir, 'mux')})
+        else:
+            config.update({'authenticator': 'org.apache.cassandra.auth.PasswordAuthenticator'})
         cluster.set_configuration_options(values=config)
 
         if not cluster.nodelist():
@@ -449,3 +456,14 @@ class TestLdap(Tester):
         session.execute(f'CREATE ROLE \'{new_user}\' WITH login=true and password=\'{permission["password"]}\'')
         permission['user'] = new_user
         self.check_user_permissions(permission_dict=permission)
+
+    def test_authentication(self):
+        with self.assertRaisesRegexp(NoHostAvailable, 'Bad credentials'): # User 'cassandra' absent from LDAP.
+            self.prepare(use_saslauthd=True)
+        self.test_ldap_docker.add_ldap_object(
+                f'uid=cassandra,{self.test_ldap_docker.ldap_base_object}',
+                ['uidObject', 'organizationalPerson', 'top'],
+                {'userPassword': 'cassandra', 'sn': 'Cassandra', 'cn': 'Cassandra'})
+        self.patient_cql_connection(self.nodes[0], user='cassandra', password='cassandra')
+        with self.assertRaisesRegexp(NoHostAvailable, 'Bad credentials'):
+            self.patient_cql_connection(self.nodes[0], user='cassandra', password='wrong-password')
