@@ -2,6 +2,7 @@ import os
 import time
 import docker
 from ldap3 import Server, Connection, ALL, ALL_ATTRIBUTES
+from dtest import debug
 
 
 def running_in_docker():
@@ -96,12 +97,24 @@ class LdapDocker(object):
         self.conn = None
 
     def add_ldap_object(self, *args, **kwargs):
-        self.conn.add(*args, **kwargs)
+        try:
+            self.conn.add(*args, **kwargs)
+        except:
+            debug("LDAP SERVER LOG DUMP: " + self.container.logs())
+            raise
         return self.conn.result
 
     def search_ldap_object(self, search_base, search_filter):
-        self.conn.search(search_base=search_base, search_filter=search_filter, attributes=ALL_ATTRIBUTES)
+        try:
+            self.conn.search(search_base=search_base, search_filter=search_filter, attributes=ALL_ATTRIBUTES)
+        except:
+            debug("LDAP SERVER LOG DUMP: " + self.container.logs())
+            raise
         return self.conn.entries
 
     def modify_ldap_object(self, *args, **kwargs):
-        return self.conn.modify(*args, **kwargs)
+        try:
+            return self.conn.modify(*args, **kwargs)
+        except:
+            debug("LDAP SERVER LOG DUMP: " + self.container.logs())
+            raise
