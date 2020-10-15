@@ -1,5 +1,6 @@
 import os
 import random
+
 import shutil
 import string
 
@@ -24,6 +25,34 @@ BIG_PARTITION_ROWS = 10000
 NUM_OF_GENERATED_SSTABLES = 4
 NUM_WRITES_PER_SSTABLE = 1
 START_INDEX = 1
+
+
+def create_table(session, compaction_strategy=None,
+                 table_name=TABLE_NAME, keyspace_name=KEYSPACE_NAME, sstable_size_in_mb=None,
+                 is_large_partitions=False, compaction_additional_params: dict = None):
+    """
+
+    Creating a table, specifying a compaction strategy and its parameters.
+    """
+    session.execute("USE {}".format(keyspace_name))
+    if not is_large_partitions:
+        query = """
+            CREATE TABLE {} (
+                key blob PRIMARY KEY,
+                "C0" blob
+            )
+        """.format(table_name)
+    else:
+        query = 'create table {} (pk int, ck int, {}, clist list<int>, cset set<text>, cmap map<int, text>, ' \
+                'PRIMARY KEY(pk, ck))'.format(table_name,
+                                              ', '.join('c%d int' % i for i in range(1, NUM_OF_COLUMNS)))
+    compaction_params = {'class': compaction_strategy._value_, 'sstable_size_in_mb': str(sstable_size_in_mb)}
+    compaction_params.update(compaction_additional_params)
+    query += f" WITH compaction = {compaction_params}"
+
+    debug("query is:{}".format(query))
+
+    session.execute(query)
 
 
 @attr('dtest-full')
@@ -78,37 +107,19 @@ class IcsCompactionTest(Tester):
         session = self.patient_cql_connection(node1)
         return session
 
-    def create_table(self, session, compaction_strategy=CompactionStrategy.SIZE_TIERED,
-                     table_name=TABLE_NAME, keyspace_name=KEYSPACE_NAME, sstable_size_in_mb=10,
-                     is_large_partitions=False):
-        session.execute("USE {}".format(keyspace_name))
-        if not is_large_partitions:
-            query = """
-                CREATE TABLE {} (
-                    key blob PRIMARY KEY,
-                    "C0" blob
-                )
-            """.format(table_name)
-        else:
-            query = 'create table {} (pk int, ck int, {}, clist list<int>, cset set<text>, cmap map<int, text>, ' \
-                    'PRIMARY KEY(pk, ck))'.format(table_name,
-                                                  ', '.join('c%d int' % i for i in range(1, NUM_OF_COLUMNS)))
-        query += " WITH compaction = { 'class' : '" + compaction_strategy._value_ + "', 'sstable_size_in_mb' : '" + str(
-            sstable_size_in_mb) + "' }"
-        debug("query is:{}".format(query))
-
-        session.execute(query)
-
     def prepare(self, num_of_nodes=NUM_OF_NODES, r_factor=RF,
                 compaction_strategy=CompactionStrategy.SIZE_TIERED,
                 table_name=TABLE_NAME, keyspace_name=KEYSPACE_NAME, sstable_size_in_mb=10,
-                is_large_partitions=False):
-        jvm_args = ["--compaction-enforce-min-threshold", "true"]
-        session = self.create_cluster(num_of_nodes=num_of_nodes, jvm_args=jvm_args)
+                is_large_partitions=False, compaction_additional_params: dict = None, jvm_args=None):
+        all_jvm_args = ["--compaction-enforce-min-threshold", "true"]
+        if jvm_args:
+            all_jvm_args += jvm_args
+        session = self.create_cluster(num_of_nodes=num_of_nodes, jvm_args=all_jvm_args)
         self.create_ks(session=session, name=keyspace_name, rf=r_factor)
-        self.create_table(session=session, compaction_strategy=compaction_strategy,
-                          keyspace_name=keyspace_name, table_name=table_name,
-                          sstable_size_in_mb=sstable_size_in_mb, is_large_partitions=is_large_partitions)
+        create_table(session=session, compaction_strategy=compaction_strategy,
+                     keyspace_name=keyspace_name, table_name=table_name,
+                     sstable_size_in_mb=sstable_size_in_mb, is_large_partitions=is_large_partitions,
+                     compaction_additional_params=compaction_additional_params)
         return session
 
     def _count_table_entries(self, keyspace=KEYSPACE_NAME, table=TABLE_NAME):
@@ -198,14 +209,14 @@ class IcsCompactionTest(Tester):
         for idx in range(1, num_of_generated_sstables + 1):
             write_size_unit_in_bytes = write_size_unit_in_mb * MB
             write_size = write_size_unit_in_bytes * idx if increasing_write_size else write_size_unit_in_bytes
-            debug("stress node1 #{idx} (file-size: {write_size})".format(**locals()))
-            results, errors = node1.stress(
-                [op_mode, "no-warmup", 'n={}'.format(num_writes_per_sstable), '-pop',
-                 'seq={}..{}'.format(start_index, start_index + write_range),
-                 "-col",
-                 "n=fixed(1)",
-                 "size=fixed({})".format(write_size),
-                 "-rate", "threads=1"], capture_output=True)
+            stress_params = [op_mode, "no-warmup", 'n={}'.format(num_writes_per_sstable), '-pop',
+                             'seq={}..{}'.format(start_index, start_index + write_range),
+                             "-col",
+                             "n=fixed(1)",
+                             "size=fixed({})".format(write_size),
+                             "-rate", "threads=1"]
+            debug("stress node1 #{idx}: ( {stress_params} )".format(**locals()))
+            results, errors = node1.stress(stress_params, capture_output=True)
             debug('Stress results:\n' + ''.join(results + errors))
             self.assertFalse(errors, "Some errors during stress %s" % errors)
             if not read_only:
@@ -270,9 +281,9 @@ class IcsCompactionTest(Tester):
         shutil.rmtree(os.path.join(node1.get_path(), 'data', KEYSPACE_NAME))
 
         self.create_ks(session, name=KEYSPACE_NAME, rf=RF)
-        self.create_table(session=session, compaction_strategy=CompactionStrategy.INCREMENTAL,
-                          keyspace_name=KEYSPACE_NAME, table_name=TABLE_NAME,
-                          sstable_size_in_mb=sstable_size_in_mb)
+        create_table(session=session, compaction_strategy=CompactionStrategy.INCREMENTAL,
+                     keyspace_name=KEYSPACE_NAME, table_name=TABLE_NAME,
+                     sstable_size_in_mb=sstable_size_in_mb)
 
         assert_row_count(session=session, table_name=FULL_TABLE_NAME, expected=0)
 
@@ -461,9 +472,9 @@ class IcsCompactionTest(Tester):
 
         # Re-create a clean table as ICS
         self.create_ks(session, name=KEYSPACE_NAME, rf=1)
-        self.create_table(session=session, compaction_strategy=CompactionStrategy.INCREMENTAL,
-                          keyspace_name=KEYSPACE_NAME, table_name=TABLE_NAME,
-                          sstable_size_in_mb=sstable_size_in_mb)
+        create_table(session=session, compaction_strategy=CompactionStrategy.INCREMENTAL,
+                     keyspace_name=KEYSPACE_NAME, table_name=TABLE_NAME,
+                     sstable_size_in_mb=sstable_size_in_mb)
 
         # Restore data from snapshot of big file:
         restore_snapshot_with_refresh(snapshot_dir, node1, KEYSPACE_NAME, TABLE_NAME)
@@ -630,3 +641,68 @@ class IcsCompactionTest(Tester):
         total_rows += num_of_new_rows
         self.cluster.flush()
         assert_row_count(session=session, table_name=FULL_TABLE_NAME, expected=total_rows)
+
+    def space_amplification_goal_trigger_test(self):
+        """
+        Check that space_amplification_goal triggers a compaction of 2 tiers appropriately when threshold is met.
+        """
+        sstable_size_in_mb = 10
+        # Create a table with 1.20 goal and compaction min thereshold of 6.
+        jvm_args = ["--smp", "1"]
+        self.prepare(num_of_nodes=1, r_factor=1, compaction_strategy=CompactionStrategy.INCREMENTAL,
+                     sstable_size_in_mb=sstable_size_in_mb,
+                     compaction_additional_params={'space_amplification_goal': '1.20', 'min_threshold': '6',
+                                                   'min_sstable_size': '1'}, jvm_args=["--smp", "1"])
+        node1 = self.cluster.nodelist()[0]
+        # Create a 10MB sstable consist of 10 partitions.
+        self._write_and_flush_sstables(num_of_generated_sstables=1, start_index=1,
+                                       write_range=10, num_writes_per_sstable=10, write_size_unit_in_mb=1)
+        # Run major compaction for the sstable to be in last largest tier.
+        node1.compact()
+        node1.wait_for_compactions()
+        # Create 4 1MB-size sstables with data the overlaps the first 10MB sstable.
+        # so that the sum of the second tier sstables size will exceed space_amplification_goal
+        # and will trigger a compaction.
+        self._write_and_flush_sstables(num_of_generated_sstables=4, start_index=1, num_writes_per_sstable=1)
+        # Check that compaction was triggered and the new sstables are compacted with the big one.
+        node1.wait_for_compactions()
+        sstables_files1, files_size = self._get_sstable_files_and_sizes()
+        assert sorted(files_size) == [1, 10], "Cross-tier compaction was not triggered after " \
+            "space_amplification_goal is exceeded!".format(
+            **locals())
+
+    def space_amplification_goal_3_buckets_test(self):
+        """
+        Check that space_amplification_goal triggers a compaction of 2 tiers appropriately when threshold is met.
+        """
+        sstable_size_in_mb = 10
+        # Create a table with 1.20 goal and compaction min thereshold of 6.
+        jvm_args = ["--smp", "1"]
+        self.prepare(num_of_nodes=1, r_factor=1, compaction_strategy=CompactionStrategy.INCREMENTAL,
+                     sstable_size_in_mb=sstable_size_in_mb,
+                     compaction_additional_params={'space_amplification_goal': '1.70', 'min_threshold': '4',
+                                                   'min_sstable_size': '4'}, jvm_args=["--smp", "1"])
+        node1 = self.cluster.nodelist()[0]
+        # Create a 10MB sstable consist of 10 partitions.
+        self._write_and_flush_sstables(num_of_generated_sstables=1, start_index=1,
+                                       write_range=10, num_writes_per_sstable=10, write_size_unit_in_mb=1)
+        # Run major compaction for the sstable to be in last largest tier.
+        node1.compact()
+        node1.wait_for_compactions()
+        # Create 4 1MB-size sstables with data the overlaps the first 10MB sstable.
+        # so that the sum of the second tier sstables size will NOT exceed space_amplification_goal
+        # and will NOT trigger a cross-tier compaction.
+        self._write_and_flush_sstables(num_of_generated_sstables=4, start_index=1, num_writes_per_sstable=1)
+        # Check that compaction was triggered by min_threshold and the new sstables are compacted without the big one.
+        node1.wait_for_compactions()
+        sstables_files1, files_size = self._get_sstable_files_and_sizes()
+        assert sorted(files_size) == [4, 10], "Unexpcted compacted sstable sizes.".format(
+            **locals())
+        self._write_and_flush_sstables(num_of_generated_sstables=1, write_range=5, start_index=1,
+                                       num_writes_per_sstable=5)
+        # Check that cross-tier compaction was triggered since 5 + 4 sstables > 7 (70% of 10 )
+        node1.wait_for_compactions()
+        sstables_files1, files_size = self._get_sstable_files_and_sizes()
+        assert files_size == [
+            10], "Cross-tier compaction was not triggered after space_amplification_goal is exceeded!".format(
+            **locals())
