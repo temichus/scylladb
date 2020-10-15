@@ -777,7 +777,7 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
                 PRIMARY KEY (id, col)
                 """
 
-        if LooseVersion(self.cluster.version()) >= LooseVersion('3.0'):
+        if parse_version(self.cluster.version()) >= parse_version('3.0'):
             ret += """
         ) WITH CLUSTERING ORDER BY (col ASC)
             AND bloom_filter_fp_chance = 0.01
