@@ -1,6 +1,6 @@
 FROM scylladb/scylla-toolchain:fedora-29-20190603
 
-RUN sudo dnf -y install redhat-rpm-config python3-devel rsyslog
+RUN sudo dnf -y install redhat-rpm-config python3-devel rsyslog cyrus-sasl
 ADD docker/etc /etc
 ADD requirements.txt requirements.txt
 
