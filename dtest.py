@@ -85,6 +85,7 @@ logging.basicConfig(filename=os.path.join(LOG_SAVED_DIR, "dtest.log"),
                     level=logging.DEBUG)
 
 LOG = logging.getLogger('dtest')
+logging.getLogger('ccm').setLevel(logging.DEBUG)
 # set python-driver log level to WARN by default for dtest
 logging.getLogger('cassandra').setLevel(logging.WARNING)
 logging.getLogger('urllib3').setLevel(logging.WARNING)
