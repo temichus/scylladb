@@ -3063,7 +3063,8 @@ class TestCQL(Tester):
         # Don't require filtering, always allowed
         queries = ["SELECT * FROM test WHERE k = 1",
                    "SELECT * FROM test WHERE k = 1 AND c > 2",
-                   "SELECT * FROM test WHERE k = 1 AND c = 2"]
+                   "SELECT * FROM test WHERE k = 1 AND c = 2",
+                   "SELECT * FROM test WHERE c > 2"]
         for q in queries:
             self._assert_valid_query(session=session, query=q)
             self._assert_valid_query(session=session, query=q + " ALLOW FILTERING")
@@ -3526,7 +3527,7 @@ class TestCQL(Tester):
         self.assertEqual([[2]], rows_to_list(res))
 
         res = session.execute(
-            "SELECT value FROM indexed WHERE pk0 = 5 AND pk1 = 0 AND ck0 = 1 AND ck2 = 3 ALLOW FILTERING")
+            "SELECT value FROM indexed WHERE pk0 = 5 AND pk1 = 0 AND ck0 = 1 AND ck2 = 3")
         self.assertEqual([[4]], rows_to_list(res))
 
     @skip('indexes')
@@ -5291,7 +5292,7 @@ class TestCQL(Tester):
                    [[0, 1], [0, 2], [0, 3], [1, 1], [1, 2], [1, 3]])
 
         # Introduced in CASSANDRA-7059
-        assert_invalid(session, "SELECT * FROM test WHERE v > 1 AND v <= 3 LIMIT 6 ALLOW FILTERING")
+        assert_invalid(session, "SELECT * FROM test WHERE v > 1 AND v <= 3 LIMIT 6")
 
     @attr('single_node')
     def key_index_with_reverse_clustering(self):
@@ -6013,10 +6014,9 @@ class TestCQL(Tester):
                        expected=[row[-1]])
 
     @attr('single_node')
-    def allow_filtering_with_mv_test(self):
+    def filtering_with_mv_test(self):
         """
                 test queries with multiple restrictions + materialized view.
-                see where 'allow_filtering' is optional and when it is required.
         """
         session = self.prepare()
 
@@ -6046,7 +6046,7 @@ class TestCQL(Tester):
                    [[1]])
 
         assert_all(session,
-                   "SELECT count(*) FROM users_by_state WHERE state = 'TX' AND username = 'user1' ALLOW FILTERING",
+                   "SELECT count(*) FROM users_by_state WHERE state = 'TX' AND username = 'user1'",
                    [[1]])
 
     @attr('single_node')
@@ -6157,7 +6157,7 @@ class TestCQL(Tester):
                    ignore_order=True)
 
         assert_all(session,
-                   "SELECT * FROM test_filter WHERE k1 = 0 AND k2=1 AND ck1=0 ALLOW FILTERING",
+                   "SELECT * FROM test_filter WHERE k1 = 0 AND k2=1 AND ck1=0",
                    [[0, 1, 0, 0]])
 
         # count(*) test
