@@ -78,6 +78,7 @@ class TestInternodeSSL(Tester):
             self.ignore_log_patterns += [
                 'server connection dropped: The TLS connection was non-properly terminated',
                 'client connection dropped: The certificate is NOT trusted',
+                'server connection dropped: sendmsg: Broken pipe',
             ]
             node_marks = {node: node.mark_log() for node in cluster.nodelist()}
 
