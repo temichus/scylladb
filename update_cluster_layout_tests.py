@@ -307,6 +307,7 @@ class TestUpdateClusterLayout(Tester):
             r'[Rr]epair.*mandatory neighbor={} is not alive'.format(node2.address()),
             r'Startup failed:.*Failed to repair for keyspace=ks[1-3]?',
             r'Startup failed: std::runtime_error .* \(repair .* failed',
+            r'Startup failed: std::runtime_error .*rpc::closed_error',
         ]
 
         debug("Stop node 2...")
