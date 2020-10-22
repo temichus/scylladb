@@ -78,7 +78,6 @@ class TestInternodeSSL(Tester):
             self.ignore_log_patterns += [
                 'server connection dropped: The TLS connection was non-properly terminated',
                 'client connection dropped: The certificate is NOT trusted',
-                'server connection dropped: sendmsg: Broken pipe',
             ]
             node_marks = {node: node.mark_log() for node in cluster.nodelist()}
 
@@ -98,6 +97,10 @@ class TestInternodeSSL(Tester):
                 wait_for_cert_reload(node, "messaging_service", [
                                      "internode-ccm_node.pem", "internode-ccm_node.key"], from_mark=mark)
                 debug("done")
+
+        self.ignore_log_patterns += [
+            'connection dropped: sendmsg: Broken pipe',
+        ]
 
         session = self.patient_cql_connection(cluster.nodelist()[0])
         self.create_ks(session, 'ks', 3)
