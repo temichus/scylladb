@@ -36,6 +36,7 @@ from ccmlib.common import isScylla
 from ccmlib.common import is_win
 from ccmlib.node import TimeoutError
 from ccmlib.scylla_cluster import ScyllaCluster
+from ccmlib.scylla_docker_cluster import ScyllaDockerCluster
 from OpenSSL import crypto
 from socket import gethostname
 from nose.exc import SkipTest
@@ -450,7 +451,7 @@ class Tester(TestCase):
         cdir = CASSANDRA_DIR
 
         scylla_version = os.environ.get('SCYLLA_VERSION', None)
-
+        docker_image = os.environ.get('SCYLLA_DOCKER_IMAGE', None)
         if version:
             debug("Starting Cassandra cluster version {}".format(version))
             cluster = Cluster(self.test_path, name, cassandra_version=version)
@@ -458,6 +459,9 @@ class Tester(TestCase):
             debug("Starting Scylla cluster version {}".format(scylla_version))
             cluster = ScyllaCluster(self.test_path, name, cassandra_version=scylla_version,
                                     force_wait_for_cluster_start=True)
+        elif docker_image:
+            cluster = ScyllaDockerCluster(self.test_path, name, docker_image=docker_image,
+                                          force_wait_for_cluster_start=True)
         else:
             if isScylla(cdir):
                 debug("Starting Scylla cluster from directory {}".format(cdir))
@@ -538,7 +542,7 @@ class Tester(TestCase):
         if os.path.exists(LAST_TEST_DIR):
             os.remove(LAST_TEST_DIR)
 
-        if not preserve_cluster:
+        if not preserve_cluster and not isinstance(cluster, ScyllaDockerCluster):
             Tester._force_clean(cluster)
 
         # cluster.id may be equal to 0
@@ -645,7 +649,8 @@ class Tester(TestCase):
             f.write(self.id() + '\n')
 
         if new_cluster:
-            self._force_clean(self.cluster)
+            if not isinstance(self.cluster, ScyllaDockerCluster):
+                self._force_clean(self.cluster)
         else:
             return
 
