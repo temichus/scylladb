@@ -3,7 +3,6 @@ import tempfile
 import json
 import math
 import uuid
-from datetime import timedelta
 from dateutil.parser import parse
 from decimal import Decimal
 import pprint
@@ -34,6 +33,9 @@ class SSTableDump(Tester):
 
         with open(json_path, 'r') as fdr:
             data = fdr.read()
+        if 'as the config file' in data:
+            # need to skip first line cause: https://github.com/scylladb/scylla-tools-java/issues/213
+            data = '\n'.join(data.split('\n')[1:])
         data_json = json.loads(data.replace("][", ","))
 
         os.unlink(json_path)
