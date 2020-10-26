@@ -72,13 +72,15 @@ class TestInternodeSSL(Tester):
         else:
             raise Exception('Invalid parameter dcs: {}. Must be greater than or equal to 1'.format(dcs))
 
+        self.ignore_log_patterns += [
+            'connection dropped: The TLS connection was non-properly terminated',
+            'connection dropped: The certificate is NOT trusted',
+            'connection dropped: sendmsg: Broken pipe',
+        ]
+
         if reload_certs:
             debug("rewriting certs")
 
-            self.ignore_log_patterns += [
-                'connection dropped: The TLS connection was non-properly terminated',
-                'connection dropped: The certificate is NOT trusted',
-            ]
             node_marks = {node: node.mark_log() for node in cluster.nodelist()}
 
             os.remove(os.path.join(self.test_path, 'keystore.jks'))
@@ -97,10 +99,6 @@ class TestInternodeSSL(Tester):
                 wait_for_cert_reload(node, "messaging_service", [
                                      "internode-ccm_node.pem", "internode-ccm_node.key"], from_mark=mark)
                 debug("done")
-
-        self.ignore_log_patterns += [
-            'connection dropped: sendmsg: Broken pipe',
-        ]
 
         session = self.patient_cql_connection(cluster.nodelist()[0])
         self.create_ks(session, 'ks', 3)
