@@ -129,7 +129,7 @@ function check_directory_exists()
 check_directory_exists DTEST_DIR
 check_directory_exists CCM_DIR
 
-if [[ -z ${SCYLLA_VERSION} ]]; then
+if [[ -z ${SCYLLA_VERSION} ]] && [[ -z ${SCYLLA_DOCKER_IMAGE} ]]; then
     check_directory_exists CASSANDRA_DIR
     check_directory_exists TOOLS_JAVA_DIR
     check_directory_exists JMX_DIR
@@ -167,7 +167,8 @@ else
     -e SCYLLA_VERSION \
     -e SCYLLA_CORE_PACKAGE \
     -e SCYLLA_JAVA_TOOLS_PACKAGE \
-    -e SCYLLA_JMX_PACKAGE
+    -e SCYLLA_JMX_PACKAGE \
+    -e SCYLLA_DOCKER_IMAGE
     "
 fi
 
