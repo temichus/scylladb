@@ -239,7 +239,7 @@ class IcsCompactionTest(Tester):
         self._write_and_flush_sstables(num_of_generated_sstables=NUM_OF_GENERATED_SSTABLES, start_index=1,
                                        increasing_write_size=True)
         node1.wait_for_compactions()
-        snapshot_dir = make_snapshot(node1, KEYSPACE_NAME, TABLE_NAME, 'basic')
+        snapshot_dir = make_snapshot(node1, KEYSPACE_NAME, TABLE_NAME, name = 'basic')
         return snapshot_dir, session, node1
 
     def basic_snapshot_and_restore(self, use_sstableloader):
@@ -453,7 +453,7 @@ class IcsCompactionTest(Tester):
 
         node1.wait_for_compactions()
         # Create a snapshot
-        snapshot_dir = make_snapshot(node1, KEYSPACE_NAME, TABLE_NAME, 'basic')
+        snapshot_dir = make_snapshot(node1, KEYSPACE_NAME, TABLE_NAME, name = 'basic')
 
         # Drop the keyspace, make sure we have no data.
         session.execute('DROP KEYSPACE {}'.format(KEYSPACE_NAME))
