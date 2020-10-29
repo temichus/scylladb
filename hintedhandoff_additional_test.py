@@ -187,7 +187,7 @@ class TestHintedHandoff(Tester):
             self.__check_hints_dir_present(node_from=node2, node_to=node1)
 
         debug("Starting node1...")
-        node1.start(wait_for_binary_proto=True, jvm_args=self.__jvm_args(node1))
+        node1.start(wait_for_binary_proto=True, jvm_args=self.__jvm_args())
 
         time.sleep(self.__hint_flush_threshold)
 
@@ -240,18 +240,18 @@ class TestHintedHandoff(Tester):
 
         debug("Restarting node1 with hinted handoff disabled...")
         node1.stop()
-        node1.start(wait_for_binary_proto=True, jvm_args=self.__jvm_args(node1, hh_enabled_value='false'))
+        node1.start(wait_for_binary_proto=True, jvm_args=self.__jvm_args(hh_enabled_value='false'))
 
         debug("Starting node2...")
-        node2.start(wait_for_binary_proto=True, jvm_args=self.__jvm_args(node2))
+        node2.start(wait_for_binary_proto=True, jvm_args=self.__jvm_args())
 
         debug("Adding node3...")
         node3 = new_node(self.cluster, bootstrap=True)
-        node3.start(wait_for_binary_proto=True, jvm_args=self.__jvm_args(node3))
+        node3.start(wait_for_binary_proto=True, jvm_args=self.__jvm_args())
 
         debug("Restarting node1 with hinted handoff enabled...")
         node1.stop()
-        node1.start(wait_for_binary_proto=True, jvm_args=self.__jvm_args(node1, hh_enabled_value='true'))
+        node1.start(wait_for_binary_proto=True, jvm_args=self.__jvm_args(hh_enabled_value='true'))
 
         debug("Waiting for hints to be sent...".format(self.__hint_flush_threshold))
         self.__wait_until_hints_are_sent_from(node_from=node1, count=len(expected_values))
@@ -323,7 +323,7 @@ class TestHintedHandoff(Tester):
         insert_c1c2(session, n=100, consistency=ConsistencyLevel.ANY)
 
         debug("Staring node3...")
-        node3.start(wait_for_binary_proto=True, jvm_args=self.__jvm_args(node3))
+        node3.start(wait_for_binary_proto=True, jvm_args=self.__jvm_args())
 
         debug("Decommissioning node3...")
         node3.decommission()
@@ -389,7 +389,7 @@ class TestHintedHandoff(Tester):
         debug("Stopped {}".format(hinting_node.name))
 
         debug("Starting node1...")
-        node1.start(wait_for_binary_proto=True, jvm_args=self.__jvm_args(node1))
+        node1.start(wait_for_binary_proto=True, jvm_args=self.__jvm_args())
 
         debug("Deleting the row...")
         delete_c1c2(session, n=1, consistency=ConsistencyLevel.TWO)
@@ -407,14 +407,14 @@ class TestHintedHandoff(Tester):
         query_c1c2(session, 0, ConsistencyLevel.ONE, must_be_missing=True)
 
         debug("Checking on node2...")
-        node2.start(wait_for_binary_proto=True, jvm_args=self.__jvm_args(node2))
+        node2.start(wait_for_binary_proto=True, jvm_args=self.__jvm_args())
         node1.stop(wait_other_notice=True)
         session = self.patient_cql_connection(node2)
         session.execute('USE ks')
         query_c1c2(session, 0, ConsistencyLevel.ONE, must_be_missing=True)
 
         debug("Checking on node3...")
-        node3.start(wait_for_binary_proto=True, jvm_args=self.__jvm_args(node3))
+        node3.start(wait_for_binary_proto=True, jvm_args=self.__jvm_args())
         node2.stop(wait_other_notice=True)
         session = self.patient_cql_connection(node3)
         session.execute('USE ks')
@@ -434,8 +434,8 @@ class TestHintedHandoff(Tester):
 
         # Make node2 slower than others in order to trigger hints generation
         debug("Starting node2 with \"trace\" log level...")
-        node2.start(wait_for_binary_proto=True, jvm_args=self.__jvm_args(
-            node2) + ["--logger-log-level", "hints_manager=trace"])
+        node2.start(wait_for_binary_proto=True, jvm_args=self.__jvm_args() +
+                ["--logger-log-level", "hints_manager=trace"])
 
         debug("starting a stress...")
         stress_cmd = ['write', 'duration=4m', 'no-warmup', 'cl=ONE',
@@ -465,7 +465,7 @@ class TestHintedHandoff(Tester):
         """
         return 15
 
-    def __jvm_args(self, node, hh_enabled_value=None):
+    def __jvm_args(self, hh_enabled_value=None):
         hh_enabled = 'true'
         if not hh_enabled_value is None:
             hh_enabled = hh_enabled_value
@@ -478,7 +478,7 @@ class TestHintedHandoff(Tester):
         nodes = self.cluster.nodelist()
 
         for node in nodes:
-            node.start(wait_for_binary_proto=True, jvm_args=self.__jvm_args(node, hh_enabled_value) + custom_args)
+            node.start(wait_for_binary_proto=True, jvm_args=self.__jvm_args(hh_enabled_value) + custom_args)
 
     def __wait_until_hints_are_sent_from(self, node_from, count):
         def check():
@@ -514,7 +514,7 @@ class TestHintedHandoff(Tester):
         for node in nodes:
             debug("Starting {}...".format(node.name))
             node.start(wait_for_binary_proto=True,
-                       jvm_args=self.__jvm_args(node, hh_enabled_value=hh_enabled_value) + extra_jvm_args)
+                       jvm_args=self.__jvm_args(hh_enabled_value=hh_enabled_value) + extra_jvm_args)
 
     def __check_rebalanced_dirs(self, nodes, down_node, num_shards):
         """
