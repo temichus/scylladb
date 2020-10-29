@@ -6,6 +6,7 @@ import glob
 from tools import create_c1c2_table, insert_c1c2, query_c1c2, delete_c1c2, new_node
 import time
 from nose.plugins.attrib import attr
+from ccmlib.scylla_cluster import ScyllaCluster
 
 
 @attr('dtest-full')
@@ -40,6 +41,8 @@ class TestHintedHandoff(Tester):
 
         debug("Populating the data...")
         op_cnt = 1000000
+        if isinstance(self.cluster, ScyllaCluster) and self.cluster.scylla_mode == 'debug':
+            op_cnt = 10000
         stress_cmd = ['write', 'n={}'.format(op_cnt), 'no-warmup', 'cl=QUORUM',
                       '-rate', 'threads=300', '-schema', 'replication(factor=3)']
         resp = node1.stress_object(stress_cmd, ignore_errors=True)
