@@ -477,8 +477,7 @@ class TestHintedHandoff(Tester):
         cluster.populate(num)
         nodes = self.cluster.nodelist()
 
-        for node in nodes:
-            node.start(wait_for_binary_proto=True, jvm_args=self.__jvm_args(hh_enabled_value) + custom_args)
+        self.__start_all(nodes, hh_enabled_value=hh_enabled_value, extra_jvm_args=custom_args)
 
     def __wait_until_hints_are_sent_from(self, node_from, count):
         def check():
@@ -506,14 +505,13 @@ class TestHintedHandoff(Tester):
         return len(glob.glob(files_mask))
 
     def __stop_all(self, nodes):
-        for node in nodes:
-            debug("Stopping {}...".format(node.name))
-            node.stop(wait_other_notice=True)
+        debug("Stopping {}...".format([n.name for n in nodes]))
+        self.cluster.stop_nodes(nodes)
 
     def __start_all(self, nodes, hh_enabled_value=None, extra_jvm_args=[]):
-        for node in nodes:
-            debug("Starting {}...".format(node.name))
-            node.start(wait_for_binary_proto=True,
+        debug("Starting {} with hintedhandoff {}".format([n.name for n in nodes],
+                "enabled" if hh_enabled_value is None or hh_enabled_value else "disabled"))
+        self.cluster.start_nodes(wait_for_binary_proto=True,
                        jvm_args=self.__jvm_args(hh_enabled_value=hh_enabled_value) + extra_jvm_args)
 
     def __check_rebalanced_dirs(self, nodes, down_node, num_shards):
