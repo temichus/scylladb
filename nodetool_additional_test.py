@@ -1681,6 +1681,10 @@ class TestNodetool(Tester):
             "java.lang.NullPointerException: null",
             "Error creating pool to {}".format(addr_msg),
             "\[{}\] Cannot connect".format(addr_msg),
+            "Failed to execute stress action",
+            "unexpected error happened while sending requests",
+            "Write attempt on defunct connection",
+            "FAILURE",
         ]
 
     def drain(self, node_to_drain):
