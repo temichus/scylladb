@@ -1133,6 +1133,9 @@ class Tester(TestCase):
                 debug("Test failed with errors: {}".format(self._outcome.errors))
         if hasattr(self, 'allow_log_errors'):
             warning('allow_log_errors is deprecated. Use ignore_log_patterns instead! {}')
+        if not self._preserve_cluster:
+            debug("Stopping cluster")
+            self.cluster.stop()
         found_cores = []
         ignored_cores = []
         try:
