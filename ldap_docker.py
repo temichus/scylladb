@@ -100,7 +100,7 @@ class LdapDocker(object):
         try:
             self.conn.add(*args, **kwargs)
         except:
-            debug("LDAP SERVER LOG DUMP: " + self.container.logs())
+            debug(f"LDAP SERVER LOG DUMP: {self.container.logs().decode('utf-8')}")
             raise
         return self.conn.result
 
@@ -108,7 +108,7 @@ class LdapDocker(object):
         try:
             self.conn.search(search_base=search_base, search_filter=search_filter, attributes=ALL_ATTRIBUTES)
         except:
-            debug("LDAP SERVER LOG DUMP: " + self.container.logs())
+            debug(f"LDAP SERVER LOG DUMP: {self.container.logs().decode('utf-8')}")
             raise
         return self.conn.entries
 
@@ -116,5 +116,5 @@ class LdapDocker(object):
         try:
             return self.conn.modify(*args, **kwargs)
         except:
-            debug("LDAP SERVER LOG DUMP: " + self.container.logs())
+            debug(f"LDAP SERVER LOG DUMP: {self.container.logs().decode('utf-8')}")
             raise
