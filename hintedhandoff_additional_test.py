@@ -435,7 +435,7 @@ class TestHintedHandoff(Tester):
         # Make node2 slower than others in order to trigger hints generation
         debug("Starting node2 with \"trace\" log level...")
         node2.start(wait_for_binary_proto=True, jvm_args=self.__jvm_args() +
-                ["--logger-log-level", "hints_manager=trace"])
+                    ["--logger-log-level", "hints_manager=trace"])
 
         debug("starting a stress...")
         stress_cmd = ['write', 'duration=4m', 'no-warmup', 'cl=ONE',
@@ -456,7 +456,6 @@ class TestHintedHandoff(Tester):
 
 
 ########################################################################################################################
-
 
     @property
     def __hint_flush_threshold(self):
@@ -510,9 +509,9 @@ class TestHintedHandoff(Tester):
 
     def __start_all(self, nodes, hh_enabled_value=None, extra_jvm_args=[]):
         debug("Starting {} with hintedhandoff {}".format([n.name for n in nodes],
-                "enabled" if hh_enabled_value is None or hh_enabled_value else "disabled"))
+                                                         "enabled" if hh_enabled_value is None or hh_enabled_value else "disabled"))
         self.cluster.start_nodes(wait_for_binary_proto=True,
-                       jvm_args=self.__jvm_args(hh_enabled_value=hh_enabled_value) + extra_jvm_args)
+                                 jvm_args=self.__jvm_args(hh_enabled_value=hh_enabled_value) + extra_jvm_args)
 
     def __check_rebalanced_dirs(self, nodes, down_node, num_shards):
         """
