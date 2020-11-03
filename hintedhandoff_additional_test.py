@@ -395,7 +395,7 @@ class TestHintedHandoff(Tester):
         delete_c1c2(session, n=1, consistency=ConsistencyLevel.TWO)
 
         debug("Starting {}".format(hinting_node.name))
-        hinting_node.start(wait_for_binary_proto=True, jvm_args=self.__jvm_args(hinting_node))
+        hinting_node.start(wait_for_binary_proto=True, jvm_args=self.__jvm_args())
 
         debug("Waiting {}s for hints to be sent...".format(self.__hint_flush_threshold))
         time.sleep(self.__hint_flush_threshold)
@@ -467,6 +467,12 @@ class TestHintedHandoff(Tester):
     def __jvm_args(self, hh_enabled_value=None):
         hh_enabled = 'true'
         if not hh_enabled_value is None:
+            if isinstance(hh_enabled_value, bool):
+                hh_enabled_value = str(hh_enabled_value).lower()
+            else:
+                assert isinstance(hh_enabled_value, str)
+                hh_enabled_value = hh_enabled_value.lower()
+                assert hh_enabled_value == 'true' or hh_enabled_value == 'false'
             hh_enabled = hh_enabled_value
 
         return ['--hinted-handoff-enabled', hh_enabled, '--logger-log-level', 'hints_manager=trace']
