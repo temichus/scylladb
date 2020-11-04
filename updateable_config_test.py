@@ -171,7 +171,7 @@ class TestUpdateableConfig(Tester):
 
         mark = node1.mark_log()
         self.trigger_reload_config(node1)
-        err1 = 'Could not read configuration file %s' % config_file_path
+        err1 = 'Could not read configuration file'
         err2 = 'failed to re-read configuration file: std::invalid_argument'
         node1.watch_log_for(err1, from_mark=mark)
         node1.watch_log_for(err2, from_mark=mark)
