@@ -34,7 +34,7 @@ class TestUpdateableConfig(Tester):
         """
         Signalling the scylla process with SIGHUP to trigger the configuration change effective
         """
-        os.kill(node.pid, signal.SIGHUP)
+        node.kill(signal.SIGHUP)
 
     def change_and_verify_config(self, node, param, value, verify_response):
         """
