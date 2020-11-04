@@ -39,7 +39,7 @@ class TestRebuild(Tester):
         Test rebuild from other dc works as expected.
         """
 
-        keys = 1000
+        keys = 10000
 
         cluster = self.cluster
         cluster.set_configuration_options(values={'endpoint_snitch': 'GossipingPropertyFileSnitch'})
