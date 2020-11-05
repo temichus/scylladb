@@ -2799,3 +2799,75 @@ class RepairAdditionalTest(RepairAdditionalBase):
     @attr('dtest-heavy')
     def repair_joint_row_3nodes_2_diff_shard_count_test(self):
         return RepairAdditionalBase._repair_joint_row_3nodes_same_key_diff_value_test(self, same_shard_count=False)
+
+    def repair_while_table_is_dropped_test(self):
+        """
+        This test tries to drop table when parallel repair is executing, scylla will ignore the error, and repair won't fail.
+
+        1. Create a cluster of 2 nodes with rf=2
+        2. Stop node 2
+        3. Insert data
+        4. Start node 2
+        5. Start repairs of two nodes in parallel
+        6. Drop one table of ks when repair of ks starts
+        7. Check log to verify dropped table is ignored during repair
+        8. Read verify after repair
+        """
+        debug("Starting cluster...")
+        # Start a cluster of two nodes, and create a keyspace with RF=2.
+        self.cluster.set_configuration_options(values={'enable_repair_based_node_ops': True,
+                                                       'hinted_handoff_enabled': False},
+                                               batch_commitlog=True)
+        self.cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
+        node1, node2 = self.cluster.nodelist()
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 2)
+
+        # Take node2 down, and create a new table and data on node1 only.
+        debug("Creating table and data only on node 1...")
+        node2.flush()
+        node2.stop(wait_other_notice=True)
+
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        insert_c1c2(session, keys=range(2000), consistency=ConsistencyLevel.ONE, cf='cf')
+
+        delete_table_num = 8
+        for i in range(delete_table_num):
+            cf = f'cf_del{i}'
+            self.create_cf(session, cf, read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+            insert_c1c2(session, keys=range(2000), consistency=ConsistencyLevel.ONE, cf=cf)
+
+        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+        time.sleep(10)
+
+        # Run repairs of two tables on node1
+        executor = ThreadPoolExecutor(max_workers=2)
+        thread1 = executor.submit(lambda: node1.repair())
+        thread2 = executor.submit(lambda: node2.repair())
+        thread3 = executor.submit(lambda: node2.repair())
+
+        res = node2.watch_log_for(
+            "sync data for keyspace=ks, status=started|starting user-requested repair for keyspace ks,")
+        for i in range(delete_table_num):
+            session.execute(f"DROP TABLE ks.cf_del{i}")
+        debug(res)
+        debug("Repair of ks just started, drop table ks.cf_del*")
+
+        thread1.result()
+        thread2.result()
+        thread3.result()
+
+        # verify that repair completed, and the dropped table is ignored during repair
+        res = node2.watch_log_for(
+            "repair - repair .* completed successfully, keyspace=ks, ignoring dropped tables={cf")
+        debug(res)
+
+        # verify that the cf* was really deleted
+        for i in range(delete_table_num):
+            out, err = node1.run_cqlsh(f"describe table ks.cf{i}", return_output=True)
+            self.assertIn(f"'cf{i}' not found", out + err)
+
+        debug("checking data on node1...")
+        self.check_rows_on_node(node1, 2000)
+        debug("checking data on node2...")
+        self.check_rows_on_node(node2, 2000)
