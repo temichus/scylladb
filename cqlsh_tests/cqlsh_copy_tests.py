@@ -22,6 +22,7 @@ from .cqlsh_tools import (DummyColorMap, assert_csvs_items_equal, csv_rows,
                           monkeypatch_driver, random_list,
                           strip_timezone_if_time_string, unmonkeypatch_driver,
                           write_rows_to_csv)
+from .formatter import _formatters, format_value_default, DateTimeFormat
 from dtest import Tester, debug, warning
 from tools import rows_to_list, require
 
@@ -273,35 +274,6 @@ class CqlshCopyTest(CqlshPrepare):
 
         super(CqlshCopyTest, self).tearDown()
 
-    @contextmanager
-    def _cqlshlib(self):
-        """
-        Returns the cqlshlib module, as defined in self.cluster's first node.
-        """
-        # This method accomplishes its goal by manually adding the library to
-        # sys.path, returning the module, then restoring the old path once the
-        # context manager exits. This isn't great for maintainability and should
-        # be replaced if cqlshlib is made easier to interact with.
-        saved_path = list(sys.path)
-        cassandra_dir = self.cluster.nodelist()[0].get_install_dir()
-        tools_java_dir = self.cluster.nodelist()[0].get_tools_java_dir()
-        possible_paths = [os.path.join(tools_java_dir, 'pylib'),
-                          os.path.join(cassandra_dir, 'resources/cassandra/pylib')]
-
-        for cqlshlib_path in possible_paths:
-            if os.path.exists(cqlshlib_path):
-                break
-        else:
-            raise AssertionError("didn't found cqlsh in those paths: {}".format(possible_paths))
-
-        try:
-            sys.path.append(cqlshlib_path)
-            sys.path.append(os.path.join(cqlshlib_path, 'cqlshlib'))
-            import cqlshlib
-            yield cqlshlib
-        finally:
-            sys.path = saved_path
-
     def assertCsvResultEqual(self, csv_filename, results):
         result_list = list(self.result_to_csv_rows(results))
         processed_results = [[strip_timezone_if_time_string(v) for v in row]
@@ -327,16 +299,8 @@ class CqlshCopyTest(CqlshPrepare):
             raise e
 
     def format_for_csv(self, val):
-        with self._cqlshlib() as cqlshlib:
-            from cqlshlib.formatting import format_value_default
-            from cqlshlib.formatting import _formatters
-            try:
-                from cqlshlib.formatting import DateTimeFormat
-                date_time_format = DateTimeFormat()
-            except ImportError:
-                date_time_format = None
-
-        encoding_name = 'utf-8'  # codecs.lookup(locale.getpreferredencoding()).name
+        encoding_name = 'utf-8'
+        date_time_format = DateTimeFormat()
 
         # this seems gross but if the blob isn't set to type:bytearray is won't compare correctly
         if isinstance(val, str) and hasattr(self, 'data') and self.data[2] == val:
@@ -344,10 +308,6 @@ class CqlshCopyTest(CqlshPrepare):
             val = bytearray(val)
         else:
             var_type = type(val)
-
-        # different versions use time_format or date_time_format
-        # but all versions reject spurious values, so we just use both
-        # here
 
         formatter = _formatters.get(var_type.__name__.lower(), format_value_default)
 
@@ -357,7 +317,7 @@ class CqlshCopyTest(CqlshPrepare):
                          time_format=DEFAULT_TIME_FORMAT,
                          float_precision=DEFAULT_FLOAT_PRECISION,
                          colormap=DummyColorMap(),
-                         nullval=None).strval
+                         nullval=None)
 
     def result_to_csv_rows(self, result):
         """
