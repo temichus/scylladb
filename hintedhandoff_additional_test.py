@@ -556,5 +556,9 @@ class TestHintedHandoff(Tester):
         for i in range(0, num_shards):
             for k in range(i + 1, num_shards):
                 for j in range(0, len(nodes)):
-                    debug("{}: comparing number of files on shards {} and {}".format(nodes[j].name, i, k))
-                    assert abs(hints_on_nodes[j][i] - hints_on_nodes[j][k]) <= 1
+                    debug("{}: comparing number of files on shards {}: {} and {}: {}".format(nodes[j].name,
+                    i, hints_on_nodes[j][i],
+                    k, hints_on_nodes[j][k]))
+                    assert abs(hints_on_nodes[j][i] - hints_on_nodes[j][k]) <= 1, \
+                               f"Unexpected number of hint files per shard on node{j+1}: " + \
+                               f"abs({hints_on_nodes[j][i]} - {hints_on_nodes[j][k]}) > 1"
