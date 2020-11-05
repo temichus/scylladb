@@ -1,5 +1,6 @@
 from unittest import skip
 from cassandra import ConsistencyLevel
+from distutils.util import strtobool
 
 from dtest import Tester, debug, wait_for
 import glob
@@ -464,17 +465,29 @@ class TestHintedHandoff(Tester):
         """
         return 15
 
-    def __jvm_args(self, hh_enabled_value=None):
-        hh_enabled = 'true'
-        if not hh_enabled_value is None:
-            if isinstance(hh_enabled_value, bool):
-                hh_enabled_value = str(hh_enabled_value).lower()
-            else:
-                assert isinstance(hh_enabled_value, str)
-                hh_enabled_value = hh_enabled_value.lower()
-                assert hh_enabled_value == 'true' or hh_enabled_value == 'false'
-            hh_enabled = hh_enabled_value
+    @staticmethod
+    def __sanitize_hh_enabled_value(v):
+        """
+        hh_enabled_value should be set either to a boolean value (true|false|1|0)
+        or to one or more DCs for which hintedhandoffs are to be enabled.
+        If None, this function returns 'true', otherwise it verifies the value's
+        syntax and normalizes it.
+        """
+        if v is None:
+            return 'true'
+        if isinstance(v, bool):
+            return str(v).lower()
+        if isinstance(v, int):
+            assert v in [ 0, 1 ], f"'{v}' must be either '0' or '1'"
+            return str(v)
+        assert isinstance(v, str), f"'{v}' is not a string"
+        assert v != '', "hh_enabled_value must not be empty"
+        if v.lower() in [ 'true', 'false' ]:
+            return v.lower()
+        return v
 
+    def __jvm_args(self, hh_enabled_value=None):
+        hh_enabled = self.__sanitize_hh_enabled_value(hh_enabled_value)
         return ['--hinted-handoff-enabled', hh_enabled, '--logger-log-level', 'hints_manager=trace']
 
     def __start_cluster_with_hints(self, num, custom_args=[], hh_enabled_value=None):
@@ -514,8 +527,14 @@ class TestHintedHandoff(Tester):
         self.cluster.stop_nodes(nodes)
 
     def __start_all(self, nodes, hh_enabled_value=None, extra_jvm_args=[]):
+        hh_enabled = self.__sanitize_hh_enabled_value(hh_enabled_value)
+        hh_description = ''
+        try:
+            hh_description = "enabled" if strtobool(hh_enabled) else "disabled"
+        except ValueError:
+            hh_description = f'"{hh_enabled}"'
         debug("Starting {} with hintedhandoff {}".format([n.name for n in nodes],
-                                                         "enabled" if hh_enabled_value is None or hh_enabled_value else "disabled"))
+                                                         hh_description))
         self.cluster.start_nodes(wait_for_binary_proto=True,
                                  jvm_args=self.__jvm_args(hh_enabled_value=hh_enabled_value) + extra_jvm_args)
 
