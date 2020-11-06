@@ -40,10 +40,10 @@ class TestHintedHandoff(Tester):
         debug("Stopping node3...")
         node3.stop(wait_other_notice=True)
 
-        debug("Populating the data...")
-        op_cnt = 1000000
+        op_cnt = 100000
         if isinstance(self.cluster, ScyllaCluster) and self.cluster.scylla_mode == 'debug':
-            op_cnt = 10000
+            op_cnt = 25000
+        debug(f"Populating the data with {op_cnt} keys...")
         stress_cmd = ['write', 'n={}'.format(op_cnt), 'no-warmup', 'cl=QUORUM',
                       '-rate', 'threads=300', '-schema', 'replication(factor=3)']
         resp = node1.stress_object(stress_cmd, ignore_errors=True)
