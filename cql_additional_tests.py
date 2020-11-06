@@ -3069,8 +3069,8 @@ class TestCQL(Tester):
             self._assert_valid_query(session=session, query=q + " ALLOW FILTERING")
 
         # Require filtering, allowed only with ALLOW FILTERING
-        queries = ["SELECT * FROM test WHERE c = 2",
-                   "SELECT * FROM test WHERE c > 2 AND c <= 4"]
+        queries = ["SELECT * FROM test WHERE v = 2",
+                   "SELECT * FROM test WHERE v > 2 AND v <= 4"]
         for q in queries:
             self._assert_valid_query(session=session, query=q + " ALLOW FILTERING")
             self._assert_invalid_filtering(session=session, query=q)
