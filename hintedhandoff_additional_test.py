@@ -519,7 +519,7 @@ class TestHintedHandoff(Tester):
             return len(glob.glob(dir_name)) == 0
 
     def __get_hint_segs_count(self, node_from, node_to, shard=0):
-        files_mask = "{}/hints/{}/{}/*".format(node_from.get_path(), shard, node_to.address())
+        files_mask = "{}/hints/{}/{}/HintsLog-*.log".format(node_from.get_path(), shard, node_to.address())
         return len(glob.glob(files_mask))
 
     def __stop_all(self, nodes):
