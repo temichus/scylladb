@@ -12,6 +12,7 @@ from ccmlib.scylla_cluster import ScyllaCluster
 
 @attr('dtest-full')
 class TestHintedHandoff(Tester):
+    @attr('dtest-debug')
     def hintedhandoff_rebalance_test(self):
         """
         Test that hints segments rebalancing code works.
