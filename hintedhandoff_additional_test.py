@@ -104,7 +104,7 @@ class TestHintedHandoff(Tester):
 
         If hints don't work the rows that were intended for node3 will be missing.
         """
-        self.__start_cluster_with_hints(num=3)
+        self.__start_cluster_with_hints(num=3, custom_args=['--logger-log-level', 'hints_manager=trace'])
 
         [node1, node2, node3] = self.cluster.nodelist()
         session = self.patient_cql_connection(node1)
@@ -488,7 +488,7 @@ class TestHintedHandoff(Tester):
 
     def __jvm_args(self, hh_enabled_value=None):
         hh_enabled = self.__sanitize_hh_enabled_value(hh_enabled_value)
-        return ['--hinted-handoff-enabled', hh_enabled, '--logger-log-level', 'hints_manager=trace']
+        return ['--hinted-handoff-enabled', hh_enabled]
 
     def __start_cluster_with_hints(self, num, custom_args=[], hh_enabled_value=None):
         cluster = self.cluster
