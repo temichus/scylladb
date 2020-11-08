@@ -1421,7 +1421,7 @@ class TestSchemaFileInSnapshot(SnapshotTester):
 
     def drop_keyspaces_and_clear_files(self, session, ks, node):
         session.execute(f'DROP KEYSPACE {ks}')
-        shutil.rmtree(os.path.join(node.get_path(), 'data', ks))
+        node.rmtree(os.path.join(node.get_path(), 'data', ks))
 
     def restore_table_by_schema_file(self, session, schema_file):
         schema = self.read_schema_from_file(schema_file)
