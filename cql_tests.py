@@ -295,16 +295,53 @@ class MiscellaneousCQLTester(CQLTester):
         client.set_keyspace('ks')
         key = struct.pack('>i', 2)
         column_name_component = struct.pack('>i', 4)
-        # component length + component + EOC + component length + component + EOC
-        column_name = b'\x00\x04' + column_name_component + b'\x00' + b'\x00\x01' + 'v'.encode() + b'\x00'
+        # component length + component + EOC
+        column_name = b'\x00\x04' + column_name_component + b'\x00'
         value = struct.pack('>i', 8)
         client.batch_mutate(
             {key: {'test': [Mutation(ColumnOrSuperColumn(
                 column=Column(name=column_name, value=value, timestamp=100)))]}},
             ThriftConsistencyLevel.ONE)
+        node.flush()
 
         res = session.execute("SELECT * FROM test")
         assert rows_to_list(res) == [[2, 4, 8]], res
+
+    @attr('single_node')
+    @require('7568')
+    def cql3_insert_thrift_test_expect_error(self):
+        """ Check that we can insert from thrift into a CQL3 table (#4377) """
+        session = self.prepare(start_rpc=True)
+
+        session.execute("""
+            CREATE TABLE test (
+                k int,
+                c int,
+                v int,
+                PRIMARY KEY (k, c)
+            )
+        """)
+
+        node = self.cluster.nodelist()[0]
+        host, port = node.network_interfaces['thrift']
+        client = get_thrift_client(host, port)
+        client.transport.open()
+        client.set_keyspace('ks')
+        key = struct.pack('>i', 2)
+        column_name_component = struct.pack('>i', 4)
+        # component length + component + EOC + component length + component + EOC
+        column_name = b'\x00\x04' + column_name_component + b'\x00' + b'\x00\x01' + 'v'.encode() + b'\x00'
+        value = struct.pack('>i', 8)
+        rejected = False
+        try:
+            client.batch_mutate(
+                {key: {'test': [Mutation(ColumnOrSuperColumn(
+                    column=Column(name=column_name, value=value, timestamp=100)))]}},
+                ThriftConsistencyLevel.ONE)
+        except InvalidRequestException:
+            rejected = True
+            pass
+        assert rejected, "mutation expected to be rejected due to bad clustering key"
 
     @attr('single_node')
     def rename_test(self):
