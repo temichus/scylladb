@@ -354,7 +354,7 @@ class MigrationTestBase(Tester):
             shutil.copy2(os.path.join(data_dir, data_file), dir)
 
         debug('Remove sstables and commit log for node1')
-        shutil.rmtree(os.path.join(node1.get_path(), 'commitlogs'))
+        node1.rmtree(os.path.join(node1.get_path(), 'commitlogs'))
         for data_file in data_files:
             os.unlink(os.path.join(data_dir, data_file))
 
