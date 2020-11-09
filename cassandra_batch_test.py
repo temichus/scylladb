@@ -1,8 +1,23 @@
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation; either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+#
+# See LICENSE for more details.
+#
+# Copyright (c) 2020 ScyllaDB
+
 # From cassandra/test/unit/org/apache/cassandra/cql3/validation/operations/BatchTest.java
-from dtest import Tester
+from dtest import Tester, debug
 from cassandra.query import BatchStatement, SimpleStatement
 from cassandra import ConsistencyLevel
 from nose.plugins.attrib import attr
+from collections import Counter
+import requests
 import time
 
 KEYSPACE = "batch_ks"
@@ -16,19 +31,46 @@ class BatchTester(Tester):
     """
 
     def prepare(self, nodes=1):
-
         cluster = self.cluster
         if not cluster.nodelist():
             cluster.populate(nodes).start(wait_for_binary_proto=True)
         node1 = cluster.nodelist()[0]
-
         session = self.patient_cql_connection(node1)
         return session
 
-    def batch_ttl_conditional_interaction_test(self):
-
+    @attr('dtest-full')
+    def batch_prepared_with_slow_query_log_test(self):
+        """
+        batch prepared in combination of slow query should not fail with error.
+        scylladb/scylla/#5843
+        """
         session = self.prepare()
+        node1 = self.cluster.nodelist()[0]
+        node_ip = self.get_ip_from_node(node1)
+        slow_query_url = f"http://{node_ip}:10000/storage_service/slow_query"
+        debug(f'Enabling slow logging on node {node_ip}')
+        response = requests.post(slow_query_url, params={"enable": True, "ttl": 604800, "threshold": 0})
+        debug(f'respone={str(response.content)}')
+        update_command = ("UPDATE clustering SET val=? "
+                          "WHERE id=? AND clustering1=? AND clustering2=? AND clustering3=? "
+                          "IF val=?")
+        self.batch_ttl_conditional_interaction(session=session, update_command=update_command)
+        requests.post(slow_query_url, params={"enable": False})
+        errors = node1.grep_log('No .query. parameter set for a session requesting a slow_query_log record')
+        assert len(errors) == 0, f"No errors expected when enabling slow logging, {errors}"
+        result = session.execute(query="SELECT * FROM system_traces.node_slow_log")
+        counter = Counter(getattr(row, 'command') for row in result.current_rows)
+        assert counter[update_command] > 0, f"not found slow query logging of command={update_command}"
 
+    def batch_ttl_conditional_interaction_test(self):
+        session = self.prepare()
+        self.batch_ttl_conditional_interaction(session)
+
+    def batch_ttl_conditional_interaction(self, session,
+                                          update_command=("UPDATE clustering SET val=? "
+                                                          "WHERE id=? AND clustering1=? AND clustering2=? AND clustering3=? "
+                                                          "IF val=?")
+                                          ):
         session.execute("CREATE KEYSPACE IF NOT EXISTS %s WITH replication = "
                         "{ 'class': 'SimpleStrategy', 'replication_factor': '1' }" % KEYSPACE)
 
@@ -39,9 +81,7 @@ class BatchTester(Tester):
 
         clustering_insert = session.prepare("INSERT INTO clustering(id, clustering1, "
                                             "clustering2, clustering3, val) VALUES(?, ?, ?, ?, ?)")
-        clustering_conditional_update = session.prepare("UPDATE clustering SET val=? "
-                                                        "WHERE id=? AND clustering1=? AND clustering2=? AND clustering3=? "
-                                                        "IF val=?")
+        clustering_conditional_update = session.prepare(update_command)
         clustering_delete = session.prepare("DELETE FROM clustering "
                                             "WHERE id=? AND clustering1=? AND clustering2=? "
                                             "AND clustering3=?")
