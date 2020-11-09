@@ -1804,6 +1804,7 @@ class TestMaterializedViews(Tester):
             ['TX', 'user1', 1968, 'f', 'ch@ngem3a', None]
         )
 
+        self.ignore_log_patterns += [r'Column username in view .* was not found in the base table']
         session.execute("ALTER TABLE users RENAME username TO user")
 
         results = list(session.execute("SELECT * FROM users_by_state WHERE state = 'TX' AND user = 'user1'"))
