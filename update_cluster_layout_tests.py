@@ -215,7 +215,8 @@ class TestUpdateClusterLayout(Tester):
         self.create_ks(session, 'ks', 3)
         self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
-        insert_c1c2(session, keys=range(1000), consistency=ConsistencyLevel.ONE)
+        num_keys = 5000
+        insert_c1c2(session, keys=range(num_keys), consistency=ConsistencyLevel.ONE)
 
         node2 = new_node(cluster)
         # creating an additional node without actually adding it to the cluster
@@ -257,10 +258,12 @@ class TestUpdateClusterLayout(Tester):
         node1.watch_log_for_alive(node2)
         node2.watch_log_for_alive(node1)
 
-        insert_c1c2(session, keys=range(1000, 2000), consistency=ConsistencyLevel.TWO)
+        debug("Inserting more data")
+        insert_c1c2(session, keys=range(num_keys, 2 * num_keys), consistency=ConsistencyLevel.TWO)
 
-        self.check_rows_on_node(node2, 2000)
-        self.check_rows_on_node(node1, 2000)
+        debug("Verifying...")
+        self.check_rows_on_node(node2, 2 * num_keys)
+        self.check_rows_on_node(node1, 2 * num_keys)
 
     @attr('next-gating')
     def simple_kill_streaming_node_while_bootstrapping_test(self):
