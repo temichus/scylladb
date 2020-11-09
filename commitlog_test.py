@@ -978,3 +978,83 @@ class TestCommitLog(Tester):
         assert_row_count_in_select(session=session, query='select * from Test.cf',
                                    num_rows_expected=249)
         assert_all(session=session, query='select * from Test.cf', expected=expected_result, ignore_order=True)
+
+    def test_alter_keyspace_durable_writes_false(self):
+        """
+        Test 'CREATE KEYSPACE ... WITH durable_writes = false;'
+        The commitlog should not be used when durable_writes is false.
+        """
+        node1 = self.node1
+        node1.set_configuration_options(batch_commitlog=True)
+        node1.start()
+        session = self.patient_cql_connection(node1)
+
+        debug("Create keyspace")
+        self.create_ks(session, 'dw', 1)
+
+        debug("Create table")
+        session.execute("CREATE TABLE dw.cf(id int PRIMARY KEY)")
+
+        debug("Set durable_writes")
+        session.execute("ALTER KEYSPACE dw WITH durable_writes = true")
+
+        debug("Insert data")
+        session.execute("INSERT INTO dw.cf(id) VALUES (1);")
+        session.execute("INSERT INTO dw.cf(id) VALUES (2);")
+
+        debug("Unset durable_writes")
+        session.execute("ALTER KEYSPACE dw WITH durable_writes = false")
+
+        debug("Insert data")
+        session.execute("INSERT INTO dw.cf(id) VALUES (3);")
+        session.execute("INSERT INTO dw.cf(id) VALUES (4);")
+
+        debug("Stop node abruptly")
+        node1.stop(gently=False)
+
+        debug("Start node again")
+        node1.start()
+
+        session = self.patient_cql_connection(node1)
+        assert_all(session=session, query='SELECT * FROM dw.cf', expected=[[1], [2]], ignore_order=True)
+
+    def test_alter_keyspace_durable_writes_true(self):
+        """
+        Test 'ALTER KEYSPACE ... WITH durable_writes = true;'
+
+        After changing durable_writes from false to true, following inserts should
+        become persistent immediately.
+        """
+        node1 = self.node1
+        node1.set_configuration_options(batch_commitlog=True)
+        node1.start()
+        session = self.patient_cql_connection(node1)
+
+        debug("Create keyspace")
+        self.create_ks(session, 'dw', 1)
+
+        debug("Create table")
+        session.execute("CREATE TABLE dw.cf(id int PRIMARY KEY);")
+
+        debug("Unset durable_writes")
+        session.execute("ALTER KEYSPACE dw WITH durable_writes = false;")
+
+        debug("Insert data")
+        session.execute("INSERT INTO dw.cf(id) VALUES (1);")
+        session.execute("INSERT INTO dw.cf(id) VALUES (2);")
+
+        debug("Set durable_writes")
+        session.execute("ALTER KEYSPACE dw WITH durable_writes = true;")
+
+        debug("Insert data")
+        session.execute("INSERT INTO dw.cf(id) VALUES (3);")
+        session.execute("INSERT INTO dw.cf(id) VALUES (4);")
+
+        debug("Stop node abruptly")
+        node1.stop(gently=False)
+
+        debug("Start node again")
+        node1.start()
+
+        session = self.patient_cql_connection(node1)
+        assert_all(session=session, query='SELECT * FROM dw.cf;', expected=[[3], [4]], ignore_order=True)
