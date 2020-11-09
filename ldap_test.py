@@ -11,15 +11,16 @@ from cassandra.cluster import NoHostAvailable
 
 
 class TestLdap(Tester):
+    _multiprocess_can_split_ = False
     LDAP_USER = 'scylla-qa'
     LDAP_PASSWORD = 'cassandra'
 
     def tearDown(self):
         if self.saslauthd_proc is not None:
-            self.saslauthd_proc.kill() # Using terminate() here somehow terminates nosetests itself. o_O
+            self.saslauthd_proc.kill()  # Using terminate() here somehow terminates nosetests itself. o_O
             self.saslauthd_proc.wait()
-        shutil.rmtree(self.saslauthd_dir) # Next line requires self.test_path directory to be empty.
-        Tester.tearDown(self) # Keep LDAP up to avoid Scylla shutdown logging errors, failing the test.
+        shutil.rmtree(self.saslauthd_dir)  # Next line requires self.test_path directory to be empty.
+        Tester.tearDown(self)  # Keep LDAP up to avoid Scylla shutdown logging errors, failing the test.
         self.test_ldap_docker.remove_container(force=True)
 
     def setUp(self):
@@ -70,7 +71,7 @@ class TestLdap(Tester):
                        'permissions_validity_in_ms': 0})
         if use_saslauthd:
             config.update({'authenticator': 'com.scylladb.auth.SaslauthdAuthenticator',
-                            'saslauthd_socket_path': os.path.join(self.saslauthd_dir, 'mux')})
+                           'saslauthd_socket_path': os.path.join(self.saslauthd_dir, 'mux')})
         else:
             config.update({'authenticator': 'org.apache.cassandra.auth.PasswordAuthenticator'})
         cluster.set_configuration_options(values=config)
@@ -458,12 +459,12 @@ class TestLdap(Tester):
         self.check_user_permissions(permission_dict=permission)
 
     def test_authentication(self):
-        with self.assertRaisesRegexp(NoHostAvailable, 'Bad credentials'): # User 'cassandra' absent from LDAP.
+        with self.assertRaisesRegexp(NoHostAvailable, 'Bad credentials'):  # User 'cassandra' absent from LDAP.
             self.prepare(use_saslauthd=True)
         self.test_ldap_docker.add_ldap_object(
-                f'uid=cassandra,{self.test_ldap_docker.ldap_base_object}',
-                ['uidObject', 'organizationalPerson', 'top'],
-                {'userPassword': 'cassandra', 'sn': 'Cassandra', 'cn': 'Cassandra'})
+            f'uid=cassandra,{self.test_ldap_docker.ldap_base_object}',
+            ['uidObject', 'organizationalPerson', 'top'],
+            {'userPassword': 'cassandra', 'sn': 'Cassandra', 'cn': 'Cassandra'})
         self.patient_cql_connection(self.nodes[0], user='cassandra', password='cassandra')
         with self.assertRaisesRegexp(NoHostAvailable, 'Bad credentials'):
             self.patient_cql_connection(self.nodes[0], user='cassandra', password='wrong-password')
