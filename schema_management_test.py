@@ -271,6 +271,7 @@ class SchemaManagementTest(Tester):
         assert rows_to_list(rows) == expected, "Expected %s, got %s" % (expected, rows_to_list(rows))
 
 
+@attr('dtest-full')
 class LargePartitionAlterSchema(Tester):
     # Issue scylladb/scylla: #5135:
     #

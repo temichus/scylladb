@@ -15,6 +15,7 @@ from cdc_tests import CDCInitializeHelper
 PP = pprint.PrettyPrinter(indent=2)
 
 
+@attr('dtest-full')
 @attr('scylla-cdc')
 class CDCSnapshotOperationTest(Tester, CDCInitializeHelper):
     """To restore cdc log table from snapshot should be used only operation with refresh"""

@@ -191,6 +191,7 @@ class CdcTools(Tester, CDCInitializeHelper):
                 self.assertIn(key, row.cdc_deleted_elements_value)
 
 
+@attr('dtest-full')
 @attr('single_node', 'scylla-cdc')
 class CDCNativeTypeTmpl(CdcTools):
 
@@ -448,6 +449,7 @@ class CDCNativeTypeTmpl(CdcTools):
                                                  deleted_col=["value"])
 
 
+@attr('dtest-full')
 @attr('single_node')
 class CDCCollectionsTmpl(CdcTools):
     columns_data = None
@@ -686,6 +688,7 @@ class CustomUDT:
         return str(self.__dict__)
 
 
+@attr('dtest-full')
 @attr('single_node', 'scylla-cdc')
 class CdcUDTTmpl(CdcTools):
 

@@ -8,6 +8,7 @@ import time
 KEYSPACE = "batch_ks"
 
 
+@attr('dtest-full')
 @attr('single_node')
 class BatchTester(Tester):
     """

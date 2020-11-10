@@ -6,6 +6,7 @@ from time import sleep, time
 from threading import Thread, Event
 from unittest import skip
 from nose.tools import eq_
+from nose.plugins.attrib import attr
 from psutil import cpu_count
 
 KEYSPACE = "lwt_load_ks"
@@ -377,6 +378,7 @@ class MaterializedView():
             end_event.set()
 
 
+@attr('dtest-full')
 class LWTSchemaModificationTester(Tester):
     """
     Tests LWT schema change under load

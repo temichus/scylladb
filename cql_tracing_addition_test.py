@@ -7,6 +7,7 @@ from dtest import Tester, debug
 from tools import require
 from tools import rows_to_list
 from cassandra.concurrent import execute_concurrent_with_args
+from nose.plugins.attrib import attr
 
 # for type hints
 from ccmlib.scylla_node import ScyllaNode
@@ -220,6 +221,7 @@ class TracingReadAccessHelper:
                 r"{}: finished bulk DMA read of size [\d]* at offset [\d]*, successfully read [\d]* bytes.*| {} |".format(index_table, node.address()))
 
 
+@attr('dtest-full')
 class TestTracingReadAccess(Tester, TracingReadAccessHelper):
     keyspace = "ks"
     table = "cf"

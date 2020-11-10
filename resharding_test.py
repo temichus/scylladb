@@ -172,6 +172,7 @@ class ReshardingTestBase(Tester):
         self._verify_number_of_data_files(data_files_num_before=data_files_num_before, reshard_to=reshard_to)
 
 
+@attr('dtest-full')
 @attr('next-gating')
 @attr('single_node')
 class ReshardingSingleNodeGatingTest(ReshardingTestBase):

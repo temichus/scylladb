@@ -8,6 +8,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 
+@attr('dtest-full')
 class LwtDestructiveDDLTest(Tester):
     '''
     Destructive DDL in presence of LWT: execute destructive DDL

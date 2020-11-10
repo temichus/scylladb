@@ -41,6 +41,7 @@ class CdcLogOperations(IntEnum):
 
 
 class CDCInitializeHelper:
+    __test__ = False
 
     def populate_sequentially(self, n):
         cluster = self.cluster
@@ -91,6 +92,7 @@ class CDCInitializeHelper:
 
 
 @attr('scylla-cdc')
+@attr('dtest-full')
 class TestCdc(Tester, CDCInitializeHelper):
     def __init__(self, *args, **kwargs):
         ring_delay_sec = 5

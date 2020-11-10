@@ -15,6 +15,7 @@ import time
 import uuid
 
 
+@attr('dtest-full')
 @attr('single_node')
 class TestCQL(Tester):
 

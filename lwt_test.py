@@ -7,6 +7,7 @@ from tools import rows_to_list
 from scylla_tools import scylla_mode
 
 
+@attr('dtest-full')
 class LwtTest(Tester):
 
     def case_prologue(self, jvm_args=None):
@@ -370,6 +371,7 @@ error_injections = [
     "paxos_timeout_after_save_decision"]
 
 
+@attr('dtest-full')
 class LwtReadLinearizabilityTest(Tester):
 
     @attr('dtest-debug')

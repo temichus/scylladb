@@ -11,6 +11,7 @@ from enum import Enum
 import psutil
 import itertools
 from decimal import Decimal
+from nose.plugins.attrib import attr
 
 # NOTE: This code does not work with Cassandra as its LWT queries don't return previous values
 #
@@ -454,6 +455,7 @@ def node_affinity(node_pids):
         debug(f"node.pid {node_pids[i]} new affinity {node_proc.cpu_affinity()}")
 
 
+@attr('dtest-full')
 @scylla_mode("!debug")
 class LWTBankingLoadTest(Tester):
     """Emulate a series of money transfers and perform validation"""
