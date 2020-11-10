@@ -1,3 +1,4 @@
+from nose.plugins.attrib import attr
 from dtest import Tester, debug
 from cassandra import ConsistencyLevel, Unavailable, DriverException
 
