@@ -2,13 +2,15 @@ import os
 import random
 import shutil
 import string
+import time
+from copy import copy
 from enum import Enum
 
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from itertools import chain
 from pprint import pformat
-from typing import List, Dict, Union, NamedTuple, Optional
+from typing import List, Dict, Union, Optional
 
 import boto3
 from mypy_boto3_dynamodb import DynamoDBClient, DynamoDBServiceResource
@@ -18,6 +20,8 @@ from deepdiff import DeepDiff
 from nose.plugins.attrib import attr
 from alternator.utils import schemas
 from ccmlib.scylla_node import ScyllaNode
+
+from cdc_tests import CDCInitializeHelper
 from dtest import debug, Tester, info, retrying
 
 ALTERNATOR_SNAPSHOT_FOLDER = os.path.join(os.getcwd(), "alternator", "snapshot")
@@ -79,9 +83,11 @@ def set_write_isolation(table: DynamoDBServiceResource.Table, isolation: Union[W
     table_conf.update()
 
 
-class AlternatorApi(NamedTuple):
-    resource: DynamoDBServiceResource
-    client: DynamoDBClient
+class AlternatorApi:
+    def __init__(self, resource: DynamoDBServiceResource, client: DynamoDBClient, stream=None):
+        self.resource = resource
+        self.client = client
+        self.stream = stream
 
 
 class Gsi:
@@ -132,15 +138,14 @@ class StoppableThread:
 
 @attr('dtest-full')
 class TesterAlternator(Tester):
-
     def __init__(self, *argv, **kwargs):
         super().__init__(*argv, **kwargs)
         self._nodes_url_list = None
         self.keyspace_name_template = "alternator_{}"
         self._table_primary_key = schemas.HASH_KEY_NAME
         self._table_primary_key_format = "test{}"
-        self._dynamo_params = dict(service_name="dynamodb", aws_access_key_id="None", aws_secret_access_key="None",
-                                   region_name="None", verify=False)
+        self._dynamo_params = \
+            dict(aws_access_key_id="None", aws_secret_access_key="None", region_name="None", verify=False)
         self.alternator_apis = {}
 
     def _add_api_for_node(self, node: ScyllaNode, is_encrypted: bool = False) -> None:
@@ -149,8 +154,9 @@ class TesterAlternator(Tester):
         else:
             node_alternator_address = f"http://{self.get_ip_from_node(node=node)}:{ALTERNATOR_PORT}"
         self.alternator_apis[node.name] = AlternatorApi(
-            resource=boto3.resource(endpoint_url=node_alternator_address, **self._dynamo_params),
-            client=boto3.client(endpoint_url=node_alternator_address, **self._dynamo_params)
+            resource=boto3.resource(
+                service_name="dynamodb", endpoint_url=node_alternator_address, **self._dynamo_params),
+            client=boto3.client(service_name="dynamodb", endpoint_url=node_alternator_address, **self._dynamo_params)
         )
 
     def get_dynamodb_api(self, node: ScyllaNode) -> AlternatorApi:
@@ -192,6 +198,7 @@ class TesterAlternator(Tester):
                      create_gsi: bool = False, **kwargs) -> Table:
         if isinstance(schema, tuple):
             schema = dict(schema)
+        stream = kwargs.pop("stream_specification", {})
         if create_gsi:
             schema['AttributeDefinitions'].append(Gsi.ATTRIBUTE_DEFINITION)
             schema.update(Gsi.CONFIG)
@@ -201,6 +208,7 @@ class TesterAlternator(Tester):
             TableName=table_name,
             BillingMode="PAY_PER_REQUEST",
             **schema,
+            **stream,
             **kwargs
         )
         if wait_until_table_exists:
@@ -432,8 +440,9 @@ class TesterAlternator(Tester):
         for idx in range(num_of_items):
             table.get_item(ConsistentRead=consistent_read, Key={self._table_primary_key: f'test{idx}'})
 
-    def prefill_dynamodb_table(self, node: ScyllaNode, table_name: str = TABLE_NAME, num_of_items: int = NUM_OF_ITEMS):
-        self.create_table(table_name=table_name, node=node)
+    def prefill_dynamodb_table(self, node: ScyllaNode, table_name: str = TABLE_NAME, num_of_items: int = NUM_OF_ITEMS,
+                               **kwargs):
+        self.create_table(table_name=table_name, node=node, **kwargs)
         new_items = self.create_items(num_of_items=num_of_items)
         return self.batch_write_actions(table_name=table_name, node=node, new_items=new_items)
 
@@ -538,6 +547,104 @@ class TesterAlternator(Tester):
             result.append(full_query(
                 table=table, consistent_read=True, KeyConditionExpression='session_id = :s',
                 ExpressionAttributeValues={':s': session_id}))
+        return result
+
+
+@attr('dtest-full')
+class TesterAlternatorStream(TesterAlternator, CDCInitializeHelper):
+    def __init__(self, *args, **kwargs):
+        kwargs['cluster_options'] = {'experimental_features': ['cdc', 'alternator-streams'],
+                                     'ring_delay_ms': 5 * 1000,
+                                     'hinted_handoff_enabled': False}
+        super().__init__(*args, **kwargs)
+
+    def _add_api_for_node(self, node: ScyllaNode, is_encrypted: bool = False) -> None:
+        super(TesterAlternatorStream, self)._add_api_for_node(node=node)
+        if is_encrypted:
+            node_stream_address = f"https://{self.get_ip_from_node(node=node)}:{ALTERNATOR_SECURE_PORT}"
+        else:
+            node_stream_address = f"http://{self.get_ip_from_node(node=node)}:{ALTERNATOR_PORT}"
+        self.alternator_apis[node.name].stream = boto3.client(
+            service_name='dynamodbstreams', endpoint_url=node_stream_address, **self._dynamo_params)
+
+    def wait_for_active_stream(self, node: ScyllaNode, table_name: str = TABLE_NAME, timeout: int = 60):
+        dynamodb_api = self.get_dynamodb_api(node=node)
+
+        @retrying(num_attempts=timeout, sleep_time=1, allowed_exceptions=(ValueError,),
+                  message=f"The stream ARN of '{table_name}' table not found")
+        def get_stream_arn():
+            for stream in dynamodb_api.stream.list_streams(TableName=table_name)['Streams']:
+                arn = stream['StreamArn']
+                if arn:
+                    describe_stream = dynamodb_api.stream.describe_stream(StreamArn=arn)['StreamDescription']
+                    if 'StreamStatus' not in describe_stream or describe_stream.get('StreamStatus') == 'ENABLED':
+                        return arn, stream['StreamLabel']
+            raise ValueError('The ARN value not found!')
+        return get_stream_arn()
+
+    def prepare_dynamodb_cluster(self, num_of_nodes: int = NUM_OF_NODES, is_multi_dc: bool = False,
+                                 is_encrypted: bool = False, extra_config: Optional[dict] = None):
+        configuration_options = {"start_native_transport": True, "alternator_port": ALTERNATOR_PORT,
+                                 "alternator_write_isolation": "always"}
+        configuration_options.update(extra_config or {})
+        self.cluster.set_configuration_options(configuration_options)
+        self.populate_sequentially(n=num_of_nodes, wait_other_notice=True)
+
+    def prefill_dynamodb_table(self, node: ScyllaNode, table_name: str = TABLE_NAME, num_of_items: int = NUM_OF_ITEMS,
+                               wait_for_active_stream=True, **kwargs):
+        stream_arn_details = None
+        table = super().prefill_dynamodb_table(node=node, table_name=table_name, num_of_items=num_of_items, **kwargs)
+        if wait_for_active_stream:
+            stream_arn_details = self.wait_for_active_stream(node=node, table_name=table.name)
+        return stream_arn_details
+
+    def get_records(self, node: ScyllaNode, stream_arn: str, num_of_requests: int, timeout: int = 30):
+        """
+        The function extracts "num_of_requests" requests from the stream. For each request, the method extracts the
+         information itself and does not return all the request details received from the stream.
+
+        * Due to the current implementation, each new item does two requests (delete and insert).
+        """
+        records = []
+        dynamodb_api = self.get_dynamodb_api(node=node)
+
+        def _get_records():
+            shard_iterators, next_iterators = [], []
+            describe_stream = dynamodb_api.stream.describe_stream(StreamArn=stream_arn)
+            while True:
+                for shard in describe_stream['StreamDescription']['Shards']:
+                    shard_iterators.append(dynamodb_api.stream.get_shard_iterator(
+                        StreamArn=stream_arn, ShardId=shard['ShardId'], ShardIteratorType='AT_SEQUENCE_NUMBER',
+                        SequenceNumber=shard['SequenceNumberRange']['StartingSequenceNumber'])['ShardIterator'])
+                last_shard = describe_stream["StreamDescription"].get("LastEvaluatedShardId")
+                if not last_shard:
+                    break
+                describe_stream = dynamodb_api.stream.describe_stream(
+                    StreamArn=stream_arn, ExclusiveStartShardId=last_shard)
+
+            start_time = time.time()
+            is_loop_stop = False
+            while len(records) < num_of_requests and not is_loop_stop:
+                for shard_iterator in shard_iterators:
+                    if (time.time() - start_time) > timeout:
+                        is_loop_stop = True
+                        break
+                    response = dynamodb_api.stream.get_records(ShardIterator=shard_iterator, Limit=1000)
+                    if response['NextShardIterator']:
+                        next_iterators.append(response['NextShardIterator'])
+                    if response['Records']:
+                        records.extend(response['Records'])
+
+                shard_iterators = copy(next_iterators)
+                next_iterators.clear()
+
+        _get_records()
+        result = []
+        for record in records:
+            # Each record contains a lot of information, information about the request, the type of keys, etc.
+            # Therefore, from every request for a stream extracts only the keys and the values themselves and return
+            #  a list of dictionaries ( like the list of items we have built).
+            result.append({key: list(value.values())[0] for key, value in record['dynamodb']['Keys'].items()})
         return result
 
 

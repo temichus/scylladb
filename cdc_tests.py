@@ -43,7 +43,7 @@ class CdcLogOperations(IntEnum):
 class CDCInitializeHelper:
     __test__ = False
 
-    def populate_sequentially(self, n):
+    def populate_sequentially(self, n, wait_other_notice=False):
         cluster = self.cluster
         debug('Starting node 1')
         # We need to use populate() for the first node, because it writes
@@ -52,11 +52,11 @@ class CDCInitializeHelper:
         # with 127.0.0.1 - which is configured to be the default seed - and
         # might fail, because in some environments the first node might listen
         # for gossip on a different address.
-        cluster.populate(1).start(wait_for_binary_proto=True)
+        cluster.populate(1).start(wait_for_binary_proto=True, wait_other_notice=wait_other_notice)
         for i in range(2, n + 1):
             debug('Starting node {}'.format(i))
             node = new_node(self.cluster, bootstrap=True)
-            node.start(wait_for_binary_proto=True)
+            node.start(wait_for_binary_proto=True, wait_other_notice=wait_other_notice)
 
     def wait_for_last_generation_to_be_active(self, session):
         cdc_descriptions = list(self.get_cdc_description_rows(session))
