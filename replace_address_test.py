@@ -21,6 +21,9 @@ class NodeUnavailable(Exception):
 @attr('dtest-full')
 class TestReplaceAddress(Tester):
 
+    rbo_enabled = False
+    __test__ = False
+
     def __init__(self, *args, **kwargs):
         kwargs['cluster_options'] = {'start_rpc': 'true'}
         # Ignore these log patterns:
@@ -37,6 +40,12 @@ class TestReplaceAddress(Tester):
             r'Streaming error occurred'
         ]
         Tester.__init__(self, *args, **kwargs)
+
+    def init_cluster(self, num_nodes=3):
+        rbo_status = "true" if self.rbo_enabled else "false"
+        self.cluster.populate(num_nodes)
+        self.cluster.set_configuration_options(values={"enable_repair_based_node_ops": rbo_status})
+        self.cluster.start(no_wait=False, wait_for_binary_proto=True, wait_other_notice=True)
 
     def replace_stopped_node_test(self):
         """
@@ -66,9 +75,8 @@ class TestReplaceAddress(Tester):
         Check that tokens are migrated and that data is replicated properly.
         """
         debug("Starting cluster with 3 nodes.")
-        cluster = self.cluster
-        cluster.populate(3).start()
-        node1, node2, node3 = cluster.nodelist()
+        self.init_cluster(num_nodes=3)
+        node1, node2, node3 = self.cluster.nodelist()
 
         tokens = self.get_sorted_tokens(node3)
 
@@ -98,7 +106,7 @@ class TestReplaceAddress(Tester):
         # replace node 3 with node 4
         debug("Starting node 4 to replace node 3")
 
-        node4 = new_node(cluster, bootstrap=True, token=None, remote_debug_port='0', data_center=None)
+        node4 = new_node(self.cluster, bootstrap=True, token=None, remote_debug_port='0', data_center=None)
         node4.start(replace_address=self.cluster.get_node_ip(3), wait_for_binary_proto=True)
 
         # query should work again
@@ -128,9 +136,8 @@ class TestReplaceAddress(Tester):
         the operation completes it will have up-to-date data.
         """
         debug("Starting cluster with 3 nodes.")
-        cluster = self.cluster
-        cluster.populate(3).start()
-        node1, node2, node3 = cluster.nodelist()
+        self.init_cluster(num_nodes=3)
+        node1, node2, node3 = self.cluster.nodelist()
         session = self.patient_cql_connection(node1)
 
         keyspace_name = 'ks'
@@ -162,7 +169,7 @@ class TestReplaceAddress(Tester):
 
         # replace node 3 with node 4
         debug("Starting node 4 to replace node 3")
-        node4 = new_node(cluster, bootstrap=True, token=None, remote_debug_port='0', data_center=None)
+        node4 = new_node(self.cluster, bootstrap=True, token=None, remote_debug_port='0', data_center=None)
         node4.start(replace_address=self.cluster.get_node_ip(3), no_wait=True,
                     jvm_args=['--logger-log-level', 'stream_session=debug'])
 
@@ -201,15 +208,14 @@ class TestReplaceAddress(Tester):
     @require('#4325')
     def shutdown_all_and_replace_node_test(self):
         debug("Starting cluster with 3 nodes.")
-        cluster = self.cluster
-        cluster.populate(3).start()
-        node1, node2, node3 = cluster.nodelist()
+        self.init_cluster(num_nodes=3)
+        node1, node2, node3 = self.cluster.nodelist()
 
-        cluster.stop_nodes([node1, node2, node3])
-        cluster.start_nodes([node1, node2], wait_for_binary_proto=True)
+        self.cluster.stop_nodes([node1, node2, node3])
+        self.cluster.start_nodes([node1, node2], wait_for_binary_proto=True)
 
         debug("Starting node 4 to replace node 3")
-        node4 = new_node(cluster, bootstrap=True, token=None, remote_debug_port='0', data_center=None)
+        node4 = new_node(self.cluster, bootstrap=True, token=None, remote_debug_port='0', data_center=None)
 
         node4.start(wait_for_binary_proto=True, replace_address=self.cluster.get_node_ip(3))
 
@@ -218,13 +224,12 @@ class TestReplaceAddress(Tester):
     def replace_active_node_test(self):
 
         debug("Starting cluster with 3 nodes.")
-        cluster = self.cluster
-        cluster.populate(3).start()
-        node1, node2, node3 = cluster.nodelist()
+        self.init_cluster(num_nodes=3)
+        node1, node2, node3 = self.cluster.nodelist()
 
         # replace active node 3 with node 4
         debug("Starting node 4 to replace active node 3")
-        node4 = new_node(cluster, bootstrap=True, token=None, remote_debug_port='0', data_center=None)
+        node4 = new_node(self.cluster, bootstrap=True, token=None, remote_debug_port='0', data_center=None)
 
         expected_message = "Cannot replace a live node"
         self.ignore_log_patterns += [expected_message]
@@ -236,12 +241,11 @@ class TestReplaceAddress(Tester):
 
     def replace_nonexistent_node_test(self):
         debug("Starting cluster with 3 nodes.")
-        cluster = self.cluster
-        cluster.populate(3).start()
-        node1, node2, node3 = cluster.nodelist()
+        self.init_cluster(num_nodes=3)
+        node1, node2, node3 = self.cluster.nodelist()
 
         debug('Start node 4 and replace an address with no node')
-        node4 = new_node(cluster, bootstrap=True, token=None, remote_debug_port='0', data_center=None)
+        node4 = new_node(self.cluster, bootstrap=True, token=None, remote_debug_port='0', data_center=None)
 
         expected_message = "Cannot replace_address .*"+self.cluster.get_node_ip(5)+" because it doesn't exist in gossip"
         self.ignore_log_patterns += [expected_message]
@@ -265,9 +269,8 @@ class TestReplaceAddress(Tester):
 
     def replace_first_boot_test(self):
         debug("Starting cluster with 3 nodes.")
-        cluster = self.cluster
-        cluster.populate(3).start()
-        node1, node2, node3 = cluster.nodelist()
+        self.init_cluster(num_nodes=3)
+        node1, node2, node3 = self.cluster.nodelist()
 
         tokens = self.get_sorted_tokens(node3)
 
@@ -294,7 +297,7 @@ class TestReplaceAddress(Tester):
 
         # replace node 3 with node 4
         debug("Starting node 4 to replace node 3")
-        node4 = new_node(cluster, bootstrap=True, token=None, remote_debug_port='0', data_center=None)
+        node4 = new_node(self.cluster, bootstrap=True, token=None, remote_debug_port='0', data_center=None)
         node4.start(jvm_args=["-Dcassandra.replace_address_first_boot=" +
                               self.cluster.get_node_ip(3)], wait_for_binary_proto=True)
 
@@ -340,9 +343,8 @@ class TestReplaceAddress(Tester):
     def resumable_replace_test(self):
         """Test resumable bootstrap while replacing node"""
 
-        cluster = self.cluster
-        cluster.populate(3).start()
-        node1, node2, node3 = cluster.nodelist()
+        self.init_cluster(num_nodes=3)
+        node1, node2, node3 = self.cluster.nodelist()
 
         node1.stress(['write', 'n=100000', '-schema', 'replication(factor=3)'])
 
@@ -358,7 +360,7 @@ class TestReplaceAddress(Tester):
         t.start()
         # replace node 3 with node 4
         debug("Starting node 4 to replace node 3")
-        node4 = new_node(cluster, bootstrap=True, token=None, remote_debug_port='0', data_center=None)
+        node4 = new_node(self.cluster, bootstrap=True, token=None, remote_debug_port='0', data_center=None)
         try:
             node4.start(jvm_args=["-Dcassandra.replace_address_first_boot="+self.cluster.get_node_ip(3)])
         except NodeError:
@@ -389,9 +391,8 @@ class TestReplaceAddress(Tester):
     def replace_with_reset_resume_state_test(self):
         """Test replace with resetting bootstrap progress"""
 
-        cluster = self.cluster
-        cluster.populate(3).start()
-        node1, node2, node3 = cluster.nodelist()
+        self.init_cluster(num_nodes=3)
+        node1, node2, node3 = self.cluster.nodelist()
 
         node1.stress(['write', 'n=100000', '-schema', 'replication(factor=3)'])
 
@@ -407,7 +408,7 @@ class TestReplaceAddress(Tester):
         t.start()
         # replace node 3 with node 4
         debug("Starting node 4 to replace node 3")
-        node4 = new_node(cluster, bootstrap=True, token=None, remote_debug_port='0', data_center=None)
+        node4 = new_node(self.cluster, bootstrap=True, token=None, remote_debug_port='0', data_center=None)
         try:
             node4.start(jvm_args=["-Dcassandra.replace_address_first_boot="+self.cluster.get_node_ip(3)])
         except NodeError:
@@ -444,12 +445,11 @@ class TestReplaceAddress(Tester):
         See https://github.com/scylladb/scylla/issues/5449 for details.
         """
         debug("Starting cluster with 2 nodes.")
-        cluster = self.cluster
-        cluster.populate(2).start()
-        node1, node2 = cluster.nodelist()
-        debug(f"Node 1 address is {cluster.get_node_ip(1)}")
+        self.init_cluster(2)
+        node1, node2 = self.cluster.nodelist()
+        debug(f"Node 1 address is {self.cluster.get_node_ip(1)}")
 
-        node2_address = cluster.get_node_ip(2)
+        node2_address = self.cluster.get_node_ip(2)
         debug(f"Node 2 address is {node2_address}")
 
         tokens = self.get_sorted_tokens(node2)
@@ -467,10 +467,10 @@ class TestReplaceAddress(Tester):
         node2.stop()
 
         debug("Starting node 3 to replace node 2, but stop it in the middle of the replace.")
-        node3 = new_node(cluster, bootstrap=True, token=None, remote_debug_port="0", data_center=None)
+        node3 = new_node(self.cluster, bootstrap=True, token=None, remote_debug_port="0", data_center=None)
         node3.start(replace_address=node2_address, no_wait=True)
 
-        node3_address = cluster.get_node_ip(3)
+        node3_address = self.cluster.get_node_ip(3)
         debug(f"Node 3 address is {node3_address}")
 
         self.ignore_log_patterns += ['Startup failed']
@@ -481,10 +481,10 @@ class TestReplaceAddress(Tester):
         self.assertNotIn("STATUS:hibernate,true", status1, "There is a node in HIBERNATE status.")
 
         debug("Starting node 4 to replace node 2.")
-        node4 = new_node(cluster, bootstrap=True, token=None, remote_debug_port='0', data_center=None)
+        node4 = new_node(self.cluster, bootstrap=True, token=None, remote_debug_port='0', data_center=None)
         node4.start(replace_address=node2_address, wait_for_binary_proto=True, wait_other_notice=True)
 
-        node4_address = cluster.get_node_ip(4)
+        node4_address = self.cluster.get_node_ip(4)
         debug(f"Node 4 address is {node4_address}")
 
         status2, err2 = node1.nodetool("gossipinfo")
@@ -511,10 +511,9 @@ class TestReplaceAddress(Tester):
         the background write workload continue running more than 30 seconds,
         the gossiper reached a timeout, and nodes raise 'unknown endpoint' error.
         """
-        cluster = self.cluster
-        cluster.populate(3).start(no_wait=False, wait_for_binary_proto=True, wait_other_notice=True)
+        self.init_cluster(num_nodes=3)
 
-        node1 = cluster.nodelist()[0]
+        node1 = self.cluster.nodelist()[0]
         debug(node1.nodetool('status')[0])
 
         enable_nodetool_debug = False
@@ -550,13 +549,13 @@ class TestReplaceAddress(Tester):
         sleep(5)
 
         debug('Start to kill node3 ...')
-        node3 = cluster.nodelist()[2]
+        node3 = self.cluster.nodelist()[2]
         node3.stop(gently=False)
         debug('node3 has been killed')
 
         debug('Add a new node to replace the dead node')
         self.replace_done_time = None
-        added_node = new_node(cluster, data_center='dc1')
+        added_node = new_node(self.cluster, data_center='dc1')
         added_node.start(replace_address=self.cluster.get_node_ip(3), wait_for_binary_proto=True)
         debug('Successfully add a new node to replace node3')
         self.replace_done_time = datetime.datetime.now()
@@ -565,7 +564,12 @@ class TestReplaceAddress(Tester):
         if enable_nodetool_debug:
             nodetool_thread.join(timeout=300)
 
-        for node in cluster.nodelist():
+        for node in self.cluster.nodelist():
             err_log = node.grep_log('unknown endpoint')[0:3]
             debug('{}: {}'.format(node.name, err_log))
             self.assertEqual(0, len(err_log))
+
+
+for rbo_status in [True, False]:
+    cls_name = "TestReplaceAddress_rbo_enabled" if rbo_status else "TestReplaceAddress_rbo_disabled"
+    vars()[cls_name] = type(cls_name, (TestReplaceAddress,), {"rbo_enabled": rbo_status, "__test__": True})
