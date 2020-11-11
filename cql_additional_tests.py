@@ -6042,14 +6042,12 @@ class TestCQL(Tester):
                    [[1]])
 
         assert_all(session,
-                   "SELECT count(*) FROM users_by_state WHERE username = 'user1' ALLOW FILTERING",
+                   "SELECT count(*) FROM users_by_state WHERE username = 'user1'",
                    [[1]])
 
         assert_all(session,
                    "SELECT count(*) FROM users_by_state WHERE state = 'TX' AND username = 'user1' ALLOW FILTERING",
                    [[1]])
-
-        self._assert_invalid_filtering(session, "SELECT * FROM users_by_state where username = 'user1'")
 
     @attr('single_node')
     def partition_key_allow_filtering_test(self):
