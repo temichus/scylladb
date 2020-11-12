@@ -459,6 +459,7 @@ class TestHintedHandoff(Tester):
 
 ########################################################################################################################
 
+
     @property
     def __hint_flush_threshold(self):
         """
@@ -479,11 +480,11 @@ class TestHintedHandoff(Tester):
         if isinstance(v, bool):
             return str(v).lower()
         if isinstance(v, int):
-            assert v in [ 0, 1 ], f"'{v}' must be either '0' or '1'"
+            assert v in [0, 1], f"'{v}' must be either '0' or '1'"
             return str(v)
         assert isinstance(v, str), f"'{v}' is not a string"
         assert v != '', "hh_enabled_value must not be empty"
-        if v.lower() in [ 'true', 'false' ]:
+        if v.lower() in ['true', 'false']:
             return v.lower()
         return v
 
@@ -558,8 +559,8 @@ class TestHintedHandoff(Tester):
             for k in range(i + 1, num_shards):
                 for j in range(0, len(nodes)):
                     debug("{}: comparing number of files on shards {}: {} and {}: {}".format(nodes[j].name,
-                    i, hints_on_nodes[j][i],
-                    k, hints_on_nodes[j][k]))
+                                                                                             i, hints_on_nodes[j][i],
+                                                                                             k, hints_on_nodes[j][k]))
                     assert abs(hints_on_nodes[j][i] - hints_on_nodes[j][k]) <= 1, \
-                               f"Unexpected number of hint files per shard on node{j+1}: " + \
-                               f"abs({hints_on_nodes[j][i]} - {hints_on_nodes[j][k]}) > 1"
+                        f"Unexpected number of hint files per shard on node{j+1}: " + \
+                        f"abs({hints_on_nodes[j][i]} - {hints_on_nodes[j][k]}) > 1"
