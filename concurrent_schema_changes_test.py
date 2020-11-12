@@ -432,6 +432,7 @@ class TestConcurrentSchemaChanges(Tester):
         self.prepare_for_changes(session, namespace='ns2')
         node1.stop()
         wait(2)
+        self.ignore_log_patterns += [r'Column .* in view .* was not found in the base table']
         self.make_schema_changes(session, namespace='ns2')
         wait(2)
         node2.stop()
@@ -458,6 +459,7 @@ class TestConcurrentSchemaChanges(Tester):
         self.prepare_for_changes(session, namespace='ns2')
         node1.stop()
         wait(2)
+        self.ignore_log_patterns += [r'Column .* in view .* was not found in the base table']
         self.make_schema_changes(session, namespace='ns2')
         wait(2)
         node2.stop()
