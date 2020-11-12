@@ -308,6 +308,7 @@ class TestUpdateClusterLayout(Tester):
             r'Startup failed:.*Failed to repair for keyspace=ks[1-3]?',
             r'Startup failed: std::runtime_error .* \(repair .* failed',
             r'Startup failed: std::runtime_error .*rpc::closed_error',
+            r'Startup failed: seastar::sleep_aborted'
         ]
 
         debug("Stop node 2...")
