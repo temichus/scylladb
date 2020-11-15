@@ -2288,19 +2288,23 @@ class TestMultipleSecondaryIndexes(Tester, SecondaryIndexesHelpers):
         assert_all(
             session,
             "SELECT * FROM test_table WHERE name='AAAA'",
-            expected=[['AAA2', 'AAAA', 100], ['AAA1', 'AAAA', 0], ['AAA6', 'AAAA', 100], ['AAA5', 'AAAA', 0]])
+            expected=[['AAA2', 'AAAA', 100], ['AAA1', 'AAAA', 0], ['AAA6', 'AAAA', 100], ['AAA5', 'AAAA', 0]],
+            ignore_order=True)
         assert_all(
             session,
             "SELECT * FROM test_table WHERE name='XXXX'",
-            expected=[['AAA7', 'XXXX', 0], ['AAA8', 'XXXX', 100], ['AAA4', 'XXXX', 100], ['AAA3', 'XXXX', 0]])
+            expected=[['AAA7', 'XXXX', 0], ['AAA8', 'XXXX', 100], ['AAA4', 'XXXX', 100], ['AAA3', 'XXXX', 0]],
+            ignore_order=True)
         assert_all(
             session,
             "SELECT * FROM test_table WHERE value=0",
-            expected=[['AAA7', 'XXXX', 0], ['AAA1', 'AAAA', 0], ['AAA3', 'XXXX', 0], ['AAA5', 'AAAA', 0]])
+            expected=[['AAA7', 'XXXX', 0], ['AAA1', 'AAAA', 0], ['AAA3', 'XXXX', 0], ['AAA5', 'AAAA', 0]],
+            ignore_order=True)
         assert_all(
             session,
             "SELECT * FROM test_table WHERE value=100",
-            expected=[['AAA2', 'AAAA', 100], ['AAA8', 'XXXX', 100], ['AAA4', 'XXXX', 100], ['AAA6', 'AAAA', 100]])
+            expected=[['AAA2', 'AAAA', 100], ['AAA8', 'XXXX', 100], ['AAA4', 'XXXX', 100], ['AAA6', 'AAAA', 100]],
+            ignore_order=True)
         assert_invalid(session,
                        "SELECT * FROM test_table WHERE name='AAAA' and value=0",
                        self._use_filtering_error_message
@@ -2308,7 +2312,8 @@ class TestMultipleSecondaryIndexes(Tester, SecondaryIndexesHelpers):
         assert_all(
             session,
             "SELECT * FROM test_table WHERE name='AAAA' and value=0 ALLOW FILTERING",
-            expected=[['AAA1', 'AAAA', 0], [u'AAA5', 'AAAA', 0]])
+            expected=[['AAA1', 'AAAA', 0], [u'AAA5', 'AAAA', 0]],
+            ignore_order=True)
         assert_invalid(session,
                        "SELECT * FROM test_table WHERE name='AAAA' and value=100",
                        self._use_filtering_error_message
@@ -2316,7 +2321,8 @@ class TestMultipleSecondaryIndexes(Tester, SecondaryIndexesHelpers):
         assert_all(
             session,
             "SELECT * FROM test_table WHERE name='AAAA' and value=100 ALLOW FILTERING",
-            expected=[['AAA2', 'AAAA', 100], ['AAA6', 'AAAA', 100]])
+            expected=[['AAA2', 'AAAA', 100], ['AAA6', 'AAAA', 100]],
+            ignore_order=True)
         assert_invalid(session,
                        "SELECT * FROM test_table WHERE name='XXXX' and value=0",
                        self._use_filtering_error_message
@@ -2324,7 +2330,8 @@ class TestMultipleSecondaryIndexes(Tester, SecondaryIndexesHelpers):
         assert_all(
             session,
             "SELECT * FROM test_table WHERE name='XXXX' and value=0 ALLOW FILTERING",
-            expected=[['AAA7', 'XXXX', 0], ['AAA3', 'XXXX', 0]])
+            expected=[['AAA7', 'XXXX', 0], ['AAA3', 'XXXX', 0]],
+            ignore_order=True)
         assert_invalid(session,
                        "SELECT * FROM test_table WHERE name='XXXX' and value=100",
                        self._use_filtering_error_message
@@ -2332,7 +2339,8 @@ class TestMultipleSecondaryIndexes(Tester, SecondaryIndexesHelpers):
         assert_all(
             session,
             "SELECT * FROM test_table WHERE name='XXXX' and value=100 ALLOW FILTERING",
-            expected=[['AAA8', 'XXXX', 100], ['AAA4', 'XXXX', 100]])
+            expected=[['AAA8', 'XXXX', 100], ['AAA4', 'XXXX', 100]],
+            ignore_order=True)
 
     def test_multy_secondary_query_with_pk(self):
         """
@@ -2346,19 +2354,23 @@ class TestMultipleSecondaryIndexes(Tester, SecondaryIndexesHelpers):
         assert_all(
             session,
             "SELECT * FROM test_table WHERE row='AAA1' and name='AAAA' and value=0 ALLOW FILTERING",
-            expected=[['AAA1', 'AAAA', 0]])
+            expected=[['AAA1', 'AAAA', 0]],
+            ignore_order=True)
         assert_all(
             session,
             "SELECT * FROM test_table WHERE row='AAA1' and name='AAAA'",
-            expected=[['AAA1', 'AAAA', 0]])
+            expected=[['AAA1', 'AAAA', 0]],
+            ignore_order=True)
         assert_all(
             session,
             "SELECT * FROM test_table WHERE row='AAA1' and value=0",
-            expected=[['AAA1', 'AAAA', 0]])
+            expected=[['AAA1', 'AAAA', 0]],
+            ignore_order=True)
         assert_all(
             session,
             "SELECT * FROM test_table WHERE row='AAA1'",
-            expected=[['AAA1', 'AAAA', 0]])
+            expected=[['AAA1', 'AAAA', 0]],
+            ignore_order=True)
 
 
 class DtestTimeoutError(Exception):
