@@ -569,6 +569,49 @@ class TestReplaceAddress(Tester):
             debug('{}: {}'.format(node.name, err_log))
             self.assertEqual(0, len(err_log))
 
+    def replace_stopped_node_with_schema_rf_1_test(self):
+        """
+        Test that we can replace a node that is not shutdown gracefully
+        and schema have replication factor equal 1
+
+        """
+        self.replace_node_with_schema_rf_1(gently=False)
+
+    def replace_shutdown_node_with_schema_rf_1_test(self):
+        """
+        Test that we can replace a node that is shutdown gracefully
+        and schema have replication factor equal 1
+        """
+        self.replace_node_with_schema_rf_1(gently=True)
+
+    def replace_node_with_schema_rf_1(self, gently):
+        self.init_cluster(num_nodes=3)
+        node1, node2, node3 = self.cluster.nodelist()
+
+        node3_tokens = self.get_sorted_tokens(node3)
+
+        debug("Inserting Data...")
+        node1.stress(['write', 'n=10000', '-schema', 'replication(factor=1)'])
+
+        debug("Stopping node 3.")
+        node3.stop(gently=gently, wait_other_notice=True)
+
+        # replace node 3 with node 4
+        debug("Starting node 4 to replace node 3")
+        node4 = new_node(self.cluster, bootstrap=True)
+        node4.start(replace_address=self.cluster.get_node_ip(3), wait_for_binary_proto=True)
+        if not self.rbo_enabled:
+            node4.watch_log_for(
+                [r"WARN .* Unable to find sufficient sources to stream range .* for keyspace .* with RF = 1 for replace operation"])
+        else:
+            debug("Issue #6351 is not related to scylla with repair based operations enabled")
+
+        debug("Verifying tokens migrated successfully")
+        moved_tokens_list = self.get_sorted_tokens(node4)
+
+        self.assertEqual(moved_tokens_list, node3_tokens, "Tokens were not moved correctly to node4")
+        self.assertTrue(node4.is_live(), "Node4 is not alive after node4 has replaced node3")
+
 
 for rbo_status in [True, False]:
     cls_name = "TestReplaceAddress_rbo_enabled" if rbo_status else "TestReplaceAddress_rbo_disabled"

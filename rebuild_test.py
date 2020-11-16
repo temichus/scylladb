@@ -223,3 +223,37 @@ class TestRebuild(Tester):
         node1.stop(gently=False)
 
         self._check_data(session, keyspaces, tables, keys, cl=ConsistencyLevel.ONE)
+
+    def rebuild_keyspace_with_rf_1_test(self):
+        self.cluster.populate(3)
+        self.cluster.set_configuration_options(values={"enable_repair_based_node_ops": "false"})
+        self.cluster.start(wait_for_binary_proto=True, wait_other_notice=True)
+        debug("Create ks with rf 1 and insert data")
+        node1 = self.cluster.nodelist()[0]
+        session = self.patient_exclusive_cql_connection(node1)
+        self.create_ks(session, 'ks', rf=1)
+        create_c1c2_table(self, session, cf="cf")
+        insert_c1c2(session, n=1000, consistency=ConsistencyLevel.ONE)
+
+        debug("Check keys")
+        for i in range(0, 1000):
+            query_c1c2(session, i, ConsistencyLevel.ONE)
+
+        debug("Stopping node 3.")
+        node3 = self.cluster.nodelist()[2]
+        node3.stop(gently=True, wait_other_notice=True)
+
+        debug("Add node4 without bootstrap")
+        node4 = self.cluster.new_node(4, auto_bootstrap=False, is_seed=False)
+        node4.start(replace_address=self.cluster.get_node_ip(3), wait_for_binary_proto=True)
+
+        # validate that warning mesasages appeared. Not error messages
+        node4.watch_log_for(
+            exprs=[r"WARN .* Unable to find sufficient sources to stream range .* for keyspace .* with RF = 1 for replace operation"])
+
+        debug("Run rebuild on node 4")
+        node4.nodetool("rebuild")
+        debug("Rebuild done, Validate that data could lost due to rf=1")
+
+        self.assertRaisesRegex(AssertionError, "Found .* errors out of 1000 keys",
+                               self._check_data, session, keyspaces=["ks"], tables=["cf"], keys=[i for i in range(1000)])
