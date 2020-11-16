@@ -11,6 +11,7 @@ from dtest import Tester, debug
 from cassandra import ConsistencyLevel, InvalidRequest, Unauthorized
 from cassandra.query import SimpleStatement
 from cassandra.query import UNSET_VALUE
+from cassandra.protocol import ConfigurationException
 
 from assertions import assert_invalid, assert_one
 from tools import rows_to_list, since, require, new_node
@@ -651,6 +652,39 @@ class TestCounters(Tester):
         for idx in range(0, 5):
             row = list(session.execute("SELECT data from counter_cs where key = {k}".format(k=idx)))
             self.assertEqual(rows_to_list(row)[0][0], 5)
+
+    @attr('single_node')
+    def alter_non_counter_with_counter_test(self):
+        """
+        ALTER table with counter, should fail with configuration error
+        and shouldn't crash
+
+        Reproducer for:
+        https://github.com/scylladb/scylla/issues/7065
+
+        Fix:
+        https://github.com/scylladb/scylla/commit/1c29f0a43d00028d728068e9e194e00ca5ec7b67
+        """
+        cluster = self.cluster
+
+        cluster.populate(1).start()
+        node1 = cluster.nodelist()[0]
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'counter_tests', 1)
+
+        session.execute("""
+            CREATE TABLE non_counter (
+                a text,
+                b text,
+                PRIMARY KEY (a, b))
+                WITH CLUSTERING ORDER BY (b ASC);
+            """)
+        try:
+            session.execute("""
+                ALTER TABLE non_counter ADD "c" counter;
+            """)
+        except ConfigurationException as exc:
+            self.assertIn("Cannot add a counter column (c) in a non counter column family", str(exc))
 
 
 @attr('dtest-full')
