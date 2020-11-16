@@ -275,6 +275,7 @@ class MiscellaneousCQLTester(CQLTester):
                             "client. Please see http://cassandra.apache.org/doc/cql3/CQL.html#collections for more details.")
 
     @attr('next-gating', 'dtest-debug', 'single_node')
+    @skip('scylla does not support manipulation of regular tables (See scylladb/scylla#7568)')
     def cql3_insert_thrift_test(self):
         """ Check that we can insert from thrift into a CQL3 table (#4377) """
         session = self.prepare(start_rpc=True)
