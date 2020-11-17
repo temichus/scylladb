@@ -1,4 +1,5 @@
 import collections
+
 import sys
 import os
 import time
@@ -10,15 +11,16 @@ from multiprocessing import Process, Queue, cpu_count
 from unittest import skip, skipIf
 from pkg_resources import parse_version
 
+from concurrent.futures import ThreadPoolExecutor
 from cassandra import ConsistencyLevel, WriteFailure
-from cassandra.cluster import Cluster
+from cassandra.cluster import Cluster, Session
 from cassandra.query import SimpleStatement
 from enum import Enum  # Remove when switching to py3
 
 from assertions import assert_all, assert_one, assert_invalid, assert_unavailable, assert_none, assert_all_or_none, \
     assert_crc_check_chance_equal, assert_row_count, assert_two_queries_equal, \
     assert_two_queries_equal_ignore_order, assert_row_count_in_select
-from dtest import Tester, debug, flaky_with_tear_down
+from dtest import Tester, debug, flaky_with_tear_down, wait_for, retrying
 from tools import since, new_node, require, rows_to_list, run_query_with_data_processing
 from scylla_tools import TableManager, MaterializedViewManager, flush_by_node, run_in_parallel, remove_node, wait_for_view, \
     wait_for_view_build_start, scylla_mode
@@ -824,6 +826,128 @@ class TestMaterializedViews(Tester):
             self._validate_data_in_mvs(tm=base_table, session=session, table_expected_rows=prefill, mv_expected_rows=prefill,
                                        consistency_level=ConsistencyLevel.ALL)
             prefill = prefill + increase_rows
+
+    def _prepare_cluster_for_drop(self, columns: dict) -> Session:
+        rf = 3
+        session = self.prepare(rf=rf, nodes=3)
+
+        debug("Create table cf")
+        self.create_cf(session=session, name='cf', key_type='int', columns=columns)
+
+        debug("Create materialized view mv_v1_view")
+        session.execute("CREATE MATERIALIZED VIEW mv_v1_view AS SELECT v1, key FROM cf WHERE v1 IS NOT NULL and "
+                        "key IS NOT NULL PRIMARY KEY (v1, key)")
+        wait_for_view(cluster=self.cluster, session=session, ks='ks', view='mv_v1_view')
+        session.execute("INSERT INTO cf (key, v0, v1) VALUES(0, 0, 0)")
+        return session
+
+    def _search_for_apply_mutation_error(self, mark_logs: dict = {}, update_mark_logs: bool = True):
+        for node in self.cluster.nodelist():
+            try:
+                wait_for(func=node.grep_log, step=1, timeout=5, throw_exc=True,
+                         expr='Failed to apply mutation', from_mark=mark_logs[node.name])
+                assert False, f"'Failed to apply mutation' error found in the {node.name} log unexpectedly"
+            except:
+                pass
+
+            if update_mark_logs:
+                mark_logs[node.name] = node.mark_log()
+
+    def run_insert(self, session: Session, columns: str, range_start: int, range_end: int, repeat: int):
+
+        debug("Insert some data")
+        for _ in range(repeat):
+            try:
+                for i in range(range_start, range_end):
+                    cmd = f"INSERT INTO cf ({columns}) VALUES({','.join([str(i) for _ in columns.split(',')])})"
+                    debug(f"Run {cmd}")
+                    session.execute(cmd)
+            except WriteFailure as wf:
+                assert False, f"Insert request failed unexpectedly with exception {wf}"
+
+    @staticmethod
+    @retrying(num_attempts=3)
+    def rows_validation(session, rows):
+        debug("Validation")
+        assert_row_count(session, 'cf', rows, consistency_level=ConsistencyLevel.QUORUM)
+        assert_row_count(session, 'mv_v1_view', rows, consistency_level=ConsistencyLevel.QUORUM)
+
+    def add_drop_column_test(self):
+        """
+        Cover https://github.com/scylladb/scylla-enterprise/issues/1467 and
+        https://github.com/scylladb/scylla/issues/7061
+        Drop the column that was added after MV creation
+        - Create base table and materialized view
+        - Add 2 new columns
+        - Drop one added column
+        - Insert data
+        All data is inserted, no failures
+        """
+        session = self._prepare_cluster_for_drop(columns={'v0': 'int', 'v1': 'int'})
+
+        mark_logs = {}
+        for node in self.cluster.nodelist():
+            mark_logs[node.name] = node.mark_log()
+
+        with ThreadPoolExecutor(max_workers=1) as tp:
+            thread = tp.submit(self.run_insert, session=session, columns='key, v0, v1',
+                               range_start=0, range_end=20, repeat=20)
+
+            for i in range(2, 7):
+                debug(f"Add regular column v{i}")
+                session.execute(f"ALTER TABLE cf ADD v{i} int")
+
+            thread.result(timeout=60)
+
+        debug("Search for mutation error in nodes' logs")
+        self._search_for_apply_mutation_error(mark_logs)
+
+        self.rows_validation(session=session, rows=20)
+
+        with ThreadPoolExecutor(max_workers=1) as tp:
+            thread = tp.submit(self.run_insert, session=session, columns='key, v0, v1',
+                               range_start=20, range_end=40, repeat=20)
+
+            for i in range(2, 7):
+                debug(f"Drop regular column v{i}")
+                session.execute(f"ALTER TABLE cf DROP v{i}")
+
+            thread.result(timeout=60)
+
+        debug("Search for mutation error in nodes' logs")
+        self._search_for_apply_mutation_error(mark_logs, update_mark_logs=False)
+
+        self.rows_validation(session=session, rows=40)
+
+    def drop_existing_column_test(self):
+        """
+        Cover https://github.com/scylladb/scylla-enterprise/issues/1467 and
+        https://github.com/scylladb/scylla/issues/7061
+        Drop the regular column that was added before MV creation.
+        - Create base table and materialized view
+        - Drop regular column
+        - Insert data
+        All data is inserted, no failures
+        """
+        session = self._prepare_cluster_for_drop(columns={'v0': 'int', 'v1': 'int'})
+
+        mark_logs = {}
+        for node in self.cluster.nodelist():
+            mark_logs[node.name] = node.mark_log()
+
+        with ThreadPoolExecutor(max_workers=1) as tp:
+            thread = tp.submit(self.run_insert, session=session, columns='key,v1',
+                               range_start=0, range_end=20, repeat=20)
+
+            debug(f"Drop regular column v0")
+            session.execute(f"ALTER TABLE cf DROP v0")
+
+            thread.result(timeout=60)
+
+        debug("Search for mutation error in nodes' logs")
+        self._search_for_apply_mutation_error(mark_logs, update_mark_logs=False)
+
+        self.rows_validation(session=session, rows=20)
 
     @attr('dtest-heavy')
     def drop_mv_during_base_table_writes_test(self):
