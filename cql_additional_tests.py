@@ -2285,6 +2285,56 @@ class TestCQL(Tester):
         res = list(session.execute("SELECT * FROM test"))
         assert len(res) == 2, res
 
+    def min_and_max_on_sets_and_udt_test(self):
+        """
+        Test min() max() on collections with various element types.
+        Covers testing of PR: https://github.com/scylladb/scylla/pull/6801/
+        that fixes: https://github.com/scylladb/scylla/issues/6768
+        see explanation of comparing sets and UDT in a lexicographical way here:
+        https://github.com/scylladb/scylla/blob/cb4c874bf944a2133226261e925ec32895b54fe5/types.hh#L49
+        """
+
+        session = self.prepare(ordered=True)
+        session.execute("CREATE TYPE udt (first text, second int, third int)")
+        session.execute("""
+                CREATE TABLE sets (
+                    id int PRIMARY KEY,
+                    s1 set<int>,
+                    s2 set<blob>,
+                    my_asc set<ascii>,
+                    my_type udt
+                )
+            """)
+
+        session.execute("INSERT INTO sets (id, my_asc) VALUES (1, {'hi', 'im', 'ascii'})")
+        session.execute("INSERT INTO sets (id, my_asc) VALUES (2, {'im', 'ascii', 'too'})")
+        # test min and max on set of ascii type
+        res_max = session.execute("select max(my_asc) FROM sets")
+        res_max_rows = rows_to_list(res_max)
+        res_min = session.execute("select min(my_asc) FROM sets")
+        res_min_rows = rows_to_list(res_min)
+        assert res_max_rows[0][0] == {'ascii', 'im', 'too'}, res_max_rows
+        assert res_min_rows[0][0] == {'ascii', 'hi', 'im'}, res_min_rows
+
+        session.execute(
+            "INSERT INTO sets (id, s1, s2, my_type) VALUES (1, {-1, 1}, {0xff, 0x01}, {first:'a', second: 2, third: 3})")
+        session.execute(
+            "INSERT INTO sets (id, s1, s2, my_type) VALUES (2, {-2, 2}, {0xfe, 0x02}, {first:'b', second: 5, third: 6})")
+
+        # test min and max on UDT
+        res_max = session.execute("select max(my_type) FROM sets")
+        res_max_rows = rows_to_list(res_max)
+        res_min = session.execute("select min(my_type) FROM sets")
+        res_min_rows = rows_to_list(res_min)
+        assert str(res_max_rows[0][0]) == 'udt(first=\'b\', second=5, third=6)', res_max_rows
+        assert str(res_min_rows[0][0]) == 'udt(first=\'a\', second=2, third=3)', res_min_rows
+
+        # test min and max on int and blob sets
+        res = session.execute("select max(s1), max(s2) FROM sets")
+        res_rows = rows_to_list(res)
+        debug(f"res_rows: {res_rows}")
+        assert res_rows == [[{-1, 1}, {b'\x02', b'\xfe'}]], res_rows
+
     def aggregate_and_simple_selection_together_test(self):
 
         session = self.prepare(ordered=True)
