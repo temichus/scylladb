@@ -1135,6 +1135,10 @@ class Tester(TestCase):
             warning('allow_log_errors is deprecated. Use ignore_log_patterns instead! {}')
         if not self._preserve_cluster:
             debug("Stopping cluster")
+            # we may stop nodes that have not finished starting yet
+            self.ignore_log_patterns += [
+                r'Startup failed: seastar::sleep_aborted',
+            ]
             self.cluster.stop()
         found_cores = []
         ignored_cores = []
