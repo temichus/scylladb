@@ -1138,6 +1138,7 @@ class Tester(TestCase):
             # we may stop nodes that have not finished starting yet
             self.ignore_log_patterns += [
                 r'Startup failed: seastar::sleep_aborted',
+                r'Timer callback failed: seastar::gate_closed_exception',
             ]
             self.cluster.stop()
         found_cores = []
