@@ -706,3 +706,88 @@ class TestBootstrap(Tester):
     @require("#4488")
     def cluster_become_unavailable_when_gracefully_kill_node_during_bootstrap_test(self):
         self._cluster_become_unavailable_when_kill_node_during_bootstrap(is_gracefully=True)
+
+    def ignore_auto_bootstrap_option_test(self):
+        """
+        After get rid of seed concept by Asias, auto_bootstrap option will be ignored.
+        Bootstrap of first node which had smallest ip will be skipped, and bootstrap
+        of other nodes will be enabled all the time.
+
+        related PR: https://github.com/scylladb/scylla/pull/6848
+        """
+        cluster = self.cluster
+        cluster.populate(3)
+        (node1, node2, node3) = self.cluster.nodelist()
+
+        # node1: auto_bootstrap option will be ignored even it's set to True
+        node1.set_configuration_options(values={'auto_bootstrap': True})
+        # node2: normal test
+        node2.set_configuration_options(values={'auto_bootstrap': True})
+        # node3: auto_bootstrap option will be ignored even it's set to False
+        node3.set_configuration_options(values={'auto_bootstrap': False})
+        cluster.start(wait_for_binary_proto=True)
+
+        skip_bootstrap_msg = "I am the first node in the cluster. Skip bootstrap"
+        start_bootstrap_msg = 'Starting to bootstrap'
+
+        node1.watch_log_for(exprs=skip_bootstrap_msg)
+        debug("Verified bootstrap didn't start on node1")
+        node2.watch_log_for(exprs=start_bootstrap_msg)
+        debug("Verified bootstrap started on node2")
+        node3.watch_log_for(exprs=start_bootstrap_msg)
+        debug("Verified bootstrap started on node3")
+
+        session = self.patient_exclusive_cql_connection(node1)
+        self.create_ks(session, 'ks', 3)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        insert_c1c2(session, n=1000)
+
+        # node4: auto_bootstrap option will be ignored for new node
+        node4 = cluster.new_node(4, auto_bootstrap=False)
+        node4.start(wait_for_binary_proto=True)
+        node4.watch_log_for(exprs=start_bootstrap_msg)
+        debug("Verified bootstrap started on node4")
+        for k in range(1000):
+            query_c1c2(session, k)
+
+    # Issue: the cluster can't start if the first (smallest) node isn't up #7726
+    @require('#7726')
+    def smallest_ip_join_late_test(self):
+        """
+        The first node has smallest ip in seeds list, it always skips the bootstrap.
+        In this test, we other nodes firstly, and start the first node later.
+        """
+        cluster = self.cluster
+        cluster.populate(3)
+        (node1, node2, node3) = self.cluster.nodelist()
+
+        # node1 has the smallest ip, but it's started later, expect bootstrap
+        # even the option isn't enabled
+        node1.set_configuration_options(values={'auto_bootstrap': False})
+        # node2: normal test
+        node2.set_configuration_options(values={'auto_bootstrap': True})
+        # node3: auto_bootstrap option will be ignored even it's set to False
+        node3.set_configuration_options(values={'auto_bootstrap': False})
+
+        # only start node2 and node3, node2 will be the real `first node`
+        node2.start(wait_for_binary_proto=True)
+        node3.start(wait_for_binary_proto=True)
+
+        skip_bootstrap_msg = "I am the first node in the cluster. Skip bootstrap"
+        start_bootstrap_msg = 'Starting to bootstrap'
+
+        node2.watch_log_for(exprs=skip_bootstrap_msg)
+        debug("Verified bootstrap doesn't start on node2")
+        node3.watch_log_for(exprs=start_bootstrap_msg)
+        debug("Verified bootstrap started on node3")
+
+        session = self.patient_exclusive_cql_connection(node2)
+        self.create_ks(session, 'ks', 3)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        insert_c1c2(session, n=1000)
+
+        node1.start(wait_for_binary_proto=True)
+        node1.watch_log_for(exprs=start_bootstrap_msg)
+        debug("Verified bootstrap started on node2")
+        for k in range(1000):
+            query_c1c2(session, k)
