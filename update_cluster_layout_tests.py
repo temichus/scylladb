@@ -19,6 +19,7 @@ from tools import require
 import scylla_tools
 import collections
 import random
+import requests
 
 
 @attr('dtest-full')
@@ -1145,6 +1146,51 @@ class TestUpdateClusterLayout(Tester):
         query = SimpleStatement("SELECT * FROM cf", consistency_level=ConsistencyLevel.ONE)
         result = list(session.execute(query))
         self.assertEqual(len(result), 10, len(result))
+
+    def simple_removenode_3_test(self):
+        """
+        Test removenode with the ignore_nodes option
+        1. Create a cluster with 5 nodes with rf=3, insert data
+        2. stop 2 nodes and remove 1 node with ignore_nodes option
+        3. Check that the data is accesible
+        """
+        cluster = self.cluster
+
+        # Disable hinted handoff and set batch commit log so this doesn't
+        # interfer with the test (this must be after the populate)
+        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.populate(5).start()
+        node1, node2, node3, node4, node5 = cluster.nodelist()
+
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 3)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+
+        insert_c1c2(session, keys=range(1000), consistency=ConsistencyLevel.ALL)
+
+        node2_hostid = node2.hostid()
+        node2.stop(wait_other_notice=True)
+        query = SimpleStatement("SELECT * FROM cf", consistency_level=ConsistencyLevel.TWO)
+        result = list(session.execute(query))
+        self.assertEqual(len(result), 1000, len(result))
+
+        node5.stop(wait_other_notice=True)
+
+        # removenode should fail since node2 is down
+        api_cmd = f"http://{node1.address()}:10000/storage_service/remove_node/?host_id={node2_hostid}"
+        debug("Send restful api: " + api_cmd)
+        r = requests.post(api_cmd)
+        debug(r.text)
+        assert r.status_code != requests.codes.ok
+
+        # removenode should succeed since we ignore the down node node2
+        ignore_nodes = node5.address()
+        api_cmd = f"http://{node1.address()}:10000/storage_service/remove_node/?host_id={node2_hostid}&ignore_nodes={ignore_nodes}"
+        debug("Send restful api: " + api_cmd)
+        r = requests.post(api_cmd)
+        r.raise_for_status()
+        debug("Node5 is removed from the cluster")
+
 
     def _add_new_node_while_add_new_table(self, when):
         """
