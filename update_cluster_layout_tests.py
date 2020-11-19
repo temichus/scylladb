@@ -17,6 +17,7 @@ from tools import insert_c1c2, query_c1c2, new_node
 from tools import require
 import scylla_tools
 import collections
+import random
 
 
 @attr('dtest-full')
@@ -305,6 +306,7 @@ class TestUpdateClusterLayout(Tester):
             log_timeout *= 3
         node4.watch_log_for(
             "Beginning stream session|sync data for keyspace=ks[1-3]?, status=started", timeout=log_timeout)
+        debug("Bootstrap started streaming/repair")
 
         self.ignore_log_patterns += [
             r'[Rr]epair.*mandatory neighbor={} is not alive'.format(node2.address()),
@@ -314,8 +316,12 @@ class TestUpdateClusterLayout(Tester):
             r'Startup failed: seastar::sleep_aborted'
         ]
 
+        sleep_time = random.random() * 0.25
+        if isinstance(self.cluster, ScyllaCluster) and self.cluster.scylla_mode == 'debug':
+            sleep_time *= 4
+        time.sleep(sleep_time)
         debug("Stop node 2...")
-        node2.stop()
+        node2.stop(gently=False)
 
         debug("Look for Stream/Startup failed in node 4...")
         # The keep alive timer expires in 10 minutes.
