@@ -11,8 +11,10 @@ from cassandra.query import SimpleStatement
 from assertions import assert_row_count, assert_all
 from ccmlib.node import NodeError
 from dtest import DISABLE_VNODES, Tester, debug
-from tools import InterruptBootstrap, since, new_node, require, rows_to_list
+from tools import InterruptBootstrap, since, new_node, require, rows_to_list, insert_c1c2
+import scylla_tools
 
+from concurrent.futures import ThreadPoolExecutor
 
 
 class NodeUnavailable(Exception):
@@ -614,6 +616,210 @@ class TestReplaceAddress(Tester):
 
         self.assertEqual(moved_tokens_list, node3_tokens, "Tokens were not moved correctly to node4")
         self.assertTrue(node4.is_live(), "Node4 is not alive after node4 has replaced node3")
+
+    def replace_node_diff_ip_test(self):
+        debug("Starting cluster with 5 nodes.")
+        cluster = self.cluster
+        cluster.populate(5).start(wait_for_binary_proto=True)
+        node1, node2, node3, node4, node5 = cluster.nodelist()
+
+        session = self.patient_cql_connection(node5)
+        self.create_ks(session, 'ks', 3)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        insert_c1c2(session, keys=range(1000), consistency=ConsistencyLevel.ALL)
+
+        ip5 = node5.address()
+        node5.stop()
+
+        debug("Starting node 6 to replace node 5")
+        node6 = new_node(cluster, bootstrap=True, token=None, remote_debug_port='0', data_center=None)
+        node6.start(wait_for_binary_proto=True, replace_address=ip5)
+        for node in [node1, node2, node3, node4, node6]:
+            node.watch_log_for(f"FatClient {ip5} has been silent for .*ms, removing from gossip")
+
+    def replace_node_same_ip_test(self):
+        debug("Starting cluster with 5 nodes.")
+        cluster = self.cluster
+        cluster.populate(5).start(wait_for_binary_proto=True)
+        node1, node2, node3, node4, node5 = cluster.nodelist()
+
+        session = self.patient_cql_connection(node5)
+        self.create_ks(session, 'ks', 3)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        insert_c1c2(session, keys=range(1000), consistency=ConsistencyLevel.ALL)
+
+        ip5 = node5.address()
+        node5.stop()
+
+        debug("Starting node 5 to replace node 5")
+        node5.clear()
+        jvm_args = ['--auto-bootstrap', 'true', '--seed-provider-parameters', 'seeds={}'.format(node1.address())]
+        node5.start(wait_for_binary_proto=True, replace_address=ip5, jvm_args=jvm_args)
+
+    @attr('dtest-heavy')
+    def replace_node_diff_ip_take_write_test(self):
+        debug("Starting cluster with 5 nodes.")
+        cluster = self.cluster
+        cluster.populate(5).start(wait_for_binary_proto=True)
+        node1, node2, node3, node4, node5 = cluster.nodelist()
+
+        session = self.patient_cql_connection(node5)
+        self.create_ks(session, 'ks', 3)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        insert_c1c2(session, keys=range(1000), consistency=ConsistencyLevel.ALL)
+
+        ip5 = node5.address()
+        node5.stop()
+
+        rounds_cnt = 100 if not hasattr(cluster, 'scylla_mode') or cluster.scylla_mode != 'debug' else 10
+        keys_per_round = 1000
+        writes_diff_cnt = rounds_cnt * keys_per_round / 100
+
+        stop = threading.Event()
+
+        def insert_data(session, rounds, keys_per_round, stop):
+            session.execute("use ks;")
+            debug("Started to write rounds={}".format(rounds))
+            for i in range(rounds):
+                if stop.is_set():
+                    debug("Write thread is stopped")
+                    break
+                start = i * keys_per_round
+                end = start + keys_per_round
+                if (start % 100000 == 0):
+                    debug("Writing keys start={} , end={}".format(start, end))
+                insert_c1c2(session, range(start, end), consistency=ConsistencyLevel.QUORUM)
+            debug("Finished to write rounds={}".format(rounds))
+            return rounds
+
+        debug("Starting node 6 to replace node 5")
+        node6 = new_node(cluster, bootstrap=True, token=None, remote_debug_port='0', data_center=None)
+        node6.start(wait_for_binary_proto=False, replace_address=ip5)
+
+        with_replacing_take_write_patch = True
+        if with_replacing_take_write_patch:
+            node6.watch_log_for("Wait until peer nodes know the bootstrap tokens of local node")
+        else:
+            node6.watch_log_for("Starting up server gossip")
+
+        executor = ThreadPoolExecutor(max_workers=1)
+        session = self.patient_cql_connection(node1)
+        write_thread = executor.submit(insert_data, session, rounds_cnt, keys_per_round, stop)
+
+        debug("Get metrics when other knows replacing node = HIBERNATE")
+        metrics = ['scylla_database_total_writes', 'scylla_database_total_reads']
+        writes_when_replace_ops_started = 0
+        for node in [1, 2, 3, 4, 6]:
+            node_metrics = self.get_node_metrics(node_ip=self.cluster.get_node_ip(node), metrics=metrics)
+            debug("scylla_database_total_writes: node{}={}".format(node, node_metrics))
+            if node == 6:
+                writes_when_replace_ops_started = node_metrics['scylla_database_total_writes']
+                debug(f"writes_when_replace_ops_started={writes_when_replace_ops_started}")
+
+        node6.watch_log_for("Bootstrap completed!")
+
+        debug("Get metrics when other knows replacing node = NORMAL")
+        metrics = ['scylla_database_total_writes', 'scylla_database_total_reads']
+        writes_when_replace_ops_done = 0
+        for node in [1, 2, 3, 4, 6]:
+            node_metrics = self.get_node_metrics(node_ip=self.cluster.get_node_ip(node), metrics=metrics)
+            debug("scylla_database_total_writes: node{}={}".format(node, node_metrics))
+            if node == 6:
+                writes_when_replace_ops_done = node_metrics['scylla_database_total_writes']
+                debug(f"writes_when_replace_ops_done={writes_when_replace_ops_done}")
+
+        assert writes_when_replace_ops_done - writes_when_replace_ops_started > writes_diff_cnt
+
+        stop.set()
+
+        # Wait for node6 to finish the replace ops
+        session = self.patient_cql_connection(node6)
+
+        for node in [node1, node2, node3, node4, node6]:
+            node.watch_log_for(f"FatClient {ip5} has been silent for .*ms, removing from gossip")
+
+        write_thread.result()
+
+    @attr('dtest-heavy')
+    def replace_node_same_ip_take_write_test(self):
+        debug("Starting cluster with 5 nodes.")
+        cluster = self.cluster
+        cluster.populate(5).start(wait_for_binary_proto=True)
+        node1, node2, node3, node4, node5 = cluster.nodelist()
+
+        session = self.patient_cql_connection(node5)
+        self.create_ks(session, 'ks', 3)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        insert_c1c2(session, keys=range(1000), consistency=ConsistencyLevel.ALL)
+
+        ip5 = node5.address()
+        node5.stop()
+        mark = node5.mark_log()
+
+        rounds_cnt = 100 if not hasattr(cluster, 'scylla_mode') or cluster.scylla_mode != 'debug' else 10
+        keys_per_round = 1000
+        writes_diff_cnt = rounds_cnt * keys_per_round / 100
+
+        stop = threading.Event()
+
+        def insert_data(session, rounds, keys_per_round, stop):
+            session.execute("use ks;")
+            debug("Started to write and read rounds={}".format(rounds))
+            for i in range(1, rounds + 1):
+                if stop.is_set():
+                    debug("Write thread is stopped")
+                    break
+                start = i * keys_per_round
+                end = start + keys_per_round
+                if (start % 100000 == 0):
+                    debug("Writing keys start={} , end={}".format(start, end))
+                insert_c1c2(session, range(start, end), consistency=ConsistencyLevel.QUORUM)
+            debug("Finished to write and read rounds={}".format(rounds))
+            return rounds
+
+        debug("Starting node 5 to replace node 5")
+        node5.clear()
+        jvm_args = ['--auto-bootstrap', 'true', '--seed-provider-parameters', 'seeds={}'.format(node1.address())]
+        node5.start(wait_for_binary_proto=False, replace_address=ip5, jvm_args=jvm_args)
+
+        with_replacing_take_write_patch = True
+        if with_replacing_take_write_patch:
+            node5.watch_log_for("Wait until peer nodes know the bootstrap tokens of local node", from_mark=mark)
+        else:
+            node5.watch_log_for("Starting up server gossip", from_mark=mark)
+
+        executor = ThreadPoolExecutor(max_workers=1)
+        session = self.patient_cql_connection(node1)
+        write_thread = executor.submit(insert_data, session, rounds_cnt, keys_per_round, stop)
+
+        metrics = ['scylla_database_total_writes', 'scylla_database_total_reads']
+        debug("Get metrics when other knows replacing node = HIBERNATE")
+        writes_when_replace_ops_started = 0
+        for node in [1, 2, 3, 4, 5]:
+            node_metrics = self.get_node_metrics(node_ip=self.cluster.get_node_ip(node), metrics=metrics)
+            debug("metrics: node{}={}".format(node, node_metrics))
+            if node == 5:
+                writes_when_replace_ops_started = node_metrics['scylla_database_total_writes']
+                debug(f"writes_when_replace_ops_started={writes_when_replace_ops_started}")
+
+        node5.watch_log_for("Bootstrap completed!", from_mark=mark)
+        debug("Get metrics when other knows replacing node = NORMAL")
+        metrics = ['scylla_database_total_writes', 'scylla_database_total_reads']
+        writes_when_replace_ops_done = 0
+        for node in [1, 2, 3, 4, 5]:
+            node_metrics = self.get_node_metrics(node_ip=self.cluster.get_node_ip(node), metrics=metrics)
+            debug("metrics: node{}={}".format(node, node_metrics))
+            if node == 5:
+                writes_when_replace_ops_done = node_metrics['scylla_database_total_writes']
+                debug(f"writes_when_replace_ops_done={writes_when_replace_ops_done}")
+
+        assert writes_when_replace_ops_done - writes_when_replace_ops_started > writes_diff_cnt
+
+        stop.set()
+        # Wait for node5 to finish the replace ops
+        session = self.patient_cql_connection(node5)
+
+        write_thread.result()
 
 
 for rbo_status in [True, False]:
