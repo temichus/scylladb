@@ -63,7 +63,10 @@ class ReshardingTestBase(Tester):
     def _get_number_of_data_files(self, data_dir='data/keyspace1/standard1-*'):
         data_files = []
         data_dir = os.path.join(self.node.get_path(), data_dir)
-        data_files.extend(glob.glob(os.path.join(data_dir, '*.*')))
+        # watch out for TemporaryTOC files since they could
+        # be in progress during compaction
+        data_files.extend(glob.glob(os.path.join(data_dir, '*-TOC.txt')))
+        debug('data files: {}'.format([re.search('md-.*$', f).group(0) for f in sorted(data_files)]))
         return len(data_files)
 
     def _verify_number_of_data_files(self, data_files_num_before, reshard_to, actual_data_files_num=None,
