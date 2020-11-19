@@ -76,6 +76,7 @@ class TestInternodeSSL(Tester):
             'connection dropped: The TLS connection was non-properly terminated',
             'connection dropped: The certificate is NOT trusted',
             'connection dropped: sendmsg: Broken pipe',
+            'connection dropped: The specified session has been invalidated for some reason'
         ]
 
         if reload_certs:
