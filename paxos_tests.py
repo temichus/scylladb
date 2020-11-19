@@ -381,8 +381,8 @@ class TestPaxos(Tester):
 
     # Schema mismatch tests
 
-    def _schema_mismatch_test_tpl(self, clear_schema_cache, setup_test_env_action,
-                                  insert_action, ddl_action, second_insert_action, verify_results_action):
+    def _base_schema_mismatch_test_tpl(self, clear_schema_cache, setup_test_env_action,
+                                       insert_action, ddl_action, second_insert_action, verify_results_action):
         # Increase time period for which cached schema definitions will live before
         # being evicted from the node cache.
         # The tests depend on this cache being not empty, so set to some sufficiently large value, e.g. 1000 seconds.
@@ -428,9 +428,7 @@ class TestPaxos(Tester):
         # Execute additional actions to verify that the test executed successfully (check logs and data)
         verify_results_action(session, node1)
 
-    @attr('dtest-debug', 'single_node')
-    @scylla_mode('!release')
-    def schema_mismatch_test(self):
+    def _schema_mismatch_tpl(self, clear_schema_cache):
         '''
         Tests for the following scenario:
 
@@ -465,17 +463,25 @@ class TestPaxos(Tester):
             if exc_msg:
                 raise Exception(f"Unexpected \"schema_mismatch_error\" exception: {exc_msg}")
 
-        self._schema_mismatch_test_tpl(clear_schema_cache=False,
-                                       setup_test_env_action=create_test_table,
-                                       insert_action=insert_action,
-                                       ddl_action=add_dummy_column,
-                                       second_insert_action=insert_action,
-                                       verify_results_action=check_schema_mismatch_exc
-                                       )
+        self._base_schema_mismatch_test_tpl(clear_schema_cache=clear_schema_cache,
+                                            setup_test_env_action=create_test_table,
+                                            insert_action=insert_action,
+                                            ddl_action=add_dummy_column,
+                                            second_insert_action=insert_action,
+                                            verify_results_action=check_schema_mismatch_exc
+                                            )
 
     @attr('dtest-debug', 'single_node')
     @scylla_mode('!release')
-    def schema_mismatch_mv_test(self):
+    def schema_mismatch_cache_test(self):
+        self._schema_mismatch_tpl(clear_schema_cache=False)
+
+    @attr('dtest-debug', 'single_node')
+    @scylla_mode('!release')
+    def schema_mismatch_no_cache_test(self):
+        self._schema_mismatch_tpl(clear_schema_cache=True)
+
+    def _schema_mismatch_mv_tpl(self, clear_schema_cache):
         '''
         Tests for the following scenario:
 
@@ -496,7 +502,6 @@ class TestPaxos(Tester):
 
         Refs: scylladb/scylla#6074
         '''
-
         def create_test_table_and_mv(session):
             session.execute("CREATE TABLE test (k int PRIMARY KEY, v int)")
             session.execute("CREATE MATERIALIZED VIEW test_view AS SELECT * from test where k > 0 PRIMARY KEY(k)")
@@ -513,17 +518,25 @@ class TestPaxos(Tester):
             if exc_msg:
                 raise Exception(f"Unexpected \"schema_mismatch_error\" exception: {exc_msg}")
 
-        self._schema_mismatch_test_tpl(clear_schema_cache=False,
-                                       setup_test_env_action=create_test_table_and_mv,
-                                       insert_action=insert_action,
-                                       ddl_action=add_dummy_column,
-                                       second_insert_action=insert_action,
-                                       verify_results_action=check_schema_mismatch_exc
-                                       )
+        self._base_schema_mismatch_test_tpl(clear_schema_cache=clear_schema_cache,
+                                            setup_test_env_action=create_test_table_and_mv,
+                                            insert_action=insert_action,
+                                            ddl_action=add_dummy_column,
+                                            second_insert_action=insert_action,
+                                            verify_results_action=check_schema_mismatch_exc
+                                            )
 
     @attr('dtest-debug', 'single_node')
     @scylla_mode('!release')
-    def schema_mismatch_drop_regular_column_test(self):
+    def schema_mismatch_mv_cache_test(self):
+        self._schema_mismatch_mv_tpl(clear_schema_cache=False)
+
+    @attr('dtest-debug', 'single_node')
+    @scylla_mode('!release')
+    def schema_mismatch_mv_no_cache_test(self):
+        self._schema_mismatch_mv_tpl(clear_schema_cache=True)
+
+    def _schema_mismatch_drop_regular_column_tpl(self, clear_schema_cache):
         '''
         Tests for the following scenario:
 
@@ -565,17 +578,25 @@ class TestPaxos(Tester):
             debug("Selecting table contents to verify that insert was applied successfully")
             assert_one(session, "SELECT * from test", [0])
 
-        self._schema_mismatch_test_tpl(clear_schema_cache=False,
-                                       setup_test_env_action=create_test_table,
-                                       insert_action=insert_action,
-                                       ddl_action=drop_column,
-                                       second_insert_action=second_insert_action,
-                                       verify_results_action=check_exc_and_table_data
-                                       )
+        self._base_schema_mismatch_test_tpl(clear_schema_cache=clear_schema_cache,
+                                            setup_test_env_action=create_test_table,
+                                            insert_action=insert_action,
+                                            ddl_action=drop_column,
+                                            second_insert_action=second_insert_action,
+                                            verify_results_action=check_exc_and_table_data
+                                            )
 
     @attr('dtest-debug', 'single_node')
     @scylla_mode('!release')
-    def schema_mismatch_drop_regular_column_in_the_middle_test(self):
+    def schema_mismatch_drop_regular_column_cache_test(self):
+        self._schema_mismatch_drop_regular_column_tpl(clear_schema_cache=False)
+
+    @attr('dtest-debug', 'single_node')
+    @scylla_mode('!release')
+    def schema_mismatch_drop_regular_column_no_cache_test(self):
+        self._schema_mismatch_drop_regular_column_tpl(clear_schema_cache=True)
+
+    def _schema_mismatch_drop_regular_column_in_the_middle_tpl(self, clear_schema_cache):
         '''
         Tests for the following scenario:
 
@@ -617,10 +638,21 @@ class TestPaxos(Tester):
             debug("Selecting table contents to verify that insert was applied successfully")
             assert_one(session, "SELECT * from test", [0, 0])
 
-        self._schema_mismatch_test_tpl(clear_schema_cache=False,
-                                       setup_test_env_action=create_test_table,
-                                       insert_action=insert_action,
-                                       ddl_action=drop_column,
-                                       second_insert_action=second_insert_action,
-                                       verify_results_action=check_exc_and_table_data
-                                       )
+        self._base_schema_mismatch_test_tpl(clear_schema_cache=clear_schema_cache,
+                                            setup_test_env_action=create_test_table,
+                                            insert_action=insert_action,
+                                            ddl_action=drop_column,
+                                            second_insert_action=second_insert_action,
+                                            verify_results_action=check_exc_and_table_data
+                                            )
+
+    @attr('dtest-debug', 'single_node')
+    @scylla_mode('!release')
+    def schema_mismatch_drop_regular_column_in_the_middle_cache_test(self):
+        self._schema_mismatch_drop_regular_column_in_the_middle_tpl(clear_schema_cache=False)
+
+    @attr('dtest-debug', 'single_node')
+    @scylla_mode('!release')
+    def schema_mismatch_drop_regular_column_in_the_middle_no_cache_test(self):
+        self._schema_mismatch_drop_regular_column_in_the_middle_tpl(clear_schema_cache=True)
+
