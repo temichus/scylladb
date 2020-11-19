@@ -2663,6 +2663,71 @@ class RepairAdditionalBase(Tester):
         """
         raise NotImplementedError
 
+    def _repair_same_row_diff_value_3nodes_test(self, same_shard_count=True, more_options=[]):
+        '''
+        Create rows with same partition and clustering keys but with different value
+        Run repair
+        Make sure we do not write rows with same partition and clustering key into sstable writer
+        '''
+        debug("Starting 3 node cluster with hinted_handoff disabled...")
+        # Disable hinted handoff so it doesn't do what we expect repair to do
+        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        self.cluster.populate(3)
+        node1, node2, node3 = self.cluster.nodelist()
+        if not same_shard_count:
+            node1.set_smp(2)
+            node2.set_smp(2)
+            node3.set_smp(3)
+            debug("Set node1.smp=2, node2.smp=2, node3.smp=3")
+        self.cluster.start(wait_for_binary_proto=True, wait_other_notice=True)
+
+        session = self.patient_cql_connection(node1)
+
+        session.execute("
+                        CREATE KEYSPACE ks WITH REPLICATION = { 'class' : 'SimpleStrategy', 'replication_factor' : 3 };
+                        ")
+        session.execute("CREATE TABLE ks.tb (pk int, ck int, c0 int, c1 int, PRIMARY KEY(pk, ck));")
+
+        nr_rows = 3
+
+        debug("Adding data only on node 1...")
+        node2.stop(wait_other_notice=True)
+        node3.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node1)
+        session.execute("INSERT into ks.tb (pk,ck,c0,c1) values (0, 0, 1, 1)")
+        session.execute("INSERT into ks.tb (pk,ck,c0,c1) values (0, 1, 1, 1)")
+        session.execute("INSERT into ks.tb (pk,ck,c0,c1) values (0, 2, 1, 1)")
+        self.cluster.flush()
+        debug("Adding data only on node 2...")
+        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+        node1.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node2)
+        session.execute("INSERT into ks.tb (pk,ck,c0,c1) values (0, 0, 2, 2)")
+        session.execute("INSERT into ks.tb (pk,ck,c0,c1) values (0, 1, 2, 2)")
+        session.execute("INSERT into ks.tb (pk,ck,c0,c1) values (0, 2, 2, 2)")
+        debug("Adding data only on node 3...")
+        node3.start(wait_other_notice=True, wait_for_binary_proto=True)
+        node2.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node3)
+        session.execute("INSERT into ks.tb (pk,ck,c0,c1) values (0, 0, 3, 3)")
+        session.execute("INSERT into ks.tb (pk,ck,c0,c1) values (0, 1, 3, 3)")
+        session.execute("INSERT into ks.tb (pk,ck,c0,c1) values (0, 2, 3, 3)")
+
+        # Bring up all 3 nodes, each should have different data
+        node1.start(wait_other_notice=True, wait_for_binary_proto=True)
+        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+
+        debug("starting repair...")
+        info = self._repair(node3, more_options + ['ks'])
+        debug(info[0])
+        debug(info[1])
+
+        debug("Run compact on node1, node2 and node3")
+        self.cluster.compact()
+
+        # Check repair synced the correct number of rows
+        self.check_repair_tx_rx_rows(node3, expected_tx_row_nr=4*nr_rows, expected_rx_row_nr=2*nr_rows)
+
 
 @attr('dtest-full')
 class RepairAdditionalTest(RepairAdditionalBase):
@@ -2803,6 +2868,14 @@ class RepairAdditionalTest(RepairAdditionalBase):
     @attr('dtest-heavy')
     def repair_joint_row_3nodes_2_diff_shard_count_test(self):
         return RepairAdditionalBase._repair_joint_row_3nodes_same_key_diff_value_test(self, same_shard_count=False)
+
+    @attr('dtest-heavy')
+    def repair_same_row_diff_value_3nodes_test(self):
+        return RepairAdditionalBase._repair_same_row_diff_value_3nodes_test(self, same_shard_count=True)
+
+    @attr('dtest-heavy')
+    def repair_same_row_diff_value_3nodes_diff_shard_count_test(self):
+        return RepairAdditionalBase._repair_same_row_diff_value_3nodes_test(self, same_shard_count=False)
 
     def repair_while_table_is_dropped_test(self):
         """
