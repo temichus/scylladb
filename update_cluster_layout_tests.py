@@ -313,7 +313,9 @@ class TestUpdateClusterLayout(Tester):
             r'Startup failed:.*Failed to repair for keyspace=ks[1-3]?',
             r'Startup failed: std::runtime_error .* \(repair .* failed',
             r'Startup failed: std::runtime_error .*rpc::closed_error',
-            r'Startup failed: seastar::sleep_aborted'
+            r'Startup failed: seastar::sleep_aborted',
+            r'stream_session .* Failed to handle STREAM_MUTATION_FRAGMENTS .* peer={}'.format(node2.address()),
+            r'storage_service .* fail to update tokens for .*: exceptions::mutation_write_failure_exception',
         ]
 
         sleep_time = random.random() * 0.25
