@@ -215,12 +215,12 @@ class NativeTransportSSL(Tester):
 
             cluster.set_configuration_options({'client_encryption_options': options})
 
-        if nativePort:
+        if nativePort is not None:
             cluster.set_configuration_options({
                 'native_transport_port': nativePort
             })
 
-        if nativePortSSL:
+        if nativePortSSL is not None:
             cluster.set_configuration_options({
                 'native_transport_port_ssl': nativePortSSL
             })
@@ -232,3 +232,20 @@ class NativeTransportSSL(Tester):
         self.create_ks(session, ks, 1)
         self.create_cf(session, cf, compression=None)
         putget(cluster, session, cl=ConsistencyLevel.ONE)
+
+    def disable_regular_port_while_encryption_enabled_test(self):
+        """
+        This test activates a cluster with encryption turned on, but instead of using the usual native_transport_port
+        (9042) the test configures native_transport_port_ssl instead, and disables native_transport_port by configuring
+        it to 0. The test makes sure that the cluster responds to session that came through native_transport_port_ssl
+        and not native_transport_port.
+        """
+        cluster = self._populateCluster(enableSSL=True, nativePortSSL=9142, nativePort=0)
+        cluster.start()
+        node1 = cluster.nodelist()[0]
+        session = self.patient_cql_connection(node1, port=9142,
+                                              ssl_opts={'ca_certs': os.path.join(self.test_path, 'ccm_node.cer')})
+        self.create_ks(session, "ks", 1)
+        is_port_listening = common.check_socket_listening(cluster.get_binary_interface(1), timeout=20)
+        assert not is_port_listening, \
+            "Even after disabling the default cql port, the cluster continues to listen to it"
