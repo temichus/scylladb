@@ -19,7 +19,8 @@ from nose.plugins.attrib import attr
 from alternator.utils import schemas
 from alternator.utils.data_generator import AlternatorDataGenerator, TypeMode
 from alternator_utils import TesterAlternator, ALTERNATOR_SNAPSHOT_FOLDER, TABLE_NAME, NUM_OF_ITEMS, random_string, \
-    DEFAULT_STRING_LENGTH, NUM_OF_NODES, set_write_isolation, WriteIsolation, LONGEST_TABLE_SIZE, SHORTEST_TABLE_SIZE
+    DEFAULT_STRING_LENGTH, NUM_OF_NODES, set_write_isolation, WriteIsolation, LONGEST_TABLE_SIZE, SHORTEST_TABLE_SIZE, \
+    ALTERNATOR_SECURE_PORT
 from alternator_utils import generate_put_request_items, Gsi, full_query
 from dtest import debug, wait_for, info
 from tools import new_node, require
@@ -721,3 +722,24 @@ class AlternatorTest(TesterAlternator):
             check_items(response['Items'])
         self.assertTrue(n_items == total_items)
         self.assertTrue(n_bad_items == 0)
+
+    def test_tls_connection(self):
+        """
+        Create a HTTPS (SSL/TLS) connection, and verify the test can create a table and insert data into it.
+        Also, check the log file for each node contains a log that only the HTTPS (SSL/TLS) connection is open, and the
+        unsecured connection is closed.
+        """
+        new_items = []
+        table_name = TABLE_NAME
+        info('Configuring secured Alternator session with "self signed x509 certificate"')
+        self.prepare_dynamodb_cluster(num_of_nodes=3, is_encrypted=True)
+        nodes = self.cluster.nodelist()
+        node1 = nodes[0]
+
+        self.create_table(table_name=table_name, node=node1)
+        for node_idx, node in enumerate(nodes):
+            node.grep_log(f'Alternator server listening on {self.get_ip_from_node(node=node)}, HTTP port OFF, HTTPS'
+                          f' port {ALTERNATOR_SECURE_PORT}')
+            new_items = self.create_items(num_of_items=(node_idx + 1) * 10)
+            self.batch_write_actions(table_name=table_name, node=node, new_items=new_items)
+        self.compare_table_data(table_name=table_name, table_data=new_items, node=node1)

@@ -24,6 +24,7 @@ TABLE_NAME = 'user_table'
 NUM_OF_NODES = 3
 NUM_OF_ITEMS = 100
 ALTERNATOR_PORT = 8080
+ALTERNATOR_SECURE_PORT = 8043
 DEFAULT_STRING_LENGTH = 5
 # https://github.com/scylladb/scylla/issues/4480 - according Nadav the table name contains dash char and
 # 32-byte UUID string -> 222 + 1 + 32 = 255 (The longest dynanodb's table name)
@@ -138,11 +139,14 @@ class TesterAlternator(Tester):
         self._table_primary_key = schemas.HASH_KEY_NAME
         self._table_primary_key_format = "test{}"
         self._dynamo_params = dict(service_name="dynamodb", aws_access_key_id="None", aws_secret_access_key="None",
-                                   region_name="None")
+                                   region_name="None", verify=False)
         self.alternator_apis = {}
 
-    def _add_api_for_node(self, node: ScyllaNode) -> None:
-        node_alternator_address = f"http://{self.get_ip_from_node(node=node)}:{ALTERNATOR_PORT}"
+    def _add_api_for_node(self, node: ScyllaNode, is_encrypted: bool = False) -> None:
+        if is_encrypted:
+            node_alternator_address = f"https://{self.get_ip_from_node(node=node)}:{ALTERNATOR_SECURE_PORT}"
+        else:
+            node_alternator_address = f"http://{self.get_ip_from_node(node=node)}:{ALTERNATOR_PORT}"
         self.alternator_apis[node.name] = AlternatorApi(
             resource=boto3.resource(endpoint_url=node_alternator_address, **self._dynamo_params),
             client=boto3.client(endpoint_url=node_alternator_address, **self._dynamo_params)
@@ -153,18 +157,30 @@ class TesterAlternator(Tester):
             self._add_api_for_node(node=node)
         return self.alternator_apis[node.name]
 
-    def prepare_dynamodb_cluster(self, num_of_nodes: int = NUM_OF_NODES, is_multi_dc: bool = False) -> None:
+    def prepare_dynamodb_cluster(self, num_of_nodes: int = NUM_OF_NODES, is_multi_dc: bool = False,
+                                 is_encrypted: bool = False) -> None:
+        cluster_config = {
+            "start_native_transport": True,
+            "alternator_port": ALTERNATOR_PORT,
+            "alternator_write_isolation": "always"
+        }
         cluster_type = "single DC" if not is_multi_dc else "multi DC"
         debug(f"Populating a cluster with {num_of_nodes} nodes for {cluster_type}..")
+        if is_encrypted:
+            cert_file, key_file = self.create_self_signed_x509_certificate()
+            cluster_config['alternator_encryption_options'] = {
+                'certificate': cert_file,
+                'keyfile': key_file,
+            }
+            cluster_config.pop('alternator_port')
+            cluster_config['alternator_https_port'] = ALTERNATOR_SECURE_PORT
         cluster = self.cluster
-        cluster.set_configuration_options(
-            {"start_native_transport": True, "alternator_port": ALTERNATOR_PORT,
-             "alternator_write_isolation": "always"})
+        cluster.set_configuration_options(cluster_config)
         cluster.populate([num_of_nodes, num_of_nodes] if is_multi_dc else num_of_nodes)
         debug("Starting cluster..")
         cluster.start(wait_for_binary_proto=True, wait_other_notice=True)
         for node in self.cluster.nodelist():
-            self._add_api_for_node(node=node)
+            self._add_api_for_node(node=node, is_encrypted=is_encrypted)
 
     # pylint:disable=too-many-arguments
     def create_table(self, node: ScyllaNode, table_name: str = TABLE_NAME,

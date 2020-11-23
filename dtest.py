@@ -11,6 +11,8 @@ import threading
 import time
 import traceback
 import itertools
+import warnings
+
 import requests
 import datetime
 import inspect
@@ -34,6 +36,8 @@ from ccmlib.common import isScylla
 from ccmlib.common import is_win
 from ccmlib.node import TimeoutError
 from ccmlib.scylla_cluster import ScyllaCluster
+from OpenSSL import crypto
+from socket import gethostname
 from nose.exc import SkipTest
 from nose.plugins.attrib import attr
 
@@ -1472,6 +1476,43 @@ class Tester(TestCase):
         node_ip = self.get_ip_from_node(node)
         response = requests.delete(f"http://{node_ip}:10000/v2/error_injection/injection")
         response.raise_for_status()
+
+    def create_self_signed_x509_certificate(self, cert_file='scylla.crt', key_file='scylla.key'):
+        cert_file = os.path.join(self.test_path, 'test', cert_file)
+        key_file = os.path.join(self.test_path, 'test', key_file)
+
+        # Create private RSA key
+        rsa_key = crypto.PKey()
+        rsa_key.generate_key(crypto.TYPE_RSA, 2048)
+
+        # create a self-signed cert
+        cert = crypto.X509()
+        cert.get_subject().C = "IL"
+        cert.get_subject().ST = "None"
+        cert.get_subject().L = "None"
+        cert.get_subject().O = "None"
+        cert.get_subject().OU = "None"
+        cert.get_subject().CN = gethostname()
+        cert.set_serial_number(1000)
+        cert.gmtime_adj_notBefore(0)
+        cert.gmtime_adj_notAfter(24 * 60 * 60)
+        cert.set_issuer(cert.get_subject())
+        cert.set_pubkey(rsa_key)
+        cert.sign(rsa_key, 'sha512')
+
+        with open(file=cert_file, mode='w') as file:
+            file.write(crypto.dump_certificate(crypto.FILETYPE_PEM, cert).decode())
+        with open(file=key_file, mode='w') as file:
+            file.write(crypto.dump_privatekey(crypto.FILETYPE_PEM, rsa_key).decode())
+
+        # When tests are run with HTTPS, the server often won't have its SSL
+        # certificate signed by a known authority. So we will disable certificate
+        # verification with the "verify=False" request option. However, once we do
+        # that, we start getting scary-looking warning messages, saying that this
+        # makes HTTPS insecure. The following silences those warnings:
+        warnings.filterwarnings('ignore', message='Unverified HTTPS request')
+        debug(f'Created certificate file in "{cert_file}" path, and private key in "{key_file}" path')
+        return cert_file, key_file
 
 
 @attr('reuse-cluster')
