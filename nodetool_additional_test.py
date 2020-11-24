@@ -1,3 +1,4 @@
+import math
 import os
 import re
 import stat
@@ -16,6 +17,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import yaml
 from nose.plugins.attrib import attr
+from cassandra.query import SimpleStatement
 from ccmlib.node import NodetoolError
 from ccmlib.scylla_cluster import ScyllaCluster
 
@@ -24,6 +26,7 @@ from tools import debug
 from tools import new_node
 from tools import insert_c1c2
 from tools import no_vnodes, rows_to_list, require
+from scylla_tools import insert_c1c2_no_prepared
 
 
 def randbytes(n):
@@ -1997,3 +2000,117 @@ class TestNodetool(Tester):
             node_3_status))
         debug("Verifying node 3 process is not running")
         self.assertEqual(False, node3_process.is_running(), "Node 3 process didn't stop/exit correctly")
+
+# example for input "Current trace probability: 0.001\n"
+REGEX_GET_TRACE_RESP = re.compile(r'Current trace probability: (?P<probability>[0-9\.eE]+)(\\n)*$')
+
+def get_node_probability(node) -> float:
+    resp, err = node.nodetool('gettraceprobability')
+    matches = REGEX_GET_TRACE_RESP.match(resp)
+    if not matches:
+        raise (ValueError(f"Not found probability in {resp}"))
+    return float(matches.groups('probability')[0])
+
+
+def get_nodes_probability(nodes):
+    nodes_list = nodes
+    if not isinstance(nodes, list) and not isinstance(nodes, tuple):
+        nodes_list = [nodes]
+    return [get_node_probability(node) for node in nodes_list]
+
+
+def set_node_probability(node, value: float):
+    set_result = node.nodetool(f'settraceprobability {value}')
+    return set_result
+
+@attr('dtest-full')
+class TestGetTraceProbability(Tester):
+    """
+    Check gettraceprobablility command returned value after settraceprobablility operations:
+       - settraceprobablility change only one node value, use several values
+       - settraceprobablility invalid values does not change value that returnes by gettraceprobablility
+       - gettraceprobablility returns to default value after stop/start node
+    """
+    invalid_values_map = {
+        -0.1: 'Trace probability must be between 0 and 1',
+        1.01: 'Trace probability must be between 0 and 1',
+        'a': 'can not convert'
+    }
+
+    # valid probability values and smaples number
+    valid_values    = { 0.001:10000  , 0:500, 0.6:1000 , 1:500}
+    valid_tolerance = { 0.001:0.00075, 0:0  , 0.6:0.030, 1:0}
+    default_value = 0
+
+    def setUp(self):
+        super(TestGetTraceProbability, self).setUp()
+        self.cluster.populate(3).start()
+        self.node1, self.node2, self.node3 = self.cluster.nodelist()
+        self.session = self.patient_cql_connection(self.node1)
+
+    def set_invalid_trace_probability(self, node, invalid_value, message: str):
+        with self.assertRaises(NodetoolError) as ex:
+            node.nodetool(f'settraceprobability {invalid_value}')
+        assert re.search(message, str(ex.exception)), f"invalid_value={invalid_value} Expected: message"
+
+    def tracing_table_check(self, session, node, probability,num_keys, prev_count):
+        debug("Populating a table with {} keys...".format(num_keys))
+        insert_c1c2_no_prepared(session, keys=range(num_keys))
+        node.flush()
+        node.flush()
+        debug("Check that all tracing session have been flushed...")
+        pattern = re.compile("INSERT INTO")
+        tracing_query = SimpleStatement('SELECT parameters FROM system_traces.sessions')
+        rows = list(session.execute(tracing_query))
+        count = functools.reduce(lambda x, y: x + y, map(lambda row: len(pattern.findall(row[0]['query'])), rows))
+        calculated_probaility = (count - prev_count) / num_keys
+        diff = math.fabs(calculated_probaility - probability)
+        allowed_diff = self.valid_tolerance[probability]
+        message = f"Error: probability={probability} actual={calculated_probaility} diff={diff} allowed={allowed_diff}"
+        assert diff <= allowed_diff , message
+        return count
+
+    def after_stop_start_value_is_default_test(self):
+        for valid_value in self.valid_values:
+            with self.subTest(valid_value=valid_value):
+                set_node_probability(self.node1, valid_value)
+                debug("Stop node1...")
+                self.node1.stop(wait_other_notice=True)
+                debug("Start node1...")
+                self.node1.start(wait_for_binary_proto=True)
+                value_node1 = get_node_probability(self.node1)
+                assert value_node1 == self.default_value, f'node1 Expect: {valid_value} Actual: {value_node1}'
+
+    def invalid_value_not_changing_trace_probability_test(self):
+        valid_value = 0.001
+        for invalid_value in self.invalid_values_map:
+            with self.subTest(invalid_value=invalid_value):
+                set_node_probability(self.node1, valid_value)
+                self.set_invalid_trace_probability(node=self.node1, invalid_value=invalid_value,
+                                                   message=self.invalid_values_map[invalid_value])
+                probability_node1 = get_node_probability(self.node1)
+                assert probability_node1 == valid_value, f'Expected: {valid_value} Actual: {probability_node1}'
+
+    def valid_value_affect_only_one_node_test(self):
+        node2_value = 0.1234
+        set_node_probability(self.node2, node2_value)
+        for valid_value in self.valid_values:
+            with self.subTest(valid_value=valid_value):
+                set_node_probability(self.node1, valid_value)
+                probability_node1, probability_node2 = get_nodes_probability((self.node1, self.node2,))
+                assert probability_node1 == valid_value, f'node1 Expected: {valid_value} Actual: {probability_node1}'
+                assert node2_value == node2_value, f'node2 Expected: {node2_value} Actual: {probability_node2}'
+
+
+    def value_affect_tracing_table_test(self):
+        self.create_ks(self.session, 'ks', 2)
+        self.create_cf(self.session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        prev_count = 0
+        for valid_value in self.valid_values:
+            with self.subTest(valid_value=valid_value):
+                for node in (self.node1, self.node2, self.node3,):
+                    set_node_probability(node, valid_value)
+                probability_value = get_node_probability(self.node1)
+                prev_count = self.tracing_table_check(self.session, self.node2, probability_value,
+                                                      self.valid_values[valid_value],
+                                                      prev_count)
