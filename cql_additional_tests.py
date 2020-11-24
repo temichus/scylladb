@@ -19,7 +19,7 @@ from cassandra.protocol import SyntaxException
 from cassandra.query import SimpleStatement
 from cassandra.query import UNSET_VALUE
 from cassandra.util import sortedset
-from cassandra.cluster import ResultSet
+from cassandra.cluster import ResultSet, NoHostAvailable
 
 from assertions import assert_all, assert_invalid, assert_none, assert_one, assert_invalid_case_insensitive_matching, \
     assert_row_count
@@ -670,13 +670,7 @@ class TestCQL(Tester):
         res = session.execute("SELECT * FROM bard WHERE b=0 AND (c, d, e) > (1, 1, 1) ALLOW FILTERING;")
         assert rows_to_list(res) == [[0, 0, 2, 2, 2], [0, 0, 3, 3, 3]]
 
-    @attr('single_node')
-    def limit_sparse_test(self):
-        """
-        Validate LIMIT option for sparse table in SELECT statements.
-        """
-        session = self.prepare()
-
+    def create_insert_table(self, session):
         session.execute("""
             CREATE TABLE clicks (
                 userid int,
@@ -692,7 +686,80 @@ class TestCQL(Tester):
         for id in range(0, 100):
             for tld in ['com', 'org', 'net']:
                 session.execute(
-                    "INSERT INTO clicks (userid, url, day, month, year) VALUES (%i, 'http://foo.%s', 1, 'jan', 2012)" % (id, tld))
+                    "INSERT INTO clicks (userid, url, day, month, year) VALUES (%i, 'http://foo.%s', 1, 'jan', 2012)" % (
+                        id, tld))
+
+    @attr('dtest-full')
+    def writetime_functions_query_test(self):
+        """Test time functions combination and invalid time values issue #5552"""
+        nodes_count = 3
+        rf = 3
+        session = self.prepare(nodes=nodes_count, rf=rf)
+        self.create_insert_table(session)
+        # run multiple times to check node is UP
+        for tries in range(nodes_count):
+            with self.subTest("Query qith writetime function non primary key coloumn"):
+                assert_invalid(session=session,
+                               query=f"select toDate(max(mintimeuuid(writetime(day)))) from clicks ;",
+                               matching="timestamp is out of range",
+                               expected=NoHostAvailable
+                               )
+
+            with self.subTest("Query qith writetime function non primary key text coloumn"):
+                assert_invalid(session=session,
+                               query=f"select toDate(max(mintimeuuid(writetime(month)))) from clicks ;",
+                               matching="timestamp is out of range",
+                               expected=NoHostAvailable
+                               )
+
+
+    @attr('dtest-full')
+    def query_coloumn_timeuuid_with_invalid_values_test(self):
+        """Test time functions combination and invalid time values issue #5552"""
+        invalid_values = (160616626311127, 16061662631112228,)
+        self.query_coloumn_timeuuid(invalid_values)
+
+    @require('#7691')
+    @attr('dtest-full')
+    def query_coloumn_timeuuid_with_invalid_values_issue7691_test(self):
+        """Test time functions combination and invalid time values issue #7691"""
+        invalid_values = (16061662631112223339,)
+        self.query_coloumn_timeuuid(invalid_values)
+
+    def query_coloumn_timeuuid(self, values):
+        def create_insert_table_timeuuid(session):
+            session.execute("""
+                  CREATE TABLE test (
+                      k int,
+                      t timeuuid,
+                      PRIMARY KEY (k, t)
+                  )
+              """)
+
+            for i in range(4):
+                session.execute("INSERT INTO test (k, t) VALUES (0, now())")
+
+        nodes_count = 3
+        rf = 3
+        session = self.prepare(nodes=nodes_count, rf=rf)
+        create_insert_table_timeuuid(session)
+
+        for value in values:
+            with self.subTest("Query mintimeuuid conversion ", v=value):
+                query = f"SELECT t FROM test WHERE t > mintimeuuid({value}) ALLOW FILTERING;"
+                assert_invalid(session=session,
+                               query=query,
+                               matching="timestamp is out of range",
+                               expected=NoHostAvailable
+                               )
+
+    @attr('single_node')
+    def limit_sparse_test(self):
+        """
+        Validate LIMIT option for sparse table in SELECT statements.
+        """
+        session = self.prepare()
+        self.create_insert_table(session)
 
         # Queries
         # Check we do get as many rows as requested
