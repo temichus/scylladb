@@ -21,6 +21,7 @@ import datetime
 from tools import rows_to_list
 from uuid import UUID
 from concurrent.futures import ThreadPoolExecutor
+import glob
 
 
 def build_insert_params(keys, n, c1_values, c2_values):
@@ -235,7 +236,17 @@ def get_sstables_files(cf_dir, f_type=''):
     """
     Returns a set of sstable(s) files for a given KS and CF
     """
-    return set([fname for fname in get_all_files_in_dir(cf_dir) if f_type in fname])
+    tocs = glob.glob(os.path.join(cf_dir, '*-TOC.txt'))
+    files = []
+    if not f_type:
+        for t in tocs:
+            files += glob.glob(t[:-7] + '*')
+    elif f_type == 'TOC':
+        files = tocs
+    else:
+        for t in tocs:
+            files += glob.glob(t[:-7] + f"*{f_type}*")
+    return set([os.path.basename(fname) for fname in files])
 
 
 def get_all_files_in_dir(dir_path):
