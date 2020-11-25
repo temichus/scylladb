@@ -696,7 +696,7 @@ class IcsCompactionTest(Tester):
         # Check that compaction was triggered by min_threshold and the new sstables are compacted without the big one.
         node1.wait_for_compactions()
         sstables_files1, files_size = self._get_sstable_files_and_sizes()
-        assert sorted(files_size) == [4, 10], "Unexpcted compacted sstable sizes.".format(
+        assert sorted(files_size) == [4, 10], "Unexpected compacted sstable sizes.".format(
             **locals())
         self._write_and_flush_sstables(num_of_generated_sstables=1, write_range=5, start_index=1,
                                        num_writes_per_sstable=5)
