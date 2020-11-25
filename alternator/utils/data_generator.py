@@ -14,6 +14,7 @@ class TypeMode(Enum):
     BINARY = auto()
     LIST = auto()
     DICT = auto()
+    MIXED = auto()
 
 
 class AlternatorDataGenerator:
@@ -51,30 +52,30 @@ class AlternatorDataGenerator:
         self.items_count += 1
         mode_name = self.get_mode_name(mode=TypeMode.NUMBER)
         if self.items_count % 2 == 0:
-            return {self.primary_key: self.primary_key_format.format(self.items_count),
+            return {self.primary_key: self.primary_key_format.format(self.items_count - 1),
                     mode_name: random.randint(0, 1000)}
-        return {self.primary_key: self.primary_key_format.format(self.items_count),
+        return {self.primary_key: self.primary_key_format.format(self.items_count - 1),
                 mode_name: Decimal.from_float(random.random()).quantize(self._precision)}
 
     def create_random_bool_item(self):
         self.items_count += 1
-        return {self.primary_key: self.primary_key_format.format(self.items_count),
+        return {self.primary_key: self.primary_key_format.format(self.items_count - 1),
                 self.get_mode_name(mode=TypeMode.BOOL): bool(random.randint(0, 1))}
 
     def create_none_item(self):
         self.items_count += 1
-        return {self.primary_key: self.primary_key_format.format(self.items_count),
+        return {self.primary_key: self.primary_key_format.format(self.items_count - 1),
                 self.get_mode_name(mode=TypeMode.NONE): None}
 
     def create_random_string_item(self):
         self.items_count += 1
-        return {self.primary_key: self.primary_key_format.format(self.items_count),
+        return {self.primary_key: self.primary_key_format.format(self.items_count - 1),
                 self.get_mode_name(mode=TypeMode.STRING): self._random_string()}
 
     def create_random_binary_item(self):
         self.items_count += 1
         random_str = self._random_string()
-        return {self.primary_key: self.primary_key_format.format(self.items_count),
+        return {self.primary_key: self.primary_key_format.format(self.items_count - 1),
                 self.get_mode_name(mode=TypeMode.BINARY): boto3.dynamodb.types.Binary(random_str.encode())}
 
     def create_random_list_item(self):
@@ -92,12 +93,12 @@ class AlternatorDataGenerator:
             elif self.items_count % 5 == 4:
                 item.append(self.create_random_binary_item())
         self.items_count = original_item_count
-        return {self.primary_key: self.primary_key_format.format(self.items_count),
+        return {self.primary_key: self.primary_key_format.format(self.items_count - 1),
                 self.get_mode_name(mode=TypeMode.LIST): item}
 
     def create_random_dict_item(self):
         original_item_count = self.items_count + 1
-        item = {self.primary_key: self.primary_key_format.format(original_item_count),
+        item = {self.primary_key: self.primary_key_format.format(original_item_count - 1),
                 self.get_mode_name(mode=TypeMode.NUMBER): self.create_random_number_item(),
                 self.get_mode_name(mode=TypeMode.BOOL): self.create_random_bool_item(),
                 self.get_mode_name(mode=TypeMode.NONE): self.create_none_item(),
@@ -115,19 +116,32 @@ class AlternatorDataGenerator:
             * Create list of 10 number items: self.create_multiple_items(num_of_items=10, mode=TypeMode.NUMBER)
             * Create list of 5 string items: self.create_multiple_items(num_of_items=10, mode=TypeMode.STRING)
         """
-        if mode == TypeMode.NUMBER:
-            return [self.create_random_number_item() for _ in range(num_of_items)]
-        elif mode == TypeMode.BOOL:
-            return [self.create_random_bool_item() for _ in range(num_of_items)]
-        elif mode == TypeMode.NONE:
-            return [self.create_none_item() for _ in range(num_of_items)]
-        elif mode == TypeMode.STRING:
-            return [self.create_random_string_item() for _ in range(num_of_items)]
-        elif mode == TypeMode.BINARY:
-            return [self.create_random_binary_item() for _ in range(num_of_items)]
-        elif mode == TypeMode.LIST:
-            return [self.create_random_list_item() for _ in range(num_of_items)]
-        elif mode == TypeMode.DICT:
-            return [self.create_random_dict_item() for _ in range(num_of_items)]
 
-        raise TypeError(f"The following type '{mode}' not supported")
+        def _create_multiple_items(_mode, _num_of_items):
+            if _mode == TypeMode.NUMBER:
+                return [self.create_random_number_item() for _ in range(_num_of_items)]
+            elif _mode == TypeMode.BOOL:
+                return [self.create_random_bool_item() for _ in range(_num_of_items)]
+            elif _mode == TypeMode.NONE:
+                return [self.create_none_item() for _ in range(_num_of_items)]
+            elif _mode == TypeMode.STRING:
+                return [self.create_random_string_item() for _ in range(_num_of_items)]
+            elif _mode == TypeMode.BINARY:
+                return [self.create_random_binary_item() for _ in range(_num_of_items)]
+            elif _mode == TypeMode.LIST:
+                return [self.create_random_list_item() for _ in range(_num_of_items)]
+            elif _mode == TypeMode.DICT:
+                return [self.create_random_dict_item() for _ in range(_num_of_items)]
+            raise TypeError(f"The following type '{_mode}' not supported")
+
+        if mode != TypeMode.MIXED:
+            return _create_multiple_items(_mode=mode, _num_of_items=num_of_items)
+
+        result = []
+        options = list(TypeMode)
+        options.pop(TypeMode.MIXED.value - 1)  # The ENUM value started from 1
+        while len(result) != num_of_items:
+            result.append(_create_multiple_items(_mode=options[len(result) % len(options)], _num_of_items=1)[0])
+
+        self.items_count = 0
+        return result
