@@ -4,6 +4,7 @@ from random import randint, choice
 from uuid import uuid4
 
 from dtest import Tester, debug
+from scylla_tools import set_trace_probability
 from tools import require
 from tools import rows_to_list
 from cassandra.concurrent import execute_concurrent_with_args
@@ -311,7 +312,7 @@ class TestTracingReadAccess(Tester, TracingReadAccessHelper):
         """
         session = self.prepare_cluster(nodes=1, compaction="{'class':'LeveledCompactionStrategy'}")
         node = self.cluster.nodelist()[0]  # type: ScyllaNode
-        node.nodetool('settraceprobability 1.0')
+        set_trace_probability(nodes=[node], probability_value=1.0)
 
         self.insertinto_table(session, rows=4)
         node.flush()
@@ -328,8 +329,8 @@ class TestTracingReadAccess(Tester, TracingReadAccessHelper):
     def test_tracing_info_sstables_locally_on_each_node_from_replica(self):
         session = self.prepare_cluster(nodes=3)
         self.insertinto_table(session, rows=50)
+        set_trace_probability(nodes=self.cluster.nodelist(), probability_value=1.0)
         for node in self.cluster.nodelist():
-            node.nodetool('settraceprobability 1.0')
             node.flush()
 
         for node in self.cluster.nodelist():
@@ -339,8 +340,8 @@ class TestTracingReadAccess(Tester, TracingReadAccessHelper):
     def test_tracing_info_for_sstables_on_each_node_from_replica_with_cache_enabled(self):
         session = self.prepare_cluster(nodes=3, disable_cache=False)
         self.insertinto_table(session, rows=50)
+        set_trace_probability(nodes=self.cluster.nodelist(), probability_value=1.0)
         for node in self.cluster.nodelist():
-            node.nodetool('settraceprobability 1.0')
             node.flush()
 
         for node in self.cluster.nodelist():

@@ -1332,3 +1332,17 @@ def print_table(table):
     debug(tabulate.tabulate(tabular_data=[
         [str(getattr(row, column_name)) for column_name in table.column_names]
         for row in table.current_rows], headers=table.column_names))
+
+
+def set_trace_probability(nodes, probability_value):
+    def _set_trace_probability_for_node(_node):
+        debug(f'{"Enable" if probability_value else "disable"} trace for node "{_node.name}" with '
+              f'"{probability_value}" probability value')
+        errors = _node.nodetool(f'settraceprobability {probability_value}')[1]
+        if errors:
+            raise RuntimeError(f'Failed to {"enable" if probability_value else "disable"} trace for node '
+                               f'"{_node.name}"')
+
+    with ThreadPoolExecutor(max_workers=len(nodes)) as executor:
+        threads = [executor.submit(_set_trace_probability_for_node, node) for node in nodes]
+        [thread.result() for thread in threads]

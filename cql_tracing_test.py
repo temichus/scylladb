@@ -3,7 +3,7 @@
 # This test is based on a Cassandra's test with the same name.
 #
 from dtest import Tester, debug
-from scylla_tools import insert_c1c2_no_prepared
+from scylla_tools import insert_c1c2_no_prepared, set_trace_probability
 from cassandra.query import SimpleStatement
 from cassandra import ConsistencyLevel
 import functools
@@ -120,8 +120,7 @@ class TestCqlTracing(Tester):
             r'seastar - Timer callback failed: seastar::metrics::double_registration \(registering metrics twice for metrics: storage_proxy_coordinator_background_replica_writes_failed_remote_node\)']
 
         debug("Enable tracing for all CQL requests on node1 and node2...")
-        node1.nodetool('settraceprobability 1.0')
-        node2.nodetool('settraceprobability 1.0')
+        set_trace_probability(nodes=[node1, node2], probability_value=1.0)
 
         session = self.patient_cql_connection(node1)
         self.create_ks(session, 'ks', 2)
@@ -151,7 +150,7 @@ class TestCqlTracing(Tester):
         node1.start(wait_for_binary_proto=True)
 
         debug("Enable tracing for all CQL requests on node1...")
-        node1.nodetool('settraceprobability 1.0')
+        set_trace_probability(nodes=[node1], probability_value=1.0)
 
         session = self.patient_cql_connection(node1)
 
@@ -201,7 +200,7 @@ class TestCqlTracing(Tester):
             r'seastar - Timer callback failed: seastar::metrics::double_registration \(registering metrics twice for metrics: storage_proxy_coordinator_background_replica_writes_failed_remote_node\)']
 
         debug("Enable tracing for all CQL requests on node1...")
-        node1.nodetool('settraceprobability 1.0')
+        set_trace_probability(nodes=[node1], probability_value=1.0)
 
         session = self.patient_cql_connection(node1)
         self.create_ks(session, 'ks', 2)
