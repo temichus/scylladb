@@ -14,6 +14,7 @@ from nose.plugins.attrib import attr
 from ccmlib.scylla_node import ScyllaNode
 from ccmlib.scylla_cluster import ScyllaCluster
 from cassandra.cluster import Session
+from scylla_tools import get_sstables_files, get_node_cf_dir
 
 
 class TracingReadAccessHelper:
@@ -150,7 +151,7 @@ class TracingReadAccessHelper:
         self.assertFalse(err)
         return output
 
-    def get_tables_list_for_node(self, node, table_name, table_type="-big-Data.db"):
+    def get_tables_list_for_node(self, node, table_name, table_type="Data"):
         """get list of table files for the node
 
         Scan data folder and return list of files by table_type
@@ -159,19 +160,12 @@ class TracingReadAccessHelper:
         :type node: ScyllaNode
         :param table_name: Collect data for table with table_name name
         :type table_name: str
-        :param table_type: file type, defaults to "-big-Data.db"
+        :param table_type: file type, defaults to "Data"
         :type table_type: str, optional
         :returns: list of files with specified type
         :rtype: {list}
         """
-        sstables = []
-        node_path = node.get_path()
-        for dirpath, dirs, filenames in os.walk(os.path.join(node_path, "data", self.keyspace)):
-            elems = os.path.split(dirpath)
-            if elems[-1].startswith(table_name):
-                sstables += [os.path.join(dirpath, f) for f in filenames if f.endswith(table_type)]
-                continue
-        return sstables
+        return get_sstables_files(get_node_cf_dir(node, self.keyspace, table_name), table_type)
 
     def verify_tracing_info_sstable_read_access_all_partitions(self, output, node, table_name):
         """verify tracing info in output
@@ -184,11 +178,11 @@ class TracingReadAccessHelper:
         :type node: ScyllaNode
         """
         sstables = self.get_tables_list_for_node(node, table_name)
-        index_tables = self.get_tables_list_for_node(node, table_name, table_type='-big-Index.db')
+        index_tables = self.get_tables_list_for_node(node, table_name, table_type='Index')
         for sstable in sstables:
             self.assertRegexpMatches(
                 output,
-                r"Reading partition range .* from sstable {}.*{}".format(sstable, node.address()))
+                r"Reading partition range .* from sstable.*{}.*{}".format(sstable, node.address()))
         for index_table in index_tables:
             self.assertRegexpMatches(
                 output,
@@ -208,7 +202,7 @@ class TracingReadAccessHelper:
         :type node: ScyllaNode
         """
         sstables = self.get_tables_list_for_node(node, table_name)
-        index_tables = self.get_tables_list_for_node(node, table_name, table_type='-big-Index.db')
+        index_tables = self.get_tables_list_for_node(node, table_name, table_type='Index')
         for sstable in sstables:
             self.assertRegexpMatches(
                 output,

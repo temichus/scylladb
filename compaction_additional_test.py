@@ -432,21 +432,20 @@ class CompactionAdditionalStrategyTests(Tester):
         for f in files:
             os.remove(f)
 
-        keyspace_dir = os.path.join(node1.get_path(), 'data', 'ks')
-        sstablefiles = glob.glob(glob.glob(os.path.join(keyspace_dir,
-                                                        'cf' + '-*', '*-TOC.txt'))[0].replace('TOC.txt', '') + '*')
+        cf_dir = get_node_cf_dir(node1, 'ks', 'cf')
+        sstablefiles = get_sstables_files(cf_dir)
         for f in sstablefiles:
             for generation_suffix in range(10, 40):
-                self._copy_sstable_file(f, "9999%d" % generation_suffix)
+                self._copy_sstable_file(os.path.join(cf_dir, f), "9999%d" % generation_suffix)
 
-        before_start_sstables = sorted(glob.glob(os.path.join(keyspace_dir, 'cf' + '-*', '*-Data.db')))
+        before_start_sstables = get_sstables_files(cf_dir, 'Data')
 
         from_mark = node1.mark_log()
         node1.start()
         node1.watch_log_for(
             r'compaction -.*(Compacted|Resharded|Reshaped) [0-9]+ sstables to \[.+/data/ks/cf-.+\]', from_mark=from_mark)
 
-        after_start_sstables = sorted(glob.glob(os.path.join(keyspace_dir, 'cf' + '-*', '*-Data.db')))
+        after_start_sstables = get_sstables_files(cf_dir, 'Data')
 
         self.assertNotEqual(before_start_sstables, after_start_sstables,
                             "No compaction detected after restarting {}. SSTables in ks/cf: {}".format(node1.name, after_start_sstables))

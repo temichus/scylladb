@@ -7,7 +7,7 @@ import multiprocessing
 from nose.plugins.attrib import attr
 from dtest import Tester, debug, flaky
 from tools import rows_to_list, require
-from scylla_tools import TableManager, MaterializedViewManager
+from scylla_tools import TableManager, MaterializedViewManager, get_sstables_files, get_node_cf_dir
 from assertions import assert_one, assert_two_queries_equal
 from cassandra import ConsistencyLevel
 
@@ -47,34 +47,31 @@ class ReshardingTestBase(Tester):
     def set_memory_param(smp):
         return '{}M'.format(512 * int(smp))
 
-    def _reload_with_resharding(self, murmur3=DEFAULT_MURMUR3_PARTITIONER, smp=None, data_dir='data/keyspace1/standard1-*'):
+    def _reload_with_resharding(self, murmur3=DEFAULT_MURMUR3_PARTITIONER, smp=None, ks='keyspace1', cf='standard1'):
         debug('Reload node with resharding:\n CPU: from {0} to {1}\n murmur3 parameter: from {2} to {3}'.format(
             self.smp, smp, self.murmur3, murmur3))
         smp = self.smp if not smp else smp
         self.node.stop(wait_other_notice=True)
 
-        data_files_num_before = self._get_number_of_data_files(data_dir=data_dir)
+        data_files_num_before = self._get_number_of_data_files(ks, cf)
         self.node.set_configuration_options(values={'murmur3_partitioner_ignore_msb_bits': murmur3})
         self.node.start(jvm_args=['--smp', str(smp), '--memory', self.set_memory_param(smp)],
                         wait_other_notice=True, wait_for_binary_proto=True)
         debug('Node has been started')
         return data_files_num_before
 
-    def _get_number_of_data_files(self, data_dir='data/keyspace1/standard1-*'):
-        data_files = []
-        data_dir = os.path.join(self.node.get_path(), data_dir)
-        # watch out for TemporaryTOC files since they could
-        # be in progress during compaction
-        data_files.extend(glob.glob(os.path.join(data_dir, '*-TOC.txt')))
-        debug('data files: {}'.format([re.search('md-.*$', f).group(0) for f in sorted(data_files)]))
+    def _get_number_of_data_files(self, ks='keyspace1', cf='standard1'):
+        data_files = get_sstables_files(
+            get_node_cf_dir(self.node, ks, cf), f_type='TOC')
+        debug('data files: {}'.format(data_files))
         return len(data_files)
 
     def _verify_number_of_data_files(self, data_files_num_before, reshard_to, actual_data_files_num=None,
-                                     data_dir='data/keyspace1/standard1-*'):
+                                     ks='keyspace1', cf='standard1'):
         debug('Verify number of data files')
         expected_num = data_files_num_before * reshard_to
         if not actual_data_files_num:
-            actual_data_files_num = self._get_number_of_data_files(data_dir=data_dir)
+            actual_data_files_num = self._get_number_of_data_files(ks, cf)
         self.assertLessEqual(actual_data_files_num, expected_num,
                              msg='{0} not less than or equal to {1}. Data files amount after resharding '
                                  'should be not more then data files amount before resharding multiplying by {2}.'.format
@@ -320,16 +317,17 @@ class ReshardingVariantsTest(ReshardingTestBase):
         self._verify_row_number(tm.table_name, op_cnt, keyspace=tm.keyspace)
         self._verify_row_number(mv.mv_name, op_cnt, keyspace=tm.keyspace)
 
-        data_dir = 'data/{0}/{1}-*'.format(tm.keyspace, tm.table_name)
-        data_files_num_before = self._reload_with_resharding(smp=self.SMP_FOR_INCREASE, data_dir=data_dir)
+        data_files_num_before = self._reload_with_resharding(
+            smp=self.SMP_FOR_INCREASE, ks=tm.keyspace, cf=tm.table_name)
 
-        self._verify_number_of_data_files(data_files_num_before=data_files_num_before, reshard_to=self.SMP_FOR_INCREASE)
+        self._verify_number_of_data_files(data_files_num_before=data_files_num_before, reshard_to=self.SMP_FOR_INCREASE,
+                                          ks=tm.keyspace, cf=tm.table_name)
 
         res = self._wait_for_resharding()
         self.assertEquals(res, True, 'Failed to recognize re-sharding finish')
 
         self._verify_number_of_data_files(data_files_num_before=data_files_num_before, reshard_to=self.SMP_FOR_INCREASE,
-                                          data_dir=data_dir)
+                                          ks=tm.keyspace, cf=tm.table_name)
         self.check_errors_all_nodes()
 
         # Read data
