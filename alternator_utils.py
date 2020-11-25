@@ -7,6 +7,7 @@ from enum import Enum
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from itertools import chain
+from pprint import pformat
 from typing import List, Dict, Union, NamedTuple
 
 import boto3
@@ -17,7 +18,7 @@ from deepdiff import DeepDiff
 from nose.plugins.attrib import attr
 from alternator.utils import schemas
 from ccmlib.scylla_node import ScyllaNode
-from dtest import debug, Tester, info
+from dtest import debug, Tester, info, retrying
 
 ALTERNATOR_SNAPSHOT_FOLDER = os.path.join(os.getcwd(), "alternator", "snapshot")
 TABLE_NAME = 'user_table'
@@ -379,10 +380,13 @@ class TesterAlternator(Tester):
         node.nodetool(refresh_cmd)
         node.repair()
 
-    def compare_table_data(self, table_name: str, table_data: List[Dict[str, str]], node: ScyllaNode,
-                           ignore_order: bool = True, consistent_read: bool = True, **kwargs) -> DeepDiff:
-        data = self.scan_table(table_name=table_name, node=node, ConsistentRead=consistent_read, **kwargs)
-        return DeepDiff(t1=table_data, t2=data, ignore_order=ignore_order, ignore_numeric_type_changes=True)
+    def compare_table_data(self, expected_table_data: List[Dict[str, str]], table_name: str = None,
+                           node: ScyllaNode = None, ignore_order: bool = True, consistent_read: bool = True,
+                           table_data: List[Dict[str, str]] = None, **kwargs) -> DeepDiff:
+        if not table_data:
+            table_data = self.scan_table(table_name=table_name, node=node, ConsistentRead=consistent_read, **kwargs)
+        return DeepDiff(t1=expected_table_data, t2=table_data, ignore_order=ignore_order,
+                        ignore_numeric_type_changes=True)
 
     def _run_stress(self, table_name: str, node: ScyllaNode, target, num_of_item: int = NUM_OF_ITEMS,
                     **kwargs) -> StoppableThread:
@@ -478,6 +482,61 @@ class TesterAlternator(Tester):
         insert_update_thread = StoppableThread(target=insert_item)
         self.addCleanup(insert_update_thread.stop)
         return insert_update_thread
+
+    def get_item(self, node: ScyllaNode, item_key: Dict[str, AttributeValueTypeDef], table_name: str = TABLE_NAME,
+                 consistent_read: bool = False):
+        dynamodb_api = self.get_dynamodb_api(node=node)
+        table: Table = dynamodb_api.resource.Table(name=table_name)
+        debug(f'Getting item "{pformat(item_key)}" with ConsistentRead = "{consistent_read}"')
+        response = table.get_item(Key=item_key, ConsistentRead=consistent_read)
+        if response['ResponseMetadata']['HTTPStatusCode'] != 200:
+            raise RuntimeError(f'The "get_item" of "{pformat(item_key)} is failed (full response is '
+                               f'"{pformat(response)}")"')
+        return response['Item']
+
+    def put_item(self, node: ScyllaNode, item: Dict[str, AttributeValueTypeDef], table_name: str = TABLE_NAME):
+        dynamodb_api = self.get_dynamodb_api(node=node)
+        table: Table = dynamodb_api.resource.Table(name=table_name)
+        debug(f'Adding new item "{pformat(item)}" ')
+        response = table.put_item(Item=item)
+        if response['ResponseMetadata']['HTTPStatusCode'] != 200:
+            raise RuntimeError(f'The "put_item" of "{pformat(item)} is failed (full response is '
+                               f'"{pformat(response)}")"')
+
+    def update_item(self, node: ScyllaNode, item_key: Dict[str, AttributeValueTypeDef], table_name: str = TABLE_NAME):
+        dynamodb_api = self.get_dynamodb_api(node=node)
+        table: Table = dynamodb_api.resource.Table(name=table_name)
+        debug(f'Updating item "{pformat(item_key)}"')
+        response = table.update_item(Key=item_key)
+        if response['ResponseMetadata']['HTTPStatusCode'] != 200:
+            raise RuntimeError(f'The "update_item" of "{pformat(item_key)} is failed (full response is '
+                               f'"{pformat(response)}")"')
+
+    def delete_item(self, node: ScyllaNode, item_key: Dict[str, AttributeValueTypeDef], table_name: str = TABLE_NAME):
+        dynamodb_api = self.get_dynamodb_api(node=node)
+        table: Table = dynamodb_api.resource.Table(name=table_name)
+        debug(f'Deleting item "{pformat(item_key)}"')
+        response = table.delete_item(Key=item_key)
+        if response['ResponseMetadata']['HTTPStatusCode'] != 200:
+            raise RuntimeError(f'The "delete_item" of "{pformat(item_key)} is failed (full response is '
+                               f'"{pformat(response)}")"')
+
+    @retrying(num_attempts=10, sleep_time=1, allowed_exceptions=(AssertionError, ))
+    def get_all_traces_events(self, expected_traces_size):
+        result = []
+        table_name_prefix = '.scylla.alternator.system_traces.'
+        node = self.cluster.nodelist()[0]
+        table: Table = self.get_dynamodb_api(node=node).resource.Table(name=f'{table_name_prefix}events')
+
+        traces = self.scan_table(table_name=f'{table_name_prefix}sessions', node=node)
+        if expected_traces_size > len(traces):
+            raise AssertionError(f'"Expected at least "{expected_traces_size}" traces!')
+        for trace in sorted(traces, key=lambda _trace: _trace['started_at']):
+            session_id = trace['session_id']
+            result.append(full_query(
+                table=table, consistent_read=True, KeyConditionExpression='session_id = :s',
+                ExpressionAttributeValues={':s': session_id}))
+        return result
 
 
 def random_string(length: int, chars=string.ascii_uppercase + string.digits):

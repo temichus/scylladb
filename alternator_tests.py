@@ -5,6 +5,7 @@ import shutil
 import string
 import tempfile
 import time
+from concurrent.futures.thread import ThreadPoolExecutor
 from threading import Thread
 from copy import deepcopy
 from boto3.dynamodb.conditions import Attr
@@ -23,6 +24,7 @@ from alternator_utils import TesterAlternator, ALTERNATOR_SNAPSHOT_FOLDER, TABLE
     ALTERNATOR_SECURE_PORT
 from alternator_utils import generate_put_request_items, Gsi, full_query
 from dtest import debug, wait_for, info
+from scylla_tools import set_trace_probability
 from tools import new_node, require
 
 
@@ -46,7 +48,7 @@ class AlternatorTest(TesterAlternator):
         self.create_table(table_name=table_name, node=node1)
         table_data = self.create_items()
         self.load_snapshot_and_refresh(table_name=table_name, node=node1, snapshot_folder=snapshot_folder)
-        diff = self.compare_table_data(table_name=table_name, table_data=table_data, node=node1)
+        diff = self.compare_table_data(table_name=table_name, expected_table_data=table_data, node=node1)
         self.assertTrue(expr=not diff, msg=f"The following items are missing:\n{pformat(diff)}")
 
     def test_create_snapshot_and_refresh(self):
@@ -75,7 +77,7 @@ class AlternatorTest(TesterAlternator):
         self.delete_table(table_name=table_name, node=node1)
         self.create_table(table_name=table_name, node=node1)
         self.load_snapshot_and_refresh(table_name=table_name, node=node1, snapshot_folder=snapshot_folder)
-        diff = self.compare_table_data(table_name=table_name, table_data=data_before_refresh, node=node1)
+        diff = self.compare_table_data(table_name=table_name, expected_table_data=data_before_refresh, node=node1)
         self.assertTrue(expr=not diff, msg=f"The following items are missing:\n{pformat(diff)}")
 
     def test_dynamo_gsi(self):
@@ -297,7 +299,7 @@ class AlternatorTest(TesterAlternator):
         node1.stop()
         debug("Testing a query using filter expression")
         expected_items = [item for item in items if item[range_key_name] >= selected_range_value]
-        diff = self.compare_table_data(table_name=TABLE_NAME, table_data=expected_items, node=dc2_node,
+        diff = self.compare_table_data(table_name=TABLE_NAME, expected_table_data=expected_items, node=dc2_node,
                                        FilterExpression=Attr(range_key_name).gte(selected_range_value))
         self.assertTrue(expr=not diff, msg=f"The following items differs:\n{pformat(diff)}")
 
@@ -450,7 +452,7 @@ class AlternatorTest(TesterAlternator):
             all_items += items
             debug(f"Adding {len(items)} {data_generator.get_mode_name(mode)} items to table '{table_name}'..")
             self.batch_write_actions(table_name=table_name, node=node1, new_items=items)
-            diff = self.compare_table_data(table_name=table_name, table_data=all_items, node=node1)
+            diff = self.compare_table_data(table_name=table_name, expected_table_data=all_items, node=node1)
             self.assertTrue(expr=not diff, msg=f"The following items are missing:\n{pformat(diff)}")
 
     def test_read_system_tables_via_dynamodb_api(self):
@@ -742,4 +744,128 @@ class AlternatorTest(TesterAlternator):
                           f' port {ALTERNATOR_SECURE_PORT}')
             new_items = self.create_items(num_of_items=(node_idx + 1) * 10)
             self.batch_write_actions(table_name=table_name, node=node, new_items=new_items)
-        self.compare_table_data(table_name=table_name, table_data=new_items, node=node1)
+        self.compare_table_data(expected_table_data=new_items, table_name=table_name, node=node1)
+
+    def test_cluster_traces(self):
+        """
+        The test inserts items of different types and checks the traces for each of the following actions: "PutItem",
+         "GetItem", "UpdateItem", and "DeleteItem".
+        Also, for each action taken, the test checks for the following:
+         1. For each action, the test checks a list of trace messages that should exist.
+         2. The order of the traces should be according to the order of the expected traces variable (In other words,
+          the test checks for the first message, and once is found, the test continue to find for the next message.
+          Until the test found all the messages in that order).
+         3. Some of the traces are supposed to appear under each node.
+        """
+        table_name = TABLE_NAME
+        num_of_items = 10
+        self.prepare_dynamodb_cluster(num_of_nodes=3)
+        nodes = self.cluster.nodelist()
+        self.create_table(node=nodes[0], table_name=table_name)
+        data_generator = AlternatorDataGenerator(
+            primary_key=self._table_primary_key, primary_key_format=self._table_primary_key_format)
+        items = data_generator.create_multiple_items(num_of_items=num_of_items, mode=TypeMode.MIXED)
+        # This dictionary contains the "traces" messages for each method. Also, the order of messages is important!
+        # During the test, we expect to find the messages in the order they are displayed in the list.
+        # For example: For the "put_item" method, the test expects to see first the "PutItem" message.
+        # The next message should be the "accept_proposal: send accept proposal" message.
+        # Finally, the test expects to see "CAS successful" message (if one of those messages does not appear in
+        #  this order, the test will fail).
+        expected_messages_dict = {
+            # Last thing, the numbers that appear next to a message indicate the number of different messages we are
+            #  looking for. That is, if the number is not 1, we expect to see the message from several different nodes.
+            'put': [('PutItem', 1), ('prepare_ballot: sending prepare', len(nodes) - 1),
+                    ('accept_proposal: send accept proposal', len(nodes) - 1), ('CAS successful', 1)],
+            'get': [('GetItem', 1), ('Creating read executor for token', 1), ('Querying is done', 1)],
+            'update': [('UpdateItem', 1), ('accept_proposal: send accept proposal', len(nodes) - 1),
+                       ('prune: send prune of', len(nodes) - 1), ('CAS successful', 1)],
+            'delete': [('DeleteItem', 1), ('accept_proposal: send accept proposal', len(nodes) - 1),
+                       ('prune: send prune of', len(nodes) - 1), ('CAS successful', 1)],
+        }
+        method_name_by_method_idx = {method_idx: method_name
+                                     for method_idx, method_name in enumerate(expected_messages_dict)}
+        expected_traces_number = len(expected_messages_dict)
+
+        set_trace_probability(nodes=nodes, probability_value=1.0)
+        for item_idx, item in enumerate(items):
+            node = nodes[item_idx % len(nodes)]
+            item_key = {self._table_primary_key: item[self._table_primary_key]}
+            for method_name in expected_messages_dict:
+                if method_name == 'put':
+                    self.put_item(node=node, item=item, table_name=table_name)
+                elif method_name == 'get':
+                    self.get_item(node=node, item_key=item_key, table_name=table_name, consistent_read=True)
+                elif method_name == 'update':
+                    self.update_item(node=node, item_key=item_key, table_name=table_name)
+                elif method_name == 'delete':
+                    self.delete_item(node=node, item_key=item_key, table_name=table_name)
+                else:
+                    raise KeyError(f'The following "{method_name}" method name not supported!')
+
+        set_trace_probability(nodes=nodes, probability_value=0.0)
+        expected_traces_size = len(items) * expected_traces_number
+        info(f'Expecting to find at least "{expected_traces_size}" partitions')
+        # For each method we use we get "len(items)" traces. Therefore, in our case we used 2
+        # (len(expected_messages_dict)) methods and 10 (len(item)) items.
+        # Therefore we will observe "len(items) * methods_size" messages.
+        all_traces_events = self.get_all_traces_events(expected_traces_size=expected_traces_size)
+        node_ips = {self.get_ip_from_node(node) for node in nodes}
+        # The following action order for each item is: "PutItem", "GetItem", "UpdateItem", and "DeleteIte" (this
+        #  order is order of "expected_messages_dict" keys).
+        # Therefore, for each action, we need to get a list with "len(items)" cells.
+        events_by_action = {}
+        for events_idx, events in enumerate(all_traces_events):
+            events_by_action.setdefault(
+                method_name_by_method_idx[events_idx % expected_traces_number], []).append(events)
+
+        def verify_traces_messages(method_name):
+            all_traces = events_by_action[method_name]
+            expected_messages = expected_messages_dict[method_name]
+            # The "all_traces" variable contains the list of traces in the order of action ("get_item" or "pu_item")
+            #  we did. The test enters multiple items. Thus, need over on the traces for each item entered.
+            for action_idx, traces in enumerate(all_traces):
+                source = self.get_ip_from_node(nodes[action_idx % len(nodes)])
+                trace_idx = 0
+                # This loop goes over the messages that should appear within the traces in the order of the
+                # "expected_messages".
+                for expected_message_details in expected_messages:
+                    result = []
+                    expected_message, expected_message_number = expected_message_details
+                    count = expected_message_number
+                    is_message_found = False
+                    # This loop goes through all the traces once and tries to find the expected messages.
+                    # Therefore, if the message not found or the while loop ends, this is means that a test failed
+                    #  because the messages order was incorrect or the expected message changed.
+                    while trace_idx < len(traces):
+                        trace = traces[trace_idx]
+                        trace_idx += 1
+                        event_msg = trace['activity']
+                        if expected_message in event_msg and source == trace['source']:
+                            if expected_message != event_msg:
+                                result.append(event_msg)
+                            count -= 1
+                            if count == 0:
+                                is_message_found = True
+                                break
+                    if not is_message_found:
+                        raise KeyError(f'The following "{expected_message}" trace message not found from "{source}"'
+                                       f' source!')
+                    if result:
+                        if method_name in ['put', 'update', 'delete']:
+                            ips = {msg.rsplit(' ', maxsplit=1)[1] for msg in result}
+                            _diff = (node_ips ^ ips)
+                            assert _diff == {source}, \
+                                f'The "{expected_message}" message not sent from "{expected_message_number}" ' \
+                                f'nodes (The message in missing in the following "{_diff}" IPs'
+                        elif method_name == 'get':
+                            for msg in result:
+                                ips = set(node_ip.strip() for node_ip in
+                                          msg.split('{', maxsplit=1)[1].split('}', maxsplit=1)[0].split(','))
+                                _diff = (node_ips ^ ips)
+                                assert not _diff, f'The following node ips "{_diff}" not found in "get_item" event'
+                        else:
+                            raise KeyError(f'The following "{method_name}" method name not supported!')
+
+        for method_name in expected_messages_dict:
+            info(f'Verifying all traces of "{method_name}_item" method name')
+            verify_traces_messages(method_name=method_name)
