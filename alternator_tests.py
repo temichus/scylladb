@@ -224,6 +224,18 @@ class AlternatorTest(TesterAlternator):
         diff_result = DeepDiff(t1=items, t2=got_condition_items, ignore_order=True)
         self.assertTrue(expr=not diff_result, msg=f"The following items differs:\n{pformat(diff_result)}")
 
+    def test_batch_with_auto_snapshot_false(self):
+        """Test triggers scylladb/scylla#6995"""
+
+        self.prepare_dynamodb_cluster(num_of_nodes=1, extra_config=dict(auto_snapshot=False))
+        node1 = self.cluster.nodelist()[0]
+        table = self.create_table(node=node1, schema=schemas.CONDITION_EXPRESSION_SCHEMA)
+        load = 'x' * 10240
+        with table.batch_writer() as batch:
+            for i in range(10000):
+                batch.put_item({'pk': random_string(length=DEFAULT_STRING_LENGTH), 'c': i, 'a': load})
+        self.delete_table(TABLE_NAME, node1)
+
     def test_write_isolation_during_stress(self):
         """
         Modify tables write-isolation during stress

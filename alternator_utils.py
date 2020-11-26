@@ -8,7 +8,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from itertools import chain
 from pprint import pformat
-from typing import List, Dict, Union, NamedTuple
+from typing import List, Dict, Union, NamedTuple, Optional
 
 import boto3
 from mypy_boto3_dynamodb import DynamoDBClient, DynamoDBServiceResource
@@ -159,7 +159,7 @@ class TesterAlternator(Tester):
         return self.alternator_apis[node.name]
 
     def prepare_dynamodb_cluster(self, num_of_nodes: int = NUM_OF_NODES, is_multi_dc: bool = False,
-                                 is_encrypted: bool = False) -> None:
+                                 is_encrypted: bool = False, extra_config: Optional[dict] = None) -> None:
         cluster_config = {
             "start_native_transport": True,
             "alternator_port": ALTERNATOR_PORT,
@@ -175,6 +175,8 @@ class TesterAlternator(Tester):
             }
             cluster_config.pop('alternator_port')
             cluster_config['alternator_https_port'] = ALTERNATOR_SECURE_PORT
+        if extra_config is not None:
+            cluster_config.update(extra_config)
         cluster = self.cluster
         cluster.set_configuration_options(cluster_config)
         cluster.populate([num_of_nodes, num_of_nodes] if is_multi_dc else num_of_nodes)
