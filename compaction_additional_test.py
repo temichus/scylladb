@@ -9,7 +9,7 @@ import random
 from threading import Thread
 
 from dtest import Tester, debug, run_with_params
-from scylla_tools import get_sstables_files, insert_c1c2, get_cf_dir
+from scylla_tools import get_sstables_files, insert_c1c2, get_node_cf_dir
 from cassandra import ConsistencyLevel, concurrent
 from assertions import assert_none, assert_all
 
@@ -202,7 +202,7 @@ class CompactionAdditionalTest(Tester):
             self.wait_for_new_minute()
 
         # Get list of sstables names
-        cf_dir = get_cf_dir(os.path.join(self.test_path, 'test', 'node1', 'data', key_space_name), 'cf')
+        cf_dir = get_node_cf_dir(node1, key_space_name, 'cf')
         sstables_files1 = get_sstables_files(cf_dir, f_type='Data')
         debug("Files BEFORE: {}".format(sstables_files1))
         assert len(sstables_files1) > 0, "No SSTable files found in %s!" % cf_dir
@@ -215,7 +215,6 @@ class CompactionAdditionalTest(Tester):
             self.wait_for_new_minute()
 
         # Get list of sstables names
-        cf_dir = get_cf_dir(os.path.join(self.test_path, 'test', 'node1', 'data', key_space_name), 'cf')
         sstables_files2 = get_sstables_files(cf_dir, f_type='Data')
         debug("Files AFTER adding data: {}".format(sstables_files2))
 
@@ -283,8 +282,7 @@ class CompactionAdditionalTest(Tester):
             return time_window_dict
 
         # save sstable data (before major compaction
-        ks_dir = os.path.join(node1.get_path(), 'data', 'ks')
-        cf_dir = get_cf_dir(ks_dir, 'cf')
+        cf_dir = get_node_cf_dir(node1, 'ks', 'cf')
         time_window_dict_before_major_compaction = _get_sstables_per_timewindow_dict(cf_dir)
         debug("time_window_dict_before_major_compaction={}".format(time_window_dict_before_major_compaction))
 
@@ -361,8 +359,7 @@ class CompactionAdditionalTest(Tester):
             time.sleep(TIME_TO_SLEEP_BETWEEN_FILES)
 
         node1.flush()
-        ks_dir = os.path.join(self.test_path, 'test', 'node1', 'data', 'ks')
-        cf_dir = get_cf_dir(ks_dir, 'cf')
+        cf_dir = get_node_cf_dir(node1, 'ks', 'cf')
         debug("'cf' directory is {}".format(cf_dir))
 
         # Save the names of the current sstable files

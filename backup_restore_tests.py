@@ -12,7 +12,7 @@ from cassandra.query import SimpleStatement
 from ccmlib.node import NodetoolError
 
 from dtest import Tester, debug
-from scylla_tools import insert_c1c2, query_c1c2_concurrent, get_sstables_files
+from scylla_tools import insert_c1c2, query_c1c2_concurrent, get_sstables_files, get_node_cf_dir
 from nose.plugins.attrib import attr
 from unittest import skip
 
@@ -464,8 +464,7 @@ class TestBackupRestore(Tester):
         debug("Flushing...")
         node1.nodetool("flush -- ks cf")
 
-        ks_dir = os.path.join(self.test_path, 'test', 'node1', 'data', 'ks')
-        cf_dir = self.get_cf_dir(ks_dir, 'cf')
+        cf_dir = get_node_cf_dir(node1, 'ks', 'cf')
         debug("'cf' directory is {}".format(cf_dir))
 
         # Save the names of the current sstable files
@@ -530,8 +529,7 @@ class TestBackupRestore(Tester):
             os.path.dirname(os.path.realpath(__file__)))
         debug("cassandra snapshot dir is {}".format(cassandra_snapshot_dir))
 
-        ks_dir = os.path.join(self.test_path, 'test', 'node1', 'data', 'ks')
-        cf_dir = self.get_cf_dir(ks_dir, 'cf')
+        cf_dir = get_node_cf_dir(node1, 'ks', 'cf')
         debug("Column family directory is {}".format(cf_dir))
 
         debug("Removing sstables...")
@@ -696,8 +694,7 @@ class TestBackupRestore(Tester):
         snapshot_name = 'test_snapshot'
         node1.nodetool(f"snapshot -t {snapshot_name} -cf standard1 -- keyspace1")
         snapshot_dir = self.get_snapshot_dir(snapshot_name)
-        ks_dir = os.path.join(self.test_path, 'test', 'node1', 'data', 'keyspace1')
-        cf_dir = self.get_cf_dir(ks_dir, 'standard1')
+        cf_dir = get_node_cf_dir(node1, 'keyspace1', 'standard1')
 
         # Adding more data to test table
         self.cs_write_and_verify(node1, 1000, seq_start=1001, verify_count=2000)
@@ -823,16 +820,6 @@ class TestBackupRestore(Tester):
                     return os.path.join(root, name)
 
         return None
-
-    def get_cf_dir(self, ks_dir, cf_name):
-        """
-        Return the first CF directory for a CF with a given name
-        """
-        cf_pattern = re.compile("{}-".format(cf_name))
-        for root, dirs, files in os.walk(ks_dir):
-            for d in dirs:
-                if cf_pattern.match(d):
-                    return os.path.join(root, d)
 
     # Return the first CF directory that doesn't have a snapshot with a given tag
     def get_non_snapshot_cf_dir(self, ks_dir, snapshotname):

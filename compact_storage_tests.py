@@ -4,21 +4,12 @@ import re
 
 from dtest import Tester, debug
 from nose.plugins.attrib import attr
+from scylla_tools import get_node_cf_dir
 
 
 @attr('dtest-full', 'single_node')
 class TestCompactStorage(Tester):
     row_size = 1000
-
-    def get_cf_dir(self, ks_dir, cf_name):
-        """
-        Return the first CF directory for a CF with a given name
-        """
-        cf_pattern = re.compile("{}-".format(cf_name))
-        for root, dirs, files in os.walk(ks_dir):
-            for d in dirs:
-                if cf_pattern.match(d):
-                    return os.path.join(root, d)
 
     def load_and_read_from_sstables(self, data_dir, lines):
         cluster = self.cluster
@@ -30,7 +21,7 @@ class TestCompactStorage(Tester):
 
         node1.stop()
 
-        dst1 = self.get_cf_dir(os.path.join(node1.get_path(), 'data', 'ks'), 'tb')
+        dst1 = get_node_cf_dir(node1, 'ks', 'tb')
         src1 = os.path.join("test_data", data_dir)
 
         distutils.dir_util.copy_tree(src1, dst1)

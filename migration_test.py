@@ -19,7 +19,7 @@ from assertions import assert_one
 from ccmlib.node import NodetoolError
 
 from dtest import Tester, debug
-from scylla_tools import CassandraCluster, drop_table, get_sstables_files
+from scylla_tools import CassandraCluster, drop_table, get_sstables_files, get_node_cf_dir
 from tools import require, rows_to_list, safe_mkdtemp
 from nose import tools
 from nose.plugins.attrib import attr
@@ -342,7 +342,7 @@ class MigrationTestBase(Tester):
         tmpdir = safe_mkdtemp()
         dir = os.path.join(tmpdir, 'keyspace1', 'standard1')
         os.makedirs(dir)
-        data_dir = self.get_cf_dir(os.path.join(node1.get_path(), 'data/keyspace1'), 'standard1')
+        data_dir = get_node_cf_dir(node1, 'keyspace1', 'standard1')
 
         debug('Copy node1 sstables from {} to {}'.format(data_dir, dir))
         data_files = get_sstables_files(data_dir)
@@ -656,16 +656,6 @@ class MigrationTestBase(Tester):
         node1 = self.get_node(cluster, 0)
         return node1
 
-    def get_cf_dir(self, ks_dir, cf_name):
-        """
-        Return the first CF directory for a CF with a given name
-        """
-        cf_pattern = re.compile("{}-".format(cf_name))
-        for root, dirs, files in os.walk(ks_dir):
-            for d in dirs:
-                if cf_pattern.match(d):
-                    return os.path.join(root, d)
-
     def copy_files_to(self, from_dir, to_dir):
         for f in os.listdir(from_dir):
             shutil.copy2(os.path.join(from_dir, f), os.path.join(to_dir, f))
@@ -762,8 +752,7 @@ class TestMigration(MigrationTestBase):
         cassandra_sstable_dir = self.get_cassandra_sstable_dir(self.version, migrated_files_dir)
         debug("cassandra sstable dir is {}".format(cassandra_sstable_dir))
 
-        ks_dir = os.path.join(self.test_path, 'test', 'node1', 'data', ks)
-        cf_dir = self.get_cf_dir(ks_dir, cf)
+        cf_dir = get_node_cf_dir(node, ks, cf)
         debug("Column family directory is {}".format(cf_dir))
 
         upload_dir = os.path.join(cf_dir, "upload")
@@ -781,8 +770,7 @@ class TestMigration(MigrationTestBase):
         cassandra_sstable_dir = self.get_cassandra_sstable_dir(self.version, migrated_files_dir)
         debug("cassandra sstable dir is {}".format(cassandra_sstable_dir))
 
-        ks_dir = os.path.join(self.test_path, 'test', 'node1', 'data', ks)
-        cf_dir = self.get_cf_dir(ks_dir, cf)
+        cf_dir = get_node_cf_dir(node, ks, cf)
         debug("Column family directory is {}".format(cf_dir))
 
         debug("Copying sstables created by Cassandra...")
@@ -833,8 +821,7 @@ class TestMigrationUpgradeSSTables(TestMigration):
     def load_migrated_tables(self, node, migrated_files_dir, ks='ks', cf='cf'):
         super(TestMigrationUpgradeSSTables, self).load_migrated_tables(node, migrated_files_dir, ks='ks', cf='cf')
 
-        ks_dir = os.path.join(self.test_path, 'test', 'node1', 'data', ks)
-        cf_dir = self.get_cf_dir(ks_dir, cf)
+        cf_dir = get_node_cf_dir(node, ks, cf)
         debug("Column family directory is {}".format(cf_dir))
 
         source_dir = self.get_cassandra_sstable_dir(self.version, migrated_files_dir)

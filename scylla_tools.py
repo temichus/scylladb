@@ -273,6 +273,14 @@ def get_cf_dir(ks_dir, cf_name):
                 return os.path.join(root, d)
 
 
+def get_node_cf_dir(node, ks_name='ks', cf_name='cf'):
+    """
+    Return the first CF directory for a CF with a given name
+    in the given keyspace and node
+    """
+    return get_cf_dir(os.path.join(node.get_path(), 'data', ks_name), cf_name)
+
+
 def flush_by_node(cluster):
     for node in cluster.nodelist():
         node.flush()
