@@ -797,6 +797,7 @@ class TestTimeWindowDataSegregation(Tester):
         node3.wait_for_compactions()
         self._check_sstable_timestamps(node3)
 
+
 class TestGarabageCollected(Tester):
 
     def garbage_collected_sstable_test(self):
