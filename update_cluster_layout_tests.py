@@ -3,6 +3,7 @@ import os
 import re
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
+from assertions import assert_invalid
 
 from cassandra import Unavailable, ConsistencyLevel, WriteTimeout, OperationTimedOut
 from cassandra.policies import FallthroughRetryPolicy
@@ -564,6 +565,7 @@ class TestUpdateClusterLayout(Tester):
     def _simple_add_new_node_while_adding_info(self, rf):
         """
         Test bootstrapped node streams all data
+
         1. Create a cluster with a three nodes with rf, insert data
         3. Add node, while node is bootstrapping insert data
         4. Check that the cluster returns all
@@ -602,9 +604,10 @@ class TestUpdateClusterLayout(Tester):
     def simple_add_new_node_while_adding_info_2_test(self):
         self._simple_add_new_node_while_adding_info(2)
 
-    def simple_add_new_node_while_schema_changes_test(self):
+    def _simple_add_new_node_while_schema_changes(self, enable_repair_based_node_ops=True):
         """
-        Test bootstrapped node streams all data
+        Test bootstrapped node sync all data
+
         1. Create a cluster with a three nodes with rf=1, insert data
         2. Add node, while node is bootstrapping remove keyspace
         3. Still while bootstrapping add a keyspace and insert data
@@ -616,7 +619,9 @@ class TestUpdateClusterLayout(Tester):
 
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfer with the test (this must be after the populate)
-        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.set_configuration_options(values={'enable_repair_based_node_ops': enable_repair_based_node_ops,
+                                                  'hinted_handoff_enabled': False},
+                                          batch_commitlog=True)
         cluster.populate(3).start()
         node1 = cluster.nodelist()[0]
 
@@ -633,8 +638,8 @@ class TestUpdateClusterLayout(Tester):
             self.create_ks(session, 'ks1', rf)
             self.create_cf(session, 'cf1', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
             for i in range(0, 100):
-                insert = SimpleStatement("insert into ks1.cf1 (key,c1,c2) values ('%d','%d','%d')" % (i, i, i),
-                                         consistency_level=consistency)
+                insert = SimpleStatement("insert into ks1.cf1 (key,c1,c2) values ('%d','%d','%d')" %
+                                         (i, i, i), consistency_level=consistency)
                 session.execute(insert)
 
         executor = ThreadPoolExecutor(max_workers=1)
@@ -645,13 +650,32 @@ class TestUpdateClusterLayout(Tester):
         node4.watch_log_for("Beginning stream session|sync data for keyspace=ks, status=started")
         t = executor.submit(run)
 
+        if enable_repair_based_node_ops:
+            node4.watch_log_for("completed successfully, keyspace=ks,")
+
         node4.watch_log_for("Starting listening for CQL clients")
         session = self.patient_cql_connection(node4)
 
         t.result()
+        # Verify keyspace ks is deleted
+        assert_invalid(session, "SELECT * FROM ks.cf", "Keyspace ks does not exist")
         query = SimpleStatement("SELECT * FROM ks1.cf1", consistency_level=consistency)
         result = list(session.execute(query))
         self.assertEqual(len(result), 100, len(result))
+
+    def simple_add_new_node_while_schema_changes_with_repair_test(self):
+        """
+        Test bootstrapped node sync all data by repair, schema will be
+        changed in the same time.
+        """
+        self._simple_add_new_node_while_schema_changes(enable_repair_based_node_ops=True)
+
+    def simple_add_new_node_while_schema_changes_with_stream_test(self):
+        """
+        Test bootstrapped node sync all data by streaming, schema will
+        be changed in the same time.
+        """
+        self._simple_add_new_node_while_schema_changes(enable_repair_based_node_ops=False)
 
     def _simple_add_new_node_while_query_info(self, rf):
         """
