@@ -2001,8 +2001,10 @@ class TestNodetool(Tester):
         debug("Verifying node 3 process is not running")
         self.assertEqual(False, node3_process.is_running(), "Node 3 process didn't stop/exit correctly")
 
+
 # example for input "Current trace probability: 0.001\n"
 REGEX_GET_TRACE_RESP = re.compile(r'Current trace probability: (?P<probability>[0-9\.eE]+)(\\n)*$')
+
 
 def get_node_probability(node) -> float:
     resp, err = node.nodetool('gettraceprobability')
@@ -2023,6 +2025,7 @@ def set_node_probability(node, value: float):
     set_result = node.nodetool(f'settraceprobability {value}')
     return set_result
 
+
 @attr('dtest-full')
 class TestGetTraceProbability(Tester):
     """
@@ -2038,8 +2041,8 @@ class TestGetTraceProbability(Tester):
     }
 
     # valid probability values and smaples number
-    valid_values    = { 0.001:10000  , 0:500, 0.6:1000 , 1:500}
-    valid_tolerance = { 0.001:0.00075, 0:0  , 0.6:0.030, 1:0}
+    valid_values = {0.001: 10000, 0: 500, 0.6: 1000, 1: 500}
+    valid_tolerance = {0.001: 0.00075, 0: 0, 0.6: 0.030, 1: 0}
     default_value = 0
 
     def setUp(self):
@@ -2053,7 +2056,7 @@ class TestGetTraceProbability(Tester):
             node.nodetool(f'settraceprobability {invalid_value}')
         assert re.search(message, str(ex.exception)), f"invalid_value={invalid_value} Expected: message"
 
-    def tracing_table_check(self, session, node, probability,num_keys, prev_count):
+    def tracing_table_check(self, session, node, probability, num_keys, prev_count):
         debug("Populating a table with {} keys...".format(num_keys))
         insert_c1c2_no_prepared(session, keys=range(num_keys))
         node.flush()
@@ -2067,7 +2070,7 @@ class TestGetTraceProbability(Tester):
         diff = math.fabs(calculated_probaility - probability)
         allowed_diff = self.valid_tolerance[probability]
         message = f"Error: probability={probability} actual={calculated_probaility} diff={diff} allowed={allowed_diff}"
-        assert diff <= allowed_diff , message
+        assert diff <= allowed_diff, message
         return count
 
     def after_stop_start_value_is_default_test(self):
@@ -2100,7 +2103,6 @@ class TestGetTraceProbability(Tester):
                 probability_node1, probability_node2 = get_nodes_probability((self.node1, self.node2,))
                 assert probability_node1 == valid_value, f'node1 Expected: {valid_value} Actual: {probability_node1}'
                 assert node2_value == node2_value, f'node2 Expected: {node2_value} Actual: {probability_node2}'
-
 
     def value_affect_tracing_table_test(self):
         self.create_ks(self.session, 'ks', 2)
