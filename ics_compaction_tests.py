@@ -47,7 +47,8 @@ def create_table(session, compaction_strategy=None,
                 'PRIMARY KEY(pk, ck))'.format(table_name,
                                               ', '.join('c%d int' % i for i in range(1, NUM_OF_COLUMNS)))
     compaction_params = {'class': compaction_strategy._value_, 'sstable_size_in_mb': str(sstable_size_in_mb)}
-    compaction_params.update(compaction_additional_params)
+    if compaction_additional_params:
+        compaction_params.update(compaction_additional_params)
     query += f" WITH compaction = {compaction_params}"
 
     debug("query is:{}".format(query))
