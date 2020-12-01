@@ -806,12 +806,12 @@ class TestGarabageCollected(Tester):
         Related issue: https://github.com/scylladb/scylla/issues/6275
         """
         cluster = self.cluster
-        cluster.populate(1).start(wait_for_binary_proto=True)
-        node1 = cluster.nodelist()[0]
+        cluster.populate(3).start(wait_for_binary_proto=True)
+        (node1, node2, node3) = cluster.nodelist()
 
         # Prepare test table and test data
         session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'ks', 1)
+        self.create_ks(session, 'ks', 3)
 
         # Use IncrementalCompactionStrategy for Enterprise
         session.execute(
@@ -821,7 +821,9 @@ class TestGarabageCollected(Tester):
         insert_c1c2(session, n=3)
         node1.flush()
 
-        from_mark = node1.mark_log()
+        from_mark1 = node1.mark_log()
+        from_mark2 = node2.mark_log()
+        from_mark3 = node3.mark_log()
 
         # Set a short gc_grace_seconds, and delete one key
         gc_grace_seconds = 10
@@ -830,15 +832,16 @@ class TestGarabageCollected(Tester):
 
         # Sleep until the garbage collected SSTables are expired
         time.sleep(gc_grace_seconds + 1)
-        node1.compact()
+        self.cluster.compact()
 
         # Verify the data by queries
         assert_none(session, "SELECT * FROM ks.cf WHERE key = 'k2'")
         assert_all(session, "SELECT * FROM ks.cf", [['k1', 'value1', 'value2'], ['k0', 'value1', 'value2']])
 
-        try:
-            res = node1.watch_log_for(exprs="sstable - Unable to delete", from_mark=from_mark, timeout=10)
-        except TimeoutError:
-            res = None
+        for node, from_mark in [[node1, from_mark1], [node2, from_mark2], [node3, from_mark3]]:
+            try:
+                res = node.watch_log_for(exprs="sstable - Unable to delete", from_mark=from_mark, timeout=10)
+            except TimeoutError:
+                res = None
 
-        self.assertFalse(res, "Don't expect the 'Unable to delete' error")
+            self.assertFalse(res, "Don't expect the 'Unable to delete' error")
