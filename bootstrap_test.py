@@ -791,3 +791,49 @@ class TestBootstrap(Tester):
         debug("Verified bootstrap started on node2")
         for k in range(1000):
             query_c1c2(session, k)
+
+    def seeds_on_duty_test(self):
+        """
+        This test try to stop original seeds after added new node, then try to add more node.
+        Expect the seeds duty will be transferred to other nodes.
+        """
+        debug("populating cluster with 2 nodes")
+        cluster = self.cluster
+        cluster.populate(2)
+        (node1, node2) = cluster.nodelist()
+        debug("starting init cluster")
+        cluster.start(wait_for_binary_proto=True, wait_other_notice=True)
+
+        debug("stopping node1")
+        node1.stop(wait_other_notice=True, gently=True)
+
+        def add_and_start_a_node(n):
+            """add a new node to cluster, and start it"""
+            debug(f"adding node{n}")
+            node = cluster.new_node(n)
+            debug(f"starting node{n}")
+            node.start(wait_other_notice=True)
+            return node
+
+        self.ignore_log_patterns += ['Startup failed']
+        # can't add a new node to cluster if a node stop
+        try:
+            node3 = cluster.new_node(3)
+            node3.start(wait_other_notice=True)
+        except RuntimeError as e:
+            debug(e)
+            self.assertIn('The process is dead', str(e))
+
+        debug("starting node1 again")
+        node1.start(wait_other_notice=True)
+
+        debug("starting node3")
+        node3.start(wait_other_notice=True)
+        debug('removing node1 and node2, `node3` will be on duty')
+        node1.decommission()
+        node2.decommission()
+
+        add_and_start_a_node(4)
+        debug('removing node3, `node4` will be on duty')
+        node3.decommission()
+        add_and_start_a_node(5)
