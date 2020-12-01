@@ -17,7 +17,7 @@ from datetime import datetime as dt
 from nose.plugins.attrib import attr
 import sstable_tools.statistics
 
-from ccmlib.node import NodetoolError
+from ccmlib.node import NodetoolError, TimeoutError
 from random import randint
 
 
@@ -837,8 +837,8 @@ class TestGarabageCollected(Tester):
         assert_all(session, "SELECT * FROM ks.cf", [['k1', 'value1', 'value2'], ['k0', 'value1', 'value2']])
 
         try:
-            res = node.watch_log_for(exprs="sstable - Unable to delete", from_mark=from_mark, timeout=10)
-        except Exception:
+            res = node1.watch_log_for(exprs="sstable - Unable to delete", from_mark=from_mark, timeout=10)
+        except TimeoutError:
             res = None
 
         self.assertFalse(res, "Don't expect the 'Unable to delete' error")
