@@ -3,6 +3,7 @@ import time
 import docker
 from ldap3 import Server, Connection, ALL, ALL_ATTRIBUTES
 from dtest import debug
+from ldap3.core.exceptions import LDAPSessionTerminatedByServerError
 
 
 def running_in_docker():
@@ -30,6 +31,23 @@ class LdapConnectionDoesNotExist(Exception):
     pass
 
 
+# If the server has terminated the connection lets try to rebuild it
+# once.
+def try_and_recreate_connetion(func):
+    def inner(*args, **kwargs):
+        try:
+            try:
+                return func(*args, **kwargs)
+            except LDAPSessionTerminatedByServerError:
+                args[0].create_ldap_connection()
+                return func(*args, **kwargs)
+        except:
+            args[0].container.reload()
+            debug("LDAP Container ({}) status:{}".format(args[0].container.name, args[0].container.status))
+            debug(f"LDAP SERVER LOG DUMP: {args[0].container.logs().decode('utf-8')}")
+            raise
+    return inner
+
 class LdapDocker(object):
     def __init__(self):
         self.docker = docker.from_env()
@@ -52,6 +70,7 @@ class LdapDocker(object):
                                    environment=[f'LDAP_ORGANISATION={organisation}', f'LDAP_DOMAIN={domain}',
                                                 f'LDAP_ADMIN_PASSWORD={password}'],
                                    image=image,
+                                   command="--loglevel trace",
                                    detach=True,
                                    labels=['dtest'])
         for container in self.docker.containers.list():
@@ -96,25 +115,16 @@ class LdapDocker(object):
         self.conn.unbind()
         self.conn = None
 
+    @try_and_recreate_connetion
     def add_ldap_object(self, *args, **kwargs):
-        try:
-            self.conn.add(*args, **kwargs)
-        except:
-            debug(f"LDAP SERVER LOG DUMP: {self.container.logs().decode('utf-8')}")
-            raise
+        self.conn.add(*args, **kwargs)
         return self.conn.result
 
+    @try_and_recreate_connetion
     def search_ldap_object(self, search_base, search_filter):
-        try:
-            self.conn.search(search_base=search_base, search_filter=search_filter, attributes=ALL_ATTRIBUTES)
-        except:
-            debug(f"LDAP SERVER LOG DUMP: {self.container.logs().decode('utf-8')}")
-            raise
+        self.conn.search(search_base=search_base, search_filter=search_filter, attributes=ALL_ATTRIBUTES)
         return self.conn.entries
 
+    @try_and_recreate_connetion
     def modify_ldap_object(self, *args, **kwargs):
-        try:
-            return self.conn.modify(*args, **kwargs)
-        except:
-            debug(f"LDAP SERVER LOG DUMP: {self.container.logs().decode('utf-8')}")
-            raise
+        return self.conn.modify(*args, **kwargs)
