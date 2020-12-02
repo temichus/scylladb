@@ -93,16 +93,18 @@ class LdapDocker(object):
     def remove_container(self, force=True):
         if not self.container:
             raise ContainerDoesNotExist('LDAP docker does not exists for this instance')
-        self.container.remove(force=force)
-        self.container = None
         if self.conn:
             self.disconnect_ldap()
+        self.container.remove(force=force)
+        self.container = None
+
 
     def create_ldap_connection(self, user='cn=admin,dc=scylladb,dc=com', password='scylla'):
-        self.ldap_server = Server(host=f'ldap://{self.ldap_address}:{self.ldap_port}', get_info=ALL)
-        self.conn = Connection(server=self.ldap_server, user=user, password=password)
+        if not self.ldap_server:
+            self.ldap_server = Server(host=f'ldap://{self.ldap_address}:{self.ldap_port}', get_info=ALL)
+        if not self.conn:
+            self.conn = Connection(server=self.ldap_server, user=user, password=password)
         time.sleep(3)
-        self.conn.open()
         self.conn.bind()
         self.ldap_base_object = self.ldap_server.info.naming_contexts[0]
 
