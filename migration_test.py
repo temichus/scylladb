@@ -305,12 +305,19 @@ class MigrationTestBase(Tester):
         self.assertEqual(result[0].p1, 'key1', "check partition key")
         self.assertEqual(result[0].r1, 2, "check value")
 
+    @attr('single_node')
     def migrate_sstable_with_large_row_number_test(self):
         """
         Create scylla cluster and run cassandra stress test to populate large number of rows.
         Migrate sstables and validate that all the rows are loaded
         """
+        timeout = self.cql_timeout(300)
+        values = {
+            'range_request_timeout_in_ms': timeout * 1000,
+        }
+        debug(f"Setting cluster configuration options: {values}")
         cluster = self.cluster
+        cluster.set_configuration_options(values=values)
         cluster.populate(1).start()
         node1 = cluster.nodelist()[0]
 
@@ -323,10 +330,6 @@ class MigrationTestBase(Tester):
                                     'test_data/c-s-profiles/cassandra-stress-custom-large-row-num-1.yaml')
         node1.stress(['user', 'profile={}'.format(profile_path), 'ops(insert=1)', 'n={}'.format(stress_count), '-rate', 'threads=4'],
                      capture_output=True)
-
-        timeout = 300
-        if cluster.scylla_mode == 'debug':
-            timeout *= 3
 
         debug('Reading initial data')
         session = self.patient_cql_connection(node1)
@@ -846,6 +849,7 @@ class TTLWithMigrate(Tester):
 
     def prepare(self, default_time_to_live=None, create_table_statement=None, nodes=1, rf=1, configuration_options=None, custom_args=None):
         if configuration_options:
+            debug(f"Setting cluster configuration options: {configuration_options}")
             self.cluster.set_configuration_options(values=configuration_options)
         self.cluster.populate(nodes).start(jvm_args=custom_args)
         node1 = self.cluster.nodelist()[0]
@@ -881,7 +885,10 @@ class TTLWithMigrate(Tester):
          - Take dump
          - Compare dumps
         """
-        self.prepare(nodes=4, rf=3, custom_args=["--smp", "1", "--memory", "512M"])
+        timeout = self.cql_timeout(300)
+        self.prepare(nodes=4, rf=3, custom_args=["--smp", "1", "--memory", "512M"], configuration_options={
+            'range_request_timeout_in_ms': timeout * 1000,
+        })
         keyspace_name = 'ks'
         table_name = 'cf'
         int_columns = 99
@@ -914,6 +921,8 @@ class TTLWithMigrate(Tester):
 
         big_partition = partitions + 1
         big_partition_rows = 100000
+        if hasattr(self.cluster, 'scylla_mode') and self.cluster.scylla_mode == 'debug':
+            big_partition_rows //= 10
         debug('Create partition where pk = {} with {} rows'.format(big_partition, big_partition_rows))
         for k in range(1, big_partition_rows+1):
             s = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(10))
@@ -929,7 +938,7 @@ class TTLWithMigrate(Tester):
 
         debug('Verifying that big_partition where pk = {} has {} rows'.format(big_partition, big_partition_rows))
         count_query = 'select count(*) from {}.{} where pk = {}'.format(keyspace_name, table_name, big_partition)
-        scylla_big_partition_count = list(self.session1.execute(count_query, timeout=120))[0][0]
+        scylla_big_partition_count = list(self.session1.execute(count_query, timeout=timeout))[0][0]
         self.assertTrue(scylla_big_partition_count == big_partition_rows,
                         msg='Expected {big_partition_rows} rows in the big partition before update, but received '
                             '{scylla_big_partition_count}'.format(**locals()))
@@ -1020,7 +1029,7 @@ class TTLWithMigrate(Tester):
 
         debug('Verifying that big_partition where pk = {} has {} rows'.format(big_partition, big_partition_rows))
         count_query = 'select count(*) from {}.{} where pk = {}'.format(keyspace_name, table_name, big_partition)
-        scylla_big_partition_count = list(self.session1.execute(count_query, timeout=120))[0][0]
+        scylla_big_partition_count = list(self.session1.execute(count_query, timeout=timeout))[0][0]
         self.assertTrue(scylla_big_partition_count == big_partition_rows,
                         msg='Expected {big_partition_rows} rows in the big partition, but received '
                             '{scylla_big_partition_count}'.format(**locals()))

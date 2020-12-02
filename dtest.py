@@ -416,6 +416,7 @@ class Tester(TestCase):
         self._handling_timeout = False
         self.connections = []
         self.runners = []
+        self.base_cql_timeout = 10  # seconds
         super(Tester, self).__init__(*argv, **kwargs)
 
     def _reuse_preserved_cluster(self):
@@ -652,16 +653,16 @@ class Tester(TestCase):
         # the failure detector can be quite slow in such tests with quick start/stop
         self.cluster.set_configuration_options(values={'phi_convict_threshold': 5})
 
-        timeout = 10000
-        self.cql_request_timeout = 30
-        if isinstance(self.cluster, ScyllaCluster) and self.cluster.scylla_mode == 'debug':
-            timeout *= 3
-            self.cql_request_timeout *= 3
+        timeout = self.cql_timeout() * 1000
+        range_timeout = 3 * timeout
+        self.cql_request_timeout = 3 * self.cql_timeout()
+        if isinstance(self.cluster, ScyllaCluster):
             debug("Scylla mode is '{}'".format(self.cluster.scylla_mode))
-        debug("Cluster *_request_timeout_in_ms={}, cql request_timeout={}".format(timeout, self.cql_request_timeout))
+        debug("Cluster *_request_timeout_in_ms={}, range_request_timeout_in_ms={}, cql request_timeout={}".format(
+            timeout, range_timeout, self.cql_request_timeout))
         self.cluster.set_configuration_options(values={
             'read_request_timeout_in_ms': timeout,
-            'range_request_timeout_in_ms': timeout,
+            'range_request_timeout_in_ms': range_timeout,
             'write_request_timeout_in_ms': timeout,
             'truncate_request_timeout_in_ms': timeout,
             'request_timeout_in_ms': timeout
@@ -1513,6 +1514,17 @@ class Tester(TestCase):
         warnings.filterwarnings('ignore', message='Unverified HTTPS request')
         debug(f'Created certificate file in "{cert_file}" path, and private key in "{key_file}" path')
         return cert_file, key_file
+
+    def cql_timeout(self, seconds = None):
+        if not seconds:
+            seconds = self.base_cql_timeout
+        factor = 1
+        if isinstance(self.cluster, ScyllaCluster):
+            if self.cluster.scylla_mode == 'debug':
+                factor = 3
+            elif self.cluster.scylla_mode != 'release':
+                factor = 2
+        return seconds * factor
 
 
 @attr('reuse-cluster')

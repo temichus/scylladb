@@ -24,7 +24,7 @@ import random
 class TestUpdateClusterLayout(Tester):
 
     def check_rows_on_node(self, node_to_check, rows, found=None, missings=None, restart=True, ks='ks', cf='cf',
-                           counter_column=None):
+                           counter_column=None, timeout=None):
         if found is None:
             found = []
         if missings is None:
@@ -36,14 +36,18 @@ class TestUpdateClusterLayout(Tester):
                 stopped_nodes.append(node)
                 node.stop(wait_other_notice=True)
 
+        if not timeout:
+            timeout = self.cql_timeout(300)
+
         session = self.patient_cql_connection(node_to_check, ks)
         if rows > 1000 and counter_column:
-            result = list(session.execute("select count(%s) from %s.%s limit %d;" % (counter_column, ks, cf, rows * 2),
-                                          timeout=300))
+            query = SimpleStatement(f"SELECT count({counter_column}) FROM {ks}.{cf} LIMIT {rows * 2}", consistency_level=ConsistencyLevel.ONE)
+            result = list(session.execute(query, timeout=timeout))
             count = result[0][0]
             self.assertEqual(count, rows, count)
         else:
-            result = list(session.execute("SELECT * FROM %s LIMIT %d" % (cf, rows * 2)))
+            query = SimpleStatement(f"SELECT * FROM {ks}.{cf} LIMIT {rows * 2}", consistency_level=ConsistencyLevel.ONE)
+            result = list(session.execute(query, timeout=timeout))
             self.assertEqual(len(result), rows, len(result))
 
         for k in found:
@@ -1422,9 +1426,17 @@ class TestUpdateClusterLayout(Tester):
         2. Add a new node
         3. Check that each node has all the data
         """
+        timeout = self.cql_timeout(300)
+        values = {
+            'range_request_timeout_in_ms': timeout * 1000,
+        }
+        debug(f"Setting cluster configuration options: {values}")
         cluster = self.cluster
+        cluster.set_configuration_options(values=values)
 
         nr_partitions = 100  # 100 fails 10 works
+        if hasattr(self.cluster, 'scylla_mode') and self.cluster.scylla_mode == 'debug':
+            nr_partitions //= 10
         # In cassandra-stress-custom-large-partition-1.yaml
         # name: key2
         # cluster: uniform(3000..3000)
@@ -1451,9 +1463,9 @@ class TestUpdateClusterLayout(Tester):
         debug("Node 2 started")
 
         debug("Check rows on node2")
-        self.check_rows_on_node(node2, nr_rows, ks='keyspace1', cf='standard1', counter_column='cn')
+        self.check_rows_on_node(node2, nr_rows, ks='keyspace1', cf='standard1', counter_column='cn', timeout=timeout)
         debug("Check rows on node1")
-        self.check_rows_on_node(node1, nr_rows, ks='keyspace1', cf='standard1', counter_column='cn')
+        self.check_rows_on_node(node1, nr_rows, ks='keyspace1', cf='standard1', counter_column='cn', timeout=timeout)
 
     def increment_decrement_counters_in_threads_nodes_restarted_test(self):
         """

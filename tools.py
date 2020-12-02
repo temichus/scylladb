@@ -423,8 +423,10 @@ def require(require_pattern, broken_in=None):
         return tagging_decorator
 
 
-def run_query_with_data_processing(session, query, consistency_level=ConsistencyLevel.ONE, session_timeout=120,
+def run_query_with_data_processing(session, query, consistency_level=ConsistencyLevel.ONE, session_timeout=None,
                                    group=False, groupby_column=None, restrict_column=None, restrict_value=None):
+    if not session_timeout:
+        session_timeout = 120
     result = list(session.execute(SimpleStatement(query, consistency_level=consistency_level), timeout=session_timeout))
     if result:
         if restrict_column:

@@ -92,6 +92,7 @@ class TestMaterializedViews(Tester):
         cluster.populate(populate)
         self.rf = sum([v for v in rf.values()]) if isinstance(rf, dict) else rf
         if options:
+            debug(f"Setting cluster configuration options: {options}")
             cluster.set_configuration_options(values=options)
         cluster.start(jvm_args=jvm_args, wait_other_notice=True, wait_for_binary_proto=True)
         node1 = cluster.nodelist()[0]
@@ -960,6 +961,8 @@ class TestMaterializedViews(Tester):
             - Test that the view does not exist in the system schema and base table has 1000000 rows
         """
         prefill = 1000000
+        if hasattr(self.cluster, 'scylla_mode') and self.cluster.scylla_mode == 'debug':
+            prefill //= 10
 
         def _create_mvs(delay=0):
             time.sleep(delay)
@@ -971,7 +974,10 @@ class TestMaterializedViews(Tester):
             time.sleep(delay)
             next(iter(tm.materialized_views.values())).drop_mv()
 
-        session = self.prepare(rf=3, nodes=4)
+        timeout = self.cql_timeout(300)
+        session = self.prepare(rf=3, nodes=4, options={
+            'range_request_timeout_in_ms': timeout * 1000,
+        })
         tm = TableManager(session, self.cluster,
                           columns={'int': {'amount': 1, 'frozen': False,
                                            'value length': {'min': 1, 'max': 100}}
@@ -985,8 +991,10 @@ class TestMaterializedViews(Tester):
         run_in_parallel(proc_functions)
         self.cluster.flush()
 
+        debug("Verifying that system_schema.views is empty")
         assert_none(session, 'select * from system_schema.views', cl=ConsistencyLevel.ALL)
-        assert_row_count(session, tm.table_name, prefill, consistency_level=ConsistencyLevel.QUORUM)
+        debug(f"Verifying that {tm.table_name} has {prefill} rows")
+        assert_row_count(session, tm.table_name, prefill, consistency_level=ConsistencyLevel.QUORUM, timeout=timeout)
 
         self.check_errors(node=self.cluster.nodelist()[0], exclude_errors=[
                           'mutation_write_timeout_exception', 'no_such_column_family'])
@@ -3731,6 +3739,7 @@ class TestMaterializedViewsConsistency(Tester):
     def prepare(self, user_table=False, options={}):
         cluster = self.cluster
         if options:
+            debug(f"Setting cluster configuration options: {options}")
             cluster.set_configuration_options(values=options)
         cluster.populate(3).start()
         node2 = cluster.nodelist()[1]

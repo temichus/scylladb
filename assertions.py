@@ -86,11 +86,11 @@ def assert_none(session, query, cl=ConsistencyLevel.ONE, num_attempts=1):
 
 @retry_with_func_attempts
 def assert_all(session, query, expected, cl=ConsistencyLevel.ONE, ignore_order=False, num_attempts=1,
-               result_as_string=False, print_result_on_failure=True):
+               result_as_string=False, print_result_on_failure=True, timeout=None):
     """
     :param num_attempts: defines how many time try to assert data in case failure. Used in retry_with_func_attempts decorator
     """
-    list_res = _get_list_res(session, query, cl, ignore_order, result_as_string)
+    list_res = _get_list_res(session, query, cl, ignore_order, result_as_string, timeout=timeout)
     if ignore_order:
         expected = sorted(expected)
     error = f"Expected {expected} from {query}, but got {list_res}" if print_result_on_failure \
@@ -98,11 +98,11 @@ def assert_all(session, query, expected, cl=ConsistencyLevel.ONE, ignore_order=F
     assert list_res == expected, error
 
 
-def assert_all_or_none(session, query, expected, cl=ConsistencyLevel.ONE, ignore_order=False, num_attempts=1, result_as_string=False):
+def assert_all_or_none(session, query, expected, cl=ConsistencyLevel.ONE, ignore_order=False, num_attempts=1, result_as_string=False, timeout=None):
     """
     :param num_attempts: defines how many time try to assert data in case failure. Used in retry_with_func_attempts decorator
     """
-    list_res = _get_list_res(session, query, cl, ignore_order, result_as_string)
+    list_res = _get_list_res(session, query, cl, ignore_order, result_as_string, timeout=timeout)
     if ignore_order:
         expected = sorted(expected)
     assert (list_res == expected or list_res == []), "Expected %s or [] from %s, but got %s" % (expected, query, list_res)
@@ -120,14 +120,14 @@ def assert_almost_equal(*args, **kwargs):
 
 
 @retry_with_func_attempts
-def assert_row_count(session, table_name, expected, consistency_level=ConsistencyLevel.ONE, num_attempts=1):
+def assert_row_count(session, table_name, expected, consistency_level=ConsistencyLevel.ONE, num_attempts=1, timeout=None):
     """
     Function to validate the row count expected in table_name
     :param num_attempts: defines how many time try to assert data in case failure. Used in retry_with_func_attempts decorator
     """
 
     query = "SELECT count(*) FROM {}".format(table_name)
-    count = run_query_with_data_processing(session, query, consistency_level=consistency_level)
+    count = run_query_with_data_processing(session, query, consistency_level=consistency_level, session_timeout=timeout)
     if isinstance(count, list):
         count = count[0][0]
     assert count == expected, "Expected a row count of {} in table '{}', but got {}".format(
@@ -135,24 +135,24 @@ def assert_row_count(session, table_name, expected, consistency_level=Consistenc
 
 
 @retry_with_func_attempts
-def assert_row_count_in_select(session, query, num_rows_expected, consistency_level=ConsistencyLevel.ONE, num_attempts=1):
+def assert_row_count_in_select(session, query, num_rows_expected, consistency_level=ConsistencyLevel.ONE, num_attempts=1, timeout=None):
     """
     Function to validate the row count are returned by select
     :param num_attempts: defines how many time try to assert data in case failure. Used in retry_with_func_attempts decorator
     """
-    count = len(_get_list_res(session, query, consistency_level))
+    count = len(_get_list_res(session, query, consistency_level, timeout=timeout))
     assert count == num_rows_expected, "Expected a row count of {} in query \"{}\", but got {}".format(
         num_rows_expected, query, count)
 
 
 @retry_with_func_attempts
 def assert_row_count_in_select_less(session, query, max_rows_expected, consistency_level=ConsistencyLevel.ONE,
-                                    num_attempts=1):
+                                    num_attempts=1, timeout=None):
     """
     Function to validate the row count are returned by select
     :param num_attempts: defines how many time try to assert data in case failure. Used in retry_with_func_attempts decorator
     """
-    count = len(_get_list_res(session, query, consistency_level))
+    count = len(_get_list_res(session, query, consistency_level, timeout=timeout))
     assert count < max_rows_expected, "Expected a row count < of {} in query \"{}\", but got {}".format(
         max_rows_expected, query, count)
 
