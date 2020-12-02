@@ -107,7 +107,7 @@ class CdcTools(Tester, CDCInitializeHelper):
         session.execute(stm, data)
 
     def get_cdc_log_records_by_timestamp(self, session, timestamp):
-        timestamp = self._convert_from_micro_to_mili_seconds(timestamp)
+        timestamp = self._convert_from_micro_to_milli_seconds(timestamp)
         res_cdc_log = list(session.execute(f"SELECT * FROM {self.keyspace}.{self.table_cdc_log} \
                                            WHERE \"cdc$time\" >= minTimeuuid({timestamp}) \
                                              AND \"cdc$time\" <= maxTimeuuid({timestamp}) ALLOW FILTERING"))
