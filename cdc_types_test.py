@@ -604,7 +604,8 @@ class CDCCollectionsTmpl(CdcTools):
         if add_element:
             self.update_collection_with_element_with_timestamp(session, self.added_element_dataset, timestamp, add=True)
         elif remove_element:
-            self.update_collection_with_element_with_timestamp(session, self.deleted_element_dataset, timestamp, add=False)
+            self.update_collection_with_element_with_timestamp(
+                session, self.deleted_element_dataset, timestamp, add=False)
         else:
             self.update_one_with_timestamp(session, self.updated_dataset, timestamp)
         cdc_log_data = self.get_cdc_log_records_by_timestamp(session, timestamp)

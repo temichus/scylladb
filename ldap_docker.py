@@ -48,6 +48,7 @@ def try_and_recreate_connetion(func):
             raise
     return inner
 
+
 class LdapDocker(object):
     def __init__(self):
         self.docker = docker.from_env()
@@ -97,7 +98,6 @@ class LdapDocker(object):
             self.disconnect_ldap()
         self.container.remove(force=force)
         self.container = None
-
 
     def create_ldap_connection(self, user='cn=admin,dc=scylladb,dc=com', password='scylla'):
         if not self.ldap_server:

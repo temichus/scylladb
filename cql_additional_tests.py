@@ -712,7 +712,6 @@ class TestCQL(Tester):
                                expected=NoHostAvailable
                                )
 
-
     @attr('dtest-full')
     def query_coloumn_timeuuid_with_invalid_values_test(self):
         """Test time functions combination and invalid time values issue #5552"""
