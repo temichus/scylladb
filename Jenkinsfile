@@ -58,7 +58,7 @@ pipeline {
                         mkdir -p ./temp_home
                         export HOME=`pwd`/temp_home
                         export SCYLLA_VERSION=dummy
-                        ./scripts/run_test.sh 'bash -c "pre-commit run -a"'
+                        ./scripts/run_test.sh 'bash -c "pre-commit run -a --show-diff-on-failure"'
                         '''
                         pullRequestSetResult('success', 'jenkins/precommit', 'Precommit passed')
                     } catch(Exception ex) {
