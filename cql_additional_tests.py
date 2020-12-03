@@ -2203,38 +2203,6 @@ class TestCQL(Tester):
         assert rows_to_list(res) == [[0, 2, 2, 2], [0, 3, 3, 3], [0, 0, 0, 0], [0, 1, 1, 1]], list(res)
 
     @attr('single_node')
-    def cql3_insert_thrift_test(self):
-        """ Check that we can insert from thrift into a CQL3 table (#4377) """
-        session = self.prepare(start_rpc=True)
-
-        session.execute("""
-            CREATE TABLE test (
-                k int,
-                c int,
-                v int,
-                PRIMARY KEY (k, c)
-            )
-        """)
-
-        node = self.cluster.nodelist()[0]
-        host, port = node.network_interfaces['thrift']
-        client = get_thrift_client(host, port)
-        client.transport.open()
-        client.set_keyspace('ks')
-        key = struct.pack('>i', 2)
-        column_name_component = struct.pack('>i', 4)
-        # component length + component + EOC + component length + component + EOC
-        column_name = b'\x00\x04' + column_name_component + b'\x00' + b'\x00\x01' + 'v'.encode('utf-8') + b'\x00'
-        value = struct.pack('>i', 8)
-        client.batch_mutate(
-            {key: {'test': [Mutation(ColumnOrSuperColumn(
-                column=Column(name=column_name, value=value, timestamp=100)))]}},
-            ThriftConsistencyLevel.ONE)
-
-        res = session.execute("SELECT * FROM test")
-        assert rows_to_list(res) == [[2, 4, 8]], list(res)
-
-    @attr('single_node')
     def row_existence_test(self):
         """ Check the semantic of CQL row existence (part of #4361) """
         session = self.prepare()
