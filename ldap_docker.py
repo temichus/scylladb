@@ -4,7 +4,6 @@ import docker
 from ldap3 import Server, Connection, ALL, ALL_ATTRIBUTES
 from dtest import debug
 from dtest import retrying
-from ldap3.core.exceptions import LDAPSessionTerminatedByServerError
 from ldap3.core.exceptions import LDAPSocketOpenError
 
 
@@ -37,17 +36,11 @@ class LdapServerNotReady(Exception):
 
 # If the server has terminated the connection lets try to rebuild it
 # once.
-def try_and_recreate_connetion(func):
+def dump_ldap_log_on_failure(func):
     def inner(*args, **kwargs):
         try:
-            try:
-                return func(*args, **kwargs)
-            except LDAPSessionTerminatedByServerError:
-                args[0].create_ldap_connection()
-                return func(*args, **kwargs)
+            return func(*args, **kwargs)
         except:
-            args[0].container.reload()
-            debug("LDAP Container ({}) status:{}".format(args[0].container.name, args[0].container.status))
             debug(f"LDAP SERVER LOG DUMP: {args[0].container.logs().decode('utf-8')}")
             raise
     return inner
@@ -75,7 +68,6 @@ class LdapDocker(object):
                                    environment=[f'LDAP_ORGANISATION={organisation}', f'LDAP_DOMAIN={domain}',
                                                 f'LDAP_ADMIN_PASSWORD={password}'],
                                    image=image,
-                                   command="--loglevel trace",
                                    detach=True,
                                    labels=['dtest'])
         for container in self.docker.containers.list():
@@ -139,16 +131,16 @@ class LdapDocker(object):
         self.conn.unbind()
         self.conn = None
 
-    @try_and_recreate_connetion
+    @dump_ldap_log_on_failure
     def add_ldap_object(self, *args, **kwargs):
         self.conn.add(*args, **kwargs)
         return self.conn.result
 
-    @try_and_recreate_connetion
+    @dump_ldap_log_on_failure
     def search_ldap_object(self, search_base, search_filter):
         self.conn.search(search_base=search_base, search_filter=search_filter, attributes=ALL_ATTRIBUTES)
         return self.conn.entries
 
-    @try_and_recreate_connetion
+    @dump_ldap_log_on_failure
     def modify_ldap_object(self, *args, **kwargs):
         return self.conn.modify(*args, **kwargs)
