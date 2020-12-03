@@ -3,7 +3,9 @@ import time
 import docker
 from ldap3 import Server, Connection, ALL, ALL_ATTRIBUTES
 from dtest import debug
+from dtest import retrying
 from ldap3.core.exceptions import LDAPSessionTerminatedByServerError
+from ldap3.core.exceptions import LDAPSocketOpenError
 
 
 def running_in_docker():
@@ -30,6 +32,8 @@ class LdapConnectionAlreadyStarted(Exception):
 class LdapConnectionDoesNotExist(Exception):
     pass
 
+class LdapServerNotReady(Exception):
+    pass
 
 # If the server has terminated the connection lets try to rebuild it
 # once.
@@ -85,6 +89,18 @@ class LdapDocker(object):
                     self.ldap_port = container.ports['389/tcp'][0]['HostPort']
                     self.ldap_ssl_port = container.ports['636/tcp'][0]['HostPort']
                     self.ldap_address = 'localhost'
+        if self.container:
+            # We try to wait here for the startup, if the server haven't finished
+            # after 30s we will continue with the wishfull thinking that by the time
+            # scylla will try to connect to it, it will be up and running.
+            # if it will not happen, the test will fail and we will need to increase
+            # the timeout. But it is better than failing early.
+            # for creating connections to the server we are covered since the connection
+            # creation function also waits for the server to be up.
+            try:
+                self.wait_for_ldap_server_startup()
+            except:
+                pass
 
     def is_container_running(self):
         if not self.container:
@@ -99,12 +115,18 @@ class LdapDocker(object):
         self.container.remove(force=force)
         self.container = None
 
+    def wait_for_ldap_server_startup(self, timeout=30):
+        if self.container.exec_run(f"timeout {timeout}s container/tool/wait-process")[0] != 0:
+            raise LdapServerNotReady("LDAP server didn't finish its startup yet...")
+
+    @retrying(num_attempts=5, sleep_time=2, allowed_exceptions=(LDAPSocketOpenError, LdapServerNotReady),
+              message='Trying to create LDAP connection')
     def create_ldap_connection(self, user='cn=admin,dc=scylladb,dc=com', password='scylla'):
+        self.wait_for_ldap_server_startup(5)
         if not self.ldap_server:
             self.ldap_server = Server(host=f'ldap://{self.ldap_address}:{self.ldap_port}', get_info=ALL)
         if not self.conn:
             self.conn = Connection(server=self.ldap_server, user=user, password=password)
-        time.sleep(3)
         self.conn.bind()
         self.ldap_base_object = self.ldap_server.info.naming_contexts[0]
 
