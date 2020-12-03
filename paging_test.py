@@ -3004,3 +3004,56 @@ class TestUnpagedQueryLimit(Tester):
                 self.fail("Expected query to fail")
             except Exception as e:
                 debug("Exception caught as expected: {}".format(e))
+
+    def mark_all_nodes_logs(self):
+        nodes_with_marks = dict()
+        for node in self.cluster.nodelist():
+            nodes_with_marks[node] = node.mark_log()
+        return nodes_with_marks
+
+    @staticmethod
+    def check_log_with_multiple_marks(filter_expr, nodes_with_marks):
+        for node in nodes_with_marks.keys():
+            if node.grep_log(filter_expr, from_mark=nodes_with_marks[node]):
+                return True
+        return False
+
+    def test_unpaged_large_partition_soft_limit(self):
+        limit = 1024
+        self.cluster.set_configuration_options(
+            values={'max_memory_for_unlimited_query_soft_limit': limit}
+        )
+        warning_message = f'mutation_partition - Memory usage of unpaged query exceeds soft limit of ' \
+                          f'{limit} \\(configured via max_memory_for_unlimited_query_soft_limit\\)'
+        self.cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True)
+        node1 = self.cluster.nodelist()[0]
+        session = self.patient_cql_connection(node1)
+        session.execute(
+            "CREATE KEYSPACE TestUnpagedQueryLimit WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}")
+        session.execute(
+            "CREATE TABLE TestUnpagedQueryLimit.test_unpaged_large_partition (pk int, ck int, v text, PRIMARY KEY (pk, ck) )")
+
+        prepared_insert = session.prepare(
+            "INSERT INTO TestUnpagedQueryLimit.test_unpaged_large_partition (pk, ck, v) VALUES (?, ?, ?)")
+
+        v = 'a' * 1024
+
+        for i in range(4 * 1024):
+            session.execute(prepared_insert.bind((0, i, v)))
+
+        node = random.choice(self.cluster.nodelist())
+        session = self.patient_cql_connection(node)
+        session.default_fetch_size = -1
+
+        # Partition scan
+        partition_scan_mark = self.mark_all_nodes_logs()
+        session.execute("SELECT * FROM TestUnpagedQueryLimit.test_unpaged_large_partition WHERE pk = 0")
+
+        if not self.check_log_with_multiple_marks(warning_message, partition_scan_mark):
+            self.fail(f'Message {warning_message} not found for partition scan, hence failing')
+
+        # Full scan
+        full_scan_mark = self.mark_all_nodes_logs()
+        session.execute("SELECT * FROM TestUnpagedQueryLimit.test_unpaged_large_partition")
+        if not self.check_log_with_multiple_marks(warning_message, full_scan_mark):
+            self.fail(f'Message {warning_message} not found for full scan, hence failing')
