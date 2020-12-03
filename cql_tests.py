@@ -19,6 +19,7 @@ from thrift_bindings.thrift010.ttypes import \
     ConsistencyLevel as ThriftConsistencyLevel
 from thrift_bindings.thrift010.ttypes import (CfDef, Column, ColumnOrSuperColumn,
                                               Mutation)
+from thrift.Thrift import TApplicationException
 from thrift_tests import get_thrift_client
 from tools import debug, require, rows_to_list, since, new_node
 from scylla_tools import get_entity_id, get_truncated_time_from_system_local, get_truncated_time_from_system_truncated
@@ -308,9 +309,12 @@ class MiscellaneousCQLTester(CQLTester):
         assert rows_to_list(res) == [[2, 4, 8]], res
 
     @attr('single_node')
-    @require('7568')
     def cql3_insert_thrift_test_expect_error(self):
-        """ Check that we can insert from thrift into a CQL3 table (#4377) """
+        """
+        Originally, the test checked that we can insert from thrift into a CQL3 table (#4377).
+        However, Scylla does not support manipulation of regular tables (See scylladb/scylla#7568)
+        so expect thrift insert to fail.
+        """
         session = self.prepare(start_rpc=True)
 
         session.execute("""
@@ -338,7 +342,7 @@ class MiscellaneousCQLTester(CQLTester):
                 {key: {'test': [Mutation(ColumnOrSuperColumn(
                     column=Column(name=column_name, value=value, timestamp=100)))]}},
                 ThriftConsistencyLevel.ONE)
-        except InvalidRequestException:
+        except TApplicationException:
             rejected = True
             pass
         assert rejected, "mutation expected to be rejected due to bad clustering key"
