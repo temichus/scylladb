@@ -434,9 +434,27 @@ class CompactionAdditionalStrategyTests(Tester):
 
         cf_dir = get_node_cf_dir(node1, 'ks', 'cf')
         sstablefiles = get_sstables_files(cf_dir)
+        # prepare a mapping between each sstable generation
+        # to new, unique generations it will be copied to
+        gmap = dict()
+        rmap = dict()
+        generations = set([self._get_sstable_generation(f) for f in sstablefiles])
+        for gen in generations:
+            mapped = []
+            for i in range(1, 5):
+                while True:
+                    n = random.randint(10000, 100000)
+                    if not n in rmap:
+                        rmap[n] = gen
+                        mapped.append(n)
+                        break
+            gmap[gen] = mapped
+            debug(f"Will copy SSTable with generation {gen} to generations {mapped}")
+
         for f in sstablefiles:
-            for generation_suffix in range(10, 40):
-                self._copy_sstable_file(os.path.join(cf_dir, f), "9999%d" % generation_suffix)
+            gen = self._get_sstable_generation(f)
+            for i in gmap[gen]:
+                self._copy_sstable_file(os.path.join(cf_dir, f), str(i))
 
         before_start_sstables = get_sstables_files(cf_dir, 'Data')
 
@@ -449,6 +467,17 @@ class CompactionAdditionalStrategyTests(Tester):
 
         self.assertNotEqual(before_start_sstables, after_start_sstables,
                             "No compaction detected after restarting {}. SSTables in ks/cf: {}".format(node1.name, after_start_sstables))
+
+    def _get_sstable_generation(self, file):
+        sstable_split_parts = os.path.basename(file).split('-')
+        if (len(sstable_split_parts) == 5):
+            # <= ka format
+            return int(sstable_split_parts[-2])
+        elif (len(sstable_split_parts) == 4):
+            # >= la format
+            return int(sstable_split_parts[1])
+        else:
+            raise RuntimeError("Unexpected format of file name: '%s'" % file)
 
     def _copy_sstable_file(self, file, generation):
         sstable_split_parts = os.path.basename(file).split('-')
