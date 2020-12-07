@@ -538,7 +538,7 @@ class Tester(TestCase):
                             raise
 
                 if os.path.exists(test_path):
-                    os.rmdir(test_path)
+                    cluster.remove_dir_with_retry(test_path)
         if os.path.exists(LAST_TEST_DIR):
             os.remove(LAST_TEST_DIR)
 
