@@ -6674,6 +6674,8 @@ class CQLAdditionalTests(Tester):
         assert os.path.exists(schema_file), "schema file doesn't exist"
 
         debug("Create 100+ tables by simple_test_100tables.cql")
+
+        schema_file = self.copy_file_to_tmp(schema_file)
         nodes[0].run_cqlsh(cmds="SOURCE '%s'" % schema_file, show_output=True, return_output=True)
 
         debug("Check created tables in KEYSPACE `veraminetest`")
