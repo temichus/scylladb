@@ -119,6 +119,8 @@ class TestTopPartitions(Tester):
         pattern2 = "(?P<partition>[\w:]+)\s+(?P<count>[\d]+)\s+(?P<margin>[\d]+)"
         toppartitions = {}
         for out in output.split('\n\n'):
+            # need to skip first line cause: https://github.com/scylladb/scylla-tools-java/issues/213
+            out = out.replace('Using /etc/scylla/scylla.yaml as the config file\n', '')
             partition = OrderedDict()
             sampler_data = re.match(pattern1, out, re.MULTILINE)
             sampler_data = sampler_data.groupdict()
