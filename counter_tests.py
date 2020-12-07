@@ -3,7 +3,7 @@ import time
 import uuid
 import os
 import sys
-import shutil
+import glob
 import re
 from concurrent.futures import ThreadPoolExecutor
 
@@ -880,7 +880,9 @@ class TestCountersOnMultipleNodes(Tester):
         for dir_name in ('commitlogs', 'data/test'):
             data_dir = os.path.join(self.node3.get_path(), dir_name)
             debug("Removing {}".format(data_dir))
-            shutil.rmtree(data_dir)
+            files = glob.glob(os.path.join(self.node3.get_path(), dir_name, '*'))
+            for f in files:
+                self.cluster.remove_dir_with_retry(f)
 
         debug('Start node3 and rebuild it')
         self.node3.start(wait_other_notice=True, wait_for_binary_proto=True)
