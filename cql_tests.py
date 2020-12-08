@@ -29,7 +29,7 @@ from nose.plugins.attrib import attr
 @attr('dtest-full')
 class CQLTester(Tester):
 
-    def prepare(self, create_keyspace=True, use_cache=False, nodes=1, rf=1, protocol_version=None, user=None, password=None, **kwargs):
+    def prepare(self, create_keyspace=True, use_cache=False, nodes=1, rf=1, protocol_version=None, user=None, password=None, configuration_options=None, **kwargs):
         cluster = self.cluster
 
         if (use_cache):
@@ -44,6 +44,9 @@ class CQLTester(Tester):
                       'authorizer': 'org.apache.cassandra.auth.CassandraAuthorizer',
                       'permissions_validity_in_ms': 0}
             cluster.set_configuration_options(values=config)
+
+        if configuration_options:
+            cluster.set_configuration_options(values=configuration_options)
 
         if not cluster.nodelist():
             cluster.populate(nodes).start(wait_for_binary_proto=True)
@@ -579,6 +582,52 @@ class MiscellaneousCQLTester(CQLTester):
 
         res = list(session.execute("SELECT * FROM test"))
         assert len(res) == 2, res
+
+    def _test_query_failed_when_node_is_down(self, stop_gently: bool):
+        """
+        Test that a select query with consistency_level=QUOROM
+        returns an Unavailable error properly when one out of two nodes is DOWN.
+        """
+        cluster = self.cluster
+        # reduce range_request_timeout to make the first try
+        # timeout faster when node2 is killed.
+        session = self.prepare(nodes=2, rf=2,
+                               configuration_options={'range_request_timeout_in_ms': '5000'})
+        node1, node2 = self.cluster.nodelist()
+
+        ks = 'ks'
+        cf = 'cf'
+        session.execute(
+            f"CREATE TABLE {cf} (pk int, ck int, v text, PRIMARY KEY (pk, ck))")
+
+        debug("Inserting data...")
+        for pk in range(10):
+            for ck in range(100):
+                q = SimpleStatement(f"INSERT INTO {ks}.{cf} (pk, ck, v) VALUES ({pk}, {ck}, 'foo')",
+                                    consistency_level=ConsistencyLevel.ALL)
+                session.execute(q)
+        cluster.flush()
+
+        debug(f"Stopping node (gently={stop_gently})")
+        node2.stop(gently=stop_gently)
+
+        with self.patient_cql_cluster_session(node1, ks, exclusive=True) as session:
+            debug("Selecting with CL=ONE")
+            assert_one(session,
+                       f"SELECT count(*) from {ks}.{cf} BYPASS CACHE",
+                       [1000], cl=ConsistencyLevel.ONE)
+
+            debug("Selecting with CL=QUORUM (expected to fail)")
+            q = SimpleStatement(f"SELECT count(*) from {ks}.{cf} BYPASS CACHE",
+                                consistency_level=ConsistencyLevel.QUORUM)
+            assert_unavailable(lambda t: session.execute(q, timeout=t),
+                               self.cql_timeout(60))
+
+    def test_query_failed_when_node_is_stopped(self):
+        self._test_query_failed_when_node_is_down(stop_gently=True)
+
+    def test_query_failed_when_node_is_killed(self):
+        self._test_query_failed_when_node_is_down(stop_gently=False)
 
 
 @attr('dtest-full')
