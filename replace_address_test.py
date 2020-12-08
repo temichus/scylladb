@@ -5,7 +5,7 @@ from time import sleep
 from unittest import skip
 from nose.plugins.attrib import attr
 
-from cassandra import ConsistencyLevel, ReadTimeout, Unavailable, ReadFailure, OperationTimedOut
+from cassandra import ConsistencyLevel, ReadTimeout, Unavailable, ReadFailure
 from cassandra.query import SimpleStatement
 
 from assertions import assert_row_count, assert_all
@@ -41,10 +41,12 @@ class TestReplaceAddress(Tester):
         ]
         Tester.__init__(self, *args, **kwargs)
 
-    def init_cluster(self, num_nodes=3):
+    def init_cluster(self, num_nodes=3, configuration_options={}):
         rbo_status = "true" if self.rbo_enabled else "false"
+        configuration_options.update({"enable_repair_based_node_ops": rbo_status})
+        debug(f"Setting cluster configuration options: {configuration_options}")
         self.cluster.populate(num_nodes)
-        self.cluster.set_configuration_options(values={"enable_repair_based_node_ops": rbo_status})
+        self.cluster.set_configuration_options(values=configuration_options)
         self.cluster.start(no_wait=False, wait_for_binary_proto=True, wait_other_notice=True)
 
     def replace_stopped_node_test(self):
@@ -269,7 +271,7 @@ class TestReplaceAddress(Tester):
 
     def replace_first_boot_test(self):
         debug("Starting cluster with 3 nodes.")
-        self.init_cluster(num_nodes=3)
+        self.init_cluster(num_nodes=3, configuration_options={'range_request_timeout_in_ms': 10000})
         node1, node2, node3 = self.cluster.nodelist()
 
         tokens = self.get_sorted_tokens(node3)
@@ -292,7 +294,7 @@ class TestReplaceAddress(Tester):
         with self.assertRaises(NodeUnavailable):
             try:
                 session.execute(query, timeout=30)
-            except (Unavailable, ReadTimeout, ReadFailure, OperationTimedOut):
+            except (Unavailable, ReadTimeout, ReadFailure):
                 raise NodeUnavailable("Node could not be queried.")
 
         # replace node 3 with node 4
