@@ -1515,7 +1515,7 @@ class Tester(TestCase):
         debug(f'Created certificate file in "{cert_file}" path, and private key in "{key_file}" path')
         return cert_file, key_file
 
-    def cql_timeout(self, seconds = None):
+    def cql_timeout(self, seconds=None):
         if not seconds:
             seconds = self.base_cql_timeout
         factor = 1

@@ -655,4 +655,3 @@ class TestPaxos(Tester):
     @scylla_mode('!release')
     def schema_mismatch_drop_regular_column_in_the_middle_no_cache_test(self):
         self._schema_mismatch_drop_regular_column_in_the_middle_tpl(clear_schema_cache=True)
-

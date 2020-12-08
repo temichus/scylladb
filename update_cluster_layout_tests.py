@@ -41,7 +41,8 @@ class TestUpdateClusterLayout(Tester):
 
         session = self.patient_cql_connection(node_to_check, ks)
         if rows > 1000 and counter_column:
-            query = SimpleStatement(f"SELECT count({counter_column}) FROM {ks}.{cf} LIMIT {rows * 2}", consistency_level=ConsistencyLevel.ONE)
+            query = SimpleStatement(f"SELECT count({counter_column}) FROM {ks}.{cf} LIMIT {rows * 2}",
+                                    consistency_level=ConsistencyLevel.ONE)
             result = list(session.execute(query, timeout=timeout))
             count = result[0][0]
             self.assertEqual(count, rows, count)

@@ -31,8 +31,10 @@ class LdapConnectionAlreadyStarted(Exception):
 class LdapConnectionDoesNotExist(Exception):
     pass
 
+
 class LdapServerNotReady(Exception):
     pass
+
 
 # If the server has terminated the connection lets try to rebuild it
 # once.
