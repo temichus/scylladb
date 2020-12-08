@@ -5,7 +5,7 @@ import random
 import shutil
 import subprocess
 
-from dtest import Tester, info
+from dtest import Tester, info, debug
 from cassandra import Unauthorized
 from cassandra.cluster import NoHostAvailable
 
@@ -14,6 +14,7 @@ class TestLdap(Tester):
     _multiprocess_can_split_ = False
     LDAP_USER = 'scylla-qa'
     LDAP_PASSWORD = 'cassandra'
+    use_saslauth = False
 
     def tearDown(self):
         if self.saslauthd_proc is not None:
@@ -39,8 +40,18 @@ class TestLdap(Tester):
                 'ldap_bind_dn': f'cn=admin,{self.test_ldap_docker.ldap_base_object}',
                 'ldap_bind_passwd': 'scylla'}
 
+    def create_role(self, session, user, password):
+        if self.use_saslauth:
+            session.execute(f'CREATE ROLE \'{user}\' WITH login=true')
+            self.test_ldap_docker.add_ldap_object(
+                f'uid={user},ou=Person,{self.test_ldap_docker.ldap_base_object}',
+                ['uidObject', 'organizationalPerson', 'top'],
+                {'userPassword': password, 'sn': 'PersonSn', 'cn': 'PersonCn'})
+        else:
+            session.execute(f'CREATE ROLE \'{user}\' WITH login=true AND password=\'{password}\'')
+
     def prepare(self, nodes=1, user='cassandra', password='cassandra', configure_ldap=True, create_role=True,
-                create_ks_and_table=True, use_saslauthd=False, **kwargs):
+                create_ks_and_table=True, add_cassandra_superuser_to_ldap=True, **kwargs):
         self.nodes = []
         config = dict()
         options = kwargs.get('options', None)
@@ -52,15 +63,20 @@ class TestLdap(Tester):
         if configure_ldap:
             ldap_options = kwargs.get('ldap_options', None)
             self.test_ldap_docker.create_ldap_connection()
-            saslauthd_conf_path = os.path.join(self.saslauthd_dir, 'saslauthd.conf')
-            with open(saslauthd_conf_path, 'w') as f:
-                f.write(f'ldap_servers: {self.test_ldap_docker.ldap_server.name}\n'
-                        f'ldap_search_base: {self.test_ldap_docker.ldap_base_object}\n'
-                        f'ldap_bind_dn: cn=admin,{self.test_ldap_docker.ldap_base_object}\n'
-                        f'ldap_bind_pw: scylla\n')
-            self.saslauthd_proc = subprocess.Popen(
-                ['saslauthd', '-d', '-n', '1', '-a', 'ldap', '-O', saslauthd_conf_path, '-m', self.saslauthd_dir],
-                stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+            if self.use_saslauth:
+                saslauthd_conf_path = os.path.join(self.saslauthd_dir, 'saslauthd.conf')
+                with open(saslauthd_conf_path, 'w') as f:
+                    f.write(f'ldap_servers: {self.test_ldap_docker.ldap_server.name}\n'
+                            f'ldap_search_base: ou=Person,{self.test_ldap_docker.ldap_base_object}\n'
+                            f'ldap_bind_dn: cn=admin,{self.test_ldap_docker.ldap_base_object}\n'
+                            f'ldap_bind_pw: scylla\n')
+                self.saslauthd_proc = subprocess.Popen(
+                    ['saslauthd', '-d', '-n', '1', '-a', 'ldap', '-O', saslauthd_conf_path, '-m', self.saslauthd_dir],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+                self.test_ldap_docker.add_ldap_object(
+                    f'ou=Person,{self.test_ldap_docker.ldap_base_object}',
+                    ['organizationalUnit', 'top'],
+                    {'ou': 'Person'})
             if ldap_options:
                 config.update(ldap_options)
             else:
@@ -69,10 +85,13 @@ class TestLdap(Tester):
             config.update(values={'start_rpc': True})
         config.update({'authorizer': 'org.apache.cassandra.auth.CassandraAuthorizer',
                        'permissions_validity_in_ms': 0})
-        if use_saslauthd:
+
+        if self.use_saslauth and configure_ldap:
+            info('Using com.scylladb.auth.SaslauthdAuthenticator')
             config.update({'authenticator': 'com.scylladb.auth.SaslauthdAuthenticator',
                            'saslauthd_socket_path': os.path.join(self.saslauthd_dir, 'mux')})
         else:
+            info('Using com.scylladb.auth.PasswordAuthenticator')
             config.update({'authenticator': 'org.apache.cassandra.auth.PasswordAuthenticator'})
         cluster.set_configuration_options(values=config)
 
@@ -80,9 +99,16 @@ class TestLdap(Tester):
             # --logger-log-level ldap_role_manager=debug
             cluster.populate(nodes).start(wait_for_binary_proto=True)
         self.nodes = cluster.nodelist()[:]
+
+        if self.use_saslauth and configure_ldap and add_cassandra_superuser_to_ldap:
+            self.test_ldap_docker.add_ldap_object(
+                f'uid={user},ou=Person,{self.test_ldap_docker.ldap_base_object}',
+                ['uidObject', 'organizationalPerson', 'top'],
+                {'userPassword': password, 'sn': 'PersonSn', 'cn': 'PersonCn'})
+        self.nodes[0].watch_log_for("Created default superuser role 'cassandra'")
         session = self.patient_cql_connection(self.nodes[0], user=user, password=password)
         if create_role:
-            session.execute(f'CREATE ROLE \'{self.LDAP_USER}\' WITH login=true AND password=\'{self.LDAP_PASSWORD}\'')
+            self.create_role(session, self.LDAP_USER, self.LDAP_PASSWORD)
         if create_ks_and_table:
             self.create_ks(session, name='ks', rf=1)
             self.create_cf(session, name='cf')
@@ -96,12 +122,16 @@ class TestLdap(Tester):
     def add_role_to_ldap(self, ldap_role='cassandra', ldap_password=LDAP_PASSWORD, unique_members=None):
         unique_members_list = []
         if not unique_members:
-            unique_members = [self.LDAP_USER, 'qa-user']
+            unique_members = [self.LDAP_USER, 'qa-user', 'cassandra']
         for member in unique_members:
+            self.test_ldap_docker.add_ldap_object(f'uid={member},ou=Person,{self.test_ldap_docker.ldap_base_object}',
+                                                  ['uidObject', 'organizationalPerson', 'top'],
+                                                  {'userPassword': ldap_password, 'sn': 'PersonSn', 'cn': 'PersonCn'})
             unique_members_list.append(f'uid={member},ou=Person,{self.test_ldap_docker.ldap_base_object}')
         ldap_user_group = [f'cn={ldap_role},{self.test_ldap_docker.ldap_base_object}',
                            ['groupOfUniqueNames', 'simpleSecurityObject', 'top'],
                            {'uniqueMember': unique_members_list, 'userPassword': ldap_password}]
+
         self.test_ldap_docker.add_ldap_object(*ldap_user_group)
 
     @staticmethod
@@ -155,7 +185,7 @@ class TestLdap(Tester):
         self.prepare()
         self.add_role_to_ldap()
         session = self.patient_cql_connection(self.nodes[0], user=self.LDAP_USER, password=self.LDAP_PASSWORD)
-        session.execute('CREATE ROLE \'login_user\' with login=true and password=\'test\'')
+        self.create_role(session, 'login_user', 'test')
         permission = {'user': 'login_user',
                       'password': 'test',
                       'role': 'empty_role',
@@ -214,8 +244,7 @@ class TestLdap(Tester):
             info(f'Starting with {k}')
             session = self.patient_cql_connection(self.nodes[0], user='cassandra', password='cassandra')
             self.create_role_grant_permission(session=session, permission_dict=permission_dict)
-            session.execute(f"CREATE ROLE \'{permission_dict['user']}\' WITH login=true AND "
-                            f"password=\'{permission_dict['password']}\'")
+            self.create_role(session, permission_dict['user'], permission_dict['password'])
             self.add_role_to_ldap(ldap_role=permission_dict['role'], unique_members=[permission_dict['user']])
             self.check_user_permissions(permission_dict=permission_dict)
             info(f'Finished with {k}')
@@ -268,8 +297,7 @@ class TestLdap(Tester):
         info(f'permission={permission}')
         list_of_roles = ['r1', 'r2', 'r3', 'r4', 'r5']
         cassandra_session = self.patient_cql_connection(node=self.nodes[0], user='cassandra', password='cassandra')
-        cassandra_session.execute(f'create role \'{self.LDAP_USER}\' with login=true and '
-                                  f'password=\'{self.LDAP_PASSWORD}\'')
+        self.create_role(cassandra_session, self.LDAP_USER, self.LDAP_PASSWORD)
         permission_dict = {'user': f'{self.LDAP_USER}',
                            'password': self.LDAP_PASSWORD,
                            'permissions': [permission],
@@ -285,8 +313,7 @@ class TestLdap(Tester):
         actions_list = ['create', 'modify', 'select']
         list_of_roles = ['r1', 'r2', 'r3', 'r4', 'r5', 'r6']
         cassandra_session = self.patient_cql_connection(node=self.nodes[0], user='cassandra', password='cassandra')
-        cassandra_session.execute(f'create role \'{self.LDAP_USER}\' with login=true and '
-                                  f'password=\'{self.LDAP_PASSWORD}\'')
+        self.create_role(cassandra_session, self.LDAP_USER, self.LDAP_PASSWORD)
         permission = {'user': f'{self.LDAP_USER}',
                       'password': self.LDAP_PASSWORD,
                       'resource': 'ALL KEYSPACES'}
@@ -328,7 +355,7 @@ class TestLdap(Tester):
         self.add_role_to_ldap(unique_members=list_of_unique_members)
         session = self.patient_cql_connection(self.nodes[0], user='cassandra', password='cassandra')
         for user in list_of_unique_members:
-            session.execute(f'create role \'{user}\' with login=true and password=\'{self.LDAP_PASSWORD}\'')
+            self.create_role(session, user, self.LDAP_PASSWORD)
             permission = {'user': user,
                           'password': self.LDAP_PASSWORD,
                           'role': 'cassandra',
@@ -347,7 +374,7 @@ class TestLdap(Tester):
         list_of_unique_members = [f'user_{i}' for i in range(10)]
         self.add_role_to_ldap(ldap_role='modify_role', unique_members=list_of_unique_members)
         for user in list_of_unique_members:
-            session.execute(f'create role \'{user}\' with login=true and password=\'{self.LDAP_PASSWORD}\'')
+            self.create_role(session, user, self.LDAP_PASSWORD)
             permission['user'] = user
             self.check_user_permissions(permission_dict=permission)
 
@@ -432,7 +459,7 @@ class TestLdap(Tester):
         except Unauthorized as ex:
             info(f'User {permission["user"]} was removed, and it was supposed to fail to connect to scylla')
         session = self.patient_cql_connection(self.nodes[0], user='cassandra', password='cassandra')
-        session.execute(f'CREATE ROLE \'{new_user}\' WITH login=true and password=\'{permission["password"]}\'')
+        self.create_role(session, new_user, permission['password'])
         self.check_user_permissions(permission_dict=new_permission)
 
     def test_add_user_to_ldap(self):
@@ -445,6 +472,7 @@ class TestLdap(Tester):
                       'resource': 'all'}
         self.check_user_permissions(permission_dict=permission)
         new_user = 'qa-superuser'
+
         dn = str(self.test_ldap_docker.search_ldap_object(self.test_ldap_docker.ldap_base_object,
                                                           f'(cn={permission["role"]})')).split()[1]
         res = self.test_ldap_docker.modify_ldap_object(dn, {'uniqueMember': [('MODIFY_ADD',
@@ -454,15 +482,21 @@ class TestLdap(Tester):
             raise Exception('Failed to modify user on LDAP')
         self.check_user_permissions(permission_dict=permission)
         session = self.patient_cql_connection(self.nodes[0], user='cassandra', password='cassandra')
-        session.execute(f'CREATE ROLE \'{new_user}\' WITH login=true and password=\'{permission["password"]}\'')
+        self.create_role(session, new_user, permission['password'])
         permission['user'] = new_user
         self.check_user_permissions(permission_dict=permission)
 
+
+class TestLdapSaslAuth(TestLdap):
+    def setUp(self):
+        TestLdap.setUp(self)
+        TestLdap.use_saslauth = True
+
     def test_authentication(self):
         with self.assertRaisesRegexp(NoHostAvailable, 'Bad credentials'):  # User 'cassandra' absent from LDAP.
-            self.prepare(use_saslauthd=True)
+            self.prepare(add_cassandra_superuser_to_ldap=False)
         self.test_ldap_docker.add_ldap_object(
-            f'uid=cassandra,{self.test_ldap_docker.ldap_base_object}',
+            f'uid=cassandra,ou=Person,{self.test_ldap_docker.ldap_base_object}',
             ['uidObject', 'organizationalPerson', 'top'],
             {'userPassword': 'cassandra', 'sn': 'Cassandra', 'cn': 'Cassandra'})
         self.patient_cql_connection(self.nodes[0], user='cassandra', password='cassandra')
