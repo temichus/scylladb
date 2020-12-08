@@ -5,7 +5,7 @@ from time import sleep
 from unittest import skip
 from nose.plugins.attrib import attr
 
-from cassandra import ConsistencyLevel, ReadTimeout, Unavailable, ReadFailure
+from cassandra import ConsistencyLevel, ReadTimeout, Unavailable, ReadFailure, OperationTimedOut
 from cassandra.query import SimpleStatement
 
 from assertions import assert_row_count, assert_all
@@ -292,7 +292,7 @@ class TestReplaceAddress(Tester):
         with self.assertRaises(NodeUnavailable):
             try:
                 session.execute(query, timeout=30)
-            except (Unavailable, ReadTimeout, ReadFailure):
+            except (Unavailable, ReadTimeout, ReadFailure, OperationTimedOut):
                 raise NodeUnavailable("Node could not be queried.")
 
         # replace node 3 with node 4
