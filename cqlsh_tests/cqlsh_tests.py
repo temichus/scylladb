@@ -41,7 +41,7 @@ class TestCqlsh(Tester):
 
     def tearDown(self):
         if hasattr(self, 'tempfile') and not common.is_win():
-            os.unlink(self.tempfile.name)
+            self.cluster.nodelist()[0].unlink(self.tempfile.name)
         super(TestCqlsh, self).tearDown()
 
     @skip('irrelevant')
@@ -942,9 +942,10 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
         results = list(session.execute("SELECT * FROM testcopyto"))
 
         self.tempfile = NamedTemporaryFile(delete=False)
+        os.unlink(self.tempfile.name)
         debug('Exporting to csv file: %s' % (self.tempfile.name,))
-        node1.run_cqlsh(cmds="COPY ks.testcopyto TO '%s'" % (self.tempfile.name,))
-
+        output = node1.run_cqlsh(cmds="COPY ks.testcopyto TO '%s'" % (self.tempfile.name,), return_output=True)
+        debug(output)
         # session
         with open(self.tempfile.name, 'r') as csvfile:
             csvreader = csv.reader(csvfile)
@@ -1489,7 +1490,7 @@ Unlogged batch covering 2 partitions detected against table [client_warnings.tes
             port = node.network_interfaces['thrift'][1]
         args = cqlsh_options + [host, str(port)]
         sys.stdout.flush()
-        p = subprocess.Popen([cli] + args, env=env, stdin=subprocess.PIPE, stderr=subprocess.PIPE,
+        p = subprocess.Popen(cli + args, env=env, stdin=subprocess.PIPE, stderr=subprocess.PIPE,
                              stdout=subprocess.PIPE, universal_newlines=True)
         for cmd in cmds.split(';'):
             p.stdin.write(cmd + ';\n')
