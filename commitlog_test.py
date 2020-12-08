@@ -5,6 +5,8 @@ import stat
 import struct
 import subprocess
 import time
+import re
+import tempfile
 
 from unittest import skip
 
@@ -17,6 +19,7 @@ from assertions import assert_almost_equal, assert_none, assert_one, assert_row_
     assert_row_count_in_select_less, assert_row_count, assert_all
 from dtest import Tester, debug
 from tools import since, rows_to_list
+from scylla_tools import insert_c1c2, copy_files_to
 from nose.plugins.attrib import attr
 
 
@@ -81,14 +84,14 @@ class TestCommitLog(Tester):
         """ Returns the commitlog directory size in MB """
 
         path = self._get_commitlog_path()
-        cmd_args = ['du', '-m', path]
+        cmd_args = ['du', '-sm', path]
         p = subprocess.Popen(cmd_args, stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE)
         stdout, stderr = p.communicate()
         exit_status = p.returncode
         self.assertEqual(0, exit_status,
                          "du exited with a non-zero status: %d" % exit_status)
-        size = int(stdout.split('\t')[0])
+        size = int(stdout.decode().split()[0])
         return size
 
     def _segment_size_test(self, segment_size_in_mb, compressed=False):
@@ -756,6 +759,192 @@ class TestCommitLog(Tester):
         debug("Make query and ensure data is present as expected")
         session = self.patient_cql_connection(node1)
         assert_row_count(session=session, table_name='Test.cf', expected=100)
+
+    def test_total_space_limit_of_commitlog(self, commitlog_segment_size_in_mb=512,
+                                            commitlog_total_space_in_mb=-1):
+        """
+        Rese segments will take more space, but it should be limited within max
+
+        Related Scylla PR: https://github.com/scylladb/scylla/pull/6368
+        """
+        node1 = self.node1
+        # Size of the loop device
+
+        def get_free_memory_size():
+            """
+            Get current free memory from /proc/meminfo
+            """
+            proc = subprocess.Popen(['cat', '/proc/meminfo'], stdout=subprocess.PIPE)
+            out, err = proc.communicate()
+            out = out.decode()
+            assert proc.returncode == 0 and 'MemFree:' in out, err
+            pattern = re.compile('MemFree: (.*) ')
+            for line in out.split('\n'):
+                if pattern.match(line):
+                    return int(pattern.match(line)[1]) / 1024  # unit: mb
+            raise Exception('Failed to get the valid free memory size')
+
+        if commitlog_total_space_in_mb == -1:
+            commitlog_segment_size_in_mb = int(get_free_memory_size() / 6)
+            debug(commitlog_segment_size_in_mb)
+
+        # With the following config, scylla will use the same size as free memory for commitlog
+        # Set single commitlog file to 1G, then it's easy to reach the limit
+        node1.set_configuration_options(values={'commitlog_segment_size_in_mb': commitlog_segment_size_in_mb,
+                                                'commitlog_total_space_in_mb': commitlog_total_space_in_mb,
+                                                'batch_commitlog': True,
+                                                'commitlog_reuse_segments': True})
+
+        unit_size = commitlog_segment_size_in_mb
+        total_size = 0
+
+        debug(f'Commitlog size before start: {self._get_commitlog_size()}')
+        debug("Start cluster ...")
+        self.cluster.start(no_wait=True)
+        node1.watch_log_for('Starting listening for CQL clients', timeout=30)
+
+        debug("Create test keyspace and table")
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 1)
+        self.create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'})
+        well_used_cases = []
+        start = time.time()
+        while True:
+            debug(f'Insert {unit_size} rows ....')
+            insert_c1c2(session, keys=range(total_size, total_size + unit_size))
+            total_size += unit_size
+            dir_size = self._get_commitlog_size()
+            limit_size_in_mb = commitlog_total_space_in_mb
+            if commitlog_total_space_in_mb == -1:
+                limit_size_in_mb = get_free_memory_size()
+            debug(f'Current commitlog size: {dir_size}, limit_size_in_mb: {limit_size_in_mb}, '
+                  f'well-used cases: {len(well_used_cases)}')
+            self.assertLessEqual(self._get_commitlog_size(), limit_size_in_mb * 1.2, 'Out of total space limit')
+            if dir_size + commitlog_segment_size_in_mb * 2 > limit_size_in_mb:
+                well_used_cases.append(dir_size)
+            # Have enough well-used cases, and not out of space limit
+            if len(well_used_cases) > 5:
+                break
+            self.assertGreater(200, time.time() - start,
+                               "the commitlog space isn't used well in 200 seconds,"
+                               " quit the test to avoid endless loop")
+        # set back to default
+        node1.set_configuration_options(values={'commitlog_segment_size_in_mb': -1,
+                                                'commitlog_total_space_in_mb': 32,
+                                                'commitlog_reuse_segments': True})
+        node1.stop(gently=False)
+        node1.start(no_wait=True)
+        node1.watch_log_for('Starting listening for CQL clients', timeout=30)
+        session = self.patient_cql_connection(node1)
+        assert_row_count_in_select_less(session=session, table_name='ks.cf', expected=total_size)
+
+        debug('Test with more data after rollback to default config')
+        insert_c1c2(session, n=int(total_size * 1.5))
+        assert_row_count(session=session, table_name='ks.cf', expected=int(total_size * 1.5))
+
+    def test_total_space_limit_of_commitlog_with_medium_limit(self):
+        """
+        Test with 10M commitlog files, total space limit is 1024M
+        """
+        self.test_total_space_limit_of_commitlog(commitlog_segment_size_in_mb=100,
+                                                 commitlog_total_space_in_mb=1024)
+
+    def test_total_space_limit_of_commitlog_with_small_limit(self):
+        """
+        Test with 1M commitlog files, total space limit is 30M
+        """
+        self.test_total_space_limit_of_commitlog(commitlog_segment_size_in_mb=5,
+                                                 commitlog_total_space_in_mb=30)
+
+    def test_commitlog_enospc(self, cleanup_firstly_by_drain=True):
+        """
+        Fill data until reach to ENSPC. Try to recover by extending space and restart scylla-server.
+        In this test, it won't cleanup existing commitlog by a drain and restart before real test.
+        The commitlog space will be limited by a small loop device.
+
+        Related Scylla PR: https://github.com/scylladb/scylla/pull/6368
+        """
+        node1 = self.node1
+        # Size of the loop device
+        commitlog_dir_limit_in_mb = 20
+        node1.set_configuration_options(values={'commitlog_segment_size_in_mb': 1})
+        if cleanup_firstly_by_drain:
+            node1.start(wait_for_binary_proto=True)
+            debug("Clean the existing commitlog by drain, otherwise ENOSPC occurs too early than expected")
+            node1.nodetool('drain')
+            node1.stop(gently=True)
+            debug(f'Commitlog size after stop: {self._get_commitlog_size()}')
+
+        commitlog_dir = self._get_commitlog_path()
+        tmp_iso = os.path.join(self.node1.get_path(), "tmp_loopdev_for_commitlog.iso")
+
+        def exec_cmd(cmd):
+            proc = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE)
+            out, err = proc.communicate()
+            assert proc.returncode == 0, err
+            return out
+
+        debug("Mount commitlog directory to a size limited device")
+        exec_cmd(f'dd if=/dev/zero of={tmp_iso} bs=1M count={commitlog_dir_limit_in_mb}')
+        exec_cmd(f'mkfs.xfs -f {tmp_iso}')
+        exec_cmd(f'sudo mount {tmp_iso} {commitlog_dir}')
+        user = os.environ.get('HOME').split('/')[-1]
+        exec_cmd(f'sudo chown -R {user}:{user} {commitlog_dir}')
+
+        unit_size = 10000
+        total_size = 0
+
+        try:
+            debug(f'Commitlog size before start: {self._get_commitlog_size()}')
+            debug("Start cluster ...")
+            self.cluster.start(no_wait=True)
+            node1.watch_log_for('Starting listening for CQL clients', timeout=30)
+
+            debug("Create test keyspace and table")
+            session = self.patient_cql_connection(node1)
+            self.create_ks(session, 'ks', 1)
+            self.create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'})
+            while True:
+                debug(f'Current commitlog size: {self._get_commitlog_size()}')
+                debug(f'Insert {unit_size} rows ....')
+                insert_c1c2(session, keys=range(total_size, total_size + unit_size))
+                total_size += unit_size
+        except Exception as ex:
+            debug(f'Commitlog size after exception raised: {self._get_commitlog_size()}')
+            debug(str(ex))
+
+        # Recover from ENOSPC
+        node1.stop(gently=False)
+        tmpdir = tempfile.mkdtemp()
+        copy_files_to(commitlog_dir, tmpdir, files_only=True)
+        debug("Umount commitlog dir and restart node")
+        exec_cmd(f'sudo umount {commitlog_dir}')
+        copy_files_to(tmpdir, commitlog_dir, files_only=True)
+        exec_cmd(f'sudo chown -R {user}:{user} {commitlog_dir}')
+
+        node1.start(no_wait=True)
+        node1.watch_log_for('Starting listening for CQL clients', timeout=30)
+        session = self.patient_cql_connection(node1)
+
+        # Verified that ENOSPC occurred and not all the data is wrote into db
+        assert_row_count_in_select_less(
+            session=session, query="SELECT count(*) FROM ks.cf", max_rows_expected=total_size)
+        node1.watch_log_for('No space left on device', timeout=10)
+
+        debug('Added more data after recovered from ENOSPC ...')
+        insert_c1c2(session, n=int(total_size * 1.5))
+        assert_row_count(session=session, table_name='ks.cf', expected=int(total_size * 1.5))
+
+    def test_commitlog_enospc_without_cleanup(self):
+        """
+        Fill data until reach to ENSPC. Try to recover by extending space and restart scylla-server.
+        In this test, it won't cleanup existing commitlog by a drain and restart before real test.
+        The commitlog space will be limited by a mounted small loop device.
+
+        Related Scylla PR: https://github.com/scylladb/scylla/pull/6368
+        """
+        self.ignore_log_patterns += ['Could not retrieve CDC streams with timestamp']
+        self.test_commitlog_enospc(cleanup_firstly_by_drain=False)
 
     def test_mixed_mode_commitlog_2_partitions_smp_1(self):
         """
