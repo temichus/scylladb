@@ -664,6 +664,7 @@ class Tester(TestCase):
             'read_request_timeout_in_ms': timeout,
             'range_request_timeout_in_ms': range_timeout,
             'write_request_timeout_in_ms': timeout,
+            'counter_write_request_timeout_in_ms': range_timeout,
             'truncate_request_timeout_in_ms': timeout,
             'request_timeout_in_ms': timeout
         })
