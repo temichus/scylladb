@@ -703,6 +703,34 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
 
         assert_all(session, '{} ALLOW FILTERING'.format(smt), expected=[[2]], cl=ConsistencyLevel.QUORUM)
 
+    @require('#7772')
+    def test_index_same_key_twice(self):
+        """SELECT by indexed key with WHERE like "key = X AND key = Y".
+
+        See scylladb/scylla#7772 for details.
+        """
+        keyspace_name = 'ks'
+        table_name = 'tbl'
+
+        session = self.prepare(self, nodes=1, rf=1, keyspace_name=keyspace_name)
+
+        self.create_cf(session, table_name, key_type='uuid', columns={'c0': 'text', 'c1': 'text', 'c2': 'text'},
+                       compaction={'class': self.compaction_strategy})
+
+        self.assertTrue(self.create_and_build_index(self.create_index, self.cluster, session, keyspace_name,
+                                                    table_name, 'c0', 'ix_tbl_c0', compaction=self.compaction_strategy),
+                        msg='Index ix_tbl_c0 is not built')
+
+        smt = "INSERT INTO {0} (key, c0, c1, c2) values (uuid(), '{1}', '{2}', '{3}')"
+        session.execute(smt.format(table_name, 'a', 'b', 'c'))
+        session.execute(smt.format(table_name, 'a', 'b', 'c'))
+        session.execute(smt.format(table_name, 'q', 'b', 'c'))
+        session.execute(smt.format(table_name, 'a', 'e', 'f'))
+        session.execute(smt.format(table_name, 'a', 'e', 'f'))
+
+        smt = "SELECT count(*) FROM {0} WHERE {1} = 'a' AND {1} = 'b'".format(table_name, 'c0')
+        assert_all(session, smt, expected=[[0]], cl=ConsistencyLevel.QUORUM)
+
     def test_truncate_base(self):
         """
         asserts that truncating base table will result in truncating secondary index as well
