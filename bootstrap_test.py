@@ -1,7 +1,6 @@
 import os
 import random
 import re
-import shutil
 import subprocess
 import tempfile
 import time
@@ -438,8 +437,8 @@ class TestBootstrap(Tester):
         data_dir = os.path.join(node2.get_path(), 'data')
         commitlog_dir = os.path.join(node2.get_path(), 'commitlogs')
         debug("Deleting {}".format(data_dir))
-        shutil.rmtree(data_dir)
-        shutil.rmtree(commitlog_dir)
+        node2.rmtree(data_dir)
+        node2.rmtree(commitlog_dir)
 
         # Now start it, it should not be allowed to join.
         expected_error = "A node with address {} already exists, cancelling join".format(self.cluster.get_node_ip(4))
@@ -486,8 +485,8 @@ class TestBootstrap(Tester):
         data_dir = os.path.join(node4.get_path(), 'data')
         commitlog_dir = os.path.join(node4.get_path(), 'commitlogs')
         debug("Deleting {}".format(data_dir))
-        shutil.rmtree(data_dir)
-        shutil.rmtree(commitlog_dir)
+        node4.rmtree(data_dir)
+        node4.rmtree(commitlog_dir)
 
         # Now start it, it should be allowed to join
         debug("Restarting node4")
@@ -535,8 +534,8 @@ class TestBootstrap(Tester):
         data_dir = os.path.join(node2.get_path(), 'data')
         commitlog_dir = os.path.join(node2.get_path(), 'commitlogs')
         debug("Deleting {}".format(data_dir))
-        shutil.rmtree(data_dir)
-        shutil.rmtree(commitlog_dir)
+        node2.rmtree(data_dir)
+        node2.rmtree(commitlog_dir)
 
         # Now start it again, it should be allowed to join
         mark = node2.mark_log()
