@@ -885,7 +885,6 @@ class TestCountersStress(Tester):
 
     def __init__(self, *argv, **kwargs):
         super(TestCountersStress, self).__init__(*argv, **kwargs)
-        self._op_cnt = 100000
 
     def setUp(self):
         super(TestCountersStress, self).setUp()
@@ -894,6 +893,9 @@ class TestCountersStress(Tester):
         cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
         cluster.populate(3).start(wait_other_notice=True, wait_for_binary_proto=True)
         self.node = cluster.nodelist()[0]
+        self._op_cnt = 100000
+        if hasattr(self.cluster, 'scylla_mode') and self.cluster.scylla_mode == 'debug':
+            self._op_cnt //= 10
 
     def counter_stress_test(self):
         """
@@ -934,6 +936,7 @@ class TestCountersStress(Tester):
         if not resp or 'total partitions:write' not in resp:
             raise Exception('Error running stress test: {}'.format(resp))
         self.assertGreaterEqual(resp['total partitions:write'], self._op_cnt)
+        debug('Verifying data count')
         rows = rows_to_list(session.execute('SELECT count(*) FROM keyspace1.counter1;'))
         self.assertEqual(rows[0][0], self._op_cnt)
 
@@ -958,6 +961,7 @@ class TestCountersStress(Tester):
             raise Exception('Error running stress test: {}'.format(resp))
         self.assertGreaterEqual(resp['total partitions'], self._op_cnt)
         session = self.patient_cql_connection(self.node)
+        debug('Verifying data count')
         rows = rows_to_list(session.execute('SELECT count(*) FROM ks.counter_cf;'))
         self.assertEqual(rows[0][0], self._op_cnt)
 
