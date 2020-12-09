@@ -246,7 +246,7 @@ class TesterAlternator(Tester):
         waiter = dynamodb_api.client.get_waiter('table_not_exists')
         waiter.wait(TableName=table_name)
         debug(f"Removing table keyspace folder '{node_ks_path}' from node '{node.name}'")
-        shutil.rmtree(path=node_ks_path)
+        node.rmtree(path=node_ks_path)
 
     def create_items(self, primary_key: str = None, items: List[Dict[str, str]] = None,
                      num_of_items: int = NUM_OF_ITEMS) -> List[Dict[str, str]]:
@@ -386,6 +386,9 @@ class TesterAlternator(Tester):
         if not os.listdir(snapshot_folder):
             raise IsADirectoryError(f"The snapshot folder '{snapshot_folder}' not contain any files")
 
+        if os.path.isdir(upload_folder):
+            shutil.rmtree(upload_folder)
+        os.makedirs(name=upload_folder)
         debug(f"Loading snapshot files from folder '{snapshot_folder}' to '{upload_folder}'..")
         for file_name in os.listdir(snapshot_folder):
             shutil.copyfile(src=os.path.join(snapshot_folder, file_name),

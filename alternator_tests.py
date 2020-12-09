@@ -72,7 +72,7 @@ class AlternatorTest(TesterAlternator):
         data_before_refresh = self.scan_table(table_name=table_name, node=node1)
 
         snapshot_folder = tempfile.mkdtemp()
-        self.addCleanup(lambda: shutil.rmtree(snapshot_folder))
+        self.addCleanup(lambda: node1.rmtree(snapshot_folder))
         self.create_snapshot(table_name=TABLE_NAME, node=node1, snapshot_folder=snapshot_folder)
         self.delete_table(table_name=table_name, node=node1)
         self.create_table(table_name=table_name, node=node1)
