@@ -6,6 +6,7 @@ import time
 from datetime import datetime, timedelta
 from unittest import skip
 from random import randint
+from math import ceil
 
 from cassandra import ConsistencyLevel, InvalidRequest
 from cassandra.policies import FallthroughRetryPolicy
@@ -618,10 +619,21 @@ class MiscellaneousCQLTester(CQLTester):
                        [1000], cl=ConsistencyLevel.ONE)
 
             debug("Selecting with CL=QUORUM (expected to fail)")
+            t0 = time.time()
             q = SimpleStatement(f"SELECT count(*) from {ks}.{cf} BYPASS CACHE",
                                 consistency_level=ConsistencyLevel.QUORUM)
             assert_unavailable(lambda t: session.execute(q, timeout=t),
                                self.cql_timeout(60))
+            dt = time.time() - t0
+            allowed_timeout = 1
+            if not stop_gently:
+                # allow timeout retries lasting more than 10 seconds
+                range_request_timeout = \
+                    int(cluster._config_options['range_request_timeout_in_ms']) / 1000
+                allowed_timeout += range_request_timeout * \
+                    ceil(11 / range_request_timeout)
+            assert dt <= allowed_timeout, \
+                f"Query took too long to timeout: {dt} > {allowed_timeout}"
 
     def test_query_failed_when_node_is_stopped(self):
         self._test_query_failed_when_node_is_down(stop_gently=True)
