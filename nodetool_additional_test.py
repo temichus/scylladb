@@ -1943,7 +1943,7 @@ class TestNodetool(Tester):
         _, node2, node3, node4 = cluster.nodelist()
 
         # save node 3 process details
-        node3_pid = node3.all_pids[0]
+        node3_pid = node3.pid
         node3_process = Process(node3_pid)
         executor = ThreadPoolExecutor(max_workers=3)
 

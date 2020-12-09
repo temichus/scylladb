@@ -619,7 +619,7 @@ class TestBootstrap(Tester):
         cluster.flush()
 
         debug("Saving nodes process list")
-        pid_ls = [node.all_pids[0] for node in cluster.nodelist()]
+        pid_ls = [node.pid for node in cluster.nodelist()]
         process_ls = []
         for pid in pid_ls:
             process = Process(pid)
