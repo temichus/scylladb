@@ -323,6 +323,8 @@ class TestCounters(Tester):
 
         sessions = [self.patient_cql_connection(node, 'ks') for node in nodes]
         nb_increment = 500
+        if hasattr(cluster, 'scylla_mode') and cluster.scylla_mode == 'debug':
+            nb_increment //= 10
         nb_counter = 2
 
         def run(connection):
@@ -334,6 +336,8 @@ class TestCounters(Tester):
 
         threads = []
         num_threads = 200
+        if hasattr(cluster, 'scylla_mode') and cluster.scylla_mode == 'debug':
+            num_threads //= 10
         executor = ThreadPoolExecutor(max_workers=num_threads)
         for x in range(num_threads):
             conn = sessions[x % len(nodes)]
@@ -376,6 +380,8 @@ class TestCounters(Tester):
 
         sessions = [self.patient_cql_connection(node, 'ks') for node in nodes]
         nb_increment = 500
+        if hasattr(cluster, 'scylla_mode') and cluster.scylla_mode == 'debug':
+            nb_increment //= 10
         nb_counter = 2
 
         def run(connection, decrement):
@@ -391,6 +397,8 @@ class TestCounters(Tester):
 
         threads = []
         num_threads = 600
+        if hasattr(cluster, 'scylla_mode') and cluster.scylla_mode == 'debug':
+            num_threads //= 10
         executor = ThreadPoolExecutor(max_workers=num_threads)
         for x in range(num_threads):
             conn = sessions[x % len(nodes)]
