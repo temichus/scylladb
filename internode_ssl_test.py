@@ -80,6 +80,7 @@ class TestInternodeSSL(Tester):
             'connection dropped: sendmsg: Broken pipe',
             'connection dropped: The specified session has been invalidated for some reason',
             'storage_service -.*fail to update tokens for',
+            'storage_service -.*fail to update schema_version for',
         ]
 
         if reload_certs:
