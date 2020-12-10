@@ -20,9 +20,21 @@ import sstable_tools.statistics
 from ccmlib.node import NodetoolError, TimeoutError
 from random import randint
 
+class CompactionAdditionalTester(Tester):
+    __test__ = False
+
+    def prepare(self, nodes, wait_for_binary_proto=True, jvm_args=None, configuration_options={}):
+        configuration_options.update({'enable_sstable_key_validation': True})
+        cluster = self.cluster
+        cluster.set_configuration_options(values=configuration_options)
+        cluster.populate(nodes).start(wait_for_binary_proto=wait_for_binary_proto, jvm_args=jvm_args)
+        node1 = cluster.nodelist()[0]
+        return cluster.nodelist(), self.patient_cql_connection(node1)
+
 
 @attr('dtest-full', 'single_node')
-class CompactionAdditionalTest(Tester):
+class CompactionAdditionalTest(CompactionAdditionalTester):
+    __test__ = True
 
     @attr('next-gating')
     @attr('dtest-debug')
@@ -40,13 +52,8 @@ class CompactionAdditionalTest(Tester):
         8. insert additional 100 keys forcing a flush multiple times till multiple compactions are trigerred
         9. check that no deletion marker is left and files have been removed
         """
-        cluster = self.cluster
-        cluster.populate(1)
-        [node1] = cluster.nodelist()
         debug("Starting node1 with 1 cpu")
-        node1.start(wait_for_binary_proto=True, jvm_args=['--smp', '1'])
-
-        session = self.patient_cql_connection(node1)
+        [node1], session = self.prepare(1)
         self.create_ks(session, 'ks', 1)
 
         gc_grace_seconds = 5
@@ -170,13 +177,7 @@ class CompactionAdditionalTest(Tester):
         (Otherwise it means they were compacted wrongly).
         """
         debug("Starting a cluster of one node...")
-        cluster = self.cluster
-        if not cluster.nodelist():
-            cluster.populate(1)
-            [node1] = cluster.nodelist()
-            node1.start(wait_for_binary_proto=True)
-        nodes = cluster.nodelist()
-        node1 = nodes[0]
+        [node1], session = self.prepare(1)
 
         window_size_mins = 1
 
@@ -229,11 +230,7 @@ class CompactionAdditionalTest(Tester):
             Test each time window (after major compaction) has only one table
         """
         debug("Starting a cluster of one node...")
-        cluster = self.cluster
-        cluster.populate(1)
-        [node1] = cluster.nodelist()
-        node1.start(wait_for_binary_proto=True)
-        session = self.patient_cql_connection(node1)
+        [node1], session = self.prepare(1)
 
         debug("Creating keyspace 'ks'...")
         min_threshold = 7
@@ -326,10 +323,7 @@ class CompactionAdditionalTest(Tester):
         """
 
         debug("Starting a cluster of one node...")
-        cluster = self.cluster
-        cluster.populate(1)
-        [node1] = cluster.nodelist()
-        node1.start(wait_for_binary_proto=True)
+        [node1], session = self.prepare(1)
 
         TIME_TO_SLEEP_BETWEEN_FILES = 15
         NUMBER_OF_FILES = 11
@@ -337,7 +331,6 @@ class CompactionAdditionalTest(Tester):
         TTL = 70
         GC_GRACE = 10
 
-        session = self.patient_cql_connection(node1)
         debug("Creating keyspace 'ks'...")
         self.create_ks(session, 'ks', 1)
 
@@ -404,20 +397,15 @@ class CompactionAdditionalTest(Tester):
 
 
 @attr('dtest-full', 'single_node')
-class CompactionAdditionalStrategyTests(Tester):
-    __test__ = False
+class CompactionAdditionalStrategyTests(CompactionAdditionalTester):
+    __test__ = True
 
     def __init__(self, *args, **kwargs):
         kwargs['cluster_options'] = {'start_rpc': 'true'}
         Tester.__init__(self, *args, **kwargs)
 
     def compaction_is_started_on_boot_test(self):
-        cluster = self.cluster
-        cluster.populate(1)
-        [node1] = cluster.nodelist()
-        node1.start(wait_for_binary_proto=True)
-
-        session = self.patient_cql_connection(node1)
+        [node1], session = self.prepare(1)
         self.create_ks(session, 'ks', 1)
         session.execute("create table ks.cf (key int PRIMARY KEY, val int) "
                         "with compaction = {'class':'" + self.strategy + "'};")
@@ -504,12 +492,7 @@ class CompactionAdditionalStrategyTests(Tester):
         6. check that ttl'd data was removed
         Please note that we do not test that ttl data exists - we have other tests for this
         """
-        cluster = self.cluster
-        cluster.populate(1)
-        [node1] = cluster.nodelist()
-        node1.start(wait_for_binary_proto=True)
-
-        session = self.patient_cql_connection(node1)
+        [node1], session = self.prepare(1)
         self.create_ks(session, 'ks', 1)
 
         session.execute("create table ks.cf (key int PRIMARY KEY, val int) "
@@ -555,7 +538,8 @@ def seconds_to_micros(seconds):
 
 
 @attr('dtest-full')
-class TestTimeWindowDataSegregation(Tester):
+class TestTimeWindowDataSegregation(CompactionAdditionalTester):
+    __test__ = True
     keyspace_name = "ks"
     table_name = "test"
     window_size = 1
@@ -662,10 +646,7 @@ class TestTimeWindowDataSegregation(Tester):
         return list_sstables_timewindows
 
     def test_streaming_during_adding_node_with_boostrap(self):
-        self.cluster.populate(1).start(wait_for_binary_proto=True)
-
-        node1 = self.cluster.nodelist()[0]
-        session = self.patient_cql_connection(node1)
+        [node1], session = self.prepare(1)
         self._create_ks_cl_with_twcs(session, rf=1)
 
         self._simulate_write_process_in_minutes(session, duration_minutes=20)
@@ -681,10 +662,7 @@ class TestTimeWindowDataSegregation(Tester):
         self._check_sstable_timestamps(node2)
 
     def test_streaming_decommission(self):
-        self.cluster.populate(2).start(wait_for_binary_proto=True)
-
-        node1, node2 = self.cluster.nodelist()  # type: ScyllaNode
-        session = self.patient_cql_connection(node1)
+        [node1, node2], session = self.prepare(2)
         self._create_ks_cl_with_twcs(session, rf=1)
 
         self._simulate_write_process_in_minutes(session, duration_minutes=20)
@@ -699,10 +677,7 @@ class TestTimeWindowDataSegregation(Tester):
         self._check_sstable_timestamps(node2)
 
     def test_streaming_on_repair(self):
-        self.cluster.populate(2).start(wait_for_binary_proto=True)
-
-        node1, node2 = self.cluster.nodelist()  # type: ScyllaNode
-        session = self.patient_cql_connection(node1)
+        [node1, node2], session = self.prepare(2)
         self._create_ks_cl_with_twcs(session, rf=2)
 
         self._simulate_write_process_in_minutes(session, duration_minutes=10)
@@ -724,7 +699,8 @@ class TestTimeWindowDataSegregation(Tester):
         def _add_node(i, dc):
             return self.cluster.new_node(i, debug=True, data_center=dc)
 
-        self.cluster.set_configuration_options(values={'endpoint_snitch': 'GossipingPropertyFileSnitch'})
+        self.cluster.set_configuration_options(values={'endpoint_snitch': 'GossipingPropertyFileSnitch',
+                                                       'enable_sstable_key_validation': True})
         node1 = _add_node(1, 'dc1')  # type: ScyllaNode
 
         # start node in dc1
@@ -782,10 +758,7 @@ class TestTimeWindowDataSegregation(Tester):
         self._check_sstable_timestamps(node2)
 
     def test_streaming_sstables_with_several_timewindows(self):
-        self.cluster.populate(2).start(wait_for_binary_proto=True)
-
-        node1 = self.cluster.nodelist()[0]
-        session = self.patient_cql_connection(node1)
+        [node1, _], session = self.prepare(2)
         self._create_ks_cl_with_twcs(session, rf=2)
 
         self._simulate_write_process_in_minutes(session, duration_minutes=10, flush_period_seconds=120, num_pks=100)
@@ -800,9 +773,7 @@ class TestTimeWindowDataSegregation(Tester):
         self._check_sstable_timestamps(new_node)
 
     def test_rebuild_node_streaming(self):
-        self.cluster.populate(3).start(wait_for_binary_proto=True)
-        node1 = self.cluster.nodelist()[0]  # type: ScyllaNode
-        session = self.patient_cql_connection(node1)
+        [node1, _, node3], session = self.prepare(3)
         self._create_ks_cl_with_twcs(session, rf=3)
 
         self._simulate_write_process_in_minutes(session, duration_minutes=10, flush_period_seconds=20)
@@ -823,19 +794,15 @@ class TestTimeWindowDataSegregation(Tester):
         self._check_sstable_timestamps(node3)
 
 
-class TestGarabageCollected(Tester):
+class TestGarabageCollected(CompactionAdditionalTester):
+    __test__ = True
 
     def garbage_collected_sstable_test(self):
         """
         Test garbage collected SSTables
         Related issue: https://github.com/scylladb/scylla/issues/6275
         """
-        cluster = self.cluster
-        cluster.populate(3).start(wait_for_binary_proto=True)
-        (node1, node2, node3) = cluster.nodelist()
-
-        # Prepare test table and test data
-        session = self.patient_cql_connection(node1)
+        [node1, node2, node3], session = self.prepare(3)
         self.create_ks(session, 'ks', 3)
 
         # Use IncrementalCompactionStrategy for Enterprise
