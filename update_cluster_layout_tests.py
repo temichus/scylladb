@@ -1191,6 +1191,79 @@ class TestUpdateClusterLayout(Tester):
         r.raise_for_status()
         debug("Node5 is removed from the cluster")
 
+    def _do_simple_removenode(self, kill_coordinator):
+        """
+        Test removenode while kill coordinator or peer node
+        1. Create a cluster with 5 nodes with rf=3
+        2. Stop node2 and removenode node2
+        3. Kill node1 or node5 in the middle
+        4. Check node2 is added as pending when removenode starts
+        5. Check node2 is removed as pending when removenode aborts
+        """
+        cluster = self.cluster
+        if kill_coordinator:
+            debug('Test kill removenode coordinator node in the middle')
+        else:
+            debug('Test kill removenode peer node in the middle')
+
+        # Disable hinted handoff and set batch commit log so this doesn't
+        # interfer with the test (this must be after the populate)
+        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.populate(5).start()
+        node1, node2, node3, node4, node5 = cluster.nodelist()
+
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 3)
+        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+
+        insert_c1c2(session, keys=range(10000), consistency=ConsistencyLevel.ALL)
+
+        node2_hostid = node2.hostid()
+        node2.stop(wait_other_notice=True)
+
+        def kill_node_thread(kill_coordinator, node1, node2, node3, node4, node5):
+            debug('kill node thread')
+
+            node3.watch_log_for(f"Added node={node2.address()} as leaving node, coordinator={node1.address()}")
+            node4.watch_log_for(f"Added node={node2.address()} as leaving node, coordinator={node1.address()}")
+            node5.watch_log_for(f"Added node={node2.address()} as leaving node, coordinator={node1.address()}")
+
+            debug('Wait for node 5 to start to sync data')
+            node5.watch_log_for(f"Started to sync data for removing node")
+
+            if kill_coordinator:
+                debug('Stop node1 gently=False')
+                node1.stop(gently=False)
+            else:
+                debug('Stop node5 gently=False')
+                node5.stop(gently=False)
+
+        executor = ThreadPoolExecutor(max_workers=1)
+        t = executor.submit(kill_node_thread, kill_coordinator, node1, node2, node3, node4, node5)
+
+        api_cmd = f"http://{node1.address()}:10000/storage_service/remove_node/?host_id={node2_hostid}"
+        debug("Send restful api: " + api_cmd)
+        try:
+            r = requests.post(api_cmd)
+            debug(r.text)
+            assert r.status_code != requests.codes.ok
+        except Exception as e:
+            debug(f"It is except to see the restful api to node1 to fail because node1 is killed: {e}")
+
+        node3.watch_log_for(f"Removed node={node2.address()} as leaving node, coordinator={node1.address()}")
+        node4.watch_log_for(f"Removed node={node2.address()} as leaving node, coordinator={node1.address()}")
+        if kill_coordinator:
+            node5.watch_log_for(f"Removed node={node2.address()} as leaving node, coordinator={node1.address()}")
+        else:
+            node1.watch_log_for(f"Removed node={node2.address()} as leaving node, coordinator={node1.address()}")
+
+        t.result()
+
+    def simple_removenode_4_test(self):
+        self._do_simple_removenode(kill_coordinator=True)
+
+    def simple_removenode_5_test(self):
+        self._do_simple_removenode(kill_coordinator=False)
 
     def _add_new_node_while_add_new_table(self, when):
         """
