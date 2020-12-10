@@ -2,12 +2,14 @@ import os
 import distutils.dir_util
 import shutil
 import ssl
+import time
 
 from cassandra import ConsistencyLevel
 from cassandra.cluster import NoHostAvailable
 
-from dtest import Tester
-from tools import generate_ssl_stores, putget, since, safe_mkdtemp
+from dtest import Tester, debug, wait_for
+from tools import generate_ssl_stores, putget, since, safe_mkdtemp, require
+from scylla_tools import is_port_used
 from unittest import skip
 from nose.plugins.attrib import attr
 from ccmlib import common
@@ -179,7 +181,8 @@ class NativeTransportSSL(Tester):
         finally:
             shutil.rmtree(tmpdir)
 
-    def _populateCluster(self, enableSSL=False, nativePort=None, nativePortSSL=None, sslOptional=False, requireAuth=False):
+    def _populateCluster(self, enableSSL=False, nativePort=None, nativePortSSL=None, sslOptional=False,
+                         requireAuth=False, nodes_num=1):
         cluster = self.cluster
 
         if enableSSL:
@@ -225,7 +228,7 @@ class NativeTransportSSL(Tester):
                 'native_transport_port_ssl': nativePortSSL
             })
 
-        cluster.populate(1)
+        cluster.populate(nodes_num)
         return cluster
 
     def _putget(self, cluster, session, ks='ks', cf='cf'):
@@ -249,3 +252,84 @@ class NativeTransportSSL(Tester):
         is_port_listening = common.check_socket_listening(cluster.get_binary_interface(1), timeout=20)
         assert not is_port_listening, \
             "Even after disabling the default cql port, the cluster continues to listen to it"
+
+    @attr('single_node')
+    @require('#7500, #7783')
+    def listen_ports_conf_test(self, disable_value=None):
+        """
+        Test native transport ports configuration, and verify the listening native transport ports after start.
+        try to disable the option by setting the option to None, ccm will remove the options from scylla.yaml
+        """
+        native_port = 9042
+        native_port_ssl = 9142
+        native_shard_aware_port = 19042
+        native_shard_aware_port_ssl = 19142
+
+        # Native_transport_port can only be disabled by `0'
+        # Other 3 options can be disabled by removing the option from scylla.yaml, or set it to ~ ,
+        # or null in scylla.yaml, ccm only supports to set the option to None, it will remove the
+        # option from scylla.yaml
+        disable_values = {'native_transport_port': 0,
+                          'native_transport_port_ssl': disable_value,
+                          'native_shard_aware_transport_port': disable_value,
+                          'native_shard_aware_transport_port_ssl': disable_value}
+
+        default_ports_conf = {'native_transport_port': native_port,
+                              'native_transport_port_ssl': native_port_ssl,
+                              'native_shard_aware_transport_port': native_shard_aware_port,
+                              'native_shard_aware_transport_port_ssl': native_shard_aware_port_ssl}
+
+        def restart_and_verify_listen_ports(expected_ports=[native_port, native_shard_aware_port_ssl]):
+            """
+            Start the node and verify the expected ports are listened, the node will be stop in the end
+            """
+            debug(f'Expected listen ports: {expected_ports}')
+            node1 = cluster.nodelist()[0]
+            mark = node1.mark_log()
+            node1.start(wait_for_binary_proto=True)
+
+            pattern = '|'.join([str(port) for port in expected_ports])
+            res = node1.grep_log(f'Starting listening for CQL clients on.*:({pattern})', from_mark=mark)
+            debug(res)
+            self.assertEqual(len(res), len(expected_ports),
+                             f'The listened ports are not same as expected! '
+                             f'Expected ports: {expected_ports}\nReal listened ports: {res}')
+
+            for port in expected_ports:
+                # Retry to check if the port can be used in 5 seconds
+                wait_for(is_port_used, text=f'Waiting port {port} is used', step=0.5, timeout=2,
+                         throw_exc=True, port=port, service_name='Native Transport')
+
+            # Wait a while and check if Aborting/Segfault occurred
+            time.sleep(2)
+            res = node1.grep_log(f'Aborting on shard |Segmentation fault on shard ', from_mark=mark)
+            self.assertEqual(0, len(res), str(res))
+            node1.stop(gently=False)
+
+        debug('Only enabled explicitly native SSL port in init cluster')
+        cluster = self._populateCluster(enableSSL=True, nativePortSSL=native_port_ssl,
+                                        nativePort=native_port, nodes_num=3)
+        restart_and_verify_listen_ports(expected_ports=[native_port, native_port_ssl,
+                                                        native_shard_aware_port])
+
+        debug(sorted(default_ports_conf.keys()))
+        for num in range(2 ** len(default_ports_conf)):
+            # Try to cover all cases
+            ports_conf = default_ports_conf.copy()
+            for idx, key in enumerate(sorted(default_ports_conf.keys())):
+                if num & (2 ** idx):  # check if the bit is set
+                    ports_conf[key] = disable_values[key]
+            debug(f"Test case {num} ({('%4s' % bin(num)[2:]).replace(' ', '0')}):\n"
+                  f" {sorted(ports_conf.items(), key=lambda d: d[0])}")
+            # cases (9, 10, 11) will fail if disable value is 0
+            # cases (13, 15) will fail for if disable_value is None
+            cluster.set_configuration_options(ports_conf)
+            restart_and_verify_listen_ports(expected_ports=[v for k, v in ports_conf.items() if v not in [0, None]])
+
+    @attr('single_node')
+    def listen_ports_conf_by_zero_test(self, disable_value=None):
+        """
+        Test native transport ports configuration, and verify the listening native transport ports after start.
+        Disable 3 options by setting it to `0'
+        """
+        self.listen_ports_conf_test(disable_value=0)
