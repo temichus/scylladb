@@ -33,6 +33,10 @@ class RepairAdditionalBase(Tester):
     ROWS_IN_PARTITION = 20
     BIG_PARTITION_ROWS = 10000
 
+    @staticmethod
+    def default_config_options():
+        return {'hinted_handoff_enabled': False, 'enable_sstable_key_validation': True}
+
     def check_rows_on_node(self, node_to_check, rows, found=None, missings=None, restart=True, consistency_level=ConsistencyLevel.ONE):
         if found is None:
             found = []
@@ -196,7 +200,7 @@ class RepairAdditionalBase(Tester):
         """
         debug("Starting cluster...")
         # Disable hinted handoff so it doesn't do what we expect repair to do
-        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        self.cluster.set_configuration_options(values=self.default_config_options())
         # Create a cluster of 3 nodes, and a keyspace with RF=3 on all nodes
         # (disable read repair, as we want to test the full repair).
         self.cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True)
@@ -253,7 +257,7 @@ class RepairAdditionalBase(Tester):
         debug("Starting cluster...")
         # Start a cluster of two nodes, and create a keyspace with RF=2.
         # Do *not* create a table yet - we'll do that with one node down
-        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        self.cluster.set_configuration_options(values=self.default_config_options())
         self.cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2 = self.cluster.nodelist()
         session = self.patient_cql_connection(node1)
@@ -298,7 +302,7 @@ class RepairAdditionalBase(Tester):
         debug("Starting cluster...")
         # Start a cluster of two nodes, and create a keyspace with RF=2.
         # Do *not* create a table yet - we'll do that with one node down
-        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        self.cluster.set_configuration_options(values=self.default_config_options())
         self.cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2 = self.cluster.nodelist()
         session = self.patient_cql_connection(node1)
@@ -339,7 +343,7 @@ class RepairAdditionalBase(Tester):
         # Start a cluster of two nodes, and create a keyspace with RF=2, and
         # a table with one partition. Hinted handoff and read repair are disabled
         # so they don't fix the problems which repair is supposed to fix
-        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        self.cluster.set_configuration_options(values=self.default_config_options())
         self.cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2 = self.cluster.nodelist()
         with self.patient_cql_connection(node1) as session:
@@ -400,7 +404,7 @@ class RepairAdditionalBase(Tester):
         # Start a cluster of two nodes, and create a keyspace with RF=2, and
         # a table with one partition. Hinted handoff and read repair are disabled
         # so they don't fix the problems which repair is supposed to fix
-        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        self.cluster.set_configuration_options(values=self.default_config_options())
         self.cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2 = self.cluster.nodelist()
         with self.patient_cql_connection(node1) as session:
@@ -461,7 +465,7 @@ class RepairAdditionalBase(Tester):
         # Start a cluster of two nodes, and create a keyspace with RF=2, and
         # a table with one partition. Hinted handoff and read repair are disabled
         # so they don't fix the problems which repair is supposed to fix
-        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        self.cluster.set_configuration_options(values=self.default_config_options())
         self.cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2 = self.cluster.nodelist()
         with self.patient_cql_connection(node1) as session:
@@ -524,7 +528,7 @@ class RepairAdditionalBase(Tester):
         # Start a cluster of two nodes, and create a keyspace with RF=2, and
         # a table with three partitions. Hinted handoff and read repair are disabled
         # so they don't fix the problems which repair is supposed to fix
-        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        self.cluster.set_configuration_options(values=self.default_config_options())
         self.cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2 = self.cluster.nodelist()
         with self.patient_cql_connection(node1) as session:
@@ -596,7 +600,7 @@ class RepairAdditionalBase(Tester):
         # Start a cluster of two nodes, and create a keyspace with RF=2, and
         # a table with one partition. Hinted handoff and read repair are disabled
         # so they don't fix the problems which repair is supposed to fix
-        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        self.cluster.set_configuration_options(values=self.default_config_options())
         self.cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2 = self.cluster.nodelist()
         with self.patient_cql_connection(node1) as session:
@@ -710,7 +714,7 @@ class RepairAdditionalBase(Tester):
         # Start a cluster of two nodes, and create a keyspace ks with RF=2,
         # and a table cf. Hinted handoff and read repair are disabled so
         # they don't fix the problems which repair is supposed to fix.
-        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        self.cluster.set_configuration_options(values=self.default_config_options())
         self.cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2 = self.cluster.nodelist()
         with self.patient_cql_cluster_session(node1) as session:
@@ -788,7 +792,7 @@ class RepairAdditionalBase(Tester):
         # create a keyspace ks with RF=2, and a table cf.
         # Hinted handoff and read repair are disabled so they don't fix the
         # problems which repair is supposed to fix.
-        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        self.cluster.set_configuration_options(values=self.default_config_options())
         self.cluster.populate([2, 2, 2]).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1_1, node1_2, node2_1, node2_2, node3_1, node3_2 = self.cluster.nodelist()
         with self.patient_cql_cluster_session(node1_1) as session:
@@ -913,7 +917,7 @@ class RepairAdditionalBase(Tester):
         # Hinted handoff and read repair are disabled so they don't fix the
         # problems which repair is supposed to fix.
         debug("Starting 6 nodes...")
-        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        self.cluster.set_configuration_options(values=self.default_config_options())
         self.cluster.populate([2, 2, 2]).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1_1, node1_2, node2_1, node2_2, node3_1, node3_2 = self.cluster.nodelist()
         with self.patient_cql_cluster_session(node1_1) as session:
@@ -987,7 +991,7 @@ class RepairAdditionalBase(Tester):
         # Start a cluster of two nodes, and create a keyspace ks with RF=2,
         # and 3 tables. Hinted handoff and read repair are disabled so
         # they don't fix the problems which repair is supposed to fix.
-        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        self.cluster.set_configuration_options(values=self.default_config_options())
         self.cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2 = self.cluster.nodelist()
         with self.patient_cql_connection(node1) as session:
@@ -1064,7 +1068,7 @@ class RepairAdditionalBase(Tester):
         Test that specifying a non-existant keyspace or column family to
         repair results in failure.
         """
-        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        self.cluster.set_configuration_options(values=self.default_config_options())
         self.cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2 = self.cluster.nodelist()
         session = self.patient_cql_connection(node1)
@@ -1097,7 +1101,7 @@ class RepairAdditionalBase(Tester):
         # with 1 node. Then create a keyspace ks replicated on all nodes,
         # and one cf. Hinted handoff and read repair are disabled so they
         # don't fix the problems which repair is supposed to fix.
-        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        self.cluster.set_configuration_options(values=self.default_config_options())
         self.cluster.populate([2, 1, 1]).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2, node3, node4 = self.cluster.nodelist()
         with self.patient_cql_connection(node1) as session:
@@ -1212,7 +1216,7 @@ class RepairAdditionalBase(Tester):
         harm, and should produce correct results.
         """
         # Disable hinted handoff so it doesn't do what we expect repair to do
-        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        self.cluster.set_configuration_options(values=self.default_config_options())
         # Create a cluster of 3 nodes, and a keyspace with RF=3 on all nodes
         # (disable read repair, as we want to test the full repair).
         self.cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True)
@@ -1288,7 +1292,7 @@ class RepairAdditionalBase(Tester):
         """
         debug("Starting cluster...")
         # Disable hinted handoff so it doesn't do what we expect repair to do
-        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        self.cluster.set_configuration_options(values=self.default_config_options())
         # Create a cluster of 3 nodes, and a keyspace with RF=2 on all nodes
         # (disable read repair, as we want to test the full repair).
         self.cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True)
@@ -1345,7 +1349,7 @@ class RepairAdditionalBase(Tester):
         # Start a cluster of two nodes, and create a keyspace with RF=2, and
         # a table with one partition. Hinted handoff and read repair are disabled
         # so they don't fix the problems which repair is supposed to fix.
-        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        self.cluster.set_configuration_options(values=self.default_config_options())
         self.cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2 = self.cluster.nodelist()
         with self.patient_cql_connection(node1) as session:
@@ -1419,7 +1423,7 @@ class RepairAdditionalBase(Tester):
         # Start a cluster of two nodes, and create a keyspace with RF=2, and
         # a table with one partition. Hinted handoff and read repair are disabled
         # so they don't fix the problems which repair is supposed to fix.
-        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        self.cluster.set_configuration_options(values=self.default_config_options())
         self.cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2 = self.cluster.nodelist()
         with self.patient_cql_connection(node1) as session:
@@ -1467,7 +1471,7 @@ class RepairAdditionalBase(Tester):
         # Start a cluster of two nodes, and create a keyspace with RF=2, and
         # a table with one partition. Hinted handoff and read repair are disabled
         # so they don't fix the problems which repair is supposed to fix.
-        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        self.cluster.set_configuration_options(values=self.default_config_options())
         self.cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2 = self.cluster.nodelist()
         with self.patient_cql_connection(node1) as session:
@@ -1549,7 +1553,7 @@ class RepairAdditionalBase(Tester):
         token ranges held by one node - and these are not all the ranges.
         """
         # Start a cluster of 3 nodes, and a keyspace with RF=2, and a table.
-        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        self.cluster.set_configuration_options(values=self.default_config_options())
         self.cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2, node3 = self.cluster.nodelist()
         with self.patient_cql_connection(node1) as session:
@@ -1670,7 +1674,7 @@ class RepairAdditionalBase(Tester):
         ranges for which one of the replicas was dead. Test 2b below does that.
         """
         # Start a cluster of 4 nodes, and a keyspace with RF=3, and a table.
-        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        self.cluster.set_configuration_options(values=self.default_config_options())
         self.cluster.populate(4).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2, node3, node4 = self.cluster.nodelist()
         with self.patient_cql_connection(node1) as session:
@@ -1747,7 +1751,7 @@ class RepairAdditionalBase(Tester):
         hard enough.
         """
         # Start a cluster of 4 nodes, and a keyspace with RF=3, and a table.
-        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        self.cluster.set_configuration_options(values=self.default_config_options())
         self.cluster.populate(4).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2, node3, node4 = self.cluster.nodelist()
         with self.patient_cql_connection(node1) as session:
@@ -1811,7 +1815,7 @@ class RepairAdditionalBase(Tester):
         and some keys aren't synced.
         """
         # Disable hinted handoff so it doesn't do what we expect repair to do
-        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        self.cluster.set_configuration_options(values=self.default_config_options())
         # Create a cluster of 3 nodes, and a keyspace with RF=3 on all nodes
         # (disable read repair, as we want to test the full repair).
         self.cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True)
@@ -1930,7 +1934,7 @@ class RepairAdditionalBase(Tester):
         """
         debug("Starting cluster...")
         # Disable hinted handoff so it doesn't do what we expect repair to do
-        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        self.cluster.set_configuration_options(values=self.default_config_options())
         self.cluster.populate(2)
         node1, node2 = self.cluster.nodelist()
         if not same_shard_count:
@@ -1981,7 +1985,7 @@ class RepairAdditionalBase(Tester):
         """
         debug("Starting cluster...")
         # Disable hinted handoff so it doesn't do what we expect repair to do
-        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        self.cluster.set_configuration_options(values=self.default_config_options())
         # Create a cluster of 2 nodes, and a keyspace with RF=3 on all nodes
         # (disable read repair, as we want to test the full repair).
         self.cluster.populate(2)
@@ -2034,7 +2038,7 @@ class RepairAdditionalBase(Tester):
         Make sure node2 sends 1000 rows and receives 1000 rows
         """
         debug("Starting cluster...")
-        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        self.cluster.set_configuration_options(values=self.default_config_options())
 
         self.cluster.populate(2)
         node1, node2 = self.cluster.nodelist()
@@ -2091,7 +2095,7 @@ class RepairAdditionalBase(Tester):
         '''
         debug("Starting cluster...")
         # Disable hinted handoff so it doesn't do what we expect repair to do
-        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        self.cluster.set_configuration_options(values=self.default_config_options())
         self.cluster.populate(3)
         node1, node2, node3 = self.cluster.nodelist()
         if not same_shard_count:
@@ -2181,7 +2185,7 @@ class RepairAdditionalBase(Tester):
         '''
         debug("Starting 3 node cluster...")
         # Disable hinted handoff so it doesn't do what we expect repair to do
-        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        self.cluster.set_configuration_options(values=self.default_config_options())
         self.cluster.populate(3)
         node1, node2, node3 = self.cluster.nodelist()
         if not same_shard_count:
@@ -2262,7 +2266,7 @@ class RepairAdditionalBase(Tester):
 
         debug("Starting 3 node cluster...")
         # Disable hinted handoff so it doesn't do what we expect repair to do
-        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
+        self.cluster.set_configuration_options(values=self.default_config_options())
         self.cluster.populate(3)
         node1, node2, node3 = self.cluster.nodelist()
         if not same_shard_count:
@@ -2319,7 +2323,7 @@ class RepairAdditionalBase(Tester):
 
     def _setup_cluster_prefilled_with_large_partitions(self):
         test_session = self.create_cluster_and_keyspace(num_of_nodes=self.NUM_OF_NODES, rf=self.RF,
-                                                        configuration_options={'hinted_handoff_enabled': False})
+                                                        configuration_options=self.default_config_options())
 
         stmt = 'create table {} (pk int, ck int, {}, clist list<int>, cset set<text>, cmap map<int, text>, ' \
                'PRIMARY KEY(pk, ck))'.format(self.TABLE_NAME,
@@ -2815,8 +2819,8 @@ class RepairAdditionalTest(RepairAdditionalBase):
         """
         debug("Starting cluster...")
         # Start a cluster of two nodes, and create a keyspace with RF=2.
-        self.cluster.set_configuration_options(values={'enable_repair_based_node_ops': True,
-                                                       'hinted_handoff_enabled': False},
+        config_options = self.default_config_options().update({'enable_repair_based_node_ops': True})
+        self.cluster.set_configuration_options(values=config_options,
                                                batch_commitlog=True)
         self.cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2 = self.cluster.nodelist()
