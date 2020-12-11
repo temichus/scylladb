@@ -20,6 +20,7 @@ import sstable_tools.statistics
 from ccmlib.node import NodetoolError, TimeoutError
 from random import randint
 
+
 class CompactionAdditionalTester(Tester):
     __test__ = False
 
