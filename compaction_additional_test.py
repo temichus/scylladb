@@ -399,7 +399,7 @@ class CompactionAdditionalTest(CompactionAdditionalTester):
 
 @attr('dtest-full', 'single_node')
 class CompactionAdditionalStrategyTests(CompactionAdditionalTester):
-    __test__ = True
+    __test__ = False
 
     def __init__(self, *args, **kwargs):
         kwargs['cluster_options'] = {'start_rpc': 'true'}
