@@ -2051,7 +2051,7 @@ class TestUpdateClusterLayout(Tester):
 class TestLargeScaleCluster(Tester):
     _multiprocess_can_split_ = False
 
-    def add_multi_nodes(self, starting_size=3, node_count=10, rf=1):
+    def add_multi_nodes(self, starting_size=3, node_count=10, rf=1, timeout=120):
         """
         1. Create a cluster with 3 nodes and rf=1, insert data
         2. In a loop add new nodes
@@ -2078,7 +2078,7 @@ class TestLargeScaleCluster(Tester):
             insert_c1c2(session_i, keys=range(100000 + i * 2000, 100000 + i * 2000 + 100), consistency=consistency)
             debug("added %s" % node_i.name)
 
-            result = list(session.execute(query))
+            result = list(session.execute(query, timeout=timeout))
             self.assertEqual(len(result), i * 100 + 1000, "data loss after increasing size to %d expecting %d rows %d" %
                              (len(cluster.nodelist()), i * 100 + 1000, len(result)))
 
@@ -2093,18 +2093,22 @@ class TestLargeScaleCluster(Tester):
         starting_size = 3
         cluster = self.cluster
 
+        timeout = self.cql_timeout(120)
+
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfere with the test (this must be after the populate)
         config_options = {
             'hinted_handoff_enabled': False,
             'enable_sstable_key_validation': True,
+            'range_request_timeout_in_ms': timeout * 1000,
         }
         cluster.set_configuration_options(
             values=config_options, batch_commitlog=True)
         cluster.populate(starting_size).start()
         node2 = cluster.nodelist()[1]
 
-        n = '300000'
+        n = '300000' if not hasattr(
+            cluster, 'scylla_mode') or cluster.scylla_mode != 'debug' else 30000
 
         def run():
             node2.stress(['write', 'cl=QUORUM',  'n=%s' % n, 'no-warmup',
@@ -2113,7 +2117,7 @@ class TestLargeScaleCluster(Tester):
         executor = ThreadPoolExecutor(max_workers=1)
         t = executor.submit(run)
 
-        self.add_multi_nodes(starting_size, node_count=50, rf=1)
+        self.add_multi_nodes(starting_size, node_count=50, rf=1, timeout=timeout)
         t.result()
 
         node2.stress(['read', 'cl=ONE', 'n=%s' % n, 'no-warmup', '-pop seq=1..%s' % n, '-rate threads=20'])
