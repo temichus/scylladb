@@ -60,27 +60,7 @@ class TestUpdateClusterLayout(Tester):
             query_c1c2(session, k, ConsistencyLevel.ONE, must_be_missing=True)
 
         if restart:
-            self.start_all_nodes()
-
-    def start_all_nodes(self):
-        nodes_marks = []
-        for node in self.cluster.nodes.values():
-            if node.is_running():
-                nodes_marks.append((node, node.mark_log()))
-            else:
-                nodes_marks.append((node, None))
-
-        for node in self.cluster.nodes.values():
-            if not node.is_running():
-                node.start(wait_other_notice=True, wait_for_binary_proto=True)
-
-        for node, mark in nodes_marks:
-            for other_node, _ in nodes_marks:
-                if other_node is not node:
-                    if mark:
-                        node.watch_log_for_alive(other_node, from_mark=mark)
-                    else:
-                        node.watch_log_for_alive(other_node)
+            self.cluster.start_nodes()
 
     def simple_add_node_1_test(self):
         """
