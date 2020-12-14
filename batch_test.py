@@ -568,7 +568,7 @@ class TestBatch(Tester):
 
     def _base_batchlog_manager_issue(self, rack_names):
         if not self.cluster:
-            self.cluster = self._get_cluster(version=self.cassandra_version)
+            self.cluster = self.get_cluster(version=self.cassandra_version)
         cluster = self.cluster
         cluster.populate([4])
         cluster.set_configuration_options(

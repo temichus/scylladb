@@ -429,7 +429,7 @@ class Tester(TestCase):
             return True
         return False
 
-    def _get_cluster(self, name='test', version=None):
+    def get_cluster(self, name='test', version=None):
         if self._preserve_cluster and hasattr(self, 'cluster'):
             return self.cluster
 
@@ -637,7 +637,7 @@ class Tester(TestCase):
         if not hasattr(self, 'cluster') or self.cluster is None:
             if not self._reuse_preserved_cluster():
                 new_cluster = True
-                self.cluster = self._get_cluster(version=self.cassandra_version)
+                self.cluster = self.get_cluster(version=self.cassandra_version)
         self.addCleanup(self.cleanUpCluster)
 
         annotate = os.path.join(self.cluster.get_path(), 'current_test')
