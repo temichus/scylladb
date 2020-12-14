@@ -1403,7 +1403,12 @@ class TestUpdateClusterLayout(Tester):
         node1 = cluster.nodelist()[0]
         debug("Cluster is up, start stressing...")
 
-        node1.stress(['write', 'cl=QUORUM', 'n=1000000', 'no-warmup', '-rate threads=700'])
+        num_keys = 1000000 if not hasattr(
+            cluster, 'scylla_mode') or cluster.scylla_mode != 'debug' else 10000
+        num_threads = 700 if not hasattr(
+            cluster, 'scylla_mode') or cluster.scylla_mode != 'debug' else 70
+        node1.stress(
+            ['write', 'cl=QUORUM', f"n={num_keys}", 'no-warmup', f"-rate threads={num_threads}"])
 
         debug("Adding new node...")
         node4 = new_node(cluster)
