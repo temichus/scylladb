@@ -652,7 +652,7 @@ class TestUpdateClusterLayout(Tester):
         t = executor.submit(run)
 
         if enable_repair_based_node_ops:
-            node4.watch_log_for("completed successfully, keyspace=ks,")
+            node4.watch_log_for("completed successfully, keyspace=ks")
 
         node4.watch_log_for("Starting listening for CQL clients")
         session = self.patient_cql_connection(node4)
