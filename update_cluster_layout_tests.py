@@ -25,6 +25,16 @@ import requests
 @attr('dtest-full')
 class TestUpdateClusterLayout(Tester):
 
+    @staticmethod
+    def default_config_options(hinted_handoff_enabled=False, enable_sstable_key_validation=True):
+        values = {}
+        if hinted_handoff_enabled is not None:
+            values.update({'hinted_handoff_enabled': hinted_handoff_enabled})
+        if enable_sstable_key_validation is not None:
+            values.update(
+                {'enable_sstable_key_validation': enable_sstable_key_validation})
+        return values
+
     def check_rows_on_node(self, node_to_check, rows, found=None, missings=None, restart=True, ks='ks', cf='cf',
                            counter_column=None, timeout=None):
         if found is None:
@@ -73,7 +83,8 @@ class TestUpdateClusterLayout(Tester):
 
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfer with the test (this must be after the populate)
-        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.set_configuration_options(
+            values=self.default_config_options(), batch_commitlog=True)
         cluster.populate(1).start()
         node1 = cluster.nodelist()[0]
 
@@ -109,7 +120,8 @@ class TestUpdateClusterLayout(Tester):
 
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfer with the test (this must be after the populate)
-        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.set_configuration_options(
+            values=self.default_config_options(), batch_commitlog=True)
         cluster.populate(1).start()
         node1 = cluster.nodelist()[0]
 
@@ -195,7 +207,8 @@ class TestUpdateClusterLayout(Tester):
 
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfer with the test (this must be after the populate)
-        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.set_configuration_options(
+            values=self.default_config_options(), batch_commitlog=True)
         cluster.populate(1).start()
         node1 = cluster.nodelist()[0]
 
@@ -266,7 +279,8 @@ class TestUpdateClusterLayout(Tester):
 
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfer with the test (this must be after the populate)
-        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.set_configuration_options(
+            values=self.default_config_options(), batch_commitlog=True)
         cluster.populate(3).start()
         node1, node2, node3 = cluster.nodelist()
 
@@ -329,7 +343,8 @@ class TestUpdateClusterLayout(Tester):
 
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfer with the test (this must be after the populate)
-        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.set_configuration_options(
+            values=self.default_config_options(), batch_commitlog=True)
         cluster.populate(3).start()
         node1 = cluster.nodelist()[0]
         node2 = cluster.nodelist()[1]
@@ -398,7 +413,8 @@ class TestUpdateClusterLayout(Tester):
 
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfer with the test (this must be after the populate)
-        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.set_configuration_options(
+            values=self.default_config_options(), batch_commitlog=True)
         cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1 = cluster.nodelist()[0]
         node2 = cluster.nodelist()[1]
@@ -478,7 +494,8 @@ class TestUpdateClusterLayout(Tester):
 
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfer with the test (this must be after the populate)
-        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.set_configuration_options(
+            values=self.default_config_options(), batch_commitlog=True)
         cluster.populate([1, 1]).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1 = cluster.nodelist()[0]
         node2 = cluster.nodelist()[1]
@@ -556,7 +573,8 @@ class TestUpdateClusterLayout(Tester):
 
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfer with the test (this must be after the populate)
-        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.set_configuration_options(
+            values=self.default_config_options(), batch_commitlog=True)
         cluster.populate(3).start()
         node1 = cluster.nodelist()[0]
 
@@ -600,8 +618,9 @@ class TestUpdateClusterLayout(Tester):
 
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfer with the test (this must be after the populate)
-        cluster.set_configuration_options(values={'enable_repair_based_node_ops': enable_repair_based_node_ops,
-                                                  'hinted_handoff_enabled': False},
+        config_options = self.default_config_options()
+        config_options.update({'enable_repair_based_node_ops': enable_repair_based_node_ops})
+        cluster.set_configuration_options(values=config_options,
                                           batch_commitlog=True)
         cluster.populate(3).start()
         node1 = cluster.nodelist()[0]
@@ -670,7 +689,8 @@ class TestUpdateClusterLayout(Tester):
 
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfer with the test (this must be after the populate)
-        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.set_configuration_options(
+            values=self.default_config_options(), batch_commitlog=True)
         cluster.populate(3).start()
         node1 = cluster.nodelist()[0]
 
@@ -723,7 +743,8 @@ class TestUpdateClusterLayout(Tester):
 
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfer with the test (this must be after the populate)
-        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.set_configuration_options(
+            values=self.default_config_options(), batch_commitlog=True)
         cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2 = cluster.nodelist()
 
@@ -763,7 +784,8 @@ class TestUpdateClusterLayout(Tester):
 
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfer with the test (this must be after the populate)
-        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.set_configuration_options(
+            values=self.default_config_options(), batch_commitlog=True)
         cluster.populate(1).start()
         node1 = cluster.nodelist()[0]
 
@@ -824,7 +846,8 @@ class TestUpdateClusterLayout(Tester):
 
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfer with the test (this must be after the populate)
-        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.set_configuration_options(
+            values=self.default_config_options(), batch_commitlog=True)
         cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True,
                                   jvm_args=['--logger-log-level', 'stream_session=debug'])
         node1, node2, node3 = cluster.nodelist()
@@ -875,7 +898,8 @@ class TestUpdateClusterLayout(Tester):
 
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfer with the test (this must be after the populate)
-        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.set_configuration_options(
+            values=self.default_config_options(), batch_commitlog=True)
         cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True,
                                   jvm_args=['--logger-log-level', 'stream_session=debug'])
         node1, node2, node3 = cluster.nodelist()
@@ -967,7 +991,8 @@ class TestUpdateClusterLayout(Tester):
 
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfer with the test (this must be after the populate)
-        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.set_configuration_options(
+            values=self.default_config_options(), batch_commitlog=True)
         cluster.populate(3).start()
         node1, node2, node3 = cluster.nodelist()
 
@@ -1015,7 +1040,8 @@ class TestUpdateClusterLayout(Tester):
 
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfer with the test (this must be after the populate)
-        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.set_configuration_options(
+            values=self.default_config_options(), batch_commitlog=True)
         cluster.populate(3).start()
         node1, node2, node3 = cluster.nodelist()
 
@@ -1069,7 +1095,8 @@ class TestUpdateClusterLayout(Tester):
 
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfer with the test (this must be after the populate)
-        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.set_configuration_options(
+            values=self.default_config_options(), batch_commitlog=True)
         cluster.populate(3).start()
         node1, node2, node3 = cluster.nodelist()
 
@@ -1103,7 +1130,8 @@ class TestUpdateClusterLayout(Tester):
 
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfer with the test (this must be after the populate)
-        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.set_configuration_options(
+            values=self.default_config_options(), batch_commitlog=True)
         cluster.populate(2).start()
         node1, node2 = cluster.nodelist()
 
@@ -1258,7 +1286,8 @@ class TestUpdateClusterLayout(Tester):
 
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfer with the test (this must be after the populate)
-        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.set_configuration_options(
+            values=self.default_config_options(), batch_commitlog=True)
         cluster.populate(3).start()
         node1 = cluster.nodelist()[0]
 
@@ -1358,7 +1387,8 @@ class TestUpdateClusterLayout(Tester):
 
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfere with the test (this must be after the populate)
-        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.set_configuration_options(
+            values=self.default_config_options(), batch_commitlog=True)
         cluster.populate(3).start()
         node1, node2, node3 = cluster.nodelist()
 
@@ -1399,6 +1429,9 @@ class TestUpdateClusterLayout(Tester):
 
     def add_node_when_cluster_is_filled_test(self):
         cluster = self.cluster
+        config_options = self.default_config_options(
+            hinted_handoff_enabled=None)
+        cluster.set_configuration_options(values=config_options)
         cluster.populate(3).start(wait_for_binary_proto=True)
         node1 = cluster.nodelist()[0]
         debug("Cluster is up, start stressing...")
@@ -1427,7 +1460,8 @@ class TestUpdateClusterLayout(Tester):
 
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfer with the test (this must be after the populate)
-        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.set_configuration_options(
+            values=self.default_config_options(), batch_commitlog=True)
         cluster.populate(1).start()
         node1 = cluster.nodelist()[0]
 
@@ -1470,7 +1504,8 @@ class TestUpdateClusterLayout(Tester):
 
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfer with the test (this must be after the populate)
-        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.set_configuration_options(
+            values=self.default_config_options(), batch_commitlog=True)
         cluster.populate(1).start()
         node1 = cluster.nodelist()[0]
 
@@ -1512,7 +1547,8 @@ class TestUpdateClusterLayout(Tester):
 
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfer with the test (this must be after the populate)
-        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.set_configuration_options(
+            values=self.default_config_options(), batch_commitlog=True)
         cluster.populate(1).start()
         node1 = cluster.nodelist()[0]
 
@@ -1574,7 +1610,8 @@ class TestUpdateClusterLayout(Tester):
 
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfer with the test (this must be after the populate)
-        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.set_configuration_options(
+            values=self.default_config_options(), batch_commitlog=True)
         cluster.populate(1).start()
         node1 = cluster.nodelist()[0]
 
@@ -1610,6 +1647,8 @@ class TestUpdateClusterLayout(Tester):
         """
         cluster = self.cluster
 
+        config_options = self.default_config_options(hinted_handoff_enabled=None)
+        cluster.set_configuration_options(values=config_options)
         cluster.populate(3).start()
         nodes = cluster.nodelist()
 
@@ -1699,8 +1738,10 @@ class TestUpdateClusterLayout(Tester):
         """
         cluster = self.cluster
 
+        config_options = self.default_config_options()
+        config_options.update({'enable_repair_based_node_ops': True})
         cluster.set_configuration_options(
-            values={'enable_repair_based_node_ops': True, 'hinted_handoff_enabled': False}, batch_commitlog=True)
+            values=config_options, batch_commitlog=True)
         cluster.populate(2).start()
         node1, node2 = cluster.nodelist()
 
@@ -1752,8 +1793,10 @@ class TestUpdateClusterLayout(Tester):
 
     def verify_latest_copy_replace_node_test(self):
         cluster = self.cluster
+        config_options = self.default_config_options()
+        config_options.update({'enable_repair_based_node_ops': True})
         cluster.set_configuration_options(
-            values={'enable_repair_based_node_ops': True, 'hinted_handoff_enabled': False}, batch_commitlog=True)
+            values=config_options, batch_commitlog=True)
         debug("Starting cluster with 3 nodes.")
         cluster.populate(3).start(wait_for_binary_proto=True)
         node1, node2, node3 = cluster.nodelist()
@@ -1810,8 +1853,10 @@ class TestUpdateClusterLayout(Tester):
 
     def verify_latest_copy_rebuild_node_test(self):
         cluster = self.cluster
+        config_options = self.default_config_options()
+        config_options.update({'enable_repair_based_node_ops': True})
         cluster.set_configuration_options(
-            values={'enable_repair_based_node_ops': True, 'hinted_handoff_enabled': False}, batch_commitlog=True)
+            values=config_options, batch_commitlog=True)
         debug("Starting cluster with 3 nodes.")
         cluster.populate(3).start(wait_for_binary_proto=True)
         node1, node2, node3 = cluster.nodelist()
@@ -1868,8 +1913,10 @@ class TestUpdateClusterLayout(Tester):
 
     def verify_latest_copy_decommission_node_test(self):
         cluster = self.cluster
+        config_options = self.default_config_options()
+        config_options.update({'enable_repair_based_node_ops': True})
         cluster.set_configuration_options(
-            values={'enable_repair_based_node_ops': True, 'hinted_handoff_enabled': False}, batch_commitlog=True)
+            values=config_options, batch_commitlog=True)
         debug("Starting cluster with 3 nodes.")
         cluster.populate(3).start(wait_for_binary_proto=True)
         node1, node2, node3 = cluster.nodelist()
@@ -1922,8 +1969,10 @@ class TestUpdateClusterLayout(Tester):
 
     def verify_latest_copy_removenode_node_test(self):
         cluster = self.cluster
+        config_options = self.default_config_options()
+        config_options.update({'enable_repair_based_node_ops': True})
         cluster.set_configuration_options(
-            values={'enable_repair_based_node_ops': True, 'hinted_handoff_enabled': False}, batch_commitlog=True)
+            values=config_options, batch_commitlog=True)
         debug("Starting cluster with 4 nodes.")
         cluster.populate(4).start(wait_for_binary_proto=True)
         node1, node2, node3, node4 = cluster.nodelist()
@@ -2046,7 +2095,12 @@ class TestLargeScaleCluster(Tester):
 
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfere with the test (this must be after the populate)
-        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        config_options = {
+            'hinted_handoff_enabled': False,
+            'enable_sstable_key_validation': True,
+        }
+        cluster.set_configuration_options(
+            values=config_options, batch_commitlog=True)
         cluster.populate(starting_size).start()
         node2 = cluster.nodelist()[1]
 
