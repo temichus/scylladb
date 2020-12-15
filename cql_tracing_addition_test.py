@@ -270,7 +270,6 @@ class TestTracingReadAccess(Tester, TracingReadAccessHelper):
         debug(out)
         self.verify_sstable_read_access_one_key(out, node, self.table)
 
-    @require('#5529')
     @attr('single_node')
     def test_tracing_info_for_index_read_range(self):
         session = self.prepare_cluster(nodes=1, create_index=True)
