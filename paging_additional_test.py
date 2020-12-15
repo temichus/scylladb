@@ -106,6 +106,8 @@ class TestPagingSavedQueryStateBase(BasePagingTester):
                 continue
 
             if node_metrics[metric] != expected_metric:
+                debug(
+                    f"metrics_equal: node_metrics[{metric}] {node_metrics[metric]} != {expected_metric} expected_metric")
                 return False
 
         return True
@@ -179,7 +181,11 @@ class TestLargePaging(TestPagingSavedQueryStateBase, PageAssertionMixin):
             self.assertLessEqual(page, fetch_size)
 
         if validate_metrics:
-            self.assert_nodes_metrics(({'lookups': pf.requested_pages - 1}, {}))
+            self.assert_nodes_metrics(
+                ({'lookups': pf.requested_pages - 1,
+                  'misses': -1,
+                  'resource_based_evictions': -1},
+                 {}))
 
     @attr('next-gating')
     @attr('dtest-debug')
