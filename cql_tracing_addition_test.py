@@ -221,6 +221,7 @@ class TestTracingReadAccess(Tester, TracingReadAccessHelper):
     keyspace = "ks"
     table = "cf"
 
+    @attr('single_node')
     def test_tracing_info_for_all_partitions(self):
         """test tracing read access of sstable
 
@@ -241,6 +242,7 @@ class TestTracingReadAccess(Tester, TracingReadAccessHelper):
         # Assert Reading partitions from sstable
         self.verify_tracing_info_sstable_read_access_all_partitions(out, node, self.table)
 
+    @attr('single_node')
     def test_tracing_info_for_mv(self):
         """test tracing read access of sstable
 
@@ -261,6 +263,7 @@ class TestTracingReadAccess(Tester, TracingReadAccessHelper):
         mv_table_name = self.table + "_by_rate"
         self.verify_tracing_info_sstable_read_access_all_partitions(out, node, mv_table_name)
 
+    @attr('single_node')
     def test_tracing_info_selecting_by_one_key(self):
         """validate that tracing info if select one key
 
@@ -276,6 +279,7 @@ class TestTracingReadAccess(Tester, TracingReadAccessHelper):
         self.verify_sstable_read_access_one_key(out, node, self.table)
 
     @require('#5529')
+    @attr('single_node')
     def test_tracing_info_for_index_read_range(self):
         session = self.prepare_cluster(nodes=1, create_index=True)
         node = self.cluster.nodelist()[0]
@@ -288,6 +292,7 @@ class TestTracingReadAccess(Tester, TracingReadAccessHelper):
 
         self.verify_tracing_info_sstable_read_access_all_partitions(out, node, self.table)
 
+    @attr('single_node')
     def test_tracing_info_for_index_read_one(self):
         session = self.prepare_cluster(nodes=1, create_index=True)
         node = self.cluster.nodelist()[0]
@@ -299,6 +304,7 @@ class TestTracingReadAccess(Tester, TracingReadAccessHelper):
         debug(out)
         self.verify_sstable_read_access_one_key(out, node, self.table)
 
+    @attr('single_node')
     def test_tracing_info_read_from_several_sstables(self):
         """test tracing I/O reads for several sstables
 
