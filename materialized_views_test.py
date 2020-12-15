@@ -601,39 +601,39 @@ class TestMaterializedViews(Tester):
 
     def mv_populating_from_existing_data_during_inserts_test(self):
         """ Create 10 materialized views in parallel with base table prefill """
-        self._mv_populating_from_existing_data_during_changes_test('insert', nodes=4, rf=3, mvs=10, prefill=40000)
+        self._mv_populating_from_existing_data_during_changes_test('insert')
 
     def mv_populating_from_existing_data_during_updates_test(self):
         """ Create 10 materialized views in parallel with base table updates """
-        self._mv_populating_from_existing_data_during_changes_test('update', nodes=4, rf=3, mvs=10, prefill=40000)
+        self._mv_populating_from_existing_data_during_changes_test('update')
 
     def mv_populating_from_existing_data_during_deletes_test(self):
         """ Create 10 materialized views in parallel with base table deletes """
-        self._mv_populating_from_existing_data_during_changes_test('delete', nodes=4, rf=3, mvs=10, prefill=40000)
+        self._mv_populating_from_existing_data_during_changes_test('delete')
 
     def mv_populating_from_existing_data_during_extend_test(self):
         """ Create 10 materialized views in parallel with adding a node """
-        self._mv_populating_from_existing_data_during_changes_test('add node', nodes=4, rf=3, mvs=10, prefill=40000)
+        self._mv_populating_from_existing_data_during_changes_test('add node')
 
     def mv_populating_from_existing_data_during_node_remove_test(self):
         """ Create 10 materialized views in parallel with removing a node """
-        self._mv_populating_from_existing_data_during_changes_test('remove node', nodes=4, rf=3, mvs=10, prefill=40000)
+        self._mv_populating_from_existing_data_during_changes_test('remove node')
 
     @attr('dtest-heavy')
     def mv_populating_from_existing_data_during_node_stop_test(self):
         """ Create 10 materialized views in parallel with stopping a node """
-        self._mv_populating_from_existing_data_during_changes_test('stop node', nodes=4, rf=3, mvs=10, prefill=40000)
+        self._mv_populating_from_existing_data_during_changes_test('stop node')
 
     def mv_populating_from_existing_data_during_node_decommission_test(self):
         """ Create 10 materialized views in parallel with a node decommission """
-        self._mv_populating_from_existing_data_during_changes_test('decommission', nodes=4, rf=3, mvs=10, prefill=40000)
+        self._mv_populating_from_existing_data_during_changes_test('decommission')
 
     @attr('dtest-heavy')
     def mv_populating_from_existing_data_during_node_restart_test(self):
         """ Create 10 materialized views in parallel with a node restart """
-        self._mv_populating_from_existing_data_during_changes_test('restart node', nodes=4, rf=3, mvs=10, prefill=40000)
+        self._mv_populating_from_existing_data_during_changes_test('restart node')
 
-    def _mv_populating_from_existing_data_during_changes_test(self, change_type, nodes, rf, mvs, prefill):
+    def _mv_populating_from_existing_data_during_changes_test(self, change_type, nodes=4, rf=3, mvs=None, prefill=None):
         session = self.prepare(rf=rf, nodes=nodes, options={'prometheus_port': 0})
 
         node_action = change_type.split(' ')[0]
@@ -642,6 +642,16 @@ class TestMaterializedViews(Tester):
             cs = self.patient_cql_cluster_session(self.cluster.nodelist(
             )[0], 'ks', exclusive=True, consistency_level=ConsistencyLevel.QUORUM)
             session = cs.session
+
+        cluster = self.cluster
+        if prefill is None:
+            prefill = 40000
+            max_delete = 6000
+            mvs = 10
+            if hasattr(cluster, 'scylla_mode') and cluster.scylla_mode == 'debug':
+                prefill = 10000
+                max_delete = 2000
+                mvs = 2
 
         tm = TableManager(session, self.cluster,
                           columns={'int': {'amount': mvs, 'frozen': False,
@@ -659,8 +669,8 @@ class TestMaterializedViews(Tester):
                            'kwargs': {'same_id': False, 'delay': 1}}
         elif change_type == 'delete':
             change_func = {'func': tm.multiple_deletes, 'args': (
-                {'id': [i for i in range(1000, 6000)]},), 'kwargs': {'delay': 1}}
-            rows_after_test = max(0, prefill - 5000)
+                {'id': [i for i in range(1000, max_delete)]},), 'kwargs': {'delay': 1}}
+            rows_after_test = max(0, prefill - (max_delete - 1000))
         elif change_type == 'add node':
             change_func = {'func': self._add_new_node, 'kwargs': {'delay': 1}}
         elif change_type == 'decommission':
