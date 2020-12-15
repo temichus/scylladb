@@ -1143,7 +1143,7 @@ class Tester(TestCase):
             debug("Stopping cluster")
             # we may stop nodes that have not finished starting yet
             self.ignore_log_patterns += [
-                r'Startup failed: seastar::sleep_aborted',
+                r'(Startup|start) failed: seastar::sleep_aborted',
                 r'Timer callback failed: seastar::gate_closed_exception',
             ]
             self.cluster.stop()
