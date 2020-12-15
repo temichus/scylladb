@@ -6,12 +6,13 @@ from unittest import skip
 from nose.plugins.attrib import attr
 
 from tools import insert_c1c2, query_c1c2
-from cassandra import ConsistencyLevel
+from cassandra import ConsistencyLevel, InvalidRequest
 from cassandra.query import SimpleStatement
 from ccmlib.node import NodetoolError
 import time
 import tempfile
 import os
+import sys
 from concurrent.futures import ThreadPoolExecutor
 
 import random
@@ -2914,7 +2915,6 @@ class RepairAdditionalTest(RepairAdditionalBase):
             insert_c1c2(session, keys=range(2000), consistency=ConsistencyLevel.ONE, cf=cf)
 
         node2.start(wait_other_notice=True, wait_for_binary_proto=True)
-        time.sleep(10)
 
         # Run repairs of two tables on node1
         executor = ThreadPoolExecutor(max_workers=2)
@@ -2935,15 +2935,36 @@ class RepairAdditionalTest(RepairAdditionalBase):
 
         # verify that repair completed, and the dropped table is ignored during repair
         res = node2.watch_log_for(
-            "repair - repair .* completed successfully, keyspace=ks, ignoring dropped tables={cf")
+            "repair - repair .* completed successfully, keyspace=ks")
         debug(res)
 
-        # verify that the cf* was really deleted
-        for i in range(delete_table_num):
-            out, err = node1.run_cqlsh(f"describe table ks.cf{i}", return_output=True)
-            self.assertIn(f"'cf{i}' not found", out + err)
-
-        debug("checking data on node1...")
-        self.check_rows_on_node(node1, 2000)
-        debug("checking data on node2...")
-        self.check_rows_on_node(node2, 2000)
+        # verify that the cf_del* were really deleted
+        # and that cf contains the expected data
+        for n in [1, 2]:
+            debug(f"checking data on node{n}...")
+            node = self.cluster.nodelist()[n - 1]
+            other = self.cluster.nodelist()[2 - n]
+            if other.is_running():
+                other.stop(wait_other_notice=False)
+            if not node.is_running():
+                node.start(wait_other_notice=False)
+            cs = self.patient_cql_cluster_session(node, 'ks', exclusive=True, consistency_level=ConsistencyLevel.ONE)
+            session = cs.session
+            for i in range(delete_table_num):
+                cf = f'cf_del{i}'
+                out, err = node.run_cqlsh(f"describe table ks.{cf}", return_output=True)
+                self.assertIn(f"'{cf}' not found", out + err)
+                query = SimpleStatement(f"SELECT * FROM {cf} LIMIT 1", consistency_level=ConsistencyLevel.ONE)
+                result = []
+                try:
+                    result = list(session.execute(query))
+                except InvalidRequest as ex:
+                    debug(f"query {cf} failed as expected: {ex}")
+                except:
+                    debug(f"query {cf} failed with unexpected exception: {sys.exc_info()[0]}")
+                    raise
+                else:
+                    raise Exception(f"query {cf} succeeded unexpectedly: result={result}")
+            query = SimpleStatement(f"SELECT * FROM cf LIMIT 3000", consistency_level=ConsistencyLevel.ONE)
+            result = list(session.execute(query))
+            self.assertEqual(len(result), 2000, len(result))
