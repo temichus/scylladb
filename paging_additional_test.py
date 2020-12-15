@@ -112,12 +112,9 @@ class TestPagingSavedQueryStateBase(BasePagingTester):
 
         return True
 
-    def match_node_metrics(self, node, expected_metrics, matched):
+    def match_node_metrics(self, node_metrics, expected_metrics, matched):
         if expected_metrics is None:
             return
-
-        node_metrics = self.get_node_metrics(self.get_ip_from_node(node), metrics=self.ALL_METRICS)
-        debug('{} metrics: {}'.format(node.name, node_metrics))
 
         matched_any = False
 
@@ -133,13 +130,17 @@ class TestPagingSavedQueryStateBase(BasePagingTester):
         # The node's metrics must match at least one expected metrics
         self.assertEqual(matched_any, True)
 
-    def assert_nodes_metrics(self, expected_metrics):
+    def assert_nodes_metrics(self, expected_metrics, verifier=None):
         nodes = self.cluster.nodelist()
 
         matched = set()
 
         for node in nodes:
-            self.match_node_metrics(node, expected_metrics, matched)
+            node_metrics = self.get_node_metrics(self.get_ip_from_node(node), metrics=self.ALL_METRICS)
+            debug('{} metrics: {}'.format(node.name, node_metrics))
+            self.match_node_metrics(node_metrics, expected_metrics, matched)
+            if verifier is not None:
+                verifier(node_metrics)
 
         # All expected metrics have to match at least node's metrics
         self.assertEqual(len(matched), len(expected_metrics))
@@ -180,12 +181,16 @@ class TestLargePaging(TestPagingSavedQueryStateBase, PageAssertionMixin):
         for page in all_pages:
             self.assertLessEqual(page, fetch_size)
 
+        def verify_misses(node_metrics):
+            assert node_metrics['querier_cache_misses'] == node_metrics['querier_cache_resource_based_evictions'], node_metrics
+
         if validate_metrics:
             self.assert_nodes_metrics(
                 ({'lookups': pf.requested_pages - 1,
                   'misses': -1,
                   'resource_based_evictions': -1},
-                 {}))
+                 {}),
+                verifier=verify_misses)
 
     @attr('next-gating')
     @attr('dtest-debug')
