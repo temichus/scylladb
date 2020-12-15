@@ -14,6 +14,7 @@ from dtest import DISABLE_VNODES, Tester, debug
 from tools import InterruptBootstrap, since, new_node, require, rows_to_list
 
 
+
 class NodeUnavailable(Exception):
     pass
 
