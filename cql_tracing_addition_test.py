@@ -1,4 +1,5 @@
 import os
+import re
 
 from random import randint, choice
 from uuid import uuid4
@@ -167,6 +168,21 @@ class TracingReadAccessHelper:
         """
         return get_sstables_files(get_node_cf_dir(node, self.keyspace, table_name), table_type)
 
+    def _verify_tracing_info(self, output, node, table_name, element):
+        sstables = self.get_tables_list_for_node(node, table_name, table_type='Data')
+        addr = re.escape(node.address())
+        for sstable in sstables:
+            self.assertRegexpMatches(
+                output,
+                rf"Reading {element} .* from sstable .*{sstable}.*| {addr} |")
+            data_or_index = re.sub('Data', '(Data|Index)', sstable)
+            self.assertRegexpMatches(
+                output,
+                rf"{data_or_index}: scheduling bulk DMA read of size [\d]* at offset [\d]*.*| {addr} |")
+            self.assertRegexpMatches(
+                output,
+                rf"{data_or_index}: finished bulk DMA read of size [\d]* at offset [\d]*, successfully read [\d]* bytes.*| {addr} |")
+
     def verify_tracing_info_sstable_read_access_all_partitions(self, output, node, table_name):
         """verify tracing info in output
 
@@ -177,19 +193,7 @@ class TracingReadAccessHelper:
         :param node: Node where operations run
         :type node: ScyllaNode
         """
-        sstables = self.get_tables_list_for_node(node, table_name)
-        index_tables = self.get_tables_list_for_node(node, table_name, table_type='Index')
-        for sstable in sstables:
-            self.assertRegexpMatches(
-                output,
-                r"Reading partition range .* from sstable.*{}.*{}".format(sstable, node.address()))
-        for index_table in index_tables:
-            self.assertRegexpMatches(
-                output,
-                r"{}: scheduling bulk DMA read of size [\d]* at offset [\d]*.*{}".format(index_table, node.address()))
-            self.assertRegexpMatches(
-                output,
-                r"{}: finished bulk DMA read of size [\d]* at offset [\d]*, successfully read [\d]* bytes.*{}".format(index_table, node.address()))
+        self._verify_tracing_info(output, node, table_name, 'partition range')
 
     def verify_sstable_read_access_one_key(self, output, node, table_name):
         """verify tracing info in output
@@ -201,19 +205,7 @@ class TracingReadAccessHelper:
         :param node: Node where operations run
         :type node: ScyllaNode
         """
-        sstables = self.get_tables_list_for_node(node, table_name)
-        index_tables = self.get_tables_list_for_node(node, table_name, table_type='Index')
-        for sstable in sstables:
-            self.assertRegexpMatches(
-                output,
-                r"Reading key .* from sstable {}.*| {} |".format(sstable, node.address()))
-        for index_table in index_tables:
-            self.assertRegexpMatches(
-                output,
-                r"{}: scheduling bulk DMA read of size [\d]* at offset [\d]*.*| {} |".format(index_table, node.address()))
-            self.assertRegexpMatches(
-                output,
-                r"{}: finished bulk DMA read of size [\d]* at offset [\d]*, successfully read [\d]* bytes.*| {} |".format(index_table, node.address()))
+        self._verify_tracing_info(output, node, table_name, 'key')
 
 
 @attr('dtest-full')
