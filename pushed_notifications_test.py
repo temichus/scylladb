@@ -240,7 +240,6 @@ class TestPushedNotifications(Tester):
         assert "DOWN" == notifications[0]["change_type"]
         assert "UP" == notifications[1]["change_type"]
 
-    @skip('Does not work, skipping after allowing it on scylla_tests and will investigate later')
     @since("3.0")
     def schema_changes_test(self):
         """
@@ -260,7 +259,7 @@ class TestPushedNotifications(Tester):
         session.execute("alter TABLE t add v1 int;")
 
         session.execute(
-            "create MATERIALIZED VIEW mv as select * from t WHERE v IS NOT NULL AND t IS NOT NULL PRIMARY KEY (v, k)")
+            "create MATERIALIZED VIEW mv as select * from t WHERE v IS NOT NULL AND k IS NOT NULL PRIMARY KEY (v, k)")
         session.execute(" alter materialized view mv with min_index_interval = 100")
 
         session.execute("drop MATERIALIZED VIEW mv")
@@ -269,27 +268,26 @@ class TestPushedNotifications(Tester):
 
         debug("Waiting for notifications from {}".format(waiter.address,))
         notifications = waiter.wait_for_notifications(timeout=60.0, num_notifications=14)
-        self.assertEquals(14, len(notifications))
+        self.assertEquals(10, len(notifications))
+
         self.assertDictContainsSubset({'change_type': u'CREATED', 'target_type': u'KEYSPACE'}, notifications[0])
-        self.assertDictContainsSubset({'change_type': u'UPDATED', 'target_type': u'KEYSPACE'}, notifications[1])
         self.assertDictContainsSubset(
-            {'change_type': u'CREATED', 'target_type': u'TABLE', u'table': u't'}, notifications[2])
-        self.assertDictContainsSubset({'change_type': u'UPDATED', 'target_type': u'KEYSPACE'}, notifications[3])
+            {'change_type': u'CREATED', 'target_type': u'TABLE', u'table': u't'}, notifications[1])
         self.assertDictContainsSubset(
-            {'change_type': u'UPDATED', 'target_type': u'TABLE', u'table': u't'}, notifications[4])
-        self.assertDictContainsSubset({'change_type': u'UPDATED', 'target_type': u'KEYSPACE'}, notifications[5])
+            {'change_type': u'UPDATED', 'target_type': u'TABLE', u'table': u't'}, notifications[2])
         self.assertDictContainsSubset({'change_type': u'CREATED', 'target_type': u'TABLE',
-                                       u'table': u'mv'}, notifications[6])
-        self.assertDictContainsSubset({'change_type': u'UPDATED', 'target_type': u'KEYSPACE'}, notifications[7])
+                                       u'table': u'mv'}, notifications[3])
         self.assertDictContainsSubset({'change_type': u'UPDATED', 'target_type': u'TABLE',
-                                       u'table': u'mv'}, notifications[8])
-        self.assertDictContainsSubset({'change_type': u'UPDATED', 'target_type': u'KEYSPACE'}, notifications[9])
+                                       u'table': u't'}, notifications[4])
+        self.assertDictContainsSubset({'change_type': u'UPDATED', 'target_type': u'TABLE',
+                                       u'table': u't'}, notifications[5])
+        self.assertDictContainsSubset({'change_type': u'UPDATED', 'target_type': u'TABLE',
+                                       u'table': u'mv'}, notifications[6])
         self.assertDictContainsSubset({'change_type': u'DROPPED', 'target_type': u'TABLE',
-                                       u'table': u'mv'}, notifications[10])
-        self.assertDictContainsSubset({'change_type': u'UPDATED', 'target_type': u'KEYSPACE'}, notifications[11])
+                                       u'table': u'mv'}, notifications[7])
         self.assertDictContainsSubset({'change_type': u'DROPPED', 'target_type': u'TABLE',
-                                       u'table': u't'}, notifications[12])
-        self.assertDictContainsSubset({'change_type': u'DROPPED', 'target_type': u'KEYSPACE'}, notifications[13])
+                                       u'table': u't'}, notifications[8])
+        self.assertDictContainsSubset({'change_type': u'DROPPED', 'target_type': u'KEYSPACE'}, notifications[9])
 
 
 @attr('dtest-full')
