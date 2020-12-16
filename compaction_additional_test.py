@@ -41,6 +41,7 @@ class CompactionAdditionalTest(CompactionAdditionalTester):
 
     @attr('next-gating')
     @attr('dtest-debug')
+    @attr('single_node')
     def compaction_delete_with_smp_change_test(self):
         """
         Test that data is not resurected when shared sstables
@@ -171,6 +172,7 @@ class CompactionAdditionalTest(CompactionAdditionalTester):
             node.flush()
 
     @run_with_params(timestamp_resolution=["MILLISECONDS"])  # Commenting out "MICROSECONDS" options for now.
+    @attr('single_node')
     def compact_data_by_time_window_test(self, timestamp_resolution):
         """
         1. Create TABLE with compaction_window_size of 1 MINUTES
@@ -227,6 +229,7 @@ class CompactionAdditionalTest(CompactionAdditionalTester):
                                                           "Expecting {} but Found {}".format(sstables_files1,
                                                                                              sstables_files2)
 
+    @attr('single_node')
     def major_compaction_with_several_timewindows_test(self):
         """
             Test major compaction will not bundle sstables from different time windows
@@ -315,6 +318,7 @@ class CompactionAdditionalTest(CompactionAdditionalTester):
         for sstables in time_window_dict_after_major_compaction.values():
             self.assertEqual(len(sstables), number_of_shards)
 
+    @attr('single_node')
     def compaction_removes_ttld_data_by_time_windows_test(self):
         """
         Test that TWCS compaction removes TTLd data after gc_period by time windows
@@ -520,6 +524,7 @@ class CompactionAdditionalTest(CompactionAdditionalTester):
             session = self.patient_cql_connection(node1)
             assert_reshape_and_verify_data(srcdir='staging/')
 
+    @attr('single_node')
     def refresh_and_restart_after_compaction_strategy_change_test(self):
         """
         Change compaction strategy with a matrix, both restart and refresh are tested.
@@ -804,6 +809,7 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
 
         return list_sstables_timewindows
 
+    @attr('single_node')
     def test_streaming_during_adding_node_with_boostrap(self):
         [node1], session = self.prepare(1)
         self._create_ks_cl_with_twcs(session, rf=1)
@@ -853,6 +859,7 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
         self._check_sstable_timestamps(node2)
 
     @attr('next-gating')
+    @attr('single_node')
     def test_streaming_on_rebuild_multidc(self):
 
         def _add_node(i, dc):
