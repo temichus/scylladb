@@ -5,6 +5,7 @@ import string
 import time
 from copy import copy
 from enum import Enum
+import pathlib
 
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -246,7 +247,8 @@ class TesterAlternator(Tester):
         waiter = dynamodb_api.client.get_waiter('table_not_exists')
         waiter.wait(TableName=table_name)
         debug(f"Removing table keyspace folder '{node_ks_path}' from node '{node.name}'")
-        node.rmtree(path=node_ks_path)
+        # since `node.rmtree` remove only the content of the folder, we'll rmnode the parent
+        node.rmtree(path=pathlib.Path(node_ks_path).parent)
 
     def create_items(self, primary_key: str = None, items: List[Dict[str, str]] = None,
                      num_of_items: int = NUM_OF_ITEMS) -> List[Dict[str, str]]:
@@ -387,13 +389,12 @@ class TesterAlternator(Tester):
             raise IsADirectoryError(f"The snapshot folder '{snapshot_folder}' not contain any files")
 
         if os.path.isdir(upload_folder):
-            shutil.rmtree(upload_folder)
-        os.makedirs(name=upload_folder)
+            node.rmtree(upload_folder)
+        os.makedirs(name=upload_folder, exist_ok=True)
         debug(f"Loading snapshot files from folder '{snapshot_folder}' to '{upload_folder}'..")
         for file_name in os.listdir(snapshot_folder):
             shutil.copyfile(src=os.path.join(snapshot_folder, file_name),
                             dst=os.path.join(upload_folder, file_name))
-
         refresh_cmd = f"refresh -- {self.keyspace_name_template.format(table_name)} {table_name}"
         debug(f"Running following refresh cmd '{refresh_cmd}'..")
         node.nodetool(refresh_cmd)
