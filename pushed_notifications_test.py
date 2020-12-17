@@ -298,7 +298,7 @@ class TestVariousNotifications(Tester):
     Tests for various notifications/messages from Cassandra.
     """
 
-    @skip('Does not work, skipping after allowing it on scylla_tests and will investigate later')
+    @skip("Scylla doesn't support `tombstone_failure_threshold', read railure won't be triggered")
     @since('2.2')
     def tombstone_failure_threshold_message_test(self):
         """
