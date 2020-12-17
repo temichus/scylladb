@@ -192,6 +192,36 @@ class TestPushedNotifications(Tester):
 
             waiter.clear_notifications()
 
+    def sleep_and_restart_node_test(self):
+        """
+        Sleep 120 seconds after cluster is ready, then restart the second node,
+        check we get correct client notifications during restart
+        """
+        cluster = self.cluster
+        cluster.populate(2)
+        node1, node2 = cluster.nodelist()
+
+        cluster.start(wait_for_binary_proto=True)
+        # Sleep 120 to wait the pending joined notification to be sent
+        time.sleep(120)
+
+        # register for notification with node1
+        waiter = NotificationWaiter(self, node1, ["STATUS_CHANGE", "TOPOLOGY_CHANGE"])
+
+        # restart node 2
+        debug("Restarting second node...")
+        node2.stop(wait_other_notice=True)
+        node2.start(wait_other_notice=True)
+
+        # check that node1 did not send UP or DOWN notification for node2
+        debug("Waiting for notifications from {}".format(waiter.address,))
+        notifications = waiter.wait_for_notifications(timeout=30.0, num_notifications=2)
+        self.assertEquals(2, len(notifications))
+        for notification in notifications:
+            assert node2.address() == notification["address"][0]
+        assert "DOWN" == notifications[0]["change_type"]
+        assert "UP" == notifications[1]["change_type"]
+
     @require('#7805')
     def restart_node_localhost_test(self):
         """
