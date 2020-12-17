@@ -6,7 +6,7 @@ from cassandra import ReadTimeout, ReadFailure
 from cassandra import ConsistencyLevel as CL
 from cassandra.query import SimpleStatement
 from dtest import Tester, debug
-from tools import no_vnodes, since
+from tools import no_vnodes, since, require
 from threading import Event
 from assertions import assert_invalid
 from pkg_resources import parse_version
@@ -192,11 +192,15 @@ class TestPushedNotifications(Tester):
 
             waiter.clear_notifications()
 
-    @skip('Does not work, skipping after allowing it on scylla_tests and will investigate later')
+    @require('#7805')
     def restart_node_localhost_test(self):
         """
-        Test that we don't get client notifications when rpc_address is set to localhost.
+        Test that we don't get client notifications when rpc_address is set to localhost Pre 4.0.
+        Test that we get correct client notifications when rpc_address is set to localhost Post 4.0.
         @jira_ticket  CASSANDRA-10052
+        @jira_ticket  CASSANDRA-15677
+
+        Scylla doesn't support nodes with same IP, it's worth to test it.
 
         To set-up this test we override the rpc_address to "localhost" for all nodes, and
         therefore we must change the rpc port or else processes won't start.
@@ -210,6 +214,10 @@ class TestPushedNotifications(Tester):
             node.network_interfaces['thrift'] = ('localhost', node.network_interfaces['thrift'][1] + i)
             node.network_interfaces['binary'] = ('localhost', node.network_interfaces['thrift'][1] + 1)
             node.import_config_files()  # this regenerates the yaml file and sets 'rpc_address' to the 'thrift' address
+            # `native_shard_aware_transport_port' has default value (19042) in scylla.yaml,
+            # so it's need to be unique in this test.
+            node.set_configuration_options(
+                values={'native_shard_aware_transport_port': node.network_interfaces['thrift'][1] + 10000})
             debug(node.show())
             i = i + 2
 
@@ -225,8 +233,12 @@ class TestPushedNotifications(Tester):
 
         # check that node1 did not send UP or DOWN notification for node2
         debug("Waiting for notifications from {}".format(waiter.address,))
-        notifications = waiter.wait_for_notifications(timeout=30.0, num_notifications=3)
-        self.assertEquals(0, len(notifications))
+        notifications = waiter.wait_for_notifications(timeout=30.0, num_notifications=2)
+        self.assertEquals(2, len(notifications))
+        for notification in notifications:
+            assert node2.address() == notification["address"][0]
+        assert "DOWN" == notifications[0]["change_type"]
+        assert "UP" == notifications[1]["change_type"]
 
     @skip('Does not work, skipping after allowing it on scylla_tests and will investigate later')
     @since("3.0")
