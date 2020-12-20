@@ -1608,7 +1608,7 @@ class retrying(object):
 
     def __call__(self, func):
         def inner(*args, **kwargs):
-            func_args = inspect.getargspec(func)
+            func_args = inspect.getfullargspec(func)
             num_attempts = self.num_attempts
             if 'num_attempts' in func_args.args:
                 num_attempts = kwargs.get('num_attempts')
