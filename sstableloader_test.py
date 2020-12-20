@@ -227,7 +227,7 @@ class AdditionalTestSSTableLoader(Tester):
         #     session.execute(f"insert into cf (key, c1, c2, c3) values ({i}, 'a', 'b', 'c')")
 
     @staticmethod
-    def set_test_data(rows: int) -> list:
+    def get_rows_data(rows: int) -> list:
         return [[i, f'a{i}', f'b{i}', f'c{i}'] for i in range(rows)]
 
     @staticmethod
@@ -296,7 +296,7 @@ class AdditionalTestSSTableLoader(Tester):
         rows = 10
         session, node1 = self.prepare_cluster()
         self.create_ks(session, ks, 1)
-        data = self.set_test_data(rows=rows)
+        data = self.get_rows_data(rows=rows)
         self.prepare_cf(session=session, cf_name=cf, data=data)
         node1.flush()
         assert_one(session, f'SELECT count(*) FROM {ks}.{cf}', expected=[rows])
@@ -344,7 +344,7 @@ class AdditionalTestSSTableLoader(Tester):
         rows = 10
         session, node1 = self.prepare_cluster()
         self.create_ks(session, ks, 1)
-        data = self.set_test_data(rows=rows)
+        data = self.get_rows_data(rows=rows)
         self.prepare_cf(session=session, cf_name=cf, data=data)
         node1.flush()
         assert_one(session, f'SELECT count(*) FROM {ks}.{cf}', expected=[rows])
@@ -392,7 +392,7 @@ class AdditionalTestSSTableLoader(Tester):
         rows = 10
         session, node1 = self.prepare_cluster()
         self.create_ks(session=session, name=ks, rf=1)
-        data = self.set_test_data(rows=rows)
+        data = self.get_rows_data(rows=rows)
         self.prepare_cf(session=session, cf_name=cf, data=data)
         node1.flush()
         assert_one(session, f'SELECT count(*) FROM {ks}.{cf}', expected=[rows])
@@ -432,7 +432,7 @@ class AdditionalTestSSTableLoader(Tester):
         rows = 10
         session, node1 = self.prepare_cluster()
         self.create_ks(session, ks, 1)
-        data = self.set_test_data(rows=rows)
+        data = self.get_rows_data(rows=rows)
         self.prepare_cf(session=session, cf_name=cf, data=data)
         node1.flush()
         assert_one(session, f'SELECT count(*) FROM {ks}.{cf}', expected=[rows])
@@ -472,7 +472,7 @@ class AdditionalTestSSTableLoader(Tester):
         rows = 10
         session, node1 = self.prepare_cluster()
         self.create_ks(session, ks, 1)
-        data = self.set_test_data(rows=rows)
+        data = self.get_rows_data(rows=rows)
         self.prepare_cf(session=session, cf_name=cf, data=data)
         node1.flush()
         assert_one(session, f'SELECT count(*) FROM {ks}.{cf}', expected=[rows])
@@ -515,7 +515,7 @@ class AdditionalTestSSTableLoader(Tester):
         rows = 10
         session, node1 = self.prepare_cluster()
         self.create_ks(session, ks, 1)
-        data = self.set_test_data(rows=rows)
+        data = self.get_rows_data(rows=rows)
         self.prepare_cf(session=session, cf_name=cf, data=data)
         node1.flush()
         assert_one(session, f'SELECT count(*) FROM {ks}.{cf}', expected=[rows])
