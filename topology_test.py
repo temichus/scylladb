@@ -16,7 +16,7 @@ from threading import Thread
 @attr('dtest-full')
 class TestTopology(Tester):
 
-    @skip('Does not work, skipping after allowing it on scylla_tests and will investigate later')
+    @skip("Scylla doesn't support SizeEstimatesRecorder")
     def do_not_join_ring_test(self):
         """
         @jira_ticket CASSANDRA-9034
@@ -33,7 +33,7 @@ class TestTopology(Tester):
 
         node1.stop(gently=False)
 
-    @skip('Does not work, skipping after allowing it on scylla_tests and will investigate later')
+    @skip("Scylla doesn't support SizeEstimatesRecorder")
     def simple_decommission_test(self):
         """
         @jira_ticket CASSANDRA-9912
