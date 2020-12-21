@@ -6,6 +6,7 @@ from cassandra import ReadTimeout, ReadFailure
 from cassandra import ConsistencyLevel as CL
 from cassandra.query import SimpleStatement
 from dtest_class import Tester, create_ks, get_ip_from_node
+from tools.data import insert_c1c2
 from threading import Event
 from assertions import assert_invalid
 from pkg_resources import parse_version
@@ -320,6 +321,39 @@ class TestPushedNotifications(Tester):
         assertDictContainsSubset({'change_type': u'DROPPED', 'target_type': u'TABLE',
                                   u'table': u't'}, notifications[8])
         assertDictContainsSubset({'change_type': u'DROPPED', 'target_type': u'KEYSPACE'}, notifications[9])
+
+    def test_new_node_event_delay(self):
+        """
+        NEW_NODE event is delayed, otherwise cql client will connect Scylla server
+        even the new node isn't ready.
+        """
+        cluster = self.cluster
+        cluster.populate(2)
+        node1, node2 = cluster.nodelist()
+
+        node1.start(wait_for_binary_proto=True)
+
+        # Register for notifications with node1
+        waiter = NotificationWaiter(self, node1, ["STATUS_CHANGE", "TOPOLOGY_CHANGE"])
+
+        logger.debug("Start the second node, expect the NEW_NODE event is delayed until the cql server is ready")
+        node2.start()
+
+        logger.debug("Waiting for notifications from {}".format(waiter.address,))
+        notifications = waiter.wait_for_notifications(timeout=30.0, num_notifications=1)
+
+        # Try to connect the server when any notification is received
+        session = self.cql_connection(node2)
+        self.create_ks(session, 'ks', 2)
+        self.create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'})
+        insert_c1c2(session, keys=range(100))
+
+        received_new_node_event = False
+        for notification in notifications:
+            assert node2.address() == notification["address"][0]
+            if "NEW_NODE" == notification["change_type"]:
+                received_new_node_event = True
+        assert received_new_node_event, "NEW_NODE event isn't received"
 
 
 @pytest.mark.dtest_full
