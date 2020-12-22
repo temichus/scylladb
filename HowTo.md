@@ -39,7 +39,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 
 pip install -r requirements.txt
-pip install -e git+https://github.com/scylladb/scylla-ccm.git
+pip install -e git+https://github.com/scylladb/scylla-ccm.git#egg=ccm
 
 ccm create <CLUSTER_NAME> --scylla --version='unstable/master:<NUM>'
 
