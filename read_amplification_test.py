@@ -65,6 +65,8 @@ class ReadAmplificationTest(Tester):
         node_to_repair.stop(wait_other_notice=True)
 
         cnt = 500000
+        if hasattr(cluster, 'scylla_mode') and cluster.scylla_mode == 'debug':
+            cnt = 10000
         size = 2 * KBYTE
         c = 'a' * 1024 * 1  # 1KB
         cs = [c] * cnt
