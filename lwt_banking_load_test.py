@@ -456,7 +456,7 @@ def node_affinity(node_pids):
 
 
 @attr('dtest-full')
-@scylla_mode("!debug")
+@scylla_mode("!release")
 class LWTBankingLoadTest(Tester):
     """Emulate a series of money transfers and perform validation"""
 
