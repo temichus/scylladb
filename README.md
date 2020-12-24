@@ -244,6 +244,11 @@ To print additional test debug messages, use:
 
     PRINT_DEBUG=true
 
+And for trace:
+
+    PRINT_TRACE=true
+
+
 To set scylla/cassandra default log-level to DEBUG/TRACE, use:
 
     DEBUG=true

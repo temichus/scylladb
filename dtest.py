@@ -65,6 +65,7 @@ TRACE = os.environ.get('TRACE', '').lower() in ('yes', 'true')
 KEEP_LOGS = os.environ.get('KEEP_LOGS', '').lower() in ('yes', 'true')
 KEEP_TEST_DIR = os.environ.get('KEEP_TEST_DIR', '').lower() in ('yes', 'true')
 PRINT_DEBUG = os.environ.get('PRINT_DEBUG', '').lower() in ('yes', 'true')
+PRINT_TRACE = os.environ.get('PRINT_TRACE', '').lower() in ('yes', 'true')
 DISABLE_VNODES = os.environ.get('DISABLE_VNODES', '').lower() in ('yes', 'true')
 OFFHEAP_MEMTABLES = os.environ.get('OFFHEAP_MEMTABLES', '').lower() in ('yes', 'true')
 NUM_TOKENS = os.environ.get('NUM_TOKENS', '256')
@@ -119,11 +120,11 @@ def warning(msg, add_timestamp=True):
         print("WARN: " + msg)
 
 
-def debug(msg, add_timestamp=True):
+def debug(msg, add_timestamp=True, trace=False):
     msg = log_message(msg)
     LOG.debug(msg)
     msg = '{0}{1}'.format('{} '.format(datetime.datetime.now()) if add_timestamp else '', msg)
-    if PRINT_DEBUG:
+    if PRINT_DEBUG and (not trace or PRINT_TRACE):
         print(msg)
 
 

@@ -44,6 +44,7 @@ Script to run dtest from within docker
         SCYLLA_EXT_ENV
         LOG_SAVED_DIR
         PRINT_DEBUG
+        PRINT_TRACE
         DEBUG
         TRACE
         KEEP_LOGS
@@ -226,6 +227,7 @@ docker_cmd="docker run --detach=true \
     -e SCYLLA_EXT_ENV \
     -e LC_ALL=en_US.UTF-8 \
     -e PRINT_DEBUG \
+    -e PRINT_TRACE \
     -e DEBUG \
     -e TRACE \
     -e KEEP_LOGS \
