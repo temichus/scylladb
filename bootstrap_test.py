@@ -215,7 +215,24 @@ class TestBootstrap(Tester):
         self.assertEquals(original_rows, new_rows)
 
     @since('2.2')
-    @skip('failing on code: "node3.watch_log_for("Starting listening for CQL clients")"')
+    # new node failed with error:
+    #     Startup failed: exceptions::unavailable_exception (Cannot achieve consistency level for cl QUORUM. Requires 2,
+    #     alive 1)
+    #
+    # because of node1 was stopped before the new node was added. And as result log watching failed
+    # (because Scylla process failed) - ccmlib.node.Node.watch_log_for, l. 431
+    #
+    # Asias comment:
+    #
+    # it is expected to fail the bootstrap operation if one of the node is down. We now favor safety when adding nodes.
+    #
+    # The procedure to fix it is that before we add new node, we should fix existing nodes in the cluster
+    # either fix the network or replace the dead node
+    #
+    # Also the test start the new node with 2 parameters that are not supported by Scylla:
+    # - 'stream_throughput_outbound_megabits_per_sec'
+    # - 'streaming_socket_timeout_in_ms are not supported in scylla
+    @skip('fail the bootstrap operation if one of the node is down.')
     def resumable_bootstrap_test(self):
         """Test resuming bootstrap after data streaming failure"""
 
@@ -258,7 +275,7 @@ class TestBootstrap(Tester):
         rows = list(session.execute("SELECT bootstrapped FROM system.local WHERE key='local'"))
         assert rows[0][0] == 'COMPLETED', rows[0][0]
 
-    @skip('Scylla does not support the cassandra.reset_bootstrap_progress option.')
+    @skip('Scylla does not support the cassandra.reset_bootstrap_progress option and has no alternative parameter ')
     def bootstrap_with_reset_bootstrap_state_test(self):
         """Test bootstrap with resetting bootstrap progress"""
 
@@ -528,7 +545,9 @@ class TestBootstrap(Tester):
         node2.watch_log_for("JOINING:", from_mark=mark)
 
     @since('2.1.1')
-    @skip('Failing on code: "stdout, stderr = process.communicate()"')
+    # In Scylla when one node bootstraps, it will check if there is any node in bootstrap status in gossip.
+    # If it finds one, it will stop bootstrap (Asias)
+    @skip('not relevant for Scylla')
     def simultaneous_bootstrap_test(self):
         """
         Attempt to bootstrap two nodes at once, to assert the second bootstrapped node fails, and does not interfere.
