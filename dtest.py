@@ -1406,7 +1406,7 @@ class Tester(TestCase):
         if isinstance(node, int):
             node = self.cluster.nodelist()[node]
         node_ip = self.get_ip_from_node(node)
-        debug(f'Enabling error injection "{name}" on node {node_ip}')
+        debug(f'Enabling error injection "{name}" on node {node_ip}', trace=True)
         response = requests.post(f"http://{node_ip}:10000/v2/error_injection/injection/{name}",
                                  params={"one_shot": one_shot})
         response.raise_for_status()
@@ -1422,7 +1422,7 @@ class Tester(TestCase):
         if isinstance(node, int):
             node = self.cluster.nodelist()[node]
         node_ip = self.get_ip_from_node(node)
-        debug(f'Disabling error injection "{name}" on node {node_ip}')
+        debug(f'Disabling error injection "{name}" on node {node_ip}', trace=True)
         response = requests.delete(f"http://{node_ip}:10000/v2/error_injection/injection/{name}")
         response.raise_for_status()
 
