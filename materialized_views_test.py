@@ -2194,7 +2194,7 @@ class TestMaterializedViews(Tester):
     def set_memory_param(smp):
         return '{}M'.format(512 * int(smp))
 
-    def _do_resharding_test(self, smp_before, smp_after):
+    def _do_resharding_test(self, smp_before, smp_after, compression='LZ4Compressor'):
         self.ignore_log_patterns += [
             r'view - Error applying view update to .*: exceptions::unavailable_exception',
             r'view - Error applying view update to .*: exceptions::mutation_write_timeout_exception',
@@ -2205,7 +2205,10 @@ class TestMaterializedViews(Tester):
                                jvm_args=['--smp', str(smp_before), '--memory', self.set_memory_param(smp_before)])
         node1, node2, node3 = self.cluster.nodelist()
 
-        session.execute("CREATE TABLE t (id int PRIMARY KEY, v int, v2 text, v3 decimal)")
+        query = "CREATE TABLE t (id int PRIMARY KEY, v int, v2 text, v3 decimal)"
+        if compression:
+            query += f" WITH compression = {{'sstable_compression': '{compression}'}}"
+        session.execute(query)
 
         rows = 200000
         if hasattr(self.cluster, 'scylla_mode') and self.cluster.scylla_mode == 'debug':
