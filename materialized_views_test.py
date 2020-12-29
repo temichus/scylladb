@@ -2099,6 +2099,8 @@ class TestMaterializedViews(Tester):
         session.execute("CREATE TABLE t (id int PRIMARY KEY, v int, v2 text, v3 decimal)")
 
         rows = 200000
+        if hasattr(self.cluster, 'scylla_mode') and self.cluster.scylla_mode == 'debug':
+            rows = 10000
         debug("Inserting initial data")
         insert_stmt = session.prepare("INSERT INTO t (id, v, v2, v3) VALUES (?, ?, ?, ?)")
         for i in range(rows):
@@ -2138,6 +2140,8 @@ class TestMaterializedViews(Tester):
         session.execute("CREATE TABLE t (id int PRIMARY KEY, v int, v2 text, v3 decimal)")
 
         rows = 200000
+        if hasattr(self.cluster, 'scylla_mode') and self.cluster.scylla_mode == 'debug':
+            rows = 10000
         debug("Inserting initial data")
         insert_stmt = session.prepare("INSERT INTO t (id, v, v2, v3) VALUES (?, ?, ?, ?)")
         for i in range(rows):
@@ -2204,6 +2208,8 @@ class TestMaterializedViews(Tester):
         session.execute("CREATE TABLE t (id int PRIMARY KEY, v int, v2 text, v3 decimal)")
 
         rows = 200000
+        if hasattr(self.cluster, 'scylla_mode') and self.cluster.scylla_mode == 'debug':
+            rows = 10000
         debug("Inserting initial data; smp = {}".format(smp_before))
         insert_stmt = session.prepare("INSERT INTO t (id, v, v2, v3) VALUES (?, ?, ?, ?)")
         for i in range(rows):
@@ -2248,8 +2254,6 @@ class TestMaterializedViews(Tester):
         self.eventually(lambda: assert_row_count(session, 't_by_v', rows, consistency_level=ConsistencyLevel.ALL))
         self.eventually(lambda: assert_row_count(session, 't_by_v2', rows, consistency_level=ConsistencyLevel.ALL))
 
-    @skip("Takes too long, because there's no good way to interrupt "
-          "the build process aside from creating lots of rows. Depends on #3295")
     def drop_while_building_test(self):
         """Test that a MV build is interrupted when the view is removed"""
 
@@ -2257,7 +2261,9 @@ class TestMaterializedViews(Tester):
 
         session.execute("CREATE TABLE t (id int PRIMARY KEY, v int, v2 text, v3 decimal)")
 
-        rows = 1000000
+        rows = 200000
+        if hasattr(self.cluster, 'scylla_mode') and self.cluster.scylla_mode == 'debug':
+            rows = 10000
         debug("Inserting initial data")
         insert_stmt = session.prepare("INSERT INTO t (id, v, v2, v3) VALUES (?, ?, ?, ?)")
         for i in range(rows):
