@@ -2190,11 +2190,33 @@ class TestMaterializedViews(Tester):
         """Test that an interrupted MV build process is resumed, with resharding cpu_count() // 2 -> 1"""
         self._do_resharding_test(str(cpu_count() // 2), '1')
 
+    def interrupt_build_process_and_resharding_low_to_half_test(self):
+        """Test that an interrupted MV build is resumed after interrupted resharding, with resharding 1 -> cpu_count() // 2"""
+        self._do_resharding_test('1', str(cpu_count() // 2),
+                                 interrupt_resharding=True)
+
+    def interrupt_build_process_and_resharding_half_to_max_test(self):
+        """Test that an interrupted MV build process is resumed after interrupted resharding, with resharding cpu_count() // 2 -> cpu_count()"""
+        # For some reason, Scylla's hwloc only sees cpu_count() - 1 cpus
+        self._do_resharding_test(str(cpu_count() // 2), str(cpu_count() - 1),
+                                 interrupt_resharding=True)
+
+    def interrupt_build_process_and_resharding_max_to_half_test(self):
+        """Test that an interrupted MV build process is resumed after interrupted resharding, with resharding cpu_count() -> cpu_count() // 2"""
+        # For some reason, Scylla's hwloc only sees cpu_count() - 1 cpus
+        self._do_resharding_test(str(cpu_count() - 1), str(cpu_count() // 2),
+                                 interrupt_resharding=True)
+
+    def interrupt_build_process_and_resharding_half_to_low_test(self):
+        """Test that an interrupted MV build process is resumed after interrupted resharding, with resharding cpu_count() // 2 -> 1"""
+        self._do_resharding_test(str(cpu_count() // 2), '1',
+                                 interrupt_resharding=True)
+
     @staticmethod
     def set_memory_param(smp):
         return '{}M'.format(512 * int(smp))
 
-    def _do_resharding_test(self, smp_before, smp_after, compression='LZ4Compressor'):
+    def _do_resharding_test(self, smp_before, smp_after, compression='LZ4Compressor', interrupt_resharding=False):
         self.ignore_log_patterns += [
             r'view - Error applying view update to .*: exceptions::unavailable_exception',
             r'view - Error applying view update to .*: exceptions::mutation_write_timeout_exception',
@@ -2243,8 +2265,16 @@ class TestMaterializedViews(Tester):
         debug("Restart the cluster with shards {}".format(smp_after))
         for node in self.cluster.nodelist():
             debug("Starting node " + node.name)
-            node.start(jvm_args=['--smp', str(smp_after), '--memory', self.set_memory_param(smp_after)],
-                       wait_for_binary_proto=True)
+            jvm_args = ['--smp', str(smp_after),
+                        '--memory', self.set_memory_param(smp_after)]
+            if interrupt_resharding:
+                mark = node.mark_log()
+                node.start(jvm_args=jvm_args, no_wait=True)
+                node.watch_log_for(r"Reshard ks", from_mark=mark)
+                debug(f"Stopping node {node.name} during resharding")
+                node.stop()
+                debug(f"Restarting node {node.name}")
+            node.start(jvm_args=jvm_args)
 
         session = self.patient_cql_connection(node1)
         session.execute("USE ks")
