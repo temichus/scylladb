@@ -87,7 +87,8 @@ class UpgradeTester(Tester):
 
     def add_current_version_to_upgrade_path(self) -> None:
         current_version = self.current_version()
-        self.upgrade_path.append(current_version)
+        if not current_version in self.upgrade_path:
+            self.upgrade_path.append(current_version)
 
     def create_upgrade_path(self) -> list:
         ...
