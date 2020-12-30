@@ -6,7 +6,6 @@ import re
 import time
 from pprint import pformat
 from typing import Union, List, Dict
-from collections import namedtuple
 import yaml
 from enum import Enum
 from re import findall
@@ -17,9 +16,38 @@ from scrub_test import TestHelper
 from dtest import warning, debug, wait_for, WaitTimeoutExpired
 from distutils.version import LooseVersion
 
-Status = namedtuple("Status", ["status", "time", "time_type"], defaults=[None, None, None])
-Uptime = namedtuple("Uptime", ["hours", "minutes", "seconds"], defaults=[None, None, None])
-Memory = namedtuple("Memory", ["size", "type"], defaults=[None, None])
+
+class ComparableHealthCheckField:
+    def __eq__(self, other):
+        for field_name, field_value in self.__dict__.items():
+            if field_value is not None and field_value != getattr(other, field_name):
+                warning(f'The value of "{field_name}" is "{getattr(other, field_name)}", but expected value is '
+                        f'"{field_value}"')
+                return False
+        return True
+
+    def __str__(self):
+        return '\n'.join(f'{field_name}={field_value}' for field_name, field_value in self.__dict__.items())
+
+
+class Status(ComparableHealthCheckField):
+    def __init__(self, status=None, uptime=None, uptime_type=None):
+        self.status = status
+        self.uptime = uptime
+        self.uptime_type = uptime_type
+
+
+class Uptime(ComparableHealthCheckField):
+    def __init__(self, hours=None, minutes=None, seconds=None):
+        self.hours = hours
+        self.minutes = minutes
+        self.seconds = seconds
+
+
+class Memory(ComparableHealthCheckField):
+    def __init__(self, size=None, unit=None):
+        self.size = size
+        self.unit = unit
 
 
 class ScyllaManagerError(Exception):
@@ -89,11 +117,13 @@ class TaskStatus(Enum):
 class AlternatorStatus(Enum):
     UP = "UP"
     DOWN = "DOWN"
+    TIMEOUT = "TIMEOUT"
 
 
 class CqlStatus(Enum):
     UP = "UP"
     DOWN = "DOWN"
+    TIMEOUT = "TIMEOUT"
 
 
 class NodeStatus(Enum):
@@ -373,14 +403,14 @@ class ScyllaManagerStatusApi(ScyllaManagerApiBase):
         parsers = {
             "Datacenter": re.compile(r"(?P<data_center>[\w\d]+)"),
             "": re.compile(r"(?P<status>\w+)"),
-            "Alternator": re.compile(r"(?P<alternator_status>\w+)\s\((?P<alternator_time>\d+)"
-                                     r"(?P<alternator_time_type>\w+)\)"),
-            "CQL": re.compile(r"(?P<cql_status>\w+)\s\((?P<cql_time>\d+)(?P<cql_time_type>\w+)\)"),
-            "REST": re.compile(r"(?P<rest_status>\w+)\s\((?P<rest_time>\d+)(?P<rest_time_type>\w+)\)"),
+            "Alternator": re.compile(r"(?P<alternator_status>\w+)\s\((?P<alternator_timeout>\d+)"
+                                     r"(?P<alternator_timeout_type>\w+)\)"),
+            "CQL": re.compile(r"(?P<cql_status>\w+)\s\((?P<cql_timeout>\d+)(?P<cql_timeout_type>\w+)\)"),
+            "REST": re.compile(r"(?P<rest_status>\w+)\s\((?P<rest_timeout>\d+)(?P<rest_timeout_type>\w+)\)"),
             "Address": re.compile(r"(?P<address>[\d.]+)"),
             "Uptime": re.compile(r"((?P<hours>\d+)h)?((?P<minutes>\d+)m)?((?P<seconds>\d+)s)?"),
             "CPUs": re.compile(r"(?P<cpus>\d+)"),
-            "Memory": re.compile(r"((?P<memory_size>[\d.]+)(?P<memory_type>\w+))"),
+            "Memory": re.compile(r"((?P<memory_size>[\d.]+)(?P<memory_unit>\w+))"),
             "Scylla": re.compile(r"(?P<scylla_version>[\w\d.-]+)"),
             "Agent": re.compile(r"(?P<agent_version>[\w\d.-]+)"),
             "Host ID": re.compile(r"(?P<host_id>[\w\d.-]+)"),
@@ -1159,23 +1189,23 @@ class RestTask(ManagerTask):
         ManagerTask.__init__(self, task_id=task_id, cluster_id=cluster_id, scylla_manager=scylla_manager)
 
 
-class HostHealth:
+class HostHealth(ComparableHealthCheckField):
     def __init__(self, datacenter_name, **kwargs):
         self.datacenter = datacenter_name
         self.node_status = NodeStatus(kwargs.pop("status"))
         self.alternator = Status(
             status=(kwargs.get("alternator_status") and AlternatorStatus(kwargs.pop("alternator_status")) or None),
-            time=kwargs.pop("alternator_time", None), time_type=kwargs.pop("alternator_time_type", None))
+            uptime=kwargs.pop("alternator_timeout", None), uptime_type=kwargs.pop("alternator_timeout_type", None))
         self.cql = Status(status=(kwargs.get("cql_status") and CqlStatus(kwargs.pop("cql_status")) or None),
-                          time=kwargs.pop("cql_time", None),
-                          time_type=kwargs.pop("cql_time_type", None))
+                          uptime=kwargs.pop("cql_timeout", None),
+                          uptime_type=kwargs.pop("cql_timeout_type", None))
         self.rest = Status(status=(kwargs.get("rest_status") and HostRestStatus(kwargs.pop("rest_status"))) or None,
-                           time=kwargs.pop("rest_time", None), time_type=kwargs.pop("rest_time_type", None))
+                           uptime=kwargs.pop("rest_timeout", None), uptime_type=kwargs.pop("rest_timeout_type", None))
         self.address = kwargs.pop("address")
         self.uptime = Uptime(hours=kwargs.pop("hours", None), minutes=kwargs.pop("minutes", None),
                              seconds=kwargs.pop("seconds", None))
         self.cpus = kwargs.pop("cpus", None)
-        self.memory = Memory(size=kwargs.pop("memory_size", None), type=kwargs.pop("memory_type", None))
+        self.memory = Memory(size=kwargs.pop("memory_size", None), unit=kwargs.pop("memory_unit", None))
         self.scylla_version = kwargs.pop("scylla_version", None)
         self.agent_version = kwargs.pop("agent_version", None)
         self.host_id = kwargs.pop("host_id")

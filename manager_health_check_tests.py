@@ -1,12 +1,14 @@
 # coding: utf-8
+from copy import deepcopy
 from datetime import datetime, timedelta
 
 from nose.plugins.attrib import attr
 
 from dtest_scylla_manager import TaskStatus, ScyllaManagerTool, ScyllaManagerMixin, CqlStatus, HostRestStatus, Memory, \
-    Status, AlternatorStatus, NodeStatus, HostHealth
-from dtest import Tester, debug, info
+    Status, AlternatorStatus, NodeStatus, HostHealth, ScyllaManagerError
+from dtest import Tester, debug, info, retrying
 from alternator_utils import ALTERNATOR_PORT, WriteIsolation
+from iptables import IPTable, IPTableRule
 from manager_backup_tests import CLUSTER_NAME
 
 
@@ -173,3 +175,55 @@ class ManagerHealthCheckTest(Tester, ScyllaManagerMixin):
                 assert node_details.memory == Memory(), "The 'Memory' value is not empty"
                 assert node_details.scylla_version is None, "The Scylla version should be empty"
                 assert node_details.agent_version is None, "The agent version should be empty"
+
+    def test_http_status_codes(self):
+        """
+        Block the following ports Alternator(8080), CQL(9042), and REST(10000).
+        Verify that the Manager's output displays "TIMEOUT" for each port.
+        """
+        nodes = self.config_and_create_cluster(nodes=3, extra_config_options=dict(
+            alternator_port=ALTERNATOR_PORT, alternator_write_isolation=WriteIsolation.ALWAYS_USE_LWT.value))
+        node1 = nodes[0]
+        rest_of_the_nodes = nodes[1:]
+        mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
+
+        iptables_obj = IPTable(chain_name=__name__)
+        self.addCleanup(iptables_obj.delete_chain)
+        iptables_obj.create_new_chain()
+        normal_expected_states = HostHealth(
+            datacenter_name=None, address=None, host_id=None, status=NodeStatus.UP,
+            alternator_status=AlternatorStatus.UP, alternator_timeout=None, alternator_timeout_type='ms',
+            cql_status=CqlStatus.UP, cql_timeout=None, cql_timeout_type='ms',
+            rest_status=HostRestStatus.UP, rest_timeout=None, rest_timeout_type='ms')
+
+        @retrying(num_attempts=10, sleep_time=4, allowed_exceptions=(ScyllaManagerError,))
+        def _get_hosts_health():
+            return mgr_cluster.get_hosts_health()
+
+        def _verify_port_is_blocked(rule, expected_states):
+            for node in rest_of_the_nodes:
+                ip_address = self.get_ip_from_node(node=node)
+                expected_states.address = ip_address
+                rule.destination = f'{ip_address}/32'
+                iptables_obj.add_rule(rule=rule)
+                cluster_status = _get_hosts_health()
+                assert expected_states == cluster_status[ip_address]
+                iptables_obj.delete_rule(rule=rule)
+
+        info('Blocking the "CQL" port for all nodes without first node')
+        states = deepcopy(normal_expected_states)
+        states.cql = Status(status=CqlStatus.TIMEOUT, uptime=None, uptime_type='ms')
+        _verify_port_is_blocked(rule=IPTableRule(protocol='tcp', destination_port=9042, target='DROP'),
+                                expected_states=states)
+
+        info('Blocking the "Alternator" port for all nodes without first node')
+        states = deepcopy(normal_expected_states)
+        states.alternator = Status(status=AlternatorStatus.TIMEOUT, uptime=None, uptime_type='ms')
+        _verify_port_is_blocked(rule=IPTableRule(protocol='tcp', destination_port=8080, target='DROP'),
+                                expected_states=states)
+
+        info('Blocking the "REST" port for all nodes without first node')
+        states = deepcopy(normal_expected_states)
+        states.rest = Status(status=HostRestStatus.TIMEOUT, uptime=None, uptime_type='ms')
+        _verify_port_is_blocked(rule=IPTableRule(protocol='tcp', destination_port=10000, target='DROP'),
+                                expected_states=states)
