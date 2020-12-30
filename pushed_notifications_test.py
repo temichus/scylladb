@@ -226,8 +226,8 @@ class TestPushedNotifications(Tester):
         assert "DOWN" == notifications[0]["change_type"]
         assert "UP" == notifications[1]["change_type"]
 
-    @pytest.mark.require('#7805')
-    def test_restart_node_localhost(self):
+    @pytest.mark.parametrize("wait_and_restart", [True, False], ids=["wait_and_restart=True", "wait_and_restart=False"])
+    def test_restart_node_localhost(self, wait_and_restart):
         """
         Test that we don't get client notifications when rpc_address is set to localhost Pre 4.0.
         Test that we get correct client notifications when rpc_address is set to localhost Post 4.0.
@@ -238,6 +238,10 @@ class TestPushedNotifications(Tester):
 
         To set-up this test we override the rpc_address to "localhost" for all nodes, and
         therefore we must change the rpc port or else processes won't start.
+
+        when wait_and_restart == True
+        Wait a while to ensure the join event of node2 is sent by node1,
+        then restart node2
         """
         cluster = self.cluster
         cluster.populate(2)
@@ -256,6 +260,9 @@ class TestPushedNotifications(Tester):
             i = i + 2
 
         cluster.start(wait_for_binary_proto=True)
+        # Wait a while to ensure the join event of node2 is sent by node1
+        if wait_and_restart:
+            time.sleep(120)
 
         # register for notification with node1
         waiter = NotificationWaiter(self, node1, ["STATUS_CHANGE", "TOPOLOGY_CHANGE"])
@@ -268,11 +275,16 @@ class TestPushedNotifications(Tester):
         # check that node1 did not send UP or DOWN notification for node2
         logger.debug("Waiting for notifications from {}".format(waiter.address,))
         notifications = waiter.wait_for_notifications(timeout=30.0, num_notifications=2)
-        assert 2 == len(notifications)
+        if wait_and_restart:
+            assert len(notifications) == 2
+        else:
+            assert len(notifications) >= 2
         for notification in notifications:
             assert node2.address() == notification["address"][0]
         assert "DOWN" == notifications[0]["change_type"]
-        assert "UP" == notifications[1]["change_type"]
+        if len(notifications) == 3:
+            assert "NEW_NODE" == notifications[1]["change_type"]
+        assert "UP" == notifications[-1]["change_type"]
 
     def test_schema_changes(self):
         """
