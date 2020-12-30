@@ -938,8 +938,10 @@ class TestCQL(UpgradeTester):
             res = cursor.execute("SELECT * FROM test")
             assert rows_to_list(res) == [[0, 0, None, None], [0, 1, None, None]], res
 
+            res = session.execute("SELECT * FROM test WHERE k = null")
+            assert rows_to_list(res) == [], list(res)
+
             assert_invalid(cursor, "INSERT INTO test (k, c, v2) VALUES (0, 2, {1, null})")
-            assert_invalid(cursor, "SELECT * FROM test WHERE k = null")
             assert_invalid(cursor, "INSERT INTO test (k, c, v2) VALUES (0, 0, { 'foo', 'bar', null })")
 
     def nameless_index_test(self):

@@ -1261,8 +1261,10 @@ class TestCQL(Tester):
         res = session.execute("SELECT * FROM test")
         assert rows_to_list(res) == [[0, 0, None, None], [0, 1, None, None]], list(res)
 
+        res = session.execute("SELECT * FROM test WHERE k = null")
+        assert rows_to_list(res) == [], list(res)
+
         assert_invalid(session, "INSERT INTO test (k, c, v2) VALUES (0, 2, {1, null})")
-        assert_invalid(session, "SELECT * FROM test WHERE k = null")
         assert_invalid(session, "INSERT INTO test (k, c, v2) VALUES (0, 0, { 'foo', 'bar', null })")
 
     @attr('single_node')
