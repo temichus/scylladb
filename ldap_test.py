@@ -94,7 +94,7 @@ class TestLdap(Tester):
             config.update({'authenticator': 'com.scylladb.auth.SaslauthdAuthenticator',
                            'saslauthd_socket_path': os.path.join(self.saslauthd_dir, 'mux')})
         else:
-            info('Using com.scylladb.auth.PasswordAuthenticator')
+            info('Using org.apache.cassandra.auth.PasswordAuthenticator')
             config.update({'authenticator': 'org.apache.cassandra.auth.PasswordAuthenticator'})
         cluster.set_configuration_options(values=config)
 
