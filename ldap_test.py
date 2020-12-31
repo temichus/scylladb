@@ -40,13 +40,16 @@ class TestLdap(Tester):
                 'ldap_bind_dn': f'cn=admin,{self.test_ldap_docker.ldap_base_object}',
                 'ldap_bind_passwd': 'scylla'}
 
+    def create_role_in_ldap(self, user, password):
+        self.test_ldap_docker.add_ldap_object(
+            f'uid={user},ou=Person,{self.test_ldap_docker.ldap_base_object}',
+            ['uidObject', 'organizationalPerson', 'top'],
+            {'userPassword': password, 'sn': 'PersonSn', 'cn': 'PersonCn'})
+
     def create_role(self, session, user, password):
         if self.use_saslauth:
             session.execute(f'CREATE ROLE \'{user}\' WITH login=true')
-            self.test_ldap_docker.add_ldap_object(
-                f'uid={user},ou=Person,{self.test_ldap_docker.ldap_base_object}',
-                ['uidObject', 'organizationalPerson', 'top'],
-                {'userPassword': password, 'sn': 'PersonSn', 'cn': 'PersonCn'})
+            self.create_role_in_ldap(user, password)
         else:
             session.execute(f'CREATE ROLE \'{user}\' WITH login=true AND password=\'{password}\'')
 
@@ -101,10 +104,7 @@ class TestLdap(Tester):
         self.nodes = cluster.nodelist()[:]
 
         if self.use_saslauth and configure_ldap and add_cassandra_superuser_to_ldap:
-            self.test_ldap_docker.add_ldap_object(
-                f'uid={user},ou=Person,{self.test_ldap_docker.ldap_base_object}',
-                ['uidObject', 'organizationalPerson', 'top'],
-                {'userPassword': password, 'sn': 'PersonSn', 'cn': 'PersonCn'})
+            self.create_role_in_ldap(user, password)
         self.nodes[0].watch_log_for("Created default superuser role 'cassandra'")
         session = self.patient_cql_connection(self.nodes[0], user=user, password=password)
         if create_role:
