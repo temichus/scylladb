@@ -1234,7 +1234,12 @@ class TestCQL(Tester):
         assert_invalid(session, "ALTER TABLE test WITH default_validation=int;", expected=SyntaxException)
 
     @attr('single_node')
-    def null_support_test(self):
+    def null_support_index_test(self):
+        """ Test support for nulls, INDEX is created """
+        self.null_support_test(create_index=True)
+
+    @attr('single_node')
+    def null_support_test(self, create_index=False):
         """ Test support for nulls """
         session = self.prepare()
 
@@ -1248,6 +1253,12 @@ class TestCQL(Tester):
             );
         """)
 
+        if create_index:
+            session.execute("CREATE INDEX on test(v1)")
+            ALLOW_FILTERING = ''
+        else:
+            ALLOW_FILTERING = MSG_ALLOW_FILTERING
+
         # Inserts
         session.execute("INSERT INTO test (k, c, v1, v2) VALUES (0, 0, null, {'1', '2'})")
         session.execute("INSERT INTO test (k, c, v1) VALUES (0, 1, 1)")
@@ -1260,8 +1271,32 @@ class TestCQL(Tester):
 
         res = session.execute("SELECT * FROM test")
         assert rows_to_list(res) == [[0, 0, None, None], [0, 1, None, None]], list(res)
+        debug(list(res))
+
+        res = session.execute("SELECT * FROM test WHERE k = 0")
+        assert rows_to_list(res) == [[0, 0, None, None], [0, 1, None, None]], list(res)
 
         res = session.execute("SELECT * FROM test WHERE k = null")
+        assert rows_to_list(res) == [], list(res)
+
+        # all RHSs are the same
+        res = session.execute("SELECT * FROM test WHERE k = 0 AND k = 0")
+        assert rows_to_list(res) == [[0, 0, None, None], [0, 1, None, None]], list(res)
+
+        # all RHSs are the same (with multiple pks)
+        res = session.execute("SELECT * FROM test WHERE k = 0 AND k = 0 AND c = 1")
+        assert rows_to_list(res) == [[0, 1, None, None]], list(res)
+
+        # at least two RHSs are different
+        res = session.execute("SELECT * FROM test WHERE k = 0 AND k = 1")
+        assert rows_to_list(res) == [], list(res)
+
+        # expect to get empty result for null filtering, CQL is different with SQL
+        # Ref: https://github.com/scylladb/scylla/pull/5763#discussion_r405455092
+        res = session.execute(f"SELECT * FROM test WHERE k = 0 AND v1 = null {ALLOW_FILTERING}")
+        assert rows_to_list(res) == [], list(res)
+
+        res = session.execute(f"SELECT * FROM test WHERE v1 = null {ALLOW_FILTERING}")
         assert rows_to_list(res) == [], list(res)
 
         assert_invalid(session, "INSERT INTO test (k, c, v2) VALUES (0, 2, {1, null})")
