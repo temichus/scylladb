@@ -5,10 +5,11 @@ import ssl
 import time
 
 from cassandra import ConsistencyLevel
-from cassandra.cluster import NoHostAvailable
+from cassandra.cluster import NoHostAvailable, Cluster
+from cassandra.auth import PlainTextAuthProvider
 
 from dtest import Tester, debug, wait_for
-from tools import generate_ssl_stores, putget, since, safe_mkdtemp, require
+from tools import generate_ssl_stores, putget, safe_mkdtemp, require
 from scylla_tools import is_port_used
 from unittest import skip
 from nose.plugins.attrib import attr
@@ -26,6 +27,27 @@ class NativeTransportSSL(Tester):
     Native transport integration tests, specifically for ssl and port configurations.
     """
 
+    def _create_cluster_session(self, node_to_connect, port=9042, use_ssl=False, ca_certs=None):
+        ssl_context, ssl_options, ssl_options = None, None, {}
+        if use_ssl or ca_certs:
+            ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
+        if use_ssl:
+            ssl_context.load_cert_chain(certfile=os.path.join(self.test_path, 'ccm_node.pem'),
+                                        keyfile=os.path.join(self.test_path, 'ccm_node.key'))
+            ssl_options['server_hostname'] = self.get_ip_from_node(node_to_connect)
+        if ca_certs:
+            ssl_context.verify_mode = ssl.CERT_REQUIRED
+            ssl_context.load_verify_locations(cafile=os.path.join(self.test_path, 'ccm_node.cer'))
+        cluster_connection = Cluster(
+            [self.get_ip_from_node(node_to_connect)],
+            port=port,
+            connect_timeout=90,
+            control_connection_timeout=60,
+            protocol_version=4,
+            ssl_context=ssl_context,
+            ssl_options=ssl_options)
+        return cluster_connection.connect()
+
     @attr('next-gating')
     @attr('dtest-debug')
     def connect_to_ssl_test(self):
@@ -39,7 +61,7 @@ class NativeTransportSSL(Tester):
 
         try:  # hack around assertRaise's lack of msg parameter
             # try to connect without ssl options
-            self.patient_cql_connection(node1)
+            self._create_cluster_session(node1, use_ssl=False)
             self.fail('Should not be able to connect to SSL socket without SSL enabled client')
         except NoHostAvailable:
             pass
@@ -48,8 +70,7 @@ class NativeTransportSSL(Tester):
             "Missing SSL handshake exception while connecting with non-SSL enabled client"
 
         # enabled ssl on the client and try again (this should work)
-        session = self.patient_cql_connection(
-            node1, ssl_opts={'ca_certs': os.path.join(self.test_path, 'ccm_node.cer')})
+        session = self._create_cluster_session(node1, use_ssl=True)
         self._putget(cluster, session)
 
     def connect_to_ssl_test_client_auth(self):
@@ -64,7 +85,7 @@ class NativeTransportSSL(Tester):
 
         try:  # hack around assertRaise's lack of msg parameter
             # try to connect without ssl options
-            self.patient_cql_connection(node1)
+            self._create_cluster_session(node1, use_ssl=False)
             self.fail('Should not be able to connect to SSL socket without SSL enabled client')
         except NoHostAvailable:
             pass
@@ -74,17 +95,11 @@ class NativeTransportSSL(Tester):
 
         try:
             # try to connect without auth cert
-            self.patient_cql_connection(node1, ssl_opts={'ca_certs': os.path.join(self.test_path, 'ccm_node.cer')})
+            self._create_cluster_session(node1, use_ssl=False, ca_certs=True)
             self.fail('Should not be able to connect to SSL socket without SSL enabled client')
         except NoHostAvailable:
             pass
-
-        # enabled ssl + auth on the client and try again (this should work)
-        session = self.patient_cql_connection(node1, ssl_opts={
-            'ca_certs': os.path.join(self.test_path, 'ccm_node.cer'),
-            'keyfile': os.path.join(self.test_path, 'ccm_node.key'),
-            'certfile': os.path.join(self.test_path, 'ccm_node.pem')
-        })
+        session = self._create_cluster_session(node1, use_ssl=True, ca_certs=True)
         self._putget(cluster, session)
 
     @skip('optional_ssl')
@@ -116,12 +131,12 @@ class NativeTransportSSL(Tester):
 
         cluster.start()
         try:  # hack around assertRaise's lack of msg parameter
-            self.patient_cql_connection(node1)
+            self._create_cluster_session(node1, use_ssl=False)
             self.fail('Should not be able to connect to non-default port')
         except NoHostAvailable:
             pass
 
-        session = self.patient_cql_connection(node1, port=9567)
+        session = self._create_cluster_session(node1, port=9567, use_ssl=False)
         self._putget(cluster, session)
 
     def use_custom_ssl_port_test(self):
@@ -135,12 +150,11 @@ class NativeTransportSSL(Tester):
         cluster.start()
 
         # we should be able to connect to default non-ssl port
-        session = self.patient_cql_connection(node1)
+        session = self._create_cluster_session(node1, use_ssl=False)
         self._putget(cluster, session)
 
         # connect to additional dedicated ssl port
-        session = self.patient_cql_connection(node1, port=9666, ssl_opts={
-                                              'ca_certs': os.path.join(self.test_path, 'ccm_node.cer')})
+        session = self._create_cluster_session(node1, use_ssl=True, port=9666)
         self._putget(cluster, session, ks='ks2')
 
     @attr('dtest-debug')
@@ -175,8 +189,7 @@ class NativeTransportSSL(Tester):
             wait_for_cert_reload(node1, "cql_server", ["ccm_node.pem", "ccm_node.key"], from_mark=mark)
 
             # now we should match
-            session = self.patient_cql_connection(node1, ssl_opts={'ca_certs': os.path.join(
-                self.test_path, 'ccm_node.cer'), "cert_reqs": ssl.CERT_REQUIRED})
+            session = self._create_cluster_session(node1, use_ssl=True)
             self._putget(cluster, session)
         finally:
             shutil.rmtree(tmpdir)
@@ -246,8 +259,7 @@ class NativeTransportSSL(Tester):
         cluster = self._populateCluster(enableSSL=True, nativePortSSL=9142, nativePort=0)
         cluster.start()
         node1 = cluster.nodelist()[0]
-        session = self.patient_cql_connection(node1, port=9142,
-                                              ssl_opts={'ca_certs': os.path.join(self.test_path, 'ccm_node.cer')})
+        session = self._create_cluster_session(node1, use_ssl=True, port=9142)
         self.create_ks(session, "ks", 1)
         is_port_listening = common.check_socket_listening(cluster.get_binary_interface(1), timeout=20)
         assert not is_port_listening, \
