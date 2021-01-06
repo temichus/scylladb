@@ -2450,7 +2450,6 @@ class TestCQL(Tester):
         rows_set = get_rows_set_from_res(res)
         assert rows_set == {(2, 4)}, rows_set
 
-    @require("#5708")
     def restricted_column_not_in_select_clause_test(self):
         session = self.prepare(ordered=True)
         session.execute("""
