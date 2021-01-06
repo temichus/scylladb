@@ -2223,6 +2223,11 @@ class TestMaterializedViews(Tester):
             r'view - Error applying view update to .*: exceptions::mutation_write_failure_exception',
             r'view - Error applying view update to .*: std::_Nested_exception<no_such_column_family>',
         ]
+        if interrupt_resharding:
+            self.ignore_log_patterns += [
+                # for now, until the reader is properly aborted and closed
+                r'resharding failed: seastar::broken_promise',
+            ]
         session = self.prepare(options={'hinted_handoff_enabled': False, 'shadow_round_ms': 1000, 'prometheus_port': 0, 'read_request_timeout_in_ms': 100000, 'range_request_timeout_in_ms': 100000},
                                jvm_args=['--smp', str(smp_before), '--memory', self.set_memory_param(smp_before)])
         node1, node2, node3 = self.cluster.nodelist()
