@@ -452,7 +452,6 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
                                                                                        index['index_column']),
                        expected=[[10]], cl=ConsistencyLevel.QUORUM)
 
-    # @require('3501')
     def test_oversize_indexed_values(self):
         """
         Reject inserts & updates where values of any indexed column is > 64k
@@ -460,7 +459,6 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
         expect_message = 'Key size too large'
         self._validate_long_indexed_values(OVERSIZE_LENGTH, expect_message)
 
-    # @require('3501')
     def test_long_indexed_values(self):
         """
         Correct inserts & updates where values of any indexed column is long and up to 64k
