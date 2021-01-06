@@ -124,7 +124,6 @@ class CQLCastTest(CqlshPrepare):
         self._udt_test_run(test_from, TestData.POSITIVE_VALUES, test_to=['text', 'varchar'],
                            test_types=['cast', 'min', 'max'], exclude=False)
 
-    @require('#3104')
     def cast_issue_3104_test(self):
         """Function performs or issue #3104"""
         # To remove the case from issue test, go to TestData.POSITIVE_VALUES and remove comment simbol "#" from relavant type
@@ -148,7 +147,6 @@ class CQLCastTest(CqlshPrepare):
         self._test_run(test_from, TestData.POSITIVE_VALUES, test_to=['decimal'],
                        test_types=['cast', 'sum', 'min', 'max', 'min', 'max', 'avg'], exclude=False)
 
-    @require('#3111')
     def cast_udt_issue_3111_test(self):
         """Function performs or issue #3111"""
         # To remove the case from issue test, go to TestData.POSITIVE_VALUES and remove comment simbol "#" from relavant type
@@ -156,7 +154,6 @@ class CQLCastTest(CqlshPrepare):
         self._udt_test_run(test_from, TestData.POSITIVE_VALUES, test_to=['decimal'],
                            test_types=['cast', 'sum', 'min', 'max', 'min', 'max', 'avg'], exclude=False)
 
-    @require('#3112')
     def cast_issue_3112_test(self):
         """Function performs or issue #3112"""
         # To remove the case from issue test, go to TestData.POSITIVE_VALUES and remove comment simbol "#" from relavant type
