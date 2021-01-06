@@ -1355,7 +1355,6 @@ Unlogged batch covering 2 partitions detected against table [client_warnings.tes
         # the table created before and after should be the same
         self.assertEqual(reloaded_describe_out, describe_out)
 
-    @require('materialized view')
     @attr('single_node')
     def materialized_view_test(self):
         """
@@ -1764,7 +1763,6 @@ class CqlshSmokeTest(Tester):
         self.assertEqual(ks2_stderr, '')
 
     # DROP INDEX statement fails in 2.0 (see CASSANDRA-9247)
-    @require('secondary index')
     @attr('single_node')
     def drop_index_test(self):
         self.create_ks(self.session, 'ks', 1)
@@ -1788,7 +1786,6 @@ class CqlshSmokeTest(Tester):
         self.assertRaises(InvalidRequest, execute_requires_index)
 
     # DROP INDEX statement fails in 2.0 (see CASSANDRA-9247)
-    @require('secondary index')
     @attr('single_node')
     def create_index_test(self):
         self.create_ks(self.session, 'ks', 1)
