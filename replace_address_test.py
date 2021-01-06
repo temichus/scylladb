@@ -210,7 +210,6 @@ class TestReplaceAddress(Tester):
         assert_row_count(session, table_name, 151000)
         assert_all(session, f"select * from {table_name}", data, ignore_order=True)
 
-    @require('#4325')
     def shutdown_all_and_replace_node_test(self):
         debug("Starting cluster with 3 nodes.")
         self.init_cluster(num_nodes=3)
