@@ -23,7 +23,6 @@ def wait(delay=2):
     time.sleep(delay)
 
 
-# @require(10699)
 @attr('dtest-full')
 class TestConcurrentSchemaChanges(Tester):
 
