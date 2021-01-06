@@ -417,7 +417,6 @@ class CqlshCopyTest(CqlshPrepare):
 
         self.assertCsvResultEqual(self.tempfile.name, results)
 
-    @require('#2386')
     @attr('single_node')
     def test_colon_delimiter(self):
         """
@@ -425,7 +424,6 @@ class CqlshCopyTest(CqlshPrepare):
         """
         self.non_default_delimiter_template(':')
 
-    @require('#2386')
     @attr('single_node')
     def test_letter_delimiter(self):
         """
@@ -433,7 +431,6 @@ class CqlshCopyTest(CqlshPrepare):
         """
         self.non_default_delimiter_template('a')
 
-    @require('#2386')
     @attr('single_node')
     def test_number_delimiter(self):
         """
@@ -471,7 +468,6 @@ class CqlshCopyTest(CqlshPrepare):
 
         self.assertCsvResultEqual(self.tempfile.name, results)
 
-    @require('#2386')
     @attr('single_node')
     def test_undefined_as_null_indicator(self):
         """
@@ -479,7 +475,6 @@ class CqlshCopyTest(CqlshPrepare):
         """
         self.custom_null_indicator_template('undefined')
 
-    @require('#2386')
     @attr('single_node')
     def test_null_as_null_indicator(self):
         """
