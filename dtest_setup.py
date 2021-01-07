@@ -17,8 +17,9 @@ from cassandra.cluster import Cluster as PyCluster
 from cassandra.cluster import NoHostAvailable
 from cassandra.cluster import EXEC_PROFILE_DEFAULT
 from cassandra.policies import WhiteListRoundRobinPolicy
-from ccmlib.common import get_version_from_build, is_win
+from ccmlib.common import is_win
 from ccmlib.cluster import Cluster
+from ccmlib.scylla_cluster import ScyllaCluster
 
 from dtest_class import (get_ip_from_node, make_execution_profile, get_auth_provider, get_port_from_node,
                          get_eager_protocol_version)
@@ -199,6 +200,8 @@ class DTestSetup:
         self.create_cluster_func = None
         self.iterations = 0
         self.runners = []
+        self.base_cql_timeout = 10  # seconds
+        self.cql_request_timeout = None
 
     def get_test_path(self):
         # we can not work /tmp
@@ -311,7 +314,8 @@ class DTestSetup:
                                     **kwargs)
 
     def _create_session(self, node, keyspace, user, password, compression, protocol_version,
-                        port=None, ssl_opts=None, execution_profiles=None, **kwargs):
+                        port=None, ssl_opts=None, execution_profiles=None, topology_event_refresh_window=10,
+                        request_timeout=None, keep_session=True, **kwargs):
         node_ip = get_ip_from_node(node)
         if not port:
             port = get_port_from_node(node)
@@ -324,7 +328,10 @@ class DTestSetup:
         else:
             auth_provider = None
 
-        profiles = {EXEC_PROFILE_DEFAULT: make_execution_profile(**kwargs)
+        if request_timeout is None:
+            request_timeout = self.cql_request_timeout
+
+        profiles = {EXEC_PROFILE_DEFAULT: make_execution_profile(request_timeout=request_timeout, **kwargs)
                     } if not execution_profiles else execution_profiles
 
         cluster = PyCluster([node_ip],
@@ -333,15 +340,20 @@ class DTestSetup:
                             protocol_version=protocol_version,
                             port=port,
                             ssl_options=ssl_opts,
-                            connect_timeout=15,
+                            connect_timeout=5,
+                            max_schema_agreement_wait=60,
+                            control_connection_timeout=6.0,
                             allow_beta_protocol_version=True,
+                            topology_event_refresh_window=topology_event_refresh_window,
                             execution_profiles=profiles)
         session = cluster.connect(wait_for_all_pools=True)
 
         if keyspace is not None:
             session.set_keyspace(keyspace)
 
-        self.connections.append(session)
+        if keep_session:
+            self.connections.append(session)
+
         return session
 
     def patient_cql_connection(self, node, keyspace=None,
@@ -525,13 +537,21 @@ class DTestSetup:
         else:
             repaired_data_tracking_values = {}
 
-        timeout = 15000
+        timeout = self.cql_timeout() * 1000
+        range_timeout = 3 * timeout
+        self.cql_request_timeout = 3 * self.cql_timeout()
+
+        if isinstance(self.cluster, ScyllaCluster):
+            logger.debug("Scylla mode is '{}'".format(self.cluster.scylla_mode))
+        logger.debug("Cluster *_request_timeout_in_ms={}, range_request_timeout_in_ms={}, cql request_timeout={}".format(
+            timeout, range_timeout, self.cql_request_timeout))
+
         if self.cluster_options is not None and len(self.cluster_options) > 0:
             values = merge_dicts(self.cluster_options, phi_values, repaired_data_tracking_values)
         else:
             values = merge_dicts(phi_values, repaired_data_tracking_values, {
                 'read_request_timeout_in_ms': timeout,
-                'range_request_timeout_in_ms': timeout,
+                'range_request_timeout_in_ms': range_timeout,
                 'write_request_timeout_in_ms': timeout,
                 'truncate_request_timeout_in_ms': timeout,
                 'request_timeout_in_ms': timeout
@@ -666,3 +686,14 @@ class DTestSetup:
         version that may not be compatible with the existing configuration options
         """
         self.init_default_config()
+
+    def cql_timeout(self, seconds=None):
+        if not seconds:
+            seconds = self.base_cql_timeout
+        factor = 1
+        if isinstance(self.cluster, ScyllaCluster):
+            if self.cluster.scylla_mode == 'debug':
+                factor = 3
+            elif self.cluster.scylla_mode != 'release':
+                factor = 2
+        return seconds * factor
