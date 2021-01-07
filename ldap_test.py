@@ -500,3 +500,73 @@ class TestLdapSaslAuth(TestLdap):
         self.patient_cql_connection(self.nodes[0], user='cassandra', password='cassandra')
         with self.assertRaisesRegexp(NoHostAvailable, 'Bad credentials'):
             self.patient_cql_connection(self.nodes[0], user='cassandra', password='wrong-password')
+
+    def test_switch_with_password_auth(self):
+        """
+        Create an user without password in Scylla, the password only exists in LDAP server.
+        Switch to PasswordAuthenticator and test login without password. Then swtich back to
+        SaslauthdAuthenticator and verify login with ldap account.
+        """
+        self.prepare(nodes=2)
+        node1 = self.nodes[0]
+        debug(
+            f"A {self.LDAP_USER} user was created without password in Scylla, the password only exists in LDAP server")
+        session = self.patient_cql_connection(node1, user='cassandra', password='cassandra')
+        self.patient_cql_connection(node1, user=self.LDAP_USER, password=self.LDAP_PASSWORD)
+
+        # Verify that it's not supported to set password in Scylla by cqlsh when SaslauthdAuthenticator is used
+        with self.assertRaisesRegexp(Exception, 'Cannot modify passwords with SaslauthdAuthenticator'):
+            session.execute(f"ALTER ROLE '{self.LDAP_USER}' WITH PASSWORD = 'new_password'")
+
+        debug("Switch to org.apache.cassandra.auth.PasswordAuthenticator, and restart the cluster ...")
+        self.cluster.set_configuration_options(values={'authenticator':
+                                                       'org.apache.cassandra.auth.PasswordAuthenticator'})
+        self.cluster.stop()
+        self.cluster.start(wait_for_binary_proto=True)
+
+        session = self.patient_cql_connection(node1, user='cassandra', password='cassandra')
+
+        with self.assertRaisesRegexp(NoHostAvailable, 'Bad credentials'):
+            debug(f'Try to login by {self.LDAP_USER} without password')
+            self.patient_cql_connection(node1, user=self.LDAP_USER)
+        with self.assertRaisesRegexp(NoHostAvailable, 'Bad credentials'):
+            debug(
+                f'Try to login by {self.LDAP_USER} with password, but there is no password in Scylla for the user')
+            self.patient_cql_connection(node1, user=self.LDAP_USER, password=self.LDAP_PASSWORD)
+
+        debug(f'Set password for {self.LDAP_USER} in Scylla, and relogin')
+        session.execute(f"ALTER ROLE '{self.LDAP_USER}' WITH PASSWORD = '{self.LDAP_PASSWORD}-new'")
+        self.patient_cql_connection(node1, user=self.LDAP_USER, password=f'{self.LDAP_PASSWORD}-new')
+
+        debug("Switch back to com.scylladb.auth.SaslauthdAuthenticator, and restart the cluster ...")
+        self.cluster.set_configuration_options(values={'authenticator':
+                                                       'com.scylladb.auth.SaslauthdAuthenticator'})
+        self.cluster.stop()
+        self.cluster.start(wait_for_binary_proto=True)
+        debug('Try to login with old password in ldap')
+        self.patient_cql_connection(node1, user=self.LDAP_USER, password=f'{self.LDAP_PASSWORD}')
+
+    def test_invalid_saslauthd_socket(self):
+        """
+        This test tries to set different invalid socket to scylla, and
+        restart the cluster and try to login.
+        """
+        self.prepare()
+        node1 = self.nodes[0]
+        self.patient_cql_connection(node1, user=self.LDAP_USER, password=self.LDAP_PASSWORD)
+
+        orig_socket_path = os.path.join(self.saslauthd_dir, 'mux')
+        subprocess.getoutput(f'sudo chown root:root {orig_socket_path}')
+
+        for sock_path in [orig_socket_path, '/tmp/', '/tmp/unexist_socket_path',
+                          '/dev/zero', '/run/systemd/journal/stdout']:
+            debug(f'Set an invalid saslauthd_socket_path {sock_path}, and restart cluster ...')
+            self.cluster.set_configuration_options(values={'saslauthd_socket_path': '/tmp/'})
+            self.cluster.stop()
+            self.cluster.start(wait_for_binary_proto=True)
+
+            debug('Try to login ...')
+            with self.assertRaisesRegexp(NoHostAvailable, 'Bad credentials'):
+                self.patient_cql_connection(node1, user=self.LDAP_USER,
+                                            password=self.LDAP_PASSWORD)
+        subprocess.getoutput(f'sudo chown $USER:$USER {orig_socket_path}')
