@@ -3,7 +3,7 @@ import os
 import ccmlib.repository
 import ccmlib.scylla_repository
 
-from ccmlib.common import is_win, get_version_from_build
+from ccmlib.common import is_win, get_version_from_build, get_scylla_full_version
 
 
 class DTestConfig:
@@ -18,6 +18,7 @@ class DTestConfig:
         self.cassandra_version = None
         self.scylla_version = None
         self.cassandra_version_from_build = None
+        self.scylla_full_version = None
         self.delete_logs = False
         self.execute_upgrade_tests = False
         self.disable_active_log_watching = False
@@ -37,6 +38,7 @@ class DTestConfig:
         self.cassandra_version = request.config.getoption("--cassandra-version")
         self.scylla_version = request.config.getoption("--scylla-version")
         self.cassandra_version_from_build = self.get_version_from_build()
+        self.scylla_full_version = self.get_scylla_full_version()
 
         self.delete_logs = request.config.getoption("--delete-logs")
         self.execute_upgrade_tests = request.config.getoption("--execute-upgrade-tests")
@@ -59,10 +61,16 @@ class DTestConfig:
         elif self.cassandra_dir is not None:
             return get_version_from_build(self.cassandra_dir)
 
+    def get_scylla_full_version(self):
+        if self.scylla_version is not None:
+            ccm_repo_cache_dir, _ = ccmlib.scylla_repository.setup(self.scylla_version)
+            return get_scylla_full_version(ccm_repo_cache_dir)
 
 # Determine the location of the libjemalloc jar so that we can specify it
 # through environment variables when start Cassandra.  This reduces startup
 # time, making the dtests run faster.
+
+
 def find_libjemalloc():
     if is_win():
         # let the normal bat script handle finding libjemalloc

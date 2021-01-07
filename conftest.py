@@ -5,23 +5,23 @@ import re
 import platform
 import copy
 import inspect
-
 from itertools import zip_longest
-
-from dtest_class import running_in_docker, cleanup_docker_environment_before_test_execution
-
 from datetime import datetime
 from distutils.version import LooseVersion
-from netifaces import AF_INET  # pylint: disable=no-name-in-module
-from psutil import virtual_memory
 
+from psutil import virtual_memory
+from botocore.exceptions import ClientError as AwsClientError
 import netifaces as ni
+from netifaces import AF_INET  # pylint: disable=no-name-in-module
+
 import ccmlib.repository
 from ccmlib.common import validate_install_dir, get_version_from_build
 
+from dtest_class import running_in_docker, cleanup_docker_environment_before_test_execution
 from dtest_config import DTestConfig
 from dtest_setup import DTestSetup, copy_logs
 from dtest_setup_overrides import DTestSetupOverrides
+from tools.keystore import KeyStore
 
 logger = logging.getLogger(__name__)
 
@@ -122,6 +122,8 @@ logger once per test class vs. once per session in the grand scheme of things.
 @pytest.fixture(scope="function", autouse=True)
 def fixture_logging_setup(request):
     logging.getLogger("cassandra").setLevel(logging.INFO)
+    logging.getLogger("boto3").setLevel(logging.INFO)
+    logging.getLogger("botocore").setLevel(logging.INFO)
 
 
 @pytest.fixture(scope="session")
@@ -444,3 +446,25 @@ def pytest_collection_modifyitems(items, config):
 
     config.hook.pytest_deselected(items=deselected_items)
     items[:] = selected_items
+
+
+@pytest.fixture(scope='session', autouse=True)
+def configure_es(elk_reporter, dtest_config):
+    extra_data = {
+        "SCYLLA_FULL_VERSION": dtest_config.scylla_full_version,
+        "SCYLLA_BRANCH_VERSION":  dtest_config.cassandra_version_from_build,
+    }
+    elk_reporter.session_data.update(**extra_data)
+
+    # if we don't have the credentials just skip this part
+    try:
+        es_credentials = KeyStore().get_elasticsearch_credentials()
+    except AwsClientError as ex:
+        logger.warning("couldn't configure configure_es, results won't be sent out:")
+        logger.warning("%s", str(ex))
+        return
+
+    elk_reporter.es_address = es_credentials['es_url']
+    elk_reporter.es_username = es_credentials['es_user']
+    elk_reporter.es_password = es_credentials['es_password']
+    elk_reporter.es_index_name = 'dtest_test_data'

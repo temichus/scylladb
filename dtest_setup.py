@@ -600,7 +600,8 @@ class DTestSetup:
         if version:
             cluster = Cluster(dtest_setup.test_path, dtest_setup.cluster_name, cassandra_version=version)
         elif scylla_version:
-            cluster = ScyllaCluster(dtest_setup.test_path, dtest_setup.cluster_name, cassandra_version=scylla_version)
+            cluster = ScyllaCluster(dtest_setup.test_path, dtest_setup.cluster_name,
+                                    cassandra_version=scylla_version, force_wait_for_cluster_start=True)
         else:
             if isScylla(dtest_setup.dtest_config.cassandra_dir):
                 cluster = ScyllaCluster(dtest_setup.test_path, dtest_setup.cluster_name,
