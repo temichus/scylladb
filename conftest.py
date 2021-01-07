@@ -42,7 +42,7 @@ def check_required_loopback_interfaces_available():
 
 
 def pytest_addoption(parser):
-    parser.addoption("--use-vnodes", action="store_true", default=False,
+    parser.addoption("--use-vnodes", action="store_true", default=True,
                      help="Determines wither or not to setup clusters using vnodes for tests")
     parser.addoption("--use-off-heap-memtables", action="store_true", default=False,
                      help="Enable Off Heap Memtables when creating test clusters for tests")
@@ -108,7 +108,7 @@ def fixture_dtest_cluster_name():
     return "test"
 
 
-"""
+r"""
 Not exactly sure why :\ but, this fixture needs to be scoped to function level and not
 session or class. If you invoke pytest with tests across multiple test classes, when scopped
 at session, the root logger appears to get reset between each test class invocation.
@@ -120,7 +120,7 @@ logger once per test class vs. once per session in the grand scheme of things.
 
 
 @pytest.fixture(scope="function", autouse=True)
-def fixture_logging_setup(request):
+def fixture_logging_setup():
     logging.getLogger("cassandra").setLevel(logging.INFO)
     logging.getLogger("boto3").setLevel(logging.INFO)
     logging.getLogger("botocore").setLevel(logging.INFO)
