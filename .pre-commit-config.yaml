@@ -46,7 +46,8 @@ repos:
                 conftest.py|
                 dtest_class.py|
                 dtest_setup.py|
-                bootstrap_test.py
+                bootstrap_test.py|
+                migration_test.py
             )$
         language: system
         types: [python]
