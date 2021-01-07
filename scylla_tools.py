@@ -1,29 +1,30 @@
 import os
-import requests
 import shutil
 import time
 import unittest
 import subprocess
+import logging
 
 import tabulate
 from cassandra import ConsistencyLevel
 from cassandra.concurrent import execute_concurrent_with_args, execute_concurrent
 from cassandra.query import SimpleStatement
 from ccmlib import common
-from ccmlib.node import ToolError
+from ccmlib.node import NodetoolError
 import re
-from dtest import debug, Tester
+from dtest_class import Tester
 import random
 import string
 import itertools
 from copy import deepcopy
-from threading import Thread
 import datetime
 from tools.data import rows_to_list
 from uuid import UUID
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 import glob
+
+logger = logging.getLogger(__name__)
 
 
 def build_insert_params(keys, n, c1_values, c2_values):
@@ -88,10 +89,10 @@ def insert_c1c2_with_clustering(session, clustering_key_values=None, n=None, con
                                 clustering_key_values, c1_values, c2_values))
 
     if output_20_lines:
-        debug("output of 20 lines after insertion:")
+        logger.debug("output of 20 lines after insertion:")
         query = SimpleStatement('SELECT * FROM %s.%s limit 20' % (ks, cf), consistency_level=consistency)
         rows = list(session.execute(query))
-        debug("\n".join(str(row) for row in rows))
+        logger.debug("\n".join(str(row) for row in rows))
 
 
 def insert_c1c2_no_prepared(session, keys=None, n=None, consistency=ConsistencyLevel.QUORUM, c1_values=None, c2_values=None, ks='ks', cf='cf'):
@@ -400,8 +401,8 @@ class TableManager(object):
         if ('names' in c_def and len(c_def['names']) == c_def['amount']):
             return ''
         elif 'names' in c_def and len(c_def['names']) != c_def['amount']:
-            debug('Names amount does not coincides with coulmns amount. Asked create {0} columns, supplied {1} names'
-                  .format(c_def['amount'], len(c_def['names'])))
+            logger.debug('Names amount does not coincides with coulmns amount. Asked create {0} columns, supplied {1} names'
+                         .format(c_def['amount'], len(c_def['names'])))
 
         return c_def['prefix'] if 'prefix' in c_def else \
             '{clmn_prefix}_{clmn_suffix}'.format(clmn_prefix=self.CLMN_PREFIX,
@@ -446,7 +447,7 @@ class TableManager(object):
             statement = statement + ' WITH'
             for op, value in self.table_options.items():
                 statement = '{} {} = {}'.format(statement, op, value)
-        debug(statement)
+        logger.debug(statement)
         self.session.execute(statement)
 
     def _create_columns_list(self):
@@ -481,7 +482,7 @@ class TableManager(object):
             .format(ks=self.keyspace, table_name=self.table_name,
                     columns=', '.join([c.split(' ')[0] for c in self.columns_list]),
                     values=('?,'*len(self.columns_list))[:-1], using=using_str)
-        debug(st)
+        logger.debug(st)
         statement = self.session.prepare(st)
         statement.consistency_level = consistency
 
@@ -491,7 +492,7 @@ class TableManager(object):
         if flush:
             flush_by_node(self.cluster)
 
-        debug('Finish prefill')
+        logger.debug('Finish prefill')
 
     def multiple_deletes(self, filters, delay=0):
         """
@@ -511,12 +512,12 @@ class TableManager(object):
         where_statement = ['{0}={1}'.format(column, self.prepare_value(str(value))) for column, value in filter.items()]
         query = 'delete from {tbl} where {where}'.format(
             tbl=self.table_name, where=' and '.join(s for s in where_statement))
-        debug(query)
+        logger.debug(query)
         self.session.execute(query)
 
     def truncate_table(self):
         query = 'truncate table {tbl}'.format(tbl=self.table_name)
-        debug(query)
+        logger.debug(query)
         self.session.execute(query)
 
     def _create_data_array(self, rows, ready_data=None):
@@ -648,10 +649,10 @@ class TableManager(object):
                                                                                          update_to_boundaries[1])}},
                                   where_filter={'by name': {'id': {'operator': '=', 'value': id}}})
 
-        debug('Updates finished')
+        logger.debug('Updates finished')
 
     def select_all_mvs(self, reads=100, by_id=False):
-        debug('Start reads from MVs')
+        logger.debug('Start reads from MVs')
         statement_template = 'select * from {0}'
         if by_id:
             max_id = self.get_max_id()
@@ -664,9 +665,9 @@ class TableManager(object):
             mv_name = [name for j, name in enumerate(self.materialized_views.keys()) if j == i][0]
             statement = statement_template.format(mv_name, random.randint(0, max_id)) if by_id else \
                 statement_template.format(mv_name)
-            debug(statement)
+            logger.debug(statement)
             self.session.execute(statement)
-        debug('Finish reads from MVs')
+        logger.debug('Finish reads from MVs')
 
     def prepare_value(self, value):
         try:
@@ -827,7 +828,7 @@ class MaterializedViewManager(object):
                     pk=', '.join([k for k in self.mv_pk_list]),
                     cl='' if not self.parent_table.cl_list or set(self.parent_table.cl_list).issubset(self.mv_pk_list)
                     else ', {}'.format(', '.join([k for k in self.mv_cl_list])))
-            debug(statement+';')
+            logger.debug(statement+';')
             self.parent_table.session.execute(statement)
 
             if wait_for_view_built:
@@ -839,13 +840,13 @@ class MaterializedViewManager(object):
                     self.parent_table.session.execute('ALTER MATERIALIZED VIEW {ks}.{mv_name} WITH {op} = {value}'.format
                                                       (ks=self.parent_table.keyspace, mv_name=self.mv_name,
                                                        op=op, value=value))
-            debug('Materialized view {} has been created'.format(self.mv_name))
+            logger.debug('Materialized view {} has been created'.format(self.mv_name))
             self.parent_table.set_mv(self.mv_name, self)
 
     def drop_mv(self):
-        debug('Start drop materialized view {}'.format(self.mv_name))
+        logger.debug('Start drop materialized view {}'.format(self.mv_name))
         self.parent_table.session.execute('drop materialized view {}'.format(self.mv_name))
-        debug('Finish drop materialized view {}'.format(self.mv_name))
+        logger.debug('Finish drop materialized view {}'.format(self.mv_name))
         self.parent_table.remove_mv(mv_name=self.mv_name)
         self.mv_name = ''
         self.mv_columns_list = None
@@ -920,7 +921,7 @@ class MaterializedViewManager(object):
             clmns = [clmn.split(' ')[0] for clmn in self.parent_table.columns_list if ' {}'.format(mv_pk_column['type']) in clmn
                      and clmn.split(' ')[0] not in mv_pk_column_list+(self.parent_table.cl_list or [])]
             if not clmns:
-                debug('ERROR: new column for Materialized View PK is not found. Received parameters: {}'.format(
+                logger.debug('ERROR: new column for Materialized View PK is not found. Received parameters: {}'.format(
                     mv_pk_column['type']))
             else:
                 mv_pk_column_list.append(clmns[0])
@@ -945,7 +946,7 @@ def run_in_parallel(functions_list):
         :return: list of functions' return values
         :rtype: list
     """
-    debug('Threads start at {}'.format(datetime.datetime.now()))
+    logger.debug('Threads start at {}'.format(datetime.datetime.now()))
     pool = ThreadPoolExecutor(max_workers=len(functions_list))
     tasks = []
     for func in functions_list:
@@ -953,7 +954,7 @@ def run_in_parallel(functions_list):
         kwargs = func['kwargs'] if 'kwargs' in func else {}
         tasks.append(pool.submit(func['func'], *args, **kwargs))
     results = [task.result() for task in tasks]
-    debug("'{}' threads finished at {}".format(len(results), datetime.datetime.now()))
+    logger.debug("'{}' threads finished at {}".format(len(results), datetime.datetime.now()))
     return results
 
 
@@ -994,7 +995,7 @@ def index_is_built(cluster, session, ks_name, table_name, index_name, raise_exce
 
 
 def wait_for_view(cluster, session, ks, view, raise_exception=True):
-    debug("Waiting for view {}.{} to finish building...".format(ks, view))
+    logger.debug("Waiting for view {}.{} to finish building...".format(ks, view))
 
     def _view_build_finished_on_live_nodes():
         done = set()
@@ -1024,7 +1025,7 @@ def wait_for_view(cluster, session, ks, view, raise_exception=True):
     if raise_exception:
         raise Exception(error_msg)
     else:
-        debug(error_msg)
+        logger.debug(error_msg)
 
 
 def wait_for_view_build_start(session, ks, view, seconds_to_wait=20):
@@ -1034,7 +1035,7 @@ def wait_for_view_build_start(session, ks, view, seconds_to_wait=20):
                                               "WHERE keyspace_name='{0}' AND view_name='{1}'".format(ks, view)))
         return result != [[None]]
 
-    debug("Ensure view building started.")
+    logger.debug("Ensure view building started.")
     start = time.time()
     while not _check_build_started():
         if time.time() - start > seconds_to_wait:
@@ -1119,7 +1120,7 @@ class CassandraCluster(object):
         self.ddl_obj = None
         self.folders_tree = None
         self.scylla_cluster = None
-        debug('\n=============== Create Cassandra cluster ====================\n')
+        logger.debug('\n=============== Create Cassandra cluster ====================\n')
 
     def create_and_start_cluster(self, nodes=1, config_options=None):
         # Stop Scylla cluster before create new Cassandra cluster because of it's impossible to run two clusters simultaneously
@@ -1129,7 +1130,7 @@ class CassandraCluster(object):
         self.tester.setUp()
         self.cluster = self.tester.cluster
         self.cluster.set_configuration_options(values=config_options)
-        debug("Starting a Cassandra cluster of {} node(s) with options {}...".format(nodes, config_options))
+        logger.debug("Starting a Cassandra cluster of {} node(s) with options {}...".format(nodes, config_options))
         self.cluster.populate(nodes)
         try:
             self.cluster.start(wait_for_binary_proto=True, wait_other_notice=True)
@@ -1195,12 +1196,12 @@ class CassandraCluster(object):
         self.create_data_folders_tree(keyspace_names_list, table_names_list)
         self.scylla_data_tmp_folder = os.path.join('/tmp', scylla_test_path.split('/')[-1])
         os.makedirs(self.scylla_data_tmp_folder)
-        debug("Create {} test folder".format(self.scylla_data_tmp_folder))
+        logger.debug("Create {} test folder".format(self.scylla_data_tmp_folder))
         self.copy_table_data_all_nodes(from_base_path=scylla_test_path, to_base_path=self.scylla_data_tmp_folder,
                                        create_to_folder=True, nodes=nodes)
 
     def copy_table_data_all_nodes(self, from_base_path, to_base_path, nodes=None, create_to_folder=False):
-        debug('Copy Scylla test data files')
+        logger.debug('Copy Scylla test data files')
         for node in nodes:
             for ks, tables in self.folders_tree.items():
                 for table in tables:
@@ -1208,7 +1209,8 @@ class CassandraCluster(object):
                                                       keyspace_name=ks, table_name=table)
                     copy_to = self.get_table_folder(base_path=to_base_path, node=node,
                                                     keyspace_name=ks, table_name=table, create=create_to_folder)
-                    debug('Copy data files for {ks}.{table} table: from {copy_from} to {copy_to}'.format(**locals()))
+                    logger.debug(
+                        'Copy data files for {ks}.{table} table: from {copy_from} to {copy_to}'.format(**locals()))
                     copy_files_to(from_dir=copy_from, to_dir=copy_to, files_only=True)
 
     def copy_scylla_data_to_cassandra(self, nodes=None):
@@ -1217,7 +1219,7 @@ class CassandraCluster(object):
 
     def create_test_schema(self, node):
         for ks, cmds in self.scylla_schema_ddl.items():
-            debug('Create keyspace {} with all entities'.format(ks))
+            logger.debug('Create keyspace {} with all entities'.format(ks))
             out = node.run_cqlsh(cmds=';'.join(cmd for cmd in cmds), return_output=True)
             if out[1]:
                 raise Exception('Create test schema failure: {}'.format(out[1]))
@@ -1226,7 +1228,7 @@ class CassandraCluster(object):
         for node in nodes:
             for ks, tables in self.folders_tree.items():
                 for table in tables:
-                    debug('Start data migration from Scylla to Cassandra for {}.{} table'.format(ks, table))
+                    logger.debug('Start data migration from Scylla to Cassandra for {}.{} table'.format(ks, table))
                     # If the keyspace/table names are case sensitive, we have to use double quotes. And nodetool refresh
                     # can't recognize it. So we need to remove double quotes to be able to run the refresh
                     node.nodetool("refresh -- {} {}".format(ks.replace('"', ''), table.replace('"', '')))
@@ -1237,7 +1239,7 @@ class CassandraCluster(object):
     def run_migration(self, scylla_cluster, scylla_test_path, keyspace_names_list=None, table_names=None, nodes='ALL'):
         self.scylla_cluster = scylla_cluster
         if not self.scylla_cluster:
-            debug('Missed Scylla cluster. Migration can''t be run')
+            logger.debug('Missed Scylla cluster. Migration can''t be run')
             return
         self.get_scylla_test_schema_ddl(keyspace_names_list=keyspace_names_list, table_names_list=table_names)
 
@@ -1259,10 +1261,10 @@ class CassandraCluster(object):
         return node1
 
     def tearDown(self):
-        debug('Remove temporary folder with Scylla data')
+        logger.debug('Remove temporary folder with Scylla data')
         if self.scylla_data_tmp_folder and os.path.exists(self.scylla_data_tmp_folder):
             shutil.rmtree(self.scylla_data_tmp_folder)
-        debug('Stopping Cassandra cluster')
+        logger.debug('Stopping Cassandra cluster')
         if self.cluster:
             self.cluster.stop(wait_other_notice=True)
         self.tester.tearDown()
@@ -1367,22 +1369,22 @@ def prepare_statement(session, query, cl=ConsistencyLevel.ONE):
     '''
     Prepare CQL query into statement and assign given consistency level to it.
     '''
-    debug('Prepairing statement: {}'.format(query))
+    logger.debug('Prepairing statement: {}'.format(query))
     res = session.prepare(query)
     res.consistency_level = cl
     return res
 
 
 def print_table(table):
-    debug(tabulate.tabulate(tabular_data=[
+    logger.debug(tabulate.tabulate(tabular_data=[
         [str(getattr(row, column_name)) for column_name in table.column_names]
         for row in table.current_rows], headers=table.column_names))
 
 
 def set_trace_probability(nodes, probability_value):
     def _set_trace_probability_for_node(_node):
-        debug(f'{"Enable" if probability_value else "disable"} trace for node "{_node.name}" with '
-              f'"{probability_value}" probability value')
+        logger.debug(f'{"Enable" if probability_value else "disable"} trace for node "{_node.name}" with '
+                     f'"{probability_value}" probability value')
         errors = _node.nodetool(f'settraceprobability {probability_value}')[1]
         if errors:
             raise RuntimeError(f'Failed to {"enable" if probability_value else "disable"} trace for node '
@@ -1423,7 +1425,7 @@ def fill_data_by_cs(node, n_range=[500, 550, 600, 650], start=0, duration_range=
         cs_cmdline = ['write', 'no-warmup'] + opt + other_opt
         node.stress(cs_cmdline)
         if flush:
-            debug("Flush after writing data .....")
+            logger.debug("Flush after writing data .....")
             node.flush()
 
 
@@ -1445,5 +1447,5 @@ def is_port_used(port: int, service_name: str) -> bool:
         cmd = f"PATH=/bin:/usr/sbin ss -ln '( sport = :{port} )'"
         return len(subprocess.run(cmd, shell=True, capture_output=True, text=True).stdout.splitlines()) > 1
     except Exception as details:  # pylint: disable=broad-except
-        debug(f"Error checking for '{service_name}' on port {port}: {details}")
+        logger.debug(f"Error checking for '{service_name}' on port {port}: {details}")
         return False
