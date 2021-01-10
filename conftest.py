@@ -22,6 +22,7 @@ from dtest_config import DTestConfig
 from dtest_setup import DTestSetup, copy_logs
 from dtest_setup_overrides import DTestSetupOverrides
 from tools.keystore import KeyStore
+from tools.log_utils import log_per_process_data, TestNameFilter
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +83,13 @@ def pytest_addoption(parser):
                      help="Scylla relocatable version ex: unstable/master:239")
 
 
+def pytest_configure(config):
+    # putting those here since we use this in CCM before even starting any tests,
+    # so it's not enough to put it in a function fixture, since some code would be used even before that
+    logging.getLogger("boto3").setLevel(logging.INFO)
+    logging.getLogger("botocore").setLevel(logging.INFO)
+
+
 def sufficient_system_resources_for_resource_intensive_tests():
     mem = virtual_memory()
     total_mem_gb = mem.total/1024/1024/1024
@@ -120,10 +128,48 @@ logger once per test class vs. once per session in the grand scheme of things.
 
 
 @pytest.fixture(scope="function", autouse=True)
-def fixture_logging_setup():
+def fixture_logging_setup(request):
+    logging_plugin = request.config.pluginmanager.get_plugin("logging-plugin")
+
+    # adding name of the test to the print of logs
+    name_filer = TestNameFilter()
+    logging_plugin.log_file_handler.addFilter(name_filer)
+
+    # configure the error logger to go only to log file
+    if 'error_logger' not in log_per_process_data:
+        error_logger = logging.getLogger("errors")
+        for handler in error_logger.handlers:
+            error_logger.removeHandler(handler)
+        error_logger.addHandler(logging_plugin.log_file_handler)
+        log_per_process_data['error_logger'] = error_logger
+
     logging.getLogger("cassandra").setLevel(logging.INFO)
     logging.getLogger("boto3").setLevel(logging.INFO)
     logging.getLogger("botocore").setLevel(logging.INFO)
+
+    yield
+
+    logging_plugin.log_file_handler.removeFilter(name_filer)
+
+
+def pytest_runtest_logreport(report):
+    """
+    print pytest backtraces of failures to the logs
+    """
+    def get_message():
+        if hasattr(report, "longreprtext"):
+            message = report.longreprtext
+        elif hasattr(report.longrepr, "reprcrash"):
+            message = report.longrepr.reprcrash.message
+        elif isinstance(report.longrepr, str):
+            message = report.longrepr
+        else:
+            message = str(report.longrepr)
+        return message
+
+    if report.failed:
+        if 'error_logger' in log_per_process_data:
+            log_per_process_data['error_logger'].error(f"test failed: \n{get_message()}")
 
 
 @pytest.fixture(scope="session")
