@@ -47,7 +47,8 @@ repos:
                 dtest_class.py|
                 dtest_setup.py|
                 bootstrap_test.py|
-                migration_test.py
+                migration_test.py|
+                simple_driver_test.py
             )$
         language: system
         types: [python]

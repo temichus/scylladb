@@ -1,19 +1,19 @@
 import time
 
+import pytest
 from ccmlib.scylla_cluster import ScyllaCluster
 
-from dtest import Tester
-from nose.plugins.attrib import attr
+from dtest_class import Tester, create_ks
 
 
-@attr('next-gating', 'dtest-debug', 'dtest-full', 'single_node')
+@pytest.mark.next_gating
+@pytest.mark.dtest_debug
+@pytest.mark.dtest_full
+@pytest.mark.single_node
 class TestSimple(Tester):
 
     __test__ = False
     __scylla_args__ = []
-
-    def __init__(self, *args, **kwargs):
-        Tester.__init__(self, *args, **kwargs)
 
     def prepare(self):
         """
@@ -22,7 +22,7 @@ class TestSimple(Tester):
         cluster = self.cluster
         return cluster
 
-    def simple_create_insert_select_test(self):
+    def test_simple_create_insert_select(self):
         cluster = self.prepare()
         jvm_args = []
         if type(cluster) is ScyllaCluster:
@@ -30,7 +30,7 @@ class TestSimple(Tester):
         cluster.populate(1).start(jvm_args=jvm_args)
         node1 = cluster.nodelist()[0]
         session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'ks', 1)
+        create_ks(session, 'ks', 1)
 
         session.execute("""
             CREATE TABLE test1 (
@@ -58,7 +58,7 @@ class TestSimple(Tester):
         assert len(list(res)) == 0, list(res)
         time.sleep(10)
 
-    def simple_composite_partition_key_create_insert_select_test(self):
+    def test_simple_composite_partition_key_create_insert_select(self):
         cluster = self.prepare()
         jvm_args = []
         if type(cluster) is ScyllaCluster:
@@ -66,7 +66,7 @@ class TestSimple(Tester):
         cluster.populate(1).start(jvm_args=jvm_args)
         node1 = cluster.nodelist()[0]
         session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'ks', 1)
+        create_ks(session, 'ks', 1)
 
         session.execute("""
             CREATE TABLE test1 (
@@ -108,7 +108,7 @@ class TestSimple(Tester):
 
         time.sleep(1)
 
-    def simple_compound_primary_key_create_insert_select_test(self):
+    def test_simple_compound_primary_key_create_insert_select(self):
         cluster = self.prepare()
         jvm_args = []
         if type(cluster) is ScyllaCluster:
@@ -116,7 +116,7 @@ class TestSimple(Tester):
         cluster.populate(1).start(jvm_args=jvm_args)
         node1 = cluster.nodelist()[0]
         session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'ks', 1)
+        create_ks(session, 'ks', 1)
 
         session.execute("""
             CREATE TABLE test1 (
