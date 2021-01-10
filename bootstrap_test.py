@@ -8,10 +8,6 @@ from psutil import Process
 import subprocess
 import logging
 
-from tools import require
-from tools import (InterruptBootstrap, KillOnBootstrap, new_node, query_c1c2,
-                   create_c1c2_table, insert_c1c2)
-
 import pytest
 from cassandra import ConsistencyLevel
 from cassandra.concurrent import execute_concurrent_with_args
@@ -20,9 +16,8 @@ from dtest_class import create_cf, create_ks
 
 from tools.assertions import (assert_almost_equal,
                               assert_one)
-from tools.data import query_c1c2
+from tools.data import query_c1c2, insert_c1c2, create_c1c2_table
 from tools.intervention import InterruptBootstrap, KillOnBootstrap
-from tools.misc import new_node
 from dtest_setup_overrides import DTestSetupOverrides
 from tools.misc import ImmutableMapping
 from dtest_setup import DTestSetup
@@ -52,7 +47,7 @@ class TestBootstrap(Tester):
         )
 
     def get_space_used(self, node, table_name='cf'):
-        output, _, _ = node.nodetool('cfstats')
+        output, *_ = node.nodetool('cfstats')
         if output.find(table_name) != -1:
             output = output[output.find(table_name):]
             output = output[output.find("Space used (total)"):]
@@ -163,7 +158,7 @@ class TestBootstrap(Tester):
         reader = self.go(lambda _: query_c1c2(session, random.randint(0, keys - 1), ConsistencyLevel.ONE))
 
         # Bootstraping a new node
-        node2 = new_node(cluster)
+        node2 = cluster.new_node(2)
         node2.set_configuration_options(values={'initial_token': tokens[1]})
         node2.start(wait_for_binary_proto=True)
         node2.flush()
@@ -192,7 +187,7 @@ class TestBootstrap(Tester):
 
         node1 = cluster.nodelist()[0]
 
-        node2 = new_node(cluster)
+        node2 = cluster.new_node(2)
         node2.start(wait_for_binary_proto=True)
 
         messages = [
@@ -225,7 +220,7 @@ class TestBootstrap(Tester):
         stress_table = 'keyspace1.standard1'
         original_rows = list(session.execute("SELECT * FROM %s" % (stress_table,)))
 
-        node4 = new_node(cluster)
+        node4 = cluster.new_node(4)
         node4.start(wait_for_binary_proto=True)
 
         session = self.patient_exclusive_cql_connection(node4)
@@ -265,7 +260,7 @@ class TestBootstrap(Tester):
         t.start()
 
         # start bootstrapping node3 and wait for streaming
-        node3 = new_node(cluster)
+        node3 = cluster.new_node(3)
         node3.set_configuration_options(values={'stream_throughput_outbound_megabits_per_sec': 1})
         # keep timeout low so that test won't hang
         node3.set_configuration_options(values={'streaming_socket_timeout_in_ms': 1000})
@@ -309,7 +304,7 @@ class TestBootstrap(Tester):
         t.start()
 
         # start bootstrapping node3 and wait for streaming
-        node3 = new_node(cluster)
+        node3 = cluster.new_node(3)
         try:
             node3.start()
         except NodeError:
@@ -353,7 +348,7 @@ class TestBootstrap(Tester):
         original_rows = list(session.execute("SELECT * FROM %s" % stress_table))
 
         # Add a new node
-        node3 = new_node(cluster, bootstrap=False)
+        node3 = cluster.new_node(3, auto_bootstrap=False)
         node3.start(wait_for_binary_proto=True)
         node3.repair()
         node1.cleanup()
@@ -400,7 +395,7 @@ class TestBootstrap(Tester):
         node1.stress(['user', 'profile=' + stress_config.name, 'n=2000000',
                       'ops(insert=1)', '-rate', 'threads=50'])
 
-        node3 = new_node(cluster, data_center='dc2')
+        node3 = cluster.new_node(3, data_center='dc2')
         node3.start(no_wait=True)
         time.sleep(3)
 
@@ -449,30 +444,26 @@ class TestBootstrap(Tester):
         original_rows = list(session.execute("SELECT * FROM {}".format(stress_table,)))
 
         # Add a new node, bootstrap=True ensures that it is not a seed
-        node2 = new_node(cluster, bootstrap=True)
-        node2.start(wait_for_binary_proto=True)
+        node4 = cluster.new_node(4, auto_bootstrap=True)
+        node4.start(wait_for_binary_proto=True)
 
-        session = self.patient_cql_connection(node2)
-        self.assertEquals(original_rows, list(session.execute("SELECT * FROM {}".format(stress_table,))))
+        session = self.patient_cql_connection(node4)
+        assert original_rows == list(session.execute("SELECT * FROM {}".format(stress_table,)))
 
         # Stop the new node and wipe its data
-        node2.stop(gently=gently)
-        data_dir = os.path.join(node2.get_path(), 'data')
-        commitlog_dir = os.path.join(node2.get_path(), 'commitlogs')
-        logger.info("Deleting {}".format(data_dir))
-        node2.rmtree(data_dir)
-        node2.rmtree(commitlog_dir)
+        node4.stop(gently=gently)
+        self._cleanup(node4)
 
         # Now start it, it should not be allowed to join.
         expected_error = "A node with address {} already exists, cancelling join".format(self.cluster.get_node_ip(4))
         self.ignore_log_patterns += [expected_error]
-        mark = node2.mark_log()
+        mark = node4.mark_log()
         try:
-            node2.start(no_wait=True)
+            node4.start(no_wait=True)
         except NodeError:
             # It is expected that the node will not boot
             pass
-        node2.watch_log_for(expected_error, from_mark=mark)
+        node4.watch_log_for(expected_error, from_mark=mark)
 
     def test_decommissioned_wiped_node_can_join(self):
         """
@@ -494,22 +485,18 @@ class TestBootstrap(Tester):
 
         # Add a new node, bootstrap=True ensures that it is not a seed
         logger.info("Starting node4")
-        node4 = new_node(cluster, bootstrap=True)
+        node4 = cluster.new_node(4, auto_bootstrap=True)
         node4.start(wait_for_binary_proto=True, wait_other_notice=True)
 
         session = self.patient_cql_connection(node4)
-        self.assertEquals(original_rows, list(session.execute("SELECT * FROM {}".format(stress_table,))))
+        assert original_rows == list(session.execute("SELECT * FROM {}".format(stress_table,)))
 
         # Decommision the new node and wipe its data
         logger.info("Decommissioning node4")
         node4.decommission()
         logger.info("Stopping node4")
         node4.stop(wait_other_notice=True)
-        data_dir = os.path.join(node4.get_path(), 'data')
-        commitlog_dir = os.path.join(node4.get_path(), 'commitlogs')
-        logger.info("Deleting {}".format(data_dir))
-        node4.rmtree(data_dir)
-        node4.rmtree(commitlog_dir)
+        self._cleanup(node4)
 
         # Now start it, it should be allowed to join
         logger.info("Restarting node4")
@@ -538,7 +525,7 @@ class TestBootstrap(Tester):
         original_rows = list(session.execute("SELECT * FROM {}".format(stress_table,)))
 
         # Add a new node, bootstrap=True ensures that it is not a seed
-        node2 = new_node(cluster, bootstrap=True)
+        node2 = cluster.new_node(2, auto_bootstrap=True)
         node2.set_configuration_options(values={'stream_throughput_outbound_megabits_per_sec': 1})
 
         # kill node2 in the middle of bootstrap
@@ -554,11 +541,7 @@ class TestBootstrap(Tester):
         node1.watch_log_for("{} has been silent .* removing from gossip".format(node2.address()), from_mark=mark)
 
         # wipe any data for node2
-        data_dir = os.path.join(node2.get_path(), 'data')
-        commitlog_dir = os.path.join(node2.get_path(), 'commitlogs')
-        logger.info("Deleting {}".format(data_dir))
-        node2.rmtree(data_dir)
-        node2.rmtree(commitlog_dir)
+        self._cleanup(node2)
 
         # Now start it again, it should be allowed to join
         mark = node2.mark_log()
@@ -595,13 +578,13 @@ class TestBootstrap(Tester):
         node1.stress(['write', 'n=500K', '-schema', 'replication(factor=1)',
                       '-rate', 'threads=10'])
 
-        node2 = new_node(cluster)
+        node2 = cluster.new_node(2)
         node2.start(wait_other_notice=True)
 
-        node3 = new_node(cluster, remote_debug_port='2003')
+        node3 = cluster.new_node(3, remote_debug_port='2003')
         process = node3.start()
         stdout, stderr = process.communicate()
-        self.assertIn(bootstrap_error, stderr, msg=stderr)
+        assert bootstrap_error in stderr, stderr
         time.sleep(.5)
         node2.watch_log_for("Starting listening for CQL clients")
 
@@ -630,7 +613,7 @@ class TestBootstrap(Tester):
         session = self.patient_cql_connection(node1)
 
         logger.info("Preparing a KS and a CF...")
-        self.create_ks(session, name='ks', rf=rf)
+        create_ks(session, name='ks', rf=rf)
         create_c1c2_table(self, session)
 
         logger.info("Populating the data...")
@@ -650,8 +633,8 @@ class TestBootstrap(Tester):
 
         logger.info("Making sure all node processes are down")
         for process in process_ls:
-            self.assertEqual(False, process.is_running(), "Node with the following pid {} didn't stop/exit correctly"
-                             .format(process.pid))
+            assert process.is_running(
+            ) == False, f"Node with the following pid {process.pid} didn't stop/exit correctly"
 
         logger.info("Starting all nodes")
         cluster.start_nodes(no_wait=False)
@@ -727,22 +710,21 @@ class TestBootstrap(Tester):
             logger.info(f"Checking the following message '{removing_from_gossip_msg}' exits in node '{node.name}'")
             node.watch_log_for(exprs=removing_from_gossip_msg, from_mark=mark_log)
 
-        self.assertEquals(first=kill_node_err_msg.format(1 if is_gracefully else -9),
-                          second=str(start_new_node_thread.exception()),
-                          msg=f"The node '{node3.name}' should be killed by SIGKILL signal")
+        assert kill_node_err_msg.format(1 if is_gracefully else -9) == str(start_new_node_thread.exception()), \
+            f"The node '{node3.name}' should be killed by SIGKILL signal"
         logger.info("Waiting until stress thread will finish running")
         stdout, stderr = stress_thread.result()
         if stderr:
             logger.info(f"The output from stdout is:\n{stdout}")
             logger.info(f"The following errors occurred during the run:\n{stderr}")
-            self.assertNotIn(member=cassandra_err_msg, container=stderr,
-                             msg=f"The following message '{cassandra_err_msg}' found in stderr")
+            assert cassandra_err_msg not in stderr, \
+                f"The following message '{cassandra_err_msg}' found in stderr"
 
-    @require("#4488")
+    # @pytest.mark.skip("require scylladb/scylla#4488")
     def cluster_become_unavailable_when_force_kill_node_during_bootstrap_test(self):
         self._cluster_become_unavailable_when_kill_node_during_bootstrap(is_gracefully=False)
 
-    @require("#4488")
+    # @pytest.mark.skip("require scylladb/scylla#4488")
     def cluster_become_unavailable_when_gracefully_kill_node_during_bootstrap_test(self):
         self._cluster_become_unavailable_when_kill_node_during_bootstrap(is_gracefully=True)
 
@@ -777,8 +759,8 @@ class TestBootstrap(Tester):
         logger.info("Verified bootstrap started on node3")
 
         session = self.patient_exclusive_cql_connection(node1)
-        self.create_ks(session, 'ks', 3)
-        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        create_ks(session, 'ks', 3)
+        create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
         insert_c1c2(session, n=1000)
 
         # node4: auto_bootstrap option will be ignored for new node
@@ -790,7 +772,7 @@ class TestBootstrap(Tester):
             query_c1c2(session, k)
 
     # Issue: the cluster can't start if the first (smallest) node isn't up #7726
-    @require('#7726')
+    # @pytest.mark.skip("require scylladb/scylla#7726")
     def smallest_ip_join_late_test(self):
         """
         The first node has smallest ip in seeds list, it always skips the bootstrap.
@@ -821,8 +803,8 @@ class TestBootstrap(Tester):
         logger.info("Verified bootstrap started on node3")
 
         session = self.patient_exclusive_cql_connection(node2)
-        self.create_ks(session, 'ks', 3)
-        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        create_ks(session, 'ks', 3)
+        create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
         insert_c1c2(session, n=1000)
 
         node1.start(wait_for_binary_proto=True)
@@ -856,12 +838,9 @@ class TestBootstrap(Tester):
 
         self.ignore_log_patterns += ['Startup failed']
         # can't add a new node to cluster if a node stop
-        try:
+        with pytest.raises(RuntimeError, match='The process is dead'):
             node3 = cluster.new_node(3)
             node3.start(wait_other_notice=True)
-        except RuntimeError as e:
-            logger.info(e)
-            self.assertIn('The process is dead', str(e))
 
         logger.info("starting node1 again")
         node1.start(wait_other_notice=True)
@@ -876,3 +855,10 @@ class TestBootstrap(Tester):
         logger.info('removing node3, `node4` will be on duty')
         node3.decommission()
         add_and_start_a_node(5)
+
+    def _cleanup(self, node):
+        commitlog_dir = os.path.join(node.get_path(), 'commitlogs')
+        data_dir = os.path.join(node.get_path(), 'data')
+        logger.debug("Deleting {}".format(data_dir))
+        node.rmtree(data_dir)
+        node.rmtree(commitlog_dir)

@@ -222,7 +222,7 @@ class DTestSetup:
     def glob_data_dirs(self, path, ks="ks"):
         result = []
         for node in self.cluster.nodelist():
-            for data_dir in node.data_directories():
+            for data_dir in [os.path.join(node.get_path(), 'data')]:
                 ks_dir = os.path.join(data_dir, ks, path)
                 result.extend(glob.glob(ks_dir))
         return result
