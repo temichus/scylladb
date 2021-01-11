@@ -1,11 +1,16 @@
 import logging
-import pytest
+from time import sleep
 
-from dtest_class import Tester, create_ks, get_ip_from_node
+import pytest
+from cassandra.protocol import ConfigurationException
+
+from dtest_class import Tester, create_ks, get_ip_from_node, create_cf
 from dtest_setup import DTestSetup
-from tools.assertions import assert_one, assert_none
+from tools.assertions import assert_one, assert_none, assert_all, assert_row_count
 from cassandra import ConsistencyLevel, Unavailable, WriteFailure
 from cassandra.query import SimpleStatement
+
+from tools.data import rows_to_list
 from tools.metrics import get_node_metrics
 
 
@@ -358,6 +363,317 @@ class TestLwt(Tester):
             pass
         stmt1.serial_consistency_level = ConsistencyLevel.SERIAL
         session1.execute(stmt1, (7,))
+
+    def create_exclusive_sessions_for_every_node(self, cluster):
+        sessions = []
+        for node in cluster.nodelist():
+            sessions.append(self.exclusive_cql_connection(node))
+        return sessions
+
+    def shutdown_all_sessions(self, sessions: list):
+        for session in sessions:
+            session.shutdown()
+
+    def execute_insert_data_query(self, session, table, cql, start, end):
+        stmt1 = session.prepare(cql)
+        stmt1.serial_consistency_level = ConsistencyLevel.SERIAL
+        logger.info("%s %d rows in table '%s'" % (cql.split()[0], end - start, table))
+        for i in range(start, end):
+            session.execute(stmt1, (i, i))
+
+    def test_paxos_grace_seconds_basic(self):
+        """
+            Basic paxos_grace_seconds test:
+            - create table with default paxos_grace_seconds
+            - create another table with short (10 sec) paxos_grace_seconds
+            - insert 10 rows (LWT request) in every table
+            - wait 10 sec
+            - check paxos: only records of table with default paxos_grace_seconds are found
+         """
+
+        cluster = self.cluster
+        cluster.set_configuration_options(values={"hinted_handoff_enabled": False})
+        cluster.populate(3).start(wait_for_binary_proto=True)
+
+        # Create session as exclusive connection to the node in goal to select from paxos table on every node
+        session1, session2, session3 = self.create_exclusive_sessions_for_every_node(cluster)
+
+        create_ks(session=session1, name="lwt", rf=3)
+
+        logger.info("Create table with paxos_grace_seconds is 10 sec.")
+        create_cf(session=session1, name='ttl_10_sec', key_type='int', columns={'v1': 'int'},
+                  paxos_grace_seconds=10)
+
+        logger.info("Create table with default paxos_grace_seconds.")
+        create_cf(session=session1, name='default_ttl', key_type='int', columns={'v1': 'int'})
+
+        for table in ['default_ttl', 'ttl_10_sec']:
+            self.execute_insert_data_query(session=session1, table=table,
+                                           cql=f"INSERT INTO {table} (key, v1) VALUES (?, ?) IF NOT EXISTS",
+                                           start=0, end=10)
+
+            if table == 'default_ttl':
+                default_ttl_paxos_rows = rows_to_list(
+                    session1.execute("SELECT row_key, cf_id FROM system.paxos").current_rows)
+
+        for session in [session1, session2, session3]:
+            assert_row_count(session=session, table_name='system.paxos', expected=20,
+                             consistency_level=ConsistencyLevel.LOCAL_ONE)
+
+        logger.info("Wait for paxos rows for table 'ttl_10_sec' will be expired")
+        sleep(11)
+
+        for session in [session1, session2, session3]:
+            assert_row_count(session=session, table_name='system.paxos', expected=10,
+                             consistency_level=ConsistencyLevel.LOCAL_ONE)
+            assert_all(session=session, query='SELECT row_key, cf_id FROM system.paxos',
+                       expected=default_ttl_paxos_rows, ignore_order=True,
+                       cl=ConsistencyLevel.LOCAL_ONE)
+
+        for table in ['default_ttl', 'ttl_10_sec']:
+            assert_row_count(session=session1, table_name=table, expected=10,
+                             consistency_level=ConsistencyLevel.QUORUM)
+
+        self.shutdown_all_sessions([session1, session2, session3])
+
+    def test_paxos_grace_seconds_alter(self):
+        """
+            Alter paxos_grace_seconds test:
+            - create table with default paxos_grace_seconds
+            - insert 10 rows (LWT request)
+            - set short paxos_grace_seconds and send LWT requests
+            - check paxos:
+         """
+
+        cluster = self.cluster
+        cluster.set_configuration_options(values={"hinted_handoff_enabled": False})
+        cluster.populate(3).start(wait_for_binary_proto=True)
+
+        # Create session as exclusive connection to the node in goal to select from paxos table on every node
+        session1, session2, session3 = self.create_exclusive_sessions_for_every_node(cluster)
+
+        create_ks(session=session1, name="lwt", rf=3)
+
+        logger.info("Create table with default paxos_grace_seconds.")
+        table_name = 'default_ttl'
+        create_cf(session=session1, name=table_name, key_type='int', columns={'v1': 'int'})
+
+        self.execute_insert_data_query(session=session1, table=table_name,
+                                       cql=f"INSERT INTO {table_name} (key, v1) VALUES (?, ?) IF NOT EXISTS",
+                                       start=0, end=10)
+
+        default_ttl_paxos_rows = rows_to_list(
+            session1.execute("SELECT row_key, cf_id FROM system.paxos").current_rows)
+
+        for session in [session1, session2, session3]:
+            assert_row_count(session=session, table_name='system.paxos', expected=10,
+                             consistency_level=ConsistencyLevel.LOCAL_ONE)
+
+        for session in [session1, session2, session3]:
+            assert_row_count(session=session, table_name='system.paxos', expected=10,
+                             consistency_level=ConsistencyLevel.LOCAL_ONE)
+            assert_all(session=session, query='SELECT row_key, cf_id FROM system.paxos',
+                       expected=default_ttl_paxos_rows, ignore_order=True,
+                       cl=ConsistencyLevel.LOCAL_ONE)
+
+        assert_row_count(session=session1, table_name=table_name, expected=10,
+                         consistency_level=ConsistencyLevel.QUORUM)
+
+        query = f"ALTER TABLE {table_name} WITH paxos_grace_seconds=10"
+        logger.info(query)
+        session1.execute(query)
+
+        self.execute_insert_data_query(session=session1, table=table_name,
+                                       cql=f"UPDATE {table_name} SET v1 = 101 WHERE key = ? IF v1 = ?",
+                                       start=0, end=5)
+
+        for session in [session1, session2, session3]:
+            assert_row_count(session=session, table_name='system.paxos', expected=10,
+                             consistency_level=ConsistencyLevel.LOCAL_ONE)
+
+            assert_all(session=session, query='SELECT row_key, cf_id FROM system.paxos',
+                       expected=default_ttl_paxos_rows, ignore_order=True,
+                       cl=ConsistencyLevel.LOCAL_ONE)
+
+        logger.info("Wait for paxos rows for table '%s' will be expired", table_name)
+        sleep(11)
+
+        for session in [session1, session2, session3]:
+            assert_row_count(session=session, table_name='system.paxos', expected=5,
+                             consistency_level=ConsistencyLevel.LOCAL_ONE)
+
+        assert_row_count(session=session1, table_name=table_name, expected=10,
+                         consistency_level=ConsistencyLevel.QUORUM)
+
+        self.shutdown_all_sessions([session1, session2, session3])
+
+    def test_paxos_grace_seconds_interrupt(self):
+        """
+            Basic paxos_grace_seconds test:
+            - create another table with short (10 sec) paxos_grace_seconds
+            - insert 10 rows (LWT request) in every table
+            - stop one node (it should keep records in the paxos)
+            - wait 10 sec
+            - check paxos: no records on every node
+         """
+
+        cluster = self.cluster
+        cluster.set_configuration_options(values={"hinted_handoff_enabled": False})
+        cluster.populate(3).start(wait_for_binary_proto=True)
+
+        # Create session as exclusive connection to the node in goal to select from paxos table on every node
+        session1, session2, session3 = self.create_exclusive_sessions_for_every_node(cluster)
+
+        create_ks(session=session1, name="lwt", rf=3)
+
+        logger.info("Create table with paxos_grace_seconds is 10 sec.")
+        table_name = 'ttl_10_sec'
+        create_cf(session=session1, name=table_name, key_type='int', columns={'v1': 'int'},
+                  paxos_grace_seconds=10)
+
+        self.execute_insert_data_query(session=session1, table=table_name,
+                                       cql=f"INSERT INTO {table_name} (key, v1) VALUES (?, ?) IF NOT EXISTS",
+                                       start=0, end=10)
+
+        for session in [session1, session2, session3]:
+            assert_row_count(session=session, table_name='system.paxos', expected=10,
+                             consistency_level=ConsistencyLevel.LOCAL_ONE)
+
+        logger.info("Stop node 2")
+        node2 = self.cluster.nodelist()[1]
+        node2.stop(gently=False, wait_other_notice=True)
+        session2.shutdown()
+
+        logger.info("Wait for paxos rows for table '%s' will be expired", table_name)
+        sleep(10)
+
+        for session in [session1, session3]:
+            assert_row_count(session=session, table_name='system.paxos', expected=0,
+                             consistency_level=ConsistencyLevel.LOCAL_ONE)
+
+        assert_row_count(session=session1, table_name=table_name, expected=10,
+                         consistency_level=ConsistencyLevel.QUORUM)
+
+        logger.info("Start node 2")
+        node2.start(wait_other_notice=True)
+        session2 = self.exclusive_cql_connection(node2)
+
+        for session in [session1, session2, session3]:
+            assert_row_count(session=session, table_name='system.paxos', expected=0,
+                             consistency_level=ConsistencyLevel.LOCAL_ONE)
+
+        assert_row_count(session=session1, table_name=table_name, expected=10,
+                         consistency_level=ConsistencyLevel.QUORUM)
+
+        self.shutdown_all_sessions([session1, session2, session3])
+
+    def paxos_grace_seconds_negative_test(self):
+        """
+            Try to create table with paxos_grace_seconds = -1
+         """
+
+        cluster = self.cluster
+        cluster.set_configuration_options(values={"hinted_handoff_enabled": False})
+        cluster.populate(3).start(wait_for_binary_proto=True)
+
+        # Create session as exclusive connection to the node in goal to select from paxos table on every node
+        session1, session2, session3 = self.create_exclusive_sessions_for_every_node(cluster)
+
+        create_ks(session=session1, name="lwt", rf=3)
+
+        logger.info("Try to create table with negative paxos_grace_seconds.")
+        table_name = 'zero_ttl'
+
+        with pytest.raises(ConfigurationException,
+                           match="paxos_grace_seconds cannot be smaller than 0, (default 864000)"):
+            self.create_cf(session=session1, name=table_name, key_type='int', columns={'v1': 'int'},
+                           paxos_grace_seconds=-1)
+
+    # This test is for covering of issue https://github.com/scylladb/scylla/issues/6284
+    # Can't reproduce the issue.
+    # Hold my attempt to reproduce for the future
+    @pytest.mark.skip("the test is not ready. ")
+    def conflict_transactions_test(self):
+        """
+        """
+        cluster = self.cluster
+        cluster.set_configuration_options(values={"hinted_handoff_enabled": False})
+        cluster.populate(5).start(wait_for_binary_proto=True)
+
+        # Create session as exclusive connection to the node in goal to select from paxos table on every node
+        session1, session2, session3, session4, session5 = self.create_exclusive_sessions_for_every_node(cluster)
+        node1, node2, node3, node4, node5 = tuple(self.cluster.nodelist())
+
+        create_ks(session=session1, name="lwt", rf=3)
+
+        logger.info("Create table with paxos_grace_seconds = 15")
+        table_name = 'test'
+        create_cf(session=session1, name=table_name, key_type='int', columns={'v1': 'list<int>'},
+                  paxos_grace_seconds=15)
+
+        node1.stop(gently=False)
+        session1.shutdown()
+
+        self.enable_error("paxos_error_before_save_proposal", node2, one_shot=True)
+        ret = session3.execute(f"INSERT INTO lwt.{table_name} (key, v1) VALUES (0, [0]) IF NOT EXISTS").current_rows
+
+        default_ttl_paxos_rows2 = session2.execute("SELECT * FROM system.paxos").current_rows
+        assert not default_ttl_paxos_rows2, "Found record in the paxos on the node2 unexpectedly"
+        default_ttl_paxos_rows3 = session3.execute("SELECT * FROM system.paxos").current_rows
+        assert default_ttl_paxos_rows3, "Found record in the paxos on the node2 uxpectedly"
+
+        sleep(15)
+        node3.stop(gently=False)
+        session3.shutdown()
+
+        node1.start()
+        session1 = self.exclusive_cql_connection(node1)
+
+        default_ttl_paxos_rows1 = session1.execute("SELECT * FROM system.paxos").current_rows
+        logger.info("record in the paxos on the node1: %s", default_ttl_paxos_rows1)
+        # assert not default_ttl_paxos_rows1, "Found record in the paxos on the node1 unexpectedly"
+        rows1 = session1.execute("SELECT * FROM lwt.{table_name}").current_rows
+        logger.info("row on the node1: %s", rows1)
+        rows2 = session2.execute("SELECT * FROM lwt.{table_name}").current_rows
+        logger.info("row on the node2: %s", rows1)
+
+        ret = session1.execute(f"UPDATE lwt.{table_name} SET v1 = v1 + [1] WHERE key = 0 IF v1 = [0]").current_rows
+
+        sleep(15)
+
+        node3.start()
+        session3 = self.exclusive_cql_connection(node3)
+
+        rows1 = session1.execute("SELECT * FROM lwt.{table_name}").current_rows
+        logger.info("row on the node1: %s", rows1)
+        rows2 = session2.execute("SELECT * FROM lwt.{table_name}").current_rows
+        logger.info("row on the node2: %s", rows2)
+        rows3 = session3.execute("SELECT * FROM lwt.{table_name}").current_rows
+        logger.info("row on the node3: %s", rows3)
+
+        # default_ttl_paxos_rows3 = session1.execute("SELECT * FROM system.paxos").current_rows
+        # default_ttl_paxos_rows4 = session2.execute("SELECT * FROM system.paxos").current_rows
+        # default_ttl_paxos_rows5 = session3.execute("SELECT * FROM system.paxos").current_rows
+
+        ret = session1.execute(f"UPDATE lwt.{table_name} SET v1 = v1 + [2] WHERE key = 0 IF v1 = [0]").current_rows
+
+        default_ttl_paxos_rows6 = session1.execute("SELECT * FROM system.paxos").current_rows
+        logger.info("record in the paxos on the node1: %s", default_ttl_paxos_rows6)
+        default_ttl_paxos_rows7 = session2.execute("SELECT * FROM system.paxos").current_rows
+        logger.info("record in the paxos on the node2: %s", default_ttl_paxos_rows7)
+        default_ttl_paxos_rows8 = session3.execute("SELECT * FROM system.paxos").current_rows
+        logger.info("record in the paxos on the node3: %s", default_ttl_paxos_rows8)
+
+        rows1 = session1.execute("SELECT * FROM lwt.{table_name}").current_rows
+        logger.info("row on the node1: %s", rows1)
+        rows2 = session2.execute("SELECT * FROM lwt.{table_name}").current_rows
+        logger.info("row on the node2: %s", rows2)
+        rows3 = session3.execute("SELECT * FROM lwt.{table_name}").current_rows
+        logger.info("row on the node3: %s", rows3)
+
+        # assert_all(session1, f"select key, v1 from lwt.{table_name}", expected=[[0, 202]])
+        # assert_all(session2, f"select key, v1 from lwt.{table_name}", expected=[[0, 202]])
+        # assert_all(session3, f"select key, v1 from lwt.{table_name}", expected=[[0, 202]])
 
 
 #

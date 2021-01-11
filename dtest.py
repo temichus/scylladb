@@ -958,7 +958,8 @@ class NoseTester(TestCase):
     # We default to UTF8Type because it's simpler to use in tests
     def create_cf(self, session, name, key_type="varchar", speculative_retry=None, read_repair=None, compression=None,
                   gc_grace=None, columns=None, validation="UTF8Type", compaction=None, compact_storage=False,
-                  default_ttl=None, dclocal_read_repair_chance=None, debug_query=True, caching=True):
+                  default_ttl=None, dclocal_read_repair_chance=None, debug_query=True, caching=True,
+                  paxos_grace_seconds=None):
 
         additional_columns = ""
         if columns is not None:
@@ -994,6 +995,8 @@ class NoseTester(TestCase):
             query += ' AND COMPACT STORAGE'
         if not caching:
             query = '%s AND caching={\'enabled\':false}' % query
+        if paxos_grace_seconds is not None:
+            query = '%s AND paxos_grace_seconds=%d' % (query, paxos_grace_seconds)
 
         if debug_query:
             debug(query)
