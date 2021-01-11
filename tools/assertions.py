@@ -4,7 +4,7 @@ from tools.misc import list_to_hashed_dict
 
 from cassandra import (InvalidRequest, ReadFailure, ReadTimeout, Unauthorized,
                        Unavailable, WriteFailure, WriteTimeout)
-from cassandra.query import SimpleStatement
+from cassandra.query import SimpleStatement, ConsistencyLevel
 
 
 """
@@ -206,7 +206,7 @@ def assert_almost_equal(*args, **kwargs):
         "values not within {:.2f}% of the max: {} ({})".format(error * 100, args, error_message)
 
 
-def assert_row_count(session, table_name, expected, where=None):
+def assert_row_count(session, table_name, expected, where=None, consistency_level=ConsistencyLevel.ONE, timeout=None):
     """
     Assert the number of rows in a table matches expected.
     @param session Session to use
@@ -217,10 +217,12 @@ def assert_row_count(session, table_name, expected, where=None):
     assert_row_count(self.session1, 'ttl_table', 1)
     """
     if where is not None:
-        query = "SELECT count(*) FROM {} WHERE {};".format(table_name, where)
+        stmt = SimpleStatement("SELECT count(*) FROM {} WHERE {};".format(table_name, where),
+                               consistency_level=consistency_level)
     else:
-        query = "SELECT count(*) FROM {};".format(table_name)
-    res = session.execute(query)
+        stmt = SimpleStatement("SELECT count(*) FROM {};".format(table_name), consistency_level=consistency_level)
+
+    res = session.execute(stmt, timeout=timeout)
     count = res[0][0]
     assert count == expected, "Expected a row count of {} in table '{}', but got {}".format(
         expected, table_name, count
