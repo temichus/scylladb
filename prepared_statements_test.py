@@ -1,23 +1,26 @@
 from cassandra import InvalidRequest
 
-from dtest import Tester
-from tools import since
+import pytest
+
+from dtest_class import Tester
 
 KEYSPACE = "foo"
 
 
+@pytest.mark.dtest_full
+@pytest.mark.single_node
 class TestPreparedStatements(Tester):
     """
     Tests for pushed native protocol notification from Cassandra.
     """
 
-    def dropped_index_test(self):
+    def test_dropped_index(self):
         """
         Prepared statements using dropped indexes should be handled correctly
         """
 
         self.cluster.populate(1).start()
-        node = self.cluster.nodes.values()[0]
+        node = self.cluster.nodelist()[0]
 
         session = self.patient_cql_connection(node)
         session.execute("""
@@ -46,8 +49,7 @@ class TestPreparedStatements(Tester):
         except Exception:
             raise
 
-    @since('4.0.0')
-    def prepared_select_star_on_schema_change_test(self):
+    def test_prepared_select_star_on_schema_change(self):
         """
         Testing cassandra issue mentioned in:
         https://docs.datastax.com/en/developer/java-driver/3.1/manual/statements/prepared/#avoid-preparing-select-queries
@@ -58,7 +60,7 @@ class TestPreparedStatements(Tester):
         """
 
         self.cluster.populate(1).start()
-        node1 = self.cluster.nodes.values()[0]
+        node1 = self.cluster.nodelist()[0]
 
         session1 = self.patient_cql_connection(node1)
         session2 = self.patient_cql_connection(node1)
@@ -85,9 +87,9 @@ class TestPreparedStatements(Tester):
         for session in [session1, session2]:
             query_statement = session.prepare("SELECT * FROM mytable")
             rows = list(session.execute(query_statement))
-            self.assertEqual(num_rows, len(rows))
+            assert num_rows == len(rows)
             for row in rows:
-                self.assertTrue(hasattr(row, 'b'), "row missing b column")
+                assert hasattr(row, 'b'), "row missing b column"
 
             query_statements += [(session, query_statement)]
 
@@ -98,5 +100,5 @@ class TestPreparedStatements(Tester):
         # run the prepared queries again to check they got the update of the table
         for session, query_statement in query_statements:
             for row in list(session.execute(query_statement)):
-                self.assertTrue(hasattr(row, 'c'), "row missing c column")
-                self.assertTrue(not hasattr(row, 'b'), "row shouldn't have b column")
+                assert hasattr(row, 'c'), "row missing c column"
+                assert not hasattr(row, 'b'), "row shouldn't have b column"
