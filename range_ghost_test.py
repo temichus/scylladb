@@ -1,13 +1,15 @@
 import time
 
-from dtest import Tester
-from nose.plugins.attrib import attr
+import pytest
+
+from dtest_class import Tester, create_ks, create_cf
 
 
-@attr('dtest-full', 'single_node')
+@pytest.mark.dtest_full
+@pytest.mark.single_node
 class TestRangeGhosts(Tester):
 
-    def ghosts_test(self):
+    def test_ghosts(self):
         """ Check range ghost are correctly removed by the system """
         cluster = self.cluster
         cluster.populate(1).start()
@@ -15,8 +17,8 @@ class TestRangeGhosts(Tester):
 
         time.sleep(.5)
         session = self.cql_connection(node1)
-        self.create_ks(session, 'ks', 1)
-        self.create_cf(session, 'cf', gc_grace=0, columns={'c': 'text'})
+        create_ks(session, 'ks', 1)
+        create_cf(session, 'cf', gc_grace=0, columns={'c': 'text'})
 
         rows = 1000
 
