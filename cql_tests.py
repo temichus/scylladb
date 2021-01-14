@@ -175,6 +175,7 @@ class TestStorageProxyCQL(CQLTester):
 
         session.execute("DROP USER user1")
 
+    @pytest.mark.dtest_smoke
     @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     def test_statements(self):
