@@ -21,5 +21,7 @@ pyOpenSSL==19.1.0
 pytest==6.2.1
 flaky==3.7.0
 netifaces==0.10.9
-pytest-elk-reporter==0.1.17
+pytest-elk-reporter==0.2.1
 pytest-xdist==2.2.0
+pytest-randomly==3.5.0
+pytest-repeat==0.9.1
