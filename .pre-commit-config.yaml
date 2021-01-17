@@ -48,7 +48,8 @@ repos:
                 dtest_setup.py|
                 bootstrap_test.py|
                 migration_test.py|
-                simple_driver_test.py
+                simple_driver_test.py|
+                multidc_putget_test.py
             )$
         language: system
         types: [python]
