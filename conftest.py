@@ -494,6 +494,24 @@ def pytest_collection_modifyitems(items, config):
     items[:] = selected_items
 
 
+def pytest_plugin_registered(plugin, manager):
+    from pytest_elk_reporter import ElkReporter
+
+    if isinstance(plugin, ElkReporter):
+        # if we don't have the credentials just skip this part
+        try:
+            es_credentials = KeyStore().get_elasticsearch_credentials()
+
+            plugin.es_address = es_credentials['es_url']
+            plugin.es_username = es_credentials['es_user']
+            plugin.es_password = es_credentials['es_password']
+            plugin.es_index_name = 'dtest_test_data'
+
+        except AwsClientError as ex:
+            logger.warning("couldn't configure configure_es, results won't be sent out:")
+            logger.warning("%s", str(ex))
+
+
 @pytest.fixture(scope='session', autouse=True)
 def configure_es(elk_reporter, dtest_config):
     extra_data = {
@@ -501,16 +519,3 @@ def configure_es(elk_reporter, dtest_config):
         "SCYLLA_BRANCH_VERSION":  dtest_config.cassandra_version_from_build,
     }
     elk_reporter.session_data.update(**extra_data)
-
-    # if we don't have the credentials just skip this part
-    try:
-        es_credentials = KeyStore().get_elasticsearch_credentials()
-    except AwsClientError as ex:
-        logger.warning("couldn't configure configure_es, results won't be sent out:")
-        logger.warning("%s", str(ex))
-        return
-
-    elk_reporter.es_address = es_credentials['es_url']
-    elk_reporter.es_username = es_credentials['es_user']
-    elk_reporter.es_password = es_credentials['es_password']
-    elk_reporter.es_index_name = 'dtest_test_data'
