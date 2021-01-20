@@ -512,7 +512,9 @@ class DTestSetup:
                             # ENOENT = no such file or directory
                             assert e.errno == errno.ENOENT
 
-                    os.rmdir(self.test_path)
+                    # since some leftovers, like ssl keys, etc. can stay in the directory, it's safer to use
+                    # shutil.rmtree over os.rmdir (or OSError: [Errno 39] Directory not empty might occur)
+                    shutil.rmtree(self.test_path)
                     self.cleanup_last_test_dir()
                     cluster_id_allocator.free(self.cluster.id)
 
