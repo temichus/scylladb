@@ -234,3 +234,7 @@ def add_skip(cls, reason=""):
     else:
         cls.pytestmark = [pytest.mark.skip(reason)]
     return cls
+
+
+def require(require_pattern):
+    return pytest.mark.require(require_pattern=require_pattern)

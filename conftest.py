@@ -82,6 +82,9 @@ def pytest_addoption(parser):
     parser.addoption("--scylla-version", action="store", default=None,
                      help="Scylla relocatable version ex: unstable/master:239")
 
+    parser.addoption("--collect-required", action="store_true", default=False,
+                     help="collect a report on require tests")
+
 
 def pytest_configure(config):
     # putting those here since we use this in CCM before even starting any tests,
@@ -382,6 +385,14 @@ def fixture_skip_version(request, fixture_dtest_setup):
             pytest.skip("Test marked not to run on version %s" % version_to_skip)
 
 
+@pytest.fixture(autouse=True)
+def fixture_require_version(request, fixture_dtest_setup):
+    marker = request.node.get_closest_marker('require')
+    if marker is not None:
+        issue = marker.kwargs.get('require_pattern')
+        pytest.skip(f"require: {issue}")
+
+
 @pytest.fixture(scope='session', autouse=True)
 def install_debugging_signal_handler():
     import faulthandler
@@ -414,8 +425,12 @@ def pytest_collection_modifyitems(items, config):
     cassandra_dir = config.getoption("--cassandra-dir")
     cassandra_version = config.getoption("--cassandra-version")
     scylla_version = config.getoption('--scylla-version')
+    collect_require = config.getoption("--collect-required")
 
-    if not scylla_version:
+    if collect_require:
+        print()
+        print("List of test with require mark:")
+    if not scylla_version and not collect_require:
         if not collect_only and cassandra_dir is None:
             if cassandra_version is None:
                 raise Exception("Required dtest arguments were missing! You must provide either --cassandra-dir "
@@ -485,6 +500,9 @@ def pytest_collection_modifyitems(items, config):
         if item.get_closest_marker("depends_cqlshlib"):
             deselect_test = True
 
+        require_mark = item.get_closest_marker("require")
+        if require_mark and collect_require:
+            print(f"* {item.nodeid} - {require_mark.kwargs.get('require_pattern')}")
         if deselect_test:
             deselected_items.append(item)
         else:
@@ -492,6 +510,8 @@ def pytest_collection_modifyitems(items, config):
 
     config.hook.pytest_deselected(items=deselected_items)
     items[:] = selected_items
+    if collect_require:
+        pytest.exit(msg="--collect-require was used", returncode=0)
 
 
 def pytest_plugin_registered(plugin, manager):

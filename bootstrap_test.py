@@ -19,7 +19,8 @@ from tools.assertions import (assert_almost_equal,
 from tools.data import query_c1c2, insert_c1c2, create_c1c2_table
 from tools.intervention import InterruptBootstrap, KillOnBootstrap
 from dtest_setup_overrides import DTestSetupOverrides
-from tools.misc import ImmutableMapping
+from tools.misc import ImmutableMapping, require
+
 from dtest_setup import DTestSetup
 from dtest_class import Tester
 
@@ -720,12 +721,12 @@ class TestBootstrap(Tester):
             assert cassandra_err_msg not in stderr, \
                 f"The following message '{cassandra_err_msg}' found in stderr"
 
-    # @pytest.mark.skip("require scylladb/scylla#4488")
-    def cluster_become_unavailable_when_force_kill_node_during_bootstrap_test(self):
+    @require("#4488")
+    def test_cluster_become_unavailable_when_force_kill_node_during_bootstrap(self):
         self._cluster_become_unavailable_when_kill_node_during_bootstrap(is_gracefully=False)
 
-    # @pytest.mark.skip("require scylladb/scylla#4488")
-    def cluster_become_unavailable_when_gracefully_kill_node_during_bootstrap_test(self):
+    @require("#4488")
+    def test_cluster_become_unavailable_when_gracefully_kill_node_during_bootstrap(self):
         self._cluster_become_unavailable_when_kill_node_during_bootstrap(is_gracefully=True)
 
     def ignore_auto_bootstrap_option_test(self):

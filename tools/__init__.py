@@ -273,11 +273,6 @@ class since(object):
         return self._wrap_function(skippable)
 
 
-def require(require_pattern):
-    import pytest
-    return pytest.mark.skip('requires ' + str(require_pattern))
-
-
 def run_query_with_data_processing(session, query, consistency_level=ConsistencyLevel.ONE, session_timeout=None,
                                    group=False, groupby_column=None, restrict_column=None, restrict_value=None):
     if not session_timeout:
