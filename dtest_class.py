@@ -110,6 +110,66 @@ def retry_till_success(fun, *args, **kwargs):
                 time.sleep(0.25)
 
 
+class WaitTimeoutExpired(Exception):
+    pass
+
+
+def forever_wait_for(func, step=1, text=None, **kwargs):
+    """
+    Wait indefinitely until func evaluates to True.
+
+    This is similar to avocado.utils.wait.wait(), but there's no
+    timeout, we'll just keep waiting for it.
+
+    :param func: Function to evaluate.
+    :param step: Amount of time to sleep before another try.
+    :param text: Text to log, for debugging purposes.
+    :param kwargs: Keyword arguments to func
+    :return: Return value of func.
+    """
+    ok = False
+    start_time = time.time()
+    while not ok:
+        ok = func(**kwargs)
+        time.sleep(step)
+        time_elapsed = time.time() - start_time
+        if text is not None:
+            logger.debug('{} ({} s)'.format(text, time_elapsed))
+    return ok
+
+
+def wait_for(func, step=1, text=None, timeout=None, throw_exc=True, **kwargs):
+    """
+    Wrapper function to wait with timeout option.
+    If timeout received, avocado 'wait_for' method will be used.
+    Otherwise the below function will be called.
+
+    :param func: Function to evaluate.
+    :param step: Time to sleep between attempts in seconds
+    :param text: Text to print while waiting, for debug purposes
+    :param timeout: Timeout in seconds
+    :param throw_exc: Raise exception if timeout expired, but func result is not True
+    :param kwargs: Keyword arguments to func
+    :return: Return value of func.
+    """
+    if not timeout:
+        return forever_wait_for(func, step, text, **kwargs)
+    ok = False
+    start_time = time.time()
+    while not ok:
+        time.sleep(step)
+        ok = func(**kwargs)
+        time_elapsed = time.time() - start_time
+        if text is not None:
+            logger.debug('({} ({} s)'.format(text, time_elapsed))
+        if time_elapsed > timeout:
+            err = 'Wait for: {}: timeout - {} seconds - expired'.format(text, timeout)
+            logger.debug(err)
+            if throw_exc:
+                raise WaitTimeoutExpired(err)
+    return ok
+
+
 class DtestTimeoutError(Exception):
     pass
 

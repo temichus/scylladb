@@ -1427,25 +1427,3 @@ def fill_data_by_cs(node, n_range=[500, 550, 600, 650], start=0, duration_range=
         if flush:
             logger.debug("Flush after writing data .....")
             node.flush()
-
-
-def is_port_used(port: int, service_name: str) -> bool:
-    try:
-        # Path to `ss' is /usr/sbin/ss for RHEL-like distros and /bin/ss for Debian-based.  Unfortunately,
-        # /usr/sbin is not always in $PATH, so need to set it explicitly.
-        #
-        # Output of `ss -ln' command in case of used port:
-        #   $ ss -ln '( sport = :8000 )'
-        #   Netid State      Recv-Q Send-Q     Local Address:Port                    Peer Address:Port
-        #   tcp   LISTEN     0      5                      *:8000                               *:*
-        #
-        # And if there are no processes listening on the port:
-        #   $ ss -ln '( sport = :8001 )'
-        #   Netid State      Recv-Q Send-Q     Local Address:Port                    Peer Address:Port
-        #
-        # Can't avoid the header by using `-H' option because of ss' core on Ubuntu 18.04.
-        cmd = f"PATH=/bin:/usr/sbin ss -ln '( sport = :{port} )'"
-        return len(subprocess.run(cmd, shell=True, capture_output=True, text=True).stdout.splitlines()) > 1
-    except Exception as details:  # pylint: disable=broad-except
-        logger.debug(f"Error checking for '{service_name}' on port {port}: {details}")
-        return False

@@ -52,7 +52,8 @@ repos:
                 multidc_putget_test.py|
                 consistent_bootstrap_test.py|
                 replace_address_test.py|
-                json_test.py
+                json_test.py|
+                native_transport_ssl_test.py
             )$
         language: system
         types: [python]

@@ -4,10 +4,9 @@ import time
 import hashlib
 import logging
 import pytest
+import errno
 
 from collections.abc import Mapping
-
-from ccmlib.node import Node
 
 
 logger = logging.getLogger(__name__)
@@ -94,6 +93,63 @@ def generate_ssl_stores(base_dir, passphrase='cassandra'):
     subprocess.check_call(['keytool', '-import', '-file', os.path.join(base_dir, 'ccm_node.cer'),
                            '-alias', 'ccm_node', '-keystore', os.path.join(base_dir, 'truststore.jks'),
                            '-storepass', passphrase, '-noprompt'])
+    # Added for scylla: Generate pem format cert/key
+    logger.debug("exporting cert to pks12 from keystore.jks in [{0}]".format(base_dir))
+    subprocess.check_call(['keytool', '-importkeystore', '-srckeystore', os.path.join(base_dir, 'keystore.jks'),
+                           '-srcstorepass', passphrase, '-srckeypass', passphrase, '-destkeystore',
+                           os.path.join(base_dir, 'ccm_node.p12'), '-deststoretype', 'PKCS12',
+                           '-srcalias', 'ccm_node', '-deststorepass', passphrase, '-destkeypass', passphrase])
+    logger.debug("Using openssl to split pks12 in [{0}] to pem format".format(base_dir))
+    subprocess.check_call(['openssl', 'pkcs12', '-in', os.path.join(base_dir, 'ccm_node.p12'),
+                           '-passin', 'pass:{0}'.format(passphrase), '-nokeys',
+                           '-out', os.path.join(base_dir, 'ccm_node.pem')])
+    # Key with password. We want without...
+    subprocess.check_call(['openssl', 'pkcs12', '-in', os.path.join(base_dir, 'ccm_node.p12'),
+                           '-passin', 'pass:{0}'.format(passphrase),
+                           '-passout', 'pass:{0}'.format(passphrase), '-nocerts',
+                           '-out', os.path.join(base_dir, 'ccm_node.tmp')])
+    subprocess.check_call(['openssl', 'rsa', '-in', os.path.join(base_dir, 'ccm_node.tmp'),
+                           '-passin', 'pass:{0}'.format(passphrase),
+                           '-out', os.path.join(base_dir, 'ccm_node.key')])
+    # And create the trust chain
+    logger.debug("exporting cert to pks12 from truststore.jks in [{0}]".format(base_dir))
+    subprocess.check_call(['keytool', '-importkeystore', '-srckeystore', os.path.join(base_dir, 'truststore.jks'),
+                           '-srcstorepass', passphrase, '-destkeystore', os.path.join(base_dir, 'trust.p12'),
+                           '-deststoretype', 'PKCS12', '-srcalias', 'ccm_node', '-deststorepass', passphrase])
+    subprocess.check_call(['openssl', 'pkcs12', '-in', os.path.join(base_dir, 'trust.p12'),
+                           '-passin', 'pass:{0}'.format(passphrase),
+                           '-out', os.path.join(base_dir, 'trust.pem')])
+    logger.debug("removing temporary certificates in [{0}]".format(base_dir))
+    for filename in ('ccm_node.p12', 'ccm_node.tmp', 'trust.p12'):
+        try:
+            os.remove(os.path.join(base_dir, filename))
+        except OSError as e:
+            if e.errno != errno.ENOENT:  # ENOENT = no such file or directory
+                raise
+
+
+def is_port_used(port: int, service_name: str) -> bool:
+    """
+        Path to `ss' is /usr/sbin/ss for RHEL-like distros and /bin/ss for Debian-based.  Unfortunately,
+        /usr/sbin is not always in $PATH, so need to set it explicitly.
+
+        Output of `ss -ln' command in case of used port:
+          $ ss -ln '( sport = :8000 )'
+          Netid State      Recv-Q Send-Q     Local Address:Port                    Peer Address:Port
+          tcp   LISTEN     0      5                      *:8000                               *:*
+
+        And if there are no processes listening on the port:
+          $ ss -ln '( sport = :8001 )'
+          Netid State      Recv-Q Send-Q     Local Address:Port                    Peer Address:Port
+
+        Can't avoid the header by using `-H' option because of ss' core on Ubuntu 18.04.
+    """
+    try:
+        cmd = f"PATH=/bin:/usr/sbin ss -ln '( sport = :{port} )'"
+        return len(subprocess.run(cmd, shell=True, capture_output=True, text=True).stdout.splitlines()) > 1
+    except Exception as details:  # pylint: disable=broad-except
+        logger.debug(f"Error checking for '{service_name}' on port {port}: {details}")
+        return False
 
 
 def list_to_hashed_dict(list):

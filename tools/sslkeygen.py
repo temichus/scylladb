@@ -77,6 +77,11 @@ def _exec_keytool(dir, keystore, opts):
     return keystore
 
 
+def wait_for_cert_reload(node, module, files, from_mark=None):
+    for f in files:
+        node.watch_log_for("^.*{}.*Reloaded.*{}\.*".format(module, f.replace('.', '\.')), from_mark=from_mark)
+
+
 class SecurityCredentials():
 
     def __init__(self, keystore, cert, cakeystore, cacert):

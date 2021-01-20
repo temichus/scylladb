@@ -3,26 +3,26 @@ import distutils.dir_util
 import shutil
 import ssl
 import time
+import logging
+import pytest
 
 from cassandra import ConsistencyLevel
 from cassandra.cluster import NoHostAvailable, Cluster
-from cassandra.auth import PlainTextAuthProvider
 
-from dtest import Tester, debug, wait_for
-from tools import generate_ssl_stores, putget, safe_mkdtemp, require
-from scylla_tools import is_port_used
-from unittest import skip
-from nose.plugins.attrib import attr
+from dtest_class import Tester, get_ip_from_node, create_ks, create_cf, wait_for
+from tools.files import safe_mkdtemp
+from tools.misc import generate_ssl_stores, is_port_used
+from tools.data import putget
+from tools.sslkeygen import wait_for_cert_reload
 from ccmlib import common
 
 
-def wait_for_cert_reload(node, module, files, from_mark=None):
-    for f in files:
-        node.watch_log_for("^.*{}.*Reloaded.*{}\.*".format(module, f.replace('.', '\.')), from_mark=from_mark)
+logger = logging.getLogger(__name__)
 
 
-@attr('dtest-full', 'single_node')
-class NativeTransportSSL(Tester):
+@pytest.mark.dtest_full
+@pytest.mark.single_node
+class TestNativeTransportSSL(Tester):
     """
     Native transport integration tests, specifically for ssl and port configurations.
     """
@@ -34,12 +34,12 @@ class NativeTransportSSL(Tester):
         if use_ssl:
             ssl_context.load_cert_chain(certfile=os.path.join(self.test_path, 'ccm_node.pem'),
                                         keyfile=os.path.join(self.test_path, 'ccm_node.key'))
-            ssl_options['server_hostname'] = self.get_ip_from_node(node_to_connect)
+            ssl_options['server_hostname'] = get_ip_from_node(node_to_connect)
         if ca_certs:
             ssl_context.verify_mode = ssl.CERT_REQUIRED
             ssl_context.load_verify_locations(cafile=os.path.join(self.test_path, 'ccm_node.cer'))
         cluster_connection = Cluster(
-            [self.get_ip_from_node(node_to_connect)],
+            [get_ip_from_node(node_to_connect)],
             port=port,
             connect_timeout=90,
             control_connection_timeout=60,
@@ -48,9 +48,9 @@ class NativeTransportSSL(Tester):
             ssl_options=ssl_options)
         return cluster_connection.connect()
 
-    @attr('next-gating')
-    @attr('dtest-debug')
-    def connect_to_ssl_test(self):
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
+    def test_connect_to_ssl(self):
         """
         Connecting to SSL enabled native transport port should only be possible using SSL enabled client
         """
@@ -59,12 +59,10 @@ class NativeTransportSSL(Tester):
 
         cluster.start(jvm_args=['--logger-log-level', 'cql_server=debug'])
 
-        try:  # hack around assertRaise's lack of msg parameter
+        with pytest.raises(NoHostAvailable):
             # try to connect without ssl options
+            logger.info('Should not be able to connect to SSL socket without SSL enabled client')
             self._create_cluster_session(node1, use_ssl=False)
-            self.fail('Should not be able to connect to SSL socket without SSL enabled client')
-        except NoHostAvailable:
-            pass
 
         assert len(node1.grep_log("(^io.netty.handler.ssl.NotSslRecordException.*|^.*An unexpected TLS packet was received.*|^.*The specified session has been invalidated for some reason.*)")) > 0, \
             "Missing SSL handshake exception while connecting with non-SSL enabled client"
@@ -73,7 +71,7 @@ class NativeTransportSSL(Tester):
         session = self._create_cluster_session(node1, use_ssl=True)
         self._putget(cluster, session)
 
-    def connect_to_ssl_test_client_auth(self):
+    def test_connect_to_ssl_client_auth(self):
         """
         Connecting to SSL enabled native transport port should only be possible using SSL enabled client
         """
@@ -83,27 +81,24 @@ class NativeTransportSSL(Tester):
 
         cluster.start(jvm_args=['--logger-log-level', 'cql_server=debug'])
 
-        try:  # hack around assertRaise's lack of msg parameter
+        with pytest.raises(NoHostAvailable):
             # try to connect without ssl options
+            logger.info('Should not be able to connect to SSL socket without SSL enabled client')
             self._create_cluster_session(node1, use_ssl=False)
-            self.fail('Should not be able to connect to SSL socket without SSL enabled client')
-        except NoHostAvailable:
-            pass
 
         assert len(node1.grep_log("(^io.netty.handler.ssl.NotSslRecordException.*|^.*An unexpected TLS packet was received.*|^.*The specified session has been invalidated for some reason.*)")) > 0, \
             "Missing SSL handshake exception while connecting with non-SSL enabled client"
 
-        try:
+        with pytest.raises(NoHostAvailable):
             # try to connect without auth cert
+            logger.info('Should not be able to connect to SSL socket without SSL enabled client')
             self._create_cluster_session(node1, use_ssl=False, ca_certs=True)
-            self.fail('Should not be able to connect to SSL socket without SSL enabled client')
-        except NoHostAvailable:
-            pass
+
         session = self._create_cluster_session(node1, use_ssl=True, ca_certs=True)
         self._putget(cluster, session)
 
-    @skip('optional_ssl')
-    def connect_to_ssl_optional_test(self):
+    @pytest.mark.skip('optional_ssl')
+    def test_connect_to_ssl_optional(self):
         """
         Connecting to SSL optional native transport port must be possible with SSL and non-SSL native clients
         @jira_ticket CASSANDRA-10559
@@ -121,7 +116,7 @@ class NativeTransportSSL(Tester):
             node1, ssl_opts={'ca_certs': os.path.join(self.test_path, 'ccm_node.cer')})
         self._putget(cluster, session, ks='ks2')
 
-    def use_custom_port_test(self):
+    def test_use_custom_port(self):
         """
         Connect to non-default native transport port
         """
@@ -130,16 +125,15 @@ class NativeTransportSSL(Tester):
         node1 = cluster.nodelist()[0]
 
         cluster.start()
-        try:  # hack around assertRaise's lack of msg parameter
+
+        with pytest.raises(NoHostAvailable):
+            logger.info('Should not be able to connect to non-default port')
             self._create_cluster_session(node1, use_ssl=False)
-            self.fail('Should not be able to connect to non-default port')
-        except NoHostAvailable:
-            pass
 
         session = self._create_cluster_session(node1, port=9567, use_ssl=False)
         self._putget(cluster, session)
 
-    def use_custom_ssl_port_test(self):
+    def test_use_custom_ssl_port(self):
         """
         Connect to additional ssl enabled native transport port
         @jira_ticket CASSANDRA-9590
@@ -157,8 +151,8 @@ class NativeTransportSSL(Tester):
         session = self._create_cluster_session(node1, use_ssl=True, port=9666)
         self._putget(cluster, session, ks='ks2')
 
-    @attr('dtest-debug')
-    def reload_certificates_test(self):
+    @pytest.mark.dtest_debug
+    def test_reload_certificates(self):
         """
         Verify certificate reloading on modified file(s)
         """
@@ -172,13 +166,11 @@ class NativeTransportSSL(Tester):
             # create new certs
             generate_ssl_stores(tmpdir)
 
-            try:  # hack around assertRaise's lack of msg parameter
+            with pytest.raises(NoHostAvailable):
                 # try to connect without new, mismatched cert truststore (and required verification). Should fail
+                logger.info('Should not be able to connect to SSL socket with mismatched trust store')
                 self.patient_cql_connection(node1, ssl_opts={'ca_certs': os.path.join(
                     tmpdir, 'ccm_node.cer'), "cert_reqs": ssl.CERT_REQUIRED})
-                self.fail('Should not be able to connect to SSL socket with mismatched trust store')
-            except NoHostAvailable:
-                pass
 
             mark = node1.mark_log()
 
@@ -245,11 +237,11 @@ class NativeTransportSSL(Tester):
         return cluster
 
     def _putget(self, cluster, session, ks='ks', cf='cf'):
-        self.create_ks(session, ks, 1)
-        self.create_cf(session, cf, compression=None)
+        create_ks(session, ks, 1)
+        create_cf(session, cf, compression=None)
         putget(cluster, session, cl=ConsistencyLevel.ONE)
 
-    def disable_regular_port_while_encryption_enabled_test(self):
+    def test_disable_regular_port_while_encryption_enabled(self):
         """
         This test activates a cluster with encryption turned on, but instead of using the usual native_transport_port
         (9042) the test configures native_transport_port_ssl instead, and disables native_transport_port by configuring
@@ -260,14 +252,12 @@ class NativeTransportSSL(Tester):
         cluster.start()
         node1 = cluster.nodelist()[0]
         session = self._create_cluster_session(node1, use_ssl=True, port=9142)
-        self.create_ks(session, "ks", 1)
+        create_ks(session, "ks", 1)
         is_port_listening = common.check_socket_listening(cluster.get_binary_interface(1), timeout=20)
         assert not is_port_listening, \
             "Even after disabling the default cql port, the cluster continues to listen to it"
 
-    @attr('single_node')
-    @require('#7500, #7783')
-    def listen_ports_conf_test(self, disable_value=None):
+    def _listen_ports_conf_template(self, disable_value=None):
         """
         Test native transport ports configuration, and verify the listening native transport ports after start.
         try to disable the option by setting the option to None, ccm will remove the options from scylla.yaml
@@ -295,18 +285,16 @@ class NativeTransportSSL(Tester):
             """
             Start the node and verify the expected ports are listened, the node will be stop in the end
             """
-            debug(f'Expected listen ports: {expected_ports}')
+            logger.debug(f'Expected listen ports: {expected_ports}')
             node1 = cluster.nodelist()[0]
             mark = node1.mark_log()
             node1.start(wait_for_binary_proto=True)
 
             pattern = '|'.join([str(port) for port in expected_ports])
             res = node1.grep_log(f'Starting listening for CQL clients on.*:({pattern})', from_mark=mark)
-            debug(res)
-            self.assertEqual(len(res), len(expected_ports),
-                             f'The listened ports are not same as expected! '
-                             f'Expected ports: {expected_ports}\nReal listened ports: {res}')
-
+            logger.debug(res)
+            assert len(res) == len(expected_ports), f'The listened ports are not same as expected! '\
+                                                    f'Expected ports: {expected_ports}\nReal listened ports: {res}'
             for port in expected_ports:
                 # Retry to check if the port can be used in 5 seconds
                 wait_for(is_port_used, text=f'Waiting port {port} is used', step=0.5, timeout=2,
@@ -315,33 +303,37 @@ class NativeTransportSSL(Tester):
             # Wait a while and check if Aborting/Segfault occurred
             time.sleep(2)
             res = node1.grep_log(f'Aborting on shard |Segmentation fault on shard ', from_mark=mark)
-            self.assertEqual(0, len(res), str(res))
+            assert not len(res), str(res)
             node1.stop(gently=False)
 
-        debug('Only enabled explicitly native SSL port in init cluster')
+        logger.debug('Only enabled explicitly native SSL port in init cluster')
         cluster = self._populateCluster(enableSSL=True, nativePortSSL=native_port_ssl,
                                         nativePort=native_port, nodes_num=3)
         restart_and_verify_listen_ports(expected_ports=[native_port, native_port_ssl,
                                                         native_shard_aware_port])
 
-        debug(sorted(default_ports_conf.keys()))
+        logger.debug(sorted(default_ports_conf.keys()))
         for num in range(2 ** len(default_ports_conf)):
             # Try to cover all cases
             ports_conf = default_ports_conf.copy()
             for idx, key in enumerate(sorted(default_ports_conf.keys())):
                 if num & (2 ** idx):  # check if the bit is set
                     ports_conf[key] = disable_values[key]
-            debug(f"Test case {num} ({('%4s' % bin(num)[2:]).replace(' ', '0')}):\n"
-                  f" {sorted(ports_conf.items(), key=lambda d: d[0])}")
+            logger.debug(f"Test case {num} ({('%4s' % bin(num)[2:]).replace(' ', '0')}):\n"
+                         f" {sorted(ports_conf.items(), key=lambda d: d[0])}")
             # cases (9, 10, 11) will fail if disable value is 0
             # cases (13, 15) will fail for if disable_value is None
             cluster.set_configuration_options(ports_conf)
             restart_and_verify_listen_ports(expected_ports=[v for k, v in ports_conf.items() if v not in [0, None]])
 
-    @attr('single_node')
-    def listen_ports_conf_by_zero_test(self, disable_value=None):
+    @pytest.mark.skip('require scylladb/scylla#7500, require scylladb/scylla#7783')
+    def test_listen_ports_conf_by_zero(self):
         """
         Test native transport ports configuration, and verify the listening native transport ports after start.
         Disable 3 options by setting it to `0'
         """
-        self.listen_ports_conf_test(disable_value=0)
+        self._listen_ports_conf_template(disable_value=0)
+
+    @pytest.mark.skip('require scylladb/scylla#7500, require scylladb/scylla#7783')
+    def test_listen_ports_conf(self):
+        self._listen_ports_conf_template(disable_value=None)
