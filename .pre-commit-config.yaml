@@ -53,7 +53,8 @@ repos:
                 consistent_bootstrap_test.py|
                 replace_address_test.py|
                 json_test.py|
-                native_transport_ssl_test.py
+                native_transport_ssl_test.py|
+                read_amplification_test.py
             )$
         language: system
         types: [python]

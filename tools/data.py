@@ -16,17 +16,25 @@ def create_c1c2_table(tester, session, read_repair=None):
     create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'}, read_repair=read_repair)
 
 
-def insert_c1c2(session, keys=None, n=None, consistency=ConsistencyLevel.QUORUM):
+def insert_c1c2(session, keys=None, n=None, consistency=ConsistencyLevel.QUORUM, c1_values=None, c2_values=None,
+                ks='ks', cf='cf'):
     if (keys is None and n is None) or (keys is not None and n is not None):
         raise ValueError("Expected exactly one of 'keys' or 'n' arguments to not be None; "
                          "got keys={keys}, n={n}".format(keys=keys, n=n))
+    if (not c1_values and c2_values) or (c1_values and not c2_values):
+        raise ValueError('Expected the "c1_values" and "c2_values" variables be empty or contain list of string')
     if n:
         keys = list(range(n))
+    if c1_values and c2_values:
+        statement = session.prepare("INSERT INTO {}.{} (key, c1, c2) VALUES (?, ?, ?)".format(ks, cf))
+        statement.consistency_level = consistency
+        execute_concurrent_with_args(session, statement,
+                                     map(lambda x, y, z: ['k{}'.format(x), y, z], keys, c1_values, c2_values))
+    else:
+        statement = session.prepare("INSERT INTO cf (key, c1, c2) VALUES (?, 'value1', 'value2')")
+        statement.consistency_level = consistency
 
-    statement = session.prepare("INSERT INTO cf (key, c1, c2) VALUES (?, 'value1', 'value2')")
-    statement.consistency_level = consistency
-
-    execute_concurrent_with_args(session, statement, [['k{}'.format(k)] for k in keys])
+        execute_concurrent_with_args(session, statement, [['k{}'.format(k)] for k in keys])
 
 
 def query_c1c2(session, key, consistency=ConsistencyLevel.QUORUM, tolerate_missing=False, must_be_missing=False):
