@@ -1,22 +1,23 @@
 import os
 import time
+import logging
+import pytest
 
-from dtest import Tester, debug, wait_for
-from tools import generate_ssl_stores, putget, require
-from scylla_tools import is_port_used
-from nose.plugins.attrib import attr
-from native_transport_ssl_test import wait_for_cert_reload
+from dtest_class import Tester, create_ks, create_cf, wait_for
+from tools.misc import generate_ssl_stores, is_port_used
+from tools.data import putget
+from tools.sslkeygen import wait_for_cert_reload
 
 
-@attr('next-gating')
-@attr('dtest-debug')
-@attr('dtest-full')
+logger = logging.getLogger(__name__)
+
+
+@pytest.mark.next_gating
+@pytest.mark.dtest_debug
+@pytest.mark.dtest_full
 class TestInternodeSSL(Tester):
 
-    def __init__(self, *args, **kwargs):
-        Tester.__init__(self, *args, **kwargs)
-
-    def putget_with_internode_ssl_test(self):
+    def test_putget_with_internode_ssl(self):
         """
         Simple putget test with internode ssl enabled
         with default 'all' internode compression
@@ -24,14 +25,14 @@ class TestInternodeSSL(Tester):
         """
         self.__putget_with_internode_ssl_test('all', internode_encryption='all')
 
-    def putget_with_internode_rack_ssl_test(self):
+    def test_putget_with_internode_rack_ssl(self):
         """
         Simple putget test with internode ssl enabled
         with default 'all' internode compression and 'rack' internode encryption.
         """
         self.__putget_with_internode_ssl_test('all', internode_encryption='rack')
 
-    def putget_with_internode_ssl_without_compression_test(self):
+    def test_putget_with_internode_ssl_without_compression(self):
         """
         Simple putget test with internode ssl enabled
         without internode compression
@@ -39,27 +40,28 @@ class TestInternodeSSL(Tester):
         """
         self.__putget_with_internode_ssl_test('none', internode_encryption='none')
 
-    def putget_with_internode_ssl_with_dc_compression_test(self):
+    def test_putget_with_internode_ssl_with_dc_compression(self):
         """
         Simple putget test with internode ssl enabled
         with 'dc' internode compression and 'dc' internode encryption.
         """
         self.__putget_with_internode_ssl_test('dc', internode_encryption='dc', dcs=2)
 
-    def putget_with_internode_rack_ssl_with_dc_compression_test(self):
+    def test_putget_with_internode_rack_ssl_with_dc_compression(self):
         """
         Simple putget test with internode ssl enabled
         with 'dc' internode compression and 'rack' internode encryption.
         """
         self.__putget_with_internode_ssl_test('dc', internode_encryption='rack', dcs=2)
 
-    def putget_with_reloaded_certificates_test(self):
+    def test_putget_with_reloaded_certificates(self):
         self.__putget_with_internode_ssl_test('all', internode_encryption='all', reload_certs=True)
 
-    def __putget_with_internode_ssl_test(self, internode_compression, internode_encryption='all', dcs=1, reload_certs=False):
+    def __putget_with_internode_ssl_test(self, internode_compression, internode_encryption='all', dcs=1,
+                                         reload_certs=False):
         cluster = self.cluster
 
-        debug("***using internode ssl***")
+        logger.debug("***using internode ssl***")
         generate_ssl_stores(self.test_path)
         cluster.set_configuration_options({'internode_compression': internode_compression})
         cluster.enable_internode_ssl(self.test_path, internode_encryption=internode_encryption)
@@ -84,7 +86,7 @@ class TestInternodeSSL(Tester):
         ]
 
         if reload_certs:
-            debug("rewriting certs")
+            logger.debug("rewriting certs")
 
             node_marks = {node: node.mark_log() for node in cluster.nodelist()}
 
@@ -95,24 +97,22 @@ class TestInternodeSSL(Tester):
             generate_ssl_stores(self.test_path)
 
             mtime2 = os.path.getmtime(os.path.join(self.test_path, 'ccm_node.key'))
-            self.assertGreater(mtime2, mtime, "Cert regen failed?")
+            assert mtime2 > mtime, "Cert regen failed?"
 
             cluster.enable_internode_ssl(self.test_path, internode_encryption=internode_encryption)
 
             for node, mark in node_marks.items():
-                debug("waiting for {} to reload certs".format(node.get_path()))
+                logger.debug("waiting for {} to reload certs".format(node.get_path()))
                 wait_for_cert_reload(node, "messaging_service", [
                                      "internode-ccm_node.pem", "internode-ccm_node.key"], from_mark=mark)
-                debug("done")
+                logger.debug("done")
 
         session = self.patient_cql_connection(cluster.nodelist()[0])
-        self.create_ks(session, 'ks', 3)
-        self.create_cf(session, 'cf', compression=None)
+        create_ks(session, 'ks', 3)
+        create_cf(session, 'cf', compression=None)
         putget(cluster, session)
 
-    @attr('single_node')
-    @require('#7783')
-    def listen_ports_conf_test(self, DISABLE_VALUE=0):
+    def _listen_ports_conf_template(self, disable_value=0):
         """
         Test storage ports configuration, and verify the listening storage ports after start
         """
@@ -129,16 +129,15 @@ class TestInternodeSSL(Tester):
             """
             Start the node and verify the expected ports are listened,  the node will be stop in the end
             """
-            debug(f'Expected listen ports: {expected_ports}')
+            logger.debug(f'Expected listen ports: {expected_ports}')
             node1 = self.cluster.nodelist()[0]
             mark = node1.mark_log()
             node1.start(wait_for_binary_proto=True)
             pattern = '|'.join([str(port) for port in expected_ports])
             res = node1.grep_log(f'Starting.*Messaging Service on.*port ({pattern})', from_mark=mark)
-            debug(res)
-            self.assertEqual(len(res), len(expected_ports),
-                             f'The listened ports are not same as expected! '
-                             f'Expected ports: {expected_ports}\nReal listened ports: {res}')
+            logger.debug(res)
+            assert len(res) == len(expected_ports), f'The listened ports are not same as expected! '\
+                                                    f'Expected ports: {expected_ports}\nReal listened ports: {res}'
 
             for port in expected_ports:
                 # Retry to check if the port can be used in 5 seconds
@@ -148,7 +147,7 @@ class TestInternodeSSL(Tester):
             # Wait a while and check if Aborting/Segfault occurred
             time.sleep(2)
             res = node1.grep_log(f'Aborting on shard |Segmentation fault on shard ', from_mark=mark)
-            self.assertEqual(0, len(res), str(res))
+            assert not len(res), str(res)
             node1.stop(gently=False)
 
         # Test default configuration, ccm only sets storage_port: 7000
@@ -159,26 +158,31 @@ class TestInternodeSSL(Tester):
                                            'ssl_storage_port': ssl_storage_port})
         restart_and_verify_listen_ports(expected_ports=[storage_port, ssl_storage_port])
 
-        # Disable storage_port by setting it to `DISABLE_VALUE'
-        cluster.set_configuration_options({'storage_port': DISABLE_VALUE,
+        # Disable storage_port by setting it to `disable_value'
+        cluster.set_configuration_options({'storage_port': disable_value,
                                            'ssl_storage_port': ssl_storage_port})
         restart_and_verify_listen_ports(expected_ports=[ssl_storage_port])
 
-        # Disable ssl_storage_port by setting it to `DISABLE_VALUE'
+        # Disable ssl_storage_port by setting it to `disable_value'
         cluster.set_configuration_options({'storage_port': storage_port,
-                                           'ssl_storage_port': DISABLE_VALUE})
+                                           'ssl_storage_port': disable_value})
         restart_and_verify_listen_ports(expected_ports=[storage_port])
 
-        # Disable both ports by setting it to `DISABLE_VALUE'
-        cluster.set_configuration_options({'storage_port': DISABLE_VALUE,
-                                           'ssl_storage_port': DISABLE_VALUE})
+        # Disable both ports by setting it to `disable_value'
+        cluster.set_configuration_options({'storage_port': disable_value,
+                                           'ssl_storage_port': disable_value})
         restart_and_verify_listen_ports(expected_ports=[])
 
-    @attr('single_node')
-    @require('#7500')
-    def listen_ports_conf_by_none_test(self):
+    @pytest.mark.single_node
+    @pytest.mark.require('#7783')
+    def test_listen_ports_conf(self):
+        self._listen_ports_conf_template(disable_value=0)
+
+    @pytest.mark.single_node
+    @pytest.mark.require('#7500')
+    def test_listen_ports_conf_by_none(self):
         """
         Test storage ports configuration, and verify the listening storage ports after start,
         Try to disable the option by setting the option to None, ccm will remove this option from scylla.yaml
         """
-        self.listen_ports_conf_test(DISABLE_VALUE=None)
+        self._listen_ports_conf_template(disable_value=None)
