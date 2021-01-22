@@ -242,18 +242,44 @@ class TestSystemClients(Tester):
                 user='cassandra',
                 password='cassandra',
                 consistency_level=ConsistencyLevel.ALL) as session:
-            if system_auth_rf > 1:
-                session.execute(
-                    "ALTER KEYSPACE system_auth WITH REPLICATION = {'class': "
-                    f"'org.apache.cassandra.locator.SimpleStrategy', 'replication_factor':{system_auth_rf}}};")
-                self.cluster.nodelist()[0].nodetool('repair -- system_auth')
+            session.execute("ALTER KEYSPACE system_auth WITH REPLICATION = {'class': "
+                            f"'org.apache.cassandra.locator.SimpleStrategy', 'replication_factor':{system_auth_rf}}};")
             for user_record in self._test_users:
                 user = user_record['user']
                 password = user_record['password']
                 session.execute(f"CREATE ROLE '{user}' WITH PASSWORD = '{password}' AND LOGIN = true")
+        self.cluster.nodelist()[0].nodetool('repair -- system_auth')
+
+    def expect_system_clients(self):
+        for cql_sessions in self._opened_sessions.values():
+            if not cql_sessions:
+                continue
+            cql_sessions[0].check_if_in_system_clients()
+
+        error = None
+        session = None
+
+        for node in self.cluster.nodelist():
+            try:
+                session = self.patient_cql_connection(node, user='cassandra', password='cassandra')
+                break
+            except Exception as exc:
+                error = exc
+
+        if not session:
+            raise RuntimeError(f"Can't find working node, last error: {error}")
+
+        for cql_session in self._closed_sessions:
+            if hash(cql_session) in self._opened_sessions:
+                continue
+            cql_session.check_if_not_in_system_clients(session)
 
     def test_system_clients(self):
-        self.prepare(nodes=len(self._test_users) + 1, ssl_optional=True, require_ssl_auth=False)
+        self.prepare(
+            nodes=len(self._test_users) + 1,
+            ssl_optional=True,
+            require_ssl_auth=False,
+        )
         session_store = SessionStore()
         # Success SSL connection test
         with self.node_session(
@@ -275,7 +301,6 @@ class TestSystemClients(Tester):
                     port=9042,
                     session_store=session_store,
                     ssl_opts={'ca_certs': os.path.join(self.test_path, 'ccm_node.cer')})
-                pytest.fail("Should not be able to connect with ssl client to non-ssl port")
             self.wait_total_records_in_system_clients(session, original_sessions_count)
 
         # Failed non-SSL connection test to SSL port
@@ -287,7 +312,6 @@ class TestSystemClients(Tester):
                     **self._test_users[0],
                     session_store=session_store,
                     port=9142)
-                pytest.fail("Should not be able to connect with non-ssl client to ssl port")
             self.wait_total_records_in_system_clients(session, original_sessions_count)
 
         # Failed authentication
@@ -300,7 +324,6 @@ class TestSystemClients(Tester):
                     password='password-to-fail',
                     session_store=session_store,
                     port=9042)
-                pytest.fail("Should not be able to connect with wrong credentials")
             self.wait_total_records_in_system_clients(session, original_sessions_count)
 
         # Ledger test
