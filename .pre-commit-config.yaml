@@ -58,7 +58,8 @@ repos:
                 cfid_test.py|
                 internode_ssl_test.py|
                 lwt_banking_load_test.py|
-                lwt_schema_modification_test.py
+                lwt_schema_modification_test.py|
+                udtencoding_test.py
             )$
         language: system
         types: [python]

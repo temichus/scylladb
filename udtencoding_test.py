@@ -1,12 +1,15 @@
-from dtest import Tester
-from assertions import assert_invalid
-
 import time
 
+import pytest
 
+from dtest_class import Tester, create_ks
+from tools.assertions import assert_invalid
+
+
+@pytest.mark.dtest_full
 class TestUDTEncoding(Tester):
 
-    def udt_test(self):
+    def test_udt(self):
         """ Test (somewhat indirectly) that user queries involving UDT's are properly encoded (due to driver not recognizing UDT syntax) """
         cluster = self.cluster
 
@@ -15,7 +18,7 @@ class TestUDTEncoding(Tester):
 
         time.sleep(.5)
         session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'ks', 3)
+        create_ks(session, 'ks', 3)
 
         # create udt and insert correctly (should be successful)
         session.execute('CREATE TYPE address (city text,zip int);')
