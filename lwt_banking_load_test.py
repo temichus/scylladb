@@ -1,18 +1,19 @@
-import uuid
-from random import seed, random, randint, choice, randrange
-from dtest import Tester, debug
-from scylla_tools import scylla_mode
-from cassandra import ConsistencyLevel, OperationTimedOut, WriteFailure, ReadFailure, Unavailable
 import multiprocessing as mp
-from time import sleep, time, time_ns
+from time import sleep, time
 from os import getpid
 from collections import defaultdict
-from enum import Enum
 import psutil
-import itertools
 from decimal import Decimal
-from nose.plugins.attrib import attr
+import uuid
+from random import seed, random, randint, choice, randrange
+import logging
 
+import pytest
+from cassandra import ConsistencyLevel, OperationTimedOut, WriteFailure, ReadFailure, Unavailable
+
+from dtest_class import Tester, create_ks
+
+logger = logging.getLogger(__name__)
 # NOTE: This code does not work with Cassandra as its LWT queries don't return previous values
 #
 # TODO: reverse bic/ban to numbers for easier debugging
@@ -354,7 +355,7 @@ class Oracle():
 
     def __init__(self, session):
         manager = mp.Manager()
-        self.lock = manager.Lock()
+        self.lock = manager.Lock()  # https://github.com/PyCQA/pylint/issues/3313 pylint: disable=no-member
         self.accounts = manager.dict()
         self.transfers = manager.dict()
         # Load accounts from DB
@@ -375,7 +376,7 @@ class Oracle():
     def begin_transfer(self, client_id, session, t, amount):
         with self.lock:
             if t.id in self.transfers:
-                debug(f"{t4(client_id)} {t5(t.id)} begin_transfer: Double execution of the same transfer")
+                logger.info(f"{t4(client_id)} {t5(t.id)} begin_transfer: Double execution of the same transfer")
                 # Have processed this transfer already (i.e. recovery after balance update)
                 return
 
@@ -392,14 +393,14 @@ class Oracle():
                 return  # Have processed this transfer already
             self.transfers[t.id] = True
             src, dst = self.lookup_accounts(client_id, t.src, t.dst)
-            debug(f"{t4(client_id)} {t5(t.id)} oracle.complete_transfer: before {src.balance} {dst.balance}")
+            logger.info(f"{t4(client_id)} {t5(t.id)} oracle.complete_transfer: before {src.balance} {dst.balance}")
             if src and dst and t.amount <= src.balance:
                 src.complete_debit(t.id, t.amount)
                 dst.complete_credit(t.id, t.amount)
-                debug(f"{t4(client_id)} {t5(t.id)} oracle.complete_transfer: updated {t}")
-                debug(f"{t4(client_id)} {t5(t.id)} oracle.complete_transfer: after {src.balance} {dst.balance}")
+                logger.info(f"{t4(client_id)} {t5(t.id)} oracle.complete_transfer: updated {t}")
+                logger.info(f"{t4(client_id)} {t5(t.id)} oracle.complete_transfer: after {src.balance} {dst.balance}")
             else:
-                debug(f"{t4(client_id)} {t5(t.id)} oracle.complete_transfer: not updated {t}")
+                logger.info(f"{t4(client_id)} {t5(t.id)} oracle.complete_transfer: not updated {t}")
 
             self.accounts.update({src.bic + src.ban: src, dst.bic + dst.ban: dst})
 
@@ -425,13 +426,13 @@ class Oracle():
                 broken.append([bic, ban, expected[(bic, ban)], ret[0].balance])
         broken.sort()
         if not broken:
-            debug(f"oracle: no broken accounts")
+            logger.info(f"oracle: no broken accounts")
         else:
-            debug(f"oracle: {len(broken)} broken accounts:")
-            debug("bic,                        ban,                   expected, actual, difference")
+            logger.info(f"oracle: {len(broken)} broken accounts:")
+            logger.info("bic,                        ban,                   expected, actual, difference")
             for bic, ban, expected, actual, in broken:
-                debug(f"{bic}, {ban}, {expected},     {actual},     {expected - actual}")
-        debug(f"oracle: consistency check {time()-start_oracle:.02f} seconds")
+                logger.info(f"{bic}, {ban}, {expected},     {actual},     {expected - actual}")
+        logger.info(f"oracle: consistency check {time()-start_oracle:.02f} seconds")
 
 
 def node_affinity(node_pids):
@@ -447,17 +448,18 @@ def node_affinity(node_pids):
     assert len(node_pids) <= threads - 1
     # Run Python dtest *and its workers* in last thread of last core
     python_proc.cpu_affinity(range(len(node_pids) * threads_per_core, threads - 1))
-    debug(f"python pid {python_proc.pid}, affinity {python_proc.cpu_affinity()}")
-    debug(f"nodes {len(node_pids)}, cores {cores}")
+    logger.info(f"python pid {python_proc.pid}, affinity {python_proc.cpu_affinity()}")
+    logger.info(f"nodes {len(node_pids)}, cores {cores}")
     for i in range(len(node_pids)):
         node_proc = psutil.Process(pid=node_pids[i])
         node_proc.cpu_affinity([i * threads_per_core])
-        debug(f"node.pid {node_pids[i]} new affinity {node_proc.cpu_affinity()}")
+        logger.info(f"node.pid {node_pids[i]} new affinity {node_proc.cpu_affinity()}")
 
 
-@attr('dtest-full')
-@scylla_mode("!release")
-class LWTBankingLoadTest(Tester):
+@pytest.mark.dtest_full
+@pytest.mark.dtest_heavy
+@pytest.mark.scylla_mode('!release')
+class TestLWTBankingLoad(Tester):
     """Emulate a series of money transfers and perform validation"""
 
     def prepare(self, num_nodes=NODES):
@@ -489,15 +491,15 @@ class LWTBankingLoadTest(Tester):
         return session
 
     def create_schema(self, session):
-        debug("Creating schema...")
-        self.create_ks(session=session, name=KEYSPACE, rf=RF)
+        logger.info("Creating schema...")
+        create_ks(session=session, name=KEYSPACE, rf=RF)
         session.execute(CREATE_SETTINGS_TAB)
         session.execute(CREATE_ACCOUNTS_TAB)
         session.execute(CREATE_TRANSFERS_TAB)
         session.execute(CREATE_CHECK_TAB)
 
     def create_prepared_queries(self, session):
-        debug("Create prepared queries")
+        logger.info("Create prepared queries")
 
         self.insert_setting_stmt = session.prepare(INSERT_SETTING)
         self.fetch_setting_stmt = session.prepare(FETCH_SETTING)
@@ -527,7 +529,7 @@ class LWTBankingLoadTest(Tester):
         self.count_account_stmt = session.prepare(COUNT_ACCOUNT)
 
     def initial_settings(self, session, settings={}):
-        debug("Saving initial settings...")
+        logger.info("Saving initial settings...")
         for key, val in settings.items():
             session.execute(self.insert_setting_stmt, [str(key), str(val)])
 
@@ -563,7 +565,7 @@ class LWTBankingLoadTest(Tester):
         slice_max = -(-BICS // MAX_WORKERS)   # Max slice size for a given worker
         workers = -(-BICS // slice_max)       # Max amount of workers with even workload
 
-        debug(f"populate {BICS}*{BANS} = {BICS*BANS}, workers {workers}, {slice_max} max each")
+        logger.info(f"populate {BICS}*{BANS} = {BICS*BANS}, workers {workers}, {slice_max} max each")
         # NOTE: mp.Pool doesn't like functions in dtest/Tester/etc, but Process works fine.
         for worker_n in range(workers):
             proc = mp.Process(target=self.populate_worker, args=(worker_n, slice_max))
@@ -577,51 +579,51 @@ class LWTBankingLoadTest(Tester):
         try:
             ret = session.execute(self.fetch_balance_stmt, [account.bic, account.ban])
         except (OperationTimedOut, Unavailable, ReadFailure) as exc:
-            debug(f"fetch_account_balance: error account {account.bic} {account.ban} {exc}")
+            logger.info(f"fetch_account_balance: error account {account.bic} {account.ban} {exc}")
             return False
 
         account.balance = ret[0].balance
         account.pending_amount = ret[0].pending_amount
         account.found = True
-        # debug(f"fetch_account_balance: {account}")
+        # logger.info(f"fetch_account_balance: {account}")
         return True
 
     def set_transfer_state(self, client_id, session, t, state):
-        # debug(f"{t4(client_id)} {t5(t.id)} set_transfer_state: attempting to set {state}")
+        # logger.info(f"{t4(client_id)} {t5(t.id)} set_transfer_state: attempting to set {state}")
         try:
             ret = session.execute(self.set_transfer_state_stmt, [state, t.id, client_id])
         except (OperationTimedOut, WriteFailure, Unavailable) as exc:
-            debug(f"{t4(client_id)} {t5(t.id)} set_transfer_state: timed out setting state {state}: {exc}")
+            logger.info(f"{t4(client_id)} {t5(t.id)} set_transfer_state: timed out setting state {state}: {exc}")
             return False
 
         if not ret[0].applied:
             if hasattr(ret[0], "client_id"):
-                debug(f"{t4(client_id)} {t5(t.id)} set_transfer_state: previous id {ret[0].client_id} {ret[0]}")
+                logger.info(f"{t4(client_id)} {t5(t.id)} set_transfer_state: previous id {ret[0].client_id} {ret[0]}")
             else:
-                debug(f"{t4(client_id)} {t5(t.id)} set_transfer_state: previous id not found?")
+                logger.info(f"{t4(client_id)} {t5(t.id)} set_transfer_state: previous id not found?")
             return False
         else:
             t.state = state
-            # debug(f"{t4(client_id)} {t5(t.id)} set_transfer_state: successfully set state {state} {ret[0]} ******** ({self.node_id})")
+            # logger.info(f"{t4(client_id)} {t5(t.id)} set_transfer_state: successfully set state {state} {ret[0]} ******** ({self.node_id})")
             return True
 
     # In case we failed for whatever reason try to clean up the transfer client
     # to allow speedy recovery
     def clear_transfer_client(self, client_id, session, tx_id):
-        # debug(f"{t4(client_id)} clear_transfer_client: clearing {tx_id}")
+        # logger.info(f"{t4(client_id)} clear_transfer_client: clearing {tx_id}")
 
         try:
             ret = session.execute(self.clear_transfer_client_stmt, [tx_id, client_id])
         except (OperationTimedOut, WriteFailure, Unavailable) as exc:
-            debug(f"{t4(client_id)} {t5(tx_id)} clear_transfer_client: query failure {exc}")
+            logger.info(f"{t4(client_id)} {t5(tx_id)} clear_transfer_client: query failure {exc}")
             return False
         if not ret[0].applied:
             if not hasattr(ret[0], "client_id") or not ret[0].client_id:
                 # The transfer is gone, do not complain
-                debug(f"{t4(client_id)} {tx_id} clear_transfer_client: the transfer is already gone")
+                logger.info(f"{t4(client_id)} {tx_id} clear_transfer_client: the transfer is already gone")
                 return True
             else:
-                debug(
+                logger.info(
                     f"{t4(client_id)} {t5(tx_id)} clear_transfer_client: client id mismatch {ret[0].client_id} != {tx_id}")
                 return False
         return True
@@ -632,11 +634,11 @@ class LWTBankingLoadTest(Tester):
         assert t.state == "locked" or t.state == "completed", \
             f"{t4(client_id)} {t5(t.id)} Incorrect transfer state {t.state}"
 
-        # debug(f"{t4(client_id)} {t5(t.id)} complete_transfer: state: {t.state}")
+        # logger.info(f"{t4(client_id)} {t5(t.id)} complete_transfer: state: {t.state}")
 
         if t.state == "locked":
 
-            # debug(f"{t4(client_id)} {t5(t.id)} complete_transfer: locked")
+            # logger.info(f"{t4(client_id)} {t5(t.id)} complete_transfer: locked")
             if self.oracle:
                 self.oracle.begin_transfer(client_id, session, t, t.amount)
 
@@ -645,68 +647,73 @@ class LWTBankingLoadTest(Tester):
                 assert acct.found, f"{t4(client_id)} {t5(t.id)} complete_transfer: account {acct} not found"
 
             # Calcualte the destination state
-            # debug(f"{t4(client_id)} {t5(t.id)} complete_transfer: Calculating balances")
+            # logger.info(f"{t4(client_id)} {t5(t.id)} complete_transfer: Calculating balances")
             t.src.balance += t.src.pending_amount   # pending amount is negative already
             t.dst.balance += t.dst.pending_amount
             # NOTE: when called from recover the pending amounts could be 0 and already applied
             if t.src.balance >= 0:
 
-                # debug(f"{t4(client_id)} {t5(t.id)} complete_transfer: Moving funds")
+                # logger.info(f"{t4(client_id)} {t5(t.id)} complete_transfer: Moving funds")
 
                 # From now on we can ignore 'applied' - the record may
                 # not be applied only if someone completed our transfer or
                 # 30 seconds have elapsed.
                 for acct in [t.src, t.dst]:
-                    # debug(f"{t4(client_id)} {t5(t.id)} complete_transfer: going to update {acct} pending = 0")
+                    # logger.info(f"{t4(client_id)} {t5(t.id)} complete_transfer: going to update {acct} pending = 0")
                     try:
                         ret = session.execute(self.update_balance_unlock_stmt, [acct.balance, acct.bic, acct.ban, t.id])
                     except (OperationTimedOut, WriteFailure, Unavailable) as exc:
-                        debug(f"{t4(client_id)} {t5(t.id)} complete_transfer: failed to update balance for {acct} {exc}")
-                        debug(f"{t4(client_id)} {t5(t.id)} complete_transfer: adding {t} to the recovery queue +++++++++++++++++++")
+                        logger.info(
+                            f"{t4(client_id)} {t5(t.id)} complete_transfer: failed to update balance for {acct} {exc}")
+                        logger.info(
+                            f"{t4(client_id)} {t5(t.id)} complete_transfer: adding {t} to the recovery queue +++++++++++++++++++")
                         self.clear_transfer_client(client_id, session, t.id)  # Leave to recovery
                         recovery_queue.put((t.id, client_id))
                         return "failed_to_complete"
 
-                    # debug(f"{t4(client_id)} {t5(t.id)} complete_transfer: updated balance for {t4(acct.bic)} {t4(acct.ban)} to {acct.balance} {ret[0]}")
+                    # logger.info(f"{t4(client_id)} {t5(t.id)} complete_transfer: updated balance for {t4(acct.bic)} {t4(acct.ban)} to {acct.balance} {ret[0]}")
 
                     # NOTE: Update success only implies LWT quorum updated, not all nodes.
                     #       Non-serial and/or full scans will not show the updated account.
 
             else:
-                debug(f"{t4(client_id)} {t5(t.id)} complete_transfer: Insufficient funds for "
-                      f"{t4(acct.bic)} {t4(acct.ban)}: {t.src.balance} -> {t.src.pending_amount}")
+                logger.info(f"{t4(client_id)} {t5(t.id)} complete_transfer: Insufficient funds for "
+                            f"{t4(acct.bic)} {t4(acct.ban)}: {t.src.balance} -> {t.src.pending_amount}")
                 self.stats["not_enough_balance"] += 1
 
             if self.oracle:
                 self.oracle.complete_transfer(client_id, session, t)
 
             if not self.set_transfer_state(client_id, session, t, "completed"):
-                debug(f"{t4(client_id)} {t5(t.id)} complete_transfer: failed to set state completed")
-                debug(f"{t4(client_id)} {t5(t.id)} complete_transfer: adding {t} to the recovery queue +++++++++++++++++++")
+                logger.info(f"{t4(client_id)} {t5(t.id)} complete_transfer: failed to set state completed")
+                logger.info(
+                    f"{t4(client_id)} {t5(t.id)} complete_transfer: adding {t} to the recovery queue +++++++++++++++++++")
                 self.clear_transfer_client(client_id, session, t.id)  # clear for recovery
                 recovery_queue.put((t.id, client_id))
                 return False
 
         for account in [t.src, t.dst]:
-            # debug(f"{t4(client_id)} {t5(t.id)} Unlocking {t4(account.bic)} {t4(account.ban)}")
+            # logger.info(f"{t4(client_id)} {t5(t.id)} Unlocking {t4(account.bic)} {t4(account.ban)}")
             try:
                 res = session.execute(self.unlock_account_stmt, [account.bic, account.ban, t.id])
             except (OperationTimedOut, WriteFailure, Unavailable) as exc:
-                debug(f"{t4(client_id)} {t5(t.id)} complete_transfer: "
-                      f"Failed to unlock account {t4(account.bic)} {t4(account.ban)}: {exc}")
+                logger.info(f"{t4(client_id)} {t5(t.id)} complete_transfer: "
+                            f"Failed to unlock account {t4(account.bic)} {t4(account.ban)}: {exc}")
                 res = False
             if res and not res[0].applied:
-                debug(f"{t4(client_id)} {t5(t.id)} complete_transfer: "
-                      f"Failed to unlock account {t4(account.bic)} {t4(account.ban)} {res[0]}")
+                logger.info(f"{t4(client_id)} {t5(t.id)} complete_transfer: "
+                            f"Failed to unlock account {t4(account.bic)} {t4(account.ban)} {res[0]}")
             if not res or not res[0].applied:
-                debug(f"{t4(client_id)} {t5(t.id)} complete_transfer: adding {t} to the recovery queue +++++++++++++++++++")
+                logger.info(
+                    f"{t4(client_id)} {t5(t.id)} complete_transfer: adding {t} to the recovery queue +++++++++++++++++++")
                 self.clear_transfer_client(client_id, session, t.id)  # clear for recovery
                 recovery_queue.put((t.id, client_id))
                 return False
 
         ret = self.delete_transfer(client_id, session, t.id)
         if not ret:
-            debug(f"{t4(client_id)} {t5(t.id)} complete_transfer: could not delete, adding {t} to the recovery queue +++++++++++++++++++")
+            logger.info(
+                f"{t4(client_id)} {t5(t.id)} complete_transfer: could not delete, adding {t} to the recovery queue +++++++++++++++++++")
             self.clear_transfer_client(client_id, session, t.id)  # clear for recovery
             recovery_queue.put((t.id, client_id))
         return True
@@ -716,13 +723,13 @@ class LWTBankingLoadTest(Tester):
 
         # Locking from recovery
         if t.state == "completed":
-            # debug(f"{t4(client_id)} {t5(t.id)} lock_accounts: already completed ****")
+            # logger.info(f"{t4(client_id)} {t5(t.id)} lock_accounts: already completed ****")
             return True
 
         if t.state == "locked":
             # The transfer is already locked.
             # Fetch balance to find out if the account exists or not
-            # debug(f"{t4(client_id)} {t5(t.id)} lock_accounts: already locked ****")
+            # logger.info(f"{t4(client_id)} {t5(t.id)} lock_accounts: already locked ****")
             if not self.fetch_account_balance(session, t.src):
                 return False
             if not self.fetch_account_balance(session, t.dst):
@@ -738,7 +745,7 @@ class LWTBankingLoadTest(Tester):
         # Always lock accounts in lexicographical order to avoid livelocks
         sleep_duration = LOCK_RETRY_SLEEP_INITIAL
 
-        # debug(f"{t4(client_id)} {t5(t.id)} lock_accounts: Loop start ****")
+        # logger.info(f"{t4(client_id)} {t5(t.id)} lock_accounts: Loop start ****")
         retries = 0
 
         acct1, acct2 = sorted([t.src, t.dst])
@@ -751,28 +758,28 @@ class LWTBankingLoadTest(Tester):
                 #   IF balance != NULL AND pending_amount != NULL and pending_transfer = NULL
                 res = session.execute(self.lock_account_stmt, [t.id, account.pending_amount, account.bic, account.ban])
             except (OperationTimedOut, WriteFailure, Unavailable) as exc:
-                debug(f"{t4(client_id)} {t5(t.id)} lock_accounts: lock query failed {account}: {exc}****")
+                logger.info(f"{t4(client_id)} {t5(t.id)} lock_accounts: lock query failed {account}: {exc}****")
                 return False
             if res[0].applied or res[0].pending_transfer == t.id:
                 # Either locked or already locked (prev lock query reported failure but it went through)
                 account.balance = res[0].balance
-                # debug(f"{t4(client_id)} {t5(t.id)} lock_accounts: locked {account} "
+                # logger.info(f"{t4(client_id)} {t5(t.id)} lock_accounts: locked {account} "
                 #      f"pending_amount {account.pending_amount} res: {res[0]} ****")
                 return True
             else:
-                debug(f"{t4(client_id)} {t5(t.id)} lock_accounts: lock failed {account} {res[0]}****")
+                logger.info(f"{t4(client_id)} {t5(t.id)} lock_accounts: lock failed {account} {res[0]}****")
                 return False
 
         def unlock_account(account, t, client_id):
             try:
                 unlock_res = session.execute(self.unlock_account_stmt, [account.bic, account.ban, t.id])
             except (OperationTimedOut, WriteFailure, Unavailable) as exc:
-                debug(f"""{t4(client_id)} {t5(t.id)} unlock_accounts: query error "{exc}" {account} ****""")
+                logger.info(f"""{t4(client_id)} {t5(t.id)} unlock_accounts: query error "{exc}" {account} ****""")
                 unlock_res = False
             if not unlock_res or not unlock_res[0].applied:
-                debug(f"{t4(client_id)} {t5(t.id)} unlock_accounts: error unlocking {account} ****")
+                logger.info(f"{t4(client_id)} {t5(t.id)} unlock_accounts: error unlocking {account} ****")
                 return False
-            debug(f"{t4(client_id)} {t5(t.id)} unlock_accounts: unlocked {account} ****")
+            logger.info(f"{t4(client_id)} {t5(t.id)} unlock_accounts: unlocked {account} ****")
             account.found = False
             account.balance = None
             return True
@@ -782,22 +789,24 @@ class LWTBankingLoadTest(Tester):
                 if lock_account(acct2):
                     acct1.found = acct2.found = True
                     if self.set_transfer_state(client_id, session, t, "locked"):
-                        # debug(f"{t4(client_id)} {t5(t.id)} lock_accounts: done LOCKED")
+                        # logger.info(f"{t4(client_id)} {t5(t.id)} lock_accounts: done LOCKED")
                         return True
                     else:
-                        debug(f"{t4(client_id)} {t5(t.id)} lock_accounts: done FAIL (to set state)")
+                        logger.info(f"{t4(client_id)} {t5(t.id)} lock_accounts: done FAIL (to set state)")
                         if unlock_account(acct1, t, client_id) and \
                                 unlock_account(acct2, t, client_id) and \
                                 self.delete_transfer(client_id, session, t.id):
                             return False  # Failed but doesn't need to fix accounts or transfer
                         # Either accounts need unlocking or transfer needs to be deleted
-                        debug(f"{t4(client_id)} {t5(t.id)} lock_accounts: adding {t} to the recovery queue +++++++++++++++++++")
+                        logger.info(
+                            f"{t4(client_id)} {t5(t.id)} lock_accounts: adding {t} to the recovery queue +++++++++++++++++++")
                         self.clear_transfer_client(client_id, session, t.id)  # Leave to recovery
                         recovery_queue.put((t.id, client_id))
                         return False
                 else:
                     if not unlock_account(acct1, t, client_id):  # Unsets found and balance
-                        debug(f"{t4(client_id)} {t5(t.id)} lock_accounts: adding {t} to the recovery queue +++++++++++++++++++")
+                        logger.info(
+                            f"{t4(client_id)} {t5(t.id)} lock_accounts: adding {t} to the recovery queue +++++++++++++++++++")
                         self.clear_transfer_client(client_id, session, t.id)  # Leave to recovery
                         recovery_queue.put((t.id, client_id))
                         return False
@@ -806,12 +815,12 @@ class LWTBankingLoadTest(Tester):
             # But first reset client id to prevent expire while sleeping
             self.set_transfer_client_refresh(client_id, session, t.id)
             sleep(sleep_duration)
-            # debug(f"{t4(client_id)} {t5(t.id)} lock_accounts: Restarting after sleeping {sleep_duration:.7}")
+            # logger.info(f"{t4(client_id)} {t5(t.id)} lock_accounts: Restarting after sleeping {sleep_duration:.7}")
             sleep_duration += LOCK_RETRY_SLEEP_FACTOR * random()  # Random retry backoff
             sleep_duration = min(sleep_duration, LOCK_RETRY_SLEEP_MAX)
             retries += 1
             if retries > MAX_LOCK_RETRIES:
-                debug(f"{t4(client_id)} {t5(t.id)} lock_accounts: max retries reached {MAX_LOCK_RETRIES}")
+                logger.info(f"{t4(client_id)} {t5(t.id)} lock_accounts: max retries reached {MAX_LOCK_RETRIES}")
                 self.clear_transfer_client(client_id, session, t.id)  # Leave to recovery
                 recovery_queue.put((t.id, client_id))
                 return False
@@ -822,21 +831,21 @@ class LWTBankingLoadTest(Tester):
             ret = session.execute(self.insert_transfer_stmt,
                                   [t.id, t.src.bic, t.src.ban, t.dst.bic, t.dst.ban, t.amount])
         except (OperationTimedOut, WriteFailure, Unavailable) as exc:
-            debug(f"{t4(client_id)} {t5(t.id)} register_transfer: query failed: {exc}")
+            logger.info(f"{t4(client_id)} {t5(t.id)} register_transfer: query failed: {exc}")
             return False
 
         if not ret[0].applied:
             # NOTE: does this ever happen?
-            debug(f"{t4(client_id)} {t5(t.id)} register_transfer: failed {ret[0]}")
+            logger.info(f"{t4(client_id)} {t5(t.id)} register_transfer: failed {ret[0]}")
             return False
 
         # If timed out t.state is unchanged
         ret = self.set_transfer_client(client_id, session, t.id)
         if ret:
-            debug(f"{t4(client_id)} {t5(t.id)} register_transfer: success **** ({self.node_id})")
+            logger.info(f"{t4(client_id)} {t5(t.id)} register_transfer: success **** ({self.node_id})")
             return True
         else:
-            debug(f"{t4(client_id)} {t5(t.id)} register_transfer: failed to set client")
+            logger.info(f"{t4(client_id)} {t5(t.id)} register_transfer: failed to set client")
             return False
 
     # Accept interfaces to allow nil client id
@@ -846,22 +855,23 @@ class LWTBankingLoadTest(Tester):
         try:
             ret = session.execute(self.set_transfer_client_stmt, [client_id, tx_id])
         except (OperationTimedOut, WriteFailure, Unavailable) as exc:
-            debug(f"{t4(client_id)} {t5(tx_id)} set_transfer_client: query failed {exc}")
+            logger.info(f"{t4(client_id)} {t5(tx_id)} set_transfer_client: query failed {exc}")
             return False
         if not ret[0].applied:
             if not ret[0].client_id:
-                debug(
+                logger.info(
                     f"{t4(client_id)} {t5(tx_id)} set_transfer_client: Failed to set client: no such transfer {ret[0]}")
             elif ret[0].client_id != client_id:
                 # The still has set original worker client_id (no TTL)
-                debug(f"{t4(client_id)} {t5(tx_id)} set_transfer_client: previous id {t4(ret[0].client_id)} {ret[0]}")
+                logger.info(
+                    f"{t4(client_id)} {t5(tx_id)} set_transfer_client: previous id {t4(ret[0].client_id)} {ret[0]}")
             else:
                 # NOTE: careful with possible race condition due to expiring TTL
-                debug(f"{t4(client_id)} {t5(tx_id)} set_transfer_client: ???? {ret[0]}")
+                logger.info(f"{t4(client_id)} {t5(tx_id)} set_transfer_client: ???? {ret[0]}")
                 return True   # Already set   client_id == prev client id
 
         else:  # applied
-            # debug(f"{t4(client_id)} {t5(tx_id)} set_transfer_client: success {ret[0]}")
+            # logger.info(f"{t4(client_id)} {t5(tx_id)} set_transfer_client: success {ret[0]}")
             return True
 
     # Accept interfaces to allow nil client id
@@ -870,23 +880,23 @@ class LWTBankingLoadTest(Tester):
         try:
             ret = session.execute(self.set_transfer_client_refresh_stmt, [client_id, tx_id, client_id])
         except (OperationTimedOut, WriteFailure, Unavailable) as exc:
-            debug(f"{t4(client_id)} {t5(tx_id)} set_transfer_client_refresh: failed {exc}")
+            logger.info(f"{t4(client_id)} {t5(tx_id)} set_transfer_client_refresh: failed {exc}")
             return
         if not ret[0].applied:
-            debug(f"{t4(client_id)} {t5(tx_id)} set_transfer_client_refresh: failed {ret[0]}")
+            logger.info(f"{t4(client_id)} {t5(tx_id)} set_transfer_client_refresh: failed {ret[0]}")
 
     def delete_transfer(self, client_id, session, tx_id):
         """Delete transfer from pending"""
         try:
             res = session.execute(self.delete_transfer_stmt, [tx_id, client_id])
         except (OperationTimedOut, WriteFailure, Unavailable):
-            debug(f"{t4(client_id)} {t5(tx_id)} delete_transfer: deletion timed out")
+            logger.info(f"{t4(client_id)} {t5(tx_id)} delete_transfer: deletion timed out")
             return False
         if res[0].applied:
-            # debug(f"{t4(client_id)} {t5(tx_id)} delete_transfer: deleted transfer")
+            # logger.info(f"{t4(client_id)} {t5(tx_id)} delete_transfer: deleted transfer")
             return True
         elif res[0].client_id is None:
-            debug(f"{t4(client_id)} {t5(tx_id)} delete_transfer: client_id not set, ttl? {res[0]}")
+            logger.info(f"{t4(client_id)} {t5(tx_id)} delete_transfer: client_id not set, ttl? {res[0]}")
             try:
                 res = session.execute(self.delete_transfer_orphaned_stmt, [tx_id])
             except (OperationTimedOut, WriteFailure, Unavailable) as exc:
@@ -895,13 +905,14 @@ class LWTBankingLoadTest(Tester):
                 return False
             return True
         else:
-            debug(f"{t4(client_id)} {t5(tx_id)} delete_transfer: failed to delete transfer {res[0]} {time():.02f}")
+            logger.info(
+                f"{t4(client_id)} {t5(tx_id)} delete_transfer: failed to delete transfer {res[0]} {time():.02f}")
             return False
 
     def make_transfer(self, client_id, session, recovery_queue, t):
         """Make a transfer"""
 
-        # debug(f"{t4(client_id)} {t5(t.id)} make_transfer: {t.src} to {t.dst} for {t.amount}")
+        # logger.info(f"{t4(client_id)} {t5(t.id)} make_transfer: {t.src} to {t.dst} for {t.amount}")
         if not self.register_transfer(client_id, session, t):
             return "failed_to_register"
 
@@ -921,7 +932,7 @@ class LWTBankingLoadTest(Tester):
         client_id = uuid.uuid4()
         self.node_id = randint(0, len(self.cluster.nodelist()) - 1)
         session = self.patient_cql_connection(self.cluster.nodelist()[self.node_id])
-        debug(f"{t4(client_id)} starting on node {self.node_id}")
+        logger.info(f"{t4(client_id)} starting on node {self.node_id}")
         worker_transfers = 0   # Transfers done by this worker
         while True:
             with transfers.get_lock():
@@ -930,7 +941,7 @@ class LWTBankingLoadTest(Tester):
                 id_int = transfers.value   # decrementing fixed ids
                 transfers.value += 1
 
-            # debug(f"{t4(client_id)} making transfer for {src_bic} {src_ban} -> {dst_bic} {dst_ban} for {amount}")
+            # logger.info(f"{t4(client_id)} making transfer for {src_bic} {src_ban} -> {dst_bic} {dst_ban} for {amount}")
             worker_transfers += 1
 
             start = time()
@@ -942,12 +953,12 @@ class LWTBankingLoadTest(Tester):
 
         stats_queue.put(self.stats)   # Send stats to parent
 
-        debug(f"""{t4(client_id)} worker finished: pass {self.stats["success"]} """
-              f"""no balance {self.stats["not_enough_balance"]} """
-              f"""register fail {self.stats["failed_to_register"]} """
-              f"""lock fail {self.stats["failed_to_lock"]} """
-              f"""complete fail {self.stats["failed_to_complete"]} """
-              f"""total {worker_transfers} on {self.node_id}""")
+        logger.info(f"""{t4(client_id)} worker finished: pass {self.stats["success"]} """
+                    f"""no balance {self.stats["not_enough_balance"]} """
+                    f"""register fail {self.stats["failed_to_register"]} """
+                    f"""lock fail {self.stats["failed_to_lock"]} """
+                    f"""complete fail {self.stats["failed_to_complete"]} """
+                    f"""total {worker_transfers} on {self.node_id}""")
 
     def update_worker_stats(self, elapsed, transfer_result):
         self.stats[transfer_result] += 1
@@ -963,7 +974,7 @@ class LWTBankingLoadTest(Tester):
         payment_procs = []
         # Maximum workers - 1 for nemesis
 
-        debug(f"payment workers {MAX_WORKERS} for {TOTAL_TRANSFERS} transfers")
+        logger.info(f"payment workers {MAX_WORKERS} for {TOTAL_TRANSFERS} transfers")
         for worker_n in range(MAX_WORKERS):
             proc = mp.Process(target=self.pay_worker, args=(worker_n, transfers, oracle, recovery_queue, stats_queue))
             proc.start()       # Start right away
@@ -977,7 +988,7 @@ class LWTBankingLoadTest(Tester):
         client_id = uuid.uuid4()
         self.node_id = randint(0, len(self.cluster.nodelist()) - 1)
         session = self.patient_cql_connection(self.cluster.nodelist()[self.node_id])
-        debug(f"recovery_worker: starting on {self.node_id}")
+        logger.info(f"recovery_worker: starting on {self.node_id}")
 
         self.stats = defaultdict(int)
 
@@ -996,14 +1007,14 @@ class LWTBankingLoadTest(Tester):
                 recovery_queue.put((False, False))
                 continue
 
-            # debug(f"{t4(client_id)} recovery_worker: recovering {t5(tx_id)}")
-            # debug(f"{t4(client_id)} recovering {t5(tx_id)}")
+            # logger.info(f"{t4(client_id)} recovery_worker: recovering {t5(tx_id)}")
+            # logger.info(f"{t4(client_id)} recovering {t5(tx_id)}")
             if not self.recover_transfer(client_id, prev_cli, session, recovery_queue, tx_id):
-                debug(f"{t4(client_id)} {t5(tx_id)} failed to recover")
+                logger.info(f"{t4(client_id)} {t5(tx_id)} failed to recover")
                 self.stats["recovery_failed"] += 1
             self.stats["recovered"] += 1
 
-        debug(f"""recovery_worker: finished {self.stats["recovered"]}, failed {self.stats["recovery_failed"]}""")
+        logger.info(f"""recovery_worker: finished {self.stats["recovered"]}, failed {self.stats["recovery_failed"]}""")
         stats_queue.put(self.stats)   # Send stats to parent
 
     def recover_transfer(self, client_id, prev_cli, session, recovery_queue, tx_id):
@@ -1014,15 +1025,15 @@ class LWTBankingLoadTest(Tester):
             ret = session.execute(self.fetch_transfer_stmt, [tx_id])
         except (OperationTimedOut, Unavailable, ReadFailure) as exc:
             # Ignore possible error, we will retry
-            debug(f"{t4(client_id)} recover_transfer: {t5(tx_id)} not found when fetching for recovery {exc}")
+            logger.info(f"{t4(client_id)} recover_transfer: {t5(tx_id)} not found when fetching for recovery {exc}")
             return False
 
-        # debug(f"{t4(client_id)} recover_transfer: {t.state} {t} **************************")
+        # logger.info(f"{t4(client_id)} recover_transfer: {t.state} {t} **************************")
 
         try:
-            debug(f"{t4(client_id)} recover_transfer: {t.state} {t} {ret[0]} ***************** {self.node_id}")
+            logger.info(f"{t4(client_id)} recover_transfer: {t.state} {t} {ret[0]} ***************** {self.node_id}")
         except IndexError:
-            debug(f"{t4(client_id)} recover_transfer: ERROR RECOVERING {tx_id} ***************** {self.node_id}")
+            logger.info(f"{t4(client_id)} recover_transfer: ERROR RECOVERING {tx_id} ***************** {self.node_id}")
             return False
         assert ret[0].amount is not None, f"Transfer amount not set?!?! {ret[0]}"
         t.src.bic = ret[0].src_bic
@@ -1033,7 +1044,7 @@ class LWTBankingLoadTest(Tester):
         t.state = ret[0].state
 
         if not self.set_transfer_client(client_id, session, tx_id):
-            debug(f"{t4(client_id)} recover_transfer: Failed to set client for {t5(tx_id)} re-adding to recovery queue")
+            logger.info(f"{t4(client_id)} recover_transfer: Failed to set client for {t5(tx_id)} re-adding to recovery queue")
             self.clear_transfer_client(client_id, session, tx_id)  # clear for next recovery?
             recovery_queue.put((tx_id, client_id))
             return False
@@ -1041,15 +1052,15 @@ class LWTBankingLoadTest(Tester):
         t.init_accounts()
 
         if not self.lock_accounts(client_id, session, recovery_queue, t, wait=False):
-            debug(f"{t4(client_id)} recover_transfer: Failed to lock accounts for {t5(tx_id)}")
+            logger.info(f"{t4(client_id)} recover_transfer: Failed to lock accounts for {t5(tx_id)}")
             self.clear_transfer_client(client_id, session, tx_id)  # clear for next recovery
             return False
 
         if not self.complete_transfer(client_id, session, recovery_queue, t):
-            debug(f"{t4(client_id)} recover_transfer: Failed to complete {t5(tx_id)}")
+            logger.info(f"{t4(client_id)} recover_transfer: Failed to complete {t5(tx_id)}")
             return False
 
-        # debug(f"{t4(client_id)} recover_transfer: recovered {t5(tx_id)}")
+        # logger.info(f"{t4(client_id)} recover_transfer: recovered {t5(tx_id)}")
         return True
 
     def nemesis(self, stop, sleep_sec=NEMESIS_ERROR_DURATION):
@@ -1061,24 +1072,24 @@ class LWTBankingLoadTest(Tester):
         while not stop.is_set():
             node_id = randrange(0, node_len)
             error_name = choice(ERROR_INJECTIONS)
-            # debug(f"nemesis enabling {error_name} on {node_id}")
+            # logger.info(f"nemesis enabling {error_name} on {node_id}")
             self.disable_errors(node_id)  # First disable other errors, avoid piling up
 
             self.enable_error(error_name, node_id, one_shot=True)
             sleep(sleep_sec)
             count += 1
 
-        debug("Nemesis ran for {} iterations".format(count))
+        logger.info("Nemesis ran for {} iterations".format(count))
 
     def test_bank_with_nemesis(self, with_oracle=True):
         start = time()
         session = self.prepare()
-        debug("Prepare ran in {} seconds".format(int(time() - start)))
+        logger.info("Prepare ran in {} seconds".format(int(time() - start)))
 
         start = time()
         self.populate_accounts()
         result = session.execute(self.count_account_stmt)
-        debug(
+        logger.info(
             f"workers done populating database {time()-start:.02f} seconds {result[0].count} accounts - {BICS * BANS}")
         assert result[0].count == BICS * BANS
 
@@ -1093,7 +1104,7 @@ class LWTBankingLoadTest(Tester):
         self.initial_settings(session, settings)
 
         stop = mp.Event()                                        # Signal nemesis/recovery to stop
-        debug(f"====================== starting ===============================")
+        logger.info(f"====================== starting ===============================")
         oracle = Oracle(session) if with_oracle else None
         recovery_queue = mp.Queue()
         stats_queue = mp.Queue()
@@ -1106,7 +1117,7 @@ class LWTBankingLoadTest(Tester):
         self.run_pay_workers(session, transfers, oracle, recovery_queue,
                              stats_queue)    # Returns when all done and joined
         pay_time = time() - start_pay
-        debug(f"pay workers {pay_time:.02f} seconds, {(BICS*BANS)/pay_time:.02f} transfers/second")
+        logger.info(f"pay workers {pay_time:.02f} seconds, {(BICS*BANS)/pay_time:.02f} transfers/second")
         stop.set()                                               # Stop nemesis
         recovery_queue.put((False, False))                         # Stop recovery
         nemesis_proc.join()
@@ -1133,15 +1144,15 @@ class LWTBankingLoadTest(Tester):
 
         if all(k in stats for k in ["pay_total", "pay_max", "pay_min"]):
             # print avg
-            debug(f"""pay: {stats["pay_max"]:.02f} max, {stats["pay_min"]:.06f} min, """
-                  f"""{stats["pay_total"]/TOTAL_TRANSFERS:.06f} avg""")
+            logger.info(f"""pay: {stats["pay_max"]:.02f} max, {stats["pay_min"]:.06f} min, """
+                        f"""{stats["pay_total"]/TOTAL_TRANSFERS:.06f} avg""")
 
-        debug(f"""lock retries {stats["retries"]}, limit reached {stats["retry_limit_reached"]}""")
-        debug(f"""no balance {stats["not_enough_balance"]} (counts as success)""")
-        debug(f"""recovery failures {stats["recovery_failed"]}, total {stats["recovered"]}""")
+        logger.info(f"""lock retries {stats["retries"]}, limit reached {stats["retry_limit_reached"]}""")
+        logger.info(f"""no balance {stats["not_enough_balance"]} (counts as success)""")
+        logger.info(f"""recovery failures {stats["recovery_failed"]}, total {stats["recovered"]}""")
 
-        debug(f"""success {stats["success"]} """
-              f"""register fail {stats["failed_to_register"]} """
-              f"""lock fail {stats["failed_to_lock"]} """
-              f"""complete fail {stats["failed_to_complete"]} """
-              f"""recovery left {recovery_queue.qsize()} """)
+        logger.info(f"""success {stats["success"]} """
+                    f"""register fail {stats["failed_to_register"]} """
+                    f"""lock fail {stats["failed_to_lock"]} """
+                    f"""complete fail {stats["failed_to_complete"]} """
+                    f"""recovery left {recovery_queue.qsize()} """)

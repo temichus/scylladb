@@ -56,7 +56,8 @@ repos:
                 native_transport_ssl_test.py|
                 read_amplification_test.py|
                 cfid_test.py|
-                internode_ssl_test.py
+                internode_ssl_test.py|
+                lwt_banking_load_test.py
             )$
         language: system
         types: [python]
