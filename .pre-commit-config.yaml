@@ -61,7 +61,8 @@ repos:
                 lwt_schema_modification_test.py|
                 udtencoding_test.py|
                 clustering_key_filter_test.py|
-                ttl_test.py
+                ttl_test.py|
+                hintedhandoff_test.py
             )$
         language: system
         types: [python]
