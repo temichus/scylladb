@@ -393,6 +393,21 @@ def fixture_require_version(request, fixture_dtest_setup):
         pytest.skip(f"require: {issue}")
 
 
+@pytest.fixture(autouse=True)
+def fixture_skip_scylla_mode(request, fixture_dtest_setup):
+    marker = request.node.get_closest_marker('scylla_mode')
+    if marker is not None:
+        modes = marker.args[0]
+        mode = fixture_dtest_setup.dtest_config.scylla_mode
+        found = (modes.find(mode) != -1)
+        if modes[0] != '!':
+            do_skip = not found
+        else:
+            do_skip = found
+        if do_skip:
+            pytest.skip(f'Test disabled for scylla {mode}')
+
+
 @pytest.fixture(scope='session', autouse=True)
 def install_debugging_signal_handler():
     import faulthandler

@@ -359,7 +359,7 @@ class TestBootstrap(Tester):
 
     # @scylla_mode('release')
     @pytest.mark.dtest_full
-    @pytest.mark.not_debug
+    @pytest.mark.scylla_mode('!debug')
     def test_local_quorum_bootstrap(self):
         """Test that CL local_quorum works while a node is bootstrapping. CASSANDRA-8058"""
 
