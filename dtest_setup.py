@@ -13,6 +13,7 @@ import pprint
 import random
 from collections import OrderedDict
 
+import requests
 from cassandra.cluster import Cluster as PyCluster
 from cassandra.cluster import NoHostAvailable
 from cassandra.cluster import EXEC_PROFILE_DEFAULT
@@ -699,3 +700,77 @@ class DTestSetup:
             elif self.cluster.scylla_mode != 'release':
                 factor = 2
         return seconds * factor
+
+    def enable_error(self, name, node, one_shot=False):
+        """Enable error injection
+
+        Args:
+            name (str): name of error injection to be enabled.
+            node (ScyllaNode|int): either instance of scylla node or node number.
+            one_shot (bool): indicates whether the injection is one-shot
+                             (resets enabled state after triggering the injection).
+
+        """
+        if isinstance(node, int):
+            node = self.cluster.nodelist()[node]
+        node_ip = get_ip_from_node(node)
+        logger.debug(f'Enabling error injection "{name}" on node {node_ip}', trace=True)
+        response = requests.post(f"http://{node_ip}:10000/v2/error_injection/injection/{name}",
+                                 params={"one_shot": one_shot})
+        response.raise_for_status()
+
+    def disable_error(self, name, node):
+        """Disable error injection
+
+        Args:
+            name (str): name of error injection to be disabled.
+            node (ScyllaNode|int): either instance of scylla node or node number.
+
+        """
+        if isinstance(node, int):
+            node = self.cluster.nodelist()[node]
+        node_ip = get_ip_from_node(node)
+        logger.debug(f'Disabling error injection "{name}" on node {node_ip}', trace=True)
+        response = requests.delete(f"http://{node_ip}:10000/v2/error_injection/injection/{name}")
+        response.raise_for_status()
+
+    def check_error(self, name, node):
+        """Get status of error injection
+
+        Args:
+            name (str): name of error injection.
+            node (ScyllaNode|int): either instance of scylla node or node number.
+
+        """
+        if isinstance(node, int):
+            node = self.cluster.nodelist()[node]
+        node_ip = get_ip_from_node(node)
+        response = requests.get(f"http://{node_ip}:10000/v2/error_injection/injection/{name}")
+        response.raise_for_status()
+
+    def list_errors(self, node):
+        """List enabled error injections
+
+        Args:
+            node (ScyllaNode|int): either instance of scylla node or node number.
+
+        """
+        if isinstance(node, int):
+            node = self.cluster.nodelist()[node]
+        node_ip = get_ip_from_node(node)
+        response = requests.get(f"http://{node_ip}:10000/v2/error_injection/injection")
+        response.raise_for_status()
+        return response.json()
+
+    def disable_errors(self, node):
+        """Disable all error injections
+
+        Args:
+            node (ScyllaNode|int): either instance of scylla node or node number.
+
+        """
+        if isinstance(node, int):
+            node = self.cluster.nodelist()[node]
+        node_ip = get_ip_from_node(node)
+        response = requests.delete(f"http://{node_ip}:10000/v2/error_injection/injection")
+        response.raise_for_status()
