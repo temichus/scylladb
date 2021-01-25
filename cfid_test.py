@@ -1,25 +1,31 @@
-from dtest import Tester
 import os
-from nose.plugins.attrib import attr
+from pathlib import Path
+
+import pytest
+
+from dtest_class import Tester, create_ks, create_cf
 
 
-@attr('dtest-full', 'single_node')
+# pylint:disable=too-few-public-methods
+@pytest.mark.dtest_full
+@pytest.mark.single_node
 class TestCFID(Tester):
-
-    @attr('next-gating')
-    @attr('dtest-debug')
-    def cfid_test(self):
-        """ Test through adding/dropping cf's that the path to sstables for each cf are unique and formatted correctly """
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
+    def test_cfid(self):
+        """
+        Test through adding/dropping cf's that the path to sstables for each cf are unique and formatted correctly
+        """
         cluster = self.cluster
-
+        loop_size = 5
         cluster.populate(1).start(wait_other_notice=True)
         [node1] = cluster.nodelist()
 
         session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'ks', 1)
+        create_ks(session=session, name='ks', rf=1)
 
-        for x in range(0, 5):
-            self.create_cf(session, 'cf', gc_grace=0, key_type='int', columns={'c1': 'int'})
+        for _ in range(loop_size):
+            create_cf(session=session, name='cf', gc_grace=0, key_type='int', columns={'c1': 'int'})
             session.execute('insert into cf (key, c1) values (1,1)')
             session.execute('insert into cf (key, c1) values (2,1)')
             node1.flush()
@@ -27,13 +33,13 @@ class TestCFID(Tester):
 
         # get a list of cf directories
         try:
-            cfs = os.listdir(node1.get_path() + "/data/ks")
-        except OSError:
-            self.fail("Path to sstables not valid.")
+            cfs = os.listdir(str(node1.get_path() / Path("data/ks")))
+        except OSError as err:
+            raise OSError("Path to sstables not valid.") from err
 
         # check that there are 5 unique directories
-        self.assertEqual(len(cfs), 5)
+        assert len(cfs) == loop_size
 
         # check that these are in fact column family directories
         for dire in cfs:
-            self.assertTrue(dire[0:2] == 'cf')
+            assert dire[0:2] == 'cf'
