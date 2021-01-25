@@ -196,10 +196,6 @@ def generate_random_text(length=10):
     return ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(length))
 
 
-def drop_table(session, table_name, if_exists=False):
-    session.execute("DROP TABLE {} {}".format('IF EXISTS' if if_exists else '', table_name))
-
-
 def scylla_mode(modes):
     """
         Run the decorated tests if they are executed on correct mode

@@ -16,10 +16,11 @@ import pytest
 from ccmlib.node import NodetoolError
 
 from dtest_class import Tester, create_ks, create_cf
-from scylla_tools import CassandraCluster, drop_table, get_sstables_files, get_node_cf_dir
-from tools import rows_to_list, safe_mkdtemp
-from dtest_setup_overrides import DTestSetupOverrides
+from scylla_tools import CassandraCluster, get_sstables_files, get_node_cf_dir
+from tools.files import safe_mkdtemp
+from tools.data import drop_table, rows_to_list
 from tools.misc import ImmutableMapping
+from dtest_setup_overrides import DTestSetupOverrides
 
 logger = logging.getLogger(__name__)
 

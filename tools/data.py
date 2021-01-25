@@ -65,6 +65,10 @@ def query_columns(tester, session, key, columns_count, consistency=ConsistencyLe
         assert res[i][1] == 'value{}'.format(i + offset)
 
 
+def drop_table(session, table_name, if_exists=False):
+    session.execute("DROP TABLE {} {}".format('IF EXISTS' if if_exists else '', table_name))
+
+
 # Simple puts and get (on one row), testing both reads by names and by slice,
 # with overwrites and flushes between inserts to make sure we hit multiple
 # sstables on reads

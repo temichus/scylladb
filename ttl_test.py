@@ -1,9 +1,8 @@
 import time
+import logging
+import pytest
 from collections import OrderedDict
-
 from datetime import datetime
-
-from tools import require
 
 from cassandra import ConsistencyLevel
 from cassandra.query import SimpleStatement
@@ -17,14 +16,14 @@ from assertions import (
     assert_unavailable,
     assert_invalid
 )
-from dtest import Tester, debug
-from nose.plugins.attrib import attr
-from tools import since
-from scylla_tools import drop_table
+from dtest_class import Tester, create_ks
+from tools.data import drop_table
 
 
-@since('2.0')
-@attr('dtest-full')
+logger = logging.getLogger(__name__)
+
+
+@pytest.mark.dtest_full
 class TestTTL(Tester):
     """ Test Time To Live Feature """
 
@@ -34,7 +33,7 @@ class TestTTL(Tester):
         self.cluster.populate(nodes).start()
         node1 = self.cluster.nodelist()[0]
         self.session1 = self.patient_cql_connection(node1)
-        self.create_ks(self.session1, 'ks', rf=rf)
+        create_ks(self.session1, 'ks', rf=rf)
 
         drop_table(session=self.session1, table_name='ttl_table', if_exists=True)
 
@@ -82,18 +81,18 @@ class TestTTL(Tester):
         """
 
         now = time.time()
-        debug('Start action time is {}'.format(self.format_float_time_to_readable(start_time)))
-        debug('Start to wait at: {}'.format(self.format_float_time_to_readable(now)))
+        logger.debug('Start action time is {}'.format(self.format_float_time_to_readable(start_time)))
+        logger.debug('Start to wait at: {}'.format(self.format_float_time_to_readable(now)))
         real_time_to_wait = time_to_wait - (now - start_time)
 
         if real_time_to_wait > 0:
             time.sleep(real_time_to_wait)
         stop_time = time.time()
-        debug('Stop to wait at: {}'.format(self.format_float_time_to_readable(stop_time)))
-        debug('   Waiting time is {}'.format(stop_time-start_time))
+        logger.debug('Stop to wait at: {}'.format(self.format_float_time_to_readable(stop_time)))
+        logger.debug('   Waiting time is {}'.format(stop_time-start_time))
 
-    @attr('single_node')
-    def default_ttl_test(self):
+    @pytest.mark.single_node
+    def test_default_ttl(self):
         """ Test default_time_to_live specified on a table """
 
         self.prepare(default_time_to_live=1)
@@ -104,8 +103,8 @@ class TestTTL(Tester):
         self.smart_sleep(start, 3)
         assert_row_count(self.session1, 'ttl_table', 0)
 
-    @attr('single_node')
-    def insert_ttl_has_priority_on_defaut_ttl_test(self):
+    @pytest.mark.single_node
+    def test_insert_ttl_has_priority_on_defaut_ttl(self):
         """ Test that a ttl specified during an insert has priority on the default table ttl """
 
         self.prepare(default_time_to_live=1)
@@ -125,8 +124,8 @@ class TestTTL(Tester):
         self.smart_sleep(start, 6)
         assert_row_count(self.session1, 'ttl_table', 0)
 
-    @attr('single_node')
-    def insert_ttl_works_without_default_ttl_test(self):
+    @pytest.mark.single_node
+    def test_insert_ttl_works_without_default_ttl(self):
         """ Test that a ttl specified during an insert works even if a table has no default ttl """
 
         self.prepare()
@@ -146,8 +145,8 @@ class TestTTL(Tester):
         self.smart_sleep(start, 7)
         assert_row_count(self.session1, 'ttl_table', 0)
 
-    @attr('single_node')
-    def default_ttl_can_be_removed_test(self):
+    @pytest.mark.single_node
+    def test_default_ttl_can_be_removed(self):
         """ Test that default_time_to_live can be removed """
 
         self.prepare(default_time_to_live=1)
@@ -160,8 +159,10 @@ class TestTTL(Tester):
         self.smart_sleep(start, 1.5)
         assert_row_count(self.session1, 'ttl_table', 1)
 
-    @attr('next-gating', 'dtest-debug', 'single_node')
-    def removing_default_ttl_does_not_affect_existing_rows_test(self):
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
+    @pytest.mark.single_node
+    def test_removing_default_ttl_does_not_affect_existing_rows(self):
         """ Test that removing a default_time_to_live doesn't affect the existings rows """
 
         self.prepare(default_time_to_live=1)
@@ -183,8 +184,9 @@ class TestTTL(Tester):
         self.smart_sleep(start, 20)
         assert_row_count(self.session1, 'ttl_table', 1)
 
-    @attr('next-gating', 'dtest-debug')
-    def row_marker_for_ttl_test(self):
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
+    def test_row_marker_for_ttl(self):
         """ Test that rows are removed correctly with a default_time_to_live and TTL
             Test the table with PK and CK
         """
@@ -201,12 +203,12 @@ class TestTTL(Tester):
             INSERT INTO ttl_table (key, col1, col2, col3) VALUES (%d, %d, %d, %d);
         """ % (1, 1, 1, 1))
         start_default = time.time()
-        debug("Wrote [1, 1, 1, 1] with default ttl {}".format(default_ttl))
+        logger.debug("Wrote [1, 1, 1, 1] with default ttl {}".format(default_ttl))
         self.session1.execute("""
             INSERT INTO ttl_table (key, col1, col2, col3) VALUES (%d, %d, %d, %d) USING TTL %d;
         """ % (1, 2, 2, 2, explicit_ttl))
         start_explicit = time.time()
-        debug("Wrote [1, 2, 2, 2] with explicit ttl {}".format(explicit_ttl))
+        logger.debug("Wrote [1, 2, 2, 2] with explicit ttl {}".format(explicit_ttl))
 
         def get_rows(session):
             res = session.execute("SELECT * FROM ttl_table;")
@@ -226,7 +228,7 @@ class TestTTL(Tester):
                 time.sleep(1)
                 delta = time.time() - start
                 rows = get_rows(self.session1)
-            debug("Got {} after {} seconds".format(rows, delta))
+            logger.debug("Got {} after {} seconds".format(rows, delta))
             assert_rows(rows, expected_next)
             assert ttl - \
                 1 <= delta, "Expected delta time to be greater than {} seconds, but got {}".format(ttl - 1, delta)
@@ -241,8 +243,8 @@ class TestTTL(Tester):
 
         assert_row_count(self.session1, 'ttl_table', 0)
 
-    @attr('single_node')
-    def update_single_column_ttl_test(self):
+    @pytest.mark.single_node
+    def test_update_single_column_ttl(self):
         """ Test that specifying a TTL on a single column works """
 
         self.prepare()
@@ -256,8 +258,8 @@ class TestTTL(Tester):
         self.smart_sleep(start, 5)
         assert_all(self.session1, "SELECT * FROM ttl_table;", [[1, None, 1, 1]])
 
-    @attr('single_node')
-    def update_multiple_columns_ttl_test(self):
+    @pytest.mark.single_node
+    def test_update_multiple_columns_ttl(self):
         """ Test that specifying a TTL on multiple columns works """
 
         self.prepare()
@@ -273,8 +275,8 @@ class TestTTL(Tester):
         self.smart_sleep(start, 4)
         assert_all(self.session1, "SELECT * FROM ttl_table;", [[1, None, None, None]])
 
-    @attr('single_node')
-    def update_column_ttl_with_default_ttl_test(self):
+    @pytest.mark.single_node
+    def test_update_column_ttl_with_default_ttl(self):
         """
         Test that specifying a column ttl works when a default ttl is set.
         This test specify a lower ttl for the column than the default ttl.
@@ -293,8 +295,8 @@ class TestTTL(Tester):
         self.smart_sleep(start, 10)
         assert_row_count(self.session1, 'ttl_table', 0)
 
-    @attr('single_node')
-    def update_column_ttl_with_default_ttl_test2(self):
+    @pytest.mark.single_node
+    def test_update_column_ttl_with_default_ttl_2(self):
         """
         Test that specifying a column ttl works when a default ttl is set.
         This test specify a higher column ttl than the default ttl.
@@ -312,8 +314,8 @@ class TestTTL(Tester):
         self.smart_sleep(start, 8)
         assert_row_count(self.session1, 'ttl_table', 0)
 
-    @attr('single_node')
-    def remove_column_ttl_test(self):
+    @pytest.mark.single_node
+    def test_remove_column_ttl(self):
         """
         Test that removing a column ttl works.
         """
@@ -328,8 +330,10 @@ class TestTTL(Tester):
         self.smart_sleep(start, 4)
         assert_all(self.session1, "SELECT * FROM ttl_table;", [[1, 42, None, None]])
 
-    @attr('next-gating', 'dtest-debug', 'single_node')
-    def remove_column_ttl_with_default_ttl_test(self):
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
+    @pytest.mark.single_node
+    def test_remove_column_ttl_with_default_ttl(self):
         """
         Test that we cannot remove a column ttl when a default ttl is set.
         """
@@ -351,8 +355,8 @@ class TestTTL(Tester):
         self.smart_sleep(start, 10)
         assert_row_count(self.session1, 'ttl_table', 0)
 
-    @attr('single_node')
-    def collection_list_ttl_test(self):
+    @pytest.mark.single_node
+    def test_collection_list_ttl(self):
         """
         Test that ttl has a granularity of elements using a list collection.
         """
@@ -382,8 +386,8 @@ class TestTTL(Tester):
         self.smart_sleep(start, 12)
         assert_row_count(self.session1, 'ttl_table', 0)
 
-    @attr('single_node')
-    def collection_set_ttl_test(self):
+    @pytest.mark.single_node
+    def test_collection_set_ttl(self):
         """
         Test that ttl has a granularity of elements using a set collection.
         """
@@ -421,8 +425,8 @@ class TestTTL(Tester):
         self.smart_sleep(start, 12)
         assert_row_count(self.session1, 'ttl_table', 0)
 
-    @attr('single_node')
-    def collection_map_ttl_test(self):
+    @pytest.mark.single_node
+    def test_collection_map_ttl(self):
         """
         Test that ttl has a granularity of elements using a map collection.
         """
@@ -460,15 +464,12 @@ class TestTTL(Tester):
         self.smart_sleep(start, 8)
         assert_row_count(self.session1, 'ttl_table', 0)
 
-    @attr('single_node')
-    def delete_with_ttl_expired_test(self):
+    @pytest.mark.single_node
+    def test_delete_with_ttl_expired(self):
         """
         Updating a row with a ttl does not prevent deletion, test for CASSANDRA-6363
         """
         self.prepare()
-
-        if self._preserve_cluster:
-            drop_table(session=self.session1, table_name='session', if_exists=True)
 
         self.session1.execute("CREATE TABLE session (id text, usr text, valid int, PRIMARY KEY (id))")
 
@@ -482,9 +483,9 @@ class TestTTL(Tester):
         self.session1.execute("delete from session where id = 'abc'")
         assert_row_count(self.session1, 'session', 0)
 
-    @require('3182')
-    @attr('single_node')
-    def boundary_ttl_test(self):
+    @pytest.mark.require('#3182')
+    @pytest.mark.single_node
+    def test_boundary_ttl(self):
         """
         Test with boundary invalid and valid TTL.
 
@@ -497,9 +498,6 @@ class TestTTL(Tester):
         """
         DEBUG_WITH_BUG_TTL = False
         self.prepare()
-
-        if self._preserve_cluster:
-            drop_table(session=self.session1, table_name='session', if_exists=True)
 
         self.session1.execute("CREATE TABLE session (id text, usr text, valid int, PRIMARY KEY (id))")
 
@@ -548,19 +546,19 @@ class TestTTL(Tester):
             self.session1.execute(statement)
 
     def execute_statement(self, action, ttl, start_key_value, end_key_value, table_name):
-        # debug('{action} rows {start_key_value}-{end_key_value} using TTL {ttl}'.format(**locals()))
+        # logger.debug('{action} rows {start_key_value}-{end_key_value} using TTL {ttl}'.format(**locals()))
         readble_start_time = self.format_float_time_to_readable()
-        debug('{action} rows with keys from {start_key_value} to {end_key_value} with TTL {ttl} started at '
-              '{readble_start_time}'.format(**locals()))
+        logger.debug('{action} rows with keys from {start_key_value} to {end_key_value} with TTL {ttl} started at '
+                     '{readble_start_time}'.format(**locals()))
         # TODO: add UPDATE action
         if action == 'INSERT':
             self.insert_few_rows(start=start_key_value, end=end_key_value, ttl=ttl, table_name=table_name)
         execute_time = time.time()
         readble_execute_time = self.format_float_time_to_readable(execute_time)
-        debug('{} has been finished at {}'.format(action, readble_execute_time))
+        logger.debug('{} has been finished at {}'.format(action, readble_execute_time))
         return execute_time
 
-    def overlaped_rows_ttls_test(self):
+    def test_overlaped_rows_ttls(self):
         """ Test when different ttls are applyed  to the same rows
             Perform the test for different compaction strategies
         """
@@ -571,13 +569,13 @@ class TestTTL(Tester):
                       'TimeWindowCompactionStrategy']
         table_name = 'ttl_table'
         for strategy in strategies:
-            debug('================  Run with {} ==============='.format(strategy))
+            logger.debug('================  Run with {} ==============='.format(strategy))
             drop_table(session=self.session1, table_name=table_name, if_exists=True)
 
             self.session1.execute('CREATE TABLE %s (key int, col1 int, col2 int, col3 int, PRIMARY KEY (key, col1)) '
                                   'WITH compaction = {\'class\': \'%s\'}' % (table_name, strategy))
 
-            # debug('Insert 20 rows with default TTL')
+            # logger.debug('Insert 20 rows with default TTL')
             rows = 20
             self.insert_few_rows(start=1, end=rows, table_name=table_name)
             assert_row_count(self.session1, 'ttl_table', rows)
@@ -611,19 +609,16 @@ class TestTTL(Tester):
                           }
 
             for ttl in ttls:
-                debug('*******Assert records with TTL {}'.format(ttl))
+                logger.debug('*******Assert records with TTL {}'.format(ttl))
                 self.smart_sleep_with_print(steps[ttl]['execute_time'], ttl+2)
                 assert_all(session=self.session1, query='select key from {}'.format(table_name),
                            expected=steps[ttl]['expected_result'], cl=ConsistencyLevel.QUORUM, ignore_order=True)
 
 
-@attr('dtest-full')
+@pytest.mark.dtest_full
 class TestDistributedTTL(Tester):
 
     """ Test Time To Live Feature in a distributed environment """
-
-    def setUp(self):
-        super(TestDistributedTTL, self).setUp()
 
     def prepare(self, default_time_to_live=None, options=None):
         if options:
@@ -631,7 +626,7 @@ class TestDistributedTTL(Tester):
         self.cluster.populate(2).start()
         [self.node1, self.node2] = self.cluster.nodelist()
         self.session1 = self.patient_cql_connection(self.node1)
-        self.create_ks(self.session1, 'ks', 2)
+        create_ks(self.session1, 'ks', 2)
 
         drop_table(session=self.session1, table_name='ttl_table', if_exists=True)
         query = """
@@ -647,7 +642,7 @@ class TestDistributedTTL(Tester):
 
         self.session1.execute(query)
 
-    def ttl_is_replicated_test(self):
+    def test_ttl_is_replicated(self):
         """
         Test that the ttl setting is replicated properly on all nodes
         """
@@ -673,17 +668,17 @@ class TestDistributedTTL(Tester):
 
         # since the two queries are not executed simultaneously, the remaining
         # TTLs can differ by one second
-        self.assertLessEqual(abs(ttl_session1[0][0] - ttl_session2[0][0]), 1)
+        assert abs(ttl_session1[0][0] - ttl_session2[0][0]) <= 1
 
         time.sleep(7)
 
         assert_none(session1, "SELECT * FROM ttl_table;", cl=ConsistencyLevel.ALL)
 
-    def ttl_is_respected_on_delayed_replication_test(self):
+    def test_ttl_is_respected_on_delayed_replication(self):
         """ Test that ttl is respected on delayed replication """
 
         self.prepare(options={'shadow_round_ms': 1000})
-        debug("Stopping node2")
+        logger.debug("Stopping node2")
         self.node2.stop()
         self.session1.execute("""
             INSERT INTO ttl_table (key, col1) VALUES (1, 1) USING TTL 5;
@@ -697,21 +692,21 @@ class TestDistributedTTL(Tester):
             [[1, 1, None, None], [2, 2, None, None]]
         )
         time.sleep(7)
-        debug("Stopping node1")
+        logger.debug("Stopping node1")
         self.node1.stop()
-        debug("Restarting node2")
+        logger.debug("Restarting node2")
         self.node2.start(wait_for_binary_proto=True)
         session2 = self.patient_exclusive_cql_connection(self.node2)
         session2.execute("USE ks;")
-        debug("Expecting empty ttl_table")
+        logger.debug("Expecting empty ttl_table")
         assert_row_count(session2, 'ttl_table', 0)  # should be 0 since node1 is down, no replica yet
-        debug("Restarting node1")
+        logger.debug("Restarting node1")
         self.node1.start(wait_for_binary_proto=True)
         self.session1 = self.patient_exclusive_cql_connection(self.node1)
         self.session1.execute("USE ks;")
         self.node1.cleanup()
 
-        debug("Expecting row in ttl_table")
+        logger.debug("Expecting row in ttl_table")
         assert_all(session2, "SELECT count(*) FROM ttl_table", [[1]], cl=ConsistencyLevel.ALL)
         assert_all(
             session2,
@@ -723,12 +718,12 @@ class TestDistributedTTL(Tester):
         # Check that the TTL on both server are the same
         ttl_session1 = self.session1.execute('SELECT ttl(col1) FROM ttl_table;')
         ttl_session2 = session2.execute('SELECT ttl(col1) FROM ttl_table;')
-        debug("ttl_session1={} ttl_session2={}".format(ttl_session1, ttl_session2))
-        self.assertLessEqual(abs(ttl_session1[0][0] - ttl_session2[0][0]), 1)
+        logger.debug("ttl_session1={} ttl_session2={}".format(ttl_session1, ttl_session2))
+        assert abs(ttl_session1[0][0] - ttl_session2[0][0]) <= 1
 
-    @attr('next-gating')
-    @attr('dtest-debug')
-    def ttl_is_respected_on_repair_test(self):
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
+    def test_ttl_is_respected_on_repair(self):
         """ Test that ttl is respected on repair """
 
         self.prepare()
