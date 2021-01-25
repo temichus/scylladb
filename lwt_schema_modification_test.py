@@ -1,13 +1,16 @@
-from dtest import Tester, debug
+import pytest
+
+from dtest_class import Tester, create_ks
 from cassandra import ConsistencyLevel
 from cassandra.query import BatchStatement
 from random import randint
 from time import sleep, time
 from threading import Thread, Event
-from unittest import skip
-from nose.tools import eq_
-from nose.plugins.attrib import attr
 from psutil import cpu_count
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 KEYSPACE = "lwt_load_ks"
 
@@ -92,7 +95,7 @@ class ReadRows():
 
         while not stop.is_set() and (not end_time or time() < end_time):
             rows = listify(sorted(session.execute(select_stmt).current_rows))
-            eq_(rows, rows_expected)
+            assert rows == rows_expected
             if self.loop_delay:
                 sleep(self.loop_delay)
 
@@ -132,7 +135,7 @@ class LWTLoad():
             end_event.set()
 
 
-class LWTLoadCheck():
+class LWTLoadCheck:
     """Perform LWT inserts and check results"""
 
     def __init__(self, name=None, wait_for=None, end=None, node=0,
@@ -148,7 +151,7 @@ class LWTLoadCheck():
         insert_stmt = session.prepare("INSERT INTO table1 (pk, v) VALUES (:pk, :v)  IF NOT EXISTS")
         insert_stmt.serial_consistency_level = ConsistencyLevel.LOCAL_SERIAL
 
-        debug("Producing LWT load on the cluster")
+        logger.debug("Producing LWT load on the cluster")
         end_time = time() + self.end if self.end else None
 
         if start_event:
@@ -158,7 +161,7 @@ class LWTLoadCheck():
         fails = 0
         while i <= self.row_end:
             if stop.is_set() or (end_time and time() > end_time):
-                debug("LWTLoadCheck premature finish")
+                logger.debug("LWTLoadCheck premature finish")
                 break
             result = session.execute(insert_stmt, (i, i))
             if result.current_rows[0].applied:
@@ -166,7 +169,7 @@ class LWTLoadCheck():
             else:
                 fails += 1      # retry
 
-        debug("LWTLoadCheck done inserting")
+        logger.debug("LWTLoadCheck done inserting")
         select_cql = """SELECT sum(v) FROM table1
                         WHERE pk >= %i AND pk <= %i
                         ALLOW FILTERING""" % (self.row_start, self.row_end)
@@ -176,13 +179,13 @@ class LWTLoadCheck():
         expected = (n/2)*(self.row_start + i - 1)    # i = last written+1
         assert result == expected
 
-        debug("Finished LWT stress workload")
+        logger.debug("Finished LWT stress workload")
 
         if end_event:
             end_event.set()
 
 
-class DropAddColumn():
+class DropAddColumn:
     """Alter table by removing and adding back again a column
      in a way that doesn"t render the queries incompatible"""
 
@@ -210,7 +213,7 @@ class DropAddColumn():
             end_event.set()
 
 
-class AlterColumnType():
+class AlterColumnType:
     """Alter column v type while used in another query,
      in a way that doesn"t render the queries incompatible"""
 
@@ -223,14 +226,14 @@ class AlterColumnType():
         if start_event:
             start_event.wait()   # Wait for other action to signal done
 
-        debug("Alter column v to varint")
+        logger.debug("Alter column v to varint")
         session.execute("ALTER TABLE table1 ALTER v TYPE varint")
 
         if end_event:
             end_event.set()
 
 
-class DeleteRows():
+class DeleteRows:
     """Delete rows from table"""
 
     def __init__(self, name=None, wait_for=None, node=0,
@@ -264,7 +267,7 @@ class DeleteRows():
             end_event.set()
 
 
-class Truncate():
+class Truncate:
     """Truncate table
        NOTE: should be the only operation running
     """
@@ -284,7 +287,7 @@ class Truncate():
             end_event.set()
 
 
-class BatchInserts():
+class BatchInserts:
     """Batch reads"""
 
     def __init__(self, name=None, wait_for=None, node=0, loops=100,
@@ -316,7 +319,7 @@ class BatchInserts():
             end_event.set()
 
 
-class IndexDropAdd():
+class IndexDropAdd:
     """Drop an existing index and add it again"""
 
     def __init__(self, name=None, wait_for=None, node=0, inter_delay=0):
@@ -337,7 +340,7 @@ class IndexDropAdd():
             end_event.set()
 
 
-class MaterializedView():
+class MaterializedView:
     """Drop an existing index and add it again"""
 
     def __init__(self, name=None, wait_for=None, node=0, row_max=10,
@@ -368,7 +371,7 @@ class MaterializedView():
 
         while not stop.is_set():
             rows = listify(sorted(session.execute(select_stmt).current_rows))
-            eq_(rows, rows_expected)
+            assert rows == rows_expected
             if self.loop_delay:
                 sleep(self.loop_delay)
 
@@ -378,8 +381,8 @@ class MaterializedView():
             end_event.set()
 
 
-@attr('dtest-full')
-class LWTSchemaModificationTester(Tester):
+@pytest.mark.dtest_full
+class TestLWTSchemaModification(Tester):
     """
     Tests LWT schema change under load
     """
@@ -395,19 +398,19 @@ class LWTSchemaModificationTester(Tester):
         node = cluster.nodelist()[0]
 
         session = self.patient_cql_connection(node)
-        self.create_ks(session=session, name=KEYSPACE, rf=rf)
+        create_ks(session=session, name=KEYSPACE, rf=rf)
         return cluster
 
     def _case_prologue(self, nrows):
         """Prepare for round"""
-        debug("Preparing {}.{} with index {}".format(KEYSPACE, "table1", "table1_v_idx"))
+        logger.debug("Preparing {}.{} with index {}".format(KEYSPACE, "table1", "table1_v_idx"))
         session = self.patient_cql_connection(self.cluster.nodelist()[0])
         session.execute("USE " + KEYSPACE)
         session.execute("CREATE TABLE table1 (pk int PRIMARY KEY, v int, int_col int)")
         session.execute("CREATE INDEX table1_v_idx ON table1 (v)")
         insert_cql = "INSERT INTO table1 (pk, v, int_col) VALUES (?, ?, ?)"
         insert_stmt = session.prepare(insert_cql)
-        debug("Inserting {} rows into {}.{}".format(nrows, KEYSPACE, "table1"))
+        logger.debug("Inserting {} rows into {}.{}".format(nrows, KEYSPACE, "table1"))
         for i in range(nrows):
             session.execute(insert_stmt, (i, i, i))
 
@@ -432,14 +435,14 @@ class LWTSchemaModificationTester(Tester):
 
         actual_smp = min(smp, cpu_count())
         if actual_smp != smp:
-            debug("smp limited to {}".format(actual_smp))
+            logger.debug("smp limited to {}".format(actual_smp))
 
         cluster = self._setup(nodes=nodes, rf=rf, jvm_args=["--smp", str(actual_smp)])
         stop = Event()
 
         self._case_prologue(nrows)
         for i in range(loops):
-            debug("Staring loop {}/{}".format(i, loops))
+            logger.debug("Staring loop {}/{}".format(i, loops))
             # For each action create a thread
             threads = []
             action_names = [action.name for action in actions if action.name]
@@ -471,29 +474,29 @@ class LWTSchemaModificationTester(Tester):
 
         cluster.stop()
 
-    @skip("issue #6151    alter column type vs reads")
-    def table_alter_col_type_test(self):
+    @pytest.mark.skip("issue #6151    alter column type vs reads")
+    def test_table_alter_col_type(self):
         self._test_combine([ReadRows(row_start=0, row_end=9),
                             AlterColumnType()],
                            run_s=10)
 
-    @skip("issue #6174  add/remove column changing type vs LWT deletes")
-    def table_alter_delete_test(self):
+    @pytest.mark.skip("issue #6174  add/remove column changing type vs LWT deletes")
+    def test_table_alter_delete(self):
         """Table alter test"""
         self._test_combine([DropAddColumn(),
                             DeleteRows(row_start=1, row_end=1000, lwt=True)],
                            loops=3, run_s=10)
 
-    @skip("issue #6185 alter columns in parallel bug")
-    def schema_both_test(self):
+    @pytest.mark.skip("issue #6185 alter columns in parallel bug")
+    def test_schema_both(self):
         """Alter two columns of same table.
            change type on one and remove/add on the second one"""
         self._test_combine([DropAddColumn(),
                             AlterColumnType()],
                            run_s=10)
 
-    @skip("issue #6151    alter column type vs reads")
-    def all_test(self):
+    @pytest.mark.skip("issue #6151    alter column type vs reads")
+    def test_all(self):
         self._test_combine([ReadRows(row_start=0, row_end=99),   # NOTE: change to 9 for more fun
                             LWTLoad(),
                             DropAddColumn(inter_delay=.2),
@@ -501,7 +504,7 @@ class LWTSchemaModificationTester(Tester):
                             DeleteRows(row_start=100, row_end=1000, lwt=True)],
                            loops=2, run_s=10)
 
-    def lwt_truncate_test(self):
+    def test_lwt_truncate(self):
         self._test_combine([LWTLoad(end=1),
                             Truncate(name="truncate"),
                             InsertRows(name="insert", wait_for="truncate", start_value=10000),
@@ -509,29 +512,29 @@ class LWTSchemaModificationTester(Tester):
                             ReadRows(wait_for="insert")],
                            smp=8, nodes=8, loops=1, run_s=10)
 
-    def lwt_load_test(self):
+    def test_lwt_load(self):
         self._test_combine([ReadRows(row_start=0, row_end=1000),
                             LWTLoad(row_start=1001, row_end=9999)],
                            smp=8, nodes=8, nrows=10000, loops=4,
                            run_s=30)
 
-    def lwt_batch_insert_test(self):
+    def test_lwt_batch_insert(self):
         self._test_combine([LWTLoad(end=1),
                             BatchInserts(node=1)],
                            smp=8, nodes=8, loops=1, run_s=10)
 
-    def index_drop_add_test(self):
+    def test_index_drop_add(self):
         self._test_combine([LWTLoad(row_start=1001, row_end=9999),
                             ReadRows(row_end=1000),
                             IndexDropAdd(inter_delay=.5)],
                            nrows=10000, loops=4, run_s=10)
 
-    def materialized_view_test(self):
+    def test_materialized_view(self):
         self._test_combine([LWTLoad(row_start=1001, row_end=9999),
                             MaterializedView(row_max=1000)],
                            nrows=10000, loops=1, run_s=10)
 
-    def lwt_load_check_test(self):
+    def test_lwt_load_check(self):
         self._test_combine([LWTLoad(row_start=1, row_end=99),
                             LWTLoadCheck(row_start=100, row_end=99999999)],
                            smp=8, nodes=8, nrows=0, loops=1, run_s=30, rf=3)
