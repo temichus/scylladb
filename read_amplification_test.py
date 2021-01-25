@@ -29,7 +29,7 @@ class TestReadAmplification(Tester):
         for node_ip in node_ips:
             node_metrics = get_node_metrics(node_ip=node_ip, metrics=list(metrics.keys()))
             for key in metrics:
-                assert key == node_metrics, 'Metrics not found: {}'.format(key)
+                assert key in node_metrics, 'Metrics not found: {}'.format(key)
             metrics = {k: metrics[k] + node_metrics[k] for k in metrics}
         logger.debug(metrics)
         return metrics
