@@ -50,7 +50,7 @@ class Row:
         return f"pk:{self.pk};ck:{self.ck}:{[col for col in self.cols]}"
 
     def __repr__(self):
-        return f"pk:{self.pk};ck:{self.ck}:{[col for col in self.cols]}"
+        return self.__str__()
 
 
 class DataGenerator:
@@ -70,7 +70,7 @@ class DataGenerator:
         return self._counter
 
     def _generate_data(self):
-        pass
+        raise NotImplementedError
 
     def _build_batch_data(self, data, only_columns=None):
         batch = []
@@ -112,12 +112,12 @@ class DataGenerator:
         if not first:
             first = self.build_batch_empty_data()
         new_data = []
-        for frow in first:
-            srows = list(filter(lambda x: x.pk == frow.pk and x.ck == frow.ck, second))
-            if srows:
-                r = Row(frow.pk, frow.ck)
-                for fcol in frow.cols:
-                    scol = list(filter(lambda x: x.name == fcol.name, srows[0].cols))
+        for first_row in first:
+            second_rows = list(filter(lambda x: x.pk == first_row.pk and x.ck == first_row.ck, second))
+            if second_rows:
+                r = Row(first_row.pk, first_row.ck)
+                for fcol in first_row.cols:
+                    scol = list(filter(lambda x: x.name == fcol.name, second_rows[0].cols))
                     if scol:
                         r.cols.append(scol[0])
                     else:
@@ -128,12 +128,12 @@ class DataGenerator:
 
     def exclude_dataset(self, first, second):
         new_data = []
-        for frow in first:
-            srows = list(filter(lambda x: x.pk == frow.pk and x.ck == frow.ck, second))
-            if srows:
-                r = Row(frow.pk, frow.ck)
-                for fcol in frow.cols:
-                    scol = list(filter(lambda x: x.name == fcol.name, srows[0].cols))
+        for first_row in first:
+            second_rows = list(filter(lambda x: x.pk == first_row.pk and x.ck == first_row.ck, second))
+            if second_rows:
+                r = Row(first_row.pk, first_row.ck)
+                for fcol in first_row.cols:
+                    scol = list(filter(lambda x: x.name == fcol.name, second_rows[0].cols))
                     if scol:
                         r.cols.append(fcol)
                     else:

@@ -1,9 +1,11 @@
 import re
 import logging
+
 from itertools import groupby
 from operator import attrgetter
 
 import pytest
+
 from cassandra.cluster import Session, SimpleStatement
 from cassandra import ConsistencyLevel
 
@@ -14,7 +16,103 @@ from tools.cdc_utils import mkident, get_next_timestamp
 
 
 logging.basicConfig(level=logging.DEBUG)
+
 logger = logging.getLogger(__name__)
+
+
+class DataGeneratorWithStaticColumn(DataGenerator):
+    """
+    Base class for generating data with
+    static and non-static columns
+
+    Instance of class can generate object object of dataset
+    with provided in subclass data type for columns. it generates
+    row with provided number of primary and cluster key, number of
+    regular columns and static columns.
+
+    These data set is used in cdc tests for putting into base
+    table and check expected results in scylla_cdc_log table
+    """
+    default_ttl = 1000
+
+    def __init__(self, pk_num, ck_num, cols_num, static_col_num=None, use_ttl=False, use_ts=False):
+        self.static_col_num = static_col_num
+        super().__init__(pk_num, ck_num, cols_num, use_ttl, use_ts)
+
+    def _build_batch_data(self, data, only_columns=None, only_stat_columns=None):
+        """
+            Build dataset as batch of data row
+        """
+        batch = []
+        for i in range(self.pk_num):
+            for j in range(self.ck_num):
+                cols = []
+                cols_ids = list(range(self.cols_num)) if not only_columns else only_columns
+                for k in cols_ids:
+                    col_ttl = self.default_ttl + k if self.use_ttl else None
+                    col_ts = get_next_timestamp() if self.use_ts else None
+                    cols.append(Column(name=f"cval{k}", value=data[k], ttl=col_ttl, timestamp=col_ts))
+                cols_ids = list(range(self.static_col_num)) if not only_stat_columns else only_stat_columns
+                for k in cols_ids:
+                    col_ttl = self.default_ttl + k if self.use_ttl else None
+                    col_ts = get_next_timestamp() if self.use_ts else None
+                    cols.append(Column(name=f"stval{k}", value=data[k], ttl=col_ttl, timestamp=col_ts, is_static=True))
+                batch.append(Row(i, j, cols))
+
+        return batch
+
+    def build_batch_empty_data(self):
+        return self._build_batch_data([None] * (self.cols_num + self.static_col_num))
+
+
+class IntDataGenerator(DataGeneratorWithStaticColumn):
+    def _generate_data(self):
+        return [i + self.seed for i in range(self.cols_num + self.static_col_num)]
+
+
+class BigintDataGenerator(DataGeneratorWithStaticColumn):
+    def _generate_data(self):
+        return [32000 + i + self.seed for i in range(self.cols_num + self.static_col_num)]
+
+
+class MapIntIntDataGenerator(DataGeneratorWithStaticColumn):
+    def _generate_data(self):
+        return [{i + self.seed: i + self.seed + 10} for i in range(self.cols_num + self.static_col_num)]
+
+
+class TextDataGenerator(DataGeneratorWithStaticColumn):
+    def _generate_data(self):
+        return [f"text{i + self.seed}" for i in range(self.cols_num + self.static_col_num)]
+
+
+class VarcharDataGenerator(DataGeneratorWithStaticColumn):
+    def _generate_data(self):
+        return [f"varchar{i + self.seed}" for i in range(self.cols_num + self.static_col_num)]
+
+
+class FrozensetintDataGenerator(DataGeneratorWithStaticColumn):
+    def _generate_data(self):
+        return [{i + self.seed, i + self.seed + 10} for i in range(self.cols_num + self.static_col_num)]
+
+
+class FrozensettextDataGenerator(DataGeneratorWithStaticColumn):
+    def _generate_data(self):
+        return [{f"frozenset{i + self.seed}", f"frozenset{i + self.seed + 10}"} for i in range(self.cols_num + self.static_col_num)]
+
+
+class FrozenlistintDataGenerator(DataGeneratorWithStaticColumn):
+    def _generate_data(self):
+        return [[i + self.seed, i + self.seed + 10] for i in range(self.cols_num + self.static_col_num)]
+
+
+class SetintDataGenerator(DataGeneratorWithStaticColumn):
+    def _generate_data(self):
+        return [{i + self.seed, i + self.seed + 10} for i in range(self.cols_num + self.static_col_num)]
+
+
+class ListintDataGenerator(DataGeneratorWithStaticColumn):
+    def _generate_data(self):
+        return [[i + self.seed, i + self.seed + 10] for i in range(self.cols_num + self.static_col_num)]
 
 
 checking_types = ["int", "bigint", "text", "map<int,int>", "varchar",
@@ -22,10 +120,33 @@ checking_types = ["int", "bigint", "text", "map<int,int>", "varchar",
                   "set<int>", "list<int>"]
 
 
+def get_generator(data_type):
+    for subclass in DataGeneratorWithStaticColumn.__subclasses__():
+        name = re.sub("[<>,]", '', data_type)
+        if subclass.__name__.lower().startswith(name):
+            return subclass
+
+
+def get_row_by_pk_and_ck(dataset, pk, ck):
+    return next(filter(lambda x: x.pk == pk and x.ck == ck, dataset))
+
+
 @pytest.mark.dtest_full
 @pytest.mark.single_node
 class TestCDCStaticRow(Tester, CDCInitializeHelper):
+    """
+    Check correctness of data in cdc log table for static row
 
+    CDC feature process static row in different way than regular
+    row. If mutation have only static column modification, the cdc
+    log rows written as usual
+    if mutation query contains static column and regular column,
+    cdc split such single query and build batch, where cdc log row contains
+    only static column modification data and then cdc log row with
+    regular columng data
+
+    More information by: https://docs.scylladb.com/using-scylla/cdc/cdc-basic-operations/
+    """
     keyspace = "ks"
     table = "cf"
     num_of_columns = 0
@@ -347,8 +468,8 @@ class TestCDCStaticRow(Tester, CDCInitializeHelper):
             if self.columns_type.startswith("list") and actual_column_value:
                 actual_column_value = list(actual_column_value.values())
             assert actual_column_value == expected_column.value, \
-                f"Column {expected_column.name} has different value in cdc_row: {actual_column_value} \
-                             vs expected {expected_column.value}\n {actual} \n {expected}"
+                (f"Column {expected_column.name} has different value in cdc_row: {actual_column_value} "
+                 f"vs expected {expected_column.value}\n {actual} \n {expected}")
 
     @staticmethod
     def generate_expected_cdc_rows(dataset, prev_dataset=None, preimage=False, postimage=False, only_static=False):
@@ -418,94 +539,3 @@ class TestCDCStaticRow(Tester, CDCInitializeHelper):
             expected_data[pk] = expected_partition_data
 
         return expected_data
-
-
-class DataGeneratorWithStaticColumn(DataGenerator):
-    default_ttl = 1000
-
-    def __init__(self, pk_num, ck_num, cols_num, static_col_num=None, use_ttl=False, use_ts=False):
-        self.static_col_num = static_col_num
-        super().__init__(pk_num, ck_num, cols_num, use_ttl, use_ts)
-
-    def _build_batch_data(self, data, only_columns=None, only_stat=None):
-        batch = []
-        for i in range(self.pk_num):
-            for j in range(self.ck_num):
-                cols = []
-                cols_ids = list(range(self.cols_num)) if not only_columns else only_columns
-                for k in cols_ids:
-                    col_ttl = self.default_ttl + k if self.use_ttl else None
-                    col_ts = get_next_timestamp() if self.use_ts else None
-                    cols.append(Column(name=f"cval{k}", value=data[k], ttl=col_ttl, timestamp=col_ts))
-                cols_ids = list(range(self.static_col_num)) if not only_stat else only_stat
-                for k in cols_ids:
-                    col_ttl = self.default_ttl + k if self.use_ttl else None
-                    col_ts = get_next_timestamp() if self.use_ts else None
-                    cols.append(Column(name=f"stval{k}", value=data[k], ttl=col_ttl, timestamp=col_ts, is_static=True))
-                batch.append(Row(i, j, cols))
-
-        return batch
-
-    def build_batch_empty_data(self):
-        return self._build_batch_data([None for i in range(self.cols_num + self.static_col_num)])
-
-
-class IntDataGenerator(DataGeneratorWithStaticColumn):
-    def _generate_data(self):
-        return [i + self.seed for i in range(self.cols_num + self.static_col_num)]
-
-
-class BigintDataGenerator(DataGeneratorWithStaticColumn):
-    def _generate_data(self):
-        return [32000 + i + self.seed for i in range(self.cols_num + self.static_col_num)]
-
-
-class MapIntIntDataGenerator(DataGeneratorWithStaticColumn):
-    def _generate_data(self):
-        return [{i + self.seed: i + self.seed + 10} for i in range(self.cols_num + self.static_col_num)]
-
-
-class TextDataGenerator(DataGeneratorWithStaticColumn):
-    def _generate_data(self):
-        return [f"text{i + self.seed}" for i in range(self.cols_num + self.static_col_num)]
-
-
-class VarcharDataGenerator(DataGeneratorWithStaticColumn):
-    def _generate_data(self):
-        return [f"varchar{i + self.seed}" for i in range(self.cols_num + self.static_col_num)]
-
-
-class FrozensetintDataGenerator(DataGeneratorWithStaticColumn):
-    def _generate_data(self):
-        return [{i + self.seed, i + self.seed + 10} for i in range(self.cols_num + self.static_col_num)]
-
-
-class FrozensettextDataGenerator(DataGeneratorWithStaticColumn):
-    def _generate_data(self):
-        return [{f"frozenset{i + self.seed}", f"frozenset{i + self.seed + 10}"} for i in range(self.cols_num + self.static_col_num)]
-
-
-class FrozenlistintDataGenerator(DataGeneratorWithStaticColumn):
-    def _generate_data(self):
-        return [[i + self.seed, i + self.seed + 10] for i in range(self.cols_num + self.static_col_num)]
-
-
-class SetintDataGenerator(DataGeneratorWithStaticColumn):
-    def _generate_data(self):
-        return [{i + self.seed, i + self.seed + 10} for i in range(self.cols_num + self.static_col_num)]
-
-
-class ListintDataGenerator(DataGeneratorWithStaticColumn):
-    def _generate_data(self):
-        return [[i + self.seed, i + self.seed + 10] for i in range(self.cols_num + self.static_col_num)]
-
-
-def get_generator(data_type):
-    for subclass in DataGeneratorWithStaticColumn.__subclasses__():
-        name = re.sub("[<>,]", '', data_type)
-        if subclass.__name__.lower().startswith(name):
-            return subclass
-
-
-def get_row_by_pk_and_ck(dataset, pk, ck):
-    return next(filter(lambda x: x.pk == pk and x.ck == ck, dataset))
