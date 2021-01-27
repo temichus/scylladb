@@ -1,17 +1,25 @@
 import time
-from nose.plugins.attrib import attr
+import logging
 
+import pytest
 from cassandra.query import SimpleStatement
 
-from dtest import Tester, debug
+from dtest_class import Tester, create_ks
 
-# All tests here should run with row cache disabled to make sure that the filtering capability is indeed working properly.
+
+logger = logging.getLogger(__name__)
+
+
+# All tests here should run with row cache disabled to make sure that
+# the filtering capability is indeed working properly.
 # start_cluster_and_get_node1() starts Scylla with --enable-cache set to 0.
 
 
-@attr('dtest-full', 'single_node')
+@pytest.mark.dtest_full
+@pytest.mark.single_node
 class ClusteringKeyFilterTest(Tester):
-    # Check that a row tombstone is not discarded when its sstable doesn't contain clustering range specified in the query.
+    # Check that a row tombstone is not discarded when its sstable doesn't contain clustering range
+    # specified in the query.
 
     def _strategy_props(self):
         strategy = 'NullCompactionStrategy'
@@ -21,13 +29,13 @@ class ClusteringKeyFilterTest(Tester):
         # FIXME: min threshold == 999 is another way to disable minor compaction for this test. Use enabled property instead once it's available
         return "\'class\':\'" + strategy + "\', \'min_threshold\' : \'999\'"
 
-    @attr('next-gating')
-    @attr('dtest-debug')
-    def check_consistence_after_row_tombstone_test(self):
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
+    def test_check_consistence_after_row_tombstone(self):
         node1 = self.start_cluster_and_get_node1()
 
-        query = 'CREATE COLUMNFAMILY ks.cf (p1 text, c1 text, r1 int, PRIMARY KEY (p1, c1)) WITH compaction= {' + self._strategy_props(
-        ) + '};'
+        query = 'CREATE COLUMNFAMILY ks.cf (p1 text, c1 text, r1 int, PRIMARY KEY (p1, c1)) WITH compaction= {' + \
+                self._strategy_props() + '};'
         self.create_ks_and_cf(node1, query)
 
         query = 'INSERT INTO ks.cf (p1, c1, r1) VALUES (\'key1\', \'a\', 1);'
@@ -49,13 +57,13 @@ class ClusteringKeyFilterTest(Tester):
         result = self.select(node1, query)
         self.check_result(result, 'key1', ['a'])
 
-    @attr('next-gating')
-    @attr('dtest-debug')
-    def check_non_composite_test(self):
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
+    def test_check_non_composite(self):
         node1 = self.start_cluster_and_get_node1()
 
-        query = 'CREATE COLUMNFAMILY ks.cf (p1 text, c1 text, r1 int, PRIMARY KEY (p1, c1)) WITH compaction= {' + self._strategy_props(
-        ) + '};'
+        query = 'CREATE COLUMNFAMILY ks.cf (p1 text, c1 text, r1 int, PRIMARY KEY (p1, c1)) WITH compaction= {' + \
+                self._strategy_props() + '};'
         # print query
         self.create_ks_and_cf(node1, query)
 
@@ -96,13 +104,13 @@ class ClusteringKeyFilterTest(Tester):
         result = self.select(node1, query)
         self.check_result(result, 'key1', ['a'])
 
-    @attr('next-gating')
-    @attr('dtest-debug')
-    def check_composite_test(self):
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
+    def test_check_composite(self):
         node1 = self.start_cluster_and_get_node1()
 
-        query = 'CREATE COLUMNFAMILY ks.cf (p1 text, c1 text, c2 text, r1 int, PRIMARY KEY (p1, c1, c2)) WITH compaction= {' + self._strategy_props(
-        ) + '};'
+        query = 'CREATE COLUMNFAMILY ks.cf (p1 text, c1 text, c2 text, r1 int, PRIMARY KEY (p1, c1, c2)) WITH ' \
+                'compaction= {' + self._strategy_props() + '};'
         self.create_ks_and_cf(node1, query)
 
         query = 'INSERT INTO ks.cf (p1, c1, c2, r1) VALUES (\'key1\', \'a\', \'1\', 1);'
@@ -168,11 +176,11 @@ class ClusteringKeyFilterTest(Tester):
         result = self.select(node1, query)
         self.check_result_composite(result, 'key1', [['a', '1'], ['a', '2']])
 
-    def check_composite_2_test(self):
+    def test_check_composite_2(self):
         node1 = self.start_cluster_and_get_node1()
 
-        query = 'CREATE COLUMNFAMILY ks.cf (p1 text, c1 text, c2 text, r1 int, PRIMARY KEY (p1, c1, c2)) WITH compaction= {' + self._strategy_props(
-        ) + '};'
+        query = 'CREATE COLUMNFAMILY ks.cf (p1 text, c1 text, c2 text, r1 int, PRIMARY KEY (p1, c1, c2)) WITH ' \
+                'compaction= {' + self._strategy_props() + '};'
         self.create_ks_and_cf(node1, query)
 
         # This will create a sstable with min max ranges [a, a] and [c, c].
@@ -187,21 +195,21 @@ class ClusteringKeyFilterTest(Tester):
 
         self.check_number_of_rows(node1, 1)
 
-# HELPER FUNCTIONS
+    # HELPER FUNCTIONS
     def check_result(self, result, pkey, ckeys):
-        self.assertEqual(len(result), len(ckeys), "check number of clustering rows")
+        assert len(result) == len(ckeys), "check number of clustering rows"
         for i in range(len(result)):
-            self.assertEqual(result[i].p1, pkey, "check partition key")
-            self.assertEqual(result[i].c1, ckeys[i], "check clustering key")
+            assert result[i].p1 == pkey, "check partition key"
+            assert result[i].c1 == ckeys[i], "check clustering key"
 
     def check_result_composite(self, result, pkey, composite_ckeys):
-        self.assertEqual(len(result), len(composite_ckeys), "check number of clustering rows")
+        assert len(result) == len(composite_ckeys), "check number of clustering rows"
         for i in range(len(result)):
             composite_ckey = composite_ckeys[i]
-            self.assertEqual(len(composite_ckey), 2, "check size of composite ckey")
-            self.assertEqual(result[i].p1, pkey, "check partition key")
-            self.assertEqual(result[i].c1, composite_ckey[0], "check clustering key 1")
-            self.assertEqual(result[i].c2, composite_ckey[1], "check clustering key 2")
+            assert len(composite_ckey) == 2, "check size of composite ckey"
+            assert result[i].p1 == pkey, "check partition key"
+            assert result[i].c1 == composite_ckey[0], "check clustering key 1"
+            assert result[i].c2 == composite_ckey[1], "check clustering key 2"
 
     def start_cluster_and_get_node1(self):
         cluster = self.cluster
@@ -209,33 +217,33 @@ class ClusteringKeyFilterTest(Tester):
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfere with the test (this must be after the populate)
         cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
-        debug("Starting a cluster of one node...")
+        logger.debug("Starting a cluster of one node...")
         cluster.populate(1)
         cluster.start(jvm_args=['--enable-cache', '0'])
 
         return cluster.nodelist()[0]
 
     def create_ks_and_cf(self, node, query):
-        debug("Creating a CQL connection...")
+        logger.debug("Creating a CQL connection...")
         session = self.patient_cql_connection(node)
 
-        debug("Creating a keyspace 'ks'...")
-        self.create_ks(session, 'ks', 1)
+        logger.debug("Creating a keyspace 'ks'...")
+        create_ks(session, 'ks', 1)
 
-        debug("Creating a column family 'cf'...")
+        logger.debug("Creating a column family 'cf'...")
         session.execute(query)
         time.sleep(0.2)
 
-        debug("Flushing a keyspace...")
+        logger.debug("Flushing a keyspace...")
         node.nodetool("flush -- ks")
 
     def check_number_of_rows(self, node, expected_number_of_rows):
-        debug("Checking number of rows on node1...")
+        logger.debug("Checking number of rows on node1...")
         query = "SELECT COUNT(*) FROM cf"
         statement = SimpleStatement(query)
         s = self.patient_cql_connection(node, 'ks')
         result = list(s.execute(statement))
-        self.assertEqual(result[0].count, expected_number_of_rows, len(result))
+        assert result[0].count == expected_number_of_rows, str(len(result))
 
     def select(self, node1, query):
         statement = SimpleStatement(query)
