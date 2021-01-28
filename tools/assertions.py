@@ -1,11 +1,13 @@
 import re
 from time import sleep
-from tools.misc import list_to_hashed_dict
+
+from tools.data import get_list_res, rows_to_list, run_query_with_data_processing
 
 from cassandra import (InvalidRequest, ReadFailure, ReadTimeout, Unauthorized,
                        Unavailable, WriteFailure, WriteTimeout)
 from cassandra.query import SimpleStatement, ConsistencyLevel
 
+from tools.retrying import retrying
 
 """
 The assertion methods in this file are used to structure, execute, and test different queries and scenarios.
@@ -164,7 +166,9 @@ def assert_some(session, query, cl=None, execution_profile=None):
     assert list_res != [], "Expected something from {}, but got {}".format(query, list_res)
 
 
-def assert_all(session, query, expected, cl=None, ignore_order=False, timeout=None):
+@retrying(num_attempts=1, sleep_time=10)
+def assert_all(session, query, expected, cl=ConsistencyLevel.ONE, ignore_order=False, num_attempts=1,
+               result_as_string=False, print_result_on_failure=True, timeout=None):
     """
     Assert query returns all expected items optionally in the correct order
     @param session Session in use
@@ -173,18 +177,20 @@ def assert_all(session, query, expected, cl=None, ignore_order=False, timeout=No
     @param cl Optional Consistency Level setting. Default ONE
     @param ignore_order Optional boolean flag determining whether response is ordered
     @param timeout Optional query timeout, in seconds
+    @param num_attempts: defines how many time try to assert data in case failure. Used in retrying decorator
+    @param result_as_string: return result as string
+    @param print_result_on_failure print actual result in the error in case failure
 
     Examples:
     assert_all(session, "LIST USERS", [['aleksey', False], ['cassandra', True]])
     assert_all(self.session1, "SELECT * FROM ttl_table;", [[1, 42, 1, 1]])
     """
-    simple_query = SimpleStatement(query, consistency_level=cl)
-    res = session.execute(simple_query) if timeout is None else session.execute(simple_query, timeout=timeout)
-    list_res = _rows_to_list(res)
+    list_res = get_list_res(session, query, cl, ignore_order, result_as_string, timeout=timeout)
     if ignore_order:
-        expected = list_to_hashed_dict(expected)
-        list_res = list_to_hashed_dict(list_res)
-    assert list_res == expected, "Expected {} from {}, but got {}".format(expected, query, list_res)
+        expected = sorted(expected)
+    error = f"Expected {expected} from {query}, but got {list_res}" if print_result_on_failure \
+        else f'Actual result ({len(list_res)} rows) is not as expected ({len(expected)} rows). Query: {query}'
+    assert list_res == expected, error
 
 
 def assert_almost_equal(*args, **kwargs):
@@ -206,27 +212,27 @@ def assert_almost_equal(*args, **kwargs):
         "values not within {:.2f}% of the max: {} ({})".format(error * 100, args, error_message)
 
 
-def assert_row_count(session, table_name, expected, where=None, consistency_level=ConsistencyLevel.ONE, timeout=None):
+@retrying(num_attempts=1, sleep_time=10)
+def assert_row_count(session, table_name, expected, consistency_level=ConsistencyLevel.ONE, num_attempts=1,
+                     timeout=None):
     """
-    Assert the number of rows in a table matches expected.
+    Function to validate the row count expected in table_name
     @param session Session to use
     @param table_name Name of the table to query
     @param expected Number of rows expected to be in table
-    @param where string to append to CQL select query as where clause
+    @param num_attempts defines how many time try to assert data in case failure. Used in retrying decorator
+    @param timeout
+
     Examples:
     assert_row_count(self.session1, 'ttl_table', 1)
     """
-    if where is not None:
-        stmt = SimpleStatement("SELECT count(*) FROM {} WHERE {};".format(table_name, where),
-                               consistency_level=consistency_level)
-    else:
-        stmt = SimpleStatement("SELECT count(*) FROM {};".format(table_name), consistency_level=consistency_level)
 
-    res = session.execute(stmt, timeout=timeout)
-    count = res[0][0]
+    query = "SELECT count(*) FROM {}".format(table_name)
+    count = run_query_with_data_processing(session, query, consistency_level=consistency_level, session_timeout=timeout)
+    if isinstance(count, list):
+        count = count[0][0]
     assert count == expected, "Expected a row count of {} in table '{}', but got {}".format(
-        expected, table_name, count
-    )
+        expected, table_name, count)
 
 
 def assert_crc_check_chance_equal(session, table, expected, ks="ks", view=False):
@@ -373,3 +379,77 @@ def assert_lists_of_dicts_equal(list1, list2):
         for key, value in adict.items():
             assert key in bdict
             assert bdict[key] == value
+
+
+@retrying(num_attempts=1, sleep_time=10)
+def assert_all_or_none(session, query, expected, cl=ConsistencyLevel.ONE, ignore_order=False, num_attempts=1,
+                       result_as_string=False, timeout=None):
+    """
+    :param num_attempts: defines how many time try to assert data in case failure. Used in retrying decorator
+    """
+    list_res = get_list_res(session, query, cl, ignore_order, result_as_string, timeout=timeout)
+    if ignore_order:
+        expected = sorted(expected)
+    assert (list_res == expected or list_res == []), \
+        "Expected %s or [] from %s, but got %s" % (expected, query, list_res)
+
+
+@retrying(num_attempts=1, sleep_time=10)
+def assert_two_queries_equal(session1, query1, session2, query2, consistency_level=ConsistencyLevel.ONE,
+                             session_timeout=120,
+                             group=False, groupby_column1=None, groupby_column2=None, restrict_column1=None,
+                             restrict_column2=None, restrict_value1=None, restrict_value2=None, num_attempts=1):
+    exp_res = run_query_with_data_processing(session1, query1, group=group, consistency_level=consistency_level,
+                                             session_timeout=session_timeout,
+                                             groupby_column=groupby_column1, restrict_column=restrict_column1,
+                                             restrict_value=restrict_value1)
+    act_res = run_query_with_data_processing(session2, query2, group=group, consistency_level=consistency_level,
+                                             session_timeout=session_timeout,
+                                             groupby_column=groupby_column2, restrict_column=restrict_column2,
+                                             restrict_value=restrict_value2)
+    assert exp_res == act_res, "Expected %s, but got %s. Query1: %s; Query2: %s" % (exp_res, act_res, query1, query2)
+
+
+@retrying(num_attempts=1, sleep_time=10)
+def assert_two_queries_equal_ignore_order(session1, query1, session2, query2, consistency_level=ConsistencyLevel.ONE,
+                                          session_timeout=120, num_attempts=1):
+    expected = rows_to_list(session1.execute(query1))
+    assert_all(session2, query2, expected, consistency_level, ignore_order=True)
+
+
+@retrying(num_attempts=1, sleep_time=10)
+def assert_row_count_in_select(session, query, num_rows_expected, consistency_level=ConsistencyLevel.ONE,
+                               num_attempts=1, timeout=None):
+    """
+    Function to validate the row count are returned by select
+    :param num_attempts: defines how many time try to assert data in case failure. Used in retrying decorator
+    """
+    count = len(get_list_res(session, query, consistency_level, timeout=timeout))
+    assert count == num_rows_expected, "Expected a row count of {} in query \"{}\", but got {}".format(
+        num_rows_expected, query, count)
+
+
+def assert_expected_error(func, expected_error, args, kwargs):
+    try:
+        func(*args, **kwargs)
+        assert False, 'Expected failure, but function was succeeded'
+    except AssertionError:
+        raise
+    except Exception as e:
+        if expected_error in str(e):
+            assert True
+        else:
+            raise
+
+
+class PytestRegex:
+    """Assert that a given string meets some expectations."""
+
+    def __init__(self, pattern, flags=0):
+        self._regex = re.compile(pattern, flags)
+
+    def __eq__(self, actual):
+        return bool(self._regex.match(actual))
+
+    def __repr__(self):
+        return self._regex.pattern

@@ -1,4 +1,6 @@
 import errno
+import random
+import string
 import hashlib
 import logging
 import os
@@ -245,3 +247,19 @@ def safe_mkdtemp():
     tmpdir = tempfile.mkdtemp()
     # \ on Windows is interpreted as an escape character and doesn't do anyone any favors
     return tmpdir.replace('\\', '/')
+
+
+def generate_random_text(length=10):
+    return ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(length))
+
+
+def flush_by_node(cluster):
+    for node in cluster.nodelist():
+        node.flush()
+
+
+def remove_node(cluster, node, wait_other_notice=True, other_nodes=None):
+    hostid = node.hostid()
+    cluster.remove(node, wait_other_notice=wait_other_notice, other_nodes=other_nodes)
+    remove_using_node = cluster.nodelist()[0]
+    remove_using_node.nodetool("removenode {}".format(hostid))

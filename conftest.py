@@ -1,7 +1,6 @@
 import pytest
 import logging
 import os
-import re
 import platform
 import copy
 import inspect
@@ -201,35 +200,6 @@ def fixture_log_test_name_and_date(request, fixture_logging_setup):
     logger.info("Starting execution of %s at %s" % (request.node.name, str(datetime.now())))
 
 
-def _filter_errors(dtest_setup, errors):
-    """Filter errors, removing those that match ignore_log_patterns in the current DTestSetup"""
-    for e in errors:
-        for pattern in dtest_setup.ignore_log_patterns:
-            if re.search(pattern, repr(e)):
-                break
-        else:
-            yield e
-
-
-def check_logs_for_errors(dtest_setup):
-    errors = []
-    for node in dtest_setup.cluster.nodelist():
-        errors = list(_filter_errors(dtest_setup, ['\n'.join(msg) for msg in node.grep_log_for_errors()]))
-        if len(errors) is not 0:
-            for error in errors:
-                if isinstance(error, (bytes, bytearray)):
-                    error_str = error.decode("utf-8").strip()
-                else:
-                    error_str = error.strip()
-
-                if error_str:
-                    logger.error("Unexpected error in {node_name} log, error: \n{error}"
-                                 .format(node_name=node.name, error=error_str))
-                    errors.append(error_str)
-                    break
-    return errors
-
-
 def reset_environment_vars(initial_environment):
     pytest_current_test = os.environ.get('PYTEST_CURRENT_TEST')
     os.environ.clear()
@@ -294,11 +264,11 @@ def fixture_dtest_setup(request,
     failed = False
     try:
         if not dtest_setup.allow_log_errors:
-            errors = check_logs_for_errors(dtest_setup)
-            if len(errors) > 0:
+            try:
+                dtest_setup.check_errors_all_nodes()
+            except AssertionError:
                 failed = True
-                pytest.fail(msg='Unexpected error found in node logs (see stdout for full details). Errors: [{errors}]'
-                            .format(errors=str.join(", ", errors)), pytrace=False)
+                raise
     finally:
         try:
             # save the logs for inspection

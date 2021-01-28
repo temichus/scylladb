@@ -64,7 +64,8 @@ repos:
                 udtencoding_test.py|
                 clustering_key_filter_test.py|
                 ttl_test.py|
-                hintedhandoff_test.py
+                hintedhandoff_test.py|
+                materialized_views_test.py
             )$
         language: system
         types: [python]

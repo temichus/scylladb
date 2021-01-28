@@ -1,13 +1,15 @@
+import datetime
 import time
 import logging
+from concurrent.futures.thread import ThreadPoolExecutor
+from itertools import groupby
 
 from cassandra import ConsistencyLevel
 from cassandra.concurrent import execute_concurrent_with_args
 from cassandra.query import SimpleStatement
 
 from . import assertions
-from dtest_class import create_cf, DtestTimeoutError
-from tools.funcutils import get_rate_limited_function
+from dtest_class import create_cf
 
 logger = logging.getLogger(__name__)
 
@@ -163,28 +165,89 @@ def rows_to_list(rows):
     return new_list
 
 
-def index_is_built(node, session, keyspace, table_name, idx_name):
-    # checks if an index has been built
-    full_idx_name = idx_name if node.get_cassandra_version() > '3.0' else '{}.{}'.format(table_name, idx_name)
-    index_query = """SELECT * FROM system."IndexInfo" WHERE table_name = '{}' AND index_name = '{}'""".format(
-        keyspace, full_idx_name)
-    return len(list(session.execute(index_query))) == 1
+def run_in_parallel(functions_list):
+    """
+        Runs the functions that are passed in proc_functions in parallel using threads.
+        :param functions_list: variable holds list of dictionaries with threads definitions. Expected structure:
+                               [{'func': <function pointer - the function will be runs from the thread>,
+                                 'args': (arg1, arg2, arg3), - explicit function arguments by order in the function
+                                 'kwargs': {<arg name1>: value, <arg name2>: value} - function arguments by name
+                                }, - first thread definition
+                                {{'func': <function pointer, 'args': (), 'kwargs': {}} - second thread, no arguments
+                               ]
+        :param functions_list: list
+        :return: list of functions' return values
+        :rtype: list
+    """
+    logger.debug('Threads start at {}'.format(datetime.datetime.now()))
+    pool = ThreadPoolExecutor(max_workers=len(functions_list))
+    tasks = []
+    for func in functions_list:
+        args = func['args'] if 'args' in func else []
+        kwargs = func['kwargs'] if 'kwargs' in func else {}
+        tasks.append(pool.submit(func['func'], *args, **kwargs))
+    results = [task.result() for task in tasks]
+    logger.debug("'{}' threads finished at {}".format(len(results), datetime.datetime.now()))
+    return results
 
 
-def block_until_index_is_built(node, session, keyspace, table_name, idx_name):
-    """
-    Waits up to 30 seconds for a secondary index to be built, and raises
-    DtestTimeoutError if it is not.
-    """
-    start = time.time()
-    rate_limited_debug_logger = get_rate_limited_function(logger.debug, 5)
-    while time.time() < start + 30:
-        rate_limited_debug_logger("waiting for index to build")
-        time.sleep(1)
-        if index_is_built(node, session, keyspace, table_name, idx_name):
+def get_view_id(session, keyspace_name, view_name):
+    res = session.execute('select id from system_schema.views where keyspace_name=\'{0}\' and view_name=\'{1}\''
+                          .format(keyspace_name, view_name))
+    assert res, 'Secondary index view named {} has not built'.format(view_name)
+    return rows_to_list(res)[0][0]
+
+
+def wait_for_schema_agreement(session):
+    rows = list(session.execute("SELECT schema_version FROM system.local"))
+    local_version = rows[0]
+
+    all_match = True
+    rows = list(session.execute("SELECT schema_version FROM system.peers"))
+    for peer_version in rows:
+        if peer_version != local_version:
+            all_match = False
             break
+
+    if all_match:
+        return
     else:
-        raise DtestTimeoutError()
+        time.sleep(1)
+        wait_for_schema_agreement(session)
+
+
+def get_list_res(session, query, cl, ignore_order=False, result_as_string=False, timeout=None):
+    simple_query = SimpleStatement(query, consistency_level=cl)
+    if timeout is not None:
+        res = session.execute(simple_query, timeout=timeout)
+    else:
+        res = session.execute(simple_query)
+    list_res = rows_to_list(res)
+    if ignore_order:
+        list_res = sorted(list_res)
+    if result_as_string:
+        list_res = str(list_res)
+    return list_res
+
+
+def get_entity_id(session, table_or_view, keyspace_name, entity_name):
+    system_table = table_or_view + 's'
+    query = "SELECT id FROM system_schema.{system_table} WHERE keyspace_name='{keyspace_name}' " \
+            "and {table_or_view}_name='{entity_name}'".format(**locals())
+    entity_id = rows_to_list(session.execute(query))
+    return entity_id[0][0]
+
+
+def get_truncated_time_from_system_local(session):
+    query = "SELECT truncated_at FROM system.local"
+    truncated_time = rows_to_list(session.execute(query))
+    return truncated_time
+
+
+def get_truncated_time_from_system_truncated(session, table_id):
+    query = "SELECT truncated_at FROM system.truncated WHERE table_uuid={}".format(table_id)
+    truncated_time = rows_to_list(session.execute(query))
+    return truncated_time[0]
 
 
 def _index_creation(session, query, table_name, index_column, index_name=None, compaction=None):
@@ -210,3 +273,24 @@ def create_local_index(session, table_name, pk_name, index_column, index_name=No
     query = "CREATE INDEX {index_name} ON {table_name} ((%s), {index_column})" % pk_name
     _index_creation(session=session, query=query, table_name=table_name, index_column=index_column,
                     index_name=index_name, compaction=compaction)
+
+
+def run_query_with_data_processing(session, query, consistency_level=ConsistencyLevel.ONE, session_timeout=None,
+                                   group=False, groupby_column=None, restrict_column=None, restrict_value=None):
+    if not session_timeout:
+        session_timeout = 120
+    result = list(session.execute(SimpleStatement(query, consistency_level=consistency_level), timeout=session_timeout))
+    if result:
+        if restrict_column:
+            restrict_column_index = [i for i, clmn in enumerate(result[0]._fields) if clmn == restrict_column][0]
+            restrict_value = [restrict_value] if not isinstance(restrict_value, list) else restrict_value
+
+        if group:
+            groupby_column_index = [i for i, clmn in enumerate(result[0]._fields) if clmn == groupby_column][0]
+            result = [item[groupby_column_index] for item in result if item[restrict_column_index] in restrict_value] \
+                if restrict_value and restrict_column \
+                else [item[groupby_column_index] for item in result]
+            result = [[key, len(list(group))] for key, group in groupby(sorted(result))]
+        elif restrict_value and restrict_column:
+            result = [item for item in result if item[restrict_column_index] in restrict_value]
+    return result

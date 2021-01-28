@@ -14,7 +14,7 @@ import random
 from collections import OrderedDict
 
 import requests
-from cassandra.cluster import Cluster as PyCluster
+from cassandra.cluster import Cluster as PyCluster, default_lbp_factory
 from cassandra.cluster import NoHostAvailable
 from cassandra.cluster import EXEC_PROFILE_DEFAULT
 from cassandra.policies import WhiteListRoundRobinPolicy
@@ -179,6 +179,7 @@ class DTestSetup:
         self.setup_overrides = setup_overrides
         self.cluster_name = cluster_name
         self.ignore_log_patterns = []
+        self.ignore_cores_log_patterns = []
         self.cluster = None
         self.cluster_options = []
         self.replacement_node = None
@@ -303,6 +304,75 @@ class DTestSetup:
         return self._create_session(node, keyspace, user, password, compression,
                                     protocol_version, port=port, ssl_opts=ssl_opts, **kwargs)
 
+    def cql_cluster_session(self, node, keyspace=None, user=None,
+                            password=None, compression=True, protocol_version=None, port=None, ssl_opts=None,
+                            topology_event_refresh_window=10, request_timeout=None, exclusive=False, **kwargs):
+
+        if exclusive:
+            node_ip = get_ip_from_node(node)
+            topology_event_refresh_window = -1
+            load_balancing_policy = WhiteListRoundRobinPolicy([node_ip])
+        else:
+            load_balancing_policy = default_lbp_factory()
+
+        session = self._create_session(node, keyspace, user, password, compression, protocol_version,
+                                       port=port, ssl_opts=ssl_opts,
+                                       topology_event_refresh_window=topology_event_refresh_window,
+                                       load_balancing_policy=load_balancing_policy,
+                                       request_timeout=request_timeout,
+                                       keep_session=False,
+                                       **kwargs)
+
+        class ClusterSession:
+            def __init__(self, session):
+                self.session = session
+
+            def __del__(self):
+                self.__cleanup()
+
+            def __enter__(self):
+                return self.session
+
+            def __exit__(self, type, value, traceback):
+                self.__cleanup()
+
+            def __cleanup(self):
+                if self.session:
+                    self.session.cluster.shutdown()
+                    self.session = None
+
+        return ClusterSession(session)
+
+    def patient_cql_cluster_session(self, node, keyspace=None, user=None, password=None,
+                                    request_timeout=None, compression=True, timeout=60,
+                                    protocol_version=None, port=None, ssl_opts=None,
+                                    topology_event_refresh_window=10, exclusive=False, **kwargs):
+        """
+        Returns a connection after it stops throwing NoHostAvailables due to not being ready.
+
+        If the timeout is exceeded, the exception is raised.
+        """
+        if is_win():
+            timeout *= 2
+
+        return retry_till_success(
+            self.cql_cluster_session,
+            node,
+            keyspace=keyspace,
+            user=user,
+            password=password,
+            timeout=timeout,
+            request_timeout=request_timeout,
+            compression=compression,
+            protocol_version=protocol_version,
+            port=port,
+            ssl_opts=ssl_opts,
+            topology_event_refresh_window=topology_event_refresh_window,
+            exclusive=exclusive,
+            bypassed_exception=NoHostAvailable,
+            **kwargs
+        )
+
     def exclusive_cql_connection(self, node, keyspace=None, user=None,
                                  password=None, compression=True, protocol_version=None, port=None, ssl_opts=None,
                                  **kwargs):
@@ -414,25 +484,58 @@ class DTestSetup:
             **kwargs
         )
 
-    def check_logs_for_errors(self):
-        for node in self.cluster.nodelist():
-            errors = list(self.__filter_errors(
-                ['\n'.join(msg) for msg in node.grep_log_for_errors()]))
-            if len(errors) is not 0:
-                for error in errors:
-                    print("Unexpected error in {node_name} log, error: \n{error}".format(
-                        node_name=node.name, error=error))
-                return True
+    def check_errors(self, node, exclude_errors=None, search_str=None, from_mark=None, regex=False):
+        if from_mark != None:
+            node.error_mark = from_mark
+        errors = node.grep_log_for_errors(distinct_errors=True, search_str=search_str)
 
-    def __filter_errors(self, errors):
-        """Filter errors, removing those that match self.ignore_log_patterns"""
-        if not hasattr(self, 'ignore_log_patterns'):
-            self.ignore_log_patterns = []
+        if exclude_errors:
+            if not isinstance(exclude_errors, list):
+                exclude_errors = [exclude_errors]
+            if not regex:
+                exclude_errors = [re.escape(ee) for ee in list(exclude_errors)]
+        errors = list(self.__filter_errors(errors, exclude_errors))
+
+        if errors:
+            assert False, '\n'.join(list(errors))
+
+        if exclude_errors:
+            self.ignore_log_patterns = list(set(self.ignore_log_patterns + exclude_errors))
+
+    def check_errors_all_nodes(self, nodes=None, exclude_errors=None, search_str=None, regex=False):
+        if nodes is None:
+            nodes = self.cluster.nodelist()
+        for node in nodes:
+            self.check_errors(node=node, exclude_errors=exclude_errors, search_str=search_str, regex=regex)
+
+    def __filter_errors(self, errors, patterns=None):
+        """Filter errors, removing those that match patterns"""
+        if not patterns:
+            patterns = []
+        patterns += self.ignore_log_patterns
+        patterns += self.ignore_cores_log_patterns
+        patterns += [
+            r'Compaction for .* deliberately stopped',
+            r'update compaction history failed:.*ignored',
+        ]
+        # ignore expected rpc errors when nodes are stopped.
+        expected_rpc_errors = [
+            'connection dropped: connection is closed',
+            'connection dropped: .*Connection reset by peer',
+            'connection dropped: Semaphore broken',
+            'fail to connect: Connection refused',
+            'fail to connect: Connection reset by peer',
+            'server stream connection dropped: invalid type specifier',
+            'server stream connection dropped: Unknown parent connection',
+        ]
+        # we may stop nodes that have not finished starting yet
+        patterns += [r'(Startup|start) failed: seastar::sleep_aborted',
+                     r'Timer callback failed: seastar::gate_closed_exception',
+                     ]
+        patterns += ["rpc - client .*({})".format('|'.join(expected_rpc_errors))]
+        pattern = re.compile('|'.join(["({})".format(p) for p in set(patterns)]))
         for e in errors:
-            for pattern in self.ignore_log_patterns:
-                if re.search(pattern, e):
-                    break
-            else:
+            if not pattern.search(e):
                 yield e
 
     def get_jfr_jvm_args(self):
@@ -546,8 +649,9 @@ class DTestSetup:
 
         if isinstance(self.cluster, ScyllaCluster):
             logger.debug("Scylla mode is '{}'".format(self.cluster.scylla_mode))
-        logger.debug("Cluster *_request_timeout_in_ms={}, range_request_timeout_in_ms={}, cql request_timeout={}".format(
-            timeout, range_timeout, self.cql_request_timeout))
+        logger.debug(
+            "Cluster *_request_timeout_in_ms={}, range_request_timeout_in_ms={}, cql request_timeout={}".format(
+                timeout, range_timeout, self.cql_request_timeout))
 
         if self.cluster_options is not None and len(self.cluster_options) > 0:
             values = merge_dicts(self.cluster_options, phi_values, repaired_data_tracking_values)
@@ -701,39 +805,6 @@ class DTestSetup:
                 factor = 2
         return seconds * factor
 
-    def enable_error(self, name, node, one_shot=False):
-        """Enable error injection
-
-        Args:
-            name (str): name of error injection to be enabled.
-            node (ScyllaNode|int): either instance of scylla node or node number.
-            one_shot (bool): indicates whether the injection is one-shot
-                             (resets enabled state after triggering the injection).
-
-        """
-        if isinstance(node, int):
-            node = self.cluster.nodelist()[node]
-        node_ip = get_ip_from_node(node)
-        logger.debug(f'Enabling error injection "{name}" on node {node_ip}', trace=True)
-        response = requests.post(f"http://{node_ip}:10000/v2/error_injection/injection/{name}",
-                                 params={"one_shot": one_shot})
-        response.raise_for_status()
-
-    def disable_error(self, name, node):
-        """Disable error injection
-
-        Args:
-            name (str): name of error injection to be disabled.
-            node (ScyllaNode|int): either instance of scylla node or node number.
-
-        """
-        if isinstance(node, int):
-            node = self.cluster.nodelist()[node]
-        node_ip = get_ip_from_node(node)
-        logger.debug(f'Disabling error injection "{name}" on node {node_ip}', trace=True)
-        response = requests.delete(f"http://{node_ip}:10000/v2/error_injection/injection/{name}")
-        response.raise_for_status()
-
     def check_error(self, name, node):
         """Get status of error injection
 
@@ -773,4 +844,22 @@ class DTestSetup:
             node = self.cluster.nodelist()[node]
         node_ip = get_ip_from_node(node)
         response = requests.delete(f"http://{node_ip}:10000/v2/error_injection/injection")
+        response.raise_for_status()
+
+    def enable_error(self, name, node, one_shot=False):
+        """Enable error injection
+
+        Args:
+            name (str): name of error injection to be enabled.
+            node (ScyllaNode|int): either instance of scylla node or node number.
+            one_shot (bool): indicates whether the injection is one-shot
+                             (resets enabled state after triggering the injection).
+
+        """
+        if isinstance(node, int):
+            node = self.cluster.nodelist()[node]
+        node_ip = get_ip_from_node(node)
+        logger.debug(f'Enabling error injection "{name}" on node {node_ip}')
+        response = requests.post(f"http://{node_ip}:10000/v2/error_injection/injection/{name}",
+                                 params={"one_shot": one_shot})
         response.raise_for_status()
