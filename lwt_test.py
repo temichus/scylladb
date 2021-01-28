@@ -1,14 +1,23 @@
-from dtest import Tester, debug
-from nose.plugins.attrib import attr
-from assertions import assert_one, assert_none, assert_unavailable
+import logging
+import pytest
+
+from dtest_class import Tester, create_ks, get_ip_from_node
+from dtest_setup import DTestSetup
+from tools.assertions import assert_one, assert_none
 from cassandra import ConsistencyLevel, Unavailable, WriteFailure
 from cassandra.query import SimpleStatement
-from tools import rows_to_list
-from scylla_tools import scylla_mode
+from tools.metrics import get_node_metrics
 
 
-@attr('dtest-full')
-class LwtTest(Tester):
+logger = logging.getLogger(__name__)
+
+
+@pytest.mark.dtest_full
+class TestLwt(Tester):
+
+    @pytest.fixture(autouse=True)
+    def fixture_add_additional_log_patterns(self, fixture_dtest_setup: DTestSetup):
+        fixture_dtest_setup.allow_log_errors = True
 
     def case_prologue(self, jvm_args=None):
         """ Assorted actions in preparation for a test case"""
@@ -18,13 +27,13 @@ class LwtTest(Tester):
         node = cluster.nodelist()[0]
 
         session = self.patient_cql_connection(node, protocol_version=4)
-        self.create_ks(session=session, name="lwt", rf=1)
+        create_ks(session=session, name="lwt", rf=1)
         cql = "CREATE TABLE IF NOT EXISTS t (a INT PRIMARY KEY, b INT)"
         session.execute(cql)
         return node, session
 
-    @attr("single_node")
-    def no_cross_shard_ops_test(self):
+    @pytest.mark.single_node
+    def test_no_cross_shard_ops(self):
         """Test that lightweight transaction operations, when performed
         using a shard-aware driver, do not incur cross-shard calls. This
         includes cross shard calls to write and read from paxos table. In
@@ -41,11 +50,11 @@ class LwtTest(Tester):
         name = "scylla_storage_proxy_replica_cross_shard_ops"
 
         cql = "insert into t (a, b) values (?, ?) if not exists"
-        before = self.get_node_metrics(self.get_ip_from_node(node), metrics=[name])
+        before = get_node_metrics(get_ip_from_node(node), metrics=[name])
         stmt = session.prepare(cql)
         for i in range(16):
             session.execute(stmt, (i, i))
-        after = self.get_node_metrics(self.get_ip_from_node(node), metrics=[name])
+        after = get_node_metrics(get_ip_from_node(node), metrics=[name])
         # Shard awareness doesn't work in python driver, so at least
         # there will be some bounce-to-shard messages.
         # XXX: when python driver supports shard-aware calls, this should be
@@ -60,13 +69,13 @@ class LwtTest(Tester):
         # but metrics won't change much thanks to bounce-to-shard
         # optimization switching to the right shard before starting
         # Paxos
-        after = self.get_node_metrics(self.get_ip_from_node(node), metrics=[name])
+        after = get_node_metrics(get_ip_from_node(node), metrics=[name])
         assert after[name] - before[name] <= 16, "{}:{}".format(before, after)
         cql = "DROP TABLE IF EXISTS t"
         session.execute(cql)
 
-    @attr("single_node")
-    def metrics_test(self):
+    @pytest.mark.single_node
+    def test_metrics(self):
         # Because of
         # https://github.com/scylladb/scylla/issues/5860
         # lwt: CQL metrics are incremented twice if message was bounced
@@ -78,9 +87,9 @@ class LwtTest(Tester):
 
         def check1(name, cql, expect):
             nonlocal node, session, before, after
-            before = self.get_node_metrics(self.get_ip_from_node(node), metrics=[name])
+            before = get_node_metrics(get_ip_from_node(node), metrics=[name])
             session.execute(cql)
-            after = self.get_node_metrics(self.get_ip_from_node(node), metrics=[name])
+            after = get_node_metrics(get_ip_from_node(node), metrics=[name])
             assert after[name] - before[name] == expect, "{} {}".format(before, after)
 
         name = "scylla_storage_proxy_coordinator_cas_write_condition_not_met"
@@ -122,7 +131,7 @@ class LwtTest(Tester):
         # scylla_storage_proxy_coordinator_cas_read_unfinished_commit
         # scylla_storage_proxy_coordinator_cas_write_unfinished_commit
 
-    def read_round_optimization_test(self):
+    def test_read_round_optimization(self):
         """
          3.5 Ensure read-round-optimization works: update the record using
            transaction. Display server metrics for network round trips.
@@ -142,7 +151,7 @@ class LwtTest(Tester):
         cluster.populate(3).start(wait_for_binary_proto=True)
         node = cluster.nodelist()[0]
         session = self.patient_exclusive_cql_connection(node)
-        self.create_ks(session=session, name="lwt", rf=3)
+        create_ks(session=session, name="lwt", rf=3)
         cql = "DROP TABLE IF EXISTS t"
         session.execute(cql)
         cql = "CREATE TABLE IF NOT EXISTS t (a INT PRIMARY KEY, b INT)"
@@ -154,10 +163,10 @@ class LwtTest(Tester):
         stmt = session.prepare(cql)
         stmt.consistency_level = ConsistencyLevel.QUORUM
         name = "scylla_storage_proxy_coordinator_cas_failed_read_round_optimization"
-        before = self.get_node_metrics(self.get_ip_from_node(node), metrics=[name])
+        before = get_node_metrics(get_ip_from_node(node), metrics=[name])
         for i in range(10):
             session.execute(stmt, (i+1, i))
-        after = self.get_node_metrics(self.get_ip_from_node(node), metrics=[name])
+        after = get_node_metrics(get_ip_from_node(node), metrics=[name])
         assert after[name] - before[name] == 0, "{} {}".format(before, after)
         cql = "DROP TABLE t"
         session.execute(cql)
@@ -180,7 +189,7 @@ class LwtTest(Tester):
         node1 = cluster.nodelist()[1]
         node2 = cluster.nodelist()[2]
 
-        before = self.get_node_metrics(self.get_ip_from_node(node), metrics=[name])
+        before = get_node_metrics(get_ip_from_node(node), metrics=[name])
         node1.stop()
         for i in range(KEY_COUNT):
             session.execute(non_paxos_stmt, (i,))
@@ -188,10 +197,10 @@ class LwtTest(Tester):
         node1.start(wait_for_binary_proto=True)
         for i in range(KEY_COUNT):
             session.execute(paxos_stmt, (i,))
-        after = self.get_node_metrics(self.get_ip_from_node(node), metrics=[name])
+        after = get_node_metrics(get_ip_from_node(node), metrics=[name])
         assert after[name] - before[name] == KEY_COUNT, "{} {}".format(before, after)
 
-    def basic_distributed_test(self):
+    def test_basic_distributed(self):
         """Basic distributed tests (3.1 - 3.4 from the test plan). """
 
         cluster = self.cluster
@@ -201,7 +210,7 @@ class LwtTest(Tester):
         node2 = cluster.nodelist()[1]
         node3 = cluster.nodelist()[2]
         session1 = self.patient_cql_connection(node1)
-        self.create_ks(session=session1, name="lwt", rf=3)
+        create_ks(session=session1, name="lwt", rf=3)
         cql = "CREATE TABLE IF NOT EXISTS t (a INT PRIMARY KEY, b INT)"
         session1.execute(cql)
         cql = "INSERT INTO t (a,b) VALUES (1,1) IF NOT EXISTS"
@@ -258,7 +267,7 @@ class LwtTest(Tester):
         # but because the old seed node is down and we need to discocver
         # the rest of the cluster
         node2.start(wait_for_binary_proto=True, jvm_args=[
-            "--seed-provider-parameters", "seeds={}".format(self.get_ip_from_node(node3))])
+            "--seed-provider-parameters", "seeds={}".format(get_ip_from_node(node3))])
         cql = "SELECT * FROM t WHERE a=3"
         assert_none(session3, cql, cl=ConsistencyLevel.SERIAL)
         cql = "INSERT INTO t (a,b) VALUES (3,3) IF NOT EXISTS"
@@ -291,7 +300,7 @@ class LwtTest(Tester):
         cql = "DROP TABLE IF EXISTS t"
         session3.execute(cql)
 
-    def multi_dc_test(self):
+    def test_multi_dc(self):
         # 4.1 Check LOCAL_QUORUM works as expected if the other DC is not
         # available.
         cluster = self.cluster
@@ -299,7 +308,7 @@ class LwtTest(Tester):
         cluster.populate([3, 3]).start(wait_for_binary_proto=True)
         node1 = cluster.nodelist()[0]
         session1 = self.patient_cql_connection(node1)
-        self.create_ks(session=session1, name="lwt", rf={"dc1": 3, "dc2": 3})
+        create_ks(session=session1, name="lwt", rf={"dc1": 3, "dc2": 3})
         cql = "CREATE TABLE IF NOT EXISTS t (a INT PRIMARY KEY)"
         session1.execute(cql)
         node2 = cluster.nodelist()[5]
@@ -371,12 +380,12 @@ error_injections = [
     "paxos_timeout_after_save_decision"]
 
 
-@attr('dtest-full')
+@pytest.mark.dtest_full
 class LwtReadLinearizabilityTest(Tester):
 
-    @attr('dtest-debug')
-    @scylla_mode('!release')
-    def read_linearizability_test(self):
+    @pytest.mark.dtest_debug
+    @pytest.mark.scylla_mode('!release')
+    def test_read_linearizability(self):
         """Consider 3 nodes A, B and C and a LWT failed write operation that managed to get V
            accepted on A. The value is read twice without writes in the middle. First read access
            B and C and returns nothing. Next one access A and B, notices failed round and
@@ -391,7 +400,7 @@ class LwtReadLinearizabilityTest(Tester):
             self.cluster.start(wait_other_notice=True)
 
         session_a = self.patient_cql_connection(self.cluster.nodelist()[NODE_A])
-        self.create_ks(session_a, "ks", rf=NODES)
+        create_ks(session_a, "ks", rf=NODES)
         session_a.execute("CREATE TABLE t (id int PRIMARY KEY, v int)")
 
         # 1. Inject error at accept stage in B and C
@@ -424,7 +433,7 @@ class LwtReadLinearizabilityTest(Tester):
             )
             ret = session.execute(query).current_rows
             if ret:
-                debug(f"Got invalid value for node {node}: {ret}")
+                logger.debug(f"Got invalid value for node {node}: {ret}")
             assert ret == []
 
         # Verify value is not set in A  (complete round?)
