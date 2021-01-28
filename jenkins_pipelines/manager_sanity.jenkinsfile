@@ -74,7 +74,7 @@ pipeline {
                             export SCYLLA_VERSION="${params.scylla_version}"
                             if [ \${#SCYLLA_VERSION} -eq "0" ]; then
                                 export SCYLLA_BRANCH="master"
-                                export LATEST_SCYLLA_BUILD_ID=`aws s3 --no-sign-request ls downloads.scylladb.com/relocatable/unstable/\$SCYLLA_BRANCH/ | tr -s ' ' | cut -d ' ' -f 3 | tr -d '\\/'  | sort -g | grep "....-" | tail -n 1`
+                                export LATEST_SCYLLA_BUILD_ID=`aws s3 --no-sign-request ls downloads.scylladb.com/unstable/scylla/\${SCYLLA_BRANCH}/relocatable/ | tr -s ' ' | cut -d ' ' -f 3 | tr -d '\\/'  | sort -g | grep "....-" | tail -n 1`
                                 export SCYLLA_VERSION="unstable/"\$SCYLLA_BRANCH":"\$LATEST_SCYLLA_BUILD_ID
                             fi
                             export CCM_DIR=\$(pwd)"/scylla-ccm"
