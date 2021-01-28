@@ -1,10 +1,11 @@
-import os
-import subprocess
-import time
+import errno
 import hashlib
 import logging
+import os
 import pytest
-import errno
+import subprocess
+import tempfile
+import time
 
 from collections.abc import Mapping
 
@@ -238,3 +239,9 @@ def add_skip(cls, reason=""):
 
 def require(require_pattern):
     return pytest.mark.require(require_pattern=require_pattern)
+
+
+def safe_mkdtemp():
+    tmpdir = tempfile.mkdtemp()
+    # \ on Windows is interpreted as an escape character and doesn't do anyone any favors
+    return tmpdir.replace('\\', '/')

@@ -185,3 +185,28 @@ def block_until_index_is_built(node, session, keyspace, table_name, idx_name):
             break
     else:
         raise DtestTimeoutError()
+
+
+def _index_creation(session, query, table_name, index_column, index_name=None, compaction=None):
+    index_column = [index_column] if isinstance(index_column, str) else index_column
+    index_column = ', '.join([i for i in index_column])
+    query = query.format(**locals())
+    logger.debug('Create index: {}'.format(query))
+    session.execute(query)
+    if compaction:
+        # Update appropriate to index materialized view with compaction storage
+        session.execute(
+            'ALTER MATERIALIZED VIEW {}_index WITH compaction={}'.format(index_name, {'class': compaction}))
+    logger.debug('Index {} has been created'.format(index_name))
+
+
+def create_index(session, table_name, index_column, index_name=None, compaction=None):
+    query = "CREATE INDEX {index_name} ON {table_name} ({index_column})"
+    _index_creation(session=session, query=query, table_name=table_name, index_column=index_column,
+                    index_name=index_name, compaction=compaction)
+
+
+def create_local_index(session, table_name, pk_name, index_column, index_name=None, compaction=None):
+    query = "CREATE INDEX {index_name} ON {table_name} ((%s), {index_column})" % pk_name
+    _index_creation(session=session, query=query, table_name=table_name, index_column=index_column,
+                    index_name=index_name, compaction=compaction)
