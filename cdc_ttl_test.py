@@ -1,33 +1,42 @@
 import time
 import pprint
 import re
-
-from nose.plugins.attrib import attr
+import logging
+import pytest
 
 from cassandra.cluster import Session, SimpleStatement
-from cassandra import ConsistencyLevel
-from dtest import Tester
+from dtest_class import Tester, create_ks
 from ccmlib.scylla_node import ScyllaNode
-from tools import debug, new_node
+
+from dtest_setup_overrides import DTestSetupOverrides
+from tools.misc import new_node, ImmutableMapping
 
 from cdc_tests import CdcLogOperations, CDCInitializeHelper
 
 
 PP = pprint.PrettyPrinter(indent=4)
+logger = logging.getLogger(__name__)
 
 
-@attr('scylla-cdc')
+@pytest.mark.scylla_cdc
 class TestCDCTTLFunctionality(Tester, CDCInitializeHelper):
 
     keyspace = "ks"
     table = "cf"
     log_table = f"{table}_scylla_cdc_log"
 
+    @pytest.fixture(scope='function', autouse=True)
+    def fixture_dtest_setup_overrides(self, dtest_config):
+        if dtest_config.scylla_version is None:
+            pytest.skip('CDC tests are intended for Scylla only')
+        dtest_setup_overrides = DTestSetupOverrides()
+        dtest_setup_overrides.cluster_options = ImmutableMapping({"experimental_features": ["cdc"]})
+        return dtest_setup_overrides
+
     def prepare_cluster_and_schema(self, num_nodes=1, rf=1,
                                    preimage_enable=False, postimage_enable=False,
                                    cdc_ttl=30, value_type='text'):
         self.cluster.populate(1)
-        self.cluster.set_configuration_options(values={"experimental_features": ["cdc"]})
         self.cluster.start(wait_for_binary_proto=True, wait_other_notice=True)
         for i in range(1, num_nodes):
             node = new_node(self.cluster, bootstrap=True)
@@ -71,7 +80,7 @@ class TestCDCTTLFunctionality(Tester, CDCInitializeHelper):
 
         session.execute(
             f"ALTER keyspace system_distributed with replication={{'class': 'SimpleStrategy', 'replication_factor': {rf}}}")
-        self.create_ks(session, self.keyspace, rf=rf)
+        create_ks(session, self.keyspace, rf=rf)
         session.execute(statement)
 
     @staticmethod
@@ -173,21 +182,21 @@ class TestCDCTTLFunctionality(Tester, CDCInitializeHelper):
         log_table_rows = self.get_log_rows(session)
 
         # validate that base table and log table are not empty
-        self.assertGreater(len(base_table_rows), 0)
-        self.assertGreater(len(log_table_rows), 0)
+        assert len(base_table_rows) > 0
+        assert len(log_table_rows) > 0
 
         if base_ttl and cdc_ttl > base_ttl:
             # if row in base table have ttl less than cdc log table
             # validate that base table was cleared and cdc log table not
             # and not new records added to base log_table
-            debug(f"Wait for {base_ttl}")
+            logger.debug(f"Wait for {base_ttl}")
             time.sleep(base_ttl)
 
             expired_base_table_rows = self.get_base_rows(session)
-            self.assertListEqual(expired_base_table_rows, [])
+            assert expired_base_table_rows == []
 
             not_expired_log_table_rows = self.get_log_rows(session)
-            self.assertListEqual(not_expired_log_table_rows, log_table_rows)
+            assert not_expired_log_table_rows == log_table_rows
 
             # wait rest of time to check that cdc log table is cleared
             rest_timeout = cdc_ttl - base_ttl
@@ -195,31 +204,31 @@ class TestCDCTTLFunctionality(Tester, CDCInitializeHelper):
         elif base_ttl and cdc_ttl < base_ttl:
             # if row in base table have ttl greater than cdc log table
             # check that base table is not empty and cdc log table cleared
-            debug(f"Wait for {cdc_ttl}")
+            logger.debug(f"Wait for {cdc_ttl}")
             time.sleep(cdc_ttl)
             expired_log_table_rows = self.get_log_rows(session)
-            self.assertListEqual(expired_log_table_rows, [])
+            assert expired_log_table_rows == []
 
             not_expired_base_table_rows = self.get_base_rows(session)
-            self.assertListEqual(not_expired_base_table_rows, base_table_rows)
+            assert not_expired_base_table_rows == base_table_rows
 
             # wait rest of time
             rest_timeout = base_ttl - cdc_ttl
             time.sleep(rest_timeout)
         else:
             # if mutation has not ttl or it is equal to configured cdc ttl
-            debug(f"Wait for {cdc_ttl}")
+            logger.debug(f"Wait for {cdc_ttl}")
             time.sleep(cdc_ttl)
 
         expired_base_table_rows = self.get_base_rows(session)
         expired_log_table_rows = self.get_log_rows(session)
 
         if base_ttl:
-            self.assertListEqual(expired_base_table_rows, [])
+            assert expired_base_table_rows == []
         else:
-            self.assertListEqual(base_table_rows, expired_base_table_rows)
+            assert base_table_rows == expired_base_table_rows
 
-        self.assertListEqual(expired_log_table_rows, [])
+        assert expired_log_table_rows == []
 
     def test_log_table_cleared_after_cdc_ttl_expired_for_insert_native_type(self):
         self.check_rows_cleared_after_ttl_expired_for_operation(operation=CdcLogOperations.INSERT,
@@ -377,7 +386,7 @@ class TestCDCTTLFunctionality(Tester, CDCInitializeHelper):
         # add data to base table
         self.populate_base_table(session, operation, value_type, updating_column='cval1')
         log_rows_with_first_ttl = self.get_log_rows(session)
-        self.assertGreater(len(log_rows_with_first_ttl), 0)
+        assert len(log_rows_with_first_ttl) > 0
 
         # change cdc ttl with new value + 30
         self.alter_base_table_with_cdc_ttl(session, new_cdc_ttl, preimage_enable, postimage_enable)
@@ -387,9 +396,9 @@ class TestCDCTTLFunctionality(Tester, CDCInitializeHelper):
         self.populate_base_table(session, operation, value_type, updating_column='cval2')
 
         log_rows_with_old_new_ttl = self.get_log_rows(session)
-        self.assertGreater(len(log_rows_with_old_new_ttl), len(log_rows_with_first_ttl))
+        assert len(log_rows_with_old_new_ttl) > len(log_rows_with_first_ttl)
 
-        debug(f"Wait for {cdc_ttl}")
+        logger.debug(f"Wait for {cdc_ttl}")
         time.sleep(cdc_ttl)
 
         # get left rows from cdc log table
@@ -397,18 +406,18 @@ class TestCDCTTLFunctionality(Tester, CDCInitializeHelper):
 
         # validate that rows with old ttl are not in table
         for row in log_rows_with_first_ttl:
-            self.assertNotIn(row, not_expired_log_rows)
+            assert row not in not_expired_log_rows
 
         # validate that rows with new ttl are same
         # as berfore rows with first ttl were cleaned
         for row in not_expired_log_rows:
-            self.assertIn(row, log_rows_with_old_new_ttl)
+            assert row in log_rows_with_old_new_ttl
 
         # wait rest of time
         time.sleep(new_cdc_ttl - cdc_ttl)
 
         expired_log_rows = self.get_log_rows(session)
-        self.assertListEqual(expired_log_rows, [])
+        assert expired_log_rows == []
 
     def test_rows_cleared_in_log_table_according_set_cdc_ttl_for_insert_native_type(self):
         self.check_clear_log_rows_according_altered_cdc_ttl(operation=CdcLogOperations.INSERT, cdc_ttl=30,
@@ -470,7 +479,7 @@ class TestCDCTTLFunctionality(Tester, CDCInitializeHelper):
     def verify_log_row_ttl(self, log_rows, expected_ttl):
         for row in log_rows:
             if row.cdc_operation not in [0, 9] and (not row.cdc_deleted_cval1 and not row.cdc_deleted_cval2):
-                self.assertEqual(row.cdc_ttl, expected_ttl, row)
+                assert row.cdc_ttl == expected_ttl, row
 
     def insert_rows_to_base_table(self, session, value_type, inserting_column='cval1', ttl=None):
         if value_type in ['text', 'varchar', 'ascii']:
@@ -513,11 +522,11 @@ class TestCDCTTLFunctionality(Tester, CDCInitializeHelper):
     def verify_cdc_ttl_configured(self, node, expected_cdc_ttl):
 
         result = node.run_cqlsh(f"desc keyspace {self.keyspace}", return_output=True)
-        debug(result)
+        logger.debug(result)
 
         matched = re.search(r"cdc\s?=\s?{.*'ttl':\s+'(?P<ttl>[\d]+?)'", result[0], flags=re.MULTILINE)
         found_cdc_ttl = int(matched.group("ttl")) if matched else None
-        self.assertEqual(found_cdc_ttl, expected_cdc_ttl)
+        assert found_cdc_ttl == expected_cdc_ttl
 
     def alter_base_table_with_cdc_ttl(self, session, cdc_ttl, preimage_enable=False, postimage_enable=False):
         cdc_properties = self.build_cdc_properties(preimage_enable, postimage_enable, cdc_ttl)

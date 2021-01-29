@@ -56,6 +56,8 @@ repos:
                 native_transport_ssl_test.py|
                 read_amplification_test.py|
                 cfid_test.py|
+                cdc_ttl_test|
+                cdc_tests|
                 internode_ssl_test.py|
                 lwt_banking_load_test.py|
                 lwt_schema_modification_test.py|
