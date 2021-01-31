@@ -32,11 +32,13 @@ class TestMetadata(Tester):
         node1.stress(['read', 'no-warmup', 'n=30000', '-schema', 'replication(factor=2)', 'compression=LZ4Compressor',
                       '-rate', 'threads=1'])
 
+    @pytest.mark.skip('limit compaction not supported by scylla https://github.com/scylladb/scylla/issues/72')
     def test_metadata_reset_while_compact(self):
         """
         Resets the schema while a compact, read and repair happens.
         All kinds of glorious things can fail.
         """
+
         # while the schema is being reset, there will inevitably be some
         # queries that will error with this message
         self.fixture_dtest_setup.ignore_log_patterns = ['.*Unknown keyspace/cf pair.*']
