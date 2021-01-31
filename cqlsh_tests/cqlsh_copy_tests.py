@@ -572,7 +572,6 @@ class TestCqlshCopy(CqlshPrepare):
         """
         self._test_reading_counter_template(copy_options={'MAXBATCHSIZE': '1'})
 
-    @pytest.mark.require('#2386')
     @pytest.mark.single_node
     def test_reading_counters_with_skip_cols(self):
         """
@@ -652,7 +651,6 @@ class TestCqlshCopy(CqlshPrepare):
         assert_all(session=self.session, query="SELECT * FROM testheader",
                    expected=data, ignore_order=True)
 
-    @pytest.mark.require('#2386')
     @pytest.mark.single_node
     def test_writing_with_timeformat(self):
         """
@@ -678,6 +676,7 @@ class TestCqlshCopy(CqlshPrepare):
         self.tempfile = NamedTemporaryFile(mode='w+', delete=False, encoding='utf-8')
         logger.debug(f'Exporting to csv file: {self.tempfile.name}')
         cmds = f"COPY ks.testtimeformat TO '{self.tempfile.name}' WITH TIMEFORMAT = '%Y/%m/%d %H:%M'"
+        cmds += " WITH DATETIMEFORMAT = '%Y/%m/%d %H:%M'"
         self.node1.run_cqlsh(cmds=cmds)
         print(cmds)
 
@@ -689,7 +688,6 @@ class TestCqlshCopy(CqlshPrepare):
                     ['3', '2015/12/31 23:59']]
         assert csv_values == expected, f"Actual value \"{csv_values}\" is not as expected \'{expected}\'"
 
-    @pytest.mark.require('#2386')
     @pytest.mark.single_node
     def test_reading_with_ttl(self):
         """
@@ -1248,7 +1246,6 @@ class TestCqlshCopy(CqlshPrepare):
 
         assert_row_count(session=self.session, table_name=stress_table, expected=num_records)
 
-    @pytest.mark.require('#2386')
     def test_bulk_round_trip_default(self):
         """
         Test bulk import with default stress import (one row per operation)
@@ -1257,7 +1254,6 @@ class TestCqlshCopy(CqlshPrepare):
         """
         self._test_bulk_round_trip(nodes=3, num_operations=100000)
 
-    @pytest.mark.require('#2386')
     def test_bulk_round_trip_blogposts(self):
         """
         Test bulk import with a user profile that inserts 10 rows per operation
@@ -1281,7 +1277,6 @@ class TestCqlshCopy(CqlshPrepare):
                                    configuration_options={'range_request_timeout_in_ms': '300',
                                                           'write_request_timeout_in_ms': '200'})
 
-    @pytest.mark.require('#2386')
     @pytest.mark.single_node
     def test_copy_to_with_more_failures_than_max_attempts(self):
         """
@@ -1319,7 +1314,6 @@ class TestCqlshCopy(CqlshPrepare):
         assert lines_num < num_records, f"Expected that lined in the file after copy is less then {num_records}, " \
                                         f"but got {lines_num}"
 
-    @pytest.mark.require('#2386')
     @pytest.mark.single_node
     def test_copy_to_with_fewer_failures_than_max_attempts(self):
         """
@@ -1392,7 +1386,6 @@ class TestCqlshCopy(CqlshPrepare):
         assert lines_num < num_records, f"Expected that lined in the file after copy is less then {num_records}, " \
                                         f"but got {lines_num}"
 
-    @pytest.mark.require('#2386')
     @pytest.mark.single_node
     def test_copy_from_with_more_failures_than_max_attempts(self):
         """
@@ -1429,7 +1422,6 @@ class TestCqlshCopy(CqlshPrepare):
         assert 'Failed to process' in err, f"Not found message 'Failed to process' in the error {err}"
         assert_row_count_in_select_less(session=self.session, table_name=stress_table, max_rows_expected=num_records)
 
-    @pytest.mark.require('#2386')
     @pytest.mark.single_node
     def test_copy_from_with_fewer_failures_than_max_attempts(self):
         """
@@ -1467,7 +1459,6 @@ class TestCqlshCopy(CqlshPrepare):
 
         assert_row_count(session=self.session, table_name=stress_table, expected=num_records)
 
-    @pytest.mark.require('#2386')
     @pytest.mark.single_node
     def test_copy_from_with_child_process_crashing(self):
         """
@@ -1500,5 +1491,5 @@ class TestCqlshCopy(CqlshPrepare):
         logger.debug(out)
         logger.debug(err)
 
-        assert 'Failed to process' in err, f"Not found message 'Failed to process' in the error {err}"
+        assert 'child process(es) died unexpectedly' in err, f"Not found message 'child process(es) died unexpectedly' in the error {err}"
         assert_row_count_in_select_less(session=self.session, table_name=stress_table, max_rows_expected=num_records)
