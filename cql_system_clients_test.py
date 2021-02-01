@@ -242,13 +242,15 @@ class TestSystemClients(Tester):
                 user='cassandra',
                 password='cassandra',
                 consistency_level=ConsistencyLevel.ALL) as session:
-            session.execute("ALTER KEYSPACE system_auth WITH REPLICATION = {'class': "
-                            f"'org.apache.cassandra.locator.SimpleStrategy', 'replication_factor':{system_auth_rf}}};")
+            if system_auth_rf > 1:
+                session.execute(
+                    "ALTER KEYSPACE system_auth WITH REPLICATION = {'class': "
+                    f"'org.apache.cassandra.locator.SimpleStrategy', 'replication_factor':{system_auth_rf}}};")
+                self.cluster.nodelist()[0].nodetool('repair -- system_auth')
             for user_record in self._test_users:
                 user = user_record['user']
                 password = user_record['password']
                 session.execute(f"CREATE ROLE '{user}' WITH PASSWORD = '{password}' AND LOGIN = true")
-        self.cluster.nodelist()[0].nodetool('repair -- system_auth')
 
     def expect_system_clients(self):
         for cql_sessions in self._opened_sessions.values():
