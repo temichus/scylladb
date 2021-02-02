@@ -146,7 +146,7 @@ class TestManagerHealthCheck(Tester, ScyllaManagerMixin):
         nodes = self.config_and_create_cluster(nodes=cluster_size)
         node1 = nodes[0]
         mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
-        agent_version = mgr_cluster.scylla_manager.version.vstring
+        agent_version = mgr_cluster.scylla_manager.version.vstring.splitlines()[0]
         scylla_version = self.cluster.version()
 
         logger.info(f"Stopping the node '{node1.name}'")
@@ -164,8 +164,8 @@ class TestManagerHealthCheck(Tester, ScyllaManagerMixin):
                 assert node_details.rest.status == HostRestStatus.UP, f"The REST is not in '{HostRestStatus.UP}' status"
                 assert str(node_details.scylla_version).startswith(scylla_version), \
                     f"The Scylla version does not contain the '{scylla_version}' prefix"
-                assert str(node_details.agent_version).startswith(agent_version), \
-                    f"The agent version does not contain the '{agent_version}' prefix"
+                assert str(agent_version).startswith(str(node_details.agent_version)), \
+                    f"The agent version does not contain the '{node_details.agent_version}' prefix"
             else:
                 node_status = NodeStatus.DOWN
                 empty_state = Status()
