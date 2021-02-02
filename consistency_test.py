@@ -1,28 +1,26 @@
-
+# pylint:disable=too-many-lines
+import logging
+import queue
 import sys
 import threading
 import time
 import traceback
-from collections import OrderedDict
 from copy import deepcopy
 
+import pytest
 from cassandra import ConsistencyLevel
 from cassandra.query import SimpleStatement
-import queue
-
-from assertions import assert_none, assert_unavailable
-from dtest import DISABLE_VNODES, Tester, debug
-from tools import (create_c1c2_table, insert_c1c2, insert_columns, query_c1c2,
-                   rows_to_list)
-
 from thrift.protocol import TBinaryProtocol
 from thrift.transport import TSocket, TTransport
+
+from dtest_class import Tester, create_ks, create_cf
 from thrift_bindings.thrift010 import Cassandra
 from thrift_bindings.thrift010.Cassandra import ColumnParent, KeyRange, SlicePredicate, SliceRange
+from tools.assertions import assert_unavailable, assert_none
+from tools.data import insert_columns, rows_to_list, create_c1c2_table, insert_c1c2, query_c1c2
+from tools.paging import PageFetcher
 
-from paging_test import PageFetcher
-from nose.plugins.attrib import attr
-from unittest import skip
+logger = logging.getLogger(__name__)
 
 
 def get_thrift_client(host, port):
@@ -35,16 +33,15 @@ def get_thrift_client(host, port):
 
 
 class TestHelper(Tester):
-
-    def __init__(self, *args, **kwargs):
-        Tester.__init__(self, *args, **kwargs)
-        self.lock = threading.Lock()
+    LOCK = threading.Lock()
+    KS_NAME = 'mytestks'
 
     def log(self, message):
-        with self.lock:
-            debug(message)
+        with self.LOCK:
+            logger.debug(message)
 
-    def _name(self, cl):
+    @staticmethod
+    def _name(cl_value):
         return {
             None: '-',
             ConsistencyLevel.ANY: 'ANY',
@@ -58,18 +55,18 @@ class TestHelper(Tester):
             ConsistencyLevel.SERIAL: 'SERIAL',
             ConsistencyLevel.LOCAL_SERIAL: 'LOCAL_SERIAL',
             ConsistencyLevel.LOCAL_ONE: 'LOCAL_ONE',
-        }[cl]
+        }[cl_value]
 
-    def _is_local(self, cl):
-        return (cl == ConsistencyLevel.LOCAL_QUORUM or
-                cl == ConsistencyLevel.LOCAL_ONE or
-                cl == ConsistencyLevel.LOCAL_SERIAL)
+    @staticmethod
+    def _is_local(cl_value):
+        return cl_value in (ConsistencyLevel.LOCAL_QUORUM, ConsistencyLevel.LOCAL_ONE, ConsistencyLevel.LOCAL_SERIAL)
 
-    def _is_conditional(self, cl):
-        return (cl == ConsistencyLevel.SERIAL or
-                cl == ConsistencyLevel.LOCAL_SERIAL)
+    @staticmethod
+    def _is_conditional(cl_value):
+        return cl_value in (ConsistencyLevel.SERIAL, ConsistencyLevel.LOCAL_SERIAL)
 
-    def _required_nodes(self, cl, rf_factors, dc):
+    @staticmethod
+    def _required_nodes(cl_value, rf_factors, dc_value):
         """
         Return the number of nodes required by this consistency level
         in the current data center, specified by the dc parameter,
@@ -82,65 +79,63 @@ class TestHelper(Tester):
             ConsistencyLevel.THREE: 3,
             ConsistencyLevel.QUORUM: sum(rf_factors) // 2 + 1,
             ConsistencyLevel.ALL: sum(rf_factors),
-            ConsistencyLevel.LOCAL_QUORUM: rf_factors[dc] // 2 + 1,
-            ConsistencyLevel.EACH_QUORUM: rf_factors[dc] // 2 + 1,
+            ConsistencyLevel.LOCAL_QUORUM: rf_factors[dc_value] // 2 + 1,
+            ConsistencyLevel.EACH_QUORUM: rf_factors[dc_value] // 2 + 1,
             ConsistencyLevel.SERIAL: sum(rf_factors) // 2 + 1,
-            ConsistencyLevel.LOCAL_SERIAL: rf_factors[dc] // 2 + 1,
+            ConsistencyLevel.LOCAL_SERIAL: rf_factors[dc_value] // 2 + 1,
             ConsistencyLevel.LOCAL_ONE: 1,
-        }[cl]
+        }[cl_value]
 
-    def _should_succeed(self, cl, rf_factors, num_nodes_alive, current):
+    def _should_succeed(self, cl_value, rf_factors, num_nodes_alive, current):
         """
         Return true if the read or write operation should succeed based on
         the consistency level requested, the replication factors and the
         number of nodes alive in each data center.
         """
-        if self._is_local(cl):
-            return num_nodes_alive[current] >= self._required_nodes(cl, rf_factors, current)
-        elif cl == ConsistencyLevel.EACH_QUORUM:
-            for i in range(0, len(rf_factors)):
-                if num_nodes_alive[i] < self._required_nodes(cl, rf_factors, i):
+        if self._is_local(cl_value):
+            return num_nodes_alive[current] >= self._required_nodes(cl_value, rf_factors, current)
+        elif cl_value == ConsistencyLevel.EACH_QUORUM:
+            for idx in range(0, len(rf_factors)):
+                if num_nodes_alive[idx] < self._required_nodes(cl_value, rf_factors, idx):
                     return False
             return True
         else:
-            return sum(num_nodes_alive) >= self._required_nodes(cl, rf_factors, current)
+            return sum(num_nodes_alive) >= self._required_nodes(cl_value, rf_factors, current)
 
-    def _start_cluster(self, save_sessions=False):
+    def _start_cluster(self, save_sessions, nodes, rf_value):
         cluster = self.cluster
         cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
-
-        nodes = self.nodes
-        rf = self.rf
 
         cluster.set_configuration_options(
             values={'hinted_handoff_enabled': False})
         cluster.populate(nodes).start(
             wait_for_binary_proto=True, wait_other_notice=True)
 
-        self.ksname = 'mytestks'
         session = self.patient_exclusive_cql_connection(cluster.nodelist()[0])
 
-        self.create_ks(session, self.ksname, rf)
+        create_ks(session=session, name=self.KS_NAME, rf=rf_value)
         self.create_tables(session)
 
+        sessions = []
         if save_sessions:
-            self.sessions = []
-            self.sessions.append(session)
+            sessions.append(session)
             for node in cluster.nodelist()[1:]:
-                self.sessions.append(
-                    self.patient_exclusive_cql_connection(node, self.ksname))
+                sessions.append(self.patient_exclusive_cql_connection(node, self.KS_NAME))
+        return sessions
 
     def create_tables(self, session):
         self.create_users_table(session)
         self.create_counters_table(session)
 
-    def truncate_tables(self, session):
+    @staticmethod
+    def truncate_tables(session):
         statement = SimpleStatement("TRUNCATE users", ConsistencyLevel.ALL)
         session.execute(statement)
         statement = SimpleStatement("TRUNCATE counters", ConsistencyLevel.ALL)
         session.execute(statement)
 
-    def create_users_table(self, session):
+    @staticmethod
+    def create_users_table(session):
         session.execute("""CREATE TABLE users (
                 userid int PRIMARY KEY,
                 firstname text,
@@ -148,14 +143,17 @@ class TestHelper(Tester):
                 age int
             ) WITH COMPACT STORAGE""")
 
-    def insert_user(self, session, userid, age, consistency, serial_consistency=None):
+    @staticmethod
+    def insert_user(session, userid, age, consistency, serial_consistency=None):
         text = "INSERT INTO users (userid, firstname, lastname, age) VALUES (%d, 'first%d', 'last%d', %d) %s" \
-            % (userid, userid, userid, age, "IF NOT EXISTS" if serial_consistency else "")
+               % (userid, userid, userid, age, "IF NOT EXISTS" if serial_consistency else "")
         statement = SimpleStatement(
             text, consistency_level=consistency, serial_consistency_level=serial_consistency)
         session.execute(statement)
 
-    def update_user(self, session, userid, age, consistency, serial_consistency=None, prev_age=None):
+    @staticmethod
+    # pylint:disable=too-many-arguments
+    def update_user(session, userid, age, consistency, serial_consistency=None, prev_age=None):
         text = "UPDATE users SET age = %d WHERE userid = %d" % (age, userid)
         if serial_consistency and prev_age:
             text = text + " IF age = %d" % (prev_age)
@@ -163,11 +161,13 @@ class TestHelper(Tester):
             text, consistency_level=consistency, serial_consistency_level=serial_consistency)
         session.execute(statement)
 
-    def delete_user(self, session, userid, consistency):
+    @staticmethod
+    def delete_user(session, userid, consistency):
         statement = SimpleStatement("DELETE FROM users where userid = %d" % (
             userid,), consistency_level=consistency)
         session.execute(statement)
 
+    # pylint:disable=too-many-arguments
     def query_user(self, session, userid, age, consistency, check_ret=True):
         statement = SimpleStatement("SELECT userid, age FROM users where userid = %d" % (
             userid,), consistency_level=consistency)
@@ -179,7 +179,8 @@ class TestHelper(Tester):
                 res), session.cluster.contact_points, expected, self._name(consistency))
         return ret
 
-    def create_counters_table(self, session):
+    @staticmethod
+    def create_counters_table(session):
         session.execute("""
             CREATE TABLE counters (
                 id int PRIMARY KEY,
@@ -187,99 +188,91 @@ class TestHelper(Tester):
             )
         """)
 
-    def update_counter(self, session, id, consistency, serial_consistency=None):
-        text = "UPDATE counters SET c = c + 1 WHERE id = %d" % (id,)
+    @staticmethod
+    def update_counter(session, id_value, consistency, serial_consistency=None):
+        text = "UPDATE counters SET c = c + 1 WHERE id = %d" % (id_value,)
         statement = SimpleStatement(
             text, consistency_level=consistency, serial_consistency_level=serial_consistency)
         session.execute(statement)
         return statement
 
-    def query_counter(self, session, id, val, consistency, check_ret=True):
+    # pylint:disable=too-many-arguments
+    def query_counter(self, session, id_value, val, consistency, check_ret=True):
         statement = SimpleStatement(
-            "SELECT * from counters WHERE id = %d" % (id,), consistency_level=consistency)
+            "SELECT * from counters WHERE id = %d" % (id_value,), consistency_level=consistency)
         res = session.execute(statement)
-        expected = [[id, val]] if val else []
+        expected = [[id_value, val]] if val else []
         ret = rows_to_list(res) == expected
         if check_ret:
             assert ret, "Got %s from %s, expected %s at %s" % (
                 res, session.cluster.contact_points, expected, self._name(consistency))
         return ret
 
-    def read_counter(self, session, id, consistency):
+    @staticmethod
+    def read_counter(session, id_value, consistency):
         """
         Return the current counter value. If we find no value we return zero
         because after the next update the counter will become one.
         """
         statement = SimpleStatement(
-            "SELECT c from counters WHERE id = %d" % (id,), consistency_level=consistency)
+            "SELECT c from counters WHERE id = %d" % (id_value,), consistency_level=consistency)
         res = rows_to_list(session.execute(statement))
         return res[0][0] if res else 0
 
 
-@attr('dtest-full')
+@pytest.mark.dtest_full
 class TestAvailability(TestHelper):
-
     """
     Test that we can read and write depending on the number of nodes that are alive and the consistency levels.
     """
 
-    def _test_simple_strategy(self, combinations):
+    def _test_simple_strategy(self, combinations, nodes, rf_value, ks_name):
         """
         Helper test function for a single data center: invoke _test_insert_query_from_node() for each node
         and each combination, progressively stopping nodes.
         """
         cluster = self.cluster
-        nodes = self.nodes
-        rf = self.rf
 
         num_alive = nodes
         for node in range(nodes):
-            debug('Testing node %d in single dc with %d nodes alive' %
-                  (node, num_alive,))
-            session = self.patient_exclusive_cql_connection(
-                cluster.nodelist()[node], self.ksname)
+            logger.info('Testing node {} in single dc with {} nodes alive'.format(node, num_alive))
+            session = self.patient_exclusive_cql_connection(cluster.nodelist()[node], ks_name)
             for combination in combinations:
-                self._test_insert_query_from_node(
-                    session, 0, [rf], [num_alive], *combination)
-
+                self._test_insert_query_from_node(session, 0, [rf_value], [num_alive], *combination)
             self.cluster.nodelist()[node].stop()
             num_alive = num_alive - 1
             time.sleep(30)
 
-    def _test_network_topology_strategy(self, combinations):
+    def _test_network_topology_strategy(self, combinations, nodes, rf_value, ks_name):
         """
         Helper test function for multiple data centers, invoke _test_insert_query_from_node() for each node
         in each dc and each combination, progressively stopping nodes.
         """
         cluster = self.cluster
-        nodes = self.nodes
-        rf = self.rf
 
         nodes_alive = deepcopy(nodes)
-        rf_factors = list(rf.values())
+        if isinstance(rf_value, dict):
+            rf_value = list(rf_value.values())
 
-        for i in range(0, len(nodes)):  # for each dc
-            self.log('Testing dc %d with rf %d and %s nodes alive' %
-                     (i, rf_factors[i], nodes_alive))
-            for n in range(nodes[i]):  # for each node in this dc
-                self.log('Testing node %d in dc %d with %s nodes alive' %
-                         (n, i, nodes_alive))
-                node = n + sum(nodes[:i])
-                session = self.patient_exclusive_cql_connection(
-                    cluster.nodelist()[node], self.ksname)
+        for node_idx, node in enumerate(nodes):  # for each dc
+            self.log('Testing dc %d with rf %d and %s nodes alive' % (node_idx, rf_value[node_idx], nodes_alive))
+            for idx in range(node):  # for each node in this dc
+                self.log('Testing node %d in dc %d with %s nodes alive' % (idx, node_idx, nodes_alive))
+                node = idx + sum(nodes[:node_idx])
+                session = self.patient_exclusive_cql_connection(cluster.nodelist()[node], ks_name)
                 for combination in combinations:
                     self._test_insert_query_from_node(
-                        session, i, rf_factors, nodes_alive, *combination)
+                        session, node_idx, rf_value, nodes_alive, *combination)
 
                 self.cluster.nodelist()[node].stop(wait_other_notice=True)
-                nodes_alive[i] = nodes_alive[i] - 1
+                nodes_alive[node_idx] = nodes_alive[node_idx] - 1
 
-    def _test_insert_query_from_node(self, session, dc_idx, rf_factors, num_nodes_alive, write_cl, read_cl, serial_cl=None, check_ret=True):
+    # pylint:disable=too-many-arguments
+    def _test_insert_query_from_node(self, session, dc_idx, rf_factors, num_nodes_alive, write_cl, read_cl,
+                                     serial_cl=None, check_ret=True):
         """
-        Test availability for read and write via the session passed in as a prameter.
+        Test availability for read and write via the session passed in as a parameter.
         """
-        cluster = self.cluster
-
         self.log("Connected to %s for %s/%s/%s" %
                  (session.cluster.contact_points, self._name(write_cl), self._name(read_cl), self._name(serial_cl)))
 
@@ -288,15 +281,15 @@ class TestAvailability(TestHelper):
         age = 30
 
         if self._should_succeed(write_cl, rf_factors, num_nodes_alive, dc_idx):
-            for n in range(start, end):
-                self.insert_user(session, n, age, write_cl, serial_cl)
+            for idx in range(start, end):
+                self.insert_user(session, idx, age, write_cl, serial_cl)
         else:
             assert_unavailable(
                 self.insert_user, session, end, age, write_cl, serial_cl)
 
         if self._should_succeed(read_cl, rf_factors, num_nodes_alive, dc_idx):
-            for n in range(start, end):
-                self.query_user(session, n, age, read_cl, check_ret)
+            for idx in range(start, end):
+                self.query_user(session, idx, age, read_cl, check_ret)
         else:
             assert_unavailable(
                 self.query_user, session, end, age, read_cl, check_ret)
@@ -305,10 +298,9 @@ class TestAvailability(TestHelper):
         """
         Test for a single datacenter, using simple replication strategy.
         """
-        self.nodes = 3
-        self.rf = 3
-
-        self._start_cluster()
+        nodes = 3
+        rf_value = {'dc1': 3}
+        self._start_cluster(save_sessions=False, nodes=nodes, rf_value=rf_value)
 
         combinations = [
             (ConsistencyLevel.ALL, ConsistencyLevel.ALL),
@@ -331,35 +323,33 @@ class TestAvailability(TestHelper):
             (ConsistencyLevel.LOCAL_QUORUM, ConsistencyLevel.SERIAL, ConsistencyLevel.LOCAL_SERIAL),
         ]
 
-        self._test_simple_strategy(combinations)
+        self._test_network_topology_strategy(combinations, nodes=nodes, rf_value=rf_value, ks_name=self.KS_NAME)
 
-    @skip('Does not work, skipping after allowing it on scylla_tests and will investigate later')
+    @pytest.mark.skip('Does not work, skipping after allowing it on scylla_tests and will investigate later')
     def test_simple_strategy_each_quorum(self):
         """
         @jira_ticket CASSANDRA-10584
         Test for a single datacenter, using simple replication strategy, only
         the each quorum reads.
         """
-        self.nodes = 3
-        self.rf = 3
-
-        self._start_cluster()
+        nodes = 3
+        rf_value = {'dc1': 3}
+        self._start_cluster(save_sessions=False, nodes=nodes, rf_value=rf_value)
 
         combinations = [
             (ConsistencyLevel.LOCAL_QUORUM, ConsistencyLevel.EACH_QUORUM),
             (ConsistencyLevel.EACH_QUORUM, ConsistencyLevel.EACH_QUORUM),
         ]
 
-        self._test_simple_strategy(combinations)
+        self._test_network_topology_strategy(combinations, nodes=nodes, rf_value=rf_value, ks_name=self.KS_NAME)
 
     def test_network_topology_strategy(self):
         """
         Test for multiple datacenters, using network topology replication strategy.
         """
-        self.nodes = [3, 3, 3]
-        self.rf = OrderedDict([('dc1', 3), ('dc2', 3), ('dc3', 3)])
-
-        self._start_cluster()
+        nodes = [3, 3, 3]
+        rf_value = {'dc1': 3, 'dc2': 3, 'dc3': 3}
+        self._start_cluster(save_sessions=False, nodes=nodes, rf_value=rf_value)
 
         combinations = [
             (ConsistencyLevel.ALL, ConsistencyLevel.ALL),
@@ -382,37 +372,34 @@ class TestAvailability(TestHelper):
             (ConsistencyLevel.LOCAL_QUORUM, ConsistencyLevel.SERIAL, ConsistencyLevel.LOCAL_SERIAL),
         ]
 
-        self._test_network_topology_strategy(combinations)
+        self._test_network_topology_strategy(combinations, nodes=nodes, rf_value=rf_value, ks_name=self.KS_NAME)
 
-    @skip('Does not work, skipping after allowing it on scylla_tests and will investigate later')
+    @pytest.mark.skip('Does not work, skipping after allowing it on scylla_tests and will investigate later')
     def test_network_topology_strategy_each_quorum(self):
         """
         @jira_ticket CASSANDRA-10584
         Test for a single datacenter, using network topology strategy, only
         the each quorum reads.
         """
-        self.nodes = [3, 3, 3]
-        self.rf = OrderedDict([('dc1', 3), ('dc2', 3), ('dc3', 3)])
-
-        self._start_cluster()
+        nodes = [3, 3, 3]
+        rf_value = {'dc1': 3, 'dc2': 3, 'dc3': 3}
+        self._start_cluster(save_sessions=False, nodes=nodes, rf_value=rf_value)
 
         combinations = [
             (ConsistencyLevel.LOCAL_QUORUM, ConsistencyLevel.EACH_QUORUM),
             (ConsistencyLevel.EACH_QUORUM, ConsistencyLevel.EACH_QUORUM),
         ]
+        self._test_network_topology_strategy(combinations, nodes=nodes, rf_value=rf_value, ks_name=self.KS_NAME)
 
-        self._test_network_topology_strategy(combinations)
 
-
-@attr('dtest-full')
+@pytest.mark.dtest_full
 class TestAccuracy(TestHelper):
-
     """
     Test that we can consistently read back what we wrote depending on the write and read consitency levels.
     """
 
     class Validation:
-
+        # pylint:disable=too-many-arguments,too-many-instance-attributes
         def __init__(self, outer, sessions, nodes, rf_factors, start, end, write_cl, read_cl, serial_cl=None):
             self.outer = outer
             self.sessions = sessions
@@ -424,8 +411,8 @@ class TestAccuracy(TestHelper):
             self.read_cl = read_cl
             self.serial_cl = serial_cl
 
-            outer.log('Testing accuracy for %s/%s/%s (keys : %d to %d)'
-                      % (outer._name(write_cl), outer._name(read_cl), outer._name(serial_cl), start, end))
+            outer.log('Testing accuracy for {}/{}/{} (keys : {} to {})'.format(
+                outer._name(write_cl), outer._name(read_cl), outer._name(serial_cl), start, end))
 
         def get_num_nodes(self, idx):
             """
@@ -438,19 +425,20 @@ class TestAccuracy(TestHelper):
             write_cl = self.write_cl
             read_cl = self.read_cl
 
-            dc = 0
-            for i in range(1, len(nodes)):
-                if idx < sum(nodes[:i]):
+            dc_value = 0
+            for node_idx in range(1, len(nodes)):
+                if idx < sum(nodes[:node_idx]):
                     break
-                dc = dc + 1
+                dc_value = dc_value + 1
 
             if write_cl == ConsistencyLevel.EACH_QUORUM:
+                # pylint:disable=protected-access
                 write_nodes = sum(
-                    [outer._required_nodes(write_cl, rf_factors, i) for i in range(0, len(nodes))])
+                    [outer._required_nodes(write_cl, rf_factors, idx) for idx in range(0, len(nodes))])
             else:
-                write_nodes = outer._required_nodes(write_cl, rf_factors, dc)
+                write_nodes = outer._required_nodes(write_cl, rf_factors, dc_value)  # pylint:disable=protected-access
 
-            read_nodes = outer._required_nodes(read_cl, rf_factors, dc)
+            read_nodes = outer._required_nodes(read_cl, rf_factors, dc_value)  # pylint:disable=protected-access
             strong_consistency = read_nodes + write_nodes > sum(rf_factors)
 
             return write_nodes, read_nodes, strong_consistency
@@ -470,31 +458,29 @@ class TestAccuracy(TestHelper):
             read_cl = self.read_cl
             serial_cl = self.serial_cl
 
-            def check_all_sessions(idx, n, val):
-                write_nodes, read_nodes, strong_consistency = self.get_num_nodes(
-                    idx)
+            def check_all_sessions(_idx, userid, val):
+                write_nodes, _, strong_consistency = self.get_num_nodes(_idx)
                 num = 0
-                for s in sessions:
-                    if outer.query_user(s, n, val, read_cl, check_ret=strong_consistency):
+                for session in sessions:
+                    if outer.query_user(session, userid, val, read_cl, check_ret=strong_consistency):
                         num = num + 1
                 assert num >= write_nodes, \
-                    "Failed to read value from sufficient number of nodes, required %d but  got %d - [%d, %s]" \
-                    % (write_nodes, num, n, val)
+                    "Failed to read value from sufficient number of nodes, required {} but  got {} - [{}, {}]".format(
+                        write_nodes, num, userid, val)
 
-            for n in range(start, end):
+            for idx in range(start, end):
                 age = 30
-                for s in range(0, len(sessions)):
-                    outer.insert_user(sessions[s], n, age, write_cl, serial_cl)
-                    check_all_sessions(s, n, age)
+                for session_idx, session in enumerate(sessions):
+                    outer.insert_user(session, idx, age, write_cl, serial_cl)
+                    check_all_sessions(session_idx, idx, age)
                     if serial_cl is None:
-                        age = age + 1
-                for s in range(0, len(sessions)):
-                    outer.update_user(
-                        sessions[s], n, age, write_cl, serial_cl, age - 1)
-                    check_all_sessions(s, n, age)
-                    age = age + 1
-                outer.delete_user(sessions[0], n, write_cl)
-                check_all_sessions(s, n, None)
+                        age += 1
+                for session_idx, session in enumerate(sessions):
+                    outer.update_user(session, idx, age, write_cl, serial_cl, age - 1)
+                    check_all_sessions(session_idx, idx, age)
+                    age += 1
+                outer.delete_user(sessions[0], idx, write_cl)
+                check_all_sessions(session_idx, idx, None)
 
         def validate_counters(self):
             """
@@ -511,29 +497,28 @@ class TestAccuracy(TestHelper):
             read_cl = self.read_cl
             serial_cl = self.serial_cl
 
-            def check_all_sessions(idx, n, val):
-                write_nodes, read_nodes, strong_consistency = self.get_num_nodes(
-                    idx)
+            def check_all_sessions(_idx, _id_value, val):
+                write_nodes, _, strong_consistency = self.get_num_nodes(_idx)
                 num = 0
-                for s in sessions:
-                    if outer.query_counter(s, n, val, read_cl, check_ret=strong_consistency):
+                for session in sessions:
+                    if outer.query_counter(session, _id_value, val, read_cl, check_ret=strong_consistency):
                         num = num + 1
                 assert num >= write_nodes, \
-                    "Failed to read value from sufficient number of nodes, required %d but got %d - [%d, %s]" \
-                    % (write_nodes, num, n, val)
+                    f"Failed to read value from sufficient number of nodes, required {write_nodes} but got {num} -" \
+                    f" [{_id_value}, {val}]"
 
-            for n in range(start, end):
-                c = outer.read_counter(sessions[0], n, ConsistencyLevel.ALL)
-                for s in range(0, len(sessions)):
-                    c = c + 1
-                    outer.update_counter(sessions[s], n, write_cl, serial_cl)
-                    check_all_sessions(s, n, c)
+            for id_value in range(start, end):
+                read_counter = outer.read_counter(sessions[0], id_value, ConsistencyLevel.ALL)
+                for session_idx, session in enumerate(sessions):
+                    read_counter += 1
+                    outer.update_counter(session, id_value, write_cl, serial_cl)
+                    check_all_sessions(session_idx, id_value, read_counter)
 
     def _run_test_function_in_parallel(self, valid_fcn, nodes, rf_factors, combinations):
         """
         Run a test function in parallel.
         """
-        self._start_cluster(save_sessions=True)
+        sessions = self._start_cluster(save_sessions=True, nodes=nodes, rf_value=rf_factors)
 
         input_queue = queue.Queue()
         exceptions_queue = queue.Queue()
@@ -541,12 +526,12 @@ class TestAccuracy(TestHelper):
         def run():
             while not input_queue.empty():
                 try:
-                    v = TestAccuracy.Validation(
-                        self, self.sessions, nodes, rf_factors, *input_queue.get(block=False))
-                    valid_fcn(v)
+                    test_accuracy = TestAccuracy.Validation(
+                        self, sessions, nodes, list(rf_factors.values()), *input_queue.get(block=False))
+                    valid_fcn(test_accuracy)
                 except queue.Empty:
                     pass
-                except:
+                except:  # pylint:disable=bare-except
                     exceptions_queue.put(sys.exc_info())
 
         start = 0
@@ -556,16 +541,16 @@ class TestAccuracy(TestHelper):
             start = start + num_keys
 
         threads = []
-        for n in range(0, 8):
-            t = threading.Thread(target=run)
-            t.setDaemon(True)
-            t.start()
-            threads.append(t)
+        for _ in range(0, 8):
+            thread = threading.Thread(target=run)
+            thread.setDaemon(True)
+            thread.start()
+            threads.append(thread)
 
         self.log("Waiting for workers to complete")
         while exceptions_queue.empty():
             time.sleep(0.1)
-            if len(list(filter(lambda t: t.isAlive(), threads))) == 0:
+            if len(list(filter(lambda thread: thread.is_alive(), threads))) == 0:
                 break
 
         if not exceptions_queue.empty():
@@ -576,9 +561,6 @@ class TestAccuracy(TestHelper):
         """
         Test for a single datacenter, users table, only the each quorum reads.
         """
-        self.nodes = 5
-        self.rf = 3
-
         combinations = [
             (ConsistencyLevel.ALL, ConsistencyLevel.ALL),
             (ConsistencyLevel.QUORUM, ConsistencyLevel.QUORUM),
@@ -603,17 +585,14 @@ class TestAccuracy(TestHelper):
 
         self.log("Testing single dc, users")
         self._run_test_function_in_parallel(
-            TestAccuracy.Validation.validate_users, [self.nodes], [self.rf], combinations)
+            TestAccuracy.Validation.validate_users, [5], {'dc1': 3}, combinations)
 
-    @skip('Does not work, skipping after allowing it on scylla_tests and will investigate later')
+    @pytest.mark.skip('Does not work, skipping after allowing it on scylla_tests and will investigate later')
     def test_simple_strategy_each_quorum_users(self):
         """
         @jira_ticket CASSANDRA-10584
         Test for a single datacenter, users table, only the each quorum reads.
         """
-        self.nodes = 5
-        self.rf = 3
-
         combinations = [
             (ConsistencyLevel.LOCAL_QUORUM, ConsistencyLevel.EACH_QUORUM),
             (ConsistencyLevel.EACH_QUORUM, ConsistencyLevel.EACH_QUORUM),
@@ -621,15 +600,12 @@ class TestAccuracy(TestHelper):
 
         self.log("Testing single dc, users, each quorum reads")
         self._run_test_function_in_parallel(
-            TestAccuracy.Validation.validate_users, [self.nodes], [self.rf], combinations)
+            TestAccuracy.Validation.validate_users, [5], {'dc1': 3}, combinations)
 
     def test_network_topology_strategy_users(self):
         """
         Test for multiple datacenters, users table.
         """
-        self.nodes = [3, 3]
-        self.rf = OrderedDict([('dc1', 3), ('dc2', 3)])
-
         combinations = [
             (ConsistencyLevel.ALL, ConsistencyLevel.ALL),
             (ConsistencyLevel.QUORUM, ConsistencyLevel.QUORUM),
@@ -656,19 +632,16 @@ class TestAccuracy(TestHelper):
         ]
 
         self.log("Testing multiple dcs, users")
-        self._run_test_function_in_parallel(
-            TestAccuracy.Validation.validate_users, self.nodes, self.rf.values(), combinations),
+        self._run_test_function_in_parallel(TestAccuracy.Validation.validate_users, [3, 3], {'dc1': 3, 'dc2': 3},
+                                            combinations)
 
-    @skip('Does not work, skipping after allowing it on scylla_tests and will investigate later')
+    @pytest.mark.skip('Does not work, skipping after allowing it on scylla_tests and will investigate later')
     def test_network_topology_strategy_each_quorum_users(self):
         """
         @jira_ticket CASSANDRA-10584
         Test for a multiple datacenters, users table, only the each quorum
         reads.
         """
-        self.nodes = [3, 3]
-        self.rf = OrderedDict([('dc1', 3), ('dc2', 3)])
-
         combinations = [
             (ConsistencyLevel.LOCAL_QUORUM, ConsistencyLevel.EACH_QUORUM),
             (ConsistencyLevel.EACH_QUORUM, ConsistencyLevel.EACH_QUORUM),
@@ -676,17 +649,14 @@ class TestAccuracy(TestHelper):
 
         self.log("Testing multiple dcs, users, each quorum reads")
         self._run_test_function_in_parallel(
-            TestAccuracy.Validation.validate_users, self.nodes, self.rf.values(), combinations)
+            TestAccuracy.Validation.validate_users, [3, 3], {'dc1': 3, 'dc2': 3}, combinations)
 
-    @attr('next-gating')
-    @attr('dtest-debug')
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
     def test_simple_strategy_counters(self):
         """
         Test for a single datacenter, counters table.
         """
-        self.nodes = 3
-        self.rf = 3
-
         combinations = [
             (ConsistencyLevel.ALL, ConsistencyLevel.ALL),
             (ConsistencyLevel.QUORUM, ConsistencyLevel.QUORUM),
@@ -708,18 +678,15 @@ class TestAccuracy(TestHelper):
 
         self.log("Testing single dc, counters")
         self._run_test_function_in_parallel(
-            TestAccuracy.Validation.validate_counters, [self.nodes], [self.rf], combinations)
+            TestAccuracy.Validation.validate_counters, [3], {'dc1': 3}, combinations)
 
-    @skip('Does not work, skipping after allowing it on scylla_tests and will investigate later')
+    @pytest.mark.skip('Does not work, skipping after allowing it on scylla_tests and will investigate later')
     def test_simple_strategy_each_quorum_counters(self):
         """
         @jira_ticket CASSANDRA-10584
         Test for a single datacenter, counters table, only the each quorum
         reads.
         """
-        self.nodes = 3
-        self.rf = 3
-
         combinations = [
             (ConsistencyLevel.LOCAL_QUORUM, ConsistencyLevel.EACH_QUORUM),
             (ConsistencyLevel.EACH_QUORUM, ConsistencyLevel.EACH_QUORUM),
@@ -727,15 +694,12 @@ class TestAccuracy(TestHelper):
 
         self.log("Testing single dc, counters, each quorum reads")
         self._run_test_function_in_parallel(
-            TestAccuracy.Validation.validate_counters, [self.nodes], [self.rf], combinations)
+            TestAccuracy.Validation.validate_counters, [3], {'dc1': 3}, combinations)
 
     def test_network_topology_strategy_counters(self):
         """
         Test for multiple datacenters, counters table.
         """
-        self.nodes = [3, 3]
-        self.rf = OrderedDict([('dc1', 3), ('dc2', 3)])
-
         combinations = [
             (ConsistencyLevel.ALL, ConsistencyLevel.ALL),
             (ConsistencyLevel.QUORUM, ConsistencyLevel.QUORUM),
@@ -757,32 +721,29 @@ class TestAccuracy(TestHelper):
         ]
 
         self.log("Testing multiple dcs, counters")
-        self._run_test_function_in_parallel(
-            TestAccuracy.Validation.validate_counters, self.nodes, self.rf.values(), combinations),
+        self._run_test_function_in_parallel(TestAccuracy.Validation.validate_counters, [3, 3], {'dc1': 3, 'dc2': 3},
+                                            combinations)
 
-    @skip('Does not work, skipping after allowing it on scylla_tests and will investigate later')
+    @pytest.mark.skip('Does not work, skipping after allowing it on scylla_tests and will investigate later')
     def test_network_topology_strategy_each_quorum_counters(self):
         """
         @jira_ticket CASSANDRA-10584
         Test for multiple datacenters, counters table, only the each quorum
         reads.
         """
-        self.nodes = [3, 3]
-        self.rf = OrderedDict([('dc1', 3), ('dc2', 3)])
-
         combinations = [
             (ConsistencyLevel.LOCAL_QUORUM, ConsistencyLevel.EACH_QUORUM),
             (ConsistencyLevel.EACH_QUORUM, ConsistencyLevel.EACH_QUORUM),
         ]
 
         self.log("Testing multiple dcs, counters, each quorum reads")
-        self._run_test_function_in_parallel(
-            TestAccuracy.Validation.validate_counters, self.nodes, self.rf.values(), combinations),
+        self._run_test_function_in_parallel(TestAccuracy.Validation.validate_counters, [3, 3], {'dc1': 3, 'dc2': 3},
+                                            combinations)
 
 
-@attr('dtest-full')
+@pytest.mark.dtest_full
 class TestConsistency(Tester):
-    def short_read_test(self):
+    def test_short_read(self):
         """
         @jira_ticket CASSANDRA-9460
         """
@@ -795,15 +756,15 @@ class TestConsistency(Tester):
         cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
 
         cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True)
-        node1, node2, node3 = cluster.nodelist()
+        node1, *_ = cluster.nodelist()
 
         session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'ks', 3)
-        self.create_cf(session, 'cf', read_repair=0.0)
+        create_ks(session, 'ks', 3)
+        create_cf(session, 'cf', read_repair=0.0)
 
         # Repeat this test 10 times to make it more easy to spot a null pointer
         # exception caused by a race, see CASSANDRA-9460
-        for k in range(10):
+        for _ in range(10):
             # insert 9 columns in one row
             insert_columns(self, session, 0, 9)
 
@@ -818,18 +779,17 @@ class TestConsistency(Tester):
                 'SELECT c, v FROM cf WHERE key=\'k0\' LIMIT 3', consistency_level=ConsistencyLevel.QUORUM)
             rows = list(session.execute(query))
             res = rows
-            assert len(res) == 3, 'Expecting 3 values, got %d (%s)' % (
-                len(res), str(res))
+            assert len(res) == 3, f'Expecting 3 values, got {len(res)} ({str(res)})'
             # value 0, 1 and 2 have been deleted
-            for i in range(1, 4):
-                assert res[i - 1][1] == 'value%d' % (
-                    i + 2), 'Expecting value%d, got %s (%s)' % (i + 2, res[i - 1][1], str(res))
+            for idx in range(1, 4):
+                assert res[idx - 1][1] == 'value%d' % (
+                        idx + 2), 'Expecting value%d, got %s (%s)' % (idx + 2, res[idx - 1][1], str(res))
 
             truncate_statement = SimpleStatement(
                 'TRUNCATE cf', consistency_level=ConsistencyLevel.QUORUM)
             session.execute(truncate_statement)
 
-    def short_read_delete_test(self):
+    def test_short_read_delete(self):
         """ Test short reads ultimately leaving no columns alive [#4000] """
         cluster = self.cluster
 
@@ -843,8 +803,8 @@ class TestConsistency(Tester):
         node1, node2 = cluster.nodelist()
 
         session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'ks', 3)
-        self.create_cf(session, 'cf', read_repair=0.0)
+        create_ks(session, 'ks', 3)
+        create_cf(session, 'cf', read_repair=0.0)
         # insert 2 columns in one row
         insert_columns(self, session, 0, 2)
 
@@ -867,7 +827,7 @@ class TestConsistency(Tester):
         res = list(session.execute(query))
         assert len(res) == 0, res
 
-    def short_read_quorum_delete_test(self):
+    def test_short_read_quorum_delete(self):
         """
         @jira_ticket CASSANDRA-8933
         """
@@ -885,7 +845,7 @@ class TestConsistency(Tester):
         node1, node2, node3 = cluster.nodelist()
 
         session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'ks', 3)
+        create_ks(session, 'ks', 3)
 
         session.execute(
             "CREATE TABLE t (id int, v int, PRIMARY KEY(id, v)) WITH read_repair_chance = 0.0")
@@ -915,18 +875,17 @@ class TestConsistency(Tester):
         # B answer first.
         node3.flush()
         node3.stop(wait_other_notice=True)
-        assert_none(
-            session, "SELECT * FROM t WHERE id = 0 LIMIT 1", cl=ConsistencyLevel.QUORUM)
+        assert_none(session, "SELECT * FROM t WHERE id = 0 LIMIT 1", cl=ConsistencyLevel.QUORUM)
 
-    @attr('next-gating')
-    @attr('dtest-debug')
-    def readrepair_test(self):
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
+    def test_readrepair(self):
         cluster = self.cluster
         cluster.set_configuration_options(
             values={'hinted_handoff_enabled': False})
         cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
 
-        if DISABLE_VNODES:
+        if self.dtest_config.use_vnodes:
             cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
         else:
             tokens = cluster.balanced_tokens(2)
@@ -934,7 +893,7 @@ class TestConsistency(Tester):
         node1, node2 = cluster.nodelist()
 
         session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'ks', 2)
+        create_ks(session, 'ks', 2)
         create_c1c2_table(self, session, read_repair=1.0)
 
         node2.stop(wait_other_notice=True)
@@ -944,17 +903,17 @@ class TestConsistency(Tester):
         node2.start(wait_other_notice=True)
 
         # query everything to cause RR
-        for n in range(0, 10000):
-            query_c1c2(session, n, ConsistencyLevel.QUORUM)
+        for key in range(0, 10000):
+            query_c1c2(session, key, ConsistencyLevel.QUORUM)
 
         node1.stop(wait_other_notice=True)
 
         # Check node2 for all the keys that should have been repaired
         session = self.patient_cql_connection(node2, keyspace='ks')
-        for n in range(0, 10000):
-            query_c1c2(session, n, ConsistencyLevel.ONE)
+        for key in range(0, 10000):
+            query_c1c2(session, key, ConsistencyLevel.ONE)
 
-    def short_read_reversed_test(self):
+    def test_short_read_reversed(self):
         """
         @jira_ticket CASSANDRA-9460
         """
@@ -967,15 +926,15 @@ class TestConsistency(Tester):
         cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
 
         cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True)
-        node1, node2, node3 = cluster.nodelist()
+        node1, *_ = cluster.nodelist()
 
         session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'ks', 3)
-        self.create_cf(session, 'cf', read_repair=0.0)
+        create_ks(session, 'ks', 3)
+        create_cf(session, 'cf', read_repair=0.0)
 
         # Repeat this test 10 times to make it more easy to spot a null pointer
         # exception caused by a race, see CASSANDRA-9460
-        for k in range(10):
+        for _ in range(10):
             # insert 9 columns in one row
             insert_columns(self, session, 0, 9)
 
@@ -987,50 +946,51 @@ class TestConsistency(Tester):
             # Query 3 firsts columns
             session = self.patient_cql_connection(node1, 'ks')
             query = SimpleStatement(
-                'SELECT c, v FROM cf WHERE key=\'k0\' ORDER BY c DESC LIMIT 3', consistency_level=ConsistencyLevel.QUORUM)
+                'SELECT c, v FROM cf WHERE key=\'k0\' ORDER BY c DESC LIMIT 3',
+                consistency_level=ConsistencyLevel.QUORUM)
             rows = list(session.execute(query))
             res = rows
             assert len(res) == 3, 'Expecting 3 values, got %d (%s)' % (
                 len(res), str(res))
             # value 6, 7 and 8 have been deleted
-            for i in range(0, 3):
-                assert res[i][1] == 'value%d' % (
-                    5 - i), 'Expecting value%d, got %s (%s)' % (5 - i, res[i][1], str(res))
+            for idx in range(0, 3):
+                assert res[idx][1] == 'value%d' % (
+                        5 - idx), 'Expecting value%d, got %s (%s)' % (5 - idx, res[idx][1], str(res))
 
             truncate_statement = SimpleStatement(
                 'TRUNCATE cf', consistency_level=ConsistencyLevel.QUORUM)
             session.execute(truncate_statement)
 
-    @attr('next-gating')
-    @attr('dtest-debug')  # https://github.com/scylladb/scylla/issues/4384
-    def quorum_available_during_failure_test(self):
-        CL = ConsistencyLevel.QUORUM
-        RF = 3
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug  # https://github.com/scylladb/scylla/issues/4384
+    def test_quorum_available_during_failure(self):
+        cl_value = ConsistencyLevel.QUORUM
+        rf_value = 3
 
-        debug("Creating a ring")
+        logger.info("Creating a ring")
         cluster = self.cluster
         cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
-        if DISABLE_VNODES:
+        if not self.dtest_config.use_vnodes:
             cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True)
         else:
             tokens = cluster.balanced_tokens(3)
             cluster.populate(3, tokens=tokens).start(wait_for_binary_proto=True, wait_other_notice=True)
-        node1, node2, node3 = cluster.nodelist()
+        node1, node2, *_ = cluster.nodelist()
 
-        debug("Set to talk to node 2")
+        logger.info("Set to talk to node 2")
         session = self.patient_cql_connection(node2)
-        self.create_ks(session, 'ks', RF)
+        create_ks(session, 'ks', rf_value)
         create_c1c2_table(self, session)
 
-        debug("Generating some data")
-        insert_c1c2(session, n=100, consistency=CL)
+        logger.info("Generating some data")
+        insert_c1c2(session, n=100, consistency=cl_value)
 
-        debug("Taking down node1")
+        logger.info("Taking down node1")
         node1.stop(wait_other_notice=True)
 
-        debug("Reading back data.")
-        for n in range(100):
-            query_c1c2(session, n, CL)
+        logger.info("Reading back data.")
+        for key in range(100):
+            query_c1c2(session=session, key=key, consistency=cl_value)
 
     def stop_delete_and_restart(self, node_number, column):
         to_stop = self.cluster.nodes["node%d" % node_number]
@@ -1041,7 +1001,7 @@ class TestConsistency(Tester):
         session = self.patient_cql_connection(next_node, 'ks')
         query = 'BEGIN BATCH '
         query = query + \
-            'DELETE FROM cf WHERE key=\'k0\' AND c=\'c%06d\'; ' % column
+                'DELETE FROM cf WHERE key=\'k0\' AND c=\'c%06d\'; ' % column
         query = query + 'DELETE FROM cf WHERE key=\'k0\' AND c=\'c2\'; '
         query = query + 'APPLY BATCH;'
         simple_query = SimpleStatement(
@@ -1050,17 +1010,17 @@ class TestConsistency(Tester):
 
         to_stop.start(wait_other_notice=True)
 
-    def data_query_digest_test(self):
-        debug('Create cluster')
+    def test_data_query_digest(self):
+        logger.info('Create cluster')
         cluster = self.cluster
         cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
         cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
         cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2 = cluster.nodelist()
 
-        debug('Prepare column family')
+        logger.info('Prepare column family')
         session1 = self.patient_cql_connection(node1)
-        self.create_ks(session1, 'ks', 2)
+        create_ks(session1, 'ks', 2)
         session1.execute('create table ks.cf1 (p int, c int, r int, primary key (p, c))')
 
         session1.execute(SimpleStatement('insert into ks.cf1 (p, c, r) values (0, 1, 1)',
@@ -1068,12 +1028,12 @@ class TestConsistency(Tester):
         session1.execute(SimpleStatement('insert into ks.cf1 (p, c, r) values (0, 2, 1)',
                                          consistency_level=ConsistencyLevel.ALL))
 
-        debug('Updating node1')
+        logger.info('Updating node1')
         node2.stop()
         session1.execute(SimpleStatement('delete from ks.cf1 where p = 0 and c = 1',
                                          consistency_level=ConsistencyLevel.ONE))
 
-        debug('Updating node2')
+        logger.info('Updating node2')
         node2.start(wait_for_binary_proto=True)
         node1.stop()
 
@@ -1081,9 +1041,9 @@ class TestConsistency(Tester):
         session2.execute(SimpleStatement('insert into ks.cf1 (p, c, r) values (0, 2, 2)',
                                          consistency_level=ConsistencyLevel.ONE))
 
-        debug('Querying whole cluster')
+        logger.info('Querying whole cluster')
         node1.start(wait_other_notice=True)
-        debug('Node 1 started')
+        logger.info('Node 1 started')
 
         query = SimpleStatement('select r from ks.cf1 where p = 0 limit 1', consistency_level=ConsistencyLevel.ALL)
         res = list(session2.execute(query))
@@ -1092,8 +1052,8 @@ class TestConsistency(Tester):
         assert len(res[0]) == 1, 'Expecting 1 cell, got %d (%s)' % (len(res[0]), str(res[0]))
         assert res[0][0] == 2, 'Expecting value 2, got %s' % str(res[0][0])
 
-    def incomplete_result_test_partition_limit(self):
-        debug('Create cluster')
+    def test_incomplete_result_test_partition_limit(self):
+        logger.info('Create cluster')
         cluster = self.cluster
         cluster.set_partitioner("org.apache.cassandra.dht.Murmur3Partitioner")
         cluster.set_configuration_options(values={'start_rpc': True})
@@ -1102,9 +1062,9 @@ class TestConsistency(Tester):
         cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
         node1, node2 = cluster.nodelist()
 
-        debug('Prepare column family')
+        logger.info('Prepare column family')
         session1 = self.patient_cql_connection(node1)
-        self.create_ks(session1, 'ks', 2)
+        create_ks(session1, 'ks', 2)
         session1.execute('create table ks.cf1 (p int, c text, r text, primary key (p, c)) with compact storage')
 
         session1.execute(SimpleStatement("insert into ks.cf1 (p, c, r) values (1, '1', '0')",
@@ -1112,12 +1072,12 @@ class TestConsistency(Tester):
         session1.execute(SimpleStatement("insert into ks.cf1 (p, c, r) values (2, '1', '1')",
                                          consistency_level=ConsistencyLevel.ALL))
 
-        debug('Updating node1')
+        logger.info('Updating node1')
         node2.stop()
         session1.execute(SimpleStatement("delete from ks.cf1 where p = 1 and c = '1'",
                                          consistency_level=ConsistencyLevel.ONE))
 
-        debug('Updating node2')
+        logger.info('Updating node2')
         node2.start()
         node1.stop()
 
@@ -1125,25 +1085,25 @@ class TestConsistency(Tester):
         session2.execute(SimpleStatement("insert into ks.cf1 (p, c, r) values (2, '1', '2')",
                                          consistency_level=ConsistencyLevel.ONE))
 
-        debug('Querying whole cluster')
+        logger.info('Querying whole cluster')
         node1.start(wait_other_notice=True)
-        debug('Node 1 started')
+        logger.info('Node 1 started')
 
         host, port = node2.network_interfaces['thrift']
         client = get_thrift_client(host, port)
         client.transport.open()
         client.set_keyspace('ks')
 
-        cp = ColumnParent('cf1')
-        res = client.get_range_slices(cp, SlicePredicate(column_names=['1']), KeyRange(
+        cp_value = ColumnParent('cf1')
+        res = client.get_range_slices(cp_value, SlicePredicate(column_names=['1']), KeyRange(
             start_token=str(-(1 << 63)), end_token=str(-(1 << 63)), count=1), ConsistencyLevel.ALL)
 
         assert len(res) == 1, 'Expecting 1 row, got %d (%s)' % (len(res), str(res))
         assert len(res[0].columns) == 1, 'Expecting 1 cell, got %d (%s)' % (len(res[0].columns), str(res[0].columns))
         assert res[0].columns[0].column.value == b'2', 'Expecting value 2, got %s' % str(res[0].columns[0].column.value)
 
-    def incomplete_result_test_per_partition_row_limit(self):
-        debug('Create cluster')
+    def test_incomplete_result_test_per_partition_row_limit(self):
+        logger.info('Create cluster')
         cluster = self.cluster
         cluster.set_partitioner("org.apache.cassandra.dht.Murmur3Partitioner")
         cluster.set_configuration_options(values={'start_rpc': True})
@@ -1152,9 +1112,9 @@ class TestConsistency(Tester):
         cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2 = cluster.nodelist()
 
-        debug('Prepare column family')
+        logger.info('Prepare column family')
         session1 = self.patient_cql_connection(node1)
-        self.create_ks(session1, 'ks', 2)
+        create_ks(session1, 'ks', 2)
         session1.execute('create table ks.cf1 (p int, c text, r text, primary key (p, c)) with compact storage')
 
         session1.execute(SimpleStatement("insert into ks.cf1 (p, c, r) values (1, '1', '0')",
@@ -1162,12 +1122,12 @@ class TestConsistency(Tester):
         session1.execute(SimpleStatement("insert into ks.cf1 (p, c, r) values (1, '2', '1')",
                                          consistency_level=ConsistencyLevel.ALL))
 
-        debug('Updating node1')
+        logger.info('Updating node1')
         node2.stop()
         session1.execute(SimpleStatement("delete from ks.cf1 where p = 1 and c = '1'",
                                          consistency_level=ConsistencyLevel.ONE))
 
-        debug('Updating node2')
+        logger.info('Updating node2')
         node2.start()
         node1.stop()
 
@@ -1175,34 +1135,36 @@ class TestConsistency(Tester):
         session2.execute(SimpleStatement("insert into ks.cf1 (p, c, r) values (1, '2', '2')",
                                          consistency_level=ConsistencyLevel.ONE))
 
-        debug('Querying whole cluster')
+        logger.info('Querying whole cluster')
         node1.start(wait_other_notice=True)
-        debug('Node 1 started')
+        logger.info('Node 1 started')
 
         host, port = node2.network_interfaces['thrift']
         client = get_thrift_client(host, port)
         client.transport.open()
         client.set_keyspace('ks')
 
-        cp = ColumnParent('cf1')
-        res = client.get_range_slices(cp,
-                                      SlicePredicate(slice_range=SliceRange(start='', finish='', count=1)), KeyRange(start_token=str(-(1 << 63)), end_token=str(-(1 << 63))), ConsistencyLevel.ALL)
+        cp_value = ColumnParent('cf1')
+        res = client.get_range_slices(cp_value,
+                                      SlicePredicate(slice_range=SliceRange(start='', finish='', count=1)),
+                                      KeyRange(start_token=str(-(1 << 63)), end_token=str(-(1 << 63))),
+                                      ConsistencyLevel.ALL)
 
-        assert len(res) == 1, 'Expecting 1 row, got %d (%s)' % (len(res), str(res))
-        assert len(res[0].columns) == 1, 'Expecting 1 cell, got %d (%s)' % (len(res[0].columns), str(res[0].columns))
-        assert res[0].columns[0].column.value == b'2', 'Expecting value 2, got %s' % str(res[0].columns[0].column.value)
+        assert len(res) == 1, f'Expecting 1 row, got {len(res)} ({str(res)})'
+        assert len(res[0].columns) == 1, f'Expecting 1 cell, got {len(res[0].columns)} ({res[0].columns})'
+        assert res[0].columns[0].column.value == b'2', f'Expecting value 2, got {res[0].columns[0].column.value}'
 
-    def empty_reconciled_result(self):
-        debug('Create cluster')
+    def test_empty_reconciled_result(self):
+        logger.info('Create cluster')
         cluster = self.cluster
         cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
         cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
         cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2 = cluster.nodelist()
 
-        debug('Prepare column family')
+        logger.info('Prepare column family')
         session1 = self.patient_cql_connection(node1)
-        self.create_ks(session1, 'ks', 2)
+        create_ks(session1, 'ks', 2)
         session1.execute('create table ks.cf1 (p int, r int, primary key (p))')
 
         session1.execute(SimpleStatement("insert into ks.cf1 (p, r) values (1, 1)",
@@ -1212,39 +1174,39 @@ class TestConsistency(Tester):
         session1.execute(SimpleStatement("insert into ks.cf1 (p, r) values (3, 3)",
                                          consistency_level=ConsistencyLevel.ALL))
 
-        debug('Updating node1')
+        logger.info('Updating node1')
         node2.stop(wait_other_notice=True)
         session1.execute(SimpleStatement("delete from ks.cf1 where p = 1", consistency_level=ConsistencyLevel.ONE))
 
-        debug('Updating node2')
+        logger.info('Updating node2')
         node1.stop()
         node2.start(wait_for_binary_proto=True)
 
         session2 = self.patient_cql_connection(node2)
         session2.execute(SimpleStatement("delete from ks.cf1 where p = 2", consistency_level=ConsistencyLevel.ONE))
 
-        debug('Querying whole cluster')
+        logger.info('Querying whole cluster')
         node1.start(wait_other_notice=True, wait_for_binary_proto=True)
-        debug('Node 1 started')
+        logger.info('Node 1 started')
 
         query = SimpleStatement('select r from ks.cf1 limit 1', consistency_level=ConsistencyLevel.ALL, fetch_size=0)
         res = list(session2.execute(query))
 
-        assert len(res) == 1, 'Expecting 1 row, got %d (%s)' % (len(res), str(res))
-        assert len(res[0]) == 1, 'Expecting 1 cell, got %d (%s)' % (len(res[0]), str(res[0]))
-        assert res[0][0] == 3, 'Expecting value 3, got %s' % str(res[0][0])
+        assert len(res) == 1, f'Expecting 1 row, got {len(res)} ({res})'
+        assert len(res[0]) == 1, f'Expecting 1 cell, got {len(res[0])} ({res[0]})'
+        assert res[0][0] == 3, f'Expecting value 3, got {res[0][0]}'
 
-    def empty_reconciled_result_with_paging(self):
-        debug('Create cluster')
+    def test_empty_reconciled_result_with_paging(self):
+        logger.info('Create cluster')
         cluster = self.cluster
         cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
         cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
         cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2 = cluster.nodelist()
 
-        debug('Prepare column family')
+        logger.info('Prepare column family')
         session1 = self.patient_cql_connection(node1)
-        self.create_ks(session1, 'ks', 2)
+        create_ks(session1, 'ks', 2)
         session1.execute('create table ks.cf1 (p int, r int, primary key (p))')
 
         session1.execute(SimpleStatement("insert into ks.cf1 (p, r) values (1, 1)",
@@ -1256,32 +1218,32 @@ class TestConsistency(Tester):
         session1.execute(SimpleStatement("insert into ks.cf1 (p, r) values (4, 4)",
                                          consistency_level=ConsistencyLevel.ALL))
 
-        debug('Updating node1')
+        logger.info('Updating node1')
         node2.stop(wait_other_notice=True)
         session1.execute(SimpleStatement("delete from ks.cf1 where p = 1", consistency_level=ConsistencyLevel.ONE))
 
-        debug('Updating node2')
+        logger.info('Updating node2')
         node1.stop()
         node2.start(wait_for_binary_proto=True)
 
         session2 = self.patient_cql_connection(node2)
         session2.execute(SimpleStatement("delete from ks.cf1 where p = 2", consistency_level=ConsistencyLevel.ONE))
 
-        debug('Querying whole cluster')
+        logger.info('Querying whole cluster')
         node1.start(wait_other_notice=True, wait_for_binary_proto=True)
-        debug('Node 1 started')
+        logger.info('Node 1 started')
 
         future = session2.execute_async(
             SimpleStatement('select r from ks.cf1 limit 2', consistency_level=ConsistencyLevel.ALL, fetch_size=1)
         )
-        pf = PageFetcher(future).request_all()
-        all_pages = pf.num_results_all()
+        page_fetcher = PageFetcher(future).request_all()
+        all_pages = page_fetcher.num_results_all()
 
-        self.assertEqual(sum(all_pages), 2)
-        self.assertEqual(len(all_pages), 2)
+        assert sum(all_pages) == 2
+        assert len(all_pages) == 2
 
-    def short_read_partitions(self):
-        debug('Create cluster')
+    def test_short_read_partitions(self):
+        logger.info('Create cluster')
         cluster = self.cluster
         cluster.set_partitioner("org.apache.cassandra.dht.Murmur3Partitioner")
         cluster.set_configuration_options(values={'start_rpc': True})
@@ -1290,9 +1252,9 @@ class TestConsistency(Tester):
         cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
         node1, node2 = cluster.nodelist()
 
-        debug('Prepare column family')
+        logger.info('Prepare column family')
         session1 = self.patient_cql_connection(node1)
-        self.create_ks(session1, 'ks', 2)
+        create_ks(session1, 'ks', 2)
         session1.execute('create table ks.cf1 (p int, c text, r text, primary key (p, c)) with compact storage')
 
         session1.execute(SimpleStatement("insert into ks.cf1 (p, c, r) values (1, '1', '1')",
@@ -1304,40 +1266,40 @@ class TestConsistency(Tester):
         session1.execute(SimpleStatement("insert into ks.cf1 (p, c, r) values (4, '1', '4')",
                                          consistency_level=ConsistencyLevel.ALL))
 
-        debug('Updating node1')
+        logger.info('Updating node1')
         node2.stop(wait_other_notice=True)
         session1.execute(SimpleStatement("delete from ks.cf1 where p = 1", consistency_level=ConsistencyLevel.ONE))
 
-        debug('Updating node2')
+        logger.info('Updating node2')
         node1.stop()
         node2.start(wait_for_binary_proto=True)
 
         session2 = self.patient_cql_connection(node2)
         session2.execute(SimpleStatement("delete from ks.cf1 where p = 2", consistency_level=ConsistencyLevel.ONE))
 
-        debug('Querying whole cluster')
+        logger.info('Querying whole cluster')
         node1.start(wait_other_notice=True, wait_for_binary_proto=True)
-        debug('Node 1 started')
+        logger.info('Node 1 started')
 
         host, port = node2.network_interfaces['thrift']
         client = get_thrift_client(host, port)
         client.transport.open()
         client.set_keyspace('ks')
 
-        cp = ColumnParent('cf1')
-        res = client.get_range_slices(cp, SlicePredicate(column_names=['1']), KeyRange(
+        cp_value = ColumnParent('cf1')
+        res = client.get_range_slices(cp_value, SlicePredicate(column_names=['1']), KeyRange(
             start_token=str(-(1 << 63)), end_token=str(-(1 << 63)), count=2), ConsistencyLevel.ALL)
 
-        assert len(res) == 2, 'Expecting 2 rows, got %d (%s)' % (len(res), str(res))
+        assert len(res) == 2, f'Expecting 2 rows, got {len(res)} ({res})'
 
-        assert len(res[0].columns) == 1, 'Expecting 1 cell, got %d (%s)' % (len(res[0].columns), str(res[0].columns))
-        assert res[0].columns[0].column.value == b'4', 'Expecting value 4, got %s' % str(res[0].columns[0].column.value)
+        assert len(res[0].columns) == 1, f'Expecting 1 cell, got {len(res[0].columns)} ({res[0].columns})'
+        assert res[0].columns[0].column.value == b'4', f'Expecting value 4, got {res[0].columns[0].column.value}'
 
-        assert len(res[1].columns) == 1, 'Expecting 1 cell, got %d (%s)' % (len(res[0].columns), str(res[0].columns))
-        assert res[1].columns[0].column.value == b'3', 'Expecting value 3, got %s' % str(res[0].columns[0].column.value)
+        assert len(res[1].columns) == 1, f'Expecting 1 cell, got {len(res[0].columns)} ({res[0].columns})'
+        assert res[1].columns[0].column.value == b'3', f'Expecting value 3, got {res[0].columns[0].column.value}'
 
-    def reaching_end_after_retry_test(self):
-        debug('Create cluster')
+    def test_reaching_end_after_retry(self):
+        logger.info('Create cluster')
         cluster = self.cluster
         cluster.set_partitioner("org.apache.cassandra.dht.Murmur3Partitioner")
         cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
@@ -1345,9 +1307,9 @@ class TestConsistency(Tester):
         cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2 = cluster.nodelist()
 
-        debug('Prepare column family')
+        logger.info('Prepare column family')
         session1 = self.patient_cql_connection(node1)
-        self.create_ks(session1, 'ks', 2)
+        create_ks(session1, 'ks', 2)
         session1.execute('create table ks.cf1 (p int, r int, primary key (p))')
 
         session1.execute(SimpleStatement('insert into ks.cf1 (p, r) values (0, 0)',
@@ -1359,7 +1321,7 @@ class TestConsistency(Tester):
         session1.execute(SimpleStatement('insert into ks.cf1 (p, r) values (3, 3)',
                                          consistency_level=ConsistencyLevel.ALL))
 
-        debug('Updating node2')
+        logger.info('Updating node2')
         node1.stop()
 
         session2 = self.patient_cql_connection(node2)
@@ -1371,15 +1333,15 @@ class TestConsistency(Tester):
         session2.execute(SimpleStatement('insert into ks.cf1 (p, r) values (5, 5)',
                                          consistency_level=ConsistencyLevel.ONE))
 
-        debug('Querying whole cluster')
+        logger.info('Querying whole cluster')
         node1.start(wait_other_notice=True)
-        debug('Node 1 started')
+        logger.info('Node 1 started')
 
         query = SimpleStatement('select r from ks.cf1 limit 3', consistency_level=ConsistencyLevel.ALL)
         res = list(session2.execute(query))
 
         assert len(res) == 3, 'Expecting 3 rows, got %d (%s)' % (len(res), str(res))
 
-        assert res[0][0] == 5, 'Expecting value 3, got %s' % str(res[0][0])
-        assert res[1][0] == 4, 'Expecting value 4, got %s' % str(res[0][0])
-        assert res[2][0] == 3, 'Expecting value 5, got %s' % str(res[0][0])
+        assert res[0][0] == 5, f'Expecting value 3, got {res[0][0]}'
+        assert res[1][0] == 4, f'Expecting value 4, got {res[0][0]}'
+        assert res[2][0] == 3, f'Expecting value 5, got {res[0][0]}'
