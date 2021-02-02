@@ -8,7 +8,7 @@ from cassandra import ConsistencyLevel
 from cassandra.concurrent import execute_concurrent_with_args
 from cassandra.query import SimpleStatement
 
-from . import assertions
+from tools import assertions
 from dtest_class import create_cf
 
 logger = logging.getLogger(__name__)

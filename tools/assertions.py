@@ -1,8 +1,6 @@
 import re
 from time import sleep
 
-from tools.data import get_list_res, rows_to_list, run_query_with_data_processing
-
 from cassandra import (InvalidRequest, ReadFailure, ReadTimeout, Unauthorized,
                        Unavailable, WriteFailure, WriteTimeout)
 from cassandra.query import SimpleStatement, ConsistencyLevel
@@ -185,6 +183,8 @@ def assert_all(session, query, expected, cl=ConsistencyLevel.ONE, ignore_order=F
     assert_all(session, "LIST USERS", [['aleksey', False], ['cassandra', True]])
     assert_all(self.session1, "SELECT * FROM ttl_table;", [[1, 42, 1, 1]])
     """
+    from tools.data import get_list_res  # to avoid cyclic dependency
+
     list_res = get_list_res(session, query, cl, ignore_order, result_as_string, timeout=timeout)
     if ignore_order:
         expected = sorted(expected)
@@ -226,6 +226,7 @@ def assert_row_count(session, table_name, expected, consistency_level=Consistenc
     Examples:
     assert_row_count(self.session1, 'ttl_table', 1)
     """
+    from tools.data import run_query_with_data_processing  # to avoid cyclic dependency
 
     query = "SELECT count(*) FROM {}".format(table_name)
     count = run_query_with_data_processing(session, query, consistency_level=consistency_level, session_timeout=timeout)
@@ -387,6 +388,9 @@ def assert_all_or_none(session, query, expected, cl=ConsistencyLevel.ONE, ignore
     """
     :param num_attempts: defines how many time try to assert data in case failure. Used in retrying decorator
     """
+
+    from tools.data import get_list_res  # to avoid cyclic dependency
+
     list_res = get_list_res(session, query, cl, ignore_order, result_as_string, timeout=timeout)
     if ignore_order:
         expected = sorted(expected)
@@ -399,6 +403,9 @@ def assert_two_queries_equal(session1, query1, session2, query2, consistency_lev
                              session_timeout=120,
                              group=False, groupby_column1=None, groupby_column2=None, restrict_column1=None,
                              restrict_column2=None, restrict_value1=None, restrict_value2=None, num_attempts=1):
+
+    from tools.data import run_query_with_data_processing  # to avoid cyclic dependency
+
     exp_res = run_query_with_data_processing(session1, query1, group=group, consistency_level=consistency_level,
                                              session_timeout=session_timeout,
                                              groupby_column=groupby_column1, restrict_column=restrict_column1,
@@ -413,7 +420,7 @@ def assert_two_queries_equal(session1, query1, session2, query2, consistency_lev
 @retrying(num_attempts=1, sleep_time=10)
 def assert_two_queries_equal_ignore_order(session1, query1, session2, query2, consistency_level=ConsistencyLevel.ONE,
                                           session_timeout=120, num_attempts=1):
-    expected = rows_to_list(session1.execute(query1))
+    expected = _rows_to_list(session1.execute(query1))
     assert_all(session2, query2, expected, consistency_level, ignore_order=True)
 
 
@@ -424,6 +431,8 @@ def assert_row_count_in_select(session, query, num_rows_expected, consistency_le
     Function to validate the row count are returned by select
     :param num_attempts: defines how many time try to assert data in case failure. Used in retrying decorator
     """
+    from tools.data import get_list_res  # to avoid cyclic dependency
+
     count = len(get_list_res(session, query, consistency_level, timeout=timeout))
     assert count == num_rows_expected, "Expected a row count of {} in query \"{}\", but got {}".format(
         num_rows_expected, query, count)
