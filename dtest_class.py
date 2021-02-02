@@ -182,13 +182,13 @@ def create_ks(session, name, rf):
     else:
         assert len(rf) >= 0, "At least one datacenter/rf pair is needed"
         # we assume networkTopologyStrategy
-        options = (', ').join(['\'%s\':%d' % (d, r) for d, r in rf.items()])
+        options = ', '.join(['\'%s\':%d' % (dc_value, rf_value) for dc_value, rf_value in rf.items()])
         query = query % (name, "'class':'NetworkTopologyStrategy', %s" % options)
 
     try:
         retry_till_success(session.execute, query=query, timeout=120, bypassed_exception=cassandra.OperationTimedOut)
     except cassandra.AlreadyExists:
-        logger.warn('AlreadyExists executing create ks query \'%s\'' % query)
+        logger.warning('AlreadyExists executing create ks query \'%s\'' % query)
 
     session.cluster.control_connection.wait_for_schema_agreement(wait_time=120)
     # Also validates it was indeed created even though we ignored OperationTimedOut

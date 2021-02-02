@@ -36,10 +36,6 @@ class TestHelper(Tester):
     LOCK = threading.Lock()
     KS_NAME = 'mytestks'
 
-    def log(self, message):
-        with self.LOCK:
-            logger.debug(message)
-
     @staticmethod
     def _name(cl_value):
         return {
@@ -255,9 +251,9 @@ class TestAvailability(TestHelper):
             rf_value = list(rf_value.values())
 
         for node_idx, node in enumerate(nodes):  # for each dc
-            self.log('Testing dc %d with rf %d and %s nodes alive' % (node_idx, rf_value[node_idx], nodes_alive))
+            logger.info('Testing dc %d with rf %d and %s nodes alive', node_idx, rf_value[node_idx], nodes_alive)
             for idx in range(node):  # for each node in this dc
-                self.log('Testing node %d in dc %d with %s nodes alive' % (idx, node_idx, nodes_alive))
+                logger.info('Testing node %d in dc %d with %s nodes alive', idx, node_idx, nodes_alive)
                 node = idx + sum(nodes[:node_idx])
                 session = self.patient_exclusive_cql_connection(cluster.nodelist()[node], ks_name)
                 for combination in combinations:
@@ -273,8 +269,8 @@ class TestAvailability(TestHelper):
         """
         Test availability for read and write via the session passed in as a parameter.
         """
-        self.log("Connected to %s for %s/%s/%s" %
-                 (session.cluster.contact_points, self._name(write_cl), self._name(read_cl), self._name(serial_cl)))
+        logger.info("Connected to %s for %s/%s/%s", session.cluster.contact_points, self._name(write_cl),
+                    self._name(read_cl), self._name(serial_cl))
 
         start = 0
         end = 100
@@ -411,7 +407,7 @@ class TestAccuracy(TestHelper):
             self.read_cl = read_cl
             self.serial_cl = serial_cl
 
-            outer.log('Testing accuracy for {}/{}/{} (keys : {} to {})'.format(
+            logger.info('Testing accuracy for {}/{}/{} (keys : {} to {})'.format(
                 outer._name(write_cl), outer._name(read_cl), outer._name(serial_cl), start, end))
 
         def get_num_nodes(self, idx):
@@ -547,7 +543,7 @@ class TestAccuracy(TestHelper):
             thread.start()
             threads.append(thread)
 
-        self.log("Waiting for workers to complete")
+        logger.info("Waiting for workers to complete")
         while exceptions_queue.empty():
             time.sleep(0.1)
             if len(list(filter(lambda thread: thread.is_alive(), threads))) == 0:
@@ -583,7 +579,7 @@ class TestAccuracy(TestHelper):
             (ConsistencyLevel.QUORUM, ConsistencyLevel.LOCAL_SERIAL, ConsistencyLevel.SERIAL),
         ]
 
-        self.log("Testing single dc, users")
+        logger.info("Testing single dc, users")
         self._run_test_function_in_parallel(
             TestAccuracy.Validation.validate_users, [5], {'dc1': 3}, combinations)
 
@@ -598,7 +594,7 @@ class TestAccuracy(TestHelper):
             (ConsistencyLevel.EACH_QUORUM, ConsistencyLevel.EACH_QUORUM),
         ]
 
-        self.log("Testing single dc, users, each quorum reads")
+        logger.info("Testing single dc, users, each quorum reads")
         self._run_test_function_in_parallel(
             TestAccuracy.Validation.validate_users, [5], {'dc1': 3}, combinations)
 
@@ -631,7 +627,7 @@ class TestAccuracy(TestHelper):
             #            (ConsistencyLevel.LOCAL_QUORUM, ConsistencyLevel.SERIAL, ConsistencyLevel.LOCAL_SERIAL),
         ]
 
-        self.log("Testing multiple dcs, users")
+        logger.info("Testing multiple dcs, users")
         self._run_test_function_in_parallel(TestAccuracy.Validation.validate_users, [3, 3], {'dc1': 3, 'dc2': 3},
                                             combinations)
 
@@ -647,7 +643,7 @@ class TestAccuracy(TestHelper):
             (ConsistencyLevel.EACH_QUORUM, ConsistencyLevel.EACH_QUORUM),
         ]
 
-        self.log("Testing multiple dcs, users, each quorum reads")
+        logger.info("Testing multiple dcs, users, each quorum reads")
         self._run_test_function_in_parallel(
             TestAccuracy.Validation.validate_users, [3, 3], {'dc1': 3, 'dc2': 3}, combinations)
 
@@ -676,7 +672,7 @@ class TestAccuracy(TestHelper):
             (ConsistencyLevel.LOCAL_QUORUM, ConsistencyLevel.LOCAL_QUORUM),
         ]
 
-        self.log("Testing single dc, counters")
+        logger.info("Testing single dc, counters")
         self._run_test_function_in_parallel(
             TestAccuracy.Validation.validate_counters, [3], {'dc1': 3}, combinations)
 
@@ -692,7 +688,7 @@ class TestAccuracy(TestHelper):
             (ConsistencyLevel.EACH_QUORUM, ConsistencyLevel.EACH_QUORUM),
         ]
 
-        self.log("Testing single dc, counters, each quorum reads")
+        logger.info("Testing single dc, counters, each quorum reads")
         self._run_test_function_in_parallel(
             TestAccuracy.Validation.validate_counters, [3], {'dc1': 3}, combinations)
 
@@ -720,7 +716,7 @@ class TestAccuracy(TestHelper):
             (ConsistencyLevel.TWO, ConsistencyLevel.ONE),
         ]
 
-        self.log("Testing multiple dcs, counters")
+        logger.info("Testing multiple dcs, counters")
         self._run_test_function_in_parallel(TestAccuracy.Validation.validate_counters, [3, 3], {'dc1': 3, 'dc2': 3},
                                             combinations)
 
@@ -736,7 +732,7 @@ class TestAccuracy(TestHelper):
             (ConsistencyLevel.EACH_QUORUM, ConsistencyLevel.EACH_QUORUM),
         ]
 
-        self.log("Testing multiple dcs, counters, each quorum reads")
+        logger.info("Testing multiple dcs, counters, each quorum reads")
         self._run_test_function_in_parallel(TestAccuracy.Validation.validate_counters, [3, 3], {'dc1': 3, 'dc2': 3},
                                             combinations)
 
@@ -783,7 +779,7 @@ class TestConsistency(Tester):
             # value 0, 1 and 2 have been deleted
             for idx in range(1, 4):
                 assert res[idx - 1][1] == 'value%d' % (
-                        idx + 2), 'Expecting value%d, got %s (%s)' % (idx + 2, res[idx - 1][1], str(res))
+                    idx + 2), 'Expecting value%d, got %s (%s)' % (idx + 2, res[idx - 1][1], str(res))
 
             truncate_statement = SimpleStatement(
                 'TRUNCATE cf', consistency_level=ConsistencyLevel.QUORUM)
@@ -885,7 +881,7 @@ class TestConsistency(Tester):
             values={'hinted_handoff_enabled': False})
         cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
 
-        if self.dtest_config.use_vnodes:
+        if not self.dtest_config.use_vnodes:
             cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
         else:
             tokens = cluster.balanced_tokens(2)
@@ -955,7 +951,7 @@ class TestConsistency(Tester):
             # value 6, 7 and 8 have been deleted
             for idx in range(0, 3):
                 assert res[idx][1] == 'value%d' % (
-                        5 - idx), 'Expecting value%d, got %s (%s)' % (5 - idx, res[idx][1], str(res))
+                    5 - idx), 'Expecting value%d, got %s (%s)' % (5 - idx, res[idx][1], str(res))
 
             truncate_statement = SimpleStatement(
                 'TRUNCATE cf', consistency_level=ConsistencyLevel.QUORUM)
@@ -1001,7 +997,7 @@ class TestConsistency(Tester):
         session = self.patient_cql_connection(next_node, 'ks')
         query = 'BEGIN BATCH '
         query = query + \
-                'DELETE FROM cf WHERE key=\'k0\' AND c=\'c%06d\'; ' % column
+            'DELETE FROM cf WHERE key=\'k0\' AND c=\'c%06d\'; ' % column
         query = query + 'DELETE FROM cf WHERE key=\'k0\' AND c=\'c2\'; '
         query = query + 'APPLY BATCH;'
         simple_query = SimpleStatement(
