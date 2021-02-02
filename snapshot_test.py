@@ -21,7 +21,8 @@ from tools.files import safe_mkdtemp, replace_in_file
 from tools.misc import require
 from tools.snapshots import make_snapshot, get_cf_snapshot_saved_dir, restore_snapshot_with_refresh, \
     restore_snapshot_with_sstableloader
-
+from dtest_setup_overrides import DTestSetupOverrides
+from tools.misc import ImmutableMapping
 
 logger = logging.getLogger(__name__)
 
@@ -495,9 +496,11 @@ class TestArchiveCommitlog(SnapshotTester):
     Test operations with the archive commit log.
     """
 
-    def __init__(self, *args, **kwargs):
-        kwargs['cluster_options'] = {'commitlog_segment_size_in_mb': 1}
-        SnapshotTester.__init__(self, *args, **kwargs)
+    @pytest.fixture(scope='function', autouse=True)
+    def fixture_dtest_setup_overrides(self, dtest_config):
+        dtest_setup_overrides = DTestSetupOverrides()
+        dtest_setup_overrides.cluster_options = ImmutableMapping({"commitlog_segment_size_in_mb": 1})
+        return dtest_setup_overrides
 
     @pytest.mark.skip('Feature commitlog-archiving is not supported')
     def test_archive_commitlog(self):
