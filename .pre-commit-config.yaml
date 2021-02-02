@@ -75,7 +75,8 @@ repos:
                 upgrade_test.py|
                 consistency_test.py|
                 secondary_indexes_test.py |
-                like_operator_test.py
+                like_operator_test.py|
+                sstablesplit_test.py
             )$
         language: system
         types: [python]
