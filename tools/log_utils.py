@@ -1,7 +1,10 @@
 import os
 import logging
+import time
 from collections.abc import MutableMapping
 
+
+from ccmlib.node import TimeoutError as CCMLibTimeoutError
 from tools.misc import get_current_test_name
 
 
@@ -56,3 +59,49 @@ class TestNameFilter(logging.Filter):
     def filter(self, record):
         record.test_name = get_current_test_name()
         return True
+
+
+def wait_for_any_log(nodes, patterns, timeout, dispersed=False):
+    """
+    Look for a pattern in the system.log of any in a given list
+    of nodes.
+    :param nodes: The list of nodes whose logs to scan
+    :param patterns: The target pattern (a string, or a list of strings)
+    :param timeout: How long to wait for the pattern. Note that
+                    strictly speaking, timeout is not really a timeout,
+                    but a maximum number of attempts. This implies that
+                    the all the grepping takes no time at all, so it is
+                    somewhat inaccurate, but probably close enough.
+    :return: The first node in whose log the pattern was found, if not dispersed.
+             Otherwise, if dispersed=True, return a list of all nodes with the any of the patterns.
+    """
+
+    if dispersed:
+        remaining = patterns
+        ret = []
+        for _ in range(timeout):
+            for node in nodes:
+                for p in remaining:
+                    try:
+                        if node.watch_log_for(p, timeout=0):
+                            remaining.remove(p)
+                            if node not in ret:
+                                ret.append(node)
+                    except (CCMLibTimeoutError, TimeoutError):
+                        pass
+            if not remaining:
+                return ret
+            time.sleep(1)
+    else:
+        for _ in range(timeout):
+            for node in nodes:
+                try:
+                    found = node.watch_log_for(patterns, timeout=0)
+                    if found:
+                        return node
+                except (CCMLibTimeoutError, TimeoutError):
+                    pass
+            time.sleep(1)
+
+    raise TimeoutError(time.strftime("%d %b %Y %H:%M:%S", time.gmtime()) +
+                       (" Unable to find :%s in any node log within " % patterns) + str(timeout) + "s")

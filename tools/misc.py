@@ -11,6 +11,9 @@ import time
 
 from collections.abc import Mapping
 
+from ccmlib.cluster import Cluster
+from ccmlib.dse_cluster import DseCluster
+
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +37,10 @@ def new_node(cluster, bootstrap=True, token=None, remote_debug_port='0', data_ce
             binary = (ipformat % i, 9042)
 
     thrift = None
-    if cluster.cassandra_version() < '4':
+    if cluster.__class__ in (Cluster, DseCluster):
+        if cluster.cassandra_version() < '4':
+            thrift = (ipformat % i, 9160)
+    else:
         thrift = (ipformat % i, 9160)
 
     storage_interface = ((ipformat % i), 7000)

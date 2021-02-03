@@ -63,6 +63,7 @@ repos:
                 lwt_banking_load_test.py|
                 lwt_schema_modification_test.py|
                 lwt_test.py|
+                auth_test.py|
                 snapshot_test|
                 udtencoding_test.py|
                 clustering_key_filter_test.py|

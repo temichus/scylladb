@@ -3,42 +3,41 @@ All dtest functional test for authentication and authorization tests.
 
 STATE: NOT FULLY IMPLEMENTED
 """
-
+import collections
+import logging
 import os
+import pytest
 import re
 import socket
 import subprocess
 import time
+
 from datetime import datetime, timedelta
 
 from cassandra import AuthenticationFailed, Unauthorized, InvalidRequest, AlreadyExists
 from cassandra.cluster import NoHostAvailable
 from cassandra import Unavailable
 
-from assertions import assert_invalid
-from dtest import Tester, debug
-from tools import since, new_node, require
+from dtest_setup import DTestSetup
+from tools.assertions import assert_invalid
+from tools.log_utils import wait_for_any_log
+from dtest_class import Tester
+from tools.misc import new_node, require
 
-from unittest import skip
-from nose.plugins.attrib import attr
+
+logger = logging.getLogger(__file__)
 
 
-@attr('dtest-full')
+@pytest.mark.dtest_full
 class TestAuth(Tester):
-    """
-    Original Class of dtest
-    """
 
-    def __init__(self, *args, **kwargs):
-        self.ignore_log_patterns = [
-            # This one occurs if we do a non-rolling upgrade, the node
-            # it's trying to send the migration to hasn't started yet,
-            # and when it does, it gets replayed and everything is fine.
+    @pytest.fixture(autouse=True)
+    def fixture_add_additional_log_patterns(self, fixture_dtest_setup: DTestSetup):
+        fixture_dtest_setup.ignore_log_patterns = (
             r'Can\'t send migration request: node.*is down',
-        ]
-        Tester.__init__(self, *args, **kwargs)
+        )
 
-    def system_auth_ks_is_alterable_test(self):
+    def test_system_auth_ks_is_alterable(self):
         """
         Originally from dtest.
         **Description:**
@@ -46,38 +45,37 @@ class TestAuth(Tester):
         **Expected Result:**
         """
         self.prepare(nodes=3)
-        debug("nodes started")
+        logger.info("nodes started")
 
         session = self.get_session(user='cassandra', password='cassandra')
-        self.assertEquals(1, session.cluster.metadata.keyspaces['system_auth'].replication_strategy.replication_factor)
+        assert 1 == session.cluster.metadata.keyspaces['system_auth'].replication_strategy.replication_factor
 
         session.execute("""
             ALTER KEYSPACE system_auth
                 WITH replication = {'class':'SimpleStrategy', 'replication_factor':3};
         """)
 
-        self.assertEquals(3, session.cluster.metadata.keyspaces['system_auth'].replication_strategy.replication_factor)
+        assert 3 == session.cluster.metadata.keyspaces['system_auth'].replication_strategy.replication_factor
 
         # Run repair to workaround read repair issues caused by CASSANDRA-10655
-        debug("Repairing before altering RF")
+        logger.info("Repairing before altering RF")
         self.cluster.repair()
 
         # make sure schema change is persistent
-        debug("Stopping cluster..")
+        logger.info("Stopping cluster..")
         self.cluster.stop()
-        debug("Restarting cluster..")
+        logger.info("Restarting cluster..")
         self.cluster.start(wait_other_notice=True)
 
         # check each node directly
         for i in range(3):
-            debug('Checking node: {i}'.format(i=i))
+            logger.info('Checking node: {i}'.format(i=i))
             node = self.cluster.nodelist()[i]
             session = self.patient_exclusive_cql_connection(node, user='cassandra', password='cassandra')
-            self.assertEquals(
-                3, session.cluster.metadata.keyspaces['system_auth'].replication_strategy.replication_factor)
+            assert 3 == session.cluster.metadata.keyspaces['system_auth'].replication_strategy.replication_factor
 
-    @attr('single_node')
-    def login_test(self):
+    @pytest.mark.single_node
+    def test_login(self):
         """
         Originally from dtest.
         **Description:**
@@ -110,8 +108,8 @@ class TestAuth(Tester):
             # https://github.com/scylladb/scylla/issues/2274
             # assert 'Password must not be null' in str(list(e.errors.values())[0])
 
-    @attr('single_node')
-    def anonymous_test(self):
+    @pytest.mark.single_node
+    def test_anonymous(self):
         """
         Both Scylla and Cassandra allow to create a non-anonymous user which name
         is `anonymous`, Scylla identifies the anonymous user by a flag, not match
@@ -121,27 +119,27 @@ class TestAuth(Tester):
         self.prepare(nodes=1)
         cassandra = self.get_session(user='cassandra', password='cassandra')
 
-        debug('Create a non-anonymous user which name is `anonymous`')
+        logger.info('Create a non-anonymous user which name is `anonymous`')
         cassandra.execute("CREATE USER anonymous WITH PASSWORD '12345' NOSUPERUSER")
 
-        debug('Login with non-anonymous user `anonymous`')
+        logger.info('Login with non-anonymous user `anonymous`')
         session = self.get_session(user='anonymous', password='12345')
 
-        debug('The new user should has permission to LIST users')
-        debug("we don't expect to see error: `You have to be logged in and not anonymous to perform this request`")
+        logger.info('The new user should has permission to LIST users')
+        logger.info("we don't expect to see error: `You have to be logged in and not anonymous to perform this request`")
         session.execute("LIST USERS")
 
-        debug('Give AUTHORIZE permission to non-anonymous user `anonymous`')
+        logger.info('Give AUTHORIZE permission to non-anonymous user `anonymous`')
         cassandra.execute('GRANT AUTHORIZE ON ALL KEYSPACES to anonymous')
 
-        debug('Update config and restart to enable AllowAllAuthenticator/AllowAllAuthorizer')
+        logger.info('Update config and restart to enable AllowAllAuthenticator/AllowAllAuthorizer')
         self.cluster.stop()
         config = {'authenticator': 'org.apache.cassandra.auth.AllowAllAuthenticator',
                   'authorizer': 'org.apache.cassandra.auth.AllowAllAuthorizer'}
         self.cluster.set_configuration_options(values=config)
         self.cluster.start(wait_for_binary_proto=True)
 
-        debug('Verify permissions of real anonymous user')
+        logger.info('Verify permissions of real anonymous user')
         session = self.get_session(user='anonymous', password='12345')
         self.assertUnauthorized("You have to be logged in and not anonymous to perform this request", session,
                                 "LIST USERS")
@@ -149,10 +147,9 @@ class TestAuth(Tester):
                                 "GRANT SELECT ON ALL KEYSPACES TO anonymous")
 
     # from 2.2 role creation is granted by CREATE_ROLE permissions, not superuser status
-    @since('1.2', max_version='2.1.x')
-    @attr('single_node')
-    @skip('obsolete from 2.2')
-    def only_superuser_can_create_users_test(self):
+    @pytest.mark.single_node
+    @pytest.mark.skip('obsolete from 2.2')
+    def test_only_superuser_can_create_users(self):
         """
         Originally from dtest.
         **Description:**
@@ -168,9 +165,8 @@ class TestAuth(Tester):
         self.assertUnauthorized(
             'Only superusers are allowed to perform CREATE (\[ROLE\|USER\]|USER) queries', jackob, "CREATE USER james WITH PASSWORD '54321' NOSUPERUSER")
 
-    @since('2.2')
-    @attr('single_node')
-    def create_user_permissions_test(self):
+    @pytest.mark.single_node
+    def test_create_user_permissions(self):
         """
         Description: Try to create new user in two ways, somebody can execute `CREATE USER/CREATE ROLE` is either if
                      they're a superuser or if they have the CREATE permission on <all roles>.
@@ -186,10 +182,9 @@ class TestAuth(Tester):
         self.assertUnauthorized('User jackob has no CREATE permission on <all roles> or any of its parents',
                                 jackob, "CREATE USER james WITH PASSWORD '54321' NOSUPERUSER")
 
-    @since('1.2', max_version='2.1.x')
-    @attr('single_node')
-    @skip('obsolete from 2.2')
-    def password_authenticator_create_user_requires_password_test(self):
+    @pytest.mark.single_node
+    @pytest.mark.skip('obsolete from 2.2')
+    def test_password_authenticator_create_user_requires_password(self):
         """
         Originally from dtest.
         **Description:**
@@ -201,8 +196,8 @@ class TestAuth(Tester):
         session = self.get_session(user='cassandra', password='cassandra')
         assert_invalid(session, "CREATE USER jackob NOSUPERUSER", 'PasswordAuthenticator requires PASSWORD option')
 
-    @attr('single_node')
-    def cant_create_existing_user_test(self):
+    @pytest.mark.single_node
+    def test_cant_create_existing_user(self):
         """
         Originally from dtest.
         **Description:**
@@ -216,8 +211,8 @@ class TestAuth(Tester):
         assert_invalid(session, "CREATE USER 'james@example.com' WITH PASSWORD '12345' NOSUPERUSER",
                        'james@example.com already exists')
 
-    @attr('single_node')
-    def list_users_test(self):
+    @pytest.mark.single_node
+    def test_list_users(self):
         """
         Originally from dtest.
         **Description:**
@@ -233,18 +228,18 @@ class TestAuth(Tester):
         session.execute("CREATE USER dave WITH PASSWORD '12345' SUPERUSER")
 
         rows = list(session.execute("LIST USERS"))
-        self.assertEqual(5, len(rows))
+        assert 5 == len(rows)
         # {username: isSuperuser} dict.
         users = dict([(r[0], r[1]) for r in rows])
 
-        self.assertTrue(users['cassandra'])
-        self.assertFalse(users['alex'])
-        self.assertTrue(users['bob'])
-        self.assertFalse(users['cathy'])
-        self.assertTrue(users['dave'])
+        assert users['cassandra']
+        assert not users['alex']
+        assert users['bob']
+        assert not users['cathy']
+        assert users['dave']
 
-    @attr('single_node')
-    def user_cant_drop_themselves_test(self):
+    @pytest.mark.single_node
+    def test_user_cant_drop_themselves(self):
         """
         Originally from dtest.
         **Description:**
@@ -259,10 +254,9 @@ class TestAuth(Tester):
                        "(Users aren't allowed to DROP themselves|Cannot DROP primary role for current login)")
 
     # from 2.2 role deletion is granted by DROP_ROLE permissions, not superuser status
-    @since('1.2', max_version='2.1.x')
-    @attr('single_node')
-    @skip('obsolete from 2.2')
-    def only_superusers_can_drop_users_test(self):
+    @pytest.mark.single_node
+    @pytest.mark.skip('obsolete from 2.2')
+    def test_only_superusers_can_drop_users(self):
         """
         Originally from dtest.
         **Description:**
@@ -275,21 +269,21 @@ class TestAuth(Tester):
         cassandra.execute("CREATE USER cathy WITH PASSWORD '12345' NOSUPERUSER")
         cassandra.execute("CREATE USER dave WITH PASSWORD '12345' NOSUPERUSER")
         rows = list(cassandra.execute("LIST USERS"))
-        self.assertEqual(3, len(rows))
+        assert 3 == len(rows)
 
         cathy = self.get_session(user='cathy', password='12345')
         self.assertUnauthorized('Only superusers are allowed to perform DROP (\[ROLE\|USER\]|USER) queries',
                                 cathy, 'DROP USER dave')
 
         rows = list(cassandra.execute("LIST USERS"))
-        self.assertEqual(3, len(rows))
+        assert 3 == len(rows)
 
         cassandra.execute('DROP USER dave')
         rows = list(cassandra.execute("LIST USERS"))
-        self.assertEqual(2, len(rows))
+        assert 2 == len(rows)
 
-    @attr('single_node')
-    def dropping_nonexistent_user_throws_exception_test(self):
+    @pytest.mark.single_node
+    def test_dropping_nonexistent_user_throws_exception(self):
         """
         Originally from dtest.
         **Description:**
@@ -301,8 +295,8 @@ class TestAuth(Tester):
         session = self.get_session(user='cassandra', password='cassandra')
         assert_invalid(session, 'DROP USER nonexistent', "nonexistent doesn't exist")
 
-    @attr('single_node')
-    def drop_user_case_sensitive_test(self):
+    @pytest.mark.single_node
+    def test_drop_user_case_sensitive(self):
         """
         * Launch a one node cluster
         * Connect as the default superuser
@@ -319,7 +313,7 @@ class TestAuth(Tester):
 
         cassandra.execute("DROP USER Test")
         rows = [x[0] for x in list(cassandra.execute("LIST USERS"))]
-        self.assertCountEqual(rows, ['cassandra'])
+        assert collections.Counter(rows) == collections.Counter(['cassandra'])
 
         # Should be invalid, as 'Test' does not exist anymore
         assert_invalid(cassandra, "DROP USER test")
@@ -334,15 +328,15 @@ class TestAuth(Tester):
 
         cassandra.execute("DROP USER test")
         rows = [x[0] for x in list(cassandra.execute("LIST USERS"))]
-        self.assertCountEqual(rows, ['cassandra'])
+        assert collections.Counter(rows) == collections.Counter(['cassandra'])
 
         # Should be invalid, as 'test' does not exist anymore
         assert_invalid(cassandra, "DROP USER test")
         assert_invalid(cassandra, "DROP USER TEST")
         assert_invalid(cassandra, "DROP USER Test")
 
-    @attr('single_node')
-    def drop_user_revoke_all_test(self):
+    @pytest.mark.single_node
+    def test_drop_user_revoke_all(self):
         """
         Test all user permissions will be revoked when the user is dropped.
 
@@ -355,36 +349,36 @@ class TestAuth(Tester):
         """
         self.prepare(nodes=1)
 
-        debug("Create two test users: `test` and `test2`, and create table ks.cf")
+        logger.info("Create two test users: `test` and `test2`, and create table ks.cf")
         cassandra = self.get_session(user='cassandra', password='cassandra')
         cassandra.execute("CREATE USER test WITH PASSWORD '12345'")
         cassandra.execute("CREATE USER test2 WITH PASSWORD '12345'")
         cassandra.execute("CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}")
         cassandra.execute("CREATE TABLE ks.cf (id int primary key)")
 
-        debug("Verify `test` user doesn't have SELECT/AUTHORIZE permissions")
+        logger.info("Verify `test` user doesn't have SELECT/AUTHORIZE permissions")
         session = self.get_session(user='test', password='12345')
         self.assertUnauthorized("User test has no SELECT permission on <table ks.cf> or any of its parents",
                                 session, "SELECT * FROM ks.cf")
         self.assertUnauthorized("User test has no AUTHORIZE permission on <table ks.cf> or any of its parents",
                                 session, "GRANT SELECT ON ks.cf TO test2")
 
-        debug('Super gives `test` user SELECT/AUTHORIZE permission on ks.cf')
+        logger.info('Super gives `test` user SELECT/AUTHORIZE permission on ks.cf')
         cassandra.execute("GRANT SELECT ON ks.cf TO test")
         cassandra.execute("GRANT AUTHORIZE ON ks.cf TO test")
         session.execute("SELECT * from ks.cf")
 
-        debug('`test` user gives SELECT permission to `test2`')
+        logger.info('`test` user gives SELECT permission to `test2`')
         session.execute("GRANT SELECT ON ks.cf TO test2")
 
-        debug('Super drops `test` user')
+        logger.info('Super drops `test` user')
         cassandra.execute("DROP USER test")
 
-        debug('Verify test2 still has SELECT permission')
+        logger.info('Verify test2 still has SELECT permission')
         session = self.get_session(user='test2', password='12345')
         session.execute("SELECT * from ks.cf")
 
-        debug("Recreate `test` user, and verify it doesn't have SELECT/AUTHORIZE permissions")
+        logger.info("Recreate `test` user, and verify it doesn't have SELECT/AUTHORIZE permissions")
         cassandra.execute("CREATE USER test WITH PASSWORD '12345'")
         session = self.get_session(user='test', password='12345')
         self.assertUnauthorized("User test has no SELECT permission on <table ks.cf> or any of its parents",
@@ -392,8 +386,8 @@ class TestAuth(Tester):
         self.assertUnauthorized("User test has no AUTHORIZE permission on <table ks.cf> or any of its parents",
                                 session, "GRANT SELECT ON ks.cf TO test2")
 
-    @attr('single_node')
-    def alter_user_case_sensitive_test(self):
+    @pytest.mark.single_node
+    def test_alter_user_case_sensitive(self):
         """
         * Launch a one node cluster
         * Connect as the default superuser
@@ -413,8 +407,8 @@ class TestAuth(Tester):
         assert_invalid(cassandra, "ALTER USER TEST WITH PASSWORD '12345'")
         cassandra.execute("ALTER USER test WITH PASSWORD '54321'")
 
-    @attr('single_node')
-    def regular_users_can_alter_their_passwords_only_test(self):
+    @pytest.mark.single_node
+    def test_regular_users_can_alter_their_passwords_only(self):
         """
         Originally from dtest.
         **Description:**
@@ -433,8 +427,8 @@ class TestAuth(Tester):
         self.assertUnauthorized("User cathy has no ALTER permission on <role bob> or any of its parents",
                                 cathy, "ALTER USER bob WITH PASSWORD 'cantchangeit'")
 
-    @attr('single_node')
-    def users_cant_alter_their_superuser_status_test(self):
+    @pytest.mark.single_node
+    def test_users_cant_alter_their_superuser_status(self):
         """
         Originally from dtest.
         **Description:**
@@ -447,8 +441,8 @@ class TestAuth(Tester):
         self.assertUnauthorized("You aren't allowed to alter your own superuser status",
                                 session, "ALTER USER cassandra NOSUPERUSER")
 
-    @attr('single_node')
-    def only_superuser_alters_superuser_status_test(self):
+    @pytest.mark.single_node
+    def test_only_superuser_alters_superuser_status(self):
         """
         Originally from dtest.
         **Description:**
@@ -466,8 +460,8 @@ class TestAuth(Tester):
 
         cassandra.execute("ALTER USER cathy SUPERUSER")
 
-    @attr('single_node')
-    def altering_nonexistent_user_throws_exception_test(self):
+    @pytest.mark.single_node
+    def test_altering_nonexistent_user_throws_exception(self):
         """
         Originally from dtest.
         **Description:**
@@ -479,8 +473,8 @@ class TestAuth(Tester):
         session = self.get_session(user='cassandra', password='cassandra')
         assert_invalid(session, "ALTER USER nonexistent WITH PASSWORD 'doesn''tmatter'", "nonexistent doesn't exist")
 
-    @attr('single_node')
-    def conditional_create_drop_user_test(self):
+    @pytest.mark.single_node
+    def test_conditional_create_drop_user(self):
         """
         Originally from dtest.
         **Description:**
@@ -491,22 +485,22 @@ class TestAuth(Tester):
         session = self.get_session(user='cassandra', password='cassandra')
 
         users = list(session.execute("LIST USERS"))
-        self.assertEqual(1, len(users))  # cassandra
+        assert 1 == len(users)  # cassandra
 
         session.execute("CREATE USER IF NOT EXISTS aleksey WITH PASSWORD 'sup'")
         session.execute("CREATE USER IF NOT EXISTS aleksey WITH PASSWORD 'ignored'")
 
         users = list(session.execute("LIST USERS"))
-        self.assertEqual(2, len(users))  # cassandra + aleksey
+        assert 2 == len(users)  # cassandra + aleksey
 
         session.execute("DROP USER IF EXISTS aleksey")
         session.execute("DROP USER IF EXISTS aleksey")
 
         users = list(session.execute("LIST USERS"))
-        self.assertEqual(1, len(users))  # cassandra
+        assert 1 == len(users)  # cassandra
 
-    @attr('single_node')
-    def create_ks_auth_test(self):
+    @pytest.mark.single_node
+    def test_create_ks_auth(self):
         """
         Originally from dtest.
         **Description:**
@@ -526,8 +520,8 @@ class TestAuth(Tester):
         cassandra.execute("GRANT CREATE ON ALL KEYSPACES TO cathy")
         cathy.execute("""CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}""")
 
-    @attr('single_node')
-    def create_cf_auth_test(self):
+    @pytest.mark.single_node
+    def test_create_cf_auth(self):
         """
         Originally from dtest.
         **Description:**
@@ -547,8 +541,8 @@ class TestAuth(Tester):
         cassandra.execute("GRANT CREATE ON KEYSPACE ks TO cathy")
         cathy.execute("CREATE TABLE ks.cf (id int primary key)")
 
-    @attr('single_node')
-    def alter_ks_auth_test(self):
+    @pytest.mark.single_node
+    def test_alter_ks_auth(self):
         """
         Originally from dtest.
         **Description:**
@@ -569,9 +563,9 @@ class TestAuth(Tester):
         cassandra.execute("GRANT ALTER ON KEYSPACE ks TO cathy")
         cathy.execute("ALTER KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':2}")
 
-    @skip('index')
-    @attr('single_node')
-    def alter_cf_auth_test(self):
+    @pytest.mark.skip('index')
+    @pytest.mark.single_node
+    def test_alter_cf_auth(self):
         """
         * Launch a one node cluster
         * Connect as the default superuser
@@ -611,7 +605,7 @@ class TestAuth(Tester):
         cassandra.execute("GRANT ALTER ON ks.cf TO cathy")
         cathy.execute("DROP INDEX cf_val_idx")
 
-    @attr('single_node')
+    @pytest.mark.single_node
     def alter_cf_auth_test_without_indexes(self):
         """
         * Launch a one node cluster
@@ -652,9 +646,8 @@ class TestAuth(Tester):
         cassandra.execute("GRANT ALTER ON ks.cf TO cathy")
         cathy.execute("ALTER TABLE ks.cf DROP val2")
 
-    @since('3.0')
-    @attr('single_node')
-    def materialized_views_auth_test(self):
+    @pytest.mark.single_node
+    def test_materialized_views_auth(self):
         """
         Originally from dtest.
         **Description:**
@@ -697,8 +690,8 @@ class TestAuth(Tester):
         cassandra.execute("GRANT ALTER ON ks.cf TO cathy")
         cathy.execute("DROP MATERIALIZED VIEW mv1")
 
-    @attr('single_node')
-    def drop_ks_auth_test(self):
+    @pytest.mark.single_node
+    def test_drop_ks_auth(self):
         """
         Originally from dtest.
         **Description:**
@@ -718,8 +711,8 @@ class TestAuth(Tester):
         cassandra.execute("GRANT DROP ON KEYSPACE ks TO cathy")
         cathy.execute("DROP KEYSPACE ks")
 
-    @attr('single_node')
-    def drop_cf_auth_test(self):
+    @pytest.mark.single_node
+    def test_drop_cf_auth(self):
         """
         Originally from dtest.
         **Description:**
@@ -740,8 +733,8 @@ class TestAuth(Tester):
         cassandra.execute("GRANT DROP ON ks.cf TO cathy")
         cathy.execute("DROP TABLE ks.cf")
 
-    @attr('single_node')
-    def modify_and_select_auth_test(self):
+    @pytest.mark.single_node
+    def test_modify_and_select_auth(self):
         """
         Originally from dtest.
         **Description:**
@@ -761,7 +754,7 @@ class TestAuth(Tester):
 
         cassandra.execute("GRANT SELECT ON ks.cf TO cathy")
         rows = list(cathy.execute("SELECT * FROM ks.cf"))
-        self.assertEquals(0, len(rows))
+        assert 0 == len(rows)
 
         self.assertUnauthorized("User cathy has no MODIFY permission on <table ks.cf> or any of its parents",
                                 cathy, "INSERT INTO ks.cf (id, val) VALUES (0, 0)")
@@ -779,20 +772,19 @@ class TestAuth(Tester):
         cathy.execute("INSERT INTO ks.cf (id, val) VALUES (0, 0)")
         cathy.execute("UPDATE ks.cf SET val = 1 WHERE id = 1")
         rows = list(cathy.execute("SELECT * FROM ks.cf"))
-        self.assertEquals(2, len(rows))
+        assert 2 == len(rows)
 
         cathy.execute("DELETE FROM ks.cf WHERE id = 1")
         rows = list(cathy.execute("SELECT * FROM ks.cf"))
-        self.assertEquals(1, len(rows))
+        assert 1 == len(rows)
 
         cathy.execute("TRUNCATE ks.cf")
         rows = list(cathy.execute("SELECT * FROM ks.cf"))
 
-        assert len(rows) == 0
+        assert 0 == len(rows)
 
-    @since('2.2')
-    @attr('single_node')
-    def grant_revoke_without_ks_specified_test(self):
+    @pytest.mark.single_node
+    def test_grant_revoke_without_ks_specified(self):
         """
         * Launch a one node cluster
         * Connect as the default superuser
@@ -826,8 +818,10 @@ class TestAuth(Tester):
         cathy.execute("GRANT SELECT ON cf TO bob")
         bob.execute("SELECT * FROM ks.cf")
 
-    @attr('next-gating', 'dtest-debug', 'single_node')
-    def grant_revoke_auth_test(self):
+    @pytest.mark.dtest_debug
+    @pytest.mark.next_gating
+    @pytest.mark.single_node
+    def test_grant_revoke_auth(self):
         """
         Originally from dtest.
         **Description:**
@@ -856,8 +850,8 @@ class TestAuth(Tester):
         # should succeed now with both SELECT and AUTHORIZE
         cathy.execute("GRANT SELECT ON ALL KEYSPACES TO bob")
 
-    @attr('single_node')
-    def grant_revoke_validation_test(self):
+    @pytest.mark.single_node
+    def test_grant_revoke_validation(self):
         """
         Originally from dtest.
         **Description:**
@@ -879,8 +873,8 @@ class TestAuth(Tester):
 
         assert_invalid(cassandra, "REVOKE ALL ON KEYSPACE ks FROM nonexistent", "(User|Role) nonexistent doesn't exist")
 
-    @attr('single_node')
-    def grant_revoke_cleanup_test(self):
+    @pytest.mark.single_node
+    def test_grant_revoke_cleanup(self):
         """
         Originally from dtest.
         **Description:**
@@ -898,7 +892,7 @@ class TestAuth(Tester):
         cathy = self.get_session(user='cathy', password='12345')
         cathy.execute("INSERT INTO ks.cf (id, val) VALUES (0, 0)")
         rows = list(cathy.execute("SELECT * FROM ks.cf"))
-        self.assertEquals(1, len(rows))
+        assert 1 == len(rows)
 
         # drop and recreate the user, make sure permissions are gone
         cassandra.execute("DROP USER cathy")
@@ -914,7 +908,7 @@ class TestAuth(Tester):
         cassandra.execute("GRANT ALL ON ks.cf TO cathy")
         cathy.execute("INSERT INTO ks.cf (id, val) VALUES (0, 0)")
         rows = list(cathy.execute("SELECT * FROM ks.cf"))
-        self.assertEqual(1, len(rows))
+        assert 1 == len(rows)
 
         # drop and recreate the keyspace, make sure permissions are gone
         cassandra.execute("DROP KEYSPACE ks")
@@ -927,8 +921,9 @@ class TestAuth(Tester):
         self.assertUnauthorized("User cathy has no SELECT permission on <table ks.cf> or any of its parents",
                                 cathy, "SELECT * FROM ks.cf")
 
-    @attr('next-gating', 'single_node')
-    def permissions_caching_test(self):
+    @pytest.mark.next_gating
+    @pytest.mark.single_node
+    def test_permissions_caching(self):
         """
         Originally from dtest.
         **Description:**
@@ -963,9 +958,9 @@ class TestAuth(Tester):
         def check_caching(attempt=0):
             attempt += 1
             if attempt > 3:
-                self.fail("Unable to verify cache expiry in 3 attempts, failing")
+                pytest.fail("Unable to verify cache expiry in 3 attempts, failing")
 
-            debug("Attempting to verify cache expiry, attempt #{i}".format(i=attempt))
+            logger.info("Attempting to verify cache expiry, attempt #{i}".format(i=attempt))
             # grant SELECT to cathy
             grant_time = datetime.now()
             cassandra.execute("GRANT SELECT ON ks.cf TO cathy")
@@ -973,21 +968,18 @@ class TestAuth(Tester):
             # delayed for some reason such that the cache expired, retry
             time.sleep(1.0)
             for c in cathys:
-                try:
+                with pytest.raises(
+                        Unauthorized,
+                        match='Error from server: code=2100 \[Unauthorized\] message="User cathy has no SELECT '
+                              'permission on <table ks.cf> or any of its parents"'):
                     c.execute("SELECT * FROM ks.cf")
                     # this should still fail, but if the cache has expired while we paused, try again
                     delta = datetime.now() - grant_time
-                    if delta >= timedelta(seconds=2):
-                        # try again
-                        cassandra.execute("REVOKE SELECT ON ks.cf FROM cathy")
-                        time.sleep(2.5)
-                        check_caching(attempt)
-                    else:
-                        # legit failure
-                        self.fail("Expecting query to raise an exception, but nothing was raised.")
-                except Unauthorized as e:
-                    self.assertEquals(str(
-                        e), 'Error from server: code=2100 [Unauthorized] message="User cathy has no SELECT permission on <table ks.cf> or any of its parents"')
+                    if delta < timedelta(seconds=2):
+                        pytest.fail("Expecting query to raise an exception, but nothing was raised.")
+                    cassandra.execute("REVOKE SELECT ON ks.cf FROM cathy")
+                    time.sleep(2.5)
+                    check_caching(attempt)
 
         check_caching()
 
@@ -1009,7 +1001,7 @@ class TestAuth(Tester):
             try:
                 for c in cathys:
                     rows = list(c.execute("SELECT * FROM ks.cf"))
-                    self.assertEqual(0, len(rows))
+                    assert 0 == len(rows)
                 success = True
             except Unauthorized:
                 pass
@@ -1018,8 +1010,8 @@ class TestAuth(Tester):
 
         assert success
 
-    @attr('single_node')
-    def type_auth_test(self):
+    @pytest.mark.single_node
+    def test_type_auth(self):
         """
         Originally from dtest..
         **Description:**
@@ -1051,58 +1043,58 @@ class TestAuth(Tester):
                                  expect_auth_err=False, expect_invalid_req=False):
         try:
             rows = list(session.execute('LIST USERS'))
-            debug('Debug users list: %s' % rows)
+            logger.info('Debug users list: %s' % rows)
             assert len(rows) > 0, "Failed to get user list from session"
         except Unavailable as e:
-            debug('Debug: _check_session_available: Unavailable Exception')
+            logger.info('Debug: _check_session_available: Unavailable Exception')
             if expect_rf_err:
                 assert e.alive_replicas != e.required_replicas, str(e)
-                debug("Good: session isn't available (rf error) as expected")
+                logger.info("Good: session isn't available (rf error) as expected")
             else:
-                debug("Fail: session isn't available, but not expected error")
+                logger.info("Fail: session isn't available, but not expected error")
                 raise
         except NoHostAvailable as e:
-            debug(e.errors)
+            logger.info(e.errors)
             if expect_auth_err:
                 assert isinstance(list(e.errors.values())[0], AuthenticationFailed)
-                debug("Good: session isn't available (auth err) as expected")
+                logger.info("Good: session isn't available (auth err) as expected")
             else:
-                debug("Fail: session isn't available, but not expected error")
+                logger.info("Fail: session isn't available, but not expected error")
                 raise
         except InvalidRequest as e:
-            debug(e)
+            logger.info(e)
             if expect_invalid_req:
-                debug("Good: session isn't available (invalid request) as expected")
+                logger.info("Good: session isn't available (invalid request) as expected")
             else:
-                debug("Fail: session isn't available, but not expected error")
+                logger.info("Fail: session isn't available, but not expected error")
                 raise
 
         if not (expect_rf_err or expect_auth_err or expect_invalid_req):
-            debug("Good: session is available as expected")
+            logger.info("Good: session is available as expected")
 
-    def kill_the_node_with_the_auth_info_test(self):
+    def test_kill_the_node_with_the_auth_info(self):
         """
         **Description:** Killing the node (`killall scylla`) that has authentication info (when RF=1).
         **Expected Result:** Cluster is unavailable - connection failed.
         """
         self.prepare(nodes=2)
-        debug('Cluster with 2 nodes started')
+        logger.info('Cluster with 2 nodes started')
 
         [node1, node2] = self.cluster.nodelist()
         session = self.get_session(node_idx=0, user='cassandra',
                                    password='cassandra')
-        debug('Successfully get the session from node1')
+        logger.info('Successfully get the session from node1')
         # make sure session works
         self._check_session_available(session)
 
         # verify the replication_factor of system_auth keyspace is 1
         rf = session.cluster.metadata.keyspaces['system_auth'].replication_strategy.replication_factor
-        debug('system_auth rf: %s' % rf)
-        self.assertEquals(1, rf, "RF of system_auth isn't 1")
+        logger.info('system_auth rf: %s' % rf)
+        assert 1 == rf, "RF of system_auth isn't 1"
 
         # check the replicas endpoint of system_auth.user:cassandra
         out, err = node1.nodetool("getendpoints system_auth roles cassandra")
-        debug('Endpoints of system_auth.users:cassandra : %s' % out.strip().split('\n'))
+        logger.info('Endpoints of system_auth.users:cassandra : %s' % out.strip().split('\n'))
         rf_address = out.strip().split('\n')[0]
 
         src_node = node1
@@ -1118,35 +1110,35 @@ class TestAuth(Tester):
         session = self.get_session(node_idx=rf_node_idx, user='cassandra',
                                    password='cassandra')
 
-        debug('Kill src node(%s: %s) to break Auth info' % (src_node.name, src_node.address()))
+        logger.info('Kill src node(%s: %s) to break Auth info' % (src_node.name, src_node.address()))
         src_node.stop(gently=False)
 
-        debug('Try to re-get session from first rf endpoint(%s: %s)' % (rf_node.name, rf_address))
+        logger.info('Try to re-get session from first rf endpoint(%s: %s)' % (rf_node.name, rf_address))
         try:
             new_session = self.get_session(node_idx=rf_node_idx,
                                            user='cassandra',
                                            password='cassandra')
         except NoHostAvailable as e:
-            debug(e.errors)
+            logger.info(e.errors)
             assert isinstance(list(e.errors.values())[0], AuthenticationFailed)
 
-        debug('Check if the new session works')
+        logger.info('Check if the new session works')
         self._check_session_available(new_session, expect_rf_err=True)
 
-        debug('Check if the first session still works')
+        logger.info('Check if the first session still works')
         self._check_session_available(session, expect_rf_err=True)
 
-    def kill_one_of_the_nodes_with_the_auth_info_test(self):
+    def test_kill_one_of_the_nodes_with_the_auth_info(self):
         """
         **Description:** Killing the node that has authentication info (when RF>=2).
         **Expected Result:** Cluster is available - successful connection.
         """
         self.prepare(nodes=4)
-        debug('Cluster with 4 nodes started')
+        logger.info('Cluster with 4 nodes started')
 
         [node1, node2, node3, node4] = self.cluster.nodelist()
         session = self.get_session(node_idx=0, user='cassandra', password='cassandra')
-        debug('Successfully get the session from node1')
+        logger.info('Successfully get the session from node1')
         # make sure session works
         self._check_session_available(session)
 
@@ -1155,12 +1147,12 @@ class TestAuth(Tester):
             "alter keyspace system_auth with replication = {'class': 'org.apache.cassandra.locator.SimpleStrategy', 'replication_factor':3};")
         self.cluster.repair()
         rf = session.cluster.metadata.keyspaces['system_auth'].replication_strategy.replication_factor
-        debug('Current RF of system_auth is %s' % rf)
-        self.assertEquals(3, rf)
+        logger.info('Current RF of system_auth is %s' % rf)
+        assert 3 == rf
 
         # check the replicas endpoint of system_auth.user:cassandra
         out, err = node1.nodetool("getendpoints system_auth roles cassandra")
-        debug('Endpoints of system_auth.users:cassandra : %s' % out.strip().split('\n'))
+        logger.info('Endpoints of system_auth.users:cassandra : %s' % out.strip().split('\n'))
         rf_addresses = out.strip().split('\n')
 
         for i in self.cluster.nodelist():
@@ -1178,37 +1170,37 @@ class TestAuth(Tester):
         session = self.get_session(node_idx=rf_node_idx, user='cassandra',
                                    password='cassandra')
 
-        debug('Kill rf node2(%s: %s) to break Auth info' % (rf_node2.name, rf_node2.address()))
+        logger.info('Kill rf node2(%s: %s) to break Auth info' % (rf_node2.name, rf_node2.address()))
         rf_node2.stop(gently=False)
 
-        debug('Try to re-get session from first rf endpoint(%s: %s)' % (rf_node.name, rf_addresses[0]))
+        logger.info('Try to re-get session from first rf endpoint(%s: %s)' % (rf_node.name, rf_addresses[0]))
         try:
             new_session = self.get_session(node_idx=rf_node_idx,
                                            user='cassandra',
                                            password='cassandra')
         except NoHostAvailable as e:
-            debug(e.errors)
+            logger.info(e.errors)
             assert isinstance(list(e.errors.values())[0], AuthenticationFailed)
 
-        debug('Check if the new session works')
+        logger.info('Check if the new session works')
         self._check_session_available(new_session)
 
-        debug('Check if the first session still works')
+        logger.info('Check if the first session still works')
         self._check_session_available(session)
 
-    @attr('single_node')
-    def dropping_keyspace_system_auth_1_node_test(self):
+    @pytest.mark.single_node
+    def test_dropping_keyspace_system_auth_1_node(self):
         """
         **Description:** try to drop system_auth table
         **Expected Result:** we should not be able to drop system_auth
         """
         self.prepare()
-        debug('Cluster with 1 nodes started')
+        logger.info('Cluster with 1 nodes started')
 
         # node = self.cluster.nodelist()[0]
         session = self.get_session(node_idx=0, user='cassandra',
                                    password='cassandra')
-        debug('Successfully get the session from node1')
+        logger.info('Successfully get the session from node1')
         # make sure session works
         self._check_session_available(session)
 
@@ -1216,42 +1208,41 @@ class TestAuth(Tester):
         try:
             session.execute("DROP KEYSPACE system_auth")
         except Unauthorized as e:
-            self.assertEquals(str(e),
-                              'Error from server: code=2100 [Unauthorized] message="Cannot DROP <keyspace system_auth>"')
+            assert str(e) == 'Error from server: code=2100 [Unauthorized] message="Cannot DROP <keyspace system_auth>"'
 
-        debug('Try to re-get session from first endpoint')
+        logger.info('Try to re-get session from first endpoint')
         new_session = self.get_session(node_idx=0,
                                        user='cassandra',
                                        password='cassandra')
         self._check_session_available(new_session)
 
-        debug('Check if the first session still works')
+        logger.info('Check if the first session still works')
         self._check_session_available(session)
 
-    def dropping_keyspace_system_auth_2_nodes_test(self):
+    def test_dropping_keyspace_system_auth_2_nodes(self):
         """
         **Description:** Dropping keyspace system_auth with 2 nodes (when RF=1).
         **Expected Result:** we should not be able to drop system_auth
         """
         self.prepare(nodes=2)
-        debug('Cluster with 2 nodes started')
+        logger.info('Cluster with 2 nodes started')
 
         [node1, node2] = self.cluster.nodelist()
         session = self.get_session(node_idx=0, user='cassandra',
                                    password='cassandra')
-        debug('Successfully get the session from node1')
+        logger.info('Successfully get the session from node1')
         # make sure session works
         self._check_session_available(session)
 
         # verify the replication_factor of system_auth keyspace is 1
         rf = session.cluster.metadata.keyspaces['system_auth'].replication_strategy.replication_factor
-        debug('system_auth rf: %s' % rf)
-        self.assertEquals(1, rf, "RF of system_auth isn't 1")
+        logger.info('system_auth rf: %s' % rf)
+        assert 1 == rf, "RF of system_auth isn't 1"
 
         # check the replicas endpoint of system_auth.user:cassandra
         out, err = node1.nodetool("getendpoints system_auth roles cassandra")
-        debug('Endpoints of system_auth.users:cassandra : %s' % out.strip().split('\n'))
-        self.assertEqual(1, len(out.strip().split('\n')), "1 node expected")
+        logger.info('Endpoints of system_auth.users:cassandra : %s' % out.strip().split('\n'))
+        assert 1 == len(out.strip().split('\n')), "1 node expected"
         rf_address = out.strip().split('\n')[0]
 
         rf_node = node2
@@ -1265,20 +1256,19 @@ class TestAuth(Tester):
         session = self.get_session(node_idx=rf_node_idx, user='cassandra',
                                    password='cassandra')
 
-        debug('drop keyspace system_auth')
+        logger.info('drop keyspace system_auth')
         try:
             session.execute("DROP KEYSPACE system_auth")
         except Unauthorized as e:
-            self.assertEquals(str(e),
-                              'Error from server: code=2100 [Unauthorized] message="Cannot DROP <keyspace system_auth>"')
+            assert str(e) == 'Error from server: code=2100 [Unauthorized] message="Cannot DROP <keyspace system_auth>"'
 
-        debug('Try to re-get session from first rf endpoint(%s: %s)' % (rf_node.name, rf_address))
+        logger.info('Try to re-get session from first rf endpoint(%s: %s)' % (rf_node.name, rf_address))
         new_session = self.get_session(node_idx=rf_node_idx,
                                        user='cassandra',
                                        password='cassandra')
         self._check_session_available(new_session)
 
-        debug('Check if the first session still works')
+        logger.info('Check if the first session still works')
         self._check_session_available(session)
 
     def dropping_one_replica_of_keyspace_system_auth(self):
@@ -1287,19 +1277,19 @@ class TestAuth(Tester):
         **Expected Result:** Cluster is unavailable - connection failed.
         """
         self.prepare(nodes=2)
-        debug('Cluster with 2 nodes started')
+        logger.info('Cluster with 2 nodes started')
 
         [node1, node2] = self.cluster.nodelist()
         session = self.get_session(node_idx=0, user='cassandra',
                                    password='cassandra')
-        debug('Successfully get the session from node1')
+        logger.info('Successfully get the session from node1')
         # make sure session works
         self._check_session_available(session)
 
         # verify the replication_factor of system_auth keyspace is 1
         rf = session.cluster.metadata.keyspaces['system_auth'].replication_strategy.replication_factor
-        debug('system_auth rf: %s' % rf)
-        self.assertEquals(1, rf, "RF of system_auth isn't 1")
+        logger.info('system_auth rf: %s' % rf)
+        assert 1 == rf, "RF of system_auth isn't 1"
 
         # change rf RF of system_auth to 2
         session.execute(
@@ -1307,35 +1297,35 @@ class TestAuth(Tester):
         self.cluster.repair()
         # verify the replication_factor of system_auth keyspace is 2 now
         rf = session.cluster.metadata.keyspaces['system_auth'].replication_strategy.replication_factor
-        debug('Current RF of system_auth is %s' % rf)
-        self.assertEquals(2, rf)
+        logger.info('Current RF of system_auth is %s' % rf)
+        assert 2 == rf
 
         # check the replicas endpoint of system_auth.user:cassandra
         out, err = node1.nodetool("getendpoints system_auth roles cassandra")
-        debug('Endpoints of system_auth.users:cassandra : %s' % out.strip().split('\n'))
-        self.assertEqual(2, len(out.strip().split('\n')), "2 nodes expected")
+        logger.info('Endpoints of system_auth.users:cassandra : %s' % out.strip().split('\n'))
+        assert 2 == len(out.strip().split('\n')), "2 nodes expected"
 
-        debug('drop keyspace system_auth')
+        logger.info('drop keyspace system_auth')
         session.execute("DROP KEYSPACE system_auth")
 
         # verify connection to all nodes
         for n in range(2):
-            debug('Try to re-get session from first rf endpoint(node%s)' % n)
+            logger.info('Try to re-get session from first rf endpoint(node%s)' % n)
             try:
                 new_session = self.get_session(node_idx=n,
                                                user='cassandra',
                                                password='cassandra')
             except NoHostAvailable as e:
-                debug(e.errors)
+                logger.info(e.errors)
                 assert isinstance(list(e.errors.values())[0], AuthenticationFailed)
             else:
-                debug('Check if the new session works')
+                logger.info('Check if the new session works')
                 self._check_session_available(new_session, expect_auth_err=True, expect_invalid_req=True)
 
-        debug('Check if the first session still works')
+        logger.info('Check if the first session still works')
         self._check_session_available(session, expect_auth_err=True, expect_invalid_req=True)
 
-    def kill_all_nodes_with_the_auth_info_except_one_test(self):
+    def test_kill_all_nodes_with_the_auth_info_except_one(self):
         """
         **Description:** Set RF of system_auth to 3, kill two nodes.
         **Expected Result:** Cluster is unavailable - connection failed.
@@ -1344,11 +1334,11 @@ class TestAuth(Tester):
         """
 
         self.prepare(nodes=3)
-        debug('Cluster with 3 nodes started')
+        logger.info('Cluster with 3 nodes started')
 
         nodes = self.cluster.nodelist()
         session = self.get_session(node_idx=0, user='cassandra', password='cassandra')
-        debug('Successfully get the session from node1')
+        logger.info('Successfully get the session from node1')
         # make sure session works
         self._check_session_available(session)
 
@@ -1356,13 +1346,13 @@ class TestAuth(Tester):
         session.execute(
             "alter keyspace system_auth with replication = {'class': 'org.apache.cassandra.locator.SimpleStrategy', 'replication_factor':3};")
         self.cluster.repair()
-        self.assertEquals(3, self.get_session(node_idx=0, user='cassandra', password='cassandra').
-                          cluster.metadata.keyspaces['system_auth'].replication_strategy.replication_factor)
+        assert 3 == self.get_session(node_idx=0, user='cassandra', password='cassandra').cluster.metadata.keyspaces[
+            'system_auth'].replication_strategy.replication_factor
 
         # check the replicas endpoint of system_auth.user:cassandra
         out, err = nodes[0].nodetool("getendpoints system_auth roles cassandra")
-        debug('Endpoints of system_auth.users:cassandra : %s' % out.strip().split('\n'))
-        self.assertEqual(3, len(out.strip().split('\n')), "3 nodes expected")
+        logger.info('Endpoints of system_auth.users:cassandra : %s' % out.strip().split('\n'))
+        assert 3 == len(out.strip().split('\n')), "3 nodes expected"
 
         # re-get session from rf node before killing node
         sessions = []
@@ -1375,55 +1365,55 @@ class TestAuth(Tester):
         self._check_session_available(session, expect_auth_err=True, expect_invalid_req=True, expect_rf_err=True)
 
         for i in range(3):
-            debug('Try to re-get session from %s: %s)' % (nodes[i].name, nodes[i].address()))
+            logger.info('Try to re-get session from %s: %s)' % (nodes[i].name, nodes[i].address()))
             try:
                 self.get_session(node_idx=i,
                                  user='cassandra',
                                  password='cassandra')
             except NoHostAvailable as e:
-                debug(e.errors)
+                logger.info(e.errors)
                 if i in [0, 3]:
                     assert isinstance(list(e.errors.values())[0], AuthenticationFailed)
                 else:
                     assert isinstance(list(e.errors.values())[0], socket.error)
             else:
                 if i == 1:
-                    self.fail("Connection should not be created")
+                    pytest.fail("Connection should not be created")
         nodes[1].start(wait_other_notice=True)
         # connection to 2 nodes should be ok
         for i in range(2):
-            debug('Try to re-get session from %s: %s)' % (nodes[i].name, nodes[i].address()))
+            logger.info('Try to re-get session from %s: %s)' % (nodes[i].name, nodes[i].address()))
             self._check_session_available(
                 self.get_session(node_idx=i, user='cassandra', password='cassandra'))
 
         try:
             self.get_session(node_idx=i, user='cassandra', password='cassandra')
         except NoHostAvailable as e:
-            debug(e.errors)
+            logger.info(e.errors)
 
         nodes[2].start(wait_other_notice=True)
         # connection to all nodes should be ok
         for i in range(3):
-            debug('Try to re-get session from %s: %s)' % (nodes[i].name, nodes[i].address()))
+            logger.info('Try to re-get session from %s: %s)' % (nodes[i].name, nodes[i].address()))
             self._check_session_available(
                 self.get_session(node_idx=i, user='cassandra', password='cassandra'))
 
-        debug('Check if the first session still works')
+        logger.info('Check if the first session still works')
         self._check_session_available(session, expect_auth_err=True, expect_invalid_req=True)
 
-    @attr('single_node')
-    def drop_keyspace_system_auth_1_node_test(self):
+    @pytest.mark.single_node
+    def test_drop_keyspace_system_auth_1_node(self):
         """
         **Description:** try to drop system_auth table
         **Expected Result:** we should not be able to drop system_auth
         """
         self.prepare()
-        debug('Cluster with 1 nodes started')
+        logger.info('Cluster with 1 nodes started')
 
         # node = self.cluster.nodelist()[0]
         session = self.get_session(node_idx=0, user='cassandra',
                                    password='cassandra')
-        debug('Successfully get the session from node1')
+        logger.info('Successfully get the session from node1')
         # make sure session works
         self._check_session_available(session)
 
@@ -1431,11 +1421,10 @@ class TestAuth(Tester):
         try:
             session.execute("DROP KEYSPACE system_auth")
         except Unauthorized as e:
-            self.assertEquals(str(e),
-                              'Error from server: code=2100 [Unauthorized] message="Cannot DROP <keyspace system_auth>"')
+            assert str(e) == 'Error from server: code=2100 [Unauthorized] message="Cannot DROP <keyspace system_auth>"'
 
-    @attr('single_node')
-    def change_setting_to_noauth_after_system_auth_was_lost_test(self):
+    @pytest.mark.single_node
+    def test_change_setting_to_noauth_after_system_auth_was_lost(self):
         """
         **Description:** after the auth info is lost, change the setting of a node
         to no auth (while the node is down), force a client to connect to that node.
@@ -1452,15 +1441,14 @@ class TestAuth(Tester):
 
         for session in [self.get_session(),
                         self.get_session(user='cassandra', password='cassandra')]:
-            try:
+            with pytest.raises(
+                    Unauthorized,
+                    match='Error from server: code=2100 \[Unauthorized\] message="You have to be logged in and not '
+                          'anonymous to perform this request"'):
                 session.execute("LIST USERS")
-                self.fail('You have to be logged in and not anonymous to perform this request!')
-            except Unauthorized as e:
-                self.assertEquals(str(e),
-                                  'Error from server: code=2100 [Unauthorized] message="You have to be logged in and not anonymous to perform this request"')
 
-    @attr('single_node')
-    def restart_node_doesnt_lose_auth_data_test(self):
+    @pytest.mark.single_node
+    def test_restart_node_doesnt_lose_auth_data(self):
         """
         * Launch a one node cluster
         * Connect as the default superuser
@@ -1496,8 +1484,8 @@ class TestAuth(Tester):
 
         philip.execute("SELECT * FROM ks.cf")
 
-    @attr('single_node')
-    def system_keyspace_sensitive_test(self):
+    @pytest.mark.single_node
+    def test_system_keyspace_sensitive(self):
         """
         * Launch a one node cluster
         * Try to create KEYSPACEs like: 'SYSTEM_tRaCeS', 'SYSTEM_aUtH'
@@ -1506,48 +1494,42 @@ class TestAuth(Tester):
         """
         self.prepare()
         session = self.get_session(user='cassandra', password='cassandra')
-        try:
+        with pytest.raises(
+                InvalidRequest,
+                match='Error from server: code=2200 \[Invalid query\] message="system keyspace is not user-modifiable"'):
             session.execute(
                 "create KEYSPACE SyStEM WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}")
-            self.fail("system keyspace is not user-modifiable")
-        except InvalidRequest as e:
-            self.assertEquals(
-                str(e), 'Error from server: code=2200 [Invalid query] message="system keyspace is not user-modifiable"')
 
         for name in ['SYSTEM_tRaCeS', 'SYSTEM_aUtH']:
-            try:
+            with pytest.raises(AlreadyExists, match="Keyspace '%s' already exists" % name.lower()):
                 session.execute(
                     "create KEYSPACE %s WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}" % name)
-                self.fail("Keyspace %s shouldn't be created")
-            except AlreadyExists as e:
-                self.assertEquals(str(e), "Keyspace '%s' already exists" % name.lower())
+                pytest.fail("Keyspace %s shouldn't be created")
 
-        try:
+        with pytest.raises(
+                Unauthorized,
+                match='Error from server: code=2100 \[Unauthorized\] message="system keyspace is not user-modifiable."'):
             session.execute("drop KEYSPACE system")
-            self.fail("system keyspace is not user-modifiable")
-        except Unauthorized as e:
-            self.assertEquals(
-                str(e), 'Error from server: code=2100 [Unauthorized] message="system keyspace is not user-modifiable."')
         # https://github.com/scylladb/scylla/issues/2338
         """for name in ['SYSTEM_tRaCeS', 'SYSTEM_aUtH']:
             try:
                 session.execute(
                     "drop KEYSPACE %s" % name)
-                self.fail("Keyspace %s shouldn't be deleted")
+                pytest.fail("Keyspace %s shouldn't be deleted")
             except InvalidRequest as e:
                 self.assertEquals(str(e), 'Cannot DROP <keyspace %s>' % name.lower())"""
 
-    def remove_dead_node_test(self):
+    def test_remove_dead_node(self):
         """
         **Description:** Run "nodetool removenode"' on the dead node (when RF=2).
         **Expected Result:** Cluster is available - successful connection.
         """
         self.prepare(nodes=3)
-        debug('Cluster with 3 nodes started')
+        logger.info('Cluster with 3 nodes started')
 
         [node1, node2, node3] = self.cluster.nodelist()
         session = self.get_session(node_idx=0, user='cassandra', password='cassandra')
-        debug('Successfully get the session from node1')
+        logger.info('Successfully get the session from node1')
         # make sure session works
         self._check_session_available(session)
 
@@ -1563,17 +1545,17 @@ class TestAuth(Tester):
         self._check_session_available(session)
 
     @require("2339")
-    def remove_dead_node_consistency_failed_test(self):
+    def test_remove_dead_node_consistency_failed(self):
         """
         **Description:** Run "nodetool removenode"' on the dead node (when RF=2).
         **Expected Result:** Cluster is available - successful connection.
         """
         self.prepare(nodes=2)
-        debug('Cluster with 2 nodes started')
+        logger.info('Cluster with 2 nodes started')
 
         [node1, node2] = self.cluster.nodelist()
         session = self.get_session(node_idx=0, user='cassandra', password='cassandra')
-        debug('Successfully get the session from node1')
+        logger.info('Successfully get the session from node1')
         # make sure session works
         self._check_session_available(session)
 
@@ -1585,23 +1567,22 @@ class TestAuth(Tester):
         node2_hostid = node2.hostid()
         node2.stop(wait_other_notice=True, gently=False)
         node1.nodetool("removenode %s" % node2_hostid)
-        try:
+        with pytest.raises(NoHostAvailable) as exc:
             self.get_session(node_idx=0, user='cassandra', password='cassandra')
-        except NoHostAvailable as e:
-            debug(e.errors)
-            assert isinstance(list(e.errors.values())[0], AuthenticationFailed)
-            self.asserTrue('Cannot achieve consistency level QUORUM' in str(list(e.errors.values())[0]))
+        logger.info(exc.value.errors)
+        assert isinstance(list(exc.value.errors.values())[0], AuthenticationFailed)
+        assert 'Cannot achieve consistency level QUORUM' in str(list(exc.value.errors.values())[0])
 
-    @skip('not-implemented')
-    def manually_copy_system_auth_files_after_system_auth_was_lost_test(self):
+    @pytest.mark.skip('not-implemented')
+    def test_manually_copy_system_auth_files_after_system_auth_was_lost(self):
         """
         **Description:** after the auth info is lost (dropping system_auth when RF=1), Upload system_auth keyspace
         with scp to other nodes, do "nodetool refresh".
         **Expected Result:** Cluster is unavailable - connection failed.
         """
 
-    @skip('not-implemented')
-    def manually_backup_and_restore_system_auth_test(self):
+    @pytest.mark.skip('not-implemented')
+    def test_manually_backup_and_restore_system_auth(self):
         """
         **Description:** Backup `system_auth` directory from the data directory to localhost, drop system_auth,
         turn off the auth, upload the auto info and turn on auth.
@@ -1609,16 +1590,18 @@ class TestAuth(Tester):
         """
         raise NotImplementedError
 
-    @skip('not-implemented')
-    def snapshot_back_and_restore_system_auth_test(self):
+    @pytest.mark.skip('not-implemented')
+    def test_snapshot_back_and_restore_system_auth(self):
         """
         **Description:** Backup data by creating snapshot, try to recover auth info from snapshot.
         **Expected Result:** Auth is recovered, Cluster is available - successful connection.
         """
         raise NotImplementedError
 
-    @attr('next-gating', 'dtest-debug', 'single_node')
-    def all_authorization_operations_test(self):
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
+    @pytest.mark.single_node
+    def test_all_authorization_operations(self):
         """
         **Description:** Test all authorization operations, actions and applied objects.
         **Expected Result:** All commands run successfully, no crash is triggered.
@@ -1702,7 +1685,7 @@ class TestAuth(Tester):
         self.assertUnauthorized("You are not authorized to view cathy's permissions",
                                 bob, "LIST ALL PERMISSIONS OF cathy")
 
-    def authentication_enabled_only_in_one_node_test(self):
+    def test_authentication_enabled_only_in_one_node(self):
         """
         **Description:** Authentication is enabled only in one node while disabled in others -
                          try to connect all node one by one.
@@ -1730,36 +1713,33 @@ class TestAuth(Tester):
             session = self.get_session(node_idx=0, user='cassandra', password='cassandra')
             self._check_session_available(session, expect_auth_err=True, expect_invalid_req=True)
         except Unauthorized as e:
-            self.assertEqual(str(e), 'Error from server: code=2100 [Unauthorized] message='
-                             '"You have to be logged in and not anonymous to perform this request"')
+            assert str(e) == 'Error from server: code=2100 [Unauthorized] message=' \
+                             '"You have to be logged in and not anonymous to perform this request"'
         except Exception as e:
-            assert isinstance(list(e.errors.values())[0], AuthenticationFailed)
+            assert isinstance(list(e.errors.values())[0], AuthenticationFailed)  # pylint: disable=no-member
 
         session = self.get_session(node_idx=1, user='cassandra', password='cassandra')
         try:
             self._check_session_available(session, expect_auth_err=True, expect_invalid_req=True)
         except Unauthorized as e:
-            self.assertEqual(str(e), 'Error from server: code=2100 [Unauthorized] message='
-                                     '"You have to be logged in and not anonymous to perform this request"')
+            assert str(e) == 'Error from server: code=2100 [Unauthorized] message=' \
+                             '"You have to be logged in and not anonymous to perform this request"'
 
-        try:
+        with pytest.raises(Exception) as exc:
             self.get_session(node_idx=0)
-            self.fail("AuthenticationFailed expected")
-        except Exception as e:
-            assert isinstance(list(e.errors.values())[0], AuthenticationFailed)
+        assert isinstance(list(exc.value.errors.values())[0], AuthenticationFailed)  # pylint: disable=no-member
 
         try:
             session = self.get_session(node_idx=1)
             self._check_session_available(session, expect_auth_err=True, expect_invalid_req=True)
-            self.fail("Unauthorized expected")
+            pytest.fail("Unauthorized expected")
         except NoHostAvailable as e:
             assert isinstance(list(e.errors.values())[0], AuthenticationFailed)
         except Exception as e:
-            self.assertEqual(str(e),
-                             'Error from server: code=2100 [Unauthorized] message='
-                             '"You have to be logged in and not anonymous to perform this request"')
+            assert str(e) == 'Error from server: code=2100 [Unauthorized] message=' \
+                             '"You have to be logged in and not anonymous to perform this request"'
 
-    def adding_new_node_not_overwrite_global_schema_test(self):
+    def test_adding_new_node_not_overwrite_global_schema(self):
         """
         **Description:** Add new node(RF=1) to cluster with keyspace RF=2
         **Expected Result:** the keyspace RF was not changed
@@ -1767,23 +1747,23 @@ class TestAuth(Tester):
         self.prepare(nodes=2)
 
         session = self.get_session(user='cassandra', password='cassandra')
-        self.assertEquals(1, session.cluster.metadata.keyspaces['system_auth'].replication_strategy.replication_factor)
+        assert 1 == session.cluster.metadata.keyspaces['system_auth'].replication_strategy.replication_factor
 
         session.execute("ALTER KEYSPACE system_auth "
                         "WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 2};")
         self.cluster.repair()
 
         session = self.get_session(user='cassandra', password='cassandra')
-        self.assertEquals(2, session.cluster.metadata.keyspaces['system_auth'].replication_strategy.replication_factor)
+        assert 2 == session.cluster.metadata.keyspaces['system_auth'].replication_strategy.replication_factor
 
         node3 = new_node(self.cluster, bootstrap=False)
         node3.start(wait_for_binary_proto=True)
 
         session = self.get_session(user='cassandra', password='cassandra')
-        self.assertEquals(2, session.cluster.metadata.keyspaces['system_auth'].replication_strategy.replication_factor)
+        assert 2 == session.cluster.metadata.keyspaces['system_auth'].replication_strategy.replication_factor
 
         session = self.get_session(node_idx=2, user='cassandra', password='cassandra')
-        self.assertEquals(2, session.cluster.metadata.keyspaces['system_auth'].replication_strategy.replication_factor)
+        assert 2 == session.cluster.metadata.keyspaces['system_auth'].replication_strategy.replication_factor
 
         # wait for schema sync and verify rf
         time.sleep(5)
@@ -1791,19 +1771,19 @@ class TestAuth(Tester):
         resp = node1.nodetool('describecluster')
         lines = resp[0].split('\n')
         schemas = [lines[i+1] for i, line in enumerate(lines) if line.find('Schema versions:') != -1]
-        self.assertEquals(1, len(schemas))
+        assert 1 == len(schemas)
         session = self.get_session(user='cassandra', password='cassandra')
-        self.assertEquals(2, session.cluster.metadata.keyspaces['system_auth'].replication_strategy.replication_factor)
+        assert 2 == session.cluster.metadata.keyspaces['system_auth'].replication_strategy.replication_factor
 
-    def transitional_auth_from_default_test(self):
+    def test_transitional_auth_from_default(self):
         """
         Start cluster with default Auth, rolling upgrade cluster to enable Transitional Auth,
         create a normal user and verify its permission, rolling upgrade cluster to strict Auth.
         """
-        debug('STEP: start cluster with default AllowAllAuthenticator/AllowAllAuthorizer')
+        logger.info('STEP: start cluster with default AllowAllAuthenticator/AllowAllAuthorizer')
         self.prepare(nodes=3, enable_auth=False, wait_for_superuser=True)
 
-        debug('STEP: update conf and restart cluster to use TransitionalAuthenticator/TransitionalAuthorizer')
+        logger.info('STEP: update conf and restart cluster to use TransitionalAuthenticator/TransitionalAuthorizer')
         config = {'authenticator': 'com.scylladb.auth.TransitionalAuthenticator',
                   'authorizer': 'com.scylladb.auth.TransitionalAuthorizer'}
         self.cluster.set_configuration_options(values=config)
@@ -1812,15 +1792,15 @@ class TestAuth(Tester):
             node.start(wait_for_binary_proto=True)
 
         cassandra = self.get_session(user='cassandra', password='cassandra')
-        debug('STEP: create normal user by super cassandra')
+        logger.info('STEP: create normal user by super cassandra')
         cassandra.execute("CREATE USER normal WITH PASSWORD '123456' NOSUPERUSER")
 
-        debug('STEP: verify user will login as anonymous if authentication fails')
+        logger.info('STEP: verify user will login as anonymous if authentication fails')
         session = self.get_session(user='normal', password='wrongpwd')
         self.assertUnauthorized("You have to be logged in and not anonymous to perform this request", session,
                                 "LIST USERS")
 
-        debug('STEP: check default permissions (CREATE/ALTER/DROP/SELECT/MODIFY) of all users')
+        logger.info('STEP: check default permissions (CREATE/ALTER/DROP/SELECT/MODIFY) of all users')
         session.execute("CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}")
         session.execute("CREATE TABLE ks.cf (id int primary key)")
         session.execute("SELECT * FROM ks.cf")
@@ -1829,17 +1809,14 @@ class TestAuth(Tester):
         self.assertUnauthorized("You have to be logged in and not anonymous to perform this request",
                                 session, "REVOKE SELECT ON ks.cf from normal")
 
-        debug('STEP: verify user without credentials can not login')
-        try:
+        logger.info('STEP: verify user without credentials can not login')
+        with pytest.raises(NoHostAvailable) as exc:
             session = self.get_session()
             self._check_session_available(session, expect_auth_err=True)
-        except NoHostAvailable as e:
-            debug(e)
-            assert isinstance(list(e.errors.values())[0], AuthenticationFailed)
-        else:
-            self.fail('Session should not be created')
+        logger.info(exc.value)
+        assert isinstance(list(exc.value.errors.values())[0], AuthenticationFailed)
 
-        debug('STEP: update conf and restart cluster to use strict PasswordAuthenticator/CassandraAuthorizer')
+        logger.info('STEP: update conf and restart cluster to use strict PasswordAuthenticator/CassandraAuthorizer')
         config = {'authenticator': 'org.apache.cassandra.auth.PasswordAuthenticator',
                   'authorizer': 'org.apache.cassandra.auth.CassandraAuthorizer'}
         self.cluster.set_configuration_options(values=config)
@@ -1847,24 +1824,17 @@ class TestAuth(Tester):
             node.stop()
             node.start(wait_for_binary_proto=True)
 
-        debug('STEP: verify user without credentials or with wrong credentials can not login')
-        try:
+        logger.info('STEP: verify user without credentials or with wrong credentials can not login')
+        with pytest.raises(NoHostAvailable) as exc:
             session = self.get_session()
             self._check_session_available(session, expect_auth_err=True)
-        except NoHostAvailable as e:
-            debug(e)
-            assert isinstance(list(e.errors.values())[0], AuthenticationFailed)
-        else:
-            self.fail('Session should not be created')
+        assert isinstance(list(exc.value.errors.values())[0], AuthenticationFailed)
 
-        try:
+        with pytest.raises(NoHostAvailable) as exc:
             session = self.get_session(user='normal', password='wrongpwd')
             self._check_session_available(session, expect_auth_err=True)
-        except NoHostAvailable as e:
-            debug(e)
-            assert isinstance(list(e.errors.values())[0], AuthenticationFailed)
-        else:
-            self.fail('Session should not be created')
+        logger.info(exc.value)
+        assert isinstance(list(exc.value.errors.values())[0], AuthenticationFailed)
 
         session = self.get_session(user='normal', password='123456')
         self.assertUnauthorized("User normal has no SELECT permission on <table ks.cf> or any of its parents",
@@ -1872,36 +1842,34 @@ class TestAuth(Tester):
         self.assertUnauthorized("User normal has no AUTHORIZE permission on <table ks.cf> or any of its parents",
                                 session, "REVOKE SELECT ON ks.cf from normal")
 
-    def transitional_auth_from_pwdauth_test(self):
+    def test_transitional_auth_from_pwdauth(self):
         """
         Start cluster with PasswordAuthenticator/CassandraAuthorizer, rolling upgrade cluster
         to enable Transitional Auth, create a normal user and verify its permission, then
         switch to AllowAll Auth. It's a wrong transitional order but we want to cover it.
         """
-        debug('STEP: start cluster with PasswordAuthenticator/CassandraAuthorizer')
+        logger.info('STEP: start cluster with PasswordAuthenticator/CassandraAuthorizer')
         self.prepare(nodes=3, enable_auth=True)
-        self.wait_for_any_log(self.cluster.nodelist(), 'Created default superuser', 30)
+        wait_for_any_log(self.cluster.nodelist(), 'Created default superuser', 30)
 
         session = self.get_session(user='cassandra', password='cassandra')
-        debug('STEP: create normal user by super cassandra')
+        logger.info('STEP: create normal user by super cassandra')
         session.execute("CREATE USER normal WITH PASSWORD '123456' NOSUPERUSER")
 
         session = self.get_session(user='normal', password='123456')
         rows = list(session.execute('LIST USERS'))
         assert len(rows) == 1, "Expect to see `normal`, actual: %s" % (rows)
-        debug('Verified normal user was created and available')
+        logger.info('Verified normal user was created and available')
 
-        debug('STEP: verify user without credentials can not login')
-        try:
+        logger.info('STEP: verify user without credentials can not login')
+
+        with pytest.raises(NoHostAvailable) as exc:
             session = self.get_session(user='normal', password='wrongpwd')
             self._check_session_available(session, expect_auth_err=True)
-        except NoHostAvailable as e:
-            debug(e)
-            assert isinstance(list(e.errors.values())[0], AuthenticationFailed)
-        else:
-            self.fail('Session should not be created')
+        logger.info(exc.value)
+        assert isinstance(list(exc.value.errors.values())[0], AuthenticationFailed)
 
-        debug('STEP: update conf and restart cluster to use TransitionalAuthenticator/TransitionalAuthorizer')
+        logger.info('STEP: update conf and restart cluster to use TransitionalAuthenticator/TransitionalAuthorizer')
         config = {'authenticator': 'com.scylladb.auth.TransitionalAuthenticator',
                   'authorizer': 'com.scylladb.auth.TransitionalAuthorizer'}
         self.cluster.set_configuration_options(values=config)
@@ -1909,7 +1877,7 @@ class TestAuth(Tester):
             node.stop()
             node.start(wait_for_binary_proto=True)
 
-        debug('STEP: check permissions (LIST/CREATE/GRANT/REVOKE) of normal user')
+        logger.info('STEP: check permissions (LIST/CREATE/GRANT/REVOKE) of normal user')
         session = self.get_session(user='normal', password='123456')
         session.execute('LIST USERS')
         session.execute("CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}")
@@ -1919,22 +1887,19 @@ class TestAuth(Tester):
         self.assertUnauthorized("User normal has no AUTHORIZE permission on <table ks.cf> or any of its parents",
                                 session, "REVOKE SELECT ON ks.cf from normal")
 
-        debug('STEP: verify user will login as anonymous if authentication fails')
+        logger.info('STEP: verify user will login as anonymous if authentication fails')
         session = self.get_session(user='normal', password='wrongpwd')
         self.assertUnauthorized("You have to be logged in and not anonymous to perform this request", session,
                                 "LIST USERS")
 
-        debug('STEP: verify user without credentials can not login')
-        try:
+        logger.info('STEP: verify user without credentials can not login')
+        with pytest.raises(NoHostAvailable) as exc:
             session = self.get_session()
             self._check_session_available(session, expect_auth_err=True)
-        except NoHostAvailable as e:
-            debug(e)
-            assert isinstance(list(e.errors.values())[0], AuthenticationFailed)
-        else:
-            self.fail('Session should not be created')
+        logger.info(exc.value)
+        assert isinstance(list(exc.value.errors.values())[0], AuthenticationFailed)
 
-        debug('STEP: update conf and restart cluster to use AllowAllAuthenticator/AllowAllAuthorizer')
+        logger.info('STEP: update conf and restart cluster to use AllowAllAuthenticator/AllowAllAuthorizer')
         config = {'authenticator': 'AllowAllAuthenticator',
                   'authorizer': 'AllowAllAuthorizer'}
         self.cluster.set_configuration_options(values=config)
@@ -1942,7 +1907,7 @@ class TestAuth(Tester):
             node.stop()
             node.start(wait_for_binary_proto=True)
 
-        debug('STEP: verify all users will login as anonymous')
+        logger.info('STEP: verify all users will login as anonymous')
         session = self.get_session(user='cassandra', password='cassandra')
         self.assertUnauthorized("You have to be logged in and not anonymous to perform this request", session,
                                 "LIST USERS")
@@ -1950,34 +1915,34 @@ class TestAuth(Tester):
         self.assertUnauthorized("You have to be logged in and not anonymous to perform this request", session,
                                 "LIST USERS")
 
-    def transitional_auth_betweenness_from_default_test(self):
+    def test_transitional_auth_betweenness_from_default(self):
         """
         Start cluster with default Auth, test user permission during rolling upgrade of enable Transitional Auth.
         """
-        debug('STEP: start cluster with default AllowAllAuthenticator/AllowAllAuthorizer')
+        logger.info('STEP: start cluster with default AllowAllAuthenticator/AllowAllAuthorizer')
         self.prepare(nodes=2, enable_auth=False)
         nodes = self.cluster.nodelist()
 
-        debug('STEP: update config and restart node1 to enable Transitional Auth')
+        logger.info('STEP: update config and restart node1 to enable Transitional Auth')
         nodes[0].stop(wait_other_notice=True, gently=True)
         config = {'authenticator': 'com.scylladb.auth.TransitionalAuthenticator',
                   'authorizer': 'com.scylladb.auth.TransitionalAuthorizer'}
         nodes[0].set_configuration_options(values=config)
         nodes[0].start(wait_for_binary_proto=True)
-        self.wait_for_any_log(self.cluster.nodelist(), 'Created default superuser authentication record', 30)
+        wait_for_any_log(self.cluster.nodelist(), 'Created default superuser authentication record', 30)
 
         session = self.get_session(node_idx=0, user='cassandra', password='cassandra')
         session.execute("CREATE USER normal WITH PASSWORD '123456' NOSUPERUSER")
 
-        debug('STEP: (on node1) verify normal user has permission to list users')
+        logger.info('STEP: (on node1) verify normal user has permission to list users')
         session = self.get_session(node_idx=0, user='normal', password='123456')
         session.execute('LIST USERS')
-        debug('STEP: (on node1) verify user will login as anonymous if authentication fails')
+        logger.info('STEP: (on node1) verify user will login as anonymous if authentication fails')
         session = self.get_session(node_idx=0, user='normal', password='wrongpwd')
         self.assertUnauthorized("You have to be logged in and not anonymous to perform this request", session,
                                 "LIST USERS")
 
-        debug('STEP: (on node2) verify all users will login as anonymous if authentication fails')
+        logger.info('STEP: (on node2) verify all users will login as anonymous if authentication fails')
         session = self.get_session(node_idx=1, user='cassandra', password='cassandra')
         self.assertUnauthorized("You have to be logged in and not anonymous to perform this request", session,
                                 "LIST USERS")
@@ -1985,45 +1950,42 @@ class TestAuth(Tester):
         self.assertUnauthorized("You have to be logged in and not anonymous to perform this request", session,
                                 "LIST USERS")
 
-    def transitional_auth_betweenness_from_pwdauth_test(self):
+    def test_transitional_auth_betweenness_from_pwdauth(self):
         """
         Start cluster with strict Auth, test user permission during rolling upgrade of enable Transitional Auth.
         It's a wrong order to transition from strict Auth to AllowAllAuth, but we want to cover it.
         """
-        debug('STEP: start cluster with PasswordAuthenticator/CassandraAuthorizer')
+        logger.info('STEP: start cluster with PasswordAuthenticator/CassandraAuthorizer')
         self.prepare(nodes=2, enable_auth=True)
         nodes = self.cluster.nodelist()
 
         session = self.get_session(user='cassandra', password='cassandra')
-        debug('STEP: create normal user (normal) by super cassandra')
+        logger.info('STEP: create normal user (normal) by super cassandra')
         session.execute("CREATE USER normal WITH PASSWORD '123456' NOSUPERUSER")
 
         session = self.get_session(user='normal', password='123456')
         rows = list(session.execute('LIST USERS'))
         assert len(rows) == 1, "Expect to see `normal`, actual: %s" % (rows)
-        debug('Verified normal was created, and available')
+        logger.info('Verified normal was created, and available')
 
         config = {'authenticator': 'com.scylladb.auth.TransitionalAuthenticator',
                   'authorizer': 'com.scylladb.auth.TransitionalAuthorizer'}
 
-        debug('STEP: update config and restart node1 to enable Transitional Auth')
+        logger.info('STEP: update config and restart node1 to enable Transitional Auth')
         nodes[0].stop(wait_other_notice=True, gently=True)
         nodes[0].set_configuration_options(values=config)
         nodes[0].start(wait_for_binary_proto=True)
 
-        debug('STEP: (on node1) verify all users will login as anonymous if authentication fails')
+        logger.info('STEP: (on node1) verify all users will login as anonymous if authentication fails')
         session = self.get_session(node_idx=0, user='normal', password='wrong')
         self.assertUnauthorized("You have to be logged in and not anonymous to perform this request", session,
                                 "LIST USERS")
 
-        try:
+        with pytest.raises(NoHostAvailable) as exc:
             session = self.get_session(node_idx=1, user='normal', password='wrong')
             session.execute("LIST USERS")
-        except NoHostAvailable as e:
-            assert isinstance(list(e.errors.values())[0], AuthenticationFailed)
-            debug("can't get session of node2 with normal user/password")
-        else:
-            self.fail('Session should not be created')
+        assert isinstance(list(exc.value.errors.values())[0], AuthenticationFailed)
+        logger.info("can't get session of node2 with normal user/password")
 
     def prepare(self, nodes=1, permissions_validity=0, enable_auth=True, wait_for_superuser=False):
         config = {'permissions_validity_in_ms': permissions_validity,
@@ -2041,7 +2003,7 @@ class TestAuth(Tester):
             if enable_auth:
                 expected_entries.append('Created default superuser authentication record')
 
-            found = self.wait_for_any_log(
+            found = wait_for_any_log(
                 self.cluster.nodelist(),
                 expected_entries,
                 30,
@@ -2053,7 +2015,7 @@ class TestAuth(Tester):
                     nodes.append(n.name)
             else:
                 nodes = found.name
-            debug("Default role created by {}".format(nodes))
+            logger.info("Default role created by {}".format(nodes))
 
     def get_session(self, node_idx=0, user=None, password=None, exclusive=True):
         node = self.cluster.nodelist()[node_idx]
@@ -2072,12 +2034,12 @@ class TestAuth(Tester):
         if not include_superuser:
             perms = [(u, r, p) for (u, r, p) in perms if u != 'cassandra']
 
-        self.assertEqual(sorted(expected), sorted(perms))
+        assert sorted(expected), sorted(perms)
 
     def assertUnauthorized(self, message, session, query):
-        with self.assertRaises(Unauthorized) as cm:
+        with pytest.raises(Unauthorized) as cm:
             session.execute(query)
-        assert re.search(message, str(cm.exception)), "Expected '%s', but got '%s'" % (message, str(cm.exception))
+        assert re.search(message, str(cm.value)), "Expected '%s', but got '%s'" % (message, str(cm.value))
 
 
 def data_resource_creator_permissions(creator, resource, support_func=True):
