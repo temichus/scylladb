@@ -74,9 +74,10 @@ repos:
                 heat_weighted_load_balancing_test.py|
                 upgrade_test.py|
                 consistency_test.py|
-                secondary_indexes_test.py |
+                secondary_indexes_test.py|
                 like_operator_test.py|
-                sstablesplit_test.py
+                sstablesplit_test.py|
+                jmx_test.py
             )$
         language: system
         types: [python]
