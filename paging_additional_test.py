@@ -100,10 +100,9 @@ class TestPagingSavedQueryStateBase(BasePagingTester):
     DROPS = 'querier_cache_drops'
     TIME_BASED_EVICTIONS = 'querier_cache_time_based_evictions'
     RESOURCE_BASED_EVICTIONS = 'querier_cache_resource_based_evictions'
-    MEMORY_BASED_EVICTIONS = 'querier_cache_memory_based_evictions'
     POPULATION = 'querier_cache_population'
 
-    ALL_METRICS = [LOOKUPS, MISSES, DROPS, TIME_BASED_EVICTIONS, RESOURCE_BASED_EVICTIONS, MEMORY_BASED_EVICTIONS]
+    ALL_METRICS = [LOOKUPS, MISSES, DROPS, TIME_BASED_EVICTIONS, RESOURCE_BASED_EVICTIONS]
 
     def metrics_equal(self, node_metrics, expected_metrics):
         for metric in self.ALL_METRICS:
