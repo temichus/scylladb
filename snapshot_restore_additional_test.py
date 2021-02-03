@@ -1,13 +1,13 @@
 # coding: utf-8
+import pytest
 
-from dtest import Tester
-from unittest import skip
+from dtest_class import Tester
 
 
-class SnapshotRestoreAdditionalTest(Tester):
+class TestSnapshotRestoreAdditional(Tester):
 
-    @skip('unimplemented')
-    def incremental_backup(self):
+    @pytest.mark.skip('unimplemented')
+    def test_incremental_backup(self):
         """
         Check that incremetal backup works as expected
         1. Use a single node
@@ -20,8 +20,8 @@ class SnapshotRestoreAdditionalTest(Tester):
         """
         raise NotImplementedError
 
-    @skip('unimplemented')
-    def restore_snapshot_using_old_schema(self):
+    @pytest.mark.skip('unimplemented')
+    def test_restore_snapshot_using_old_schema(self):
         """
         Check that we can restore snapshot files that use old schema
         1. Use a single node and create a keyspace + table
@@ -35,8 +35,8 @@ class SnapshotRestoreAdditionalTest(Tester):
         """
         raise NotImplementedError
 
-    @skip('unimplemented')
-    def restore_snapshot_using_old_token_ownership(self):
+    @pytest.mark.skip('unimplemented')
+    def test_restore_snapshot_using_old_token_ownership(self):
         """
         Check that we can restore snapshot files that use a non updated token ownership
         1. Use a single node and create a keyspace + table
@@ -50,8 +50,8 @@ class SnapshotRestoreAdditionalTest(Tester):
         """
         raise NotImplementedError
 
-    @skip('unimplemented')
-    def restore_snapshot_using_different_smp_setting(self):
+    @pytest.mark.skip('unimplemented')
+    def test_restore_snapshot_using_different_smp_setting(self):
         """
         Check that we can restore snapshot files that used a different smp setting
         1. Use a single node with smp=1 and create a keyspace + table
@@ -65,18 +65,18 @@ class SnapshotRestoreAdditionalTest(Tester):
         """
         raise NotImplementedError
 
-    @skip('unimplemented')
-    def restore_snapshot_from_cassandra(self):
+    @pytest.mark.skip('unimplemented')
+    def test_restore_snapshot_from_cassandra(self):
         """
         Check that we can restore snapshot files that have been created by cassandra
         1. Use a single node and create a keyspace + table
         2. Restore data from a cassandra snapshot
         3. Check that all data exists
         """
-        fail
+        raise NotImplementedError
 
-    @skip('unimplemented')
-    def failure_durring_snapshot_no_corrupt_data(self):
+    @pytest.mark.skip('unimplemented')
+    def test_failure_durring_snapshot_no_corrupt_data(self):
         """
         Check that we can recover from a failure durring snapshot
         1. Use a single node and create a keyspace + table
@@ -88,8 +88,8 @@ class SnapshotRestoreAdditionalTest(Tester):
         """
         raise NotImplementedError
 
-    @skip('unimplemented')
-    def failure_durring_restore_no_corrupt_data(self):
+    @pytest.mark.skip('unimplemented')
+    def test_failure_durring_restore_no_corrupt_data(self):
         """
         Check that we can recover from a failure durring restore
         1. Use a single node and create a keyspace + table
@@ -107,8 +107,8 @@ class SnapshotRestoreAdditionalTest(Tester):
         """
         raise NotImplementedError
 
-    @skip('unimplemented')
-    def replay_restore_no_additional_data(self):
+    @pytest.mark.skip('unimplemented')
+    def test_replay_restore_no_additional_data(self):
         """
         Check that we can restore snapshot files that use old schema
         1. Use a single node and create a keyspace + table
