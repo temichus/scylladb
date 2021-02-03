@@ -100,7 +100,7 @@ class ImmutableDictMixin(object):
 @pytest.mark.dtest_full
 class CqlshPrepare(Tester):
 
-    def prepare(self, nodes=1, configuration_options=None):
+    def prepare(self, nodes=1, configuration_options=None, copy_from_retry=None):
         if not self.cluster.nodelist():
             self.cluster.set_partitioner("org.apache.cassandra.dht.Murmur3Partitioner")
             if configuration_options:
@@ -108,7 +108,8 @@ class CqlshPrepare(Tester):
             self.cluster.populate(nodes).start(wait_for_binary_proto=True)
         else:
             assert len(self.cluster.nodelist()) == nodes, "Cannot reuse cluster: different number of nodes"
-            assert configuration_options is None, f"Unexpected configuration options: {configuration_options}"
+            if not copy_from_retry:
+                assert configuration_options is None, f"Unexpected configuration options: {configuration_options}"
 
         self.node1 = self.cluster.nodelist()[0]
         self.session = self.patient_cql_connection(self.node1)
@@ -1203,48 +1204,119 @@ class TestCqlshCopy(CqlshPrepare):
 
         os.unlink(commandfile.name)
 
-    def _test_bulk_round_trip(self, nodes,
-                              num_operations, profile=None, stress_table='keyspace1.standard1',
-                              page_size=1000, page_timeout=10, configuration_options=None):
+    def _test_bulk_round_trip(self, nodes, partitioner,
+                              num_operations, profile=None,
+                              stress_table='keyspace1.standard1',
+                              configuration_options=None,
+                              skip_count_checks=False,
+                              copy_to_options=None,
+                              copy_from_options=None,
+                              copy_from_retry=None,
+                              copy_from_success=None
+                              ):
         """
         Test exporting a large number of rows into a csv file.
+
+        If skip_count_checks is True then it means we cannot use "SELECT COUNT(*)" as it may time out but
+        it also means that we can be sure that one cassandra-stress operation is one record and hence
+        num_records=num_operations.
+
+        Perform the following:
+        - create the records with cassandra-stress
+        - export the records to a csv file
+        - truncate the table and import the csv file
+        - export the records to another csv file
+        - check that the length of the two csv files is the same
+
+        Therefore, 3 COPY operations are run in total. Return a list of tuples, containing stdout and stderr
+        for all 3 copy operations.
         """
-        self.prepare(nodes=nodes, configuration_options=configuration_options)
+        if configuration_options is None:
+            configuration_options = {}
+        if copy_to_options is None:
+            copy_to_options = {}
 
-        if not profile:
-            logger.debug('Running stress without any user profile')
-            self.node1.stress(['write', 'n={}'.format(num_operations), '-rate', 'threads=50'])
-        else:
-            logger.debug(f'Running stress with user profile {profile}')
-            self.node1.stress(['user', 'profile={}'.format(profile), 'ops(insert=1)',
-                               'n={}'.format(num_operations), '-rate', 'threads=50'])
+        # The default truncate timeout of 10 seconds that is set in init_default_config() is not
+        # enough for truncating larger tables, see CASSANDRA-11157
+        if 'truncate_request_timeout_in_ms' not in configuration_options:
+            configuration_options['truncate_request_timeout_in_ms'] = 60000
 
-        num_records = rows_to_list(self.session.execute("SELECT COUNT(*) FROM {}".format(stress_table)))[0][0]
-        logger.debug(f'Generated {num_records} records')
+        self.prepare(nodes=nodes, configuration_options=configuration_options, copy_from_retry=copy_from_retry)
 
-        assert num_records >= num_operations, 'cassandra-stress did not import enough records'
+        ret = []
 
-        self.tempfile = NamedTemporaryFile(mode='w+', delete=False, encoding='utf-8')
+        def grep_for_retry(line):
+            retry1 = "will retry later, attempt 1 of "
+            return line.find(retry1)
 
-        logger.debug(f'Exporting to csv file: {self.tempfile.name}')
-        start = datetime.datetime.now()
-        self.node1.run_cqlsh(cmds="COPY {} TO '{}' WITH PAGETIMEOUT='{}' AND PAGESIZE='{}'"
-                             .format(stress_table, self.tempfile.name, page_timeout, page_size))
-        logger.debug(f"COPY TO took {datetime.datetime.now() - start} to export {num_records} records")
+        def create_records():
+            if not profile:
+                logger.debug('Running stress without any user profile')
+                self.node1.stress(['write', 'n={} cl=ALL'.format(num_operations), 'no-warmup', '-rate', 'threads=50'])
+            else:
+                logger.debug('Running stress with user profile {}'.format(profile))
+                self.node1.stress(['user', 'profile={}'.format(profile), 'ops(insert=1)',
+                                   'n={} cl=ALL'.format(num_operations), 'no-warmup', '-rate', 'threads=50'])
 
-        # check all records were exported
-        exported = sum(1 for _ in open(self.tempfile.name))
-        assert num_records == exported, f"Exported data is not same as original. " \
-                                        f"Expected {num_records},  exported {exported}"
+            if skip_count_checks:
+                return num_operations
+            else:
+                ret = rows_to_list(self.session.execute("SELECT COUNT(*) FROM {}".format(stress_table)))[0][0]
+                logger.debug('Generated {} records'.format(ret))
+                assert ret >= num_operations, 'cassandra-stress did not import enough records'
+                return ret
 
+        def run_copy_to(filename):
+            logger.debug('Exporting to csv file: {}'.format(filename.name))
+            start = datetime.datetime.now()
+            copy_to_cmd = "CONSISTENCY ALL; COPY {} TO '{}'".format(stress_table, filename.name)
+            if copy_to_options:
+                copy_to_cmd += ' WITH ' + ' AND '.join('{} = {}'.format(k, v) for k, v in copy_to_options.items())
+            result = self.node1.run_cqlsh(cmds=copy_to_cmd)
+            ret.append(result)
+            logger.debug("COPY TO took {} to export {} records".format(datetime.datetime.now() - start, num_records))
+
+        def run_copy_from(filename):
+            logger.debug('Importing from csv file: {}'.format(filename.name))
+            start = datetime.datetime.now()
+            copy_from_cmd = "COPY {} FROM '{}'".format(stress_table, filename.name)
+            if copy_from_options:
+                copy_from_cmd += ' WITH ' + ' AND '.join('{} = {}'.format(k, v) for k, v in copy_from_options.items())
+            logger.debug('Running {}'.format(copy_from_cmd))
+            if copy_from_retry:
+                result = self.node1.run_cqlsh(cmds=copy_from_cmd, return_output=True)
+                copy_from_retry.append(grep_for_retry(result[1]) == -1)
+            else:
+                result = self.node1.run_cqlsh(cmds=copy_from_cmd)
+            ret.append(result)
+            logger.debug("COPY FROM took {} to import {} records".format(datetime.datetime.now() - start, num_records))
+
+        num_records = create_records()
+
+        # Copy to the first csv files
+        tempfile1 = NamedTemporaryFile(mode='w+', delete=False, encoding='utf-8')
+        run_copy_to(tempfile1)
+
+        # check all records generated were exported
+        with open(tempfile1.name, encoding="utf-8", newline='') as csvfile:
+            assert num_records == sum(1 for _ in csv.reader(csvfile, quotechar='"', escapechar='\\'))
+
+        # import records from the first csv file
+        logger.debug('Truncating {}...'.format(stress_table))
         self.session.execute("TRUNCATE {}".format(stress_table))
+        run_copy_from(tempfile1)
 
-        logger.debug(f'Importing from csv file: {self.tempfile.name}')
-        start = datetime.datetime.now()
-        self.node1.run_cqlsh(cmds="COPY {} FROM '{}'".format(stress_table, self.tempfile.name))
-        logger.debug(f"COPY FROM took {datetime.datetime.now() - start} to import {num_records} records")
+        # export again to a second csv file
+        tempfile2 = NamedTemporaryFile(mode='w+', delete=False, encoding='utf-8')
+        run_copy_to(tempfile2)
 
-        assert_row_count(session=self.session, table_name=stress_table, expected=num_records)
+        # check the length of both files is the same to ensure all exported records were imported
+        logger.debug(f"f1={sum(1 for _ in open(tempfile1.name))} f2={sum(1 for _ in open(tempfile2.name))}")
+        if not copy_from_retry:
+            assert sum(1 for _ in open(tempfile1.name)) == sum(1 for _ in open(tempfile2.name))
+        else:
+            copy_from_success.append(sum(1 for _ in open(tempfile1.name)) == sum(1 for _ in open(tempfile2.name)))
+        return ret
 
     def test_bulk_round_trip_default(self):
         """
@@ -1252,7 +1324,7 @@ class TestCqlshCopy(CqlshPrepare):
 
         @jira_ticket CASSANDRA-9302
         """
-        self._test_bulk_round_trip(nodes=3, num_operations=100000)
+        self._test_bulk_round_trip(nodes=3, partitioner="murmur3", num_operations=100000)
 
     def test_bulk_round_trip_blogposts(self):
         """
@@ -1260,22 +1332,95 @@ class TestCqlshCopy(CqlshPrepare):
 
         @jira_ticket CASSANDRA-9302
         """
-        self._test_bulk_round_trip(nodes=3, num_operations=10000,
+        self._test_bulk_round_trip(nodes=3, partitioner="murmur3", num_operations=10000,
+                                   configuration_options={'batch_size_warn_threshold_in_kb': '10'},
                                    profile=os.path.join(os.path.dirname(os.path.realpath(__file__)), 'blogposts.yaml'),
-                                   stress_table='stresscql.blogposts', page_timeout=60)
+                                   stress_table='stresscql.blogposts')
 
-    @pytest.mark.require('#2386')
     @pytest.mark.single_node
     def test_bulk_round_trip_with_timeouts(self):
         """
         Test bulk import with very short read and write timeout values, this should exercise the
-        retry and back-off policies
+        retry and back-off policies. We cannot check the counts because "SELECT COUNT(*)" could timeout
+        on Jenkins making the test flacky.
 
         @jira_ticket CASSANDRA-9302
         """
-        self._test_bulk_round_trip(nodes=1, num_operations=100000,
-                                   configuration_options={'range_request_timeout_in_ms': '300',
-                                                          'write_request_timeout_in_ms': '200'})
+
+        write_request_timeout_in_ms = 200
+        copy_from_retry = ['copy_from_had_retries']
+        copy_from_success = ['copy_from_success']
+        chunksize = 80
+        step = 1
+        second_try_count = 0
+        numprocesses = 10
+        not_found_in_step2 = False
+        max_chuncksize = 1000
+        chuncksize_increase = 1.5
+        chuncksize_decrease = 100 / 102
+        max_attempts = 20
+
+        self._test_bulk_round_trip(nodes=1, partitioner="murmur3", num_operations=100000,
+                                   configuration_options={'range_request_timeout_in_ms': '240',
+                                                          'write_request_timeout_in_ms': write_request_timeout_in_ms,
+                                                          },
+                                   copy_from_options={'MAXINSERTERRORS': -1, 'MAXATTEMPTS': max_attempts,
+                                                      'NUMPROCESSES': numprocesses,
+                                                      'CHUNKSIZE': chunksize, 'REQUESTTIMEOUT': 600},
+                                   copy_to_options={'MAXATTEMPTS': 50, 'NUMPROCESSES': 8},
+                                   skip_count_checks=True,
+                                   copy_from_retry=copy_from_retry,
+                                   copy_from_success=copy_from_success)
+
+        # check decrease numprocesses for slow machines
+        if copy_from_success[-1] == False:
+            numprocesses = 8
+
+        # loop over numprocesses for fast machines
+        while numprocesses < 16:
+            chunksize = 80
+            step = 1  # step 1 increase chunksize to reach retries
+            second_try_count = 0
+            while (copy_from_retry[-1] != True and chunksize < max_chuncksize) or (
+                    second_try_count < 20 and copy_from_success[-1] != True):
+                self._test_bulk_round_trip(nodes=1, partitioner="murmur3", num_operations=100000,
+                                           configuration_options={'range_request_timeout_in_ms': '240',
+                                                                  'write_request_timeout_in_ms': write_request_timeout_in_ms,
+                                                                  },
+                                           copy_from_options={'MAXINSERTERRORS': -1, 'MAXATTEMPTS': max_attempts,
+                                                              'NUMPROCESSES': numprocesses,
+                                                              'CHUNKSIZE': chunksize, 'REQUESTTIMEOUT': 600},
+                                           copy_to_options={'MAXATTEMPTS': 50, 'NUMPROCESSES': 8},
+                                           skip_count_checks=True,
+                                           copy_from_retry=copy_from_retry,
+                                           copy_from_success=copy_from_success)
+
+                if copy_from_retry[-1] == True and copy_from_success[-1] == True:
+                    break
+                if step == 1:
+                    if copy_from_retry[-1] == True:
+                        step = 2  # step 2 decrease chunksize to reach copy sucsess and keep retries
+                    else:
+                        chunksize = int(chunksize * chuncksize_increase)
+                if step == 2:
+                    # if decreasing chuncksuze cause copy not to use retry, search failed
+                    if copy_from_retry[-1] == False:
+                        not_found_in_step2 = True
+                        break
+                    chunksize = int(chunksize * chuncksize_decrease)
+                    second_try_count += 1
+
+            # if retry and sucsess in copy, searched point was found
+            if copy_from_retry[-1] == True and copy_from_success[-1] == True:
+                break
+            # if decrease in chuncksize not occured, increase numprocesses to reach retry faster
+            if step == 1:
+                numprocesses += 1
+            # if decreasing chuncksuze cause copy not to use retry, search failed
+            if not_found_in_step2:
+                break
+        assert copy_from_success[-1] == True, "expecting success in copy"
+        assert copy_from_retry[-1] == True, "expecting one retry"
 
     @pytest.mark.single_node
     def test_copy_to_with_more_failures_than_max_attempts(self):
