@@ -1,95 +1,19 @@
-import pprint
-import re
+import logging
+import pytest
 
-from typing import List
-from itertools import zip_longest
 from uuid import uuid4
 
-from nose.plugins.attrib import attr
+from dtest_class import Tester, create_ks
 
-from cassandra.cluster import Session, SimpleStatement
-from cassandra import ConsistencyLevel
-from cassandra.util import uuid_from_time, datetime_from_uuid1, Time, OrderedMapSerializedKey
-from dtest import Tester, debug, wait_for
-from ccmlib.scylla_cluster import ScyllaNode
-from tools import require, new_node
-
-from cdc_tests import CdcLogOperations, CDCInitializeHelper
-
-PP = pprint.PrettyPrinter(indent=4)
+from tools.cdc_utils import CdcLogOperations, CDCInitializeHelper, CDCTraceInfoMatcher
 
 
-class CDCTraceInfoMatcher:
-    start_line = "CDC: Started generating mutations for log rows.*$"
-    end_line = "CDC: Finished generating all log mutations.*$"
-
-    def __init__(self, tokens, preimage=False, postimage=False, splitting=False):
-        self.tokens = tokens
-        self.preimage = preimage
-        self.postimage = postimage
-        self.splitting = splitting
-
-    @property
-    def preimage_pattern(self):
-        if self.preimage or self.postimage:
-            return "CDC: Selecting preimage for {{key: pk{{.*?}}, token:{token_id}}}.*$"
-        else:
-            return "CDC: Preimage not enabled for the table, not querying current value of {{key: pk{{.*?}}, token:{token_id}}}.*$"
-
-    @property
-    def generate_log_mutation_pattern(self):
-        return "CDC: Generating log mutations for {{key: pk{{.*?}}, token:{token_id}}}.*$"
-
-    @property
-    def splitting_pattern(self):
-        if self.splitting:
-            return "CDC: Splitting {{key: pk{{.*?}}, token:{token_id}}}.*$"
-        else:
-            return "CDC: No need to split {{key: pk{{.*?}}, token:{token_id}}}.*$"
-
-    @property
-    def number_log_mutation_pattern(self):
-        return "CDC: Generated [\d]+ log mutations from {{key: pk{{.*?}}, token:{token_id}}}.*$"
-
-    def get_raw_cdc_lines(self, output: str) -> List[str]:
-        cdc_lines = [line.strip() for line in output.splitlines() if "CDC:" in line]
-        return cdc_lines
-
-    def verify_cdc_trace_info(self, output: str) -> None:
-        cdc_trace_info_lines = self.get_raw_cdc_lines(output)
-        assert re.match(self.start_line, cdc_trace_info_lines.pop(0)), "Start line for CDC tracing was not found"
-        assert re.match(self.end_line, cdc_trace_info_lines.pop(-1)), "End line for CDC tracing was not found"
-
-        # verify cdc trace info per token
-        for token in self.tokens:
-            cdc_lines_for_token = [line for line in cdc_trace_info_lines if str(token) in line]
-            self._verify_trace_info_per_token(token, cdc_lines_for_token)
-            # clean matched lines from cdc tracing info lines
-            for line in cdc_lines_for_token:
-                cdc_trace_info_lines.remove(line)
-
-        # verify that cdc trace info doesn't contain unmatched lines
-        assert len(cdc_trace_info_lines) == 0, f"Next strings were not matched {cdc_trace_info_lines}"
-
-    def _verify_trace_info_per_token(self, token: int, lines: List[str]) -> None:
-        patterns = [
-            self.preimage_pattern,
-            self.generate_log_mutation_pattern,
-            self.splitting_pattern,
-            self.number_log_mutation_pattern
-        ]
-
-        for pattern, line in zip_longest(patterns, lines):
-            # if new unexpected line will appeared in tracing, pattern will be none
-            assert pattern, f"{line} is not matched any pattern"
-            # if expected line will be missing in output,  pattern will not match it
-            assert line, f"{pattern} doesn't match any line"
-            # assert cdc line order and correctnes
-            assert re.match(pattern.format(token_id=token),
-                            line), f"{pattern.format(token_id=token)} not matched {line}"
+logger = logging.getLogger(__name__)
 
 
-class CDCTraceInfoTest(Tester, CDCInitializeHelper):
+@pytest.mark.single_node
+@pytest.mark.scylla_cdc
+class TestCDCTraceInfo(Tester, CDCInitializeHelper):
     keyspace = "ks"
     table = "cf"
     table_cdc_log = f"{table}_scylla_cdc_log"
@@ -99,12 +23,7 @@ class CDCTraceInfoTest(Tester, CDCInitializeHelper):
                                    preimage_enable=False,
                                    postimage_enable=False,
                                    primary_key_type=None):
-        self.cluster.populate(1)
-        self.cluster.set_configuration_options(values={"experimental_features": ["cdc"]})
-        self.cluster.start(wait_for_binary_proto=True, wait_other_notice=True)
-        for i in range(1, num_nodes):
-            node = new_node(self.cluster, bootstrap=True)
-            node.start(wait_for_binary_proto=True)
+        self.populate_sequentially(num_nodes, wait_other_notice=True)
         node = self.cluster.nodelist()[0]
         session = self.patient_cql_connection(node)
         self.create_schema_with_cdc(session, rf=rf,
@@ -132,7 +51,7 @@ class CDCTraceInfoTest(Tester, CDCInitializeHelper):
         statement += "}"
         session.execute(
             f"ALTER keyspace system_distributed with replication={{'class': 'SimpleStrategy', 'replication_factor': {rf}}}")
-        self.create_ks(session, self.keyspace, rf=rf)
+        create_ks(session, self.keyspace, rf=rf)
         session.execute(statement)
 
     def test_tracing_insert_native_type(self):
