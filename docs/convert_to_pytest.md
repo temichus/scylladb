@@ -67,6 +67,47 @@ from tools.assertions import PytestRegex
 assert str(e) == PytestRegex('Cannot create index on index_values of frozen<'), 'Not expected error'
 ```
 
+* try-except with self.fail should replace to:
+python
+```python
+try:
+    session = self.get_session(node_idx=1, user='normal', password='wrong')
+    session.execute("LIST USERS")
+except NoHostAvailable as e:
+    assert isinstance(list(e.errors.values())[0], AuthenticationFailed)
+    debug("can't get session of node2 with normal user/password")
+else:
+    self.fail('Session should not be created')
+
+# pytest-format
+with pytest.raises(expected_exception=NoHostAvailable) as err:
+    session = self.get_session(node_idx=1, user='normal', password='wrong')
+    session.execute("LIST USERS")
+assert isinstance(list(e.errors.values())[0], AuthenticationFailed)
+debug("can't get session of node2 with normal user/password")
+```
+
+* try-except with multiple `except` statements and self.fail should replace to (the `match` variable can get regex string):
+python
+```python
+try:
+    session = self.get_session(node_idx=1)
+    self._check_session_available(session, expect_auth_err=True, expect_invalid_req=True)
+    self.fail("Unauthorized expected")
+except NoHostAvailable as e:
+    self.assertEqual(str(e), 'NoHostAvailable error')
+except Exception as e:
+    self.assertEqual(str(e),
+                     'Error from server: code=2100 [Unauthorized] message='
+                     '"You have to be logged in and not anonymous to perform this request"')
+
+# pytest-format
+with pytest.raises(expected_exception=(NoHostAvailable, Exception), match='NoHostAvailable error|Error from server: code=2100 [Unauthorized] message='
+                     '"You have to be logged in and not anonymous to perform this request"') as err:
+    session = self.get_session(node_idx=1)
+    self._check_session_available(session, expect_auth_err=True, expect_invalid_req=True)
+```
+
 It also can be used with dict or list. Example:
 
 ```
