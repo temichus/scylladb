@@ -10,26 +10,15 @@ from copy import deepcopy
 import pytest
 from cassandra import ConsistencyLevel
 from cassandra.query import SimpleStatement
-from thrift.protocol import TBinaryProtocol
-from thrift.transport import TSocket, TTransport
 
 from dtest_class import Tester, create_ks, create_cf
-from thrift_bindings.thrift010 import Cassandra
 from thrift_bindings.thrift010.Cassandra import ColumnParent, KeyRange, SlicePredicate, SliceRange
 from tools.assertions import assert_unavailable, assert_none
 from tools.data import insert_columns, rows_to_list, create_c1c2_table, insert_c1c2, query_c1c2
 from tools.paging import PageFetcher
+from tools.thrift import get_thrift_client
 
 logger = logging.getLogger(__name__)
-
-
-def get_thrift_client(host, port):
-    socket = TSocket.TSocket(host, port)
-    transport = TTransport.TFramedTransport(socket)
-    protocol = TBinaryProtocol.TBinaryProtocol(transport)
-    client = Cassandra.Client(protocol)
-    client.transport = transport
-    return client
 
 
 class TestHelper(Tester):

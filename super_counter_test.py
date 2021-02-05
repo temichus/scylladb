@@ -1,9 +1,15 @@
+import logging
+import pytest
 import time
 
-from dtest import Tester, debug
-from thrift_tests import get_thrift_client
+from dtest_class import Tester, create_ks
+from dtest_setup_overrides import DTestSetupOverrides
+from thrift_bindings.thrift010.Cassandra import CfDef, ColumnParent, CounterColumn, ConsistencyLevel, ColumnPath
+from tools.misc import ImmutableMapping
+from tools.thrift import get_thrift_client
 
-# from cql.cassandra.ttypes import CfDef, ColumnParent, CounterColumn,ConsistencyLevel, ColumnPath
+
+logger = logging.getLogger(__file__)
 
 
 class TestSuperCounterClusterRestart(Tester):
@@ -12,11 +18,14 @@ class TestSuperCounterClusterRestart(Tester):
     https://issues.apache.org/jira/browse/CASSANDRA-3821
     """
 
-    def __init__(self, *args, **kwargs):
-        kwargs['cluster_options'] = {'start_rpc': 'true'}
-        Tester.__init__(self, *args, **kwargs)
+    @pytest.fixture(scope='function', autouse=True)
+    def fixture_dtest_setup_overrides(self, dtest_config):
+        dtest_setup_overrides = DTestSetupOverrides()
+        dtest_setup_overrides.cluster_options = ImmutableMapping({'start_rpc': 'true'})
+        return dtest_setup_overrides
 
-    def functional_test(self):
+    @pytest.mark.skip("Super columns not implemented")
+    def test_functional(self):
         NUM_SUBCOLS = 100
         NUM_ADDS = 100
 
@@ -26,7 +35,7 @@ class TestSuperCounterClusterRestart(Tester):
 
         time.sleep(.5)
         session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'ks', 3)
+        create_ks(session, 'ks', 3)
         time.sleep(1)  # wait for propagation
 
         # create the columnfamily using thrift
@@ -51,10 +60,10 @@ class TestSuperCounterClusterRestart(Tester):
         time.sleep(1)
         cluster.flush()
 
-        debug("Stopping cluster")
+        logger.info("Stopping cluster")
         cluster.stop()
         time.sleep(5)
-        debug("Starting cluster")
+        logger.info("Starting cluster")
         cluster.start()
         time.sleep(5)
 
@@ -70,9 +79,9 @@ class TestSuperCounterClusterRestart(Tester):
             column_or_super_column = thrift_conn.get('row_0', column_path,
                                                      ConsistencyLevel.QUORUM)
             val = column_or_super_column.counter_column.value
-            debug(str(val)),
+            logger.info(str(val)),
             from_db.append(val)
-        debug("")
+        logger.info("")
 
         expected = [NUM_ADDS for i in range(NUM_SUBCOLS)]
 
