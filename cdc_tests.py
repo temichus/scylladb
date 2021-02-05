@@ -10,8 +10,8 @@ import multiprocessing
 
 import pytest
 from cassandra import ConsistencyLevel, InvalidRequest
-from cassandra.connection import ConnectionException
-from cassandra.metadata import Murmur3Token
+from cassandra.connection import ConnectionException  # pylint: disable=no-name-in-module
+from cassandra.metadata import Murmur3Token  # pylint: disable=no-name-in-module
 from cassandra.query import SimpleStatement
 from cassandra.util import datetime_from_uuid1
 from cassandra.policies import FallthroughRetryPolicy
@@ -44,7 +44,7 @@ class CdcLogOperations(IntEnum):
 class CDCInitializeHelper:
 
     def populate_sequentially(self, n, wait_other_notice=False):
-        cluster = self.cluster
+        cluster = self.cluster  # pylint: disable=no-member
         logger.debug('Starting node 1')
         # We need to use populate() for the first node, because it writes
         # a configuration file that specifies the first node as a seed.
@@ -55,7 +55,7 @@ class CDCInitializeHelper:
         cluster.populate(1).start(wait_for_binary_proto=True, wait_other_notice=wait_other_notice)
         for i in range(2, n + 1):
             logger.debug('Starting node {}'.format(i))
-            node = self.cluster.new_node(i, auto_bootstrap=True)
+            node = self.cluster.new_node(i, auto_bootstrap=True)  # pylint: disable=no-member
             node.start(wait_for_binary_proto=True, wait_other_notice=wait_other_notice)
 
     def wait_for_last_generation_to_be_active(self, session):
