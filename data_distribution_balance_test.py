@@ -1,29 +1,35 @@
+import logging
 import os
 import subprocess
 import pprint
+import pytest
 import re
 import time
 
-from nose.plugins.attrib import attr
-from dtest import Tester, debug
+from dtest_class import Tester
 
-
+logger = logging.getLogger(__file__)
 ALLOW_BALANCE_DIFF = 0.2
 PP = pprint.PrettyPrinter(indent=2)
 
 
-@attr('dtest-full')
-class DataDistributionTest(Tester):
-    strategy = "LeveledCompactionStrategy"
-    __test__ = False
+@pytest.fixture(params=['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy',
+                        'TimeWindowCompactionStrategy'])
+def stress_cmd(request):
+    return """write cl=QUORUM n=210000 -schema replication(factor=3) compaction(strategy={strategy}) \
+                    -port jmx=6868 -mode cql3 native -rate threads=50 \
+                    -col size=fixed(200) n=FIXED(5) -pop seq=1..210000""".format(strategy=request.param)
 
+
+@pytest.mark.dtest_full
+class TestDataDistribution(Tester):
     def prepare(self, nodes_num=4):
         self.cluster.populate(nodes=nodes_num)
         self.cluster.start(wait_for_binary_proto=True, wait_other_notice=True)
         self.ks = "keyspace1"
         self.cf = "standard1"
 
-    def data_distribution_balance_test(self):
+    def test_data_distribution_balance(self, stress_cmd):
         """Check data distribution between nodes
 
         Based on issue #6193, verify data distribution
@@ -32,14 +38,10 @@ class DataDistributionTest(Tester):
         """
         self.prepare()
 
-        stress_cmd = """write cl=QUORUM n=210000 -schema replication(factor=3) compaction(strategy={strategy}) \
-                        -port jmx=6868 -mode cql3 native -rate threads=50 \
-                        -col size=fixed(200) n=FIXED(5) -pop seq=1..210000""".format(strategy=self.strategy)
-
-        debug("Writing data...")
+        logger.info("Writing data...")
         self.cluster.stress(stress_cmd.split(" "))
         self.cluster.flush()
-        debug("Waiting for compaction...")
+        logger.info("Waiting for compaction...")
         self.cluster.wait_for_compactions()
 
         # nodetool status load is updated every 60 seconds
@@ -47,43 +49,43 @@ class DataDistributionTest(Tester):
 
         for node in self.cluster.nodelist():
             cf_stats = node.nodetool("cfstats keyspace1", capture_output=True, wait=True)
-            debug(PP.pformat(cf_stats))
+            logger.info(PP.pformat(cf_stats))
 
         self.verify_datasize_by_check_filesize()
 
         now = time.time()
         if now < status_ready_at:
-            debug("sleep for {} seconds until status.load is ready".format(int(status_ready_at - now + 0.5)))
+            logger.info("sleep for {} seconds until status.load is ready".format(int(status_ready_at - now + 0.5)))
             time.sleep(status_ready_at - now)
         self.verify_datasize_with_nodetool_status()
 
     def verify_datasize_with_nodetool_status(self):
         node = self.cluster.nodelist()[0]  # type: ScyllaNode
         result = node.nodetool("status", capture_output=True, wait=True)
-        debug(result)
+        logger.info(result)
         status_result = self.parse_nodetool_status(result[0].splitlines())
-        debug(PP.pformat(status_result))
+        logger.info(PP.pformat(status_result))
         avg_size_dataset = self.get_avg_size(status_result)
 
         size_dimensions = {res["dimension"] for res in status_result}
-        self.assertEqual(len(size_dimensions), 1, "Dimension is different {}".format(size_dimensions))
+        assert 1 == len(size_dimensions), "Dimension is different {}".format(size_dimensions)
 
         min_size = min([res["size"] for res in status_result])
-        self.assertGreaterEqual(min_size, avg_size_dataset * (1 - ALLOW_BALANCE_DIFF))
+        assert min_size >= avg_size_dataset * (1 - ALLOW_BALANCE_DIFF)
         max_size = max([res["size"] for res in status_result])
-        self.assertLessEqual(max_size, avg_size_dataset * (1 + ALLOW_BALANCE_DIFF))
+        assert max_size <= avg_size_dataset * (1 + ALLOW_BALANCE_DIFF)
 
     def verify_datasize_by_check_filesize(self):
         fs_sizes = self.parse_fs_size()
         avg_size_dataset = self.get_avg_size(fs_sizes)
 
         size_dimensions = {res["dimension"] for res in fs_sizes}
-        self.assertEqual(len(size_dimensions), 1, "Dimension is different {}".format(size_dimensions))
+        assert 1 == len(size_dimensions), "Dimension is different {}".format(size_dimensions)
 
         min_size = min([res["size"] for res in fs_sizes])
-        self.assertGreaterEqual(min_size, avg_size_dataset * (1 - ALLOW_BALANCE_DIFF))
+        assert min_size >= avg_size_dataset * (1 - ALLOW_BALANCE_DIFF)
         max_size = max([res["size"] for res in fs_sizes])
-        self.assertLessEqual(max_size, avg_size_dataset * (1 + ALLOW_BALANCE_DIFF))
+        assert max_size <= avg_size_dataset * (1 + ALLOW_BALANCE_DIFF)
 
     def parse_nodetool_status(self, lines):
         """parse output of nodetool status
@@ -159,16 +161,9 @@ class DataDistributionTest(Tester):
                         node_size.append({"address": node.address(),
                                           "size": float(size_res["size"]),
                                           "dimension": size_res["dimension"]})
-        debug(node_size)
+        logger.info(node_size)
         return node_size
 
     def get_avg_size(self, sizes_data):
         sizes = [float(p['size']) for p in sizes_data]
         return sum(sizes) / len(sizes)
-
-
-strategies = ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy',
-              'TimeWindowCompactionStrategy']
-for strategy in strategies:
-    cls_name = ('TestDataDistribution_with_' + strategy)
-    vars()[cls_name] = type(cls_name, (DataDistributionTest,), {'strategy': strategy, '__test__': True})
