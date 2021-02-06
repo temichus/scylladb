@@ -56,7 +56,7 @@ class TestHintedHandoffConfig(Tester):
         node1, node2 = nodes
         session = self.patient_exclusive_cql_connection(node1)
         create_ks(session=session, name='ks', rf=2)
-        create_c1c2_table(self, session=session)
+        create_c1c2_table(session=session)
 
         node2.stop(wait_other_notice=True)
 
@@ -167,7 +167,7 @@ class TestHintedHandoff(Tester):  # pylint:disable=too-few-public-methods
         node1, node2, node3, node4 = self.cluster.nodelist()
         session = self.patient_cql_connection(node1)
         create_ks(session=session, name='ks', rf=2)
-        create_c1c2_table(self, session=session)
+        create_c1c2_table(session=session)
         node4.stop(wait_other_notice=True)
         insert_c1c2(session=session, n=100, consistency=ConsistencyLevel.ONE)
         node1.decommission()

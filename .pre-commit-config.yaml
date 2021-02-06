@@ -76,6 +76,7 @@ repos:
                 ttl_test.py|
                 user_types_test.py|
                 hintedhandoff_test.py|
+                hintedhandoff_additional_test.py|
                 materialized_views_test.py|
                 toppartitions_test.py|
                 resharding_test.py|
