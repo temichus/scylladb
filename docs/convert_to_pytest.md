@@ -114,6 +114,46 @@ It also can be used with dict or list. Example:
 assert {checked dict} == {'key': PytestRegex(r'\d+')}
 ```
 
+* parametrized tests to be reimplemented via parametrized fixtures :
+python
+```python
+@attr('dtest-full')
+class RangeDeletionTester(Tester):
+
+    def __init__(self, *args, **kwargs):
+        super(RangeDeletionTester, self).__init__(*args, **kwargs)
+        if hasattr(self, 'compaction_strategy'):
+            self.compaction_strategy = self.compaction_strategy
+        else:
+            self.compaction_strategy = 'LeveledCompactionStrategy'
+...
+...
+
+strategies = ['SizeTieredCompactionStrategy', 'TimeWindowCompactionStrategy']
+# SMP value should be according to the monster environment
+for strategy in strategies:
+    cls_name = ('RangeDeletionTester_with_' + strategy)
+    vars()[cls_name] = type(cls_name, (RangeDeletionTester,), {'compaction_strategy': strategy, '__test__': True})
+
+# pytest-format
+
+class TestRangeDeletion(Tester):
+    compaction_strategy = None
+
+    @pytest.fixture(
+        params=['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'TimeWindowCompactionStrategy'],
+        autouse=True)
+    def fixture_compaction_strategy(self, request):
+        self.compaction_strategy = request.param
+
+```
+
+It also can be used with dict or list. Example:
+
+```
+assert {checked dict} == {'key': PytestRegex(r'\d+')}
+```
+
 * assert functions from `assertions.py` are moved to `tools.assertions`
 
 * Functions `create_ks`, `create_cf`, `create_index`, `create_local_index` are moved to dtest_class and should be
@@ -136,6 +176,8 @@ from flaky import flaky
 ```
 
 * retrying decorator is moved to `tools.retrying`
+
+* new_node is moved to `tools.cluster`
 
 * Replace `@scylla_mode(...)` with `@pytest.mark.scylla_mode(...)`
 

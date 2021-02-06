@@ -1,31 +1,33 @@
+import logging
+import pytest
+import time
 from datetime import datetime, timedelta
 
-from dtest import Tester
-
-import time
-from jmxutils import make_mbean, JolokiaAgent, remove_perf_disable_shared_mem
-from nose.plugins.attrib import attr
-from unittest import skip
-from tools import debug, new_node
-from assertions import assert_invalid, assert_one, assert_all
+from dtest_class import Tester, create_ks
 from cassandra import ConsistencyLevel
+from jmxutils import make_mbean, JolokiaAgent, remove_perf_disable_shared_mem
+from tools.assertions import assert_invalid, assert_one, assert_all
+from tools.cluster import new_node
 
 
-@attr('dtest-full')
-class RangeDeletionTester(Tester):
+logger = logging.getLogger(__file__)
 
-    def __init__(self, *args, **kwargs):
-        super(RangeDeletionTester, self).__init__(*args, **kwargs)
-        if hasattr(self, 'compaction_strategy'):
-            self.compaction_strategy = self.compaction_strategy
-        else:
-            self.compaction_strategy = 'LeveledCompactionStrategy'
+
+@pytest.mark.dtest_full
+class TestRangeDeletion(Tester):
+    compaction_strategy = None
+
+    @pytest.fixture(
+        params=['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'TimeWindowCompactionStrategy'],
+        autouse=True)
+    def fixture_compaction_strategy(self, request):
+        self.compaction_strategy = request.param
 
     def prepare(self, create_keyspace=True, use_cache=False, nodes=1, rf=1, protocol_version=None, user=None,
                 password=None, **kwargs):
         cluster = self.cluster
 
-        if (use_cache):
+        if use_cache:
             cluster.set_configuration_options(values={'row_cache_size_in_mb': 100})
 
         start_rpc = kwargs.pop('start_rpc', False)
@@ -42,23 +44,22 @@ class RangeDeletionTester(Tester):
             cluster.populate(nodes).start(wait_for_binary_proto=True)
         node1 = cluster.nodelist()[0]
 
-        session = self.patient_cql_connection(node1, protocol_version=protocol_version, user=user, password=password)
+        session = self.fixture_dtest_setup.patient_cql_connection(
+            node1, protocol_version=protocol_version, user=user, password=password)
         if create_keyspace:
-            if self._preserve_cluster:
-                session.execute("DROP KEYSPACE IF EXISTS ks")
-            self.create_ks(session, 'ks', rf)
+            create_ks(session, 'ks', rf)
         return session
 
     def create_cf_1pk_1ck(self, session):
         query = "CREATE TABLE ks.test1 (pk int, ck date, v1 int, PRIMARY KEY(pk, ck)) " \
                 "WITH compaction = {'class': '%s' }" % self.compaction_strategy
-        debug(query)
+        logger.info(query)
         session.execute(query)
 
     def create_cf_2ck(self, session):
         query = "CREATE TABLE ks.test1 (pk1 int, ck1 int, ck2 varchar, v1 int, " \
                 "PRIMARY KEY(pk1, ck1, ck2)) WITH compaction = {'class': '%s' }" % self.compaction_strategy
-        debug(query)
+        logger.info(query)
         session.execute(query)
 
     @staticmethod
@@ -121,7 +122,7 @@ class RangeDeletionTester(Tester):
                          .format(pk1=pk1, ck1=ck1, ck2=ck2, v1=v1))
         return data
 
-    def delete_by_2ck_range_in_test(self):
+    def test_delete_by_2ck_range_in(self):
         """
         The table has 1 PKs and 2 CKs
         Delete range of data using in condition on both CK columns
@@ -143,7 +144,7 @@ class RangeDeletionTester(Tester):
                     ck1=', '.join(str(data[indx][1]) for indx in range_indexes),
                     ck2=', '.join("'%s'" % data[indx][2] for indx in range_indexes)
                     )
-        debug(query)
+        logger.info(query)
         session.execute(query)
         self.cluster.flush()
 
@@ -155,7 +156,7 @@ class RangeDeletionTester(Tester):
 
         assert_all(session=session, query=select_query, expected=data, cl=ConsistencyLevel.ALL, ignore_order=True)
 
-    def delete_by_2ck_range_equal_and_not_equal_test(self):
+    def test_delete_by_2ck_range_equal_and_not_equal(self):
         """
         The table has 2 CKs
         Delete range of data using equal condition on first CK column and non-EQ on second CK column
@@ -176,7 +177,7 @@ class RangeDeletionTester(Tester):
                     ck1=data[lower_index][1],
                     ck2=data[lower_index][2]
                     )
-        debug(query)
+        logger.info(query)
         session.execute(query)
         self.cluster.flush()
 
@@ -185,7 +186,7 @@ class RangeDeletionTester(Tester):
         assert_all(session=session, query=select_query, expected=data[:lower_index]+data[lower_index+6:],
                    cl=ConsistencyLevel.ALL, ignore_order=True)
 
-    def delete_by_2ck_range_one_non_equal_test(self):
+    def test_delete_by_2ck_range_one_non_equal(self):
         """
         The table has 2 CKs
         Delete range of data using ">=" condition on first CK column
@@ -205,7 +206,7 @@ class RangeDeletionTester(Tester):
             .format(pk1=data[lower_index][0],
                     ck1=data[lower_index][1]
                     )
-        debug(query)
+        logger.info(query)
         session.execute(query)
         self.cluster.flush()
 
@@ -214,7 +215,7 @@ class RangeDeletionTester(Tester):
         assert_all(session=session, query=select_query, expected=data[10:], cl=ConsistencyLevel.ALL,
                    ignore_order=True)
 
-    def update_by_1ck_range_test(self):
+    def test_update_by_1ck_range(self):
         """
         Update by range is not allowed - validate the query return valid error message
         """
@@ -226,11 +227,11 @@ class RangeDeletionTester(Tester):
         lower_index = 4  # index of element in "data" variable
         query = "UPDATE ks.test1 SET v1 = 100 WHERE pk={pk} and ck < '{ck}'".format(pk=data[lower_index][0],
                                                                                     ck=data[lower_index][1])
-        debug(query)
+        logger.info(query)
         assert_invalid(session=session, query=query, matching='Invalid operator in where clause')
 
-    @attr('single_node')
-    def delete_by_2ck_range_failure_test(self):
+    @pytest.mark.single_node
+    def test_delete_by_2ck_range_failure(self):
         """
         Unsupported deletion - validate the query return valid error message
         """
@@ -239,30 +240,30 @@ class RangeDeletionTester(Tester):
 
         # Filter by ck2
         query = "DELETE FROM ks.test1 WHERE pk1=0 and ck1 > 3 and ck2 = 'ck3'"
-        debug(query)
+        logger.info(query)
         assert_invalid(session=session, query=query, matching='preceding column \"ck1\" is restricted by a non-EQ '
                                                               'relation')
 
         # Filter by ck1 non-EQ relation
         query = "DELETE FROM ks.test1 WHERE pk1=0 and ck2 > 'ck3'"
-        debug(query)
+        logger.info(query)
         assert_invalid(session=session, query=query, matching='cannot be restricted as preceding column \"ck1\" is '
                                                               'not restricted')
 
         # Filter by ck1 non-EQ relation
         query = "DELETE FROM ks.test1 WHERE pk1=0 and ck1 > 3 and ck2 > 'ck3'"
-        debug(query)
+        logger.info(query)
         assert_invalid(session=session, query=query, matching='preceding column \"ck1\" is restricted by a non-EQ '
                                                               'relation')
 
         # Filter by ck1 non-EQ relation
         query = "DELETE FROM ks.test1 WHERE pk1=0 and ck1 > 3 and ck2 in ('ck3')"
-        debug(query)
+        logger.info(query)
         assert_invalid(session=session, query=query, matching='preceding column \"ck1\" is restricted by a non-EQ '
                                                               'relation')
 
-    @attr('next-gating')
-    def delete_by_1ck_range_in_test(self):
+    @pytest.mark.next_gating
+    def test_delete_by_1ck_range_in(self):
         """
         Delete range of data using "in" condition on CK column
         """
@@ -282,7 +283,7 @@ class RangeDeletionTester(Tester):
         query = "DELETE FROM ks.test1 WHERE pk in ({pk1}, {pk2}) and ck in ('{ck1}', '{ck2}')" \
             .format(pk1=data[first_index][0], pk2=data[second_index][0],
                     ck1=data[first_index][1], ck2=data[second_index][1])
-        debug(query)
+        logger.info(query)
         session.execute(query)
         self.cluster.flush()
 
@@ -294,7 +295,7 @@ class RangeDeletionTester(Tester):
 
         assert_all(session=session, query=select_query, expected=data, cl=ConsistencyLevel.ALL, ignore_order=True)
 
-    def delete_by_1ck_range_less_test(self):
+    def test_delete_by_1ck_range_less(self):
         """
         Delete range of data using "<" condition on CK column
         """
@@ -312,7 +313,7 @@ class RangeDeletionTester(Tester):
         lower_index = 4  # index of element in "data" variable - all rows before it should be deleted
         query = "DELETE FROM ks.test1 WHERE pk={pk} and ck < '{ck}'".format(pk=data[lower_index][0],
                                                                             ck=data[lower_index][1])
-        debug(query)
+        logger.info(query)
         session.execute(query)
         self.cluster.flush()
 
@@ -320,8 +321,8 @@ class RangeDeletionTester(Tester):
         assert_all(session=session, query=select_query, expected=data[lower_index:], cl=ConsistencyLevel.ALL,
                    ignore_order=True)
 
-    @attr('next-gating')
-    def delete_by_1ck_range_less_more_test(self):
+    @pytest.mark.next_gating
+    def test_delete_by_1ck_range_less_more(self):
         """
         Delete range of data using "<" and ">=" conditions on CK column
         """
@@ -342,7 +343,7 @@ class RangeDeletionTester(Tester):
                 .format(pk=data[lower_index][0],
                         lower_ck=data[lower_index][1],
                         upper_ck=data[upper_index][1])
-        debug(query)
+        logger.info(query)
         session.execute(query)
         self.cluster.flush()
 
@@ -350,7 +351,7 @@ class RangeDeletionTester(Tester):
         assert_all(session=session, query=select_query, expected=data[:lower_index]+data[upper_index:],
                    cl=ConsistencyLevel.ALL, ignore_order=True)
 
-    def delete_when_node_stopped_test(self):
+    def test_delete_when_node_stopped(self):
         """
          Task: https://trello.com/c/NHO1Gek9/1583-open-range-tombstones-new-tests-in-dtest
          Test open range deletion when one of the nodes is stopped
@@ -367,13 +368,13 @@ class RangeDeletionTester(Tester):
         assert_all(session=session, query=select_query, expected=data, cl=ConsistencyLevel.QUORUM, ignore_order=True)
 
         node2 = self.cluster.nodelist()[1]
-        debug('Stop node {}'.format(node2.name))
+        logger.info('Stop node {}'.format(node2.name))
         node2.stop(wait_other_notice=True)
 
         lower_index = 16  # index of element in "data" variable - all rows after it should be deleted
         query = "DELETE FROM ks.test1 WHERE pk={pk} and ck > '{ck}'".format(pk=data[lower_index][0],
                                                                             ck=data[lower_index][1])
-        debug(query)
+        logger.info(query)
         session.execute(query)
         self.cluster.flush()
 
@@ -381,21 +382,20 @@ class RangeDeletionTester(Tester):
         assert_all(session=session, query=select_query, expected=data[:lower_index+1], cl=ConsistencyLevel.QUORUM,
                    ignore_order=True)
 
-        debug('Start node {}'.format(node2.name))
+        logger.info('Start node {}'.format(node2.name))
         node2.start(wait_for_binary_proto=True)
 
         for node in self.cluster.nodelist():
             if node is not node2:
-                debug('Stop node {}'.format(node.name))
+                logger.info('Stop node {}'.format(node.name))
                 node.stop(wait_other_notice=True)
-
-        session = self.patient_exclusive_cql_connection(node2)
+        session = self.fixture_dtest_setup.patient_exclusive_cql_connection(node2)
 
         assert_one(session, 'select count(*) from ks.test1', [17])
         assert_all(session=session, query=select_query, expected=data[:lower_index+1], cl=ConsistencyLevel.ONE,
                    ignore_order=True)
 
-    def delete_when_decommission_node_test(self):
+    def test_delete_when_decommission_node(self):
         """
          Task: https://trello.com/c/NHO1Gek9/1583-open-range-tombstones-new-tests-in-dtest
          Test open range deletion when one of the nodes is decommissioned
@@ -412,13 +412,13 @@ class RangeDeletionTester(Tester):
         assert_all(session=session, query=select_query, expected=data, cl=ConsistencyLevel.QUORUM, ignore_order=True)
 
         node2 = self.cluster.nodelist()[1]
-        debug('Decommission node {}'.format(node2.name))
+        logger.info('Decommission node {}'.format(node2.name))
         node2.decommission()
 
         lower_index = 16  # index of element in "data" variable - all rows after it should be deleted
         query = "DELETE FROM ks.test1 WHERE pk={pk} and ck > '{ck}'".format(pk=data[lower_index][0],
                                                                             ck=data[lower_index][1])
-        debug(query)
+        logger.info(query)
         session.execute(query)
         self.cluster.flush()
 
@@ -426,23 +426,23 @@ class RangeDeletionTester(Tester):
         assert_all(session=session, query=select_query, expected=data[:lower_index+1], cl=ConsistencyLevel.QUORUM,
                    ignore_order=True)
 
-        node_new = new_node(self.cluster, new_node_index=len(self.cluster.nodelist())+1)
-        debug('Add new node {}'.format(node_new.name))
+        node_new = new_node(self.cluster)
+        logger.info('Add new node {}'.format(node_new.name))
         node_new.start(wait_for_binary_proto=True, wait_other_notice=True)
 
         for node in self.cluster.nodelist():
             if not (node == node_new or node == node2):
-                debug('Stop node {}'.format(node.name))
+                logger.info('Stop node {}'.format(node.name))
                 node.stop()
 
-        session = self.patient_exclusive_cql_connection(node_new)
+        session = self.fixture_dtest_setup.patient_exclusive_cql_connection(node_new)
 
         assert_one(session, 'select count(*) from ks.test1', [17])
         assert_all(session=session, query=select_query, expected=data[:lower_index+1], cl=ConsistencyLevel.ONE,
                    ignore_order=True)
 
-    @attr('single_node')
-    def delete_by_1ck_range_condition_if_exists_failed_test(self):
+    @pytest.mark.single_node
+    def test_delete_by_1ck_range_condition_if_exists_failed(self):
         session = self.prepare(nodes=1, rf=1)
         self.create_cf_1pk_1ck(session=session)
         data = self.insert_data_cf_1pk_1ck(session, 5)
@@ -450,13 +450,13 @@ class RangeDeletionTester(Tester):
         query = "DELETE FROM ks.test1 where pk={pk} and ck < '{ck_upper}' and ck >= '{ck_lower}' IF EXISTS".format(pk=data[0][0],
                                                                                                                    ck_lower=data[1][1],
                                                                                                                    ck_upper=data[3][1])
-        debug(query)
+        logger.info(query)
         assert_invalid(session=session,
                        query=query,
                        matching='DELETE statements must restrict all PRIMARY KEY columns with equality relations in order to delete non static columns')
 
-    @attr('single_node')
-    def delete_by_1ck_range_condition_if_equality_failed_test(self):
+    @pytest.mark.single_node
+    def test_delete_by_1ck_range_condition_if_equality_failed(self):
         session = self.prepare(nodes=1, rf=1)
         self.create_cf_1pk_1ck(session=session)
         data = self.insert_data_cf_1pk_1ck(session, 5)
@@ -465,13 +465,13 @@ class RangeDeletionTester(Tester):
                                                                                                                       ck_lower=data[1][1],
                                                                                                                       ck_upper=data[3][1],
                                                                                                                       cv=data[1][2])
-        debug(query)
+        logger.info(query)
         assert_invalid(session=session,
                        query=query,
                        matching='DELETE statements must restrict all PRIMARY KEY columns with equality relations in order to delete non static columns')
 
-    @attr('single_node')
-    def delete_by_1ck_range_if_range_failed_test(self):
+    @pytest.mark.single_node
+    def test_delete_by_1ck_range_if_range_failed(self):
         session = self.prepare(nodes=1, rf=1)
         self.create_cf_1pk_1ck(session=session)
         data = self.insert_data_cf_1pk_1ck(session, 5)
@@ -482,12 +482,12 @@ class RangeDeletionTester(Tester):
                                                                 ck_upper=data[3][1],
                                                                 cv_lower=data[1][2],
                                                                 cv_upper=data[3][2])
-        debug(query)
+        logger.info(query)
         assert_invalid(session=session,
                        query=query,
                        matching='DELETE statements must restrict all PRIMARY KEY columns with equality relations in order to delete non static columns')
 
-    def delete_by_1ck_range_conditional_batch_test(self):
+    def test_delete_by_1ck_range_conditional_batch(self):
         """ if in batch at least one operation with IF, whole batch is conditional
         """
         num_rows = 5
@@ -518,7 +518,7 @@ class RangeDeletionTester(Tester):
                                                                                                             ck=data[i][1],
                                                                                                             v1=data[i][2])
         query += "APPLY BATCH;"
-        debug(query)
+        logger.info(query)
         # execute batch and verify it is applied
         assert_all(session, query,
                    expected=[[True, None, None, None], [True, None, None, None], [True, None, None, None]],
@@ -526,7 +526,7 @@ class RangeDeletionTester(Tester):
 
         assert_all(session=session, query=select_query, expected=data, cl=ConsistencyLevel.QUORUM, ignore_order=True)
 
-    def delete_by_1ck_range_conditional_batch_update_test(self):
+    def test_delete_by_1ck_range_conditional_batch_update(self):
         """ if in batch at least one operation with IF, whole batch is conditional
         """
         num_rows = 5
@@ -557,7 +557,7 @@ class RangeDeletionTester(Tester):
                                                                                                                    old_v1=data[i][2],
                                                                                                                    new_v1=data[i][2] * num_rows)
         query += "APPLY BATCH;"
-        debug(query)
+        logger.info(query)
         # execute batch and verify it is applied
         conditinal_batch_result = [[True] + [None] * len(data[upper_index])]  # result row for the first DELETE
         for row in data[upper_index: num_rows]:
@@ -578,13 +578,13 @@ class RangeDeletionTester(Tester):
         assert_all(session=session, query=select_query, expected=data, cl=ConsistencyLevel.QUORUM, ignore_order=True)
 
 
-@skip('Old Cassandra tests')
+@pytest.mark.skip('Old Cassandra tests')
 class TestDeletion(Tester):
     """
     Test deleting operations and associated tombstone operations.
     """
 
-    def gc_test(self):
+    def test_gc(self):
         """
         Test that tombstones are fully purged after gc_grace.
 
@@ -600,8 +600,8 @@ class TestDeletion(Tester):
         [node1] = cluster.nodelist()
 
         time.sleep(.5)
-        session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'ks', 1)
+        session = self.fixture_dtest_setup.patient_cql_connection(node1)
+        create_ks(session, 'ks', 1)
         self.create_cf(session, 'cf', gc_grace=0, key_type='int', columns={'c1': 'int'})
 
         session.execute('insert into cf (key, c1) values (1,1)')
@@ -622,7 +622,7 @@ class TestDeletion(Tester):
         result = list(session.execute('select * from cf;'))
         assert len(result) == 1 and len(result[0]) == 2, result
 
-    def tombstone_size_test(self):
+    def test_tombstone_size(self):
         """
         Verify that deletions in a table generate tombstone registers.
 
@@ -638,8 +638,8 @@ class TestDeletion(Tester):
 
         self.cluster.start(wait_for_binary_proto=True)
         [node1] = self.cluster.nodelist()
-        session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'ks', 1)
+        session = self.fixture_dtest_setup.patient_cql_connection(node1)
+        create_ks(session, 'ks', 1)
         session.execute('CREATE TABLE test (i int PRIMARY KEY)')
 
         stmt = session.prepare('DELETE FROM test where i = ?')
@@ -667,10 +667,3 @@ def table_metric(node, keyspace, table, name):
         value = jmx.read_attribute(mbean, 'Value')
 
     return value
-
-
-strategies = ['SizeTieredCompactionStrategy', 'TimeWindowCompactionStrategy']
-# SMP value should be according to the monster environment
-for strategy in strategies:
-    cls_name = ('RangeDeletionTester_with_' + strategy)
-    vars()[cls_name] = type(cls_name, (RangeDeletionTester,), {'compaction_strategy': strategy, '__test__': True})

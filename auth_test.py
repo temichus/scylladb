@@ -22,7 +22,8 @@ from dtest_setup import DTestSetup
 from tools.assertions import assert_invalid
 from tools.log_utils import wait_for_any_log
 from dtest_class import Tester
-from tools.misc import new_node, require
+from tools.misc import require
+from tools.cluster import new_node
 
 
 logger = logging.getLogger(__file__)
