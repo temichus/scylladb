@@ -69,6 +69,7 @@ repos:
                 udtencoding_test.py|
                 clustering_key_filter_test.py|
                 ttl_test.py|
+                user_types_test.py|
                 hintedhandoff_test.py|
                 materialized_views_test.py|
                 resharding_test.py|

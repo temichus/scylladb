@@ -1,19 +1,20 @@
+import logging
+import pytest
+import re
 import time
 import uuid
-import re
 from concurrent.futures import ThreadPoolExecutor
 from pkg_resources import parse_version
 
-from dtest import Tester, debug
-from tools import since, require
-from assertions import assert_invalid
+from dtest_class import Tester, create_ks
+from tools.assertions import assert_invalid, assert_all, assert_row_count
 from cassandra import Unauthorized, ConsistencyLevel
 from cassandra.query import SimpleStatement
-from unittest import skip
-from nose.plugins.attrib import attr
 from textwrap import dedent
-from assertions import assert_all, assert_row_count
 from scylla_tools import wait_for_view
+
+
+logger = logging.getLogger(__file__)
 
 
 def listify(item):
@@ -37,20 +38,17 @@ def listify(item):
     return decoded
 
 
-@attr('dtest-full')
+@pytest.mark.dtest_full
 class TestUserTypes(Tester):
 
-    def __init__(self, *args, **kwargs):
-        Tester.__init__(self, *args, **kwargs)
-
     def assertUnauthorized(self, session, query, message):
-        with self.assertRaises(Unauthorized) as cm:
+        with pytest.raises(Unauthorized) as cm:
             session.execute(query)
-        assert re.search(message, str(cm.exception)), "Expected: %s" % message
+        assert re.search(message, str(cm.value)), "Expected: %s" % message
 
     def assertNoTypes(self, session):
         for keyspace in session.cluster.metadata.keyspaces.values():
-            self.assertEqual(0, len(keyspace.user_types))
+            assert 0 == len(keyspace.user_types)
 
     def test_type_dropping(self):
         """
@@ -62,8 +60,8 @@ class TestUserTypes(Tester):
         cluster = self.cluster
         cluster.populate(3).start()
         node1, node2, node3 = cluster.nodelist()
-        session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'user_type_dropping', 2)
+        session = self.fixture_dtest_setup.patient_cql_connection(node1)
+        create_ks(session, 'user_type_dropping', 2)
 
         stmt = """
               USE user_type_dropping
@@ -128,8 +126,8 @@ class TestUserTypes(Tester):
         cluster = self.cluster
         cluster.populate(3).start()
         node1, node2, node3 = cluster.nodelist()
-        session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'nested_user_type_dropping', 2)
+        session = self.fixture_dtest_setup.patient_cql_connection(node1)
+        create_ks(session, 'nested_user_type_dropping', 2)
 
         stmt = """
               USE nested_user_type_dropping
@@ -179,7 +177,7 @@ class TestUserTypes(Tester):
         cluster.populate(3).start()
         node1, node2, node3 = cluster.nodelist()
         session = self.cql_connection(node1)
-        self.create_ks(session, 'user_type_enforcement', 2)
+        create_ks(session, 'user_type_enforcement', 2)
 
         stmt = """
               USE user_type_enforcement
@@ -219,17 +217,18 @@ class TestUserTypes(Tester):
               SELECT * FROM simple_table;
            """
         rows = list(session.execute(stmt))
-        self.assertEqual(0, len(rows))
+        assert 0 == len(rows)
 
-    @attr('next-gating')
-    @attr('dtest-debug')
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
     def test_nested_user_types(self):
         """Tests user types within user types"""
         cluster = self.cluster
         cluster.populate(3).start()
         node1, node2, node3 = cluster.nodelist()
-        session = self.patient_cql_connection(node1, consistency_level=ConsistencyLevel.LOCAL_QUORUM)
-        self.create_ks(session, 'user_types', 2)
+        session = self.fixture_dtest_setup.patient_cql_connection(
+            node1, consistency_level=ConsistencyLevel.LOCAL_QUORUM)
+        create_ks(session, 'user_types', 2)
 
         stmt = """
               USE user_types
@@ -307,10 +306,10 @@ class TestUserTypes(Tester):
         rows = list(session.execute(stmt))
 
         primary_item, other_items, other_containers = rows[0]
-        self.assertEqual(listify(primary_item), [['test', 'test2']])
-        self.assertEqual(listify(other_items), [['stuff', ['one', 'two']]])
-        self.assertEqual(listify(other_containers), [[['stuff2', ['one_other', 'two_other']], [
-                         'stuff3', ['one_2_other', 'two_2_other']], ['stuff4', ['one_3_other', 'two_3_other']]]])
+        assert listify(primary_item) == [['test', 'test2']]
+        assert listify(other_items) == [['stuff', ['one', 'two']]]
+        assert listify(other_containers) == [[['stuff2', ['one_other', 'two_other']], [
+            'stuff3', ['one_2_other', 'two_2_other']], ['stuff4', ['one_3_other', 'two_3_other']]]]
 
         #  Generate some repetitive data and check it for it's contents:
         for x in range(50):
@@ -333,8 +332,8 @@ class TestUserTypes(Tester):
             rows = list(session.execute(stmt))
 
             items = rows[0][0]
-            self.assertEqual(listify(items), [[['stuff3', ['one_2_other', 'two_2_other']], [
-                             'stuff4', ['one_3_other', 'two_3_other']]]])
+            assert listify(items) == [[['stuff3', ['one_2_other', 'two_2_other']], [
+                'stuff4', ['one_3_other', 'two_3_other']]]]
 
     def test_type_as_part_of_pkey(self):
         """Tests user types as part of a composite pkey"""
@@ -343,8 +342,8 @@ class TestUserTypes(Tester):
         cluster = self.cluster
         cluster.populate(3).start()
         node1, node2, node3 = cluster.nodelist()
-        session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'user_type_pkeys', 2)
+        session = self.fixture_dtest_setup.patient_cql_connection(node1)
+        create_ks(session, 'user_type_pkeys', 2)
 
         stmt = """
               CREATE TYPE t_person_name (
@@ -388,10 +387,10 @@ class TestUserTypes(Tester):
         rows = session.execute(stmt)
 
         row_uuid, first_name, like = rows[0]
-        self.assertEqual(first_name, 'Nero')
-        self.assertEqual(like, 'arson')
+        assert first_name == 'Nero'
+        assert like == 'arson'
 
-    @skip("Secondary indexes not implemented yet")
+    @pytest.mark.skip("Secondary indexes not implemented yet")
     def test_type_secondary_indexing(self):
         """
         Confirm that user types are secondary-indexable
@@ -400,8 +399,8 @@ class TestUserTypes(Tester):
         cluster = self.cluster
         cluster.populate(3).start()
         node1, node2, node3 = cluster.nodelist()
-        session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'user_type_indexing', 2)
+        session = self.fixture_dtest_setup.patient_cql_connection(node1)
+        create_ks(session, 'user_type_indexing', 2)
 
         stmt = """
               CREATE TYPE t_person_name (
@@ -443,7 +442,7 @@ class TestUserTypes(Tester):
               SELECT * from person_likes where name = {first:'Nero', middle: 'Claudius Caesar Augustus', last: 'Germanicus'};
             """
         rows = list(session.execute(stmt))
-        self.assertEqual(0, len(rows))
+        assert 0 == len(rows)
 
         # add a row which doesn't specify data for the indexed column, and query again
         _id = uuid.uuid4()
@@ -458,7 +457,7 @@ class TestUserTypes(Tester):
             """
 
         rows = list(session.execute(stmt))
-        self.assertEqual(0, len(rows))
+        assert 0 == len(rows)
 
         # finally let's add a queryable row, and get it back using the index
         _id = uuid.uuid4()
@@ -477,9 +476,9 @@ class TestUserTypes(Tester):
 
         row_uuid, first_name, like = rows[0]
 
-        self.assertEqual(str(row_uuid), str(_id))
-        self.assertEqual(first_name, 'Nero')
-        self.assertEqual(like, 'arson')
+        assert str(row_uuid) == str(_id)
+        assert first_name == 'Nero'
+        assert like == 'arson'
 
         # rename a field in the type and make sure the index still works
         stmt = """
@@ -495,9 +494,9 @@ class TestUserTypes(Tester):
 
         row_uuid, first_name, like = rows[0]
 
-        self.assertEqual(str(row_uuid), str(_id))
-        self.assertEqual(first_name, 'Nero')
-        self.assertEqual(like, 'arson')
+        assert str(row_uuid) == str(_id)
+        assert first_name == 'Nero'
+        assert like == 'arson'
 
         # add another row to be sure the index is still adding new data
         _id = uuid.uuid4()
@@ -516,9 +515,9 @@ class TestUserTypes(Tester):
 
         row_uuid, first_name, like = rows[0]
 
-        self.assertEqual(str(row_uuid), str(_id))
-        self.assertEqual(first_name, 'Abraham')
-        self.assertEqual(like, 'preserving unions')
+        assert str(row_uuid) == str(_id)
+        assert first_name == 'Abraham'
+        assert like == 'preserving unions'
 
     def test_type_keyspace_permission_isolation(self):
         """
@@ -542,16 +541,17 @@ class TestUserTypes(Tester):
         time.sleep(5)
 
         # do setup that requires a super user
-        superuser_session = self.patient_cql_connection(node1, user='cassandra', password='cassandra')
+        superuser_session = self.fixture_dtest_setup.patient_cql_connection(
+            node1, user='cassandra', password='cassandra')
         superuser_session.execute("create user ks1_user with password 'cassandra' nosuperuser;")
         superuser_session.execute("create user ks2_user with password 'cassandra' nosuperuser;")
-        self.create_ks(superuser_session, 'ks1', 2)
-        self.create_ks(superuser_session, 'ks2', 2)
+        create_ks(superuser_session, 'ks1', 2)
+        create_ks(superuser_session, 'ks2', 2)
         superuser_session.execute("grant all permissions on keyspace ks1 to ks1_user;")
         superuser_session.execute("grant all permissions on keyspace ks2 to ks2_user;")
 
-        user1_session = self.patient_cql_connection(node1, user='ks1_user', password='cassandra')
-        user2_session = self.patient_cql_connection(node1, user='ks2_user', password='cassandra')
+        user1_session = self.fixture_dtest_setup.patient_cql_connection(node1, user='ks1_user', password='cassandra')
+        user2_session = self.fixture_dtest_setup.patient_cql_connection(node1, user='ks2_user', password='cassandra')
 
         # first make sure the users can't create types in each other's ks
         self.assertUnauthorized(user1_session, "CREATE TYPE ks2.simple_type (user_number int, user_text text );",
@@ -598,8 +598,8 @@ class TestUserTypes(Tester):
         cluster = self.cluster
         cluster.populate(3).start()
         node1, node2, node3 = cluster.nodelist()
-        session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'user_types', 2)
+        session = self.fixture_dtest_setup.patient_cql_connection(node1)
+        create_ks(session, 'user_types', 2)
 
         stmt = """
               USE user_types
@@ -632,20 +632,20 @@ class TestUserTypes(Tester):
         session.execute("INSERT INTO bucket (id, my_item) VALUES (1, {sub_one: 'test'})")
 
         rows = list(session.execute("SELECT my_item FROM bucket WHERE id=0"))
-        self.assertEqual(listify(rows[0]), [['test', None]])
+        assert listify(rows[0]) == [['test', None]]
 
         rows = list(session.execute("SELECT my_item FROM bucket WHERE id=1"))
-        self.assertEqual(listify(rows[0]), [['test', None]])
+        assert listify(rows[0]) == [['test', None]]
 
-    @attr('single_node')
+    @pytest.mark.single_node
     def test_no_counters_in_user_types(self):
         # CASSANDRA-7672
         cluster = self.cluster
 
         cluster.populate(1).start()
         [node1] = cluster.nodelist()
-        session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'user_types', 1)
+        session = self.fixture_dtest_setup.patient_cql_connection(node1)
+        create_ks(session, 'user_types', 1)
 
         stmt = """
             USE user_types
@@ -666,8 +666,8 @@ class TestUserTypes(Tester):
         cluster = self.cluster
         cluster.populate(3).start()
         node1, node2, node3 = cluster.nodelist()
-        session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'user_type_pkeys', 2)
+        session = self.fixture_dtest_setup.patient_cql_connection(node1)
+        create_ks(session, 'user_type_pkeys', 2)
 
         stmt = """
               CREATE TYPE t_letterpair (
@@ -701,15 +701,14 @@ class TestUserTypes(Tester):
         for _id in ids:
             res = list(session.execute("SELECT letterpair FROM letters where id = {}".format(_id)))
 
-            self.assertEqual(listify(res), [[['a', 'z'], ['c', 'a'], ['c', 'f'], ['c', 'z'], ['d', 'e'], ['z', 'a']]])
+            assert listify(res) == [[['a', 'z'], ['c', 'a'], ['c', 'f'], ['c', 'z'], ['d', 'e'], ['z', 'a']]]
 
-    @since('3.0')
     def udt_subfield_test(self):
         cluster = self.cluster
         cluster.populate(3).start()
         node1, node2, node3 = cluster.nodelist()
-        session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'user_types', 1)
+        session = self.fixture_dtest_setup.patient_cql_connection(node1)
+        create_ks(session, 'user_types', 1)
 
         # Check we can create non-frozen table
         session.execute("CREATE TYPE udt (first text, second int, third int)")
@@ -720,7 +719,7 @@ class TestUserTypes(Tester):
         session.execute("INSERT INTO t (id, v) VALUES (0, {third: 2, second: 1})")
         session.execute("UPDATE t set v.first = 'a' WHERE id=0")
         rows = list(session.execute("SELECT * FROM t WHERE id = 0"))
-        self.assertEqual(listify(rows[0]), [[0, ['a', 1, 2]]])
+        assert listify(rows[0]) == [[0, ['a', 1, 2]]]
 
         # Create a full udt
         # Update a subfield on the udt
@@ -728,13 +727,13 @@ class TestUserTypes(Tester):
         session.execute("INSERT INTO t (id, v) VALUES (0, {first: 'c', second: 3, third: 33})")
         session.execute("UPDATE t set v.second = 5 where id=0")
         rows = list(session.execute("SELECT * FROM t WHERE id=0"))
-        self.assertEqual(listify(rows[0]), [[0, ['c', 5, 33]]])
+        assert listify(rows[0]) == [[0, ['c', 5, 33]]]
 
         # Rewrite the entire udt
         # Read back
         session.execute("INSERT INTO t (id, v) VALUES (0, {first: 'alpha', second: 111, third: 100})")
         rows = list(session.execute("SELECT * FROM t WHERE id=0"))
-        self.assertEqual(listify(rows[0]), [[0, ['alpha', 111, 100]]])
+        assert listify(rows[0]) == [[0, ['alpha', 111, 100]]]
 
         # Send three subfield updates to udt
         # Read back
@@ -742,7 +741,7 @@ class TestUserTypes(Tester):
         session.execute("UPDATE t set v.first = 'delta' WHERE id=0")
         session.execute("UPDATE t set v.second = -10 WHERE id=0")
         rows = list(session.execute("SELECT * FROM t WHERE id=0"))
-        self.assertEqual(listify(rows[0]), [[0, ['delta', -10, 100]]])
+        assert listify(rows[0]) == [[0, ['delta', -10, 100]]]
 
         # Send conflicting updates serially to different nodes
         # Read back
@@ -755,7 +754,7 @@ class TestUserTypes(Tester):
         session2.execute("UPDATE user_types.t set v.third = 103 WHERE id=0")
         query = SimpleStatement("SELECT * FROM t WHERE id = 0", consistency_level=ConsistencyLevel.ALL)
         rows = list(session.execute(query))
-        self.assertEqual(listify(rows[0]), [[0, ['delta', -10, 103]]])
+        assert listify(rows[0]) == [[0, ['delta', -10, 103]]]
         session1.shutdown()
         session2.shutdown()
         session3.shutdown()
@@ -764,7 +763,7 @@ class TestUserTypes(Tester):
         session.execute("INSERT INTO t (id, v) VALUES (0, {first:'cass', second:3, third:0})")
         session.execute("UPDATE t SET v.first = null WHERE id = 0")
         rows = list(session.execute("SELECT * FROM t WHERE id=0"))
-        self.assertEqual(listify(rows[0]), [[0, [None, 3, 0]]])
+        assert listify(rows[0]) == [[0, [None, 3, 0]]]
 
         rows = list(session.execute("SELECT v.first FROM t WHERE id=0"))
         assert listify(rows) == [[None]]
@@ -773,7 +772,7 @@ class TestUserTypes(Tester):
         rows = list(session.execute("SELECT v.third FROM t WHERE id=0"))
         assert listify(rows) == [[0]]
 
-    @attr('single_node')
+    @pytest.mark.single_node
     def test_user_type_isolation(self):
         """
         Ensure UDT cannot be used from another keyspace
@@ -784,21 +783,21 @@ class TestUserTypes(Tester):
         cluster = self.cluster
         cluster.populate(1).start()
         node1 = cluster.nodelist()[0]
-        session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'user_types', 1)
+        session = self.fixture_dtest_setup.patient_cql_connection(node1)
+        create_ks(session, 'user_types', 1)
 
         # create a user defined type in a keyspace
         session.execute("CREATE TYPE udt (first text, second int, third int)")
 
         # ensure we cannot use a udt from another keyspace
-        self.create_ks(session, 'user_ks', 1)
+        create_ks(session, 'user_ks', 1)
         assert_invalid(
             session,
             "CREATE TABLE t (id int PRIMARY KEY, v frozen<user_types.udt>)",
             "Statement on keyspace user_ks cannot refer to a user type in keyspace user_types"
         )
 
-    @attr('single_node')
+    @pytest.mark.single_node
     def test_keyspace_drop_with_table_containing_udt(self):
         """
         Test for #3068
@@ -807,14 +806,14 @@ class TestUserTypes(Tester):
         cluster = self.cluster
         cluster.populate(1).start()
         node1 = cluster.nodelist()[0]
-        session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'ks', 1)
+        session = self.fixture_dtest_setup.patient_cql_connection(node1)
+        create_ks(session, 'ks', 1)
 
         session.execute("CREATE TYPE udt (first text, second int)")
         session.execute("CREATE TABLE table1 (id uuid PRIMARY KEY, x frozen<udt>);")
         session.execute("DROP KEYSPACE IF EXISTS ks;")
 
-    @attr('single_node')
+    @pytest.mark.single_node
     def test_complex_data_types(self):
         """"
         This test was adapted from json_test.py (test_complex_data_types).
@@ -823,8 +822,8 @@ class TestUserTypes(Tester):
         cluster = self.cluster
         cluster.populate(1).start()
         node1 = cluster.nodelist()[0]
-        session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'user_types', 1)
+        session = self.fixture_dtest_setup.patient_cql_connection(node1)
+        create_ks(session, 'user_types', 1)
 
         stmt_lst = [
             "CREATE TYPE t_todo_item (label text, details text)",
@@ -1010,23 +1009,23 @@ class TestUserTypes(Tester):
         """
         rows_num = 2000
         self.cluster.populate(3).start()
-        session = self.patient_cql_connection(self.cluster.nodelist()[0])
+        session = self.fixture_dtest_setup.patient_cql_connection(self.cluster.nodelist()[0])
         keyspace_name = 'abcinfo'
-        self.create_ks(session, keyspace_name, 1)
+        create_ks(session, keyspace_name, 1)
 
-        debug('Create user_refs type')
+        logger.info('Create user_refs type')
         session.execute('create type if not exists user_refs (id text, alt_name text, firstname text,'
                         'lastname text, email text)')
 
-        debug('Create obs_entity type')
+        logger.info('Create obs_entity type')
         session.execute('create type if not exists obs_entity (entity_id text, version int, entity_type text,'
                         'type text, service text, user_refs frozen<user_refs>)')
 
-        debug('Create other_entity type')
+        logger.info('Create other_entity type')
         session.execute("create type if not exists other_entity (other_entity_id text, version int, "
                         "entities frozen<set<text>>,type text)")
 
-        debug('Create entity table')
+        logger.info('Create entity table')
         session.execute('create table if not exists entity(entity_id text, other_entity_id text,'
                         'entity_type text, type text, service text, entity_info frozen < obs_entity >,'
                         'import_timestamp timestamp, import_timestamp_day timestamp, primary key(entity_id)'
@@ -1034,36 +1033,36 @@ class TestUserTypes(Tester):
                         'compaction = {\'class\': \'org.apache.cassandra.db.compaction.LeveledCompactionStrategy\'}'
                         'and bloom_filter_fp_chance = 0.01')
 
-        debug('Create index on entity(service)')
+        logger.info('Create index on entity(service)')
         session.execute('create index if not exists on entity(service)')
 
-        debug('Create index on entity(type)')
+        logger.info('Create index on entity(type)')
         session.execute('create index if not exists on entity(type)')
 
-        debug('Create entity_by_type materialized view')
+        logger.info('Create entity_by_type materialized view')
         session.execute('create materialized view if not exists entity_by_type as select * from entity where '
                         'type is not null primary key(type, entity_id)')
         wait_for_view(cluster=self.cluster, session=session, ks=keyspace_name, view='entity_by_type')
 
-        debug('Create entity_by_unique_id materialized view')
+        logger.info('Create entity_by_unique_id materialized view')
         session.execute('create materialized view if not exists entity_by_unique_id as select * '
                         'from entity where other_entity_id is not null primary key(other_entity_id, entity_id)')
         wait_for_view(cluster=self.cluster, session=session, ks=keyspace_name, view='entity_by_unique_id')
 
-        debug('Create entity_rel table')
+        logger.info('Create entity_rel table')
         session.execute("create table if not exists entity_rel (src_entity_id text, src_entity frozen<obs_entity>, "
                         "dest_entity_id text, dest_entity frozen<obs_entity>, service text, rel_type text, "
                         "deleted boolean, primary key ((src_entity_id), dest_entity_id, rel_type, service)) "
                         "with compaction = {'class': 'org.apache.cassandra.db.compaction.LeveledCompactionStrategy'} "
                         "and bloom_filter_fp_chance = 0.01")
 
-        debug('Create index on entity_rel(dest_entity_id)')
+        logger.info('Create index on entity_rel(dest_entity_id)')
         session.execute('create index if not exists on entity_rel(dest_entity_id)')
 
-        debug('Create index on entity_rel(service)')
+        logger.info('Create index on entity_rel(service)')
         session.execute('create index if not exists on entity_rel(service)')
 
-        debug('Create index on entity_rel(rel_type)')
+        logger.info('Create index on entity_rel(rel_type)')
         session.execute('create index if not exists on entity_rel(rel_type)')
 
         def insert_into_entity(rows=rows_num, altered_type=False):
@@ -1089,11 +1088,11 @@ class TestUserTypes(Tester):
                 session.execute(stmt)
 
         runned_thread = []
-        debug('Start insert into entity')
+        logger.info('Start insert into entity')
         entity_run_executer = ThreadPoolExecutor()
         runned_thread.append(entity_run_executer.submit(insert_into_entity))
 
-        debug('Start insert into entity_rel')
+        logger.info('Start insert into entity_rel')
         entity_rel_run_executer = ThreadPoolExecutor()
         runned_thread.append(entity_rel_run_executer.submit(insert_into_entity_rel))
 
@@ -1106,13 +1105,13 @@ class TestUserTypes(Tester):
         assert_row_count(session=session, table_name='entity_rel', expected=rows_num,
                          consistency_level=ConsistencyLevel.QUORUM)
 
-        debug('Create priority_refs type')
+        logger.info('Create priority_refs type')
         session.execute('create type if not exists priority_refs (priority int, description set<int>)')
 
-        debug('Alter obs_entity type')
+        logger.info('Alter obs_entity type')
         session.execute('alter type obs_entity add priority_refs frozen<priority_refs>')
 
-        debug('Alter user_refs type')
+        logger.info('Alter user_refs type')
         session.execute('alter type user_refs add priority_refs frozen<priority_refs>')
 
         insert_into_entity(rows=10, altered_type=True)
@@ -1140,35 +1139,35 @@ class TestUserTypes(Tester):
         """
         rows_num = 10
         self.cluster.populate(3).start()
-        session = self.patient_cql_connection(self.cluster.nodelist()[0])
+        session = self.fixture_dtest_setup.patient_cql_connection(self.cluster.nodelist()[0])
         keyspace_name = 'abcinfo'
-        self.create_ks(session, keyspace_name, 1)
+        create_ks(session, keyspace_name, 1)
 
-        debug('Create user_refs type')
+        logger.info('Create user_refs type')
         session.execute('create type if not exists user_refs (id text, alt_name text)')
 
-        debug('Create obs_entity type')
+        logger.info('Create obs_entity type')
         session.execute('create type if not exists obs_entity (entity_id text, user_refs frozen<user_refs>)')
 
-        debug('Create some_entity type')
+        logger.info('Create some_entity type')
         session.execute("create type if not exists some_entity (e_struct frozen<obs_entity>)")
 
-        debug('Create priority_refs type')
+        logger.info('Create priority_refs type')
         session.execute('create type if not exists priority_refs (priority int, description set<int>)')
 
-        debug('Alter obs_entity type')
+        logger.info('Alter obs_entity type')
         session.execute('alter type obs_entity add priority_refs frozen<priority_refs>')
 
-        debug('Alter user_refs type')
+        logger.info('Alter user_refs type')
         session.execute('alter type user_refs add priority_refs frozen<priority_refs>')
 
-        debug('Create entity table')
+        logger.info('Create entity table')
         session.execute('create table if not exists entity(entity_id text, type text, entity_info frozen < some_entity >,'
                         ' primary key(entity_id)) with compact storage and '
                         'compaction = {\'class\': \'org.apache.cassandra.db.compaction.LeveledCompactionStrategy\'}'
                         'and bloom_filter_fp_chance = 0.01')
 
-        debug('Create entity_by_type materialized view')
+        logger.info('Create entity_by_type materialized view')
         session.execute('create materialized view if not exists entity_by_type as select * from entity where '
                         'type is not null primary key(type, entity_id)')
         wait_for_view(cluster=self.cluster, session=session, ks=keyspace_name, view='entity_by_type')
@@ -1191,11 +1190,11 @@ class TestUserTypes(Tester):
         cluster = self.cluster
         cluster.populate(3).start()
         node1, node2, node3 = cluster.nodelist()
-        session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'user_types', 2)
+        session = self.fixture_dtest_setup.patient_cql_connection(node1)
+        create_ks(session, 'user_types', 2)
         session.set_keyspace('user_types')
 
-        debug('Test with capital type name - PHone')
+        logger.info('Test with capital type name - PHone')
         session.execute("CREATE TYPE \"PHone\" (country_code int, number text)")
         session.execute("CREATE TABLE cf (pk int, pn \"PHone\", PRIMARY KEY (pk))")
         session.execute("CREATE TABLE cf2 (pk int, pn frozen<\"PHone\">, PRIMARY KEY (pk))")
@@ -1210,13 +1209,13 @@ class TestUserTypes(Tester):
             "INSERT INTO cf3 (pk, pn) VALUES (0, [{country_code: 86, number: '123'}, {country_code: 88, number: '789'}])")
 
         rows = list(session.execute("SELECT pn FROM cf WHERE pk=0"))
-        self.assertEqual(listify(rows[0]), [[86, '123']])
+        assert listify(rows[0]) == [[86, '123']]
         rows = list(session.execute("SELECT pn FROM cf2 WHERE pk=0"))
-        self.assertEqual(listify(rows[0]), [[87, '456']])
+        assert listify(rows[0]) == [[87, '456']]
         rows = list(session.execute("SELECT pn FROM cf3 WHERE pk=0"))
-        self.assertEqual(listify(rows[0]), [[[86, '123'], [88, '789']]])
+        assert listify(rows[0]) == [[[86, '123'], [88, '789']]]
 
-        debug('Test with lower case type name - phone')
+        logger.info('Test with lower case type name - phone')
         session.execute("CREATE TYPE phone (country_code text, number int)")
         session.execute("CREATE TABLE new_cf (pk int, pn phone, PRIMARY KEY (pk))")
         session.execute("CREATE TABLE new_cf2 (pk int, pn frozen<phone>, PRIMARY KEY (pk))")
@@ -1231,16 +1230,16 @@ class TestUserTypes(Tester):
             "INSERT INTO new_cf3 (pk, pn) VALUES (0, [{country_code: '86', number: 123}, {country_code: '88', number: 789}])")
 
         rows = list(session.execute("SELECT pn FROM new_cf WHERE pk=0"))
-        self.assertEqual(listify(rows[0]), [['86', 123]])
+        assert listify(rows[0]) == [['86', 123]]
         rows = list(session.execute("SELECT pn FROM new_cf2 WHERE pk=0"))
-        self.assertEqual(listify(rows[0]), [['87', 456]])
+        assert listify(rows[0]) == [['87', 456]]
         rows = list(session.execute("SELECT pn FROM new_cf3 WHERE pk=0"))
-        self.assertEqual(listify(rows[0]), [[['86', 123], ['88', 789]]])
+        assert listify(rows[0]) == [[['86', 123], ['88', 789]]]
 
-        debug("Drop captial type name, and check lower case type still exists")
+        logger.info("Drop captial type name, and check lower case type still exists")
         session.execute("DROP TABLE cf")
         session.execute("DROP TABLE cf2")
         session.execute("DROP TABLE cf3")
         session.execute("DROP TYPE \"PHone\"")
         rows = list(session.execute("SELECT pn FROM new_cf3 WHERE pk=0"))
-        self.assertEqual(listify(rows[0]), [[['86', 123], ['88', 789]]])
+        assert listify(rows[0]) == [[['86', 123], ['88', 789]]]
