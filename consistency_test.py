@@ -762,7 +762,7 @@ class TestConsistency(Tester):
         # exception caused by a race, see CASSANDRA-9460
         for _ in range(10):
             # insert 9 columns in one row
-            insert_columns(self, session, 0, 9)
+            insert_columns(session, 0, 9)
 
             # Deleting 3 first columns with a different node dead each time
             self.stop_delete_and_restart(1, 0)
@@ -802,7 +802,7 @@ class TestConsistency(Tester):
         create_ks(session, 'ks', 3)
         create_cf(session, 'cf', read_repair=0.0)
         # insert 2 columns in one row
-        insert_columns(self, session, 0, 2)
+        insert_columns(session, 0, 2)
 
         # Delete the row while first node is dead
         node1.flush()
@@ -890,7 +890,7 @@ class TestConsistency(Tester):
 
         session = self.patient_cql_connection(node1)
         create_ks(session, 'ks', 2)
-        create_c1c2_table(self, session, read_repair=1.0)
+        create_c1c2_table(session, read_repair=1.0)
 
         node2.stop(wait_other_notice=True)
 
@@ -932,7 +932,7 @@ class TestConsistency(Tester):
         # exception caused by a race, see CASSANDRA-9460
         for _ in range(10):
             # insert 9 columns in one row
-            insert_columns(self, session, 0, 9)
+            insert_columns(session, 0, 9)
 
             # Deleting 3 last columns with a different node dead each time
             self.stop_delete_and_restart(1, 6)
@@ -976,7 +976,7 @@ class TestConsistency(Tester):
         logger.info("Set to talk to node 2")
         session = self.patient_cql_connection(node2)
         create_ks(session, 'ks', rf_value)
-        create_c1c2_table(self, session)
+        create_c1c2_table(session)
 
         logger.info("Generating some data")
         insert_c1c2(session, n=100, consistency=cl_value)

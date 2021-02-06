@@ -615,7 +615,7 @@ class TestBootstrap(Tester):
 
         logger.info("Preparing a KS and a CF...")
         create_ks(session, name='ks', rf=rf)
-        create_c1c2_table(self, session)
+        create_c1c2_table(session)
 
         logger.info("Populating the data...")
         insert_c1c2(session, n=10000, consistency=ConsistencyLevel.QUORUM)

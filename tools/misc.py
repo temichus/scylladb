@@ -11,6 +11,8 @@ import time
 
 from collections.abc import Mapping
 
+from ccmlib.cluster import Cluster
+from ccmlib.dse_cluster import DseCluster
 
 logger = logging.getLogger(__name__)
 

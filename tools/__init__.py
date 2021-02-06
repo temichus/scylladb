@@ -35,35 +35,6 @@ def chunks_list(lst, num_chunks):
         yield lst[i:i + num_chunks]
 
 
-def create_c1c2_table(tester, session, cf="cf", read_repair=None, debug_query=True, compaction=None, caching=True):
-    create_cf(session, cf, columns={'c1': 'text', 'c2': 'text'}, read_repair=read_repair,
-              debug_query=debug_query, compaction=compaction, caching=caching)
-
-
-def delete_c1c2(session, keys=None, n=None, consistency=ConsistencyLevel.QUORUM, cf="cf"):
-    if (keys is None and n is None) or (keys is not None and n is not None):
-        raise ValueError("Expected exactly one of 'keys' or 'n' arguments to not be None; "
-                         "got keys={keys}, n={n}".format(keys=keys, n=n))
-    if n:
-        keys = list(range(n))
-
-    statement = session.prepare("DELETE FROM {} WHERE key=?".format(cf))
-    statement.consistency_level = consistency
-
-    execute_concurrent_with_args(session, statement, [['k{}'.format(k)] for k in keys])
-
-
-def query_c1c2(session, key, consistency=ConsistencyLevel.QUORUM, tolerate_missing=False, must_be_missing=False, cf="cf"):
-    query = SimpleStatement('SELECT c1, c2 FROM {} WHERE key=\'k{:d}\''.format(cf, key), consistency_level=consistency)
-    rows = list(session.execute(query))
-    if not tolerate_missing and not must_be_missing:
-        assert len(rows) == 1
-        res = rows[0]
-        assert len(res) == 2 and res[0] == 'value1' and res[1] == 'value2', res
-    if must_be_missing:
-        assert len(rows) == 0
-
-
 # work for cluster started by populate
 def new_node(cluster, bootstrap=True, token=None, remote_debug_port='0', data_center=None, new_node_index=None):
     i = len(cluster.nodes) + 1 if not new_node_index else new_node_index

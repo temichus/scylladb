@@ -14,7 +14,7 @@ from dtest_class import create_cf
 logger = logging.getLogger(__name__)
 
 
-def create_c1c2_table(tester, session, cf="cf", read_repair=None, debug_query=True, compaction=None, caching=True):
+def create_c1c2_table(session, cf="cf", read_repair=None, debug_query=True, compaction=None, caching=True):
     create_cf(session, cf, columns={'c1': 'text', 'c2': 'text'}, read_repair=read_repair,
               debug_query=debug_query, compaction=compaction, caching=caching)
 
@@ -51,7 +51,20 @@ def query_c1c2(session, key, consistency=ConsistencyLevel.QUORUM, tolerate_missi
         assertions.assert_length_equal(rows, 0)
 
 
-def insert_columns(tester, session, key, columns_count, consistency=ConsistencyLevel.QUORUM, offset=0):
+def delete_c1c2(session, keys=None, n=None, consistency=ConsistencyLevel.QUORUM, cf="cf"):
+    if (keys is None and n is None) or (keys is not None and n is not None):
+        raise ValueError("Expected exactly one of 'keys' or 'n' arguments to not be None; "
+                         "got keys={keys}, n={n}".format(keys=keys, n=n))
+    if n:
+        keys = list(range(n))
+
+    statement = session.prepare("DELETE FROM {} WHERE key=?".format(cf))
+    statement.consistency_level = consistency
+
+    execute_concurrent_with_args(session, statement, [['k{}'.format(k)] for k in keys])
+
+
+def insert_columns(session, key, columns_count, consistency=ConsistencyLevel.QUORUM, offset=0):
     upds = ["UPDATE cf SET v=\'value%d\' WHERE key=\'k%s\' AND c=\'c%06d\'" %
             (i, key, i) for i in range(offset * columns_count, columns_count * (offset + 1))]
     query = 'BEGIN BATCH %s; APPLY BATCH' % '; '.join(upds)
@@ -59,7 +72,7 @@ def insert_columns(tester, session, key, columns_count, consistency=ConsistencyL
     session.execute(simple_query)
 
 
-def query_columns(tester, session, key, columns_count, consistency=ConsistencyLevel.QUORUM, offset=0):
+def query_columns(session, key, columns_count, consistency=ConsistencyLevel.QUORUM, offset=0):
     query = SimpleStatement('SELECT c, v FROM cf WHERE key=\'k%s\' AND c >= \'c%06d\' AND c <= \'c%06d\'' % (
         key, offset, columns_count + offset - 1), consistency_level=consistency)
     res = list(session.execute(query))
