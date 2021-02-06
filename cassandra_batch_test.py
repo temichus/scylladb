@@ -12,20 +12,23 @@
 # Copyright (c) 2020 ScyllaDB
 
 # From cassandra/test/unit/org/apache/cassandra/cql3/validation/operations/BatchTest.java
-from dtest import Tester, debug
-from cassandra.query import BatchStatement, SimpleStatement
-from cassandra import ConsistencyLevel
-from nose.plugins.attrib import attr
-from collections import Counter
+import logging
+import pytest
 import requests
 import time
 
+from dtest_class import Tester, get_ip_from_node
+from cassandra.query import BatchStatement
+from collections import Counter
+
+
 KEYSPACE = "batch_ks"
+logger = logging.getLogger(__file__)
 
 
-@attr('dtest-full')
-@attr('single_node')
-class BatchTester(Tester):
+@pytest.mark.dtest_full
+@pytest.mark.single_node
+class TestBatch(Tester):
     """
     Tests for pushed native protocol notification from Cassandra.
     """
@@ -35,22 +38,22 @@ class BatchTester(Tester):
         if not cluster.nodelist():
             cluster.populate(nodes).start(wait_for_binary_proto=True)
         node1 = cluster.nodelist()[0]
-        session = self.patient_cql_connection(node1)
+        session = self.fixture_dtest_setup.patient_cql_connection(node1)
         return session
 
-    @attr('dtest-full')
-    def batch_prepared_with_slow_query_log_test(self):
+    @pytest.mark.dtest_full
+    def test_batch_prepared_with_slow_query_log(self):
         """
         batch prepared in combination of slow query should not fail with error.
         scylladb/scylla/#5843
         """
         session = self.prepare()
         node1 = self.cluster.nodelist()[0]
-        node_ip = self.get_ip_from_node(node1)
+        node_ip = get_ip_from_node(node1)
         slow_query_url = f"http://{node_ip}:10000/storage_service/slow_query"
-        debug(f'Enabling slow logging on node {node_ip}')
+        logger.info(f'Enabling slow logging on node {node_ip}')
         response = requests.post(slow_query_url, params={"enable": True, "ttl": 604800, "threshold": 0})
-        debug(f'respone={str(response.content)}')
+        logger.info(f'respone={str(response.content)}')
         update_command = ("UPDATE clustering SET val=? "
                           "WHERE id=? AND clustering1=? AND clustering2=? AND clustering3=? "
                           "IF val=?")
@@ -62,7 +65,7 @@ class BatchTester(Tester):
         counter = Counter(getattr(row, 'command') for row in result.current_rows)
         assert counter[update_command] > 0, f"not found slow query logging of command={update_command}"
 
-    def batch_ttl_conditional_interaction_test(self):
+    def test_batch_ttl_conditional_interaction(self):
         session = self.prepare()
         self.batch_ttl_conditional_interaction(session)
 
@@ -218,7 +221,7 @@ class BatchTester(Tester):
         rows = session.execute(get_rows_pk, (1,)).current_rows
         assert sorted(rows) == sorted([row_15, row_17])
 
-    def batch_static_ttl_conditional_interaction_test(self):
+    def test_batch_static_ttl_conditional_interaction(self):
 
         session = self.prepare()
 
