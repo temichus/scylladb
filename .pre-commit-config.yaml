@@ -68,6 +68,7 @@ repos:
                 ttl_test.py|
                 hintedhandoff_test.py|
                 materialized_views_test.py|
+                heat_weighted_load_balancing_test.py
                 upgrade_test.py|
                 consistency_test.py|
                 secondary_indexes_test.py
