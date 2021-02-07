@@ -556,12 +556,11 @@ class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
         backup_task = mgr_cluster.run_backup_command(location_list=["s3:{}".format(DESTINATION_BUCKET)],
                                                      keyspace_list=["keyspace1"])
         backup_task.wait_for_status(list_status=[TaskStatus.RUNNING], timeout=120, step=1)
-        for node in self.cluster.nodelist():
-            node.stop_scylla_manager_agent(gently=False)
-        backup_task.wait_for_status(list_status=[TaskStatus.ERROR], timeout=250, step=10)
+        self.cluster.stop_scylla_manager()
+        self.cluster.start_scylla_manager()
 
-        for node in self.cluster.nodelist():
-            node.start_scylla_manager_agent()
+        backup_task.wait_for_status(list_status=[TaskStatus.ABORTED], timeout=180, step=5)
+
         backup_task.start(continue_task=False)
         backup_task.wait_and_get_final_status(timeout=300)
         assert backup_task.status == TaskStatus.DONE, "The restarted backup task failed!"
@@ -748,10 +747,10 @@ class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
                                                      "s3:{}".format(DESTINATION_BUCKET)])
         backup_task.wait_for_status(list_status=[TaskStatus.RUNNING], timeout=180, step=.5)
 
-        for node in self.cluster.nodelist():
-            node.stop_scylla_manager_agent(gently=False)
+        self.cluster.stop_scylla_manager()
+        self.cluster.start_scylla_manager()
 
-        backup_task.wait_for_status(list_status=[TaskStatus.ERROR], timeout=180, step=5)
+        backup_task.wait_for_status(list_status=[TaskStatus.ABORTED], timeout=180, step=5)
 
         pre_rerun_snapshot_set = self._get_total_snapshot_set()
 
