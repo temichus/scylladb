@@ -1,28 +1,34 @@
-import os
-import glob
 import re
 import time
 import multiprocessing
 
-from nose.plugins.attrib import attr
-from dtest import Tester, debug, flaky
-from tools import rows_to_list, require
-from scylla_tools import TableManager, MaterializedViewManager, get_sstables_files, get_node_cf_dir
-from assertions import assert_one, assert_two_queries_equal
+import pytest
+from flaky import flaky
+
+from dtest_class import Tester, create_ks
+from tools.data import rows_to_list
+from tools.tables_view_manager import TableManager, MaterializedViewManager
+from scylla_tools import get_sstables_files, get_node_cf_dir
+from tools.assertions import assert_one, assert_two_queries_equal
 from cassandra import ConsistencyLevel
+import logging
+
+logger = logging.getLogger(__name__)
 
 
-class ReshardingTestBase(Tester):
+class TestReshardingBase(Tester):
     DEFAULT_MURMUR3_PARTITIONER = 12
     DEFAULT_NODES = 1
     MURMUR3_PARTITIONER_FOR_DECREASE = 10
     MURMUR3_PARTITIONER_FOR_INCREASE = 17
     __test__ = False
 
-    def __init__(self, *args, **kwargs):
-        super(ReshardingTestBase, self).__init__(*args, **kwargs)
-        self.compaction_strategy = self.compaction_strategy if hasattr(
-            self, 'compaction_strategy') else 'LeveledCompactionStrategy'
+    compaction_strategy: str
+
+    @pytest.fixture(scope='function', autouse=True)
+    def fixture_dtest_setup_overrides(self, dtest_config):
+        self.compaction_strategy = self.compaction_strategy if hasattr(self, 'compaction_strategy') \
+            else 'LeveledCompactionStrategy'
         cpu_count = multiprocessing.cpu_count()
         assert cpu_count >= 4, "Resharding tests require a minimum of 4 cpus"
         self.smp = min(cpu_count // 2 + 1, 5)
@@ -34,8 +40,7 @@ class ReshardingTestBase(Tester):
         self.rf = 1 if self.nodes < 3 else 3
         self.mem = self.set_memory_param(self.smp)
 
-    def setUp(self):
-        super(ReshardingTestBase, self).setUp()
+    def prepare(self):
         cluster = self.cluster
         cluster = cluster.populate(self.nodes)
         cluster.set_configuration_options(values={'murmur3_partitioner_ignore_msb_bits': self.murmur3})
@@ -48,7 +53,7 @@ class ReshardingTestBase(Tester):
         return '{}M'.format(512 * int(smp))
 
     def _reload_with_resharding(self, murmur3=DEFAULT_MURMUR3_PARTITIONER, smp=None, ks='keyspace1', cf='standard1'):
-        debug('Reload node with resharding:\n CPU: from {0} to {1}\n murmur3 parameter: from {2} to {3}'.format(
+        logger.debug('Reload node with resharding:\n CPU: from {0} to {1}\n murmur3 parameter: from {2} to {3}'.format(
             self.smp, smp, self.murmur3, murmur3))
         smp = self.smp if not smp else smp
         self.node.stop(wait_other_notice=True)
@@ -57,25 +62,25 @@ class ReshardingTestBase(Tester):
         self.node.set_configuration_options(values={'murmur3_partitioner_ignore_msb_bits': murmur3})
         self.node.start(jvm_args=['--smp', str(smp), '--memory', self.set_memory_param(smp)],
                         wait_other_notice=True, wait_for_binary_proto=True)
-        debug('Node has been started')
+        logger.debug('Node has been started')
         return data_files_num_before
 
     def _get_number_of_data_files(self, ks='keyspace1', cf='standard1'):
         data_files = get_sstables_files(
             get_node_cf_dir(self.node, ks, cf), f_type='TOC')
-        debug('data files: {}'.format(data_files))
+        logger.debug('data files: {}'.format(data_files))
         return len(data_files)
 
     def _verify_number_of_data_files(self, data_files_num_before, reshard_to, actual_data_files_num=None,
                                      ks='keyspace1', cf='standard1'):
-        debug('Verify number of data files')
+        logger.debug('Verify number of data files')
         expected_num = data_files_num_before * reshard_to
         if not actual_data_files_num:
             actual_data_files_num = self._get_number_of_data_files(ks, cf)
-        self.assertLessEqual(actual_data_files_num, expected_num,
-                             msg='{0} not less than or equal to {1}. Data files amount after resharding '
-                                 'should be not more then data files amount before resharding multiplying by {2}.'.format
-                             (actual_data_files_num, expected_num, reshard_to))
+        assert actual_data_files_num <= expected_num, \
+            f'{actual_data_files_num} not less than or equal to {expected_num}. Data files amount ' \
+            f'after resharding should be not more then data files amount before ' \
+            f'resharding multiplying by {reshard_to}.'
 
     def _wait_for_resharding(self, timeout=60, reshard_found=False):
         """
@@ -83,7 +88,7 @@ class ReshardingTestBase(Tester):
         sleep for more 5 seconds
         break if there's no RESHARD in compactionstats
         """
-        debug('Wait for re-sharding to be finished')
+        logger.debug('Wait for re-sharding to be finished')
         patt = re.compile('RESHARD')
         to = 0
         sleep_time = 5
@@ -101,9 +106,9 @@ class ReshardingTestBase(Tester):
                 break
             prev_out = [o[0] for o in out]
             # END - Temporary solution while the "compactionstats" problem will be resolved
-            # debug(out)
+            # logger.debug(out)
             # if not to or to == timeout:
-            #     debug(out)
+            #     logger.debug(out)
             if not m:
                 if not timeout:
                     return reshard_found
@@ -121,24 +126,25 @@ class ReshardingTestBase(Tester):
         res = self.node.stress_object(stress_cmd)
         if not isinstance(res, dict):
             raise Exception('Error running cassandra-stress: {}'.format(res))
-        self.assertEquals(res['total errors'], 0)
-        self.assertGreaterEqual(res['total partitions'], op_cnt)
+        assert res['total errors'] == 0
+        assert res['total partitions'] >= op_cnt
 
     def _verify_row_number(self, cf, expected_row_num, keyspace='keyspace1'):
         session = self.patient_cql_connection(self.node)
         resp = session.execute('SELECT count(*) FROM {0}.{1};'.format(keyspace, cf), timeout=120)
         row_number = rows_to_list(resp)[0][0]
-        debug('number of rows: {}'.format(row_number))
-        self.assertEquals(row_number, expected_row_num)
+        logger.debug('number of rows: {}'.format(row_number))
+        assert row_number == expected_row_num
 
     def _verify_data(self, op_cnt, stress_cmd):
-        debug('Read data')
+        logger.debug('Read data')
         res = self.node.stress_object(stress_cmd)
-        self.assertIsInstance(res, dict, 'failed to run stress test')
-        self.assertEquals(res['total errors'], 0)
+        assert isinstance(res, dict), 'failed to run stress test'
+        assert res['total errors'] == 0
 
     def _resharding_basic(self, reshard_to, rows, murmur3):
-        debug('Run stress test on node1')
+        self.prepare()
+        logger.debug('Run stress test on node1')
         op_cnt = rows
         stress_cmd = ['write', 'n={}'.format(op_cnt), 'no-warmup', '-rate', 'threads=16',
                       '-schema', 'replication(factor={})'.format(self.rf), 'compaction(strategy={})'.format(self.compaction_strategy)]
@@ -154,7 +160,7 @@ class ReshardingTestBase(Tester):
         exp_res, msg = (False, 'Unexpected re-sharding recognized') \
             if reshard_to == self.smp and murmur3 == self.murmur3 \
             else (True, 'Failed to recognize re-sharding finish')
-        self.assertEquals(res, exp_res, msg)
+        assert res == exp_res, msg
         self.check_errors_all_nodes()
 
         # Verify data files number during resharding
@@ -172,13 +178,13 @@ class ReshardingTestBase(Tester):
         self._verify_number_of_data_files(data_files_num_before=data_files_num_before, reshard_to=reshard_to)
 
 
-@attr('dtest-full')
-@attr('next-gating')
-@attr('single_node')
-class ReshardingSingleNodeGatingTest(ReshardingTestBase):
+@pytest.mark.dtest_full
+@pytest.mark.next_gating
+@pytest.mark.single_node
+class TestReshardingSingleNodeGating(TestReshardingBase):
 
     # Copied from resharding_by_murmur3_smp_test to run in reduced configurations for next-gating
-    def resharding_by_murmur3_gating_test(self):
+    def test_resharding_by_murmur3_gating(self):
         """
         Cluster with 10M objects. Both SMP and MURMUR3 parameter are changed
         and restarting the cluster
@@ -186,16 +192,17 @@ class ReshardingSingleNodeGatingTest(ReshardingTestBase):
         self._resharding_basic(self.SMP_FOR_INCREASE, rows=1000, murmur3=self.MURMUR3_PARTITIONER_FOR_INCREASE)
 
 
-@attr('dtest-full', 'dtest-heavy')
-class ReshardingVariantsTest(ReshardingTestBase):
-    def resharding_by_murmur3_increase_test(self):
+@pytest.mark.dtest_full
+@pytest.mark.dtest_heavy
+class TestReshardingVariants(TestReshardingBase):
+    def test_resharding_by_murmur3_increase(self):
         """
         Resharding with 10M objects after increasing the MURMUR3 parameter
         and restarting the cluster
         """
         self._resharding_basic(self.smp, rows=1000, murmur3=self.MURMUR3_PARTITIONER_FOR_INCREASE)
 
-    def resharding_by_murmur3_decrease_test(self):
+    def test_resharding_by_murmur3_decrease(self):
         """
         Resharding with 10M objects after decreasing the MURMUR3 parameter
         and restarting the cluster
@@ -203,7 +210,7 @@ class ReshardingVariantsTest(ReshardingTestBase):
         self._resharding_basic(self.smp, rows=1000, murmur3=self.MURMUR3_PARTITIONER_FOR_DECREASE)
 
     @flaky
-    def resharding_by_smp_increase_test(self):
+    def test_resharding_by_smp_increase(self):
         """
         Resharding with 10M objects after increasing the SMP parameter
         and restarting the cluster
@@ -211,21 +218,21 @@ class ReshardingVariantsTest(ReshardingTestBase):
         self._resharding_basic(self.SMP_FOR_INCREASE, rows=10000, murmur3=self.murmur3)
 
     @flaky
-    def resharding_by_smp_decrease_test(self):
+    def test_resharding_by_smp_decrease(self):
         """
         Resharding with 10M objects after decreasing the SMP parameter
         and restarting the cluster
         """
         self._resharding_basic(self.SMP_FOR_DECREASE, rows=100000, murmur3=self.murmur3)
 
-    def resharding_by_same_smp_test(self):
+    def test_resharding_by_same_smp(self):
         """
         Cluster with 10M objects. Both SMP and MURMUR3 parameter are not changed.
         No resharding expected
         """
         self._resharding_basic(self.smp, rows=1000, murmur3=self.murmur3)
 
-    def resharding_by_murmur3_smp_test(self):
+    def test_resharding_by_murmur3_smp(self):
         """
         Cluster with 10M objects. Both SMP and MURMUR3 parameter are changed
         and restarting the cluster
@@ -233,11 +240,12 @@ class ReshardingVariantsTest(ReshardingTestBase):
         self._resharding_basic(self.SMP_FOR_INCREASE, rows=1000, murmur3=self.MURMUR3_PARTITIONER_FOR_INCREASE)
 
     @flaky
-    def resharding_counter_test(self):
+    def test_resharding_counter(self):
         """
         Resharding with small counter data set(c-s 1M counter objects) after changing the parameter
         and restarting the cluster
         """
+        self.prepare()
         keyspace_name = 'keyspace1'
         session = self.patient_cql_connection(self.node)
         # If test failed and re-run by @flaky decorator, the existent keyspace should be re-created
@@ -269,7 +277,7 @@ class ReshardingVariantsTest(ReshardingTestBase):
                 AND speculative_retry = '99.0PERCENTILE';
         """ % keyspace_name)
 
-        debug('Run counter_write stress test on node1')
+        logger.debug('Run counter_write stress test on node1')
         op_cnt = 10000
         stress_cmd = ['counter_write', 'n={}'.format(op_cnt), 'no-warmup', '-rate', 'threads=16',
                       '-schema', 'replication(factor={})'.format(self.rf),
@@ -284,7 +292,7 @@ class ReshardingVariantsTest(ReshardingTestBase):
         self._verify_number_of_data_files(data_files_num_before=data_files_num_before, reshard_to=self.SMP_FOR_INCREASE)
 
         res = self._wait_for_resharding()
-        self.assertEquals(res, True, 'Failed to recognize re-sharding finish')
+        assert res, 'Failed to recognize re-sharding finish'
 
         self._verify_number_of_data_files(data_files_num_before=data_files_num_before, reshard_to=self.SMP_FOR_INCREASE)
         self.check_errors_all_nodes()
@@ -293,13 +301,14 @@ class ReshardingVariantsTest(ReshardingTestBase):
         self._verify_data(op_cnt, stress_cmd)
         self._verify_row_number('counter1', op_cnt)
 
-    def resharding_mv_test(self):
+    def test_resharding_mv(self):
         """
         Resharding with small counter data set(c-s 1M counter objects) after changing the parameter
         and restarting the cluster
         """
+        self.prepare()
         session = self.patient_cql_connection(self.node)
-        self.create_ks(session, 'ks', self.rf)
+        create_ks(session, 'ks', self.rf)
         compaction = {'compaction': {'class': self.compaction_strategy}}
         op_cnt = 10000
         tm = TableManager(session, self.cluster,
@@ -324,7 +333,7 @@ class ReshardingVariantsTest(ReshardingTestBase):
                                           ks=tm.keyspace, cf=tm.table_name)
 
         res = self._wait_for_resharding()
-        self.assertEquals(res, True, 'Failed to recognize re-sharding finish')
+        assert res, 'Failed to recognize re-sharding finish'
 
         self._verify_number_of_data_files(data_files_num_before=data_files_num_before, reshard_to=self.SMP_FOR_INCREASE,
                                           ks=tm.keyspace, cf=tm.table_name)
@@ -353,12 +362,12 @@ strategies = ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'Date
 murmur3 = 15
 for node_count in [1, 4]:
     for strategy in strategies:
-        cls_name = ('ReshardingTest_nodes' + str(node_count) + '_with_' + strategy)
-        vars()[cls_name] = type(cls_name, (ReshardingVariantsTest,), {'nodes': node_count, 'compaction_strategy': strategy,
+        cls_name = ('TestResharding_nodes' + str(node_count) + '_with_' + strategy)
+        vars()[cls_name] = type(cls_name, (TestReshardingVariants,), {'nodes': node_count, 'compaction_strategy': strategy,
                                                                       'murmur3': murmur3, '__test__': True})
 
 for node_count in [1]:
     for strategy in ['TimeWindowCompactionStrategy']:
-        cls_name = ('ReshardingTest_nodes' + str(node_count) + '_with_' + strategy)
-        vars()[cls_name] = type(cls_name, (ReshardingSingleNodeGatingTest,), {'nodes': node_count, 'compaction_strategy': strategy,
+        cls_name = ('TestResharding_nodes' + str(node_count) + '_with_' + strategy)
+        vars()[cls_name] = type(cls_name, (TestReshardingSingleNodeGating,), {'nodes': node_count, 'compaction_strategy': strategy,
                                                                               'murmur3': murmur3, '__test__': True})
