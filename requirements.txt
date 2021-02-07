@@ -25,3 +25,4 @@ pytest-elk-reporter==0.2.1
 pytest-xdist==2.2.0
 pytest-randomly==3.5.0
 pytest-repeat==0.9.1
+filelock==3.0.12
