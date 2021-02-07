@@ -7,6 +7,8 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_DIR = './'
+
 
 def replace_in_file(filepath, search_replacements):
     """

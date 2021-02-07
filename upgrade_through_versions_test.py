@@ -4,6 +4,9 @@ import os
 import pprint
 import random
 import re
+
+import pytest
+
 import schema_metadata_test
 import signal
 import subprocess
@@ -18,8 +21,14 @@ import psutil
 
 from cassandra import ConsistencyLevel, WriteTimeout
 from cassandra.query import SimpleStatement
-from dtest import DEFAULT_DIR, Tester, debug
-from tools import generate_ssl_stores, new_node
+from dtest_class import Tester
+from dtest_setup import DTestSetup
+from dtest_setup_overrides import DTestSetupOverrides
+from tools.files import DEFAULT_DIR
+from tools.misc import generate_ssl_stores, ImmutableMapping
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Versions are tuples of (major_ver, minor_ver)
 # Used to build upgrade path(s) for tests. Some tests will go from start to finish,
@@ -64,21 +73,23 @@ for row in GIT_LS.split('\n'):
     MAPPED_REFS[ref_type][ref.split('^')[0]] = sha
 
 # We often want this post-mortem when debugging may have been disabled, so print/pprint is intentional here
-print("************************************* GIT REFS USED FOR THIS TEST RUN *********************************************")
-print("************************** KEEP IN MIND THAT A SHA MAY POINT TO ANOTHER COMMIT SHA! *******************************")
+print(
+    "************************************* GIT REFS USED FOR THIS TEST RUN *********************************************")
+print(
+    "************************** KEEP IN MIND THAT A SHA MAY POINT TO ANOTHER COMMIT SHA! *******************************")
 for ref_type in MAPPED_REFS.keys():
     print("Git refs for {}:".format(ref_type.upper()))
     pprint.pprint(MAPPED_REFS[ref_type], indent=4)
 
 if os.environ.get('CASSANDRA_VERSION'):
-    debug('CASSANDRA_VERSION is not used by upgrade tests!')
+    logger.debug('CASSANDRA_VERSION is not used by upgrade tests!')
 
 
 def sha_for_ref_name(ref_name, ref_type='tags'):
     return MAPPED_REFS[ref_type][ref_name]
 
 
-class GitSemVer(object):
+class GitSemVer:
     """
     Wraps a git ref up with a semver (as LooseVersion)
     """
@@ -179,7 +190,7 @@ def switch_jdks(version):
             os.environ['JAVA_HOME'] = os.environ['JAVA8_HOME']
     except KeyError:
         raise RuntimeError("You need to set JAVA7_HOME and JAVA8_HOME to run these tests!")
-    debug("Set JAVA_HOME: [{}] for cassandra version: [{}]".format(os.environ['JAVA_HOME'], version))
+    logger.debug("Set JAVA_HOME: [{}] for cassandra version: [{}]".format(os.environ['JAVA_HOME'], version))
 
 
 def data_writer(tester, to_verify_queue, verification_done_queue, rewrite_probability=0):
@@ -225,7 +236,7 @@ def data_writer(tester, to_verify_queue, verification_done_queue, rewrite_probab
 
             to_verify_queue.put_nowait((key, val,))
         except Exception:
-            debug("Error in data writer process!")
+            logger.debug("Error in data writer process!")
             to_verify_queue.close()
             raise
 
@@ -265,7 +276,7 @@ def data_checker(tester, to_verify_queue, verification_done_queue):
             time.sleep(0.1)  # let's not eat CPU if the queue is empty
             continue
         except Exception:
-            debug("Error in data verifier process!")
+            logger.debug("Error in data verifier process!")
             verification_done_queue.close()
             raise
         else:
@@ -323,7 +334,7 @@ def counter_incrementer(tester, to_verify_queue, verification_done_queue, rewrit
 
             to_verify_queue.put_nowait((key, count + 1,))
         except Exception:
-            debug("Error in counter incrementer process!")
+            logger.debug("Error in counter incrementer process!")
             to_verify_queue.close()
             raise
 
@@ -363,7 +374,7 @@ def counter_checker(tester, to_verify_queue, verification_done_queue):
             time.sleep(0.1)  # let's not eat CPU if the queue is empty
             continue
         except Exception:
-            debug("Error in counter verifier process!")
+            logger.debug("Error in counter verifier process!")
             verification_done_queue.close()
             raise
         else:
@@ -386,21 +397,27 @@ class TestUpgradeThroughVersions(Tester):
     test_versions = None  # set on init to know which versions to use
     subprocs = None  # holds any subprocesses, for status checking and cleanup
 
-    def __init__(self, *args, **kwargs):
-        # Ignore these log patterns:
-        self.ignore_log_patterns = [
+    @pytest.fixture(scope='function', autouse=True)
+    def fixture_dtest_setup_overrides(self, dtest_config):
+        dtest_setup_overrides = DTestSetupOverrides()
+        # Force cluster options that are common among versions:
+        dtest_setup_overrides.cluster_options = ImmutableMapping(
+            {'partitioner': 'org.apache.cassandra.dht.Murmur3Partitioner'})
+        self.subprocs = []
+        return dtest_setup_overrides
+
+    @pytest.fixture(autouse=True)
+    def fixture_add_additional_log_patterns(self, fixture_dtest_setup: DTestSetup):
+        fixture_dtest_setup.allow_log_errors = True
+        fixture_dtest_setup.ignore_log_patterns = (
             # This one occurs if we do a non-rolling upgrade, the node
             # it's trying to send the migration to hasn't started yet,
             # and when it does, it gets replayed and everything is fine.
             r'Can\'t send migration request: node.*is down',
-        ]
-        self.subprocs = []
-        # Force cluster options that are common among versions:
-        kwargs['cluster_options'] = {'partitioner': 'org.apache.cassandra.dht.Murmur3Partitioner'}
-        Tester.__init__(self, *args, **kwargs)
+        )
 
     @property
-    def test_versions(self):
+    def scylla_versions(self):
         # Murmur was not present until 1.2+
         return [make_branch_str(v) for v in UPGRADE_PATH]
 
@@ -413,42 +430,43 @@ class TestUpgradeThroughVersions(Tester):
         subprocess.check_call(
             ["ant", "-Dbase.version={}".format(git_ref), "clean", "jar"], cwd=cdir)
 
-    def setUp(self):
+    @pytest.fixture(autouse=True)
+    def setup_version(self):
         # Forcing cluster version on purpose
         if LOCAL_MODE:
-            self._init_local(self.test_versions[0])
+            self._init_local(self.scylla_versions[0])
         else:
-            os.environ['CASSANDRA_VERSION'] = 'git:' + self.test_versions[0]
+            os.environ['CASSANDRA_VERSION'] = 'git:' + self.scylla_versions[0]
 
-        debug("Versions to test (%s): %s" % (type(self), str([v for v in self.test_versions])))
+        logger.debug("Versions to test (%s): %s" % (type(self), str([v for v in self.scylla_versions])))
         switch_jdks(os.environ['CASSANDRA_VERSION'][-3:])
-        super(TestUpgradeThroughVersions, self).setUp()
 
-    def parallel_upgrade_test(self):
+    def test_parallel_upgrade(self):
         """
         Test upgrading cluster all at once (requires cluster downtime).
         """
         self.upgrade_scenario()
 
-    def rolling_upgrade_test(self):
+    def test_rolling_upgrade(self):
         """
         Test rolling upgrade of the cluster, so we have mixed versions part way through.
         """
         self.upgrade_scenario(rolling=True)
 
-    def parallel_upgrade_with_internode_ssl_test(self):
+    def test_parallel_upgrade_with_internode_ssl(self):
         """
         Test upgrading cluster all at once (requires cluster downtime), with internode ssl.
         """
         self.upgrade_scenario(internode_ssl=True)
 
-    def rolling_upgrade_with_internode_ssl_test(self):
+    def test_rolling_upgrade_with_internode_ssl(self):
         """
         Rolling upgrade test using internode ssl.
         """
         self.upgrade_scenario(rolling=True, internode_ssl=True)
 
-    def upgrade_scenario(self, populate=True, create_schema=True, rolling=False, after_upgrade_call=(), internode_ssl=False):
+    def upgrade_scenario(self, populate=True, create_schema=True, rolling=False, after_upgrade_call=(),
+                         internode_ssl=False):
         # Record the rows we write as we go:
         self.row_values = set()
         cluster = self.cluster
@@ -459,17 +477,17 @@ class TestUpgradeThroughVersions(Tester):
             cluster.set_configuration_options({'enable_user_defined_functions': 'true'})
 
         if internode_ssl:
-            debug("***using internode ssl***")
+            logger.debug("***using internode ssl***")
             generate_ssl_stores(self.test_path)
             self.cluster.enable_internode_ssl(self.test_path)
 
         if populate:
             # Start with 3 node cluster
-            debug('Creating cluster (%s)' % self.test_versions[0])
+            logger.debug('Creating cluster (%s)' % self.scylla_versions[0])
             cluster.populate(3)
             [node.start(use_jna=True, wait_for_binary_proto=True) for node in cluster.nodelist()]
         else:
-            debug("Skipping cluster creation (should already be built)")
+            logger.debug("Skipping cluster creation (should already be built)")
 
         # add nodes to self for convenience
         for i, node in enumerate(cluster.nodelist(), 1):
@@ -482,10 +500,10 @@ class TestUpgradeThroughVersions(Tester):
             else:
                 self._create_schema()
         else:
-            debug("Skipping schema creation (should already be built)")
+            logger.debug("Skipping schema creation (should already be built)")
         time.sleep(5)  # sigh...
 
-        self._log_current_ver(self.test_versions[0])
+        self._log_current_ver(self.scylla_versions[0])
         self.created_metadata_versions = []
 
         if rolling:
@@ -496,7 +514,7 @@ class TestUpgradeThroughVersions(Tester):
                 wait_for_rowcount=5000)
 
             # upgrade through versions
-            for tag in self.test_versions[1:]:
+            for tag in self.scylla_versions[1:]:
                 for num, node in enumerate(self.cluster.nodelist()):
                     # sleep (sigh) because driver needs extra time to keep up with topo and make quorum possible
                     # this is ok, because a real world upgrade would proceed much slower than this programmatic one
@@ -507,8 +525,8 @@ class TestUpgradeThroughVersions(Tester):
                     self.upgrade_to_version(tag, partial=True, nodes=(node,))
 
                     self._check_on_subprocs(self.subprocs)
-                    debug('Successfully upgraded %d of %d nodes to %s' %
-                          (num + 1, len(self.cluster.nodelist()), tag))
+                    logger.debug('Successfully upgraded %d of %d nodes to %s' %
+                                 (num + 1, len(self.cluster.nodelist()), tag))
 
                 self.cluster.set_install_dir(version='git:' + tag)
 
@@ -527,13 +545,13 @@ class TestUpgradeThroughVersions(Tester):
         # not a rolling upgrade, do everything in parallel:
         else:
             # upgrade through versions
-            for tag in self.test_versions[1:]:
+            for tag in self.scylla_versions[1:]:
                 self._write_values()
                 self._increment_counters()
 
                 for completed_version in self.created_metadata_versions:
                     self._check_metadata_schemas(completed_version[0], completed_version[1])
-                self._create_metadata_schemas(self.test_versions[self.test_versions.index(tag) - 1])
+                self._create_metadata_schemas(self.scylla_versions[self.scylla_versions.index(tag) - 1])
 
                 self.upgrade_to_version(tag)
                 self.cluster.set_install_dir(version='git:' + tag)
@@ -548,7 +566,7 @@ class TestUpgradeThroughVersions(Tester):
         for call in after_upgrade_call:
             call()
 
-            debug('All nodes successfully upgraded to %s' % tag)
+            logger.debug('All nodes successfully upgraded to %s' % tag)
             self._log_current_ver(tag)
 
         cluster.stop()
@@ -556,8 +574,6 @@ class TestUpgradeThroughVersions(Tester):
     def tearDown(self):
         # just to be super sure we get cleaned up
         self._terminate_subprocs()
-
-        super(TestUpgradeThroughVersions, self).tearDown()
 
     def _check_on_subprocs(self, subprocs):
         """
@@ -580,7 +596,7 @@ class TestUpgradeThroughVersions(Tester):
                 try:
                     psutil.Process(s.pid).kill()  # with fire damnit
                 except Exception:
-                    debug("Error terminating subprocess. There could be a lingering process.")
+                    logger.debug("Error terminating subprocess. There could be a lingering process.")
                     pass
 
     def upgrade_to_version(self, tag, partial=False, nodes=None):
@@ -589,15 +605,15 @@ class TestUpgradeThroughVersions(Tester):
         that are specified by *nodes*, otherwise ignore *nodes* specified
         and upgrade all nodes.
         """
-        debug('Upgrading {nodes} to {tag}'.format(
+        logger.debug('Upgrading {nodes} to {tag}'.format(
             nodes=[n.name for n in nodes] if nodes is not None else 'all nodes', tag=tag))
         switch_jdks(tag)
-        debug(os.environ['JAVA_HOME'])
+        logger.debug(os.environ['JAVA_HOME'])
         if not partial:
             nodes = self.cluster.nodelist()
 
         for node in nodes:
-            debug('Shutting down node: ' + node.name)
+            logger.debug('Shutting down node: ' + node.name)
             node.drain()
             node.watch_log_for("DRAINED")
             node.stop(wait_other_notice=False)
@@ -610,11 +626,11 @@ class TestUpgradeThroughVersions(Tester):
             # Although we're not changing dirs, the source has changed, so ccm probably needs to know
             for node in nodes:
                 node.set_install_dir(install_dir=cdir)
-                debug("Set new cassandra dir for %s: %s" % (node.name, node.get_install_dir()))
+                logger.debug("Set new cassandra dir for %s: %s" % (node.name, node.get_install_dir()))
         else:
             for node in nodes:
                 node.set_install_dir(version='git:' + tag)
-                debug("Set new cassandra dir for %s: %s" % (node.name, node.get_install_dir()))
+                logger.debug("Set new cassandra dir for %s: %s" % (node.name, node.get_install_dir()))
 
         # hacky? yes. We could probably extend ccm to allow this publicly.
         # the topology file needs to be written before any nodes are started
@@ -623,7 +639,7 @@ class TestUpgradeThroughVersions(Tester):
 
         # Restart nodes on new version
         for node in nodes:
-            debug('Starting %s on new version (%s)' % (node.name, tag))
+            logger.debug('Starting %s on new version (%s)' % (node.name, tag))
             # Setup log4j / logback again (necessary moving from 2.0 -> 2.1):
             node.set_log_level("INFO")
             node.start(wait_other_notice=True, wait_for_binary_proto=True)
@@ -633,9 +649,9 @@ class TestUpgradeThroughVersions(Tester):
         """
         Logs where we currently are in the upgrade path, surrounding the current branch/tag, like ***sometag***
         """
-        vers = self.test_versions
+        vers = self.scylla_versions
         curr_index = vers.index(current_tag)
-        debug(
+        logger.debug(
             "Current upgrade path: {}".format(
                 vers[:curr_index] + ['***' + current_tag + '***'] + vers[curr_index + 1:]))
 
@@ -643,19 +659,19 @@ class TestUpgradeThroughVersions(Tester):
         self.created_metadata_versions.append((self.cluster.version(), tag))
         session = self.patient_cql_connection(self.node2)
         session.execute('use upgrade')
-        debug("schema metadata establish tables tag: {0}".format(tag))
+        logger.debug("schema metadata establish tables tag: {0}".format(tag))
 
         for m in filter(lambda mtd: mtd.startswith('establish_'), dir(schema_metadata_test)):
-            debug("schema establish calling: [{0}]".format(m))
+            logger.debug("schema establish calling: [{0}]".format(m))
             getattr(schema_metadata_test, m)(self.cluster.version(), session, tag)
 
     def _check_metadata_schemas(self, version, tag):
         session = self.patient_cql_connection(self.node2)
         session.execute('use upgrade')
-        debug("schema metadata verify version: {0}, tag: {1}".format(version, tag))
+        logger.debug("schema metadata verify version: {0}, tag: {1}".format(version, tag))
 
         for m in filter(lambda mtd: mtd.startswith('verify_'), dir(schema_metadata_test)):
-            debug("schema verify calling: [{0}]".format(m))
+            logger.debug("schema verify calling: [{0}]".format(m))
             getattr(schema_metadata_test, m)(version, self.cluster.version(), 'upgrade', session, tag)
 
     def _create_schema_for_rolling(self):
@@ -712,8 +728,8 @@ class TestUpgradeThroughVersions(Tester):
                 query = SimpleStatement("SELECT k,v FROM cf WHERE k=%d" % x, consistency_level=consistency_level)
                 result = list(session.execute(query))
                 k, v = result[0]
-                self.assertEqual(x, k)
-                self.assertEqual(str(x), v)
+                assert x == k
+                assert str(x) == v
 
     def _wait_until_queue_condition(self, label, queue, opfunc, required_len, max_wait_s=300):
         """
@@ -731,14 +747,15 @@ class TestUpgradeThroughVersions(Tester):
             try:
                 qsize = queue.qsize()
             except NotImplementedError:
-                debug("Queue size may not be checkable on Mac OS X. Test will continue without waiting.")
+                logger.debug("Queue size may not be checkable on Mac OS X. Test will continue without waiting.")
                 break
             if opfunc(qsize, required_len):
-                debug("{} queue size ({}) is '{}' to {}. Continuing.".format(label, qsize, opfunc.__name__, required_len))
+                logger.debug(
+                    "{} queue size ({}) is '{}' to {}. Continuing.".format(label, qsize, opfunc.__name__, required_len))
                 break
 
             if divmod(round(time.time()), 30)[1] == 0:
-                debug("{} queue size is at {}, target is to reach '{}' {}".format(
+                logger.debug("{} queue size is at {}, target is to reach '{}' {}".format(
                     label, qsize, opfunc.__name__, required_len))
 
             time.sleep(0.1)
@@ -810,7 +827,7 @@ class TestUpgradeThroughVersions(Tester):
         return incrementer, count_verifier, to_verify_queue
 
     def _increment_counters(self, opcount=25000):
-        debug("performing {opcount} counter increments".format(opcount=opcount))
+        logger.debug("performing {opcount} counter increments".format(opcount=opcount))
         session = self.patient_cql_connection(self.node2, protocol_version=PROTOCOL_VERSION)
         session.execute("use upgrade;")
 
@@ -839,7 +856,7 @@ class TestUpgradeThroughVersions(Tester):
         assert fail_count < 100, "Too many counter increment failures"
 
     def _check_counters(self):
-        debug("Checking counter values...")
+        logger.debug("Checking counter values...")
         session = self.patient_cql_connection(self.node2, protocol_version=PROTOCOL_VERSION)
         session.execute("use upgrade;")
 
@@ -847,8 +864,9 @@ class TestUpgradeThroughVersions(Tester):
             for key2 in self.expected_counts[key1].keys():
                 expected_value = self.expected_counts[key1][key2]
 
-                query = SimpleStatement("SELECT c from countertable where k1='{key1}' and k2={key2};".format(key1=key1, key2=key2),
-                                        consistency_level=ConsistencyLevel.ONE)
+                query = SimpleStatement(
+                    "SELECT c from countertable where k1='{key1}' and k2={key2};".format(key1=key1, key2=key2),
+                    consistency_level=ConsistencyLevel.ONE)
                 results = session.execute(query)
 
                 if results is not None:
@@ -861,7 +879,7 @@ class TestUpgradeThroughVersions(Tester):
                     actual_value, expected_value)
 
     def _check_select_count(self, consistency_level=ConsistencyLevel.ALL):
-        debug("Checking SELECT COUNT(*)")
+        logger.debug("Checking SELECT COUNT(*)")
         session = self.patient_cql_connection(self.node2, protocol_version=PROTOCOL_VERSION)
         session.execute("use upgrade;")
 
@@ -872,8 +890,8 @@ class TestUpgradeThroughVersions(Tester):
 
         if result is not None:
             actual_num_rows = result[0][0]
-            self.assertEqual(actual_num_rows, expected_num_rows,
-                             "SELECT COUNT(*) returned %s when expecting %s" % (actual_num_rows, expected_num_rows))
+            assert actual_num_rows == expected_num_rows, \
+                "SELECT COUNT(*) returned %s when expecting %s" % (actual_num_rows, expected_num_rows)
         else:
             self.fail("Count query did not return")
 
@@ -889,21 +907,21 @@ class PointToPointUpgradeBase(TestUpgradeThroughVersions):
     """
     __test__ = False
 
-    def setUp(self):
+    @pytest.fixture(autouse=True)
+    def setup_version(self):
         if LOCAL_MODE:
-            self._init_local(self.test_versions[0])
+            self._init_local(self.scylla_versions[0])
         else:
             # Forcing cluster version on purpose
-            os.environ['CASSANDRA_VERSION'] = 'git:' + self.test_versions[0]
+            os.environ['CASSANDRA_VERSION'] = 'git:' + self.scylla_versions[0]
 
-        debug("Versions to test (%s): %s" % (type(self), str([v for v in self.test_versions])))
+        logger.debug("Versions to test (%s): %s" % (type(self), str([v for v in self.scylla_versions])))
         switch_jdks(os.environ['CASSANDRA_VERSION'])
-        super(TestUpgradeThroughVersions, self).setUp()
 
     def _bootstrap_new_node(self):
         # Check we can bootstrap a new node on the upgraded cluster:
-        debug("Adding a node to the cluster")
-        nnode = new_node(self.cluster, remote_debug_port=str(2000 + len(self.cluster.nodes)))
+        logger.debug("Adding a node to the cluster")
+        nnode = self.cluster.new_node(len(self.cluster.nodelist()) + 1)
         nnode.start(use_jna=True, wait_other_notice=True, wait_for_binary_proto=True)
         self._write_values()
         self._increment_counters()
@@ -912,8 +930,8 @@ class PointToPointUpgradeBase(TestUpgradeThroughVersions):
 
     def _bootstrap_new_node_multidc(self):
         # Check we can bootstrap a new node on the upgraded cluster:
-        debug("Adding a node to the cluster")
-        nnode = new_node(self.cluster, remote_debug_port=str(2000 + len(self.cluster.nodes)), data_center='dc2')
+        logger.debug("Adding a node to the cluster")
+        nnode = self.cluster.new_node(len(self.cluster.nodelist()) + 1, data_center='dc2')
 
         nnode.start(use_jna=True, wait_other_notice=True, wait_for_binary_proto=True)
         self._write_values()
@@ -921,11 +939,11 @@ class PointToPointUpgradeBase(TestUpgradeThroughVersions):
         self._check_values()
         self._check_counters()
 
-    def bootstrap_test(self):
+    def test_bootstrap(self):
         # try and add a new node
         self.upgrade_scenario(after_upgrade_call=(self._bootstrap_new_node,))
 
-    def bootstrap_multidc_test(self):
+    def test_bootstrap_multidc(self):
         # try and add a new node
         # multi dc, 2 nodes in each dc
         cluster = self.cluster
@@ -977,7 +995,7 @@ for from_ver in UPGRADE_PATH:
         cls_name = ('TestUpgrade_from_' + make_ver_str(from_ver) + '_latest_tag_to_' +
                     make_ver_str(from_ver) + '_HEAD').replace('-', '_').replace('.', '_')
         start_ver_latest_tag = latest_tag_matching(from_ver)
-        debug('Creating test upgrade class: {} with start tag of: {} ({})'.format(
+        logger.debug('Creating test upgrade class: {} with start tag of: {} ({})'.format(
             cls_name, start_ver_latest_tag, sha_for_ref_name(start_ver_latest_tag)))
         vars()[cls_name] = type(
             cls_name,
@@ -1000,7 +1018,7 @@ for (from_ver, to_branch) in POINT_UPGRADES:
     cls_name = ('TestUpgrade_from_' + make_ver_str(from_ver) + '_latest_tag_to_' +
                 make_branch_str(to_branch) + '_HEAD').replace('-', '_').replace('.', '_')
     from_ver_latest_tag = latest_tag_matching(from_ver)
-    debug('Creating test upgrade class: {} with start tag of: {} ({})'.format(
+    logger.debug('Creating test upgrade class: {} with start tag of: {} ({})'.format(
         cls_name, from_ver_latest_tag, sha_for_ref_name(from_ver_latest_tag)))
     vars()[cls_name] = type(
         cls_name,
@@ -1011,7 +1029,7 @@ for (from_ver, to_branch) in POINT_UPGRADES:
 for (from_branch, to_branch) in POINT_UPGRADES:
     cls_name = ('TestUpgrade_from_' + make_branch_str(from_branch) + '_HEAD_to_' +
                 make_branch_str(to_branch) + '_HEAD').replace('-', '_').replace('.', '_')
-    debug('Creating test upgrade class: {}'.format(cls_name))
+    logger.debug('Creating test upgrade class: {}'.format(cls_name))
     vars()[cls_name] = type(
         cls_name,
         (PointToPointUpgradeBase,),
@@ -1026,7 +1044,7 @@ for (from_branch, to_branch) in POINT_UPGRADES:
     # so these will be skipped.
     if to_ver_latest_tag is None:
         continue
-    debug('Creating test upgrade class: {} with end tag of: {} ({})'.format(
+    logger.debug('Creating test upgrade class: {} with end tag of: {} ({})'.format(
         cls_name, to_ver_latest_tag, sha_for_ref_name(to_ver_latest_tag)))
 
     vars()[cls_name] = type(
