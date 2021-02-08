@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 CDC_GENERATIONS_TABLE = 'system_distributed.cdc_generation_descriptions'
 CDC_STREAMS_TABLE = 'system_distributed.cdc_streams_descriptions'
 
-CDC_TESTER_TYPE = Union[Tester, "CDCInitializeHelper"]
+CDC_TESTER_TYPE = Union[Tester, "CDCInitializeHelper"]  # pylint: disable=unsubscriptable-object)
 
 
 class CdcLogOperations(IntEnum):

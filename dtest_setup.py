@@ -26,6 +26,7 @@ from dtest_class import (get_ip_from_node, make_execution_profile, get_auth_prov
                          get_eager_protocol_version)
 from distutils.version import LooseVersion
 
+from dtest_config import DTestConfig
 from tools.context import log_filter
 from tools.funcutils import merge_dicts
 
@@ -174,7 +175,7 @@ def retry_till_success(fun, *args, **kwargs):
 
 
 class DTestSetup:
-    def __init__(self, dtest_config=None, setup_overrides=None, cluster_name="test"):
+    def __init__(self, dtest_config: DTestConfig = None, setup_overrides=None, cluster_name="test"):
         self.dtest_config = dtest_config
         self.setup_overrides = setup_overrides
         self.cluster_name = cluster_name

@@ -1,6 +1,12 @@
-from dtest import Tester
-from tools import debug
-from jmxutils import JolokiaAgent, make_mbean, remove_perf_disable_shared_mem
+import logging
+
+import pytest
+
+from dtest_class import Tester, create_ks
+from tools.jmxutils import JolokiaAgent, make_mbean, remove_perf_disable_shared_mem
+
+
+logger = logging.getLogger(__file__)
 
 
 # We currently only have attributes that are incrementing.
@@ -76,10 +82,12 @@ def MBEAN_VALUES_POST(ks, table):
 
 class TestJMXMetrics(Tester):
 
-    def __init__(self, *args, **kwargs):
-        Tester.__init__(self, *args, **kwargs)
+    @pytest.fixture(autouse=True)
+    def skip_if_scylla(self, dtest_config):
+        if dtest_config.scylla_version:
+            pytest.skip('Test case is not supposed to be run on scylla')
 
-    def begin_test(self):
+    def test_begin(self):
         """
         @jira_ticket CASSANDRA-7436
         This test measures the values of MBeans before and after running a load. We expect
@@ -96,8 +104,8 @@ class TestJMXMetrics(Tester):
         node = cluster.nodelist()[0]
         remove_perf_disable_shared_mem(node)
         cluster.start(wait_for_binary_proto=True)
-        session = self.patient_cql_connection(node)
-        self.create_ks(session, 'keyspace1', 1)
+        session = self.fixture_dtest_setup.patient_cql_connection(node)
+        create_ks(session, 'keyspace1', 1)
         session.execute("""
                         CREATE TABLE keyspace1.counter1 (
                             key blob,
@@ -121,7 +129,7 @@ class TestJMXMetrics(Tester):
                         """)
 
         with JolokiaAgent(node) as jmx:
-            debug("Cluster version {}".format(cluster.version()))
+            logger.info("Cluster version {}".format(cluster.version()))
             if cluster.version() <= '2.2.X':
                 mbean_values = MBEAN_VALUES_PRE('keyspace1', 'counter1')
                 mbean_aliases = None
@@ -132,15 +140,15 @@ class TestJMXMetrics(Tester):
             before = []
             for package, bean, bean_args, attribute, expected in mbean_values:
                 mbean = make_mbean(package, type=bean, **bean_args)
-                debug(mbean)
+                logger.info(mbean)
                 before.append(jmx.read_attribute(mbean, attribute))
 
             if mbean_aliases:
                 alias_counter = 0
                 for package, bean, bean_args, attribute, expected in mbean_aliases:
                     mbean = make_mbean(package, type=bean, **bean_args)
-                    debug(mbean)
-                    self.assertEqual(before[alias_counter], jmx.read_attribute(mbean, attribute))
+                    logger.info(mbean)
+                    assert before[alias_counter] == jmx.read_attribute(mbean, attribute)
                     alias_counter += 1
 
             node.stress(['write', 'n=100K'])
@@ -176,11 +184,11 @@ class TestJMXMetrics(Tester):
                                       " which does not equal " + str(expected) + "\n")
                 attr_counter += 1
 
-            self.assertEqual(len(errors), 0, "\n" + "\n".join(errors))
+            assert 0 == len(errors), "\n" + "\n".join(errors)
 
             if mbean_aliases:
                 alias_counter = 0
                 for package, bean, bean_args, attribute, expected in mbean_aliases:
                     mbean = make_mbean(package, type=bean, **bean_args)
-                    self.assertEqual(after[alias_counter], jmx.read_attribute(mbean, attribute))
+                    assert after[alias_counter] == jmx.read_attribute(mbean, attribute)
                     alias_counter += 1
