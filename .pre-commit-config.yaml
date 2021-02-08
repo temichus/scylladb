@@ -45,6 +45,7 @@ repos:
                 tools/.*|
                 conftest.py|
                 cassandra_batch_test.py|
+                cdc_types_test.py|
                 dtest_class.py|
                 dtest_setup.py|
                 deletion_test.py|

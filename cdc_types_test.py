@@ -1,21 +1,164 @@
+import pytest
 import time
 import re
-from datetime import datetime, timedelta, date
-from typing import Tuple
-from enum import IntEnum
+from datetime import datetime, date
 from decimal import Decimal
-
-from nose.plugins.attrib import attr
+from uuid import UUID, uuid1
 
 from cassandra.cluster import Session, SimpleStatement
-from uuid import UUID, uuid1
-from cassandra import ConsistencyLevel
-from cassandra.util import uuid_from_time, datetime_from_uuid1, Time, OrderedMapSerializedKey
-from dtest import Tester, debug, wait_for
-from ccmlib.scylla_cluster import ScyllaNode
-from tools import require
-
+from cassandra.util import uuid_from_time, Time, OrderedMapSerializedKey
 from cdc_tests import CdcLogOperations, CDCInitializeHelper
+from dtest_class import Tester, create_ks
+from dtest_setup_overrides import DTestSetupOverrides
+from tools.misc import ImmutableMapping
+
+native_types_values = [
+    {"cl_type": "bigint", "ins_dataset": 1, "upd_dataset": 2},
+    {"cl_type": "int", "ins_dataset": 3, "upd_dataset": 4},
+    {"cl_type": "smallint", "ins_dataset": 5, "upd_dataset": 6},
+    {"cl_type": "tinyint", "ins_dataset": 8, "upd_dataset": 7},
+    {"cl_type": "varint", "ins_dataset": 1, "upd_dataset": 4},
+    {"cl_type": "boolean", "ins_dataset": True, "upd_dataset": False},
+    {"cl_type": "blob", "ins_dataset": b'1234567890qwertyuiop', "upd_dataset": b'a'},
+    {"cl_type": "date", "ins_dataset": date(2020, 2, 2), "upd_dataset": date(2020, 12, 12)},
+    {"cl_type": "decimal", "ins_dataset": Decimal("10.1"), "upd_dataset": Decimal("12.2")},
+    {"cl_type": "double", "ins_dataset": 10.1000001, "upd_dataset": 22.22222},
+    {"cl_type": "float", "ins_dataset": 33.33000183105469, "upd_dataset": 44.44000244140625},
+    {"cl_type": "inet", "ins_dataset": "1.1.1.1", "upd_dataset": "2.2.2.2"},
+    {"cl_type": "time", "ins_dataset": Time('02:02:02.222'), "upd_dataset": Time('12:12:12.121')},
+    {"cl_type": "timestamp", "ins_dataset": datetime(
+        2020, 2, 2, 2, 2, 2), "upd_dataset": datetime(2020, 3, 3, 3, 3, 3)},
+    {"cl_type": "timeuuid", "ins_dataset": UUID(
+        'b478b7c2-5d3c-11ea-84b5-5aa95d83d60f'), "upd_dataset": UUID('c2ecebac-5d3c-11ea-9fd2-3cd5439c36c3')},
+    {"cl_type": "uuid", "ins_dataset": uuid1(), "upd_dataset": uuid1()},
+    {"cl_type": "varint", "ins_dataset": 1, "upd_dataset": 4},
+    {"cl_type": "text", "ins_dataset": "aaaaaaa", "upd_dataset": "bbbbbbb"},
+    {"cl_type": "varchar", "ins_dataset": "cccccccc", "upd_dataset": "ddddddddd"},
+    {"cl_type": "ascii", "ins_dataset": "0123456789abcdef", "upd_dataset": "abcdef0123456789"},
+]
+
+collections_types = [
+    {
+        "cl_type": "map<text, text>",
+        "ins_dataset": {'key1': "value1", "key2": "value2"},
+        "upd_dataset": {'key3': "value3", "key4": "value4"},
+        "add_el_dataset": {"key5": "value5"},
+        "del_el_dataset": {"key1"},
+        "result_add_element_dataset": {"key1": "value1", "key2": "value2", "key5": "value5"},
+        "result_delete_element_dataset": {"key2": "value2"}
+    },
+    {
+        "cl_type": "map<bigint, text>",
+        "ins_dataset": {1: "value1", 10000: "value2"},
+        "upd_dataset": {2000: "value3", 3: "value4"},
+        "add_el_dataset": {5000: "value5"},
+        "del_el_dataset": {1},
+        "result_add_element_dataset": {1: "value1", 10000: "value2", 5000: "value5"},
+        "result_delete_element_dataset": {10000: "value2"}
+    },
+    {
+        "cl_type": "set<text>",
+        "ins_dataset": {"value1", "value2"},
+        "upd_dataset": {"value3", "value4"},
+        "add_el_dataset": {"value5"},
+        "del_el_dataset": {"value1"},
+        "result_add_element_dataset": {"value1", "value2", "value5"},
+        "result_delete_element_dataset": {"value2"}
+    },
+    {
+        "cl_type": "list<int>",
+        "ins_dataset": [1, 2],
+        "upd_dataset": [3, 4],
+        "add_el_dataset": [5],
+        "del_el_dataset": [1],
+        "result_add_element_dataset": [1, 2, 5],
+        "result_delete_element_dataset": [2]
+    }
+]
+
+frozen_collections = [
+    {"cl_type": "frozen<map<text, text>>", "ins_dataset": {'key1': "value1",
+                                                           "key2": "value2"}, "upd_dataset": {'key3': "value3", "key4": "value4"}},
+    {"cl_type": "frozen<set<text>>", "ins_dataset": {"value1", "value2"}, "upd_dataset": {"value3", "value4"}},
+    {"cl_type": "frozen<list<text>>", "ins_dataset": ["value1", "value2"], "upd_dataset": ["value3", "value4"]},
+    {"cl_type": "frozen<list<int>>", "ins_dataset": [1, 12], "upd_dataset": [3, 13]},
+]
+
+
+class CustomUDT:
+    def __init__(self, **kwargs):
+        for key, value in kwargs.items():
+            self.__dict__[key] = value
+
+    def __str__(self):
+        return str(self.__dict__)
+
+    def __repr__(self):
+        return str(self.__dict__)
+
+
+udt_types = [
+    {
+        "cl_type": {"udt_name": "non_frozen_udt_with_native_types",
+                    "frozen": False,
+                    "fields": {"f_text": "text", "f_bigint": "bigint"}},
+        "ins_dataset": CustomUDT(f_text='text', f_bigint=1),
+        "upd_dataset": CustomUDT(f_text='text2', f_bigint=3),
+        "update_udt_element": {"f_text": 'newtext'},
+        "delete_udt_element": {"f_text": None},
+        "update_element_delta_result": CustomUDT(f_text='newtext', f_bigint=None),
+        "delete_element_delta_result": CustomUDT(f_text=None, f_bigint=None),
+        "postimage_upd_element_dataset": CustomUDT(f_text='newtext', f_bigint=1),
+        "postimage_del_element_dataset": CustomUDT(f_text=None, f_bigint=1),
+    },
+    {
+        "cl_type": {"udt_name": "non_frozen_udt_with_native_types_3_fields",
+                    "frozen": False,
+                    "fields": {"f_varchar": "text", "f_int": "int", "f_timestamp": "timestamp"}},
+        "ins_dataset": CustomUDT(f_varchar='text', f_int=1, f_timestamp=datetime(2020, 2, 2, 2, 2, 2)),
+        "upd_dataset": CustomUDT(f_varchar='text2', f_int=3, f_timestamp=datetime(2021, 3, 3, 3, 3, 3)),
+        "update_udt_element": {"f_varchar": 'newtext', "f_timestamp": datetime(2024, 4, 4, 4, 4, 4)},
+        "delete_udt_element": {"f_varchar": None, "f_timestamp": None},
+        "update_element_delta_result": CustomUDT(f_varchar='newtext', f_timestamp=datetime(2024, 4, 4, 4, 4, 4), f_int=None),
+        "delete_element_delta_result": CustomUDT(f_varchar=None, f_timestamp=None, f_int=None),
+        "postimage_upd_element_dataset": CustomUDT(f_varchar='newtext', f_timestamp=datetime(2024, 4, 4, 4, 4, 4), f_int=1),
+        "postimage_del_element_dataset": CustomUDT(f_varchar=None, f_timestamp=None, f_int=1),
+    },
+    {
+        "cl_type": {"udt_name": "frozen_udt_with_collection",
+                    "frozen": True,
+                    "fields": {"f_text": "text", "f_map": "map<int,text>"}},
+        "ins_dataset": CustomUDT(f_text='text', f_map={1: 'text'}),
+        "upd_dataset": CustomUDT(f_text='text2', f_map={3: 'new_text'}),
+    },
+    {
+        "cl_type": {"udt_name": "frozen_udt_with_several_collection",
+                    "frozen": True,
+                    "fields": {"f_text": "text", "f_map": "map<int,text>", "f_list": "list<int>"}},
+        "ins_dataset": CustomUDT(f_text='text', f_map={1: 'text'}, f_list=[1, 2, 3]),
+        "upd_dataset": CustomUDT(f_text='text2', f_map={3: 'new_text'}, f_list=[4, 5, 6]),
+    },
+    {
+        "cl_type": {"udt_name": "frozen_udt_with_frozen_collection",
+                    "frozen": True,
+                    "fields": {"f_text": "text", "f_map": "frozen<map<int,text>>"}},
+        "ins_dataset": CustomUDT(f_text='text', f_map={1: 'text'}),
+        "upd_dataset": CustomUDT(f_text='text2', f_map={3: 'new_text'}),
+    },
+    {
+        "cl_type": {"udt_name": "udt_with_frozen_collection",
+                    "frozen": False,
+                    "fields": {"f_text": "text", "f_map": "frozen<set<ascii>>"}},
+        "ins_dataset": CustomUDT(f_text='text', f_map={'text'}),
+        "upd_dataset": CustomUDT(f_text='text2', f_map={'new_text'}),
+        "update_udt_element": {"f_text": 'newtext'},
+        "delete_udt_element": {"f_text": None},
+        "update_element_delta_result": CustomUDT(f_text='newtext', f_map=None),
+        "delete_element_delta_result": CustomUDT(f_text=None, f_map=None),
+        "postimage_upd_element_dataset": CustomUDT(f_text='newtext', f_map={'text'}),
+        "postimage_del_element_dataset": CustomUDT(f_text=None, f_map={'text'}),
+    },
+]
 
 
 class CdcTools(Tester, CDCInitializeHelper):
@@ -23,6 +166,15 @@ class CdcTools(Tester, CDCInitializeHelper):
     table = "cf"
     table_cdc_log = f"{table}_scylla_cdc_log"
     _last_timestamp = 0
+
+    @pytest.fixture(scope='function', autouse=True)
+    def fixture_dtest_setup_overrides(self, dtest_config):
+        dtest_setup_overrides = DTestSetupOverrides()
+        dtest_setup_overrides.cluster_options = ImmutableMapping({
+            'experimental_features': ['cdc'],
+            'start_rpc': 'true'
+        })
+        return dtest_setup_overrides
 
     @staticmethod
     def _convert_from_micro_to_milli_seconds(timestamp):
@@ -43,7 +195,7 @@ class CdcTools(Tester, CDCInitializeHelper):
         self.cluster.set_configuration_options(values={"experimental_features": ["cdc"]})
         self.populate_sequentially(num_nodes)
         node = self.cluster.nodelist()[0]
-        session = self.patient_cql_connection(node)
+        session = self.fixture_dtest_setup.patient_cql_connection(node)
         self.create_schema_with_cdc(session, rf=rf,
                                     preimage_enable=preimage_enable,
                                     postimage_enable=postimage_enable,
@@ -69,7 +221,7 @@ class CdcTools(Tester, CDCInitializeHelper):
         statement += "}"
         session.execute(
             f"ALTER keyspace system_distributed with replication={{'class': 'SimpleStrategy', 'replication_factor': {rf}}}")
-        self.create_ks(session, self.keyspace, rf=rf)
+        create_ks(session, self.keyspace, rf=rf)
         session.execute(statement)
 
     def insert_one_with_timestamp(self, session, data, timestamp):
@@ -124,43 +276,43 @@ class CdcTools(Tester, CDCInitializeHelper):
     def check_cdc_base_field_values(self, row, expected_field_values):
         for key in expected_field_values:
             cdc_field_value = getattr(row, key)
-            self.assertEqual(cdc_field_value, expected_field_values[key])
+            assert expected_field_values[key] == cdc_field_value
 
     def check_cdc_base_collection_values(self, row, expected_field_values):
         cf_value = expected_field_values.pop("value")
         for key in expected_field_values:
             cdc_field_value = getattr(row, key)
-            self.assertEqual(cdc_field_value, expected_field_values[key])
+            assert expected_field_values[key] == cdc_field_value
 
         if not cf_value:
-            self.assertFalse(row.value)
+            assert not row.value
         elif isinstance(row.value, OrderedMapSerializedKey):
             if isinstance(cf_value, list):
                 for _, value in row.value.items():
-                    self.assertIn(value, cf_value)
+                    assert value in cf_value
             if isinstance(cf_value, dict):
                 for key, value in row.value.items():
-                    self.assertIn(key, cf_value.keys())
-                    self.assertIn(value, cf_value.values())
+                    assert key in cf_value.keys()
+                    assert value in cf_value.values()
         else:
-            self.assertSetEqual(row.value, cf_value)
+            assert row.value == cf_value
 
     def check_cdc_rec_timestamp(self, rows, timestamp):
         pass
 
     def check_cdc_log_num_row(self, cdc_log_results, expected_num_rows):
-        self.assertEqual(len(cdc_log_results), expected_num_rows)
+        assert expected_num_rows == len(cdc_log_results)
 
     def check_cdc_log_row(self, row, operation, batch_seq, expected_data, deleted_col=None):
-        self.assertEqual(row.cdc_operation, operation)
-        self.assertEqual(row.cdc_batch_seq_no, batch_seq)
+        assert operation == row.cdc_operation
+        assert batch_seq == row.cdc_batch_seq_no
         if deleted_col:
             self.check_cdc_deleted_columns(row, deleted_col)
         self.check_cdc_base_field_values(row, expected_data)
 
     def check_cdc_log_row_collection(self, row, operation, batch_seq, expected_data, deleted_col=None, deleted_keys=None):
-        self.assertEqual(row.cdc_operation, operation)
-        self.assertEqual(row.cdc_batch_seq_no, batch_seq)
+        assert operation == row.cdc_operation
+        assert batch_seq == row.cdc_batch_seq_no
         if deleted_col:
             self.check_cdc_deleted_columns(row, deleted_col)
         if deleted_keys:
@@ -168,35 +320,38 @@ class CdcTools(Tester, CDCInitializeHelper):
         self.check_cdc_base_collection_values(row, expected_data)
 
     def check_cdc_log_row_udt(self, row, operation, batch_seq, expected_data):
-        self.assertEqual(row.cdc_operation, operation)
-        self.assertEqual(row.cdc_batch_seq_no, batch_seq)
+        assert operation == row.cdc_operation
+        assert batch_seq == row.cdc_batch_seq_no
         self.verify_udt_fields(row.value, expected_data)
 
     def verify_udt_fields(self, actual_udt, expected_udt):
         if expected_udt is None:
-            self.assertTrue(actual_udt is None, f"Column with UDT type is not empty: {actual_udt}")
+            assert actual_udt is None, f"Column with UDT type is not empty: {actual_udt}"
         else:
-            self.assertDictEqual(actual_udt.__dict__, expected_udt.__dict__,
-                                 f"Actual UDT {actual_udt} is not equal to expected UDT {expected_udt}")
+            assert expected_udt.__dict__ == actual_udt.__dict__, f"Actual UDT {actual_udt} is not equal " \
+                                                                 f"to expected UDT {expected_udt}"
 
     def check_cdc_deleted_columns(self, row, deleted_columns):
         for col in deleted_columns:
-            self.assertTrue(getattr(row, f"cdc_deleted_{col}"))
+            assert getattr(row, f"cdc_deleted_{col}")
 
     def check_cdc_deleted_elements(self, row, deleted_elements):
         if isinstance(deleted_elements, list):
-            self.assertTrue(row.cdc_deleted_elements_value)
+            assert row.cdc_deleted_elements_value
         else:
             for key in deleted_elements:
-                self.assertIn(key, row.cdc_deleted_elements_value)
+                assert key in row.cdc_deleted_elements_value
 
 
-@attr('dtest-full')
-@attr('single_node', 'scylla-cdc')
-class CDCNativeTypeTmpl(CdcTools):
-
+@pytest.mark.dtest_full
+@pytest.mark.single_node
+@pytest.mark.scylla_cdc
+class TestCDCNativeType(CdcTools):
     columns_data = None
-    __test__ = False
+
+    @pytest.fixture(params=native_types_values + frozen_collections, autouse=True)
+    def fixture_columns_data(self, request):
+        self.columns_data = request.param
 
     @property
     def inserted_dataset(self):
@@ -458,13 +613,15 @@ class CDCNativeTypeTmpl(CdcTools):
                                                  deleted_col=["value"])
 
 
-@attr('dtest-full')
-@attr('single_node')
+@pytest.mark.dtest_full
+@pytest.mark.single_node
 class CDCCollectionsTmpl(CdcTools):
     columns_data = None
-    __test__ = False
-
     timeuuid = uuid_from_time(time.time())
+
+    @pytest.fixture(params=collections_types, autouse=True)
+    def fixture_columns_data(self, request):
+        self.columns_data = request.param
 
     @property
     def inserted_dataset(self):
@@ -689,24 +846,15 @@ class CDCCollectionsTmpl(CdcTools):
                                               expected_data=postimage_expected_data)
 
 
-class CustomUDT:
-    def __init__(self, **kwargs):
-        for key, value in kwargs.items():
-            self.__dict__[key] = value
-
-    def __str__(self):
-        return str(self.__dict__)
-
-    def __repr__(self):
-        return str(self.__dict__)
-
-
-@attr('dtest-full')
-@attr('single_node', 'scylla-cdc')
+@pytest.mark.dtest_full
+@pytest.mark.single_node
+@pytest.mark.scylla_cdc
 class CdcUDTTmpl(CdcTools):
-
     columns_data = None
-    __test__ = False
+
+    @pytest.fixture(params=udt_types, autouse=True)
+    def fixture_columns_data(self, request):
+        self.columns_data = request.param
 
     @property
     def insert_dataset(self):
@@ -757,7 +905,7 @@ class CdcUDTTmpl(CdcTools):
         statement += "}"
         session.execute(
             "ALTER keyspace system_distributed with replication={'class': 'SimpleStrategy', 'replication_factor': '1'}")
-        self.create_ks(session, self.keyspace, rf=rf)
+        create_ks(session, self.keyspace, rf=rf)
         self._create_udt(session)
         session.cluster.register_user_type(self.keyspace, self.udt_name, CustomUDT)
         session.execute(statement)
@@ -783,7 +931,7 @@ class CdcUDTTmpl(CdcTools):
     def test_update_udt_postimage(self):
         self.update_udt_tpl(postimage_enable=True)
 
-    @attr('next-gating')
+    @pytest.mark.next_gating
     def test_update_udt_preimage_postimage(self):
         self.update_udt_tpl(preimage_enable=True, postimage_enable=True)
 
@@ -935,160 +1083,7 @@ class CdcUDTTmpl(CdcTools):
                                        expected_data=expected_udt_result['postimage'])
 
 
-native_types_values = [
-    {"cl_type": "bigint", "ins_dataset": 1, "upd_dataset": 2},
-    {"cl_type": "int", "ins_dataset": 3, "upd_dataset": 4},
-    {"cl_type": "smallint", "ins_dataset": 5, "upd_dataset": 6},
-    {"cl_type": "tinyint", "ins_dataset": 8, "upd_dataset": 7},
-    {"cl_type": "varint", "ins_dataset": 1, "upd_dataset": 4},
-    {"cl_type": "boolean", "ins_dataset": True, "upd_dataset": False},
-    {"cl_type": "blob", "ins_dataset": b'1234567890qwertyuiop', "upd_dataset": b'a'},
-    {"cl_type": "date", "ins_dataset": date(2020, 2, 2), "upd_dataset": date(2020, 12, 12)},
-    {"cl_type": "decimal", "ins_dataset": Decimal("10.1"), "upd_dataset": Decimal("12.2")},
-    {"cl_type": "double", "ins_dataset": 10.1000001, "upd_dataset": 22.22222},
-    {"cl_type": "float", "ins_dataset": 33.33000183105469, "upd_dataset": 44.44000244140625},
-    {"cl_type": "inet", "ins_dataset": "1.1.1.1", "upd_dataset": "2.2.2.2"},
-    {"cl_type": "time", "ins_dataset": Time('02:02:02.222'), "upd_dataset": Time('12:12:12.121')},
-    {"cl_type": "timestamp", "ins_dataset": datetime(
-        2020, 2, 2, 2, 2, 2), "upd_dataset": datetime(2020, 3, 3, 3, 3, 3)},
-    {"cl_type": "timeuuid", "ins_dataset": UUID(
-        'b478b7c2-5d3c-11ea-84b5-5aa95d83d60f'), "upd_dataset": UUID('c2ecebac-5d3c-11ea-9fd2-3cd5439c36c3')},
-    {"cl_type": "uuid", "ins_dataset": uuid1(), "upd_dataset": uuid1()},
-    {"cl_type": "varint", "ins_dataset": 1, "upd_dataset": 4},
-    {"cl_type": "text", "ins_dataset": "aaaaaaa", "upd_dataset": "bbbbbbb"},
-    {"cl_type": "varchar", "ins_dataset": "cccccccc", "upd_dataset": "ddddddddd"},
-    {"cl_type": "ascii", "ins_dataset": "0123456789abcdef", "upd_dataset": "abcdef0123456789"},
-]
-
-collections_types = [
-    {
-        "cl_type": "map<text, text>",
-        "ins_dataset": {'key1': "value1", "key2": "value2"},
-        "upd_dataset": {'key3': "value3", "key4": "value4"},
-        "add_el_dataset": {"key5": "value5"},
-        "del_el_dataset": {"key1"},
-        "result_add_element_dataset": {"key1": "value1", "key2": "value2", "key5": "value5"},
-        "result_delete_element_dataset": {"key2": "value2"}
-    },
-    {
-        "cl_type": "map<bigint, text>",
-        "ins_dataset": {1: "value1", 10000: "value2"},
-        "upd_dataset": {2000: "value3", 3: "value4"},
-        "add_el_dataset": {5000: "value5"},
-        "del_el_dataset": {1},
-        "result_add_element_dataset": {1: "value1", 10000: "value2", 5000: "value5"},
-        "result_delete_element_dataset": {10000: "value2"}
-    },
-    {
-        "cl_type": "set<text>",
-        "ins_dataset": {"value1", "value2"},
-        "upd_dataset": {"value3", "value4"},
-        "add_el_dataset": {"value5"},
-        "del_el_dataset": {"value1"},
-        "result_add_element_dataset": {"value1", "value2", "value5"},
-        "result_delete_element_dataset": {"value2"}
-    },
-    {
-        "cl_type": "list<int>",
-        "ins_dataset": [1, 2],
-        "upd_dataset": [3, 4],
-        "add_el_dataset": [5],
-        "del_el_dataset": [1],
-        "result_add_element_dataset": [1, 2, 5],
-        "result_delete_element_dataset": [2]
-    }
-]
-
-frozen_collections = [
-    {"cl_type": "frozen<map<text, text>>", "ins_dataset": {'key1': "value1",
-                                                           "key2": "value2"}, "upd_dataset": {'key3': "value3", "key4": "value4"}},
-    {"cl_type": "frozen<set<text>>", "ins_dataset": {"value1", "value2"}, "upd_dataset": {"value3", "value4"}},
-    {"cl_type": "frozen<list<text>>", "ins_dataset": ["value1", "value2"], "upd_dataset": ["value3", "value4"]},
-    {"cl_type": "frozen<list<int>>", "ins_dataset": [1, 12], "upd_dataset": [3, 13]},
-]
-
-udt_types = [
-    {
-        "cl_type": {"udt_name": "non_frozen_udt_with_native_types",
-                    "frozen": False,
-                    "fields": {"f_text": "text", "f_bigint": "bigint"}},
-        "ins_dataset": CustomUDT(f_text='text', f_bigint=1),
-        "upd_dataset": CustomUDT(f_text='text2', f_bigint=3),
-        "update_udt_element": {"f_text": 'newtext'},
-        "delete_udt_element": {"f_text": None},
-        "update_element_delta_result": CustomUDT(f_text='newtext', f_bigint=None),
-        "delete_element_delta_result": CustomUDT(f_text=None, f_bigint=None),
-        "postimage_upd_element_dataset": CustomUDT(f_text='newtext', f_bigint=1),
-        "postimage_del_element_dataset": CustomUDT(f_text=None, f_bigint=1),
-    },
-    {
-        "cl_type": {"udt_name": "non_frozen_udt_with_native_types_3_fields",
-                    "frozen": False,
-                    "fields": {"f_varchar": "text", "f_int": "int", "f_timestamp": "timestamp"}},
-        "ins_dataset": CustomUDT(f_varchar='text', f_int=1, f_timestamp=datetime(2020, 2, 2, 2, 2, 2)),
-        "upd_dataset": CustomUDT(f_varchar='text2', f_int=3, f_timestamp=datetime(2021, 3, 3, 3, 3, 3)),
-        "update_udt_element": {"f_varchar": 'newtext', "f_timestamp": datetime(2024, 4, 4, 4, 4, 4)},
-        "delete_udt_element": {"f_varchar": None, "f_timestamp": None},
-        "update_element_delta_result": CustomUDT(f_varchar='newtext', f_timestamp=datetime(2024, 4, 4, 4, 4, 4), f_int=None),
-        "delete_element_delta_result": CustomUDT(f_varchar=None, f_timestamp=None, f_int=None),
-        "postimage_upd_element_dataset": CustomUDT(f_varchar='newtext', f_timestamp=datetime(2024, 4, 4, 4, 4, 4), f_int=1),
-        "postimage_del_element_dataset": CustomUDT(f_varchar=None, f_timestamp=None, f_int=1),
-    },
-    {
-        "cl_type": {"udt_name": "frozen_udt_with_collection",
-                    "frozen": True,
-                    "fields": {"f_text": "text", "f_map": "map<int,text>"}},
-        "ins_dataset": CustomUDT(f_text='text', f_map={1: 'text'}),
-        "upd_dataset": CustomUDT(f_text='text2', f_map={3: 'new_text'}),
-    },
-    {
-        "cl_type": {"udt_name": "frozen_udt_with_several_collection",
-                    "frozen": True,
-                    "fields": {"f_text": "text", "f_map": "map<int,text>", "f_list": "list<int>"}},
-        "ins_dataset": CustomUDT(f_text='text', f_map={1: 'text'}, f_list=[1, 2, 3]),
-        "upd_dataset": CustomUDT(f_text='text2', f_map={3: 'new_text'}, f_list=[4, 5, 6]),
-    },
-    {
-        "cl_type": {"udt_name": "frozen_udt_with_frozen_collection",
-                    "frozen": True,
-                    "fields": {"f_text": "text", "f_map": "frozen<map<int,text>>"}},
-        "ins_dataset": CustomUDT(f_text='text', f_map={1: 'text'}),
-        "upd_dataset": CustomUDT(f_text='text2', f_map={3: 'new_text'}),
-    },
-    {
-        "cl_type": {"udt_name": "udt_with_frozen_collection",
-                    "frozen": False,
-                    "fields": {"f_text": "text", "f_map": "frozen<set<ascii>>"}},
-        "ins_dataset": CustomUDT(f_text='text', f_map={'text'}),
-        "upd_dataset": CustomUDT(f_text='text2', f_map={'new_text'}),
-        "update_udt_element": {"f_text": 'newtext'},
-        "delete_udt_element": {"f_text": None},
-        "update_element_delta_result": CustomUDT(f_text='newtext', f_map=None),
-        "delete_element_delta_result": CustomUDT(f_text=None, f_map=None),
-        "postimage_upd_element_dataset": CustomUDT(f_text='newtext', f_map={'text'}),
-        "postimage_del_element_dataset": CustomUDT(f_text=None, f_map={'text'}),
-    },
-]
-
-
 def mkident(s):
     s = re.sub('\s+', '', s)
     s = re.sub('[<>,]', '_', s)
     return re.sub('_+$', '', s)
-
-
-for native_type in native_types_values:
-    cls_name = ('TestCDCNativeType_with_{}'.format(native_type["cl_type"]))
-    vars()[cls_name] = type(cls_name, (CDCNativeTypeTmpl,), {'columns_data': native_type, '__test__': True})
-
-for frozen_collection_type in frozen_collections:
-    cls_name = ('TestCDCFrozenCollection_with_{}'.format(mkident(frozen_collection_type["cl_type"])))
-    vars()[cls_name] = type(cls_name, (CDCNativeTypeTmpl, ), {'columns_data': frozen_collection_type, '__test__': True})
-
-for collection_type in collections_types:
-    cls_name = ('TestCDCCollectionType_with_{}'.format(mkident(collection_type["cl_type"])))
-    vars()[cls_name] = type(cls_name, (CDCCollectionsTmpl,), {'columns_data': collection_type, '__test__': True})
-
-for udt_type in udt_types:
-    cls_name = ('TestCDCCollectionType_with_{}'.format(mkident(udt_type["cl_type"]["udt_name"])))
-    vars()[cls_name] = type(cls_name, (CdcUDTTmpl,), {'columns_data': udt_type, '__test__': True})
