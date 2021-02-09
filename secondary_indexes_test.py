@@ -1110,7 +1110,7 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
 
         session = self.prepare(self, nodes=nodes, rf=rf, keyspace_name=keyspace_name, session_node=3)
         node2 = self.cluster.nodelist()[1]
-        node2_ip = list(node2.network_interfaces['binary'])[0]
+        node2_ip = list(node2.network_interfaces['binary'])[0].replace('.', r'\.')
 
         create_cf(session, table_name, key_type='int', columns={'b': 'int'},
                   compaction={'class': self.compaction_strategy})
@@ -1127,14 +1127,13 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
         wait_for_view_build_start(session, ks=keyspace_name, view=view_name)
 
         exclude_errors = [f'Can\'t send migration request: node {node2_ip} is down',
-                          f'Error applying view update to {node2_ip}: exceptions::unavailable_exception (Cannot achieve '
-                          f'consistency level for cl ONE. Requires 1, alive 0)',
-                          f'Error applying view update to {node2_ip}: exceptions::mutation_write_timeout_exception '
-                          f'(Operation timed out for {keyspace_name}.{index_name}_index - received only 0 responses '
-                          f'from 1 CL=ONE.)',
+                          f'Error applying view update to {node2_ip}: exceptions::unavailable_exception',
+                          f'Error applying view update to {node2_ip}: exceptions::mutation_write_timeout_exception ',
+                          rf'(Operation timed out for {keyspace_name}\.{index_name}_index - received only 0 responses '
+                          f'from 1 CL=ONE)',
                           f'Error applying view update to .*: exceptions::mutation_write_failure_exception '
-                          f'(Operation failed for {keyspace_name}.{index_name}_index - received 0 responses and 1 '
-                          f'failures from 1 CL=ONE.)',
+                          rf'(Operation failed for {keyspace_name}\.{index_name}_index - received 0 responses and 1 '
+                          f'failures from 1 CL=ONE)',
                           ]
         self.fixture_dtest_setup.ignore_log_patterns += exclude_errors
 
@@ -1218,8 +1217,8 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
 
         exclude_errors = [f'Can\'t send migration request: node {node2_ip} is down',
                           f'Error applying view update to .*: exceptions::mutation_write_failure_exception (Operation '
-                          f'failed for {keyspace_name}.{index_name}_index - received 0 responses and 1 failures from '
-                          f'1 CL=ONE.)',
+                          rf'failed for {keyspace_name}\.{index_name}_index - received 0 responses and 1 failures from '
+                          f'1 CL=ONE)',
                           ]
         self.fixture_dtest_setup.ignore_log_patterns += exclude_errors
 
@@ -2176,7 +2175,7 @@ class TestLocalIndexes(Tester, SecondaryIndexesHelpers):
 
         session = self.prepare(self, nodes=nodes, rf=rf, keyspace_name=keyspace_name, session_node=3)
         node2 = self.cluster.nodelist()[1]
-        node2_ip = list(node2.network_interfaces['binary'])[0]
+        node2_ip = list(node2.network_interfaces['binary'])[0].replace('.', r'\.')
 
         create_cf(session, table_name, key_type='int',
                   columns={'b': 'int'}, compaction={'class': self.compaction_strategy})
@@ -2194,9 +2193,8 @@ class TestLocalIndexes(Tester, SecondaryIndexesHelpers):
         wait_for_view_build_start(session, ks=keyspace_name, view=view_name)
 
         exclude_errors = [f'Can\'t send migration request: node {node2_ip} is down',
-                          f'Error applying view update to {node2_ip}: exceptions::unavailable_exception (Cannot '
-                          f'achieve consistency level for cl ONE. Requires 1, alive 0)',
-                          'Operation timed out for ks.b_index_index - received only 0 responses from 1 CL=ONE.']
+                          f'Error applying view update to {node2_ip}: exceptions::unavailable_exception',
+                          r'Operation timed out for ks\.b_index_index - received only 0 responses from 1 CL=ONE']
         self.fixture_dtest_setup.ignore_log_patterns += exclude_errors
 
         # Perform action on second node
