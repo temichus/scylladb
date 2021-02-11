@@ -5,7 +5,7 @@ from concurrent.futures.thread import ThreadPoolExecutor
 from itertools import groupby
 
 from cassandra import ConsistencyLevel
-from cassandra.concurrent import execute_concurrent_with_args
+from cassandra.concurrent import execute_concurrent_with_args, execute_concurrent
 from cassandra.query import SimpleStatement
 
 from tools import assertions
@@ -14,8 +14,9 @@ from dtest_class import create_cf
 logger = logging.getLogger(__name__)
 
 
-def create_c1c2_table(tester, session, read_repair=None):
-    create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'}, read_repair=read_repair)
+def create_c1c2_table(tester, session, cf="cf", read_repair=None, debug_query=True, compaction=None, caching=True):
+    create_cf(session, cf, columns={'c1': 'text', 'c2': 'text'}, read_repair=read_repair,
+              debug_query=debug_query, compaction=compaction, caching=caching)
 
 
 def insert_c1c2(session, keys=None, n=None, consistency=ConsistencyLevel.QUORUM, c1_values=None, c2_values=None,
@@ -294,3 +295,75 @@ def run_query_with_data_processing(session, query, consistency_level=Consistency
         elif restrict_value and restrict_column:
             result = [item for item in result if item[restrict_column_index] in restrict_value]
     return result
+
+
+def insert_c1c2_no_prepared(session, keys=None, n=None, consistency=ConsistencyLevel.QUORUM,
+                            c1_values=None, c2_values=None, ks='ks', cf='cf'):
+    if keys is None:
+        keys = []
+
+    if c1_values is None:
+        c1_values = []
+
+    if c2_values is None:
+        c2_values = []
+
+    build_insert_params(keys, n, c1_values, c2_values)
+
+    execute_concurrent(session,
+                       map(lambda x, y, z: (SimpleStatement(f'INSERT INTO {ks}.{cf} (key, c1, c2) VALUES (\'k{x}\', \'{y}\', \'{z}\')',
+                                                            consistency_level=consistency), None), keys, c1_values, c2_values))
+
+
+def query_c1c2_concurrent(session, keys, consistency=ConsistencyLevel.QUORUM, tolerate_missing=False, must_be_missing=False, c1_values=None, c2_values=None):
+    if c1_values is None:
+        c1_values = ['value1'] * len(keys)
+
+    if c2_values is None:
+        c2_values = ['value2'] * len(keys)
+
+    if len(c1_values) != len(c2_values) or len(c1_values) != len(keys):
+        raise ValueError(
+            "Inconsistent 'c1/c2_values' contents. 'c1/c2_values' should be either a 'None' value or a list of the same length as a requested number of keys.")
+
+    # prepare a query statement
+    query = 'SELECT c1, c2 FROM cf WHERE key=?'
+    pquery = session.prepare(query)
+    pquery.consistency_level = consistency
+
+    results = execute_concurrent_with_args(session, pquery, map(lambda x: [f'k{x}'], keys))
+    for result, c1, c2 in zip(results, c1_values, c2_values):
+        check_c1c2_result_one(result[0], list(result[1]), tolerate_missing, must_be_missing, c1, c2)
+
+
+def build_insert_params(keys, n, c1_values, c2_values):
+    if (len(keys) == 0 and n is None) or (len(keys) != 0 and n is not None):
+        raise ValueError(f"Expected exactly one of 'keys' or 'n' arguments to not be None; got keys={keys}, n={n}")
+
+    if n:
+        keys.extend(list(range(n)))
+
+    if len(c1_values) == 0:
+        c1_values.extend(['value1'] * len(keys))
+
+    if len(c2_values) == 0:
+        c2_values.extend(['value2'] * len(keys))
+
+    if len(c1_values) != len(c2_values) or len(c1_values) != len(keys):
+        raise ValueError(
+            "Inconsistent 'c1/c2_values' contents. 'c1/c2_values' should be either a '[]' value or a list of the same length as a requested number of keys.")
+
+
+def check_c1c2_result_one(success, rows, tolerate_missing, must_be_missing, c1_value, c2_value):
+    rows = list(rows)
+    if not success:
+        assert False, f"Query failed {rows}"
+
+    if not tolerate_missing:
+        assert len(rows) == 1, f'Wrong length, {len(rows)}'
+        res = rows[0]
+        assert len(res) == 2, f"Expected 2 columns in result, but got: {res}"
+        assert res[0] == c1_value and res[1] == c2_value, f"Expected Row(c1='{c1_value}', c2='{c2_value}'), but got: {res}"
+
+    if must_be_missing:
+        assert len(rows) == 0, f"Number of rows {len(rows)}"

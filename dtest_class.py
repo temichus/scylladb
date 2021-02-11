@@ -383,7 +383,7 @@ def get_eager_protocol_version(cassandra_version):
 # We default to UTF8Type because it's simpler to use in tests
 def create_cf(session, name, key_type="varchar", speculative_retry=None, read_repair=None, compression=None,
               gc_grace=None, columns=None, validation="UTF8Type", compact_storage=False, compaction_strategy='SizeTieredCompactionStrategy',
-              primary_key=None, clustering=None, default_ttl=None, compaction=None):
+              primary_key=None, clustering=None, default_ttl=None, compaction=None, debug_query=False, caching=True):
 
     compaction_fragment = "compaction = {'class': '%s', 'enabled': 'true'}"
     if compaction_strategy == '':
@@ -433,6 +433,12 @@ def create_cf(session, name, key_type="varchar", speculative_retry=None, read_re
 
     if compact_storage:
         query += ' AND COMPACT STORAGE'
+
+    if not caching:
+        query += '%s AND caching={\'enabled\':false}' % query
+
+    if debug_query:
+        logger.debug(query)
 
     try:
         retry_till_success(session.execute, query=query, timeout=120, bypassed_exception=cassandra.OperationTimedOut)

@@ -20,6 +20,7 @@ from cassandra import ConsistencyLevel
 from cassandra.concurrent import execute_concurrent_with_args
 from cassandra.query import SimpleStatement
 
+from dtest_class import create_cf
 
 logger = logging.getLogger(__name__)
 
@@ -35,8 +36,8 @@ def chunks_list(lst, num_chunks):
 
 
 def create_c1c2_table(tester, session, cf="cf", read_repair=None, debug_query=True, compaction=None, caching=True):
-    tester.create_cf(session, cf, columns={'c1': 'text', 'c2': 'text'}, read_repair=read_repair,
-                     debug_query=debug_query, compaction=compaction, caching=caching)
+    create_cf(session, cf, columns={'c1': 'text', 'c2': 'text'}, read_repair=read_repair,
+              debug_query=debug_query, compaction=compaction, caching=caching)
 
 
 def delete_c1c2(session, keys=None, n=None, consistency=ConsistencyLevel.QUORUM, cf="cf"):
