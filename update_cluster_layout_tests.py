@@ -13,7 +13,9 @@ from cassandra import Unavailable, ConsistencyLevel, WriteTimeout, OperationTime
 from cassandra.policies import FallthroughRetryPolicy
 from cassandra.query import SimpleStatement
 from cassandra.cluster import NoHostAvailable
+from ccmlib.node import NodetoolError
 from ccmlib.scylla_cluster import ScyllaCluster
+from ccmlib.scylla_node import ScyllaNode
 
 from tools.assertions import assert_invalid
 
@@ -1155,12 +1157,53 @@ class TestUpdateClusterLayout(Tester):
         result = list(session.execute(query))
         assert len(result) == 10
 
-    def test_simple_removenode_3(self):
+    @staticmethod
+    def _run_removenode_api(run_on_node: ScyllaNode, remove_node_hostid: str, ignore_nodes: list = None):
+        api_cmd = f"http://{run_on_node.address()}:10000/storage_service/remove_node/?host_id={remove_node_hostid}"
+        if ignore_nodes:
+            ignore_nodes_ips = ','.join(node.address() for node in ignore_nodes)
+            api_cmd += f"&ignore_nodes={ignore_nodes_ips}"
+
+        logger.debug("Send restful api: " + api_cmd)
+        r = requests.post(api_cmd)
+        logger.debug(r.text)
+        if not ignore_nodes:
+            assert r.status_code != requests.codes.ok
+        else:
+            r.raise_for_status()
+            logger.debug("Node2 is removed from the cluster")
+
+    @staticmethod
+    def _run_removenode_nodetool(run_on_node: ScyllaNode, remove_node_hostid: str, ignore_nodes: list = None):
+        cmd = f"removenode %s {remove_node_hostid}"
+        if ignore_nodes:
+            ignore_nodes_ips = ','.join(node.address() for node in ignore_nodes)
+            cmd = cmd % f"--ignore-dead-nodes {ignore_nodes_ips}"
+
+        try:
+            run_on_node.nodetool(cmd)
+            logger.debug("Node2 is removed from the cluster")
+        except NodetoolError as exc:
+            if not ignore_nodes:
+                if 'needed for removenode operation are down. It is highly recommended ' \
+                   'to fix the down nodes and try again' not in exc.stdout:
+                    raise
+                logger.debug("Nodes={127.0.28.5} needed for removenode operation are down. "
+                             "It is highly recommended to fix the down nodes and try again. "
+                             "Run with best-effort mode (which might cause data inconsistency), "
+                             "run nodetool removenode --ignore-dead-nodes <list_of_dead_nodes> <host_id>.")
+            else:
+                raise
+
+    @pytest.mark.parametrize('removenode_method, ignore_two_nodes', [
+                             ('api', False),
+                             ('api', True),
+                             ('nodetool', False),
+                             pytest.param('nodetool', True, marks=pytest.mark.require("scylla-tools-java:#225"))
+                             ])
+    def test_simple_removenode_3(self, removenode_method: str, ignore_two_nodes: bool):
         """
-        Test removenode with the ignore_nodes option
-        1. Create a cluster with 5 nodes with rf=3, insert data
-        2. stop 2 nodes and remove 1 node with ignore_nodes option
-        3. Check that the data is accesible
+        :param removenode_method: "api" or "nodetool"
         """
         cluster = self.cluster
 
@@ -1183,21 +1226,22 @@ class TestUpdateClusterLayout(Tester):
         assert len(result) == 1000, "should have 1000 items in table"
 
         node5.stop(wait_other_notice=True)
+        ignore_nodes = [node5]
+        if ignore_two_nodes:
+            node4.stop(wait_other_notice=True)
+            ignore_nodes.append(node4)
 
         # removenode should fail since node2 is down
-        api_cmd = f"http://{node1.address()}:10000/storage_service/remove_node/?host_id={node2_hostid}"
-        logger.debug("Send restful api: " + api_cmd)
-        r = requests.post(api_cmd)
-        logger.debug(r.text)
-        r.raise_for_status()
+        if removenode_method == 'api':
+            self._run_removenode_api(run_on_node=node1, remove_node_hostid=node2_hostid)
+        elif removenode_method == "nodetool":
+            self._run_removenode_nodetool(run_on_node=node1, remove_node_hostid=node2_hostid)
 
         # removenode should succeed since we ignore the down node node2
-        ignore_nodes = node5.address()
-        api_cmd = f"http://{node1.address()}:10000/storage_service/remove_node/?host_id={node2_hostid}&ignore_nodes={ignore_nodes}"
-        logger.debug("Send restful api: " + api_cmd)
-        r = requests.post(api_cmd)
-        r.raise_for_status()
-        logger.debug("Node5 is removed from the cluster")
+        if removenode_method == 'api':
+            self._run_removenode_api(run_on_node=node1, remove_node_hostid=node2_hostid, ignore_nodes=ignore_nodes)
+        elif removenode_method == "nodetool":
+            self._run_removenode_nodetool(run_on_node=node1, remove_node_hostid=node2_hostid, ignore_nodes=ignore_nodes)
 
     def _do_simple_removenode(self, kill_coordinator):
         """
