@@ -1,27 +1,45 @@
+# TODO: check this test compared to upstream casandra-dtest, lot of new test in there.
+import os
 import time
+import logging
 
+import pytest
 from cassandra import ConsistencyLevel
 from cassandra.query import SimpleStatement
 
-from dtest import Tester, debug, PRINT_DEBUG
-from tools import since, rows_to_list
+from dtest_class import Tester
+from tools.data import rows_to_list
+
+
+logger = logging.getLogger(__name__)
 
 
 class TestReadRepair(Tester):
 
-    def setUp(self):
-        Tester.setUp(self)
-        self.cluster.populate(3).start(wait_for_binary_proto=True)
+    @pytest.fixture(scope='function')
+    def fixture_set_cluster_settings(self, fixture_dtest_setup):
+        cluster = fixture_dtest_setup.cluster
+        cluster.populate(3)
+        # disable dynamic snitch to make replica selection deterministic
+        # when we use patient_exclusive_cql_connection, CL=1 and RF=n
+        cluster.set_configuration_options(values={'hinted_handoff_enabled': False,
+                                                  'endpoint_snitch': 'GossipingPropertyFileSnitch',
+                                                  'dynamic_snitch': False})
+        for node in cluster.nodelist():
+            with open(os.path.join(node.get_conf_dir(), 'cassandra-rackdc.properties'), 'w') as snitch_file:
+                snitch_file.write("dc=datacenter1" + os.linesep)
+                snitch_file.write("rack=rack1" + os.linesep)
+                snitch_file.write("prefer_local=true" + os.linesep)
 
-    @since('3.0')
-    def alter_rf_and_run_read_repair_test(self):
+        cluster.start()
+
+    def test_alter_rf_and_run_read_repair(self, fixture_set_cluster_settings):
         """
         @jira_ticket CASSANDRA-10655
 
         Data responses may skip values for columns not selected by the column filter. This can lead to empty values being
         erroneously included in repair mutations sent out by the coordinator.
         """
-
         session = self.patient_cql_connection(self.cluster.nodelist()[0])
         session.execute("""CREATE KEYSPACE alter_rf_test
                            WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};""")
@@ -32,13 +50,13 @@ class TestReadRepair(Tester):
 
         # identify the initial replica and trigger a flush to ensure reads come from sstables
         initial_replica, non_replicas = self.identify_initial_placement('alter_rf_test', 't1', 1)
-        debug("At RF=1 replica for data is " + initial_replica.name)
+        logger.info("At RF=1 replica for data is " + initial_replica.name)
         initial_replica.flush()
 
         # At RF=1, it shouldn't matter which node we query, as the actual data should always come from the
         # initial replica when reading at CL ONE
         for n in self.cluster.nodelist():
-            debug("Checking " + n.name)
+            logger.info("Checking " + n.name)
             session = self.patient_exclusive_cql_connection(n)
             res = rows_to_list(session.execute(cl_one_stmt))
             assert res == [[1, 1, 1]], res
@@ -48,21 +66,21 @@ class TestReadRepair(Tester):
         # only selecting a single column, the expectation is that the entire row is read on each replica to construct
         # the digest responses as well as the full data reads for repair. So we expect that after the read repair, all
         # replicas will have the entire row
-        debug("Changing RF from 1 to 3")
+        logger.info("Changing RF from 1 to 3")
         session.execute("""ALTER KEYSPACE alter_rf_test
                            WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3};""")
         cl_all_stmt = SimpleStatement("SELECT a FROM alter_rf_test.t1 WHERE k=1",
                                       consistency_level=ConsistencyLevel.ALL)
-        debug("Executing SELECT on non-initial replica to trigger read repair " + non_replicas[0].name)
+        logger.info("Executing SELECT on non-initial replica to trigger read repair " + non_replicas[0].name)
         read_repair_session = self.patient_exclusive_cql_connection(non_replicas[0])
         res = read_repair_session.execute(cl_all_stmt)
         # result of the CL ALL query contains only the selected column
         assert rows_to_list(res) == [[1]], res
 
         # Now check the results of the read repair by querying each replica again at CL ONE
-        debug("Re-running SELECTs at CL ONE to verify read repair")
+        logger.info("Re-running SELECTs at CL ONE to verify read repair")
         for n in self.cluster.nodelist():
-            debug("Checking " + n.name)
+            logger.info("Checking " + n.name)
             session = self.patient_exclusive_cql_connection(n)
             res = rows_to_list(session.execute(cl_one_stmt))
             assert res == [[1, 1, 1]], res
@@ -83,8 +101,7 @@ class TestReadRepair(Tester):
 
         return initial_replica, non_replicas
 
-    @since('2.0')
-    def range_slice_query_with_tombstones_test(self):
+    def test_range_slice_query_with_tombstones(self, fixture_set_cluster_settings):
         """
         @jira_ticket CASSANDRA-8989
         @jira_ticket CASSANDRA-9502
@@ -139,8 +156,7 @@ class TestReadRepair(Tester):
 
     def pprint_trace(self, trace):
         """Pretty print a trace"""
-        if PRINT_DEBUG:
-            print("-" * 40)
-            for t in trace.events:
-                print("%s\t%s\t%s\t%s" % (t.source, t.source_elapsed, t.description, t.thread_name))
-            print("-" * 40)
+        logger.debug("-" * 40)
+        for t in trace.events:
+            logger.debug("%s\t%s\t%s\t%s" % (t.source, t.source_elapsed, t.description, t.thread_name))
+        logger.debug("-" * 40)
