@@ -1,7 +1,7 @@
 from threading import Thread, Event
 from dsr.base.d_entity import DEntity
 from ccmlib.node import Node
-from dtest import Tester
+from dtest_class import Tester
 from cassandra import ConsistencyLevel
 
 

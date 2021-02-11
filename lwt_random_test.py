@@ -11,37 +11,49 @@
 # Actions, their impact on the cluster, serialization and deserialization
 # infrastructure used to make the tests repeatable is implemented
 # in 'dsr' library - abbreviation from deterministic state-aware randomness.
+import pytest
 
 from random import choice
-from nose.plugins.attrib import attr
 from cassandra import ConsistencyLevel
-
-from dtest import Tester
-from tools import since
-from unittest import skip
 
 from dsr.scylla_cluster.cluster import ScyllaClusterTest
 from dsr.loaders.intkeyloaders import IntKeyLoader
 from dsr.scylla_cluster.actions import DecommissionRemoveNode, StopNode, StartNode, RemoveNode, AddNode, \
     RebootNode, RepairNode, FlushNode, CompactNode, RebuildNode, DrainNode, DecommissionNode, ReplaceNode
+from dtest_class import Tester
+from dtest_setup import DTestSetup
 
 
-@attr('dtest-full')
+@pytest.mark.dtest_full
 class TestRandomPaxos(Tester):
-    def shortDescription(self):
+
+    @pytest.fixture(autouse=True)
+    def fixture_add_additional_log_patterns(self, fixture_dtest_setup: DTestSetup):
+        fixture_dtest_setup.allow_log_errors = True
+
+    @pytest.hookimpl(hookwrapper=True)
+    def pytest_runtest_makereport(self, item, call):
         """
         Needed to see python code that will reproduce the test, if it has failed.
         In order to reproduce the test, take code you see in the error message,
           put in into the test file and run the test case.
         """
+
+        outcome = yield
+        report = outcome.get_result()
+        test_fn = item.obj
         if hasattr(self, 'test_info'):
-            return f""" In order to reproduce it add following code into test class body and run it:
-    def test_fail_repro(self):
-        self.test_info = ScyllaClusterTest.load({repr(self.test_info.save())})
-        self.test_info.randomize()
-        self.test_info.execute(tester=self)
-                    """
-        return super().shortDescription()
+            docstring = f""" In order to reproduce it add following code into test class body and run it:
+                def test_fail_repro(self):
+                    self.test_info = ScyllaClusterTest.load({repr(self.test_info.save())})
+                    self.test_info.randomize()
+                    self.test_info.execute(tester=self)
+            """
+        else:
+            docstring = getattr(test_fn, '__doc__')
+
+        if docstring:
+            report.nodeid = docstring
 
     def test_topology_add_decommission_reboot(self):
         """
@@ -144,7 +156,7 @@ class TestRandomPaxos(Tester):
         self.test_info.randomize()
         self.test_info.execute(tester=self)
 
-    @skip('Fails on couple of corner cases. To be fixed.')
+    @pytest.mark.skip('Fails on couple of corner cases. To be fixed.')
     def test_topology_change_all_random(self):
         self.test_info = ScyllaClusterTest(
             debug=True,

@@ -8,7 +8,7 @@ from dsr.base.dsr_entity import DSREntity
 from .states import ClusterState
 from ..loaders.base import LoaderBase
 
-from dtest import Tester
+from dtest_class import Tester
 
 
 class ScyllaClusterTest(DSREntity):
