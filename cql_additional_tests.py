@@ -1902,7 +1902,13 @@ class TestCQL(Tester):
     @pytest.mark.single_node
     def test_keyspace_creation_options(self):
         """ Check one can use arbitrary name for datacenter when creating keyspace (#4278) """
-        session = self.prepare()
+        cluster = self.cluster
+        cluster.set_configuration_options(values={'endpoint_snitch': 'GossipingPropertyFileSnitch'})
+        cluster.new_node(1, data_center='us-east')
+        cluster.new_node(2, data_center='us-west')
+        cluster.start()
+        node1 = cluster.nodelist()[0]
+        session = self.patient_cql_connection(node1)
 
         # we just want to make sure the following is valid
         if parse_version(self.cluster.version()) >= parse_version('1.2'):
