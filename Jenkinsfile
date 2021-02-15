@@ -28,9 +28,7 @@ def pullRequestContainsLabels(String labels){
 
 pipeline {
     agent {
-        label {
             label "sct-builders"
-        }
     }
     environment {
         AWS_ACCESS_KEY_ID         = credentials('qa-aws-secret-key-id')

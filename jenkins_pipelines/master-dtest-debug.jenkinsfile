@@ -1,0 +1,10 @@
+#!groovy
+
+// trick from https://github.com/jenkinsci/workflow-cps-global-lib-plugin/pull/43
+def lib = library identifier: 'dtest@snapshot', retriever: legacySCM(scm)
+
+dtestPipeline(
+    BUILD_MODE: 'debug',
+    PRODUCT_NAME: 'scylla',
+    BRANCH: 'master',
+)

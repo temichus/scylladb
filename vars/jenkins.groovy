@@ -1,0 +1,66 @@
+#!groovy
+
+import static groovy.json.JsonOutput.*
+
+def getRunningUserInfo () {
+	def buildCause = currentBuild.getBuildCauses()
+	String strBuildCause = buildCause.toString()
+	String runningUserID
+	String runningUserEmail
+	echo "Build cause: |$strBuildCause|"
+
+	if (strBuildCause.contains("Started by user")) {
+		echo "This is a user requested build. get username"
+		// The wrap fails in case the build was triggered by an scm change / timer.
+		wrap([$class: 'BuildUser']) {
+			 // https://wiki.jenkins-ci.org/display/JENKINS/Build+User+Vars+Plugin variables available inside this block
+			 runningUserID = "${BUILD_USER_ID}"
+			 runningUserEmail = BUILD_USER_EMAIL
+		}
+	} else {
+		runningUserID = "jenkins"
+		runningUserEmail = "jenkins"
+	}
+	return [ userId: runningUserID, email: runningUserEmail ]
+}
+
+def traceFunctionParams (String functionName, args) {
+	echo "$functionName parameters: ${prettyPrint(toJson(args))}"
+}
+
+def cleanWorkSpaceUponRequest(boolean preserveWorkSpace = false, boolean cleanRootFiles = true) {
+	echo "Cleaning workspace |$WORKSPACE|, Node: |$NODE_NAME|"
+	if (preserveWorkSpace) {
+		echo "Keeping workspace due to user request"
+	} else {
+		// In order to clean also root owned files, first change ownership
+		// https://issues.jenkins-ci.org/browse/JENKINS-24440?focusedCommentId=357010&page=com.atlassian.jira.plugin.system.issuetabpanels%3Acomment-tabpanel#comment-357010
+		if (cleanRootFiles) {
+			sh "sudo chmod -R 777 ."
+		}
+		cleanWs() /* clean up our workspace */
+		// Clean docker images older then 2 weeks to save disk space. The which docker is to prevent error when no docker installed.
+	}
+}
+
+def checkAndTagAwsInstance (String runningUserID) {
+	// TAG the spot instance with more tags
+		wrap([$class: 'BuildUser']) {
+			withCredentials([string(credentialsId: 'jenkins2-aws-secret-key-id', variable: 'AWS_ACCESS_KEY_ID'),
+			string(credentialsId: 'jenkins2-aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')]) {
+
+            def runningInstanceId = sh(script: "curl http://169.254.169.254/latest/meta-data/instance-id | grep '^i-[0-9]*' ", returnStdout: true).trim()
+            def regionId = sh(script: "curl http://169.254.169.254/latest/meta-data/placement/availability-zone | sed 's/.\$//'", returnStdout: true).trim()
+            def isSpotInstance = sh(script: "aws ec2 describe-spot-instance-requests \
+                --region $regionId \
+                --filter Name=instance-id,Values=$runningInstanceId | grep SpotInstanceRequestId | awk -F'\"' \'{print \$4}\'", returnStdout: true).trim()
+            if (!isSpotInstance.isEmpty()) {
+                sh(script: "aws ec2 --region $regionId create-tags \
+                    --resources ${runningInstanceId} \
+                    --tag Key=RunByUser,Value=${runningUserID} Key=JenkinsJobTag,Value=${BUILD_TAG} Key=NodeType,Value=compile-spotfleet Key=keep,Value=5 Key=keep_action,Value=terminate")
+            }
+            def instanceType = sh(script: "curl http://169.254.169.254/latest/meta-data/instance-type", returnStdout: true).trim()
+            echo "instanceType: ${instanceType}"
+		}
+	}
+}
