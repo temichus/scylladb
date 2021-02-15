@@ -76,7 +76,13 @@ class TestStorageProxyCQL(CQLTester):
         """
         CREATE KEYSPACE, USE KEYSPACE, ALTER KEYSPACE, DROP KEYSPACE statements
         """
-        session = self.prepare(create_keyspace=False)
+        cluster = self.cluster
+        cluster.set_configuration_options(values={'endpoint_snitch': 'GossipingPropertyFileSnitch'})
+        cluster.new_node(1, data_center='dc0')
+        cluster.new_node(2, data_center='dc1')
+        cluster.start()
+        node1 = cluster.nodelist()[0]
+        session = self.patient_cql_connection(node1)
 
         session.execute(
             "CREATE KEYSPACE ks WITH replication = { 'class':'SimpleStrategy', 'replication_factor':1} AND DURABLE_WRITES = true")
