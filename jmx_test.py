@@ -1,6 +1,14 @@
 # TODO: https://github.com/apache/cassandra-dtest/blob/trunk/jmx_test.py has more tests (3 tests under TestJMX class
 #       and complete new TestJMXSSL class), on other hand our file contains 1 test which not exists in cassandra-dtest.
 #       Probably, we need to sync with upstream project.
+#
+# It doesn't look like this test is pretty useful for Scylla:
+#
+#  * All Jolokia part is not applicable to Scylla.
+#  * test_cfhistograms test removed in cassandra-dtest because "this test took 44m minutes to run, typically failed,
+#    and provided questionable value."
+#  * the only test we can keep is test_netstats (but need to update regexp) and it's trivial.
+#
 
 import re
 import sys
@@ -20,7 +28,6 @@ PROGRESS_RE = re.compile(r"standard1, (\d+)/")
 logger = logging.getLogger(__name__)
 
 
-@pytest.mark.dtest_full
 class TestJMX(Tester):
 
     @pytest.mark.skipif(sys.platform == "win32", reason="Skip long tests on Windows")
