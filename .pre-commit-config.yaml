@@ -90,7 +90,8 @@ repos:
                 like_operator_test.py|
                 sstableutil_test.py|
                 sstablesplit_test.py|
-                jmx_test.py
+                jmx_test.py|
+                schema_test.py
             )$
         language: system
         types: [python]
