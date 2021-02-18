@@ -1,22 +1,26 @@
+import logging
+import pytest
 import re
 from pkg_resources import parse_version
 
 from cassandra.concurrent import execute_concurrent_with_args
 
-from dtest import Tester, debug
+from dtest_class import Tester, create_ks
 from jmxutils import JolokiaAgent, make_mbean, remove_perf_disable_shared_mem
+
+logger = logging.getLogger(__name__)
 
 
 class TestConfiguration(Tester):
 
-    def compression_chunk_length_test(self):
+    def test_compression_chunk_length(self):
         """ Verify the setting of compression chunk_length [#3558]"""
         cluster = self.cluster
 
         cluster.populate(1).start()
         node = cluster.nodelist()[0]
         session = self.patient_cql_connection(node)
-        self.create_ks(session, 'ks', 1)
+        create_ks(session, 'ks', 1)
 
         create_table_query = "CREATE TABLE test_table (row varchar, name varchar, value int, PRIMARY KEY (row, name));"
         alter_chunk_len_query = "ALTER TABLE test_table WITH compression = {{'sstable_compression' : 'SnappyCompressor', 'chunk_length_kb' : {chunk_length}}};"
@@ -29,7 +33,8 @@ class TestConfiguration(Tester):
         session.execute(alter_chunk_len_query.format(chunk_length=64))
         self._check_chunk_length(session, 64)
 
-    def change_durable_writes_test(self):
+    @pytest.mark.skip("Jolokia is an agent which serve JMX via HTTP, it won't work with Scylla")
+    def test_change_durable_writes(self):
         """
         @jira_ticket CASSANDRA-9560
 
@@ -68,12 +73,11 @@ class TestConfiguration(Tester):
         durable_session.execute("CREATE KEYSPACE ks WITH REPLICATION = {'class': 'SimpleStrategy', 'replication_factor': 1} "
                                 "AND DURABLE_WRITES = true")
         durable_session.execute('CREATE TABLE ks.tab (key int PRIMARY KEY, a int, b int, c int)')
-        debug('commitlog size diff = ' + str(commitlog_size(durable_node) - durable_init_size))
+        logger.debug('commitlog size diff = ' + str(commitlog_size(durable_node) - durable_init_size))
         write_to_trigger_fsync(durable_session, 'ks', 'tab')
 
-        self.assertGreater(commitlog_size(durable_node), durable_init_size,
-                           msg='This test will not work in this environment; '
-                               'write_to_trigger_fsync does not trigger fsync.')
+        assert commitlog_size(
+            durable_node) > durable_init_size, 'This test will not work in this environment; write_to_trigger_fsync does not trigger fsync.'
 
         # get a fresh cluster to work on
         self.tearDown()
@@ -89,8 +93,7 @@ class TestConfiguration(Tester):
         session.execute('CREATE TABLE ks.tab (key int PRIMARY KEY, a int, b int, c int)')
         session.execute('ALTER KEYSPACE ks WITH DURABLE_WRITES=true')
         write_to_trigger_fsync(session, 'ks', 'tab')
-        self.assertGreater(commitlog_size(node), init_size,
-                           msg='ALTER KEYSPACE was not respected')
+        assert commitlog_size(node) > init_size, 'ALTER KEYSPACE was not respected'
 
     def _check_chunk_length(self, session, value):
         result = session.cluster.metadata.keyspaces['ks'].tables['test_table'].as_cql_query()

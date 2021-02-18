@@ -123,7 +123,8 @@ repos:
                 cqlsh_tests/cqlsh_copy_tests.py|
                 simple_boot_shutdown_test.py|
                 delete_insert_test.py|
-                scyllatop_test.py
+                scyllatop_test.py|
+                configuration_test.py
             )$
         language: system
         types: [python]
