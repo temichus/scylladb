@@ -6,6 +6,7 @@ import re
 import stat
 
 import pytest
+import requests
 import sys
 import time
 import shutil
@@ -1052,6 +1053,111 @@ class TestNodetool(Tester):
             assert "RPC_ADDRESS" in info
             assert "DC" in info
             # self.assertIn("SEVERITY", info)
+
+    @staticmethod
+    def _verify_nodes_schema_versions(node, expected_versions_number):
+        desc_cluster = node.nodetool("describecluster")[0].splitlines()
+        desc_cluster = [s.strip() for s in desc_cluster if s.strip()]
+        schema_version_ind = [i for i, s in enumerate(desc_cluster) if s == 'Schema versions:'][0]
+        logger.debug(f"Schema versions: {','.join(desc_cluster[schema_version_ind + 1:])}")
+        assert len(desc_cluster[schema_version_ind + 1:]) == expected_versions_number, \
+            f"Schema versions are different on the nodes: {','.join(desc_cluster[schema_version_ind + 1:])} " \
+            f"unexpectedly"
+
+    @staticmethod
+    def send_storage_restful_api(node, option):
+        api_cmd = f"http://{node.address()}:10000/storage_service/{option}"
+        logger.debug("Send restful api: " + api_cmd)
+        response = requests.post(api_cmd)
+        assert response.status_code == 200, response.text
+
+    def test_resetlocalschema_api(self):
+        self.ignore_log_patterns = ['Invalid window unit NOPE for compaction_window_unit',
+                                    'find a column family with UUID']
+        cluster = self.cluster
+        cluster.populate(2).start(wait_for_binary_proto=True)
+        node1, node2 = cluster.nodelist()
+        session = self.patient_exclusive_cql_connection(node1)
+
+        create_ks(session=session, name='ks', rf=2)
+        create_cf(session=session, name='cf')
+
+        self._verify_nodes_schema_versions(node1, 1)
+
+        log_position = node2.mark_log()
+        self.send_storage_restful_api(node2, 'relocal_schema')
+
+        assert node2.watch_log_for("schema_tables - Schema version changed to", from_mark=log_position, timeout=10), \
+            "Schema recalculation was not performed"
+
+        self._verify_nodes_schema_versions(node1, 1)
+
+        logger.debug("Schema version has been recalculated")
+
+    # TODO: This test should be removed when issue #7811 will be fixed
+    def test_resetlocalschema_api_issue_7811(self):
+        self.ignore_log_patterns = ['Invalid window unit NOPE for compaction_window_unit',
+                                    'find a column family with UUID']
+        cluster = self.cluster
+        cluster.populate(2).start(wait_for_binary_proto=True)
+        node1, node2 = cluster.nodelist()
+        session = self.patient_exclusive_cql_connection(node1)
+
+        create_ks(session=session, name='ks', rf=2)
+
+        try:
+            create_cf(session=session, name='cf',
+                      compaction={'class': 'TimeWindowCompactionStrategy', 'compaction_window_unit': 'NOPE'})
+        except Exception:
+            pass
+
+        self._verify_nodes_schema_versions(node1, 1)
+
+        try:
+            create_cf(session=session, name='cf', compaction={'class': 'TimeWindowCompactionStrategy'})
+        except Exception as exc:
+            # Issue https://github.com/scylladb/scylla/issues/7811
+            pass
+
+        self._verify_nodes_schema_versions(node1, 1)
+
+        log_position = node2.mark_log()
+        self.send_storage_restful_api(node2, 'relocal_schema')
+
+        assert node2.watch_log_for("schema_tables - Schema version changed to", from_mark=log_position, timeout=10), \
+            "Schema recalculation was not performed"
+
+        # After schema recalculation the node, where nodetool was run, will get new schema version,
+        # different from another node
+        self._verify_nodes_schema_versions(node1, 2)
+
+        # By Tomasz's explanation: after 60 sec. the other node should pull and have the same schema version
+        logger.debug("Sleep for 60 sec: the other node should pull new version")
+        time.sleep(60)
+        self._verify_nodes_schema_versions(node1, 1)
+
+        logger.debug("Schema version has been recalculated")
+
+    @pytest.mark.require("scylla-tools-java:#226")
+    def test_resetlocalschema_nodetool(self):
+        cluster = self.cluster
+        cluster.populate(2).start(wait_for_binary_proto=True)
+        node1, node2 = cluster.nodelist()
+        session = self.patient_exclusive_cql_connection(node1)
+
+        create_ks(session=session, name='ks', rf=2)
+        create_cf(session=session, name='cf')
+
+        logger.debug("Run 'nodetool resetlocalschema'")
+        log_position = node2.mark_log()
+        node2.nodetool("resetlocalschema")
+
+        assert node2.watch_log_for("schema_tables - Schema version changed to", from_mark=log_position, timeout=10), \
+            "Schema synchronization was not performed"
+
+        self._verify_nodes_schema_versions(node1, 1)
+
+        logger.debug("Schema version has been recalculated")
 
     def verify_info(self, node=None, dc="datacenter1", rac="rack1"):
         if not node:
