@@ -13,7 +13,7 @@ from collections import namedtuple
 from uuid import UUID
 
 import pytest
-from cassandra import AlreadyExists, ConsistencyLevel, InvalidRequest
+from cassandra import AlreadyExists, ConsistencyLevel, InvalidRequest, ReadTimeout, WriteTimeout
 from cassandra.concurrent import execute_concurrent_with_args
 from cassandra.protocol import ConfigurationException
 from cassandra.protocol import SyntaxException
@@ -6302,6 +6302,45 @@ class TestCQL(Tester):
         self._assert_invalid_filtering(session, "SELECT * FROM test_filter WHERE k1 >= 0 AND k2 in (0,1,2)")
 
         self._assert_invalid_filtering(session, "SELECT * FROM test_filter WHERE k2 > 0")
+
+    def test_cql_timeout_parameter(self):
+        """
+        A new CQL timeout parameter is introduced in: https://github.com/scylladb/scylla/issues/7777
+        """
+        session = self.prepare(nodes=3, rf=3)
+
+        session.execute("""
+            CREATE TABLE test (
+                k int,
+                p int,
+                s int,
+                v int,
+                PRIMARY KEY (k, p)
+            )
+        """)
+
+        # Fill in some data in table should succeed with large enough timeouts.
+        for value in range(10):
+            session.execute(f"INSERT INTO test(k, p) VALUES ({value}, {value}) USING TIMEOUT 60m")
+            session.execute(f"UPDATE test USING TIMEOUT 60m SET v = {value} WHERE p = {value} AND k = {value}")
+        node_to_stop = self.cluster.nodelist()[2]
+        timeout_msg = "Coordinator node timed out waiting for replica nodes"
+
+        # Performing operations with a small enough timeout is guaranteed to fail
+        with pytest.raises(WriteTimeout, match=timeout_msg):
+            session.execute("INSERT INTO test(k, p) VALUES (3, 4) USING TIMEOUT 0ms")
+        with pytest.raises(ReadTimeout, match=timeout_msg):
+            session.execute("SELECT * FROM test USING TIMEOUT 0ms")
+
+        # Stopping one node to test interactions with query timeouts.
+        node_to_stop.stop(wait_other_notice=True)
+        with pytest.raises(WriteTimeout, match=timeout_msg):
+            session.execute("UPDATE test USING TIMEOUT 0ms SET v = 1 WHERE p = 1 AND k = 1")
+        with pytest.raises(ReadTimeout, match=timeout_msg):
+            session.execute("SELECT * FROM test USING TIMEOUT 0ms")
+
+        res = session.execute("SELECT * FROM test USING TIMEOUT 60m")
+        assert len(res.current_rows) == 10, "Unexpected number of table rows."
 
     def _assert_invalid_filtering(self, session, query):
         assert_invalid(session=session, query=query, matching=MSG_ALLOW_FILTERING)
