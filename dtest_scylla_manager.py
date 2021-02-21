@@ -956,6 +956,18 @@ class ManagerTask(ScyllaManagerBase):
         return stdout  # or can be specified like: self.get_property(parsed_table=res, column_name='status')
 
     @property
+    def history_list(self):
+        history_table = self.history
+        keys = history_table[0]
+        value_rows = history_table[1:]
+        complete_list = []
+
+        for row in value_rows:
+            row_dict = dict(zip(keys, row))
+            complete_list.append(row_dict)
+        return complete_list
+
+    @property
     def arguments(self):
         """
         Gets the task's arguments
