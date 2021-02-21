@@ -1,12 +1,19 @@
-from nose.tools import assert_true, assert_false
-from nose.plugins.attrib import attr
-from dtest import Tester
-from unittest import skip
 import time
 import tools
+import pytest
+import logging
 
 
-@attr('dtest-full', 'single_node')
+from dtest_class import Tester, create_ks, create_cf, get_ip_from_node
+from tools.data import create_c1c2_table, insert_c1c2
+from tools.metrics import get_node_metrics
+
+
+logger = logging.getLogger(__file__)
+
+
+@pytest.mark.dtest_full
+@pytest.mark.single_node
 class TestBypassCache(Tester):
     '''
     Test that will verify if the select statement will skip cache during its read
@@ -14,7 +21,7 @@ class TestBypassCache(Tester):
     '''
     NUM_OF_QUERY_EXECUTIONS = 100
 
-    def prepare(self, nodes=1, keyspace_name='bypass_cache', rf=1, options_dict=None, table_name='user_events',
+    def prepare(self, nodes=1, keyspace_name='bypass_cache', rf=1, options_dict=None, table_name="user_events",
                 insert_data=True):
         self.keyspace_name = keyspace_name
         self.table_name = table_name
@@ -24,18 +31,19 @@ class TestBypassCache(Tester):
         cluster.populate(nodes).start()
         node1 = cluster.nodelist()[0]
         session = self.patient_cql_connection(node1)
-        self.create_ks(session=session, name=keyspace_name, rf=rf)
+        create_ks(session=session, name=keyspace_name, rf=rf)
 
         if insert_data:
-            tools.create_c1c2_table(self, session)
-            tools.insert_c1c2(session, n=100)
+            create_c1c2_table(session)
+            insert_c1c2(session, n=100)
 
         return session
 
-    def get_scylla_cache_reads_metrics(self, node, metrics=None):
+    @staticmethod
+    def get_scylla_cache_reads_metrics(node, metrics=None):
         if metrics is None:
             metrics = ['scylla_cache_reads']
-        return self.get_node_metrics(self.get_ip_from_node(node), metrics=metrics)
+        return get_node_metrics(get_ip_from_node(node), metrics=metrics)
 
     def is_read_from_disk(self, node, query, session, metric=None):
         if metric is None:
@@ -50,12 +58,12 @@ class TestBypassCache(Tester):
             cache_read_after_bypass_read * 1.05
 
     def verify_read_was_from_disk(self, node, query, session, metric=None):
-        assert_true(self.is_read_from_disk(node, query, session, metric=metric),
-                    'Read was made from cache instead of bypass it')
+        assert self.is_read_from_disk(node, query, session, metric=metric), \
+            'Read was made from cache instead of bypass it'
 
     def verify_read_was_from_cache(self, node, query, session, metric=None):
-        assert_false(self.is_read_from_disk(node, query, session, metric=metric),
-                     'Read was made from disk instead of from cache')
+        assert not self.is_read_from_disk(node, query, session, metric=metric), \
+            'Read was made from disk instead of from cache'
 
     def test_simple_bypass_cache(self):
         session = self.prepare()
@@ -87,7 +95,7 @@ class TestBypassCache(Tester):
         import string
         session = self.prepare(insert_data=False)
         # create a table
-        self.create_cf(session=session, name='cf', key_type='int')
+        create_cf(session=session, name='cf', key_type='int')
         # populate table with k (int) and values (anything)
         query = 'INSERT INTO cf (key, c, v) VALUES ({}, \'{}\', \'{}\')'
         for idx in range(0, 100):
@@ -102,21 +110,19 @@ class TestBypassCache(Tester):
         session.execute(query)
         after_query = self.get_scylla_cache_reads_metrics(node=node,
                                                           metrics=metrics)
-        assert_true(before_query[metrics[0]] + 1 == before_query[metrics[0]],
-                    f'{metrics[0]} metric was supposed to be incremented by 1 and was\'t.'
-                    f'Before={before_query[metrics[0]]} After={after_query[metrics[0]]}')
+        assert before_query[metrics[0]] + 1 == before_query[metrics[0]], \
+            f'{metrics[0]} metric was supposed to be incremented by 1 and was\'t. ' \
+            f'Before={before_query[metrics[0]]} After={after_query[metrics[0]]}'
         if bypass_cache:
-            assert_true(before_query[metrics[1]] ==
-                        after_query[metrics[1]],
-                        f'{metrics[1]} metric wasn\'t supposed to be incremented '
-                        f'and was. Before={before_query[metrics[1]]} After={after_query[metrics[1]]}')
+            assert before_query[metrics[1]] == after_query[metrics[1]], \
+                f'{metrics[1]} metric wasn\'t supposed to be incremented and was. ' \
+                f'Before={before_query[metrics[1]]} After={after_query[metrics[1]]}'
         else:
-            assert_true(before_query[metrics[1]] + 1 ==
-                        after_query[metrics[1]],
-                        f'{metrics[1]} metric was supposed to be incremented by 1 '
-                        f'and was\'t. Before={before_query[metrics[1]]} After={after_query[metrics[1]]}')
+            assert before_query[metrics[1]] + 1 == after_query[metrics[1]], \
+                f'{metrics[1]} metric was supposed to be incremented by 1 and was\'t. ' \
+                f'Before={before_query[metrics[1]]} After={after_query[metrics[1]]}'
 
-    @skip('skipping until #6045 is fixed')
+    @pytest.mark.skip('skipping until #6045 is fixed')
     def test_range_scan_bypass_cache(self):
         session = self.insert_data_for_scan_range()
         node = self.cluster.nodelist()[0]
@@ -131,7 +137,7 @@ class TestBypassCache(Tester):
                                               bypass_cache=True, metrics=[partition_range_scan_metric,
                                                                           partition_range_scan_no_bypass_cache_metric])
 
-    @skip('skipping until #6045 is fixed')
+    @pytest.mark.skip('skipping until #6045 is fixed')
     def test_full_scan_bypass_cache(self):
         session = self.prepare()
         node = self.cluster.nodelist()[0]
@@ -149,8 +155,8 @@ class TestBypassCache(Tester):
     def test_create_table_caching_disabled(self):
         session = self.prepare(insert_data=False)
         node = self.cluster.nodelist()[0]
-        tools.create_c1c2_table(self, session, cf=self.table_name, caching=False)
-        tools.insert_c1c2(session, n=100, cf=self.table_name)
+        create_c1c2_table(session, cf=self.table_name, caching=False)
+        insert_c1c2(session, n=100, cf=self.table_name)
         node.flush()
         query = f'select * from {self.table_name}'
         self.verify_read_was_from_disk(node=node, query=query, session=session)
@@ -158,8 +164,8 @@ class TestBypassCache(Tester):
     def test_alter_table_caching_disable(self):
         session = self.prepare(insert_data=False)
         node = self.cluster.nodelist()[0]
-        tools.create_c1c2_table(self, session, cf=self.table_name)
-        tools.insert_c1c2(session, n=100, cf=self.table_name)
+        create_c1c2_table(session, cf=self.table_name)
+        insert_c1c2(session, n=100, cf=self.table_name)
         node.flush()
         query = f'select * from {self.table_name}'
         self.verify_read_was_from_cache(node=node, query=query, session=session)
@@ -170,8 +176,8 @@ class TestBypassCache(Tester):
     def test_alter_table_caching_enable(self):
         session = self.prepare(insert_data=False)
         node = self.cluster.nodelist()[0]
-        tools.create_c1c2_table(self, session, cf=self.table_name, caching=False)
-        tools.insert_c1c2(session, n=100, cf=self.table_name)
+        create_c1c2_table(session, cf=self.table_name, caching=False)
+        insert_c1c2(session, n=100, cf=self.table_name)
         node.flush()
         query = f'select * from {self.table_name}'
         self.verify_read_was_from_disk(node=node, query=query, session=session)
@@ -184,8 +190,7 @@ class TestBypassCache(Tester):
         metric = ['scylla_cache_bytes_used']
         for _ in range(self.NUM_OF_QUERY_EXECUTIONS):
             cache_bytes_used_before_write = self.get_scylla_cache_reads_metrics(node=node, metrics=metric)[metric[0]]
-            tools.insert_c1c2(session, keys=list(range(self.first_key + 10)),
-                              cf=self.table_name)
+            insert_c1c2(session, keys=list(range(self.first_key + 10)), cf=self.table_name)
             self.cluster.nodetool(f'flush -- {self.keyspace_name} {self.table_name}')
             cache_bytes_used_after_write = self.get_scylla_cache_reads_metrics(node=node, metrics=metric)[metric[0]]
             if cache_bytes_used_before_write < cache_bytes_used_after_write:
@@ -196,21 +201,21 @@ class TestBypassCache(Tester):
     def test_writes_caching_disabled(self):
         session = self.prepare(insert_data=False)
         node = self.cluster.nodelist()[0]
-        tools.create_c1c2_table(self, session, cf=self.table_name, caching=False)
-        tools.insert_c1c2(session, n=100, cf=self.table_name)
+        create_c1c2_table(session, cf=self.table_name, caching=False)
+        insert_c1c2(session, n=100, cf=self.table_name)
         self.first_key = 0
-        assert_false(self.verify_used_memory_grow(node=node, session=session), 'expected to have writes without cache')
+        assert not self.verify_used_memory_grow(node=node, session=session), 'expected to have writes without cache'
         alter_cmd = f"ALTER TABLE {self.keyspace_name}.{self.table_name} WITH CACHING = {{'enabled': 'true'}}"
         session.execute(alter_cmd)
-        assert_true(self.verify_used_memory_grow(node=node, session=session), 'expected to have writes through cache')
+        assert self.verify_used_memory_grow(node=node, session=session), 'expected to have writes through cache'
 
     def test_writes_caching_enabled(self):
         session = self.prepare(insert_data=False)
         node = self.cluster.nodelist()[0]
-        tools.create_c1c2_table(self, session, cf=self.table_name)
-        tools.insert_c1c2(session, n=100, cf=self.table_name)
+        create_c1c2_table(session, cf=self.table_name)
+        insert_c1c2(session, n=100, cf=self.table_name)
         self.first_key = 0
-        assert_true(self.verify_used_memory_grow(node=node, session=session), 'expected to have writes through cache')
+        assert self.verify_used_memory_grow(node=node, session=session), 'expected to have writes through cache'
         alter_cmd = f"ALTER TABLE {self.keyspace_name}.{self.table_name} WITH CACHING = {{'enabled': 'false'}}"
         session.execute(alter_cmd)
-        assert_false(self.verify_used_memory_grow(node=node, session=session), 'expected to have writes without cache')
+        assert not self.verify_used_memory_grow(node=node, session=session), 'expected to have writes without cache'
