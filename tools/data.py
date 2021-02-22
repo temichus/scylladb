@@ -34,7 +34,7 @@ def insert_c1c2(session, keys=None, n=None, consistency=ConsistencyLevel.QUORUM,
         execute_concurrent_with_args(session, statement,
                                      map(lambda x, y, z: ['k{}'.format(x), y, z], keys, c1_values, c2_values))
     else:
-        statement = session.prepare("INSERT INTO cf (key, c1, c2) VALUES (?, 'value1', 'value2')")
+        statement = session.prepare("INSERT INTO {}.{} (key, c1, c2) VALUES (?, 'value1', 'value2')".format(ks, cf))
         statement.consistency_level = consistency
 
         execute_concurrent_with_args(session, statement, [['k{}'.format(k)] for k in keys])
