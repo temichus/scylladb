@@ -258,7 +258,7 @@ class DTestSetup:
 
         for nodename, errors in list(errordata.items()):
             filtered_errors = list(self.__filter_errors(['\n'.join(msg) for msg in errors]))
-            if len(filtered_errors) is not 0:
+            if len(filtered_errors) != 0:
                 reportable_errordata[nodename] = filtered_errors
 
         # no errors worthy of halting the test
