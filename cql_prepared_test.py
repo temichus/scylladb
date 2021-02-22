@@ -1,22 +1,23 @@
-from dtest import Tester, retry_with_func_attempts, debug
-from nose.plugins.attrib import attr
-from cassandra import ConsistencyLevel
+import logging
+import pytest
+
+from dtest_class import Tester, create_ks
 from cassandra.util import Time, Date, uuid_from_time, SortedSet
-from tools import rows_to_list
-from assertions import assert_one, assert_one_prepared
-from tools import require
+from tools.assertions import assert_one_prepared
+from tools.misc import require
 from scylla_tools import prepare_statement
 
 from decimal import Decimal
-from datetime import datetime, date
+from datetime import datetime
 from collections import namedtuple
 
-import time
 import uuid
 
+logger = logging.getLogger(__name__)
 
-@attr('dtest-full')
-@attr('single_node')
+
+@pytest.mark.dtest_full
+@pytest.mark.single_node
 class TestCQL(Tester):
 
     def prepare(self, options={}):
@@ -29,10 +30,10 @@ class TestCQL(Tester):
         node1 = cluster.nodelist()[0]
 
         session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'ks', 1)
+        create_ks(session, 'ks', 1)
         return session
 
-    def batch_preparation_test(self):
+    def test_batch_preparation(self):
         """ Test preparation of batch statement (#4202) """
         session = self.prepare()
 
@@ -74,7 +75,7 @@ class TestCQL(Tester):
         return table_name
 
     def _lwt_execute_single_type_update_case(self, session, column_type, test_params):
-        debug('Executing a single LWT Update test for type {}'.format(column_type))
+        logger.debug('Executing a single LWT Update test for type {}'.format(column_type))
 
         test_cases = test_params['test_cases']
         default_upd_v = test_params['default_update_value']
@@ -129,11 +130,12 @@ class TestCQL(Tester):
             )
             stmt = prepare_statement(session, update_query)
 
-            debug('Asserting results from two consecutive identical CAS statements with the following query args: {}'.format(query_args))
+            logger.debug(f'Asserting results from two consecutive identical CAS statements with the following '
+                         f'query args: {query_args}')
             assert_one_prepared(session, stmt, [True, init_val], query_args)
             assert_one_prepared(session, stmt, [False, upd_v], query_args)
 
-    def lwt_update_prepared_test(self):
+    def test_lwt_update_prepared(self):
         """
         Test that the most common IF condition patterns with parameter markers work as expected
         for prepared LWT statements.
@@ -321,7 +323,7 @@ class TestCQL(Tester):
             ret = 'frozen<' + ret + '>'
         return ret
 
-    def lwt_update_prepared_listlike_and_tuples_test(self):
+    def test_lwt_update_prepared_listlike_and_tuples(self):
         """
         Test that the most common IF condition patterns with parameter markers work as expected
         for prepared LWT statements.
@@ -496,7 +498,7 @@ class TestCQL(Tester):
                                                               {**test_data, **additional_test_data})
 
     @require('#5855')
-    def lwt_compare_collection_with_null_test(self):
+    def test_lwt_compare_collection_with_null(self):
         """
         Test that comparing empty collection to null yields correct results.
         Null is passed as an argument to the query as parameter marker.
@@ -585,7 +587,7 @@ class TestCQL(Tester):
             assert_one_prepared(session, ti.frozen_stmt, [True, None], {'update_val': ti.non_empty, 'v': None})
             assert_one_prepared(session, ti.frozen_stmt, [False, ti.non_empty], {'update_val': ti.empty, 'v': ti.empty})
 
-    def lwt_nested_collections_list_set_test(self):
+    def test_lwt_nested_collections_list_set(self):
         """
         Test that nested collections are working with parameter markers.
         This particular test verifies list<frozen<set<T>>> cases.
@@ -639,7 +641,7 @@ class TestCQL(Tester):
         assert_one_prepared(session, stmt, [True, [SortedSet([5, 6, 7]), SortedSet([7, 8, 9])]],
                             {'update_val': [SortedSet([5, 6, 7]), SortedSet([7, 8, 9])], 'v': [SortedSet([3, 4]), SortedSet([4, 5])]})
 
-    def lwt_nested_collections_set_list_test(self):
+    def test_lwt_nested_collections_set_list(self):
         """
         Test that nested collections are working with parameter markers.
         This particular test verifies set<frozen<list<T>>> cases.
