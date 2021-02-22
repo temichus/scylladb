@@ -1,6 +1,8 @@
 import binascii
 import glob
+import logging
 import os
+import pytest
 import stat
 import struct
 import subprocess
@@ -8,37 +10,43 @@ import time
 import re
 import tempfile
 
-from unittest import skip
-
 from cassandra import WriteTimeout
 from cassandra.cluster import NoHostAvailable, OperationTimedOut
 
 from ccmlib.common import is_win
 from ccmlib.node import Node, TimeoutError
-from assertions import assert_almost_equal, assert_none, assert_one, assert_row_count_in_select, \
-    assert_row_count_in_select_less, assert_row_count, assert_all
-from dtest import Tester, debug
-from tools import since, rows_to_list
-from scylla_tools import insert_c1c2, copy_files_to
-from nose.plugins.attrib import attr
+
+from dtest_class import Tester, create_ks, create_cf
+from tools.data import rows_to_list
+from tools.assertions import assert_almost_equal, assert_none, assert_one, assert_lists_equal_ignoring_order
+from tools.assertions import assert_row_count, assert_all, assert_row_count_in_select, assert_row_count_in_select_less
+
+from tools.data import insert_c1c2
+from tools.files import copy_files_to
+
+logger = logging.getLogger(__name__)
 
 
-@attr('dtest-full', 'single_node')
+@pytest.mark.dtest_full
+@pytest.mark.single_node
 class TestCommitLog(Tester):
     """ CommitLog Tests """
 
-    def __init__(self, *argv, **kwargs):
-        kwargs['cluster_options'] = {'start_rpc': 'true'}
-        super(TestCommitLog, self).__init__(*argv, **kwargs)
+    @pytest.fixture(autouse=True)
+    def fixture_add_additional_log_patterns(self, fixture_dtest_setup):
+        fixture_dtest_setup.allow_log_errors = True
 
-    def setUp(self):
-        super(TestCommitLog, self).setUp()
-        self.cluster.populate(1)
-        [self.node1] = self.cluster.nodelist()
+    @pytest.fixture(scope='function', autouse=True)
+    def fixture_set_cluster_settings(self, fixture_dtest_setup):
+        fixture_dtest_setup.cluster.set_configuration_options({'start_rpc': 'true'})
+        fixture_dtest_setup.cluster.populate(1)
+        [self.node1] = fixture_dtest_setup.cluster.nodelist()
 
-    def tearDown(self):
+        yield
+
+        # Some of the tests change commitlog permissions to provoke failure
+        # so this changes them back so we can delete them.
         self._change_commitlog_perms(stat.S_IWRITE | stat.S_IREAD | stat.S_IEXEC)
-        super(TestCommitLog, self).tearDown()
 
     def prepare(self, configuration={}, create_test_keyspace=True, **kwargs):
         conf = {'commitlog_sync_period_in_ms': 1000}
@@ -46,13 +54,14 @@ class TestCommitLog(Tester):
         conf.update(configuration)
         self.cluster.set_configuration_options(values=conf, **kwargs)
         self.cluster.start()
-        unknown_options = self.cluster.nodelist()[0].grep_log("config - Unknown option")
+        unknown_options = self.cluster.nodelist(
+        )[0].grep_log("config - Unknown option")
         if unknown_options:
-            self.fail("Unknown option found! Please check the test! %s" % unknown_options)
+            pytest.fail(f"Unknown option found! Please check the test! {unknown_options}")
         self.session1 = self.patient_cql_connection(self.node1)
         if create_test_keyspace:
             self.session1.execute("DROP KEYSPACE IF EXISTS ks;")
-            self.create_ks(self.session1, 'ks', 1)
+            create_ks(self.session1, 'ks', 1)
             self.session1.execute("DROP TABLE IF EXISTS test;")
             query = """
               CREATE TABLE test (
@@ -89,8 +98,7 @@ class TestCommitLog(Tester):
                              stderr=subprocess.PIPE)
         stdout, stderr = p.communicate()
         exit_status = p.returncode
-        self.assertEqual(0, exit_status,
-                         "du exited with a non-zero status: %d" % exit_status)
+        assert exit_status == 0, "du exited with a non-zero status: %d" % exit_status
         size = int(stdout.decode().split()[0])
         return size
 
@@ -108,7 +116,7 @@ class TestCommitLog(Tester):
         time.sleep(1)
 
         commitlogs = self._get_commitlog_files()
-        self.assertTrue(len(commitlogs) > 0, "No commit log files were created")
+        assert len(commitlogs) > 0, "No commit log files were created"
 
         # the most recently-written segment of the commitlog may be smaller
         # than the expected size, so we allow exactly one segment to be smaller
@@ -116,22 +124,23 @@ class TestCommitLog(Tester):
         for i, f in enumerate(commitlogs):
             size = os.path.getsize(f)
             size_in_mb = int(size / 1024 / 1024)
-            debug('segment file {} {}; smaller already found: {}'.format(f, size_in_mb, smaller_found))
+            logger.debug(f'segment file {f} {size_in_mb}; smaller already found: {smaller_found}')
             if size_in_mb < 1 or size < (segment_size * 0.1):
                 continue  # commitlog not yet used
 
             try:
                 if compressed:
                     # if compression is used, we assume there will be at most a 50% compression ratio
-                    self.assertLess(size, segment_size)
-                    self.assertGreater(size, segment_size / 2)
+                    assert size < segment_size, f"expect {size} < {segment_size}"
+                    assert size > segment_size / \
+                        2, f"expect {size} > {segment_size / 2}"
                 else:
                     # if no compression is used, the size will be close to what we expect
                     assert_almost_equal(size, segment_size, error=0.05)
             except AssertionError as e:
                 #  the last segment may be smaller
                 if not smaller_found:
-                    self.assertLessEqual(size, segment_size)
+                    assert size <= segment_size, f'expects size <= segment_size, actual are {size} {segment_size}'
                     smaller_found = True
                 else:
                     raise e
@@ -152,21 +161,22 @@ class TestCommitLog(Tester):
         self._change_commitlog_perms(0)
 
         try:
-            self.node1.stress(['write', 'n=10K', '-col', 'size=FIXED(1000)', '-rate', 'threads=25'])
+            self.node1.stress(
+                ['write', 'n=10K', '-col', 'size=FIXED(1000)', '-rate', 'threads=25'])
         except:
-            debug("Stress failed as expected")
+            logger.debug("Stress failed as expected")
 
-    @attr('next-gating')
-    @attr('dtest-debug')
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
     def test_commitlog_replay_on_startup(self):
         """ Test commit log replay """
         node1 = self.node1
         node1.set_configuration_options(batch_commitlog=True)
         node1.start(wait_for_binary_proto=True)
 
-        debug("Insert data")
+        logger.debug("Insert data")
         session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'Test', 1)
+        create_ks(session, 'Test', 1)
         session.execute("""
             CREATE TABLE users (
                 user_name varchar PRIMARY KEY,
@@ -179,46 +189,46 @@ class TestCommitLog(Tester):
         session.execute("INSERT INTO Test. users (user_name, password, gender, state, birth_year) "
                         "VALUES('gandalf', 'p@$$', 'male', 'WA', 1955);")
 
-        debug("Verify data is present")
+        logger.debug("Verify data is present")
         session = self.patient_cql_connection(node1)
         res = session.execute("SELECT * FROM Test. users")
-        self.assertCountEqual(rows_to_list(res),
-                              [[u'gandalf', 1955, u'male', u'p@$$', u'WA']])
+        assert rows_to_list(res) == [['gandalf', 1955, 'male', 'p@$$', 'WA']]
 
-        debug("Stop node abruptly")
+        logger.debug("Stop node abruptly")
         node1.stop(gently=False)
 
-        debug("Verify commitlog was written before abrupt stop")
+        logger.debug("Verify commitlog was written before abrupt stop")
         commitlog_dir = os.path.join(node1.get_path(), 'commitlogs')
         commitlog_files = os.listdir(commitlog_dir)
-        self.assertTrue(len(commitlog_files) > 0)
+        assert len(commitlog_files) > 0, f"expecting positive, len(commitlog_files)={len(commitlog_files)}"
 
-        debug("Verify no SSTables were flushed before abrupt stop")
+        logger.debug("Verify no SSTables were flushed before abrupt stop")
         data_dir = os.path.join(node1.get_path(), 'data')
-        cf_id = [s for s in os.listdir(os.path.join(data_dir, "test")) if s.startswith("users")][0]
+        cf_id = [s for s in os.listdir(os.path.join(
+            data_dir, "test")) if s.startswith("users")][0]
         cf_data_dir = glob.glob("{data_dir}/test/{cf_id}".format(**locals()))[0]
         cf_data_dir_files = os.listdir(cf_data_dir)
         for special_dir in ["backups", "upload", "staging"]:
             if special_dir in cf_data_dir_files:
                 cf_data_dir_files.remove(special_dir)
-        self.assertEqual(0, len(cf_data_dir_files))
+        assert len(cf_data_dir_files) == 0, f"expecting 0, len(cf_data_dir_files)={len(cf_data_dir_files)}"
 
-        debug("Verify commit log was replayed on startup")
+        logger.debug("Verify commit log was replayed on startup")
         node1.start(wait_for_binary_proto=False)
-        self.assertTrue(node1.is_running(), "node is not running")
+        assert node1.is_running(), "node is not running"
         node1.watch_log_for("Log replay complete")
         # Here we verify there was more than 0 replayed mutations
-        zero_replays = node1.grep_log(" 0 replayed mutations", filter_expr='DEBUG')
-        self.assertEqual(0, len(zero_replays))
+        zero_replays = node1.grep_log(
+            " 0 replayed mutations", filter_expr='logger.debug')
+        assert len(zero_replays) == 0, f"expect 0, len(zero_replays)={len(zero_replays)}"
 
-        debug("Make query and ensure data is present")
+        logger.debug("Make query and ensure data is present")
         session = self.patient_cql_connection(node1)
         res = session.execute("SELECT * FROM Test. users")
-        self.assertCountEqual(rows_to_list(res),
-                              [[u'gandalf', 1955, u'male', u'p@$$', u'WA']])
+        assert_lists_equal_ignoring_order(rows_to_list(res), [['gandalf', 1955, 'male', 'p@$$', 'WA']])
 
-    @attr('next-gating')
-    @attr('dtest-debug')
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
     def test_commitlog_replay_with_alter_table(self):
         """
         Test commit log replay with alter table
@@ -231,9 +241,9 @@ class TestCommitLog(Tester):
         node1.set_configuration_options(batch_commitlog=True)
         node1.start(wait_for_binary_proto=True)
 
-        debug("Create table")
+        logger.debug("Create table")
         session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'Test', 1)
+        create_ks(session, 'Test', 1)
         session.execute("""
             CREATE TABLE cf (
                 pk1 int,
@@ -245,127 +255,133 @@ class TestCommitLog(Tester):
             );
         """)
 
-        debug("Insert some data")
+        logger.debug("Insert some data")
         n_partitions = 5
         for key in range(n_partitions):
-            session.execute("INSERT INTO Test.cf (pk1, ck1, r2, r3, r5) VALUES(%d, 9, 8, 'seven', {6, 5});" % (key))
-            session.execute("INSERT INTO Test.cf (pk1, ck1, r3) VALUES(%d, 8, 'eight');" % (key))
+            session.execute(
+                "INSERT INTO Test.cf (pk1, ck1, r2, r3, r5) VALUES(%d, 9, 8, 'seven', {6, 5});" % (key))
+            session.execute(
+                "INSERT INTO Test.cf (pk1, ck1, r3) VALUES(%d, 8, 'eight');" % (key))
 
-        debug("Flush")
+        logger.debug("Flush")
         self.cluster.flush()
 
-        debug("Insert more data and alter table")
+        logger.debug("Insert more data and alter table")
         for key in range(n_partitions):
-            session.execute("INSERT INTO Test.cf (pk1, ck1, r2, r3, r5) VALUES(%d, 0, 1, 'two', {3, 4});" % (key))
+            session.execute(
+                "INSERT INTO Test.cf (pk1, ck1, r2, r3, r5) VALUES(%d, 0, 1, 'two', {3, 4});" % (key))
         session.execute("ALTER TABLE Test.cf ADD r1 int;")
         for key in range(n_partitions):
             session.execute(
                 "INSERT INTO Test.cf (pk1, ck1, r1, r2, r3, r5) VALUES(%d, 1, 2, 3, 'four', {5, 6, 7});" % (key))
         session.execute("ALTER TABLE Test.cf DROP r2;")
         for key in range(n_partitions):
-            session.execute("INSERT INTO Test.cf (pk1, ck1, r1, r3) VALUES(%d, 2, 3, 'four');" % (key))
+            session.execute(
+                "INSERT INTO Test.cf (pk1, ck1, r1, r3) VALUES(%d, 2, 3, 'four');" % (key))
         session.execute("ALTER TABLE Test.cf DROP r5;")
         session.execute("ALTER TABLE Test.cf ADD r2 varint;")
         session.execute("ALTER TABLE Test.cf ADD r4 int;")
         for key in range(n_partitions):
-            session.execute("INSERT INTO Test.cf (pk1, ck1, r2, r4) VALUES(%d, 0, 99, 999);" % (key))
+            session.execute(
+                "INSERT INTO Test.cf (pk1, ck1, r2, r4) VALUES(%d, 0, 99, 999);" % (key))
 
-        debug("Verify data is present")
+        logger.debug("Verify data is present")
         session = self.patient_cql_connection(node1)
         for key in range(n_partitions):
-            res = session.execute("SELECT * FROM Test.cf where pk1 = %d" % (key))
-            self.assertCountEqual(rows_to_list(res),
-                                  [
-                [key, 0, None, 99, u'two', 999],
-                [key, 1, 2, None, u'four', None],
-                [key, 2, 3, None, u'four', None],
-                [key, 8, None, None, u'eight', None],
-                [key, 9, None, None, u'seven', None],
-            ])
+            assert_all(session, f"SELECT * FROM Test.cf where pk1 = {key}",
+                       [
+                           [key, 0, None, 99, u'two', 999],
+                           [key, 1, 2, None, u'four', None],
+                           [key, 2, 3, None, u'four', None],
+                           [key, 8, None, None, u'eight', None],
+                           [key, 9, None, None, u'seven', None],
+                       ],
+                       ignore_order=True)
 
-        debug("Stop node abruptly")
+        logger.debug("Stop node abruptly")
         node1.stop(gently=False)
 
-        debug("Verify commitlog was written before abrupt stop")
+        logger.debug("Verify commitlog was written before abrupt stop")
         commitlog_dir = os.path.join(node1.get_path(), 'commitlogs')
         commitlog_files = os.listdir(commitlog_dir)
-        self.assertTrue(len(commitlog_files) > 0)
+        assert len(commitlog_files) > 0, f"expect >0, len(commitlog_files)={len(commitlog_files)}"
 
-        debug("Verify commitlog was replayed on startup")
+        logger.debug("Verify commitlog was replayed on startup")
         node1.start(wait_for_binary_proto=False)
         node1.watch_log_for("Log replay complete")
-        replays = node1.grep_log(" (\d+) replayed mutations", filter_expr='DEBUG')
-        self.assertGreater(len(replays), 0)
+        replays = node1.grep_log(r" (\d+) replayed mutations", filter_expr='logger.debug')
+        assert len(replays) > 0, f"expect >0, len(replays)={len(replays)}"
         replayed_mutations = 0
         for line, m in replays:
             replayed_mutations += int(m.group(1))
-        self.assertGreaterEqual(replayed_mutations, 4)
+        assert replayed_mutations >= 4, f"expect >=4, replayed_mutations={replayed_mutations}"
 
-        debug("Make query and ensure data is present")
+        logger.debug("Make query and ensure data is present")
         session = self.patient_cql_connection(node1)
         for key in range(n_partitions):
-            res = session.execute("SELECT * FROM Test.cf where pk1 = %d" % (key))
-            self.assertCountEqual(rows_to_list(res),
-                                  [
-                [key, 0, None, 99, u'two', 999],
-                [key, 1, 2, None, u'four', None],
-                [key, 2, 3, None, u'four', None],
-                [key, 8, None, None, u'eight', None],
-                [key, 9, None, None, u'seven', None],
-            ])
+            assert_all(session, f"SELECT * FROM Test.cf where pk1 = {key}",
+                       [
+                           [key, 0, None, 99, u'two', 999],
+                           [key, 1, 2, None, u'four', None],
+                           [key, 2, 3, None, u'four', None],
+                           [key, 8, None, None, u'eight', None],
+                           [key, 9, None, None, u'seven', None],
+                       ],
+                       ignore_order=True)
 
-    def default_segment_size_test(self):
+    def test_default_segment_size(self):
         """ Test default commitlog_segment_size_in_mb (32MB) """
 
         self._segment_size_test(32)
 
-    def small_segment_size_test(self):
+    def test_small_segment_size(self):
         """ Test a small commitlog_segment_size_in_mb (5MB) """
 
         self._segment_size_test(5)
 
-    @since('2.2')
-    @skip('fails with wrong commit log size - probably because we use max commit log - and not amend to it')
-    def default_compressed_segment_size_test(self):
+    @pytest.mark.skip(
+        reason='fails with wrong commit log size - probably because we use max commit log - and not amend to it')
+    def test_default_compressed_segment_size(self):
         """ Test default compressed commitlog_segment_size_in_mb (32MB) """
         # Scylla: Unknown option commitlog_compression
         self._segment_size_test(32, compressed=True)
 
-    @since('2.2')
-    @skip('fails with wrong commit log size - probably because we use max commit log - and not amend to it')
-    def small_compressed_segment_size_test(self):
+    @pytest.mark.skip(
+        reason='fails with wrong commit log size - probably because we use max commit log - and not amend to it')
+    def test_small_compressed_segment_size(self):
         """ Test a small compressed commitlog_segment_size_in_mb (5MB) """
         # Scylla: Unknown option commitlog_compression
         self._segment_size_test(5, compressed=True)
 
-    expected_log_message = 'commitlog - Exception in segment reservation: storage_io_error \(Storage I/O error: 13: filesystem error: open failed'
+    expected_log_message = 'commitlog - Exception in segment reservation: storage_io_error \
+    (Storage I/O error: 13: filesystem error: open failed'
 
-    @attr('next-gating')
-    @attr('dtest-debug')
-    def stop_failure_policy_test(self):
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
+    def test_stop_failure_policy(self):
         """ Test the stop commitlog failure policy (default one) """
         self.prepare()
 
         self._provoke_commitlog_failure()
         failure = self.node1.grep_log(self.expected_log_message)
-        debug(failure)
-        self.assertTrue(failure, "Cannot find the commitlog failure message in logs")
-        self.assertTrue(self.node1.is_running(), "Node1 should still be running")
+        logger.debug(failure)
+        assert failure, "Cannot find the commitlog failure message in logs"
+        assert self.node1.is_running(), "Node1 should still be running"
 
         # Cannot write anymore after the failure
-        with self.assertRaises(NoHostAvailable):
+        with pytest.raises(NoHostAvailable):
             self.session1.execute("""
               INSERT INTO test (key, col1) VALUES (2, 2);
             """)
 
         # Should not be able to read neither
-        with self.assertRaises(NoHostAvailable):
+        with pytest.raises(NoHostAvailable):
             self.session1.execute("""
               "SELECT * FROM test;"
             """)
 
-    @skip('unsupported since scylladb/scylla#2246')
-    def stop_commit_failure_policy_test(self):
+    @pytest.mark.skip(reason='unsupported since scylladb/scylla#2246')
+    def test_stop_commit_failure_policy(self):
         """ Test the stop_commit commitlog failure policy """
         self.prepare(configuration={
             'commit_failure_policy': 'stop_commit'
@@ -377,12 +393,12 @@ class TestCommitLog(Tester):
 
         self._provoke_commitlog_failure()
         failure = self.node1.grep_log(self.expected_log_message)
-        debug(failure)
-        self.assertTrue(failure, "Cannot find the commitlog failure message in logs")
-        self.assertTrue(self.node1.is_running(), "Node1 should still be running")
+        logger.debug(failure)
+        assert failure, "Cannot find the commitlog failure message in logs"
+        assert self.node1.is_running(), "Node1 should still be running"
 
         # Cannot write anymore after the failure
-        with self.assertRaises((OperationTimedOut, WriteTimeout)):
+        with pytest.raises((OperationTimedOut, WriteTimeout)):
             self.session1.execute("""
               INSERT INTO test (key, col1) VALUES (2, 2);
             """)
@@ -394,8 +410,8 @@ class TestCommitLog(Tester):
             [2, 2]
         )
 
-    @skip('unsupported since scylladb/scylla#2246')
-    def die_failure_policy_test(self):
+    @pytest.mark.skip(reason='unsupported since scylladb/scylla#2246')
+    def test_die_failure_policy(self):
         """ Test the die commitlog failure policy """
         self.prepare(configuration={
             'commit_failure_policy': 'die'
@@ -403,12 +419,12 @@ class TestCommitLog(Tester):
 
         self._provoke_commitlog_failure()
         failure = self.node1.grep_log(self.expected_log_message)
-        debug(failure)
-        self.assertTrue(failure, "Cannot find the commitlog failure message in logs")
-        self.assertFalse(self.node1.is_running(), "Node1 should not be running")
+        logger.debug(failure)
+        assert failure, "Cannot find the commitlog failure message in logs"
+        assert self.node1.is_running(), "Node1 should not be running"
 
-    @skip('unsupported since scylladb/scylla#2246')
-    def ignore_failure_policy_test(self):
+    @pytest.mark.skip(reason='unsupported since scylladb/scylla#2246')
+    def test_ignore_failure_policy(self):
         """ Test the ignore commitlog failure policy """
         self.prepare(configuration={
             'commit_failure_policy': 'ignore'
@@ -416,8 +432,8 @@ class TestCommitLog(Tester):
 
         self._provoke_commitlog_failure()
         failure = self.node1.grep_log(self.expected_log_message)
-        self.assertTrue(failure, "Cannot find the commitlog failure message in logs")
-        self.assertTrue(self.node1.is_running(), "Node1 should still be running")
+        assert failure, "Cannot find the commitlog failure message in logs"
+        assert self.node1.is_running(), "Node1 should still be running"
 
         # on Windows, we can't delete the segments if they're chmod to 0 so they'll still be available for use by CLSM,
         # and we can still create new segments since os.chmod is limited to stat.S_IWRITE and stat.S_IREAD to set files
@@ -427,11 +443,11 @@ class TestCommitLog(Tester):
         if is_win():
             # We expect this to succeed
             self.session1.execute(query)
-            self.assertFalse(self.node1.grep_log("terminating thread"),
-                             "thread was terminated but CL error should have been ignored.")
-            self.assertTrue(self.node1.is_running(), "Node1 should still be running after an ignore error on CL")
+            assert not self.node1.grep_log("terminating thread"), \
+                "thread was terminated but CL error should have been ignored."
+            assert self.node1.is_running(), "Node1 should still be running after an ignore error on CL"
         else:
-            with self.assertRaises((OperationTimedOut, WriteTimeout)):
+            with pytest.raises((OperationTimedOut, WriteTimeout)):
                 self.session1.execute(query)
 
             # Should not exist
@@ -456,7 +472,8 @@ class TestCommitLog(Tester):
             [2, 2]
         )
 
-    @skip("line \"version = struct.unpack('>i', f.read(4))[0]\" fails when read(4) returns an empty string")
+    @pytest.mark.skip(
+        reason="line \"version = struct.unpack('>i', f.read(4))[0]\" fails when read(4) returns an empty string")
     def test_bad_crc(self):
         """
         if the commit log header crc (checksum) doesn't match the actual crc of the header data,
@@ -466,19 +483,19 @@ class TestCommitLog(Tester):
         expected_error = "Exiting due to error while processing commit log during initialization."
         self.ignore_log_patterns.append(expected_error)
         node = self.node1
-        assert isinstance(node, Node)
+        assert isinstance(node, Node), f"expect node instance of Node, node is {type(node)}"
         node.set_configuration_options({'commit_failure_policy': 'stop', 'commitlog_sync_period_in_ms': 1000})
         self.cluster.start()
 
         cursor = self.patient_cql_connection(self.cluster.nodelist()[0])
-        self.create_ks(cursor, 'ks', 1)
+        create_ks(cursor, 'ks', 1)
         cursor.execute("CREATE TABLE ks.tbl (k INT PRIMARY KEY, v INT)")
 
         for i in range(10):
             cursor.execute("INSERT INTO ks.tbl (k, v) VALUES ({0}, {0})".format(i))
 
         results = list(cursor.execute("SELECT * FROM ks.tbl"))
-        self.assertEqual(len(results), 10)
+        assert len(results) == 10, f"expexted 10, actual len(results)={len(results)}"
 
         # with the commitlog_sync_period_in_ms set to 1000,
         # this sleep guarantees that the commitlog data is
@@ -492,11 +509,11 @@ class TestCommitLog(Tester):
         ks_dir = os.path.join(path, 'data', 'ks')
         db_dir = os.listdir(ks_dir)[0]
         sstables = len([f for f in os.listdir(os.path.join(ks_dir, db_dir)) if f.endswith('.db')])
-        self.assertEqual(sstables, 0)
+        assert sstables == 0, f"expected 0 , actual sstables={sstables}"
 
         # modify the commit log crc values
         cl_dir = os.path.join(path, 'commitlogs')
-        self.assertTrue(len(os.listdir(cl_dir)) > 0)
+        assert len(os.listdir(cl_dir)) > 0, "expected >0, actual len(os.listdir(cl_dir))={len(os.listdir(cl_dir))}"
         for cl in os.listdir(cl_dir):
             # locate the CRC location
             with open(os.path.join(cl_dir, cl), 'r') as f:
@@ -517,16 +534,16 @@ class TestCommitLog(Tester):
             with open(os.path.join(cl_dir, cl), 'r') as f:
                 f.seek(crc_pos)
                 crc = struct.unpack('>i', f.read(4))[0]
-                self.assertEqual(crc, 123456)
+                assert crc == 123456, f"expected 123456, actual crc={crc}"
 
         mark = node.mark_log()
         node.start()
         node.watch_log_for(expected_error, from_mark=mark)
-        with self.assertRaises(TimeoutError):
+        with pytest.raises(TimeoutError):
             node.wait_for_binary_interface(from_mark=mark, timeout=20)
-        self.assertFalse(node.is_running())
+        assert not node.is_running(), f"expected node is not running, actual is: {node.is_running()}"
 
-    @skip('failure in this line "self.assertEqual(get_header_crc(header_bytes), crc)"')
+    @pytest.mark.skip(reason='failure in this line "self.assertEqual(get_header_crc(header_bytes), crc)"')
     def test_compression_error(self):
         """
         if the commit log header refers to an unknown compression class, and the commit_failure_policy is stop, C* shouldn't startup
@@ -534,21 +551,21 @@ class TestCommitLog(Tester):
         expected_error = 'Could not create Compression for type org.apache.cassandra.io.compress.LZ5Compressor'
         self.ignore_log_patterns.append(expected_error)
         node = self.node1
-        assert isinstance(node, Node)
+        assert isinstance(node, Node), f"expect node instance of Node, node is {type(node)}"
         node.set_configuration_options({'commit_failure_policy': 'stop',
                                         'commitlog_compression': [{'class_name': 'LZ4Compressor'}],
                                         'commitlog_sync_period_in_ms': 1000})
         self.cluster.start()
 
         cursor = self.patient_cql_connection(self.cluster.nodelist()[0])
-        self.create_ks(cursor, 'ks1', 1)
+        create_ks(cursor, 'ks1', 1)
         cursor.execute("CREATE TABLE ks1.tbl (k INT PRIMARY KEY, v INT)")
 
         for i in range(10):
             cursor.execute("INSERT INTO ks1.tbl (k, v) VALUES ({0}, {0})".format(i))
 
         results = list(cursor.execute("SELECT * FROM ks1.tbl"))
-        self.assertEqual(len(results), 10)
+        assert len(results) == 10, f"expect 10, len(results)={len(results)}"
 
         # with the commitlog_sync_period_in_ms set to 1000,
         # this sleep guarantees that the commitlog data is
@@ -582,7 +599,7 @@ class TestCommitLog(Tester):
         # while this scenario is pretty unlikely, if a jar or lib got moved or something,
         # you'd have a similar situation, which would be fixable by the user
         cl_dir = os.path.join(path, 'commitlogs')
-        self.assertTrue(len(os.listdir(cl_dir)) > 0)
+        assert len(os.listdir(cl_dir)) > 0, f"expected >0, actual len(os.listdir(cl_dir))={len(os.listdir(cl_dir))}"
         for cl in os.listdir(cl_dir):
             # read the header and find the crc location
             with open(os.path.join(cl_dir, cl), 'r') as f:
@@ -599,13 +616,13 @@ class TestCommitLog(Tester):
                 # check that we're going this right
                 f.seek(0)
                 header_bytes = f.read(header_length)
-                self.assertEqual(get_header_crc(header_bytes), crc)
+                assert get_header_crc(header_bytes) == crc, f"expect crc={crc}, actual={get_header_crc(header_bytes)}"
 
             # rewrite it with imaginary compressor
-            self.assertIn('LZ4Compressor', header_bytes)
+            assert 'LZ4Compressor' in header_bytes, "expect 'LZ4Compressor', actual LZ4 not found in header_bytes"
             header_bytes = header_bytes.replace('LZ4Compressor', 'LZ5Compressor')
-            self.assertNotIn('LZ4Compressor', header_bytes)
-            self.assertIn('LZ5Compressor', header_bytes)
+            assert 'LZ4Compressor' not in header_bytes, "not expect 'LZ4Compressor', actual LZ4 found in header_bytes"
+            assert 'LZ5Compressor' in header_bytes, "expect 'LZ5Compressor', actual LZ5 not found in header_bytes"
             with open(os.path.join(cl_dir, cl), 'w') as f:
                 f.seek(0)
                 f.write(header_bytes)
@@ -615,15 +632,16 @@ class TestCommitLog(Tester):
             # verify we wrote everything correctly
             with open(os.path.join(cl_dir, cl), 'r') as f:
                 f.seek(0)
-                self.assertEqual(f.read(header_length), header_bytes)
+                header = f.read(header_length)
+                assert header == header_bytes, f"expecting header bytes, got {header} \n header_bytes={header_bytes} "
                 f.seek(crc_pos)
                 crc = struct.unpack('>i', f.read(4))[0]
-                self.assertEqual(crc, get_header_crc(header_bytes))
+                assert crc == get_header_crc(header_bytes), f"expecting crc={crc}, got {get_header_crc(header_bytes)}"
 
         mark = node.mark_log()
         node.start()
         node.watch_log_for(expected_error, from_mark=mark)
-        with self.assertRaises(TimeoutError):
+        with pytest.raises(TimeoutError):
             node.wait_for_binary_interface(from_mark=mark, timeout=20)
 
     def test_commitlog_replay_with_counters(self):
@@ -636,9 +654,9 @@ class TestCommitLog(Tester):
         node1.set_configuration_options(values={'commitlog_sync_period_in_ms': 200})
         self.cluster.start()
 
-        debug("Create table")
+        logger.debug("Create table")
         session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'Test', 1)
+        create_ks(session, 'Test', 1)
         session.execute("""
                     CREATE TABLE cf (
                         pk1 INT,
@@ -648,57 +666,57 @@ class TestCommitLog(Tester):
                     );
                 """)
 
-        debug("Increment counter")
+        logger.debug("Increment counter")
         for i in range(1, 10):
             session.execute("UPDATE Test.cf SET cnt = cnt + {} WHERE pk1 = 5 AND ck1 = 6;".format(i))
 
         res = session.execute("SELECT cnt FROM Test.cf WHERE pk1 = 5 AND ck1 = 6;")
         rows = rows_to_list(res)
-        self.assertEquals(rows[0][0], 45)
+        assert rows[0][0] == 45, f"expecting 45, got rows[0][0]={rows[0][0]}"
 
-        debug("Decrement counter")
+        logger.debug("Decrement counter")
         session.execute("UPDATE Test.cf SET cnt = cnt - 1 WHERE pk1 = 5 AND ck1 = 6;")
-        debug("Add one more counter")
+        logger.debug("Add one more counter")
         session.execute("UPDATE Test.cf SET cnt = cnt + 10 WHERE pk1 = 7 AND ck1 = 8;")
 
         res = session.execute("SELECT cnt FROM Test.cf;")
         rows = rows_to_list(res)
-        self.assertEquals(rows[0][0], 44)
-        self.assertEquals(rows[1][0], 10)
+        assert rows[0][0] == 44, f"expecting 44, got rows[0][0]={rows[0][0]}"
+        assert rows[1][0] == 10, f"expecting 10, got rows[1][0]={rows[1][0]}"
 
         # wait for commit log sync
         time.sleep(2)
 
-        debug("Stop node abruptly")
+        logger.debug("Stop node abruptly")
         node1.stop(gently=False)
 
-        debug("Verify commitlog was written before abrupt stop")
+        logger.debug("Verify commitlog was written before abrupt stop")
         commitlog_dir = os.path.join(node1.get_path(), 'commitlogs')
         commitlog_files = glob.glob(os.path.join(commitlog_dir, '*.log'))
-        self.assertTrue(len(commitlog_files) > 0)
+        assert len(commitlog_files) > 0, f"expecting >0, got len(commitlog_files)={len(commitlog_files)}"
 
-        debug("Verify commit log was replayed on startup")
+        logger.debug("Verify commit log was replayed on startup")
         node1.start()
         node1.watch_log_for("Log replay complete")
         # Here we verify there was more than 0 replayed mutations
-        zero_replays = node1.grep_log(" 0 replayed mutations", filter_expr='DEBUG')
-        self.assertEqual(0, len(zero_replays))
+        zero_replays = node1.grep_log(" 0 replayed mutations", filter_expr='logger.debug')
+        assert len(zero_replays) == 0, f"expecting 0, got len(zero_replays)={len(zero_replays)}"
 
-        debug("Make query and ensure data is present as expected")
+        logger.debug("Make query and ensure data is present as expected")
         session = self.patient_cql_connection(node1)
         res = session.execute("SELECT cnt FROM Test.cf;")
         rows = rows_to_list(res)
-        self.assertEquals(rows[0][0], 44)
-        self.assertEquals(rows[1][0], 10)
+        assert rows[0][0] == 44, f"expecting 44, got rows[0][0]={rows[0][0]}"
+        assert rows[1][0] == 10, f"expecting 10, got rows[1][0]={rows[1][0]}"
 
     def prepare_cluster_with_ks_cf(self, jvm_args=None):
         node1 = self.node1
         jvm_args = jvm_args or []
         self.cluster.start(jvm_args=jvm_args)
 
-        debug("Create table")
+        logger.debug("Create table")
         session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'Test', 1)
+        create_ks(session, 'Test', 1)
         session.execute("""
                     CREATE TABLE cf (
                         pk1 INT,
@@ -717,23 +735,21 @@ class TestCommitLog(Tester):
         """
 
         session, node1 = self.prepare_cluster_with_ks_cf()
-        debug("Insert 100 rows")
+        logger.debug("Insert 100 rows")
         for i in range(0, 100):
             session.execute("INSERT INTO Test.cf (pk1, ck1, v1) VALUES ({i}, {i}, {i})".format(i=i))
 
         assert_row_count(session=session, table_name='Test.cf', expected=100)
 
-        debug("Stop node abruptly")
+        logger.debug("Stop node abruptly")
         node1.stop(gently=False)
 
-        debug("Start node")
+        logger.debug("Start node")
         node1.start(verbose=True, wait_other_notice=True, wait_for_binary_proto=True)
 
-        debug("Make query and ensure data is present as expected")
+        logger.debug("Make query and ensure data is present as expected")
         session = self.patient_cql_connection(node1)
-
-        assert_row_count_in_select_less(session=session, query='select * from Test.cf',
-                                        max_rows_expected=100)
+        assert_row_count_in_select_less(session=session, table_name='Test.cf', max_rows_expected=100)
 
     def test_batch_commitlog(self):
         """
@@ -744,19 +760,19 @@ class TestCommitLog(Tester):
         """
         session, node1 = self.prepare_cluster_with_ks_cf()
 
-        debug("Insert 100 rows")
+        logger.debug("Insert 100 rows")
         for i in range(0, 100):
             session.execute("UPDATE Test.cf SET v1={i} WHERE pk1 = {i} and ck1={i} IF v1 = NULL".format(i=i))
 
         assert_row_count(session=session, table_name='Test.cf', expected=100)
 
-        debug("Stop node abruptly")
+        logger.debug("Stop node abruptly")
         node1.stop(gently=False)
 
-        debug("Start node")
+        logger.debug("Start node")
         node1.start()
 
-        debug("Make query and ensure data is present as expected")
+        logger.debug("Make query and ensure data is present as expected")
         session = self.patient_cql_connection(node1)
         assert_row_count(session=session, table_name='Test.cf', expected=100)
 
@@ -768,6 +784,7 @@ class TestCommitLog(Tester):
         Related Scylla PR: https://github.com/scylladb/scylla/pull/6368
         """
         node1 = self.node1
+
         # Size of the loop device
 
         def get_free_memory_size():
@@ -777,7 +794,8 @@ class TestCommitLog(Tester):
             proc = subprocess.Popen(['cat', '/proc/meminfo'], stdout=subprocess.PIPE)
             out, err = proc.communicate()
             out = out.decode()
-            assert proc.returncode == 0 and 'MemFree:' in out, err
+            assert proc.returncode == 0, f"expect 0, got proc.returncode={proc.returncode} err={err}"
+            assert 'MemFree:' in out, f"expect MemFree:' in out, err, got out={out} \n err={err}"
             pattern = re.compile('MemFree: (.*) ')
             for line in out.split('\n'):
                 if pattern.match(line):
@@ -786,7 +804,7 @@ class TestCommitLog(Tester):
 
         if commitlog_total_space_in_mb == -1:
             commitlog_segment_size_in_mb = int(get_free_memory_size() / 6)
-            debug(commitlog_segment_size_in_mb)
+            logger.debug(commitlog_segment_size_in_mb)
 
         # With the following config, scylla will use the same size as free memory for commitlog
         # Set single commitlog file to 1G, then it's easy to reach the limit
@@ -798,36 +816,36 @@ class TestCommitLog(Tester):
         unit_size = commitlog_segment_size_in_mb
         total_size = 0
 
-        debug(f'Commitlog size before start: {self._get_commitlog_size()}')
-        debug("Start cluster ...")
+        logger.debug(f'Commitlog size before start: {self._get_commitlog_size()}')
+        logger.debug("Start cluster ...")
         self.cluster.start(no_wait=True)
         node1.watch_log_for('Starting listening for CQL clients', timeout=30)
 
-        debug("Create test keyspace and table")
+        logger.debug("Create test keyspace and table")
         session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'ks', 1)
-        self.create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'})
+        create_ks(session, 'ks', 1)
+        create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'})
         well_used_cases = []
         start = time.time()
         while True:
-            debug(f'Insert {unit_size} rows ....')
+            logger.debug(f'Insert {unit_size} rows ....')
             insert_c1c2(session, keys=range(total_size, total_size + unit_size))
             total_size += unit_size
             dir_size = self._get_commitlog_size()
             limit_size_in_mb = commitlog_total_space_in_mb
             if commitlog_total_space_in_mb == -1:
                 limit_size_in_mb = get_free_memory_size()
-            debug(f'Current commitlog size: {dir_size}, limit_size_in_mb: {limit_size_in_mb}, '
-                  f'well-used cases: {len(well_used_cases)}')
-            self.assertLessEqual(self._get_commitlog_size(), limit_size_in_mb * 1.2, 'Out of total space limit')
+            logger.debug(f'Current commitlog size: {dir_size}, limit_size_in_mb: {limit_size_in_mb}, '
+                         f'well-used cases: {len(well_used_cases)}')
+            assert self._get_commitlog_size() <= limit_size_in_mb * 1.2, 'Out of total space limit'
             if dir_size + commitlog_segment_size_in_mb * 2 > limit_size_in_mb:
                 well_used_cases.append(dir_size)
             # Have enough well-used cases, and not out of space limit
             if len(well_used_cases) > 5:
                 break
-            self.assertGreater(200, time.time() - start,
-                               "the commitlog space isn't used well in 200 seconds,"
-                               " quit the test to avoid endless loop")
+            assert time.time() - start < 200, \
+                "the commitlog space isn't used well in 200 seconds," \
+                " quit the test to avoid endless loop"
         # set back to default
         node1.set_configuration_options(values={'commitlog_segment_size_in_mb': -1,
                                                 'commitlog_total_space_in_mb': 32,
@@ -838,7 +856,7 @@ class TestCommitLog(Tester):
         session = self.patient_cql_connection(node1)
         assert_row_count_in_select_less(session=session, table_name='ks.cf', expected=total_size)
 
-        debug('Test with more data after rollback to default config')
+        logger.debug('Test with more data after rollback to default config')
         insert_c1c2(session, n=int(total_size * 1.5))
         assert_row_count(session=session, table_name='ks.cf', expected=int(total_size * 1.5))
 
@@ -870,10 +888,10 @@ class TestCommitLog(Tester):
         node1.set_configuration_options(values={'commitlog_segment_size_in_mb': 1})
         if cleanup_firstly_by_drain:
             node1.start(wait_for_binary_proto=True)
-            debug("Clean the existing commitlog by drain, otherwise ENOSPC occurs too early than expected")
+            logger.debug("Clean the existing commitlog by drain, otherwise ENOSPC occurs too early than expected")
             node1.nodetool('drain')
             node1.stop(gently=True)
-            debug(f'Commitlog size after stop: {self._get_commitlog_size()}')
+            logger.debug(f'Commitlog size after stop: {self._get_commitlog_size()}')
 
         commitlog_dir = self._get_commitlog_path()
         tmp_iso = os.path.join(self.node1.get_path(), "tmp_loopdev_for_commitlog.iso")
@@ -884,7 +902,7 @@ class TestCommitLog(Tester):
             assert proc.returncode == 0, err
             return out
 
-        debug("Mount commitlog directory to a size limited device")
+        logger.debug("Mount commitlog directory to a size limited device")
         exec_cmd(f'dd if=/dev/zero of={tmp_iso} bs=1M count={commitlog_dir_limit_in_mb}')
         exec_cmd(f'mkfs.xfs -f {tmp_iso}')
         exec_cmd(f'sudo mount {tmp_iso} {commitlog_dir}')
@@ -895,29 +913,29 @@ class TestCommitLog(Tester):
         total_size = 0
 
         try:
-            debug(f'Commitlog size before start: {self._get_commitlog_size()}')
-            debug("Start cluster ...")
+            logger.debug(f'Commitlog size before start: {self._get_commitlog_size()}')
+            logger.debug("Start cluster ...")
             self.cluster.start(no_wait=True)
             node1.watch_log_for('Starting listening for CQL clients', timeout=30)
 
-            debug("Create test keyspace and table")
+            logger.debug("Create test keyspace and table")
             session = self.patient_cql_connection(node1)
-            self.create_ks(session, 'ks', 1)
-            self.create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'})
+            create_ks(session, 'ks', 1)
+            create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'})
             while True:
-                debug(f'Current commitlog size: {self._get_commitlog_size()}')
-                debug(f'Insert {unit_size} rows ....')
+                logger.debug(f'Current commitlog size: {self._get_commitlog_size()}')
+                logger.debug(f'Insert {unit_size} rows ....')
                 insert_c1c2(session, keys=range(total_size, total_size + unit_size))
                 total_size += unit_size
         except Exception as ex:
-            debug(f'Commitlog size after exception raised: {self._get_commitlog_size()}')
-            debug(str(ex))
+            logger.debug(f'Commitlog size after exception raised: {self._get_commitlog_size()}')
+            logger.debug(str(ex))
 
         # Recover from ENOSPC
         node1.stop(gently=False)
         tmpdir = tempfile.mkdtemp()
         copy_files_to(commitlog_dir, tmpdir, files_only=True)
-        debug("Umount commitlog dir and restart node")
+        logger.debug("Umount commitlog dir and restart node")
         exec_cmd(f'sudo umount {commitlog_dir}')
         copy_files_to(tmpdir, commitlog_dir, files_only=True)
         exec_cmd(f'sudo chown -R {user}:{user} {commitlog_dir}')
@@ -928,10 +946,10 @@ class TestCommitLog(Tester):
 
         # Verified that ENOSPC occurred and not all the data is wrote into db
         assert_row_count_in_select_less(
-            session=session, query="SELECT count(*) FROM ks.cf", max_rows_expected=total_size)
+            session=session, table_name='ks.cf', max_rows_expected=total_size)
         node1.watch_log_for('No space left on device', timeout=10)
 
-        debug('Added more data after recovered from ENOSPC ...')
+        logger.debug('Added more data after recovered from ENOSPC ...')
         insert_c1c2(session, n=int(total_size * 1.5))
         assert_row_count(session=session, table_name='ks.cf', expected=int(total_size * 1.5))
 
@@ -960,7 +978,7 @@ class TestCommitLog(Tester):
         session, node1 = self.prepare_cluster_with_ks_cf(jvm_args=['--smp', '1'])
 
         expected_result = []
-        debug("Insert 200 rows")
+        logger.debug("Insert 200 rows")
         for i in range(0, 100):
             # Row - candidate for 'batch' mode
             session.execute("INSERT INTO Test.cf (pk1, ck1, v1) VALUES ({pk}, {i},{i}) IF NOT EXISTS".format(i=i, pk=1))
@@ -969,7 +987,7 @@ class TestCommitLog(Tester):
             expected_result.append([2, i, i])
             expected_result.append([1, i, i])
 
-        debug("Insert more 100 non-LWT rows and 1 LWT row in the middle of queue")
+        logger.debug("Insert more 100 non-LWT rows and 1 LWT row in the middle of queue")
         for i in range(100, 200):
             if i == 150:
                 session.execute(
@@ -984,13 +1002,13 @@ class TestCommitLog(Tester):
         assert_row_count_in_select(session=session, query='select * from Test.cf where pk1=2',
                                    num_rows_expected=200)
 
-        debug("Stop node abruptly")
+        logger.debug("Stop node abruptly")
         node1.stop(gently=False)
 
-        debug("Start node")
+        logger.debug("Start node")
         node1.start()
 
-        debug("Make query and ensure data is present as expected")
+        logger.debug("Make query and ensure data is present as expected")
         session = self.patient_cql_connection(node1)
 
         # LWT rows - expected all rows were flushed immediately
@@ -1020,7 +1038,7 @@ class TestCommitLog(Tester):
         session, node1 = self.prepare_cluster_with_ks_cf(jvm_args=['--smp', '2'])
 
         expected_result = []
-        debug("Insert 200 rows")
+        logger.debug("Insert 200 rows")
         for i in range(0, 100):
             # Row - candidate for 'batch' mode
             session.execute("INSERT INTO Test.cf (pk1, ck1, v1) VALUES ({pk}, {i},{i}) IF NOT EXISTS".format(i=i, pk=1))
@@ -1028,7 +1046,7 @@ class TestCommitLog(Tester):
             session.execute("INSERT INTO Test.cf (pk1, ck1, v1) VALUES ({pk}, {i}, {i})".format(i=i, pk=2))
             expected_result.append([1, i, i])
 
-        debug("Insert more 100 non-LWT rows and 1 LWT row in the middle of queue")
+        logger.debug("Insert more 100 non-LWT rows and 1 LWT row in the middle of queue")
         for i in range(100, 200):
             if i == 150:
                 session.execute(
@@ -1041,13 +1059,13 @@ class TestCommitLog(Tester):
         assert_row_count_in_select(session=session, query='select * from Test.cf where pk1=2',
                                    num_rows_expected=200)
 
-        debug("Stop node abruptly")
+        logger.debug("Stop node abruptly")
         node1.stop(gently=False)
 
-        debug("Start node")
+        logger.debug("Start node")
         node1.start()
 
-        debug("Make query and ensure data is present as expected")
+        logger.debug("Make query and ensure data is present as expected")
         session = self.patient_cql_connection(node1)
 
         # LWT rows - expected all rows were flushed immediately
@@ -1079,7 +1097,7 @@ class TestCommitLog(Tester):
         session, node1 = self.prepare_cluster_with_ks_cf(jvm_args=['--smp', smp, '--default-log-level', 'trace'])
 
         expected_result = []
-        debug("Insert 200 rows")
+        logger.debug("Insert 200 rows")
         for i in range(0, 100):
             # Row - candidate for 'batch' mode
             session.execute("INSERT INTO Test.cf (pk1, ck1, v1) VALUES ({pk}, {i},{i}) IF NOT EXISTS".format(i=i, pk=1))
@@ -1089,7 +1107,7 @@ class TestCommitLog(Tester):
             session.execute("INSERT INTO Test.cf (pk1, ck1, v1) VALUES ({pk}, {i}, {i})".format(i=i, pk=1))
             expected_result.append([1, i, i])
 
-        debug("Insert more 100 non-LWT rows and 1 LWT row in the middle of queue")
+        logger.debug("Insert more 100 non-LWT rows and 1 LWT row in the middle of queue")
         for i in range(200, 300):
             if i == 250:
                 session.execute(
@@ -1102,13 +1120,13 @@ class TestCommitLog(Tester):
         assert_row_count_in_select(session=session, query='select * from Test.cf where pk1=1',
                                    num_rows_expected=300)
 
-        debug("Stop node abruptly")
+        logger.debug("Stop node abruptly")
         node1.stop(gently=False)
 
-        debug("Start node")
+        logger.debug("Start node")
         node1.start()
 
-        debug("Make query and ensure data is present as expected")
+        logger.debug("Make query and ensure data is present as expected")
         session = self.patient_cql_connection(node1)
 
         # LWT rows - expected all rows were flushed immediately
@@ -1130,20 +1148,20 @@ class TestCommitLog(Tester):
         session, node1 = self.prepare_cluster_with_ks_cf()
 
         expected_result = []
-        debug("Insert 100 non-LWT rows")
+        logger.debug("Insert 100 non-LWT rows")
         for i in range(0, 100):
             # Row - candidate for 'periodic' mode
             session.execute("INSERT INTO Test.cf (pk1, ck1, v1) VALUES ({pk}, {i}, {i})".format(i=i, pk=1))
             expected_result.append([1, i, i])
 
-        debug("Insert 100 LWT rows")
+        logger.debug("Insert 100 LWT rows")
         for i in range(100, 200):
             # Row - candidate for 'batch' mode
             session.execute("INSERT INTO Test.cf (pk1, ck1, v1) VALUES ({pk}, {i},{i}) IF NOT EXISTS".format(i=i, pk=1))
             if i != 150:
                 expected_result.append([1, i, i])
 
-        debug("Insert more 100 non-LWT rows and 1 LWT row in the middle of queue")
+        logger.debug("Insert more 100 non-LWT rows and 1 LWT row in the middle of queue")
         for i in range(200, 300):
             if i == 250:
                 session.execute(
@@ -1155,13 +1173,13 @@ class TestCommitLog(Tester):
         assert_row_count_in_select(session=session, query='select * from Test.cf where pk1=1',
                                    num_rows_expected=299)
 
-        debug("Stop node abruptly")
+        logger.debug("Stop node abruptly")
         node1.stop(gently=False)
 
-        debug("Start node")
+        logger.debug("Start node")
         node1.start()
 
-        debug("Make query and ensure data is present as expected")
+        logger.debug("Make query and ensure data is present as expected")
         session = self.patient_cql_connection(node1)
         # LWT rows - expected all rows were flushed immediately
         assert_row_count_in_select(session=session, query='select * from Test.cf',
@@ -1178,30 +1196,30 @@ class TestCommitLog(Tester):
         node1.start()
         session = self.patient_cql_connection(node1)
 
-        debug("Create keyspace")
-        self.create_ks(session, 'dw', 1)
+        logger.debug("Create keyspace")
+        create_ks(session, 'dw', 1)
 
-        debug("Create table")
+        logger.debug("Create table")
         session.execute("CREATE TABLE dw.cf(id int PRIMARY KEY)")
 
-        debug("Set durable_writes")
+        logger.debug("Set durable_writes")
         session.execute("ALTER KEYSPACE dw WITH durable_writes = true")
 
-        debug("Insert data")
+        logger.debug("Insert data")
         session.execute("INSERT INTO dw.cf(id) VALUES (1);")
         session.execute("INSERT INTO dw.cf(id) VALUES (2);")
 
-        debug("Unset durable_writes")
+        logger.debug("Unset durable_writes")
         session.execute("ALTER KEYSPACE dw WITH durable_writes = false")
 
-        debug("Insert data")
+        logger.debug("Insert data")
         session.execute("INSERT INTO dw.cf(id) VALUES (3);")
         session.execute("INSERT INTO dw.cf(id) VALUES (4);")
 
-        debug("Stop node abruptly")
+        logger.debug("Stop node abruptly")
         node1.stop(gently=False)
 
-        debug("Start node again")
+        logger.debug("Start node again")
         node1.start()
 
         session = self.patient_cql_connection(node1)
@@ -1219,30 +1237,30 @@ class TestCommitLog(Tester):
         node1.start()
         session = self.patient_cql_connection(node1)
 
-        debug("Create keyspace")
-        self.create_ks(session, 'dw', 1)
+        logger.debug("Create keyspace")
+        create_ks(session, 'dw', 1)
 
-        debug("Create table")
+        logger.debug("Create table")
         session.execute("CREATE TABLE dw.cf(id int PRIMARY KEY);")
 
-        debug("Unset durable_writes")
+        logger.debug("Unset durable_writes")
         session.execute("ALTER KEYSPACE dw WITH durable_writes = false;")
 
-        debug("Insert data")
+        logger.debug("Insert data")
         session.execute("INSERT INTO dw.cf(id) VALUES (1);")
         session.execute("INSERT INTO dw.cf(id) VALUES (2);")
 
-        debug("Set durable_writes")
+        logger.debug("Set durable_writes")
         session.execute("ALTER KEYSPACE dw WITH durable_writes = true;")
 
-        debug("Insert data")
+        logger.debug("Insert data")
         session.execute("INSERT INTO dw.cf(id) VALUES (3);")
         session.execute("INSERT INTO dw.cf(id) VALUES (4);")
 
-        debug("Stop node abruptly")
+        logger.debug("Stop node abruptly")
         node1.stop(gently=False)
 
-        debug("Start node again")
+        logger.debug("Start node again")
         node1.start()
 
         session = self.patient_cql_connection(node1)
