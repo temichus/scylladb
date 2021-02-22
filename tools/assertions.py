@@ -251,6 +251,22 @@ def assert_row_count(session, table_name, expected, consistency_level=Consistenc
         expected, table_name, count)
 
 
+@retrying(num_attempts=1, sleep_time=10)
+def assert_row_count_in_select_less(session, table_name, max_rows_expected, consistency_level=ConsistencyLevel.ONE,
+                                    num_attempts=1, timeout=None):
+    """
+    Function to validate the row count returned by select is less than expected.
+    :param num_attempts: defines how many time try to assert data in case failure. Used in retry_with_func_attempts decorator
+    """
+    from tools.data import run_query_with_data_processing  # to avoid cyclic dependency
+    query = "SELECT count(*) FROM {}".format(table_name)
+    count = run_query_with_data_processing(session, query, consistency_level=consistency_level, session_timeout=timeout)
+    if isinstance(count, list):
+        count = count[0][0]
+    assert count < max_rows_expected, "Expected a row count < of {} in query \"{}\", but got {}".format(
+        max_rows_expected, query, count)
+
+
 def assert_crc_check_chance_equal(session, table, expected, ks="ks", view=False):
     """
     Assert crc_check_chance equals expected for a given table or view
