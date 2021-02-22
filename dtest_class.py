@@ -435,7 +435,7 @@ def create_cf(session, name, key_type="varchar", speculative_retry=None, read_re
         query += ' AND COMPACT STORAGE'
 
     if not caching:
-        query += '%s AND caching={\'enabled\':false}' % query
+        query += ' AND caching = {\'enabled\':false}'
 
     if debug_query:
         logger.debug(query)
