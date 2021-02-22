@@ -203,6 +203,7 @@ def get_auth_provider(user, password):
 def make_auth(user, password):
     def private_auth(node_ip):
         return {'username': user, 'password': password}
+
     return private_auth
 
 
