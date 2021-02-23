@@ -1,10 +1,14 @@
+import logging
+
 import os
+import pytest
 import re
 
 from cassandra.concurrent import execute_concurrent_with_args
 
-from dtest import Tester, debug
-from nose.plugins.attrib import attr
+from dtest_class import Tester, create_ks
+
+logger = logging.getLogger(__name__)
 
 
 def human_size(size, units=['bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB']):
@@ -16,7 +20,8 @@ def human_size(size, units=['bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB']):
         return human_size(size / 1024.0, units[1:])
 
 
-@attr('dtest-full', 'single_node')
+@pytest.mark.dtest_full
+@pytest.mark.single_node
 class TestNodetoolListSnapshots(Tester):
     """Validate nodetool listshapshot command
 
@@ -26,16 +31,13 @@ class TestNodetoolListSnapshots(Tester):
         Tester
     """
 
-    def __init__(self, *args, **kwargs):
-        super(TestNodetoolListSnapshots, self).__init__(*args, **kwargs)
-
     def prepare_cluster(self):
         """Create and populate cluster for tests
 
         """
 
         # create and start cluster with one node
-        debug('Create and start cluster')
+        logger.debug('Create and start cluster')
         self.cluster.populate(1).start()
 
     def insert_rows(self, session, ks, cf, start, end):
@@ -64,7 +66,7 @@ class TestNodetoolListSnapshots(Tester):
         Keyword Arguments:
             cf {str} -- cf name to build snapshot for (default: {None})
         """
-        debug('Create snapshot for {} on node {}'.format(ks, node.address()))
+        logger.debug('Create snapshot for {} on node {}'.format(ks, node.address()))
         snapshot_cmd = 'snapshot {} -cf {}'.format(ks, cf) if cf else 'snapshot {}'.format(ks)
         node.nodetool(snapshot_cmd)
 
@@ -111,7 +113,7 @@ class TestNodetoolListSnapshots(Tester):
                         for f in files
                         if 'manifest.json' not in f and 'schema.cql' not in f]
                 )
-                debug('Snapshot ks:{} cf:{} name:{} size is {}, human size is {}'.format(
+                logger.debug('Snapshot ks:{} cf:{} name:{} size is {}, human size is {}'.format(
                     ks,
                     cf_name[0],
                     snapshot_id,
@@ -150,7 +152,7 @@ class TestNodetoolListSnapshots(Tester):
 
         output_regexp = re.compile(
             '^(?P<snsh_name>[\w]+)\s+(?P<ks>[\w]+)\s+(?P<cf>[\w]+)\s+(?P<true_size>[0-9.]+)\s\w+\s+(?P<size_on_disk>[0-9.]+\s+\w+)\s+$', re.MULTILINE)
-        debug('Output of nodetool listsnapshots:\n{}'.format(output))
+        logger.debug('Output of nodetool listsnapshots:\n{}'.format(output))
         return output_regexp.findall(output)
 
     def compare_filesize_and_output(self, node, output):
@@ -188,7 +190,7 @@ class TestNodetoolListSnapshots(Tester):
             cfes {list} -- list of column families to create
         """
         for ks in kses:
-            self.create_ks(session, ks, 1)
+            create_ks(session, ks, 1)
             for cf in cfes:
                 session.execute('CREATE TABLE IF NOT EXISTS {}.{} (key int PRIMARY KEY, val text);'.format(ks, cf))
                 session.execute('INSERT INTO {}.{} (key, val) VALUES (1, \'asdf\');'.format(ks, cf))
@@ -201,9 +203,9 @@ class TestNodetoolListSnapshots(Tester):
         node = self.cluster.nodelist()[0]
 
         results, errors = node.nodetool('listsnapshots')
-        self.assertFalse(errors)
-        self.assertTrue('There are no snapshots' in results)
-        self.assertTrue(self.compare_filesize_and_output(node, results))
+        assert not errors, f"Errors: {errors}"
+        assert 'There are no snapshots' in results, f'There are snapshots on the node {results}'
+        assert self.compare_filesize_and_output(node, results), "Not all snapshot size and names are valid"
 
     def test_one_ks_one_snapshot(self):
         """
@@ -223,9 +225,9 @@ class TestNodetoolListSnapshots(Tester):
         results, errors = node.nodetool('listsnapshots')
 
         # asserts there is no errors in stderr
-        self.assertFalse(errors)
+        assert not errors, f"Errors: {errors}"
         # assert that all snapshot size and names are valid
-        self.assertTrue(self.compare_filesize_and_output(node, results))
+        assert self.compare_filesize_and_output(node, results), "Not all snapshot size and names are valid"
 
     def test_snapshots_of_system_ks(self):
         """
@@ -240,12 +242,12 @@ class TestNodetoolListSnapshots(Tester):
         results, errors = node.nodetool('listsnapshots')
 
         # asserts there is no errors in stderr
-        self.assertFalse(errors)
+        assert not errors, f"Errors: {errors}"
         # assert that all snapshot size and names are valid
-        self.assertTrue(self.compare_filesize_and_output(node, results))
+        assert self.compare_filesize_and_output(node, results), "Not all snapshot size and names are valid"
 
-    @attr('next-gating')
-    @attr('dtest-debug')
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
     def test_snapshot_for_several_kses(self):
         """
         Validate the correctness of listsnapshots command if
@@ -265,9 +267,9 @@ class TestNodetoolListSnapshots(Tester):
         results, errors = node.nodetool('listsnapshots')
 
         # asserts there is no errors in stderr
-        self.assertFalse(errors)
+        assert not errors, f"Errors: {errors}"
         # assert that all snapshot size and names are valid
-        self.assertTrue(self.compare_filesize_and_output(node, results))
+        assert self.compare_filesize_and_output(node, results), "Not all snapshot size and names are valid"
 
     def test_several_snapshots_for_several_kses(self):
         """
@@ -286,7 +288,7 @@ class TestNodetoolListSnapshots(Tester):
         for ks in kses:
             self.create_snapshot(node, ks)
 
-        debug('Fill with 10k records')
+        logger.debug('Fill with 10k records')
         for ks in kses:
             for cf in cfes:
                 self.insert_rows(session, ks, cf, 2, 10000)
@@ -297,6 +299,6 @@ class TestNodetoolListSnapshots(Tester):
         results, errors = node.nodetool('listsnapshots')
 
         # asserts there is no errors in stderr
-        self.assertFalse(errors)
+        assert not errors, f"Errors: {errors}"
         # assert that all snapshot size and names are valid
-        self.assertTrue(self.compare_filesize_and_output(node, results))
+        assert self.compare_filesize_and_output(node, results), "Not all snapshot size and names are valid"
