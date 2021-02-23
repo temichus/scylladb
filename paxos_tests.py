@@ -319,63 +319,6 @@ class TestPaxos(Tester):
             self._add_random_nodes(stop_start_limit, upper_node_limit, loaders)
             time.sleep(random.uniform(5, 15))
 
-    @pytest.mark.dtest_debug
-    @pytest.mark.scylla_mode('!release')
-    def test_cas_statement_timeout(self):
-        '''
-        Tests for adequate handling timeouts from replicas in each stage of paxos algorithm.
-        I.e. there should be a retry of the paxos round if a timeout is encountered.
-
-        This test is meant to be run only on 'debug' and 'dev' builds of Scylla since in
-        release mode error injections do nothing.
-        '''
-
-        # Reduce write request timeout to 1000ms in order to speed the testing a little bit
-        self.cluster.set_configuration_options(values={'write_request_timeout_in_ms': 1000})
-        session = self.prepare(nodes=3, rf=3)
-
-        session.execute("CREATE TABLE test (k int PRIMARY KEY, v int)")
-
-        nodes = self.cluster.nodelist()
-
-        # Try different combinations of timeouts in each paxos stage
-        paxos_stages_injections = {
-            'prepare': 'paxos_prepare_timeout',
-            'accept': 'paxos_accept_proposal_timeout',
-            'learn': 'paxos_state_learn_timeout'}
-
-        # Execute the LWT query on the first node, which acts as a coordinator in this case
-        session_node1 = self.patient_exclusive_cql_connection(nodes[0], protocol_version=4)
-        session_node1.set_keyspace("ks")
-        stmt = session_node1.prepare("INSERT INTO test (k, v) VALUES (?, 0) IF NOT EXISTS")
-        key = 0
-
-        for combination_len in range(0, len(paxos_stages_injections) + 1):
-            for combination in itertools.combinations(paxos_stages_injections.keys(), combination_len):
-                # We need to clear leftover enabled injections from a previous
-                # iteration of the test because each injection is enabled at
-                # each shard on a given node.
-                #
-                # Though, it's not guaranteed that the injection is triggered on
-                # each shard actually, so we can end up with some injections still
-                # enabled for some shards.
-
-                logger.debug("Reset enabled injections on each node in the test cluster")
-                for node in nodes:
-                    self.disable_errors(node)
-
-                logger.debug(f"Testing combination {combination}")
-                for stage in combination:
-                    injection_name = paxos_stages_injections[stage]
-                    for node in nodes:
-                        self.enable_error(injection_name, node, one_shot=True)
-
-                res = session_node1.execute(stmt, [key])
-                # verify the number of retries of the query is equal to combination_len
-                assert res.response_future._query_retries == combination_len
-
-                key += 1
-
     # Schema mismatch tests
 
     def _base_schema_mismatch_test_tpl(self, clear_schema_cache, setup_test_env_action,
