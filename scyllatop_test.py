@@ -7,12 +7,15 @@ import time
 import signal
 import os
 import tempfile
+import logging
+import pytest
 
-from dtest import Tester, debug
-from nose.plugins.attrib import attr
+from dtest_class import Tester
+
+logger = logging.getLogger(__name__)
 
 
-@attr('dtest-full')
+@pytest.mark.dtest_full
 class TestScyllaTop(Tester):
 
     def get_cli(self):
@@ -36,15 +39,15 @@ class TestScyllaTop(Tester):
         Common usage, start scyllatop without options
         """
         (cmd, logfile) = self.get_cli()
-        debug(cmd)
+        logger.debug(cmd)
         p = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE, universal_newlines=True)
         if not wait:
             return (p, logfile)
         time.sleep(sleep_time)
         p.send_signal(signal.SIGINT)
         out, err = p.communicate()
-        debug(out[0:40] + '...')
-        debug('Length of output is %s' % len(out.split()))
+        logger.debug(out[0:40] + '...')
+        logger.debug('Length of output is %s' % len(out.split()))
         assert p.returncode == 0, err
         assert len(out) > 0, 'Output should not be empty'
         os.remove(logfile)
@@ -55,91 +58,91 @@ class TestScyllaTop(Tester):
         """
         (cmd, logfile) = self.get_cli()
         cmd = "%s -b -n %s" % (cmd, n)
-        debug(cmd)
+        logger.debug(cmd)
         p = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE, universal_newlines=True)
         if not wait:
             return (p, logfile)
         out, err = p.communicate()
-        debug(out[0:40] + '...')
-        debug('Length of output is %s' % len(out.split()))
+        logger.debug(out[0:40] + '...')
+        logger.debug('Length of output is %s' % len(out.split()))
         assert p.returncode == 0, err
         assert len(out) > 0, 'Output should not be empty'
         os.remove(logfile)
 
-    @attr('single_node')
-    def help_test(self):
+    @pytest.mark.single_node
+    def test_help(self):
         """
         Test help message of scyllatop tool
         """
         self.cluster.populate(1).start(wait_for_binary_proto=True)
-        debug("1 nodes started")
+        logger.debug("1 nodes started")
 
         (cmd, logfile) = self.get_cli()
         cmd = '%s --help' % cmd
-        debug(cmd)
+        logger.debug(cmd)
         p = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE, universal_newlines=True)
         out, err = p.communicate()
-        debug(out[0:40] + '...')
+        logger.debug(out[0:40] + '...')
         assert p.returncode == 0, err
         assert len(out) > 0, 'Output should not be empty'
         os.remove(logfile)
 
-    @attr('single_node')
-    def list_test(self):
+    @pytest.mark.single_node
+    def test_list(self):
         """
         Test list message of scyllatop tool
         """
         self.cluster.populate(1).start(wait_for_binary_proto=True)
-        debug("1 nodes started")
+        logger.debug("1 nodes started")
 
         (cmd, logfile) = self.get_cli()
         cmd = '%s --list' % cmd
-        debug(cmd)
+        logger.debug(cmd)
         p = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE, universal_newlines=True)
         out, err = p.communicate()
-        debug(out[0:40] + '...')
+        logger.debug(out[0:40] + '...')
         assert p.returncode == 0, err
         assert len(out) > 0, 'Output should not be empty'
         os.remove(logfile)
 
-    @attr('next-gating')
-    @attr('dtest-debug')
-    def default_start_test(self):
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
+    def test_default_start(self):
         """
         Common usage, start scyllatop without options
         """
         self.cluster.populate(3).start(wait_for_binary_proto=True)
-        debug("3 nodes started")
+        logger.debug("3 nodes started")
 
         self.interactive_start()
 
         (p, logfile) = self.interactive_start(wait=False)
         node = self.cluster.nodelist()[0]
         node.stress(['write', 'duration=10s', "no-warmup", '-rate', 'threads=2'])
-        debug('Write stress completed')
+        logger.debug('Write stress completed')
 
         p.send_signal(signal.SIGINT)
         out, err = p.communicate()
-        debug(out[0:40] + '...')
-        debug('Length of output is %s' % len(out.split()))
+        logger.debug(out[0:40] + '...')
+        logger.debug('Length of output is %s' % len(out.split()))
         assert p.returncode == 0, err
         os.remove(logfile)
 
-    def batch_mode_start_test(self):
+    def test_batch_mode_start(self):
         """
         Start scyllatop in batch mode, we can verify the content
         """
         self.cluster.populate(3).start(wait_for_binary_proto=True)
-        debug("3 nodes started")
+        logger.debug("3 nodes started")
 
         self.batch_mode_start()
 
         (p, logfile) = self.batch_mode_start(wait=False, n=20)
         node = self.cluster.nodelist()[0]
         node.stress(['write', 'duration=10s', "no-warmup", '-rate', 'threads=2'])
-        debug('Write stress completed')
+        logger.debug('Write stress completed')
         out, err = p.communicate()
-        debug(out[0:40] + '...')
-        debug('Length of output is %s' % len(out.split()))
+        logger.debug(out[0:40] + '...')
+        logger.debug('Length of output is %s' % len(out.split()))
         assert p.returncode == 0, err
         os.remove(logfile)

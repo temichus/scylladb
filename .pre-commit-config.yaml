@@ -122,7 +122,8 @@ repos:
                 sstabledump_test.py|
                 cqlsh_tests/cqlsh_copy_tests.py|
                 simple_boot_shutdown_test.py|
-                delete_insert_test.py
+                delete_insert_test.py|
+                scyllatop_test.py
             )$
         language: system
         types: [python]
