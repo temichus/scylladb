@@ -107,21 +107,31 @@ class TestTTL(Tester):
     def test_insert_ttl_has_priority_on_defaut_ttl(self):
         """ Test that a ttl specified during an insert has priority on the default table ttl """
 
+        debug("Preparing table with default_time_to_live=1")
         self.prepare(default_time_to_live=1)
 
-        start = time.time()
+        debug("Inserting data USING TTL 5")
+        before = time.time()
         self.session1.execute("""
             INSERT INTO ttl_table (key, col1, col2, col3) VALUES (%d, %d, %d, %d) USING TTL 5;
         """ % (1, 1, 1, 1))
-        self.smart_sleep(start, 2)
+        after = time.time()
+        self.smart_sleep(after, 1)
+        debug("Verifying that data is still valid")
         assert_row_count(self.session1, 'ttl_table', 1)  # should still exist
 
         # Issue #5290: Data expired via TTL is returned with null values for a short period of time
-        self.smart_sleep(start, 4)
-        # Non-key column value has its original value and shouldn't became None
-        assert_all(self.session1, "SELECT * FROM ttl_table;", [[1, 1, 1, 1]])
+        self.smart_sleep(int(before), 4)
+        debug(
+            "Re-verifying that data is still valid after {:.1f} seconds".format(time.time() - before))
+        while time.time() - int(before) < 5:
+            # Non-key column value has its original value and shouldn't became None
+            assert_all(self.session1, "SELECT * FROM ttl_table;",
+                       [[1, 1, 1, 1]])
+            time.sleep(0.1)
 
-        self.smart_sleep(start, 6)
+        self.smart_sleep(int(after), 5)
+        debug("Verifying that data has expired")
         assert_row_count(self.session1, 'ttl_table', 0)
 
     @pytest.mark.single_node
