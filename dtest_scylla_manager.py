@@ -98,7 +98,7 @@ class TaskStatus(Enum):
     STOPPED = "STOPPED"
     STARTING = "STARTING"
     ABORTED = "ABORTED"
-    MISSED = "MISSED"
+    SKIPPED = "SKIPPED"
 
     @classmethod
     def from_str(cls, output_str):
@@ -1117,7 +1117,7 @@ class ManagerTask(ScyllaManagerBase):
         :return:
         """
         list_final_status = [TaskStatus.ERROR, TaskStatus.STOPPED, TaskStatus.DONE, TaskStatus.ABORTED,
-                             TaskStatus.MISSED]
+                             TaskStatus.SKIPPED]
         logger.debug("Waiting for task: {} getting to a final status ({})..".format(self.id, [str(s) for s in
                                                                                               list_final_status]))
         res = self.wait_for_status(list_status=list_final_status, timeout=timeout, step=step)

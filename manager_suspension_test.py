@@ -70,5 +70,5 @@ class ScyllaManagerSuspensionTest(Tester, ScyllaManagerMixin):
         repair_task_status = repair_task.status
         assert not repair_task_next_run, \
             f"The task Has a destined run time of {repair_task_next_run} even though it's not suppose to run at all"
-        assert repair_task_status == TaskStatus.MISSED, \
-            f"The task was expected to reach MISSED status, instead it reached {str(repair_task_status)}"
+        assert repair_task_status == TaskStatus.SKIPPED, \
+            f"The task was expected to reach SKIPPED status, instead it reached {str(repair_task_status)}"
