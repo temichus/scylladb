@@ -1246,17 +1246,16 @@ class TestCqlshCopy(CqlshPrepare):
         ret = []
 
         def grep_for_retry(line):
-            retry1 = "will retry later, attempt 1 of "
-            return line.find(retry1)
+            return line.find("will retry later, attempt 1 of ")
 
         def create_records():
             if not profile:
                 logger.debug('Running stress without any user profile')
-                self.node1.stress(['write', 'n={} cl=ALL'.format(num_operations), 'no-warmup', '-rate', 'threads=50'])
+                self.node1.stress(['write', f'n={num_operations} cl=ALL', 'no-warmup', '-rate', 'threads=50'])
             else:
-                logger.debug('Running stress with user profile {}'.format(profile))
-                self.node1.stress(['user', 'profile={}'.format(profile), 'ops(insert=1)',
-                                   'n={} cl=ALL'.format(num_operations), 'no-warmup', '-rate', 'threads=50'])
+                logger.debug(f'Running stress with user profile {profile}')
+                self.node1.stress(['user', f'profile={profile}', 'ops(insert=1)',
+                                   f'n={num_operations} cl=ALL', 'no-warmup', '-rate', 'threads=50'])
 
             if skip_count_checks:
                 return num_operations
