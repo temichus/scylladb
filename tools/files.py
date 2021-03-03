@@ -1,6 +1,7 @@
 import fileinput
 import os
 import re
+import shutil
 import sys
 import tempfile
 import logging
@@ -42,3 +43,19 @@ def size_of_files_in_dir(dir_name, verbose=True):
     if verbose:
         logger.debug('getting sizes of these files: {}'.format(files))
     return sum(os.path.getsize(f) for f in files)
+
+
+def copy_files_to(from_dir, to_dir, files_only=False, create_to_dir=False):
+    """
+    Copy files from `from_dir` to `to_dir`, optionally create `to_dir`
+
+    :param files_only: if true, only copy files and ignore sub directories
+    :param create_to_dir: if true, create `to_dir` if it doesn't exist
+    """
+    if create_to_dir and not os.path.exists(to_dir):
+        os.makedirs(to_dir)
+    for f in os.listdir(from_dir):
+        if os.path.isfile(os.path.join(from_dir, f)):
+            shutil.copy2(os.path.join(from_dir, f), os.path.join(to_dir, f))
+        elif not files_only:
+            shutil.copytree(os.path.join(from_dir, f), os.path.join(to_dir, f))
