@@ -1334,7 +1334,6 @@ class TestCQL(Tester):
         res = session.execute("SELECT key, i, l, s, m, t, u FROM test")
         assert rows_to_list(res) == [[0, 2, list([1, 2, 3]), set([1, 2, 3]), dict({1: 2}), (1, 2), simple_type(1)]]
 
-    @pytest.mark.skip('indexes')
     @pytest.mark.single_node
     def test_nameless_index(self):
         """ Test CREATE INDEX without name and validate the index can be dropped """
