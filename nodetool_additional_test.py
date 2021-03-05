@@ -2039,7 +2039,8 @@ class TestNodetool(Tester):
         node = cluster[0]
         session = self.patient_cql_connection(node)
         self.create_table(session, {"ks": {"rf": "3", "tables": {
-                          "cf": {"pk": "text", "ck": "int", "s": "int", "v": "int", "key": "pk, ck"}}}})
+                          "cf": {"pk": "text", "ck": "int", "s": "int", "v": "int", "key": "pk, ck"},
+                          "cf2": {"pk": "text", "ck": "int", "s": "int", "v": "int", "key": "pk, ck"}}}})
         node.nodetool('flush')
 
         logger.debug('Copying the sstables with invalid fragment to upload directory and Loading by refresh ...')
@@ -2054,6 +2055,40 @@ class TestNodetool(Tester):
 
         logger.debug('Rebuild sstables by `nodetool scrub --skip-corrupted ks cf` ....')
         node.nodetool('scrub --skip-corrupted ks cf')
+
+        expected_errs = ['Skipping invalid clustering row fragment', 'Skipping invalid partition']
+        for err in expected_errs:
+            node.watch_log_for(err, timeout=10)
+        node.watch_log_for('Finished scrubbing 1 sstable', timeout=10)
+
+        self.ignore_log_patterns = expected_errs
+
+    @pytest.mark.require('#8212')
+    def test_scrub_ks_sstable_with_invalid_fragment(self):
+        """
+        Same scenario as scrub_ks_sstable_with_invalid_fragment_test, scrub the whole keyspace.
+        """
+        cluster = self.run_cluster(nodes=3)
+        node = cluster[0]
+        session = self.patient_cql_connection(node)
+        self.create_table(session, {"ks": {"rf": "3", "tables": {
+                          "cf": {"pk": "text", "ck": "int", "s": "int", "v": "int", "key": "pk, ck"},
+                          # "cf2": {"pk": "text", "ck": "int", "s": "int", "v": "int", "key": "pk, ck"}}}})
+                          }}})
+        node.nodetool('flush')
+
+        logger.debug('Copying the sstables with invalid fragment to upload directory and Loading by refresh ...')
+        cf_dir = get_cf_dir(os.path.join(self.test_path, 'test', 'node1', 'data', 'ks'), cf_name='cf')
+        copy_files_to("test-sstables/sstable_with_invalid_fragment/ks/cf-test/", os.path.join(cf_dir, 'upload'))
+        node.nodetool("refresh -- ks cf")
+
+        logger.debug('Rebuild sstables by `nodetool scrub ks cf` ....')
+        node.nodetool("scrub ks")
+        node.watch_log_for(
+            'Compaction for ks/cf was stopped due to: scrub compaction found invalid data: stopping', timeout=10)
+
+        logger.debug('Rebuild sstables by `nodetool scrub --skip-corrupted ks` ....')
+        node.nodetool('scrub --skip-corrupted ks')
 
         expected_errs = ['Skipping invalid clustering row fragment', 'Skipping invalid partition']
         for err in expected_errs:
