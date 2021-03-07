@@ -1,0 +1,42 @@
+plugins {
+  id 'groovy'
+}
+
+repositories {
+  maven { url 'https://repo.jenkins-ci.org/releases/' }
+  mavenCentral()
+  jcenter()
+}
+
+group = "com.scylladb"
+archivesBaseName = "jenkins-pipeline-unit"
+
+sourceCompatibility = 1.8
+targetCompatibility = 1.8
+
+dependencies {
+    implementation "org.codehaus.groovy:groovy-all:2.4.6"
+    implementation "com.cloudbees:groovy-cps:1.12"
+
+    implementation "org.jenkins-ci.main:jenkins-core:2.2"
+    implementation group: "org.jenkins-ci.plugins.workflow", name: "workflow-step-api", version: "2.23", ext: "jar"
+
+    testImplementation "com.lesfurets:jenkins-pipeline-unit:1.8"
+    testImplementation "junit:junit:4.12"
+}
+
+defaultTasks 'test'
+
+test {
+    inputs.files ("$projectDir/src/test/groovy")
+    // Settings for debugging @Grape() resolution in test cases
+
+    // Enable writing stacks with -Ppipeline.stack.write
+    if (project.hasProperty("pipeline.stack.write")) {
+        systemProperty "pipeline.stack.write", "true"
+    }
+
+    testLogging {
+        events "PASSED", "FAILED", "SKIPPED"
+    }
+}
