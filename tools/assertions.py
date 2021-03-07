@@ -191,9 +191,15 @@ def assert_all(session, query, expected, cl=ConsistencyLevel.ONE, ignore_order=F
     assert_all(self.session1, "SELECT * FROM ttl_table;", [[1, 42, 1, 1]])
     """
     from tools.misc import list_to_hashed_dict  # to avoid cyclic dependency
-    simple_query = SimpleStatement(query, consistency_level=cl)
-    res = session.execute(simple_query) if timeout is None else session.execute(simple_query, timeout=timeout)
-    list_res = _rows_to_list(res)
+    from tools.data import get_list_res  # to avoid cyclic dependency
+
+    if result_as_string:
+        list_res = get_list_res(session, query, cl, ignore_order, result_as_string, timeout=timeout)
+    else:
+        simple_query = SimpleStatement(query, consistency_level=cl)
+        res = session.execute(simple_query) if timeout is None else session.execute(simple_query, timeout=timeout)
+        list_res = _rows_to_list(res)
+
     if ignore_order:
         expected = list_to_hashed_dict(expected)
         list_res = list_to_hashed_dict(list_res)
