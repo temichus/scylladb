@@ -9,6 +9,7 @@ from math import ceil
 
 import pytest
 from cassandra import ConsistencyLevel, InvalidRequest
+from cassandra.protocol import ConfigurationException  # pylint: disable=no-name-in-module
 from cassandra.policies import FallthroughRetryPolicy
 from cassandra.query import SimpleStatement
 
@@ -84,13 +85,24 @@ class TestStorageProxyCQL(CQLTester):
         node1 = cluster.nodelist()[0]
         session = self.patient_cql_connection(node1)
 
+        logger.debug("Creating keyspace")
         session.execute(
             "CREATE KEYSPACE ks WITH replication = { 'class':'SimpleStrategy', 'replication_factor':1} AND DURABLE_WRITES = true")
 
         session.execute("USE ks")
 
-        session.execute(
-            "ALTER KEYSPACE ks WITH replication = { 'class' : 'NetworkTopologyStrategy', 'dc1' : 1 } AND DURABLE_WRITES = false")
+        start = time.time()
+        while True:
+            try:
+                logger.debug("Alter keyspace WITH replication = { 'class' : 'NetworkTopologyStrategy', 'dc1' : 1 }")
+                session.execute("ALTER KEYSPACE ks WITH replication = { 'class' : 'NetworkTopologyStrategy',"
+                                " 'dc1' : 1 } AND DURABLE_WRITES = false")
+                break
+            except ConfigurationException:
+                # wait a while for gossiping snitch
+                if time.time() - start < 60:
+                    time.sleep(1)
+                    pass
 
         session.execute("DROP KEYSPACE ks")
         assert_invalid(session, "USE ks", expected=InvalidRequest)
