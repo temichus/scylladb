@@ -187,8 +187,7 @@ class TestSSTableGenerationAndLoading(Tester):
             new_rows = list(session.execute("SELECT * FROM %s" % (stress_table,)))
         assert original_rows == new_rows
 
-    def load_sstable_with_configuration(self,  # pylint: disable=too-many-statements,too-many-locals
-                                        pre_compression=None, post_compression=None):
+    def load_sstable_with_configuration(self, pre_compression=None, post_compression=None, table_details=None):
         """
         tests that the sstableloader works by using it to load data.
         Compression of the columnfamilies being loaded, and loaded into
@@ -197,7 +196,10 @@ class TestSSTableGenerationAndLoading(Tester):
         pre_compression and post_compression can be these values:
         None, 'Snappy', or 'Deflate'.
         """
+
+        # pylint: disable=too-many-statements,too-many-locals
         num_keys = 1000
+        table_details = table_details or dict()
 
         for compression_option in (pre_compression, post_compression):
             assert compression_option in (None, 'Snappy', 'Deflate')
@@ -215,6 +217,8 @@ class TestSSTableGenerationAndLoading(Tester):
             create_ks(session=_session, name="ks", rf=2)
             create_cf(session=_session, name="standard1", compression=compression)
             create_cf(session=_session, name="counter1", compression=compression, columns={'v': 'counter'})
+            for _table_name, _details in table_details.items():
+                create_cf(session, _table_name, compression=compression, columns=_details['column'])
 
         logger.info("creating keyspace and inserting")
         with self.patient_cql_connection(node1) as session:
@@ -223,6 +227,10 @@ class TestSSTableGenerationAndLoading(Tester):
             for idx in range(num_keys):
                 session.execute("UPDATE standard1 SET v='%d' WHERE KEY='%d' AND c='col'" % (idx, idx))
                 session.execute("UPDATE counter1 SET v=v+1 WHERE KEY='%d'" % idx)
+            for table_name, details in table_details.items():
+                column_name = list(details['column'].keys())[0]
+                for old_value, new_value in zip(details['values'], details['values'][::-1]):
+                    session.execute(f"UPDATE {table_name} SET {column_name}={old_value} WHERE KEY='{new_value}'")
 
         node1.nodetool('drain')
         node1.stop()
@@ -288,3 +296,15 @@ class TestSSTableGenerationAndLoading(Tester):
                               ('Snappy', 'Deflate'), ('Deflate', None), ('Deflate', 'Snappy'), ('Deflate', 'Deflate')])
     def test_sstableloader_compression(self, pre_compression, post_compression):
         self.load_sstable_with_configuration(pre_compression=pre_compression, post_compression=post_compression)
+
+    def test_sstableloader_case_sensitive_with_quotas(self):
+        """
+        The test checks that can load data from column with quotes without errors
+        https://github.com/scylladb/scylla-enterprise-tools-java/issues/26
+        """
+        table_details = {'case_sensitive_quotes_table': {
+            'column': {'"ColumnUpperCaseWithQuotas"': 'int'},
+            'values': list(range(1000)),
+        }}
+        self.load_sstable_with_configuration(pre_compression='Deflate', post_compression='Deflate',
+                                             table_details=table_details)
