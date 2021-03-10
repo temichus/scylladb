@@ -4,6 +4,8 @@ import os
 import pytest
 import time
 
+from cassandra.query import dict_factory
+
 from dtest_class import Tester
 from dtest_setup import DTestSetup
 from tools.misc import generate_ssl_stores
@@ -156,13 +158,16 @@ class TestSystemClients(Tester):
     def fixture_add_additional_log_patterns(self, fixture_dtest_setup: DTestSetup):
         fixture_dtest_setup.allow_log_errors = True
 
-    def node_session(self, node, user=None, password=None, port=None, ssl_opts=None, session_store=None):
+    def node_session(self, node, user=None, password=None, port=None, ssl_opts=None, session_store=None,
+                     row_factory=None):
         session = self.patient_cql_connection(
             self.cluster.nodelist()[node],
             user=user,
             password=password,
             port=port,
-            ssl_opts=ssl_opts)
+            ssl_opts=ssl_opts,
+            row_factory=row_factory,
+        )
         return CQLSession(
             user=user,
             password=password,
@@ -193,7 +198,7 @@ class TestSystemClients(Tester):
                     f"to get to {expected}, last value was {last_value}")
             time.sleep(0.2)
 
-    def prepare(self, ssl_optional=False, require_ssl_auth=False, nodes=1, system_auth_rf=1):
+    def prepare(self, ssl_optional=False, require_ssl_auth=False, nodes=1, system_auth_rf=1, superuser=False):
         cluster = self.cluster
         generate_ssl_stores(self.test_path)
         # C* versions before 3.0 (CASSANDRA-10559) do not know about
@@ -250,7 +255,8 @@ class TestSystemClients(Tester):
             for user_record in self._test_users:
                 user = user_record['user']
                 password = user_record['password']
-                session.execute(f"CREATE ROLE '{user}' WITH PASSWORD = '{password}' AND LOGIN = true")
+                session.execute(
+                    f"CREATE ROLE '{user}' WITH PASSWORD = '{password}' AND LOGIN = true AND  SUPERUSER = {superuser}")
 
     def expect_system_clients(self):
         for cql_sessions in self._opened_sessions.values():
@@ -414,3 +420,41 @@ class TestSystemClients(Tester):
                     ssl_opts={'ca_certs': os.path.join(self.test_path, 'ccm_node.cer')})
                 pytest.fail("Should not be able to connect when ssl auth is enabled")
             self.wait_total_records_in_system_clients(session, original_sessions_count)
+
+    def _system_client_content(self, fields):
+        self.prepare(
+            nodes=2,
+            ssl_optional=True,
+            require_ssl_auth=False,
+            system_auth_rf=2,
+            superuser=True
+        )
+        fields_with_none = {}
+        with self.node_session(
+                1,
+                **self._test_users[0],
+                row_factory=dict_factory,
+                port=9142,
+                ssl_opts={'ca_certs': os.path.join(self.test_path, 'ccm_node.cer')}) as ssl_session:
+            session = ssl_session._session
+            query = 'select * from system.clients'
+            current_rows = session.execute(query).current_rows
+            row = current_rows[0]
+            for field in fields:
+                field_value = row.get(field, None)
+                if field_value is None:
+                    fields_with_none[field] = field_value
+        assert not fields_with_none, f"expect fields withouth None Value, got {fields_with_none}"
+
+    def test_system_client_not_none(self):
+        fields = ['address', 'port', 'client_type', 'connection_stage',
+                  'protocol_version', 'shard_id', 'username', 'driver_name', 'driver_version']
+        self._system_client_content(fields)
+
+    def system_client_hostname_test(self):
+        fields = ['hostname']
+        self._system_client_content(fields)
+
+    def system_client_ssl_test(self):
+        fields = ['ssl_cipher_suite', 'ssl_enabled', 'ssl_protocol']
+        self._system_client_content(fields)
