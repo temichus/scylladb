@@ -458,8 +458,9 @@ def node_affinity(node_pids):
 
 @pytest.mark.dtest_full
 @pytest.mark.dtest_heavy
+@pytest.mark.dtest_debug
 @pytest.mark.scylla_mode('!release')
-class TestLWTBankingLoad(Tester):
+class LWTBankingLoadTest(Tester):
     """Emulate a series of money transfers and perform validation"""
 
     def prepare(self, num_nodes=NODES):
