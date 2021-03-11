@@ -48,19 +48,16 @@ def checkAndTagAwsInstance (String runningUserID) {
 		wrap([$class: 'BuildUser']) {
 			withCredentials([string(credentialsId: 'jenkins2-aws-secret-key-id', variable: 'AWS_ACCESS_KEY_ID'),
 			string(credentialsId: 'jenkins2-aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')]) {
+            sh("""
+                INSTANCE_ID=`curl -s http://169.254.169.254/latest/meta-data/instance-id`
+                REGION_NAME=`curl -s http://169.254.169.254/latest/meta-data/placement/region`
 
-            def runningInstanceId = sh(script: "curl http://169.254.169.254/latest/meta-data/instance-id | grep '^i-[0-9]*' ", returnStdout: true).trim()
-            def regionId = sh(script: "curl http://169.254.169.254/latest/meta-data/placement/availability-zone | sed 's/.\$//'", returnStdout: true).trim()
-            def isSpotInstance = sh(script: "aws ec2 describe-spot-instance-requests \
-                --region $regionId \
-                --filter Name=instance-id,Values=$runningInstanceId | grep SpotInstanceRequestId | awk -F'\"' \'{print \$4}\'", returnStdout: true).trim()
-            if (!isSpotInstance.isEmpty()) {
-                sh(script: "aws ec2 --region $regionId create-tags \
-                    --resources ${runningInstanceId} \
-                    --tag Key=RunByUser,Value=${runningUserID} Key=JenkinsJobTag,Value=${BUILD_TAG} Key=NodeType,Value=compile-spotfleet Key=keep,Value=5 Key=keep_action,Value=terminate")
-            }
-            def instanceType = sh(script: "curl http://169.254.169.254/latest/meta-data/instance-type", returnStdout: true).trim()
-            echo "instanceType: ${instanceType}"
+                aws ec2 --region \${REGION_NAME} create-tags \
+                        --resources \${INSTANCE_ID} \
+                        --tag Key=RunByUser,Value=${runningUserID} Key=JenkinsJobTag,Value=${BUILD_TAG} Key=NodeType,Value=compile-spotfleet Key=keep,Value=5 Key=keep_action,Value=terminate
+
+                echo `curl -s http://169.254.169.254/latest/meta-data/instance-type`
+            """)
 		}
 	}
 }
