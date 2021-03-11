@@ -1289,8 +1289,10 @@ class ManagerCluster(ScyllaManagerBase):
         logger.debug("Created task id is: {}".format(task_id))
         return BackupTask(task_id=task_id, cluster_id=self.id, scylla_manager=self.scylla_manager)
 
-    def get_backup_files_dict(self, snapshot_tag):
+    def get_backup_files_dict(self, snapshot_tag, all_clusters=False):
         command = f" -c {self.id} backup files --snapshot-tag {snapshot_tag}"
+        if all_clusters:
+            command += " --all-clusters"
         # The sctool backup files command prints the s3 paths of all of the files that are required to restore the
         # cluster from the backup
         snapshot_files, stderr = self.sctool.run(command)

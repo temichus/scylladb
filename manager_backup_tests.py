@@ -1120,3 +1120,34 @@ class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
         assert table_name in table_names, \
             f"The '{repair_log_message}' message for keyspace '{keyspace_name}.{table_name}' not found!" \
             f"\nThe following logs are found {pformat(logs)} "
+
+    @attr('scylla-manager')
+    def test_backup_files_multiple_clusters(self):
+        keyspace_table_and_key_range = {"ks": {"cf1": (1, 21)}}
+        primary_cluster_nodes = self.config_and_create_cluster(nodes=3)
+        self.insert_data_from_ranges(healthy_node=primary_cluster_nodes[0],
+                                     keyspace_table_and_key_range=keyspace_table_and_key_range, rf=2)
+        primary_mgr_cluster = self._create_mgr_cluster(node=primary_cluster_nodes[0], name=CLUSTER_NAME)
+        primary_backup_task = primary_mgr_cluster.run_backup_command(
+            location_list=["s3:{}".format(DESTINATION_BUCKET)],
+            keyspace_list=list(keyspace_table_and_key_range.keys()))
+        primary_backup_task.wait_for_status(list_status=[TaskStatus.DONE], step=10, timeout=300)
+
+        with self.create_second_cluster() as secondary_cluster:
+            secondary_cluster_nodes = self.config_and_create_cluster(nodes=3, cluster=secondary_cluster)
+            self.insert_data_from_ranges(healthy_node=secondary_cluster_nodes[0],
+                                         keyspace_table_and_key_range=keyspace_table_and_key_range, rf=2)
+            secondary_mgr_cluster = self._create_mgr_cluster(node=secondary_cluster_nodes[0],
+                                                             name=CLUSTER_NAME + "_second")
+            secondary_backup_task = secondary_mgr_cluster.run_backup_command(
+                location_list=["s3:{}".format(DESTINATION_BUCKET)],
+                keyspace_list=list(keyspace_table_and_key_range.keys()))
+            secondary_backup_task.wait_for_status(list_status=[TaskStatus.DONE], step=10, timeout=300)
+
+            primary_backup_task_snapshot_tag = primary_backup_task.get_snapshot_tag()
+            snapshot_files = primary_mgr_cluster.get_backup_files_dict(
+                snapshot_tag=primary_backup_task_snapshot_tag, all_clusters=True)
+
+            misplaced_files = [snapshot for snapshot in snapshot_files if primary_mgr_cluster.id not in snapshot]
+            assert misplaced_files, f"backup files command of the snapshot tag {primary_backup_task_snapshot_tag} " \
+                                    f"contains unrelated files: {misplaced_files}"
