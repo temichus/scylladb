@@ -3,12 +3,14 @@
 import static com.lesfurets.jenkins.unit.MethodSignature.method
 import static com.lesfurets.jenkins.unit.global.lib.ProjectSource.projectSource
 import static com.lesfurets.jenkins.unit.global.lib.LibraryConfiguration.library
+import static com.lesfurets.jenkins.unit.MethodCall.callArgsToString
 
 import java.util.LinkedHashMap
 
 import java.nio.file.Paths
 import org.junit.Test
 import org.junit.Before
+import static org.junit.Assert.assertTrue
 import com.lesfurets.jenkins.unit.declarative.*
 import com.lesfurets.jenkins.unit.LibClassLoader
 import org.codehaus.groovy.runtime.ComposedClosure
@@ -75,10 +77,32 @@ class TestDtestDeclarativePipeline extends DeclarativePipelineTest {
 
     }
 
-    @Test void jenkinsfile_success() throws Exception {
+    @Test
+    void jenkinsfile_release_success() throws Exception {
         try {
             runScript('../jenkins_pipelines/master-dtest-release.jenkinsfile')
             assertJobStatusSuccess()
+            assertTrue(helper.callStack.findAll { call ->
+                call.methodName == "sh"
+            }.any { call ->
+                callArgsToString(call).contains("--mode=release")
+            })
+        } finally {
+            printCallStack()
+            println binding.getVariable('currentBuild')
+        }
+    }
+
+    @Test
+    void jenkinsfile_debug_success() throws Exception {
+        try {
+            runScript('../jenkins_pipelines/master-dtest-debug.jenkinsfile')
+            assertJobStatusSuccess()
+            assertTrue(helper.callStack.findAll { call ->
+                call.methodName == "sh"
+            }.any { call ->
+                callArgsToString(call).contains("--mode=debug")
+            })
         } finally {
             printCallStack()
             println binding.getVariable('currentBuild')
