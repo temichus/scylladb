@@ -1,5 +1,6 @@
 import os
 import re
+import tempfile
 import yaml
 import time
 import logging
@@ -8,8 +9,10 @@ from re import findall
 from pprint import pformat
 from ast import literal_eval
 from typing import Union, List, Dict
+from contextlib import contextmanager
 
 from ccmlib import common
+from ccmlib.scylla_cluster import ScyllaCluster
 from dtest_class import wait_for, WaitTimeoutExpired
 from distutils.version import LooseVersion
 
@@ -1477,14 +1480,39 @@ class ManagerCluster(ScyllaManagerBase):
 
 
 class ScyllaManagerMixin:
-    def config_and_create_cluster(self, nodes, extra_config_options=None):
+    def config_and_create_cluster(self, nodes, extra_config_options=None, cluster=None):
+        if cluster is None:
+            cluster = self.cluster
         extra_config_options = extra_config_options if extra_config_options else dict()
-        self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False, **extra_config_options})
-        self.cluster.populate(nodes).start(wait_for_binary_proto=True, wait_other_notice=True)
-        return self.cluster.nodelist()
+        cluster.set_configuration_options(values={'hinted_handoff_enabled': False, **extra_config_options})
+        cluster.populate(nodes).start(wait_for_binary_proto=True, wait_other_notice=True)
+        return cluster.nodelist()
 
     def _create_mgr_cluster(self, node, name):
         manager_tool = ScyllaManagerTool(scylla_manager=self.cluster._scylla_manager)
         mgr_cluster = manager_tool.add_cluster(node=node, name=name)
 
         return mgr_cluster
+
+    @contextmanager
+    def create_second_cluster(self, num_tokens):
+        dtest_root = os.path.join(os.path.expanduser("~"), '.dtest')
+        if not os.path.exists(dtest_root):
+            os.makedirs(dtest_root)
+        new_cluster_path = tempfile.mkdtemp(dir=dtest_root, prefix='dtest-secondary-')
+
+        cluster_id = self.cluster_id_allocator.alloc(new_cluster_path)
+        version = os.environ.get('SCYLLA_VERSION')
+        logger.debug(f"Starting Scylla cluster version {version}")
+        cluster = ScyllaCluster(path=new_cluster_path, name=f"secondary_cluster_{cluster_id}",
+                                cassandra_version=version, force_wait_for_cluster_start=True)
+        try:
+            cluster.set_configuration_options(values={'initial_token': None, 'num_tokens': num_tokens})
+            cluster.set_id(cluster_id)
+            cluster.set_ipprefix("127.0.%d." % cluster_id)
+            yield cluster
+        finally:
+            logger.debug('Stopping second cluster ...')
+            cluster.stop()
+            self._cls_cleanup_cluster(cluster=cluster, test_path=new_cluster_path, preserve_cluster=False,
+                                      cluster_id_allocator=self.cluster_id_allocator, remove=True)

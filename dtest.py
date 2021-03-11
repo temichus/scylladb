@@ -444,6 +444,7 @@ class NoseTester(TestCase):
         Tester._cls_cleanup_cluster(self.cluster, self.test_path, self._preserve_cluster,
                                     self.cluster_id_allocator, remove)
 
+    @staticmethod
     def _cls_cleanup_cluster(cluster, test_path, preserve_cluster, cluster_id_allocator, remove=True):
         if SILENCE_DRIVER_ON_SHUTDOWN:
             # driver logging is very verbose when nodes start going down -- bump up the level
