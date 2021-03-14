@@ -198,14 +198,16 @@ class TestSystemClients(Tester):
                     f"to get to {expected}, last value was {last_value}")
             time.sleep(0.2)
 
-    def prepare(self, ssl_optional=False, require_ssl_auth=False, nodes=1, system_auth_rf=1, superuser=False):
+    def prepare(self, ssl_optional=False, require_ssl_auth=False, nodes=1, system_auth_rf=1, superuser=False,
+                ssl_enabled=True):
         cluster = self.cluster
-        generate_ssl_stores(self.test_path)
+        if ssl_enabled:
+            generate_ssl_stores(self.test_path)
         # C* versions before 3.0 (CASSANDRA-10559) do not know about
         # 'client_encryption_options.optional' - so we must not add that parameter
         # Note: does of course not work with scylla, we dont support "optional" (3.x feature)
         ssl_options = {
-            'enabled': True,
+            'enabled': ssl_enabled,
         }
         if ssl_optional:
             ssl_options['optional'] = ssl_optional
@@ -421,40 +423,73 @@ class TestSystemClients(Tester):
                 pytest.fail("Should not be able to connect when ssl auth is enabled")
             self.wait_total_records_in_system_clients(session, original_sessions_count)
 
-    def _system_client_content(self, fields):
+    def _system_client_content(self, fields_with_value, fields_with_none_value=None, ssl_optional=True,
+                               ssl_enabled=True):
+        port = 9142
+        ssl_opts = {'ca_certs': os.path.join(self.test_path, 'ccm_node.cer')}
+        if not ssl_optional:
+            port = 9042
+            ssl_opts = {}
+        if not fields_with_none_value:
+            fields_with_none_value = []
         self.prepare(
             nodes=2,
-            ssl_optional=True,
+            ssl_optional=ssl_optional,
             require_ssl_auth=False,
             system_auth_rf=2,
-            superuser=True
+            superuser=True,
+            ssl_enabled=True,
         )
-        fields_with_none = {}
+        empty_value_fields_map = {}
+        not_none_fields_map = {}
         with self.node_session(
                 1,
                 **self._test_users[0],
                 row_factory=dict_factory,
-                port=9142,
-                ssl_opts={'ca_certs': os.path.join(self.test_path, 'ccm_node.cer')}) as ssl_session:
-            session = ssl_session._session
+                port=port,
+                ssl_opts=ssl_opts) as session_container:
+            session = session_container._session
             query = 'select * from system.clients'
             current_rows = session.execute(query).current_rows
             row = current_rows[0]
-            for field in fields:
+            for field in fields_with_none_value:
+                field_value = row.get(field, None)
+                if field_value is not None:
+                    not_none_fields_map[field] = field_value
+            for field in fields_with_value:
                 field_value = row.get(field, None)
                 if field_value is None:
-                    fields_with_none[field] = field_value
-        assert not fields_with_none, f"expect fields withouth None Value, got {fields_with_none}"
+                    empty_value_fields_map[field] = field_value
+
+        assert not empty_value_fields_map, f"expect fields Value with content, got {empty_value_fields_map}"
+        assert not not_none_fields_map, f"expect fields value without content, got {not_none_fields_map}"
 
     def test_system_client_not_none(self):
         fields = ['address', 'port', 'client_type', 'connection_stage',
                   'protocol_version', 'shard_id', 'username', 'driver_name', 'driver_version']
         self._system_client_content(fields)
 
-    def system_client_hostname_test(self):
+    @pytest.mark.require("#6946")
+    def test_system_client_hostname(self):
         fields = ['hostname']
         self._system_client_content(fields)
 
-    def system_client_ssl_test(self):
+    @pytest.mark.require("#6946")
+    def test_system_client_ssl(self):
         fields = ['ssl_cipher_suite', 'ssl_enabled', 'ssl_protocol']
         self._system_client_content(fields)
+
+    def test_system_client_not_none_non_ssl(self):
+        fields = ['address', 'port', 'client_type', 'connection_stage',
+                  'protocol_version', 'shard_id', 'username', 'driver_name', 'driver_version']
+        self._system_client_content(fields, ssl_optional=False, ssl_enabled=False)
+
+    @pytest.mark.require("#6946")
+    def test_system_client_hostname_non_ssl(self):
+        fields = ['hostname']
+        self._system_client_content(fields, ssl_optional=False, ssl_enabled=False)
+
+    def test_system_client_ssl_non_ssl(self):
+        fields = []
+        fields_with_none_value = ['ssl_cipher_suite', 'ssl_enabled', 'ssl_protocol']
+        self._system_client_content(fields, fields_with_none_value, ssl_optional=False)
