@@ -64,7 +64,9 @@ class TestNativeTransportSSL(Tester):
             logger.info('Should not be able to connect to SSL socket without SSL enabled client')
             self._create_cluster_session(node1, use_ssl=False)
 
-        assert len(node1.grep_log("(^io.netty.handler.ssl.NotSslRecordException.*|^.*An unexpected TLS packet was received.*|^.*The specified session has been invalidated for some reason.*)")) > 0, \
+        assert len(node1.watch_log_for(
+            "(^io.netty.handler.ssl.NotSslRecordException.*|^.*An unexpected TLS packet was received.*|^.*The specified session has been invalidated for some reason.*)",
+            timeout=10)) > 0, \
             "Missing SSL handshake exception while connecting with non-SSL enabled client"
 
         # enabled ssl on the client and try again (this should work)
@@ -86,7 +88,9 @@ class TestNativeTransportSSL(Tester):
             logger.info('Should not be able to connect to SSL socket without SSL enabled client')
             self._create_cluster_session(node1, use_ssl=False)
 
-        assert len(node1.grep_log("(^io.netty.handler.ssl.NotSslRecordException.*|^.*An unexpected TLS packet was received.*|^.*The specified session has been invalidated for some reason.*)")) > 0, \
+        assert len(node1.watch_log_for(
+            "(^io.netty.handler.ssl.NotSslRecordException.*|^.*An unexpected TLS packet was received.*|^.*The specified session has been invalidated for some reason.*)",
+            timeout=10)) > 0, \
             "Missing SSL handshake exception while connecting with non-SSL enabled client"
 
         with pytest.raises(NoHostAvailable):
