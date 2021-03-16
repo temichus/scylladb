@@ -1,8 +1,10 @@
-from dtest import Tester
-from nose.plugins.attrib import attr
+from dtest_class import Tester, create_ks
+
+import pytest
 
 
-@attr('dtest-full', 'single_node')
+@pytest.mark.dtest_full
+@pytest.mark.single_node
 class TestSimpleBootShutdown(Tester):
 
     def prepare(self):
@@ -12,13 +14,13 @@ class TestSimpleBootShutdown(Tester):
         cluster = self.cluster
         return cluster
 
-    def boot_create_keyspace_table_shutdown_boot_insert_select_test(self):
+    def test_boot_create_keyspace_table_shutdown_boot_insert_select(self):
         cluster = self.prepare()
         cluster.populate(1).start()
         node1 = cluster.nodelist()[0]
 
         session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'ks', 1)
+        create_ks(session, 'ks', 1)
 
         session.execute("""
             CREATE TABLE test1 (
@@ -41,7 +43,7 @@ class TestSimpleBootShutdown(Tester):
                 WHERE k=1
         """))
 
-        assert len(res) == 1, res
+        assert len(res) == 1, f"expected length=1 got {res}"
 
         # Select
         res = list(session.execute("""
@@ -49,15 +51,15 @@ class TestSimpleBootShutdown(Tester):
                 WHERE k=2
         """))
 
-        assert len(res) == 0, res
+        assert len(res) == 0, f"expected length=0 got {res}"
 
-    def boot_create_keyspace_table_insert_shutdown_select_test(self):
+    def test_boot_create_keyspace_table_insert_shutdown_select(self):
         cluster = self.prepare()
         cluster.populate(1).start()
         node1 = cluster.nodelist()[0]
 
         session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'ks', 1)
+        create_ks(session, 'ks', 1)
 
         session.execute("""
             CREATE TABLE test1 (
@@ -79,7 +81,7 @@ class TestSimpleBootShutdown(Tester):
                 WHERE k=1
         """))
 
-        assert len(res) == 1, res
+        assert len(res) == 1, f"expected length=1 got {res}"
 
         # Select
         res = list(session.execute("""
@@ -87,17 +89,17 @@ class TestSimpleBootShutdown(Tester):
                 WHERE k=2
         """))
 
-        assert len(res) == 0, res
+        assert len(res) == 0, f"expected length=0 got {res}"
 
-    @attr('next-gating')
-    @attr('dtest-debug')
-    def boot_create_keyspace_table_insert_shutdown_commitlog_replay_select_test(self):
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
+    def test_boot_create_keyspace_table_insert_shutdown_commitlog_replay_select(self):
         cluster = self.prepare()
         cluster.populate(1).start()
         node1 = cluster.nodelist()[0]
 
         session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'ks', 1)
+        create_ks(session, 'ks', 1)
 
         session.execute("""
             CREATE TABLE test1 (
@@ -120,7 +122,7 @@ class TestSimpleBootShutdown(Tester):
                 WHERE k=1
         """))
 
-        assert len(res) == 1, res
+        assert len(res) == 1, f"expected length=1 got {res}"
 
         # Select
         res = list(session.execute("""
@@ -128,4 +130,4 @@ class TestSimpleBootShutdown(Tester):
                 WHERE k=2
         """))
 
-        assert len(res) == 0, res
+        assert len(res) == 0, f"expected length=0 got {res}"
