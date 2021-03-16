@@ -92,7 +92,8 @@ repos:
                 sstablesplit_test.py|
                 jmx_test.py|
                 schema_test.py|
-                listsnapshots_test.py
+                listsnapshots_test.py|
+                simple_boot_shutdown_test.py
             )$
         language: system
         types: [python]
