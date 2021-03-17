@@ -1,12 +1,13 @@
 import re
 import os
 import time
+import yaml
 import pytest
 import shutil
 import logging
-from datetime import datetime
 from glob import glob
 from time import sleep
+from datetime import datetime
 from pprint import pformat
 
 from cassandra import ConsistencyLevel
@@ -1148,3 +1149,27 @@ class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
         misplaced_files = [snapshot for snapshot in snapshot_files if primary_mgr_cluster.id not in snapshot]
         assert misplaced_files, f"backup files command of the snapshot tag {primary_backup_task_snapshot_tag} " \
                                 f"contains unrelated files: {misplaced_files}"
+
+    def test_agent_check_location(self):
+        correct_config_file_path = os.path.join(self.cluster.get_path(), "node1/conf/scylla-manager-agent.yaml")
+        wrong_config_file_location = os.path.join(self.cluster._scylla_manager._get_path(), "TEMP_CONFIG.yaml")
+        wrong_config_dict = {"s3": {"endpoint": "127.0.0.1:1", "provider": "Minio"}}
+        with open(wrong_config_file_location, 'w') as temp_conf:
+            yaml.dump(wrong_config_dict, temp_conf, default_flow_style=False)
+
+        self.config_and_create_cluster(nodes=3)
+        self._create_mgr_cluster(self.cluster.nodelist()[0], name="cluster1")
+        # Running with the correct config file, expecting success.
+        self.cluster._scylla_manager.agent_check_location(location_list=["s3:{}".format(DESTINATION_BUCKET)],
+                                                          extra_config_file_list=[correct_config_file_path])
+        # Running with the wrong config file, expecting failure.
+        try:
+            self.cluster._scylla_manager.agent_check_location(location_list=["s3:{}".format(DESTINATION_BUCKET)],
+                                                              extra_config_file_list=[correct_config_file_path,
+                                                                                      wrong_config_file_location])
+        except Exception as err:
+            assert "send request failed" in err.args[-1], \
+                f"using an additional faulty s3 config did cause the check-location command fail, but with an " \
+                f"unexpected error message: {str(err.args)}"
+        else:
+            raise Exception("using an additional faulty s3 config did not cause the check-location command to fail")
