@@ -1,24 +1,25 @@
-import os
 import re
-
+import logging
 from random import randint, choice
 from uuid import uuid4
 
-from dtest import Tester, debug
-from scylla_tools import set_trace_probability
-from tools import require
-from tools import rows_to_list
-from cassandra.concurrent import execute_concurrent_with_args
-from nose.plugins.attrib import attr
 
-# for type hints
-from ccmlib.scylla_node import ScyllaNode
-from ccmlib.scylla_cluster import ScyllaCluster
+import pytest
 from cassandra.cluster import Session
-from scylla_tools import get_sstables_files, get_node_cf_dir
+from cassandra.concurrent import execute_concurrent_with_args
+
+from dtest_class import Tester, create_ks, create_cf
+from scylla_tools import set_trace_probability, get_sstables_files, get_node_cf_dir
+from tools.data import rows_to_list
+from tools.assertions import PytestRegex
+
+from ccmlib.scylla_node import ScyllaNode
 
 
-class TracingReadAccessHelper:
+logger = logging.getLogger(__name__)
+
+
+class TracingReadAccessHelper:  # pylint: disable=no-member
     def prepare_cluster(self, nodes=1, rf=None, disable_cache=True,
                         compaction=None,
                         create_index=False, create_mv=False):
@@ -43,9 +44,9 @@ class TracingReadAccessHelper:
         session = self.patient_cql_connection(node)  # type: Session
         if not rf:
             rf = nodes
-        self.create_ks(session, self.keyspace, rf)
-        self.create_cf(session, self.table, key_type="text", columns={
-                       "name": "text", "rate": "int"}, compaction=compaction)
+        create_ks(session, self.keyspace, rf)
+        create_cf(session, self.table, key_type="text", columns={
+            "name": "text", "rate": "int"}, compaction=compaction)
         if create_index:
             session.execute("CREATE INDEX ON {0.keyspace}.{0.table} (rate)".format(self))
         if create_mv:
@@ -105,7 +106,7 @@ class TracingReadAccessHelper:
                                      SELECT * \
                                      FROM {0.keyspace}.{0.table}".format(self),
                                      return_output=True, cqlsh_options=['--no-color'])
-        self.assertFalse(err)
+        assert not err
         return output
 
     def select_single_key_with_tracing(self, node):
@@ -119,7 +120,7 @@ class TracingReadAccessHelper:
                                      FROM {0.keyspace}.{0.table} \
                                      WHERE key = '{1}'".format(self, key[0]),
                                      return_output=True, cqlsh_options=['--no-color'])
-        self.assertFalse(err)
+        assert not err
         return output
 
     def select_all_from_mv_with_tracing(self, node):
@@ -127,7 +128,7 @@ class TracingReadAccessHelper:
                                      SELECT * \
                                      FROM {0.keyspace}.{0.table}_by_rate".format(self),
                                      return_output=True, cqlsh_options=['--no-color'])
-        self.assertFalse(err)
+        assert not err
         return output
 
     def select_all_by_index_with_tracing(self, node):
@@ -136,7 +137,7 @@ class TracingReadAccessHelper:
                                      FROM {0.keyspace}.{0.table} \
                                      WHERE rate > 0 ALLOW FILTERING".format(self),
                                      return_output=True, cqlsh_options=['--no-color'])
-        self.assertFalse(err)
+        assert not err
         return output
 
     def select_one_by_index_with_tracing(self, node):
@@ -149,7 +150,7 @@ class TracingReadAccessHelper:
                                      FROM {0.keyspace}.{0.table} \
                                      WHERE rate = {1} ALLOW FILTERING".format(self, key[1]),
                                      return_output=True, cqlsh_options=['--no-color'])
-        self.assertFalse(err)
+        assert not err
         return output
 
     def get_tables_list_for_node(self, node, table_name, table_type="Data"):
@@ -172,16 +173,12 @@ class TracingReadAccessHelper:
         sstables = self.get_tables_list_for_node(node, table_name, table_type='Data')
         addr = re.escape(node.address())
         for sstable in sstables:
-            self.assertRegexpMatches(
-                output,
-                rf"Reading {element} .* from sstable .*{sstable}.*| {addr} |")
+            assert output == PytestRegex(rf"Reading {element} .* from sstable .*{sstable}.*| {addr} |")
             data_or_index = re.sub('Data', '(Data|Index)', sstable)
-            self.assertRegexpMatches(
-                output,
-                rf"{data_or_index}: scheduling bulk DMA read of size [\d]* at offset [\d]*.*| {addr} |")
-            self.assertRegexpMatches(
-                output,
-                rf"{data_or_index}: finished bulk DMA read of size [\d]* at offset [\d]*, successfully read [\d]* bytes.*| {addr} |")
+            assert output == PytestRegex(rf"{data_or_index}: scheduling bulk DMA read of size "
+                                         rf"[\d]* at offset [\d]*.*| {addr} |")
+            assert output == PytestRegex(rf"{data_or_index}: finished bulk DMA read of size "
+                                         rf"[\d]* at offset [\d]*, successfully read [\d]* bytes.*| {addr} |")
 
     def verify_tracing_info_sstable_read_access_all_partitions(self, output, node, table_name):
         """verify tracing info in output
@@ -208,12 +205,12 @@ class TracingReadAccessHelper:
         self._verify_tracing_info(output, node, table_name, 'key')
 
 
-@attr('dtest-full')
+@pytest.mark.dtest_full
 class TestTracingReadAccess(Tester, TracingReadAccessHelper):
     keyspace = "ks"
     table = "cf"
 
-    @attr('single_node')
+    @pytest.mark.single_node
     def test_tracing_info_for_all_partitions(self):
         """test tracing read access of sstable
 
@@ -230,11 +227,11 @@ class TestTracingReadAccess(Tester, TracingReadAccessHelper):
         # Read all data with tracing on
         out = self.select_all_with_tracing(node)
 
-        debug(out)
+        logger.info(out)
         # Assert Reading partitions from sstable
         self.verify_tracing_info_sstable_read_access_all_partitions(out, node, self.table)
 
-    @attr('single_node')
+    @pytest.mark.single_node
     def test_tracing_info_for_mv(self):
         """test tracing read access of sstable
 
@@ -250,12 +247,12 @@ class TestTracingReadAccess(Tester, TracingReadAccessHelper):
 
         # Read all data with tracing on
         out = self.select_all_from_mv_with_tracing(node)
-        debug(out)
+        logger.info(out)
         # Assert Reading partitions from sstable
         mv_table_name = self.table + "_by_rate"
         self.verify_tracing_info_sstable_read_access_all_partitions(out, node, mv_table_name)
 
-    @attr('single_node')
+    @pytest.mark.single_node
     def test_tracing_info_selecting_by_one_key(self):
         """validate that tracing info if select one key
 
@@ -267,10 +264,10 @@ class TestTracingReadAccess(Tester, TracingReadAccessHelper):
 
         out = self.select_single_key_with_tracing(node)
         # verify tracing info
-        debug(out)
+        logger.info(out)
         self.verify_sstable_read_access_one_key(out, node, self.table)
 
-    @attr('single_node')
+    @pytest.mark.single_node
     def test_tracing_info_for_index_read_range(self):
         session = self.prepare_cluster(nodes=1, create_index=True)
         node = self.cluster.nodelist()[0]
@@ -279,11 +276,11 @@ class TestTracingReadAccess(Tester, TracingReadAccessHelper):
         node.flush()
 
         out = self.select_all_by_index_with_tracing(node)
-        debug(out)
+        logger.info(out)
 
         self.verify_tracing_info_sstable_read_access_all_partitions(out, node, self.table)
 
-    @attr('single_node')
+    @pytest.mark.single_node
     def test_tracing_info_for_index_read_one(self):
         session = self.prepare_cluster(nodes=1, create_index=True)
         node = self.cluster.nodelist()[0]
@@ -292,10 +289,10 @@ class TestTracingReadAccess(Tester, TracingReadAccessHelper):
         node.flush()
 
         out = self.select_one_by_index_with_tracing(node)
-        debug(out)
+        logger.info(out)
         self.verify_sstable_read_access_one_key(out, node, self.table)
 
-    @attr('single_node')
+    @pytest.mark.single_node
     def test_tracing_info_read_from_several_sstables(self):
         """test tracing I/O reads for several sstables
 
@@ -313,7 +310,7 @@ class TestTracingReadAccess(Tester, TracingReadAccessHelper):
         node.flush()
         # Read all data with tracing on
         out = self.select_all_with_tracing(node)
-        debug(out)
+        logger.info(out)
         # Assert Reading partitions from sstable
         self.verify_tracing_info_sstable_read_access_all_partitions(out, node, self.table)
 
