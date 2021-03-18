@@ -1,29 +1,36 @@
 import math
-import os
 import time
 
-from ccmlib.common import get_version_from_build, isScylla
-from dtest import Tester
-from assertions import assert_invalid, assert_one, assert_none
-from tools import since
+import pytest
 from cassandra import FunctionFailure
 
+from dtest_class import Tester, create_ks
+from tools.misc import ImmutableMapping
+from tools.assertions import assert_invalid, assert_one
+from dtest_setup_overrides import DTestSetupOverrides
 
-@since('2.2')
+
+@pytest.mark.dtest_full
 class TestUserFunctions(Tester):
 
-    def __init__(self, *args, **kwargs):
-        CASSANDRA_DIR = os.environ.get('CASSANDRA_DIR')
-        if isScylla(CASSANDRA_DIR):
-            kwargs['cluster_options'] = {'enable_user_defined_functions': 'true',
-                                         'experimental': 'true'}
+    @pytest.fixture(scope="function", autouse=True)
+    def fixture_dtest_setup_overrides(self, dtest_config):
+        dtest_setup_overrides = DTestSetupOverrides()
+        if dtest_config.scylla_version:
+            dtest_setup_overrides.cluster_options = ImmutableMapping({
+                "experimental_features": ["udf"],
+                "enable_user_defined_functions": "true",
+            })
+        elif dtest_config.cassandra_version_from_build >= "3.0":
+            dtest_setup_overrides.cluster_options = ImmutableMapping({
+                "enable_user_defined_functions": "true",
+                "enable_scripted_user_defined_functions": "true",
+            })
         else:
-            if get_version_from_build(CASSANDRA_DIR) >= '3.0':
-                kwargs['cluster_options'] = {'enable_user_defined_functions': 'true',
-                                             'enable_scripted_user_defined_functions': 'true'}
-            else:
-                kwargs['cluster_options'] = {'enable_user_defined_functions': 'true'}
-        Tester.__init__(self, *args, **kwargs)
+            dtest_setup_overrides.cluster_options = ImmutableMapping({
+                "enable_user_defined_functions": "true",
+            })
+        return dtest_setup_overrides
 
     def prepare(self, create_keyspace=True, nodes=1, rf=1):
         cluster = self.cluster
@@ -34,7 +41,7 @@ class TestUserFunctions(Tester):
 
         session = self.patient_cql_connection(node1)
         if create_keyspace:
-            self.create_ks(session, 'ks', rf)
+            create_ks(session, 'ks', rf)
         return session
 
     def test_migration(self):
@@ -51,7 +58,7 @@ class TestUserFunctions(Tester):
         session1 = self.patient_exclusive_cql_connection(node1)
         session2 = self.patient_exclusive_cql_connection(node2)
         session3 = self.patient_exclusive_cql_connection(node3)
-        self.create_ks(session1, 'ks', 1)
+        create_ks(session1, 'ks', 1)
         session2.execute("use ks")
         session3.execute("use ks")
 
@@ -68,82 +75,69 @@ class TestUserFunctions(Tester):
         session1.execute("INSERT INTO udf_kv (key, value) VALUES (%d, %d)" % (3, 3))
 
         session1.execute("""
-            create or replace function x_sin ( input double ) called on null input
-            returns double language java as 'if (input==null) return null;
-            return Double.valueOf(Math.sin(input.doubleValue()));'
+            create or replace function x_2 ( input double ) called on null input
+            returns double language lua as 'return (input ~= nil) and input * 2.0 or nil'
             """)
         session2.execute("""
-            create or replace function x_cos ( input double ) called on null input
-            returns double language java as 'if (input==null) return null;
-            return Double.valueOf(Math.cos(input.doubleValue()));'
+            create or replace function x_3 ( input double ) called on null input
+            returns double language lua as 'return (input ~= nil) and input * 3.0 or nil'
             """)
         session3.execute("""
-            create or replace function x_tan ( input double ) called on null input
-            returns double language java as 'if (input==null) return null;
-            return Double.valueOf(Math.tan(input.doubleValue()));'
+            create or replace function x_4 ( input double ) called on null input
+            returns double language lua as 'return (input ~= nil) and input * 4.0 or nil'
             """)
 
         time.sleep(1)
 
         assert_one(session1,
-                   "SELECT key, value, x_sin(value), x_cos(value), x_tan(value) FROM ks.udf_kv where key = %d" % 1,
-                   [1, 1.0, 0.8414709848078965, 0.5403023058681398, 1.5574077246549023])
+                   "SELECT key, value, x_2(value), x_3(value), x_4(value) FROM udf_kv where key = 1",
+                   [1, 1.0, 2.0, 3.0, 4.0])
 
         assert_one(session2,
-                   "SELECT key, value, x_sin(value), x_cos(value), x_tan(value) FROM ks.udf_kv where key = %d" % 2,
-                   [2, 2.0, math.sin(2.0), math.cos(2.0), math.tan(2.0)])
+                   "SELECT key, value, x_2(value), x_3(value), x_4(value) FROM udf_kv where key = 2",
+                   [2, 2.0, 4.0, 6.0, 8.0])
 
         assert_one(session3,
-                   "SELECT key, value, x_sin(value), x_cos(value), x_tan(value) FROM ks.udf_kv where key = %d" % 3,
-                   [3, 3.0, math.sin(3.0), math.cos(3.0), math.tan(3.0)])
-
-        session4 = self.patient_cql_connection(node1)
-
-        # check that functions are correctly confined to namespaces
-        assert_invalid(session4,
-                       "SELECT key, value, sin(value), cos(value), tan(value) FROM ks.udf_kv where key = 4",
-                       "Unknown function 'sin'")
+                   "SELECT key, value, x_2(value), x_3(value), x_4(value) FROM udf_kv where key = 3",
+                   [3, 3.0, 6.0, 9.0, 12.0])
 
         # try giving existing function bad input, should error
         assert_invalid(session1,
-                       "SELECT key, value, x_sin(key), foo_cos(KEYy), foo_tan(key) FROM ks.udf_kv where key = 1",
-                       "Type error: key cannot be passed as argument 0 of function ks.x_sin of type double")
+                       "SELECT key, value, x_2(key) FROM udf_kv where key = 1",
+                       "Type error: key cannot be passed as argument 0 of function ks.x_2 of type double")
 
-        session2.execute("drop function x_sin")
-        session3.execute("drop function x_cos")
-        session1.execute("drop function x_tan")
+        session2.execute("drop function x_2")
+        session3.execute("drop function x_3")
+        session1.execute("drop function x_4")
 
-        assert_invalid(session1, "SELECT key, value, sin(value), cos(value), tan(value) FROM udf_kv where key = 1")
-        assert_invalid(session2, "SELECT key, value, sin(value), cos(value), tan(value) FROM udf_kv where key = 1")
-        assert_invalid(session3, "SELECT key, value, sin(value), cos(value), tan(value) FROM udf_kv where key = 1")
+        assert_invalid(session1, "SELECT key, value, x_2(value), x_3(value), x_4(value) FROM udf_kv where key = 1")
+        assert_invalid(session2, "SELECT key, value, x_2(value), x_3(value), x_4(value) FROM udf_kv where key = 1")
+        assert_invalid(session3, "SELECT key, value, x_2(value), x_3(value), x_4(value) FROM udf_kv where key = 1")
 
-        # try creating function returning the wrong type, should error
-        assert_invalid(session1,
-                       "CREATE FUNCTION bad_sin ( input double ) CALLED ON NULL INPUT RETURNS uuid LANGUAGE java AS 'return Math.sin(input);';",
-                       "Type mismatch: cannot convert from double to UUID")
+    @pytest.mark.single_node
+    def test_udf_overload_test(self):
+        session = self.prepare()
 
-    def udf_overload_test(self):
-
-        session = self.prepare(nodes=3)
-
-        session.execute("CREATE TABLE tab (k text PRIMARY KEY, v int)")
-        session.execute("INSERT INTO tab (k, v) VALUES ('foo' , 1);")
+        session.execute("CREATE TABLE tab (v varchar PRIMARY KEY, i int, t text, a ascii)")
+        session.execute("INSERT INTO tab (v, i, t, a) VALUES ('foo', 1, 'foo', 'foo');")
 
         # create overloaded udfs
         session.execute(
-            "CREATE FUNCTION overloaded(v varchar) called on null input RETURNS text LANGUAGE java AS 'return \"f1\";'")
+            "CREATE FUNCTION overloaded(v varchar) called on null input RETURNS text LANGUAGE lua AS 'return \"f1\"'")
         session.execute(
-            "CREATE OR REPLACE FUNCTION overloaded(i int) called on null input RETURNS text LANGUAGE java AS 'return \"f2\";'")
+            "CREATE OR REPLACE FUNCTION overloaded(i int) called on null input RETURNS text LANGUAGE lua AS 'return \"f2\"'")
         session.execute(
-            "CREATE OR REPLACE FUNCTION overloaded(v1 text, v2 text) called on null input RETURNS text LANGUAGE java AS 'return \"f3\";'")
+            "CREATE OR REPLACE FUNCTION overloaded(t text) called on null input RETURNS text LANGUAGE lua AS 'return \"f3\"'")
         session.execute(
-            "CREATE OR REPLACE FUNCTION overloaded(v ascii) called on null input RETURNS text LANGUAGE java AS 'return \"f1\";'")
+            "CREATE OR REPLACE FUNCTION overloaded(a ascii) called on null input RETURNS text LANGUAGE lua AS 'return \"f4\"'")
 
         # ensure that works with correct specificity
-        assert_invalid(session, "SELECT v FROM tab WHERE k = overloaded('foo')")
-        assert_none(session, "SELECT v FROM tab WHERE k = overloaded((text) 'foo')")
-        assert_none(session, "SELECT v FROM tab WHERE k = overloaded((ascii) 'foo')")
-        assert_none(session, "SELECT v FROM tab WHERE k = overloaded((varchar) 'foo')")
+        assert_invalid(session, "SELECT v FROM tab WHERE k = overloaded('foo')",
+                       "Ambiguous call to function overloaded")
+        assert_one(session, "SELECT v, overloaded(v) FROM tab", ["foo", "f3"])  # varchar is the same as text
+        assert_one(session, "SELECT i, overloaded(i) FROM tab", [1, "f2"])
+        assert_one(session, "SELECT t, overloaded(t) FROM tab", ["foo", "f3"])
+        assert_one(session, "SELECT a, overloaded(a) FROM tab", ["foo", "f4"])
 
         # try non-existent functions
         assert_invalid(session, "DROP FUNCTION overloaded(boolean)")
@@ -151,16 +145,19 @@ class TestUserFunctions(Tester):
 
         # try dropping overloaded - should fail because ambiguous
         assert_invalid(session, "DROP FUNCTION overloaded")
+
+        # varchar is the same as text here too.
         session.execute("DROP FUNCTION overloaded(varchar)")
-        assert_invalid(session, "SELECT v FROM tab WHERE k = overloaded((text)'foo')")
-        session.execute("DROP FUNCTION overloaded(text, text)")
-        assert_invalid(session, "SELECT v FROM tab WHERE k = overloaded((text)'foo',(text)'bar')")
+        assert_invalid(session, "DROP FUNCTION overloaded(text)", "User function ks.overloaded(text) doesn't exist")
+
         session.execute("DROP FUNCTION overloaded(ascii)")
-        assert_invalid(session, "SELECT v FROM tab WHERE k = overloaded((ascii)'foo')")
+
         # should now work - unambiguous
         session.execute("DROP FUNCTION overloaded")
 
-    def udf_scripting_test(self):
+    @pytest.mark.xfail(reason="Language 'javascript' is not supported")
+    @pytest.mark.single_node
+    def test_udf_scripting(self):
         session = self.prepare()
         session.execute("create table nums (key int primary key, val double);")
 
@@ -186,7 +183,8 @@ class TestUserFunctions(Tester):
 
         assert_one(session, "select plustwo(key) from nums where key = 3", [5])
 
-    def default_aggregate_test(self):
+    @pytest.mark.single_node
+    def test_default_aggregate(self):
         session = self.prepare()
         session.execute("create table nums (key int primary key, val double);")
 
@@ -199,34 +197,37 @@ class TestUserFunctions(Tester):
         assert_one(session, "SELECT avg(val) FROM nums", [5.0])
         assert_one(session, "SELECT count(*) FROM nums", [9])
 
-    def aggregate_udf_test(self):
+    @pytest.mark.skip(reason="CREATE AGGREGATE is not supported yet")
+    @pytest.mark.single_node
+    def test_aggregate_udf(self):
         session = self.prepare()
         session.execute("create table nums (key int primary key, val int);")
 
         for x in range(1, 4):
             session.execute("INSERT INTO nums (key, val) VALUES (%d, %d)" % (x, x))
         session.execute(
-            "create function plus(key int, val int) called on null input returns int language java as 'return Integer.valueOf(key.intValue() + val.intValue());'")
+            "create function plus(key int, val int) called on null input returns int language lua as 'return key + val'")
         session.execute(
-            "create function stri(key int) called on null input returns text language java as 'return key.toString();'")
+            "create function stri(key int) called on null input returns text language lua as 'return tostring(key)'")
         session.execute("create aggregate suma (int) sfunc plus stype int finalfunc stri initcond 10")
 
         assert_one(session, "select suma(val) from nums", ["16"])
 
         session.execute(
-            "create function test(a int, b double) called on null input returns int language javascript as 'a + b;'")
+            "create function test(a int, b double) called on null input returns int language lua as 'return a + b'")
         session.execute("create aggregate aggy(double) sfunc test stype int")
 
         assert_invalid(session, "create aggregate aggtwo(int) sfunc aggy stype int")
 
         assert_invalid(session, "create aggregate aggthree(int) sfunc test stype int finalfunc aggtwo")
 
-    def udf_with_udt_test(self):
+    @pytest.mark.single_node
+    def test_udf_with_udt(self):
         session = self.prepare()
 
         session.execute("create type test (a text, b int);")
 
-        assert_invalid(session, "create table tab (key int primary key, udt test);")
+        # assert_invalid(session, "create table tab (key int primary key, udt test);")
 
         session.execute("create table tab (key int primary key, udt frozen<test>);")
 
@@ -235,14 +236,14 @@ class TestUserFunctions(Tester):
         session.execute("insert into tab (key, udt) values (3, {a: 'trois', b:3});")
 
         session.execute(
-            "create function funk(udt test) called on null input returns int language java as 'return Integer.valueOf(udt.getInt(\"b\"));';")
+            "create function funk(udt test) called on null input returns int language lua as 'return udt.b';")
 
         assert_one(session, "select sum(funk(udt)) from tab", [6])
 
         assert_invalid(session, "drop type test;")
 
-    @since('2.2')
-    def udf_with_udt_keyspace_isolation_test(self):
+    @pytest.mark.single_node
+    def test_udf_with_udt_keyspace_isolation(self):
         """
         Ensure functions dont allow a UDT from another keyspace
         @jira_ticket CASSANDRA-9409
@@ -251,7 +252,7 @@ class TestUserFunctions(Tester):
         session = self.prepare()
 
         session.execute("create type udt (a text, b int);")
-        self.create_ks(session, 'user_ks', 1)
+        create_ks(session, 'user_ks', 1)
 
         # ensure we cannot use a udt from another keyspace as function argument
         assert_invalid(
@@ -268,7 +269,9 @@ class TestUserFunctions(Tester):
             "Statement on keyspace user_ks cannot refer to a user type in keyspace ks"
         )
 
-    def aggregate_with_udt_keyspace_isolation_test(self):
+    @pytest.mark.skip(reason="CREATE AGGREGATE is not supported yet")
+    @pytest.mark.single_node
+    def test_aggregate_with_udt_keyspace_isolation(self):
         """
         Ensure aggregates dont allow a UDT from another keyspace
         @jira_ticket CASSANDRA-9409
@@ -276,7 +279,7 @@ class TestUserFunctions(Tester):
         session = self.prepare()
 
         session.execute("create type udt (a int);")
-        self.create_ks(session, 'user_ks', 1)
+        create_ks(session, 'user_ks', 1)
         assert_invalid(
             session,
             "create aggregate suma (ks.udt) sfunc plus stype int finalfunc stri initcond 10",
