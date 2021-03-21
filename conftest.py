@@ -80,7 +80,6 @@ def pytest_addoption(parser):
                      help="Specify whether to run indev, releases, or both")
     parser.addoption("--scylla-version", action="store", default=None,
                      help="Scylla relocatable version ex: unstable/master:239")
-
     parser.addoption("--collect-required", action="store_true", default=False,
                      help="collect a report on require tests")
 

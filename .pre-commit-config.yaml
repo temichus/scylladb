@@ -86,6 +86,7 @@ repos:
                 materialized_views_test.py|
                 toppartitions_test.py|
                 resharding_test.py|
+                replication_test.py|
                 upgrade_through_versions_test.py|
                 heat_weighted_load_balancing_test.py|
                 upgrade_test.py|

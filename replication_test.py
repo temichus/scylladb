@@ -1,23 +1,25 @@
 import os
 import re
 import time
+import logging
+import pytest
 from pkg_resources import parse_version
 
 from cassandra import ConsistencyLevel
 from cassandra.query import SimpleStatement
-from cassandra.util import OrderedMapSerializedKey
 from collections import defaultdict, OrderedDict
-from unittest import skip
-from nose.plugins.attrib import attr
 
-from dtest import Tester, debug, PRINT_DEBUG
-from tools import no_vnodes, since, require, rows_to_list
+from dtest_class import Tester, create_ks
+from tools import rows_to_list
+
+
+logger = logging.getLogger(__name__)
 
 TRACE_DETERMINE_REPLICAS = re.compile('Determining replicas for mutation')
-TRACE_SEND_MESSAGE = re.compile('Sending message to /([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)')
-TRACE_RESPOND_MESSAGE = re.compile('Message received from /([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)')
+TRACE_SEND_MESSAGE = re.compile('Sending message to /([0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+)')
+TRACE_RESPOND_MESSAGE = re.compile('Message received from /([0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+)')
 TRACE_COMMIT_LOG = re.compile('Appending to commitlog')
-TRACE_FORWARD_WRITE = re.compile('Enqueuing forwarded write to /([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)')
+TRACE_FORWARD_WRITE = re.compile(r'Enqueuing forwarded write to /([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)')
 
 # Some pre-computed murmur 3 hashes; there are no good python murmur3
 # hashing libraries :(
@@ -45,9 +47,9 @@ murmur3_hashes = {
 }
 
 
-@no_vnodes()
-@attr('dtest-full')
-class ReplicationTest(Tester):
+@pytest.mark.no_vnodes
+@pytest.mark.dtest_full
+class TestReplication(Tester):
     """This test suite looks at how data is replicated across a cluster
     and who the coordinator, replicas and forwarders involved are.
     """
@@ -149,20 +151,19 @@ class ReplicationTest(Tester):
                 replicas.extend(self.get_replicas_for_token(
                     token, rf, nodes=dc_nodes))
         else:
-            raise NotImplemented('replication strategy not implemented: %s'
-                                 % strategy)
+            raise NotImplementedError(f'replication strategy not implemented: {strategy}')
 
         return replicas
 
-    def pprint_trace(self, trace):
+    @staticmethod
+    def pprint_trace(trace):
         """Pretty print a trace"""
-        if PRINT_DEBUG:
-            print("-" * 40)
-            for t in trace.events:
-                print("%s\t%s\t%s\t%s" % (t.source, t.source_elapsed, t.description, t.thread_name))
-            print("-" * 40)
+        print("-" * 40)
+        for t in trace.events:
+            print("%s\t%s\t%s\t%s" % (t.source, t.source_elapsed, t.description, t.thread_name))
+        print("-" * 40)
 
-    def simple_test(self):
+    def test_simple(self):
         """Test the SimpleStrategy on a 3 node cluster"""
         self.cluster.populate(3).start()
         time.sleep(5)
@@ -175,7 +176,7 @@ class ReplicationTest(Tester):
         session.max_trace_wait = 120
 
         replication_factor = 3
-        self.create_ks(session, 'test', replication_factor)
+        create_ks(session, 'test', replication_factor)
         session.execute('CREATE TABLE test.test (id int PRIMARY KEY, value text)', trace=False)
         # Wait for table creation, otherwise trace times out -
         # CASSANDRA-5658
@@ -191,16 +192,16 @@ class ReplicationTest(Tester):
             stats = self.get_replicas_from_trace(trace)
             replicas_should_be = set(self.get_replicas_for_token(
                 token, replication_factor))
-            debug('\nreplicas should be: %s' % replicas_should_be)
-            debug('replicas were: %s' % stats['replicas'])
+            logger.debug('\nreplicas should be: %s' % replicas_should_be)
+            logger.debug('replicas were: %s' % stats['replicas'])
 
             # Make sure the correct nodes are replicas:
-            self.assertEqual(stats['replicas'], replicas_should_be)
+            assert stats['replicas'] == replicas_should_be
             # Make sure that each replica node was contacted and
             # acknowledged the write:
-            self.assertEqual(stats['nodes_sent_write'], stats['nodes_responded_write'])
+            assert stats['nodes_sent_write'] == stats['nodes_responded_write']
 
-    def network_topology_test(self):
+    def test_network_topology(self):
         """Test the NetworkTopologyStrategy on a 2DC 3:3 node cluster"""
         self.cluster.populate([3, 3]).start()
         time.sleep(5)
@@ -213,7 +214,7 @@ class ReplicationTest(Tester):
         session = self.conn
 
         replication_factor = {'dc1': 2, 'dc2': 2}
-        self.create_ks(session, 'test', replication_factor)
+        create_ks(session, 'test', replication_factor)
         session.execute('CREATE TABLE test.test (id int PRIMARY KEY, value text)', trace=False)
         # Wait for table creation, otherwise trace times out -
         # CASSANDRA-5658
@@ -231,9 +232,9 @@ class ReplicationTest(Tester):
             stats = self.get_replicas_from_trace(trace)
             replicas_should_be = set(self.get_replicas_for_token(
                 token, replication_factor, strategy='NetworkTopologyStrategy'))
-            debug('Current token is %s' % token)
-            debug('\nreplicas should be: %s' % replicas_should_be)
-            debug('replicas were: %s' % stats['replicas'])
+            logger.debug('Current token is %s' % token)
+            logger.debug('\nreplicas should be: %s' % replicas_should_be)
+            logger.debug('replicas were: %s' % stats['replicas'])
 
             # Make sure the coordinator only talked to a single node in
             # the second datacenter - CASSANDRA-5632:
@@ -241,28 +242,28 @@ class ReplicationTest(Tester):
             for node_contacted in stats['nodes_contacted'][node1.address()]:
                 if ip_nodes[node_contacted].data_center != node1.data_center:
                     num_in_other_dcs_contacted += 1
-            self.assertEqual(num_in_other_dcs_contacted, 1)
+            assert num_in_other_dcs_contacted == 1
 
             # Record the forwarder used for each INSERT:
             forwarders_used = forwarders_used.union(stats['forwarders'])
 
             try:
                 # Make sure the correct nodes are replicas:
-                self.assertEqual(stats['replicas'], replicas_should_be)
+                assert stats['replicas'] == replicas_should_be
                 # Make sure that each replica node was contacted and
                 # acknowledged the write:
-                self.assertEqual(stats['nodes_sent_write'], stats['nodes_responded_write'])
+                assert stats['nodes_sent_write'] == stats['nodes_responded_write']
             except AssertionError as e:
-                debug("Failed on key %s and token %s." % (key, token))
+                logger.debug("Failed on key %s and token %s." % (key, token))
                 raise e
 
         # Given a diverse enough keyset, each node in the second
         # datacenter should get a chance to be a forwarder:
-        self.assertEqual(len(forwarders_used), 3)
+        assert len(forwarders_used) == 3
 
 
-@attr('dtest-full')
-class SnitchConfigurationUpdateTest(Tester):
+@pytest.mark.dtest_full
+class TestSnitchConfigurationUpdate(Tester):
     """
     Test to reproduce CASSANDRA-10238, wherein changing snitch properties to change racks without a restart
     could violate RF contract.
@@ -285,28 +286,28 @@ class SnitchConfigurationUpdateTest(Tester):
             out, err = node.nodetool(cmd)
 
             if len(err.strip()) > 0:
-                debug("Error running 'nodetool {}': {}".format(cmd, err))
+                logger.debug("Error running 'nodetool {}': {}".format(cmd, err))
 
-            debug("Endpoints for node {}, expected count is {}".format(node.address(), expected_count))
-            debug(out)
-            ips_found = re.findall('(\d+\.\d+\.\d+\.\d+)', out)
+            logger.debug("Endpoints for node {}, expected count is {}".format(node.address(), expected_count))
+            logger.debug(out)
+            ips_found = re.findall(r'(\d+\.\d+\.\d+\.\d+)', out)
 
-            self.assertEqual(len(ips_found), expected_count,
-                             "wrong number of endpoints found ({}), should be: {}".format(len(ips_found), expected_count))
+            assert len(ips_found) == expected_count,\
+                f"wrong number of endpoints found ({len(ips_found)}), should be: {expected_count}"
 
     def wait_for_nodes_on_racks(self, nodes, expected_racks):
         """
         Waits for nodes to match the expected racks.
         """
-        regex = re.compile("^UN(?:\s*)127\.0\.0(?:.*)\s(.*)$", re.IGNORECASE)
+        regex = re.compile(r"^UN(?:\s*)127\.0\.0(?:.*)\s(.*)$", re.IGNORECASE)
         for i, node in enumerate(nodes):
             wait_expire = time.time() + 120
             while time.time() < wait_expire:
                 out, err = node.nodetool("status")
 
-                debug(out)
+                logger.debug(out)
                 if len(err.strip()) > 0:
-                    debug("Error trying to run nodetool status: {}".format(err))
+                    logger.debug("Error trying to run nodetool status: {}".format(err))
 
                 racks = []
                 for line in out.split(os.linesep):
@@ -316,15 +317,15 @@ class SnitchConfigurationUpdateTest(Tester):
 
                 if racks == expected_racks:
                     # great, the topology change is propagated
-                    debug("Topology change detected on node {}".format(i))
+                    logger.debug("Topology change detected on node {}".format(i))
                     break
                 else:
-                    debug("Waiting for topology change on node {}".format(i))
+                    logger.debug("Waiting for topology change on node {}".format(i))
                     time.sleep(5)
             else:
                 raise RuntimeError("Ran out of time waiting for topology to change on node {}".format(i))
 
-    @skip("unrecognised option '-Dcassandra.ignore_rack=true'")
+    @pytest.mark.skip("unrecognised option '-Dcassandra.ignore_rack=true'")
     def test_rf_collapse_gossiping_property_file_snitch(self):
         """
         @jira_ticket CASSANDRA-10238
@@ -341,7 +342,7 @@ class SnitchConfigurationUpdateTest(Tester):
                                        final_racks=["rack1", "rack1", "rack1"],
                                        nodes_to_shutdown=[0, 2])
 
-    @skip("unrecognised option '-Dcassandra.ignore_rack=true'")
+    @pytest.mark.skip("unrecognised option '-Dcassandra.ignore_rack=true'")
     def test_rf_expand_gossiping_property_file_snitch(self):
         """
         @jira_ticket CASSANDRA-10238
@@ -358,7 +359,7 @@ class SnitchConfigurationUpdateTest(Tester):
                                        final_racks=["rack0", "rack1", "rack2"],
                                        nodes_to_shutdown=[0, 2])
 
-    @skip("unrecognised option '-Dcassandra.ignore_rack=true'")
+    @pytest.mark.skip("unrecognised option '-Dcassandra.ignore_rack=true'")
     def test_rf_collapse_gossiping_property_file_snitch_multi_dc(self):
         """
         @jira_ticket CASSANDRA-10238
@@ -377,7 +378,7 @@ class SnitchConfigurationUpdateTest(Tester):
                                        final_racks=["rack1", "rack1", "rack1", "rack1", "rack1", "rack1"],
                                        nodes_to_shutdown=[0, 2, 3, 5])
 
-    @skip("unrecognised option '-Dcassandra.ignore_rack=true'")
+    @pytest.mark.skip("unrecognised option '-Dcassandra.ignore_rack=true'")
     def test_rf_expand_gossiping_property_file_snitch_multi_dc(self):
         """
         @jira_ticket CASSANDRA-10238
@@ -396,7 +397,7 @@ class SnitchConfigurationUpdateTest(Tester):
                                        final_racks=["rack0", "rack1", "rack2", "rack0", "rack1", "rack2"],
                                        nodes_to_shutdown=[0, 2, 3, 5])
 
-    @skip("unrecognised option '-Dcassandra.ignore_rack=true'")
+    @pytest.mark.skip("unrecognised option '-Dcassandra.ignore_rack=true'")
     def test_rf_collapse_property_file_snitch(self):
         """
         @jira_ticket CASSANDRA-10238
@@ -414,7 +415,7 @@ class SnitchConfigurationUpdateTest(Tester):
                                        final_racks=["rack0", "rack0", "rack0"],
                                        nodes_to_shutdown=[1, 2])
 
-    @skip("unrecognised option '-Dcassandra.ignore_rack=true'")
+    @pytest.mark.skip("unrecognised option '-Dcassandra.ignore_rack=true'")
     def test_rf_expand_property_file_snitch(self):
         """
         @jira_ticket CASSANDRA-10238
@@ -432,8 +433,7 @@ class SnitchConfigurationUpdateTest(Tester):
                                        final_racks=["rack0", "rack1", "rack2"],
                                        nodes_to_shutdown=[1, 2])
 
-    @since('2.0', max_version='2.1.x')
-    @skip("unrecognised option '-Dcassandra.ignore_rack=true'")
+    @pytest.mark.skip("unrecognised option '-Dcassandra.ignore_rack=true'")
     def test_rf_collapse_yaml_file_snitch(self):
         """
         @jira_ticket CASSANDRA-10238
@@ -468,8 +468,7 @@ class SnitchConfigurationUpdateTest(Tester):
                                        final_racks=["rack0", "rack0", "rack0"],
                                        nodes_to_shutdown=[1, 2])
 
-    @since('2.0', max_version='2.1.x')
-    @skip("unrecognised option '-Dcassandra.ignore_rack=true'")
+    @pytest.mark.skip("unrecognised option '-Dcassandra.ignore_rack=true'")
     def test_rf_expand_yaml_file_snitch(self):
         """
         @jira_ticket CASSANDRA-10238
@@ -530,10 +529,10 @@ class SnitchConfigurationUpdateTest(Tester):
 
         for i in nodes_to_shutdown:
             node = cluster.nodelist()[i]
-            debug("Shutting down node {}".format(node.address()))
+            logger.debug("Shutting down node {}".format(node.address()))
             node.stop(wait_other_notice=True)
 
-        debug("Updating snitch file")
+        logger.debug("Updating snitch file")
         for i, node in enumerate(cluster.nodelist()):
             with open(os.path.join(node.get_conf_dir(), snitch_config_file), 'w') as topo_file:
                 for line in snitch_lines_after(i, node):
@@ -541,12 +540,12 @@ class SnitchConfigurationUpdateTest(Tester):
 
         # wait until the config is reloaded before we restart the nodes, the default check period is
         # 5 seconds so we wait for 10 seconds to be sure
-        debug("Waiting 10 seconds to make sure snitch file is reloaded...")
+        logger.debug("Waiting 10 seconds to make sure snitch file is reloaded...")
         time.sleep(10)
 
         for i in nodes_to_shutdown:
             node = cluster.nodelist()[i]
-            debug("Restarting node {}".format(node.address()))
+            logger.debug("Restarting node {}".format(node.address()))
             # Since CASSANDRA-10242 it is no longer
             # possible to start a node with a different rack unless we specify -Dcassandra.ignore_rack and since
             # CASSANDRA-9474 it is no longer possible to start a node with a different dc unless we specify
@@ -559,7 +558,7 @@ class SnitchConfigurationUpdateTest(Tester):
         # nodes have joined racks, check endpoint counts again
         self.check_endpoint_count('testing', 'rf_test', cluster.nodelist(), rf)
 
-    @require("2387")
+    @pytest.mark.require("2387")
     def test_cannot_restart_with_different_rack(self):
         """
         @jira_ticket CASSANDRA-10242
@@ -577,24 +576,24 @@ class SnitchConfigurationUpdateTest(Tester):
             for line in ["dc={}".format(node1.data_center), "rack=rack1"]:
                 topo_file.write(line + os.linesep)
 
-        debug("Starting node {} with rack1".format(node1.address()))
+        logger.debug("Starting node {} with rack1".format(node1.address()))
         node1.start(wait_for_binary_proto=True)
 
-        debug("Shutting down node {}".format(node1.address()))
+        logger.debug("Shutting down node {}".format(node1.address()))
         node1.stop(wait_other_notice=True)
 
-        debug("Updating snitch file with rack2")
+        logger.debug("Updating snitch file with rack2")
         for node in cluster.nodelist():
             with open(os.path.join(node.get_conf_dir(), 'cassandra-rackdc.properties'), 'w') as topo_file:
                 for line in ["dc={}".format(node.data_center), "rack=rack2"]:
                     topo_file.write(line + os.linesep)
 
-        debug("Restarting node {} with rack2".format(node1.address()))
+        logger.debug("Restarting node {} with rack2".format(node1.address()))
         mark = node1.mark_log()
         node1.start()
 
         # check node not running
-        debug("Waiting for error message in log file")
+        logger.debug("Waiting for error message in log file")
 
         if parse_version(cluster.version()) >= parse_version('2.2'):
             node1.watch_log_for("Cannot start node if snitch's rack(.*) differs from previous rack(.*)",
@@ -602,7 +601,7 @@ class SnitchConfigurationUpdateTest(Tester):
         else:
             node1.watch_log_for("Fatal exception during initialization", from_mark=mark)
 
-    @require('2390')
+    @pytest.mark.require('2390')
     def test_failed_snitch_update_gossiping_property_file_snitch(self):
         """
         @jira_ticket CASSANDRA-10243
@@ -617,7 +616,7 @@ class SnitchConfigurationUpdateTest(Tester):
                                         racks=["rack1", "rack1", "rack1"],
                                         error='')
 
-    @skip("unable to find class 'org.apache.cassandra.locator.PropertyFileSnitch'")
+    @pytest.mark.skip("unable to find class 'org.apache.cassandra.locator.PropertyFileSnitch'")
     def test_failed_snitch_update_property_file_snitch(self):
         """
         @jira_ticket CASSANDRA-10243
@@ -632,8 +631,7 @@ class SnitchConfigurationUpdateTest(Tester):
                                         racks=["rack1", "rack1", "rack1"],
                                         error='Cannot update data center or rack')
 
-    @since('2.0', max_version='2.1.x')
-    @skip('obsolete from 2.2')
+    @pytest.mark.skip('obsolete from 2.2')
     def test_failed_snitch_update_yaml_file_snitch(self):
         """
         @jira_ticket CASSANDRA-10243
@@ -682,7 +680,7 @@ class SnitchConfigurationUpdateTest(Tester):
 
         marks = [node.mark_log() for node in cluster.nodelist()]
 
-        debug("Updating snitch file")
+        logger.debug("Updating snitch file")
         for node in cluster.nodelist():
             with open(os.path.join(node.get_conf_dir(), snitch_config_file), 'w') as topo_file:
                 for line in snitch_lines_after:
@@ -690,7 +688,7 @@ class SnitchConfigurationUpdateTest(Tester):
 
         # wait until the config is reloaded, the default check period is
         # 5 seconds so we wait for 10 seconds to be sure
-        debug("Waiting 10 seconds to make sure snitch file is reloaded...")
+        logger.debug("Waiting 10 seconds to make sure snitch file is reloaded...")
         time.sleep(10)
 
         # check racks have not changed
@@ -701,7 +699,7 @@ class SnitchConfigurationUpdateTest(Tester):
             for node, mark in zip(cluster.nodelist(), marks):
                 node.watch_log_for(error, from_mark=mark)
 
-    @require('2387')
+    @pytest.mark.require('2387')
     def test_switch_data_center_startup_fails(self):
         """
         @jira_ticket CASSANDRA-9474
@@ -735,7 +733,7 @@ class SnitchConfigurationUpdateTest(Tester):
         node.watch_log_for(expected_error, from_mark=mark, timeout=10)
 
 
-@attr('dtest-full')
+@pytest.mark.dtest_full
 class TestRFAutoExpand(Tester):
     """
     Test for #4210 (or CASSANDRA-14303).
@@ -755,25 +753,21 @@ class TestRFAutoExpand(Tester):
             wait_other_notice=True)
         session = self.patient_cql_connection(self.cluster.nodelist()[0])
 
-        self.create_ks(session, 'test_simple', {'replication_factor': 1})
+        create_ks(session, 'test_simple', {'replication_factor': 1})
 
         # simple expansion to all dcs
         res = session.execute(
             "SELECT replication FROM system_schema.keyspaces "
             "WHERE keyspace_name = 'test_simple'")
-        self.assertCountEqual(
-            rows_to_list(res),
-            [[mk_replication({'dc1': 1, 'dc2': 1, 'dc3': 1})]])
+        assert rows_to_list(res) == [[mk_replication({'dc1': 1, 'dc2': 1, 'dc3': 1})]]
 
-        self.create_ks(session, 'test_manual', {'replication_factor': 1, 'dc3': 3})
+        create_ks(session, 'test_manual', {'replication_factor': 1, 'dc3': 3})
 
         # expand, but respect factors specified manually
         res = session.execute(
             "SELECT replication FROM system_schema.keyspaces "
             "WHERE keyspace_name = 'test_manual'")
-        self.assertCountEqual(
-            rows_to_list(res),
-            [[mk_replication({'dc1': 1, 'dc2': 1, 'dc3': 3})]])
+        assert rows_to_list(res) == [[mk_replication({'dc1': 1, 'dc2': 1, 'dc3': 3})]]
 
         # expansion doesn't change existing replication factors
         session.execute(
@@ -782,11 +776,9 @@ class TestRFAutoExpand(Tester):
         res = session.execute(
             "SELECT replication FROM system_schema.keyspaces "
             "WHERE keyspace_name = 'test_manual'")
-        self.assertCountEqual(
-            rows_to_list(res),
-            [[mk_replication({'dc1': 1, 'dc2': 1, 'dc3': 3})]])
+        assert rows_to_list(res) == [[mk_replication({'dc1': 1, 'dc2': 1, 'dc3': 3})]]
 
-        self.create_ks(session, 'test_switch', 3)
+        create_ks(session, 'test_switch', 3)
 
         # expand when directly switching from SimpleStrategy
         # to NetworkTopologyStrategy
@@ -796,11 +788,9 @@ class TestRFAutoExpand(Tester):
         res = session.execute(
             "SELECT replication FROM system_schema.keyspaces WHERE "
             "keyspace_name = 'test_switch'")
-        self.assertCountEqual(
-            rows_to_list(res),
-            [[mk_replication({'dc1': 3, 'dc2': 3, 'dc3': 3})]])
+        assert rows_to_list(res) == [[mk_replication({'dc1': 3, 'dc2': 3, 'dc3': 3})]]
 
-        self.create_ks(session, 'test_switch_2', 3)
+        create_ks(session, 'test_switch_2', 3)
 
         # don't expand when switching from SimpleStrategy
         # to NTS with manually specified DCs
@@ -810,9 +800,7 @@ class TestRFAutoExpand(Tester):
         res = session.execute(
             "SELECT replication FROM system_schema.keyspaces WHERE "
             "keyspace_name = 'test_switch_2'")
-        self.assertCountEqual(
-            rows_to_list(res),
-            [[mk_replication({'dc1': 2})]])
+        assert rows_to_list(res) == [[mk_replication({'dc1': 2})]]
 
         # expand non-specified factors
         session.execute(
@@ -821,9 +809,7 @@ class TestRFAutoExpand(Tester):
         res = session.execute(
             "SELECT replication FROM system_schema.keyspaces WHERE "
             "keyspace_name = 'test_switch_2'")
-        self.assertCountEqual(
-            rows_to_list(res),
-            [[mk_replication({'dc1': 2, 'dc2': 3, 'dc3': 3})]])
+        assert rows_to_list(res) == [[mk_replication({'dc1': 2, 'dc2': 3, 'dc3': 3})]]
 
 
 def mk_replication(dcs):
