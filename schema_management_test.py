@@ -1,22 +1,24 @@
 # coding: utf-8
 import string
 import time
+import logging
+import pytest
 from concurrent import futures
 
 from cassandra.cluster import ThreadPoolExecutor
 from cassandra.concurrent import execute_concurrent_with_args
-
-from assertions import assert_all
-from dtest import Tester
-from unittest import skip
-from nose.plugins.attrib import attr
-from tools import debug, rows_to_list
 from cassandra import ConsistencyLevel
 from cassandra.query import SimpleStatement
 
+from tools.assertions import assert_all
+from tools.data import rows_to_list
+from dtest_class import Tester, create_ks
 
-@attr('dtest-full')
-class SchemaManagementTest(Tester):
+logger = logging.getLogger(__name__)
+
+
+@pytest.mark.dtest_full
+class TestSchemaManagement(Tester):
 
     def test_prepared_statements_work_after_node_restart_after_altering_schema_without_changing_columns(self):
         ring_delay_sec = 5
@@ -29,8 +31,8 @@ class SchemaManagementTest(Tester):
 
         session = self.patient_cql_connection(node1)
 
-        debug('Creating schema...')
-        self.create_ks(session, 'ks', 3)
+        logger.debug('Creating schema...')
+        create_ks(session, 'ks', 3)
         session.execute("""
             CREATE TABLE users (
                 id int,
@@ -44,14 +46,14 @@ class SchemaManagementTest(Tester):
         insert_statement.consistency_level = ConsistencyLevel.ALL
         session.execute(insert_statement, [0])
 
-        debug("Altering schema")
+        logger.debug("Altering schema")
         session.execute("ALTER TABLE users WITH comment = 'updated'")
 
-        debug("Restarting node2")
+        logger.debug("Restarting node2")
         node2.stop(gently=True)
         node2.start(wait_for_binary_proto=True)
 
-        debug("Restarting node3")
+        logger.debug("Restarting node3")
         node3.stop(gently=True)
         node3.start(wait_for_binary_proto=True, wait_other_notice=True)
 
@@ -64,7 +66,7 @@ class SchemaManagementTest(Tester):
         assert len(res) == n_partitions
         for i in range(n_partitions):
             expected = [i, 'A', 'B']
-            assert list(res[i]) == expected, "Expected %s, got %s" % (expected, res[i])
+            assert list(res[i]) == expected, f"Expected {expected}, got {res[i]}"
 
     def test_dropping_keyspace_with_many_columns(self):
         """
@@ -79,7 +81,7 @@ class SchemaManagementTest(Tester):
         session.execute(
             "CREATE KEYSPACE testxyz WITH replication = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 }")
         for i in range(8):
-            session.execute("CREATE TABLE testxyz.test_%d (k int, c int, PRIMARY KEY (k),)" % i)
+            session.execute(f"CREATE TABLE testxyz.test_{i} (k int, c int, PRIMARY KEY (k),)")
         session.execute("drop keyspace testxyz")
 
         for node in self.cluster.nodelist():
@@ -88,7 +90,7 @@ class SchemaManagementTest(Tester):
                 "CREATE KEYSPACE testxyz WITH replication = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 }")
             s.execute("drop keyspace testxyz")
 
-    @skip('unimplemented')
+    @pytest.mark.skip('unimplemented')
     def multiple_create_table_in_parallel(self):
         """
         Run multiple create table statements via different nodes
@@ -98,7 +100,7 @@ class SchemaManagementTest(Tester):
         """
         raise NotImplementedError
 
-    @skip('unimplemented')
+    @pytest.mark.skip('unimplemented')
     def multiple_alter_table_in_parallel(self):
         """
         Run multiple alter table statements via different nodes
@@ -108,7 +110,7 @@ class SchemaManagementTest(Tester):
         """
         raise NotImplementedError
 
-    @skip('unimplemented')
+    @pytest.mark.skip('unimplemented')
     def alter_and_drop_table_in_parallel(self):
         """
         Run alter and drop table statements via different nodes
@@ -118,7 +120,7 @@ class SchemaManagementTest(Tester):
         """
         raise NotImplementedError
 
-    @skip('unimplemented')
+    @pytest.mark.skip('unimplemented')
     def create_table_after_drop_table(self):
         """
         Run create table after drop table statements via different nodes
@@ -128,7 +130,7 @@ class SchemaManagementTest(Tester):
         """
         raise NotImplementedError
 
-    @skip('unimplemented')
+    @pytest.mark.skip('unimplemented')
     def alter_table_in_parallel_to_write(self):
         """
         Create a table and write into while altering the table
@@ -138,7 +140,7 @@ class SchemaManagementTest(Tester):
         """
         raise NotImplementedError
 
-    @skip('unimplemented')
+    @pytest.mark.skip('unimplemented')
     def alter_table_in_parallel_to_read(self):
         """
         Create a table and populate it and read from it while altering the table
@@ -148,7 +150,7 @@ class SchemaManagementTest(Tester):
         """
         raise NotImplementedError
 
-    @skip('unimplemented')
+    @pytest.mark.skip('unimplemented')
     def alter_table_in_parallel_to_read_and_write(self):
         """
         Create a table and populate it and read from it while altering the table
@@ -159,7 +161,7 @@ class SchemaManagementTest(Tester):
         """
         raise NotImplementedError
 
-    @skip('unimplemented')
+    @pytest.mark.skip('unimplemented')
     def commitlog_replays_after_schema_change(self):
         """
         Commitlog can be replayed even though schema has been changed
@@ -170,28 +172,28 @@ class SchemaManagementTest(Tester):
         """
         raise NotImplementedError
 
-    @skip('unimplemented')
+    @pytest.mark.skip('unimplemented')
     def create_table_while_node_is_killed(self):
         """
         Check that a node that is killed durring a table creation is able to rejoin and to synch on schema
         """
         raise NotImplementedError
 
-    @skip('unimplemented')
+    @pytest.mark.skip('unimplemented')
     def alter_table_while_node_is_killed(self):
         """
         Check that a node that is killed durring a table alter is able to rejoin and to synch on schema
         """
         raise NotImplementedError
 
-    @skip('unimplemented')
+    @pytest.mark.skip('unimplemented')
     def drop_table_while_node_is_killed(self):
         """
         Check that a node that is killed durring a table drop is able to rejoin and to synch on schema
         """
         raise NotImplementedError
 
-    @skip('unimplemented')
+    @pytest.mark.skip('unimplemented')
     def nodes_rejoining_a_cluster_synch_on_schema(self):
         """
         Nodes rejoining the cluster synch on schema changes
@@ -213,29 +215,29 @@ class SchemaManagementTest(Tester):
 
         session = self.patient_cql_connection(node1)
 
-        debug('Creating schema')
-        self.create_ks(session, 'ks', 2)
+        logger.debug('Creating schema')
+        create_ks(session, 'ks', 2)
         session.execute("CREATE TABLE cf (p int PRIMARY KEY, v text);")
 
-        debug('Populating')
+        logger.debug('Populating')
         session.execute(SimpleStatement("INSERT INTO cf (p, v) VALUES (1, '1')",
                                         consistency_level=ConsistencyLevel.ALL))
 
-        debug("Stopping node2")
+        logger.debug("Stopping node2")
         node2.stop(gently=True)
 
-        debug("Re-creating schema")
+        logger.debug("Re-creating schema")
         session.execute("DROP TABLE cf;")
         session.execute("CREATE TABLE cf (p int PRIMARY KEY, v1 bigint, v2 text);")
 
-        debug("Restarting node2")
+        logger.debug("Restarting node2")
         node2.start(wait_for_binary_proto=True)
 
         rows = session.execute(SimpleStatement("SELECT * FROM cf", consistency_level=ConsistencyLevel.ALL))
-        assert rows_to_list(rows) == [], "Expected an empty result set, got %s" % (rows)
+        assert rows_to_list(rows) == [], f"Expected an empty result set, got {rows}"
 
-    @attr('next-gating')
-    @attr('dtest-debug')
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
     def test_writes_schema_recreated_while_node_down(self):
         self.cluster.set_configuration_options(values={'ring_delay_ms': 5000})
         self.cluster.populate(2)
@@ -245,22 +247,22 @@ class SchemaManagementTest(Tester):
 
         session = self.patient_cql_connection(node1)
 
-        debug('Creating schema')
-        self.create_ks(session, 'ks', 2)
+        logger.debug('Creating schema')
+        create_ks(session, 'ks', 2)
         session.execute("CREATE TABLE cf (p int PRIMARY KEY, v text);")
 
-        debug('Populating')
+        logger.debug('Populating')
         session.execute(SimpleStatement("INSERT INTO cf (p, v) VALUES (1, '1')",
                                         consistency_level=ConsistencyLevel.ALL))
 
-        debug("Stopping node2")
+        logger.debug("Stopping node2")
         node2.stop(gently=True)
 
-        debug("Re-creating schema")
+        logger.debug("Re-creating schema")
         session.execute("DROP TABLE cf;")
         session.execute("CREATE TABLE cf (p int PRIMARY KEY, v text);")
 
-        debug("Restarting node2")
+        logger.debug("Restarting node2")
         node2.start(wait_for_binary_proto=True)
 
         session.execute(SimpleStatement("INSERT INTO cf (p, v) VALUES (2, '2')",
@@ -268,11 +270,11 @@ class SchemaManagementTest(Tester):
 
         rows = session.execute(SimpleStatement("SELECT * FROM cf", consistency_level=ConsistencyLevel.ALL))
         expected = [[2, '2']]
-        assert rows_to_list(rows) == expected, "Expected %s, got %s" % (expected, rows_to_list(rows))
+        assert rows_to_list(rows) == expected, f"Expected {expected}, got {rows_to_list(rows)}"
 
 
-@attr('dtest-full')
-class LargePartitionAlterSchema(Tester):
+@pytest.mark.dtest_full
+class TestLargePartitionAlterSchema(Tester):
     # Issue scylladb/scylla: #5135:
     #
     # Issue: Cache reads may miss some writes if schema alter followed by a read happened concurrently with preempted
@@ -306,8 +308,8 @@ class LargePartitionAlterSchema(Tester):
         return session
 
     def create_schema(self, session, rf):
-        debug("Creating schema")
-        self.create_ks(session=session, name="ks", rf=rf)
+        logger.debug("Creating schema")
+        create_ks(session=session, name="ks", rf=rf)
 
         session.execute("""
             CREATE TABLE lp_table (
@@ -320,7 +322,8 @@ class LargePartitionAlterSchema(Tester):
         """)
 
     def populate(self, session, data, ck_start, ck_end):
-        debug(f'Start populate DB: {self.PARTITIONS} partitions with {ck_end-ck_start} records in each partition')
+        logger.debug(
+            f'Start populate DB: {self.PARTITIONS} partitions with {ck_end-ck_start} records in each partition')
 
         ck_rows = [ck_start, ck_end]
 
@@ -331,25 +334,26 @@ class LargePartitionAlterSchema(Tester):
                 data.append([pk, ck, self.STRING_VALUE, self.STRING_VALUE])
 
         execute_concurrent_with_args(session=session, statement=stmt, parameters=data)
-        debug(f'Finish populate DB: {self.PARTITIONS} partitions with {ck_end-ck_start} records in each partition')
+        logger.debug(
+            f'Finish populate DB: {self.PARTITIONS} partitions with {ck_end-ck_start} records in each partition')
         return data
 
     def read(self, session, ck_max):
-        debug(f'Start reading..')
+        logger.debug(f'Start reading..')
 
         for _ in range(2):
             for pk in range(0, self.PARTITIONS):
                 for ck in range(0, ck_max):
                     session.execute(f"select * from lp_table where pk = {pk} and ck1 = {ck}")
 
-        debug(f'Finish reading..')
+        logger.debug(f'Finish reading..')
 
     def add_column(self, session, column_name, column_type):
-        debug(f"Add {column_name} column")
+        logger.debug(f"Add {column_name} column")
         session.execute(f"ALTER TABLE lp_table ADD {column_name} {column_type}")
 
     def drop_column(self, session, column_name):
-        debug(f"Drop {column_name} column")
+        logger.debug(f"Drop {column_name} column")
         session.execute(f"ALTER TABLE lp_table DROP {column_name}")
 
     def large_partition_with_add_column_test(self):
@@ -366,14 +370,12 @@ class LargePartitionAlterSchema(Tester):
             self.add_column(session, 'new_clmn', 'int')
 
             # Memtable flush has to happen after a schema alter concurrently with a read
-            debug('Flush data')
+            logger.debug('Flush data')
             self.cluster.nodelist()[0].flush()
 
             for future in futures.as_completed(threads, timeout=300):
-                try:
+                with pytest.raises(Exception):
                     _ = future.result()
-                except Exception as exc:
-                    self.assertFalse(False, f'Generated an exception: {exc}')
 
         for i, _ in enumerate(data):
             data[i].append(None)
@@ -381,7 +383,7 @@ class LargePartitionAlterSchema(Tester):
         assert_all(session, f'select pk, ck1, val1, val2, new_clmn from lp_table', data, ignore_order=True,
                    print_result_on_failure=False)
 
-    def large_partition_with_drop_column_test(self):
+    def test_large_partition_with_drop_column(self):
         session = self.prepare(nodes=1)
         data = self.populate(session=session, data=[], ck_start=0, ck_end=10)
 
@@ -395,7 +397,7 @@ class LargePartitionAlterSchema(Tester):
             self.drop_column(session=session, column_name='val1')
 
             # Memtable flush has to happen after a schema alter concurrently with a read
-            debug('Flush data')
+            logger.debug('Flush data')
             self.cluster.nodelist()[0].flush()
 
             result = []
@@ -405,4 +407,4 @@ class LargePartitionAlterSchema(Tester):
                 except Exception as exc:
                     # "Unknown identifier val1" is expected error
                     if not len(exc.args) or "Unknown identifier val1" not in exc.args[0]:
-                        self.assertFalse(False, f'Generated an exception: {exc}')
+                        pytest.fail(f'Generated an exception: {exc}')
