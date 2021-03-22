@@ -72,6 +72,7 @@ repos:
                 lwt_test.py|
                 lwt_random_test.py|
                 auth_test.py|
+                paging_test.py|
                 snapshot_test|
                 udtencoding_test.py|
                 clustering_key_filter_test.py|

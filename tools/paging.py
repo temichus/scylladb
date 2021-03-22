@@ -1,7 +1,12 @@
 import time
+import logging
+import unittest
+import traceback
 
 from tools.datahelp import flatten_into_set
-from tools.misc import list_to_hashed_dict
+
+
+logger = logging.getLogger(__name__)
 
 
 class Page(object):
@@ -165,20 +170,71 @@ class PageFetcher(object):
 class PageAssertionMixin(object):
     """Can be added to subclasses of unittest.Tester"""
 
-    def assertEqualIgnoreOrder(self, actual, expected):
-        hashed_expected = list_to_hashed_dict(expected)
-        hashed_actual = list_to_hashed_dict(actual)
-        for key, expected in hashed_expected.items():
-            assert key in hashed_actual, "expected %s not in actual" % str(expected)
-            actual = hashed_actual[key]
-            assert actual == expected, "actual %s not same as expected %s" % (str(actual), str(expected))
+    @staticmethod
+    def assertEqualIgnoreOrder(actual, expected, msg=None):
+        if msg:
+            msg = f"{msg}: expected {expected} but got {actual}"
+        unittest.TestCase().assertCountEqual(expected, actual, msg)
 
-        for key, actual in hashed_actual.items():
-            assert key in hashed_expected, "actual %s not in expected" % str(actual)
-            expected = hashed_expected[key]
-            assert expected == actual, "expected %s not same as actual %s" % (str(expected), str(actual))
-
-        assert hashed_expected == hashed_actual
-
-    def assertIsSubsetOf(self, subset, superset):
+    @staticmethod
+    def assertIsSubsetOf(subset, superset):
         assert flatten_into_set(subset) <= flatten_into_set(superset)
+
+
+class MultiError(Exception):
+    """
+    Extends Exception to provide reporting multiple exceptions at once.
+    """
+
+    def __init__(self, exceptions, tracebacks):
+        # an exception and the corresponding traceback should be found at the same
+        # position in their respective lists, otherwise __str__ will be incorrect
+        self.exceptions = exceptions
+        self.tracebacks = tracebacks
+
+    def __str__(self):
+        output = "\n****************************** BEGIN MultiError ******************************\n"
+
+        for (exc, tb) in zip(self.exceptions, self.tracebacks):
+            output += str(exc)
+            output += tb + "\n"
+
+        output += "****************************** END MultiError ******************************"
+
+        return output
+
+
+def run_scenarios(scenarios, handler):
+    """
+    Runs multiple scenarios from within a single test method.
+
+    "Scenarios" are mini-tests where a common procedure can be reused with several different configurations.
+    They are intended for situations where complex/expensive setup isn't required and some shared state is
+    acceptable (or trivial to reset).
+
+    Arguments: scenarios should be an iterable, handler should be a callable, and deferred_exceptions should
+    be a tuple of exceptions which are safe to delay until the scenarios are all run. For each item in scenarios,
+    handler(item) will be called in turn.
+
+    Exceptions which occur will be bundled up and raised as a single MultiError exception, either when:
+        a) all scenarios have run, or
+        b) on the first exception encountered which is not AssertionError.
+    """
+    errors = []
+    tracebacks = []
+    num_of_scenarios = len(scenarios)
+
+    for i, scenario in enumerate(scenarios, start=1):
+        logger.info("running scenario %s/%s: %s", i, num_of_scenarios, scenario)
+        try:
+            handler(*scenario)
+        except Exception as exc:
+            tracebacks.append(traceback.format_exc())
+            errors.append(type(exc)(f"encountered {exc.__class__.__name__} {exc} running scenario:\n  {scenario}\n"))
+            if not isinstance(exc, AssertionError):
+                logger.info("scenario %s/%s encountered a non-deferrable exception, aborting", i, num_of_scenarios)
+                break
+            logger.info("scenario %s/%s encountered a deferrable exception, continuing", i, num_of_scenarios)
+
+    if errors:
+        raise MultiError(errors, tracebacks)
