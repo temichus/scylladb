@@ -96,6 +96,7 @@ repos:
                 jmx_test.py|
                 schema_test.py|
                 listsnapshots_test.py|
+                putget_test.py|
                 updateable_config_test.py|
                 simple_boot_shutdown_test.py
             )$
