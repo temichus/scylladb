@@ -13,6 +13,7 @@ from tools.data import query_c1c2, insert_c1c2
 import pytest
 
 from tools.metrics import get_node_metrics
+from tools.files import get_list_of_sstables
 
 logger = logging.getLogger(__name__)
 
@@ -424,6 +425,41 @@ class TestRepair(Tester):
         logger.info(f"Verifying the metric value of '{metric_name}' after the second repair is  '0'")
         metric_data = get_node_metrics(node_ip=get_ip_from_node(node1), metrics=[metric_name])[metric_name]
         assert metric_data == 0, "Got incorrect value '{metric_data}'"
+
+    def test_repair_with_disabled_compaction(self):
+        """
+        Based on issue 7525
+        There was done a change to the write flow to avoid writing a new file for each follower.
+        For further information, please check PR 7528
+        """
+        cluster = self.cluster
+
+        # Disable hinted handoff and set batch commit log so this doesn't
+        # interfer with the test (this must be after the populate)
+        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        logger.debug("Starting cluster..")
+        cluster.populate(3).start()
+        node1, node2, node3 = cluster.nodelist()
+
+        session = self.patient_cql_connection(node1)
+        create_ks(session, 'ks', 3)
+        create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'},
+                  compaction={'class': 'TimeWindowCompactionStrategy', 'enabled': 'false'})
+
+        # Insert 1000 keys, kill node 3, insert 1 key, restart node 3, insert 1000 more keys
+        logger.debug("Inserting data...")
+        insert_c1c2(session, n=1000, consistency=ConsistencyLevel.ALL)
+        node3.flush()
+        node3.stop(wait_other_notice=True)
+        insert_c1c2(session, keys=(1001, 2001), consistency=ConsistencyLevel.TWO)
+        node3.start(wait_other_notice=True, wait_for_binary_proto=True)
+        insert_c1c2(session, keys=range(0, 2001), consistency=ConsistencyLevel.ALL)
+
+        cluster.flush()
+        before = get_list_of_sstables(node3, 'ks', 'cf', '.db')
+        node2.repair(self._repair_options(ks='ks'))
+        after = get_list_of_sstables(node3, 'ks', 'cf', '.db')
+        assert before < after, "Number of sstables should have increased because of the repair"
 
 
 RepairTableContents = namedtuple('RepairTableContents',
