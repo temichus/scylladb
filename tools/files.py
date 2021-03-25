@@ -5,6 +5,10 @@ import shutil
 import sys
 import tempfile
 import logging
+import glob
+
+from typing import Optional
+
 
 logger = logging.getLogger(__name__)
 
@@ -59,3 +63,68 @@ def copy_files_to(from_dir, to_dir, files_only=False, create_to_dir=False):
             shutil.copy2(os.path.join(from_dir, f), os.path.join(to_dir, f))
         elif not files_only:
             shutil.copytree(os.path.join(from_dir, f), os.path.join(to_dir, f))
+
+
+def get_sstables_files(cf_dir, f_type=''):
+    """
+    Returns a set of sstable(s) files for a given KS and CF
+    """
+    tocs = glob.glob(os.path.join(cf_dir, '*-TOC.txt'))
+    files = []
+    if not f_type:
+        for t in tocs:
+            files += glob.glob(t[:-7] + '*')
+    elif f_type == 'TOC':
+        files = tocs
+    else:
+        for t in tocs:
+            files += glob.glob(t[:-7] + f"*{f_type}*")
+    return set([os.path.basename(fname) for fname in files])
+
+
+def get_node_cf_dir(node, ks_name='ks', cf_name='cf', latest=False):
+    """
+    Return the first CF directory for a CF with a given name
+    in the given keyspace and node
+    """
+    return get_cf_dir(os.path.join(node.get_path(), 'data', ks_name), cf_name, latest)
+
+
+def get_cf_dir(ks_dir, cf_name, latest=False):
+    """
+    Return the first CF directory for a CF with a given name
+    """
+    if latest:
+        return get_latest_dir(ks_dir, cf_name + '-')
+
+    cf_pattern = re.compile("{}-".format(cf_name))
+    for root, dirs, files in os.walk(ks_dir):
+        for d in dirs:
+            if cf_pattern.match(d):
+                return os.path.join(root, d)
+
+
+def get_latest_dir(srcdir: str, pattern: Optional[str] = '') -> Optional[str]:
+    """
+    Get latest created directory path, which matches with the pattern
+    """
+    sorted_list = sorted(os.listdir(srcdir), reverse=True,
+                         key=lambda x: os.path.getctime(os.path.join(srcdir, x)))
+    for item in sorted_list:
+        item_path = os.path.join(srcdir, item)
+        if os.path.isdir(item_path) and re.compile(pattern).match(item):
+            return item_path
+
+
+def copy_directory(srcdir, destdir, ignore_subdir=True):
+    """
+    Copy file from srcdir to destdir, it supports to optionally ignore sub directories.
+    """
+    if not ignore_subdir:
+        shutil.copytree(srcdir, destdir)
+    for item in os.listdir(srcdir):
+        srcfile = os.path.join(srcdir, item)
+        if not os.path.exists(destdir):
+            os.mkdir(destdir)
+        if os.path.isfile(srcfile):
+            shutil.copy2(srcfile, destdir)

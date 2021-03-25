@@ -6,43 +6,77 @@ import glob
 import tools
 import random
 import itertools
+import pytest
+import logging
 
 from threading import Thread
-
-from dtest import Tester, debug, info, run_with_params
-from scylla_tools import get_sstables_files, insert_c1c2, get_node_cf_dir, copy_files_to
-from scylla_tools import copy_directory, fill_data_by_cs
-from cassandra import ConsistencyLevel, concurrent
-from assertions import assert_none, assert_all
-
 from datetime import datetime as dt
-from nose.plugins.attrib import attr
+
 import sstable_tools.statistics
 
 from ccmlib.node import NodetoolError, TimeoutError
-from random import randint
+from cassandra import ConsistencyLevel, concurrent
+from dtest_class import Tester, create_ks, create_cf
+from dtest_setup_overrides import DTestSetupOverrides
+from tools.data import insert_c1c2
+from tools.files import copy_files_to, get_node_cf_dir, get_sstables_files
+from tools.misc import ImmutableMapping
+from tools.stress import fill_data_by_cs
+from tools.assertions import assert_none, assert_all
+
+
+logger = logging.getLogger(__name__)
+
+
+def generate_ids(val):
+    return f"{val['class']}"
 
 
 class CompactionAdditionalTester(Tester):
-    __test__ = False
 
     def prepare(self, nodes, wait_for_binary_proto=True, jvm_args=None, configuration_options={}):
         configuration_options.update({'enable_sstable_key_validation': True})
-        cluster = self.cluster
-        cluster.set_configuration_options(values=configuration_options)
-        cluster.populate(nodes).start(wait_for_binary_proto=wait_for_binary_proto, jvm_args=jvm_args)
-        node1 = cluster.nodelist()[0]
-        return cluster.nodelist(), self.patient_cql_connection(node1)
+        self.cluster.set_configuration_options(values=configuration_options)
+        self.cluster.populate(nodes).start(wait_for_binary_proto=wait_for_binary_proto, jvm_args=jvm_args)
+        node1 = self.cluster.nodelist()[0]
+        return self.cluster.nodelist(), self.patient_cql_connection(node1)
+
+    @staticmethod
+    def get_stats(statistics_file):
+        with open(statistics_file, 'rb') as f:
+            data = f.read()
+
+        metadata = sstable_tools.statistics.parse(data, 'mc')
+        return metadata['Stats']
+
+    @staticmethod
+    def micros_to_seconds(micros):
+        return micros // (1000 * 1000)
+
+    @staticmethod
+    def seconds_to_micros(seconds):
+        return seconds * 1000 * 1000
 
 
-@attr('dtest-full', 'single_node')
-class CompactionAdditionalTest(CompactionAdditionalTester):
-    __test__ = True
+@pytest.mark.dtest_full
+@pytest.mark.single_node
+class TestCompactionAdditional(CompactionAdditionalTester):
 
-    @attr('next-gating')
-    @attr('dtest-debug')
-    @attr('single_node')
-    def compaction_delete_with_smp_change_test(self):
+    strategies = [
+        # Expect sstables are more than min_threshold in level 0
+        {'class': 'LeveledCompactionStrategy', 'sstable_size_in_mb': 1, 'max_threshold': 1, 'min_threshold': 1},
+        # Expect sstables are generated in multiple minutes for TimeWindowCompactionStrategy
+        {'class': 'TimeWindowCompactionStrategy', 'split_during_flush': False, 'compaction_window_size': 1,
+         'compaction_window_unit': 'MINUTES', 'max_threshold': 1, 'min_threshold': 1},
+        # Expect there are more sstables than min_threshold in same bucket
+        {'class': 'SizeTieredCompactionStrategy', 'bucket_high': 1.5, 'bucket_low': 0.5,
+         'min_sstable_size': 1, 'max_threshold': 1, 'min_threshold': 1},
+        {'class': 'DateTieredCompactionStrategy'}]
+
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
+    @pytest.mark.single_node
+    def test_compaction_delete_with_smp_change(self):
         """
         Test that data is not resurected when shared sstables
         are used
@@ -56,29 +90,29 @@ class CompactionAdditionalTest(CompactionAdditionalTester):
         8. insert additional 100 keys forcing a flush multiple times till multiple compactions are trigerred
         9. check that no deletion marker is left and files have been removed
         """
-        debug("Starting node1 with 1 cpu")
+        logger.debug("Starting node1 with 1 cpu")
         [node1], session = self.prepare(1)
-        self.create_ks(session, 'ks', 1)
+        create_ks(session, 'ks', 1)
 
         gc_grace_seconds = 5
         keys = 100
-        debug("Inserting {} keys with gc_grace_seconds={}".format(keys, gc_grace_seconds))
-        session.execute("create table ks.cf (key int PRIMARY KEY, val int) "
-                        "with compaction = {{'class':'SizeTieredCompactionStrategy'}} and gc_grace_seconds = {};".format(gc_grace_seconds))
+        logger.debug(f"Inserting {keys} keys with gc_grace_seconds={gc_grace_seconds}")
+        session.execute(
+            f"create table ks.cf (key int PRIMARY KEY, val int) with compaction = {{'class':'SizeTieredCompactionStrategy'}} and gc_grace_seconds = {gc_grace_seconds};")
 
         for x in range(0, keys):
-            session.execute('insert into cf (key, val) values (' + str(x) + ',1)')
+            session.execute(f'insert into cf (key, val) values ({x},1)')
 
         node1.flush()
         node1.compact()
-        debug("Restarting node1 with 2 cpus")
+        logger.debug("Restarting node1 with 2 cpus")
         node1.stop()
         node1.start(wait_for_binary_proto=True, jvm_args=['--smp', '2'])
 
         session = self.patient_cql_connection(node1, 'ks')
-        debug("Deleting {} keys".format(keys))
+        logger.debug(f"Deleting {keys} keys")
         for x in range(0, keys):
-            session.execute('delete from cf where key = ' + str(x))
+            session.execute(f'delete from cf where key = {x}')
         node1.flush()
 
         def compactions_count():
@@ -90,24 +124,24 @@ class CompactionAdditionalTest(CompactionAdditionalTester):
         compactions_1 = compactions_count()
         compactions_2 = compactions_1
 
-        debug("Waiting gc_grace_seconds={} to pass".format(gc_grace_seconds))
+        logger.debug(f"Waiting gc_grace_seconds={gc_grace_seconds} to pass")
         time.sleep(gc_grace_seconds + 1)
 
         # we passed gc_period and force an update so that compaction will
         # be triggered on a single shard (removing data and tombstone)
-        debug("Inserting data and waiting for new compaction")
+        logger.debug("Inserting data and waiting for new compaction")
         while compactions_1 == compactions_2:
-            session.execute('insert into ks.cf (key, val) values ({},1);'.format(keys + 1))
+            session.execute(f'insert into ks.cf (key, val) values ({keys + 1},1);')
             node1.flush()
             compactions_2 = compactions_count()
         node1.wait_for_compactions()
 
         compactions_2 = compactions_count()
         num_compactions = compactions_2 - compactions_1
-        debug("{} compaction(s) completed".format(num_compactions))
+        logger.debug(f"{num_compactions} compaction(s) completed")
 
         # reboot and verify that data  is not resurected
-        debug("Stopping node1")
+        logger.debug("Stopping node1")
         node1.stop(gently=False)
 
         # verify that only some deletion markers will be kept since we reshard the files
@@ -121,29 +155,29 @@ class CompactionAdditionalTest(CompactionAdditionalTester):
             jsoninfo = g.read()
 
         numfound = jsoninfo.count("marked_deleted")
-        debug("{} keys are now marked_deleted (0 {} expected < {})".format(
+        logger.debug("{} keys are now marked_deleted (0 {} expected < {})".format(
             numfound, "<" if num_compactions < 2 else "<=", keys))
-        self.assertLess(numfound, keys)
+        assert numfound < keys, f"Number of found tombstones {numfound} greater than number of keys {keys}"
         if num_compactions < 2:
-            self.assertGreater(numfound, 0)
+            assert numfound > 0, f"Number of found tombstones {numfound} != 0"
 
-        debug("Restarting node1")
+        logger.debug("Restarting node1")
         node1.start(wait_for_binary_proto=True, jvm_args=['--smp', '2'])
         session = self.patient_cql_connection(node1, 'ks')
-        debug("Verify that no data was resurrected")
+        logger.debug("Verify that no data was resurrected")
         for x in range(0, keys):
-            assert_none(session, 'select * from cf where key = ' + str(x))
+            assert_none(session, f'select * from cf where key = {x}')
 
         # trigger compaction on both shards
-        debug("Waiting for compaction")
+        logger.debug("Waiting for compaction")
         node1.wait_for_compactions()
         compactions_1 = compactions_count()
         compactions_2 = compactions_1
 
-        debug("Inserting data and waiting for new compaction")
+        logger.debug("Inserting data and waiting for new compaction")
         while compactions_1 + 2 > compactions_2:
-            for x in range(keys*2, keys*3):
-                session.execute('insert into ks.cf (key, val) values (' + str(x) + ',1);')
+            for x in range(keys * 2, keys * 3):
+                session.execute(f'insert into ks.cf (key, val) values ({x},1);')
             node1.flush()
             compactions_2 = compactions_count()
         node1.wait_for_compactions()
@@ -158,22 +192,12 @@ class CompactionAdditionalTest(CompactionAdditionalTester):
             jsoninfo = g.read()
 
         numfound = jsoninfo.count("marked_deleted")
-        debug("{} keys are now marked_deleted (Excpecting 0)".format(numfound))
-        self.assertEqual(numfound, 0)
+        logger.debug(f"{numfound} keys are now marked_deleted (Excpecting 0)")
+        assert numfound == 0, "Not all tombstones were removed during compactions"
 
-    def wait_for_new_minute(self):
-        while dt.now().second > 5:
-            time.sleep(1)
-
-    def write_n_data_files(self, node, session, key_space, num_of_files, num_of_keys, consistency=ConsistencyLevel.ONE):
-        for t in range(0, num_of_files):
-            debug("Inserting concurrently {} keys...".format(num_of_keys))
-            insert_c1c2(session, n=num_of_keys, consistency=consistency, ks=key_space)
-            node.flush()
-
-    @run_with_params(timestamp_resolution=["MILLISECONDS"])  # Commenting out "MICROSECONDS" options for now.
-    @attr('single_node')
-    def compact_data_by_time_window_test(self, timestamp_resolution):
+    @pytest.mark.single_node
+    @pytest.mark.parametrize("timestamp_resolution", ["MILLISECONDS"])
+    def test_compact_data_by_time_window(self, timestamp_resolution):
         """
         1. Create TABLE with compaction_window_size of 1 MINUTES
         2. Insert data for 4 minutes while flushing to disk.
@@ -181,21 +205,21 @@ class CompactionAdditionalTest(CompactionAdditionalTester):
         4. Verify that the previous files created and compacted still exist.
         (Otherwise it means they were compacted wrongly).
         """
-        debug("Starting a cluster of one node...")
+        logger.debug("Starting a cluster of one node...")
         [node1], session = self.prepare(1)
 
         window_size_mins = 1
 
         session = self.patient_cql_connection(node1)
         key_space_name = 'ks_' + timestamp_resolution.lower()
-        debug("Creating keyspace '%s'..." % key_space_name)
-        self.create_ks(session, key_space_name, 1)
+        logger.debug("Creating keyspace '%s'..." % key_space_name)
+        create_ks(session, key_space_name, 1)
 
-        debug("Creating a column family 'cf' with TWCS")
-        self.create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'},
-                       compaction={'compaction_window_size': window_size_mins, 'compaction_window_unit': "MINUTES",
-                                   'timestamp_resolution': timestamp_resolution,
-                                   'class': 'TimeWindowCompactionStrategy'})
+        logger.debug("Creating a column family 'cf' with TWCS")
+        create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'},
+                  compaction={'compaction_window_size': window_size_mins, 'compaction_window_unit': "MINUTES",
+                              'timestamp_resolution': timestamp_resolution,
+                              'class': 'TimeWindowCompactionStrategy'})
 
         # Wait for new minute to start before inserting data - keep the test consistent
         self.wait_for_new_minute()
@@ -210,51 +234,51 @@ class CompactionAdditionalTest(CompactionAdditionalTester):
         # Get list of sstables names
         cf_dir = get_node_cf_dir(node1, key_space_name, 'cf')
         sstables_files1 = get_sstables_files(cf_dir, f_type='Data')
-        debug("Files BEFORE: {}".format(sstables_files1))
+        logger.debug("Files BEFORE: {}".format(sstables_files1))
         assert len(sstables_files1) > 0, "No SSTable files found in %s!" % cf_dir
         # Write additional data for 2 times the window-size (i.e. 2 mins)
         # (to verify that the original files remain the same and aren't compacted).
         for minute in range(0, window_size_mins * 2):
             # Assuming writing the files take LESS than a MINUTE
-            self.write_n_data_files(node=node1, session=session,  key_space=key_space_name,
+            self.write_n_data_files(node=node1, session=session, key_space=key_space_name,
                                     num_of_files=7, num_of_keys=10)
             self.wait_for_new_minute()
 
         # Get list of sstables names
         sstables_files2 = get_sstables_files(cf_dir, f_type='Data')
-        debug("Files AFTER adding data: {}".format(sstables_files2))
+        logger.debug("Files AFTER adding data: {}".format(sstables_files2))
 
         assert sstables_files1.issubset(sstables_files2), "some of the original sstables are missing. " \
                                                           "Possibly due to wrong compaction" \
                                                           "Expecting {} but Found {}".format(sstables_files1,
                                                                                              sstables_files2)
 
-    @attr('single_node')
-    def major_compaction_with_several_timewindows_test(self):
+    @pytest.mark.single_node
+    def test_major_compaction_with_several_timewindows(self):
         """
             Test major compaction will not bundle sstables from different time windows
             Test each time window (after major compaction) has only one table
         """
-        debug("Starting a cluster of one node...")
+        logger.debug("Starting a cluster of one node...")
         [node1], session = self.prepare(1)
 
-        debug("Creating keyspace 'ks'...")
+        logger.debug("Creating keyspace 'ks'...")
         min_threshold = 7
-        self.create_ks(session, 'ks', 1)
-        self.create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'},
-                       compaction={'compaction_window_size': '1', 'compaction_window_unit': 'MINUTES',
-                                   'class': 'TimeWindowCompactionStrategy',
-                                   'expired_sstable_check_frequency_seconds': '60',
-                                   'min_threshold': min_threshold})
+        create_ks(session, 'ks', 1)
+        create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'},
+                  compaction={'compaction_window_size': '1', 'compaction_window_unit': 'MINUTES',
+                              'class': 'TimeWindowCompactionStrategy',
+                              'expired_sstable_check_frequency_seconds': '60',
+                              'min_threshold': min_threshold})
 
         # Write data in different time windows
         num_of_keys = 1000 * random.randint(1, 10)
         first_key = 0
         start = time.time()
         duration = random.randint(1, 120)
-        debug("Will load data for {} seconds...".format(duration))
+        logger.debug("Will load data for {} seconds...".format(duration))
         while time.time() - start < duration:
-            debug("Inserting keys {}..{}".format(first_key, first_key + num_of_keys - 1))
+            logger.debug(f"Inserting keys {first_key}..{first_key + num_of_keys -1}")
             insert_c1c2(session, keys=list(range(first_key, first_key + num_of_keys)), ks='ks')
             node1.flush()
             first_key += num_of_keys // 2
@@ -270,13 +294,13 @@ class CompactionAdditionalTest(CompactionAdditionalTester):
             # get sstables for each time window dictionary
             time_window_dict = {}
             statistics_files = get_sstables_files(cf_dir, f_type='Statistics')
-            ts = TestTimeWindowDataSegregation()
+
             for sf in statistics_files:
-                stats = ts._get_stats(os.path.join(cf_dir, sf))
-                min_time_window = _get_time_window(micros_to_seconds(stats['min_timestamp']))
-                max_time_window = _get_time_window(micros_to_seconds(stats['max_timestamp']))
-                debug("sf={} min_timestamp={} max_timestamp={} min_time_window={} max_time_window={}".format(sf,
-                                                                                                             stats['min_timestamp'], stats['max_timestamp'], min_time_window, max_time_window))
+                stats = self.get_stats(os.path.join(cf_dir, sf))
+                min_time_window = _get_time_window(self.micros_to_seconds(stats['min_timestamp']))
+                max_time_window = _get_time_window(self.micros_to_seconds(stats['max_timestamp']))
+                logger.debug("sf={} min_timestamp={} max_timestamp={} min_time_window={} max_time_window={}".format(sf,
+                                                                                                                    stats['min_timestamp'], stats['max_timestamp'], min_time_window, max_time_window))
                 for time_window in range(min_time_window, max_time_window + 1):
                     if time_window not in time_window_dict:
                         time_window_dict[time_window] = [sf]
@@ -287,12 +311,14 @@ class CompactionAdditionalTest(CompactionAdditionalTester):
         # save sstable data (before major compaction
         cf_dir = get_node_cf_dir(node1, 'ks', 'cf')
         time_window_dict_before_major_compaction = _get_sstables_per_timewindow_dict(cf_dir)
-        debug("time_window_dict_before_major_compaction={}".format(time_window_dict_before_major_compaction))
+        logger.debug(f"time_window_dict_before_major_compaction={time_window_dict_before_major_compaction}")
 
         # another time window may sneak in if we cross the 1-minute window in one of the sstables
         time_windows_before_major_compaction = len(time_window_dict_before_major_compaction.keys())
-        self.assertGreaterEqual(time_windows_before_major_compaction, number_of_time_windows - 1)
-        self.assertLessEqual(time_windows_before_major_compaction, number_of_time_windows + 1)
+        assert time_windows_before_major_compaction >= number_of_time_windows - 1, \
+            f"Time window {time_windows_before_major_compaction} less than number of time windows {number_of_time_windows - 1}"
+        assert time_windows_before_major_compaction <= number_of_time_windows + 1, \
+            f"Time window {time_windows_before_major_compaction} greater than number of time windows {number_of_time_windows - 1}"
 
         # Run major compaction
         node1.start()
@@ -301,25 +327,24 @@ class CompactionAdditionalTest(CompactionAdditionalTester):
 
         sstables_files_after_major_compaction = get_sstables_files(cf_dir, f_type='Data')
         time_window_dict_after_major_compaction = _get_sstables_per_timewindow_dict(cf_dir)
-        debug("time_window_dict_after_major_compaction={}".format(time_window_dict_after_major_compaction))
+        logger.debug(f"time_window_dict_after_major_compaction={time_window_dict_after_major_compaction}")
 
         # no new data and consequently, time windows, are expected
         # verify that major compaction didn't mess any time windows
         time_windows_after_major_compaction = len(time_window_dict_after_major_compaction.keys())
-        self.assertEqual(time_windows_before_major_compaction, time_windows_after_major_compaction)
+        assert time_windows_before_major_compaction == time_windows_after_major_compaction
 
         # major compaction didn't bundle all sstables together
         # number off sstables after the major compaction equals number of time windows before major compaction
         number_of_shards = getattr(node1, '_smp', 1)
         expected_number_of_sstables = time_windows_after_major_compaction * number_of_shards
-        self.assertEqual(expected_number_of_sstables,
-                         len(sstables_files_after_major_compaction))
+        assert expected_number_of_sstables == len(sstables_files_after_major_compaction)
         # each time window (after major compaction) has only one table
         for sstables in time_window_dict_after_major_compaction.values():
-            self.assertEqual(len(sstables), number_of_shards)
+            assert len(sstables) == number_of_shards
 
-    @attr('single_node')
-    def compaction_removes_ttld_data_by_time_windows_test(self):
+    @pytest.mark.single_node
+    def test_compaction_removes_ttld_data_by_time_windows(self):
         """
         Test that TWCS compaction removes TTLd data after gc_period by time windows
         2. Create a table with a DEFAULT TTL=70 and gc_period=10.
@@ -329,7 +354,7 @@ class CompactionAdditionalTest(CompactionAdditionalTester):
         6. check that ttl'd data was removed
         """
 
-        debug("Starting a cluster of one node...")
+        logger.debug("Starting a cluster of one node...")
         [node1], session = self.prepare(1)
 
         TIME_TO_SLEEP_BETWEEN_FILES = 15
@@ -338,47 +363,47 @@ class CompactionAdditionalTest(CompactionAdditionalTester):
         TTL = 70
         GC_GRACE = 10
 
-        debug("Creating keyspace 'ks'...")
-        self.create_ks(session, 'ks', 1)
+        logger.debug("Creating keyspace 'ks'...")
+        create_ks(session, 'ks', 1)
 
         # DEFAULT TTL set to 70, gc_grace set to 10 and expiry check set to 60.
         # It means that every 60 seconds it should purge all sstabls that are older than 180+30
-        debug("Creating a column family 'cf' with TWCS and DEFAULT TTL of {}".format(TTL))
-        self.create_cf(session, 'cf', gc_grace=GC_GRACE, columns={'c1': 'text', 'c2': 'text'}, default_ttl=TTL,
-                       compaction={'compaction_window_size': '1', 'compaction_window_unit': 'MINUTES',
-                                   'class': 'TimeWindowCompactionStrategy',
-                                   'expired_sstable_check_frequency_seconds': '60'})
+        logger.debug(f"Creating a column family 'cf' with TWCS and DEFAULT TTL of {TTL}")
+        create_cf(session, 'cf', gc_grace=GC_GRACE, columns={'c1': 'text', 'c2': 'text'}, default_ttl=TTL,
+                  compaction={'compaction_window_size': '1', 'compaction_window_unit': 'MINUTES',
+                              'class': 'TimeWindowCompactionStrategy',
+                              'expired_sstable_check_frequency_seconds': '60'})
 
         # Always start the test at th beginning of the minute for consistent results
         self.wait_for_new_minute()
 
         for t in range(0, NUMBER_OF_FILES):
-            debug("Inserting concurrently {} keys...".format(NUMBER_OF_KEYS))
+            logger.debug(f"Inserting concurrently {NUMBER_OF_KEYS} keys...")
             insert_c1c2(session, n=NUMBER_OF_KEYS, consistency=ConsistencyLevel.ONE)
             node1.flush()
             time.sleep(TIME_TO_SLEEP_BETWEEN_FILES)
 
         node1.flush()
         cf_dir = get_node_cf_dir(node1, 'ks', 'cf')
-        debug("'cf' directory is {}".format(cf_dir))
+        logger.debug(f"'cf' directory is {cf_dir}")
 
         # Save the names of the current sstable files
         sstables_files1 = get_sstables_files(cf_dir, f_type='Data')
-        debug("sstables BEFORE SLEEP: {}".format(sstables_files1))
+        logger.debug(f"sstables BEFORE SLEEP: {sstables_files1}")
 
-        debug("Sleep for {} seconds (TTL + GC) to let the files to completly TTL'ed".format(TTL+GC_GRACE))
-        time.sleep(TTL+GC_GRACE)
+        logger.debug(f"Sleep for {TTL + GC_GRACE} seconds (TTL + GC) to let the files to completly TTL'ed")
+        time.sleep(TTL + GC_GRACE)
 
         # Save the names of the current sstable files
         sstables_files2 = get_sstables_files(cf_dir, f_type='Data')
-        debug("sstables AFTER SLEEP: {}".format(sstables_files2))
+        logger.debug(f"sstables AFTER SLEEP: {sstables_files2}")
 
         # Even after the TTL+GC time has passed, the sstables remains till new data is inserted.
         # This assert just verifies that the files are still there.
         assert set(sstables_files1) == set(sstables_files2), \
-            "Some or ALL of the files MISSING: {}".format(set(sstables_files1) - set(sstables_files2))
+            f"Some or ALL of the files MISSING: {set(sstables_files1) - set(sstables_files2)}"
 
-        debug("Orig files {} havn't been purged yet(expected)".format(sstables_files1.intersection(sstables_files2)))
+        logger.debug(f"Orig files {sstables_files1.intersection(sstables_files2)} havn't been purged yet(expected)")
 
         mark = node1.mark_log()
         # Insert one key to trigger a sstable expiration check (expired_sstable_check_frequency_seconds': '60').
@@ -391,19 +416,19 @@ class CompactionAdditionalTest(CompactionAdditionalTester):
         #  ~512 total partitions merged to 0."
         found = node1.watch_log_for("Compacted [0-9]+ sstables to \[\]",
                                     timeout=5, from_mark=mark)
-        debug(found)
+        logger.debug(found)
         # Save the names of the current sstable files
         sstables_files2 = get_sstables_files(cf_dir, f_type='Data')
-        debug("sstables AFTER INSERT more data and EXPIRATION OF older sstables: {}".format(sstables_files2))
+        logger.debug(f"sstables AFTER INSERT more data and EXPIRATION OF older sstables: {sstables_files2}")
 
         unpurged_files = set(sstables_files1).intersection(sstables_files2)
-        self.assertFalse(
-            unpurged_files, "PROBLEM Some of original files are still there and were NOT PURGED: {}".format(unpurged_files))
+        assert not unpurged_files, f"PROBLEM Some of original files are still there and were NOT PURGED: {unpurged_files}"
 
-        debug("Purge SUCCEEDED, original files are not there {}".format(sstables_files2))
+        logger.debug(f"Purge SUCCEEDED, original files are not there {sstables_files2}")
 
-    @attr('single_node')
-    def _refresh_and_restart_after_compaction_strategy_change(self, strategy1, strategy2):
+    @pytest.mark.single_node
+    @pytest.mark.parametrize("strategy1,strategy2", itertools.product(strategies, strategies), ids=generate_ids)
+    def test_refresh_and_restart_after_compaction_strategy_change(self, strategy1, strategy2):
         """
         This test tries to loade backup sstable by refresh and restart after changing the compaction strange.
         refreshing loads sstable from upload directory, and sstable in staging or main sstable directory will
@@ -428,17 +453,21 @@ class CompactionAdditionalTest(CompactionAdditionalTester):
         DateTieredCompactionStrategy:
         - doesn't support reshaping
         """
+        cluster = self.cluster
+        cluster.populate(1)
+        node1 = cluster.nodelist()[0]
+        node1.start(wait_for_binary_proto=True)
 
         node1 = self.cluster.nodelist()[0]
         session = self.patient_cql_connection(node1)
         session.execute("DROP KEYSPACE IF EXISTS keyspace1")
 
-        debug(f"Create test table with {strategy1}")
+        logger.debug(f"Create test table with {strategy1}")
         node1.stress(['write', 'n=0', 'no-warmup', '-schema', 'replication(factor=1)', '-rate', 'threads=1'])
 
         session.execute(f"ALTER TABLE keyspace1.standard1 WITH compaction={strategy1}")
 
-        debug("Insert test data by cassandra-stress and compact")
+        logger.debug("Insert test data by cassandra-stress and compact")
         # Use multiple workload to generate multiple sstables, then it's easy to reach the threshold for reshaping
 
         fill_data_by_cs(node1, n_range=[500, 550, 600, 650])
@@ -454,10 +483,10 @@ class CompactionAdditionalTest(CompactionAdditionalTester):
         # Only in relaxed mode, all sstables will be mutated to level to 0, reshaping
         # will be trigger very easily.
 
-        debug('disable autocompaction to leave all sstables to level 0')
+        logger.debug('disable autocompaction to leave all sstables to level 0')
         node1.nodetool('disableautocompaction keyspace1 standard1')
 
-        debug("Insert test data by cassandra-stress without compacting, leave it for next strategy")
+        logger.debug("Insert test data by cassandra-stress without compacting, leave it for next strategy")
 
         if (strategy2['class'] == 'TimeWindowCompactionStrategy'):
             # Prepare a sstable spans two 1 window, (window unit is 60 seconds)
@@ -472,7 +501,7 @@ class CompactionAdditionalTest(CompactionAdditionalTester):
             fill_data_by_cs(node1, n_range=[500, 550, 600, 650], start=5000)
 
         cf_dir = get_node_cf_dir(node1, 'keyspace1', 'standard1', latest=True)
-        debug(cf_dir)
+        logger.debug(cf_dir)
 
         # Prepare for cf population during restart # subtest1
         copy_files_to(cf_dir, os.path.join(cf_dir, './staging/'), files_only=True)
@@ -483,7 +512,7 @@ class CompactionAdditionalTest(CompactionAdditionalTester):
         copy_files_to(cf_dir, os.path.join(cf_dir, f'./backup.{time.time()}/'),
                       files_only=True, create_to_dir=True)
 
-        info(f"Change table compaction strategy to {strategy2}")
+        logger.info(f"Change table compaction strategy to {strategy2}")
         session.execute(f"ALTER TABLE keyspace1.standard1 WITH compaction={strategy2}")
 
         def assert_reshape_and_verify_data(srcdir=''):
@@ -492,90 +521,75 @@ class CompactionAdditionalTest(CompactionAdditionalTester):
             """
             try:
                 res = node1.watch_log_for("Reshape keyspace1.standard1", timeout=5, from_mark=mark)
-                debug(res)
+                logger.debug(res)
             except TimeoutError:
                 res = None
             # DateTieredCompactionStrategy doesn't support to reshape
             if (strategy2['class'] not in ['DateTieredCompactionStrategy', 'SizeTieredCompactionStrategy']):
 
-                self.assertIsNotNone(res, f"Reshape didn't occurred in loading sstables from {srcdir} directory")
+                assert res is not None, f"Reshape didn't occurred in loading sstables from {srcdir} directory"
 
-            info(f'Verify data is loaded from {srcdir} directory')
+            logger.info(f'Verify data is loaded from {srcdir} directory')
             node1.stress(['read', 'n=100', 'no-warmup', '-rate', 'threads=10', '-col', 'size=FIXED(1024)'])
 
-        debug("Clean test data & sstables before subtest by TRUNCATE")
+        logger.debug("Clean test data & sstables before subtest by TRUNCATE")
         session.execute("TRUNCATE keyspace1.standard1")
 
-        debug("Re-enable autocompaction, otherwise compaction & reshape wont' work in restart and refresh")
+        logger.debug("Re-enable autocompaction, otherwise compaction & reshape wont' work in restart and refresh")
         node1.nodetool('enableautocompaction keyspace1 standard1')
-        with self.subTest('Load data from upload directory by refresh', i=1):
-            mark = node1.mark_log()
-            info('Refresh keyspace1.standard1 .....')
-            node1.nodetool("refresh -- keyspace1 standard1")
-            assert_reshape_and_verify_data(srcdir='upload/')
 
-        debug("Clean test data & sstables before subtest by TRUNCATE")
+        logger.info('Load data from upload directory by refresh')
+        mark = node1.mark_log()
+        logger.info('Refresh keyspace1.standard1 .....')
+        node1.nodetool("refresh -- keyspace1 standard1")
+        assert_reshape_and_verify_data(srcdir='upload/')
+
+        logger.debug("Clean test data & sstables before subtest by TRUNCATE")
         session.execute("TRUNCATE keyspace1.standard1")
-        with self.subTest('Restart to load sstables from staging directory', i=2):
-            mark = node1.mark_log()
-            info("Restart the node .....")
-            node1.stop(gently=True)
-            node1.start(wait_for_binary_proto=True)
-            session = self.patient_cql_connection(node1)
-            assert_reshape_and_verify_data(srcdir='staging/')
-
-    @attr('single_node')
-    def refresh_and_restart_after_compaction_strategy_change_test(self):
-        """
-        Change compaction strategy with a matrix, both restart and refresh are tested.
-        """
-        cluster = self.cluster
-        cluster.populate(1)
-        node1 = cluster.nodelist()[0]
+        logger.info('Restart to load sstables from staging directory')
+        mark = node1.mark_log()
+        logger.info("Restart the node .....")
+        node1.stop(gently=True)
         node1.start(wait_for_binary_proto=True)
+        session = self.patient_cql_connection(node1)
+        assert_reshape_and_verify_data(srcdir='staging/')
 
-        strategies = [
-            # Expect sstables are more than min_threshold in level 0
-            {'class': 'LeveledCompactionStrategy', 'sstable_size_in_mb': 1, 'max_threshold': 1, 'min_threshold': 1},
-            # Expect sstables are generated in multiple minutes for TimeWindowCompactionStrategy
-            {'class': 'TimeWindowCompactionStrategy', 'split_during_flush': False, 'compaction_window_size': 1,
-             'compaction_window_unit': 'MINUTES', 'max_threshold': 1, 'min_threshold': 1},
-            # Expect there are more sstables than min_threshold in same bucket
-            {'class': 'SizeTieredCompactionStrategy', 'bucket_high': 1.5, 'bucket_low': 0.5,
-             'min_sstable_size': 1,  'max_threshold': 1, 'min_threshold': 1},
-            {'class': 'DateTieredCompactionStrategy'}
-        ]
-
-        subtests_errs = []
-        for src, dest in itertools.product(strategies, strategies):
-            try:
-                self._refresh_and_restart_after_compaction_strategy_change(src, dest)
-                debug("################# Subtest succeeded! #################")
-            except Exception as e:
-                debug('################# Subtest failed! #################\n' + str(e))
-                subtests_errs.append(e)
-        self.assertEqual(len(subtests_errs), 0, 'Exception occured in subtest')
-
-        # Clean test data
         shutil.rmtree(os.path.join(node1.get_path(), 'data', 'keyspace1'))
 
+    def wait_for_new_minute(self):
+        while dt.now().second > 5:
+            time.sleep(1)
 
-@attr('dtest-full', 'single_node')
-class CompactionAdditionalStrategyTests(CompactionAdditionalTester):
-    __test__ = False
+    def write_n_data_files(self, node, session, key_space, num_of_files, num_of_keys, consistency=ConsistencyLevel.ONE):
+        for t in range(0, num_of_files):
+            logger.debug("Inserting concurrently {} keys...".format(num_of_keys))
+            insert_c1c2(session, n=num_of_keys, consistency=consistency, ks=key_space)
+            node.flush()
 
-    def __init__(self, *args, **kwargs):
-        kwargs['cluster_options'] = {'start_rpc': 'true'}
-        Tester.__init__(self, *args, **kwargs)
 
-    def compaction_is_started_on_boot_test(self):
+@pytest.mark.dtest_full
+@pytest.mark.single_node
+class TestCompactionAdditionalStrategy(CompactionAdditionalTester):
+    strategy = None
+
+    @pytest.fixture(scope='function', autouse=True)
+    def fixture_dtest_setup_overrides(self, dtest_config):
+        dtest_setup_overrides = DTestSetupOverrides()
+        dtest_setup_overrides.cluster_options = ImmutableMapping({'start_rpc': 'true'})
+        return dtest_setup_overrides
+
+    @pytest.fixture(params=['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy', 'TimeWindowCompactionStrategy'], autouse=True)
+    def fixture_set_cs(self, request):
+        self.strategy = request.param
+
+    def test_compaction_is_started_on_boot(self):
         [node1], session = self.prepare(1)
-        self.create_ks(session, 'ks', 1)
-        session.execute("create table ks.cf (key int PRIMARY KEY, val int) "
-                        "with compaction = {'class':'" + self.strategy + "'};")
+        create_ks(session, 'ks', 1)
+        session.execute(
+            f"create table ks.cf (key int PRIMARY KEY, val int) with compaction = {{'class':'{self.strategy}'}};")
 
         for x in range(0, 100):
-            session.execute('insert into cf (key, val) values (' + str(x) + ',1)')
+            session.execute(f'insert into cf (key, val) values ({x},1)')
 
         node1.flush()
         node1.compact()
@@ -601,7 +615,7 @@ class CompactionAdditionalStrategyTests(CompactionAdditionalTester):
                         mapped.append(n)
                         break
             gmap[gen] = mapped
-            debug(f"Will copy SSTable with generation {gen} to generations {mapped}")
+            logger.debug(f"Will copy SSTable with generation {gen} to generations {mapped}")
 
         for f in sstablefiles:
             gen = self._get_sstable_generation(f)
@@ -617,8 +631,49 @@ class CompactionAdditionalStrategyTests(CompactionAdditionalTester):
 
         after_start_sstables = get_sstables_files(cf_dir, 'Data')
 
-        self.assertNotEqual(before_start_sstables, after_start_sstables,
-                            "No compaction detected after restarting {}. SSTables in ks/cf: {}".format(node1.name, after_start_sstables))
+        assert before_start_sstables != after_start_sstables, \
+            f"No compaction detected after restarting {node1.name}. SSTables in ks/cf: {after_start_sstables}"
+
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
+    def test_compaction_removes_ttld_data_after_gc_period(self):
+        """
+        Test that compaction removes TTLd data after gc_period
+        1. start cluster
+        2. create a table with a small gc_period
+        3. write data into the table with a small ttl
+        4. wait past ttl and gc_period
+        5. write some data and force compaction
+        6. check that ttl'd data was removed
+        Please note that we do not test that ttl data exists - we have other tests for this
+        """
+        [node1], session = self.prepare(1)
+        create_ks(session, 'ks', 1)
+
+        session.execute(
+            f"create table ks.cf (key int PRIMARY KEY, val int) with compaction = {{'class':'{self.strategy}'}} and gc_grace_seconds = 1;")
+
+        for x in range(0, 100):
+            session.execute(f'insert into cf (key, val) values ({x},1) USING TTL 29')
+
+        time.sleep(31)
+
+        # check that after gc_period compaction removes ttl'd data
+        # force an update so that compact will have something to do
+        session.execute('insert into ks.cf (key, val) values (99,1);')
+        node1.flush()
+        node1.compact()
+
+        json_path = tempfile.mkstemp(suffix='.json')
+        jname = json_path[1]
+        with open(jname, 'w') as f:
+            node1.run_sstable2json(f, keyspace='ks')
+
+        with open(jname, 'r') as g:
+            jsoninfo = g.read()
+
+        numfound = jsoninfo.count("partition")
+        assert numfound == 1, f"Error: expected 1 partition but found {numfound}:\n{jsoninfo}"
 
     def _get_sstable_generation(self, file):
         sstable_split_parts = os.path.basename(file).split('-')
@@ -643,85 +698,20 @@ class CompactionAdditionalStrategyTests(CompactionAdditionalTester):
             raise RuntimeError("Unexpected format of file name: '%s'" % file)
         shutil.copy(file, os.path.join(os.path.dirname(file), '-'.join(sstable_split_parts)))
 
-    @attr('next-gating')
-    @attr('dtest-debug')
-    def compaction_removes_ttld_data_after_gc_period_test(self):
-        """
-        Test that compaction removes TTLd data after gc_period
-        1. start cluster
-        2. create a table with a small gc_period
-        3. write data into the table with a small ttl
-        4. wait past ttl and gc_period
-        5. write some data and force compaction
-        6. check that ttl'd data was removed
-        Please note that we do not test that ttl data exists - we have other tests for this
-        """
-        [node1], session = self.prepare(1)
-        self.create_ks(session, 'ks', 1)
 
-        session.execute("create table ks.cf (key int PRIMARY KEY, val int) "
-                        "with compaction = {'class':'" + self.strategy + "'} and gc_grace_seconds = 1;")
-
-        for x in range(0, 100):
-            session.execute('insert into cf (key, val) values (' + str(x) + ',1) USING TTL 29')
-
-        time.sleep(31)
-
-        # check that after gc_period compaction removes ttl'd data
-        # force an update so that compact will have something to do
-        session.execute('insert into ks.cf (key, val) values (99,1);')
-        node1.flush()
-        node1.compact()
-
-        json_path = tempfile.mkstemp(suffix='.json')
-        jname = json_path[1]
-        with open(jname, 'w') as f:
-            node1.run_sstable2json(f, keyspace='ks')
-
-        with open(jname, 'r') as g:
-            jsoninfo = g.read()
-
-        numfound = jsoninfo.count("partition")
-
-        self.assertEqual(numfound, 1, "Error: expected 1 partition but found {}:\n{}".format(numfound, jsoninfo))
-
-
-strategies = ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy',
-              'TimeWindowCompactionStrategy']
-for strategy in strategies:
-    cls_name = ('CompactionAdditionalStrategyTests_with_' + strategy)
-    vars()[cls_name] = type(cls_name, (CompactionAdditionalStrategyTests,), {'strategy': strategy, '__test__': True})
-
-
-def micros_to_seconds(micros):
-    return int(micros / (1000 * 1000))
-
-
-def seconds_to_micros(seconds):
-    return seconds * 1000 * 1000
-
-
-@attr('dtest-full')
+@pytest.mark.dtest_full
 class TestTimeWindowDataSegregation(CompactionAdditionalTester):
-    __test__ = True
     keyspace_name = "ks"
     table_name = "test"
     window_size = 1
     window_unit = "MINUTES"
 
-    def _get_stats(self, statistics_file):
-        with open(statistics_file, 'rb') as f:
-            data = f.read()
-
-        metadata = sstable_tools.statistics.parse(data, 'mc')
-        return metadata['Stats']
-
     def _get_time_window_in_seconds(self, statistics_file, stats=None):
         if not stats:
-            stats = self._get_stats(statistics_file)
+            stats = self.get_stats(statistics_file)
         min_timestamp = stats['min_timestamp']
         max_timestamp = stats['max_timestamp']
-        return micros_to_seconds(max_timestamp - min_timestamp)
+        return self.micros_to_seconds(max_timestamp - min_timestamp)
 
     def _get_list_of_sstables(self, node):
         ks_path = os.path.join(node.get_path(), 'data', self.keyspace_name)
@@ -742,15 +732,16 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
 
     def _check_sstable_timestamps(self, node):
         statistics_files = self._get_list_of_sstables(node)
-        self.assertTrue(len(statistics_files) > 0)
+        assert len(statistics_files) > 0, "No statisitcs files"
         for sf in statistics_files:
-            stats = self._get_stats(sf)
+            stats = self.get_stats(sf)
             tw = self._get_time_window_in_seconds(sf, stats)
 
             # Allow an error margin of a half-window.
             margin = 1.5 * self.window_size * 60
-            self.assertTrue(tw <= margin, msg="time window of {} seconds is greater than {} seconds margin: "
-                            "sstable={} min_timestamp={} max_timestamp={}".format(tw, margin, sf, stats['min_timestamp'], stats['max_timestamp']))
+            assert tw <= margin, f"time window of {tw} seconds is greater than {margin} \
+                                   seconds margin: sstable={sf} \
+                                   min_timestamp={stats['min_timestamp']} max_timestamp={stats['max_timestamp']}"
 
     def _create_ks_cl_with_twcs(self, session, rf=1):
 
@@ -793,7 +784,7 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
             concurrent.execute_concurrent_with_args(
                 session,
                 insert_statement,
-                [(pk, t, 0, seconds_to_micros(t)) for pk in rand_pks])
+                [(pk, t, 0, self.seconds_to_micros(t)) for pk in rand_pks])
 
             # Flush every flush period in seconds on each node
             if t % flush_period_seconds == 0:
@@ -809,7 +800,7 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
 
         return list_sstables_timewindows
 
-    @attr('single_node')
+    @pytest.mark.single_node
     def test_streaming_during_adding_node_with_boostrap(self):
         [node1], session = self.prepare(1)
         self._create_ks_cl_with_twcs(session, rf=1)
@@ -858,8 +849,8 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
         self._check_sstable_timestamps(node1)
         self._check_sstable_timestamps(node2)
 
-    @attr('next-gating')
-    @attr('single_node')
+    @pytest.mark.next_gating
+    @pytest.mark.single_node
     def test_streaming_on_rebuild_multidc(self):
 
         def _add_node(i, dc):
@@ -908,15 +899,14 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
                 if 'rebuild is in progress' in str(e):
                     self.rebuild_errors += 1
                 else:
-                    debug('Unexpected rebuild failure {}'.format(str(e)))
+                    logger.debug('Unexpected rebuild failure {}'.format(str(e)))
                     self.unexpected_errors += 1
 
         cmd1 = Thread(target=rebuild)
         cmd1.start()
         cmd1.join()
 
-        self.assertEqual(self.unexpected_errors, 0,
-                         msg='unexpected rebuild errors encountered.')
+        assert self.unexpected_errors == 0, 'unexpected rebuild errors encountered.'
 
         node2.watch_log_for("Streaming for rebuild successful|"
                             "rebuild_with_repair: finished with keyspace=ks", from_mark=mark)
@@ -930,8 +920,9 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
         self._simulate_write_process_in_minutes(session, duration_minutes=10, flush_period_seconds=120, num_pks=100)
 
         sstable_timewindows_list = self._list_sstable_timestamps(node1)
+        max_timewindow = 1.5 * 2 * 60
         for sstable, timewindow in sstable_timewindows_list:
-            self.assertTrue(timewindow <= 1.5 * 2 * 60)
+            assert timewindow <= max_timewindow, f"timewindow{timewindow} is greater than {max_timewindow}"
 
         new_node = tools.new_node(self.cluster)
         new_node.start(wait_for_binary_proto=True)
@@ -961,15 +952,14 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
 
 
 class TestGarabageCollected(CompactionAdditionalTester):
-    __test__ = True
 
-    def garbage_collected_sstable_test(self):
+    def test_garbage_collected_sstable(self):
         """
         Test garbage collected SSTables
         Related issue: https://github.com/scylladb/scylla/issues/6275
         """
         [node1, node2, node3], session = self.prepare(3)
-        self.create_ks(session, 'ks', 3)
+        create_ks(session, 'ks', 3)
 
         # Use IncrementalCompactionStrategy for Enterprise
         session.execute(
@@ -1002,4 +992,4 @@ class TestGarabageCollected(CompactionAdditionalTester):
             except TimeoutError:
                 res = None
 
-            self.assertFalse(res, "Don't expect the 'Unable to delete' error")
+            assert not res, "Don't expect the 'Unable to delete' error"
