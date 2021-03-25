@@ -117,7 +117,9 @@ repos:
                 concurrent_schema_changes_test.py|
                 sstable_generation_loading_test.py|
                 schema_management_test.py|
-                compaction_additional_test.py
+                compaction_additional_test.py|
+                simple_boot_shutdown_test.py|
+                delete_insert_test.py
             )$
         language: system
         types: [python]

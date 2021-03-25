@@ -1,46 +1,60 @@
+import logging
+from math import floor
 import random
 import uuid
 import concurrent.futures
 from concurrent.futures import ThreadPoolExecutor
 
+import pytest
 from cassandra import ConsistencyLevel
 from cassandra.query import SimpleStatement
 
-from dtest import Tester
+from dtest_class import Tester, create_ks
+
+logger = logging.getLogger(__name__)
 
 
-class DeleteInsertTest(Tester):
+class TestDeleteInsert(Tester):
     """
     Examines scenarios around deleting data and adding data back with the same key
     """
 
-    def __init__(self, *args, **kwargs):
-        Tester.__init__(self, *args, **kwargs)
-
-        # Generate 1000 rows in memory so we can re-use the same ones over again:
-        self.groups = ['group1', 'group2', 'group3', 'group4']
-        self.rows = [(str(uuid.uuid1()), x, random.choice(self.groups)) for x in range(1000)]
+    ROWS = [(str(uuid.uuid1()), x, random.choice(['group1', 'group2', 'group3', 'group4'])) for x in range(1000)]
 
     def create_ddl(self, session, rf={'dc1': 2, 'dc2': 2}):
-        self.create_ks(session, 'delete_insert_search_test', rf)
+        create_ks(session, 'delete_insert_search_test', rf)
         session.execute('CREATE TABLE test (id uuid PRIMARY KEY, val1 text, group text)')
         session.execute('CREATE INDEX group_idx ON test (group)')
 
     def delete_group_rows(self, session, group):
         """Delete rows from a given group and return them"""
-        rows = [r for r in self.rows if r[2] == group]
+        rows = [r for r in self.ROWS if r[2] == group]
         ids = [r[0] for r in rows]
-        session.execute('DELETE FROM test WHERE id in (%s)' % ', '.join(ids))
+
+        # Now allowed select more then 100 PKs:
+        # <Error from server: code=0000 [Server error]
+        # message="partition key cartesian product size 270 is greater than maximum 100">
+        start = 0
+        last_portion = len(ids)
+        if len(ids) >= 100:
+            last_portion = len(ids) % 100  # if elements amount in the list is not divided by 100
+            for i in range(0, floor(len(ids)/100)):
+                end = 100 * (i+1)
+                session.execute(f"DELETE FROM test WHERE id in ({', '.join(ids[start:end])})")
+                start = end
+
+        if last_portion:
+            session.execute(f"DELETE FROM test WHERE id in ({', '.join(ids[start:-1])})")
         return rows
 
     def insert_all_rows(self, session):
-        self.insert_some_rows(session, self.rows)
+        self.insert_some_rows(session, self.ROWS)
 
     def insert_some_rows(self, session, rows):
         for row in rows:
             session.execute("INSERT INTO test (id, val1, group) VALUES (%s, '%s', '%s')" % row)
 
-    def delete_insert_search_test(self):
+    def test_delete_insert_search(self):
         cluster = self.cluster
         cluster.populate([2, 2]).start()
         node1 = cluster.nodelist()[0]
@@ -63,7 +77,7 @@ class DeleteInsertTest(Tester):
             query = SimpleStatement("SELECT * FROM delete_insert_search_test.test WHERE group = 'group2'",
                                     consistency_level=ConsistencyLevel.LOCAL_QUORUM)
             rows = connection.execute(query)
-            assert len(rows) == len(deleted)
+            assert len(rows) == len(deleted), f"Expected {len(deleted)}, got {len(rows)}"
 
         max_workers = 20
         executor = ThreadPoolExecutor(max_workers=max_workers)
