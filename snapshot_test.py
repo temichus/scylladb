@@ -72,7 +72,7 @@ class SnapshotOperations:
         if start_process:
             start_process.wait()
 
-        stdout, stderr = node.nodetool('snapshot')
+        stdout, stderr = node.nodetool(f'snapshot -t {uuid.uuid4()}')
         return [(stdout, stderr)]
 
     def create_snapshots_per_keyspace_table(self, node, start_process=None, num_ks=1, num_cf=1):
@@ -81,7 +81,7 @@ class SnapshotOperations:
         results = []
         for i in range(num_ks):
             for j in range(num_cf):
-                stdout, stderr = node.nodetool('snapshot ks{}.table_cf{}'.format(i, j))
+                stdout, stderr = node.nodetool(f'snapshot ks{i}.table_cf{j} -t {uuid.uuid4()}')
 
             results.append((stdout, stderr))
         return results
@@ -104,7 +104,7 @@ class SnapshotOperations:
             start_process.wait()
         results = []
         for i in range(num_ks):
-            stdout, stderr = node.nodetool('clearsnapshot ks{}'.format(i))
+            stdout, stderr = node.nodetool(f'clearsnapshot ks{i}')
             results.append((stdout, stderr))
         return results
 
@@ -369,7 +369,7 @@ class TestSnapshot(SnapshotTester):
         # run several snapshot commands
         for i in range(2):
             time.sleep(60)
-            results, errors = node1.nodetool('snapshot')
+            results, errors = node1.nodetool(f'snapshot -t {uuid.uuid4()}')
             logger.info(results + errors)
             assert 'failed: filesystem error: link failed: No such file or directory' not in ' '.join(results + errors)
             # Check that no other errors occured during snapshot command
@@ -399,7 +399,7 @@ class TestSnapshot(SnapshotTester):
         logger.info('Node has been started')
 
         logger.info('Create snapshot right after start')
-        result, errors = node1.nodetool('snapshot')
+        result, errors = node1.nodetool(f'snapshot -t {uuid.uuid4()}')
         logger.info(result + errors)
         assert 'failed: filesystem error: link failed: No such file or directory' not in ' '.join(results + errors)
         # Check that no other errors occured during snapshot command
