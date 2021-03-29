@@ -17,8 +17,7 @@ from cassandra import AlreadyExists, ConsistencyLevel, InvalidRequest, ReadTimeo
 from cassandra.concurrent import execute_concurrent_with_args
 from cassandra.protocol import ConfigurationException
 from cassandra.protocol import SyntaxException
-from cassandra.query import SimpleStatement
-from cassandra.query import UNSET_VALUE
+from cassandra.query import dict_factory, SimpleStatement, UNSET_VALUE
 from cassandra.util import sortedset
 from cassandra.cluster import ResultSet, NoHostAvailable
 
@@ -1753,28 +1752,73 @@ class TestCQL(Tester):
         res = session.execute("SELECT v2 FROM test WHERE k = 1")
         assert rows_to_list(res) == [[None]], list(res)
 
+    def test_quorum_with_null(self):
+        """ Test Quorum with null:
+            creating table  where
+            node1 - row looks like: (pk1, 123, null, null, 456)
+            node2 - row looks like: (pk1, 123 null, null, 789)
+            node3 - row looks like: (pk1, 123 null, null, 789)
+            query and cause read_reapir and make sure that row1 on node1 (stop the 2 others) is fixed correctly.
+        """
+        cluster = self.cluster
+        cluster.populate(3).start()
+        time.sleep(0.2)
+        node1 = self.cluster.nodelist()[1]
+        session = self.patient_cql_connection(node1, row_factory=dict_factory)
+        with session:
+            create_ks(session, 'ks', rf=3)
+            session.execute("""
+                CREATE TABLE test1 (
+                    k int,
+                    c1 int,
+                    v1 int,
+                    v2 int,
+                    v3 int,
+                    PRIMARY KEY (k, c1)
+                );
+            """)
+            time.sleep(1)
+            session.execute("INSERT INTO test1 (k, c1,v3) VALUES (1, 123,456)")
+            time.sleep(0.5)
+            cluster.flush()
+            node_to_stop = self.cluster.nodelist()[0]
+            node_to_stop.stop(wait_other_notice=True)
+            session.execute("INSERT INTO test1 (k, c1,v3) VALUES (1, 123,768)")
+            time.sleep(0.5)
+            updated_nodes = [self.cluster.nodelist()[1], self.cluster.nodelist()[2]]
+        for node in updated_nodes:
+            node.stop(wait_other_notice=True)
+        query = "SELECT * FROM ks.test1 WHERE k = 1 and c1=123"
+        node_to_stop.start(wait_other_notice=True)
+        session = self.patient_cql_connection(node_to_stop, row_factory=dict_factory)
+        simple_query = SimpleStatement(query, consistency_level=ConsistencyLevel.ONE)
+        res = session.execute(simple_query).current_rows[0]
+        assert res['v3'] == 456, f"before repair expected v3=456, actual {res['v3']}"
+        for node in updated_nodes:
+            node.start(wait_other_notice=True)
+        node_to_stop.nodetool("repair")
+        for node in updated_nodes:
+            node.stop(wait_other_notice=True)
+        res = session.execute(simple_query).current_rows[0]
+        assert res['v3'] == 768, f"after repair expected v3=768, actual {res['v3']}"
+
+    @pytest.mark.single_node
     def test_range_tombstones(self):
         """ Test deletion by 'composite prefix' (range tombstones) """
-        cluster = self.cluster
-
-        # Uses 3 nodes just to make sure RowMutation are correctly serialized
-        cluster.populate(3).start()
-        node1 = cluster.nodelist()[0]
-        time.sleep(0.2)
-
+        node1 = self.cluster.nodelist()[1]
         session = self.patient_cql_connection(node1)
         create_ks(session, 'ks', 1)
 
         session.execute("""
-            CREATE TABLE test1 (
-                k int,
-                c1 int,
-                c2 int,
-                v1 int,
-                v2 int,
-                PRIMARY KEY (k, c1, c2)
-            );
-        """)
+                CREATE TABLE test1 (
+                    k int,
+                    c1 int,
+                    c2 int,
+                    v1 int,
+                    v2 int,
+                    PRIMARY KEY (k, c1, c2)
+                );
+            """)
         time.sleep(1)
 
         rows = 5
@@ -6351,6 +6395,59 @@ class TestCQL(Tester):
         except AssertionError as e:
             logger.debug("CQL query validation failed: {} - {}".format(query, e))
             raise e
+
+    def range_tombstones_test(self):
+        """ Test deletion by 'composite prefix' (range tombstones) """
+        cluster = self.cluster
+
+        # Uses 3 nodes just to make sure RowMutation are correctly serialized
+        cluster.populate(3).start()
+        node1 = cluster.nodelist()[0]
+        time.sleep(0.2)
+
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 1)
+
+        session.execute("""
+            CREATE TABLE test1 (
+                k int,
+                c1 int,
+                c2 int,
+                v1 int,
+                v2 int,
+                PRIMARY KEY (k, c1, c2)
+            );
+        """)
+        time.sleep(1)
+
+        rows = 5
+        col1 = 2
+        col2 = 2
+        cpr = col1 * col2
+        for i in range(0, rows):
+            for j in range(0, col1):
+                for k in range(0, col2):
+                    n = (i * cpr) + (j * col2) + k
+                    session.execute("INSERT INTO test1 (k, c1, c2, v1, v2) VALUES (%d, %d, %d, %d, %d)" %
+                                    (i, j, k, n, n))
+
+        for i in range(0, rows):
+            res = session.execute("SELECT v1, v2 FROM test1 where k = %d" % i)
+            assert rows_to_list(res) == [[x, x] for x in range(i * cpr, (i + 1) * cpr)], list(res)
+
+        for i in range(0, rows):
+            session.execute("DELETE FROM test1 WHERE k = %d AND c1 = 0" % i)
+
+        for i in range(0, rows):
+            res = session.execute("SELECT v1, v2 FROM test1 WHERE k = %d" % i)
+            assert rows_to_list(res) == [[x, x] for x in range(i * cpr + col1, (i + 1) * cpr)], list(res)
+
+        cluster.flush()
+        time.sleep(0.2)
+
+        for i in range(0, rows):
+            res = session.execute("SELECT v1, v2 FROM test1 WHERE k = %d" % i)
+            assert rows_to_list(res) == [[x, x] for x in range(i * cpr + col1, (i + 1) * cpr)], list(res)
 
 
 @pytest.mark.dtest_full
