@@ -1,4 +1,6 @@
 import errno
+from concurrent.futures.thread import ThreadPoolExecutor
+
 import random
 import string
 import hashlib
@@ -228,3 +230,17 @@ def remove_node(cluster, node, wait_other_notice=True, other_nodes=None):
     cluster.remove(node, wait_other_notice=wait_other_notice, other_nodes=other_nodes)
     remove_using_node = cluster.nodelist()[0]
     remove_using_node.nodetool("removenode {}".format(hostid))
+
+
+def set_trace_probability(nodes, probability_value):
+    def _set_trace_probability_for_node(_node):
+        logger.debug(f'{"Enable" if probability_value else "disable"} trace for node "{_node.name}" with '
+                     f'"{probability_value}" probability value')
+        errors = _node.nodetool(f'settraceprobability {probability_value}')[1]
+        if errors:
+            raise RuntimeError(f'Failed to {"enable" if probability_value else "disable"} trace for node '
+                               f'"{_node.name}"')
+
+    with ThreadPoolExecutor(max_workers=len(nodes)) as executor:
+        threads = [executor.submit(_set_trace_probability_for_node, node) for node in nodes]
+        [thread.result() for thread in threads]

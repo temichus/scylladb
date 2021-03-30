@@ -2,8 +2,13 @@
 #
 # This test is based on a Cassandra's test with the same name.
 #
-from dtest import Tester, debug
-from scylla_tools import insert_c1c2_no_prepared, set_trace_probability
+import logging
+
+import pytest
+
+from dtest_setup import DTestSetup
+from tools.data import insert_c1c2_no_prepared
+from tools.misc import set_trace_probability
 from cassandra.query import SimpleStatement
 from cassandra import ConsistencyLevel
 import functools
@@ -12,16 +17,24 @@ import random
 import threading
 import time
 import re
-from nose.plugins.attrib import attr
+
+from dtest_class import Tester, create_ks, create_cf
+
+logger = logging.getLogger(__name__)
 
 
-@attr('next-gating')
-@attr('dtest-debug')
-@attr('dtest-full')
+@pytest.mark.next_gating
+@pytest.mark.dtest_debug
+@pytest.mark.dtest_full
 class TestCqlTracing(Tester):
     """
     Test that the default implementation for tracing works.
     """
+
+    @pytest.fixture(autouse=True)
+    def fixture_add_additional_log_patterns(self, fixture_dtest_setup: DTestSetup):
+        fixture_dtest_setup.allow_log_errors = True
+        fixture_dtest_setup.ignore_log_patterns = ()
 
     def prepare(self, create_keyspace=True, nodes=3, rf=3, protocol_version=3, jvm_args=None, **kwargs):
         if jvm_args is None:
@@ -34,9 +47,8 @@ class TestCqlTracing(Tester):
 
         session = self.patient_cql_connection(node1, protocol_version=protocol_version)
         if create_keyspace:
-            if self._preserve_cluster:
-                session.execute("DROP KEYSPACE IF EXISTS ks")
-            self.create_ks(session, 'ks', rf)
+            session.execute("DROP KEYSPACE IF EXISTS ks")
+            create_ks(session, 'ks', rf)
         return session
 
     def trace(self, session):
@@ -63,12 +75,12 @@ class TestCqlTracing(Tester):
         """)
 
         out, err = node1.run_cqlsh('TRACING ON', return_output=True, cqlsh_options=['--no-color'])
-        self.assertIn('Tracing is enabled', out)
+        assert 'Tracing is enabled' in out, 'Tracing has not been enabled'
 
         out, err = node1.run_cqlsh('TRACING ON; SELECT * from ks.users',
                                    return_output=True, cqlsh_options=['--no-color'])
-        self.assertIn('Tracing session: ', out)
-        self.assertIn('Request complete ', out)
+        assert 'Tracing session: ' in out, 'SELECT query was run without tracing'
+        assert 'Request complete ' in out, 'Expected substring "Request complete" was not found'
 
         # Inserts
         out, err = node1.run_cqlsh(
@@ -76,31 +88,31 @@ class TestCqlTracing(Tester):
             "INSERT INTO ks.users (userid, firstname, lastname, age) "
             "VALUES (550e8400-e29b-41d4-a716-446655440000, 'Frodo', 'Baggins', 32)",
             return_output=True, cqlsh_options=['--no-color'])
-        debug(out)
-        self.assertIn('Tracing session: ', out)
-        self.assertIn('Request complete ', out)
+        logger.debug(out)
+        assert 'Tracing session: ' in out, 'SELECT query was run without tracing'
+        assert 'Request complete ' in out, 'Expected substring "Request complete" was not found'
 
         # Queries
         out, err = node1.run_cqlsh('CONSISTENCY ALL; TRACING ON; '
                                    'SELECT firstname, lastname '
                                    'FROM ks.users WHERE userid = 550e8400-e29b-41d4-a716-446655440000',
                                    return_output=True, cqlsh_options=['--no-color'])
-        debug(out)
-        self.assertIn('Tracing session: ', out)
-        self.assertIn(" "+self.cluster.get_node_ip(1)+" ", out)
-        self.assertIn(" "+self.cluster.get_node_ip(2)+" ", out)
-        self.assertIn(" "+self.cluster.get_node_ip(3)+" ", out)
-        self.assertIn('Request complete ', out)
-        self.assertIn(" Frodo |  Baggins", out)
+        logger.debug(out)
+        assert 'Tracing session: ' in out, 'SELECT query was run without tracing'
+        assert f" {self.cluster.get_node_ip(1)} " in out, 'Node1 IP is not in the '
+        assert f" {self.cluster.get_node_ip(2)} " in out, 'SELECT query was run without tracing'
+        assert f" {self.cluster.get_node_ip(3)} " in out, 'SELECT query was run without tracing'
+        assert 'Request complete ' in out, 'Expected substring "Request complete" was not found'
+        assert ' Frodo |  Baggins' in out, 'Expected substring " Frodo |  Baggins" was not found'
 
-    def tracing_simple_test(self):
+    def test_tracing_simple(self):
         """
         Test tracing using the default tracing class. See trace().
         """
         session = self.prepare()
         self.trace(session)
 
-    def tracing_shutdown_test(self):
+    def test_tracing_shutdown(self):
         """
         Check tracing functionality when Node is being shut down:
            - Check that CQL handling is stopped prior to tracing being stopped
@@ -116,40 +128,42 @@ class TestCqlTracing(Tester):
         node1, node2 = self.cluster.nodelist()
 
         # FIXME: remove when https://github.com/scylladb/scylla/issues/5697 issue is fixed
-        self.ignore_log_patterns += [
-            r'seastar - Timer callback failed: seastar::metrics::double_registration \(registering metrics twice for metrics: storage_proxy_coordinator_background_replica_writes_failed_remote_node\)']
+        self.ignore_log_patterns = (
+            r'seastar - Timer callback failed: seastar::metrics::double_registration \
+            (registering metrics twice for metrics: '
+            r'storage_proxy_coordinator_background_replica_writes_failed_remote_node\)')
 
-        debug("Enable tracing for all CQL requests on node1 and node2...")
+        logger.debug("Enable tracing for all CQL requests on node1 and node2...")
         set_trace_probability(nodes=[node1, node2], probability_value=1.0)
 
         session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'ks', 2)
-        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        create_ks(session, 'ks', 2)
+        create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
         num_keys = 500
-        debug("Populating a table with {} keys...".format(num_keys))
+        logger.debug("Populating a table with {} keys...".format(num_keys))
         insert_c1c2_no_prepared(session, keys=range(num_keys), consistency=ConsistencyLevel.ONE)
         node1.nodetool('flush')
 
-        debug("Stopping node1...")
+        logger.debug("Stopping node1...")
         node1.stop(wait_other_notice=True)
 
-        debug("Checking log of node1 for assertions...")
+        logger.debug("Checking log of node1 for assertions...")
         match = node1.grep_log("Assertion .* failed.")
-        self.assertEqual(len(match), 0)
+        assert len(match) == 0, f'Found assertion failure: {match}'
 
-        debug("Check that all tracing session have been flushed...")
+        logger.debug("Check that all tracing session have been flushed...")
         pattern = re.compile("INSERT INTO")
         all_tracing_sessions_query = SimpleStatement('SELECT parameters FROM system_traces.sessions')
         rows = list(session.execute(all_tracing_sessions_query))
         count = functools.reduce(
             lambda x, y: x + y, map(lambda row: self.grep_one_line(row[0]['query'], pattern), rows))
-        self.assertEqual(count, num_keys)
+        assert count == num_keys, 'Not all tracing session have been flushed'
 
-        debug("Start node1...")
+        logger.debug("Start node1...")
         node1.start(wait_for_binary_proto=True)
 
-        debug("Enable tracing for all CQL requests on node1...")
+        logger.debug("Enable tracing for all CQL requests on node1...")
         set_trace_probability(nodes=[node1], probability_value=1.0)
 
         session = self.patient_cql_connection(node1)
@@ -157,12 +171,12 @@ class TestCqlTracing(Tester):
         def run(name, q, additional_keys):
             try:
                 q.put(True)
-                debug("Populating a table with {} more keys...".format(additional_keys))
+                logger.debug("Populating a table with {} more keys...".format(additional_keys))
                 insert_c1c2_no_prepared(session, keys=range(num_keys, num_keys +
                                                             additional_keys), consistency=ConsistencyLevel.ONE)
-                debug("insertion of {} keys is done".format(additional_keys))
+                logger.debug("insertion of {} keys is done".format(additional_keys))
             except:
-                debug("insertions was killed")
+                logger.debug("insertions was killed")
 
         queue = Queue()
         if node1.grep_log('WARNING: debug mode.'):
@@ -175,16 +189,16 @@ class TestCqlTracing(Tester):
 
         random.seed()
         wait_time = random.random()
-        debug("Wait for {} seconds".format(wait_time))
+        logger.debug("Wait for {} seconds".format(wait_time))
         time.sleep(wait_time)
 
-        debug("Stopping node2...")
+        logger.debug("Stopping node2...")
         node2.stop(wait_other_notice=True)
 
-        debug("Waiting for insert-thread to complete...")
+        logger.debug("Waiting for insert-thread to complete...")
         insert_thread.join()
 
-    def tracing_startup_test(self):
+    def test_tracing_startup(self):
         """
         Check tracing functionality when Node is started:
            - Check that CQL handling is not started before a local service is
@@ -199,29 +213,29 @@ class TestCqlTracing(Tester):
         self.ignore_log_patterns += [
             r'seastar - Timer callback failed: seastar::metrics::double_registration \(registering metrics twice for metrics: storage_proxy_coordinator_background_replica_writes_failed_remote_node\)']
 
-        debug("Enable tracing for all CQL requests on node1...")
+        logger.debug("Enable tracing for all CQL requests on node1...")
         set_trace_probability(nodes=[node1], probability_value=1.0)
 
         session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'ks', 2)
-        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        create_ks(session, 'ks', 2)
+        create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
-        debug("Stopping node2...")
+        logger.debug("Stopping node2...")
         node2.stop(wait_other_notice=True)
 
-        debug("Checking log of node2 for assertions...")
+        logger.debug("Checking log of node2 for assertions...")
         match = node2.grep_log("Assertion .* failed.")
-        self.assertEqual(len(match), 0)
+        assert len(match) == 0, f"Found assertion errors: {match}"
 
         def run(name, q):
             try:
                 num_keys = 15000
                 q.put(True)
-                debug("Populating a table with {} keys...".format(num_keys))
+                logger.debug("Populating a table with {} keys...".format(num_keys))
                 insert_c1c2_no_prepared(session, keys=range(num_keys), consistency=ConsistencyLevel.ONE)
-                debug("insertion of {} keys is done".format(num_keys))
+                logger.debug("insertion of {} keys is done".format(num_keys))
             except:
-                debug("insertions thread was killed")
+                logger.debug("insertions thread was killed")
 
         queue = Queue()
         insert_thread = threading.Thread(target=run, args=("insert-thread", queue))
@@ -230,10 +244,10 @@ class TestCqlTracing(Tester):
 
         random.seed()
         wait_time = random.random()
-        debug("Wait for {} seconds".format(wait_time))
+        logger.debug("Wait for {} seconds".format(wait_time))
         time.sleep(wait_time)
 
-        debug("Start node2...")
+        logger.debug("Start node2...")
         node2.start(wait_for_binary_proto=True)
 
         insert_thread.join()
@@ -255,7 +269,7 @@ class TestCqlTracing(Tester):
 #                   jira_url='https://issues.apache.org/jira/browse/CASSANDRA-11465',
 #                   flaky=True)
 #    @since('3.4')
-#    def tracing_unknown_impl_test(self):
+#    def test_tracing_unknown_impl(self):
 #        """
 #        Test that Cassandra logs an error, but keeps its default tracing
 #        behavior, when a nonexistent tracing class is specified.
@@ -274,17 +288,17 @@ class TestCqlTracing(Tester):
 #        self.trace(session)
 #
 #        errs = self.cluster.nodelist()[0].grep_log_for_errors()
-#        debug('Errors after attempted trace with unknown tracing class: {errs}'.format(errs=errs))
-#        self.assertEqual(len(errs), 1)
-#        self.assertEqual(len(errs[0]), 1)
+#        logger.debug('Errors after attempted trace with unknown tracing class: {errs}'.format(errs=errs))
+#        assert len(errs) == 1, f"Found {len(errs)} errors, expected 1"
+#        assert len(errs[0]) == 1
 #        err = errs[0][0]
-#        self.assertIn(expected_error, err)
+#        assert expected_error in err, f"Expected error {expected_error} is not found"
 #
 #    @known_failure(failure_source='test',
 #                   jira_url='https://issues.apache.org/jira/browse/CASSANDRA-11465',
 #                   flaky=True)
 #    @since('3.4')
-#    def tracing_default_impl_test(self):
+#    def test_tracing_default_impl(self):
 #        """
 #        Test that Cassandra logs an error, but keeps its default tracing
 #        behavior, when the default tracing class is specified.
@@ -306,15 +320,15 @@ class TestCqlTracing(Tester):
 #        self.trace(session)
 #
 #        errs = self.cluster.nodelist()[0].grep_log_for_errors()
-#        debug('Errors after attempted trace with default tracing class: {errs}'.format(errs=errs))
-#        self.assertEqual(len(errs), 1)
-#        self.assertEqual(len(errs[0]), 1)
+#        logger.debug('Errors after attempted trace with default tracing class: {errs}'.format(errs=errs))
+#        assert len(errs) == 1, f"Expected 1 error, got {len(errs)}"
+#        assert len(errs[0]) == 1, f"Expected 1 error, got {len(errs[0])}"
 #        err = errs[0][0]
-#        self.assertIn(expected_error, err)
+#        assert expected_error in err, f"Expected error {expected_error} is not found"
 #        # make sure it logged the error for the correct reason. this isn't
 #        # part of the expected error to avoid having to escape parens and
 #        # periods for regexes.
-#        self.assertIn("Default constructor for Tracing class "
-#                      "'org.apache.cassandra.tracing.TracingImpl' is inaccessible.",
-#                      err)
+#        assert "Default constructor for Tracing class "
+#                      "'org.apache.cassandra.tracing.TracingImpl' is inaccessible." in err,
+#                       "Expected message is not found"
 # ----------------------------------------------------------------------------------------------------------------------
