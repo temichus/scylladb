@@ -1,23 +1,24 @@
+import logging
+
 from concurrent.futures._base import Future
 from concurrent.futures.thread import ThreadPoolExecutor
 
 from ccmlib.scylla_node import ScyllaNode
 
-from dtest import debug
 from upgrade_test import UpgradeTester, upgrade_matrix_2
 
+logger = logging.getLogger(__name__)
 
-class RollingUpgradeTest(UpgradeTester):
+
+class TestRollingUpgrade(UpgradeTester):
     __test__ = True
     _multiprocess_can_split_ = False
 
     upgrade_path = upgrade_matrix_2
     init_version = upgrade_path[0]
 
-    def test_rolling_upgrade(self):
-        self.set_ignore_log_patterns()
-        # Remove first version from the path as it'a already used
-        self.current_upgrade_path.pop(0)
+    def test_rolling_upgrade(self, dtest_config):
+        self.clone_upgrade_path(dtest_config)
 
         session = self.init_cluster(nodes=3)
         self.prepare_schema(session)
@@ -28,7 +29,7 @@ class RollingUpgradeTest(UpgradeTester):
         executor = ThreadPoolExecutor(max_workers=2)
 
         for version in self.current_upgrade_path:
-            debug(f"****** START ROLLBACK TEST FROM {base_node__version} TO {version} ******")
+            logger.debug(f"****** START ROLLBACK TEST FROM {base_node__version} TO {version} ******")
             # Run write load in parallel with first node upgrade
             write_thread = self.run_stress(node=self.cluster.nodelist()[1],
                                            stress_command=self.write_stress_command(stress_duration_minutes=2, rf=3),
@@ -89,8 +90,8 @@ class RollingUpgradeTest(UpgradeTester):
             self.run_upgrade(node_index=1, upgrade_to_version=version, upgrade_type='upgrade')
             self.run_upgrade(node_index=2, upgrade_to_version=version, upgrade_type='upgrade')
 
-            debug(f"****** FINISHED ROLLBACK TEST FROM {base_node__version} "
-                  f"TO {self.cluster.nodelist()[0].node_scylla_version} ******")
+            logger.debug(f"****** FINISHED ROLLBACK TEST FROM {base_node__version} "
+                         f"TO {self.cluster.nodelist()[0].node_scylla_version} ******")
 
             base_node__version = version
 
@@ -110,13 +111,13 @@ class RollingUpgradeTest(UpgradeTester):
 
     @staticmethod
     def run_stress(node: ScyllaNode, stress_command: list, executor: ThreadPoolExecutor) -> Future:
-        debug(f"Executing the following {stress_command[0]} stress command '{stress_command}'")
+        logger.debug(f"Executing the following {stress_command[0]} stress command '{stress_command}'")
         return executor.submit(lambda: node.stress(stress_options=stress_command, capture_output=True))
 
     def run_upgrade(self, node_index: int, upgrade_to_version: str, upgrade_type: str):
         node_for_upgrade = self.cluster.nodelist()[node_index]
-        debug(f"{upgrade_type.capitalize()} {node_for_upgrade.name} node to from  "
-              f"'{node_for_upgrade.node_scylla_version}' to '{upgrade_to_version}' version")
+        logger.debug(f"{upgrade_type.capitalize()} {node_for_upgrade.name} node to from  "
+                     f"'{node_for_upgrade.node_scylla_version}' to '{upgrade_to_version}' version")
         node_for_upgrade.upgrade(upgrade_to_version=upgrade_to_version)
 
     def validate_stress(self, stress_thread: Future, stress_type: str, ignore_msgs: str = '') -> None:
@@ -124,7 +125,6 @@ class RollingUpgradeTest(UpgradeTester):
                          " SIMPLE write query at consistency" \
                          f" replica were required but only{f' {ignore_msgs}' if ignore_msgs else ''}"
 
-        debug(f"Waiting until {stress_type} stress thread will finish running")
+        logger.debug(f"Waiting until {stress_type} stress thread will finish running")
         stdout, stderr = stress_thread.result()
-        self.assertNotIn(member=ignore_err_msg, container=stderr,
-                         msg=f"The following message '{ignore_err_msg}' found in stderr")
+        assert ignore_err_msg not in stderr, f"The following message '{ignore_err_msg}' found in stderr"

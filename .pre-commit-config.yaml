@@ -102,6 +102,7 @@ repos:
                 putget_test.py|
                 nodetool_test.py|
                 updateable_config_test.py|
+                rolling_upgrade_test.py|
                 simple_cluster_driver_test.py|
                 incremental_repair_test.py|
                 simple_boot_shutdown_test.py|
