@@ -482,6 +482,28 @@ def assert_expected_error(func, expected_error, args, kwargs):
             raise
 
 
+def assert_equal_more_with_deviation(actual, expect, deviation_perc):
+    """
+    Assert actual is whithin inclusive interval [extected...expected+deviation_perc]
+    @param actual Value inspected
+    @param expect Begining of expected interval
+    @param deviation_perc allowed percent increase
+    """
+    deviation_high = (expect * (100 + deviation_perc))/100
+    assert expect <= actual < deviation_high, f'Expect result interval  {expect}..{deviation_high}, received {actual}'
+
+
+def assert_less_equal_lists(actual_list, expected_list, msg=None):
+    """
+    Assert actual_list is a subset of the expected list, prints hardcoded or paramertized error message
+    @param actual_list Inspected list
+    @param expected_list List that supposed to include actual_list
+    @param msg Configured message default None.
+    """
+    standardMsg = msg or f'{actual_list} not less than or equal to {expected_list}'
+    assert set(actual_list) <= set(expected_list), standardMsg
+
+
 class PytestRegex:
     """Assert that a given string meets some expectations."""
 

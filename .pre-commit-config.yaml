@@ -102,6 +102,7 @@ repos:
                 simple_cluster_driver_test.py|
                 simple_boot_shutdown_test.py|
                 alternator_tests.py|
+                wide_rows_test.py|
                 concurrent_schema_changes_test.py|
                 sstable_generation_loading_test.py
             )$

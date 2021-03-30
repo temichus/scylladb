@@ -1,14 +1,16 @@
 import datetime
+import logging
 import time
 import random
 from collections import defaultdict
 
-from nose.plugins.attrib import attr
-from nose.tools import nottest
+import pytest
 
-from assertions import assert_equal_more_with_deviation, assert_less_equal_lists
-from dtest import Tester, debug
-from scylla_tools import wait_for_view
+from tools.assertions import assert_equal_more_with_deviation, assert_less_equal_lists
+from dtest_class import Tester, create_ks
+from tools.tables_view_manager import wait_for_view
+
+logger = logging.getLogger(__name__)
 
 status_messages = (
     "I''m going to the Cassandra Summit in June!",
@@ -29,21 +31,22 @@ clients = (
 )
 
 
-@nottest
-@attr('dtest-full')
+@pytest.mark.dtest_full
+@pytest.mark.parametrize('strategy', ['SizeTieredCompactionStrategy', 'TimeWindowCompactionStrategy', 'LeveledCompactionStrategy'])
 class TestWideRows(Tester):
     BLOB_SIZE_10k = 1024 * 10
     BLOB_SIZE_1MB = 1024 * 1024
     KEYSPACE_NAME = 'wide_row'
     TABLE_NAME = 'user_events'
 
-    def __init__(self, *args, **kwargs):
-        Tester.__init__(self, *args, **kwargs)
-        self.compaction_option = "compaction = {'class': '%s'}" % self.compaction_strategy
+    @pytest.fixture(autouse=True)
+    def setup_compaction_strategy(self, strategy):
+        self.compaction_option = f"compaction = {{'class': '{strategy}'}}"
+        self.compaction_strategy = strategy
 
     def prepare_cluster(self, nodes=1, version=None, keyspace_name=KEYSPACE_NAME, rf=1, options_dict=None):
-        debug('Run test with %s compaction strategy' % self.compaction_strategy)
-        debug('Start cluster with %d nodes' % nodes)
+        logger.debug('Run test with %s compaction strategy' % self.compaction_strategy)
+        logger.debug('Start cluster with %d nodes' % nodes)
         cluster = self.cluster
         if version:
             self.cluster.set_install_dir(version=version)
@@ -53,8 +56,8 @@ class TestWideRows(Tester):
         node1 = cluster.nodelist()[0]
 
         session = self.patient_cql_connection(node1)
-        debug('Create %s keyspace' % keyspace_name)
-        self.create_ks(session=session, name=keyspace_name, rf=rf)
+        logger.debug('Create %s keyspace' % keyspace_name)
+        create_ks(session=session, name=keyspace_name, rf=rf)
         return session
 
     def validation_small_entity(self, entity_type, keyspace_name, table_name):
@@ -67,7 +70,7 @@ class TestWideRows(Tester):
                                                                table_name=table_name, entity_type=entity_type,
                                                                expect_system_report=False)
 
-            self.assertFalse(system_data_size_dict, msg='Not expected large %s found' % entity_type)
+            assert not system_data_size_dict, f'Not expected large {entity_type} found'
 
             # Search warning in the log
             self.search_warning(node=node,
@@ -77,7 +80,7 @@ class TestWideRows(Tester):
                                 expect_warning=False)
 
     def create_large_partition_table(self, session, table_name):
-        debug('Create table {} with large partition'.format(table_name))
+        logger.debug('Create table {} with large partition'.format(table_name))
         create_table_query = 'CREATE TABLE IF NOT EXISTS %s (userid text, event text, value blob, ' \
                              'PRIMARY KEY (userid, event)) with compression = { } and %s' % (table_name,
                                                                                              self.compaction_option)
@@ -89,8 +92,9 @@ class TestWideRows(Tester):
         expected_rows = {}
 
         date = datetime.datetime.now()
-        debug('Prefill table {} with {} partition(s), {} row(s) each'.format(table_name, partitions_num, partition_rows))
-        for k in range(start_partition_index, start_partition_index+partitions_num):
+        logger.debug(
+            'Prefill table {} with {} partition(s), {} row(s) each'.format(table_name, partitions_num, partition_rows))
+        for k in range(start_partition_index, start_partition_index + partitions_num):
             user = 'user%d' % k
             for i in range(partition_rows):
                 date_str = (date + datetime.timedelta(i)).strftime("%Y-%m-%d")
@@ -101,7 +105,7 @@ class TestWideRows(Tester):
         return expected_rows
 
     def create_large_row_table(self, session, table_name, columns_num, entity_type='row'):
-        debug('Create table {} with large {}s'.format(table_name, entity_type))
+        logger.debug('Create table {} with large {}s'.format(table_name, entity_type))
         long_text_columns = ', '.join(['value%d blob' % i for i in range(columns_num)])
         create_table_query = 'CREATE TABLE IF NOT EXISTS %s (userid text, event text, %s, ' \
                              'PRIMARY KEY (userid, event)) with compression = { } and %s' % (table_name,
@@ -114,7 +118,7 @@ class TestWideRows(Tester):
         expected_row_size = columns_num * one_blob_size  # approximately row size
 
         date = datetime.datetime.now()
-        debug('Prefill table {} with {} rows'.format(table_name, rows_num))
+        logger.debug('Prefill table {} with {} rows'.format(table_name, rows_num))
         for k in range(start_row_index, start_row_index + rows_num):
             user = 'user%d' % k
             value = 'a' * int(one_blob_size)
@@ -136,11 +140,9 @@ class TestWideRows(Tester):
             res = None
 
         if expect_warning:
-            self.assertTrue(res, 'Expected warning {} is not found in the log of node {}'
-                            .format(warning_text, node.name))
+            assert res, f'Expected warning {warning_text} is not found in the log of node {node.name}'
         else:
-            self.assertFalse(res, 'Non expect warning {} was found in the log of node {}'
-                             .format(warning_text, node.name))
+            assert not res, f'Non expect warning {warning_text} was found in the log of node {node.name}'
 
     def get_cluster_system_state(self, entity_type, keyspace_name, table_name):
         cluster_state = {}
@@ -169,7 +171,7 @@ class TestWideRows(Tester):
 
                 # Get DB files for the keyspace_name and table_nam
                 files = node.get_sstables(keyspace_name, table_name)
-                self.assertIsNotNone(files, "Data file has not found")
+                assert files is not None, "Data file has not found"
 
                 for file in files:
                     sstables_on_disk.add(file)
@@ -184,7 +186,7 @@ class TestWideRows(Tester):
 
         return cluster_state
 
-    def validate_entities_recognized_as_large(self, entity_type, cluster_state, expected_entity_number):
+    def validate_entities_recognized_as_large(self, entity_type, cluster_state, expected_count):
         large_primary_keys = set()
         key_appearance = 0
         for node_info in cluster_state.values():
@@ -192,12 +194,11 @@ class TestWideRows(Tester):
             key_appearance = sum(node_info['info_from_system_table']['key_appearance'].values())
 
         if entity_type == 'cell':
-            actual_large_entities = key_appearance
+            entities_count = key_appearance
         else:
-            actual_large_entities = len(large_primary_keys)
-        self.assertEqual(actual_large_entities, expected_entity_number,
-                         msg='Expected find {expected_entity_number} large {entity_type}s, reported in the '
-                             'system.large_{entity_type}s, but there are {actual_large_entities}'.format(**locals()))
+            entities_count = len(large_primary_keys)
+        msg = f"Expected {expected_count} large {entity_type}s, in system.large_{entity_type}s, got {entities_count}"
+        assert entities_count == expected_count, msg
 
     def validate_entities_not_recognized_as_large(self, entity_type, cluster_state, pk_max_index):
         large_primary_keys = set()
@@ -210,10 +211,8 @@ class TestWideRows(Tester):
         else:
             wrong_large_entity_in_system = [key for key in large_primary_keys
                                             if int(key.split('.')[0].replace('user', '')) > pk_max_index]
-        self.assertFalse(wrong_large_entity_in_system,
-                         msg='Small {entity_type}s were detected as large: {wrong_large_entity}'
-                         .format(entity_type=entity_type,
-                                 wrong_large_entity='/n'.join(e for e in wrong_large_entity_in_system)))
+        msg = f"Small {entity_type}s detected large: {'/n'.join(e for e in wrong_large_entity_in_system)}"
+        assert not wrong_large_entity_in_system, msg
 
     def validate_entity_size(self, cluster_state, expected_entity_data_size, entity_type):
         # size_threshold (in percent) is allowable deviation for row/partition size, reported by
@@ -222,9 +221,8 @@ class TestWideRows(Tester):
         for node_info in cluster_state.values():
             for pk, size in node_info['info_from_system_table']['partition_size'].items():
                 expected_size = expected_entity_data_size.get(pk)
-                self.assertIsNotNone(expected_size,
-                                     msg='The {entity_type} with primary key "{pk}" is not reported '
-                                         'as large {entity_type}'.format(entity_type=entity_type, pk=pk))
+                msg = f'The {entity_type} with primary key "{pk}" is not reported as large {entity_type}'
+                assert expected_size is not None, msg
                 assert_equal_more_with_deviation(size, expected_size, row_size_threshold)
 
     def validate_sstables_on_disk(self, cluster_state):
@@ -244,7 +242,7 @@ class TestWideRows(Tester):
         cluster_state = self.get_cluster_system_state(entity_type=entity_type,
                                                       keyspace_name=keyspace_name, table_name=table_name)
         self.validate_entities_recognized_as_large(entity_type=entity_type, cluster_state=cluster_state,
-                                                   expected_entity_number=expected_entity_number)
+                                                   expected_count=expected_entity_number)
         # In case there are small partitions/rows - verify the they didn't recognized as large
         if pk_max_index is not None:
             self.validate_entities_not_recognized_as_large(entity_type=entity_type, cluster_state=cluster_state,
@@ -285,8 +283,7 @@ class TestWideRows(Tester):
                 'where keyspace_name=\'{keyspace_name}\' and table_name=\'{table_name}\''.format(**locals())
         result = list(session.execute(query))
         if not expect_system_report:
-            self.assertFalse(result, 'Not expected large {entity_type} info in the system.large_{entity_type}s, '
-                                     'but it found'.format(entity_type=entity_type))
+            assert not result, f'Not expected large {entity_type} info in the system.large_{entity_type}s, but it found'
             return None
 
         entity_info = defaultdict(int)
@@ -299,7 +296,7 @@ class TestWideRows(Tester):
 
     def set_ttl_on_few_rows_in_partition(self, session, keyspace_name, table_name, partition_num,
                                          expected_partitions, ttl_rows_amount):
-        userid = 'user%d' % random.randint(0, partition_num-1)
+        userid = 'user%d' % random.randint(0, partition_num - 1)
         cks_for_ttl = list(session.execute("SELECT event FROM {table_name} WHERE userid='{userid}'"
                                            .format(**locals())))
 
@@ -307,7 +304,7 @@ class TestWideRows(Tester):
         value = 'b' * one_blob_size
         ttl = 60
         # TTL part of rows in partition or full partition
-        debug('Update %d rows of partition where PK "%s" with TTL %d' % (ttl_rows_amount, userid, ttl))
+        logger.debug('Update %d rows of partition where PK "%s" with TTL %d' % (ttl_rows_amount, userid, ttl))
         for i, event_row in enumerate(cks_for_ttl):
             if i < ttl_rows_amount:
                 event = event_row[0]
@@ -315,7 +312,7 @@ class TestWideRows(Tester):
                                 "WHERE userid='{userid}' and event='{event}'".format(**locals()))
 
         self.cluster.flush()
-        debug('Wait %d sec while the TTLed rows expiration' % ttl)
+        logger.debug('Wait %d sec while the TTLed rows expiration' % ttl)
         time.sleep(ttl + 5)
         self.cluster.nodetool('compact {} {}'.format(self.KEYSPACE_NAME, self.TABLE_NAME))
         expected_partitions.pop(userid)
@@ -334,13 +331,13 @@ class TestWideRows(Tester):
         event = ck_for_ttl[0][0]
         columns = ', '.join(["value%d = textAsBlob('%s')" % (i, value) for i in range(columns_num)])
 
-        debug('Update row where USERID="%s" and EVENT="%s" with TTL %d' % (userid, event, ttl))
+        logger.debug('Update row where USERID="%s" and EVENT="%s" with TTL %d' % (userid, event, ttl))
 
         session.execute("UPDATE {table_name} USING TTL {ttl} SET {columns} "
                         "WHERE userid='{userid}' and event='{event}'".format(**locals()))
 
         self.cluster.flush()
-        debug('Wait %d sec while the TTLed rows expiration' % ttl)
+        logger.debug('Wait %d sec while the TTLed rows expiration' % ttl)
         time.sleep(ttl + 5)
         self.cluster.nodetool('compact {} {}'.format(self.KEYSPACE_NAME, self.TABLE_NAME))
         expected_rows.pop('{}.{}'.format(userid, event))
@@ -368,7 +365,9 @@ class TestWideRows(Tester):
         self.cluster.compact()
         return row_number
 
-    @attr('next-gating', 'dtest-debug', 'single_node')
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
+    @pytest.mark.single_node
     def test_wide_rows(self):
         self.write_wide_rows()
 
@@ -377,20 +376,20 @@ class TestWideRows(Tester):
                                        options_dict={'compaction_large_partition_warning_threshold_mb': 1,
                                                      'compaction_large_row_warning_threshold_mb': 1})
         # Simple timeline:  user -> {date: value, ...}
-        debug('Create Table....')
+        logger.debug('Create Table....')
         session.execute('CREATE TABLE user_events (userid text, event timestamp, value text, '
                         'PRIMARY KEY (userid, event)) WITH %s' % self.compaction_option)
         date = datetime.datetime.now()
         # Create a large timeline for each of a group of users:
         for user in ('ryan', 'cathy', 'mallen', 'joaquin', 'erin', 'ham'):
-            debug("Writing values for: %s" % user)
+            logger.debug("Writing values for: %s" % user)
             for day in range(5000):
                 date_str = (date + datetime.timedelta(day)).strftime("%Y-%m-%d")
                 client = random.choice(clients)
                 msg = random.choice(status_messages)
                 query = "UPDATE user_events SET value = '{msg:%s, client:%s}' WHERE userid='%s' and event='%s';" \
                         % (msg, client, user, date_str)
-                # debug(query)
+                # logger.debug(query)
                 session.execute(query)
 
         # Pick out an update for a specific date:
@@ -398,10 +397,10 @@ class TestWideRows(Tester):
                 (date + datetime.timedelta(10)).strftime("%Y-%m-%d")
         rows = session.execute(query)
         for value in rows:
-            debug(value)
-            assert len(value[0]) > 0
+            logger.debug(value)
+            assert len(value[0]) > 0, f"expects >0, len(value[0])={len(value[0])} "
 
-    @attr('single_node')
+    @pytest.mark.single_node
     def test_column_index_stress(self):
         """Write a large number of columns to a single row and set
         'column_index_size_in_kb' to a sufficiently low value to force
@@ -411,7 +410,7 @@ class TestWideRows(Tester):
         """
         session = self.prepare_cluster(options_dict={'column_index_size_in_kb': 1})  # reduce column_index_size_in_kb
         # value to force column index creation
-        create_table_query = 'CREATE TABLE test_table (row varchar, name varchar, value int, PRIMARY KEY (row, name)) '\
+        create_table_query = 'CREATE TABLE test_table (row varchar, name varchar, value int, PRIMARY KEY (row, name)) ' \
                              'WITH %s' % self.compaction_option
         session.execute(create_table_query)
 
@@ -435,7 +434,7 @@ class TestWideRows(Tester):
             rows = list(session.execute(select_column_query.format(name1="val" + values2fetch[0],
                                                                    name2="val" + values2fetch[1],
                                                                    name3="val" + values2fetch[2])))
-            assert len(rows) == expected_rows
+            assert len(rows) == expected_rows, f"expects {expected_rows}, actual len(rows)={len(rows)}"
 
     def test_large_partition_detector_with_node_stop(self):
         """
@@ -450,7 +449,7 @@ class TestWideRows(Tester):
                                        options_dict={'compaction_large_partition_warning_threshold_mb': 1})
 
         node2 = self.cluster.nodelist()[1]
-        debug('Stop {}'.format(node2.name))
+        logger.debug('Stop {}'.format(node2.name))
         node2.stop(wait_other_notice=True)
 
         self.create_large_partition_table(session=session, table_name=self.TABLE_NAME)
@@ -473,7 +472,7 @@ class TestWideRows(Tester):
                                    keyspace_name=self.KEYSPACE_NAME,
                                    table_name=self.TABLE_NAME)
 
-        debug('Start {}'.format(node2.name))
+        logger.debug('Start {}'.format(node2.name))
         node2.start(wait_other_notice=True, wait_for_binary_proto=True)
 
         self.cluster.flush()
@@ -549,7 +548,7 @@ class TestWideRows(Tester):
                                          partition_rows=3000,
                                          partitions_num=small_partition_num,
                                          one_blob_size=1024,
-                                         start_partition_index=partition_num+1)
+                                         start_partition_index=partition_num + 1)
         self.cluster.flush()
 
         self.trigger_compaction_by_data_write_and_flush(session, entity_type, partition_num + small_partition_num)
@@ -601,7 +600,7 @@ class TestWideRows(Tester):
                                                                     table_name=self.TABLE_NAME,
                                                                     partition_num=partition_num,
                                                                     expected_partitions=expected_partition_data_size,
-                                                                    ttl_rows_amount=partition_rows-1000)
+                                                                    ttl_rows_amount=partition_rows - 1000)
         extra_partitions += self.trigger_compaction_by_data_write_and_flush(session, entity_type, partition_num +
                                                                             extra_partitions)
 
@@ -609,7 +608,7 @@ class TestWideRows(Tester):
 
         cluster_state = self.validate_system_table(entity_type=entity_type, keyspace_name=self.KEYSPACE_NAME,
                                                    table_name=self.TABLE_NAME,
-                                                   expected_entity_number=partition_num-1,
+                                                   expected_entity_number=partition_num - 1,
                                                    expected_entity_data_size=expected_partitions)
         self.validate_log_warnings(cluster_state=cluster_state, entity_type=entity_type,
                                    keyspace_name=self.KEYSPACE_NAME,
@@ -662,7 +661,7 @@ class TestWideRows(Tester):
 
         cluster_state = self.validate_system_table(entity_type=entity_type, keyspace_name=self.KEYSPACE_NAME,
                                                    table_name=self.TABLE_NAME,
-                                                   expected_entity_number=partition_num-1,
+                                                   expected_entity_number=partition_num - 1,
                                                    expected_entity_data_size=expected_partitions)
         self.validate_log_warnings(cluster_state=cluster_state, entity_type=entity_type,
                                    keyspace_name=self.KEYSPACE_NAME,
@@ -683,7 +682,7 @@ class TestWideRows(Tester):
                                        options_dict={'compaction_large_row_warning_threshold_mb': 1})
 
         node2 = self.cluster.nodelist()[1]
-        debug('Stop {}'.format(node2.name))
+        logger.debug('Stop {}'.format(node2.name))
         node2.stop(wait_other_notice=True)
 
         self.create_large_row_table(session=session, table_name=self.TABLE_NAME, columns_num=columns_num)
@@ -704,7 +703,7 @@ class TestWideRows(Tester):
                                    keyspace_name=self.KEYSPACE_NAME,
                                    table_name=self.TABLE_NAME)
 
-        debug('Start {}'.format(node2.name))
+        logger.debug('Start {}'.format(node2.name))
         node2.start(wait_other_notice=True, wait_for_binary_proto=True)
         # self.cluster.flush()
         # extra_rows += self.trigger_compaction_by_data_write_and_flush(session, entity_type, rows_number + extra_rows)
@@ -846,7 +845,7 @@ class TestWideRows(Tester):
                                    keyspace_name=self.KEYSPACE_NAME,
                                    table_name=self.TABLE_NAME)
 
-    @attr('single_node')
+    @pytest.mark.single_node
     def test_large_partition_detector_small_partition(self):
         """
         Create table with one small partition and validate that partition isn't reported in the system.large_partitions
@@ -871,7 +870,7 @@ class TestWideRows(Tester):
                                    table_name=self.TABLE_NAME,
                                    expect_warning=False)
 
-    @attr('single_node')
+    @pytest.mark.single_node
     def test_large_row_detector_small_row(self):
         """
         Create table with one small row and validate that row isn't reported in the system.large_rows
@@ -1337,12 +1336,12 @@ class TestWideRows(Tester):
                                    table_name=self.TABLE_NAME)
 
         # Increase the threshold and see the large cell warnings disappear
-        debug('increasing warning threshold to 2mb')
+        logger.debug('increasing warning threshold to 2mb')
         self.cluster.set_configuration_options({'compaction_large_cell_warning_threshold_mb': 2})
 
         # To apply threshold change, nodes must be restarted
         for node in self.cluster.nodelist():
-            debug('restarting node {} to have threshold change to take effect'.format(node.name))
+            logger.debug('restarting node {} to have threshold change to take effect'.format(node.name))
             node.stop()
             node.start(wait_other_notice=True, wait_for_binary_proto=True)
 
@@ -1478,7 +1477,7 @@ class TestWideRows(Tester):
                                          partition_rows=3000,
                                          partitions_num=10,
                                          one_blob_size=1024,
-                                         start_partition_index=partition_num+1)
+                                         start_partition_index=partition_num + 1)
         self.cluster.flush()
         self.cluster.nodetool('compact {} {}'.format(self.KEYSPACE_NAME, self.TABLE_NAME))
 
@@ -1500,11 +1499,3 @@ class TestWideRows(Tester):
         self.validate_log_warnings(cluster_state=cluster_state, entity_type=entity_type,
                                    keyspace_name=self.KEYSPACE_NAME,
                                    table_name=self.TABLE_NAME)
-
-
-# removed DateTieredCompactionStrategy because it is not widely used and will shorten runtime by 25%
-strategies = ['SizeTieredCompactionStrategy', 'TimeWindowCompactionStrategy', 'LeveledCompactionStrategy']
-
-for strategy in strategies:
-    cls_name = ('TestWideRows' + '_with_' + strategy)
-    vars()[cls_name] = type(cls_name, (TestWideRows,), {'compaction_strategy': strategy, '__test__': True})
