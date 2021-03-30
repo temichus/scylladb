@@ -97,6 +97,7 @@ repos:
                 jmx_test.py|
                 schema_test.py|
                 listsnapshots_test.py|
+                sstableloader_test.py|
                 persistence_test.py|
                 cql_tracing_test.py|
                 putget_test.py|
