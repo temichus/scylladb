@@ -1,30 +1,21 @@
+import logging
+import os
 import sys
 import time
-import os
-from unittest import skipIf
-from unittest import skip
-
-from cassandra import ConsistencyLevel
-from cassandra import Timeout
-from cassandra import Unavailable
+import pytest
+from cassandra import ConsistencyLevel, OperationTimedOut, Timeout, Unavailable
 from cassandra.query import SimpleStatement
+from tools.assertions import assert_invalid, assert_one, assert_unavailable
+from dtest_class import Tester, create_ks
 
-from assertions import assert_invalid
-from assertions import assert_unavailable
-from assertions import assert_one
-from dtest import CASSANDRA_DIR
-from dtest import Tester
-from tools import debug
-from tools import since
-from tools import require
-from nose.plugins.attrib import attr
+logger = logging.getLogger(__name__)
 
 
-@attr('dtest-full')
+@pytest.mark.dtest_full
 class TestBatch(Tester):
 
-    @attr('single_node')
-    def empty_batch_throws_no_error_test(self):
+    @pytest.mark.single_node
+    def test_empty_batch_throws_no_error(self):
         """
         @jira_ticket CASSANDRA-10711
         """
@@ -34,8 +25,8 @@ class TestBatch(Tester):
             APPLY BATCH;
         """)
 
-    @attr('single_node')
-    def counter_batch_accepts_counter_mutations_test(self):
+    @pytest.mark.single_node
+    def test_counter_batch_accepts_counter_mutations(self):
         """ Test that counter batch accepts counter mutations """
         session = self.prepare()
         session.execute("""
@@ -46,11 +37,10 @@ class TestBatch(Tester):
             APPLY BATCH
         """)
         rows = session.execute("SELECT total FROM clicks")
-        assert [list(rows[0]), list(rows[1]), list(rows[2])] == [
-            [1], [1], [1]], rows
+        assert [list(rows[0]), list(rows[1]), list(rows[2])] == [[1], [1], [1]], f"expexted [[1], [1], [1]], got {rows}"
 
-    @attr('single_node')
-    def counter_batch_rejects_regular_mutations_test(self):
+    @pytest.mark.single_node
+    def test_counter_batch_rejects_regular_mutations(self):
         """ Test that counter batch rejects non-counter mutations """
         session = self.prepare()
         err = "Cannot include non-counter statement in a counter batch"
@@ -64,9 +54,9 @@ class TestBatch(Tester):
             APPLY BATCH
             """, matching=err)
 
-    @attr('next-gating')
-    @attr('dtest-debug')
-    def replay_after_schema_change_test(self):
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
+    def test_replay_after_schema_change(self):
         """ Test that logged batch is replayed after schema was changed on the node """
         ring_delay_sec = 5
         self.cluster.set_configuration_options(values={
@@ -76,8 +66,8 @@ class TestBatch(Tester):
         [node1, node2, node3] = self.cluster.nodelist()
         session = self.patient_cql_connection(node1)
 
-        debug('Creating schema...')
-        self.create_ks(session, 'ks', 1)  # RF=1 so that we're sensitive for node2 missing updates
+        logger.debug('Creating schema...')
+        create_ks(session, 'ks', 1)  # RF=1 so that we're sensitive for node2 missing updates
         session.execute("""
             CREATE TABLE users (
                 id int,
@@ -97,41 +87,36 @@ class TestBatch(Tester):
             """ % ('\n'.join("INSERT INTO users (id, firstname, lastname) VALUES (%s, '%s', '%s')" % (i, name, name) for i, name in enumerate(names))),
             consistency_level=ConsistencyLevel.ALL)
 
-        debug("Killing node2 so that batch fails")
+        logger.debug("Killing node2 so that batch fails")
         node2.stop(gently=False)
-
-        try:
-            debug("Executing the batch")
+        with pytest.raises((OperationTimedOut, Unavailable)):
             session.execute(st, timeout=4)
-            raise Exception("Should have failed")
-        except:
-            debug("Execute failed")  # expected
 
-        debug("Altering schema")
+        logger.debug("Altering schema")
         session.execute("ALTER TABLE users add aa int;")
 
-        debug("Killing all other nodes so that they won't remember old schema during replay")
+        logger.debug("Killing all other nodes so that they won't remember old schema during replay")
         node1.flush()
         node1.stop(gently=False)
         node3.flush()
         node3.stop(gently=False)
 
-        debug("Starting all nodes")
+        logger.debug("Starting all nodes")
         self.cluster.start_nodes(wait_for_binary_proto=True)
 
-        debug("Waiting for batch replay")
+        logger.debug("Waiting for batch replay")
         time.sleep(4)  # batchlog replay timeout
         time.sleep(60)  # batchlog_manager::replay_interval
 
         rows = session.execute("SELECT * FROM users")
         res = sorted(rows)
-        assert len(res) == len(names), res
+        assert len(res) == len(names), f"expected length=len(names), got {res}"
         for i, name in enumerate(names):
             expected = [i, None, name, name]
             assert list(res[i]) == expected, "Expected %s, got %s" % (expected, res[i])
 
-    @attr('single_node')
-    def logged_batch_accepts_regular_mutations_test(self):
+    @pytest.mark.single_node
+    def test_logged_batch_accepts_regular_mutations(self):
         """ Test that logged batch accepts regular mutations """
         session = self.prepare()
         session.execute("""
@@ -145,10 +130,9 @@ class TestBatch(Tester):
         assert [list(res[0]), list(res[1])] == [
             [0, u'Jack', u'Sparrow'], [1, u'Will', u'Turner']], res
 
-    @since('3.0')
-    @require('#2483')
-    @attr('single_node')
-    def logged_batch_gcgs_below_threshold_single_table_test(self):
+    @pytest.mark.require('#2483')
+    @pytest.mark.single_node
+    def test_logged_batch_gcgs_below_threshold_single_table(self):
         """ Test that logged batch accepts regular mutations """
         session = self.prepare()
 
@@ -166,15 +150,13 @@ class TestBatch(Tester):
                                  "batchlog entries, so setting gc_grace_seconds too low on tables "
                                  "involved in an atomic batch might cause batchlog entries to expire "
                                  "before being replayed.")
-        debug(warning)
-        self.assertEquals(
-            1, len(warning), "Cannot find the gc_grace_seconds warning message.")
+        logger.debug(warning)
+        assert 1 == len(warning), "Cannot find the gc_grace_seconds warning message."
 
-    @since('3.0')
-    @require('#2483')
-    @attr('single_node')
-    def logged_batch_gcgs_below_threshold_multi_table_test(self):
-        """ Test that logged batch accepts regular mutations """
+    @pytest.mark.require('#2483')
+    @pytest.mark.single_node
+    def test_logged_batch_gcgs_below_threshold_multi_table(self):
+        """ Test that logged batch accepts regular mutation"""
         session = self.prepare()
         session.execute("ALTER TABLE users WITH gc_grace_seconds = 0")
         session.execute("""
@@ -196,13 +178,11 @@ class TestBatch(Tester):
                                  "batchlog entries, so setting gc_grace_seconds too low on tables "
                                  "involved in an atomic batch might cause batchlog entries to expire "
                                  "before being replayed.")
-        debug(warning)
-        self.assertEquals(
-            1, len(warning), "Cannot find the gc_grace_seconds warning message.")
+        logger.debug(warning)
+        assert 1 == len(warning), "Cannot find the gc_grace_seconds warning message."
 
-    @since('3.0')
-    @attr('single_node')
-    def unlogged_batch_gcgs_below_threshold_should_not_print_warning_test(self):
+    @pytest.mark.single_node
+    def test_unlogged_batch_gcgs_below_threshold_should_not_print_warning(self):
         """ Test that logged batch accepts regular mutations """
         session = self.prepare()
         session.execute("ALTER TABLE users WITH gc_grace_seconds = 0")
@@ -215,12 +195,11 @@ class TestBatch(Tester):
         node1 = self.cluster.nodelist()[0]
         warning = node1.grep_log(
             "setting a too low gc_grace_seconds on tables involved in an atomic batch")
-        debug(warning)
-        self.assertEquals(
-            0, len(warning), "Cannot find the gc_grace_seconds warning message.")
+        logger.debug(warning)
+        assert 0 == len(warning), "Cannot find the gc_grace_seconds warning message."
 
-    @attr('single_node')
-    def logged_batch_rejects_counter_mutations_test(self):
+    @pytest.mark.single_node
+    def test_logged_batch_rejects_counter_mutations(self):
         """ Test that logged batch rejects counter mutations """
         session = self.prepare()
         err = "Cannot include a counter statement in a logged batch"
@@ -233,8 +212,8 @@ class TestBatch(Tester):
             APPLY BATCH
             """, matching=err)
 
-    @attr('single_node')
-    def unlogged_batch_accepts_regular_mutations_test(self):
+    @pytest.mark.single_node
+    def test_unlogged_batch_accepts_regular_mutations(self):
         """ Test that unlogged batch accepts regular mutations """
         session = self.prepare()
         session.execute("""
@@ -245,11 +224,11 @@ class TestBatch(Tester):
         """)
         rows = session.execute("SELECT * FROM users")
         res = sorted(rows)
-        assert [list(res[0]), list(res[1])] == [
-            [0, u'Jack', u'Sparrow'], [2, u'Elizabeth', u'Swann']], res
+        expected = [[0, u'Jack', u'Sparrow'], [2, u'Elizabeth', u'Swann']]
+        assert [list(res[0]), list(res[1])] == expected, f"expected={expected}, got {res}"
 
-    @attr('single_node')
-    def unlogged_batch_rejects_counter_mutations_test(self):
+    @pytest.mark.single_node
+    def def_unlogged_batch_rejects_counter_mutations(self):
         """ Test that unlogged batch rejects counter mutations """
         session = self.prepare()
         err = "Counter and non-counter mutations cannot exist in the same batch"
@@ -262,7 +241,7 @@ class TestBatch(Tester):
             APPLY BATCH
             """, matching=err)
 
-    def logged_batch_throws_uae_test(self):
+    def test_logged_batch_throws_uae(self):
         """ Test that logged batch throws UAE if there aren't enough live nodes """
         session = self.prepare(nodes=3)
         [node.stop(wait_other_notice=True)
@@ -275,7 +254,7 @@ class TestBatch(Tester):
             APPLY BATCH
         """)
 
-    def logged_batch_doesnt_throw_uae_test(self):
+    def test_logged_batch_doesnt_throw_uae(self):
         """ Test that logged batch DOES NOT throw UAE if there are at least 2 live nodes """
         session = self.prepare(nodes=3)
         self.cluster.nodelist()[-1].stop(wait_other_notice=True)
@@ -286,9 +265,8 @@ class TestBatch(Tester):
             APPLY BATCH
         """, consistency_level=ConsistencyLevel.ANY)
         session.execute(query)
-        assert True
 
-    def acknowledged_by_batchlog_not_set_when_batchlog_write_fails_test(self):
+    def test_acknowledged_by_batchlog_not_set_when_batchlog_write_fails(self):
         """ Test that acknowledged_by_batchlog is False if batchlog can't be written """
         session = self.prepare(nodes=3, compression=False)
         # kill 2 of the 3 nodes (all the batchlog write candidates).
@@ -300,9 +278,9 @@ class TestBatch(Tester):
             APPLY BATCH
         """, ConsistencyLevel.ONE, received_responses=0)
 
-    @attr('next-gating')
-    @attr('dtest-debug')
-    def acknowledged_by_batchlog_set_when_batchlog_write_succeeds_test(self):
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
+    def test_acknowledged_by_batchlog_set_when_batchlog_write_succeeds(self):
         """ Test that acknowledged_by_batchlog is True if batchlog can be written """
         session = self.prepare(nodes=3, compression=False)
         # kill one of the nodes so that batchlog will be written, but the write
@@ -315,8 +293,8 @@ class TestBatch(Tester):
             APPLY BATCH
         """, ConsistencyLevel.THREE, received_responses=2)
 
-    @attr('single_node')
-    def batch_uses_proper_timestamp_test(self):
+    @pytest.mark.single_node
+    def test_batch_uses_proper_timestamp(self):
         """ Test that each statement will be executed with provided BATCH timestamp """
         session = self.prepare()
         session.execute("""
@@ -328,11 +306,11 @@ class TestBatch(Tester):
         rows = session.execute(
             "SELECT id, writetime(firstname), writetime(lastname) FROM users")
         res = sorted(rows)
-        assert [list(res[0]), list(res[1])] == [[0, 1111111111111111, 1111111111111111], [
-            1, 1111111111111111, 1111111111111111]], res
+        expected = [[0, 1111111111111111, 1111111111111111], [1, 1111111111111111, 1111111111111111]]
+        assert [list(res[0]), list(res[1])] == expected, f"expected={expected}, got {res}"
 
-    @attr('single_node')
-    def only_one_timestamp_is_valid_test(self):
+    @pytest.mark.single_node
+    def test_only_one_timestamp_is_valid(self):
         """ Test that TIMESTAMP must not be used in the statements within the batch. """
         session = self.prepare()
         assert_invalid(session, """
@@ -342,8 +320,8 @@ class TestBatch(Tester):
             APPLY BATCH
         """, matching="Timestamp must be set either on BATCH or individual statements")
 
-    @attr('single_node')
-    def each_statement_in_batch_uses_proper_timestamp_test(self):
+    @pytest.mark.single_node
+    def test_each_statement_in_batch_uses_proper_timestamp(self):
         """ Test that each statement will be executed with its own timestamp """
         session = self.prepare()
         session.execute("""
@@ -355,11 +333,11 @@ class TestBatch(Tester):
         rows = session.execute(
             "SELECT id, writetime(firstname), writetime(lastname) FROM users")
         res = sorted(rows)
-        assert [list(res[0]), list(res[1])] == [[0, 1111111111111111, 1111111111111111], [
-            1, 1111111111111112, 1111111111111112]], res
+        expected = [[0, 1111111111111111, 1111111111111111], [1, 1111111111111112, 1111111111111112]]
+        assert [list(res[0]), list(res[1])] == expected, f"expected={expected}, got {res}"
 
-    @attr('single_node')
-    def multi_table_batch_for_10554_test(self):
+    @pytest.mark.single_node
+    def test_multi_table_batch_for_10554(self):
         """ Test a batch on 2 tables having different columns, restarting the node afterwards, to reproduce CASSANDRA-10554 """
 
         session = self.prepare()
@@ -394,9 +372,8 @@ class TestBatch(Tester):
         assert_one(session, "SELECT * FROM users", [0, 'Jack', 'Sparrow'])
         assert_one(session, "SELECT * FROM dogs", [0, 'Pluto'])
 
-    @skip('scylla-ccm does not support different versions')
-    @since('3.0', max_version='3.0.x')
-    def logged_batch_compatibility_1_test(self):
+    @pytest.mark.skip('scylla-ccm does not support different versions')
+    def test_logged_batch_compatibility_1(self):
         """
         @jira_ticket CASSANDRA-9673, test that logged batches still work with a mixed version cluster.
 
@@ -404,10 +381,8 @@ class TestBatch(Tester):
         """
         self._logged_batch_compatibility_test(0, 1, 'git:cassandra-2.2', 2)
 
-    @skip('scylla-ccm does not support different versions')
-    @since('3.0', max_version='3.0.x')
-    @skipIf(sys.platform == 'win32', 'Windows production support only on 2.2+')
-    def logged_batch_compatibility_2_test(self):
+    @pytest.mark.skip('scylla-ccm does not support different versions')
+    def test_logged_batch_compatibility_2(self):
         """
         @jira_ticket CASSANDRA-9673, test that logged batches still work with a mixed version cluster.
 
@@ -415,10 +390,8 @@ class TestBatch(Tester):
         """
         self._logged_batch_compatibility_test(0, 1, 'git:cassandra-2.1', 2)
 
-    @skip('scylla-ccm does not support different versions')
-    @since('3.0', max_version='3.0.x')
-    @skipIf(sys.platform == 'win32', 'Windows production support only on 2.2+')
-    def logged_batch_compatibility_3_test(self):
+    @pytest.mark.skip('scylla-ccm does not support different versions')
+    def test_logged_batch_compatibility_3(self):
         """
         @jira_ticket CASSANDRA-9673, test that logged batches still work with a mixed version cluster.
 
@@ -426,9 +399,8 @@ class TestBatch(Tester):
         """
         self._logged_batch_compatibility_test(0, 2, 'git:cassandra-2.1', 1)
 
-    @skip('scylla-ccm does not support different versions')
-    @since('3.0', max_version='3.0.x')
-    def logged_batch_compatibility_4_test(self):
+    @pytest.mark.skip('scylla-ccm does not support different versions')
+    def test_logged_batch_compatibility_4(self):
         """
         @jira_ticket CASSANDRA-9673, test that logged batches still work with a mixed version cluster.
 
@@ -436,9 +408,8 @@ class TestBatch(Tester):
         """
         self._logged_batch_compatibility_test(2, 2, 'git:cassandra-2.2', 1)
 
-    @since('3.0', max_version='3.0.x')
-    @skipIf(sys.platform == 'win32', 'Windows production support only on 2.2+')
-    def logged_batch_compatibility_5_test(self):
+    @pytest.mark.skip('scylla-ccm does not support different versions')
+    def test_logged_batch_compatibility_5(self):
         """
         @jira_ticket CASSANDRA-9673, test that logged batches still work with a mixed version cluster.
 
@@ -446,8 +417,7 @@ class TestBatch(Tester):
         """
         self._logged_batch_compatibility_test(2, 2, 'git:cassandra-2.1', 1)
 
-    @skip('scylla-ccm does not support different versions')
-    def _logged_batch_compatibility_test(self, coordinator_idx, current_nodes, previous_version, previous_nodes):
+    def _logged_batch_compatibility(self, coordinator_idx, current_nodes, previous_version, previous_nodes):
         session = self.prepare_mixed(
             coordinator_idx, current_nodes, previous_version, previous_nodes)
         query = SimpleStatement("""
@@ -464,23 +434,15 @@ class TestBatch(Tester):
 
     def assert_timedout(self, session, query, cl, acknowledged_by=None,
                         received_responses=None):
-        try:
+        with pytest.raises((Timeout, Unavailable)) as ex:
             statement = SimpleStatement(query, consistency_level=cl)
             session.execute(statement, timeout=None)
-        except Timeout as e:
-            if received_responses is not None:
-                msg = "Expecting received_responses to be {}, got: {}".format(
-                    received_responses, e.received_responses,)
-                self.assertEqual(e.received_responses, received_responses, msg)
-        except Unavailable as e:
-            if received_responses is not None:
-                msg = "Expecting alive_replicas to be {}, got: {}".format(
-                    received_responses, e.alive_replicas,)
-                self.assertEqual(e.alive_replicas, received_responses, msg)
-        except Exception as e:
-            assert False, "Expecting TimedOutException, got:" + str(e)
-        else:
-            assert False, "Expecting TimedOutException but no exception was raised"
+        if isinstance(ex.value, Timeout) and received_responses is not None:
+            msg = f"Expecting received_responses to be {received_responses}, got: {ex.value.received_responses}"
+            assert received_responses == ex.value.received_responses, msg
+        if isinstance(ex.value, Unavailable) and received_responses is not None:
+            msg = f"Expecting alive_replicas to be {received_responses}, got: {ex.value.alive_replicas}"
+            assert ex.value.alive_replicas == received_responses, msg
 
     def prepare(self, nodes=1, compression=True, version=None):
         if not self.cluster.nodelist():
@@ -488,7 +450,7 @@ class TestBatch(Tester):
             if version:
                 for node in self.cluster.nodelist():
                     node.set_install_dir(version=version)
-                    debug("Set cassandra dir for {} to {}".format(
+                    logger.debug("Set cassandra dir for {} to {}".format(
                         node.name, node.get_install_dir()))
 
             self.cluster.start(wait_other_notice=True)
@@ -496,13 +458,13 @@ class TestBatch(Tester):
         node1 = self.cluster.nodelist()[0]
         session = self.patient_cql_connection(node1)
         # The method create_schema already creates a keyspace
-        # self.create_ks(session, 'ks', nodes)
+        # create_ks(session, 'ks', nodes)
         self.create_schema(session, nodes)
         return session
 
     def create_schema(self, session, rf):
-        debug('Creating schema...')
-        self.create_ks(session, 'ks', rf)
+        logger.debug('Creating schema...')
+        create_ks(session, 'ks', rf)
 
         session.execute("""
            CREATE TABLE clicks (
@@ -526,8 +488,8 @@ class TestBatch(Tester):
 
     def prepare_mixed(self, coordinator_idx, current_nodes, previous_version, previous_nodes, compression=True):
 
-        debug("Testing with {} node(s) at version '{}', {} node(s) at current version"
-              .format(previous_nodes, previous_version, current_nodes))
+        logger.debug("Testing with {} node(s) at version '{}', {} node(s) at current version"
+                     .format(previous_nodes, previous_version, current_nodes))
 
         # start a cluster using the previous version
         self.prepare(
@@ -544,30 +506,31 @@ class TestBatch(Tester):
         session.execute('USE ks')
         return session
 
+    # no used caller test disabled
     def upgrade_node(self, node):
         """
         Upgrade a node to the current version
         """
-        debug('Upgrading {}'.format(node.name))
+        logger.debug('Upgrading {}'.format(node.name))
 
-        debug('Shutting down node: ' + node.name)
+        logger.debug('Shutting down node: ' + node.name)
         node.drain()
         node.watch_log_for("DRAINED")
         node.stop(wait_other_notice=False)
 
-        node.set_install_dir(install_dir=CASSANDRA_DIR)
-        debug("Set new cassandra dir for {}: {}".format(
+        node.set_install_dir(install_dir=self.cassandra_dir)
+        logger.debug("Set new cassandra dir for {}: {}".format(
             node.name, node.get_install_dir()))
 
         # Restart nodes on new version
-        debug('Starting {} on new version ({})'.format(
+        logger.debug('Starting {} on new version ({})'.format(
             node.name, node.get_cassandra_version()))
         node.start(wait_other_notice=True, wait_for_binary_proto=True)
-        debug('Upgrading sstables')
+        logger.debug('Upgrading sstables')
         node.nodetool('upgradesstables -a')
 
     def _base_batchlog_manager_issue(self, rack_names):
-        if not self.cluster:
+        if not hasattr(self, 'cluster') or not self.cluster:
             self.cluster = self.get_cluster(version=self.cassandra_version)
         cluster = self.cluster
         cluster.populate([4])
@@ -580,25 +543,28 @@ class TestBatch(Tester):
                 for line in ["dc={}".format(node.data_center), "rack={}".format(rack_name)]:
                     snitch_file.write(line + os.linesep)
 
-        debug('Restart scylla cluster to enable rack setup ...')
+        logger.debug('Restart scylla cluster to enable rack setup ...')
         cluster.start(wait_for_binary_proto=True)
 
-        debug('Running stress ...')
+        logger.debug('Running stress ...')
         node.stress(["user", "no-warmup", "profile=%s" % os.path.realpath('test_data/batch-test/complex_schema.yaml'), "ops(insert=1)", "cl=ALL",
                      # node.stress(["user", "no-warmup", "profile=/tmp/complex_schema.yaml", "ops(insert=1)", "cl=ALL",
                      "duration=5s", "-mode", "cql3", "native", "-rate", "threads=100", "-pop", "seq=1..500"])
 
-        debug('Stopping cluster ...')
+        logger.debug('Stopping cluster ...')
         cluster.stop()
 
-        debug('Verifying logs ...')
+        logger.debug('Verifying logs ...')
         for node in cluster.nodelist():
-            self.assertEqual(0, len(node.grep_log('unknown endpoint')))
-            self.assertEqual(0, len(node.grep_log('fail to connect: connect: Invalid argument')))
+            count = len(node.grep_log('unknown endpoint'))
+            assert 0 == count, f"Expect 0 , found 'unknown endpoint' {count} times"
+            count = len(node.grep_log('fail to connect: connect: Invalid argument'))
+            assert 0 == count, "Expect 0 ,found 'fail to connect: connect: Invalid argument' {count} times"
 
-        self._cleanup_cluster()
+        # self._cleanup_cluster() https://trello.com/c/iEnYe12a/3138-pytest-migrate-infra-selfcleanupcluster
         self.cluster = None
 
+    @pytest.mark.require("task to migrate infrasructure self._cleanup_cluster()")
     def test_batchlog_manager_issue(self):
         """
         This subtest is used to reproduce batchlog manager issue(scylla/issues/3229)
