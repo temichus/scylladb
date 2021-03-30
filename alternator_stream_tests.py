@@ -1,10 +1,10 @@
 from pprint import pformat
 
 from alternator.utils import enums
-from alternator_utils import TesterAlternatorStream, NUM_OF_ITEMS
+from alternator_utils import BaseAlternatorStream, NUM_OF_ITEMS
 
 
-class AlternatorStreamsTest(TesterAlternatorStream):
+class AlternatorStreamsTest(BaseAlternatorStream):
     def test_verify_all_nodes_have_same_stream(self):
         num_of_items = NUM_OF_ITEMS
         self.prepare_dynamodb_cluster(num_of_nodes=3)

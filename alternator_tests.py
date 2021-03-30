@@ -1,35 +1,37 @@
+import logging
 import operator
 import os
 import random
-import shutil
 import string
 import tempfile
 import time
-from concurrent.futures.thread import ThreadPoolExecutor
-from threading import Thread
 from copy import deepcopy
-from boto3.dynamodb.conditions import Attr
 from decimal import Decimal
 from pprint import pformat
+from threading import Thread
 
 import boto3.dynamodb.types
+import pytest
+from boto3.dynamodb.conditions import Attr
 from botocore.exceptions import ClientError, EndpointConnectionError
 from deepdiff import DeepDiff
-from nose.plugins.attrib import attr
 
 from alternator.utils import schemas
 from alternator.utils.data_generator import AlternatorDataGenerator, TypeMode
-from alternator_utils import TesterAlternator, ALTERNATOR_SNAPSHOT_FOLDER, TABLE_NAME, NUM_OF_ITEMS, random_string, \
+from alternator_utils import BaseAlternator, ALTERNATOR_SNAPSHOT_FOLDER, TABLE_NAME, NUM_OF_ITEMS, random_string, \
     DEFAULT_STRING_LENGTH, NUM_OF_NODES, set_write_isolation, WriteIsolation, LONGEST_TABLE_SIZE, SHORTEST_TABLE_SIZE, \
     ALTERNATOR_SECURE_PORT
 from alternator_utils import generate_put_request_items, Gsi, full_query
-from dtest import debug, wait_for, info
+from dtest_class import wait_for, get_ip_from_node
 from scylla_tools import set_trace_probability
-from tools import new_node, require
+from tools.cluster import new_node
+
+logger = logging.getLogger(__name__)
 
 
-@attr('dtest-full')
-class AlternatorTest(TesterAlternator):
+@pytest.mark.dtest_full
+# pylint:disable=too-many-public-methods
+class TesterAlternator(BaseAlternator):
 
     def test_load_older_snapshot_and_refresh(self):
         """
@@ -40,7 +42,7 @@ class AlternatorTest(TesterAlternator):
            - Execute nodetool `refresh` command
            - Verify after `refresh` commands are equal to snapshot data
         """
-        table_name, num_of_items, node_idx = TABLE_NAME, NUM_OF_ITEMS, 0
+        table_name, node_idx = TABLE_NAME, 0
         snapshot_folder = os.path.join(ALTERNATOR_SNAPSHOT_FOLDER, "scylla4.0.rc1")
 
         self.prepare_dynamodb_cluster(num_of_nodes=3)
@@ -49,9 +51,9 @@ class AlternatorTest(TesterAlternator):
         table_data = self.create_items()
         self.load_snapshot_and_refresh(table_name=table_name, node=node1, snapshot_folder=snapshot_folder)
         diff = self.compare_table_data(table_name=table_name, expected_table_data=table_data, node=node1)
-        self.assertTrue(expr=not diff, msg=f"The following items are missing:\n{pformat(diff)}")
+        assert not diff, f"The following items are missing:\n{pformat(diff)}"
 
-    def test_create_snapshot_and_refresh(self):
+    def test_create_snapshot_and_refresh(self, request):
         """
         The test checks the behavior of the `snapshot` and `refresh` commands for Alternator
         Test will:
@@ -72,46 +74,46 @@ class AlternatorTest(TesterAlternator):
         data_before_refresh = self.scan_table(table_name=table_name, node=node1)
 
         snapshot_folder = tempfile.mkdtemp()
-        self.addCleanup(lambda: node1.rmtree(snapshot_folder))
+        request.addfinalizer(lambda: node1.rmtree(snapshot_folder))
         self.create_snapshot(table_name=TABLE_NAME, node=node1, snapshot_folder=snapshot_folder)
         self.delete_table(table_name=table_name, node=node1)
         self.create_table(table_name=table_name, node=node1)
         self.load_snapshot_and_refresh(table_name=table_name, node=node1, snapshot_folder=snapshot_folder)
         diff = self.compare_table_data(table_name=table_name, expected_table_data=data_before_refresh, node=node1)
-        self.assertTrue(expr=not diff, msg=f"The following items are missing:\n{pformat(diff)}")
+        assert not diff, f"The following items are missing:\n{pformat(diff)}"
 
     def test_dynamo_gsi(self):
         self.prepare_dynamodb_cluster(num_of_nodes=4)
         node1 = self.cluster.nodelist()[0]
         self.create_table(node=node1, create_gsi=True)
-        debug(f"Writing Alternator data on a table with GSI")
+        logger.info("Writing Alternator data on a table with GSI")
         items = generate_put_request_items(num_of_items=NUM_OF_ITEMS, add_gsi=True)
         node_resource_table = self.batch_write_actions(table_name=TABLE_NAME, node=node1, new_items=items)
 
         node = self.cluster.nodelist()[1]
-        debug(f"Stopping {node.name} before testing GSI query")
+        logger.info(f"Stopping {node.name} before testing GSI query")
         node.stop()
 
-        debug("Testing and validating a query using GSI")
+        logger.info("Testing and validating a query using GSI")
         gsi_filtered_val = items[random.randint(0, NUM_OF_ITEMS - 1)][Gsi.ATTRIBUTE_NAME]
         expected_items = [item for item in items if item[Gsi.ATTRIBUTE_NAME] == gsi_filtered_val]
         key_condition = {Gsi.ATTRIBUTE_NAME: {'AttributeValueList': [gsi_filtered_val], 'ComparisonOperator': 'EQ'}}
         result_items = full_query(node_resource_table, IndexName=Gsi.NAME,
                                   KeyConditions=key_condition)
         diff_result = DeepDiff(t1=result_items, t2=expected_items, ignore_order=True)
-        self.assertTrue(expr=not diff_result, msg=f"The following items differs:\n{pformat(diff_result)}")
+        assert not diff_result, f"The following items differs:\n{pformat(diff_result)}"
 
     def test_drain_during_dynamo_load(self):
         self.prepare_dynamodb_cluster(num_of_nodes=3)
-        node1, node2, node3 = self.cluster.nodelist()
+        node1, _, node3 = self.cluster.nodelist()
         self.create_table(table_name=TABLE_NAME, node=node1)
 
         items = self.create_items(num_of_items=NUM_OF_ITEMS)
         self.batch_write_actions(table_name=TABLE_NAME, node=node1, new_items=items)
         get_items_thread = self.run_read_stress(table_name=TABLE_NAME, node=node1)
-        debug(f'Start drain for: {node3.name}')
+        logger.info(f'Start drain for: {node3.name}')
         node3.drain()
-        debug('Drain finished')
+        logger.info('Drain finished')
         get_items_thread.join()
 
     def test_decommission_during_dynamo_load(self):
@@ -122,49 +124,48 @@ class AlternatorTest(TesterAlternator):
         items = self.create_items(num_of_items=NUM_OF_ITEMS)
         self.batch_write_actions(table_name=TABLE_NAME, node=node1, new_items=items)
         alternator_consistent_stress = self.run_read_stress(table_name=TABLE_NAME, node=node1)
-        debug(f'Start first decommission during consistent Alternator-load for: {node2.name}')
+        logger.info(f'Start first decommission during consistent Alternator-load for: {node2.name}')
         node2.decommission()
-        debug('Decommission finished')
+        logger.info('Decommission finished')
         alternator_consistent_stress.join()
         alternator_non_consistent_stress = self.run_read_stress(
             table_name=TABLE_NAME, node=node1, consistent_read=False)
-        debug(f'Start a second decommission during non-consistent alternator-load for: {node3.name}')
+        logger.info(f'Start a second decommission during non-consistent alternator-load for: {node3.name}')
         node3.decommission()
-        debug('Decommission finished')
+        logger.info('Decommission finished')
         alternator_non_consistent_stress.join()
 
-        debug("Check that the correct error is returned for a consistent read where cluster has no quorum")
-        try:
+        logger.info("Check that the correct error is returned for a consistent read where cluster has no quorum")
+        with pytest.raises(expected_exception=(ClientError,),
+                           match='Cannot achieve consistency level for cl LOCAL_QUORUM'):
             self.get_table_items(table_name=TABLE_NAME, node=node1, num_of_items=10, consistent_read=True)
-            self.fail(msg="Expected ClientError for Alternator query.")
-        except ClientError as query_exp:
-            self.assertIn('Cannot achieve consistency level for cl LOCAL_QUORUM',
-                          query_exp.response['Error']['Message'], msg=query_exp)
 
-        debug("Check that the correct error is returned for a resource of a decommissioned node")
+        logger.info("Check that the correct error is returned for a resource of a decommissioned node")
         dynamodb_api_node2 = self.get_dynamodb_api(node=node2)
+        # pylint:disable = attribute-defined-outside-init
         self.node2_resource_table = dynamodb_api_node2.resource.Table(TABLE_NAME)
-        with self.assertRaisesRegexp(EndpointConnectionError, "Could not connect to the endpoint URL"):
+        with pytest.raises(expected_exception=(EndpointConnectionError,),
+                           match='Could not connect to the endpoint URL'):
             self.get_table_items(table_name=TABLE_NAME, node=node2, num_of_items=10, consistent_read=True)
 
     def test_dynamo_reads_after_repair(self):
         self.prepare_dynamodb_cluster(num_of_nodes=3)
-        node1, node2, node3 = self.cluster.nodelist()
-        debug(f"Adding data for all nodes except {node2.name}...")
+        node1, node2 = self.cluster.nodelist()[:2]
+        logger.info(f"Adding data for all nodes except {node2.name}...")
         node2.flush()
-        debug(f"Stopping {node2.name}")
+        logger.info(f"Stopping {node2.name}")
         node2.stop(wait_other_notice=True)
         self.create_table(table_name=TABLE_NAME, node=node1)
 
         items = self.create_items(num_of_items=NUM_OF_ITEMS)
         self.batch_write_actions(table_name=TABLE_NAME, node=node1, new_items=items)
 
-        debug(f"Starting {node2.name}")
+        logger.info(f"Starting {node2.name}")
         node2.start(wait_other_notice=True, wait_for_binary_proto=True)
-        debug(f"starting repair on {node2.name}...")
+        logger.info(f"starting repair on {node2.name}...")
         info = node2.repair()
-        debug(f"{info[0]}\n{info[1]}")
-        debug(f"Reading Alternator queries from node {node2.name}")
+        logger.info(f"{info[0]}\n{info[1]}")
+        logger.info(f"Reading Alternator queries from node {node2.name}")
         self.get_table_items(table_name=TABLE_NAME, node=node2)
 
     def test_dynamo_queries_on_multi_dc(self):
@@ -172,57 +173,57 @@ class AlternatorTest(TesterAlternator):
         dc1_node = self.cluster.nodelist()[0]
         self.create_table(table_name=TABLE_NAME, node=dc1_node)
 
-        debug(f"Writing Alternator queries to node {dc1_node.name} on data-center {dc1_node.data_center}")
+        logger.info(f"Writing Alternator queries to node {dc1_node.name} on data-center {dc1_node.data_center}")
         items = self.create_items(num_of_items=NUM_OF_ITEMS)
         self.batch_write_actions(table_name=TABLE_NAME, node=dc1_node, new_items=items)
 
         dc2_node = next(node for node in self.cluster.nodelist() if node.data_center != dc1_node.data_center)
-        debug(f"Reading Alternator queries from node {dc2_node.name} on data-center {dc2_node.data_center}")
+        logger.info(f"Reading Alternator queries from node {dc2_node.name} on data-center {dc2_node.data_center}")
         self.get_table_items(table_name=TABLE_NAME, node=dc2_node, consistent_read=False)
 
     def test_dynamo_reads_after_new_node_repair(self):
         self.prepare_dynamodb_cluster(num_of_nodes=3)
         node1, node2, node3 = self.cluster.nodelist()
-        debug("Adding data for all nodes")
+        logger.info("Adding data for all nodes")
         self.prefill_dynamodb_table(node=node1)
-        debug(f"Decommissioning {node3.name}")
+        logger.info(f"Decommissioning {node3.name}")
         node3.decommission()
-        debug("Add node4..")
+        logger.info("Add node4..")
         node4 = new_node(self.cluster, bootstrap=True)
-        debug("Start node4..")
+        logger.info("Start node4..")
         node4.start(wait_for_binary_proto=True, wait_other_notice=True)
-        debug(f"starting repair on {node4.name}...")
+        logger.info(f"starting repair on {node4.name}...")
         stdout, stderr = node4.repair()
-        debug(f'nodetool repair : stdout={stdout}, stderr={stderr}')
-        debug(f"Stopping {node1.name}")
+        logger.info(f'nodetool repair : stdout={stdout}, stderr={stderr}')
+        logger.info(f"Stopping {node1.name}")
         node1.stop(wait_other_notice=True)
-        debug(f"Stopping {node2.name}")
+        logger.info(f"Stopping {node2.name}")
         node2.stop(wait_other_notice=True)
         tested_node = node4
-        debug(f"Reading Alternator queries from node {tested_node.name}")
+        logger.info(f"Reading Alternator queries from node {tested_node.name}")
         self.get_table_items(table_name=TABLE_NAME, node=tested_node, consistent_read=False)
 
     def test_read_key_condition_expression(self):
         self.prepare_dynamodb_cluster(num_of_nodes=3)
         node1 = self.cluster.nodelist()[0]
         self.create_table(node=node1, schema=schemas.CONDITION_EXPRESSION_SCHEMA)
-        debug("Writing Alternator items of the same partition key")
+        logger.info("Writing Alternator items of the same partition key")
         pk_condition_value = random_string(length=DEFAULT_STRING_LENGTH)
         items = [{'pk': pk_condition_value, 'c': Decimal(i), 'a': random_string(
             length=DEFAULT_STRING_LENGTH)} for i in range(12)]
         table = self.batch_write_actions(table_name=TABLE_NAME, node=node1, new_items=items)
-        debug("Writing an extra different partition key")
+        logger.info("Writing an extra different partition key")
         with table.batch_writer() as batch:
             batch.put_item({'pk': random_string(length=DEFAULT_STRING_LENGTH), 'c': 123,
                             'a': random_string(length=DEFAULT_STRING_LENGTH)})
         node = self.cluster.nodelist()[1]
-        debug(f"Stopping {node.name} before testing key condition expression query")
+        logger.info(f"Stopping {node.name} before testing key condition expression query")
         node.stop()
-        debug("Testing and validating a query using key condition expression")
+        logger.info("Testing and validating a query using key condition expression")
         got_condition_items = full_query(table, KeyConditionExpression='pk=:pk',
                                          ExpressionAttributeValues={':pk': pk_condition_value})
         diff_result = DeepDiff(t1=items, t2=got_condition_items, ignore_order=True)
-        self.assertTrue(expr=not diff_result, msg=f"The following items differs:\n{pformat(diff_result)}")
+        assert not diff_result, f"The following items differs:\n{pformat(diff_result)}"
 
     def test_batch_with_auto_snapshot_false(self):
         """Test triggers scylladb/scylla#6995"""
@@ -242,7 +243,7 @@ class AlternatorTest(TesterAlternator):
         """
         self.prepare_dynamodb_cluster(num_of_nodes=3)
         node1 = self.cluster.nodelist()[0]
-        debug("Adding data for tables of all write-isolation types")
+        logger.info("Adding data for tables of all write-isolation types")
         conf_workloads = []
         for isolation in WriteIsolation:
             table_name = f'{TABLE_NAME}_{isolation.value}'
@@ -253,9 +254,9 @@ class AlternatorTest(TesterAlternator):
                  'read_stress': self.run_read_stress(table_name=table_name, node=node1)})
 
         cycles = 3
-        for cycle in range(1, cycles+1):
+        for cycle in range(1, cycles + 1):
             for conf in conf_workloads:
-                debug(f"cycle {cycle}/{cycles}: modifying {conf['table']}")
+                logger.info(f"cycle {cycle}/{cycles}: modifying {conf['table']}")
                 set_write_isolation(table=conf['table'], isolation=random.choice(list(WriteIsolation)))
             time.sleep(5)
 
@@ -269,10 +270,10 @@ class AlternatorTest(TesterAlternator):
         """
         self.prepare_dynamodb_cluster(num_of_nodes=3, is_multi_dc=True)
         node1 = self.cluster.nodelist()[0]
-        debug("Creating a table..")
+        logger.info("Creating a table..")
         table = self.create_table(table_name=TABLE_NAME, node=node1)
         new_pk_val = random_string(length=DEFAULT_STRING_LENGTH)
-        debug("simple update item")
+        logger.info("simple update item")
         table.update_item(Key={self._table_primary_key: new_pk_val},
                           AttributeUpdates={'a': {'Value': 1, 'Action': 'PUT'}})
         conditional_update_short_circuit = dict(Key={self._table_primary_key: new_pk_val},
@@ -285,12 +286,12 @@ class AlternatorTest(TesterAlternator):
         wait_for(self.is_table_schema_synced, timeout=30, text='Waiting until table schema is updated',
                  table_name=TABLE_NAME, nodes=[node1, dc2_node])
         node1.stop()
-        debug("Testing and validating an update query using key condition expression")
-        debug(f"ConditionExpression update of short circuit is: {conditional_update_short_circuit}")
+        logger.info("Testing and validating an update query using key condition expression")
+        logger.info(f"ConditionExpression update of short circuit is: {conditional_update_short_circuit}")
         dc2_table.update_item(**conditional_update_short_circuit)
         dc2_node.stop()
         node1.start()
-        debug(f"Reading Alternator queries from node {node1.name} on data-center {node1.data_center}")
+        logger.info(f"Reading Alternator queries from node {node1.name} on data-center {node1.data_center}")
         item = table.get_item(Key={self._table_primary_key: new_pk_val}, ConsistentRead=True)['Item']
         assert item == {self._table_primary_key: new_pk_val, 'a': 1, 'c': 3}
 
@@ -309,11 +310,11 @@ class AlternatorTest(TesterAlternator):
         wait_for(self.is_table_schema_synced, timeout=30, text='Waiting until table schema is updated',
                  table_name=TABLE_NAME, nodes=[node1, dc2_node])
         node1.stop()
-        debug("Testing a query using filter expression")
+        logger.info("Testing a query using filter expression")
         expected_items = [item for item in items if item[range_key_name] >= selected_range_value]
         diff = self.compare_table_data(table_name=TABLE_NAME, expected_table_data=expected_items, node=dc2_node,
                                        FilterExpression=Attr(range_key_name).gte(selected_range_value))
-        self.assertTrue(expr=not diff, msg=f"The following items differs:\n{pformat(diff)}")
+        assert not diff, f"The following items differs:\n{pformat(diff)}"
 
     def test_update_condition_expression_and_write_isolation(self):
         """
@@ -324,53 +325,54 @@ class AlternatorTest(TesterAlternator):
         node1 = self.cluster.nodelist()[0]
         node2 = next(node for node in self.cluster.nodelist() if
                      node.data_center == node1.data_center and node.name != node1.name)
-        debug("Adding data for all nodes from DC1")
+        logger.info("Adding data for all nodes from DC1")
         table = self.prefill_dynamodb_table(node=node1)
 
-        debug(f"Stopping {node2.name} (before testing update query with key condition expression)")
+        logger.info(f"Stopping {node2.name} (before testing update query with key condition expression)")
         node2.stop()
 
         dc2_node = next(node for node in self.cluster.nodelist() if node.data_center != node1.data_center)
         dynamodb_api = self.get_dynamodb_api(node=dc2_node)
         dc2_table = dynamodb_api.resource.Table(name=TABLE_NAME)
 
-        debug("Testing and validating an update query using key condition expression")
+        logger.info("Testing and validating an update query using key condition expression")
         new_pk_val = random_string(length=DEFAULT_STRING_LENGTH)
-        debug("simple update from dc1")
+        logger.info("simple update from dc1")
         table.update_item(Key={self._table_primary_key: new_pk_val},
                           AttributeUpdates={'a': {'Value': 1, 'Action': 'PUT'}})
-        debug("ConditionExpression update from dc2:")
+        logger.info("ConditionExpression update from dc2:")
         conditional_update_c_2 = dict(Key={self._table_primary_key: new_pk_val},
                                       UpdateExpression='SET c = :val',
                                       ConditionExpression='attribute_exists (a)',
                                       ExpressionAttributeValues={':val': 2})
-        debug(conditional_update_c_2)
-        debug("Check that conditional update fails on write-isolation 'forbid' mode (dc2)")
+        logger.info(conditional_update_c_2)
+        logger.info("Check that conditional update fails on write-isolation 'forbid' mode (dc2)")
         set_write_isolation(table, WriteIsolation.FORBID_RMW)
         wait_for(self.is_table_schema_synced, timeout=30, text='Waiting until table schema is updated',
                  table_name=TABLE_NAME, nodes=[node1, dc2_node])
         msg_rmw_is_disabled = 'Read-modify-write operations are disabled'
-        with self.assertRaisesRegexp(ClientError, msg_rmw_is_disabled):
+        with pytest.raises(expected_exception=(ClientError,), match=msg_rmw_is_disabled):
             res = dc2_table.update_item(**conditional_update_c_2)
-            debug(res)
+            logger.info(str(res))
+
         set_write_isolation(table, WriteIsolation.ALWAYS_USE_LWT)
         wait_for(self.is_table_schema_synced, timeout=30, text='Waiting until table schema is updated',
                  table_name=TABLE_NAME, nodes=[node1, dc2_node])
         dc2_table.update_item(**conditional_update_c_2)
-        debug("ConditionExpression update from dc1:")
+        logger.info("ConditionExpression update from dc1:")
         conditional_update_c_3 = dict(Key={self._table_primary_key: new_pk_val},
                                       UpdateExpression='SET c = :val',
                                       ConditionExpression='attribute_not_exists (b)',
                                       ExpressionAttributeValues={':val': 3})
-        debug(conditional_update_c_3)
-
-        with self.assertRaisesRegexp(ClientError, msg_rmw_is_disabled):
+        logger.info(conditional_update_c_3)
+        with pytest.raises(expected_exception=(ClientError,), match=msg_rmw_is_disabled):
             set_write_isolation(table, WriteIsolation.FORBID_RMW)
             table.update_item(**conditional_update_c_3)
+
         set_write_isolation(table, WriteIsolation.ONLY_RMW_USES_LWT)
         table.update_item(**conditional_update_c_3)
         assert table.get_item(Key={self._table_primary_key: new_pk_val}, ConsistentRead=True)['Item']['c'] == 3
-        with self.assertRaisesRegexp(ClientError, "ConditionalCheckFailedException"):
+        with pytest.raises(expected_exception=(ClientError,), match='ConditionalCheckFailedException'):
             table.update_item(Key={self._table_primary_key: new_pk_val},
                               UpdateExpression='SET c = :val',
                               ConditionExpression='attribute_not_exists (a)',
@@ -381,17 +383,17 @@ class AlternatorTest(TesterAlternator):
         node1 = self.cluster.nodelist()[0]
         table = self.prefill_dynamodb_table(node=node1)
         dc2_node = next(node for node in self.cluster.nodelist() if node.data_center != node1.data_center)
-        debug("Check that updating write-isolation tag on one DC is propagated to a node of the other DC (dc2)")
+        logger.info("Check that updating write-isolation tag on one DC is propagated to a node of the other DC (dc2)")
         set_write_isolation(table, WriteIsolation.FORBID_RMW)
-        res = wait_for(self.is_table_schema_synced, timeout=30, step=3, text='Waiting until table schema is updated',
-                       table_name=TABLE_NAME, nodes=[node1, dc2_node])
+        wait_for(self.is_table_schema_synced, timeout=30, step=3, text='Waiting until table schema is updated',
+                 table_name=TABLE_NAME, nodes=[node1, dc2_node])
 
     def _reboot_nodes_while_running_stress(self, node):
         for _node in self.cluster.nodelist():
             if _node.name != node.name:
-                debug(f"Stopping node '{_node.name}'")
+                logger.info(f"Stopping node '{_node.name}'")
                 _node.stop()
-                debug(f"Starting node '{_node.name}'")
+                logger.info(f"Starting node '{_node.name}'")
                 _node.start(wait_other_notice=True, wait_for_binary_proto=True)
 
     def test_full_scan_table_while_restart_each_nodes(self):
@@ -404,7 +406,7 @@ class AlternatorTest(TesterAlternator):
         self.prefill_dynamodb_table(node=node1, table_name=table_name, num_of_items=num_of_items)
         alternator_scan_thread = self.run_scan_stress(table_name=table_name, node=node1)
 
-        debug("Starting Alternator scan stress..")
+        logger.info("Starting Alternator scan stress..")
         alternator_scan_thread.start()
         self._reboot_nodes_while_running_stress(node=node1)
 
@@ -418,7 +420,7 @@ class AlternatorTest(TesterAlternator):
         self.prefill_dynamodb_table(node=node1, table_name=table_name, num_of_items=num_of_items)
         alternator_scan_thread = self.run_scan_stress(table_name=table_name, node=node1, threads_num=threads_num)
 
-        debug("Starting Alternator scan stress..")
+        logger.info("Starting Alternator scan stress..")
         alternator_scan_thread.start()
         self._reboot_nodes_while_running_stress(node=node1)
 
@@ -437,10 +439,10 @@ class AlternatorTest(TesterAlternator):
                                  is_compare_scan_result=False)
 
         insert_update_thread = self.run_delete_insert_update_item_stress(table_name=table_name, node=node1)
-        debug("Starting Alternator create and update items stress..")
+        logger.info("Starting Alternator create and update items stress..")
         insert_update_thread.start()
 
-        debug("Starting Alternator scan stress..")
+        logger.info("Starting Alternator scan stress..")
         alternator_scan_thread.start()
         self._reboot_nodes_while_running_stress(node=node1)
 
@@ -451,21 +453,20 @@ class AlternatorTest(TesterAlternator):
             * Get all the values from DB and compare to what we know we inserted
         """
         all_items = []
-        table_name, items_count = TABLE_NAME, 0
         data_generator = AlternatorDataGenerator(
             primary_key=self._table_primary_key, primary_key_format=self._table_primary_key_format)
         data_generator.create_random_number_item()
         self.prepare_dynamodb_cluster(num_of_nodes=NUM_OF_NODES)
-        node1, node2, node3 = self.cluster.nodelist()
-        self.create_table(table_name=table_name, node=node1)
+        node1 = self.cluster.nodelist()[0]
+        self.create_table(table_name=TABLE_NAME, node=node1)
 
         for mode in TypeMode:
             items = data_generator.create_multiple_items(num_of_items=random.randint(1, 10), mode=mode)
             all_items += items
-            debug(f"Adding {len(items)} {data_generator.get_mode_name(mode)} items to table '{table_name}'..")
-            self.batch_write_actions(table_name=table_name, node=node1, new_items=items)
-            diff = self.compare_table_data(table_name=table_name, expected_table_data=all_items, node=node1)
-            self.assertTrue(expr=not diff, msg=f"The following items are missing:\n{pformat(diff)}")
+            logger.info(f"Adding {len(items)} {data_generator.get_mode_name(mode)} items to table '{TABLE_NAME}'..")
+            self.batch_write_actions(table_name=TABLE_NAME, node=node1, new_items=items)
+            diff = self.compare_table_data(table_name=TABLE_NAME, expected_table_data=all_items, node=node1)
+            assert not diff, f"The following items are missing:\n{pformat(diff)}"
 
     def test_read_system_tables_via_dynamodb_api(self):
         """
@@ -482,19 +483,18 @@ class AlternatorTest(TesterAlternator):
             peers = set(item['peer'] for item in results)
 
             # get all the other nodes ip addresses
-            other_nodes_ips = set(self.get_ip_from_node(n) for n in set(all_nodes).difference({node}))
+            other_nodes_ips = set(get_ip_from_node(n) for n in set(all_nodes).difference({node}))
 
             assert peers == other_nodes_ips, f"peers in {node.name} are not as expected {other_nodes_ips}"
 
-            debug("trying to write into system table, which should be readonly")
-            self.assertRaisesRegex(expected_exception=ClientError, expected_regex=r"ResourceNotFoundException",
-                                   callable=self.batch_write_actions,
-                                   table_name='.scylla.alternator.system.peers', new_items=[dict(pk=1)], node=node)
+            logger.info("trying to write into system table, which should be readonly")
+            with pytest.raises(expected_exception=(ClientError,), match='ResourceNotFoundException'):
+                self.batch_write_actions(table_name='.scylla.alternator.system.peers', new_items=[dict(pk=1)],
+                                         node=node)
 
-    def _check_comparison_query_key_conditions_options(self, scan_index_forward=True):
+    def _check_comparison_query_key_conditions_options(self, scan_index_forward=True):  # pylint:disable=too-many-locals
         schema = schemas.HASH_AND_NUM_RANGE_SCHEMA
         python_compare_op_dict = {'LE': operator.le, "LT": operator.lt, "GE": operator.ge, "GT": operator.gt}
-        all_selected_hash_items = []
         hash_key_name, range_key_name = schemas.HASH_KEY_NAME, schemas.RANGE_KEY_NAME
         table_name, node_idx = TABLE_NAME, 0
 
@@ -527,9 +527,9 @@ class AlternatorTest(TesterAlternator):
                 expected_items = [item for item in all_selected_hash_items[::-1 if not scan_index_forward else 1]
                                   if py_compare_op(item[range_key_name], selected_range_value)]
 
-            debug(f"Running query with key condition '{key_condition}'")
+            logger.info(f"Running query with key condition '{key_condition}'")
             diff = DeepDiff(t1=expected_items, t2=query_result, ignore_numeric_type_changes=True)
-            self.assertTrue(expr=not diff, msg=f"The following items differs:\n{pformat(diff)}")
+            assert not diff, f"The following items differs:\n{pformat(diff)}"
 
     def test_check_comparison_query_key_condition_options(self):
         """
@@ -549,7 +549,7 @@ class AlternatorTest(TesterAlternator):
         secondary_key_values = [chr(char_value) for char_value in range(256)]
         binary_items = []
         hash_key_name, range_key_name = schemas.HASH_KEY_NAME, schemas.RANGE_KEY_NAME
-        table_name, node_idx, selected_item_idx = TABLE_NAME, 0, 0
+        table_name, node_idx = TABLE_NAME, 0
         regular_items = [{hash_key_name: f"{hash_value}", range_key_name: range_value}
                          for hash_value in range(random.randint(1, 10))
                          for range_value in secondary_key_values]
@@ -560,9 +560,9 @@ class AlternatorTest(TesterAlternator):
         self.prepare_dynamodb_cluster(num_of_nodes=NUM_OF_NODES)
         node = self.cluster.nodelist()[node_idx]
 
-        def test_logic(schema):
+        def test_logic(schema):  # pylint:disable=too-many-locals
             is_binary_mode = bool(schema == schemas.HASH_AND_BINARY_RANGE_SCHEMA)
-            debug(f"Check Query string comparison for item with {'binary' if is_binary_mode else 'string'}")
+            logger.info(f"Check Query string comparison for item with {'binary' if is_binary_mode else 'string'}")
             if self.is_table_exists(table_name=table_name, node=node):
                 self.delete_table(table_name=table_name, node=node)
             self.create_table(node=node, table_name=table_name, schema=schema)
@@ -606,9 +606,9 @@ class AlternatorTest(TesterAlternator):
                 }
                 query_result = full_query(
                     node_resource_table, KeyConditions=key_condition, ScanIndexForward=scan_index_forward)
-                debug(f"Running query with key condition '{key_condition}'")
+                logger.info(f"Running query with key condition '{key_condition}'")
                 diff = DeepDiff(t1=expected_items, t2=query_result)
-                self.assertTrue(expr=not diff, msg=f"The following items differs:\n{pformat(diff)}")
+                assert not diff, f"The following items differs:\n{pformat(diff)}"
 
         test_logic(schema=schemas.HASH_AND_STR_RANGE_SCHEMA)
         test_logic(schema=schemas.HASH_AND_BINARY_RANGE_SCHEMA)
@@ -638,24 +638,24 @@ class AlternatorTest(TesterAlternator):
         node1 = self.cluster.nodelist()[0]
 
         shortest_table_name = "".join(random.choices(valid_dynamodb_chars, k=SHORTEST_TABLE_SIZE))
-        info(f"Creating new table with following name '{shortest_table_name}' (The shortest table name - "
-             f"'{SHORTEST_TABLE_SIZE}' chars)")
+        logger.info(f"Creating new table with following name '{shortest_table_name}' (The shortest table name - "
+                    f"'{SHORTEST_TABLE_SIZE}' chars)")
         self.create_table(node=node1, table_name=shortest_table_name)
 
-        middle_table_name = "".join(random.choices(valid_dynamodb_chars, k=(
-            SHORTEST_TABLE_SIZE + LONGEST_TABLE_SIZE) // 2))
-        info(f"Creating new table with following name '{middle_table_name}' ('{len(middle_table_name)}' chars)")
+        middle_table_name = "".join(random.choices(
+            valid_dynamodb_chars, k=(SHORTEST_TABLE_SIZE + LONGEST_TABLE_SIZE) // 2))
+        logger.info(f"Creating new table with following name '{middle_table_name}' ('{len(middle_table_name)}' chars)")
         self.create_table(node=node1, table_name=middle_table_name)
 
         longest_table_name = "".join(random.choices(valid_dynamodb_chars, k=LONGEST_TABLE_SIZE))
-        info(f"Creating new table with following name '{longest_table_name}' (The shortest table name - "
-             f"'{LONGEST_TABLE_SIZE}' chars)")
+        logger.info(f"Creating new table with following name '{longest_table_name}' (The shortest table name - "
+                    f"'{LONGEST_TABLE_SIZE}' chars)")
         self.create_table(node=node1, table_name=longest_table_name)
         cmd = f"tablestats alternator_{longest_table_name}"
-        info(f"Executing the following command '{cmd}'")
+        logger.info(f"Executing the following command '{cmd}'")
         node1.nodetool(cmd)
 
-    @require("#6521")
+    @pytest.mark.require("#6521")
     def test_table_name_with_dot_prefix(self):
         valid_dynamodb_chars = (list(string.digits) + list(string.ascii_uppercase) + ["_", "-", "."])
         self.prepare_dynamodb_cluster(num_of_nodes=3)
@@ -663,13 +663,13 @@ class AlternatorTest(TesterAlternator):
 
         table_name_with_dot_prefix = "." + "".join(random.choices(valid_dynamodb_chars, k=min(random.choice(range(
             SHORTEST_TABLE_SIZE, LONGEST_TABLE_SIZE + 1)), 100)))
-        info("Creating new table with dot ('.') char prefix")
+        logger.info("Creating new table with dot ('.') char prefix")
         self.create_table(node=node1, table_name=table_name_with_dot_prefix)
         cmd = f"tablestats alternator_{table_name_with_dot_prefix}"
-        info(f"Executing the following command '{cmd}'")
+        logger.info(f"Executing the following command '{cmd}'")
         node1.nodetool(cmd)
 
-    def test_putitem_contention(self):
+    def test_putitem_contention(self):  # pylint:disable=too-many-locals
         """
         This test reproduces issue #7218, where PutItem operations sometimes
         lost part of the item being written - some attributes were lost, and
@@ -682,11 +682,11 @@ class AlternatorTest(TesterAlternator):
         """
         self.prepare_dynamodb_cluster(num_of_nodes=2)
         [node1, node2] = self.cluster.nodelist()
-        r1 = self.get_dynamodb_api(node=node1).resource
-        r2 = self.get_dynamodb_api(node=node2).resource
+        node1_resource = self.get_dynamodb_api(node=node1).resource
+        node2_resource = self.get_dynamodb_api(node=node2).resource
         # Create the table, access it through the two connections, r1 and r2:
         table_name = "test_putitem_contention_table"
-        table_r1 = r1.create_table(
+        table_r1 = node1_resource.create_table(
             TableName=table_name,
             KeySchema=[{"AttributeName": "p", "KeyType": "HASH"},
                        {"AttributeName": "c", "KeyType": "RANGE"}],
@@ -694,9 +694,9 @@ class AlternatorTest(TesterAlternator):
                 {"AttributeName": "p", "AttributeType": "S"},
                 {"AttributeName": "c", "AttributeType": "S"}],
             BillingMode='PAY_PER_REQUEST')
-        waiter = r1.meta.client.get_waiter('table_exists')
+        waiter = node1_resource.meta.client.get_waiter('table_exists')
         waiter.wait(TableName=table_name)
-        table_r2 = r2.Table(table_name)
+        table_r2 = node2_resource.Table(table_name)
 
         def writes(tab, rang):
             for i in rang:
@@ -705,15 +705,16 @@ class AlternatorTest(TesterAlternator):
                     'c': 'item{}'.format(i),
                     'v1': 'dog',
                     'v2': 'cat'})
+
         # Create two writing threads, each writing 1000 *different* rows to
         # one different connection:
         total_items = 2000
-        t1 = Thread(target=writes, args=(table_r1, range(0, 1000)), daemon=True)
-        t2 = Thread(target=writes, args=(table_r2, range(1000, 2000)), daemon=True)
-        t1.start()
-        t2.start()
-        t1.join()
-        t2.join()
+        thread1 = Thread(target=writes, args=(table_r1, range(0, 1000)), daemon=True)
+        thread2 = Thread(target=writes, args=(table_r2, range(1000, 2000)), daemon=True)
+        thread1.start()
+        thread2.start()
+        thread1.join()
+        thread2.join()
         # Scan the table, looking for broken items (issue #7218)
         n_items = 0
         n_bad_items = 0
@@ -729,13 +730,14 @@ class AlternatorTest(TesterAlternator):
         def check_items(items):
             for item in items:
                 check_item(item)
+
         response = table_r1.scan(ConsistentRead=True)
         check_items(response['Items'])
         while 'LastEvaluatedKey' in response:
             response = table_r1.scan(ExclusiveStartKey=response['LastEvaluatedKey'], ConsistentRead=True)
             check_items(response['Items'])
-        self.assertTrue(n_items == total_items)
-        self.assertTrue(n_bad_items == 0)
+        assert n_items == total_items
+        assert n_bad_items == 0
 
     def test_tls_connection(self):
         """
@@ -745,20 +747,20 @@ class AlternatorTest(TesterAlternator):
         """
         new_items = []
         table_name = TABLE_NAME
-        info('Configuring secured Alternator session with "self signed x509 certificate"')
+        logger.info('Configuring secured Alternator session with "self signed x509 certificate"')
         self.prepare_dynamodb_cluster(num_of_nodes=3, is_encrypted=True)
         nodes = self.cluster.nodelist()
         node1 = nodes[0]
 
         self.create_table(table_name=table_name, node=node1)
         for node_idx, node in enumerate(nodes):
-            node.grep_log(f'Alternator server listening on {self.get_ip_from_node(node=node)}, HTTP port OFF, HTTPS'
+            node.grep_log(f'Alternator server listening on {get_ip_from_node(node=node)}, HTTP port OFF, HTTPS'
                           f' port {ALTERNATOR_SECURE_PORT}')
             new_items = self.create_items(num_of_items=(node_idx + 1) * 10)
             self.batch_write_actions(table_name=table_name, node=node, new_items=new_items)
         self.compare_table_data(expected_table_data=new_items, table_name=table_name, node=node1)
 
-    def test_cluster_traces(self):
+    def test_cluster_traces(self):  # pylint:disable=too-many-locals,too-many-statements
         """
         The test inserts items of different types and checks the traces for each of the following actions: "PutItem",
          "GetItem", "UpdateItem", and "DeleteItem".
@@ -816,12 +818,12 @@ class AlternatorTest(TesterAlternator):
 
         set_trace_probability(nodes=nodes, probability_value=0.0)
         expected_traces_size = len(items) * expected_traces_number
-        info(f'Expecting to find at least "{expected_traces_size}" partitions')
+        logger.info(f'Expecting to find at least "{expected_traces_size}" partitions')
         # For each method we use we get "len(items)" traces. Therefore, in our case we used 2
         # (len(expected_messages_dict)) methods and 10 (len(item)) items.
         # Therefore we will observe "len(items) * methods_size" messages.
         all_traces_events = self.get_all_traces_events(expected_traces_size=expected_traces_size)
-        node_ips = {self.get_ip_from_node(node) for node in nodes}
+        node_ips = {get_ip_from_node(node) for node in nodes}
         # The following action order for each item is: "PutItem", "GetItem", "UpdateItem", and "DeleteIte" (this
         #  order is order of "expected_messages_dict" keys).
         # Therefore, for each action, we need to get a list with "len(items)" cells.
@@ -830,13 +832,13 @@ class AlternatorTest(TesterAlternator):
             events_by_action.setdefault(
                 method_name_by_method_idx[events_idx % expected_traces_number], []).append(events)
 
-        def verify_traces_messages(method_name):
+        def verify_traces_messages(method_name):  # pylint:disable=too-many-locals
             all_traces = events_by_action[method_name]
             expected_messages = expected_messages_dict[method_name]
             # The "all_traces" variable contains the list of traces in the order of action ("get_item" or "pu_item")
             #  we did. The test enters multiple items. Thus, need over on the traces for each item entered.
             for action_idx, traces in enumerate(all_traces):
-                source = self.get_ip_from_node(nodes[action_idx % len(nodes)])
+                source = get_ip_from_node(nodes[action_idx % len(nodes)])
                 trace_idx = 0
                 # This loop goes over the messages that should appear within the traces in the order of the
                 # "expected_messages".
@@ -879,5 +881,5 @@ class AlternatorTest(TesterAlternator):
                             raise KeyError(f'The following "{method_name}" method name not supported!')
 
         for method_name in expected_messages_dict:
-            info(f'Verifying all traces of "{method_name}_item" method name')
+            logger.info(f'Verifying all traces of "{method_name}_item" method name')
             verify_traces_messages(method_name=method_name)

@@ -101,6 +101,7 @@ repos:
                 updateable_config_test.py|
                 simple_cluster_driver_test.py|
                 simple_boot_shutdown_test.py|
+                alternator_tests.py|
                 sstable_generation_loading_test.py
             )$
         language: system
