@@ -184,3 +184,15 @@ from flaky import flaky
 * Replace `@require(...)` with `@pytest.mark.require(...)`
 
 * Add converted test name to `.pre-commit-config.yaml`
+
+* `Tester.wait_for_any_log()` moved to `tools.log_utils.wait_for_any_log()`
+
+* Use `fixture_dtest_setup.ignore_log_patterns` instead of `Tester.ignore_log_patterns`:
+
+```python
+...
+def test_foo(self, fixture_dtest_setup):
+    fixture_dtest_setup.ignore_log_patterns.append("bar")
+    ...
+...
+```

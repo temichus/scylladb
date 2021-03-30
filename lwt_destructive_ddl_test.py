@@ -1,17 +1,22 @@
-from nose.plugins.attrib import attr
-from dtest import Tester, debug
-from cassandra import ConsistencyLevel, Unavailable, DriverException
-
-import random
-import threading
 import time
-
+import random
+import logging
+import threading
 from concurrent.futures import ThreadPoolExecutor
 
+import pytest
+from cassandra import ConsistencyLevel, Unavailable, DriverException
 
-@attr('dtest-full')
-class LwtDestructiveDDLTest(Tester):
-    '''
+from dtest_class import Tester, create_ks
+from tools.log_utils import wait_for_any_log
+
+
+logger = logging.getLogger(__name__)
+
+
+@pytest.mark.dtest_full
+class TestLwtDestructiveDDL(Tester):
+    """
     Destructive DDL in presence of LWT: execute destructive DDL
     instructions (i.e. statements which cause the executed LWT
     query to become invalid) in a loop in one connection,
@@ -25,7 +30,7 @@ class LwtDestructiveDDLTest(Tester):
     5. ALTER KEYSPACE (use NetworkTopologyStrategy, set to non-existing
        data center)
     6. REVOKE + GRANT PERMISSION ON TABLE
-    '''
+    """
 
     def prepare(self, ks_dc_mapping=None, setup_auth=False):
         is_multi_dc = ks_dc_mapping is not None
@@ -60,7 +65,7 @@ class LwtDestructiveDDLTest(Tester):
         user = None
         password = None
         if setup_auth:
-            found = self.wait_for_any_log(
+            found = wait_for_any_log(
                 self.cluster.nodelist(),
                 ["Created default superuser role", "Created default superuser authentication record"],
                 30,
@@ -74,9 +79,9 @@ class LwtDestructiveDDLTest(Tester):
 
         if not is_multi_dc:
             # Use just SimpleStrategy for replication with rf=3
-            self.create_ks(session, 'ks', 3)
+            create_ks(session, 'ks', 3)
         else:
-            self.create_ks(session, 'ks', ks_dc_mapping)
+            create_ks(session, 'ks', ks_dc_mapping)
 
         return session
 
@@ -106,7 +111,7 @@ class LwtDestructiveDDLTest(Tester):
         for stmt in dml_statements:
             stmt.serial_consistency_level = ConsistencyLevel.SERIAL
 
-        debug(f'Producing LWT load on the cluster (thread "{thread_name}")')
+        logger.info('Producing LWT load on the cluster (thread "%s")', thread_name)
         while True:
             if need_to_stop.is_set():
                 break
@@ -114,15 +119,15 @@ class LwtDestructiveDDLTest(Tester):
                 session.execute(random.choice(dml_statements),
                                 {'pk': random.randint(0, 10000), 'v': random.randint(-1000, 1000)})
             except Unavailable as exc:
-                debug(f'Failed to execute LWT statement (thread "{thread_name}"). Unavailable error: {exc}')
+                logger.info('Failed to execute LWT statement (thread "%s"). Unavailable error: %s', thread_name, exc)
                 if not tolerate_unavailable:
                     # If there is not enough replicas to properly execute the query
                     # it means that some node is DOWN for some reason, which we don't tolerate
-                    debug(f'Aborting LWT worker thread "{thread_name}"')
+                    logger.info('Aborting LWT worker thread "%s"', thread_name)
                     raise
             except DriverException as exc:
-                debug(f'Failed to execute LWT statement (thread "{thread_name}"). Driver error: {exc}')
-        debug(f'Finished LWT stress workload (thread "{thread_name}")')
+                logger.info('Failed to execute LWT statement (thread "%s"). Driver error: %s', thread_name, exc)
+        logger.info('Finished LWT stress workload (thread "%s")', thread_name)
 
     def _ddl_run(self, node, need_to_stop, fn, user=None, password=None):
         thread_name = threading.current_thread().name
@@ -130,22 +135,22 @@ class LwtDestructiveDDLTest(Tester):
         ddl_session = self.patient_cql_connection(node, user=user, password=password)
         ddl_session.execute('USE ks')
 
-        debug(f'Producing destructive DDL load on the cluster (thread "{thread_name}")')
+        logger.info('Producing destructive DDL load on the cluster (thread "%s")', thread_name)
         while True:
             if need_to_stop.is_set():
                 break
             try:
                 fn_desc = fn.__doc__
-                debug(f'Executing DDL statement: {fn_desc} (thread "{thread_name}")')
+                logger.info('Executing DDL statement: %s (thread "%s")', fn_desc, thread_name)
                 fn(ddl_session)
-                debug(f'Successfully executed DDL statement: {fn_desc} (thread "{thread_name}")')
+                logger.info('Successfully executed DDL statement: %s (thread "%s")', fn_desc, thread_name)
             except Unavailable as exc:
                 # That means that somebody is DOWN, bubble this exception up
                 # to the main thread
                 raise
             except DriverException as exc:
-                debug(f'Failure during disruption thread operation (thread "{thread_name}"). Driver error: {exc}')
-        debug(f'Finished DDL stress workload (thread "{thread_name}")')
+                logger.info('Failure during disruption thread operation (thread "%s"). Driver error: %s', thread_name, exc)
+        logger.info('Finished DDL stress workload (thread "%s")', thread_name)
 
     def _case_template(self, session, ddl_fn, test_duration_sec=60, tolerate_unavailable=False, ddl_user=None, ddl_pass=None, lwt_user=None, lwt_pass=None):
 
@@ -184,10 +189,10 @@ class LwtDestructiveDDLTest(Tester):
             assert node.is_live()
 
     def test_drop_table(self):
-        '''
+        """
         Tests that Scylla doesn't crash when there is concurrent LWT load in one
         thread and destructive DDL (DROP TABLE, CREATE TABLE) in another.
-        '''
+        """
 
         # These errors are expected to happen, ignore them
         self.ignore_log_patterns.extend([
@@ -204,20 +209,20 @@ class LwtDestructiveDDLTest(Tester):
         drop_test_table_stmt = session.prepare('DROP TABLE IF EXISTS test')
 
         def drop_create_table_fn(session):
-            '''DROP + CREATE TABLE'''
+            """DROP + CREATE TABLE"""
             session.execute(drop_test_table_stmt)
             session.execute(create_test_table_stmt)
 
         self._case_template(session, drop_create_table_fn)
 
-    def test_drop_keyspace(self):
-        '''
+    def test_drop_keyspace(self, fixture_dtest_setup):
+        """
         Tests that Scylla doesn't crash when there is concurrent LWT load in one
         thread and destructive DDL (DROP KEYSPACE, CREATE KEYSPACE + TABLE) in another.
-        '''
+        """
 
         # These errors are expected to happen, ignore them
-        self.ignore_log_patterns.extend([
+        fixture_dtest_setup.ignore_log_patterns.extend([
             "Can't find a column family",
             "exception during mutation write",
             "Can't find a keyspace"
@@ -232,55 +237,55 @@ class LwtDestructiveDDLTest(Tester):
         drop_test_ks_stmt = session.prepare('DROP KEYSPACE IF EXISTS ks')
 
         def drop_create_ks_fn(session):
-            '''DROP + CREATE KEYSPACE/TABLE'''
+            """DROP + CREATE KEYSPACE/TABLE"""
             session.execute(drop_test_ks_stmt)
-            self.create_ks(session, 'ks', 3)
+            create_ks(session, 'ks', 3)
             session.execute(create_test_table_stmt)
 
         self._case_template(session, drop_create_ks_fn)
 
     def test_rename_column(self):
-        '''
+        """
         Tests that Scylla doesn't crash when there is concurrent LWT load in one
         thread and destructive DDL (rename column participating in lwt statements) in another.
 
         Note that only columns that are part of primary key (partitioning and clustering key columns)
         can be renamed. The same restriction also applies to cassandra.
-        '''
+        """
 
         session = self.prepare()
         alter_column_stmt = session.prepare('ALTER TABLE test RENAME pk TO pk1')
-        revert_alter_colunm_stmt = session.prepare('ALTER TABLE test RENAME pk1 TO pk')
+        revert_alter_column_stmt = session.prepare('ALTER TABLE test RENAME pk1 TO pk')
 
         def rename_column_fn(session):
-            '''RENAME COLUMN TO'''
+            """RENAME COLUMN TO"""
             session.execute(alter_column_stmt)
-            session.execute(revert_alter_colunm_stmt)
+            session.execute(revert_alter_column_stmt)
 
         self._case_template(session, rename_column_fn)
 
     def test_drop_column(self):
-        '''
+        """
         Tests that Scylla doesn't crash when there is concurrent LWT load in one
         thread and destructive DDL (drop and recreate column participating in lwt statements) in another.
-        '''
+        """
 
         session = self.prepare()
         alter_column_stmt = session.prepare('ALTER TABLE test DROP v')
-        revert_alter_colunm_stmt = session.prepare('ALTER TABLE test ADD v int')
+        revert_alter_column_stmt = session.prepare('ALTER TABLE test ADD v int')
 
         def drop_create_column_fn(session):
-            '''DROP + CREATE COLUMN'''
+            """DROP + CREATE COLUMN"""
             session.execute(alter_column_stmt)
-            session.execute(revert_alter_colunm_stmt)
+            session.execute(revert_alter_column_stmt)
 
         self._case_template(session, drop_create_column_fn)
 
     def test_ks_netw_topology_set_nonexistent_dc(self):
-        '''
+        """
         Tests that Scylla doesn't crash when there is concurrent LWT load in one
         thread and destructive DDL (drop and recreate column participating in lwt statements) in another.
-        '''
+        """
 
         session = self.prepare({'dc1': 3})
         set_nonexistent_dc_stmt = session.prepare('''
@@ -291,17 +296,17 @@ class LwtDestructiveDDLTest(Tester):
             WITH replication={'class': 'NetworkTopologyStrategy', 'dc1': '3'}''')
 
         def set_nonexistent_dc_fn(session):
-            '''ALTER KEYSPACE WITH replication={nonexistent-dc}'''
+            """ALTER KEYSPACE WITH replication={nonexistent-dc}"""
             session.execute(set_nonexistent_dc_stmt)
             session.execute(revert_set_nonexistent_dc_stmt)
 
         self._case_template(session, set_nonexistent_dc_fn, tolerate_unavailable=True)
 
     def test_revoke_permissions(self):
-        '''
+        """
         Tests that Scylla doesn't crash when there is concurrent LWT load in one
         thread and destructive DDL (revoke and grant modify permissions on the test table) in another.
-        '''
+        """
 
         session = self.prepare(setup_auth=True)
 
@@ -321,7 +326,7 @@ class LwtDestructiveDDLTest(Tester):
         grant_permissions_stmt = session.prepare(f'GRANT ALL ON TABLE test TO {lwt_user}')
 
         def revoke_permissions_fn(session):
-            '''REVOKE + GRANT PERMISSION ON TABLE'''
+            """REVOKE + GRANT PERMISSION ON TABLE"""
             session.execute(revoke_permissions_stmt)
             session.execute(grant_permissions_stmt)
 

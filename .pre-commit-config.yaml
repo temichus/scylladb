@@ -72,6 +72,7 @@ repos:
                 thrift_tests.py|
                 lwt_test.py|
                 lwt_random_test.py|
+                lwt_destructive_ddl_test.py|
                 auth_test.py|
                 paging_test.py|
                 snapshot_test|
