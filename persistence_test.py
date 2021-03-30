@@ -1,13 +1,17 @@
+import logging
+import pytest
+
 import time
 
-from nose.plugins.attrib import attr
+from dtest_class import Tester
+from tools.data import print_table
 
-from dtest import Tester, debug, info
-from scylla_tools import print_table
+logger = logging.getLogger(__name__)
 
 
-@attr('dtest-full', 'single_node')
-class PersistenceTest(Tester):
+@pytest.mark.dtest_full
+@pytest.mark.single_node
+class TestPersistence(Tester):
     """
     Insert data into clusters, then restart them and verify if data persisted.
     """
@@ -40,8 +44,8 @@ class PersistenceTest(Tester):
                      "-schema", "replication(factor=1)", "-col", "n=fixed(1)",
                      "size=fixed(%s)" % size, "-rate", "threads=1"])
 
-    @attr('next-gating')
-    @attr('dtest-debug')
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
     def test_persist_simple(self):
         """
         1) Create a 1 node cluster.
@@ -61,7 +65,10 @@ class PersistenceTest(Tester):
         self.restart_cluster()
         session2 = self.prepare()
         res_after_restart = list(session2.execute("SELECT * FROM ks.cf"))
-        self.assertEqual(res_before_restart, res_after_restart)
+
+        msg_error = f"The data before restart ('{res_before_restart}') should be equal to data after restart ('" \
+                    f"{res_after_restart}')"
+        assert res_before_restart == res_after_restart, msg_error
 
     def test_persist_small_columns(self):
         """
@@ -93,32 +100,32 @@ class PersistenceTest(Tester):
         keyspace_cmd = "CREATE KEYSPACE %s WITH replication = {'class': 'SimpleStrategy', 'replication_factor': " \
                        "'1'}  AND durable_writes = true;" % keyspace_name
         new_table_cmd = f"CREATE TABLE {table_name} ( user_id text PRIMARY KEY, clients_usage map<text, text>, " \
-            f"last_seen timestamp );"
+                        f"last_seen timestamp );"
         add_new_row_cmd = "Insert into {} (user_id, clients_usage) values ('{}', {});"
         show_table_cmd = f"Select * from {table_name};"
 
-        debug("Opening CQL session")
+        logger.debug("Opening CQL session")
         session = self.prepare()
-        debug(f"Creating new table '{table_name}'")
+        logger.debug(f"Creating new table '{table_name}'")
         session.execute(keyspace_cmd)
         session.execute(new_table_cmd)
         session.execute(add_new_row_cmd.format(table_name, "Piotr", {'': '2019-05-05T04:14:16.954407'}))
-        info(f"Showing table '{table_name}' data")
+        logger.info(f"Showing table '{table_name}' data")
         table_before_reboot = session.execute(show_table_cmd)
         row_before_reboot = table_before_reboot.current_rows[0]
         print_table(table=table_before_reboot)
         node = self.cluster.nodelist()[0]
-        debug("Executing flush")
+        logger.debug("Executing flush")
         node.flush()
-        debug("Executing compact")
+        logger.debug("Executing compact")
         node.compact()
-        debug("Rebooting the cluster")
+        logger.debug("Rebooting the cluster")
         self.restart_cluster()
-        debug("Opening CQL session after rebooting")
+        logger.debug("Opening CQL session after rebooting")
         session = self.prepare()
         table_after_reboot = session.execute(show_table_cmd)
         row_after_reboot = table_after_reboot.current_rows[0]
         print_table(table=table_after_reboot)
         msg_error = f"The data before reboot ('{row_before_reboot}') should be equal to data after reboot ('" \
-            f"{row_after_reboot}')"
-        self.assertEqual(first=row_before_reboot, second=row_after_reboot, msg=msg_error)
+                    f"{row_after_reboot}')"
+        assert row_before_reboot == row_after_reboot, msg_error

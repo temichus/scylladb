@@ -1,4 +1,5 @@
 import datetime
+import tabulate
 import time
 import logging
 from concurrent.futures.thread import ThreadPoolExecutor
@@ -380,3 +381,9 @@ def check_c1c2_result_one(success, rows, tolerate_missing, must_be_missing, c1_v
 
     if must_be_missing:
         assert len(rows) == 0, f"Number of rows {len(rows)}"
+
+
+def print_table(table):
+    logger.debug(tabulate.tabulate(tabular_data=[
+        [str(getattr(row, column_name)) for column_name in table.column_names]
+        for row in table.current_rows], headers=table.column_names))
