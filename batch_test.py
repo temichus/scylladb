@@ -530,7 +530,7 @@ class TestBatch(Tester):
         node.nodetool('upgradesstables -a')
 
     def _base_batchlog_manager_issue(self, rack_names):
-        if not hasattr(self, 'cluster') or not self.cluster:
+        if not hasattr(self, 'cluster') or not getattr(self, 'cluster'):
             self.cluster = self.get_cluster(version=self.cassandra_version)
         cluster = self.cluster
         cluster.populate([4])
