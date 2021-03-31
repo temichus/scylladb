@@ -1,24 +1,27 @@
-# coding: utf-8
-
 import re
-import tools
+import pytest
+import logging
 
-from cql_tests import CQLTester
-from dtest import debug
+from tools.metrics import prometheus_get
+from dtest_class import Tester, get_ip_from_node, create_ks
+from tools.data import create_c1c2_table, insert_c1c2
 
-from nose.plugins.attrib import attr
+
+logger = logging.getLogger(__name__)
 
 
-@attr('dtest-full', 'single_node')
-class DatabaseMetricsTester(CQLTester):
+@pytest.mark.dtest_full
+@pytest.mark.single_node
+class TestDatabaseMetrics(Tester):
     """
         Collection of tests related to database metrics stored on Prometheus.
-        """
+    """
 
-    def get_metrics(self, node_ip, metrics, port='9180', metric_class=None):
+    @staticmethod
+    def get_metrics(node_ip, metrics, port='9180', metric_class=None):
         metrics_res = {}
         metric_pattern = re.compile('.*{')
-        prometheus_results = self._prometheus_get(node_ip, port).splitlines()
+        prometheus_results = prometheus_get(node_ip, port).splitlines()
         for metric in prometheus_results:
             for metric_name in metrics:
                 if metric_pattern.match(metric) and re.search(f'{metric_name}{{', metric):
@@ -28,27 +31,29 @@ class DatabaseMetricsTester(CQLTester):
                     metrics_res[name] = val
         return metrics_res
 
-    def total_reads_user_test(self):
+    def test_total_reads_user(self):
         """
         Following scylladb/scylla:0c6bbc8 queries are now classified by its initiator, so here is a small test that aims
         to ensure that when a user runs queries, they will be marked as user initiated (here we are checking
         `scylla_database_total_reads` metric (under class="user")
         """
-        session = self.prepare(create_keyspace=False)
+        self.cluster.populate(1).start(wait_for_binary_proto=True)
         node = self.cluster.nodelist()[0]
+        session = self.patient_cql_connection(node)
+
         metrics = ['scylla_database_total_reads']
         metric_class = 'user'
         keyspace_name = 'database_metrics'
 
-        initial_reads = self.get_metrics(self.get_ip_from_node(node), metrics=metrics, metric_class=metric_class)
+        initial_reads = self.get_metrics(get_ip_from_node(node), metrics=metrics, metric_class=metric_class)
 
-        self.create_ks(session=session, name=keyspace_name, rf=1)
-        tools.create_c1c2_table(self, session)
-        tools.insert_c1c2(session, n=100)
+        create_ks(session=session, name=keyspace_name, rf=1)
+        create_c1c2_table(session=session)
+        insert_c1c2(session=session, ks=keyspace_name, n=100)
         res = session.execute('SELECT * FROM cf LIMIT 20')
-        debug(res)
+        logger.debug(res)
 
-        final_reads = self.get_metrics(self.get_ip_from_node(node), metrics=metrics, metric_class=metric_class)
+        final_reads = self.get_metrics(get_ip_from_node(node), metrics=metrics, metric_class=metric_class)
 
         for metric_name in list(initial_reads.keys()):
             assert final_reads[metric_name] > initial_reads[metric_name],\
