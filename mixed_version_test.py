@@ -1,76 +1,67 @@
-from cassandra import ConsistencyLevel, ReadTimeout, OperationTimedOut
+import logging
+
 from cassandra.query import SimpleStatement
-
-from tools import since
-from dtest import Tester, debug
+from cassandra.cluster import ConsistencyLevel
 
 
-class TestSchemaChanges(Tester):
+from ccmlib.scylla_cluster import ScyllaNode
 
-    @since('2.0')
-    def test_friendly_unrecognized_table_handling(self):
+from upgrade_test import UpgradeTester
+from tools.assertions import assert_all, assert_row_count, assert_one
+
+logger = logging.getLogger(__name__)
+
+
+class TestSchemaChanges(UpgradeTester):
+
+    __test__ = True
+
+    upgrade_path = ['release:4.3']
+    init_version = upgrade_path[0]
+    ks = "test_upgrades"
+    cf = "cf"
+
+    def test_schema_and_data_on_mixed_versions_cluster(self, dtest_config):
         """
         After upgrading one of two nodes, create a new table (which will
-        not be propagated to the old node) and check that queries against
-        that table result in user-friendly warning logs.
+        be propagated to the old node) and check that queries against
+        that table return correct results.
         """
-        cluster = self.cluster
-        cluster.populate(2)
-        cluster.start()
 
-        node1, node2 = cluster.nodelist()
-        original_version = node1.get_cassandra_version()
-        if original_version.startswith('2.0'):
-            upgraded_version = 'git:cassandra-2.1'
-        elif original_version.startswith('2.1'):
-            upgraded_version = 'git:cassandra-2.2'
-        else:
-            self.skip("This test is only designed to work with 2.0 and 2.1 right now")
+        self.clone_upgrade_path(dtest_config)
+        self.init_cluster(nodes=2)
 
-        # start out with a major behind the previous version
+        node_for_upgrade = self.cluster.nodelist()[0]
+        version = self.current_upgrade_path[0]
+        logger.info(f"****** START UPGRADE TEST FROM {node_for_upgrade.node_scylla_version} TO {version} ******")
+        logger.info(
+            f"Upgrade {node_for_upgrade.name} node to from '{node_for_upgrade.node_scylla_version}' to '{version}' version")
+        node_for_upgrade.upgrade(upgrade_to_version=version)
+        logger.info(f"****** FINISHED UPGRADE TO {version}******")
 
-        # upgrade node1
-        node1.stop()
-        node1.set_install_dir(version=upgraded_version)
-        debug("Set new cassandra dir for %s: %s" % (node1.name, node1.get_install_dir()))
+        node1: ScyllaNode = self.cluster.nodelist()[0]
+        node2: ScyllaNode = self.cluster.nodelist()[1]
+        assert node1.get_node_scylla_version() != node2.get_node_scylla_version(
+        ), f"Nodes have same version {node2.get_node_scylla_version()}"
 
-        node1.set_log_level("INFO")
-        node1.start()
+        with self.patient_exclusive_cql_connection(node1) as session:
+            logger.debug("Creating keyspace and table on upgraded node")
+            session.execute(
+                f"CREATE KEYSPACE {self.ks} WITH replication={{'class': 'SimpleStrategy', 'replication_factor': '2'}}")
+            session.execute(f"CREATE TABLE {self.ks}.{self.cf} (a int primary key, b int)")
+            logger.debug("Insert 200 rows on upgraded node")
+            expected = []
+            for i in range(200):
+                session.execute(SimpleStatement(
+                    f"INSERT INTO {self.ks}.{self.cf} (a, b) VALUES ({i}, {i+1})", consistency_level=ConsistencyLevel.ALL))
+                expected.append([i, i + 1])
 
-        session = self.patient_exclusive_cql_connection(node1)
-        session.cluster.max_schema_agreement_wait = -1  # don't wait for schema agreement
+        logger.info("Check data on not upgraded node")
+        with self.patient_exclusive_cql_connection(node2) as session:
+            assert_row_count(session, f"{self.ks}.{self.cf}", len(expected), consistency_level=ConsistencyLevel.ALL)
+            assert_all(session, f"SELECT * FROM {self.ks}.{self.cf}",
+                       expected, cl=ConsistencyLevel.ALL, ignore_order=True)
 
-        debug("Creating keyspace and table")
-        session.execute(
-            "CREATE KEYSPACE test_upgrades WITH replication={'class': 'SimpleStrategy', 'replication_factor': '2'}")
-        session.execute("CREATE TABLE test_upgrades.foo (a int primary key, b int)")
-
-        pattern = r".*Got .* command for nonexistent table test_upgrades.foo.*"
-
-        try:
-            session.execute(SimpleStatement("SELECT * FROM test_upgrades.foo", consistency_level=ConsistencyLevel.ALL))
-            self.fail("expected failure")
-        except (ReadTimeout, OperationTimedOut):
-            debug("Checking node2 for warning in log")
-            node2.watch_log_for(pattern, timeout=10)
-
-        # non-paged range slice
-        try:
-            session.execute(SimpleStatement("SELECT * FROM test_upgrades.foo",
-                                            consistency_level=ConsistencyLevel.ALL, fetch_size=None))
-            self.fail("expected failure")
-        except (ReadTimeout, OperationTimedOut):
-            debug("Checking node2 for warning in log")
-            pattern = r".*Got .* command for nonexistent table test_upgrades.foo.*"
-            node2.watch_log_for(pattern, timeout=10)
-
-        # single-partition slice
-        try:
-            for i in range(20):
-                session.execute(SimpleStatement("SELECT * FROM test_upgrades.foo WHERE a = %d" % (i,),
-                                                consistency_level=ConsistencyLevel.ALL, fetch_size=None))
-            self.fail("expected failure")
-        except (ReadTimeout, OperationTimedOut):
-            debug("Checking node2 for warning in log")
-            pattern = r".*Got .* command for nonexistent table test_upgrades.foo.*"
-            node2.watch_log_for(pattern, timeout=10)
+            for i in range(200):
+                assert_one(session, f"SELECT * FROM {self.ks}.{self.cf} WHERE a = {i}",
+                           [i, i + 1], cl=ConsistencyLevel.ALL)

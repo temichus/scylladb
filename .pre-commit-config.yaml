@@ -108,6 +108,7 @@ repos:
                 simple_cluster_driver_test.py|
                 incremental_repair_test.py|
                 simple_boot_shutdown_test.py|
+                mixed_version_test.py|
                 alternator_tests.py|
                 wide_rows_test.py|
                 batch_test.py|
