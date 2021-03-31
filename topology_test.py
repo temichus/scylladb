@@ -1,23 +1,25 @@
-from dtest import Tester
-from nose.plugins.attrib import attr
-from unittest import skip
-from tools import insert_c1c2, query_c1c2, no_vnodes, debug
-from assertions import assert_almost_equal
-
+import logging
+import pytest
 import re
 import time
+
+from dtest_class import Tester
+from tools.data import insert_c1c2, query_c1c2
+from tools.assertions import assert_almost_equal
+
 from ccmlib.node import NodetoolError
-from ccmlib.node import TimeoutError
-from ccmlib.node import NodeError
 from cassandra import ConsistencyLevel
 from threading import Thread
 
 
-@attr('dtest-full')
+logger = logging.getLogger(__name__)
+
+
+@pytest.mark.dtest_full
 class TestTopology(Tester):
 
-    @skip("Scylla doesn't support SizeEstimatesRecorder")
-    def do_not_join_ring_test(self):
+    @pytest.mark.skip("Scylla doesn't support SizeEstimatesRecorder")
+    def test_do_not_join_ring(self):
         """
         @jira_ticket CASSANDRA-9034
         Check that AssertionError is not thrown on SizeEstimatesRecorder before node joins ring
@@ -33,8 +35,8 @@ class TestTopology(Tester):
 
         node1.stop(gently=False)
 
-    @skip("Scylla doesn't support SizeEstimatesRecorder")
-    def simple_decommission_test(self):
+    @pytest.mark.skip("Scylla doesn't support SizeEstimatesRecorder")
+    def test_simple_decommission(self):
         """
         @jira_ticket CASSANDRA-9912
         Check that AssertionError is not thrown on SizeEstimatesRecorder after node is decommissioned
@@ -53,8 +55,8 @@ class TestTopology(Tester):
 
         time.sleep(10)
 
-    @no_vnodes()
-    def movement_test(self):
+    @pytest.mark.no_vnodes
+    def test_movement(self):
         cluster = self.cluster
 
         # Create an unbalanced ring
@@ -90,8 +92,8 @@ class TestTopology(Tester):
         assert_almost_equal(sizes[0], sizes[2])
         assert_almost_equal(sizes[1], sizes[2])
 
-    @no_vnodes()
-    def decommission_test(self):
+    @pytest.mark.no_vnodes
+    def test_decommission(self):
         cluster = self.cluster
 
         tokens = cluster.balanced_tokens(4)
@@ -125,13 +127,13 @@ class TestTopology(Tester):
         assert_almost_equal((2.0 / 3.0) * sizes[0], sizes[2])
         assert_almost_equal(sizes[2], init_size)
 
-    @no_vnodes()
-    @attr('single_node')
-    def move_single_node_test(self):
+    @pytest.mark.no_vnodes
+    @pytest.mark.single_node
+    def test_move_single_node(self):
         """ Test moving a node in a single-node cluster (#4200) """
         cluster = self.cluster
 
-        debug('Start node1')
+        logger.debug('Start node1')
         # Create an unbalanced ring
         cluster.populate(1, tokens=[0]).start()
         node1 = cluster.nodelist()[0]
@@ -141,28 +143,26 @@ class TestTopology(Tester):
         self.create_ks(session, 'ks', 1)
         self.create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'})
 
-        debug('Insert data into node1')
+        logger.debug('Insert data into node1')
         insert_c1c2(session, n=10000, consistency=ConsistencyLevel.ONE)
 
-        debug('Flush node1')
+        logger.debug('Flush node1')
         cluster.flush()
 
-        debug('Move node1')
+        logger.debug('Move node1')
         node1.move(2**25)
         time.sleep(1)
 
-        debug('Cleanup node1')
+        logger.debug('Cleanup node1')
         cluster.cleanup()
 
-        debug('Query node1')
+        logger.debug('Query node1')
         # Check we can get all the keys
         for n in range(0, 10000):
             query_c1c2(session, n, ConsistencyLevel.ONE)
-        debug('Query node1 done')
+        logger.debug('Query node1 done')
 
-    # Scylla suports this feature
-    # @since('3.0')
-    def decommissioned_node_cant_rejoin_test(self):
+    def test_decommissioned_node_cant_rejoin(self, fixture_dtest_setup):
         '''
         @jira_ticket CASSANDRA-8801
 
@@ -175,34 +175,30 @@ class TestTopology(Tester):
         - asserting that the node is not running.
         '''
         rejoin_err = 'This node was decommissioned and will not rejoin the ring'
-        try:
-            self.ignore_log_patterns = list(self.ignore_log_patterns)
-        except AttributeError:
-            self.ignore_log_patterns = []
-        self.ignore_log_patterns.append(rejoin_err)
+
+        fixture_dtest_setup.allow_log_errors = True
+        fixture_dtest_setup.ignore_log_patterns = (rejoin_err,)
 
         self.cluster.populate(3).start(wait_for_binary_proto=True)
         [node1, node2, node3] = self.cluster.nodelist()
 
-        debug('decommissioning...')
+        logger.debug('decommissioning...')
         node3.decommission()
-        debug('stopping...')
+        logger.debug('stopping...')
         node3.stop()
-        debug('attempting restart...')
+        logger.debug('attempting restart...')
         node3.start(no_wait=True)
 
         node3.watch_log_for(rejoin_err, timeout=60)
-        debug('waiting for node to stop...')
+        logger.debug('waiting for node to stop...')
         start = time.time()
         while node3.is_running() and time.time() - start < 60:
             time.sleep(1)
-        self.assertFalse(node3.is_running())
+        assert not node3.is_running()
 
-    # Scylla suports this
-    # @since('3.0')
-    @attr('next-gating')
-    @attr('dtest-debug')
-    def crash_during_decommission_test(self):
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
+    def test_crash_during_decommission(self):
         """
         If a node crashes whilst another node is being decommissioned,
         upon restarting the crashed node should not have invalid entries
@@ -221,25 +217,25 @@ class TestTopology(Tester):
         while t.is_alive():
             out = self.show_status(node2)
             if null_status_pattern.search(out):
-                debug("Matched null status entry")
+                logger.debug("Matched null status entry")
                 break
-            debug("Restarting node2")
+            logger.debug("Restarting node2")
             node2.stop(gently=False)
             node2.start(wait_for_binary_proto=True, wait_other_notice=False)
 
-        debug("Waiting for decommission to complete")
+        logger.debug("Waiting for decommission to complete")
         t.join()
         self.show_status(node2)
 
-        debug("Sleeping for 30 seconds to allow gossip updates")
+        logger.debug("Sleeping for 30 seconds to allow gossip updates")
         time.sleep(30)
         out = self.show_status(node2)
-        self.assertFalse(null_status_pattern.search(out))
+        assert not null_status_pattern.search(out)
 
     def show_status(self, node):
         out, err = node.nodetool('status')
-        debug("Status as reported by node {}".format(node.address()))
-        debug(out)
+        logger.debug("Status as reported by node {}".format(node.address()))
+        logger.debug(out)
         return out
 
 
@@ -255,8 +251,8 @@ class DecommissionInParallel(Thread):
         try:
             out, err = node.nodetool("decommission")
             node.watch_log_for("DECOMMISSIONED", from_mark=mark)
-            debug(out)
-            debug(err)
+            logger.debug(out)
+            logger.debug(err)
         except NodetoolError as e:
-            debug("Decommission failed with exception: " + str(e))
+            logger.debug("Decommission failed with exception: " + str(e))
             pass
