@@ -2063,7 +2063,6 @@ class TestNodetool(Tester):
 
         self.ignore_log_patterns = expected_errs
 
-    @pytest.mark.require('#8212')
     def test_scrub_ks_sstable_with_invalid_fragment(self):
         """
         Same scenario as scrub_ks_sstable_with_invalid_fragment_test, scrub the whole keyspace.
@@ -2072,9 +2071,9 @@ class TestNodetool(Tester):
         node = cluster[0]
         session = self.patient_cql_connection(node)
         self.create_table(session, {"ks": {"rf": "3", "tables": {
-                          "cf": {"pk": "text", "ck": "int", "s": "int", "v": "int", "key": "pk, ck"},
-                          # "cf2": {"pk": "text", "ck": "int", "s": "int", "v": "int", "key": "pk, ck"}}}})
-                          }}})
+            "cf": {"pk": "text", "ck": "int", "s": "int", "v": "int", "key": "pk, ck"},
+            "cf2": {"pk": "text", "ck": "int", "s": "int", "v": "int", "key": "pk, ck"}
+        }}})
         node.nodetool('flush')
 
         logger.debug('Copying the sstables with invalid fragment to upload directory and Loading by refresh ...')
