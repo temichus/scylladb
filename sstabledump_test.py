@@ -1,15 +1,20 @@
+import logging
 import os
 import tempfile
 import json
 import math
 import uuid
+
+import pytest
 from dateutil.parser import parse
 from decimal import Decimal
 import pprint
-from dtest import Tester, debug
-from nose.plugins.attrib import attr
-from tools import rows_to_list
+
+from dtest_class import Tester
+from tools.data import rows_to_list
 from cqlsh_tests.cqlsh_copy_tests import CqlshPrepare
+
+logger = logging.getLogger(__name__)
 
 
 class SSTableDump(Tester):
@@ -25,7 +30,7 @@ class SSTableDump(Tester):
         return res
 
     def _dump_data(self):
-        debug('Run sstabledump')
+        logger.debug('Run sstabledump')
         self.node.flush()
         json_path = tempfile.mktemp(suffix='.schema.json')
         with open(json_path, 'w') as fdw:
@@ -42,22 +47,24 @@ class SSTableDump(Tester):
         return data_json
 
     def _compare_data(self, src, dst, debug_print=True):
-        debug('Compare data')
+        logger.debug('Compare data')
         if debug_print:
-            debug('----------src----------')
-            debug(src)
-            debug('----------dst----------')
-            debug(dst)
+            logger.debug('----------src----------')
+            logger.debug(src)
+            logger.debug('----------dst----------')
+            logger.debug(dst)
         symmetric_diff = set(src) ^ set(dst)
-        self.assertEquals(len(symmetric_diff), 0)
+        assert len(symmetric_diff) == 0, f"Destination data set is not same as source. " \
+                                         f"Found difference:\n{symmetric_diff} "
 
 
-@attr('dtest-full', 'single_node')
-class SSTableDumpTests(SSTableDump):
+@pytest.mark.dtest_full
+@pytest.mark.single_node
+class TestSSTableDump(SSTableDump):
 
-    @attr('next-gating')
-    @attr('dtest-debug')
-    def sstabledump_basic_test(self):
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
+    def test_sstabledump_basic(self):
         """
         Populate data, run sstabledump, extract data from json
         and compare it with a source
@@ -77,7 +84,7 @@ class SSTableDumpTests(SSTableDump):
             );
         """)
 
-        debug('Insert data')
+        logger.debug('Insert data')
         values_list = [('mary', 1, 12), ('sara', 2, 24), ('mike', 3, 36), ('ted', 4, 48)]
         for values in values_list:
             session.execute("INSERT INTO ks.cf (name, value_one, value_two) VALUES {};".format(values))
@@ -86,9 +93,9 @@ class SSTableDumpTests(SSTableDump):
         json_values = self._fetch_data_from_json(data_json)
         self._compare_data(values_list, json_values)
 
-    @attr('next-gating')
-    @attr('dtest-debug')
-    def sstabledump_counter_basic_test(self):
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
+    def test_sstabledump_counter_basic(self):
         """
         Populate counter data, run sstabledump, extract data from json
         and compare it with a source
@@ -119,7 +126,8 @@ class SSTableDumpTests(SSTableDump):
         json_values = self._fetch_counter_data_from_json(data_json)
         self._compare_data(values_list, json_values)
 
-    def _fetch_counter_data_from_json(self, data):
+    @staticmethod
+    def _fetch_counter_data_from_json(data):
         res = list()
         for section in data:
             key = section['partition']['key'][0]
@@ -130,12 +138,13 @@ class SSTableDumpTests(SSTableDump):
         return res
 
 
-@attr('dtest-full', 'single_node')
-class SSTableDumpAllDatatypes(CqlshPrepare, SSTableDump):
+@pytest.mark.dtest_full
+@pytest.mark.single_node
+class TestSSTableDumpAllDatatypes(CqlshPrepare, SSTableDump):
 
-    @attr('next-gating')
-    @attr('dtest-debug')
-    def sstabledump_all_datatypes_test(self):
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
+    def test_sstabledump_all_datatypes(self):
         cluster = self.cluster
         cluster.populate(1).start()
         self.all_datatypes_prepare(nodes=1)
@@ -152,12 +161,12 @@ class SSTableDumpAllDatatypes(CqlshPrepare, SSTableDump):
         self.session.execute(insert_statement, data)
 
         exp_results = rows_to_list(self.session.execute("SELECT * FROM testdatatype"))
-        debug(exp_results)
+        logger.debug(exp_results)
 
         self.node = self.node1
         data_json = self._dump_data()
         pp = pprint.PrettyPrinter(indent=2)
-        debug(pp.pformat(data_json))
+        logger.debug(pp.pformat(data_json))
 
         json_values = self._fetch_data_from_json(data_json)
         self._compare_data(data, json_values)
@@ -207,18 +216,19 @@ class SSTableDumpAllDatatypes(CqlshPrepare, SSTableDump):
         return res
 
     def _compare_data(self, src, dst, debug_print=True):
-        debug('Compare data')
+        logger.debug('Compare data')
         if debug_print:
-            debug('----------src----------')
-            debug(src)
-            debug('----------dst----------')
-            debug(dst)
+            logger.debug('----------src----------')
+            logger.debug(src)
+            logger.debug('----------dst----------')
+            logger.debug(dst)
 
         # TODO: compare all when it will be readable
         for i in range(0, len(src) - 2):
             if isinstance(dst[i], dict):
-                self.assertEquals(dict(src[i]), dst[i])
+                assert dict(src[i]) == dst[i], f"Destination data: {dst[i]} is not same as source: {dict(src[i])}"
             if isinstance(src[i], str) and isinstance(dst[i], bytes):
-                self.assertEquals(src[i], dst[i].decode('utf-8'))
+                assert src[i] == dst[i].decode('utf-8'), \
+                    f"Destination data: {dst[i].decode('utf-8')} is not same as source: {src[i]}"
             else:
-                self.assertEquals(src[i], dst[i])
+                assert src[i] == dst[i], f"Destination data: {dst[i]} is not same as source: {src[i]}"

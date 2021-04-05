@@ -4,7 +4,6 @@ import random
 import time
 
 import cassandra
-from nose.tools import assert_count_equal
 
 
 class DummyColorMap(object):
@@ -37,7 +36,11 @@ def strip_timezone_if_time_string(s):
 
 def assert_csvs_items_equal(filename1, filename2):
     with open(filename1, 'r') as x, open(filename2, 'r') as y:
-        assert_count_equal(list(x.readlines()), list(y.readlines()))
+        file1_lines_amount = len(list(x.readlines()))
+        file2_lines_amount = len(list(y.readlines()))
+        assert file1_lines_amount == file2_lines_amount, \
+            f"Lines amount in the {filename1} is {file1_lines_amount} and it's not equal to lines amount " \
+            f"in the {filename2} that is {file2_lines_amount}"
 
 
 def random_list(gen=None, n=None):
