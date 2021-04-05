@@ -17,8 +17,8 @@ from dtest_config import DTestConfig
 
 logger = logging.getLogger(__name__)
 
-upgrade_matrix_1 = ['release:4.0', 'release:4.1', 'release:4.2', 'release:4.3', 'release:4.4']
-upgrade_matrix_2 = ['release:4.4']
+upgrade_matrix_1 = ['release:4.0', 'release:4.1', 'release:4.2', 'release:4.3', 'release:4.4', 'release:4.5']
+upgrade_matrix_2 = ['release:4.5']
 
 
 class UpgradeTester(Tester):
