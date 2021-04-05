@@ -4,8 +4,11 @@ import random
 import re
 import time
 import os
+import timeit
 import traceback
 import logging
+from threading import Thread
+
 from pkg_resources import parse_version
 
 from collections import OrderedDict, defaultdict
@@ -23,6 +26,7 @@ from cassandra.cluster import ResultSet, NoHostAvailable
 
 from tools.assertions import assert_all, assert_invalid, assert_none, assert_one, \
     assert_row_count
+from tools.retrying import retrying
 from dtest_class import Tester, create_ks
 from scylla_tools import CassandraCluster, get_rows_set_from_res, wait_for_view
 from thrift_bindings.thrift010.ttypes import CfDef
@@ -6395,6 +6399,57 @@ class TestCQL(Tester):
         except AssertionError as e:
             logger.debug("CQL query validation failed: {} - {}".format(query, e))
             raise e
+
+    @pytest.mark.single_node
+    def test_cql_timeout_non_zero_value(self):
+        """
+        Verifies that a positive, non-zero value for CQL TIMEOUT parameter works.
+        That means getting an expected cassandra read-timeout for a long-duration 'select' query,
+        where the TIMEOUT value is small enough but yet positive.
+        """
+        def run_stress(node):
+            logger.debug('Start stress command')
+            results, errors = node.stress(['write', 'duration=15s', '-mode', 'cql3', 'native', '-rate', 'threads=50', '-pop', 'seq=1..100000000', '-log', 'interval=5'],
+                                          capture_output=True)
+            logger.debug('Stress results:\n' + ''.join(results + errors))
+
+        cluster = self.cluster
+        cluster.populate(1).start()
+        node1 = cluster.nodelist()[0]
+
+        # Start stress in thread
+        stress_run_th = Thread(target=run_stress, args=(node1, ))
+        stress_run_th.start()
+
+        timeout_duration_ms = 10
+        cql_timeout_duration_param = f'{timeout_duration_ms}ms'
+        timeout_msg = "Coordinator node timed out waiting for replica nodes"
+        session = self.patient_cql_connection(node1)
+        # The below query is expected to take longer that 10 millisecond.
+        # that is why using a timeout of only 10 millisecond is expected to fail.
+
+        def full_scan():
+            session.execute('SELECT * FROM keyspace1.standard1 BYPASS CACHE;')
+
+        @retrying(num_attempts=8, sleep_time=2, allowed_exceptions=(AssertionError, InvalidRequest))
+        def verify_full_scan_minimal_duration():
+            full_scan_duration = timeit.timeit(full_scan, number=1)
+            logger.debug(f"Full-scan duration is: {full_scan_duration}")
+            assert full_scan_duration > timeout_duration_ms / 1000, \
+                f"The full-scan 'select' command took unexpectedly shorter time than {cql_timeout_duration_param}"
+
+        verify_full_scan_minimal_duration()
+
+        @retrying(num_attempts=8, sleep_time=2, allowed_exceptions=(AssertionError, ))
+        def verify_full_scan_timeout_failure():
+            with pytest.raises(ReadTimeout, match=timeout_msg):
+                execution_start = time.time()
+                session.execute(
+                    f'SELECT * FROM keyspace1.standard1 BYPASS CACHE USING TIMEOUT {cql_timeout_duration_param};')
+                execution_duration = time.time() - execution_start
+                logger.debug(f"Full-scan duration is: {execution_duration}")
+        verify_full_scan_timeout_failure()
+        stress_run_th.join()
 
     def range_tombstones_test(self):
         """ Test deletion by 'composite prefix' (range tombstones) """
