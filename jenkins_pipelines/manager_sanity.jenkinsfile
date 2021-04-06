@@ -112,12 +112,13 @@ pipeline {
                 docker run -v `pwd`/minio_data:/data -w /data busybox sh -c "find . -user root -name '*' | xargs chmod ugo+rw"
                 rm -rf ./minio_data
             """
+            // Todo: see if you can create multiple 'always' stages, independent of one another.
+            archiveArtifacts artifacts: 'scylla-dtest/logs/**', fingerprint: true
 
             // fix the format of reporting
             sh "sed -i 's/skip=/skipped=/' \$(pwd)/scylla-dtest/tmp_dtest_run/results.xml"
 
             archiveArtifacts artifacts: '**/results.xml', fingerprint: true
-            archiveArtifacts artifacts: 'scylla-dtest/logs/**', fingerprint: true
 
             xunit thresholds: [failed(unstableThreshold: '1'), skipped()],
                   tools: [JUnit(pattern: '**/results.xml')]
