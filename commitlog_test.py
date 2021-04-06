@@ -48,7 +48,9 @@ class TestCommitLog(Tester):
         # so this changes them back so we can delete them.
         self._change_commitlog_perms(stat.S_IWRITE | stat.S_IREAD | stat.S_IEXEC)
 
-    def prepare(self, configuration={}, create_test_keyspace=True, **kwargs):
+    def prepare(self, configuration=None, create_test_keyspace=True, **kwargs):
+        if configuration is None:
+            configuration = {}
         conf = {'commitlog_sync_period_in_ms': 1000}
 
         conf.update(configuration)
@@ -363,9 +365,10 @@ class TestCommitLog(Tester):
         self.prepare()
 
         self._provoke_commitlog_failure()
+        self.expected_log_message = "storage_service - Shutting down communications due to I/O errors until operator intervention"
         failure = self.node1.grep_log(self.expected_log_message)
         logger.debug(failure)
-        assert failure, "Cannot find the commitlog failure message in logs"
+        assert failure, f"Cannot find the commitlog failure message in logs, searched for {self.expected_log_message}"
         assert self.node1.is_running(), "Node1 should still be running"
 
         # Cannot write anymore after the failure
@@ -843,8 +846,8 @@ class TestCommitLog(Tester):
             # Have enough well-used cases, and not out of space limit
             if len(well_used_cases) > 5:
                 break
-            assert time.time() - start < 200, \
-                "the commitlog space isn't used well in 200 seconds," \
+            assert time.time() - start < 201, \
+                "the commitlog space isn't used well in 201 seconds," \
                 " quit the test to avoid endless loop"
         # set back to default
         node1.set_configuration_options(values={'commitlog_segment_size_in_mb': -1,
@@ -852,9 +855,14 @@ class TestCommitLog(Tester):
                                                 'commitlog_reuse_segments': True})
         node1.stop(gently=False)
         node1.start(no_wait=True)
-        node1.watch_log_for('Starting listening for CQL clients', timeout=30)
+        timeout = 30
+        started_line = 'Starting listening for CQL clients'
+        node1.watch_log_for(started_line, timeout=timeout)
+        listening_started = node1.grep_log(started_line)
+        if not listening_started:
+            pytest.fail(f"Failure:node1 not listening to clients, timeout={timeout}, not found:{started_line}")
         session = self.patient_cql_connection(node1)
-        assert_row_count_in_select_less(session=session, table_name='ks.cf', expected=total_size)
+        assert_row_count_in_select_less(session=session, table_name='ks.cf', max_rows_expected=total_size)
 
         logger.debug('Test with more data after rollback to default config')
         insert_c1c2(session, n=int(total_size * 1.5))
@@ -899,7 +907,7 @@ class TestCommitLog(Tester):
         def exec_cmd(cmd):
             proc = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE)
             out, err = proc.communicate()
-            assert proc.returncode == 0, err
+            assert proc.returncode == 0, f"Failed executing: cmd={cmd} \n out={out} \n err={err}"
             return out
 
         logger.debug("Mount commitlog directory to a size limited device")
