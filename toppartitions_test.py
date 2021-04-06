@@ -38,7 +38,7 @@ class TestTopPartitions(Tester):
         node = self.cluster.nodelist()[0]
         session = self.patient_cql_connection(node)
         create_ks(session, ks, 1)
-        create_c1c2_table(self, session, cf)
+        create_c1c2_table(session, cf)
         return node, session
 
     def prepare_cluster_with_ks_cf_complex_primary_key(self, ks, cf):
