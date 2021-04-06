@@ -79,11 +79,12 @@ class TestWideRows(Tester):
                                 marked_logs_dict={},
                                 expect_warning=False)
 
-    def create_large_partition_table(self, session, table_name):
+    def create_large_partition_table(self, session, table_name, with_static_column: bool = False):
         logger.debug('Create table {} with large partition'.format(table_name))
-        create_table_query = 'CREATE TABLE IF NOT EXISTS %s (userid text, event text, value blob, ' \
-                             'PRIMARY KEY (userid, event)) with compression = { } and %s' % (table_name,
-                                                                                             self.compaction_option)
+        create_table_query = f'CREATE TABLE IF NOT EXISTS {table_name} (userid text, event text, value blob, '
+        if with_static_column:
+            create_table_query += 'static_value text static, '
+        create_table_query += f'PRIMARY KEY (userid, event)) with compression = {{ }} and {self.compaction_option}'
         session.execute(create_table_query)
 
     def create_large_partition_data(self, session, table_name, partition_rows, partitions_num, one_blob_size,
@@ -113,12 +114,29 @@ class TestWideRows(Tester):
                                                                                              self.compaction_option)
         session.execute(create_table_query)
 
+    @staticmethod
+    def create_large_row_static_data(session, table_name, rows_num):
+        """
+        This will generate varied MB-size data and insert it to requested number of rows.
+        The size ranges from 1mb to 10mb since it assumed to be a threshold to trigger large partition detector.
+        """
+        large_data_1_mb = 'x' * 1024 * 1024
+        date = datetime.datetime.now()
+        logger.debug(f'Prefill table {table_name} with {rows_num} rows')
+        for index in range(1, rows_num+1):
+            userid = f'user{index}'
+            event = (date + datetime.timedelta(index)).strftime("%Y-%m-%d")
+            # Default large data threshold for cells is 1 mb, for rows it is 10 mb.
+            large_data = large_data_1_mb * random.choice(range(1, 11))
+            query = f"INSERT INTO {table_name} (userid, event, static_value) VALUES ('{userid}', '{event}', '{large_data}')"
+            session.execute(query)
+
     def create_large_row_data(self, session, table_name, rows_num, columns_num, one_blob_size, start_row_index):
         expected_rows = {}
         expected_row_size = columns_num * one_blob_size  # approximately row size
 
         date = datetime.datetime.now()
-        logger.debug('Prefill table {} with {} rows'.format(table_name, rows_num))
+        logger.debug(f'Prefill table {table_name} with {rows_num} rows')
         for k in range(start_row_index, start_row_index + rows_num):
             user = 'user%d' % k
             value = 'a' * int(one_blob_size)
@@ -435,6 +453,33 @@ class TestWideRows(Tester):
                                                                    name2="val" + values2fetch[1],
                                                                    name3="val" + values2fetch[2])))
             assert len(rows) == expected_rows, f"expects {expected_rows}, actual len(rows)={len(rows)}"
+
+    def test_large_row_with_static_cell(self):
+        """
+        https://github.com/scylladb/scylla/issues/6780
+        1. Create table with large rows by inserting data to static cell.
+        2. Flush multiple sstables ( + one node down )
+        3. run a major compaction on nodes.
+        """
+
+        session = self.prepare_cluster(nodes=4, rf=3,
+                                       options_dict={'compaction_large_partition_warning_threshold_mb': 1})
+        node2 = self.cluster.nodelist()[1]
+        logger.debug(f'Stop {node2.name}')
+        node2.stop(wait_other_notice=True)
+
+        self.create_large_partition_table(session=session, table_name=self.TABLE_NAME, with_static_column=True)
+        logger.debug('Create large rows with static cell content and flush multiple times')
+        for _ in range(10):
+            self.create_large_row_static_data(session=session,
+                                              table_name=self.TABLE_NAME,
+                                              rows_num=10)
+            self.cluster.flush()
+        logger.debug(f'Start and repair {node2.name}')
+        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+        node2.repair()
+        logger.debug('Run compaction')
+        self.cluster.compact()
 
     def test_large_partition_detector_with_node_stop(self):
         """
