@@ -806,8 +806,9 @@ class TestCommitLog(Tester):
             raise Exception('Failed to get the valid free memory size')
 
         if commitlog_total_space_in_mb == -1:
-            commitlog_segment_size_in_mb = int(get_free_memory_size() / 6)
-            logger.debug(commitlog_segment_size_in_mb)
+            commitlog_segment_size_in_mb = min(int(get_free_memory_size() / 6), 10240)
+        logger.debug(f"commitlog_segment_size_in_mb={commitlog_segment_size_in_mb}")
+        logger.debug(f"commitlog_total_space_in_mb={commitlog_total_space_in_mb}")
 
         # With the following config, scylla will use the same size as free memory for commitlog
         # Set single commitlog file to 1G, then it's easy to reach the limit
@@ -821,7 +822,7 @@ class TestCommitLog(Tester):
 
         logger.debug(f'Commitlog size before start: {self._get_commitlog_size()}')
         logger.debug("Start cluster ...")
-        self.cluster.start(no_wait=True)
+        self.cluster.start(no_wait=True, wait_for_binary_proto=False, wait_other_notice=False)
         node1.watch_log_for('Starting listening for CQL clients', timeout=30)
 
         logger.debug("Create test keyspace and table")
@@ -837,7 +838,7 @@ class TestCommitLog(Tester):
             dir_size = self._get_commitlog_size()
             limit_size_in_mb = commitlog_total_space_in_mb
             if commitlog_total_space_in_mb == -1:
-                limit_size_in_mb = get_free_memory_size()
+                limit_size_in_mb = min(get_free_memory_size(), 4095)
             logger.debug(f'Current commitlog size: {dir_size}, limit_size_in_mb: {limit_size_in_mb}, '
                          f'well-used cases: {len(well_used_cases)}')
             assert self._get_commitlog_size() <= limit_size_in_mb * 1.2, 'Out of total space limit'
