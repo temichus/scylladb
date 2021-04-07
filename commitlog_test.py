@@ -905,9 +905,10 @@ class TestCommitLog(Tester):
         tmp_iso = os.path.join(self.node1.get_path(), "tmp_loopdev_for_commitlog.iso")
 
         def exec_cmd(cmd):
-            proc = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE)
+            proc = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             out, err = proc.communicate()
-            assert proc.returncode == 0, f"Failed executing: cmd={cmd} \n out={out} \n err={err}"
+            exit_status = proc.wait()
+            assert exit_status == 0, f"exec_cmd: {cmd} failed: {err}\nOutput:\n{out}"
             return out
 
         logger.debug("Mount commitlog directory to a size limited device")
