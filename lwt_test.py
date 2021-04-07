@@ -52,7 +52,9 @@ class TestLwt(Tester):
         """
         node, session = self.case_prologue(jvm_args=["--smp", "4"])
 
-        name = "scylla_storage_proxy_replica_cross_shard_ops"
+        # leave only the scheduling groups we're interested in to prevent
+        # flaky impact from background compaction
+        name = "scylla_storage_proxy_replica_cross_shard_ops.*(statement|main)"
 
         cql = "insert into t (a, b) values (?, ?) if not exists"
         before = get_node_metrics(get_ip_from_node(node), metrics=[name])
