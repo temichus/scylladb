@@ -34,7 +34,9 @@ class TestCommitLog(Tester):
 
     @pytest.fixture(autouse=True)
     def fixture_add_additional_log_patterns(self, fixture_dtest_setup):
-        fixture_dtest_setup.allow_log_errors = True
+        fixture_dtest_setup.ignore_log_patterns = (
+            'commitlog - Exception in segment reservation: storage_io_error \(Storage I/O error: 13: filesystem error: open failed',
+        )
 
     @pytest.fixture(scope='function', autouse=True)
     def fixture_set_cluster_settings(self, fixture_dtest_setup):
@@ -354,9 +356,6 @@ class TestCommitLog(Tester):
         """ Test a small compressed commitlog_segment_size_in_mb (5MB) """
         # Scylla: Unknown option commitlog_compression
         self._segment_size_test(5, compressed=True)
-
-    expected_log_message = 'commitlog - Exception in segment reservation: storage_io_error \
-    (Storage I/O error: 13: filesystem error: open failed'
 
     @pytest.mark.next_gating
     @pytest.mark.dtest_debug
