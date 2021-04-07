@@ -863,7 +863,7 @@ class TestCommitLog(Tester):
         if not listening_started:
             pytest.fail(f"Failure:node1 not listening to clients, timeout={timeout}, not found:{started_line}")
         session = self.patient_cql_connection(node1)
-        assert_row_count_in_select_less(session=session, table_name='ks.cf', max_rows_expected=total_size)
+        assert_row_count_in_select_less(session=session, query='select * from ks.cf', max_rows_expected=total_size)
 
         logger.debug('Test with more data after rollback to default config')
         insert_c1c2(session, n=int(total_size * 1.5))
