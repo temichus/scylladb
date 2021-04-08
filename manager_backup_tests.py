@@ -1150,6 +1150,7 @@ class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
         assert misplaced_files, f"backup files command of the snapshot tag {primary_backup_task_snapshot_tag} " \
                                 f"contains unrelated files: {misplaced_files}"
 
+    @attr('scylla-manager')
     def test_agent_check_location(self):
         correct_config_file_path = os.path.join(self.cluster.get_path(), "node1/conf/scylla-manager-agent.yaml")
         wrong_config_file_location = os.path.join(self.cluster._scylla_manager._get_path(), "TEMP_CONFIG.yaml")
