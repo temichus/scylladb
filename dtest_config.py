@@ -17,6 +17,7 @@ class DTestConfig:
         self.cassandra_dir = None
         self.cassandra_version = None
         self.scylla_version = None
+        self.manager_package = None
         self.scylla_mode = None
         self.cassandra_version_from_build = None
         self.scylla_full_version = None
@@ -38,6 +39,7 @@ class DTestConfig:
             self.cassandra_dir = os.path.expanduser(request.config.getoption("--cassandra-dir"))
         self.cassandra_version = request.config.getoption("--cassandra-version")
         self.scylla_version = request.config.getoption("--scylla-version")
+        self.manager_package = request.config.getoption("--scylla-manager-package")
         self.cassandra_version_from_build = self.get_version_from_build()
         self.scylla_full_version = self.get_scylla_full_version()
         self.scylla_mode = self.get_scylla_mode()
@@ -58,7 +60,9 @@ class DTestConfig:
             ccm_repo_cache_dir, _ = ccmlib.repository.setup(self.cassandra_version)
             return get_version_from_build(ccm_repo_cache_dir)
         elif self.scylla_version is not None:
-            ccm_repo_cache_dir, _ = ccmlib.scylla_repository.setup(self.scylla_version)
+            if self.manager_package:
+                os.environ['SCYLLA_MANAGER_PACKAGE'] = self.manager_package
+            ccm_repo_cache_dir, _ = ccmlib.scylla_repository.setup(version=self.scylla_version)
             return get_version_from_build(ccm_repo_cache_dir)
         elif self.cassandra_dir is not None:
             return get_version_from_build(self.cassandra_dir)

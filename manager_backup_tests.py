@@ -1,30 +1,21 @@
-# coding: utf-8
-import time
-from datetime import datetime
-import os
-from pprint import pformat
-
-import yaml
-from glob import glob
-import shutil
-from time import sleep
 import re
-
+import os
+import time
+import pytest
+import shutil
+import logging
+from datetime import datetime
+from glob import glob
+from time import sleep
 from pprint import pformat
 
 from cassandra import ConsistencyLevel
-from nose.plugins.attrib import attr
-from boto3 import client as boto_client
-from unittest import skip
+import boto3
 
-from tools import require
-from scrub_test import TestHelper
 from dtest_scylla_manager import ScyllaManagerTool, ScyllaManagerError, TaskStatus, ScyllaManagerMixin
-from scylla_tools import insert_c1c2, insert_c1c2_with_clustering
-from dtest import debug, warning, wait_for
-
-from scylla_tools import insert_c1c2, insert_c1c2_with_clustering, run_in_parallel
-from dtest import debug, warning, wait_for, info
+from tools.data import insert_c1c2, insert_c1c2_with_clustering, run_in_parallel
+from dtest_class import Tester, wait_for, create_ks, create_cf
+from tools.files import get_sstables_files
 
 CLUSTER_NAME = 'cluster1'
 DESTINATION_BUCKET = 'backup-bucket'
@@ -32,21 +23,27 @@ FALSE_BUCKET = 'nonexistent_bucket'
 C1_PREFIX = "value%d"
 C2_PREFIX = "other_value%d"
 
+logger = logging.getLogger(__name__)
 
-class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
-    __test__ = True
 
-    @classmethod
-    def setUpClass(cls):
+@pytest.mark.scylla_manager
+class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
+    @pytest.fixture(scope="class")
+    def boto_client(self):
         minio_full_address = os.getenv("AWS_S3_ENDPOINT")
-        cls.boto_client = boto_client(service_name='s3',
-                                      aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
-                                      aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
-                                      endpoint_url=minio_full_address)
+        client = boto3.client(service_name='s3',
+                              aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+                              aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+                              endpoint_url=minio_full_address)
         try:
-            cls.boto_client.create_bucket(Bucket=DESTINATION_BUCKET)
-        except cls.boto_client.exceptions.BucketAlreadyOwnedByYou:
+            client.create_bucket(Bucket=DESTINATION_BUCKET)
+        except client.exceptions.BucketAlreadyOwnedByYou:
             pass
+        return client
+
+    @pytest.fixture(scope="function", autouse=True)
+    def append_boto3_client(self, boto_client):
+        self.boto_client = boto_client
 
     def _prepare_cluster_with_data(self, keyspace_table_and_key_range, rf=2, number_of_nodes=2):
         node_list = self.config_and_create_cluster(nodes=number_of_nodes)
@@ -82,7 +79,7 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
 
         for keyspace in keyspace_table_and_key_range:
             if keyspace not in keyspace_list:
-                self.create_ks(session=session, name=keyspace, rf=rf)
+                create_ks(session=session, name=keyspace, rf=rf)
             table_list_rows = session.execute(
                 f"SELECT table_name FROM system_schema.tables where keyspace_name='{keyspace}';")
             table_list = [row.table_name for row in table_list_rows]
@@ -93,9 +90,9 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
                         self.create_c1_c2_with_clustering_key(
                             session=session, keyspace_name=keyspace, table_name=table)
                     else:
-                        self.create_cf(session=session, name="{}.{}".format(keyspace, table), read_repair=0.0,
-                                       columns={'c1': 'text', 'c2': 'text'},
-                                       dclocal_read_repair_chance=0.0, speculative_retry='NONE')
+                        create_cf(session=session, name="{}.{}".format(keyspace, table), read_repair=0.0,
+                                  columns={'c1': 'text', 'c2': 'text'},
+                                  dclocal_read_repair_chance=0.0, speculative_retry='NONE')
 
                 if use_clustering_key:
                     insert_c1c2_with_clustering(session=session, clustering_key_values=range(*key_range),
@@ -216,25 +213,23 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
         self.restore_backup_from_backup_task(node_list, mgr_cluster, backup_task, per_keyspace_table_dict)
         healthy_node.stress(['read', f'n={number_of_rows}', '-rate', f'threads={threads}'])
 
-    @attr('scylla-manager')
     def test_basic_backup(self):
         keyspace_table_and_key_range = {"ks": {"cf1": (1, 21)}}
         node1, node2 = self._prepare_cluster_with_data(keyspace_table_and_key_range=keyspace_table_and_key_range)
         mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
 
-        debug("Attempting to create a backup task with a location value, expecting it to success")
+        logger.debug("Attempting to create a backup task with a location value, expecting it to success")
         backup_task = mgr_cluster.run_backup_command(location_list=["s3:{}".format(DESTINATION_BUCKET)],
                                                      keyspace_list=list(keyspace_table_and_key_range.keys()))
         backup_task.wait_for_status(list_status=[TaskStatus.DONE], timeout=1000, step=5)
         self.clean_restore_and_verify_backup(backup_task, self.cluster.nodelist(), mgr_cluster, node1,
                                              keyspace_table_and_key_range)
 
-    @attr('scylla-manager')
     def test_backup_rate_limit_invalid(self):
         node1, node2 = self.config_and_create_cluster(nodes=2)
         mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
 
-        debug("Attempting to create a backup task with an invalid rate limit value, expecting it to fail")
+        logger.debug("Attempting to create a backup task with an invalid rate limit value, expecting it to fail")
         try:
             mgr_cluster.run_backup_command(location_list=["s3:{}".format(DESTINATION_BUCKET)],
                                            rate_limit_list=['a'])
@@ -243,8 +238,7 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
         else:
             assert False, "No error occurred when an invalid rate-limit is used in the sctool backup command"
 
-    @skip("will return when minio bandwidth limiting is on")
-    @attr('scylla-manager')
+    @pytest.mark.skip("will return when minio bandwidth limiting is on")
     def test_backup_start_date(self):
         keyspace_table_and_key_range = {"ks": {"cf1": (1, 21)}}
         node1, node2 = self._prepare_cluster_with_data(keyspace_table_and_key_range=keyspace_table_and_key_range)
@@ -267,7 +261,6 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
         self.clean_restore_and_verify_backup(backup_task, self.cluster.nodelist(), mgr_cluster, node1,
                                              keyspace_table_and_key_range)
 
-    @attr('scylla-manager')
     def test_backup_multiple_keyspaces_and_tables(self):
         keyspace_table_and_key_range = {"ks1": {"cf1": (1, 21),
                                                 "cf2": (1, 21)},
@@ -278,15 +271,14 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
         node1, node2 = self._prepare_cluster_with_data(keyspace_table_and_key_range=keyspace_table_and_key_range)
         mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
 
-        debug("Attempting to create a backup task for a cluster with several keyspaces and column families,"
-              " expecting it to succeed")
+        logger.debug("Attempting to create a backup task for a cluster with several keyspaces and column families,"
+                     " expecting it to succeed")
         backup_task = mgr_cluster.run_backup_command(location_list=["s3:{}".format(DESTINATION_BUCKET)],
                                                      keyspace_list=list(keyspace_table_and_key_range.keys()))
         backup_task.wait_for_status(list_status=[TaskStatus.DONE], timeout=1000, step=5)
         self.clean_restore_and_verify_backup(backup_task, self.cluster.nodelist(), mgr_cluster, node1,
                                              keyspace_table_and_key_range)
 
-    @attr('scylla-manager')
     def test_backup_a_single_keyspace_and_glob_pattern(self):
         keyspace_table_and_key_range = {"ks1": {"cf1": (1, 21),
                                                 "cf2": (1, 21)},
@@ -301,8 +293,8 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
         node1, node2 = self._prepare_cluster_with_data(keyspace_table_and_key_range=keyspace_table_and_key_range)
         mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
 
-        debug("Attempting to create a backup task for a cluster with several keyspaces and column families,"
-              " expecting it to succeed")
+        logger.debug("Attempting to create a backup task for a cluster with several keyspaces and column families,"
+                     " expecting it to succeed")
         backup_task = mgr_cluster.run_backup_command(location_list=["s3:{}".format(DESTINATION_BUCKET)],
                                                      keyspace_list=['ks1', "*_for_glob"])
         backup_task.wait_for_status(list_status=[TaskStatus.DONE], timeout=1000, step=5)
@@ -313,13 +305,13 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
         self.clean_restore_and_verify_backup(backup_task, self.cluster.nodelist(), mgr_cluster, node1,
                                              keyspaces_ranges_to_verify)
 
-    @attr('scylla-manager')
     def test_backup_nonexistent_bucket(self):
         node1, node2 = self._prepare_cluster_with_data(keyspace_table_and_key_range={"ks": {"cf1": (1, 21)}})
 
         mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
 
-        debug("Attempting to create a backup task with a nonexistent bucket in the location value, expecting it to fail")
+        logger.debug("Attempting to create a backup task with a nonexistent bucket in the location value, "
+                     "expecting it to fail")
         try:
             mgr_cluster.run_backup_command(location_list=["s3:{}".format(FALSE_BUCKET)])
         except ScyllaManagerError as err:
@@ -333,8 +325,8 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
 
         mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
 
-        debug("Attempting to create a backup task with a nonexistent keyspace in the keyspace value,"
-              " expecting it to fail")
+        logger.debug("Attempting to create a backup task with a nonexistent keyspace in the keyspace value,"
+                     " expecting it to fail")
         try:
             mgr_cluster.run_backup_command(location_list=["s3:{}".format(DESTINATION_BUCKET)],
                                            keyspace_list=[keyspace_filter_string])
@@ -346,11 +338,9 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
             raise ScyllaManagerError("No error occurred when a non existent keyspace was used in a keyspace flag"
                                      " in a manager backup command")
 
-    @attr('scylla-manager')
     def test_backup_nonexistent_keyspace(self):
         self._backup_nonexistent_keyspace_template("Nonexistent_keyspace")
 
-    @attr('scylla-manager')
     def test_backup_nonexistent_keyspace_glob(self):
         self._backup_nonexistent_keyspace_template("Nonexistent*")
 
@@ -360,8 +350,8 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
 
         mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
 
-        debug("Attempting to create a backup task with a nonexistent keyspace in the keyspace value,"
-              " expecting it to fail")
+        logger.debug("Attempting to create a backup task with a nonexistent keyspace in the keyspace value,"
+                     " expecting it to fail")
         try:
             mgr_cluster.run_backup_command(location_list=["s3:{}".format(DESTINATION_BUCKET)],
                                            dc_list=[dc_filter_string])
@@ -371,15 +361,12 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
             raise ScyllaManagerError("No error occurred when a non existent database was used in a database flag"
                                      " in a manager backup command")
 
-    @attr('scylla-manager')
     def test_backup_nonexistent_datacenter(self):
         self._backup_nonexistent_datacenter_template("nonexistent")
 
-    @attr('scylla-manager')
     def test_backup_nonexistent_datacenter_glob(self):
         self._backup_nonexistent_datacenter_template("nonexistent*")
 
-    @attr('scylla-manager')
     def test_backup_task_progress(self):
         node1, node2 = self.config_and_create_cluster(nodes=2)
 
@@ -417,7 +404,6 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
             snapshot_names = [name for name in snapshot_names if "scheduler_task" not in name]
         return snapshot_names
 
-    @attr('scylla-manager')
     def test_backup_nodetool_snapshots_before_backup(self):
         keyspace_table_and_key_range = {"ks": {"cf1": (1, 21)}}
         node1, node2 = self._prepare_cluster_with_data(keyspace_table_and_key_range=keyspace_table_and_key_range)
@@ -447,8 +433,7 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
         self.clean_restore_and_verify_backup(backup_task, self.cluster.nodelist(), mgr_cluster, node1,
                                              keyspace_table_and_key_range)
 
-    @skip("will return when minio bandwidth limiting is on")
-    @attr('scylla-manager')
+    @pytest.mark.skip("will return when minio bandwidth limiting is on")
     def test_multiple_backups_task_then_restore(self):
         first_keyspace_table_and_key_range = {"ks": {"cf1": (1, 21)}}
         second_keyspace_table_and_key_range = {"ks": {"cf1": (31, 56)}}
@@ -456,7 +441,7 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
         node1, node2 = self._prepare_cluster_with_data(keyspace_table_and_key_range=first_keyspace_table_and_key_range)
         mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
 
-        debug("Attempting to create a backup task with a location value, expecting it to success")
+        logger.debug("Attempting to create a backup task with a location value, expecting it to success")
         backup_task = mgr_cluster.run_backup_command(location_list=["s3:{}".format(DESTINATION_BUCKET)],
                                                      keyspace_list=['ks'])
         backup_task.wait_for_status(list_status=[TaskStatus.DONE], timeout=1000, step=5)
@@ -477,7 +462,6 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
         self.verify_c1c2(second_keyspace_table_and_key_range, node1)
         self.verify_lack_of_keys(third_keyspace_table_and_key_range, node1)
 
-    @attr('scylla-manager')
     def test_shutting_down_node_during_backup(self):
         node1, node2, node3, node4 = self.config_and_create_cluster(nodes=4)
         self.cluster.stress(['write', 'cl=ALL', 'n=5000K', '-rate', 'threads=50', '-schema', 'replication(factor=4)'])
@@ -499,7 +483,6 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
                                                          mgr_cluster=mgr_cluster, healthy_node=node1,
                                                          number_of_rows="5000K", threads=50)
 
-    @attr('scylla-manager')
     def test_shutting_down_node_before_backup(self):
         keyspace_table_and_key_range = {"ks": {"cf1": (1, 21)}}
         node1, node2, node3 = self._prepare_cluster_with_data(keyspace_table_and_key_range=keyspace_table_and_key_range,
@@ -523,7 +506,7 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
         print(output_string)
         if node_address not in output_string:
             if tolerate_missing:
-                debug("node {} was not found in nodetool status, retrying")
+                logger.debug("node {} was not found in nodetool status, retrying")
                 return "Nonexistent"
             assert False, "Could not find requested node ({}) in nodetool status".format(node_address)
         output_lines = output_string.split("\n")
@@ -541,8 +524,7 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
                                      desirable_status=desirable_status, tolerate_missing=tolerate_missing)
         return is_status_reached
 
-    @skip("will return when minio bandwidth limiting is on")
-    @attr('scylla-manager')
+    @pytest.mark.skip("will return when minio bandwidth limiting is on")
     def test_backup_while_adding_node_to_cluster(self):
         node1, node2, node3 = self.config_and_create_cluster(nodes=3)
 
@@ -563,7 +545,6 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
                                                          mgr_cluster=mgr_cluster, healthy_node=node1,
                                                          number_of_rows="10000K", threads=50)
 
-    @attr('scylla-manager')
     def test_failed_backup_snapshots_deleted_on_rerun(self):
         node1, node2, node3 = self.config_and_create_cluster(nodes=3)
         mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
@@ -590,7 +571,6 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
                                                                                      capture_output=True)[0]))
         assert len(total_snapshot_list) == 0, "Some snapshots were not deleted after the second run of the backup"
 
-    @attr('scylla-manager')
     def test_backup_while_node_is_drained(self):
         keyspace_table_and_key_range = {"ks": {"cf1": (1, 21)}}
         node1, node2, node3 = self._prepare_cluster_with_data(
@@ -610,7 +590,6 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
         self.clean_restore_and_verify_backup(backup_task, self.cluster.nodelist(), mgr_cluster, node1,
                                              keyspace_table_and_key_range)
 
-    @attr('scylla-manager')
     def test_backup_files_command_with_many_sstable_files(self):
         """
             Added a test that creates a large amount of sstable files by continuously executing
@@ -622,10 +601,10 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
         mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
 
         session = self.patient_cql_connection(node1)
-        self.create_ks(session=session, name='ks', rf=2)
-        self.create_cf(session=session, name='ks.cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'},
-                       dclocal_read_repair_chance=0.1, speculative_retry='99.0PERCENTILE',
-                       compaction={'class': 'SizeTieredCompactionStrategy', 'min_threshold': 99999})
+        create_ks(session=session, name='ks', rf=2)
+        create_cf(session=session, name='ks.cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'},
+                  dclocal_read_repair_chance=0.1, speculative_retry='99.0PERCENTILE',
+                  compaction={'class': 'SizeTieredCompactionStrategy', 'min_threshold': 99999})
 
         table_path = glob(os.path.join(node1.get_path(), "data", "ks", "cf-*"))[0]
         for fill_attempt in range(1, 400):
@@ -634,7 +613,7 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
             print(f"Flush No. {fill_attempt}")
             self.cluster.nodetool("flush")
 
-            if len(self.get_sstable_files(path=table_path)) >= 2500:
+            if len(get_sstables_files(path=table_path)) >= 2500:
                 break
         else:
             assert False, "Failed to fill the cluster with enough files"
@@ -647,8 +626,7 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
                                              mgr_cluster=mgr_cluster, healthy_node=node1,
                                              keyspace_table_and_key_range={"ks": {"cf": (1, fill_attempt+1)}})
 
-    @skip("will return when minio bandwidth limiting is on")
-    @attr('scylla-manager')
+    @pytest.mark.skip("will return when minio bandwidth limiting is on")
     def test_restart_node_during_backup(self):
         node1, node2, node3 = self._prepare_cluster_with_data(
             keyspace_table_and_key_range={"ks": {"cf1": (1, 21)}}, number_of_nodes=3)
@@ -662,8 +640,7 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
         node3.start(wait_other_notice=True, wait_for_binary_proto=True)
         backup_task.wait_for_status(list_status=[TaskStatus.ERROR], timeout=600, step=5)
 
-    @skip("will return when minio bandwidth limiting is on")
-    @attr('scylla-manager')
+    @pytest.mark.skip("will return when minio bandwidth limiting is on")
     def test_restart_agent_during_backup(self):
         node1, node2, node3 = self._prepare_cluster_with_data(
             keyspace_table_and_key_range={"ks": {"cf1": (1, 21)}}, number_of_nodes=3)
@@ -676,8 +653,7 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
         node3.restart_scylla_manager_agent(gently=True)
         backup_task.wait_for_status(list_status=[TaskStatus.ERROR], timeout=600, step=5)
 
-    @skip("will return when minio bandwidth limiting is on")
-    @attr('scylla-manager')
+    @pytest.mark.skip("will return when minio bandwidth limiting is on")
     def test_restart_manager_server_during_backup(self):
         keyspace_table_and_key_range = {"ks": {"cf1": (1, 21)}}
         node1, node2, node3 = self._prepare_cluster_with_data(
@@ -696,8 +672,7 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
         self.clean_restore_and_verify_backup(backup_task, self.cluster.nodelist(), mgr_cluster, node1,
                                              keyspace_table_and_key_range)
 
-    @skip("will return when minio bandwidth limiting is on")
-    @attr('scylla-manager')
+    @pytest.mark.skip("will return when minio bandwidth limiting is on")
     def test_nodetool_clearsnapshot_during_backup(self):
         node1, node2, node3 = self.config_and_create_cluster(nodes=3)
 
@@ -725,7 +700,6 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
                                                  partition_key_value=partition_key_value)
                     healthy_node.nodetool("flush")
 
-    @attr('scylla-manager')
     def test_restore_after_purge(self):
         node1, node2 = self.config_and_create_cluster(nodes=2)
         mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
@@ -764,7 +738,6 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
 
         return current_snapshot_set
 
-    @attr('scylla-manager')
     def test_snapshot_deleted_upon_rerun(self):
         node1, node2 = self.config_and_create_cluster(nodes=2)
         mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
@@ -798,7 +771,6 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
             f"\n{' '.join(post_rerun_snapshot_set)}\neven though all of the failed run's snapshots should have been " \
             f"deleted before the new ones were created"
 
-    @attr('scylla-manager')
     def test_delete_nonexisting_backup(self):
         node1, node2 = self.config_and_create_cluster(nodes=2)
         mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
@@ -812,10 +784,9 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
             mgr_cluster.delete_backup(snapshot_tag="thisdoesnotexist")
         except ScyllaManagerError as err:
             if "not found" not in err.args[0]:
-                warning("When trying to delete a nonexistent snapshot, there was no proper error message")
+                logger.warning("When trying to delete a nonexistent snapshot, there was no proper error message")
                 raise
 
-    @attr('scylla-manager')
     def test_delete_backup_twice(self):
         node1, node2 = self.config_and_create_cluster(nodes=2)
         mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
@@ -829,10 +800,9 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
             mgr_cluster.delete_backup(snapshot_tag=snapshot_tag)
         except ScyllaManagerError as err:
             if "not found" not in err.args[0]:
-                warning("When trying to delete an already deleted snapshot, there was no proper error message")
+                logger.warning("When trying to delete an already deleted snapshot, there was no proper error message")
                 raise
 
-    @attr('scylla-manager')
     def test_delete_all_backups(self):
         node1, node2 = self.config_and_create_cluster(nodes=2)
         mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
@@ -858,7 +828,7 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
         # Trying to receive the backed up file list of each of the backup tasks, expecting an empty list
         for tag in snapshot_tag_list:
             backup_files = mgr_cluster.get_backup_files_dict(snapshot_tag=tag)
-            self.assertFalse(expr=backup_files, msg="There are still backed up files left even after the tag was deleted")
+            assert not backup_files, "There are still backed up files left even after the tag was deleted"
 
     def _drop_table_and_delete_table_dir(self, keyspace_name, table_name, up_normal_node):
         # Due to the fact that ccm does not delete the table's directory, to avoid confusion we'll delete it manually
@@ -899,9 +869,9 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
         mgr_cluster.delete_backup(snapshot_tag=snapshot_tag_list[backup_run_to_delete])
         backup_files_deleted_snapshot_files = mgr_cluster.get_backup_files_dict(
             snapshot_tag=snapshot_tag_list[backup_run_to_delete])
-        self.assertFalse(backup_files_deleted_snapshot_files,
-                         f"Even after deletion, there are still files of the snapshot"
-                         f" {snapshot_tag_list[backup_run_to_delete]} in s3:\n{backup_files_deleted_snapshot_files}")
+        assert not backup_files_deleted_snapshot_files, \
+            f"Even after deletion, there are still files of the" \
+            f" snapshot {snapshot_tag_list[backup_run_to_delete]} in s3:\n{backup_files_deleted_snapshot_files}"
         session = self.patient_cql_connection(node=node1)
         for run_num in range(len(snapshot_tag_list)):
             if run_num == backup_run_to_delete:
@@ -909,9 +879,9 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
             snapshot_tag = snapshot_tag_list[run_num]
             # Could not use clean_up_tables, since running truncate table twice causes scylla to crash
             self._drop_table_and_delete_table_dir(keyspace_name, table_name, node1)
-            self.create_cf(session=session, name=f"{keyspace_name}.{table_name}", read_repair=0.0,
-                           columns={'c1': 'text', 'c2': 'text'},
-                           dclocal_read_repair_chance=0.0, speculative_retry='NONE')
+            create_cf(session=session, name=f"{keyspace_name}.{table_name}", read_repair=0.0,
+                      columns={'c1': 'text', 'c2': 'text'},
+                      dclocal_read_repair_chance=0.0, speculative_retry='NONE')
             self.restore_backup(node_list=self.cluster.nodelist(), mgr_cluster=mgr_cluster, snapshot_tag=snapshot_tag,
                                 keyspace_and_table_list={keyspace_name: [table_name]})
             expected_key_range = [key_ranges[0][0], None]
@@ -919,19 +889,15 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
                 expected_key_range[1] = key_ranges[r][1]
             self.verify_c1c2(keyspace_table_and_key_range={keyspace_name: {table_name: expected_key_range}}, node=node1)
 
-    @attr('scylla-manager')
     def test_delete_first_run_and_restore_others(self):
         self._delete_run_and_restore_others_template(backup_run_to_delete=0)
 
-    @attr('scylla-manager')
     def test_delete_second_run_and_restore_others(self):
         self._delete_run_and_restore_others_template(backup_run_to_delete=1)
 
-    @attr('scylla-manager')
     def test_delete_third_run_and_restore_others(self):
         self._delete_run_and_restore_others_template(backup_run_to_delete=2)
 
-    @attr('scylla-manager')
     def test_compare_backup_list_size(self):
         """
         The test runs a backup and let it run until its completion,
@@ -986,20 +952,20 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
         interval = 30
         start_date = f"now+0d0h0m{interval}s"
 
-        info(f"Creating a backup task with following values:"
-             f"\nLocation: '{location}"
-             f"\nKeyspace: '{keyspace_name}"
-             f"\nstart_date: '{start_date}")
+        logger.info(f"Creating a backup task with following values:"
+                    f"\nLocation: '{location}"
+                    f"\nKeyspace: '{keyspace_name}"
+                    f"\nstart_date: '{start_date}")
         self.insert_data_from_ranges(healthy_node=node1, keyspace_table_and_key_range={keyspace_name: {"cf1": (1, 10)}})
         backup_task = mgr_cluster.backup_api.backup(
             keyspace_list=keyspace_name, location_list=location, start_date=start_date, cluster_name=mgr_cluster.id)
         start_time = time.time()
-        info(f"Disabling the backup task '{backup_task.id}'")
+        logger.info(f"Disabling the backup task '{backup_task.id}'")
         backup_task.enabled(is_enabled=False)
-        info(f"Verifying the backup task '{backup_task.id}' is disabled")
+        logger.info(f"Verifying the backup task '{backup_task.id}' is disabled")
         backup_task.is_task_disabled()
         sleep_time = int(interval - (time.time() - start_time)) + 1
-        info(f"Sleeping '{sleep_time}' seconds before verifying the status of back is '{TaskStatus.NEW}'")
+        logger.info(f"Sleeping '{sleep_time}' seconds before verifying the status of back is '{TaskStatus.NEW}'")
         sleep(sleep_time)
         backup_task.wait_for_status(list_status=[TaskStatus.NEW], timeout=interval, step=1)
 
@@ -1018,36 +984,36 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
                           f'keyspace={keyspace_name}', 'compaction(strategy=SizeTieredCompactionStrategy)']
 
         def insert_data_with_casandra_stress():
-            info(f"Starting a stress command with following parameters: '{stress_command}")
+            logger.info(f"Starting a stress command with following parameters: '{stress_command}")
             node1.stress(stress_command)
-            info("Finished entering all the data")
+            logger.info("Finished entering all the data")
 
         def disabled_backup_task(_backup_task):
             sleep_time = interval - 1
-            info(f"Sleeping '{sleep_time}' seconds before checking the backup status")
+            logger.info(f"Sleeping '{sleep_time}' seconds before checking the backup status")
             sleep(sleep_time)
             _list_status = [TaskStatus.STARTING, TaskStatus.RUNNING]
-            info(f"Waiting until the status of backup task '{_backup_task.id}' will be one of '{_list_status}'")
+            logger.info(f"Waiting until the status of backup task '{_backup_task.id}' will be one of '{_list_status}'")
             _backup_task.wait_for_status(list_status=_list_status, timeout=20, step=1)
 
-        info(f"Creating a backup task with following values:"
-             f"\nLocation: '{location}"
-             f"\nKeyspace: '{keyspace_name}"
-             f"\nstart_date: '{start_date}")
+        logger.info(f"Creating a backup task with following values:"
+                    f"\nLocation: '{location}"
+                    f"\nKeyspace: '{keyspace_name}"
+                    f"\nstart_date: '{start_date}")
         self.insert_data_from_ranges(healthy_node=node1, keyspace_table_and_key_range={keyspace_name: {"cf1": (1, 10)}})
         backup_task = mgr_cluster.backup_api.backup(
             keyspace_list=keyspace_name, location_list=location, start_date=start_date, cluster_name=mgr_cluster.id)
         run_in_parallel([{"func": insert_data_with_casandra_stress},
                          {"func": disabled_backup_task, "args": [backup_task]}])
 
-        info(f"Disabling the backup task {backup_task.id}")
+        logger.info(f"Disabling the backup task {backup_task.id}")
         backup_task.enabled(is_enabled=False)
-        info(f"Verifying the backup task '{backup_task.id}' is disabled")
+        logger.info(f"Verifying the backup task '{backup_task.id}' is disabled")
         backup_task.is_task_disabled()
-        info(f"Verifying the backup task '{backup_task.id}' is still running")
+        logger.info(f"Verifying the backup task '{backup_task.id}' is still running")
         backup_task.wait_for_status(list_status=[TaskStatus.RUNNING], timeout=10, step=1)
         list_status = [TaskStatus.DONE]
-        info(f"Waiting until the status of backup task '{backup_task.id}' will be '{list_status}'")
+        logger.info(f"Waiting until the status of backup task '{backup_task.id}' will be '{list_status}'")
         backup_task.wait_for_status(list_status=list_status, timeout=20, step=1)
 
     def test_update_backup_parameters(self):
@@ -1071,25 +1037,25 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
         snapshot_parallel_list = "1,2,3"
         upload_parallel_list = "4,5,6"
 
-        info(f"Creating a new table with following values: '{pformat(keyspace_table_and_key_range)}")
+        logger.info(f"Creating a new table with following values: '{pformat(keyspace_table_and_key_range)}")
         self.insert_data_from_ranges(healthy_node=node1, keyspace_table_and_key_range=keyspace_table_and_key_range)
-        info(f"Creating a backup task with following values:"
-             f"\nLocation: '{location}"
-             f"\nKeyspace: '{keyspace_name}")
+        logger.info(f"Creating a backup task with following values:"
+                    f"\nLocation: '{location}"
+                    f"\nKeyspace: '{keyspace_name}")
         backup_task = mgr_cluster.backup_api.backup(
             keyspace_list=keyspace_name, location_list=location, cluster_name=mgr_cluster.id)
 
-        info("Waiting until backup task is done")
+        logger.info("Waiting until backup task is done")
         backup_task.wait_for_status(list_status=[TaskStatus.DONE], timeout=1000, step=5)
 
-        info(f"Changing the backup table name to '{new_keyspace_name}' from '{keyspace_name}'")
+        logger.info(f"Changing the backup table name to '{new_keyspace_name}' from '{keyspace_name}'")
         backup_task.update(
             keyspace_list=new_keyspace_name, location_list=new_location, cluster_name=CLUSTER_NAME,
             num_retries=num_retries, rate_limit_list=rate_limit_list, retention=retention,
             snapshot_parallel_list=snapshot_parallel_list, upload_parallel_list=upload_parallel_list)
 
-        info(f"Validating the 'keyspace', 'location', 'retention', 'rate_limit', 'retention', 'snapshot-parallel' and "
-             f"'upload-parallel' fields are updated")
+        logger.info(f"Validating the 'keyspace', 'location', 'retention', 'rate_limit', 'retention', "
+                    f"'snapshot-parallel' and 'upload-parallel' fields are updated")
         arguments = backup_task.arguments
         err_msg = "The expected '{}' value should to be '{}' and not '{}'"
         assert arguments["keyspace_list"] == new_keyspace_name, err_msg.format(
@@ -1117,29 +1083,29 @@ class TestScyllaMgmtBackup(TestHelper, ScyllaManagerMixin):
         keyspace_table_and_key_range = {keyspace_name: {table_name: (1, 21)}}
         repair_log_message = f"starting user-requested repair for keyspace {keyspace_name}, repair id"
 
-        info(f"Creating a new table with following values: '{pformat(keyspace_table_and_key_range)}")
+        logger.info(f"Creating a new table with following values: '{pformat(keyspace_table_and_key_range)}")
         self.insert_data_from_ranges(healthy_node=nodes[1], keyspace_table_and_key_range=keyspace_table_and_key_range)
-        info(f"Stopping the node '{nodes[0].name}")
+        logger.info(f"Stopping the node '{nodes[0].name}")
         nodes[0].stop()
         stress_command = ['write', 'no-warmup', 'n=3000', '-schema', f'keyspace={keyspace_name}', '-rate', 'threads=50',
                           '-pop', 'seq=1..3000']
-        info(f"Starting a stress command form node '{nodes[0].name}' with following parameters: "
-             f"\n'{pformat(stress_command)}")
+        logger.info(f"Starting a stress command form node '{nodes[0].name}' with following parameters: "
+                    f"\n'{pformat(stress_command)}")
         nodes[1].stress(stress_command)
 
         marks = [node.mark_log() for node in nodes]
-        info(f"Starting the node '{nodes[0].name}")
+        logger.info(f"Starting the node '{nodes[0].name}")
         nodes[0].start()
-        info(f"Starting a stress command with following parameters: '{stress_command}")
+        logger.info(f"Starting a stress command with following parameters: '{stress_command}")
         repair_task = mgr_cluster.repair_api.repair(
-            keyspace_list=self.KEYSPACE_NAME, small_table_threshold="100MiB", cluster_name=mgr_cluster.id)
+            keyspace_list=keyspace_name, small_table_threshold="100MiB", cluster_name=mgr_cluster.id)
         list_status = [TaskStatus.RUNNING]
-        info(f"Waiting until the status of the repair task will be '{list_status}'")
+        logger.info(f"Waiting until the status of the repair task will be '{list_status}'")
         repair_task.wait_for_status(list_status=list_status, timeout=40, step=3)
         list_status = [TaskStatus.DONE]
-        info(f"Waiting until the status of the repair task will be '{list_status}'")
+        logger.info(f"Waiting until the status of the repair task will be '{list_status}'")
         repair_task.wait_for_status(list_status=list_status, timeout=40, step=3)
-        info(f"Verifying that the '{repair_log_message}' message appears only once in node logs")
+        logger.info(f"Verifying that the '{repair_log_message}' message appears only once in node logs")
 
         table_names = []
         logs = []

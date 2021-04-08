@@ -1,25 +1,25 @@
+import pytest
+import logging
 from time import sleep
 from datetime import datetime, timedelta
 
-from nose.plugins.attrib import attr
-
-from tools import require
 from dtest_scylla_manager import ScyllaManagerTool, ScyllaManagerError, TaskStatus, ScyllaManagerMixin, NodeStatus, \
     CqlStatus, HostRestStatus, HostHealth
-from dtest import Tester, debug, wait_for, info
+from dtest_class import Tester, wait_for
+
+logger = logging.getLogger(__name__)
 
 
+@pytest.mark.scylla_manager
 class TestScyllaManagerClusterMgmt(Tester, ScyllaManagerMixin):
-
-    @attr('scylla-manager')
-    def adding_cluster_while_its_down_test(self):
+    def test_adding_cluster_while_its_down(self):
         self.cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2, node3 = self.cluster.nodelist()
 
-        debug("Create Manager Tool instance to run scylla-manager operations")
+        logger.debug("Create Manager Tool instance to run scylla-manager operations")
         manager_tool = ScyllaManagerTool(scylla_manager=self.cluster._scylla_manager)
         cluster_name = "cluster1"
-        debug("trying to add an offline cluster to scylla-manager, named: {}".format(cluster_name))
+        logger.debug("trying to add an offline cluster to scylla-manager, named: {}".format(cluster_name))
         self.cluster.stop()
 
         try:
@@ -30,8 +30,7 @@ class TestScyllaManagerClusterMgmt(Tester, ScyllaManagerMixin):
             return
         assert False, "Expected to fail when adding an offline cluster to the manager, but didn't"
 
-    @attr('scylla-manager')
-    def add_more_than_one_scylla_cluster_test(self):
+    def test_add_more_than_one_scylla_cluster(self):
         self.cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2, node3 = self.cluster.nodelist()
 
@@ -39,13 +38,13 @@ class TestScyllaManagerClusterMgmt(Tester, ScyllaManagerMixin):
 
         cluster_name1 = "cluster1"
         cluster_name2 = "cluster2"
-        debug("Add a cluster to scylla-manager, named: {}".format(cluster_name1))
+        logger.debug("Add a cluster to scylla-manager, named: {}".format(cluster_name1))
         manager_tool.add_cluster(node=node1, name=cluster_name1)
 
-        debug("Add a cluster to scylla-manager, named: {}".format(cluster_name2))
+        logger.debug("Add a cluster to scylla-manager, named: {}".format(cluster_name2))
         manager_tool.add_cluster(node=node2, name=cluster_name2)
 
-        debug(manager_tool.cluster_list)
+        logger.debug(manager_tool.cluster_list)
         expected_list = [cluster_name1, cluster_name2]
         assert sorted(manager_tool.parsed_cluster_list) == sorted(expected_list), \
             """The list of clusters managed by the manager differ from the expected list:
@@ -57,7 +56,7 @@ class TestScyllaManagerClusterMgmt(Tester, ScyllaManagerMixin):
             if repair_task.status == "RUNNING":
                 return True
             sleep(interval)
-        assert False, "Timeout: The task {} did not start".format(repair_task.task_id)
+        assert False, "Timeout: The task {} did not start".format(repair_task.id)
 
     def _node_inwhich_repair_started(self, node_list, timeout=100, step=10):
         start = datetime.now()
@@ -69,24 +68,23 @@ class TestScyllaManagerClusterMgmt(Tester, ScyllaManagerMixin):
             sleep(step)
         return False
 
-    @require("#2155")
-    @attr('scylla-manager')
-    def removing_managed_driver_during_repair_test(self):
+    @pytest.mark.require("#2155")
+    def test_removing_managed_driver_during_repair(self):
         self.cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2, node3 = self.cluster.nodelist()
         self.cluster.stress(['write', 'n=1000K', '-rate', 'threads=50', '-pop', 'seq=10000001..20000000',
                              '-schema', 'replication(replication_factor=3)'])
 
-        debug("Create Manager Tool instance to run scylla-manager operations")
+        logger.debug("Create Manager Tool instance to run scylla-manager operations")
         manager_tool = ScyllaManagerTool(scylla_manager=self.cluster._scylla_manager)
         cluster_name = "cluster1"
         mgr_cluster = manager_tool.add_cluster(node=node1, name=cluster_name)
         repair_task = mgr_cluster.repair_api.repair(cluster_name=mgr_cluster.id)
         is_status_reached = repair_task.wait_for_status([TaskStatus.RUNNING])
-        assert is_status_reached, "Timeout: The task {} did not start".format(repair_task.task_id)
+        assert is_status_reached, "Timeout: The task {} did not start".format(repair_task.id)
 
         repaired_node = self._node_inwhich_repair_started([node1, node2, node3])
-        debug(f"Chosen node: {repaired_node.name}")
+        logger.debug(f"Chosen node: {repaired_node.name}")
         assert repaired_node, \
             "The manager started the repair task, yet could not find evidence of that in the cluster nodes"
         repair_task.stop()
@@ -96,8 +94,7 @@ class TestScyllaManagerClusterMgmt(Tester, ScyllaManagerMixin):
         assert repair_ending_message_results, "Stopping the repair through the manager did not stop the repair " \
                                               "in the cluster"
 
-    @attr('scylla-manager')
-    def removing_node_from_managed_cluster_test(self):
+    def test_removing_node_from_managed_cluster(self):
         self.cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2, node3 = self.cluster.nodelist()
         step = 3
@@ -110,16 +107,13 @@ class TestScyllaManagerClusterMgmt(Tester, ScyllaManagerMixin):
         self.cluster.remove(node3)
         cluster_status = mgr_cluster.get_hosts_health()
         node_details: HostHealth = cluster_status[node3.address()]
-        info(f"Checking the status of CQL and REST after node '{node3.name}' is removed")
+        logger.info(f"Checking the status of CQL and REST after node '{node3.name}' is removed")
         assert node_details.cql.status == CqlStatus.DOWN, \
             f"The CQL status of node '{node3.name}' should be '{CqlStatus.DOWN}'"
         assert node_details.rest.status == HostRestStatus.DOWN, \
             f"The CQL status of node '{node3.name}' should be '{HostRestStatus.DOWN}'"
-        info(f"Waiting until the status node '{node3.name}' changing to '{NodeStatus.DOWN}'")
+        logger.info(f"Waiting until the status node '{node3.name}' changing to '{NodeStatus.DOWN}'")
 
         err_msg = f"The status of node '{node3.name}' should be '{NodeStatus.DOWN}'"
         wait_for(func=lambda: mgr_cluster.get_hosts_health()[node3.address()].node_status == NodeStatus.DOWN,
                  text=err_msg, step=step, timeout=timeout)
-
-    def cluster_list(self):
-        pass

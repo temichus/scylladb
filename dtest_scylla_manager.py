@@ -1,28 +1,27 @@
-# coding: utf-8
-# ccm clusters
 import os
 import re
-
-import time
-from pprint import pformat
-from typing import Union, List, Dict
 import yaml
+import time
+import logging
 from enum import Enum
 from re import findall
-
+from pprint import pformat
 from ast import literal_eval
+from typing import Union, List, Dict
+
 from ccmlib import common
-from scrub_test import TestHelper
-from dtest import warning, debug, wait_for, WaitTimeoutExpired
+from dtest_class import wait_for, WaitTimeoutExpired
 from distutils.version import LooseVersion
+
+logger = logging.getLogger(__name__)
 
 
 class ComparableHealthCheckField:
     def __eq__(self, other):
         for field_name, field_value in self.__dict__.items():
             if field_value is not None and field_value != getattr(other, field_name):
-                warning(f'The value of "{field_name}" is "{getattr(other, field_name)}", but expected value is '
-                        f'"{field_value}"')
+                logger.warning(f'The value of "{field_name}" is "{getattr(other, field_name)}", but expected value is '
+                               f'"{field_value}"')
                 return False
         return True
 
@@ -111,7 +110,7 @@ class TaskStatus(Enum):
 
     @classmethod
     def all_members(cls):
-        return cls._member_map_.values()
+        return cls._member_map_.values()  # pylint:disable=no-member
 
 
 class AlternatorStatus(Enum):
@@ -136,7 +135,7 @@ class MgrUtils(object):
     @staticmethod
     def verify_errorless_result(cmd, stdout, stderr):
         if stderr:
-            debug("Encountered an error on '{}' command response: {}".format(cmd, str(stdout)))
+            logger.debug("Encountered an error on '{}' command response: {}".format(cmd, str(stdout)))
             raise ScyllaManagerError("Encountered an error on '{}' command response: {}".format(cmd, stderr))
 
 
@@ -591,9 +590,9 @@ class ScyllaManagerTool(ScyllaManagerBase):
     def __init__(self, scylla_manager):
         ScyllaManagerBase.__init__(self, id="MANAGER", scylla_manager=scylla_manager)
         sleep = 5
-        debug('Sleep {} seconds, waiting for manager service ready to respond'.format(sleep))
+        logger.debug('Sleep {} seconds, waiting for manager service ready to respond'.format(sleep))
         time.sleep(sleep)
-        debug("Initiating Scylla-Manager, version: {}".format(self.version))
+        logger.debug("Initiating Scylla-Manager, version: {}".format(self.version))
         self.DEFAULT_USER = "centos"
 
     def restart_manager_server(self, gently):
@@ -635,7 +634,7 @@ class ScyllaManagerTool(ScyllaManagerBase):
             cluster_id = self.sctool.get_table_value(parsed_table=self.cluster_list, column_name="ID",
                                                      identifier=cluster_name)
         except ScyllaManagerError as e:
-            debug("Cluster name not found in Scylla-Manager: {}".format(e))
+            logger.debug("Cluster name not found in Scylla-Manager: {}".format(e))
             return None
 
         return ManagerCluster(scylla_manager=self.scylla_manager, cluster_id=cluster_id)
@@ -682,7 +681,7 @@ class ScyllaManagerTool(ScyllaManagerBase):
         """
         if not any([node, db_cluster]):
             raise ScyllaManagerError("Neither host or db_cluster parameter were given to Manager add_cluster")
-        debug("Adding a cluster to scylla-manager, named: {}".format(name))
+        logger.debug("Adding a cluster to scylla-manager, named: {}".format(name))
         node = node or self._get_cluster_hosts_ip(db_cluster=db_cluster)[0]  # TODO: adjust  _get_cluster_hosts_ip()
         user = user or self.DEFAULT_USER
         ssh_user = create_user or 'scylla-manager'
@@ -703,11 +702,11 @@ class ScyllaManagerTool(ScyllaManagerBase):
     def upgrade(self, scylla_mgmt_upgrade_to_repo):
         raise ScyllaManagerError("Not converted from SCT to Dtest code")
         # manager_from_version = self.version
-        # debug('Running Manager upgrade from: {} to version in repo: {}'.format(
+        # logger.debug('Running Manager upgrade from: {} to version in repo: {}'.format(
         #     manager_from_version, scylla_mgmt_upgrade_to_repo))
         # self.manager_node.upgrade_mgmt(scylla_mgmt_repo=scylla_mgmt_upgrade_to_repo)
         # new_manager_version = self.version
-        # debug('The Manager version after upgrade is: {}'.format(new_manager_version))
+        # logger.debug('The Manager version after upgrade is: {}'.format(new_manager_version))
         # return new_manager_version
 
     def rollback_upgrade(self, manager_node):
@@ -731,7 +730,7 @@ class ScyllaManagerTool(ScyllaManagerBase):
         with open(conf_file, 'w') as f:
             yaml.safe_dump(data, f, default_flow_style=False)
         with open(conf_file, 'r') as f:
-            debug(msg="scylla-manager updated yaml is: {}".format(f.read()))
+            logger.debug(msg="scylla-manager updated yaml is: {}".format(f.read()))
         self.scylla_manager.stop(gently=True)
         self.scylla_manager.start()
         time.sleep(2)
@@ -745,19 +744,19 @@ class SCTool(object):
     def run(self, cmd: Union[str, List[str]], is_verify_errorless_result=False, parse_table_res=True,
             is_multiple_tables=False):
         list_cmd = cmd.copy() if isinstance(cmd, list) else cmd.split()
-        debug("Issuing: 'sctool {}'".format(list_cmd))
+        logger.debug("Issuing: 'sctool {}'".format(list_cmd))
         try:
             stdout, stderr = self.scylla_manager.sctool(cmd=list_cmd)
 
         except Exception as e:
             raise ScyllaManagerError("Encountered an error on sctool command: {}: {}".format(list_cmd, e))
 
-        debug("sctool command result:")
-        debug(msg=stdout)
+        logger.debug("sctool command result:")
+        logger.debug(msg=stdout)
         # Sometimes, the "stderr" variable contains a NOTICE message (The command ran successfully and this message
         # is not an error)
         if stderr.startswith("NOTICE"):
-            warning(stderr)
+            logger.warning(stderr)
             stderr = ""
         if is_verify_errorless_result:
             MgrUtils.verify_errorless_result(cmd=list_cmd, stdout=stdout, stderr=stderr)
@@ -865,7 +864,7 @@ class SCTool(object):
             elif identifier in row:
                 ret_val = row[column_name_index]
                 break
-        debug("{} {} value is:{}".format(identifier, column_name, ret_val))
+        logger.debug("{} {} value is:{}".format(identifier, column_name, ret_val))
         return ret_val
 
     def get_table_complete_column(self, parsed_table, column_name):
@@ -1054,7 +1053,7 @@ class ManagerTask(ScyllaManagerBase):
             wait_for(func=self.has_percentage_reached_minimum, step=step, timeout=timeout,
                      min_percentage=minimal_percentage)
         except WaitTimeoutExpired:
-            warning(f"Task {self.id} failed to reach a progress of {minimal_percentage} in {timeout} seconds")
+            logger.warning(f"Task {self.id} failed to reach a progress of {minimal_percentage} in {timeout} seconds")
             raise
 
     def full_progress_string(self):
@@ -1082,7 +1081,7 @@ class ManagerTask(ScyllaManagerBase):
             # * print the progress to log in cases needed for failures/performance analysis.
             ###
             progress = self.progress
-            debug("Task {} progress is: {}".format(self.id, progress))
+            logger.debug("Task {} progress is: {}".format(self.id, progress))
         return status in list_status
 
     def wait_for_status(self, list_status, check_task_progress=True, timeout=600, step=20,
@@ -1093,8 +1092,8 @@ class ManagerTask(ScyllaManagerBase):
                                          check_task_progress=check_task_progress, timeout=timeout)
         except WaitTimeoutExpired:
             if log_progress_on_failure:
-                warning(f"Task {self.id} failed to reach a status from {list_status}\n"
-                        f"Task Progress:\n{self.full_progress_string()}\n")
+                logger.warning(f"Task {self.id} failed to reach a status from {list_status}\n"
+                               f"Task Progress:\n{self.full_progress_string()}\n")
             raise
         return is_status_reached
 
@@ -1105,8 +1104,8 @@ class ManagerTask(ScyllaManagerBase):
         :return:
         """
         list_final_status = [TaskStatus.ERROR, TaskStatus.STOPPED, TaskStatus.DONE, TaskStatus.ABORTED]
-        debug("Waiting for task: {} getting to a final status ({})..".format(self.id, [str(s) for s in
-                                                                                       list_final_status]))
+        logger.debug("Waiting for task: {} getting to a final status ({})..".format(self.id, [str(s) for s in
+                                                                                              list_final_status]))
         res = self.wait_for_status(list_status=list_final_status, timeout=timeout, step=step)
         if not res:
             raise ScyllaManagerError("Unexpected result on waiting for task {} status".format(self.id))
@@ -1266,11 +1265,11 @@ class ManagerCluster(ScyllaManagerBase):
             raise ScyllaManagerError("Unknown failure for sctool '{}' command".format(cmd))
 
         if stderr:
-            debug("Encountered an error on '{}' command response".format(cmd))
+            logger.debug("Encountered an error on '{}' command response".format(cmd))
             raise ScyllaManagerError(stderr)
 
         task_id = stdout.strip()
-        debug("Created task id is: {}".format(task_id))
+        logger.debug("Created task id is: {}".format(task_id))
         return BackupTask(task_id=task_id, cluster_id=self.id, scylla_manager=self.scylla_manager)
 
     def get_backup_files_dict(self, snapshot_tag):

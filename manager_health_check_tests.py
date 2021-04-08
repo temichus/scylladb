@@ -1,25 +1,27 @@
-# coding: utf-8
+import pytest
+import logging
 from copy import deepcopy
 from datetime import datetime, timedelta
 
-from nose.plugins.attrib import attr
-
 from dtest_scylla_manager import TaskStatus, ScyllaManagerTool, ScyllaManagerMixin, CqlStatus, HostRestStatus, Memory, \
     Status, AlternatorStatus, NodeStatus, HostHealth, ScyllaManagerError
-from dtest import Tester, debug, info, retrying
+from dtest_class import Tester
+from tools.retrying import retrying
 from alternator_utils import ALTERNATOR_PORT, WriteIsolation
 from iptables import IPTable, IPTableRule
-from manager_backup_tests import CLUSTER_NAME
+
+CLUSTER_NAME = 'cluster1'
+
+logger = logging.getLogger(__name__)
 
 
-@attr('scylla-manager')
-class ManagerHealthCheckTest(Tester, ScyllaManagerMixin):
-
+@pytest.mark.scylla_manager
+class TestManagerHealthCheck(Tester, ScyllaManagerMixin):
     def get_manager_cluster(self):
-        debug("Create Manager Tool instance to run scylla-manager operations")
+        logger.debug("Create Manager Tool instance to run scylla-manager operations")
         manager_tool = ScyllaManagerTool(scylla_manager=self.cluster._scylla_manager)
         cluster_name = "cluster1"
-        debug("Add a cluster to scylla-manager, named: {}".format(cluster_name))
+        logger.debug("Add a cluster to scylla-manager, named: {}".format(cluster_name))
         manager_cluster = manager_tool.add_cluster(node=self.cluster.nodelist()[0], name=cluster_name)
         return manager_cluster
 
@@ -49,7 +51,7 @@ class ManagerHealthCheckTest(Tester, ScyllaManagerMixin):
         assert healthcheck_task.status != TaskStatus.ERROR, "Task enabled update failed"
         assert healthcheck_task.is_task_disabled(), "The healthcheck test was not disabled"
 
-    def auto_gen_health_check_task_test(self):
+    def test_auto_gen_health_check_task(self):
         """
             ver: 1.4
             verify that auto generated health check task is created and verify default interval
@@ -61,7 +63,7 @@ class ManagerHealthCheckTest(Tester, ScyllaManagerMixin):
         assert default_interval in healthcheck_task.next_run
         assert TaskStatus.ERROR.value not in healthcheck_task.status.value
 
-    def update_health_check_task_test(self):
+    def test_update_health_check_task(self):
         """
             ver: 1.4
             verify that auto generated health check task can be updated
@@ -88,7 +90,7 @@ class ManagerHealthCheckTest(Tester, ScyllaManagerMixin):
         assert regular_node_data.cql.status == CqlStatus.UP and regular_node_data.rest.status == HostRestStatus.UP, \
             "The status of an UN node is not UP"
 
-    def auto_gen_health_check_alternator_task_test(self):
+    def test_auto_gen_health_check_alternator_task(self):
         """
             ver: 2.2
             verify that auto generated alternator health check task is created and verify default interval
@@ -104,7 +106,7 @@ class ManagerHealthCheckTest(Tester, ScyllaManagerMixin):
         assert default_interval in healthcheck_alternator_task.next_run
         assert TaskStatus.ERROR.value not in healthcheck_alternator_task.status.value
 
-    def update_health_check_alternator_task_test(self):
+    def test_update_health_check_alternator_task(self):
         """
             ver: 2.2
             verify that auto generated alternator health check task can be updated
@@ -147,9 +149,9 @@ class ManagerHealthCheckTest(Tester, ScyllaManagerMixin):
         agent_version = mgr_cluster.scylla_manager.version.vstring
         scylla_version = self.cluster.version()
 
-        info(f"Stopping the node '{node1.name}'")
+        logger.info(f"Stopping the node '{node1.name}'")
         node1.stop()
-        info("Extracting all cluster status details")
+        logger.info("Extracting all cluster status details")
         cluster_status = mgr_cluster.get_hosts_health()
 
         for node in nodes:
@@ -176,11 +178,14 @@ class ManagerHealthCheckTest(Tester, ScyllaManagerMixin):
                 assert node_details.scylla_version is None, "The Scylla version should be empty"
                 assert node_details.agent_version is None, "The agent version should be empty"
 
-    def test_http_status_codes(self):
+    def test_http_status_codes(self, request):
         """
         Block the following ports Alternator(8080), CQL(9042), and REST(10000).
         Verify that the Manager's output displays "TIMEOUT" for each port.
+
+        :type request: pytest.FixtureRequest
         """
+
         nodes = self.config_and_create_cluster(nodes=3, extra_config_options=dict(
             alternator_port=ALTERNATOR_PORT, alternator_write_isolation=WriteIsolation.ALWAYS_USE_LWT.value))
         node1 = nodes[0]
@@ -188,7 +193,7 @@ class ManagerHealthCheckTest(Tester, ScyllaManagerMixin):
         mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
 
         iptables_obj = IPTable(chain_name=__name__)
-        self.addCleanup(iptables_obj.delete_chain)
+        request.addfinalizer(iptables_obj.delete_chain)
         iptables_obj.create_new_chain()
         normal_expected_states = HostHealth(
             datacenter_name=None, address=None, host_id=None, status=NodeStatus.UP,
@@ -210,19 +215,19 @@ class ManagerHealthCheckTest(Tester, ScyllaManagerMixin):
                 assert expected_states == cluster_status[ip_address]
                 iptables_obj.delete_rule(rule=rule)
 
-        info('Blocking the "CQL" port for all nodes without first node')
+        logger.info('Blocking the "CQL" port for all nodes without first node')
         states = deepcopy(normal_expected_states)
         states.cql = Status(status=CqlStatus.TIMEOUT, uptime=None, uptime_type='ms')
         _verify_port_is_blocked(rule=IPTableRule(protocol='tcp', destination_port=9042, target='DROP'),
                                 expected_states=states)
 
-        info('Blocking the "Alternator" port for all nodes without first node')
+        logger.info('Blocking the "Alternator" port for all nodes without first node')
         states = deepcopy(normal_expected_states)
         states.alternator = Status(status=AlternatorStatus.TIMEOUT, uptime=None, uptime_type='ms')
         _verify_port_is_blocked(rule=IPTableRule(protocol='tcp', destination_port=8080, target='DROP'),
                                 expected_states=states)
 
-        info('Blocking the "REST" port for all nodes without first node')
+        logger.info('Blocking the "REST" port for all nodes without first node')
         states = deepcopy(normal_expected_states)
         states.rest = Status(status=HostRestStatus.TIMEOUT, uptime=None, uptime_type='ms')
         _verify_port_is_blocked(rule=IPTableRule(protocol='tcp', destination_port=10000, target='DROP'),

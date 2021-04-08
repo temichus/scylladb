@@ -80,6 +80,11 @@ def pytest_addoption(parser):
                      help="Specify whether to run indev, releases, or both")
     parser.addoption("--scylla-version", action="store", default=None,
                      help="Scylla relocatable version ex: unstable/master:239")
+    parser.addoption("--scylla-manager-package", action="store", default=None,
+                     help="scylla manager package url. ex: "
+                          "http://downloads.scylladb.com/manager/"
+                          "rpm/unstable/centos/branch-2.3/2/scylla-manager/x86_64/")
+
     parser.addoption("--collect-required", action="store_true", default=False,
                      help="collect a report on require tests")
 
@@ -409,6 +414,7 @@ def pytest_collection_modifyitems(items, config):
     cassandra_dir = config.getoption("--cassandra-dir")
     cassandra_version = config.getoption("--cassandra-version")
     scylla_version = config.getoption('--scylla-version')
+    manager_package = config.getoption('--scylla-manager-package')
     collect_require = config.getoption("--collect-required")
 
     if collect_require:

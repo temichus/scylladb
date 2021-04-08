@@ -33,6 +33,8 @@ pipeline {
         buildDiscarder(logRotator(numToKeepStr: '20'))
     }
     environment {
+        AWS_ACCESS_KEY_ID     = credentials('qa-aws-secret-key-id')
+        AWS_SECRET_ACCESS_KEY = credentials('qa-aws-secret-access-key')
         NOSE_PROCESSES = "2"
     }
     stages {
@@ -52,9 +54,7 @@ pipeline {
         {
             steps {
                 script {
-                    MINIO_ACCESS_KEY_ID = "access"
-                    MINIO_SECRET_ACCESS_KEY = "secretkey"
-                    MINIO_DOCKER_ID = sh(script: """docker run -d -e "MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY_ID}"   -e "MINIO_SECRET_KEY=${MINIO_SECRET_ACCESS_KEY}"   -v \$(pwd)/minio_data:/data   minio/minio server /data""",
+                    MINIO_DOCKER_ID = sh(script: """docker run -d -e "MINIO_ACCESS_KEY=${AWS_ACCESS_KEY_ID}"   -e "MINIO_SECRET_KEY=${AWS_SECRET_ACCESS_KEY}"   -v \$(pwd)/minio_data:/data   minio/minio server /data""",
                                   returnStdout: true).trim()
                 }
             }
@@ -83,8 +83,6 @@ pipeline {
                             export KEEP_TEST_DIR=True
                             export SCYLLA_MANAGER_PACKAGE="${params.scylla_manager_package}"
                             export MINIO_DOCKER_ID="${MINIO_DOCKER_ID}"
-                            export AWS_ACCESS_KEY_ID="${MINIO_ACCESS_KEY_ID}"
-                            export AWS_SECRET_ACCESS_KEY="${MINIO_SECRET_ACCESS_KEY}"
 
                             export HOME=\$(pwd)/tmp_dtest_run
                             mkdir -p \$HOME
@@ -97,7 +95,8 @@ pipeline {
 
                             echo "start test ......."
 
-                            ./scripts/run_test.sh -a scylla-manager --with-xunitmp --xunitmp-file="\$HOME/results.xml"  --process-restart --process-timeout=7200
+                            ./scripts/run_test.sh -m="scylla_manager" manager_*.py --junit-xml="\$HOME/results.xml" --scylla-version=\${SCYLLA_VERSION} --scylla-manager-package=${params.scylla_manager_package}
+
                             echo "end test ....."
                             """
                         }

@@ -1,6 +1,7 @@
 import os
 import re
 import time
+import glob
 import logging
 import threading
 import subprocess
@@ -397,9 +398,10 @@ def get_eager_protocol_version(cassandra_version):
 
 # We default to UTF8Type because it's simpler to use in tests
 def create_cf(session, name, key_type="varchar", speculative_retry=None, read_repair=None, compression=None,
-              gc_grace=None, columns=None, validation="UTF8Type", compact_storage=False, compaction_strategy='SizeTieredCompactionStrategy',
-              primary_key=None, clustering=None, default_ttl=None, compaction=None, debug_query=False, caching=True,
-              paxos_grace_seconds=None):
+              gc_grace=None, columns=None, validation="UTF8Type", compact_storage=False,
+              compaction_strategy='SizeTieredCompactionStrategy', primary_key=None, clustering=None, default_ttl=None,
+              compaction=None, debug_query=False, caching=True, paxos_grace_seconds=None,
+              dclocal_read_repair_chance=None):
 
     compaction_fragment = "compaction = {'class': '%s', 'enabled': 'true'}"
     if compaction_strategy == '':
@@ -439,7 +441,9 @@ def create_cf(session, name, key_type="varchar", speculative_retry=None, read_re
         query += ' AND compression = {}'
 
     if read_repair is not None:
-        query = '%s AND read_repair_chance=%f AND dclocal_read_repair_chance=%f' % (query, read_repair, read_repair)
+        query = '%s AND read_repair_chance=%f' % (query, read_repair)
+    if dclocal_read_repair_chance is not None:
+        query = '%s AND dclocal_read_repair_chance=\'%s\'' % (query, dclocal_read_repair_chance)
     if gc_grace is not None:
         query = '%s AND gc_grace_seconds=%d' % (query, gc_grace)
     if default_ttl is not None:

@@ -111,6 +111,11 @@ repos:
                 putget_test.py|
                 nodetool_test.py|
                 updateable_config_test.py|
+                manager_backup_tests.py|
+                manager_general_tests.py|
+                manager_health_check_tests.py|
+                manager_repair_tests.py|
+                manager_task_tests.py|
                 rolling_upgrade_test.py|
                 simple_cluster_driver_test.py|
                 incremental_repair_test.py|

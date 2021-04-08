@@ -1,17 +1,19 @@
-# coding: utf-8
+import pytest
+import logging
 import datetime
 from cassandra import ConsistencyLevel
 from cassandra.query import SimpleStatement
-from nose.plugins.attrib import attr
 
-from dtest import Tester, debug
+from dtest_class import Tester, create_ks
 from dtest_scylla_manager import ScyllaManagerTool, ScyllaManagerMixin
 
+logger = logging.getLogger(__name__)
 
-class ScyllaManagerTaskTest(Tester, ScyllaManagerMixin):
 
+@pytest.mark.scylla_manager
+class TestScyllaManagerTask(Tester, ScyllaManagerMixin):
     def _initiate_cluster(self):
-        debug("Starting cluster...")
+        logger.debug("Starting cluster...")
         # Start a cluster of three nodes, and create a keyspace with RF=3, and
         self.cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
         self.cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True)
@@ -19,10 +21,10 @@ class ScyllaManagerTaskTest(Tester, ScyllaManagerMixin):
         return node1
 
     def _initiate_cluster_with_data(self):
-        debug("Inserting data to cluster...")
+        logger.debug("Inserting data to cluster...")
         node1 = self._initiate_cluster()
         session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'ks', 3)
+        create_ks(session, 'ks', 3)
 
         session.execute("""CREATE TABLE cf (
         name text,
@@ -38,38 +40,37 @@ class ScyllaManagerTaskTest(Tester, ScyllaManagerMixin):
                                 consistency_level=ConsistencyLevel.ALL)
         session.execute(query)
 
-    @attr('scylla-manager')
     def test_task_next_run(self):
         self._initiate_cluster()
         node1, node2, node3 = self.cluster.nodelist()
 
-        debug("Create Manager Tool instance to run scylla-manager operations")
+        logger.debug("Create Manager Tool instance to run scylla-manager operations")
         manager_tool = ScyllaManagerTool(scylla_manager=self.cluster._scylla_manager)
         cluster_name = "cluster1"
-        debug("Add a cluster to scylla-manager, named: {}".format(cluster_name))
+        logger.debug("Add a cluster to scylla-manager, named: {}".format(cluster_name))
         mgr_cluster = manager_tool.add_cluster(node=node1, name=cluster_name)
 
         # Test health-check task values
-        debug("Test cluster Health-Check task")
+        logger.debug("Test cluster Health-Check task")
         healthcheck_task = mgr_cluster.get_healthcheck_task()
         next_run = healthcheck_task.next_run
         list_next_run = next_run.split()
 
-        debug("Health-check task next run is: {}".format(next_run))
+        logger.debug("Health-check task next run is: {}".format(next_run))
         now = datetime.datetime.now()
         assert len(list_next_run) == 6
         assert int(list_next_run[0]) in [now.day, now.day+1, 1]
         assert list_next_run[5] == '(+15s)'
 
         # Test repair task values
-        debug("Test repair task")
+        logger.debug("Test repair task")
         repair_task = mgr_cluster.repair_task_list[0]
         mgr_cluster.get_healthcheck_task()
-        debug("repair task status is: {}".format(repair_task.status))
+        logger.debug("repair task status is: {}".format(repair_task.status))
         next_run = repair_task.next_run
         list_next_run = next_run.split()
 
-        debug("Repair task next run is: {}".format(next_run))
+        logger.debug("Repair task next run is: {}".format(next_run))
         now = datetime.datetime.now()
         assert len(list_next_run) == 6
         assert int(list_next_run[0]) in [now.day+1, 1]  # repair starts the next day of the month
