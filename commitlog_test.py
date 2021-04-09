@@ -873,7 +873,7 @@ class TestCommitLog(Tester):
         Test with 10M commitlog files, total space limit is 1024M
         """
         self.test_total_space_limit_of_commitlog(commitlog_segment_size_in_mb=100,
-                                                 commitlog_total_space_in_mb=1024)
+                                                 commitlog_total_space_in_mb=512)
 
     def test_total_space_limit_of_commitlog_with_small_limit(self):
         """
