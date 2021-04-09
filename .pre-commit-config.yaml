@@ -124,8 +124,9 @@ repos:
                 simple_boot_shutdown_test.py|
                 delete_insert_test.py|
                 scyllatop_test.py|
-                configuration_test.py
-                scrub_test.py
+                configuration_test.py|
+                scrub_test.py|
+                largecolumn_test.py
             )$
         language: system
         types: [python]
