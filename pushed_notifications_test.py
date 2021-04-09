@@ -1,15 +1,18 @@
 import time
-from unittest import skip
-from nose.tools import timed
-from nose.plugins.attrib import attr
+import pytest
+import logging
+
 from cassandra import ReadTimeout, ReadFailure
 from cassandra import ConsistencyLevel as CL
 from cassandra.query import SimpleStatement
-from dtest import Tester, debug
-from tools import no_vnodes, since, require
+from dtest_class import Tester, create_ks, get_ip_from_node
 from threading import Event
 from assertions import assert_invalid
 from pkg_resources import parse_version
+from tools.funcutils import assertDictContainsSubset
+
+
+logger = logging.getLogger(__name__)
 
 
 class NotificationWaiter(object):
@@ -47,7 +50,7 @@ class NotificationWaiter(object):
         """
         Called when a notification is pushed from Cassandra.
         """
-        debug("Source {} sent {}".format(self.address, notification))
+        logger.debug("Source {} sent {}".format(self.address, notification))
 
         if self.keyspace and notification['keyspace'] and self.keyspace != notification['keyspace']:
             return  # we are not interested in this schema change
@@ -76,14 +79,14 @@ class NotificationWaiter(object):
         self.event.clear()
 
 
-@attr('dtest-full')
+@pytest.mark.dtest_full
 class TestPushedNotifications(Tester):
     """
     Tests for pushed native protocol notification from Cassandra.
     """
 
-    @no_vnodes()
-    def move_single_node_test(self):
+    @pytest.mark.no_vnodes
+    def test_move_single_node(self):
         """
         @jira_ticket CASSANDRA-8516
         Moving a token should result in NODE_MOVED notifications.
@@ -102,17 +105,17 @@ class TestPushedNotifications(Tester):
         node1.move("123")
 
         for waiter in waiters:
-            debug("Waiting for notification from {}".format(waiter.address,))
+            logger.debug("Waiting for notification from {}".format(waiter.address,))
             notifications = waiter.wait_for_notifications(60.0)
-            self.assertEquals(1, len(notifications))
+            assert 1 == len(notifications)
             notification = notifications[0]
             change_type = notification["change_type"]
             address, port = notification["address"]
-            self.assertEquals("MOVED_NODE", change_type)
-            self.assertEquals(self.get_ip_from_node(node1), address)
+            assert "MOVED_NODE" == change_type
+            assert get_ip_from_node(node1) == address
 
-    @no_vnodes()
-    def move_single_node_localhost_test(self):
+    @pytest.mark.no_vnodes
+    def test_move_single_node_localhost(self):
         """
         @jira_ticket  CASSANDRA-10052
         Test that we don't get NODE_MOVED notifications from nodes other than the local one,
@@ -131,7 +134,7 @@ class TestPushedNotifications(Tester):
             node.network_interfaces['thrift'] = ('localhost', node.network_interfaces['thrift'][1] + i)
             node.network_interfaces['binary'] = ('localhost', node.network_interfaces['thrift'][1] + 1)
             node.import_config_files()  # this regenerates the yaml file and sets 'rpc_address' to the 'thrift' address
-            debug(node.show())
+            logger.debug(node.show())
             i = i + 2
 
         cluster.start(wait_for_binary_proto=True, wait_other_notice=True)
@@ -148,11 +151,11 @@ class TestPushedNotifications(Tester):
         node1.move("123")
 
         for waiter in waiters:
-            debug("Waiting for notification from {}".format(waiter.address,))
+            logger.debug("Waiting for notification from {}".format(waiter.address,))
             notifications = waiter.wait_for_notifications(30.0)
-            self.assertEquals(1 if waiter.node is node1 else 0, len(notifications))
+            assert (1 if waiter.node is node1 else 0) == len(notifications)
 
-    def restart_node_test(self):
+    def test_restart_node(self):
         """
         @jira_ticket CASSANDRA-7816
         Restarting a node should generate exactly one DOWN and one UP notification
@@ -164,24 +167,24 @@ class TestPushedNotifications(Tester):
 
         # need to block for up to 2 notifications (NEW_NODE and UP) so that these notifications
         # don't confuse the state below.
-        debug("Waiting for unwanted notifications...")
+        logger.debug("Waiting for unwanted notifications...")
         waiter.wait_for_notifications(timeout=30, num_notifications=2)
         waiter.clear_notifications()
 
         # On versions prior to 2.2, an additional NEW_NODE notification is sent when a node
         # is restarted. This bug was fixed in CASSANDRA-11038 (see also CASSANDRA-11360)
         version = self.cluster.cassandra_version()
-        debug("Version={}".format(version))
+        logger.debug("Version={}".format(version))
         expected_notifications = 2 if version >= '2.2' else 3
         for i in range(5):
-            debug("Restarting second node...")
+            logger.debug("Restarting second node...")
             node2.stop(wait_other_notice=True)
             node2.start(wait_other_notice=True)
-            debug("Waiting for notifications from {}".format(waiter.address))
+            logger.debug("Waiting for notifications from {}".format(waiter.address))
             notifications = waiter.wait_for_notifications(timeout=60.0, num_notifications=expected_notifications)
             assert expected_notifications, len(notifications) == notifications
             for notification in notifications:
-                assert self.get_ip_from_node(node2) == notification["address"][0]
+                assert get_ip_from_node(node2) == notification["address"][0]
             assert "DOWN" == notifications[0]["change_type"]
             if version >= '2.2':
                 assert "UP" == notifications[1]["change_type"]
@@ -192,7 +195,7 @@ class TestPushedNotifications(Tester):
 
             waiter.clear_notifications()
 
-    def sleep_and_restart_node_test(self):
+    def test_sleep_and_restart_node(self):
         """
         Sleep 120 seconds after cluster is ready, then restart the second node,
         check we get correct client notifications during restart
@@ -209,21 +212,21 @@ class TestPushedNotifications(Tester):
         waiter = NotificationWaiter(self, node1, ["STATUS_CHANGE", "TOPOLOGY_CHANGE"])
 
         # restart node 2
-        debug("Restarting second node...")
+        logger.debug("Restarting second node...")
         node2.stop(wait_other_notice=True)
         node2.start(wait_other_notice=True)
 
         # check that node1 did not send UP or DOWN notification for node2
-        debug("Waiting for notifications from {}".format(waiter.address,))
+        logger.debug("Waiting for notifications from {}".format(waiter.address,))
         notifications = waiter.wait_for_notifications(timeout=30.0, num_notifications=2)
-        self.assertEquals(2, len(notifications))
+        assert 2 == len(notifications)
         for notification in notifications:
             assert node2.address() == notification["address"][0]
         assert "DOWN" == notifications[0]["change_type"]
         assert "UP" == notifications[1]["change_type"]
 
-    @require('#7805')
-    def restart_node_localhost_test(self):
+    @pytest.mark.require('#7805')
+    def test_restart_node_localhost(self):
         """
         Test that we don't get client notifications when rpc_address is set to localhost Pre 4.0.
         Test that we get correct client notifications when rpc_address is set to localhost Post 4.0.
@@ -248,7 +251,7 @@ class TestPushedNotifications(Tester):
             # so it's need to be unique in this test.
             node.set_configuration_options(
                 values={'native_shard_aware_transport_port': node.network_interfaces['thrift'][1] + 10000})
-            debug(node.show())
+            logger.debug(node.show())
             i = i + 2
 
         cluster.start(wait_for_binary_proto=True)
@@ -257,21 +260,20 @@ class TestPushedNotifications(Tester):
         waiter = NotificationWaiter(self, node1, ["STATUS_CHANGE", "TOPOLOGY_CHANGE"])
 
         # restart node 2
-        debug("Restarting second node...")
+        logger.debug("Restarting second node...")
         node2.stop(wait_other_notice=True)
         node2.start(wait_other_notice=True)
 
         # check that node1 did not send UP or DOWN notification for node2
-        debug("Waiting for notifications from {}".format(waiter.address,))
+        logger.debug("Waiting for notifications from {}".format(waiter.address,))
         notifications = waiter.wait_for_notifications(timeout=30.0, num_notifications=2)
-        self.assertEquals(2, len(notifications))
+        assert 2 == len(notifications)
         for notification in notifications:
             assert node2.address() == notification["address"][0]
         assert "DOWN" == notifications[0]["change_type"]
         assert "UP" == notifications[1]["change_type"]
 
-    @since("3.0")
-    def schema_changes_test(self):
+    def test_schema_changes(self):
         """
         @jira_ticket CASSANDRA-10328
         Creating, updating and dropping a keyspace, a table and a materialized view
@@ -284,7 +286,7 @@ class TestPushedNotifications(Tester):
         session = self.patient_cql_connection(node1)
         waiter = NotificationWaiter(self, node2, ["SCHEMA_CHANGE"], keyspace='ks')
 
-        self.create_ks(session, 'ks', 3)
+        create_ks(session, 'ks', 3)
         session.execute("create TABLE t (k int PRIMARY KEY , v int)")
         session.execute("alter TABLE t add v1 int;")
 
@@ -296,39 +298,38 @@ class TestPushedNotifications(Tester):
         session.execute("drop TABLE t")
         session.execute("drop KEYSPACE ks")
 
-        debug("Waiting for notifications from {}".format(waiter.address,))
+        logger.debug("Waiting for notifications from {}".format(waiter.address,))
         notifications = waiter.wait_for_notifications(timeout=60.0, num_notifications=14)
-        self.assertEquals(10, len(notifications))
+        assert 10 == len(notifications)
 
-        self.assertDictContainsSubset({'change_type': u'CREATED', 'target_type': u'KEYSPACE'}, notifications[0])
-        self.assertDictContainsSubset(
+        assertDictContainsSubset({'change_type': u'CREATED', 'target_type': u'KEYSPACE'}, notifications[0])
+        assertDictContainsSubset(
             {'change_type': u'CREATED', 'target_type': u'TABLE', u'table': u't'}, notifications[1])
-        self.assertDictContainsSubset(
+        assertDictContainsSubset(
             {'change_type': u'UPDATED', 'target_type': u'TABLE', u'table': u't'}, notifications[2])
-        self.assertDictContainsSubset({'change_type': u'CREATED', 'target_type': u'TABLE',
-                                       u'table': u'mv'}, notifications[3])
-        self.assertDictContainsSubset({'change_type': u'UPDATED', 'target_type': u'TABLE',
-                                       u'table': u't'}, notifications[4])
-        self.assertDictContainsSubset({'change_type': u'UPDATED', 'target_type': u'TABLE',
-                                       u'table': u't'}, notifications[5])
-        self.assertDictContainsSubset({'change_type': u'UPDATED', 'target_type': u'TABLE',
-                                       u'table': u'mv'}, notifications[6])
-        self.assertDictContainsSubset({'change_type': u'DROPPED', 'target_type': u'TABLE',
-                                       u'table': u'mv'}, notifications[7])
-        self.assertDictContainsSubset({'change_type': u'DROPPED', 'target_type': u'TABLE',
-                                       u'table': u't'}, notifications[8])
-        self.assertDictContainsSubset({'change_type': u'DROPPED', 'target_type': u'KEYSPACE'}, notifications[9])
+        assertDictContainsSubset({'change_type': u'CREATED', 'target_type': u'TABLE',
+                                  u'table': u'mv'}, notifications[3])
+        assertDictContainsSubset({'change_type': u'UPDATED', 'target_type': u'TABLE',
+                                  u'table': u't'}, notifications[4])
+        assertDictContainsSubset({'change_type': u'UPDATED', 'target_type': u'TABLE',
+                                  u'table': u't'}, notifications[5])
+        assertDictContainsSubset({'change_type': u'UPDATED', 'target_type': u'TABLE',
+                                  u'table': u'mv'}, notifications[6])
+        assertDictContainsSubset({'change_type': u'DROPPED', 'target_type': u'TABLE',
+                                  u'table': u'mv'}, notifications[7])
+        assertDictContainsSubset({'change_type': u'DROPPED', 'target_type': u'TABLE',
+                                  u'table': u't'}, notifications[8])
+        assertDictContainsSubset({'change_type': u'DROPPED', 'target_type': u'KEYSPACE'}, notifications[9])
 
 
-@attr('dtest-full')
+@pytest.mark.dtest_full
 class TestVariousNotifications(Tester):
     """
     Tests for various notifications/messages from Cassandra.
     """
 
-    @skip("Scylla doesn't support `tombstone_failure_threshold', read railure won't be triggered")
-    @since('2.2')
-    def tombstone_failure_threshold_message_test(self):
+    @pytest.mark.skip("Scylla doesn't support `tombstone_failure_threshold', read railure won't be triggered")
+    def test_tombstone_failure_threshold_message(self):
         """
         Ensure nodes return an error message in case of TombstoneOverwhelmingExceptions rather
         than dropping the request. A drop makes the coordinator waits for the specified
@@ -347,7 +348,7 @@ class TestVariousNotifications(Tester):
         node1, node2, node3 = self.cluster.nodelist()
         session = self.patient_cql_connection(node1)
 
-        self.create_ks(session, 'test', 3)
+        create_ks(session, 'test', 3)
         session.execute(
             "CREATE TABLE test ( "
             "id int, mytext text, col1 int, col2 int, col3 int, "
@@ -367,7 +368,7 @@ class TestVariousNotifications(Tester):
         failure_msg = ("Scanned over.* tombstones.* query aborted")
         self.ignore_log_patterns += [failure_msg]
 
-        @timed(25)
+        @pytest.mark.timeout(25)
         def read_failure_query():
             assert_invalid(
                 session, SimpleStatement("select * from test where id in (1,2,3,4,5)", consistency_level=CL.ALL),
@@ -380,13 +381,13 @@ class TestVariousNotifications(Tester):
                    node2.grep_log(failure_msg) or
                    node3.grep_log(failure_msg))
 
-        self.assertTrue(failure, ("Cannot find tombstone failure threshold error in log "
-                                  "after failed query"))
+        assert failure, ("Cannot find tombstone failure threshold error in log "
+                         "after failed query")
         mark1 = node1.mark_log()
         mark2 = node2.mark_log()
         mark3 = node3.mark_log()
 
-        @timed(35)
+        @pytest.mark.timeout(35)
         def range_request_failure_query():
             assert_invalid(
                 session, SimpleStatement("select * from test", consistency_level=CL.ALL),
@@ -399,5 +400,5 @@ class TestVariousNotifications(Tester):
                    node2.watch_log_for(failure_msg, from_mark=mark2, timeout=5) or
                    node3.watch_log_for(failure_msg, from_mark=mark3, timeout=5))
 
-        self.assertTrue(failure, ("Cannot find tombstone failure threshold error in log "
-                                  "after range_request_timeout_query"))
+        assert failure, ("Cannot find tombstone failure threshold error in log "
+                         "after range_request_timeout_query")

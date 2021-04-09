@@ -39,3 +39,10 @@ def merge_dicts(*dict_args):
     for dictionary in dict_args:
         result.update(dictionary)
     return result
+
+
+def assertDictContainsSubset(subset_dict, universal_dict):
+    """
+    Check if $universal contains $subset_dict
+    """
+    return subset_dict.items() < universal_dict.items()
