@@ -908,8 +908,12 @@ class TestCommitLog(Tester):
 
         logger.debug("Mount commitlog directory to a size limited device")
         exec_cmd(f'dd if=/dev/zero of={tmp_iso} bs=1M count={commitlog_dir_limit_in_mb}')
+        exec_cmd('sudo sync')
         exec_cmd(f'mkfs.xfs -f {tmp_iso}')
-        exec_cmd(f'sudo mount {tmp_iso} {commitlog_dir}')
+        exec_cmd('sudo sync')
+        mount_cmd = f'sudo mount {tmp_iso} {commitlog_dir}'
+        logger.debug(mount_cmd)
+        exec_cmd(mount_cmd)
         user = os.environ.get('HOME').split('/')[-1]
         exec_cmd(f'sudo chown -R {user}:{user} {commitlog_dir}')
 
