@@ -11,6 +11,7 @@ import threading
 import time
 import traceback
 import itertools
+import pytest
 
 import requests
 import datetime
@@ -36,8 +37,6 @@ from ccmlib.common import is_win
 from ccmlib.node import TimeoutError
 from ccmlib.scylla_cluster import ScyllaCluster
 from ccmlib.scylla_docker_cluster import ScyllaDockerCluster
-from nose.exc import SkipTest
-from nose.plugins.attrib import attr
 
 from multiprocessing import Queue, Lock
 from functools import wraps
@@ -516,7 +515,7 @@ class NoseTester(TestCase):
 
     def setUp(self):
         if DRY_RUN:
-            raise SkipTest("Dry run")
+            pytest.skip("Dry run")
 
         global CURRENT_TEST, CURRENT_TEST_NESTING
         cls = self.__class__
@@ -1162,7 +1161,7 @@ class NoseTester(TestCase):
 
     def skip(self, msg):
         if not NO_SKIP:
-            raise SkipTest(msg)
+            pytest.skip(msg)
 
     def __setup_jacoco(self, cluster_name='test'):
         """Setup JaCoCo code coverage support"""
@@ -1435,7 +1434,7 @@ class NoseTester(TestCase):
         return seconds * factor
 
 
-@attr('reuse-cluster')
+@pytest.mark.reuse_cluster
 class TesterReuseCluster(NoseTester):
     _multiprocess_can_split_ = not REUSE_CLUSTER
 
