@@ -1,10 +1,12 @@
-from dtest import Tester, debug
-from unittest import skip
-from tools import since
-from nose.plugins.attrib import attr
+import logging
+import pytest
+
+from dtest_class import Tester
+
+logger = logging.getLogger(__name__)
 
 
-@attr('dtest-full')
+@pytest.mark.dtest_full
 class TestLargeColumn(Tester):
     """
     Check that inserting and reading large columns to the database doesn't cause off heap memory usage
@@ -29,9 +31,8 @@ class TestLargeColumn(Tester):
             assert field.strip().isdigit() or field == 'NaN', "Expected numeric from fields from nodetool gcstats"
         return fields[6]
 
-    @since('2.2')
-    @skip('Scylla nodetool does not have the gcstats sub-command')
-    def cleanup_test(self):
+    @pytest.mark.skip('Scylla nodetool does not have the gcstats sub-command')
+    def test_cleanup(self):
         """
         See CASSANDRA-8670
         """
@@ -44,12 +45,12 @@ class TestLargeColumn(Tester):
         node1, node2 = cluster.nodelist()
 
         session = self.patient_cql_connection(node1)
-        debug("Before stress {0}".format(self.directbytes(node1)))
-        debug("Running stress")
+        logger.debug("Before stress {0}".format(self.directbytes(node1)))
+        logger.debug("Running stress")
         # Run the full stack to see how much memory is utilized for "small" columns
         self.stress_with_col_size(cluster, node1, 1)
         beforeStress = self.directbytes(node1)
-        debug("Ran stress once {0}".format(beforeStress))
+        logger.debug("Ran stress once {0}".format(beforeStress))
 
         # Now run the full stack to see how much memory is utilized for "large" columns
         LARGE_COLUMN_SIZE = 1024 * 1024 * 63
@@ -57,15 +58,17 @@ class TestLargeColumn(Tester):
 
         output = node1.nodetool("gcstats", capture_output=True)
         afterStress = self.directbytes(node1)
-        debug("After stress {0}".format(afterStress))
+        logger.debug("After stress {0}".format(afterStress))
 
         # Any growth in memory usage should not be proportional column size. Really almost no memory should be used
         # since Netty was instructed to use a heap allocator
         diff = int(afterStress) - int(beforeStress)
         assert diff < LARGE_COLUMN_SIZE, diff
 
-    @attr('next-gating', 'dtest-debug', 'single_node')
-    def large_columns_mixed_workload_stress_test(self):
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
+    @pytest.mark.single_node
+    def test_large_columns_mixed_workload_stress(self):
         """
         See https://github.com/scylladb/scylla/issues/1574
         """
