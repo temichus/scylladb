@@ -813,8 +813,8 @@ class TestCommitLog(Tester):
         # Set single commitlog file to 1G, then it's easy to reach the limit
         node1.set_configuration_options(values={'commitlog_segment_size_in_mb': commitlog_segment_size_in_mb,
                                                 'commitlog_total_space_in_mb': commitlog_total_space_in_mb,
-                                                'batch_commitlog': True,
-                                                'commitlog_reuse_segments': True})
+                                                'commitlog_reuse_segments': True},
+                                        batch_commitlog=True)
 
         unit_size = commitlog_segment_size_in_mb
         total_size = 0
