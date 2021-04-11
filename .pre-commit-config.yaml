@@ -133,6 +133,7 @@ repos:
                 largecolumn_test.py|
                 upgrade_internal_auth_test.py|
                 limits_test.py
+                paging_additional_test.py
             )$
         language: system
         types: [python]

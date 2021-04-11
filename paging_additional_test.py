@@ -1,16 +1,19 @@
+import logging
 import uuid
 
+import pytest
 from cassandra import ConsistencyLevel as CL
 from cassandra.query import SimpleStatement
 
 from datahelp import create_rows
+from dtest_class import create_ks, get_ip_from_node
 from paging_test import PageFetcher, BasePagingTester, PageAssertionMixin
-from scylla_tools import scylla_mode
-from dtest import debug
-from nose.plugins.attrib import attr
+from tools.metrics import get_node_metrics
+
+logger = logging.getLogger(__name__)
 
 
-@attr('dtest-full')
+@pytest.mark.dtest_full
 class TestAggregatePaging(BasePagingTester, PageAssertionMixin):
     """
     Basic aggregation tests using paging
@@ -18,7 +21,7 @@ class TestAggregatePaging(BasePagingTester, PageAssertionMixin):
 
     def _test_paged_count_with_limit(self, sizes):
         session = self.prepare()
-        self.create_ks(session, 'test_aggregate_paging', 2)
+        create_ks(session, 'test_aggregate_paging', 2)
         session.execute("CREATE TABLE paging_test ( id uuid PRIMARY KEY, value text )")
 
         def random_txt(text):
@@ -41,20 +44,22 @@ class TestAggregatePaging(BasePagingTester, PageAssertionMixin):
                                 fetch_size=page_size, consistency_level=CL.ALL)
             )
             pf = PageFetcher(future).request_all()
-            self.assertEqual(pf.num_results_all(), [1])
-            self.assertEqual(pf.all_data(), [{u'count': 5001}])
+            rows_count = pf.num_results_all()
+            all_data = pf.all_data()
+            assert rows_count == [1], f"Expected 1 row, but got {rows_count}"
+            assert all_data == [{u'count': 5001}], f"Expected \"{u'count': 5001}\", but got {all_data}"
 
-    @scylla_mode('!debug')
+    @pytest.mark.scylla_mode('!debug')
     def test_paged_count_with_limit(self):
         self._test_paged_count_with_limit([10, 100, 1000, 3000, 5000])
 
-    @scylla_mode('debug')
+    @pytest.mark.scylla_mode('debug')
     def test_paged_count_with_limit_debug(self):
         self._test_paged_count_with_limit([10, 100, 250])
 
     def _test_paged_count_with_clustering_key(self, order):
         session = self.prepare()
-        self.create_ks(session, 'test_aggregate_paging', 2)
+        create_ks(session, 'test_aggregate_paging', 2)
         session.execute("CREATE TABLE paging_test (pk int, ck1 int, ck2 text, v int, PRIMARY KEY(pk, ck1, ck2))")
 
         def random_txt(text):
@@ -74,11 +79,13 @@ class TestAggregatePaging(BasePagingTester, PageAssertionMixin):
                 order, order), fetch_size=100, consistency_level=CL.ALL)
         )
         pf = PageFetcher(future).request_all()
-        self.assertEqual(pf.num_results_all(), [1])
-        self.assertEqual(pf.all_data(), [{u'count': 1234}])
+        rows_count = pf.num_results_all()
+        all_data = pf.all_data()
+        assert rows_count == [1], f"Expected 1 row, but got {rows_count}"
+        assert all_data == [{u'count': 1234}], f"Expected \"{u'count': 1234}\", but got {all_data}"
 
-    @attr('next-gating')
-    @attr('dtest-debug')
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
     def test_paged_count_with_clustering_key(self):
         self._test_paged_count_with_clustering_key('asc')
 
@@ -86,7 +93,7 @@ class TestAggregatePaging(BasePagingTester, PageAssertionMixin):
         self._test_paged_count_with_clustering_key('desc')
 
 
-@attr('dtest-full')
+@pytest.mark.dtest_full
 class TestPagingSavedQueryStateBase(BasePagingTester):
     LOOKUPS = 'querier_cache_lookups'
     MISSES = 'querier_cache_misses'
@@ -106,7 +113,7 @@ class TestPagingSavedQueryStateBase(BasePagingTester):
                 continue
 
             if node_metrics[metric] != expected_metric:
-                debug(
+                logger.debug(
                     f"metrics_equal: node_metrics[{metric}] {node_metrics[metric]} != {expected_metric} expected_metric")
                 return False
 
@@ -123,12 +130,9 @@ class TestPagingSavedQueryStateBase(BasePagingTester):
                 matched.add(i)
                 matched_any = True
 
-        if not matched_any:
-            debug("Node metrics doesn't match any of the expected metrics:"
-                  "\nnode_metrics: {}\nexpected_metrics: {}".format(node_metrics, expected_metrics))
-
         # The node's metrics must match at least one expected metrics
-        self.assertEqual(matched_any, True)
+        assert matched_any, f"Node metrics doesn't match any of the expected metrics: " \
+                            f"\nnode_metrics: {node_metrics}\nexpected_metrics: {expected_metrics}"
 
     def assert_nodes_metrics(self, expected_metrics, verifier=None):
         nodes = self.cluster.nodelist()
@@ -136,17 +140,17 @@ class TestPagingSavedQueryStateBase(BasePagingTester):
         matched = set()
 
         for node in nodes:
-            node_metrics = self.get_node_metrics(self.get_ip_from_node(node), metrics=self.ALL_METRICS)
-            debug('{} metrics: {}'.format(node.name, node_metrics))
+            node_metrics = get_node_metrics(get_ip_from_node(node), metrics=self.ALL_METRICS)
+            logger.debug('{} metrics: {}'.format(node.name, node_metrics))
             self.match_node_metrics(node_metrics, expected_metrics, matched)
             if verifier is not None:
                 verifier(node_metrics)
 
         # All expected metrics have to match at least node's metrics
-        self.assertEqual(len(matched), len(expected_metrics))
+        assert len(matched) == len(expected_metrics), f"Expected {len(expected_metrics)}, but got {len(matched)}"
 
 
-@attr('dtest-full')
+@pytest.mark.dtest_full
 class TestLargePaging(TestPagingSavedQueryStateBase, PageAssertionMixin):
     """
     Tests for queries attempting to fetch large pages
@@ -154,10 +158,9 @@ class TestLargePaging(TestPagingSavedQueryStateBase, PageAssertionMixin):
     KS_NAME = 'test_large_paging'
     CF_NAME = 'paging_test'
 
-    def setUp(self, *args, **kwargs):
-        super(TestLargePaging, self).setUp(*args, **kwargs)
+    def prepare_schema(self):
         self.session = self.prepare()
-        self.create_ks(self.session, self.KS_NAME, 2)
+        create_ks(self.session, self.KS_NAME, 2)
 
     def fill_data(self, data, data_size, keys, vals, format_funcs={}):
         def get_key(text):
@@ -177,9 +180,9 @@ class TestLargePaging(TestPagingSavedQueryStateBase, PageAssertionMixin):
         pf = PageFetcher(future).request_all()
         all_pages = pf.num_results_all()
 
-        self.assertEqual(sum(all_pages), row_cnt)
+        assert sum(all_pages) == row_cnt, f"Expected {row_cnt}, got {sum(all_pages)}"
         for page in all_pages:
-            self.assertLessEqual(page, fetch_size)
+            assert page <= fetch_size, f"Fetch size {page} is more then {fetch_size} unexpectedly"
 
         def verify_misses(node_metrics):
             assert node_metrics['querier_cache_misses'] == node_metrics['querier_cache_resource_based_evictions'], node_metrics
@@ -192,9 +195,10 @@ class TestLargePaging(TestPagingSavedQueryStateBase, PageAssertionMixin):
                  {}),
                 verifier=verify_misses)
 
-    @attr('next-gating')
-    @attr('dtest-debug')
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
     def test_large_page_range_queries(self):
+        self.prepare_schema()
         self.session.execute("CREATE TABLE %s (pk text, ck text, v text, PRIMARY KEY(pk, ck))" % self.CF_NAME)
 
         data = """
@@ -206,9 +210,10 @@ class TestLargePaging(TestPagingSavedQueryStateBase, PageAssertionMixin):
         self.fill_data(data=data, data_size=64 * 1024, keys=['pk', 'ck'], vals=['v'])
         self.validate_data(query="select * from %s" % self.CF_NAME, fetch_size=1000, row_cnt=1000)
 
-    @attr('next-gating')
-    @attr('dtest-debug')
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
     def test_large_page_range_queries_static_columns(self):
+        self.prepare_schema()
         self.session.execute("CREATE TABLE %s (pk text, ck text, s text static, v text, PRIMARY KEY(pk, ck))" %
                              self.CF_NAME)
 
@@ -222,6 +227,7 @@ class TestLargePaging(TestPagingSavedQueryStateBase, PageAssertionMixin):
         self.validate_data(query="select * from %s" % self.CF_NAME, fetch_size=1000, row_cnt=1000)
 
     def test_large_page_single_partition(self):
+        self.prepare_schema()
         self.session.execute("CREATE TABLE %s (pk int, ck text, v text, PRIMARY KEY(pk, ck))" % self.CF_NAME)
 
         data = """
@@ -235,6 +241,7 @@ class TestLargePaging(TestPagingSavedQueryStateBase, PageAssertionMixin):
                            validate_metrics=True)
 
     def test_small_page_single_partition(self):
+        self.prepare_schema()
         self.session.execute("CREATE TABLE %s (pk int, ck text, v text, PRIMARY KEY(pk, ck))" % self.CF_NAME)
 
         data = """
@@ -248,14 +255,14 @@ class TestLargePaging(TestPagingSavedQueryStateBase, PageAssertionMixin):
                            validate_metrics=True)
 
 
-@attr('dtest-full')
+@pytest.mark.dtest_full
 class TestPagingSavedQueryStateSingularRanges(TestPagingSavedQueryStateBase):
     """
     Tests concerned with querier-reuse during paging.
     """
 
     def setup_simple_table(self, **kwargs):
-        self.create_ks(self.session, 'paging_additional_test_querier_reuse', 2)
+        create_ks(self.session, 'paging_additional_test_querier_reuse', 2)
         query = "CREATE TABLE test_singular (pk int, ck int, val text, PRIMARY KEY (pk, ck))"
 
         if len(kwargs) > 0:
@@ -318,14 +325,17 @@ class TestPagingSavedQueryStateSingularRanges(TestPagingSavedQueryStateBase):
         )
         pf = PageFetcher(future)
 
-        all_pages = pf.request_all()
-        self.assertEqual(pf.all_data(), [p for p in data if p['pk'] == 1])
+        pf.request_all()
+        all_data = pf.all_data()
+        assert all_data == [p for p in data if p['pk'] == 1], \
+            f"Expected {[p for p in data if p['pk'] == 1]}, got {all_data}"
 
-        self.assertEqual(pf.requested_pages, 2)
-        self.assert_nodes_metrics(({'lookups': pf.requested_pages - 1}, {}))
+        requested_pages = pf.requested_pages
+        assert requested_pages == 2, f"Expected 2 pages, got {requested_pages}"
+        self.assert_nodes_metrics(({'lookups': requested_pages - 1}, {}))
 
-    @attr('next-gating')
-    @attr('dtest-debug')
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
     def test_two_partitions(self):
         """
         Test that when the coordinator throws away parts of the results
@@ -341,11 +351,13 @@ class TestPagingSavedQueryStateSingularRanges(TestPagingSavedQueryStateBase):
         )
         pf = PageFetcher(future)
 
-        all_pages = pf.request_all()
+        pf.request_all()
 
-        self.assertEqual(pf.requested_pages, 3)
-        self.assertEqual(pf.all_data(), data)
-        self.assert_nodes_metrics(({'lookups': pf.requested_pages - 1, 'drops': 1}, {}))
+        requested_pages = pf.requested_pages
+        all_data = pf.all_data()
+        assert requested_pages == 3, f"Expected 3 pages, got {requested_pages}"
+        assert all_data == data, f"Expected {data}, got {all_data}"
+        self.assert_nodes_metrics(({'lookups': requested_pages - 1, 'drops': 1}, {}))
 
     def test_replica_usage(self):
         """
@@ -362,12 +374,12 @@ class TestPagingSavedQueryStateSingularRanges(TestPagingSavedQueryStateBase):
         pf = PageFetcher(future)
 
         def get_coordinator_reads_metric(node_ip):
-            return self.get_node_metrics(node_ip, metrics=["storage_proxy_coordinator_reads"])["storage_proxy_coordinator_reads"]
+            return get_node_metrics(node_ip, metrics=["storage_proxy_coordinator_reads"])["storage_proxy_coordinator_reads"]
 
-        node_ips = [self.get_ip_from_node(node) for node in self.cluster.nodelist()]
+        node_ips = [get_ip_from_node(node) for node in self.cluster.nodelist()]
         coordinator_reads_baseline = {node_ip: get_coordinator_reads_metric(node_ip) for node_ip in node_ips}
 
-        all_pages = pf.request_all()
+        pf.request_all()
 
         for node_ip in node_ips:
             new_reads = get_coordinator_reads_metric(node_ip) - coordinator_reads_baseline[node_ip]
@@ -376,10 +388,13 @@ class TestPagingSavedQueryStateSingularRanges(TestPagingSavedQueryStateBase):
             # Currently the driver will round-robin through the nodes as all
             # them will have the read partitions. If this assumption will not
             # hold in the future this test will become obsolete.
-            self.assertGreater(new_reads, 0)
+            assert new_reads > 0, f"Expected reads more then 0, but got {new_reads}"
 
-        self.assertEqual(pf.requested_pages, 7)
-        self.assertEqual(pf.all_data(), [p for p in data if p['pk'] == 2])
+        requested_pages = pf.requested_pages
+        all_data = pf.all_data()
+        assert requested_pages == 7, f"Expected 7 pages, got {requested_pages}"
+        assert all_data == [p for p in data if p['pk'] == 2], \
+            f"Expected \"[p for p in data if p['pk'] == 2]\", got {all_data}"
         self.assert_nodes_metrics(({'lookups': pf.requested_pages - 1}, {}))
 
     def test_per_query_read_repair_decision(self):
@@ -398,9 +413,10 @@ class TestPagingSavedQueryStateSingularRanges(TestPagingSavedQueryStateBase):
             SimpleStatement("select * from test_singular where pk = 2", fetch_size=1, consistency_level=CL.ONE)
         )
         pf = PageFetcher(future)
-
-        all_pages = pf.request_all()
-
-        self.assertEqual(pf.requested_pages, 7)
-        self.assertEqual(pf.all_data(), [p for p in data if p['pk'] == 2])
+        pf.request_all()
+        requested_pages = pf.requested_pages
+        all_data = pf.all_data()
+        assert requested_pages == 7, f"Expected 7 pages, got {requested_pages}"
+        assert all_data == [p for p in data if p['pk'] == 2], \
+            f"Expected \"[p for p in data if p['pk'] == 2]\", got {all_data}"
         self.assert_nodes_metrics(({'lookups': pf.requested_pages - 1}, {}))
