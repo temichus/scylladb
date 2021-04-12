@@ -1,4 +1,5 @@
 # coding: utf-8
+from typing import NamedTuple, Optional
 import string
 import time
 import logging
@@ -8,7 +9,7 @@ from concurrent import futures
 from cassandra.cluster import ThreadPoolExecutor
 from cassandra.concurrent import execute_concurrent_with_args
 from cassandra import ConsistencyLevel
-from cassandra.query import SimpleStatement
+from cassandra.query import dict_factory, SimpleStatement
 
 from tools.assertions import assert_all
 from tools.data import rows_to_list
@@ -408,3 +409,119 @@ class TestLargePartitionAlterSchema(Tester):
                     # "Unknown identifier val1" is expected error
                     if not len(exc.args) or "Unknown identifier val1" not in exc.args[0]:
                         pytest.fail(f'Generated an exception: {exc}')
+
+
+class HistoryVerifier:
+    def __init__(self, table_name='table1', keyspace_name='lwt_load_ks'):
+        """
+        Initialize parameters for further verification of schema history.
+        :param table_name: table thats we change it's schema and verify schema history accordingly.
+        """
+
+        self.table_name = table_name
+        self.keyspace_name = keyspace_name
+        self.versions = []
+        self.versions_dict = {}
+        self.query = ""
+
+    def verify(self, session, expected_current_diff, expected_prev_diff, query):
+        """
+        Verify current schema history entry by comparing to previous schema entry.
+        :param session: python cql session
+        :param expected_current_diff: difference of current schema from previous schema
+        :param expected_prev_diff: difference of previous schema from current schema
+        :param query: The query that created new schema
+        """
+
+        def get_table_id(session, keyspace_name, table_name):
+            assert keyspace_name, f"Input kesyspcase should have value, keyspace_name={keyspace_name}"
+            assert table_name, f"Input table_name should have value, table_name={table_name}"
+            query = "select keyspace_name,table_name,id from system_schema.tables"
+            query += f" WHERE keyspace_name='{keyspace_name}' AND table_name='{table_name}'"
+            current_rows = session.execute(query).current_rows
+            assert len(current_rows) == 1, f"Not found table description, ks={keyspace_name} table_name={table_name}"
+            res = current_rows[0]
+            return res['id']
+
+        def read_schema_history_table(session, cf_id):
+            """
+            read system.scylla_table_schema_history and verify current version diff from previous vesion
+            :param session: python cql session
+            :param cf_id: uuid of the table we changed it's schema
+            """
+
+            query = f"select * from system.scylla_table_schema_history WHERE cf_id={cf_id}"
+            res = session.execute(query).current_rows
+            new_versions = list(set(
+                filter(lambda uuid: str(uuid) not in self.versions, map(lambda entry: entry['schema_version'], res))))
+            msg = f"Expect 1, got len(new_versions)={len(new_versions)}"
+            assert len(new_versions) == 1, msg
+            current_version = str(new_versions[0])
+            logger.debug(f"New schema_version {current_version} after executing '{self.query}'")
+            regular_entries = filter(
+                lambda entry: entry['kind'] == 'regular' and current_version == str(entry['schema_version']), res)
+            columns_list = map(lambda entry: {'column_name': entry['column_name'], 'type': entry['type']},
+                               regular_entries)
+            self.versions_dict[current_version] = {}
+            for item in columns_list:
+                self.versions_dict[current_version][item['column_name']] = item['type']
+
+            self.versions.append(current_version)
+            if len(self.versions) > 1:
+                current_id = self.versions[-1]
+                previous_id = self.versions[-2]
+                set_current = set(self.versions_dict[current_id].items())
+                set_previous = set(self.versions_dict[previous_id].items())
+                current_diff = set_current - set_previous
+                previous_diff = set_previous - set_current
+                msg1 = f"Expect diff(new schema,old schema) to be {expected_current_diff} got {current_diff}"
+                msg2 = f" query is '{self.query}' versions={current_id},{previous_id}"
+                if current_diff != expected_current_diff:
+                    logger.debug(msg1 + msg2)
+                assert current_diff == expected_current_diff, msg1 + msg2
+                msg1 = f"Expect diff(old schema,new schema) to be {expected_prev_diff} got {previous_diff}"
+                assert previous_diff == expected_prev_diff, msg1 + msg2
+
+        self.query = query
+        cf_id = get_table_id(session, keyspace_name=self.keyspace_name, table_name=self.table_name)
+        read_schema_history_table(session, cf_id)
+
+
+class DDL(NamedTuple):
+    ddl_command: str
+    expected_current_diff: Optional[set]
+    expected_prev_diff: Optional[set]
+
+
+@pytest.mark.dtest_full
+class TestSchemaHistory(Tester):
+    def prepare(self):
+        cluster = self.cluster
+        cluster.populate(1).start()
+        self.session = self.patient_cql_connection(self.cluster.nodelist()[0], row_factory=dict_factory)
+        create_ks(self.session, 'lwt_load_ks', 3)
+
+    def test_schema_history_alter_table(self):
+        """test schema history changes following alter table cql commands"""
+        self.prepare()
+        verifier = HistoryVerifier(table_name='table2')
+        queries_and_expected_diffs = [
+            DDL(ddl_command="CREATE TABLE IF NOT EXISTS lwt_load_ks.table2 (pk int PRIMARY KEY, v int, int_col int)",
+                expected_current_diff=None, expected_prev_diff=None),
+            DDL(ddl_command="ALTER TABLE lwt_load_ks.table2 ALTER v TYPE varint",
+                expected_current_diff={('v', 'varint')}, expected_prev_diff={('v', 'int')}),
+            DDL(ddl_command="ALTER TABLE lwt_load_ks.table2 ADD (v2 int, v3 int)",
+                expected_current_diff={('v2', 'int'), ('v3', 'int')}, expected_prev_diff=set()),
+            DDL(ddl_command="ALTER TABLE lwt_load_ks.table2 ALTER int_col TYPE varint",
+                expected_current_diff={('int_col', 'varint')},
+                expected_prev_diff={('int_col', 'int')}),
+            DDL(ddl_command="ALTER TABLE lwt_load_ks.table2 DROP int_col", expected_current_diff=set(),
+                expected_prev_diff={('int_col', 'varint')}),
+            DDL(ddl_command="ALTER TABLE lwt_load_ks.table2 ADD int_col bigint",
+                expected_current_diff={('int_col', 'bigint')}, expected_prev_diff=set()),
+            DDL(ddl_command="ALTER TABLE lwt_load_ks.table2 DROP (int_col,v)", expected_current_diff=set(),
+                expected_prev_diff={('int_col', 'bigint'), ('v', 'varint')})
+        ]
+        for ddl in queries_and_expected_diffs:
+            self.session.execute(ddl.ddl_command)
+            verifier.verify(self.session, ddl.expected_current_diff, ddl.expected_prev_diff, query=ddl.ddl_command)
