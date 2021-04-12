@@ -323,6 +323,8 @@ class TestUpdateClusterLayout(Tester):
             r'Startup failed: seastar::sleep_aborted',
             r'stream_session .* Failed to handle STREAM_MUTATION_FRAGMENTS .* peer={}'.format(node2.address()),
             r'storage_service .* fail to update tokens for .*: exceptions::mutation_write_failure_exception',
+            r'Abort bootstrap operation',
+            r'Startup failed: seastar::rpc::closed_error',
         ]
 
         sleep_time = random.random() * 0.25
