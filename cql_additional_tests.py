@@ -6841,6 +6841,45 @@ class TestsCQLAdditional(Tester):
         out, err = nodes[0].run_cqlsh(cmds='USE veraminetest; DESCRIBE TABLES', show_output=True, return_output=True)
         assert len(out.split()) == 112, 'created 100+ tables'
 
+    # Regression test for scylladb/scylla#8447
+    @pytest.mark.single_node
+    def test_twcs_ck_filtering_with_cache(self):
+        logger.debug('creating single-node cluster')
+        cluster = self.prepare({'ring_delay_ms': 1000})
+        node = cluster.nodelist()[0]
+
+        logger.debug('waiting for connection')
+        session = self.patient_cql_connection(node)
+
+        logger.debug('creating table')
+        session.execute("create keyspace ks with replication = {'class': 'SimpleStrategy', 'replication_factor': 1}")
+        session.execute("create table ks.t (pk int, ck int, primary key (pk, ck))"
+                        " with compaction = {'class': 'TimeWindowCompactionStrategy'} and bloom_filter_fp_chance = 1;")
+
+        logger.debug('creating sstables')
+        session.execute("insert into ks.t (pk, ck) values (1, 0)")
+        node.nodetool('flush')
+        session.execute("insert into ks.t (pk, ck) values (0, 1)")
+        node.nodetool('flush')
+
+        logger.debug('stopping node')
+        node.stop()
+        logger.debug('restarting node')
+        node.start(wait_for_binary_proto=True)
+
+        logger.debug('waiting for connection')
+        session = self.patient_cql_connection(node)
+
+        logger.debug('performing selects')
+        # Both sstables pass through the pk filter (thanks to bloom_filter_fp_chance = 1),
+        # but only the second one - which does not contain the queried partition - passes through the ck filter.
+        # If the created reader does not return `partition_start` (as in #8447)
+        # this will cause the cache to rememeber that there is no partition 1.
+        assert_none(session, "select * from ks.t where pk = 1 and ck = 1")
+        # If the cache remembered that there is no partition 1 in the above query,
+        # this would return no row.
+        assert_one(session, "select * from ks.t where pk = 1 and ck = 0", [1, 0])
+
 
 @pytest.mark.dtest_full
 @pytest.mark.single_node
