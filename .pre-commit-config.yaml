@@ -121,6 +121,7 @@ repos:
                 sstable_generation_loading_test.py|
                 schema_management_test.py|
                 compaction_additional_test.py|
+                compression_test.py|
                 simple_no_driver_test.py|
                 sstabledump_test.py|
                 cqlsh_tests/cqlsh_copy_tests.py|
