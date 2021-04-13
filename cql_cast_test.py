@@ -1,130 +1,133 @@
 # coding: utf-8
 
-from nose.tools import assert_equal
-from dtest import debug
-from tools import require
+import pytest
+import logging
 
+from tools.misc import require
 from cqlsh_tests.cqlsh_copy_tests import CqlshPrepare
-from nose.plugins.attrib import attr
 
 
-@attr('dtest-full', 'single_node')
-class CQLCastTest(CqlshPrepare):
+logger = logging.getLogger(__name__)
+
+
+@pytest.mark.dtest_full
+@pytest.mark.single_node
+class TestCQLCast(CqlshPrepare):
     """ Class provides interface for CAST scalar function """
 
     COLUMN_NAME_TEMPLATE = '{}_clmn'
     KEYSPACE_NAME = 'ks'
 
     @require('#3108')
-    def cast_negative_test(self):
+    def test_cast_negative(self):
         """Function performs positive tests CAST scalar function for user-defined type"""
         test_from = ['text', 'date']
         self._test_run(test_from, TestData.NEGATIVE_VALUES, compare_error=True)
 
-    def cast_udt_test(self):
+    def test_cast_udt(self):
         """Function performs positive tests CAST scalar function for user-defined type"""
         test_from = ['udt']
         self._udt_test_run(test_from, TestData.POSITIVE_VALUES)
 
-    def cast_varint_test(self):
+    def test_cast_varint(self):
         """Function performs positive tests CAST scalar function for varint type"""
         test_from = ['varint']
         self._test_run(test_from, TestData.POSITIVE_VALUES)
 
-    def cast_tinyint_test(self):
+    def test_cast_tinyint(self):
         """Function performs positive tests CAST scalar function for tinyint type"""
         # test_from = ['varint']
         test_from = ['tinyint']
         self._test_run(test_from, TestData.POSITIVE_VALUES)
 
-    def cast_smallint_test(self):
+    def test_cast_smallint(self):
         """Function performs positive tests CAST scalar function for smallint type"""
         test_from = ['smallint']
         self._test_run(test_from, TestData.POSITIVE_VALUES)
 
-    def cast_int_test(self):
+    def test_cast_int(self):
         """Function performs positive tests CAST scalar function for all int type"""
         test_from = ['int']
         self._test_run(test_from, TestData.POSITIVE_VALUES)
 
-    def cast_bigint_test(self):
+    def test_cast_bigint(self):
         """Function performs positive tests CAST scalar function for bigint type"""
         test_from = ['bigint']
         self._test_run(test_from, TestData.POSITIVE_VALUES)
 
-    def cast_float_test(self):
+    def test_cast_float(self):
         """Function performs positive tests CAST scalar function for float type"""
         test_from = ['float']
         self._test_run(test_from, TestData.POSITIVE_VALUES)
 
-    def cast_double_test(self):
+    def test_cast_double(self):
         """Function performs positive tests CAST scalar function for double type"""
         test_from = ['double']
         self._test_run(test_from, TestData.POSITIVE_VALUES)
 
-    def cast_decimal_test(self):
+    def test_cast_decimal(self):
         """Function performs positive tests CAST scalar function for decimal type"""
         test_from = ['decimal']
         self._test_run(test_from, TestData.POSITIVE_VALUES)
 
-    @attr('next-gating')
-    @attr('dtest-debug')
-    def cast_date_test(self):
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
+    def test_cast_date(self):
         """Function performs positive tests CAST scalar function for date type"""
         test_from = ['date']
         self._test_run(test_from, TestData.POSITIVE_VALUES)
 
-    def cast_time_test(self):
+    def test_cast_time(self):
         """Function performs positive tests CAST scalar function for time type"""
         test_from = ['time']
         self._test_run(test_from, TestData.POSITIVE_VALUES)
 
-    def cast_timestamp_test(self):
+    def test_cast_timestamp(self):
         """Function performs positive tests CAST scalar function for timestamp type"""
         test_from = ['timestamp']
         self._test_run(test_from, TestData.POSITIVE_VALUES)
 
-    def cast_uuid_test(self):
+    def test_cast_uuid(self):
         """Function performs positive tests CAST scalar function for uuid type"""
         test_from = ['uuid']
         self._test_run(test_from, TestData.POSITIVE_VALUES)
 
-    def cast_boolean_test(self):
+    def test_cast_boolean(self):
         """Function performs positive tests CAST scalar function for boolean"""
         test_from = ['boolean']
         self._test_run(test_from, TestData.POSITIVE_VALUES)
 
-    def cast_ascii_test(self):
+    def test_cast_ascii(self):
         """Function performs positive tests CAST scalar function for ascii type"""
         test_from = ['ascii']
         self._test_run(test_from, TestData.POSITIVE_VALUES)
 
-    def cast_inet_test(self):
+    def test_cast_inet(self):
         """Function performs positive tests CAST scalar function for inet type"""
         test_from = ['inet']
         self._test_run(test_from, TestData.POSITIVE_VALUES)
 
-    def cast_timeuuid_test(self):
+    def test_cast_timeuuid(self):
         """Function performs positive tests CAST scalar function for timeuuid type"""
         test_from = ['timeuuid']
         self._test_run(test_from, TestData.POSITIVE_VALUES)
 
     @require('#3109')
-    def cast_issue_3109_test(self):
+    def test_cast_issue_3109(self):
         """Function performs test for issue #3109"""
         # To remove the case from issue test, go to TestData.POSITIVE_VALUES and remove comment simbol "#" from relavant type
         test_from = ['float', 'double', 'timestamp']
         self._test_run(test_from, TestData.POSITIVE_VALUES, test_to=['text'], test_types=['cast'], exclude=False)
 
     @require('#3109')
-    def cast_udt_issue_3109_test(self):
+    def test_cast_udt_issue_3109(self):
         """Function performs test for issue #3109"""
         # To remove the case from issue test, go to TestData.POSITIVE_VALUES and remove comment simbol "#" from relavant type
         test_from = ['udt']
         self._udt_test_run(test_from, TestData.POSITIVE_VALUES, test_to=['text', 'varchar'],
                            test_types=['cast', 'min', 'max'], exclude=False)
 
-    def cast_issue_3104_test(self):
+    def test_cast_issue_3104(self):
         """Function performs or issue #3104"""
         # To remove the case from issue test, go to TestData.POSITIVE_VALUES and remove comment simbol "#" from relavant type
         test_from = ['date', 'timeuuid', 'timestamp']
@@ -132,7 +135,7 @@ class CQLCastTest(CqlshPrepare):
                        exclude=False)
 
     @require('#3110')
-    def cast_issue_3110_test(self):
+    def test_cast_issue_3110(self):
         """Function performs or issue #3110"""
         # To remove the case from issue test, go to TestData.POSITIVE_VALUES and remove comment simbol "#" from relavant type
         test_from = ['varint']
@@ -140,21 +143,21 @@ class CQLCastTest(CqlshPrepare):
                        test_types=['cast', 'avg', 'sum', 'min', 'max', 'cast_min', 'cast_max', 'cast_avg'], exclude=False)
 
     @require('#3111')
-    def cast_issue_3111_test(self):
+    def test_cast_issue_3111(self):
         """Function performs or issue #3111"""
         # To remove the case from issue test, go to TestData.POSITIVE_VALUES and remove comment simbol "#" from relavant type
         test_from = ['float', 'tinyint', 'smallint', 'int', 'bigint', 'varint']
         self._test_run(test_from, TestData.POSITIVE_VALUES, test_to=['decimal'],
                        test_types=['cast', 'sum', 'min', 'max', 'min', 'max', 'avg'], exclude=False)
 
-    def cast_udt_issue_3111_test(self):
+    def test_cast_udt_issue_3111(self):
         """Function performs or issue #3111"""
         # To remove the case from issue test, go to TestData.POSITIVE_VALUES and remove comment simbol "#" from relavant type
         test_from = ['udt']
         self._udt_test_run(test_from, TestData.POSITIVE_VALUES, test_to=['decimal'],
                            test_types=['cast', 'sum', 'min', 'max', 'min', 'max', 'avg'], exclude=False)
 
-    def cast_issue_3112_test(self):
+    def test_cast_issue_3112(self):
         """Function performs or issue #3112"""
         # To remove the case from issue test, go to TestData.POSITIVE_VALUES and remove comment simbol "#" from relavant type
         test_from = ['decimal']
@@ -189,7 +192,8 @@ class CQLCastTest(CqlshPrepare):
             self._prepare_udf_table(data_dict, fromt, type_name, table_name, column_name)
 
             for from_type in data_dict[fromt]:
-                debug('\n\n\n============================ CAST FROM {} ======================================'.format(from_type))
+                logger.debug(
+                    '\n\n\n============================ CAST FROM {} ======================================'.format(from_type))
                 udt_column_name = '{0}.{1}'.format(column_name, self.COLUMN_NAME_TEMPLATE.format(from_type))
                 self._test_one_type(from_type, data_dict[fromt], exclude, udt_column_name, table_name, success, fail,
                                     test_types=test_types, test_to=test_to, compare_error=compare_error)
@@ -215,22 +219,22 @@ class CQLCastTest(CqlshPrepare):
         success = fail = 0
         for from_type in test_from:
             if from_type in data_dict:
-                debug('\n\n\n============================ CAST FROM {} ======================================'.format(from_type))
+                logger.debug(
+                    '\n\n\n============================ CAST FROM {} ======================================'.format(from_type))
                 table_name = 'cast_{0}_test'.format(from_type)
                 column_name = self.COLUMN_NAME_TEMPLATE.format(from_type)
                 if not self._create_table_for_cast(table_name, from_type, column_name, data_dict[from_type]):
-                    debug('FAILURE: table {0} was not created. See error above'.format(table_name))
+                    logger.debug('FAILURE: table {0} was not created. See error above'.format(table_name))
                     continue
                 self._test_one_type(from_type, data_dict, exclude, column_name, table_name, success, fail,
                                     test_types=test_types, test_to=test_to, compare_error=compare_error)
 
     def _prepare_udf_table(self, data_dict, fromt, type_name, table_name, column_name):
-        self.assertFalse(not self._create_type(data_dict[fromt], type_name),
-                         'FAILURE: type {0} was not created. See error above'.format(type_name))
+        assert self._create_type(data_dict[fromt], type_name), \
+            'FAILURE: type {0} was not created. See error above'.format(type_name)
 
-        self.assertFalse(
-            not self._create_table_for_cast(table_name, 'frozen <{}>'.format(type_name), column_name, prefill=False),
-            'FAILURE: table {0} was not created. See error above'.format(table_name))
+        assert self._create_table_for_cast(table_name, 'frozen <{}>'.format(type_name), column_name, prefill=False), \
+            'FAILURE: table {0} was not created. See error above'.format(table_name)
 
         for id in range(max([len(h) for h in data_dict[fromt].values()])):
             data = '{'
@@ -267,8 +271,8 @@ class CQLCastTest(CqlshPrepare):
 
                             actual_result = actual_result.split('\n')[3].strip() \
                                 if not compare_error and actual_result else err if compare_error else ''
-                            assert_equal(actual_result, str(exp_result), "casting from type {} to type {}: expected {} but got {}".format(
-                                from_type, to_type, exp_result, actual_result))
+                            assert actual_result == str(exp_result), "casting from type {} to type {}: expected {} but got {}".format(
+                                from_type, to_type, exp_result, actual_result)
 
     def is_commented(self, exclude, ttype):
         return True if not exclude and ttype.startswith('#') else False
@@ -281,7 +285,7 @@ class CQLCastTest(CqlshPrepare):
 
         query = '{query})'.format(query=query[:-1])
         out, err = self.node1.run_cqlsh('{0}'.format(query), return_output=True)
-        debug(query)
+        logger.debug(query)
         return False if err else True
 
     def _create_table_for_cast(self, table_name, from_type, column_name, values=None, prefill=True):
@@ -290,7 +294,7 @@ class CQLCastTest(CqlshPrepare):
             table_name=table_name, type_name=from_type, tmp=column_name, ks=self.KEYSPACE_NAME)
 
         out, err = self.node1.run_cqlsh('{0})'.format(query_create), return_output=True)
-        debug(query_create)
+        logger.debug(query_create)
         if err:
             return False
         if prefill:
@@ -302,17 +306,17 @@ class CQLCastTest(CqlshPrepare):
         query_insert = 'use {4}; INSERT INTO {0} (k, {1}) VALUES ({2}, {3})'.format(table_name, column_name,
                                                                                     id, value, self.KEYSPACE_NAME)
         self.node1.run_cqlsh(query_insert)
-        debug(query_insert)
+        logger.debug(query_insert)
 
     def _test_execute(self, func, column_name, to_type, row_id, table_name, from_type, test, exp_results):
         query = func(self, column_name, to_type, row_id, table_name, from_type, test, exp_results)
-        debug('Test case: CAST({2} as {3}). Run: casted value "{0}" and query {1}'
-              .format(exp_results, query, from_type, to_type))
+        logger.debug('Test case: CAST({2} as {3}). Run: casted value "{0}" and query {1}'
+                     .format(exp_results, query, from_type, to_type))
         result, err = '', None
         try:
             result, err = self.node1.run_cqlsh(query, return_output=True)
         except Exception as e:
-            debug('FAILURE: test case failed. Error: {}'.format(e.message))
+            logger.debug('FAILURE: test case failed. Error: {}'.format(str(e)))
         return result, err
 
     def _cast_single_value(self, column_name, to_type, row_id, table_name, from_type, test, exp_results):

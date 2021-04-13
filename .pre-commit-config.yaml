@@ -114,6 +114,7 @@ repos:
                 alternator_tests.py|
                 wide_rows_test.py|
                 batch_test.py|
+                cql_cast_test.py|
                 concurrent_schema_changes_test.py|
                 sstable_generation_loading_test.py|
                 schema_management_test.py|
