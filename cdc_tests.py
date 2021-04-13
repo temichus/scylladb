@@ -7,6 +7,8 @@ from datetime import datetime, timedelta
 from enum import IntEnum
 from threading import Event
 import multiprocessing
+from dataclasses import dataclass
+from uuid import UUID
 
 import pytest
 from cassandra import ConsistencyLevel, InvalidRequest
@@ -22,10 +24,17 @@ from tools.misc import ImmutableMapping
 
 TOKENS_PER_NODE = 256
 
-CDC_GENERATIONS_TABLE = 'system_distributed.cdc_generation_descriptions'
-CDC_STREAMS_TABLE = 'system_distributed.cdc_streams_descriptions'
+CDC_GENERATIONS_TABLE = 'system_distributed_everywhere.cdc_generation_descriptions_v2'
+CDC_STREAMS_TABLE = 'system_distributed.cdc_streams_descriptions_v2'
+CDC_TIMESTAMPS_TABLE = 'system_distributed.cdc_generation_timestamps'
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class GenerationId:
+    time: datetime
+    uuid: UUID
 
 
 class CdcLogOperations(IntEnum):
@@ -58,18 +67,37 @@ class CDCInitializeHelper:
             node = self.cluster.new_node(i, auto_bootstrap=True)  # pylint: disable=no-member
             node.start(wait_for_binary_proto=True, wait_other_notice=wait_other_notice)
 
-    def wait_for_last_generation_to_be_active(self, session):
-        cdc_descriptions = list(self.get_cdc_description_rows(session))
-        assert len(cdc_descriptions) > 0, "No CDC generations"
-        last_timestamp = max(desc.time for desc in cdc_descriptions)
+    # Retrieve the ID of the last known generation from the local tables of the node `session` is connected to.
+    # The ID is a (timestamp, uuid) pair.
+    def get_local_generation_id(self, session) -> GenerationId:
+        rs = list(session.execute("SELECT streams_timestamp, uuid FROM system.cdc_local WHERE key = 'cdc_local'"))
+        self.assertEqual(len(rs), 1)
+        return GenerationId(time=rs[0].streams_timestamp, uuid=rs[0].uuid)
 
+    def get_last_generation_timestamp(self, session):
+        timestamps = list(self.get_cdc_generation_timestamps(session))
+        self.assertGreater(len(timestamps), 0, "No CDC generations")
+        return max(row.time for row in timestamps)
+
+    def wait_for_last_generation_to_be_active(self, session):
+        last_timestamp = self.get_last_generation_timestamp(session)
         # Add one second to account for clock differences
         self.sleep_until(last_timestamp + timedelta(seconds=1))
         logger.debug('Current generation timestamp: {}'.format(last_timestamp))
         return last_timestamp
 
-    def get_cdc_description_rows(self, session):
+    def get_all_cdc_description_rows(self, session):
         query = SimpleStatement(f"SELECT * FROM {CDC_STREAMS_TABLE}",
+                                consistency_level=ConsistencyLevel.ONE)
+        return session.execute(query)
+
+    def get_single_cdc_description_rows(self, session, gen_ts):
+        query = session.prepare(f"SELECT * FROM {CDC_STREAMS_TABLE} WHERE time = ?")
+        query.consistency_level = ConsistencyLevel.ONE
+        return session.execute(query, (gen_ts,))
+
+    def get_cdc_generation_timestamps(self, session):
+        query = SimpleStatement(f"SELECT time FROM {CDC_TIMESTAMPS_TABLE} WHERE key = 'timestamps'",
                                 consistency_level=ConsistencyLevel.ONE)
         return session.execute(query)
 
@@ -319,9 +347,16 @@ class TestCdc(Tester, CDCInitializeHelper):
         logger.debug('Wait for the last generation to become active')
         gen_timestamp = self.wait_for_last_generation_to_be_active(session)
 
-        logger.debug(f'Deleting generation {gen_timestamp}')
-        query = session.prepare(f"DELETE FROM {CDC_GENERATIONS_TABLE} WHERE time = ?")
-        session.execute(query, (gen_timestamp,))
+        # Get the UUID of this generation, which is used as the partition key in the GENERATIONS table
+        gen_id = self.get_local_generation_id(session)
+
+        # Sanity check: the timestamp stored by the node in system.cdc_local
+        # is the timestamp of the last generation, i.e. gen_timestamp
+        assert gen_timestamp, gen_id.time
+
+        logger.debug(f'Deleting generation ({gen_timestamp}, {gen_id.uuid})')
+        query = session.prepare(f"DELETE FROM {CDC_GENERATIONS_TABLE} WHERE id = ?")
+        session.execute(query, (gen_id.uuid,))
 
         self.ignore_log_patterns = ['Could not find CDC generation']
 
@@ -341,9 +376,35 @@ class TestCdc(Tester, CDCInitializeHelper):
             p.join()
             assert False, "checkAndRepairCdcStreams did not terminate in time"
 
-        # Ok, let's also check if the command actually created a generation just in casse
-        rows = list(session.execute(f"SELECT description FROM {CDC_GENERATIONS_TABLE}"))
+        # Ok, let's also check if the command actually created a generation just in case
+        # and perform some sanity checks for the generation's consistency
+        logger.debug("Retrieving generation data")
+        rows = list(session.execute(f"SELECT id, num_ranges FROM {CDC_GENERATIONS_TABLE}"))
         assert len(rows) > 0, "No CDC generations"
+
+        uuid = rows[0].id
+        assert all(r.id == uuid for r in rows), \
+            "More than one generation IDs detected, but there should be exactly one"
+
+        num_ranges = rows[0].num_ranges
+        assert len(rows) == num_ranges, f"Expected {num_ranges} number of rows, got {len(rows)}"
+
+        logger.debug("Waiting for the generation to appear in the client table...")
+        # It should appear pretty much instantaneously, but with those Jenkins machines nobody knows...
+        old_gen_timestamp = gen_timestamp
+
+        def new_gen_appeared():
+            gen_timestamp = self.get_last_generation_timestamp(session)
+            self.assertGreaterEqual(gen_timestamp, old_gen_timestamp)
+            return gen_timestamp > old_gen_timestamp
+        wait_for(new_gen_appeared, 1, "waiting for new generation to appear in client table", 60)
+
+        gen_timestamp = self.get_last_generation_timestamp(session)
+        assert gen_timestamp > old_gen_timestamp
+
+        logger.debug(f"New generation timestamp: {gen_timestamp}")
+        ring = self.get_vnode_ring(session)
+        self.generation_quality_check(session, gen_timestamp, ring)
 
         logger.debug('Test finished')
 
@@ -518,22 +579,24 @@ class TestCdc(Tester, CDCInitializeHelper):
     def generation_quality_check(self, session, gen_timestamp, ring):
         logger.debug('Checking invariants on generation')
         logger.debug('Checking if generation token ranges refine vnodes')
-        gen_description = self.get_cdc_topology_description_for_timestamp(session, gen_timestamp)
-        token_ranges = set(entry[0] for entry in gen_description)
+        gen_description = list(self.get_single_cdc_description_rows(session, gen_timestamp))
+        gen_tokens = set(entry.range_end for entry in gen_description)
         ring_tokens = set(token.value for token in ring)
-        assert ring_tokens == token_ranges, 'Generation token ranges should cover all vnodes'
+        assert ring_tokens <= gen_tokens, 'Vnodes should contain generation token ranges'
 
         logger.debug('Checking that all vnodes have a stream')
-        prev_token = gen_description[-1][0]
+        prev_range_end = gen_description[-1].range_end
         for entry in gen_description:
+            range_end = entry.range_end
             vnode_size = 0
-            if entry[0] > prev_token:
-                vnode_size = entry[0] - prev_token
+            if range_end > prev_range_end:
+                vnode_size = range_end - prev_range_end
             else:
-                vnode_size = 2**63 - 1 - prev_token + entry[0]
+                vnode_size = 2**63 - 1 - prev_range_end + range_end
             if vnode_size > 1:
-                assert any(int.from_bytes(stream[0:8], byteorder='big', signed=True) != entry[0] for stream in entry[1])
-            prev_token = entry[0]
+                assert any(int.from_bytes(stream[0:8], byteorder='big',
+                                          signed=True) != range_end for stream in entry.streams)
+            prev_range_end = range_end
 
     def get_sorted_update_rows(self, session, log_rows):
         update_rows = [r for r in log_rows if r.cdc_operation == CdcLogOperations.INSERT]
@@ -541,7 +604,7 @@ class TestCdc(Tester, CDCInitializeHelper):
         return sorted(update_rows, key=lambda r: assignment[r.cdc_stream_id])
 
     def get_stream_id_to_timestamp_assignment(self, session):
-        cdc_descriptions = self.get_cdc_description_rows(session)
+        cdc_descriptions = self.get_all_cdc_description_rows(session)
 
         assignment = {}
         for desc in cdc_descriptions:
@@ -554,12 +617,6 @@ class TestCdc(Tester, CDCInitializeHelper):
     def get_timestamp_of_first_generation_after(self, session, timestamp):
         cdc_descriptions = list(self.get_cdc_description_rows(session))
         return min(desc.time for desc in cdc_descriptions if desc.time > timestamp)
-
-    def get_cdc_topology_description_for_timestamp(self, session, timestamp):
-        query = session.prepare(f"SELECT description FROM {CDC_GENERATIONS_TABLE} WHERE time = ?")
-        query.consistency_level = ConsistencyLevel.ALL
-        rows = session.execute(query, (timestamp,))
-        return list(rows)[0].description
 
     def get_base_and_log_rows(self, session, base_table_name):
         logger.debug('Fetch table data')
