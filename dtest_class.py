@@ -4,6 +4,7 @@ import time
 import logging
 import threading
 import subprocess
+import requests
 
 import pytest
 import cassandra
@@ -254,6 +255,20 @@ def get_ip_from_node(node):
     else:
         node_ip = node.network_interfaces['thrift'][0]
     return node_ip
+
+
+def is_autocompaction_enabled(node, ks_name, table_name):
+    """
+    Return if autocompaction is enabled or not
+    :param node: node to execute the API request
+    :param ks_name: Keyspace name to verify if autocompaction is enabled
+    :param table_name: table name to verify if autocompaction is enabled
+    :return: True|False
+    """
+    node_ip = get_ip_from_node(node=node)
+    response = requests.get(f'http://{node_ip}:10000/column_family/autocompaction/{ks_name}:{table_name}')
+    response.raise_for_status()
+    return response.json()
 
 
 def running_in_docker():

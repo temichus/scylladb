@@ -30,11 +30,6 @@ def rows_to_list(rows):
     return new_list
 
 
-def chunks_list(lst, num_chunks):
-    for i in range(0, len(lst), num_chunks):
-        yield lst[i:i + num_chunks]
-
-
 # work for cluster started by populate
 def new_node(cluster, bootstrap=True, token=None, remote_debug_port='0', data_center=None, new_node_index=None):
     i = len(cluster.nodes) + 1 if not new_node_index else new_node_index

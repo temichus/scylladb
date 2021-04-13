@@ -387,3 +387,8 @@ def print_table(table):
     logger.debug(tabulate.tabulate(tabular_data=[
         [str(getattr(row, column_name)) for column_name in table.column_names]
         for row in table.current_rows], headers=table.column_names))
+
+
+def chunks_list(lst, num_chunks):
+    for i in range(0, len(lst), num_chunks):
+        yield lst[i:i + num_chunks]
