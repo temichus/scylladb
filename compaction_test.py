@@ -18,17 +18,14 @@ logger = logging.getLogger(__file__)
 
 @pytest.mark.dtest_full
 @pytest.mark.single_node
+@pytest.mark.parametrize('strategy', ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy',
+                                      'DateTieredCompactionStrategy', 'TimeWindowCompactionStrategy'])
 class TestCompaction(Tester):
-    __test__ = True
     strategy = None
 
-    @pytest.fixture(
-        params=['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy',
-                'TimeWindowCompactionStrategy'],
-        autouse=True)
-
-    def fixture_compaction_strategy(self, request):
-        self.strategy = request.param
+    @pytest.fixture(scope='function', autouse=True)
+    def fixture_compaction_strategy(self, strategy):
+        self.strategy = strategy
         dtest_setup_overrides = DTestSetupOverrides()
         dtest_setup_overrides.cluster_options = ImmutableMapping({'start_rpc': 'true'})
         return dtest_setup_overrides
