@@ -23,9 +23,9 @@ KEYSPACE = "bnk"
 BICS = 100                         # How many banks
 BANS = 1000
 TOTAL_ACCOUNTS = BICS * BANS
-TOTAL_TRANSFERS = 50000            # Total transfers to test
+TOTAL_TRANSFERS = 1000            # Total transfers to test
 RF = 3
-NODES = min(8, psutil.cpu_count(logical=False))  # More nodes make test much slower - TODO
+NODES = min(4, psutil.cpu_count(logical=False))  # More nodes make test much slower - TODO
 MAX_WORKERS = 200                  # Workers block so make more than cores/threads
 BALANCE_INIT_MIN = 1000
 BALANCE_INIT_MAX = 10000
