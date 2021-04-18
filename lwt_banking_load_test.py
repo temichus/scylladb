@@ -468,7 +468,6 @@ class LWTBankingLoadTest(Tester):
         cluster = self.cluster
         cluster.set_configuration_options(values={
             "hinted_handoff_enabled": False,
-            "skip_wait_for_gossip_to_settle": 0,
         })
         jvm_args = ["--smp", str(num_nodes)]
         if not cluster.nodelist():
