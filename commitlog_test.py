@@ -853,16 +853,11 @@ class TestCommitLog(Tester):
         node1.set_configuration_options(values={'commitlog_segment_size_in_mb': -1,
                                                 'commitlog_total_space_in_mb': 32,
                                                 'commitlog_reuse_segments': True})
+        logger.debug('Restart node1')
         node1.stop(gently=False)
-        node1.start(no_wait=True)
-        timeout = 30
-        started_line = 'Starting listening for CQL clients'
-        node1.watch_log_for(started_line, timeout=timeout)
-        listening_started = node1.grep_log(started_line)
-        if not listening_started:
-            pytest.fail(f"Failure:node1 not listening to clients, timeout={timeout}, not found:{started_line}")
+        node1.start(wait_for_binary_proto=True)
         session = self.patient_cql_connection(node1)
-        assert_row_count_in_select_less(session=session, query='select * from ks.cf', max_rows_expected=total_size)
+        assert_row_count_in_select_less(session=session, query='select * from ks.cf', max_rows_expected=total_size + 1)
 
         logger.debug('Test with more data after rollback to default config')
         insert_c1c2(session, n=int(total_size * 1.5))
