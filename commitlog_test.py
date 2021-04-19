@@ -904,7 +904,7 @@ class TestCommitLog(Tester):
             out, err = proc.communicate()
             exit_status = proc.wait()
             assert exit_status == 0, f"exec_cmd: {cmd} failed: {err}\nOutput:\n{out}"
-            return out
+            return out.decode()
 
         logger.debug("Mount commitlog directory to a size limited device")
         exec_cmd(f'dd if=/dev/zero of={tmp_iso} bs=1M count={commitlog_dir_limit_in_mb}')
@@ -914,7 +914,7 @@ class TestCommitLog(Tester):
         mount_cmd = f'sudo mount {tmp_iso} {commitlog_dir}'
         logger.debug(mount_cmd)
         exec_cmd(mount_cmd)
-        user = os.environ.get('HOME').split('/')[-1]
+        user = os.environ.get('USER', exec_cmd('whoami').strip())
         exec_cmd(f'sudo chown -R {user}:{user} {commitlog_dir}')
 
         unit_size = 10000

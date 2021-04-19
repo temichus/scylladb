@@ -224,6 +224,7 @@ docker_cmd="docker run --detach=true \
     -v ${CCM_DIR}:${CCM_DIR} \
     -e LOG_SAVED_DIR \
     -e HOME \
+    -e USER \
     -e SCYLLA_EXT_OPTS \
     -e SCYLLA_EXT_ENV \
     -e LC_ALL=en_US.UTF-8 \
