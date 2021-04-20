@@ -1173,3 +1173,25 @@ class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
                 f"unexpected error message: {str(err.args)}"
         else:
             raise Exception("using an additional faulty s3 config did not cause the check-location command to fail")
+
+    @attr('scylla-manager')
+    def test_backup_specific_keyspaces_includes_system_keyspaces(self):
+        """
+        The following test makes sure that even when "system_schema" is no included keyspace list of a backup task,
+        it will still be backed up.
+        Introduced in manager 2.4
+        """
+        node1, node2 = self._prepare_cluster_with_data(keyspace_table_and_key_range={"keyspace1": {"table1": [1, 11]}})
+        mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
+        backup_task = mgr_cluster.run_backup_command(keyspace_list=["keyspace1"],
+                                                     location_list=[f"s3:{DESTINATION_BUCKET}"])
+        backup_task.wait_for_status(list_status=[TaskStatus.DONE], step=5)
+        snapshot_tag = backup_task.get_snapshot_tag()
+        backup_files_dict = mgr_cluster.get_backup_files_dict(snapshot_tag=snapshot_tag)
+
+        node_id = node1.hostid()
+        backed_up_keyspaces_list = list(backup_files_dict[node_id].keys())
+
+        assert "system_schema" in backed_up_keyspaces_list, \
+            "system_schema was not backed up as part of the task, even though this keyspace should always be " \
+            "backed up, even when it is not stated in the keyspace list"
