@@ -21,7 +21,7 @@ from thrift.Thrift import TApplicationException
 from thrift_tests import get_thrift_client
 
 from tools.assertions import assert_invalid, assert_one, assert_unavailable, assert_all
-from dtest_class import Tester, create_ks
+from dtest_class import Tester, create_ks, FlakyRetryPolicy
 from tools.data import rows_to_list
 from tools.cluster import new_node
 from tools.misc import require
@@ -51,6 +51,7 @@ class CQLTester(Tester):
             cluster.set_configuration_options(values=config)
 
         if configuration_options:
+            logger.debug("Setting cluster configuration_options: %s", configuration_options)
             cluster.set_configuration_options(values=configuration_options)
 
         if not cluster.nodelist():
@@ -613,8 +614,9 @@ class MiscellaneousCQLTester(CQLTester):
         cluster = self.cluster
         # reduce range_request_timeout to make the first try
         # timeout faster when node2 is killed.
+        range_request_timeout_in_ms = randint(1, 10) * 1000
         session = self.prepare(nodes=2, rf=2,
-                               configuration_options={'range_request_timeout_in_ms': '5000'})
+                               configuration_options={'range_request_timeout_in_ms': f'{range_request_timeout_in_ms}'})
         node1, node2 = self.cluster.nodelist()
 
         ks = 'ks'
@@ -648,11 +650,13 @@ class MiscellaneousCQLTester(CQLTester):
             dt = time.time() - t0
             allowed_timeout = 1
             if not stop_gently:
-                # allow timeout retries lasting more than 10 seconds
                 range_request_timeout = \
                     int(cluster._config_options['range_request_timeout_in_ms']) / 1000
-                allowed_timeout += range_request_timeout * \
-                    ceil(11 / range_request_timeout)
+                # The request should fail up to range_request_timeout + 1 seconds
+                # after max_retries or after the node is marked
+                # as DN by gossip, the earlier of the two.
+                allowed_timeout += 1 + range_request_timeout + \
+                    min(range_request_timeout * FlakyRetryPolicy().max_retries, 20)
             assert dt <= allowed_timeout, \
                 f"Query took too long to timeout: {dt} > {allowed_timeout}"
 
