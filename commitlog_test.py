@@ -7,8 +7,8 @@ import stat
 import struct
 import subprocess
 import time
-import re
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 
 from cassandra import WriteTimeout
 from cassandra.cluster import NoHostAvailable, OperationTimedOut
@@ -23,6 +23,7 @@ from tools.assertions import assert_row_count, assert_all, assert_row_count_in_s
 
 from tools.data import insert_c1c2
 from tools.files import copy_files_to
+from scylla_tools import get_free_memory_size_in_mb
 
 logger = logging.getLogger(__name__)
 
@@ -781,79 +782,109 @@ class TestCommitLog(Tester):
     def test_total_space_limit_of_commitlog(self, commitlog_segment_size_in_mb=512,
                                             commitlog_total_space_in_mb=-1):
         """
-        Rese segments will take more space, but it should be limited within max
+        `commitlog_reuse_segments` is enabled by default, reusing commitlog
+        segments without deleting and recreating will improve the performance.
+        `commitlog_segment_size_in_mb` is the size limit of single commitlog.
+
+        The space usage of commitlog is limited by `commitlog_total_space_in_mb`,
+        after flusing segment buffers or sgement is recycled, nothing is filled
+        but the diskspace isn't released.
+
+        This case testes with different size of `commitlog_total_space_in_mb`
+        and `commitlog_segment_size_in_mb`, fills data by cs workload for
+        reaching the `commitlog_disk_usage_threshold`, then flushing will be
+        triggered automatically.
+
+        When the cs workload writes data, commitlog disk usage will be limited
+        by `commitlog_total_space_in_mb`. Currently scylla allows to have one
+        more segment, so the real limit is increased to be a multiple of
+        segment size.
 
         Related Scylla PR: https://github.com/scylladb/scylla/pull/6368
         """
         node1 = self.node1
+        debug_commitlog = False
 
-        # Size of the loop device
-
-        def get_free_memory_size():
-            """
-            Get current free memory from /proc/meminfo
-            """
-            proc = subprocess.Popen(['cat', '/proc/meminfo'], stdout=subprocess.PIPE)
-            out, err = proc.communicate()
-            out = out.decode()
-            assert proc.returncode == 0, f"expect 0, got proc.returncode={proc.returncode} err={err}"
-            assert 'MemFree:' in out, f"expect MemFree:' in out, err, got out={out} \n err={err}"
-            pattern = re.compile('MemFree: (.*) ')
-            for line in out.split('\n'):
-                if pattern.match(line):
-                    return int(pattern.match(line)[1]) / 1024  # unit: mb
-            raise Exception('Failed to get the valid free memory size')
-
+        # FIXME: hardcode the scylla available memory (assigned by `-memory')
+        SCYLLA_MEMORY = 1024
         if commitlog_total_space_in_mb == -1:
-            commitlog_segment_size_in_mb = min(int(get_free_memory_size() / 6), 10240)
+            # Scylla will use the same size as `available memory` for commitlog,
+            # which is assigned by `--memory` in scylla cmdline.
+            total_space_limit = min(get_free_memory_size_in_mb(), SCYLLA_MEMORY)
+            commitlog_segment_size_in_mb = int(total_space_limit / 6)
+        else:
+            total_space_limit = commitlog_total_space_in_mb
         logger.debug(f"commitlog_segment_size_in_mb={commitlog_segment_size_in_mb}")
         logger.debug(f"commitlog_total_space_in_mb={commitlog_total_space_in_mb}")
 
-        # With the following config, scylla will use the same size as free memory for commitlog
-        # Set single commitlog file to 1G, then it's easy to reach the limit
+        # By default periodic commitlog_sync mode will be used, so we have chance
+        # to accumulate more commitlogs.
         node1.set_configuration_options(values={'commitlog_segment_size_in_mb': commitlog_segment_size_in_mb,
                                                 'commitlog_total_space_in_mb': commitlog_total_space_in_mb,
-                                                'commitlog_reuse_segments': True},
-                                        batch_commitlog=True)
+                                                'commitlog_reuse_segments': True})
 
-        unit_size = commitlog_segment_size_in_mb
-        total_size = 0
-
-        logger.debug(f'Commitlog size before start: {self._get_commitlog_size()}')
-        logger.debug("Start cluster ...")
-        self.cluster.start(no_wait=True, wait_for_binary_proto=False, wait_other_notice=False)
-        node1.watch_log_for('Starting listening for CQL clients', timeout=30)
+        logger.debug(f'Commitlog size before start: {self._get_commitlog_size()}M')
+        logger.debug("Start cluster with `--smp 1' ...")
+        if debug_commitlog:
+            self.cluster.start(jvm_args=['--smp', '1', '--logger-log-level',
+                                         'commitlog=debug'], wait_for_binary_proto=True)
+        else:
+            self.cluster.start(jvm_args=['--smp', '1'], wait_for_binary_proto=True)
 
         logger.debug("Create test keyspace and table")
         session = self.patient_cql_connection(node1)
         create_ks(session, 'ks', 1)
         create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'})
-        well_used_cases = []
+
+        # Calculate the commitlog_disk_usage_threshold, flushing will be triggered
+        # before when we only have a half segment left before hitting used == max.
+        if total_space_limit > commitlog_segment_size_in_mb / 2:
+            commitlog_disk_usage_threshold = total_space_limit - commitlog_segment_size_in_mb / 2
+        else:
+            commitlog_disk_usage_threshold = total_space_limit
+
+        # Fill data by CS workload, a set of commitlogs will be generated for testing the space limit
+        cs_n = max(int(total_space_limit * 200), 20000)
+        cs_cmd = ['write', f'n={cs_n}', '-rate', 'threads=25', '-col', 'size=FIXED(1000)', '-log', 'interval=100']
+        logger.debug(f'Starting CS workload: {cs_cmd}')
+        executor = ThreadPoolExecutor(max_workers=1)
         start = time.time()
-        while True:
-            logger.debug(f'Insert {unit_size} rows ....')
+        cs_task = executor.submit(lambda: node1.stress(cs_cmd, capture_output=True))
+
+        # Insert a few data by insert_c1c2(), the data will be verifed in the end
+        total_size = 0
+        unit_size = commitlog_segment_size_in_mb
+        reach_threshold_cases = []
+        while not cs_task.done():
+            # Insert a few data
             insert_c1c2(session, keys=range(total_size, total_size + unit_size))
             total_size += unit_size
             dir_size = self._get_commitlog_size()
-            limit_size_in_mb = commitlog_total_space_in_mb
-            if commitlog_total_space_in_mb == -1:
-                limit_size_in_mb = min(get_free_memory_size(), 4095)
-            logger.debug(f'Current commitlog size: {dir_size}, limit_size_in_mb: {limit_size_in_mb}, '
-                         f'well-used cases: {len(well_used_cases)}')
-            assert self._get_commitlog_size() <= limit_size_in_mb * 1.2, 'Out of total space limit'
-            if dir_size + commitlog_segment_size_in_mb * 2 > limit_size_in_mb:
-                well_used_cases.append(dir_size)
-            # Have enough well-used cases, and not out of space limit
-            if len(well_used_cases) > 5:
+            # Scylla allows to create one more commitlog file out of the space limit
+            actual_space_limit = total_space_limit + commitlog_segment_size_in_mb - total_space_limit % commitlog_segment_size_in_mb
+            assert self._get_commitlog_size() <= actual_space_limit, 'Out of total space limit'
+            if dir_size > commitlog_disk_usage_threshold:
+                reach_threshold_cases.append(dir_size)
+            if len(reach_threshold_cases) > 0:
+                logger.debug(f'Current commitlog size: {dir_size}M '
+                             f'({round(100 * dir_size / total_space_limit, 2)})%, '
+                             f'Well-used cases: {len(reach_threshold_cases)} / 5, '
+                             f'Time passed: {round(time.time() - start, 2)}s, '
+                             f'commitlog_disk_usage_threshold: {commitlog_disk_usage_threshold}M')
+            # Have enough commitlog to trigger flushing
+            if len(reach_threshold_cases) >= 5:
+                logger.debug('Waiting the cs workload to be done ...')
+                logger.debug(cs_task.result())
                 break
-            assert time.time() - start < 201, \
-                "the commitlog space isn't used well in 201 seconds," \
-                " quit the test to avoid endless loop"
-        # set back to default
-        node1.set_configuration_options(values={'commitlog_segment_size_in_mb': -1,
-                                                'commitlog_total_space_in_mb': 32,
+        logger.debug(cs_task.result())
+        assert len(reach_threshold_cases) > 0, "Commitlog space doesn't reach `commitlog_disk_usage_threshold'," \
+            " need to fill more data by cs workload"
+
+        # set commitlog config back to default
+        node1.set_configuration_options(values={'commitlog_segment_size_in_mb': 32,
+                                                'commitlog_total_space_in_mb': -1,
                                                 'commitlog_reuse_segments': True})
-        logger.debug('Restart node1')
+        logger.debug('Restart node1 to enable default commitlog configure')
         node1.stop(gently=False)
         node1.start(wait_for_binary_proto=True)
         session = self.patient_cql_connection(node1)
@@ -863,16 +894,23 @@ class TestCommitLog(Tester):
         insert_c1c2(session, n=int(total_size * 1.5))
         assert_row_count(session=session, table_name='ks.cf', expected=int(total_size * 1.5))
 
+    def test_total_space_limit_of_commitlog_with_large_limit(self):
+        """
+        Test with 512M commitlog files, total space limit is 3096M
+        """
+        self.test_total_space_limit_of_commitlog(commitlog_segment_size_in_mb=512,
+                                                 commitlog_total_space_in_mb=3096)
+
     def test_total_space_limit_of_commitlog_with_medium_limit(self):
         """
-        Test with 10M commitlog files, total space limit is 1024M
+        Test with 100M commitlog files, total space limit is 1024M
         """
         self.test_total_space_limit_of_commitlog(commitlog_segment_size_in_mb=100,
-                                                 commitlog_total_space_in_mb=512)
+                                                 commitlog_total_space_in_mb=1024)
 
     def test_total_space_limit_of_commitlog_with_small_limit(self):
         """
-        Test with 1M commitlog files, total space limit is 30M
+        Test with 5M commitlog files, total space limit is 30M
         """
         self.test_total_space_limit_of_commitlog(commitlog_segment_size_in_mb=5,
                                                  commitlog_total_space_in_mb=30)

@@ -1455,3 +1455,18 @@ def fill_data_by_cs(node, n_range=[500, 550, 600, 650], start=0, duration_range=
         if flush:
             logger.debug("Flush after writing data .....")
             node.flush()
+
+
+def get_free_memory_size_in_mb():
+    """
+    Get current free memory from /proc/meminfo
+    """
+    proc = subprocess.Popen(['cat', '/proc/meminfo'], stdout=subprocess.PIPE)
+    out, err = proc.communicate()
+    out = out.decode()
+    assert proc.returncode == 0 and 'MemFree:' in out, err
+    pattern = re.compile('MemFree: (.*) ')
+    for line in out.split('\n'):
+        if pattern.match(line):
+            return int(pattern.match(line)[1]) / 1024  # unit: mb
+    raise Exception('Failed to get the valid free memory size')
