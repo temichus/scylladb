@@ -1194,3 +1194,25 @@ class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
         assert "system_schema" in backed_up_keyspaces_list, \
             "system_schema was not backed up as part of the task, even though this keyspace should always be " \
             "backed up, even when it is not stated in the keyspace list"
+
+    @attr('scylla-manager')
+    def test_backup_restore_with_agent_download_files(self):
+        """
+        The test creates a backup task, truncate the table that has been backed up,
+        and eventually restores the backup using the agent's download-files command.
+        """
+        keyspace_name, table_name = "keyspace1", "table1"
+        keyspace_table_and_key_range = {keyspace_name: {table_name: [1, 11]}}
+        node1, node2 = self._prepare_cluster_with_data(keyspace_table_and_key_range=keyspace_table_and_key_range)
+        mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
+        backup_task = mgr_cluster.run_backup_command(keyspace_list=[keyspace_name],
+                                                     location_list=[f"s3:{DESTINATION_BUCKET}"])
+        backup_task.wait_for_status(list_status=[TaskStatus.DONE], step=5)
+
+        self.clean_up_tables(node=node1, keyspace_and_tables_dict={keyspace_name: [table_name]})
+        for node in self.cluster.nodelist():
+            self.cluster._scylla_manager.agent_download_files(node=node,
+                                                              location_list=["s3:{}".format(DESTINATION_BUCKET)],
+                                                              snapshot_tag=backup_task.get_snapshot_tag())
+            node.nodetool(f"refresh -- {keyspace_name} {table_name}")
+        self.verify_c1c2(keyspace_table_and_key_range=keyspace_table_and_key_range, node=node1)
