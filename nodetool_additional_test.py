@@ -486,7 +486,6 @@ class TestNodetool(Tester):
     def test_snapshot_tag_keyspace_cf(self):
         self.tst_snapshot("snaptag", keyspace="system_schema", column_family="tables")
 
-    @pytest.mark.skip("#1133")
     def test_snapshot_tag_kc(self):
         self.tst_snapshot("snaptag", kc="system_schema.tables")
 
