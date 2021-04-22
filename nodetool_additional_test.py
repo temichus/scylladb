@@ -404,14 +404,15 @@ class TestNodetool(Tester):
         data_dir = os.path.join(node1.get_path(), "data")
         keyspaces = [f for f in os.listdir(data_dir) if os.path.isdir(
             os.path.join(data_dir, f)) and f not in self.reserved_names]
-        assert 6 == len(keyspaces), "wrong number of directories in the data dir"
         for ks in keyspaces:
             keyspace_dir = os.path.join(data_dir, ks)
-            column_families = [os.path.join(keyspace_dir, f) for f in os.listdir(
-                keyspace_dir) if os.path.isdir(os.path.join(keyspace_dir, f))]
+            column_families = [f for f in os.listdir(keyspace_dir)
+                               if os.path.isdir(os.path.join(keyspace_dir, f))]
             for cf in column_families:
-                if ks == "system" and "schema" in cf:
+                if ks.startswith("system") and cf.startswith("schema"):
+                    logger.debug(f"Skipping {ks}.{cf.split('-')[0]}")
                     continue
+                cf = os.path.join(keyspace_dir, cf)
                 assert os.path.isdir(
                     os.path.join(cf, "snapshots", snapshot)), "Missing snapshot dir under ks=" + ks + " cf " + cf
                 assert "manifest.json" in os.listdir(
@@ -446,7 +447,6 @@ class TestNodetool(Tester):
         data_dir = os.path.join(node1.get_path(), "data")
         keyspaces = [f for f in os.listdir(data_dir) if os.path.isdir(
             os.path.join(data_dir, f)) and f not in self.reserved_names]
-        assert 7 == len(keyspaces), "wrong number of directories in the data dir"
         if kc:
             brk = kc.split('.')
             keyspace = brk[0]
@@ -455,9 +455,9 @@ class TestNodetool(Tester):
             keyspace_dir = os.path.join(data_dir, ks)
             column_families = [f for f in os.listdir(keyspace_dir) if os.path.isdir(os.path.join(keyspace_dir, f))]
             for c in column_families:
-                cf = os.path.join(keyspace_dir, c)
-                if ks == "system" and "schema" in cf:
+                if ks.startswith("system") and c.startswith("schema"):
                     continue
+                cf = os.path.join(keyspace_dir, c)
                 if not keyspace or (keyspace == ks and (not column_family or c.startswith(column_family))):
                     assert os.path.isdir(
                         os.path.join(cf, "snapshots", snapshot)), "Missing snapshot dir under ks=" + ks + " cf " + cf
