@@ -44,11 +44,11 @@ class TestDatabaseMetrics(Tester):
         metrics = ['scylla_database_total_reads']
         metric_class = 'user'
         keyspace_name = 'database_metrics'
+        create_ks(session=session, name=keyspace_name, rf=1)
+        create_c1c2_table(session=session)
 
         initial_reads = self.get_metrics(get_ip_from_node(node), metrics=metrics, metric_class=metric_class)
 
-        create_ks(session=session, name=keyspace_name, rf=1)
-        create_c1c2_table(session=session)
         insert_c1c2(session=session, ks=keyspace_name, n=100)
         res = session.execute('SELECT * FROM cf LIMIT 20')
         logger.debug(res)
