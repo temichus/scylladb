@@ -1221,7 +1221,7 @@ class TestSchemaFileInSnapshot(SnapshotTester):
             restore_snapshot_with_sstableloader(snapshot_dir_base_table, node1, 'ks', 'cf')
             restore_snapshot_with_sstableloader(snapshot_dir_base_table, node1, 'ks', 'cf_mv')
         else:
-            restore_snapshot_with_refresh(snapshot_dir_base_table, node1, 'ks', 'cf')
+            restore_snapshot_with_refresh(snapshot_dir_base_table, node1, 'ks', 'cf', wait_for_mv=True)
 
         # check data have been restored
         self.check_rows_number_in_table(session, "ks", "cf", 100)
@@ -1277,7 +1277,7 @@ class TestSchemaFileInSnapshot(SnapshotTester):
             restore_snapshot_with_sstableloader(snapshot_dir, node1, 'ks', 'cf')
             restore_snapshot_with_sstableloader(snapshot_dir, node1, 'ks', 'cf_ind_index')
         else:
-            restore_snapshot_with_refresh(snapshot_dir, node1, 'ks', 'cf')
+            restore_snapshot_with_refresh(snapshot_dir, node1, 'ks', 'cf', wait_for_mv=True)
 
         self.check_rows_number_in_table(session, "ks", "cf", 100)
         self.check_rows_number_in_index(session, "ks", "cf", 100, index_column="val", value="'asdf'")
@@ -1328,7 +1328,7 @@ class TestSchemaFileInSnapshot(SnapshotTester):
             restore_snapshot_with_sstableloader(snapshot_dir_base_table, node1, 'ks', 'cf')
             restore_snapshot_with_sstableloader(snapshot_dir_base_table, node1, 'ks', 'cf_val_index')
         else:
-            restore_snapshot_with_refresh(snapshot_dir_base_table, node1, 'ks', 'cf')
+            restore_snapshot_with_refresh(snapshot_dir_base_table, node1, 'ks', 'cf', wait_for_mv=True)
 
         self.insert_rows(session, 0, 100)
         self.check_rows_number_in_table(session, 'ks', 'cf', 100)

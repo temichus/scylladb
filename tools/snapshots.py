@@ -3,6 +3,7 @@ import glob
 import os
 import shutil
 import subprocess
+import time
 
 from distutils import dir_util
 
@@ -109,7 +110,8 @@ def get_cf_snapshot_saved_dir(base_snapshot_dir: str, keyspace: str, table: str,
     return glob.glob(path_pattern)[0]
 
 
-def restore_snapshot_with_refresh(snapshot_dir, node, keyspace, table, name=None):
+def restore_snapshot_with_refresh(snapshot_dir, node, keyspace, table, name=None, wait_for_mv=False,
+                                      wait_for_mv_timeout=30):
     logger.debug("Restoring snapshot....")
     node_dir = node.get_path()
     restore_dir = glob.glob("{node_dir}/data/{keyspace}/{table}-*/upload/".format(**locals()))[0]
@@ -117,6 +119,17 @@ def restore_snapshot_with_refresh(snapshot_dir, node, keyspace, table, name=None
     logger.debug("Copying from %s to %s" % (str(snapshot_dir), str(restore_dir)))
     dir_util.copy_tree(snapshot_dir, restore_dir)
     node.nodetool("refresh %s %s" % (keyspace, table))
+
+    if wait_for_mv:
+        staging_dir = glob.glob("{node_dir}/data/{keyspace}/{table}-*/staging".format(**locals()))[0]
+        if len(glob.glob(f"{staging_dir}/*")):
+            logger.debug("Waiting for %s to become empty", staging_dir)
+            started = time.time()
+            while len(glob.glob(f"{staging_dir}/*")):
+                if time.time() - started >= wait_for_mv_timeout:
+                    raise TimeoutError(f"{staging_dir} is still not empty after {wait_for_mv_timeout} seconds")
+                time.sleep(1)
+            logger.debug("Waiting for %s to become empty", staging_dir)
 
 
 def restore_snapshot_with_sstableloader(snapshot_dir, node, keyspace, table, name=None):
