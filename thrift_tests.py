@@ -57,17 +57,11 @@ class BaseTester(Tester):
         # ever use one node.
         if not fixture_dtest_setup.dtest_config.use_vnodes:
             node1.set_configuration_options(values={'initial_token': 1})
+        node1.set_configuration_options(
+            values={'start_rpc': 'true', 'partitioner': 'org.apache.cassandra.dht.Murmur3Partitioner'})
+
         cluster.start()
         yield fixture_dtest_setup
-
-    @pytest.fixture(scope='function', autouse=True)
-    def fixture_dtest_setup_overrides(self, dtest_config):
-        dtest_setup_overrides = DTestSetupOverrides()
-        dtest_setup_overrides.cluster_options = ImmutableMapping({
-            'partitioner': 'org.apache.cassandra.dht.Murmur3Partitioner',
-            'start_rpc': 'true',
-        })
-        return dtest_setup_overrides
 
     def define_schema(self, client):
         raise NotImplementedError()
@@ -2718,12 +2712,6 @@ class TestCompactStorageThriftAccesses(ThriftTester):
 
 @pytest.mark.dtest_full
 class TestResultKeyOrder(ThriftTester):
-
-    def __init__(self, *args, **kwargs):
-        kwargs['cluster_options'] = {'partitioner': 'org.apache.cassandra.dht.Murmur3Partitioner',
-                                     'start_rpc': 'true'}
-        Tester.__init__(self, *args, **kwargs)
-
     def test_get_range_slices_token_order(self, fixture_thrift_client):
         _set_keyspace(fixture_thrift_client, 'Keyspace2')
         for key in ['key1', 'key2', 'key3', 'key4', 'key5']:
@@ -2752,13 +2740,6 @@ class TestWrappingRangeQueries(ThriftTester):
     vnodes, and within a vnode, a replica has to scan shards, and merge
     it all together.
     """
-
-    def __init__(self, *args, **kwargs):
-        # Use murmur3 partitioner since its sharding is much more complex
-        # than the others.
-        kwargs['cluster_options'] = {'partitioner': 'org.apache.cassandra.dht.Murmur3Partitioner',
-                                     'start_rpc': 'true'}
-        Tester.__init__(self, *args, **kwargs)
 
     def test_wrapping_ranges(self, fixture_thrift_client):
         # murmur3 tokens obtained using CQL TOKEN() function
