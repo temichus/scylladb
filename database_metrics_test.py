@@ -49,17 +49,21 @@ class TestDatabaseMetrics(Tester):
 
         initial_reads = self.get_metrics(get_ip_from_node(node), metrics=metrics, metric_class=metric_class)
 
-        keys = range(100)
+        count = 100
+        keys = range(count)
         insert_c1c2(session=session, ks=keyspace_name, keys=keys)
         for k in keys:
             session.execute(f"SELECT * FROM cf WHERE key='{k}'")
 
         final_reads = self.get_metrics(get_ip_from_node(node), metrics=metrics, metric_class=metric_class)
 
+        total = 0
         for metric_name in list(initial_reads.keys()):
             added = int(final_reads[metric_name])-int(initial_reads[metric_name])
+            total += added
             logger.debug(f"final_reads[{metric_name}]={final_reads[metric_name]} " +
                          f"initial_reads[{metric_name}]={initial_reads[metric_name]} " +
                          f"({added} added)")
-            assert added > 0,\
-                f'{metrics[0]} did not increase as expected. initial={initial_reads}; final={final_reads}'
+        assert count <= total <= int(count * 1.1), \
+            f"Expected additional reads to be in the [{count}, " \
+            f"{int(count*1.1)}] range, but metrics show {total} additional reads"
