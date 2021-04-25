@@ -486,7 +486,9 @@ class LWTBankingLoadTest(Tester):
 
         self.ignore_log_patterns.extend([
             "exception during mutation write",
-            "injected_error"
+            "injected_error",
+            "Failed to remove mutations from batchlog",
+            "mutation_write_timeout_exception",
         ])
         return session
 
