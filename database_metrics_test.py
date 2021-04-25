@@ -49,9 +49,10 @@ class TestDatabaseMetrics(Tester):
 
         initial_reads = self.get_metrics(get_ip_from_node(node), metrics=metrics, metric_class=metric_class)
 
-        insert_c1c2(session=session, ks=keyspace_name, n=100)
-        res = session.execute('SELECT * FROM cf LIMIT 20')
-        logger.debug(res)
+        keys = range(100)
+        insert_c1c2(session=session, ks=keyspace_name, keys=keys)
+        for k in keys:
+            session.execute(f"SELECT * FROM cf WHERE key='{k}'")
 
         final_reads = self.get_metrics(get_ip_from_node(node), metrics=metrics, metric_class=metric_class)
 
