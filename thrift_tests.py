@@ -6,6 +6,8 @@ import uuid
 from threading import Thread
 from pkg_resources import parse_version
 
+from ccmlib.scylla_cluster import ScyllaCluster
+
 from dtest_class import Tester
 from dtest_setup_overrides import DTestSetupOverrides
 from thrift_bindings.thrift010 import Cassandra
@@ -1703,7 +1705,14 @@ class TestMutations(ThriftTester):
 
     def test_describe_keyspace(self, fixture_thrift_client):
         kspaces = fixture_thrift_client.describe_keyspaces()
-        if parse_version(self.cluster.version()) >= parse_version('3.0'):
+        ksnames = set([x.name for x in kspaces])
+        # kspaces should have unique names
+        assert len(kspaces) == len(ksnames), ksnames
+        if isinstance(self.cluster, ScyllaCluster) \
+                and parse_version(self.cluster.version()) >= parse_version('4.6.dev'):
+            # ['Keyspace2', 'Keyspace1', 'system', 'system_traces', 'system_schema', 'system_auth', 'system_distributed', 'system_distributed_everywhere']
+            assert len(kspaces) == 8, ksnames
+        elif parse_version(self.cluster.version()) >= parse_version('3.0'):
             # ['Keyspace2', 'Keyspace1', 'system', 'system_traces', 'system_schema', 'system_auth', 'system_distributed']
             assert len(kspaces) == 7, [x.name for x in kspaces]
         elif parse_version(self.cluster.version()) >= parse_version('2.2'):
