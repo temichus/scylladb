@@ -124,7 +124,8 @@ class TestLdap(Tester):
         if not unique_members:
             unique_members = [self.LDAP_USER, 'qa-user', 'cassandra']
         for member in unique_members:
-            self.create_role_in_ldap(member, ldap_password)
+            if self.use_saslauth:
+                self.create_role_in_ldap(member, ldap_password)
             unique_members_list.append(f'uid={member},ou=Person,{self.test_ldap_docker.ldap_base_object}')
         ldap_user_group = [f'cn={ldap_role},{self.test_ldap_docker.ldap_base_object}',
                            ['groupOfUniqueNames', 'simpleSecurityObject', 'top'],
