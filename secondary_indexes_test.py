@@ -1395,17 +1395,12 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
         create_index(session, table_name, index_column, index_name, compaction=self.compaction_strategy)
         wait_for_view_build_start(session, ks=keyspace_name, view=view_name)
 
-        exclude_errors = [f'Can\'t send migration request: node {node2_ip} is down',
-                          f'Error applying view update to {node2_ip}: exceptions::unavailable_exception '
-                          f'\(Cannot achieve consistency level for cl ONE. Requires 1, alive 0\)',
-                          f'Error applying view update to {node2_ip}: exceptions::mutation_write_timeout_exception ',
-                          rf'(Operation timed out for {keyspace_name}\.{index_name}_index - received only 0 responses '
-                          f'from 1 CL=ONE)',
-                          rf'Error applying view update to .*: exceptions::mutation_write_failure_exception '
-                          rf'(Operation failed for {keyspace_name}\.{index_name}_index - received 0 responses and 1 '
-                          f'failures from 1 CL=ONE)',
+        exclude_errors = [rf'Can\'t send migration request: node {node2_ip} is down',
+                          rf'Error applying view update to {node2_ip}.*: exceptions::unavailable_exception \(Cannot achieve consistency level for cl ONE. Requires 1, alive 0\)',
+                          rf'Error applying view update to {node2_ip}.*: exceptions::mutation_write_timeout_exception \(Operation timed out for {keyspace_name}.{index_name}_index - received only 0 responses from 1 CL=ONE.\)',
+                          rf'Error applying view update to .*: exceptions::mutation_write_failure_exception \(Operation failed for {keyspace_name}.{index_name}_index - received 0 responses and 1 failures from 1 CL=ONE.\)',
                           ]
-        self.fixture_dtest_setup.ignore_log_patterns += exclude_errors
+        self.ignore_log_patterns += exclude_errors
 
         # Perform action on second node
         self.node_action_with_delay(self, node_action, node2)
@@ -2471,10 +2466,10 @@ class TestLocalIndexes(Tester, SecondaryIndexesHelpers):
         wait_for_view_build_start(session, ks=keyspace_name, view=view_name)
 
         exclude_errors = [f'Can\'t send migration request: node {node2_ip} is down',
-                          f'Error applying view update to {node2_ip}: exceptions::unavailable_exception '
+                          f'Error applying view update to {node2_ip}.*: exceptions::unavailable_exception \(Cannot achieve consistency level for cl ONE. Requires 1, alive 0\)'
                           r'\(Cannot achieve consistency level for cl ONE. Requires 1, alive 0\)',
                           r'Operation timed out for ks\.b_index_index - received only 0 responses from 1 CL=ONE']
-        self.fixture_dtest_setup.ignore_log_patterns += exclude_errors
+        self.ignore_log_patterns += exclude_errors
 
         # Perform action on second node
         self.node_action_with_delay(self, node_action, node2)
