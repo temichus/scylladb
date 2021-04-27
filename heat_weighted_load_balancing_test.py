@@ -67,14 +67,14 @@ class TestHeatWeightedLB(Tester):
                         assert delta_ratio >= 0.25
                         assert delta_ratio <= 4
                     else:
-                        # parameter's delta on the restarted node is less from 3 to 13 times
+                        # parameter's delta running average on the restarted node is within reasonable bounds
                         mean_window = 5
                         mean_avg = sum([metrics[key][node_ind][j]['delta']
                                         for j in range(i, i + mean_window)]) / mean_window
                         node_mean_avg = sum([metrics[key][2][j]['delta']
                                              for j in range(i, i + mean_window)]) / mean_window
                         ratio = mean_avg / node_mean_avg
-                        lower_bound = 1 + 2 * (50 - i) / 40
+                        lower_bound = 1.1 - 0.2 * (i - 10) / 40
                         upper_bound = 11 + 2 * (50 - i) / 40
                         err_msg = 'Cache difference between node{} and node2 is out of range: {}/{}={} expected to be {} < ratio <= {}. index={} metric {}'.format(
                             node_ind, mean_avg, node_mean_avg, ratio,
