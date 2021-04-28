@@ -530,7 +530,9 @@ class IcsCompactionTest(Tester):
         compaction_strategy = CompactionStrategy.INCREMENTAL
         self.prepare(num_of_nodes=NUM_OF_NODES, r_factor=RF,
                      compaction_strategy=compaction_strategy,
-                     sstable_size_in_mb=sstable_size_in_mb)
+                     sstable_size_in_mb=sstable_size_in_mb,
+                     compaction_additional_params={'min_threshold': '2',
+                                                   'min_sstable_size': '1'}, jvm_args=["--smp", "1"])
         num_of_generated_sstables = 4
         # The maximum expected compacted sstable size is the addition of the 2 largets generated sstables.
         max_expected_file_size = WRITE_SIZE_UNIT_IN_MB * (2 * num_of_generated_sstables - 1)
@@ -544,6 +546,9 @@ class IcsCompactionTest(Tester):
                 len(sstables_files1), num_of_generated_sstables))
             return len(sstables_files1) < num_of_generated_sstables
 
+        node1 = self.cluster.nodelist()[0]
+        node1.compact()
+        node1.wait_for_compactions()
         wait_for(func=is_compaction_executed, text=str(is_compaction_executed),
                  timeout=100)
         sstables_files1, files_size = self._get_sstable_files_and_sizes()
