@@ -41,6 +41,9 @@ class TestDataDistribution(Tester):
         logger.info("Writing data...")
         self.cluster.stress(stress_cmd.split(" "))
         self.cluster.flush()
+        logger.info("Compacting data...")
+        self.cluster.nodetool(f'disableautocompaction {self.ks}')
+        self.cluster.compact()
         logger.info("Waiting for compaction...")
         self.cluster.wait_for_compactions()
 
