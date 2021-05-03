@@ -6,6 +6,7 @@ import pytest
 
 from cassandra import ConsistencyLevel
 from ccmlib.node import NodetoolError
+from ccmlib.scylla_cluster import ScyllaCluster
 
 from dtest_class import Tester, create_ks, create_cf
 from dtest_setup import DTestSetup
@@ -49,7 +50,7 @@ class TestRebuild(Tester):
         Test rebuild from other dc works as expected.
         """
 
-        keys = 10000
+        keys = 25000 if isinstance(self.cluster, ScyllaCluster) and self.cluster.scylla_mode != 'debug' else 10000
 
         cluster = self.cluster
         cluster.set_configuration_options(values={'endpoint_snitch': 'GossipingPropertyFileSnitch'})
@@ -62,6 +63,7 @@ class TestRebuild(Tester):
         session = self.patient_exclusive_cql_connection(node1)
         create_ks(session, 'ks', {'dc1': 1})
         create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'})
+        logger.debug(f"Inserting {keys} keys")
         insert_c1c2(session, n=keys, consistency=ConsistencyLevel.ALL)
 
         # check data
@@ -86,9 +88,12 @@ class TestRebuild(Tester):
         # rebuild dc2 from dc1
         def rebuild():
             try:
+                logger.debug('Running nodetool rebuild dc1 on node2')
                 node2.nodetool('rebuild dc1')
+                logger.debug('Rebuild completed successfully')
             except NodetoolError as e:
                 if 'rebuild is in progress' in str(e):
+                    logger.debug('Rebuild is in progress')
                     self.rebuild_errors += 1
                 else:
                     logger.debug('Unexpected rebuild failure {}'.format(str(e)))
@@ -113,6 +118,7 @@ class TestRebuild(Tester):
             'Concurrent rebuild should not be allowed, but one rebuild command should have succeeded.'
 
         # check data
+        logger.debug('Verfiying data')
         for i in range(0, keys):
             query_c1c2(session, i, ConsistencyLevel.ALL)
 
