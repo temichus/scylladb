@@ -33,6 +33,13 @@ class IntKeyLoader(LoaderBase):
     def check_if_can_operate(self):
         return self._target_node.is_running()
 
+    def _check_if_session_is_alive(self):
+        try:
+            self._session.execute("DESCRIBE system.batchlog")
+            return True
+        except:
+            return False
+
     def _create_session(self):
         create_session_params = {
             'consistency_level': self.consistency_level
@@ -69,7 +76,9 @@ class IntKeyLoader(LoaderBase):
                 else:
                     self._results[self._current_idx] = 0
             except Exception as exc:  # pylint: disable=bare-except
-                print(f'<{self._target_node.name} failed to insert record with key {db_idx} due to the {str(exc)}>')
+                self._publish_error(
+                    f'<{self._target_node.name} failed to insert record with key {{db_idx}} due to the {{error}}>',
+                    db_idx=db_idx, error=str(exc))
                 if to_add:
                     self._results.append(None)
             self._current_idx += 1
@@ -78,7 +87,9 @@ class IntKeyLoader(LoaderBase):
             self._session.execute(self._update_stmt.bind((self._results[self._current_idx] + 1, db_idx)))
             self._results[self._current_idx] += 1
         except Exception as exc:  # pylint: disable=bare-except
-            print(f'<{self._target_node.name} failed to update record with key {db_idx} due to the {str(exc)}>')
+            self._publish_error(
+                f'<{self._target_node.name} failed to update record with key {{db_idx}} due to the {{error}}>',
+                db_idx=db_idx, error=str(exc))
         self._current_idx += 1
 
     def merge_result(self, output):

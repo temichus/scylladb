@@ -1,8 +1,13 @@
+import time
+import logging
 from threading import Thread, Event
+
 from dsr.base.d_entity import DEntity
 from ccmlib.node import Node
 from dtest_class import Tester
 from cassandra import ConsistencyLevel
+
+logger = logging.getLogger(__name__)
 
 
 class LoaderBase(DEntity, Thread):
@@ -10,10 +15,15 @@ class LoaderBase(DEntity, Thread):
     _tester: Tester = None
     _target_node: Node = None
     _session = None
+    _errors_aggregation_time = 100
+    _errors_aggregation_count = 10
+
     consistency_level = ConsistencyLevel.QUORUM
     serial_consistency_level = None
 
     def __init__(self, **kwargs):
+        self._errors = {}
+        self._last_error_cleanup = time.time()
         Thread.__init__(self)
         DEntity.__init__(self, **kwargs)
         self._to_stop = Event()
@@ -34,15 +44,44 @@ class LoaderBase(DEntity, Thread):
     def _run_workload(self):
         raise NotImplementedError(f'Should be overridden for class {self.__class__.__name__}')
 
+    def _is_session_operational(self):
+        if not self._session:
+            return False
+        if not self._errors_had_happened():
+            return True
+        return self._check_if_session_is_alive()
+
+    def _check_if_session_is_alive(self):
+        raise NotImplementedError(f'Should be overridden for class {self.__class__.__name__}')
+
+    def _errors_had_happened(self):
+        return len(self._errors) > 100
+
+    def _cleanup_errors(self):
+        for body, errors in self._errors.items():
+            kwargs = errors[0]
+            logger.debug(f"Following errors reported {len(errors)} for the last {self._errors_aggregation_time} seconds :" +
+                         body.format(**kwargs))
+        self._errors.clear()
+
+    def _publish_error(self, body: str, **kwargs):
+        time_now = time.time()
+        if self._errors_aggregation_time + self._last_error_cleanup < time_now:
+            self._cleanup_errors()
+        errors = self._errors.get(body, [])
+        if not errors:
+            self._errors[body] = errors
+        errors.append(kwargs)
+        if len(errors) < self._errors_aggregation_count:
+            logger.debug(body.format(**kwargs))
+
     def run(self):
         if not self.check_if_can_operate():
             return
-        self._session = None
-        for _ in range(self.create_session_retry):
-            self._session = self._create_session()
-        if not self._session:
-            return
         while not self._to_stop.is_set():
+            if not self._is_session_operational():
+                for _ in range(self.create_session_retry):
+                    self._session = self._create_session()
             self._run_workload()
 
     def stop(self, timeout=None):
@@ -51,6 +90,7 @@ class LoaderBase(DEntity, Thread):
             self.join(timeout)
         except:  # pylint: disable=bare-except
             pass
+        self._cleanup_errors()
 
     def bind(self, tester: Tester, node: Node):
         self._tester = tester
