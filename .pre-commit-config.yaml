@@ -131,7 +131,8 @@ repos:
                 configuration_test.py|
                 scrub_test.py|
                 largecolumn_test.py|
-                upgrade_internal_auth_test.py
+                upgrade_internal_auth_test.py|
+                limits_test.py
             )$
         language: system
         types: [python]

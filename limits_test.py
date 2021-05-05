@@ -1,12 +1,6 @@
-from dtest import Tester
-from scylla_tools import scylla_mode
-
+from dtest_class import Tester, create_ks
 import math
-
-from unittest import skip
-from nose.plugins.attrib import attr
-
-
+import pytest
 # Those are ideal values according to c* specifications
 # they should pass
 
@@ -34,7 +28,8 @@ MAX_CELLS = 16777216
 #MAX_CELLS = 1000
 
 
-@attr('dtest-full', 'single_node')
+@pytest.mark.dtest_full
+@pytest.mark.single_node
 class TestLimits(Tester):
 
     def prepare(self):
@@ -52,7 +47,8 @@ class TestLimits(Tester):
         if expect_failure:
             expected_error = "Key size too large: \d+ > 65535"
             self.ignore_log_patterns += [expected_error]
-            with self.assertRaisesRegex(Exception, expected_error):
+            with pytest.raises(Exception,
+                               match=expected_error):
                 session.execute(c)
             return
 
@@ -68,23 +64,23 @@ class TestLimits(Tester):
                 WHERE %s=1
         """ % key_name)
 
-        self.assertEqual(len(res.current_rows), 1)
+        assert len(res.current_rows) == 1
 
         res = session.execute("""
                 SELECT * FROM ks.test1
                 WHERE %s=2
         """ % key_name)
 
-        self.assertEqual(len(res.current_rows), 1)
+        assert len(res.current_rows) == 1
         session.execute("""DROP TABLE test1""")
 
-    def max_key_length_test(self):
+    def test_max_key_length(self):
         cluster = self.prepare()
         cluster.populate(1).start()
         node = cluster.nodelist()[0]
 
         session = self.patient_cql_connection(node)
-        self.create_ks(session, 'ks', 1)
+        create_ks(session, 'ks', 1)
 
         # biggest that will currently work in scylla
         # key_name = "k" * 65526
@@ -121,23 +117,23 @@ class TestLimits(Tester):
                 WHERE user='tintin'
         """)
 
-        self.assertEqual(len(list(res)), 1)
+        assert len(list(res)) == 1
 
         res = session.execute("""
                 SELECT * FROM ks.test1
                 WHERE user='milou'
         """)
 
-        self.assertEqual(len(list(res)), 1)
+        assert len(list(res)) == 1
         session.execute("""DROP TABLE test1""")
 
-    def max_column_value_size_test(self):
+    def test_max_column_value_size(self):
         cluster = self.prepare()
         cluster.populate(1).start()
         node = cluster.nodelist()[0]
 
         session = self.patient_cql_connection(node)
-        self.create_ks(session, 'ks', 1)
+        create_ks(session, 'ks', 1)
 
         size = 1
         for i in range(int(math.log(MAX_BLOB_SIZE, 2))):
@@ -165,7 +161,8 @@ class TestLimits(Tester):
         if expect_failure:
             expected_error = "Mutation of \d+ bytes is too large for the maximum size of 16777216"
             self.ignore_log_patterns += [expected_error]
-            with self.assertRaisesRegex(Exception, expected_error):
+            with pytest.raises(Exception,
+                               match=expected_error):
                 session.execute(c)
             return
 
@@ -176,14 +173,14 @@ class TestLimits(Tester):
 
         session.execute("""DROP TABLE test1""")
 
-    @scylla_mode('!debug')  # client times out in debug mode
-    def max_columns_and_query_parameters_test(self):
+    @pytest.mark.scylla_mode('!debug')  # client times out in debug mode
+    def test_max_columns_and_query_parameters(self):
         cluster = self.prepare()
         cluster.populate(1).start()
         node = cluster.nodelist()[0]
 
         session = self.patient_cql_connection(node)
-        self.create_ks(session, 'ks', 1)
+        create_ks(session, 'ks', 1)
 
         count = 1
         for i in range(int(math.log(MAX_COLUMNS, 2))):
@@ -213,17 +210,17 @@ class TestLimits(Tester):
 
         c = "SELECT * FROM STUFF;"
         res = session.execute(c)
-        self.assertEqual(len(res.current_rows), 1)
+        assert len(res.current_rows) == 1
 
         session.execute("""DROP TABLE stuff""")
 
-    def max_tuple_test(self):
+    def test_max_tuple(self):
         cluster = self.prepare()
         cluster.populate(1).start()
         node = cluster.nodelist()[0]
 
         session = self.patient_cql_connection(node)
-        self.create_ks(session, 'ks', 1)
+        create_ks(session, 'ks', 1)
 
         count = 1
         for i in range(int(math.log(MAX_TUPLES, 2))):
@@ -253,19 +250,19 @@ class TestLimits(Tester):
 
         c = "SELECT * FROM STUFF;"
         res = session.execute(c)
-        self.assertEqual(len(list(res)), rows)
 
+        assert len(list(res)) == rows
         session.execute("""DROP TABLE STUFF""")
 
-    @attr('next-gating')
-    @attr('dtest-debug')
-    def max_batch_size_test(self):
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
+    def test_max_batch_size(self):
         cluster = self.prepare()
         cluster.populate(1).start()
         node = cluster.nodelist()[0]
 
         session = self.patient_cql_connection(node)
-        self.create_ks(session, 'ks', 1)
+        create_ks(session, 'ks', 1)
 
         size = 1
         for i in range(int(math.log(MAX_BATCH_SIZE, 2))):
@@ -297,14 +294,14 @@ class TestLimits(Tester):
 
         session.execute("""DROP TABLE test1""")
 
-    @scylla_mode('!debug')  # client times out in debug mode
-    def max_cells_test(self):
+    @pytest.mark.scylla_mode('!debug')  # client times out in debug mode
+    def test_max_cells(self):
         cluster = self.prepare()
         cluster.populate(1).start()
         node = cluster.nodelist()[0]
 
         session = self.patient_cql_connection(node)
-        self.create_ks(session, 'ks', 1)
+        create_ks(session, 'ks', 1)
 
         cells = 1
         for i in range(int(math.log(MAX_CELLS, 2))):
