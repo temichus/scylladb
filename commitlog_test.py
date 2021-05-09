@@ -37,6 +37,7 @@ class TestCommitLog(Tester):
     def fixture_add_additional_log_patterns(self, fixture_dtest_setup):
         fixture_dtest_setup.ignore_log_patterns = (
             'commitlog - Exception in segment reservation: storage_io_error \(Storage I/O error: 13: filesystem error: open failed',
+            'Shutting down communications due to I/O errors until operator intervention',
         )
 
     @pytest.fixture(scope='function', autouse=True)
@@ -44,7 +45,6 @@ class TestCommitLog(Tester):
         fixture_dtest_setup.cluster.set_configuration_options({'start_rpc': 'true'})
         fixture_dtest_setup.cluster.populate(1)
         [self.node1] = fixture_dtest_setup.cluster.nodelist()
-
         yield
 
         # Some of the tests change commitlog permissions to provoke failure
