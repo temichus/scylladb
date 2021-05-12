@@ -1,18 +1,23 @@
+import logging
+
 import time
 from collections import namedtuple
-from unittest import skip
 from pkg_resources import parse_version
 
 from cassandra import ConsistencyLevel
 from cassandra.query import SimpleStatement
 from ccmlib.scylla_cluster import ScyllaCluster
-from nose.plugins.attrib import attr
+from dtest_class import Tester, create_cf, create_ks, get_ip_from_node
+from tools.data import query_c1c2, insert_c1c2
 
-from dtest import Tester, debug, info
-from tools import insert_c1c2, query_c1c2, since
+import pytest
+
+from tools.metrics import get_node_metrics
+
+logger = logging.getLogger(__name__)
 
 
-@attr('dtest-full')
+@pytest.mark.dtest_full
 class TestRepair(Tester):
 
     def check_repair_logs(self):
@@ -33,7 +38,7 @@ class TestRepair(Tester):
 
         session = self.patient_cql_connection(node_to_check, 'ks')
         result = list(session.execute("SELECT * FROM cf LIMIT %d" % (rows * 2)))
-        self.assertEqual(len(result), rows, len(result))
+        assert len(result) == rows, len(result)
 
         for k in found:
             query_c1c2(session, k, ConsistencyLevel.ONE)
@@ -41,94 +46,90 @@ class TestRepair(Tester):
         for k in missings:
             query = SimpleStatement("SELECT c1, c2 FROM cf WHERE key='k%d'" % k, consistency_level=ConsistencyLevel.ONE)
             res = list(session.execute(query))
-            self.assertEqual(len(list(filter(lambda x: len(x) != 0, res))), 0, res)
+            assert len(list(filter(lambda x: len(x) != 0, res))) == 0, res
 
         if restart:
             for node in stopped_nodes:
                 node.start(wait_other_notice=True, wait_for_binary_proto=True)
 
-    @since('2.2.1')
-    @skip('Scylla does not support anticompaction.')
-    def no_anticompaction_after_dclocal_repair_test(self):
+    @pytest.mark.skip('Scylla does not support anticompaction.')
+    def test_no_anticompaction_after_dclocal_repair(self):
         """
         @jira_ticket CASSANDRA-10422
         """
         cluster = self.cluster
-        debug("Starting cluster..")
+        logger.info("Starting cluster..")
         cluster.populate([2, 2]).start(wait_for_binary_proto=True)
         node1_1, node2_1, node1_2, node2_2 = cluster.nodelist()
         node1_1.stress(stress_options=['write', 'n=50K', 'cl=ONE', '-schema', 'replication(factor=2)'])
         node1_1.nodetool("repair -local keyspace1 standard1")
-        self.assertTrue(node1_1.grep_log("Not a global repair"))
-        self.assertTrue(node2_1.grep_log("Not a global repair"))
+        assert node1_1.grep_log("Not a global repair")
+        assert node2_1.grep_log("Not a global repair")
         # dc2 should not see these messages:
-        self.assertFalse(node1_2.grep_log("Not a global repair"))
-        self.assertFalse(node2_2.grep_log("Not a global repair"))
+        assert not node1_2.grep_log("Not a global repair")
+        assert not node2_2.grep_log("Not a global repair")
         # and no nodes should do anticompaction:
         for node in cluster.nodelist():
-            self.assertFalse(node.grep_log("Starting anticompaction"))
+            assert not node.grep_log("Starting anticompaction")
 
-    @since('2.2.1')
-    @skip('Scylla does not support anticompaction.')
-    def no_anticompaction_after_hostspecific_repair_test(self):
+    @pytest.mark.skip('Scylla does not support anticompaction.')
+    def test_no_anticompaction_after_hostspecific_repair(self):
         """
         @jira_ticket CASSANDRA-10422
         """
         cluster = self.cluster
-        debug("Starting cluster..")
+        logger.info("Starting cluster..")
         cluster.populate([2, 2]).start(wait_for_binary_proto=True)
         node1_1, *_ = cluster.nodelist()
         node1_1.stress(stress_options=['write', 'n=50K', 'cl=ONE', '-schema', 'replication(factor=2)'])
         node1_1.nodetool("repair -hosts 127.0.0.1,127.0.0.2,127.0.0.3,127.0.0.4 keyspace1 standard1")
         for node in cluster.nodelist():
-            self.assertTrue(node.grep_log("Not a global repair"))
+            assert node.grep_log("Not a global repair")
         for node in cluster.nodelist():
-            self.assertFalse(node.grep_log("Starting anticompaction"))
+            assert not node.grep_log("Starting anticompaction")
 
-    @since('2.2.4')
-    @skip('Scylla does not support anticompaction.')
-    def no_anticompaction_after_subrange_repair_test(self):
+    @pytest.mark.skip('Scylla does not support anticompaction.')
+    def test_no_anticompaction_after_subrange_repair(self):
         """
         @jira_ticket CASSANDRA-10422
         """
         cluster = self.cluster
-        debug("Starting cluster..")
+        logger.info("Starting cluster..")
         cluster.populate(3).start(wait_for_binary_proto=True)
         node1, *_ = cluster.nodelist()
         node1.stress(stress_options=['write', 'n=50K', 'cl=ONE', '-schema', 'replication(factor=3)'])
         node1.nodetool("repair -st 0 -et 1000 keyspace1 standard1")
         for node in cluster.nodelist():
-            self.assertTrue(node.grep_log("Not a global repair"))
+            assert node.grep_log("Not a global repair")
         for node in cluster.nodelist():
-            self.assertFalse(node.grep_log("Starting anticompaction"))
+            assert not node.grep_log("Starting anticompaction")
 
-    @since('2.2.1')
-    @skip('Scylla does not support anticompaction.')
-    def anticompaction_after_normal_repair_test(self):
+    @pytest.mark.skip('Scylla does not support anticompaction.')
+    def test_anticompaction_after_normal_repair(self):
         """
         @jira_ticket CASSANDRA-10422
         """
         cluster = self.cluster
-        debug("Starting cluster..")
+        logger.info("Starting cluster..")
         cluster.populate([2, 2]).start(wait_for_binary_proto=True)
         node1_1, *_ = cluster.nodelist()
         node1_1.stress(stress_options=['write', 'n=50K', 'cl=ONE', '-schema', 'replication(factor=2)'])
         node1_1.nodetool("repair keyspace1 standard1")
         for _ in cluster.nodelist():
-            self.assertTrue("Starting anticompaction")
+            assert node1_1.grep_log("Starting anticompaction")
 
-    def simple_sequential_repair_test(self, ):
+    def test_simple_sequential_repair(self, ):
         self._simple_repair(sequential=True)
 
-    @attr('next-gating')
-    # @attr('dtest-debug') - https://github.com/scylladb/scylla/issues/4384
-    def simple_parallel_repair_test(self, ):
+    @pytest.mark.next_gating
+    # @pytest.mark.'dtest-debug' - https://github.com/scylladb/scylla/issues/4384
+    def test_simple_parallel_repair(self, ):
         self._simple_repair(sequential=False)
 
-    def empty_vs_gcable_sequential_repair_test(self):
+    def test_empty_vs_gcable_sequential_repair(self):
         self._empty_vs_gcable_no_repair(sequential=True)
 
-    def empty_vs_gcable_parallel_repair_test(self):
+    def test_empty_vs_gcable_parallel_repair(self):
         self._empty_vs_gcable_no_repair(sequential=False)
 
     def _repair_options(self, ks='', cf=None, sequential=True):
@@ -162,16 +163,16 @@ class TestRepair(Tester):
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfer with the test (this must be after the populate)
         cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
-        debug("Starting cluster..")
+        logger.info("Starting cluster..")
         cluster.populate(3).start()
         node1, node2, node3 = cluster.nodelist()
 
         session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'ks', 3)
-        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        create_ks(session, 'ks', 3)
+        create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
         # Insert 1000 keys, kill node 3, insert 1 key, restart node 3, insert 1000 more keys
-        debug("Inserting data...")
+        logger.info("Inserting data...")
         insert_c1c2(session, n=1000, consistency=ConsistencyLevel.ALL)
         node3.flush()
         node3.stop(wait_other_notice=True)
@@ -182,36 +183,35 @@ class TestRepair(Tester):
         cluster.flush()
 
         # Verify that node3 has only 2000 keys
-        debug("Checking data on node3...")
+        logger.info("Checking data on node3...")
         self.check_rows_on_node(node3, 2000, missings=[1000])
 
         # Verify that node1 has 2001 keys
-        debug("Checking data on node1...")
+        logger.info("Checking data on node1...")
         self.check_rows_on_node(node1, 2001, found=[1000])
 
         # Verify that node2 has 2001 keys
-        debug("Checking data on node2...")
+        logger.info("Checking data on node2...")
         self.check_rows_on_node(node2, 2001, found=[1000])
 
         time.sleep(10)  # see CASSANDRA-4373
         # Run repair
         start = time.time()
-        debug("starting repair...")
+        logger.info("starting repair...")
         node1.repair(self._repair_options(ks='ks', sequential=sequential))
-        debug("Repair time: {end}".format(end=time.time() - start))
+        logger.info("Repair time: {end}".format(end=time.time() - start))
         if metrics:
-            metrics_data = self.get_node_metrics(node_ip=self.get_ip_from_node(node1), metrics=metrics)
+            metrics_data = get_node_metrics(node_ip=get_ip_from_node(node1), metrics=metrics)
 
         # Validate that only one range was transfered
         if self.check_repair_logs():
             out_of_sync_logs = node1.grep_log(r"([0-9.]+) and ([0-9.]+) have ([0-9]+) range(s) out of sync")
-            self.assertEqual(first=len(out_of_sync_logs), second=2,
-                             msg="Lines matching: " + str([elt[0] for elt in out_of_sync_logs]))
+            assert len(out_of_sync_logs) == 2, "Lines matching: " + str([elt[0] for elt in out_of_sync_logs])
             valid = [(node1.address(), node3.address()), (node3.address(), node1.address()),
                      (node2.address(), node3.address()), (node3.address(), node2.address())]
             for _, match in out_of_sync_logs:
-                self.assertEqual(int(match.group(3)), 1, "Expecting 1 range out of sync, got " + match.group(3))
-                self.assertIn((match.group(1), match.group(2)), valid, str((match.group(1), match.group(2))))
+                assert int(match.group(3)) == 1, "Expecting 1 range out of sync, got " + match.group(3)
+                assert (match.group(1), match.group(2)) in valid, str((match.group(1), match.group(2)))
                 valid.remove((match.group(1), match.group(2)))
                 valid.remove((match.group(2), match.group(1)))
 
@@ -233,7 +233,7 @@ class TestRepair(Tester):
 
         session = self.patient_cql_connection(node1)
         # create keyspace with RF=2 to be able to be repaired
-        self.create_ks(session, 'ks', 2)
+        create_ks(session, 'ks', 2)
         # we create two tables, one has low gc grace seconds so that the data
         # can be dropped during test (but we don't actually drop them).
         # the other has default gc.
@@ -298,24 +298,23 @@ class TestRepair(Tester):
                 query = SimpleStatement("SELECT c1, c2 FROM %s WHERE key='k%d'" % (cf, i),
                                         consistency_level=ConsistencyLevel.ALL)
                 res = list(session.execute(query))
-                self.assertEqual(len(list(filter(lambda x: len(x) != 0, res))), 0, res)
+                assert len(list(filter(lambda x: len(x) != 0, res))) == 0, res
 
         # check log for no repair happened for gcable data
         if self.check_repair_logs():
             out_of_sync_logs = node2.grep_log(r"([0-9.]+) and ([0-9.]+) have ([0-9]+) range(s) out of sync for cf1")
-            self.assertEqual(len(out_of_sync_logs), 0,
-                             "GC-able data does not need to be repaired with empty data: " + str(
-                                 [elt[0] for elt in out_of_sync_logs]))
+            assert len(out_of_sync_logs) == 0, "GC-able data does not need to be repaired with empty data: " + str(
+                [elt[0] for elt in out_of_sync_logs])
             # check log for actual repair for non gcable data
             out_of_sync_logs = node2.grep_log(r"([0-9.]+) and /([0-9.]+) have ([0-9]+) range(s) out of sync for cf2")
-            self.assertGreater(len(out_of_sync_logs), 0, "Non GC-able data should be repaired")
+            assert len(out_of_sync_logs) > 0, "Non GC-able data should be repaired"
 
-    def local_dc_repair_test(self):
+    def test_local_dc_repair(self):
         cluster = self._setup_multi_dc()
         node1 = cluster.nodes["node1"]
         node2 = cluster.nodes["node2"]
 
-        debug("starting repair...")
+        logger.info("starting repair...")
         opts = ["-local"]
         opts += self._repair_options(ks="ks")
         node1.repair(opts)
@@ -323,23 +322,23 @@ class TestRepair(Tester):
         # Verify that only nodes in dc1 are involved in repair
         if self.check_repair_logs():
             out_of_sync_logs = node1.grep_log(r"([0-9.]+) and ([0-9.]+) have ([0-9]+) range(s) out of sync")
-            self.assertEqual(len(out_of_sync_logs), 1, "Lines matching: %d" % len(out_of_sync_logs))
+            assert len(out_of_sync_logs) == 1, "Lines matching: %d" % len(out_of_sync_logs)
             _, match = out_of_sync_logs[0]
-            self.assertEqual(int(match.group(3)), 1, "Expecting 1 range out of sync, got " + match.group(3))
+            assert int(match.group(3)) == 1, "Expecting 1 range out of sync, got " + match.group(3)
             valid = [node1.address(), node2.address()]
-            self.assertIn(match.group(1), valid, "Unrelated node found in local repair: " + match.group(1))
+            assert match.group(1) in valid, "Unrelated node found in local repair: " + match.group(1)
             valid.remove(match.group(1))
-            self.assertIn(match.group(2), valid, "Unrelated node found in local repair: " + match.group(2))
+            assert match.group(2) in valid, "Unrelated node found in local repair: " + match.group(2)
         # Check node2 now has the key
         self.check_rows_on_node(node2, 2001, found=[1000], restart=False)
 
-    def dc_repair_test(self):
+    def test_dc_repair(self):
         cluster = self._setup_multi_dc()
         node1 = cluster.nodes["node1"]
         node2 = cluster.nodes["node2"]
         node3 = cluster.nodes["node3"]
 
-        debug("starting repair...")
+        logger.info("starting repair...")
         opts = ["-dc", "dc1", "-dc", "dc2"]
         opts += self._repair_options(ks="ks")
         node1.repair(opts)
@@ -347,12 +346,12 @@ class TestRepair(Tester):
         # Verify that only nodes in dc1 and dc2 are involved in repair
         if self.check_repair_logs():
             out_of_sync_logs = node1.grep_log(r"([0-9.]+) and ([0-9.]+) have ([0-9]+) range(s) out of sync")
-            self.assertEqual(len(out_of_sync_logs), 2, "Lines matching: " + str([elt[0] for elt in out_of_sync_logs]))
+            assert len(out_of_sync_logs) == 2, "Lines matching: " + str([elt[0] for elt in out_of_sync_logs])
             valid = [(node1.address(), node2.address()), (node2.address(), node1.address()),
                      (node2.address(), node3.address()), (node3.address(), node2.address())]
             for _, match in out_of_sync_logs:
-                self.assertEqual(int(match.group(3)), 1, "Expecting 1 range out of sync, got " + match.group(3))
-                self.assertIn((match.group(1), match.group(2)), valid, str((match.group(1), match.group(2))))
+                assert int(match.group(3)) == 1, "Expecting 1 range out of sync, got " + match.group(3)
+                assert (match.group(1), match.group(2)) in valid, str((match.group(1), match.group(2)))
                 valid.remove((match.group(1), match.group(2)))
                 valid.remove((match.group(2), match.group(1)))
         # Check node2 now has the key
@@ -368,7 +367,7 @@ class TestRepair(Tester):
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfer with the test (this must be after the populate)
         cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
-        debug("Starting cluster..")
+        logger.info("Starting cluster..")
         # populate 2 nodes in dc1, and one node each in dc2 and dc3
         cluster.populate([2, 1, 1]).start()
 
@@ -377,10 +376,10 @@ class TestRepair(Tester):
         session.execute(
             "CREATE KEYSPACE ks WITH replication = {'class': 'NetworkTopologyStrategy', 'dc1': 2, 'dc2': 1, 'dc3':1};")
         session.execute("USE ks")
-        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
         # Insert 1000 keys, kill node 3, insert 1 key, restart node 3, insert 1000 more keys
-        debug("Inserting data...")
+        logger.info("Inserting data...")
         insert_c1c2(session, n=1000, consistency=ConsistencyLevel.ALL)
         node2.flush()
         node2.stop(wait_other_notice=True)
@@ -392,13 +391,13 @@ class TestRepair(Tester):
         cluster.flush()
 
         # Verify that only node2 has only 2000 keys and others have 2001 keys
-        debug("Checking data...")
+        logger.info("Checking data...")
         self.check_rows_on_node(node2, 2000, missings=[1000])
         for node in [node1, node3, node4]:
             self.check_rows_on_node(node, 2001, found=[1000])
         return cluster
 
-    def two_consecutive_repair_test(self):
+    def test_two_consecutive_repair(self):
         """
         - Create a cluster
         - Insert data
@@ -410,30 +409,29 @@ class TestRepair(Tester):
 
         sequential = True
         metric_data = self._simple_repair(sequential=sequential, metrics=[metric_name])[metric_name]
-        info(f"Verifying the metric value of '{metric_name}' after the first repair is greater from '0'")
-        self.assertGreater(a=metric_data, b=0, msg=f"Got incorrect metric value '{metric_data}'")
+        logger.info(f"Verifying the metric value of '{metric_name}' after the first repair is greater from '0'")
+        assert metric_data > 0, f"Got incorrect metric value '{metric_data}'"
         for node_idx, node in enumerate(self.cluster.nodelist()):
             if node.status.lower() == "down":
-                info(f"Starting node{node_idx} because is in state down")
+                logger.info(f"Starting node{node_idx} because is in state down")
         self.cluster.start()
         node1 = self.cluster.nodelist()[0]
 
         start = time.time()
-        debug("Starting second repair...")
+        logger.info("Starting second repair...")
         node1.repair(self._repair_options(ks='ks', sequential=sequential))
-        debug(f"Repair time: {time.time() - start}")
-        info(f"Verifying the metric value of '{metric_name}' after the second repair is  '0'")
-        metric_data = self.get_node_metrics(node_ip=self.get_ip_from_node(node1), metrics=[metric_name])[metric_name]
-        self.assertEqual(first=metric_data, second=0, msg="Got incorrect value '{metric_data}'")
+        logger.info(f"Repair time: {time.time() - start}")
+        logger.info(f"Verifying the metric value of '{metric_name}' after the second repair is  '0'")
+        metric_data = get_node_metrics(node_ip=get_ip_from_node(node1), metrics=[metric_name])[metric_name]
+        assert metric_data == 0, "Got incorrect value '{metric_data}'"
 
 
 RepairTableContents = namedtuple('RepairTableContents',
                                  ['parent_repair_history', 'repair_history'])
 
 
-@since('2.2')
-@skip('Scylla does not have repair system tables')
-@attr('dtest-full')
+@pytest.mark.skip('Scylla does not have repair system tables')
+@pytest.mark.dtest_full
 class TestRepairDataSystemTable(Tester):
     """
     @jira_ticket CASSANDRA-5839
@@ -488,15 +486,15 @@ class TestRepairDataSystemTable(Tester):
         return RepairTableContents(parent_repair_history=parent_repair_history,
                                    repair_history=repair_history)
 
-    @skip('hangs CI')
-    def initial_empty_repair_tables_test(self):
-        debug('repair tables:')
-        debug(self.repair_table_contents(node=self.node1, include_system_keyspaces=False))
+    @pytest.mark.skip('hangs CI')
+    def test_initial_empty_repair_tables(self):
+        logger.info('repair tables:')
+        logger.info(self.repair_table_contents(node=self.node1, include_system_keyspaces=False))
         repair_tables_dict = self.repair_table_contents(node=self.node1, include_system_keyspaces=False)._asdict()
         for table_name, table_contents in repair_tables_dict.items():
-            self.assertFalse(table_contents, '{} is non-empty'.format(table_name))
+            assert not table_contents, '{} is non-empty'.format(table_name)
 
-    def repair_parent_table_test(self):
+    def test_repair_parent_table(self):
         """
         Test that `system_distributed.parent_repair_history` is properly populated
         after repair by:
@@ -506,9 +504,9 @@ class TestRepairDataSystemTable(Tester):
         """
         self.node1.repair()
         parent_repair_history, _ = self.repair_table_contents(node=self.node1, include_system_keyspaces=False)
-        self.assertTrue(len(parent_repair_history))
+        assert len(parent_repair_history)
 
-    def repair_table_test(self):
+    def test_repair_table(self):
         """
         Test that `system_distributed.repair_history` is properly populated
         after repair by:
@@ -518,4 +516,4 @@ class TestRepairDataSystemTable(Tester):
         """
         self.node1.repair()
         _, repair_history = self.repair_table_contents(node=self.node1, include_system_keyspaces=False)
-        self.assertTrue(len(repair_history))
+        assert len(repair_history)
