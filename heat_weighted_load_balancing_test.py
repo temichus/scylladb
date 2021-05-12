@@ -58,32 +58,69 @@ class TestHeatWeightedLB(Tester):
         """
         logger.debug('Verify metrics')
         for key in ('scylla_storage_proxy_coordinator_reads_local_node', 'scylla_storage_proxy_replica_reads'):
-            logger.debug('Verify {}'.format(key))
-            for i in range(10, 50):
-                for node_ind in (1, 3):
-                    if cached:
+            # find eligable samples window
+            first = None
+            last = len(metrics[key][2])
+            for i in range(0, last):
+                has_all = True
+                for node_ind in (1, 2, 3):
+                    if metrics[key][node_ind][i]['delta'] == 0:
+                        has_all = False
+                        break
+                if has_all:
+                    if first is None:
+                        first = i
+                else:
+                    if first is not None:
+                        last = i
+                        break
+            logger.debug(f'Verify {key}: first={first} last={last}')
+            assert first is not None, f"Did not find eligable samples range for key={key}"
+            if cached:
+                for i in range(first + 1, last - 1):
+                    for node_ind in (1, 3):
                         # parameter's delta is within 0.25x - 4x for all the nodes
                         delta_ratio = metrics[key][node_ind][i]['delta'] / metrics[key][2][i]['delta']
-                        assert delta_ratio >= 0.25
-                        assert delta_ratio <= 4
-                    else:
+                        assert 0.25 <= delta_ratio <= 4
+            else:
+                mean_window = 5
+                last -= mean_window
+                for i in range(first, last):
+                    for node_ind in (1, 3):
                         # parameter's delta running average on the restarted node is within reasonable bounds
-                        mean_window = 5
                         mean_avg = sum([metrics[key][node_ind][j]['delta']
                                         for j in range(i, i + mean_window)]) / mean_window
                         node_mean_avg = sum([metrics[key][2][j]['delta']
                                              for j in range(i, i + mean_window)]) / mean_window
                         ratio = mean_avg / node_mean_avg
-                        lower_bound = 1.1 - 0.2 * (i - 10) / 40
-                        upper_bound = 11 + 2 * (50 - i) / 40
+                        lower_bound = 1.1 - 0.2 * (i - first) / (last - first)
+                        upper_bound = 11 + 2 * (last - i) / (last - first)
                         err_msg = 'Cache difference between node{} and node2 is out of range: {}/{}={} expected to be {} < ratio <= {}. index={} metric {}'.format(
                             node_ind, mean_avg, node_mean_avg, ratio,
                             lower_bound, upper_bound,
                             i, key)
-                        assert ratio > lower_bound and ratio <= upper_bound, err_msg
+                        assert lower_bound <= ratio <= upper_bound, err_msg
         key = 'scylla_column_family_cache_hit_rate.*cf=.*standard1'
         last_drop = None
-        for i in range(20, 50):
+        # find eligable samples window
+        first = None
+        last = len(metrics[key][2])
+        for i in range(0, last):
+            has_all = True
+            for node_ind in (1, 2, 3):
+                if metrics[key][node_ind][i]['val'] == 0.0:
+                    has_all = False
+                    break
+            if has_all:
+                if first is None:
+                    first = i
+            else:
+                if first is not None:
+                    last = i
+                    break
+        logger.debug(f'Verify {key}: first={first} last={last}')
+        assert first is not None, f"Did not find eligable samples range for key={key}"
+        for i in range(first + 1, last - 1):
             for node_ind in (1, 3):
                 if cached:
                     # parameter's value is equal for all the nodes
@@ -103,12 +140,13 @@ class TestHeatWeightedLB(Tester):
                     last_drop = None
         # parameter's value on the restarted node is on a growing trend
         if not cached:
-            v = metrics[key][2][19]['val']
+            first += 10
+            v = metrics[key][2][first]['val']
             val_min = v
-            val_min_pos = 19
+            val_min_pos = first
             val_max = v
-            val_max_pos = 19
-            for i in range(20, 50):
+            val_max_pos = first
+            for i in range(first + 1, last):
                 v = metrics[key][2][i]['val']
                 if v < val_min:
                     val_min = v
@@ -117,8 +155,8 @@ class TestHeatWeightedLB(Tester):
                     val_max = v
                     val_max_pos = i
             assert val_max_pos > val_min_pos
-            assert (20 + 50) / 2 > val_min_pos
-            assert val_max_pos >= (20 + 50) / 2
+            assert (first + last) / 2 > val_min_pos
+            assert val_max_pos >= (first + last) / 2
 
     def run_read_thread(self):
         executor = ThreadPoolExecutor(max_workers=1)
