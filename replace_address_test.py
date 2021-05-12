@@ -59,6 +59,7 @@ class TestReplaceAddress(Tester):
         rbo_status = "true" if self.rbo_enabled else "false"
         configuration_options.update({"enable_repair_based_node_ops": rbo_status})
         logger.debug(f"Setting cluster configuration options: {configuration_options}")
+        self.debug_mode = isinstance(self.cluster, ScyllaCluster) and self.cluster.scylla_mode == 'debug'
         self.cluster.populate(num_nodes)
         self.cluster.set_configuration_options(values=configuration_options)
         self.cluster.start(no_wait=False, wait_for_binary_proto=True, wait_other_notice=True)
@@ -161,11 +162,14 @@ class TestReplaceAddress(Tester):
 
         session.execute(f"CREATE TABLE {table_name} (pk int, ck int, v int, primary key (pk, ck))")
 
-        logger.info("Insert 100000 rows.")
+        keys = 30 if self.debug_mode else 300
+        rows = 500
+        total_rows = keys * rows
+        logger.debug(f"Insert {keys} partitions of {rows} rows (total {total_rows} rows).")
         insert_stmt = session.prepare(f"INSERT INTO {table_name} (pk, ck, v) VALUES (?, ?, ?)")
         data = []
-        for i in range(300):
-            for k in range(500):
+        for i in range(keys):
+            for k in range(rows):
                 data.append([i, k, k])
                 session.execute(insert_stmt, (i, k, k))
 
@@ -174,7 +178,7 @@ class TestReplaceAddress(Tester):
 
         tokens = self.get_sorted_tokens(node3)
 
-        assert_row_count(session, table_name, 150000)
+        assert_row_count(session, table_name, total_rows)
 
         # stop node
         logger.info("Stopping node 3.")
@@ -189,15 +193,15 @@ class TestReplaceAddress(Tester):
         node4.watch_log_for("JOINING: Starting to bootstrap")
         node4.watch_log_for("Beginning stream session|sync data for keyspace=ks, status=started")
 
-        logger.info("Insert 1000 rows more.")
-        for i in range(300, 310):
-            for k in range(500, 600):
+        debug("Insert 1000 rows more.")
+        for i in range(keys, keys + 10):
+            for k in range(rows, rows + 100):
                 data.append([i, k, k])
                 session.execute(insert_stmt, (i, k, k))
 
         mark_log = node4.mark_log()
 
-        assert_row_count(session, table_name, 151000, consistency_level=ConsistencyLevel.QUORUM)
+        assert_row_count(session, table_name, total_rows + 1000, consistency_level=ConsistencyLevel.QUORUM)
 
         logger.info("Waiting for node4 is up")
         node4.watch_log_for("initialization completed", from_mark=mark_log)
@@ -215,7 +219,7 @@ class TestReplaceAddress(Tester):
         node4.flush()
         session = self.patient_cql_connection(node4)
         session.execute(f"USE {keyspace_name}")
-        assert_row_count(session, table_name, 151000)
+        assert_row_count(session, table_name, total_rows + 1000)
         assert_all(session, f"select * from {table_name}", data, ignore_order=True)
 
     def test_shutdown_all_and_replace_node(self):
@@ -354,7 +358,8 @@ class TestReplaceAddress(Tester):
         self.init_cluster(num_nodes=3)
         node1, node2, node3 = self.cluster.nodelist()
 
-        node1.stress(['write', 'n=100000', '-schema', 'replication(factor=3)'])
+        keys = 10000 if self.debug_mode else 100000
+        node1.stress(['write', f'n={keys}', '-schema', 'replication(factor=3)'])
 
         session = self.patient_cql_connection(node1)
         stress_table = 'keyspace1.standard1'
@@ -401,7 +406,8 @@ class TestReplaceAddress(Tester):
         self.init_cluster(num_nodes=3)
         node1, node2, node3 = self.cluster.nodelist()
 
-        node1.stress(['write', 'n=100000', '-schema', 'replication(factor=3)'])
+        keys = 10000 if self.debug_mode else 100000
+        node1.stress(['write', f'n={keys}', '-schema', 'replication(factor=3)'])
 
         session = self.patient_cql_connection(node1)
         stress_table = 'keyspace1.standard1'
