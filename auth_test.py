@@ -1122,9 +1122,9 @@ class TestAuth(Tester):
         except NoHostAvailable as e:
             logger.info(e.errors)
             assert isinstance(list(e.errors.values())[0], AuthenticationFailed)
-
-        logger.info('Check if the new session works')
-        self._check_session_available(new_session, expect_rf_err=True)
+        else:
+            logger.info('Check if the new session works')
+            self._check_session_available(new_session, expect_rf_err=True)
 
         logger.info('Check if the first session still works')
         self._check_session_available(session, expect_rf_err=True)
