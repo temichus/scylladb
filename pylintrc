@@ -222,7 +222,7 @@ contextmanager-decorators=contextlib.contextmanager
 # system, and so shouldn't trigger E1101 when accessed. Python regular
 # expressions are accepted.
 # TODO: remove all boto3 stuff until https://github.com/PyCQA/pylint/issues/3134 is fixed
-generated-members=.*dynamodb.*, .*boto3.*, .*ec2.*, .*s3.* , .*self.nodes.*, .*self.log.*, .*self.params.*, .*self._param_enabled.*, .*requests.codes.*, .*self.ignore_log_patterns.*
+generated-members=.*dynamodb.*, .*boto3.*, .*ec2.*, .*s3.* , .*self.nodes.*, .*self.log.*, .*self.params.*, .*self._param_enabled.*, .*requests.codes.*, .*self.ignore_log_patterns.*, .*self.ignore_cores_log_patterns.*
 
 # Tells whether missing members accessed in mixin class should be ignored. A
 # mixin class is detected if its name ends with "mixin" (case insensitive).
