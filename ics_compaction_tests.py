@@ -264,7 +264,10 @@ class IcsCompactionTest(Tester):
         5. Generate more sstables with rows after the snapshot
         6. Drop the keyspace, assure we have no data after the deletion
         7. Restore the snapshot
-        8. Verify we have the same num of rows and sstables generated prior to the snapshot.
+        8. Verify we have the same num of rows prior to the snapshot.
+        9. Rewrite some data to trigger regular compaction and wait for it.
+        10. Verify that the compacted sstables conform the sstable_size_in_mb
+            and their total size is as expected.
 
         :param use_sstableloader: Whether to use sstable loader to
             restore the snapshot or nodetool refresh.
@@ -296,10 +299,20 @@ class IcsCompactionTest(Tester):
             restore_snapshot_with_refresh(snapshot_dir, node1, KEYSPACE_NAME, TABLE_NAME)
         node1.nodetool('refresh {} {}'.format(KEYSPACE_NAME, TABLE_NAME))
         # Check that the number of table entries on snapshot is restored.
+        debug("Verifying data")
         assert_row_count(session=session, table_name=FULL_TABLE_NAME, expected=4)
+
+        debug("Writing more data")
+        self._write_and_flush_sstables(num_of_generated_sstables=1, start_index=1)
+        node1.wait_for_compactions()
+        debug("Stopping node")
+        node1.stop()
         sstables_files1, files_size = self._get_sstable_files_and_sizes()
-        # Check that the number and sizes of ssables on snapshot is restored.
-        assert set(files_size) == {2, 3, 5}, "Found sstable files with wrong sizes. files_size: {}".format(files_size)
+        for size in files_size:
+            assert size >= sstable_size_in_mb, f"Found sstable smaller than {sstable_size_in_mb} MB. files_size: {files_size}"
+        total_size = sum(files_size)
+        expected_total_size = sum([1, 2, 3, 4])
+        assert total_size == expected_total_size, f"Expected total sstable size of {expected_total_size}, but found {total_size}. files_size: {files_size}"
 
         # clean up
         debug("removing snapshot_dir: " + snapshot_dir)
