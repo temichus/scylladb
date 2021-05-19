@@ -2056,11 +2056,10 @@ class TestNodetool(Tester):
         node.nodetool('scrub --skip-corrupted ks cf')
 
         expected_errs = ['Skipping invalid clustering row fragment', 'Skipping invalid partition']
+        self.ignore_log_patterns = expected_errs
         for err in expected_errs:
             node.watch_log_for(err, timeout=10)
-        node.watch_log_for('Finished scrubbing 1 sstable', timeout=10)
-
-        self.ignore_log_patterns = expected_errs
+        node.watch_log_for('Finished scrubbing.*1 sstable', timeout=10)
 
     def test_scrub_ks_sstable_with_invalid_fragment(self):
         """
@@ -2089,11 +2088,10 @@ class TestNodetool(Tester):
         node.nodetool('scrub --skip-corrupted ks')
 
         expected_errs = ['Skipping invalid clustering row fragment', 'Skipping invalid partition']
+        self.ignore_log_patterns = expected_errs
         for err in expected_errs:
             node.watch_log_for(err, timeout=10)
-        node.watch_log_for('Finished scrubbing 1 sstable', timeout=10)
-
-        self.ignore_log_patterns = expected_errs
+        node.watch_log_for('Finished scrubbing.*1 sstable', timeout=10)
 
     def test_node_graceful_stop_during_stress_and_decommission(self, starting_size=4, node_count=10, rf=1):
         """
