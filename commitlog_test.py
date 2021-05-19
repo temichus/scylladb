@@ -935,24 +935,41 @@ class TestCommitLog(Tester):
             logger.debug(f'Commitlog size after stop: {self._get_commitlog_size()}')
 
         commitlog_dir = self._get_commitlog_path()
-        tmp_iso = os.path.join(self.node1.get_path(), "tmp_loopdev_for_commitlog.iso")
+        tmp_img = os.path.join(self.node1.get_path(), "tmp_loopdev_for_commitlog.img")
 
-        def exec_cmd(cmd):
-            proc = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        def exec_cmd(cmd, ignore_status=False, debug_output=False, shell=False):
+            proc = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=shell)
             out, err = proc.communicate()
             exit_status = proc.wait()
-            assert exit_status == 0, f"exec_cmd: {cmd} failed: {err}\nOutput:\n{out}"
-            return out.decode()
+            out = out.decode()
+            if not ignore_status:
+                assert exit_status == 0, f"Failed to execute command: {cmd}\nExit Status: {exit_status}\nError: {err}\nOutput: {out}"
+            if debug_output:
+                logger.debug(out)
+            return exit_status, out
 
         logger.debug("Mount commitlog directory to a size limited device")
-        exec_cmd(f'dd if=/dev/zero of={tmp_iso} bs=1M count={commitlog_dir_limit_in_mb}')
-        exec_cmd('sudo sync')
-        exec_cmd(f'mkfs.xfs -f {tmp_iso}')
-        exec_cmd('sudo sync')
-        mount_cmd = f'sudo mount {tmp_iso} {commitlog_dir}'
-        logger.debug(mount_cmd)
-        exec_cmd(mount_cmd)
-        user = os.environ.get('USER', exec_cmd('whoami').strip())
+        exec_cmd(f'dd if=/dev/zero of={tmp_img} bs=1M count={commitlog_dir_limit_in_mb}')
+        exec_cmd(f'mkfs.xfs -f {tmp_img}')
+        # checking existing loop devices and setup
+        logger.debug(subprocess.getoutput('ls /dev/loop*'))
+        exec_cmd('losetup -la', debug_output=True)
+
+        # The unused loop device should be prepared before mounting the image. Althought this test
+        # only uses one loop device for mounting image, but other parallel tests might occupy the
+        # created devices. Let's create multiple (4) loop devices.
+        # When the test is running in docker container, the loop device files will only be created
+        # for this container, but the namespace of loop device is shared with host and other containers.
+        # so it's still necessary to creating multiple devices.
+        dev_list = exec_cmd('cat /proc/devices')[1].split()
+        major_id = dev_list[dev_list.index('loop') - 1]
+        unused_idx = exec_cmd(f'sudo losetup -f')[1].replace('/dev/loop', '')
+        for idx in range(int(unused_idx), 5):
+            if exec_cmd(f'sudo test -e /dev/loop{idx}', ignore_status=True)[0] == 1:
+                exec_cmd(f'sudo mknod -m 0660 /dev/loop{idx} b {major_id} {idx}')
+        mount_cmd = f'sudo mount -o loop -t xfs {tmp_img} {commitlog_dir} -v'
+        exec_cmd(mount_cmd, debug_output=True)
+        user = os.environ.get('USER', exec_cmd('whoami')[1].strip())
         exec_cmd(f'sudo chown -R {user}:{user} {commitlog_dir}')
 
         unit_size = 10000
