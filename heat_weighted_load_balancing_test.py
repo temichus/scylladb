@@ -230,6 +230,5 @@ class TestHeatWeightedLB(Tester):
     def test_heat_weighted_load_balancing_cl_any(self):
         self.run_heat_weighted_load_balancing('ANY')
 
-    @pytest.mark.next_gating
     def test_heat_weighted_load_balancing_cl_quorum(self):
         self.run_heat_weighted_load_balancing('QUORUM')
