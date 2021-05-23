@@ -2,6 +2,7 @@ import re
 import os
 import time
 import yaml
+import random
 import pytest
 import shutil
 import logging
@@ -1242,3 +1243,48 @@ class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
         else:
             raise ScyllaManagerError("No error occurred when a non existent keyspace was used in the keyspace filter "
                                      "flag in a download-files command")
+
+    def _delete_file_from_bucket(self, cluster_id):
+        file_objects = self.boto_client.list_objects(Bucket=DESTINATION_BUCKET,
+                                                     Prefix=f"backup/sst/cluster/{cluster_id}/")["Contents"]
+        random_file_object = random.choice(file_objects)
+        logger.info(f"Removing file {random_file_object['Key']} from bucket {DESTINATION_BUCKET}")
+        self.boto_client.delete_object(Bucket=DESTINATION_BUCKET, Key=random_file_object['Key'])
+
+    @pytest.mark.require("scylla-manager/#2652")
+    def test_validate_backup_after_deleting_file(self):
+        """
+        The test creates a backup, runs it to completion,
+        and afterwards deletes one of the files of the backup from s3 (minio).
+        Afterwards, we create a backup validate task, expecting it to report about the missing file
+        and for the task to fail.
+        """
+        keyspace_name, table_name = "keyspace1", "table1"
+        keyspace_table_and_key_range = {keyspace_name: {table_name: [1, 11]}}
+        node1, node2 = self._prepare_cluster_with_data(keyspace_table_and_key_range=keyspace_table_and_key_range)
+        mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
+        backup_task = mgr_cluster.run_backup_command(keyspace_list=[keyspace_name],
+                                                     location_list=[f"s3:{DESTINATION_BUCKET}"])
+        backup_task.wait_and_get_final_status(step=5)
+        assert backup_task.status == TaskStatus.DONE, \
+            "Backup task failed due to an unexpected issue"
+
+        successful_backup_validate_task = mgr_cluster.run_backup_validate_command(
+            location_list=[f"s3:{DESTINATION_BUCKET}"])
+        file_status_dict = successful_backup_validate_task.get_file_status_summary(wait_for_task_ending=True)
+        assert file_status_dict["Missing files"] == 0, \
+            f'The backup validate task reported on an incorrect number of missing files: ' \
+            f'it reported on {file_status_dict["Missing files"]} files instead of 0'
+        assert successful_backup_validate_task.status == TaskStatus.DONE,\
+            "Since there are no missing files, the task was supposed to end in success, but it did not"
+
+        self._delete_file_from_bucket(mgr_cluster.id)
+
+        failing_backup_validate_task = mgr_cluster.run_backup_validate_command(
+            location_list=[f"s3:{DESTINATION_BUCKET}"])
+        file_status_dict = failing_backup_validate_task.get_file_status_summary(wait_for_task_ending=True)
+        assert file_status_dict["Missing files"] == 1, \
+            f'The validate task did not report on the correct number of missing files: ' \
+            f'reported {file_status_dict["Missing files"]} files instead of 1'
+        assert failing_backup_validate_task.status == TaskStatus.ERROR,\
+            "Since there are missing files, the task was supposed to end in failure, but it did not"

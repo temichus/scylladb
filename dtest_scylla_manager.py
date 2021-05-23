@@ -1169,6 +1169,31 @@ class HealthcheckTask(ManagerTask):
         ManagerTask.__init__(self, task_id=task_id, cluster_id=cluster_id, scylla_manager=scylla_manager)
 
 
+class BackupValidateTask(ManagerTask):
+    def __init__(self, task_id, cluster_id, scylla_manager):
+        ManagerTask.__init__(self, task_id=task_id, cluster_id=cluster_id, scylla_manager=scylla_manager)
+
+    def get_file_status_summary(self, wait_for_task_ending=True):
+        """
+        Output example:
+            Arguments:	-L s3:backup-bucket
+            Status:		DONE
+            Start time:	19 May 21 11:35:02 IDT
+            End time:	19 May 21 11:35:02 IDT
+            Duration:	0s
+
+            Scanned files:	251
+            Missing files:	1
+            Orphaned files:	0
+        """
+        if wait_for_task_ending:
+            self.wait_and_get_final_status(step=5)
+        assert self.status in [TaskStatus.DONE, TaskStatus.ERROR],\
+            f"Can't get file summary since the task is in {self.status} status"
+        file_status_dict = yaml.safe_load(self.full_progress_string())
+        return file_status_dict
+
+
 class BackupTask(ManagerTask):
     def __init__(self, task_id, cluster_id, scylla_manager):
         ManagerTask.__init__(self, task_id=task_id, cluster_id=cluster_id, scylla_manager=scylla_manager)
@@ -1290,6 +1315,40 @@ class ManagerCluster(ScyllaManagerBase):
         task_id = stdout.strip()
         logger.debug("Created task id is: {}".format(task_id))
         return BackupTask(task_id=task_id, cluster_id=self.id, scylla_manager=self.scylla_manager)
+
+    def run_backup_validate_command(self, delete_orphaned_files=None,
+                                    interval=None,
+                                    location_list=None,
+                                    num_retries=None,
+                                    parallel=None,
+                                    start_date=None):
+        cmd = f"backup validate -c {self.id}"
+
+        if delete_orphaned_files is not None:
+            cmd += " --delete-orphaned-files"
+        if interval is not None:
+            cmd += f" --interval {interval}"
+        if location_list is not None:
+            locations_names = ','.join(location_list)
+            cmd += f" --location {locations_names} "
+        if num_retries is not None:
+            cmd += f" --num-retries {num_retries}"
+        if parallel is not None:
+            cmd += f" --parallel {parallel} "
+        if start_date is not None:
+            cmd += f" --dc {start_date} "
+
+        stdout, stderr = self.sctool.run(cmd=cmd, parse_table_res=False)
+        if not stdout:
+            raise ScyllaManagerError(f"No output for sctool '{cmd}' command")
+
+        if stderr:
+            logger.error(f"Encountered an error on '{cmd}' command response")
+            raise ScyllaManagerError(stderr)
+
+        task_id = stdout.strip()
+        logger.info(f"Created task id is: {task_id}")
+        return BackupValidateTask(task_id=task_id, cluster_id=self.id, scylla_manager=self.scylla_manager)
 
     def get_backup_files_dict(self, snapshot_tag, all_clusters=False):
         command = f" -c {self.id} backup files --snapshot-tag {snapshot_tag}"
