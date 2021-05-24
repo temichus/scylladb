@@ -391,7 +391,7 @@ class EncryptionAtRestBase(Tester):
         ]
         errors_pat = '|'.join(errors)
         node1.watch_log_for(errors_pat, from_mark=mark)
-        self.allow_log_errors = self.check_errors(node1, errors, search_str='ERROR')
+        self.check_errors(node1, errors, search_str='ERROR')
         kp.restore_key(key_file)
 
         if scylla_ext_opt:
