@@ -460,7 +460,7 @@ class EncryptionAtRestBase(Tester):
             for i in range(3):
                 debug('Kill node {}, and restart'.format(node.name))
                 node.stop(gently=False)
-                node.start(wait_for_binary_proto=True)
+                node.start(wait_for_binary_proto=True, wait_other_notice=False)
             kp.read_verify_workload(self.get_session())
 
 
