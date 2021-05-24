@@ -74,14 +74,25 @@ class TestHeatWeightedLB(Tester):
                     if first is not None:
                         last = i
                         break
-            logger.debug(f'Verify {key}: first={first} last={last}')
+            logger.debug(f'Verify {key}: first={first} last={last} cached={cached}')
             assert first is not None, f"Did not find eligable samples range for key={key}"
+            min_count = 30
+            assert last - first >= min_count, \
+                f"Did not find enough eligable samples range for key={key}. Expected at least {min_count} but found only {last-first} samples."
+            first += 10
+            last -= 10
             if cached:
+                lower_bound = 0.25
+                upper_bound = 4
                 for i in range(first + 1, last - 1):
                     for node_ind in (1, 3):
                         # parameter's delta is within 0.25x - 4x for all the nodes
                         delta_ratio = metrics[key][node_ind][i]['delta'] / metrics[key][2][i]['delta']
-                        assert 0.25 <= delta_ratio <= 4
+                        err_msg = 'Cache difference between node{} and node2 is out of range: {}/{}={} expected to be {} <= ratio <= {}. index={} metric {}'.format(
+                            node_ind, metrics[key][node_ind][i]['delta'], metrics[key][2][i]['delta'], delta_ratio,
+                            lower_bound, upper_bound,
+                            i, key)
+                        assert lower_bound <= delta_ratio <= upper_bound
             else:
                 mean_window = 5
                 last -= mean_window
@@ -118,9 +129,13 @@ class TestHeatWeightedLB(Tester):
                 if first is not None:
                     last = i
                     break
-        logger.debug(f'Verify {key}: first={first} last={last}')
+        logger.debug(f'Verify {key}: first={first} last={last} cached={cached}')
         assert first is not None, f"Did not find eligable samples range for key={key}"
-        for i in range(first + 1, last - 1):
+        assert last - first >= min_count, \
+            f"Did not find enough eligable samples range for key={key}. Expected at least {min_count} but found only {last-first} samples."
+        first += 10
+        last -= 10
+        for i in range(first, last):
             for node_ind in (1, 3):
                 if cached:
                     # parameter's value is equal for all the nodes
@@ -140,7 +155,6 @@ class TestHeatWeightedLB(Tester):
                     last_drop = None
         # parameter's value on the restarted node is on a growing trend
         if not cached:
-            first += 10
             v = metrics[key][2][first]['val']
             val_min = v
             val_min_pos = first
