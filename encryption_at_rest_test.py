@@ -3,6 +3,7 @@ import time
 import subprocess
 import os
 import shutil
+import re
 
 from enum import Enum
 from cassandra import ReadTimeout, ReadFailure, ConsistencyLevel
@@ -275,12 +276,19 @@ class EncryptionAtRestBase(Tester):
         for ks in kss:
             session.execute('DROP KEYSPACE IF EXISTS %s' % ks)
 
-    def rolling_restart(self, user=None, password=None):
-        debug('Restart nodes one by one ...')
+    def rolling_restart(self, user=None, password=None, allow_start_failure=False):
+        debug(f'Restart nodes one by one ...{" (start failures allowed)" if allow_start_failure else ""}')
+        errors = []
         for node in self.cluster.nodelist():
             node.stop(wait_other_notice=True)
-            node.start(wait_other_notice=True, wait_for_binary_proto=True)
-        return self.get_session(user=user, password=password)
+            try:
+                node.start(wait_other_notice=True, wait_for_binary_proto=True)
+            except RuntimeError as e:
+                if allow_start_failure:
+                    errors.append(e)
+                    pass
+        if not errors:
+            return self.get_session(user=user, password=password)
 
     def cluster_restart(self, user=None, password=None):
         debug('Restart cluster ...')
@@ -363,17 +371,31 @@ class EncryptionAtRestBase(Tester):
         kp.break_key(key_file)
         kp.read_verify_workload(session)
         kp.prepare_write_workload(session)
-        session = self.rolling_restart()
-        kp.prepare_write_workload(session)
         try:
-            kp.read_verify_workload(session)
-        except ReadFailure as e:
-            debug(str(e))
-        err = 'SSTable reader found an exception when reading sstable'
-        node1.watch_log_for(err, from_mark=mark)
-        self.allow_log_errors = self.check_errors(node1, [err], search_str='ERROR')
+            scylla_ext_opt = os.environ['SCYLLA_EXT_OPTS']
+            new_scylla_ext_opt = re.sub(r'--abort-on-seastar-bad-alloc', '', scylla_ext_opt)
+            os.environ['SCYLLA_EXT_OPTS'] = new_scylla_ext_opt
+        except:
+            pass
+        session = self.rolling_restart(allow_start_failure=True)
+        if session:
+            kp.prepare_write_workload(session)
+            try:
+                kp.read_verify_workload(session)
+            except ReadFailure as e:
+                debug(str(e))
+        errors = [
+            'SSTable reader found an exception when reading sstable',
+            'Exception while populating keyspace',
+            'malformed_sstable_exception'
+        ]
+        errors_pat = '|'.join(errors)
+        node1.watch_log_for(errors_pat, from_mark=mark)
+        self.allow_log_errors = self.check_errors(node1, errors, search_str='ERROR')
         kp.restore_key(key_file)
 
+        if scylla_ext_opt:
+            os.environ['SCYLLA_EXT_OPTS'] = scylla_ext_opt
         debug('Restart to trigger the read error')
         # https://github.com/scylladb/scylla-enterprise/issues/755
         # secret_key_file missing can only be identified by read workload after restart #755
