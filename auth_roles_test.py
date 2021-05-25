@@ -671,7 +671,6 @@ class TestAuthRoles(Tester):
         cassandra.execute("CREATE USER super_user WITH PASSWORD '12345' SUPERUSER")
         assert_one(cassandra, "LIST ROLES OF super_user", ["super_user", True, True, {}])
 
-    @pytest.mark.require('#4285')
     def test_role_name(self):
         """ Simple test to verify the behavior of quoting when creating roles & users
         @jira_ticket CASSANDRA-10394
