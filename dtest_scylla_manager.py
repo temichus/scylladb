@@ -1330,7 +1330,7 @@ class ManagerCluster(ScyllaManagerBase):
         stdout, stderr = self.sctool.run(cmd=cmd, is_verify_errorless_result=True)
         return stdout
 
-    def update(self, name=None, host=None, ssh_identity_file=None, ssh_user=None, client_encrypt=None):
+    def update(self, name=None, host=None, ssh_identity_file=None, ssh_user=None, client_encrypt=None, port=None):
         """
         $ sctool cluster update --help
         Modify a cluster
@@ -1354,6 +1354,8 @@ class ManagerCluster(ScyllaManagerBase):
             cmd += " --ssh-identity-file {}".format(ssh_identity_file)
         if ssh_user:
             cmd += " --ssh-user {}".format(ssh_user)
+        if port:
+            cmd += f" --port {port}"
         stdout, stderr = self.sctool.run(cmd=cmd, is_verify_errorless_result=True)
         return stdout
 

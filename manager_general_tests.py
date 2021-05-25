@@ -117,3 +117,67 @@ class TestScyllaManagerClusterMgmt(Tester, ScyllaManagerMixin):
         err_msg = f"The status of node '{node3.name}' should be '{NodeStatus.DOWN}'"
         wait_for(func=lambda: mgr_cluster.get_hosts_health()[node3.address()].node_status == NodeStatus.DOWN,
                  text=err_msg, step=step, timeout=timeout)
+
+    def cluster_list(self):
+        pass
+
+    def test_sctool_status_of_two_clusters_when_one_is_faulty(self):
+        """
+        The test verifies that when one of the managed clusters is unreachable,
+        `sctool status` will still show the status of all of the clusters.
+        """
+
+        def cause_fault_in_one_cluster_and_verify_status_of_other(healthy_mgr_cluster, cluster_to_fault_node_list):
+            for node in cluster_to_fault_node_list:
+                node.stop_scylla_manager_agent(gently=False)
+
+            sctool_status_output, _ = healthy_mgr_cluster.sctool.run("status", is_verify_errorless_result=False,
+                                                                     parse_table_res=False)
+
+            assert f"Cluster: {healthy_mgr_cluster.name} ({healthy_mgr_cluster.id})" in sctool_status_output, \
+                f"When one cluster was unreachable by the manager, " \
+                f"there was no report on the status of the healthy cluster: {sctool_status_output}"
+
+            for node in cluster_to_fault_node_list:
+                node.start_scylla_manager_agent()
+
+        primary_cluster_nodes = self.config_and_create_cluster(nodes=3)
+        primary_mgr_cluster = self._create_mgr_cluster(node=primary_cluster_nodes[0], name="cluster1")
+
+        with self.create_second_cluster() as secondary_cluster:
+            secondary_cluster_nodes = self.config_and_create_cluster(nodes=3, cluster=secondary_cluster)
+            secondary_mgr_cluster = self._create_mgr_cluster(node=secondary_cluster_nodes[0],
+                                                             name="second_cluster")
+
+            cause_fault_in_one_cluster_and_verify_status_of_other(healthy_mgr_cluster=primary_mgr_cluster,
+                                                                  cluster_to_fault_node_list=secondary_cluster_nodes)
+            cause_fault_in_one_cluster_and_verify_status_of_other(healthy_mgr_cluster=secondary_mgr_cluster,
+                                                                  cluster_to_fault_node_list=primary_cluster_nodes)
+
+    def test_change_agent_port(self):
+        """
+        The test starts a normal cluster and manager, and afterwards reconfigures
+        the agents' listening port and restarts them across the board.
+        Afterwards the uses the sctool cluster update command to make the manager server
+        acknowledge the new port, expecting success.
+        At the end, we rerun the healthcheck task and make sure that both nodes
+        are reported to be UP.
+
+        * It's important to note that when we update the agent config, the agent process is restarted,
+          and ccm makes sure that the agent uses the new assigned port.
+        """
+        new_port = 8989
+        node_list = self.config_and_create_cluster(nodes=2)
+        mgr_cluster = self._create_mgr_cluster(node=node_list[0], name="cluster1")
+
+        for node in node_list:
+            node.update_agent_config(new_settings={"https": f"{node.address()}:{new_port}"},
+                                     restart_agent_after_change=True)
+        mgr_cluster.update(port=new_port)
+
+        mgr_cluster.get_healthcheck_task().start(continue_task=False)  # Rerunning healthcheck
+        cluster_health = mgr_cluster.get_hosts_health()
+
+        for node_address, node_health in cluster_health.items():
+            assert node_health.node_status == NodeStatus.UP, \
+                f"After changing the port of the agent, the manager falsely reports that node {node_address} is down"
