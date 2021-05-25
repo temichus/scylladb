@@ -681,7 +681,7 @@ class TestReplaceAddress(Tester):
 
         rounds_cnt = 100 if not hasattr(cluster, 'scylla_mode') or cluster.scylla_mode != 'debug' else 10
         keys_per_round = 1000
-        writes_diff_cnt = rounds_cnt * keys_per_round / 100
+        writes_diff_cnt = rounds_cnt * keys_per_round / 400
 
         stop = threading.Event()
 
@@ -706,7 +706,8 @@ class TestReplaceAddress(Tester):
 
         with_replacing_take_write_patch = True
         if with_replacing_take_write_patch:
-            node6.watch_log_for("Wait until peer nodes know the bootstrap tokens of local node")
+            node6.watch_log_for(
+                "Wait until peer nodes know the bootstrap tokens of local node|Started replace operation")
         else:
             node6.watch_log_for("Starting up server gossip")
 
@@ -717,9 +718,9 @@ class TestReplaceAddress(Tester):
         logger.info("Get metrics when other knows replacing node = HIBERNATE")
         metrics = ['scylla_database_total_writes', 'scylla_database_total_reads']
         writes_when_replace_ops_started = 0
-        for node in [1, 2, 3, 4, 6]:
-            node_metrics = get_node_metrics(node_ip=self.cluster.get_node_ip(node), metrics=metrics)
-            logger.info("scylla_database_total_writes: node{}={}".format(node, node_metrics))
+        for node in [6, 1, 2, 3, 4]:
+            node_metrics = self.get_node_metrics(node_ip=self.cluster.get_node_ip(node), metrics=metrics)
+            logger.debug("scylla_database_total_writes: node{}={}".format(node, node_metrics))
             if node == 6:
                 writes_when_replace_ops_started = node_metrics['scylla_database_total_writes']
                 logger.info(f"writes_when_replace_ops_started={writes_when_replace_ops_started}")
@@ -729,9 +730,9 @@ class TestReplaceAddress(Tester):
         logger.info("Get metrics when other knows replacing node = NORMAL")
         metrics = ['scylla_database_total_writes', 'scylla_database_total_reads']
         writes_when_replace_ops_done = 0
-        for node in [1, 2, 3, 4, 6]:
-            node_metrics = get_node_metrics(node_ip=self.cluster.get_node_ip(node), metrics=metrics)
-            logger.info("scylla_database_total_writes: node{}={}".format(node, node_metrics))
+        for node in [6, 1, 2, 3, 4]:
+            node_metrics = self.get_node_metrics(node_ip=self.cluster.get_node_ip(node), metrics=metrics)
+            logger.debug("scylla_database_total_writes: node{}={}".format(node, node_metrics))
             if node == 6:
                 writes_when_replace_ops_done = node_metrics['scylla_database_total_writes']
                 logger.info(f"writes_when_replace_ops_done={writes_when_replace_ops_done}")
@@ -766,7 +767,7 @@ class TestReplaceAddress(Tester):
 
         rounds_cnt = 100 if not hasattr(cluster, 'scylla_mode') or cluster.scylla_mode != 'debug' else 10
         keys_per_round = 1000
-        writes_diff_cnt = rounds_cnt * keys_per_round / 100
+        writes_diff_cnt = rounds_cnt * keys_per_round / 400
 
         stop = threading.Event()
 
@@ -792,7 +793,9 @@ class TestReplaceAddress(Tester):
 
         with_replacing_take_write_patch = True
         if with_replacing_take_write_patch:
-            node5.watch_log_for("Wait until peer nodes know the bootstrap tokens of local node", from_mark=mark)
+            node5.watch_log_for(
+                "Wait until peer nodes know the bootstrap tokens of local node|Started replace operation",
+                from_mark=mark)
         else:
             node5.watch_log_for("Starting up server gossip", from_mark=mark)
 
@@ -803,8 +806,8 @@ class TestReplaceAddress(Tester):
         metrics = ['scylla_database_total_writes', 'scylla_database_total_reads']
         logger.info("Get metrics when other knows replacing node = HIBERNATE")
         writes_when_replace_ops_started = 0
-        for node in [1, 2, 3, 4, 5]:
-            node_metrics = get_node_metrics(node_ip=self.cluster.get_node_ip(node), metrics=metrics)
+        for node in [5, 4, 3, 2, 1]:
+            node_metrics = self.get_node_metrics(node_ip=self.cluster.get_node_ip(node), metrics=metrics)
             logger.info("metrics: node{}={}".format(node, node_metrics))
             if node == 5:
                 writes_when_replace_ops_started = node_metrics['scylla_database_total_writes']
@@ -814,8 +817,8 @@ class TestReplaceAddress(Tester):
         logger.info("Get metrics when other knows replacing node = NORMAL")
         metrics = ['scylla_database_total_writes', 'scylla_database_total_reads']
         writes_when_replace_ops_done = 0
-        for node in [1, 2, 3, 4, 5]:
-            node_metrics = get_node_metrics(node_ip=self.cluster.get_node_ip(node), metrics=metrics)
+        for node in [5, 4, 3, 2, 1]:
+            node_metrics = self.get_node_metrics(node_ip=self.cluster.get_node_ip(node), metrics=metrics)
             logger.info("metrics: node{}={}".format(node, node_metrics))
             if node == 5:
                 writes_when_replace_ops_done = node_metrics['scylla_database_total_writes']
