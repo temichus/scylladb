@@ -1,17 +1,23 @@
 import glob
 import logging
 import os
+import random
+import re
+from functools import lru_cache
+from pathlib import Path
+
 import pytest
 import requests
 import shutil
 import time
 import uuid
 
+from cassandra.cluster import Session
 from cassandra.concurrent import execute_concurrent_with_args
 from concurrent.futures import ThreadPoolExecutor
 from pkg_resources import parse_version
 from threading import Thread, Event
-from typing import List
+from typing import List, Tuple, Dict, Any
 
 from ccmlib.node import NodetoolError
 from ccmlib.scylla_node import ScyllaNode
@@ -68,7 +74,7 @@ class SnapshotOperations:
                                                  list(range(num_rows)),
                                                  ["{}".format(i) * column_length for i in range(num_rows)]))
 
-    def create_snapshot_for_all_keyspaces(self, node, start_process=None):
+    def create_snapshot_for_all_keyspaces(self, node, start_process=None) -> List[Tuple[str, str]]:
         if start_process:
             start_process.wait()
 
@@ -118,7 +124,7 @@ class SnapshotTester(Tester):
     Object with utility functions to perform snapshot operations.
     """
 
-    def init_cluster(self):
+    def init_cluster(self) -> Tuple[ScyllaNode, Session]:
         self.cluster.populate(1).start(wait_for_binary_proto=True)
         node = self.cluster.nodelist()[0]
         session = self.patient_cql_connection(node)
@@ -447,6 +453,7 @@ class TestSnapshot(SnapshotTester):
            it take a snapshot, make sure that both tables are part of the backup
            It then delete on table and make sure that it is deleted but the other one is not.
         """
+
         def search_cf_in_snapshot(node, cf, tag):
             snapshot_dir = os.path.join(node.get_path(), 'data', 'ks')
             cf_id = [s for s in os.listdir(snapshot_dir) if s.startswith(cf + "-")][0]
@@ -1488,3 +1495,227 @@ class TestSchemaFileInSnapshot(SnapshotTester):
             create_local_index(session, cf, "key", "val", index_name="cf_val")
 
         return node, session
+
+
+@pytest.mark.dtest_full
+@pytest.mark.single_node
+class TestSnapshotOptions(SnapshotTester):
+    SNAP_OPS = SnapshotOperations
+    NODE_COUNT = 1
+    KEYSPACE_COUNT = 3
+    TABLE_COUNT = 2
+    ROWS_PER_TABLE_COUNT = 1
+    COLUMN_LENGTH = 10
+
+    @lru_cache(maxsize=None)
+    def prepare(self):
+        self.node, self.session = self.init_cluster()
+        self.system_keyspaces = self._get_system_keyspace_names()
+        self.keyspaces = [f"ks{i}" for i in range(self.KEYSPACE_COUNT)]
+        self.table_names = [f"table_cf{j}" for j in range(self.TABLE_COUNT)]
+        self.SNAP_OPS.prepare_schemas_and_data(
+            self,
+            session=self.session,
+            num_ks=self.KEYSPACE_COUNT,
+            num_cf=self.TABLE_COUNT,
+            num_rows=self.ROWS_PER_TABLE_COUNT,
+            column_length=self.COLUMN_LENGTH)
+
+    def test_snapshot_defaults_to_all_keyspaces(self):
+        """
+        Assert that using the nodetool snapshot command without
+        specifying any keyspaces or tables defaults to a making
+        a snapshot of all the keyspaces.
+        1. Create a snapshot using 'nodetool snapshot'.
+        2. Extract keyspace names from snapshot directory paths.
+        3. Assert that extracted names contain all of the system keyspaces
+        plus created keyspaces and that the number of names equals the sum
+        of system_keyspace_count + created_keyspaces_count.
+        """
+        self.prepare()
+        keyspaces = self.keyspaces + self.system_keyspaces
+        keyspace_dir_names, _, _ = self.base_case_make_snapshot_and_extract_ks_cf_names(
+            make_snapshot_kwargs={"node": self.node}
+        )
+
+        self._validate_keyspace_list(expected_list=keyspaces, actual_list=keyspace_dir_names)
+
+    def test_snapshot_of_specified_keyspaces_only(self):
+        """
+        Assert that using nodetool snapshot command with specifying
+        keyspaces creates a snapshot of the specified keyspaces only,
+        i.e. no other keyspaces are present in the snapshot
+        directory.
+        1. Create a snapshot using 'nodetool snapshot <keyspaces>'.
+        Use one keyspace less than the full created keyspaces list.
+        2. Extract keyspace names from snapshot directory paths.
+        3. Assert that extracted names contain only the keyspace
+        names provided to the 'nodetool snapshot <keyspcaes>'
+        command.
+        """
+        self.prepare()
+        keyspaces_to_snap = self._get_random_keyspaces_to_snap()
+        keyspace_dir_names, _, _ = self.base_case_make_snapshot_and_extract_ks_cf_names(
+            make_snapshot_kwargs={"node": self.node, "ks": ','.join(keyspaces_to_snap)}
+        )
+
+        self._validate_keyspace_list(expected_list=keyspaces_to_snap, actual_list=keyspace_dir_names)
+
+    def test_snapshot_of_specified_keyspaces_only_with_kc_list_option(self):
+        """
+        Assert that using nodetool snapshot command with specifying
+        keyspaces  with the '-kc' option creates a snapshot of the
+        specified keyspaces only, i.e. no other keyspaces are present
+        in the snapshot directory.
+        1. Create a snapshot using 'nodetool
+        snapshot -kc <keyspaces>'.
+        Use one keyspace less than the full created keyspaces list.
+        2. Extract keyspace names from snapshot directory paths.
+        3. Assert that extracted names contain only the keyspace
+        names provided to the 'nodetool snapshot <keyspcaes>'
+        command.
+        """
+        self.prepare()
+        keyspaces_to_snap = self._get_random_keyspaces_to_snap()
+        keyspace_dir_names, _, _ = self.base_case_make_snapshot_and_extract_ks_cf_names(
+            make_snapshot_kwargs={"node": self.node, "additional_options": [f"-kc {','.join(keyspaces_to_snap)}"]}
+        )
+
+        self._validate_keyspace_list(expected_list=keyspaces_to_snap, actual_list=keyspace_dir_names)
+
+    def test_snapshot_tagging(self):
+        """
+        Assert that when using the '-t' option for specifying a
+        snapshot tag, the snapshot is named according to the
+        parameter provided for that option.
+        1. Execute the nodetool snapshot command with the '-t' option.
+        2. Check the stdout for the name of the snapshot.
+        """
+        self.prepare()
+        tag = "charybdis"
+
+        assert f"Snapshot directory: {tag}" in self.node.nodetool(cmd=f"snapshot -t {tag}")[0]
+
+    @require("#167")
+    @require("#8725")
+    def test_snapshot_skip_flush(self):
+        """
+        Assert that using the '-sf'/'--skip-flush' forces nodetool
+        to make a snapshot of the data without flushing memtables.
+        1. Insert a few rows of data to populate the memtable.
+        2. Query 'nodetool tablestats' for memtable data size and
+        number of memtable switches.
+        3. Use 'nodetool snapshot --skip-flush' to trigger the
+        snapshot without flushing the memtable.
+        4. Query 'nodetool tablestats' again for memtable data size
+        and number of memtable switches.
+        5. Assert that memtable data size is greater or equal to
+        before the snapshot.
+        6. Assert that the number of memtable switches is equal to
+        the number before the snapshot.
+        """
+        self.prepare()
+        table = self.table_names[0]
+        ks = self.keyspaces[0]
+        self._insert_rows_into_ks_cf(insert_row_count=2, ks=ks, cf=table)
+        stdout_pre, stderr_pre = self._get_tabestats_for_table(
+            keyspcase=ks,
+            table=table
+        )
+        memtable_data_size_pre, memtable_switch_count_pre = self._get_memtable_stats_from_tablestats(stdout_pre)
+        self.base_case_make_snapshot_and_extract_ks_cf_names(
+            make_snapshot_kwargs={"node": self.node,
+                                  "ks": ks,
+                                  "cf": table,
+                                  "additional_options": [
+                                      "--skip-flush"]}
+        )
+
+        stdout_post, stderr_post = self._get_tabestats_for_table(
+            keyspcase=ks,
+            table=table
+        )
+        memtable_data_size_post, memtable_switch_count_post = self._get_memtable_stats_from_tablestats(stdout_post)
+
+        self.assertGreaterEqual(a=memtable_data_size_post,
+                                b=memtable_data_size_pre,
+                                msg=f"Expected memtable data size after the skip-flush snapshot to be greater or equal "
+                                    f"to size before snapshot, but was not.\nSize pre: {memtable_data_size_pre}\n"
+                                    f"Size post: {memtable_data_size_post}")
+        self.assertEqual(first=memtable_switch_count_pre,
+                         second=memtable_switch_count_post,
+                         msg="Expected memtable switch count after the skip-flush snapshot to be equal to the switch "
+                             f"count before the snapshot, but was not.\nSwitch count pre: {memtable_switch_count_pre}"
+                             f"\nSwitch count post: {memtable_switch_count_post}")
+
+    def base_case_make_snapshot_and_extract_ks_cf_names(
+            self,
+            make_snapshot_kwargs: Dict[str, Any]) -> Tuple[List[str], List[str], str]:
+        """
+        Base case collecting common steps for other TestSnapshotOptions
+        test cases.
+        1. Make a snapshot with the given keyword args.
+        2. Extract keyspace and table dir names from the temporary
+        dir housing the snapshot dir copy.
+        3. Return a tuple of keyspace dir names list, table subdir
+        names list and the snapshot root dir name.
+        """
+        snapshot_root_dir = make_snapshot(**make_snapshot_kwargs)
+        snapshot_dir_paths = self._get_snapshot_dir_paths(snapshot_root_dir)
+        keyspace_dir_names = self._parse_names_from_paths(snapshot_dir_paths["keyspace_dirs"])
+        table_subdirs_names = self._parse_names_from_paths(snapshot_dir_paths["table_subdirs"])
+
+        return keyspace_dir_names, table_subdirs_names, snapshot_root_dir
+
+    def _validate_keyspace_list(self, expected_list: List[str], actual_list: List[str]):
+        self.assertSetEqual(set(expected_list), set(actual_list))
+
+    def _insert_rows_into_ks_cf(self, insert_row_count: int = 1, ks: str = "ks0", cf: str = "table_cf0"):
+        insert_statement = self.session.prepare(f"INSERT INTO {ks}.{cf} (key, c, v) "
+                                                f"VALUES (?, 'sometext', 'someothertext')")
+        logger.info("Inserting %d rows into keyspace %s, column family: %s", insert_row_count, ks, cf)
+        for i in range(self.ROWS_PER_TABLE_COUNT, self.ROWS_PER_TABLE_COUNT + insert_row_count):
+            args = [(str(i),)]
+            execute_concurrent_with_args(self.session, insert_statement, args, concurrency=20)
+
+    def _get_random_keyspaces_to_snap(self) -> List[str]:
+        keyspace_to_omit = random.choice(self.keyspaces)
+        keyspaces = self.keyspaces.copy()
+        keyspaces.remove(keyspace_to_omit)
+
+        return keyspaces
+
+    def _get_tabestats_for_table(self, keyspace: str, table: str) -> Tuple[str, str]:
+        nodetool_cmd = f"tablestats {keyspace}.{table}"
+        stdout, stderr = self.node.nodetool(nodetool_cmd)
+
+        return stdout, stderr
+
+    def _get_system_keyspace_names(self):
+        query = "select keyspace_name from system_schema.keyspaces"
+        keyspace_list = [item.keyspace_name for item in self.session.execute(query=query).all()]
+
+        return keyspace_list
+
+    @staticmethod
+    def _get_memtable_stats_from_tablestats(tablestats_stdout: str) -> Tuple[int, int]:
+        memtable_data_size_pattern = re.compile('((?!Memtable data size:\s)\d*)')
+        memtable_switch_count_pattern = re.compile('((?!Memtable switch count:\s))\d*')
+        memtable_data_szie = int(memtable_data_size_pattern.search(tablestats_stdout)
+                                 .group()[-1])
+        memtable_switch_count = int(memtable_switch_count_pattern.search(tablestats_stdout)
+                                    .group()[-1])
+
+        return memtable_data_szie, memtable_switch_count
+
+    @staticmethod
+    def _get_snapshot_dir_paths(snapshot_root_path: str) -> Dict[str, List[Path]]:
+        root = Path(snapshot_root_path)
+        keyspace_dirs = [path for path in root.glob("*") if path.is_dir]
+        table_subdirs = [path for subdir in keyspace_dirs for path in subdir.glob("*") if path.is_dir]
+
+        return {"keyspace_dirs": keyspace_dirs, "table_subdirs": table_subdirs}
+
+    @staticmethod
+    def _parse_names_from_paths(path_list: List[Path]) -> List[str]:
+        return [path.stem for path in path_list]
