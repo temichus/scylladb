@@ -251,6 +251,7 @@ docker_cmd="docker run --detach=true \
     -v /sys/fs/cgroup:/sys/fs/cgroup:ro \
     -v /etc/passwd:/etc/passwd:ro \
     -v /etc/group:/etc/group:ro \
+    -v /dev:/dev:ro \
     -u $(id -u ${USER}):$(id -g ${USER}) \
     ${group_args[@]} \
     --tmpfs ${HOME}/.cache \

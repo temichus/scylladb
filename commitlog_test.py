@@ -955,18 +955,11 @@ class TestCommitLog(Tester):
         logger.debug(subprocess.getoutput('ls /dev/loop*'))
         exec_cmd('losetup -la', debug_output=True)
 
-        # The unused loop device should be prepared before mounting the image. Althought this test
-        # only uses one loop device for mounting image, but other parallel tests might occupy the
-        # created devices. Let's create multiple (4) loop devices.
-        # When the test is running in docker container, the loop device files will only be created
-        # for this container, but the namespace of loop device is shared with host and other containers.
-        # so it's still necessary to creating multiple devices.
-        dev_list = exec_cmd('cat /proc/devices')[1].split()
-        major_id = dev_list[dev_list.index('loop') - 1]
-        unused_idx = exec_cmd(f'sudo losetup -f')[1].replace('/dev/loop', '')
-        for idx in range(int(unused_idx), 5):
-            if exec_cmd(f'sudo test -e /dev/loop{idx}', ignore_status=True)[0] == 1:
-                exec_cmd(f'sudo mknod -m 0660 /dev/loop{idx} b {major_id} {idx}')
+        # setup a new loop device
+        loopdev = exec_cmd(f'sudo losetup --find --show {tmp_img}', debug_output=True)[1]
+        logger.debug(subprocess.getoutput('ls /dev/loop*'))
+        exec_cmd('losetup -la', debug_output=True)
+
         mount_cmd = f'sudo mount -o loop -t xfs {tmp_img} {commitlog_dir} -v'
         exec_cmd(mount_cmd, debug_output=True)
         user = os.environ.get('USER', exec_cmd('whoami')[1].strip())
@@ -1000,6 +993,9 @@ class TestCommitLog(Tester):
         copy_files_to(commitlog_dir, tmpdir, files_only=True)
         logger.debug("Umount commitlog dir and restart node")
         exec_cmd(f'sudo umount {commitlog_dir}')
+        exec_cmd('losetup -la', debug_output=True)
+        exec_cmd(f'sudo losetup -d {loopdev}')
+        exec_cmd('losetup -la', debug_output=True)
         copy_files_to(tmpdir, commitlog_dir, files_only=True)
         exec_cmd(f'sudo chown -R {user}:{user} {commitlog_dir}')
 
