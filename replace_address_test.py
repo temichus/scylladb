@@ -5,9 +5,10 @@ from time import sleep
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
-from cassandra import ConsistencyLevel, ReadTimeout, Unavailable, ReadFailure
+from cassandra import ConsistencyLevel, ReadTimeout, Unavailable, ReadFailure, OperationTimedOut
 from cassandra.query import SimpleStatement
 from ccmlib.node import NodeError
+from ccmlib.scylla_cluster import ScyllaCluster
 
 from dtest_class import Tester, create_ks, create_cf
 from dtest_setup_overrides import DTestSetupOverrides
@@ -112,7 +113,7 @@ class TestReplaceAddress(Tester):
         node3.stop(gently=gently, wait_other_notice=True)
 
         logger.info("Testing node stoppage (query should fail).")
-        with pytest.raises(expected_exception=(Unavailable, ReadTimeout, ReadFailure)):
+        with pytest.raises(expected_exception=(Unavailable, ReadTimeout, ReadFailure, OperationTimedOut)):
             query = SimpleStatement('select * from %s LIMIT 1' % stress_table,
                                     consistency_level=ConsistencyLevel.THREE)
             session.execute(query)
@@ -193,7 +194,7 @@ class TestReplaceAddress(Tester):
         node4.watch_log_for("JOINING: Starting to bootstrap")
         node4.watch_log_for("Beginning stream session|sync data for keyspace=ks, status=started")
 
-        debug("Insert 1000 rows more.")
+        logger.debug("Insert 1000 rows more.")
         for i in range(keys, keys + 10):
             for k in range(rows, rows + 100):
                 data.append([i, k, k])
@@ -305,7 +306,7 @@ class TestReplaceAddress(Tester):
         node3.stop(gently=False)
 
         logger.info("Testing node stoppage (query should fail).")
-        with pytest.raises(expected_exception=(Unavailable, ReadTimeout, ReadFailure)):
+        with pytest.raises(expected_exception=(Unavailable, ReadTimeout, ReadFailure, OperationTimedOut)):
             session.execute(query, timeout=30)
 
         # replace node 3 with node 4
