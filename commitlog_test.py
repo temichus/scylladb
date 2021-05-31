@@ -471,14 +471,13 @@ class TestCommitLog(Tester):
             [2, 2]
         )
 
-    @pytest.mark.skip(
-        reason="line \"version = struct.unpack('>i', f.read(4))[0]\" fails when read(4) returns an empty string")
     def test_bad_crc(self):
         """
         if the commit log header crc (checksum) doesn't match the actual crc of the header data,
         and the commit_failure_policy is stop, C* shouldn't startup
         @jira_ticket CASSANDRA-9749
         """
+        self.ignore_log_patterns.append("cdc - Could not retrieve CDC streams with timestamp")
         expected_error = "Exiting due to error while processing commit log during initialization."
         self.ignore_log_patterns.append(expected_error)
         node = self.node1
@@ -514,10 +513,16 @@ class TestCommitLog(Tester):
         cl_dir = os.path.join(path, 'commitlogs')
         assert len(os.listdir(cl_dir)) > 0, "expected >0, actual len(os.listdir(cl_dir))={len(os.listdir(cl_dir))}"
         for cl in os.listdir(cl_dir):
+            if cl == '.lock':
+                continue
             # locate the CRC location
-            with open(os.path.join(cl_dir, cl), 'r') as f:
+            with open(os.path.join(cl_dir, cl), 'rb') as f:
                 f.seek(0)
-                version = struct.unpack('>i', f.read(4))[0]
+                out = f.read(4)
+                if len(out) != 4:
+                    logger.debug(f'{cl}, {out}')
+                    continue
+                version = struct.unpack('>i', out)[0]
                 crc_pos = 12
                 if version >= 5:
                     f.seek(crc_pos)
@@ -525,12 +530,12 @@ class TestCommitLog(Tester):
                     crc_pos += 2 + psize
 
             # rewrite it with crap
-            with open(os.path.join(cl_dir, cl), 'w') as f:
+            with open(os.path.join(cl_dir, cl), 'wb') as f:
                 f.seek(crc_pos)
                 f.write(struct.pack('>i', 123456))
 
             # verify said crap
-            with open(os.path.join(cl_dir, cl), 'r') as f:
+            with open(os.path.join(cl_dir, cl), 'rb') as f:
                 f.seek(crc_pos)
                 crc = struct.unpack('>i', f.read(4))[0]
                 assert crc == 123456, f"expected 123456, actual crc={crc}"
@@ -542,7 +547,6 @@ class TestCommitLog(Tester):
             node.wait_for_binary_interface(from_mark=mark, timeout=20)
         assert not node.is_running(), f"expected node is not running, actual is: {node.is_running()}"
 
-    @pytest.mark.skip(reason='failure in this line "self.assertEqual(get_header_crc(header_bytes), crc)"')
     def test_compression_error(self):
         """
         if the commit log header refers to an unknown compression class, and the commit_failure_policy is stop, C* shouldn't startup
@@ -590,7 +594,7 @@ class TestCommitLog(Tester):
             new_header += header[8:12]
             new_header += header[4:8]
             # C* evaluates the short parameter length as an int
-            new_header += '\x00\x00' + header[12:14]  # the
+            new_header += b'\x00\x00' + header[12:14]  # the
             new_header += header[14:]
             return binascii.crc32(new_header)
 
@@ -600,12 +604,17 @@ class TestCommitLog(Tester):
         cl_dir = os.path.join(path, 'commitlogs')
         assert len(os.listdir(cl_dir)) > 0, f"expected >0, actual len(os.listdir(cl_dir))={len(os.listdir(cl_dir))}"
         for cl in os.listdir(cl_dir):
+            if cl == '.lock':
+                continue
             # read the header and find the crc location
-            with open(os.path.join(cl_dir, cl), 'r') as f:
+            with open(os.path.join(cl_dir, cl), 'rb') as f:
                 f.seek(0)
                 crc_pos = 12
                 f.seek(crc_pos)
-                psize = struct.unpack('>h', f.read(2))[0] & 0xFFFF
+                out = f.read(2)
+                if len(out) != 2:
+                    logger.debug(f'{cl}, {out}')
+                psize = struct.unpack('>h', out)[0] & 0xFFFF
                 crc_pos += 2 + psize
 
                 header_length = crc_pos
