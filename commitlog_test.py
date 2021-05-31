@@ -344,15 +344,11 @@ class TestCommitLog(Tester):
 
         self._segment_size_test(5)
 
-    @pytest.mark.skip(
-        reason='fails with wrong commit log size - probably because we use max commit log - and not amend to it')
     def test_default_compressed_segment_size(self):
         """ Test default compressed commitlog_segment_size_in_mb (32MB) """
         # Scylla: Unknown option commitlog_compression
         self._segment_size_test(32, compressed=True)
 
-    @pytest.mark.skip(
-        reason='fails with wrong commit log size - probably because we use max commit log - and not amend to it')
     def test_small_compressed_segment_size(self):
         """ Test a small compressed commitlog_segment_size_in_mb (5MB) """
         # Scylla: Unknown option commitlog_compression
