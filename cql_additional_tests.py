@@ -6541,7 +6541,6 @@ class TestsCQLAdditional(Tester):
         """))
         assert len(res) == 3, res
 
-    @require('876')
     @pytest.mark.single_node
     def test_create_secondary_indexes(self):
         cluster = self.prepare()
@@ -6602,15 +6601,15 @@ class TestsCQLAdditional(Tester):
         assert len(res) == 1, res
         assert res[0] == row, res[0]
 
-    @require('876')
     @pytest.mark.single_node
     def test_grant(self):
-        cluster = self.prepare()
+        cluster = self.prepare(options={'authenticator': 'org.apache.cassandra.auth.PasswordAuthenticator',
+                                        'authorizer': 'org.apache.cassandra.auth.CassandraAuthorizer'})
         node = cluster.nodelist()[0]
 
-        session = self.patient_cql_connection(node)
+        session = self.patient_cql_connection(node, user='cassandra', password='cassandra')
+        session.execute('CREATE ROLE benoit')
         create_ks(session, 'ks', 1)
-
         c = """GRANT SELECT ON ALL KEYSPACES TO benoit"""
         try:
             session.execute(c)
@@ -6618,30 +6617,36 @@ class TestsCQLAdditional(Tester):
             assert(str(e) == "Not implemented: GRANT")
             assert(e.code == 0000)
 
-    @require('876')
     @pytest.mark.single_node
     def test_revoke(self):
-        cluster = self.prepare()
+        cluster = self.prepare(options={'authenticator': 'org.apache.cassandra.auth.PasswordAuthenticator',
+                                        'authorizer': 'org.apache.cassandra.auth.CassandraAuthorizer'})
         node = cluster.nodelist()[0]
 
-        session = self.patient_cql_connection(node)
-        create_ks(session, 'ks', 1)
+        session = self.patient_cql_connection(node, user='cassandra', password='cassandra')
+        self.create_ks(session, 'ks', 1)
+        self.create_cf(session, 'user')
+        session.execute('CREATE ROLE benoit')
 
-        c = """REVOKE SELECT ON ks.user FROM blob"""
+        c = """GRANT SELECT ON ALL KEYSPACES TO benoit"""
+        session.execute(c)
+
+        c = """REVOKE SELECT ON ks.user FROM benoit"""
         try:
             session.execute(c)
         except Exception as e:
             assert(str(e) == "Not implemented: REVOKE")
             assert(e.code == 0000)
 
-    @require('876')
     @pytest.mark.single_node
     def test_list(self):
-        cluster = self.prepare()
+        cluster = self.prepare(options={'authenticator': 'org.apache.cassandra.auth.PasswordAuthenticator',
+                                        'authorizer': 'org.apache.cassandra.auth.CassandraAuthorizer'})
         node = cluster.nodelist()[0]
 
-        session = self.patient_cql_connection(node)
-        create_ks(session, 'ks', 1)
+        session = self.patient_cql_connection(node, user='cassandra', password='cassandra')
+        self.create_ks(session, 'ks', 1)
+        self.create_cf(session, 'boo')
 
         c = """LIST ALL PERMISSIONS ON ks.boo"""
         try:
