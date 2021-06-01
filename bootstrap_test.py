@@ -494,10 +494,16 @@ class TestBootstrap(Tester):
 
         # Decommision the new node and wipe its data
         logger.info("Decommissioning node4")
+        mark = node1.mark_log()
         node4.decommission()
-        logger.info("Stopping node4")
-        node4.stop(wait_other_notice=True)
-        self._cleanup(node4)
+        logger.debug("Stopping node4")
+        node4.stop(wait_other_notice=False)
+        node1.watch_log_for("{} is now (dead|DOWN)".format(node4.address()), from_mark=mark)
+        data_dir = os.path.join(node4.get_path(), 'data')
+        commitlog_dir = os.path.join(node4.get_path(), 'commitlogs')
+        logger.debug("Deleting {}".format(data_dir))
+        node4.rmtree(data_dir)
+        node4.rmtree(commitlog_dir)
 
         # Now start it, it should be allowed to join
         logger.info("Restarting node4")
