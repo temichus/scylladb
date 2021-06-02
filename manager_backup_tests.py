@@ -1251,7 +1251,6 @@ class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
         logger.info(f"Removing file {random_file_object['Key']} from bucket {DESTINATION_BUCKET}")
         self.boto_client.delete_object(Bucket=DESTINATION_BUCKET, Key=random_file_object['Key'])
 
-    @pytest.mark.require("scylla-manager/#2652")
     def test_validate_backup_after_deleting_file(self):
         """
         The test creates a backup, runs it to completion,
