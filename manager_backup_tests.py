@@ -1122,6 +1122,61 @@ class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
             f"The '{repair_log_message}' message for keyspace '{keyspace_name}.{table_name}' not found!" \
             f"\nThe following logs are found {pformat(logs)} "
 
+    def _get_s3_files(self, cluster_id, category="sst", datacenter=None, node_id=None, keyspace=None, table=None,
+                      suffix=None):
+        prefix_string = 'backup/{}/cluster/{}{}{}{}{}'.format(
+            category,
+            cluster_id,
+            "/dc/" + datacenter if datacenter else "",
+            "/node/" + node_id if node_id else "",
+            "/keyspace/" + keyspace if keyspace else "",
+            "/table/" + table if table else ""
+        )
+        file_list = []
+        try:
+            file_objects = self.boto_client.list_objects(Bucket=DESTINATION_BUCKET, Prefix=prefix_string)['Contents']
+            file_list = [item["Key"] for item in file_objects]
+            if suffix:
+                file_list = [item for item in file_list if item.endswith(suffix)]
+        except KeyError as err:
+            if err.args[0] == "Contents":
+                pass  # No snapshot files of the requested prefix exists
+            else:
+                raise
+        return file_list
+
+    def test_purge_removed_node_data(self):
+        """
+        The test creates a backup task with retention=1, and after the task has ended decommissions one of the nodes.
+        Afterwards, the test restarts the backup task, and when the task completes its run the test
+        makes sure that all snapshot files of the decommissioned node were removed (purged) from the bucket
+        """
+        keyspace_table_and_key_range = {"ks": {"cf1": (1, 21)}}
+        node1, node2, node3 = self._prepare_cluster_with_data(keyspace_table_and_key_range=keyspace_table_and_key_range,
+                                                              number_of_nodes=3)
+        mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
+        backup_task = mgr_cluster.run_backup_command(keyspace_list=["ks"],
+                                                     location_list=[f"s3:{DESTINATION_BUCKET}"],
+                                                     retention=1)
+        backup_task.wait_for_status(list_status=[TaskStatus.DONE], step=10, timeout=300)
+        hosts_status = mgr_cluster.get_hosts_health()
+        decommissioned_node_id = node3.hostid()
+        current_snapshots = self._get_s3_files(cluster_id=mgr_cluster.id,
+                                               datacenter=hosts_status[node3.address()].datacenter["data_center"],
+                                               node_id=decommissioned_node_id)
+        assert current_snapshots, \
+            "Could not find backup files for destined node in bucket after backup task ended"
+
+        node3.nodetool("decommission")
+        backup_task.start(continue_task=False)
+        backup_task.wait_for_status(list_status=[TaskStatus.DONE], step=10, timeout=300)
+        current_snapshots = self._get_s3_files(cluster_id=mgr_cluster.id,
+                                               datacenter=hosts_status[node3.address()].datacenter["data_center"],
+                                               node_id=decommissioned_node_id)
+        assert not current_snapshots, \
+            f"After node {decommissioned_node_id} was decommissioned, and the backup task was rerun, snapshot files" \
+            f"of the decommissioned node were not removed from the destination bucket"
+
     def test_backup_files_multiple_clusters(self, secondary_cluster, fixture_dtest_setup):
         keyspace_table_and_key_range = {"ks": {"cf1": (1, 21)}}
         primary_cluster_nodes = self.config_and_create_cluster(nodes=3)
