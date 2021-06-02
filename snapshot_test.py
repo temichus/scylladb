@@ -1596,8 +1596,6 @@ class TestSnapshotOptions(SnapshotTester):
 
         assert f"Snapshot directory: {tag}" in self.node.nodetool(cmd=f"snapshot -t {tag}")[0]
 
-    @require("#167")
-    @require("#8725")
     def test_snapshot_skip_flush(self):
         """
         Assert that using the '-sf'/'--skip-flush' forces nodetool
