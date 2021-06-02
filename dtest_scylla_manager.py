@@ -918,6 +918,10 @@ class ManagerTask(ScyllaManagerBase):
             cmd += ' --{}={}'.format(k, v)
         return cmd
 
+    def delete_task(self):
+        cmd = "task delete {} -c {}".format(self.id, self.cluster_id)
+        self.sctool.run(cmd=cmd, is_verify_errorless_result=True)
+
     def update(self, **kwargs):
         """
           -e, --enabled string      enabled (default "true")
