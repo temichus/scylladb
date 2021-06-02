@@ -1619,10 +1619,13 @@ class TestSnapshotOptions(SnapshotTester):
         ks = self.keyspaces[0]
         self._insert_rows_into_ks_cf(insert_row_count=2, ks=ks, cf=table)
         stdout_pre, stderr_pre = self._get_tabestats_for_table(
-            keyspcase=ks,
+            keyspace=ks,
             table=table
         )
+
         memtable_data_size_pre, memtable_switch_count_pre = self._get_memtable_stats_from_tablestats(stdout_pre)
+        logger.info("memtable_data_size_pre=%s memtable_switch_count_pre=%s",
+                    memtable_data_size_pre, memtable_switch_count_pre)
         self.base_case_make_snapshot_and_extract_ks_cf_names(
             make_snapshot_kwargs={"node": self.node,
                                   "ks": ks,
@@ -1632,10 +1635,12 @@ class TestSnapshotOptions(SnapshotTester):
         )
 
         stdout_post, stderr_post = self._get_tabestats_for_table(
-            keyspcase=ks,
+            keyspace=ks,
             table=table
         )
         memtable_data_size_post, memtable_switch_count_post = self._get_memtable_stats_from_tablestats(stdout_post)
+        logger.info("memtable_data_size_post=%s memtable_switch_count_post=%s",
+                    memtable_data_size_post, memtable_switch_count_post)
 
         self.assertGreaterEqual(a=memtable_data_size_post,
                                 b=memtable_data_size_pre,
@@ -1699,12 +1704,12 @@ class TestSnapshotOptions(SnapshotTester):
 
     @staticmethod
     def _get_memtable_stats_from_tablestats(tablestats_stdout: str) -> Tuple[int, int]:
-        memtable_data_size_pattern = re.compile('((?!Memtable data size:\s)\d*)')
-        memtable_switch_count_pattern = re.compile('((?!Memtable switch count:\s))\d*')
+        memtable_data_size_pattern = re.compile('(?:Memtable data size:\s*)(\d+)')
+        memtable_switch_count_pattern = re.compile('(?:Memtable switch count:\s*)(\d+)')
         memtable_data_szie = int(memtable_data_size_pattern.search(tablestats_stdout)
-                                 .group()[-1])
+                                 .group(1))
         memtable_switch_count = int(memtable_switch_count_pattern.search(tablestats_stdout)
-                                    .group()[-1])
+                                    .group(1))
 
         return memtable_data_szie, memtable_switch_count
 
