@@ -1177,9 +1177,10 @@ class BackupValidateTask(ManagerTask):
         """
         Output example:
             Arguments:	-L s3:backup-bucket
-            Status:		DONE
-            Start time:	19 May 21 11:35:02 IDT
-            End time:	19 May 21 11:35:02 IDT
+            Status:		ERROR
+            Cause:		broken snapshots: sm_20210602120609UTC
+            Start time:	02 Jun 21 15:06:20 IDT
+            End time:	02 Jun 21 15:06:20 IDT
             Duration:	0s
 
             Scanned files:	251
@@ -1190,7 +1191,14 @@ class BackupValidateTask(ManagerTask):
             self.wait_and_get_final_status(step=5)
         assert self.status in [TaskStatus.DONE, TaskStatus.ERROR],\
             f"Can't get file summary since the task is in {self.status} status"
-        file_status_dict = yaml.safe_load(self.full_progress_string())
+        progress_string = self.full_progress_string()
+        file_status_dict = dict()
+        # Cannot use yaml.safe_load due to lines like:
+        # "Cause:		broken snapshots: sm_20210602120609UTC"
+        for line in progress_string.splitlines():
+            if line:
+                title, value = line.split(":", maxsplit=1)
+                file_status_dict[title.strip()] = value.strip() if not value.strip().isdigit() else int(value.strip())
         return file_status_dict
 
 
