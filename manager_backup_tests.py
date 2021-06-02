@@ -10,6 +10,7 @@ from glob import glob
 from time import sleep
 from datetime import datetime
 from pprint import pformat
+from pathlib import Path
 
 from cassandra import ConsistencyLevel
 import boto3
@@ -1124,14 +1125,9 @@ class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
 
     def _get_s3_files(self, cluster_id, category="sst", datacenter=None, node_id=None, keyspace=None, table=None,
                       suffix=None):
-        prefix_string = 'backup/{}/cluster/{}{}{}{}{}'.format(
-            category,
-            cluster_id,
-            "/dc/" + datacenter if datacenter else "",
-            "/node/" + node_id if node_id else "",
-            "/keyspace/" + keyspace if keyspace else "",
-            "/table/" + table if table else ""
-        )
+        prefix_string = f'backup/{category}/cluster/{cluster_id}{"/dc/" + datacenter if datacenter else ""}' \
+                        f'{"/node/" + node_id if node_id else ""}{"/keyspace/" + keyspace if keyspace else ""}' \
+                        f'{"/table/" + table if table else ""}'
         file_list = []
         try:
             file_objects = self.boto_client.list_objects(Bucket=DESTINATION_BUCKET, Prefix=prefix_string)['Contents']
@@ -1176,6 +1172,82 @@ class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
         assert not current_snapshots, \
             f"After node {decommissioned_node_id} was decommissioned, and the backup task was rerun, snapshot files" \
             f"of the decommissioned node were not removed from the destination bucket"
+
+    def _rename_files_with_older_timestamps(self, object_path_list):
+        """
+        The function takes the timestamps from the names of the manifest files it receives,
+        changes them to be a year older than they originally were,
+        and then replaces the timestamps in the manifests' names with the altered, older timestamps.
+
+        For example:
+
+        task_25929b31-c0b4-452a-a80f-85793aaa6d33_tag_sm_20210519075928UTC_manifest.json.gz
+        Changes to
+        task_25929b31-c0b4-452a-a80f-85793aaa6d33_tag_sm_20200519075928UTC_manifest.json.gz
+        """
+        datetime_format = "%Y%m%d%H%M%S"
+        regex_pattern = "([0-9]+)UTC"
+        temp_location = Path("/tmp/s3_objects/")
+        temp_location.mkdir(exist_ok=True)
+
+        for object_path in object_path_list:
+            object_location, file_name = object_path.rsplit("/", maxsplit=1)
+            self.boto_client.download_file(Bucket=DESTINATION_BUCKET,
+                                           Key=object_path,
+                                           Filename=str(temp_location/file_name))
+            self.boto_client.delete_object(Bucket=DESTINATION_BUCKET,
+                                           Key=object_path)
+            file_date_string = re.findall(regex_pattern, file_name)[0]
+            file_date_object = datetime.strptime(file_date_string, datetime_format)
+            file_date_object = file_date_object.replace(year=file_date_object.year-1)
+            new_file_date_string = file_date_object.strftime(datetime_format)
+            new_file_name = file_name.replace(file_date_string, new_file_date_string)
+            self.boto_client.upload_file(Filename=str(temp_location/file_name),
+                                         Bucket=DESTINATION_BUCKET,
+                                         Key='/'.join([object_location, new_file_name]))
+
+    def test_purge_deleted_backup_task(self):
+        """
+        At first, the test runs a backup task to completion and then deletes the task.
+
+        Afterwards, the test alters the name of the deleted task's manifest to fool the manager to think
+        that the task is over a month old, and therefore should be purged.
+        (The manager will remove the files of a deleted task from the bucket only once it's over a month old)
+
+        At last, the test starts another backup task, and upon its completion makes sure that the files of
+        the deleted backup task were removed from the bucket.
+        """
+        keyspace_table_and_key_range = {"ks": {"cf1": (1, 21)}}
+        node1, node2 = self._prepare_cluster_with_data(keyspace_table_and_key_range=keyspace_table_and_key_range)
+        mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
+        backup_task = mgr_cluster.run_backup_command(keyspace_list=["ks"],
+                                                     location_list=[f"s3:{DESTINATION_BUCKET}"])
+        backup_task.wait_for_status(list_status=[TaskStatus.DONE], step=10, timeout=300)
+
+        hosts_status = mgr_cluster.get_hosts_health()
+        snapshot_file_paths_before_purge = set(
+            self._get_s3_files(cluster_id=mgr_cluster.id,
+                               datacenter=hosts_status[node2.address()].datacenter["data_center"]))
+        manifest_file_paths = self._get_s3_files(cluster_id=mgr_cluster.id,
+                                                 category="meta",
+                                                 datacenter=hosts_status[node2.address()].datacenter["data_center"],
+                                                 suffix=".gz")
+        self._rename_files_with_older_timestamps(object_path_list=manifest_file_paths)
+        backup_task.delete_task()
+
+        for node in self.cluster.nodelist():
+            # So new snapshot files will have different names,
+            # and will not replace the existing files of the previous task
+            node.nodetool("compact")
+
+        new_backup_task = mgr_cluster.run_backup_command(keyspace_list=["ks"],
+                                                         location_list=[f"s3:{DESTINATION_BUCKET}"])
+        new_backup_task.wait_for_status(list_status=[TaskStatus.DONE], step=10, timeout=300)
+        snapshot_file_paths_after_purge = set(
+            self._get_s3_files(cluster_id=mgr_cluster.id,
+                               datacenter=hosts_status[node2.address()].datacenter["data_center"]))
+        remaining_old_snapshot_files = snapshot_file_paths_before_purge.intersection(snapshot_file_paths_after_purge)
+        assert not remaining_old_snapshot_files, "Snapshot files from a (old) deleted backup task were not purged"
 
     def test_backup_files_multiple_clusters(self, secondary_cluster, fixture_dtest_setup):
         keyspace_table_and_key_range = {"ks": {"cf1": (1, 21)}}
