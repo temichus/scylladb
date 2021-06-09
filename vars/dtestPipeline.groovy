@@ -31,7 +31,7 @@ def call(Map pipelineParams) {
         }
 
         agent {
-            label "master"
+            label "aws-sct-builders-eu-west-1"
         }
 
         options {
