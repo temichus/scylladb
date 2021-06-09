@@ -111,7 +111,7 @@ def get_cf_snapshot_saved_dir(base_snapshot_dir: str, keyspace: str, table: str,
 
 
 def restore_snapshot_with_refresh(snapshot_dir, node, keyspace, table, name=None, wait_for_mv=False,
-                                      wait_for_mv_timeout=30):
+                                  wait_for_mv_timeout=30):
     logger.debug("Restoring snapshot....")
     node_dir = node.get_path()
     restore_dir = glob.glob("{node_dir}/data/{keyspace}/{table}-*/upload/".format(**locals()))[0]
@@ -150,3 +150,8 @@ def restore_snapshot_with_sstableloader(snapshot_dir, node, keyspace, table, nam
         raise Exception("sstableloader command '%s' failed; exit status: %d'; stdout: %s; stderr: %s" %
                         (" ".join(args), exit_status, stdout, stderr))
     shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+def get_table_description(node, ks, cf):
+    table_desc = node.run_cqlsh(f"describe table {ks}.{cf}", return_output=True)
+    return table_desc[0]

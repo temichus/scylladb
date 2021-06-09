@@ -26,7 +26,7 @@ from tools.data import create_index, create_local_index
 from tools.files import safe_mkdtemp, replace_in_file
 from tools.misc import require
 from tools.snapshots import make_snapshot, get_cf_snapshot_saved_dir, restore_snapshot_with_refresh, \
-    restore_snapshot_with_sstableloader
+    restore_snapshot_with_sstableloader, get_table_description
 from dtest_setup_overrides import DTestSetupOverrides
 from tools.misc import ImmutableMapping
 
@@ -978,12 +978,12 @@ class TestSchemaFileInSnapshot(SnapshotTester):
         base_snapshot_dir = make_snapshot(node1, ks="ks", cf="cf", name="basic")
         schema_file = self.get_schema_file_from_snapshot(base_snapshot_dir, "ks", "cf", "basic")
 
-        table_desc = self.get_table_description(node1, "ks", "cf")
+        table_desc = get_table_description(node1, "ks", "cf")
 
         self.drop_keyspaces_and_clear_files(session, "ks", node1)
         create_ks(session, "ks", 1)
         self.restore_table_by_schema_file(session, schema_file)
-        restored_table_desc = self.get_table_description(node1, "ks", "cf")
+        restored_table_desc = get_table_description(node1, "ks", "cf")
 
         assert table_desc == restored_table_desc
 
@@ -1002,14 +1002,14 @@ class TestSchemaFileInSnapshot(SnapshotTester):
         tables_desc = []
         for table in tables:
             schema_files.append(self.get_schema_file_from_snapshot(base_snapshot_dir, "ks", table, "basic"))
-            tables_desc.append(self.get_table_description(node1, "ks", table))
+            tables_desc.append(get_table_description(node1, "ks", table))
 
         self.drop_keyspaces_and_clear_files(session, "ks", node1)
         create_ks(session, "ks", 1)
 
         for table, schema_file, desc in zip(tables, schema_files, tables_desc):
             self.restore_table_by_schema_file(session, schema_file)
-            restored_table_desc = self.get_table_description(node1, "ks", table)
+            restored_table_desc = get_table_description(node1, "ks", table)
 
             assert desc == restored_table_desc
 
@@ -1061,18 +1061,18 @@ class TestSchemaFileInSnapshot(SnapshotTester):
         self.insert_rows(session, 0, 100)
         base_snapshot_dir = make_snapshot(node1, ks='ks', cf='cf', name='basic')
         schema_file = self.get_schema_file_from_snapshot(base_snapshot_dir, 'ks', 'cf', 'basic')
-        table_desc = self.get_table_description(node1, 'ks', 'cf')
+        table_desc = get_table_description(node1, 'ks', 'cf')
 
         session.execute('ALTER TABLE ks.cf ADD val1 text')
         base_snapshot_dir = make_snapshot(node1, ks='ks', cf='cf', name='basic1')
         new_schema_file = self.get_schema_file_from_snapshot(base_snapshot_dir, 'ks', 'cf', 'basic1')
-        altered_table_desc = self.get_table_description(node1, 'ks', 'cf')
+        altered_table_desc = get_table_description(node1, 'ks', 'cf')
 
         self.drop_keyspaces_and_clear_files(session, 'ks', node1)
         create_ks(session, 'ks', rf=1)
 
         self.restore_table_by_schema_file(session, new_schema_file)
-        restored_altered_table_desc = self.get_table_description(node1, 'ks', 'cf')
+        restored_altered_table_desc = get_table_description(node1, 'ks', 'cf')
 
         assert altered_table_desc == restored_altered_table_desc
         assert restored_altered_table_desc != table_desc
@@ -1105,11 +1105,11 @@ class TestSchemaFileInSnapshot(SnapshotTester):
 
         base_snapshot_dir = make_snapshot(node1, ks='ks', cf='UPPER_CASE_CF', name='basic')
         schema_file = self.get_schema_file_from_snapshot(base_snapshot_dir, 'ks', 'UPPER_CASE_CF', 'basic')
-        table_desc = self.get_table_description(node1, 'ks', '\"UPPER_CASE_CF\"')
+        table_desc = get_table_description(node1, 'ks', '\"UPPER_CASE_CF\"')
         self.drop_keyspaces_and_clear_files(session, 'ks', node1)
         create_ks(session, 'ks', 1)
         self.restore_table_by_schema_file(session, schema_file)
-        restored_table_desc = self.get_table_description(node1, 'ks', '\"UPPER_CASE_CF\"')
+        restored_table_desc = get_table_description(node1, 'ks', '\"UPPER_CASE_CF\"')
 
         assert table_desc == restored_table_desc
 
@@ -1124,17 +1124,17 @@ class TestSchemaFileInSnapshot(SnapshotTester):
         base_snapshot_dir = make_snapshot(node1, ks='ks', cf='UPPER_CASE_CF,cf', name='basic')
 
         upper_schema_file = self.get_schema_file_from_snapshot(base_snapshot_dir, 'ks', 'UPPER_CASE_CF', 'basic')
-        upper_table_desc = self.get_table_description(node1, 'ks', '\"UPPER_CASE_CF\"')
+        upper_table_desc = get_table_description(node1, 'ks', '\"UPPER_CASE_CF\"')
 
         lower_schema_file = self.get_schema_file_from_snapshot(base_snapshot_dir, 'ks', 'cf', 'basic')
-        lower_table_desc = self.get_table_description(node1, 'ks', 'cf')
+        lower_table_desc = get_table_description(node1, 'ks', 'cf')
 
         self.drop_keyspaces_and_clear_files(session, 'ks', node1)
         create_ks(session, 'ks', 1)
         self.restore_table_by_schema_file(session, upper_schema_file)
-        upper_restored_table_desc = self.get_table_description(node1, 'ks', '\"UPPER_CASE_CF\"')
+        upper_restored_table_desc = get_table_description(node1, 'ks', '\"UPPER_CASE_CF\"')
         self.restore_table_by_schema_file(session, lower_schema_file)
-        lower_restored_table_desc = self.get_table_description(node1, 'ks', 'cf')
+        lower_restored_table_desc = get_table_description(node1, 'ks', 'cf')
 
         assert upper_table_desc == upper_restored_table_desc
         assert lower_table_desc == lower_restored_table_desc
@@ -1148,7 +1148,7 @@ class TestSchemaFileInSnapshot(SnapshotTester):
 
         # get table schema from schema file saved in snapshot
         schema_cql_file = self.get_schema_file_from_snapshot(snapshot_dir, 'ks', 'cf', 'basic')
-        table_schema = self.get_table_description(node1, "ks", "cf")
+        table_schema = get_table_description(node1, "ks", "cf")
 
         # Write more data after the snapshot, this will get thrown
         # away when we restore:
@@ -1163,7 +1163,7 @@ class TestSchemaFileInSnapshot(SnapshotTester):
 
         self.restore_table_by_schema_file(session, schema_cql_file)
 
-        restored_table_schema = self.get_table_description(node1, "ks", "cf")
+        restored_table_schema = get_table_description(node1, "ks", "cf")
 
         assert table_schema == restored_table_schema
 
@@ -1192,7 +1192,7 @@ class TestSchemaFileInSnapshot(SnapshotTester):
 
         # get schema.cql files for base table and mv
         schema_cql_file_basic_table = self.get_schema_file_from_snapshot(snapshot_dir_base_table, 'ks', 'cf')
-        schema_table_desc = self.get_table_description(node1, "ks", "cf")
+        schema_table_desc = get_table_description(node1, "ks", "cf")
         schema_cql_file_mv = self.get_schema_file_from_snapshot(snapshot_dir_base_table, 'ks', 'cf_mv')
         schema_mv_desc = self.get_mv_description(node1, "ks", "cf_mv")
 
@@ -1218,7 +1218,7 @@ class TestSchemaFileInSnapshot(SnapshotTester):
         self.check_rows_number_in_table(session, "ks", "cf_mv", 0)
 
         # checkt that restored table and mv are same as before
-        restored_base_table_desc = self.get_table_description(node1, "ks", "cf")
+        restored_base_table_desc = get_table_description(node1, "ks", "cf")
         restored_mv_table_desc = self.get_mv_description(node1, "ks", "cf_mv")
 
         assert schema_table_desc == restored_base_table_desc
@@ -1249,7 +1249,7 @@ class TestSchemaFileInSnapshot(SnapshotTester):
             snapshot_dir = make_snapshot(node1, ks='ks', cf='cf,cf_ind_index')
 
         schema_cql_file_basic_table = self.get_schema_file_from_snapshot(snapshot_dir, 'ks', 'cf')
-        base_table_desc = self.get_table_description(node1, 'ks', 'cf')
+        base_table_desc = get_table_description(node1, 'ks', 'cf')
         schema_cql_file_index_table = self.get_schema_file_from_snapshot(snapshot_dir, 'ks', 'cf_ind_index')
         si_table_desc = self.get_index_description(node1, 'ks', 'cf_ind')
 
@@ -1271,7 +1271,7 @@ class TestSchemaFileInSnapshot(SnapshotTester):
         self.restore_table_by_schema_file(session, schema_cql_file_index_table)
 
         # checkt that restored table and mv are same as before
-        restored_base_table_desc = self.get_table_description(node1, "ks", "cf")
+        restored_base_table_desc = get_table_description(node1, "ks", "cf")
         restored_index_table_desc = self.get_index_description(node1, "ks", "cf_ind")
 
         assert base_table_desc == restored_base_table_desc
@@ -1304,7 +1304,7 @@ class TestSchemaFileInSnapshot(SnapshotTester):
             snapshot_dir_base_table = make_snapshot(node1, ks='ks', cf='cf,cf_val_index')
 
         schema_cql_file_basic_table = self.get_schema_file_from_snapshot(snapshot_dir_base_table, 'ks', 'cf')
-        table_desc = self.get_table_description(node1, "ks", "cf")
+        table_desc = get_table_description(node1, "ks", "cf")
         schema_cql_file_lsi = self.get_schema_file_from_snapshot(snapshot_dir_base_table, 'ks', 'cf_val_index')
         lsi_desc = self.get_index_description(node1, "ks", "cf_val")
 
@@ -1325,7 +1325,7 @@ class TestSchemaFileInSnapshot(SnapshotTester):
 
         self.check_rows_number_in_table(session, 'ks', 'cf', 0)
 
-        restored_table_desc = self.get_table_description(node1, 'ks', 'cf')
+        restored_table_desc = get_table_description(node1, 'ks', 'cf')
         restored_lsi_desc = self.get_index_description(node1, 'ks', 'cf_val')
 
         assert table_desc == restored_table_desc
@@ -1358,7 +1358,7 @@ class TestSchemaFileInSnapshot(SnapshotTester):
         self.check_rows_number_in_table(session, 'ks', 'native_types_table', 3)
 
         snapshots_dir = make_snapshot(node1, ks='ks', name='basic')
-        table_desc = self.get_table_description(node1, 'ks', 'native_types_table')
+        table_desc = get_table_description(node1, 'ks', 'native_types_table')
         schema_file = self.get_schema_file_from_snapshot(snapshots_dir, 'ks', 'native_types_table', 'basic')
 
         self.drop_keyspaces_and_clear_files(session, 'ks', node1)
@@ -1369,7 +1369,7 @@ class TestSchemaFileInSnapshot(SnapshotTester):
 
         self.check_rows_number_in_table(session, 'ks', 'native_types_table', 0)
 
-        restored_table_desc = self.get_table_description(node1, 'ks', 'native_types_table')
+        restored_table_desc = get_table_description(node1, 'ks', 'native_types_table')
         if use_sstableloader:
             restore_snapshot_with_sstableloader(snapshots_dir, node1, 'ks', 'native_types_table', 'basic')
         else:
@@ -1401,7 +1401,7 @@ class TestSchemaFileInSnapshot(SnapshotTester):
         self.check_rows_number_in_table(session, 'ks', 'table_with_udt', 3)
 
         snapshots_dir = make_snapshot(node1, ks='ks', name='basic')
-        table_desc = self.get_table_description(node1, 'ks', 'table_with_udt')
+        table_desc = get_table_description(node1, 'ks', 'table_with_udt')
         schema_file = self.get_schema_file_from_snapshot(snapshots_dir, 'ks', 'table_with_udt', 'basic')
 
         self.drop_keyspaces_and_clear_files(session, 'ks', node1)
@@ -1414,7 +1414,7 @@ class TestSchemaFileInSnapshot(SnapshotTester):
 
         self.check_rows_number_in_table(session, 'ks', 'table_with_udt', 0)
 
-        restored_table_desc = self.get_table_description(node1, 'ks', 'table_with_udt')
+        restored_table_desc = get_table_description(node1, 'ks', 'table_with_udt')
         if use_sstableloader:
             restore_snapshot_with_sstableloader(snapshots_dir, node1, 'ks', 'table_with_udt', 'basic')
         else:
@@ -1436,10 +1436,6 @@ class TestSchemaFileInSnapshot(SnapshotTester):
         with open(schema_file, "r") as fp:
             content = fp.read()
         return content
-
-    def get_table_description(self, node, ks, cf):
-        table_desc = node.run_cqlsh(f"describe table {ks}.{cf}", return_output=True)
-        return table_desc[0]
 
     def get_mv_description(self, node, ks, mv):
         mv_desc = node.run_cqlsh(f"DESCRIBE MATERIALIZED VIEW {ks}.{mv}", return_output=True)
