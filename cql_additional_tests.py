@@ -7233,7 +7233,6 @@ class TestsMultiColumnRestrictionSimple(Tester):
 
     # In Cassandra filtering by null still not supported. They mean to do that in 4.x version
     # https://issues.apache.org/jira/browse/CASSANDRA-10715
-    @require('#4776')
     def test_filter_by_pk_ck_localSI_and_empty_non_indexed_columns(self):
         session = self.prepare()
         self.create_8_columns_table(session=session, add_ck=True)
@@ -7247,8 +7246,12 @@ class TestsMultiColumnRestrictionSimple(Tester):
                                                                           table_name=self.TABLE_NAME)
 
         logger.debug('Filter by one empty non-indexed column')
-        assert_all(session=session, query=select_stmt + 'where clmn_text = null ALLOW FILTERING',
-                   expected=[self.EXPECTED_DATA[4]], ignore_order=True)
+        # Issue: Add "IS NULL" support to WHERE clause #8517
+        # assert_all(session=session, query=select_stmt + 'where clmn_text IS null ALLOW FILTERING',
+        #            expected=[self.EXPECTED_DATA[4]], ignore_order=True)
+        logger.debug("Expected to fail on SyntaxException until 'IS NULL' is supported (See scylladb/scylla#8517)")
+        assert_invalid(session=session, query=select_stmt + 'where clmn_text IS null ALLOW FILTERING',
+                       expected=SyntaxException)
 
     def test_filter_by_non_indexed_columns_from_mv(self):
         session = self.prepare()
