@@ -112,14 +112,14 @@ class TestCQLCast(CqlshPrepare):
         test_from = ['timeuuid']
         self._test_run(test_from, TestData.POSITIVE_VALUES)
 
-    @require('#3109')
+    @pytest.mark.skip('Skipped due to scylla#3109')
     def test_cast_issue_3109(self):
         """Function performs test for issue #3109"""
         # To remove the case from issue test, go to TestData.POSITIVE_VALUES and remove comment simbol "#" from relavant type
         test_from = ['float', 'double', 'timestamp']
         self._test_run(test_from, TestData.POSITIVE_VALUES, test_to=['text'], test_types=['cast'], exclude=False)
 
-    @require('#3109')
+    @pytest.mark.skip('Skipped due to scylla#3109')
     def test_cast_udt_issue_3109(self):
         """Function performs test for issue #3109"""
         # To remove the case from issue test, go to TestData.POSITIVE_VALUES and remove comment simbol "#" from relavant type
