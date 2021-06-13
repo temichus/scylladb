@@ -139,8 +139,8 @@ class TestAuthRoles(Tester):
                        "User mike has no CREATE permission on <all roles> or any of its parents",
                        Unauthorized)
 
-    # Issue: Creating user-defined function (UDF) #2204
-    @pytest.mark.require('#2204')
+    # Issue: Convert user-defined functions to lua #2175
+    @pytest.mark.require('#scylladb/scylla-dtest#2175')
     def test_creator_of_db_resource_granted_all_permissions(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -378,8 +378,8 @@ class TestAuthRoles(Tester):
                        "mike has no MODIFY permission on <table ks.cf> or any of its parents",
                        Unauthorized)
 
-    # Issue: Creating user-defined function (UDF) #2204
-    @pytest.mark.require('#2204')
+    # Issue: Convert user-defined functions to lua #2175
+    @pytest.mark.require('#scylladb/scylla-dtest#2175')
     def test_filter_granted_permissions_by_resource_type(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -775,8 +775,8 @@ class TestAuthRoles(Tester):
                                              ["mike", True]])
 
     # UDF permissions tests TODO move to separate fixture & refactor this + auth_test.py
-    # Issue: Creating user-defined function (UDF) #2204
-    @pytest.mark.require('#2204')
+    # Issue: Convert user-defined functions to lua #2175
+    @pytest.mark.require('#scylladb/scylla-dtest#2175')
     def test_grant_revoke_udf_permissions(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -818,8 +818,9 @@ class TestAuthRoles(Tester):
         cassandra.execute("REVOKE EXECUTE PERMISSION ON ALL FUNCTIONS FROM mike")
         self.assert_no_permissions(cassandra, "LIST ALL PERMISSIONS OF mike")
 
-    # Issue: Creating user-defined function (UDF) #2204
-    @pytest.mark.require('#2204')
+    # Issue: Convert user-defined functions to lua #2175
+
+    @pytest.mark.require('#scylladb/scylla-dtest#2175')
     def test_grant_revoke_are_idempotent(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -837,8 +838,8 @@ class TestAuthRoles(Tester):
         cassandra.execute("REVOKE EXECUTE ON FUNCTION ks.plus_one(int) FROM mike")
         self.assert_no_permissions(cassandra, "LIST ALL PERMISSIONS OF mike")
 
-    # Issue: Creating user-defined function (UDF) #2204
-    @pytest.mark.require('#2204')
+    # Issue: Convert user-defined functions to lua #2175
+    @pytest.mark.require('#scylladb/scylla-dtest#2175')
     def test_function_resource_hierarchy_permissions(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -894,8 +895,8 @@ class TestAuthRoles(Tester):
         mike.execute(select_one)
         mike.execute(select_two)
 
-    # Issue: Creating user-defined function (UDF) #2204
-    @pytest.mark.require('#2204')
+    # Issue: Convert user-defined functions to lua #2175
+    @pytest.mark.require('#scylladb/scylla-dtest#2175')
     def test_udf_permissions_validation(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -957,8 +958,9 @@ class TestAuthRoles(Tester):
         cassandra.execute("GRANT CREATE ON ALL FUNCTIONS IN KEYSPACE ks TO mike")
         mike.execute(cql)
 
-    # Issue: Creating user-defined function (UDF) #2204
-    @pytest.mark.require('#2204')
+    # Issue: Convert user-defined functions to lua #2175
+
+    @pytest.mark.require('#scylladb/scylla-dtest#2175')
     def test_drop_role_cleans_up_udf_permissions(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -981,8 +983,8 @@ class TestAuthRoles(Tester):
         cassandra.execute("CREATE ROLE mike WITH PASSWORD = '12345' AND LOGIN = true")
         self.assert_no_permissions(cassandra, "LIST ALL PERMISSIONS OF mike")
 
-    # Issue: Creating user-defined function (UDF) #2204
-    @pytest.mark.require('#2204')
+    # Issue: Convert user-defined functions to lua #2175
+    @pytest.mark.require('#scylladb/scylla-dtest#2175')
     def test_drop_function_and_keyspace_cleans_up_udf_permissions(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -1007,8 +1009,8 @@ class TestAuthRoles(Tester):
         cassandra.execute("DROP KEYSPACE ks")
         self.assert_no_permissions(cassandra, "LIST ALL PERMISSIONS OF mike")
 
-    # Issue: Creating user-defined function (UDF) #2204
-    @pytest.mark.require('#2204')
+    # Issue: Convert user-defined functions to lua #2175
+    @pytest.mark.require('#scylladb/scylla-dtest#2175')
     def test_udf_with_overloads_permissions(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -1048,8 +1050,8 @@ class TestAuthRoles(Tester):
         cassandra.execute("DROP FUNCTION ks.plus_one(int)")
         self.assert_no_permissions(cassandra, "LIST ALL PERMISSIONS OF mike")
 
-    # Issue: Creating user-defined function (UDF) #2204
-    @pytest.mark.require('#2204')
+    # Issue: Convert user-defined functions to lua #2175
+    @pytest.mark.require('#scylladb/scylla-dtest#2175')
     def test_drop_keyspace_cleans_up_function_level_permissions(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -1066,27 +1068,31 @@ class TestAuthRoles(Tester):
         cassandra.execute("DROP KEYSPACE ks")
         self.assert_no_permissions(cassandra, "LIST ALL PERMISSIONS OF mike")
 
-    @pytest.mark.require('#2204')
+    # Issue: Convert user-defined functions to lua #2175
+    @pytest.mark.require('scylladb/scylla-dtest#2175')
     def test_udf_permissions_in_selection(self):
         self.verify_udf_permissions("SELECT k, v, ks.plus_one(v) FROM ks.t1 WHERE k = 1")
 
-    @pytest.mark.require('#2204')
+    # Issue: Convert user-defined functions to lua #2175
+    @pytest.mark.require('scylladb/scylla-dtest#2175')
     def test_udf_permissions_in_select_where_clause(self):
         self.verify_udf_permissions("SELECT k, v FROM ks.t1 WHERE k = ks.plus_one(0)")
 
-    @pytest.mark.require('#2204')
+    # Issue: Convert user-defined functions to lua #2175
+    @pytest.mark.require('scylladb/scylla-dtest#2175')
     def test_udf_permissions_in_insert(self):
         self.verify_udf_permissions("INSERT INTO ks.t1 (k, v) VALUES (1, ks.plus_one(1))")
 
-    @pytest.mark.require('#2204')
+    # Issue: Convert user-defined functions to lua #2175
+    @pytest.mark.require('scylladb/scylla-dtest#2175')
     def test_udf_permissions_in_update(self):
         self.verify_udf_permissions("UPDATE ks.t1 SET v = ks.plus_one(2) WHERE k = ks.plus_one(0)")
 
-    @pytest.mark.require('#2204')
+    # Issue: Convert user-defined functions to lua #2175
+    @pytest.mark.require('scylladb/scylla-dtest#2175')
     def test_udf_permissions_in_delete(self):
         self.verify_udf_permissions("DELETE FROM ks.t1 WHERE k = ks.plus_one(0)")
 
-    # Issue: Creating user-defined function (UDF) #2204
     def verify_udf_permissions(self, cql):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -1105,8 +1111,8 @@ class TestAuthRoles(Tester):
         cassandra.execute("GRANT EXECUTE ON FUNCTION ks.plus_one(int) TO mike")
         return mike.execute(cql)
 
-    # Issue: Creating user-defined function (UDF) #2204
-    @pytest.mark.require('#2204')
+    # Issue: Convert user-defined functions to lua #2175
+    @pytest.mark.require('scylladb/scylla-dtest#2175')
     def test_inheritence_of_udf_permissions(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -1184,8 +1190,8 @@ class TestAuthRoles(Tester):
                        "syntax error",
                        SyntaxException)
 
-    # Issue: Creating user-defined function (UDF) #2204
-    @pytest.mark.require('#2204')
+    # Issue: Convert user-defined functions to lua #2175
+    @pytest.mark.require('scylladb/scylla-dtest#2175')
     def test_aggregate_function_permissions(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
