@@ -142,8 +142,8 @@ class TestCQLCast(CqlshPrepare):
         self._test_run(test_from, TestData.POSITIVE_VALUES, test_to=['decimal'],
                        test_types=['cast', 'avg', 'sum', 'min', 'max', 'cast_min', 'cast_max', 'cast_avg'], exclude=False)
 
-    @require('#3111')
-    def test_cast_issue_3111(self):
+    @pytest.mark.skip('Skipped due to scylla#3111')
+    def cast_issue_3111_test(self):
         """Function performs or issue #3111"""
         # To remove the case from issue test, go to TestData.POSITIVE_VALUES and remove comment simbol "#" from relavant type
         test_from = ['float', 'tinyint', 'smallint', 'int', 'bigint', 'varint']
