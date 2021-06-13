@@ -493,7 +493,6 @@ class TestTTL(Tester):
         self.session1.execute("delete from session where id = 'abc'")
         assert_row_count(self.session1, 'session', 0)
 
-    @pytest.mark.require('#3182')
     @pytest.mark.single_node
     def test_boundary_ttl(self):
         """
@@ -506,7 +505,6 @@ class TestTTL(Tester):
                                                            # int after adding current time
         boundary_ttl + 1 # invalid
         """
-        DEBUG_WITH_BUG_TTL = False
         self.prepare()
 
         self.session1.execute("CREATE TABLE session (id text, usr text, valid int, PRIMARY KEY (id))")
@@ -517,14 +515,15 @@ class TestTTL(Tester):
         # InvalidRequest: Error from server: code=2200 [Invalid query] message="ttl is too large. requested (2147483647) maximum (630720000)"
         assert_invalid(self.session1, "insert into session (id, usr) values ('abc', 'abc') USING TTL 2147483647")
 
-        if DEBUG_WITH_BUG_TTL:
-            self.session1.execute("insert into session (id, usr) values ('abc', 'abc') USING TTL 630720000")
-        else:
-            assert_invalid(self.session1, "insert into session (id, usr) values ('abc', 'abc') USING TTL 630720000")
-
+        # 20 years in seconds is the maximum ttl
+        max_ttl = 630720000
+        assert_invalid(self.session1, f"insert into session (id, usr) values ('abc', 'abc') USING TTL {max_ttl + 1}",
+                       matching='ttl is too large')
         assert_row_count(self.session1, 'session', 0)
+        self.session1.execute(f"insert into session (id, usr) values ('abc', 'abc') USING TTL {max_ttl}")
+        assert_row_count(self.session1, 'session', 1)
 
-        MAX_DELETE_TIME = 2 ** 31 - 1
+        MAX_DELETE_TIME = int(2 ** 31 - 1)
         start_time = time.time()
         boundary_ttl = MAX_DELETE_TIME - int(start_time)
 
@@ -535,18 +534,13 @@ class TestTTL(Tester):
 
         start_time = time.time()
         boundary_ttl = MAX_DELETE_TIME - int(start_time)
-        if DEBUG_WITH_BUG_TTL:
-            self.session1.execute("insert into session (id, usr) values ('def', 'def') USING TTL %s" %
-                                  (boundary_ttl + 1))
-        else:
-            assert_invalid(self.session1, "insert into session (id, usr) values ('def', 'def') USING TTL %s" %
-                           boundary_ttl + 1)
-        assert_row_count(self.session1, 'session', 1)
+        self.session1.execute(f"insert into session (id, usr) values ('def', 'def') USING TTL {boundary_ttl + 1}")
+        assert_row_count(self.session1, 'session', 2)
 
         start_time = time.time()
         self.session1.execute("insert into session (id, usr) values ('abc', 'abc') USING TTL %s" % 5)
         self.smart_sleep(start_time, 10)
-        assert_row_count(self.session1, 'session', 0)
+        assert_row_count(self.session1, 'session', 1)
 
     def insert_few_rows(self, start, end, table_name, ttl=None):
         for i in range(start, end + 1):
