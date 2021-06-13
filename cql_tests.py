@@ -12,6 +12,7 @@ from cassandra import ConsistencyLevel, InvalidRequest
 from cassandra.protocol import ConfigurationException  # pylint: disable=no-name-in-module
 from cassandra.policies import FallthroughRetryPolicy
 from cassandra.query import SimpleStatement
+from ccmlib.scylla_cluster import ScyllaCluster
 
 from thrift_bindings.thrift010.ttypes import \
     ConsistencyLevel as ThriftConsistencyLevel
@@ -884,7 +885,6 @@ class TruncateTester(CQLTester):
             f" [{min(count_above_selected_time,rand_limit)}]"
 
 
-@require("7392")
 @pytest.mark.dtest_full
 class AbortedQueriesTester(CQLTester):
     """
@@ -897,14 +897,16 @@ class AbortedQueriesTester(CQLTester):
         Check that a query running on the local coordinator node times out
         """
         cluster = self.cluster
-        cluster.set_configuration_options(values={'read_request_timeout_in_ms': 1000})
+        if not isinstance(cluster, ScyllaCluster):
+            cluster.set_configuration_options(values={'read_request_timeout_in_ms': 1000})
 
         # cassandra.test.read_iteration_delay_ms causes the state tracking read iterators
         # introduced by CASSANDRA-7392 to pause by the specified amount of milliseconds during each
         # iteration of non system queries, so that these queries take much longer to complete,
         # see ReadCommand.withStateTracking()
-        cluster.populate(1).start(wait_for_binary_proto=True, jvm_args=["-Dcassandra.monitoring_check_interval_ms=50",
-                                                                        "-Dcassandra.test.read_iteration_delay_ms=1500"])
+        jvm_args = None if isinstance(cluster, ScyllaCluster) else \
+            ["-Dcassandra.monitoring_check_interval_ms=50", "-Dcassandra.test.read_iteration_delay_ms=1500"]
+        cluster.populate(1).start(wait_for_binary_proto=True, jvm_args=jvm_args)
         node = cluster.nodelist()[0]
         session = self.patient_cql_connection(node)
 
@@ -919,25 +921,33 @@ class AbortedQueriesTester(CQLTester):
         for i in range(500):
             session.execute("INSERT INTO test1 (id, val) VALUES ({}, 'foo')".format(i))
 
+        if isinstance(cluster, ScyllaCluster):
+            node.stop()
+            node.start(wait_for_binary_proto=True, jvm_args=[
+                       '--read-request-timeout-in-ms=0', '--range-request-timeout-in-ms=0'])
+
         mark = node.mark_log()
         statement = SimpleStatement("SELECT * from test1", consistency_level=ConsistencyLevel.ONE,
                                     retry_policy=FallthroughRetryPolicy())
         assert_unavailable(lambda c: logger.debug(c.execute(statement)), session)
-        node.watch_log_for("Some operations timed out", from_mark=mark, timeout=60)
+        if not isinstance(cluster, ScyllaCluster):
+            node.watch_log_for("Some operations timed out", from_mark=mark, timeout=60)
 
     def test_remote_query(self):
         """
         Check that a query running on a node other than the coordinator times out
         """
         cluster = self.cluster
-        cluster.set_configuration_options(values={'read_request_timeout_in_ms': 1000})
+        if not isinstance(cluster, ScyllaCluster):
+            cluster.set_configuration_options(values={'read_request_timeout_in_ms': 1000})
 
         cluster.populate(2)
         node1, node2 = cluster.nodelist()
 
+        jvm_args = None if isinstance(cluster, ScyllaCluster) else \
+            ["-Dcassandra.monitoring_check_interval_ms=50", "-Dcassandra.test.read_iteration_delay_ms=1500"]
         node1.start(wait_for_binary_proto=True, join_ring=False)  # ensure other node executes queries
-        node2.start(wait_for_binary_proto=True, jvm_args=["-Dcassandra.monitoring_check_interval_ms=50",
-                                                          "-Dcassandra.test.read_iteration_delay_ms=1500"])  # see above for explanation
+        node2.start(wait_for_binary_proto=True, jvm_args=jvm_args)  # see above for explanation
 
         session = self.patient_exclusive_cql_connection(node1)
 
@@ -955,25 +965,34 @@ class AbortedQueriesTester(CQLTester):
             for j in range(10):
                 session.execute("INSERT INTO test2 (id, col, val) VALUES ({}, {}, 'foo')".format(i, j))
 
+        bypass_cache = ""
+        if isinstance(cluster, ScyllaCluster):
+            cluster.stop()
+            cluster.set_configuration_options(
+                values={'read_request_timeout_in_ms': 0, 'range_request_timeout_in_ms': 0})
+            cluster.start()
+            bypass_cache = " BYPASS CACHE"
+
         mark = node2.mark_log()
 
-        statement = SimpleStatement("SELECT * from test2", consistency_level=ConsistencyLevel.ONE,
+        statement = SimpleStatement(f"SELECT * from test2 where id = 1{bypass_cache}",
+                                    consistency_level=ConsistencyLevel.ONE, retry_policy=FallthroughRetryPolicy())
+        assert_unavailable(lambda c: logger.debug(c.execute(statement)), session)
+
+        statement = SimpleStatement(f"SELECT * from test2 where id IN (1, 10,  20) AND col < 10{bypass_cache}",
+                                    consistency_level=ConsistencyLevel.ONE, retry_policy=FallthroughRetryPolicy())
+        assert_unavailable(lambda c: logger.debug(c.execute(statement)), session)
+
+        statement = SimpleStatement(f"SELECT * from test2 where col > 5 ALLOW FILTERING{bypass_cache}",
+                                    consistency_level=ConsistencyLevel.ONE, retry_policy=FallthroughRetryPolicy())
+        assert_unavailable(lambda c: logger.debug(c.execute(statement)), session)
+
+        statement = SimpleStatement(f"SELECT * from test2{bypass_cache}", consistency_level=ConsistencyLevel.ONE,
                                     retry_policy=FallthroughRetryPolicy())
         assert_unavailable(lambda c: logger.debug(c.execute(statement)), session)
 
-        statement = SimpleStatement("SELECT * from test2 where id = 1",
-                                    consistency_level=ConsistencyLevel.ONE, retry_policy=FallthroughRetryPolicy())
-        assert_unavailable(lambda c: logger.debug(c.execute(statement)), session)
-
-        statement = SimpleStatement("SELECT * from test2 where id IN (1, 10,  20) AND col < 10",
-                                    consistency_level=ConsistencyLevel.ONE, retry_policy=FallthroughRetryPolicy())
-        assert_unavailable(lambda c: logger.debug(c.execute(statement)), session)
-
-        statement = SimpleStatement("SELECT * from test2 where col > 5 ALLOW FILTERING",
-                                    consistency_level=ConsistencyLevel.ONE, retry_policy=FallthroughRetryPolicy())
-        assert_unavailable(lambda c: logger.debug(c.execute(statement)), session)
-
-        node2.watch_log_for("Some operations timed out", from_mark=mark, timeout=60)
+        if not isinstance(cluster, ScyllaCluster):
+            node2.watch_log_for("Some operations timed out", from_mark=mark, timeout=60)
 
     @pytest.mark.single_node
     def test_index_query(self):
@@ -981,10 +1000,12 @@ class AbortedQueriesTester(CQLTester):
         Check that a secondary index query times out
         """
         cluster = self.cluster
-        cluster.set_configuration_options(values={'read_request_timeout_in_ms': 1000})
+        if not isinstance(cluster, ScyllaCluster):
+            cluster.set_configuration_options(values={'read_request_timeout_in_ms': 1000})
 
-        cluster.populate(1).start(wait_for_binary_proto=True, jvm_args=["-Dcassandra.monitoring_check_interval_ms=50",
-                                                                        "-Dcassandra.test.read_iteration_delay_ms=1500"])  # see above for explanation
+        jvm_args = None if isinstance(cluster, ScyllaCluster) else \
+            ["-Dcassandra.monitoring_check_interval_ms=50", "-Dcassandra.test.read_iteration_delay_ms=1500"]
+        cluster.populate(1).start(wait_for_binary_proto=True, jvm_args=jvm_args)
         node = cluster.nodelist()[0]
         session = self.patient_cql_connection(node)
 
@@ -1006,22 +1027,31 @@ class AbortedQueriesTester(CQLTester):
         statement = session.prepare("SELECT * from test3 WHERE col < ? ALLOW FILTERING")
         statement.consistency_level = ConsistencyLevel.ONE
         statement.retry_policy = FallthroughRetryPolicy()
+
+        if isinstance(cluster, ScyllaCluster):
+            node.stop()
+            node.start(wait_for_binary_proto=True, jvm_args=[
+                       '--read-request-timeout-in-ms=0', '--range-request-timeout-in-ms=0'])
+
         assert_unavailable(lambda c: logger.debug(c.execute(statement, [50])), session)
-        node.watch_log_for("Some operations timed out", from_mark=mark, timeout=60)
+        if not isinstance(cluster, ScyllaCluster):
+            node.watch_log_for("Some operations timed out", from_mark=mark, timeout=60)
 
     def test_materialized_view(self):
         """
         Check that a materialized view query times out
         """
         cluster = self.cluster
-        cluster.set_configuration_options(values={'read_request_timeout_in_ms': 1000})
+        if not isinstance(cluster, ScyllaCluster):
+            cluster.set_configuration_options(values={'read_request_timeout_in_ms': 1000})
 
         cluster.populate(2)
         node1, node2 = cluster.nodelist()
 
+        jvm_args = None if isinstance(cluster, ScyllaCluster) else \
+            ["-Dcassandra.monitoring_check_interval_ms=50", "-Dcassandra.test.read_iteration_delay_ms=1500"]
         node1.start(wait_for_binary_proto=True, join_ring=False)  # ensure other node executes queries
-        node2.start(wait_for_binary_proto=True, jvm_args=["-Dcassandra.monitoring_check_interval_ms=50",
-                                                          "-Dcassandra.test.read_iteration_delay_ms=1500"])  # see above for explanation
+        node2.start(wait_for_binary_proto=True, jvm_args=jvm_args)  # see above for explanation
 
         session = self.patient_exclusive_cql_connection(node1)
 
@@ -1040,8 +1070,14 @@ class AbortedQueriesTester(CQLTester):
         for i in range(50):
             session.execute("INSERT INTO test4 (id, col, val) VALUES ({}, {}, 'foo')".format(i, i // 10))
 
+        if isinstance(cluster, ScyllaCluster):
+            node1.stop()
+            node1.start(wait_for_binary_proto=True, jvm_args=[
+                        '--read-request-timeout-in-ms=0', '--range-request-timeout-in-ms=0'])
+
         mark = node2.mark_log()
         statement = SimpleStatement("SELECT * FROM mv WHERE col = 50",
                                     consistency_level=ConsistencyLevel.ONE, retry_policy=FallthroughRetryPolicy())
         assert_unavailable(lambda c: logger.debug(c.execute(statement)), session)
-        node2.watch_log_for("Some operations timed out", from_mark=mark, timeout=60)
+        if not isinstance(cluster, ScyllaCluster):
+            node2.watch_log_for("Some operations timed out", from_mark=mark, timeout=60)
