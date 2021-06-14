@@ -373,6 +373,58 @@ class TestNodetool(Tester):
         self.assertMapEqual(table, "Maximum tombstones per slice (last five minutes)", 0)
         self.assertMapLessEqual(table, "Memtable data size", float(table["Memtable off heap memory used"]))
 
+    @pytest.mark.single_node
+    def test_cfstats_syntax(self):
+        """
+        Ensure that cfstats syntax works successfully.
+        Create a few keyspaces and tables and try different combinations of the nodetool command and options.
+        """
+        cluster = self.cluster
+        cluster.populate(1).start()
+        [node1] = cluster.nodelist()
+        session = self.patient_cql_connection(node1)
+        keyspaces = ["ks1", "ks2"]
+        ks_tables = ["cf1", "cf2"]
+        tables = {}
+        logger.debug('Creating keyspaces and tables')
+
+        def exec_cql(session, query, do_debug=False):
+            if do_debug:
+                logger.debug(f"Executing {query}")
+            session.execute(query)
+
+        for ks in keyspaces:
+            exec_cql(
+                session, f"CREATE KEYSPACE {ks} WITH replication = {{'class':'SimpleStrategy', 'replication_factor':1}}")
+            exec_cql(session, f"USE {ks}")
+            tables[ks] = []
+            for cf in ks_tables:
+                cf_name = f"{ks}_{cf}"
+                tables[ks].append(cf_name)
+                exec_cql(session, f"CREATE TABLE {cf_name} (id int primary key, val int)")
+
+        def verify_cfstats(node, options, expected):
+            cmd = f"cfstats {options}"
+            logger.debug(f"Run and verify nodetool {cmd}")
+            o = node.nodetool(cmd, True)[0]
+            res = TestNodetool._to_cfstats(o)
+            res_keyspaces = [ks for ks in res.keys() if not 'system' in ks]
+            expected_keyspaces = list(expected.keys())
+            assert set(res_keyspaces) == set(
+                expected_keyspaces), f"Expected {expected_keyspaces} but got {res_keyspaces}"
+
+            for k in res_keyspaces:
+                res_tables = list(res[k]['tables'].keys())
+                expected_tables = expected[k]
+                assert set(res_tables) == set(expected_tables), f"Expected {expected_tables} but got {res_tables}"
+
+        verify_cfstats(node1, options="", expected=tables)
+        verify_cfstats(node1, options="ks1", expected={'ks1': tables['ks1']})
+        verify_cfstats(node1, options="ks2 ks1", expected=tables)
+        verify_cfstats(node1, options="ks2.ks2_cf2", expected={'ks2': ['ks2_cf2']})
+        verify_cfstats(node1, options="ks1/ks1_cf2", expected={'ks1': ['ks1_cf2']})
+        verify_cfstats(node1, options="ks1/", expected={'ks1': tables['ks1']})
+
     def _snapshot_entry(self, lst):
         return self._list2dic(lst, ["name", "keyspace", "Column family", "True size", "Size on disk"])
 
