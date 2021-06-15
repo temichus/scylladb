@@ -1,12 +1,16 @@
 from datetime import datetime
 from time import sleep
+import logging
+
 import requests
+import pytest
 
-from nose.plugins.attrib import attr
-from dtest import Tester, debug
+from dtest_class import Tester
+
+logger = logging.getLogger(__name__)
 
 
-@attr('dtest-full')
+@pytest.mark.dtest_full
 class TestScyllaARestApi(Tester):
     def config_and_create_cluster(self, nodes):
         self.cluster.populate(nodes).start(wait_for_binary_proto=True, wait_other_notice=True)
@@ -18,15 +22,17 @@ class TestScyllaARestApi(Tester):
         node_uptime = int(requests.get(url=url).text)
         return node_uptime
 
+    @pytest.mark.single_node
     def test_basic_rest_uptime(self):
         node1 = self.config_and_create_cluster(1)[0]
         previous_node1_uptime = self.request_uptime(node1)
         sleep(10)
         current_node1_uptime = self.request_uptime(node1)
-        debug(current_node1_uptime - previous_node1_uptime)
+        logger.debug(current_node1_uptime - previous_node1_uptime)
         assert 10000 < current_node1_uptime - previous_node1_uptime < 11000, \
             "The uptime received from scylla does not match the expected uptime"
 
+    @pytest.mark.single_node
     def test_rest_uptime_after_restart(self):
         test_start_time = datetime.now()
         node1 = self.config_and_create_cluster(1)[0]
