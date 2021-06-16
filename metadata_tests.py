@@ -1,15 +1,19 @@
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-from dtest import Tester
-from tools import require
+import pytest
+
+from dtest_class import Tester
+from dtest_setup_overrides import DTestSetupOverrides
+from tools.misc import ImmutableMapping
 
 
 class TestMetadata(Tester):
-
-    def __init__(self, *args, **kwargs):
-        kwargs['cluster_options'] = {'start_rpc': 'true'}
-        Tester.__init__(self, *args, **kwargs)
+    @pytest.fixture(scope='function', autouse=True)
+    def fixture_dtest_setup_overrides(self, dtest_config):
+        dtest_setup_overrides = DTestSetupOverrides()
+        dtest_setup_overrides.cluster_options = ImmutableMapping({'start_rpc': 'true'})
+        return dtest_setup_overrides
 
     def force_compact(self):
         cluster = self.cluster
@@ -28,24 +32,20 @@ class TestMetadata(Tester):
         node1.stress(['read', 'no-warmup', 'n=30000', '-schema', 'replication(factor=2)', 'compression=LZ4Compressor',
                       '-rate', 'threads=1'])
 
-    @require(9831, broken_in='2.0')
-    def metadata_reset_while_compact_test(self):
+    def test_metadata_reset_while_compact(self):
         """
         Resets the schema while a compact, read and repair happens.
         All kinds of glorious things can fail.
         """
-        self.skipTest("Hangs the build")
-
         # while the schema is being reset, there will inevitably be some
         # queries that will error with this message
-        self.ignore_log_patterns = '.*Unknown keyspace/cf pair.*'
+        self.fixture_dtest_setup.ignore_log_patterns = ['.*Unknown keyspace/cf pair.*']
 
         cluster = self.cluster
         cluster.populate(2).start(wait_other_notice=True)
         (node1, node2) = cluster.nodelist()
 
         node1.nodetool("disableautocompaction")
-        node1.nodetool("setcompactionthroughput 1")
 
         for i in range(3):
             node1.stress(['write', 'no-warmup', 'n=30000', '-schema', 'replication(factor=2)',

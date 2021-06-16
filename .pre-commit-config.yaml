@@ -136,6 +136,7 @@ repos:
                 upgrade_internal_auth_test.py|
                 rest_api_tests.py|
                 limits_test.py |
+                metadata_tests.py|
                 repair_test.py |
                 paging_additional_test.py
             )$
