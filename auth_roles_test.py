@@ -1,17 +1,23 @@
 import os
 import re
 import time
+import logging
+import pytest
 
 from ccmlib.common import get_version_from_build, isScylla
 from cassandra import AuthenticationFailed, Unauthorized, InvalidRequest
 from cassandra.cluster import NoHostAvailable
-from cassandra.protocol import SyntaxException
-from auth_test import data_resource_creator_permissions, role_creator_permissions, function_resource_creator_permissions
-from dtest import Tester, debug
+from cassandra.protocol import SyntaxException  # pylint:disable=no-name-in-module
+
+from dtest_class import Tester
 from assertions import assert_one, assert_all, assert_invalid
-from tools import since
-from tools import require
-from nose.plugins.attrib import attr
+from tools.log_utils import wait_for_any_log
+from tools.permission import data_resource_creator_permissions, role_creator_permissions, \
+    function_resource_creator_permissions
+
+
+logger = logging.getLogger(__name__)
+
 
 # Second value is superuser status
 # Third value is login status, See #7653 for explanation.
@@ -21,24 +27,17 @@ role2_role = ['role2', False, False, {}]
 cassandra_role = ['cassandra', True, True, {}]
 
 
-@attr('dtest-full', 'single_node')
-@since('2.2')
+@pytest.fixture(scope='function')
+def fixture_set_cluster_settings(fixture_dtest_setup):
+    fixture_dtest_setup.cluster.set_configuration_options({'enable_user_defined_functions': 'true',
+                                                           'experimental': 'true'})
+
+
+@pytest.mark.dtest_full
+@pytest.mark.single_node
+@pytest.mark.usefixtures("fixture_set_cluster_settings")
 class TestAuthRoles(Tester):
-
-    def __init__(self, *args, **kwargs):
-        CASSANDRA_DIR = os.environ.get('CASSANDRA_DIR')
-        if isScylla(CASSANDRA_DIR):
-            kwargs['cluster_options'] = {'enable_user_defined_functions': 'true',
-                                         'experimental': 'true'}
-        else:
-            if get_version_from_build(CASSANDRA_DIR) >= '3.0':
-                kwargs['cluster_options'] = {'enable_user_defined_functions': 'true',
-                                             'enable_scripted_user_defined_functions': 'true'}
-            else:
-                kwargs['cluster_options'] = {'enable_user_defined_functions': 'true'}
-        Tester.__init__(self, *args, **kwargs)
-
-    def create_drop_role_test(self):
+    def test_create_drop_role(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
         assert_one(cassandra, 'LIST ROLES', cassandra_role)
@@ -49,7 +48,7 @@ class TestAuthRoles(Tester):
         cassandra.execute("DROP ROLE role1")
         assert_one(cassandra, "LIST ROLES", cassandra_role)
 
-    def conditional_create_drop_role_test(self):
+    def test_conditional_create_drop_role(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
         assert_one(cassandra, "LIST ROLES", cassandra_role)
@@ -62,7 +61,7 @@ class TestAuthRoles(Tester):
         cassandra.execute("DROP ROLE IF EXISTS role1")
         assert_one(cassandra, "LIST ROLES", cassandra_role)
 
-    def create_drop_role_validation_test(self):
+    def test_create_drop_role_validation(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
         cassandra.execute("CREATE ROLE mike WITH PASSWORD = '12345' AND SUPERUSER = false AND LOGIN = true")
@@ -83,9 +82,9 @@ class TestAuthRoles(Tester):
         cassandra.execute("DROP ROLE role1")
         assert_invalid(cassandra, "DROP ROLE role1", "role1 doesn't exist")
 
-    @attr('next-gating')
-    @attr('dtest-debug')
-    def role_admin_validation_test(self):
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
+    def test_role_admin_validation(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
         cassandra.execute("CREATE ROLE administrator WITH SUPERUSER = false AND LOGIN = false")
@@ -141,8 +140,8 @@ class TestAuthRoles(Tester):
                        Unauthorized)
 
     # Issue: Creating user-defined function (UDF) #2204
-    @require('#2204')
-    def creator_of_db_resource_granted_all_permissions_test(self):
+    @pytest.mark.require('#2204')
+    def test_creator_of_db_resource_granted_all_permissions(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
         cassandra.execute("CREATE ROLE mike WITH PASSWORD = '12345' AND SUPERUSER = false AND LOGIN = true")
@@ -178,7 +177,7 @@ class TestAuthRoles(Tester):
                                        cassandra,
                                        "LIST ALL PERMISSIONS")
 
-    def create_and_grant_roles_with_superuser_status_test(self):
+    def test_create_and_grant_roles_with_superuser_status(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
         cassandra.execute("CREATE ROLE another_superuser WITH SUPERUSER = true AND LOGIN = false")
@@ -201,7 +200,7 @@ class TestAuthRoles(Tester):
                                                       ['non_superuser', False, False, {}],
                                                       ['role1', False, False, {}]])
 
-    def drop_and_revoke_roles_with_superuser_status_test(self):
+    def test_drop_and_revoke_roles_with_superuser_status(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
         cassandra.execute("CREATE ROLE another_superuser WITH SUPERUSER = true AND LOGIN = false")
@@ -220,7 +219,7 @@ class TestAuthRoles(Tester):
         mike.execute("DROP ROLE non_superuser")
         mike.execute("DROP ROLE role1")
 
-    def drop_role_removes_memberships_test(self):
+    def test_drop_role_removes_memberships(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
         cassandra.execute("CREATE ROLE role1")
@@ -242,7 +241,7 @@ class TestAuthRoles(Tester):
         assert_one(cassandra, "LIST ROLES OF mike", mike_role)
         assert_all(cassandra, "LIST ROLES", [cassandra_role, mike_role, role2_role])
 
-    def drop_role_revokes_permissions_granted_on_it_test(self):
+    def test_drop_role_revokes_permissions_granted_on_it(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
         cassandra.execute("CREATE ROLE role1")
@@ -260,7 +259,7 @@ class TestAuthRoles(Tester):
         cassandra.execute("DROP ROLE role2")
         assert len(list(cassandra.execute("LIST ALL PERMISSIONS OF mike"))) == 0
 
-    def grant_revoke_roles_test(self):
+    def test_grant_revoke_roles(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
         cassandra.execute("CREATE ROLE mike WITH PASSWORD = '12345' AND SUPERUSER = false AND LOGIN = true")
@@ -279,7 +278,7 @@ class TestAuthRoles(Tester):
         cassandra.execute("REVOKE role1 FROM role2")
         assert_one(cassandra, "LIST ROLES OF role2", role2_role)
 
-    def grant_revoke_role_validation_test(self):
+    def test_grant_revoke_role_validation(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
         cassandra.execute("CREATE ROLE mike WITH PASSWORD = '12345' AND SUPERUSER = false AND LOGIN = true")
@@ -315,7 +314,7 @@ class TestAuthRoles(Tester):
         cassandra.execute("REVOKE role1 FROM john")
         mike.execute("REVOKE role2 from john")
 
-    def list_roles_test(self):
+    def test_list_roles(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
         cassandra.execute("CREATE ROLE mike WITH PASSWORD = '12345' AND SUPERUSER = false AND LOGIN = true")
@@ -348,9 +347,9 @@ class TestAuthRoles(Tester):
         cassandra.execute("GRANT DESCRIBE ON ALL ROLES TO mike")
         assert_all(mike, "LIST ROLES", [cassandra_role, mike_role, role1_role, role2_role])
 
-    @attr('next-gating')
-    @attr('dtest-debug')
-    def grant_revoke_permissions_test(self):
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
+    def test_grant_revoke_permissions(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
         cassandra.execute("CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}")
@@ -380,8 +379,8 @@ class TestAuthRoles(Tester):
                        Unauthorized)
 
     # Issue: Creating user-defined function (UDF) #2204
-    @require('#2204')
-    def filter_granted_permissions_by_resource_type_test(self):
+    @pytest.mark.require('#2204')
+    def test_filter_granted_permissions_by_resource_type(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
         cassandra.execute("CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}")
@@ -490,7 +489,7 @@ class TestAuthRoles(Tester):
                                        "LIST ALL PERMISSIONS OF mike")
         cassandra.execute("REVOKE ALL ON FUNCTION ks.agg_func(int) FROM mike")
 
-    def list_permissions_test(self):
+    def test_list_permissions(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
         cassandra.execute("CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}")
@@ -559,7 +558,7 @@ class TestAuthRoles(Tester):
                                        mike,
                                        "LIST ALL PERMISSIONS OF mike")
 
-    def list_permissions_validation_test(self):
+    def test_list_permissions_validation(self):
         self.prepare()
 
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -597,7 +596,7 @@ class TestAuthRoles(Tester):
                        "You are not authorized to view john's permissions",
                        Unauthorized)
 
-    def role_caching_authenticated_user_test(self):
+    def test_role_caching_authenticated_user(self):
         # This test is to show that the role caching in AuthenticatedUser
         # works correctly and revokes the roles from a logged in user
         self.prepare(roles_expiry=2000)
@@ -646,7 +645,7 @@ class TestAuthRoles(Tester):
         mike = self.get_session(user='mike', password='12345')
         mike.execute("SELECT * FROM ks.cf")
 
-    def prevent_circular_grants_test(self):
+    def test_prevent_circular_grants(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
         cassandra.execute("CREATE ROLE mike")
@@ -663,7 +662,7 @@ class TestAuthRoles(Tester):
                        "mike already includes role role2.",
                        InvalidRequest)
 
-    def create_user_as_alias_for_create_role_test(self):
+    def test_create_user_as_alias_for_create_role(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
         cassandra.execute("CREATE USER mike WITH PASSWORD '12345' NOSUPERUSER")
@@ -672,8 +671,8 @@ class TestAuthRoles(Tester):
         cassandra.execute("CREATE USER super_user WITH PASSWORD '12345' SUPERUSER")
         assert_one(cassandra, "LIST ROLES OF super_user", ["super_user", True, True, {}])
 
-    @require('#4285')
-    def role_name_test(self):
+    @pytest.mark.require('#4285')
+    def test_role_name(self):
         """ Simple test to verify the behavior of quoting when creating roles & users
         @jira_ticket CASSANDRA-10394
         """
@@ -707,7 +706,7 @@ class TestAuthRoles(Tester):
         self.get_session(user='USER2', password='12345')
         self.assert_unauthenticated("Username and/or password are incorrect", 'User2', '12345')
 
-    def role_requires_login_privilege_to_authenticate_test(self):
+    def test_role_requires_login_privilege_to_authenticate(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
         cassandra.execute("CREATE ROLE mike WITH PASSWORD = '12345' AND SUPERUSER = false AND LOGIN = true")
@@ -723,7 +722,7 @@ class TestAuthRoles(Tester):
         assert_one(cassandra, "LIST ROLES OF mike", ["mike", False, True, {}])
         self.get_session(user='mike', password='12345')
 
-    def roles_do_not_inherit_login_privilege_test(self):
+    def test_roles_do_not_inherit_login_privilege(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
         cassandra.execute("CREATE ROLE mike WITH PASSWORD = '12345' AND SUPERUSER = false AND LOGIN = false")
@@ -737,9 +736,9 @@ class TestAuthRoles(Tester):
         # disable this check for issue: auth roles: user can still login even login is set to False #4284
         #self.assert_unauthenticated("mike is not permitted to log in", "mike", "12345")
 
-    @attr('next-gating')
-    @attr('dtest-debug')
-    def role_requires_password_to_login_test(self):
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
+    def test_role_requires_password_to_login(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
         cassandra.execute("CREATE ROLE mike WITH SUPERUSER = false AND LOGIN = true")
@@ -747,7 +746,7 @@ class TestAuthRoles(Tester):
         cassandra.execute("ALTER ROLE mike WITH PASSWORD = '12345'")
         self.get_session(user='mike', password='12345')
 
-    def superuser_status_is_inherited_test(self):
+    def test_superuser_status_is_inherited(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
         cassandra.execute("CREATE ROLE mike WITH PASSWORD = '12345' AND SUPERUSER = false AND LOGIN = true")
@@ -766,7 +765,7 @@ class TestAuthRoles(Tester):
                                         ["db_admin", True, False, {}],
                                         mike_role])
 
-    def list_users_considers_inherited_superuser_status_test(self):
+    def test_list_users_considers_inherited_superuser_status(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
         cassandra.execute("CREATE ROLE db_admin WITH SUPERUSER = true")
@@ -777,8 +776,8 @@ class TestAuthRoles(Tester):
 
     # UDF permissions tests TODO move to separate fixture & refactor this + auth_test.py
     # Issue: Creating user-defined function (UDF) #2204
-    @require('#2204')
-    def grant_revoke_udf_permissions_test(self):
+    @pytest.mark.require('#2204')
+    def test_grant_revoke_udf_permissions(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
         self.setup_table(cassandra)
@@ -820,8 +819,8 @@ class TestAuthRoles(Tester):
         self.assert_no_permissions(cassandra, "LIST ALL PERMISSIONS OF mike")
 
     # Issue: Creating user-defined function (UDF) #2204
-    @require('#2204')
-    def grant_revoke_are_idempotent_test(self):
+    @pytest.mark.require('#2204')
+    def test_grant_revoke_are_idempotent(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
         self.setup_table(cassandra)
@@ -839,8 +838,8 @@ class TestAuthRoles(Tester):
         self.assert_no_permissions(cassandra, "LIST ALL PERMISSIONS OF mike")
 
     # Issue: Creating user-defined function (UDF) #2204
-    @require('#2204')
-    def function_resource_hierarchy_permissions_test(self):
+    @pytest.mark.require('#2204')
+    def test_function_resource_hierarchy_permissions(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
         self.setup_table(cassandra)
@@ -896,8 +895,8 @@ class TestAuthRoles(Tester):
         mike.execute(select_two)
 
     # Issue: Creating user-defined function (UDF) #2204
-    @require('#2204')
-    def udf_permissions_validation_test(self):
+    @pytest.mark.require('#2204')
+    def test_udf_permissions_validation(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
         self.setup_table(cassandra)
@@ -959,8 +958,8 @@ class TestAuthRoles(Tester):
         mike.execute(cql)
 
     # Issue: Creating user-defined function (UDF) #2204
-    @require('#2204')
-    def drop_role_cleans_up_udf_permissions_test(self):
+    @pytest.mark.require('#2204')
+    def test_drop_role_cleans_up_udf_permissions(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
         self.setup_table(cassandra)
@@ -983,8 +982,8 @@ class TestAuthRoles(Tester):
         self.assert_no_permissions(cassandra, "LIST ALL PERMISSIONS OF mike")
 
     # Issue: Creating user-defined function (UDF) #2204
-    @require('#2204')
-    def drop_function_and_keyspace_cleans_up_udf_permissions_test(self):
+    @pytest.mark.require('#2204')
+    def test_drop_function_and_keyspace_cleans_up_udf_permissions(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
         self.setup_table(cassandra)
@@ -1009,8 +1008,8 @@ class TestAuthRoles(Tester):
         self.assert_no_permissions(cassandra, "LIST ALL PERMISSIONS OF mike")
 
     # Issue: Creating user-defined function (UDF) #2204
-    @require('#2204')
-    def udf_with_overloads_permissions_test(self):
+    @pytest.mark.require('#2204')
+    def test_udf_with_overloads_permissions(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
         self.setup_table(cassandra)
@@ -1050,8 +1049,8 @@ class TestAuthRoles(Tester):
         self.assert_no_permissions(cassandra, "LIST ALL PERMISSIONS OF mike")
 
     # Issue: Creating user-defined function (UDF) #2204
-    @require('#2204')
-    def drop_keyspace_cleans_up_function_level_permissions_test(self):
+    @pytest.mark.require('#2204')
+    def test_drop_keyspace_cleans_up_function_level_permissions(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
         self.setup_table(cassandra)
@@ -1067,23 +1066,27 @@ class TestAuthRoles(Tester):
         cassandra.execute("DROP KEYSPACE ks")
         self.assert_no_permissions(cassandra, "LIST ALL PERMISSIONS OF mike")
 
-    def udf_permissions_in_selection_test(self):
+    @pytest.mark.require('#2204')
+    def test_udf_permissions_in_selection(self):
         self.verify_udf_permissions("SELECT k, v, ks.plus_one(v) FROM ks.t1 WHERE k = 1")
 
-    def udf_permissions_in_select_where_clause_test(self):
+    @pytest.mark.require('#2204')
+    def test_udf_permissions_in_select_where_clause(self):
         self.verify_udf_permissions("SELECT k, v FROM ks.t1 WHERE k = ks.plus_one(0)")
 
-    def udf_permissions_in_insert_test(self):
+    @pytest.mark.require('#2204')
+    def test_udf_permissions_in_insert(self):
         self.verify_udf_permissions("INSERT INTO ks.t1 (k, v) VALUES (1, ks.plus_one(1))")
 
-    def udf_permissions_in_update_test(self):
+    @pytest.mark.require('#2204')
+    def test_udf_permissions_in_update(self):
         self.verify_udf_permissions("UPDATE ks.t1 SET v = ks.plus_one(2) WHERE k = ks.plus_one(0)")
 
-    def udf_permissions_in_delete_test(self):
+    @pytest.mark.require('#2204')
+    def test_udf_permissions_in_delete(self):
         self.verify_udf_permissions("DELETE FROM ks.t1 WHERE k = ks.plus_one(0)")
 
     # Issue: Creating user-defined function (UDF) #2204
-    @require('#2204')
     def verify_udf_permissions(self, cql):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -1103,8 +1106,8 @@ class TestAuthRoles(Tester):
         return mike.execute(cql)
 
     # Issue: Creating user-defined function (UDF) #2204
-    @require('#2204')
-    def inheritence_of_udf_permissions_test(self):
+    @pytest.mark.require('#2204')
+    def test_inheritence_of_udf_permissions(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
         self.setup_table(cassandra)
@@ -1125,7 +1128,7 @@ class TestAuthRoles(Tester):
         cassandra.execute("GRANT function_user TO mike")
         assert_one(mike, select, [1, 1, 2])
 
-    def builtin_functions_require_no_special_permissions_test(self):
+    def test_builtin_functions_require_no_special_permissions(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
         cassandra.execute("CREATE ROLE mike WITH PASSWORD = '12345' AND LOGIN = true")
@@ -1136,8 +1139,8 @@ class TestAuthRoles(Tester):
         assert_one(mike, "SELECT * from ks.t1 WHERE k=blobasint(intasblob(1))", [1, 1])
 
     # Issue: Creating user-defined function (UDF) #2204
-    @require('#2204')
-    def disallow_grant_revoke_on_builtin_functions_test(self):
+    @pytest.mark.require('#2204')
+    def test_disallow_grant_revoke_on_builtin_functions(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
         self.setup_table(cassandra)
@@ -1155,7 +1158,7 @@ class TestAuthRoles(Tester):
                        "Altering permissions on builtin functions is not supported",
                        InvalidRequest)
 
-    def disallow_grant_execute_on_non_function_resources_test(self):
+    def test_disallow_grant_execute_on_non_function_resources(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
         self.setup_table(cassandra)
@@ -1182,8 +1185,8 @@ class TestAuthRoles(Tester):
                        SyntaxException)
 
     # Issue: Creating user-defined function (UDF) #2204
-    @require('#2204')
-    def aggregate_function_permissions_test(self):
+    @pytest.mark.require('#2204')
+    def test_aggregate_function_permissions(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
         self.setup_table(cassandra)
@@ -1240,7 +1243,7 @@ class TestAuthRoles(Tester):
         # mike *does* have execute permission on the aggregate function, as its creator
         assert_one(mike, execute_aggregate_cql, [3])
 
-    def ignore_invalid_roles_test(self):
+    def test_ignore_invalid_roles(self):
         """
         The system_auth.roles table includes a set of roles of which each role
         is a member. If that list were to get out of sync, so that it indicated
@@ -1263,13 +1266,16 @@ class TestAuthRoles(Tester):
         session.execute("CREATE TABLE ks.t1 (k int PRIMARY KEY, v int)")
 
     def assert_unauthenticated(self, message, user, password):
-        with self.assertRaises(NoHostAvailable) as response:
+        with pytest.raises(NoHostAvailable) as response:
             node = self.cluster.nodelist()[0]
             self.cql_connection(node, user=user, password=password)
-        host, error = response.exception.errors.popitem()
+        host = list(response.value.errors.keys())[0]
+        error_message = list(response.value.errors.values())[0].args[0]
+        error_object = list(response.value.errors.values())[0]
         pattern = 'Failed to authenticate to %s:.* code=0100 \[Bad credentials\] message="%s"' % (host, message)
-        assert isinstance(error, AuthenticationFailed), "Expected AuthenticationFailed, got %s" % error
-        assert re.search(pattern, str(error)), "Expected: %s" % pattern
+        assert isinstance(error_object, AuthenticationFailed),\
+            "Expected AuthenticationFailed, got %s" % type(error_object)
+        assert re.search(pattern, str(error_message)), "Expected: %s" % pattern
 
     def prepare(self, nodes=1, roles_expiry=0):
         config = {'authenticator': 'org.apache.cassandra.auth.PasswordAuthenticator',
@@ -1280,11 +1286,10 @@ class TestAuthRoles(Tester):
         self.cluster.set_configuration_options(values=config)
         self.cluster.populate(nodes).start(wait_other_notice=True, wait_for_binary_proto=True)
 
-        found = self.wait_for_any_log(
+        found = wait_for_any_log(
             self.cluster.nodelist(),
             ["Created default superuser role", "Created default superuser authentication record"],
-            30,
-            dispersed=True)
+            30, dispersed=True)
 
         if isinstance(found, list):
             nodes = []
@@ -1292,17 +1297,18 @@ class TestAuthRoles(Tester):
                 nodes.append(n.name)
         else:
             nodes = found.name
-        debug("Default role created by {}".format(nodes))
+        logger.debug("Default role created by {}".format(nodes))
 
     def get_session(self, node_idx=0, user=None, password=None):
         node = self.cluster.nodelist()[node_idx]
         conn = self.patient_cql_connection(node, user=user, password=password)
         return conn
 
-    def assert_permissions_listed(self, expected, session, query):
+    @staticmethod
+    def assert_permissions_listed(expected, session, query):
         rows = session.execute(query)
         perms = [(str(r.role), str(r.resource), str(r.permission)) for r in rows]
-        self.assertEqual(sorted(expected), sorted(perms))
+        assert sorted(expected) == sorted(perms), "the current permissions do not meet expectations"
 
     def assert_no_permissions(self, session, query):
         assert len(list(session.execute(query))) == 0
