@@ -104,7 +104,7 @@ class TestHeatWeightedLB(Tester):
                         node_mean_avg = sum([metrics[key][2][j]['delta']
                                              for j in range(i, i + mean_window)]) / mean_window
                         ratio = mean_avg / node_mean_avg
-                        lower_bound = 1.1 - 0.2 * (i - first) / (last - first)
+                        lower_bound = 0.8
                         upper_bound = 11 + 2 * (last - i) / (last - first)
                         err_msg = 'Cache difference between node{} and node2 is out of range: {}/{}={} expected to be {} < ratio <= {}. index={} metric {}'.format(
                             node_ind, mean_avg, node_mean_avg, ratio,
