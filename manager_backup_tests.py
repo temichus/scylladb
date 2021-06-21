@@ -1206,17 +1206,7 @@ class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
                                          Bucket=DESTINATION_BUCKET,
                                          Key='/'.join([object_location, new_file_name]))
 
-    def test_purge_deleted_backup_task(self):
-        """
-        At first, the test runs a backup task to completion and then deletes the task.
-
-        Afterwards, the test alters the name of the deleted task's manifest to fool the manager to think
-        that the task is over a month old, and therefore should be purged.
-        (The manager will remove the files of a deleted task from the bucket only once it's over a month old)
-
-        At last, the test starts another backup task, and upon its completion makes sure that the files of
-        the deleted backup task were removed from the bucket.
-        """
+    def _purge_deleted_backup_task_template(self, use_purge_only):
         keyspace_table_and_key_range = {"ks": {"cf1": (1, 21)}}
         node1, node2 = self._prepare_cluster_with_data(keyspace_table_and_key_range=keyspace_table_and_key_range)
         mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
@@ -1239,15 +1229,48 @@ class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
             # So new snapshot files will have different names,
             # and will not replace the existing files of the previous task
             node.nodetool("compact")
-
-        new_backup_task = mgr_cluster.run_backup_command(keyspace_list=["ks"],
-                                                         location_list=[f"s3:{DESTINATION_BUCKET}"])
-        new_backup_task.wait_for_status(list_status=[TaskStatus.DONE], step=10, timeout=300)
+        if use_purge_only:
+            new_backup_task = mgr_cluster.run_backup_command(purge_only=True,
+                                                             location_list=[f"s3:{DESTINATION_BUCKET}"])
+        else:
+            new_backup_task = mgr_cluster.run_backup_command(keyspace_list=["ks"],
+                                                             location_list=[f"s3:{DESTINATION_BUCKET}"])
+        new_backup_task.wait_for_status(list_status=[TaskStatus.DONE], step=5, timeout=300)
         snapshot_file_paths_after_purge = set(
             self._get_s3_files(cluster_id=mgr_cluster.id,
                                datacenter=hosts_status[node2.address()].datacenter["data_center"]))
         remaining_old_snapshot_files = snapshot_file_paths_before_purge.intersection(snapshot_file_paths_after_purge)
         assert not remaining_old_snapshot_files, "Snapshot files from a (old) deleted backup task were not purged"
+        if use_purge_only:
+            assert not snapshot_file_paths_after_purge, \
+                "The purge-only backup task has in fact ran a backup and uploaded snapshots to the destination bucket"
+
+    def test_purge_deleted_backup_task(self):
+        """
+        At first, the test runs a backup task to completion and then deletes the task.
+
+        Afterwards, the test alters the name of the deleted task's manifest to fool the manager to think
+        that the task is over a month old, and therefore should be purged.
+        (The manager will remove the files of a deleted task from the bucket only once it's over a month old)
+
+        At last, the test starts another backup task, and upon its completion makes sure that the files of
+        the deleted backup task were removed from the bucket.
+        """
+        self._purge_deleted_backup_task_template(use_purge_only=False)
+
+    def test_purge_only_backup_task(self):
+        """
+        The test runs a normal backup task to completion.
+
+        Afterwards the test deletes said backup task, and rename its manifest so that it appears to be a year old
+        (and because of that, the manager will consider it an old enough backup to purge).
+
+        At last, we start a backup task using the --purge-only param, and upon its completion
+        the test makes sure that the snapshot files of the deleted task were purged from the bucket,
+        and that the purge-only backup did not upload any file to the bucket, and therefore,
+        did not run an actual backup.
+        """
+        self._purge_deleted_backup_task_template(use_purge_only=True)
 
     def test_backup_files_multiple_clusters(self, secondary_cluster, fixture_dtest_setup):
         keyspace_table_and_key_range = {"ks": {"cf1": (1, 21)}}
