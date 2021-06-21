@@ -135,6 +135,7 @@ repos:
                 scrub_test.py|
                 largecolumn_test.py|
                 upgrade_internal_auth_test.py|
+                update_cluster_layout_tests.py|
                 rest_api_tests.py|
                 limits_test.py |
                 metadata_tests.py|
