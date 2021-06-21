@@ -1280,7 +1280,7 @@ class ManagerCluster(ScyllaManagerBase):
     def run_backup_command(self, dc_list=None,  # pylint: disable=too-many-arguments,too-many-locals,too-many-branches
                            dry_run=None, force=None, interval=None, keyspace_list=None,
                            location_list=None, num_retries=None, rate_limit_list=None, retention=None, show_tables=None,
-                           snapshot_parallel_list=None, start_date=None, upload_parallel_list=None):
+                           snapshot_parallel_list=None, start_date=None, upload_parallel_list=None, purge_only=None):
         cmd = "backup -c {}".format(self.id)
 
         if dc_list is not None:
@@ -1315,6 +1315,8 @@ class ManagerCluster(ScyllaManagerBase):
         if upload_parallel_list is not None:
             upload_parallel_string = ','.join(upload_parallel_list)
             cmd += " --upload-parallel {} ".format(upload_parallel_string)
+        if purge_only is not None:
+            cmd += " --purge-only"
 
         stdout, stderr = self.sctool.run(cmd=cmd, parse_table_res=False)
         if not stdout:
