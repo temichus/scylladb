@@ -506,7 +506,9 @@ class TestBootstrap(Tester):
         node4.rmtree(commitlog_dir)
 
         # Now start it, it should be allowed to join
-        logger.info("Restarting node4")
+        ip4 = self.get_ip_from_node(node=node4)
+        node1.watch_log_for(f"{ip4} gossip quarantine over")
+        logger.debug("Restarting node4")
         mark = node4.mark_log()
         node4.start(wait_other_notice=True)
         logger.info("Waiting for node4 to join")
@@ -852,7 +854,10 @@ class TestBootstrap(Tester):
         logger.info("starting node1 again")
         node1.start(wait_other_notice=True)
 
-        logger.info("starting node3")
+        ip3 = self.get_ip_from_node(node=node3)
+        node2.watch_log_for(f"{ip3} gossip quarantine over")
+
+        logger.debug("starting node3")
         node3.start(wait_other_notice=True)
         logger.info('removing node1 and node2, `node3` will be on duty')
         node1.decommission()
