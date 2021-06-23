@@ -98,6 +98,7 @@ repos:
                 jmx_test.py|
                 schema_test.py|
                 listsnapshots_test.py|
+                write_failures_test.py|
                 topology_test.py|
                 database_metrics_test.py|
                 sstableloader_test.py|
