@@ -1272,6 +1272,73 @@ class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
         """
         self._purge_deleted_backup_task_template(use_purge_only=True)
 
+    def _get_table_id(self, node, table_name):
+        session = self.patient_cql_connection(node)
+        result = session.execute(f"select id from system_schema.tables where table_name = '{table_name}';")
+        table_id = str(result.current_rows[0].id).replace('-', '')
+        return table_id
+
+    def _upload_spam_file_to_bucket(self, cluster_id, node, keyspace_name, table_name, file_name="unrelated_file.txt"):
+        table_id = self._get_table_id(node=node, table_name=table_name)
+        object_location = f"backup/sst/cluster/{cluster_id}/dc/datacenter1/node/{node.hostid()}" \
+                          f"/keyspace/{keyspace_name}/table/{table_name}/{table_id}"
+        open(f"/tmp/{file_name}", "w").close()
+        self.boto_client.upload_file(Filename=f"/tmp/{file_name}",
+                                     Bucket=DESTINATION_BUCKET,
+                                     Key='/'.join([object_location, file_name]))
+
+    def _does_spam_file_exist_in_bucket(self, cluster_id, node, keyspace_name, table_name,
+                                        file_name="unrelated_file.txt"):
+        table_id = self._get_table_id(node=node, table_name=table_name)
+        object_path = f"backup/sst/cluster/{cluster_id}/dc/datacenter1/node/{node.hostid()}" \
+                      f"/keyspace/{keyspace_name}/table/{table_name}/{table_id}/{file_name}"
+        file_object = self.boto_client.list_objects(Bucket=DESTINATION_BUCKET,
+                                                    Prefix=object_path)
+        if "Contents" in file_object:
+            return True
+        # Existence of the Contents key means that a file that matches the requested prefix exists,
+        # ergo, the file exists in the bucket
+        return False
+
+    def test_backup_validate_delete_orphaned_files(self):
+        """
+        The test runs a backup task until completion.
+
+        Afterwards, the test manually inserts an unrelated file (that won't me mentioned in the manifest)
+        to the bucket, that the manager will consider an orphan file (and therefore should be deleted).
+
+        At the end, the test initiates a backup validate task, and upon its completion makes sure that the task
+        reported on the orphan file and indeed deleted it from the bucket
+        """
+        keyspace_name, table_name = "ks", "cf1"
+        keyspace_table_and_key_range = {keyspace_name: {table_name: (1, 21)}}
+        node1, node2 = self._prepare_cluster_with_data(keyspace_table_and_key_range=keyspace_table_and_key_range)
+        mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
+        backup_task = mgr_cluster.run_backup_command(keyspace_list=[keyspace_name],
+                                                     location_list=[f"s3:{DESTINATION_BUCKET}"])
+        backup_task.wait_for_status(list_status=[TaskStatus.DONE], step=10, timeout=300)
+
+        self._upload_spam_file_to_bucket(cluster_id=mgr_cluster.id,
+                                         node=node1,
+                                         keyspace_name=keyspace_name,
+                                         table_name=table_name)
+        successful_backup_validate_task = mgr_cluster.run_backup_validate_command(
+            location_list=[f"s3:{DESTINATION_BUCKET}"], delete_orphaned_files=True)
+        file_status_dict = successful_backup_validate_task.get_file_status_summary(wait_for_task_ending=True)
+
+        assert file_status_dict["Orphaned files"] == 1, \
+            f'The backup validate task was supposed to report about one orphan file, ' \
+            f'but instead reported on {file_status_dict["Orphaned files"]} orphan files'
+        assert file_status_dict["Deleted files"] == 1, \
+            f'The backup validate task was supposed to delete only one orphan file, ' \
+            f'but instead deleted {file_status_dict["Deleted files"]} orphan files'
+        assert not self._does_spam_file_exist_in_bucket(cluster_id=mgr_cluster.id,
+                                                        node=node1,
+                                                        keyspace_name=keyspace_name,
+                                                        table_name=table_name), \
+            "Even though the backup validate task reported that it has deleted the orphan file, " \
+            "the file still exists in the bucket"
+
     def test_backup_files_multiple_clusters(self, secondary_cluster, fixture_dtest_setup):
         keyspace_table_and_key_range = {"ks": {"cf1": (1, 21)}}
         primary_cluster_nodes = self.config_and_create_cluster(nodes=3)
