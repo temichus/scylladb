@@ -1190,6 +1190,9 @@ class BackupValidateTask(ManagerTask):
             Scanned files:	251
             Missing files:	1
             Orphaned files:	0
+        OR
+            Orphaned files:	1 (0B)
+            Deleted files:	1
         """
         if wait_for_task_ending:
             self.wait_and_get_final_status(step=5)
@@ -1202,7 +1205,10 @@ class BackupValidateTask(ManagerTask):
         for line in progress_string.splitlines():
             if line:
                 title, value = line.split(":", maxsplit=1)
-                file_status_dict[title.strip()] = value.strip() if not value.strip().isdigit() else int(value.strip())
+                pure_value = value.strip()
+                if "(" in pure_value:
+                    pure_value = pure_value[:pure_value.find("(")].strip()
+                file_status_dict[title.strip()] = pure_value if not pure_value.isdigit() else int(pure_value)
         return file_status_dict
 
 
