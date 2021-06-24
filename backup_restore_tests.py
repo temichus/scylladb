@@ -3,25 +3,28 @@ import random
 import re
 import shutil
 import time
+import logging
 from concurrent.futures import ThreadPoolExecutor
 
-from tools import new_node
-
+import pytest
 from cassandra import ConsistencyLevel
 from cassandra.query import SimpleStatement
 from ccmlib.node import NodetoolError
 
-from dtest import Tester, debug
-from scylla_tools import insert_c1c2, query_c1c2_concurrent, get_sstables_files, get_node_cf_dir
-from nose.plugins.attrib import attr
-from unittest import skip
+from dtest_class import Tester, create_ks, create_cf
+from tools.cluster import new_node
+from tools.data import insert_c1c2, query_c1c2_concurrent
+from tools.files import get_node_cf_dir, get_sstables_files
 
 
-@attr('dtest-full')
+logger = logging.getLogger(__name__)
+
+
+@pytest.mark.dtest_full
 class TestBackupRestore(Tester):
 
-    @attr('single_node')
-    def failure_durring_snapshot_no_corrupt_data_test(self):
+    @pytest.mark.single_node
+    def test_failure_durring_snapshot_no_corrupt_data(self):
         """
         Check that we can recover from a failure durring snapshot:
 
@@ -38,39 +41,39 @@ class TestBackupRestore(Tester):
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfer with the test (this must be after the populate)
         cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
-        debug("Starting a cluster of one node...")
+        logger.debug("Starting a cluster of one node...")
         cluster.populate(1).start()
         node1 = cluster.nodelist()[0]
 
-        debug("Creating a CQL connection...")
+        logger.debug("Creating a CQL connection...")
         session = self.patient_cql_connection(node1)
 
-        debug("Creating a keyspace 'ks'...")
-        self.create_ks(session, 'ks', 1)
+        logger.debug("Creating a keyspace 'ks'...")
+        create_ks(session, 'ks', 1)
 
-        debug("Creating a column family 'cf'...")
-        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        logger.debug("Creating a column family 'cf'...")
+        create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
         num_keys = 1000
         c1_values = list(map(lambda x: '{}'.format(x), range(num_keys)))
         c2_values = list(map(lambda x: '{}'.format(x), range(num_keys, 2 * num_keys)))
         keys = range(num_keys)
 
-        debug("Inserting concurrently {} keys...".format(num_keys))
+        logger.debug("Inserting concurrently {} keys...".format(num_keys))
         insert_c1c2(session, keys=keys, consistency=ConsistencyLevel.ONE,
                     c1_values=c1_values, c2_values=c2_values)
 
-        debug("Taking a snapshot...")
+        logger.debug("Taking a snapshot...")
         self.start_nodetool_and_kill_node(node1, "snapshot -t testsnapshot")
 
-        debug("Restarting node1...")
+        logger.debug("Restarting node1...")
         node1.start(wait_for_binary_proto=True)
 
-        debug("Checking rows on node1...")
+        logger.debug("Checking rows on node1...")
         self.check_rows_on_node(node1, num_keys, found=keys, c1_values=c1_values, c2_values=c2_values)
 
-    @attr('single_node')
-    def failure_durring_restore_no_corrupt_data_test(self):
+    @pytest.mark.single_node
+    def test_failure_durring_restore_no_corrupt_data(self):
         """
         Check that we can recover from a failure during restore
 
@@ -90,49 +93,49 @@ class TestBackupRestore(Tester):
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfere with the test (this must be after the populate)
         cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
-        debug("Starting a cluster of one node...")
+        logger.info("Starting a cluster of one node...")
         cluster.populate(1).start()
         node1 = cluster.nodelist()[0]
 
-        debug("Creating a CQL connection...")
+        logger.info("Creating a CQL connection...")
         session = self.patient_cql_connection(node1)
 
-        debug("Creating a keyspace 'ks'...")
-        self.create_ks(session, 'ks', 1)
+        logger.info("Creating a keyspace 'ks'...")
+        create_ks(session, 'ks', 1)
 
-        debug("Creating a column family 'cf'...")
-        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        logger.info("Creating a column family 'cf'...")
+        create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
         num_keys = 1000
         c1_values = list(map(lambda x: '{}'.format(x), range(num_keys)))
         c2_values = list(map(lambda x: '{}'.format(x), range(num_keys, 2 * num_keys)))
         keys = range(num_keys)
 
-        debug("Inserting concurrently {} keys...".format(num_keys))
+        logger.info("Inserting concurrently {} keys...".format(num_keys))
         insert_c1c2(session, keys=keys, consistency=ConsistencyLevel.ONE,
                     c1_values=c1_values, c2_values=c2_values)
 
-        debug("Creating a snapshot...")
+        logger.info("Creating a snapshot...")
         node1.nodetool('snapshot -t {} -cf cf -- ks'.format(snapshot_name))
 
-        debug("Dropping a keyspace...")
+        logger.info("Dropping a keyspace...")
         session.execute(SimpleStatement("DROP KEYSPACE ks"))
 
-        debug("Creating the same keyspace.table with different content...")
-        self.create_ks(session, 'ks', 1)
-        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        logger.info("Creating the same keyspace.table with different content...")
+        create_ks(session, 'ks', 1)
+        create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
         insert_c1c2(session, keys=keys, consistency=ConsistencyLevel.ONE,
                     c1_values=c2_values, c2_values=c1_values)
 
         # sanity check
         self.check_rows_on_node(node1, num_keys, found=keys, c1_values=c2_values, c2_values=c1_values)
 
-        debug("Draining the cluster...")
+        logger.info("Draining the cluster...")
         node1.nodetool('drain')
 
         snapshot_dir = self.get_snapshot_dir(snapshot_name)
-        self.assertTrue(snapshot_dir is not None, "Can't find a snapshot directory for {}".format(snapshot_name))
-        debug("Snapshot dir is {}".format(snapshot_dir))
+        assert snapshot_dir is not None, "Can't find a snapshot directory for {}".format(snapshot_name)
+        logger.info("Snapshot dir is {}".format(snapshot_dir))
 
         ks_dir = os.path.join(self.test_path, 'test', 'node1', 'data', 'ks')
 
@@ -145,34 +148,35 @@ class TestBackupRestore(Tester):
         # CF directory without a snapshot we've created.
         #
         cf_dir = self.get_non_snapshot_cf_dir(ks_dir, snapshot_name)
-        debug("Column family directory is {}".format(cf_dir))
+        logger.debug("Column family directory is {}".format(cf_dir))
 
-        debug("Removing sstables...")
+        logger.info("Removing sstables...")
         self.delete_cf_sstables(cf_dir)
 
-        debug("Copy sstables from the snapshot...")
+        logger.info("Copy sstables from the snapshot...")
         for f in os.listdir(snapshot_dir):
             shutil.copy2(os.path.join(snapshot_dir, f), os.path.join(cf_dir, 'upload', f))
 
-        debug("Running 'nodetool refresh'...")
-        self.start_nodetool_and_kill_node(node1, 'refresh -- ks cf', 'Loading new SSTables for ks.cf')
+        logger.info("Running 'nodetool refresh'...")
+        message = r"Loading new SSTables for (ks\.cf\.\.\.|keyspace=ks, table=cf,)"
+        self.start_nodetool_and_kill_node(node1, 'refresh -- ks cf', message)
 
-        debug("Delete commitlogs...")
+        logger.info("Delete commitlogs...")
         commitlog_dir = os.path.join(self.test_path, 'test', 'node1', 'commitlogs')
         for f in os.listdir(commitlog_dir):
             os.remove(os.path.join(commitlog_dir, f))
 
-        debug("Restart the node...")
+        logger.info("Restart the node...")
         node1.start(wait_for_binary_proto=True)
 
-        debug("Running 'nodetool refresh -- ks cf' - after restart...")
+        logger.info("Running 'nodetool refresh -- ks cf' - after restart...")
         node1.nodetool("refresh -- ks cf")
 
-        debug("Checking rows on node1...")
+        logger.info("Checking rows on node1...")
         self.check_rows_on_node(node1, num_keys, found=keys, c1_values=c1_values, c2_values=c2_values)
 
-    @attr('single_node')
-    def replay_restore_no_additional_data_test(self):
+    @pytest.mark.single_node
+    def test_replay_restore_no_additional_data(self):
         """
         Check that we can restore snapshot files that use old schema
 
@@ -192,70 +196,70 @@ class TestBackupRestore(Tester):
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfere with the test (this must be after the populate)
         cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
-        debug("Starting a cluster of one node...")
+        logger.debug("Starting a cluster of one node...")
         cluster.populate(1).start()
         node1 = cluster.nodelist()[0]
 
-        debug("Creating a CQL connection...")
+        logger.debug("Creating a CQL connection...")
         session = self.patient_cql_connection(node1)
 
-        debug("Creating a keyspace 'ks'...")
-        self.create_ks(session, 'ks', 1)
+        logger.debug("Creating a keyspace 'ks'...")
+        create_ks(session, 'ks', 1)
 
-        debug("Creating a column family 'cf'...")
-        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        logger.debug("Creating a column family 'cf'...")
+        create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
         num_keys = 1000
         c1_values = list(map(lambda x: '{}'.format(x), range(num_keys)))
         c2_values = list(map(lambda x: '{}'.format(x), range(num_keys, 2 * num_keys)))
         keys = range(num_keys)
 
-        debug("Inserting concurrently {} keys...".format(num_keys))
+        logger.debug("Inserting concurrently {} keys...".format(num_keys))
         insert_c1c2(session, keys=keys, consistency=ConsistencyLevel.ONE,
                     c1_values=c1_values, c2_values=c2_values)
 
-        debug("Creating a snapshot...")
+        logger.debug("Creating a snapshot...")
         node1.nodetool('snapshot -t {} -cf cf -- ks'.format(snapshot_name))
 
         snapshot_dir = self.get_snapshot_dir(snapshot_name)
-        self.assertTrue(snapshot_dir is not None, "Can't find a snapshot directory for {}".format(snapshot_name))
-        debug("Snapshot dir is {}".format(snapshot_dir))
+        assert snapshot_dir is not None, "Can't find a snapshot directory for {}".format(snapshot_name)
+        logger.debug("Snapshot dir is {}".format(snapshot_dir))
 
-        debug("Dropping a keyspace...")
+        logger.debug("Dropping a keyspace...")
         session.execute(SimpleStatement("DROP KEYSPACE ks"))
 
-        debug("Creating the same keyspace.table...")
-        self.create_ks(session, 'ks', 1)
-        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        logger.debug("Creating the same keyspace.table...")
+        create_ks(session, 'ks', 1)
+        create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
-        debug("Flushing a keyspace...")
+        logger.debug("Flushing a keyspace...")
         node1.nodetool("flush -- ks")
 
         ks_dir = os.path.join(self.test_path, 'test', 'node1', 'data', 'ks')
         cf_dir = self.get_non_snapshot_cf_dir(ks_dir, snapshot_name)
-        debug("Column family directory is {}".format(cf_dir))
+        logger.debug("Column family directory is {}".format(cf_dir))
 
-        debug("Removing sstables...")
+        logger.debug("Removing sstables...")
         self.delete_cf_sstables(cf_dir)
 
-        debug("Copy sstables from the snapshot...")
+        logger.debug("Copy sstables from the snapshot...")
         for f in os.listdir(snapshot_dir):
             shutil.copy2(os.path.join(snapshot_dir, f), os.path.join(cf_dir, 'upload', f))
 
-        debug("Running 'nodetool refresh -- ks cf' - first take...")
+        logger.debug("Running 'nodetool refresh -- ks cf' - first take...")
         node1.nodetool("refresh -- ks cf")
 
-        debug("Checking rows on node1...")
+        logger.debug("Checking rows on node1...")
         self.check_rows_on_node(node1, num_keys, found=keys, c1_values=c1_values, c2_values=c2_values)
 
-        debug("Running 'nodetool refresh -- ks cf' - second take...")
+        logger.debug("Running 'nodetool refresh -- ks cf' - second take...")
         node1.nodetool("refresh -- ks cf")
 
-        debug("Checking rows on node1...")
+        logger.debug("Checking rows on node1...")
         self.check_rows_on_node(node1, num_keys, found=keys, c1_values=c1_values, c2_values=c2_values)
 
-    @attr('single_node')
-    def restore_snapshot_using_different_smp_setting_test(self):
+    @pytest.mark.single_node
+    def test_restore_snapshot_using_different_smp_setting(self):
         """
         Check that we can restore snapshot files that used a different smp setting
 
@@ -278,69 +282,69 @@ class TestBackupRestore(Tester):
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfere with the test (this must be after the populate)
         cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
-        debug("Starting a cluster of one node on a single core...")
+        logger.debug("Starting a cluster of one node on a single core...")
         cluster.populate(1).start(jvm_args=['--smp', '1'])
         node1 = cluster.nodelist()[0]
 
-        debug("Creating a CQL connection...")
+        logger.debug("Creating a CQL connection...")
         session = self.patient_cql_connection(node1)
 
-        debug("Creating a keyspace 'ks'...")
-        self.create_ks(session, 'ks', 1)
+        logger.debug("Creating a keyspace 'ks'...")
+        create_ks(session, 'ks', 1)
 
-        debug("Creating a column family 'cf'...")
-        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        logger.debug("Creating a column family 'cf'...")
+        create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
-        debug("Inserting concurrently {} keys...".format(num_keys))
+        logger.debug("Inserting concurrently {} keys...".format(num_keys))
         insert_c1c2(session, keys=keys, consistency=ConsistencyLevel.ONE,
                     c1_values=c1_values, c2_values=c2_values)
 
-        debug("Creating a snapshot...")
+        logger.debug("Creating a snapshot...")
         node1.nodetool('snapshot -t {} -cf cf -- ks'.format(snapshot_name))
 
         snapshot_dir = self.get_snapshot_dir(snapshot_name)
-        self.assertTrue(snapshot_dir is not None, "Can't find a snapshot directory for {}".format(snapshot_name))
-        debug("Snapshot dir is {}".format(snapshot_dir))
+        assert snapshot_dir is not None, "Can't find a snapshot directory for {}".format(snapshot_name)
+        logger.debug("Snapshot dir is {}".format(snapshot_dir))
 
-        debug("Dropping a keyspace...")
+        logger.debug("Dropping a keyspace...")
         session.execute(SimpleStatement("DROP KEYSPACE ks"))
 
-        debug("Stopping the node...")
+        logger.debug("Stopping the node...")
         node1.stop(gently=True)
 
-        debug("Starting a node on two cores...")
+        logger.debug("Starting a node on two cores...")
         node1.start(wait_for_binary_proto=True, jvm_args=['--smp', '2'])
 
-        debug("Creating a CQL connection...")
+        logger.debug("Creating a CQL connection...")
         session = self.patient_cql_connection(node1)
 
-        debug("Creating the same keyspace.table...")
-        self.create_ks(session, 'ks', 1)
-        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        logger.debug("Creating the same keyspace.table...")
+        create_ks(session, 'ks', 1)
+        create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
-        debug("Flushing a keyspace...")
+        logger.debug("Flushing a keyspace...")
         node1.nodetool("flush -- ks")
 
         ks_dir = os.path.join(self.test_path, 'test', 'node1', 'data', 'ks')
         cf_dir = self.get_non_snapshot_cf_dir(ks_dir, snapshot_name)
-        debug("Column family directory is {}".format(cf_dir))
+        logger.debug("Column family directory is {}".format(cf_dir))
 
-        debug("Removing sstables...")
+        logger.debug("Removing sstables...")
         self.delete_cf_sstables(cf_dir)
 
-        debug("Copy sstables from the snapshot...")
+        logger.debug("Copy sstables from the snapshot...")
         for f in os.listdir(snapshot_dir):
             shutil.copy2(os.path.join(snapshot_dir, f), os.path.join(cf_dir, 'upload', f))
 
-        debug("Running 'nodetool refresh -- ks cf'")
+        logger.debug("Running 'nodetool refresh -- ks cf'")
         node1.nodetool("refresh -- ks cf")
 
-        debug("Checking rows on node1...")
+        logger.debug("Checking rows on node1...")
         self.check_rows_on_node(node1, num_keys, found=keys, c1_values=c1_values, c2_values=c2_values)
 
-    @attr('next-gating')
-    @attr('dtest-debug')
-    def restore_snapshot_using_old_token_ownership_test(self):
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
+    def test_restore_snapshot_using_old_token_ownership(self):
         """
         Check that we can restore snapshot files that use a non updated token ownership
 
@@ -363,63 +367,65 @@ class TestBackupRestore(Tester):
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfere with the test (this must be after the populate)
         cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
-        debug("Starting a cluster of one node...")
+        logger.debug("Starting a cluster of one node...")
         cluster.populate(1).start()
         node1 = cluster.nodelist()[0]
 
-        debug("Creating a CQL connection...")
+        logger.debug("Creating a CQL connection...")
         session = self.patient_cql_connection(node1)
 
-        debug("Creating a keyspace 'ks'...")
-        self.create_ks(session, 'ks', 1)
+        logger.debug("Creating a keyspace 'ks'...")
+        create_ks(session, 'ks', 1)
 
-        debug("Creating a column family 'cf'...")
-        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        logger.debug("Creating a column family 'cf'...")
+        create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
-        debug("Inserting concurrently {} keys...".format(num_keys))
+        logger.debug("Inserting concurrently {} keys...".format(num_keys))
         insert_c1c2(session, keys=keys, consistency=ConsistencyLevel.ONE,
                     c1_values=c1_values, c2_values=c2_values)
 
-        debug("Creating a snapshot...")
+        logger.debug("Creating a snapshot...")
         node1.nodetool('snapshot -t {} -cf cf -- ks'.format(snapshot_name))
 
         snapshot_dir = self.get_snapshot_dir(snapshot_name)
-        self.assertTrue(snapshot_dir is not None, "Can't find a snapshot directory for {}".format(snapshot_name))
-        debug("Snapshot dir is {}".format(snapshot_dir))
+        assert snapshot_dir is not None, "Can't find a snapshot directory for {}".format(snapshot_name)
+        logger.debug("Snapshot dir is {}".format(snapshot_dir))
 
-        debug("Staring a new node (node2)...")
+        logger.debug("Staring a new node (node2)...")
         node2 = new_node(cluster)
         node2.start(wait_for_binary_proto=True, wait_other_notice=True)
 
-        debug("Dropping a keyspace...")
+        logger.debug("Dropping a keyspace...")
         session.execute(SimpleStatement("DROP KEYSPACE ks"))
 
-        debug("Creating the same keyspace.table...")
-        self.create_ks(session, 'ks', 1)
-        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        logger.debug("Creating the same keyspace.table...")
+        create_ks(session, 'ks', 1)
+        create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
-        debug("Flushing a keyspace...")
+        logger.debug("Flushing a keyspace...")
         node1.nodetool("flush -- ks")
 
         ks_dir = os.path.join(self.test_path, 'test', 'node1', 'data', 'ks')
         cf_dir = self.get_non_snapshot_cf_dir(ks_dir, snapshot_name)
-        debug("Column family directory is {}".format(cf_dir))
+        logger.debug("Column family directory is {}".format(cf_dir))
 
-        debug("Removing sstables...")
+        logger.debug("Removing sstables...")
         self.delete_cf_sstables(cf_dir)
 
-        debug("Copy sstables from the snapshot...")
+        logger.debug("Copy sstables from the snapshot...")
         for f in os.listdir(snapshot_dir):
             shutil.copy2(os.path.join(snapshot_dir, f), os.path.join(cf_dir, 'upload', f))
 
-        debug("Running 'nodetool refresh -- ks cf'")
+        logger.debug("Running 'nodetool refresh -- ks cf'")
         node1.nodetool("refresh -- ks cf")
 
-        debug("Check that we may query ks.cf on node1...")
+        logger.debug("Check that we may query ks.cf on node1...")
         session.execute(SimpleStatement("SELECT COUNT(*) FROM ks.cf"))
 
-    @attr('next-gating', 'dtest-debug', 'single_node')
-    def incremental_backup_test(self):
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
+    @pytest.mark.single_node
+    def test_incremental_backup(self):
         """
         Check that incremetal backup works as expected
 
@@ -441,57 +447,59 @@ class TestBackupRestore(Tester):
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfere with the test (this must be after the populate)
         cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
-        debug("Starting a cluster of one node...")
+        logger.debug("Starting a cluster of one node...")
         cluster.populate(1).start()
         node1 = cluster.nodelist()[0]
 
-        debug("Enabling incremental backups...")
+        logger.debug("Enabling incremental backups...")
         node1.nodetool("enablebackup")
 
-        debug("Creating a CQL connection...")
+        logger.debug("Creating a CQL connection...")
         session = self.patient_cql_connection(node1)
 
-        debug("Creating a keyspace 'ks'...")
-        self.create_ks(session, 'ks', 1)
+        logger.debug("Creating a keyspace 'ks'...")
+        create_ks(session, 'ks', 1)
 
-        debug("Creating a column family 'cf'...")
-        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        logger.debug("Creating a column family 'cf'...")
+        create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
-        debug("Inserting concurrently {} keys...".format(num_keys))
+        logger.debug("Inserting concurrently {} keys...".format(num_keys))
         insert_c1c2(session, keys=keys, consistency=ConsistencyLevel.ONE,
                     c1_values=c1_values, c2_values=c2_values)
 
-        debug("Flushing...")
+        logger.debug("Flushing...")
         node1.nodetool("flush -- ks cf")
 
         cf_dir = get_node_cf_dir(node1, 'ks', 'cf')
-        debug("'cf' directory is {}".format(cf_dir))
+        logger.debug("'cf' directory is {}".format(cf_dir))
 
         # Save the names of the current sstable files
         sstables_files1 = get_sstables_files(cf_dir)
-        debug("sstables before compaction: {}".format(sstables_files1))
+        logger.debug("sstables before compaction: {}".format(sstables_files1))
 
         # get the names of files in the 'backups' subdir
         backups1_files = get_sstables_files("{}/backups".format(cf_dir))
-        debug("backups before compaction: {}".format(backups1_files))
+        logger.debug("backups before compaction: {}".format(backups1_files))
 
-        self.assertEqual(sstables_files1, backups1_files, "backup doesn't contain all sstable files")
+        assert sstables_files1 == backups1_files, "backup doesn't contain all sstable files"
 
-        debug("Run a compaction...")
+        logger.debug("Run a compaction...")
         node1.compact()
 
         sstables_files2 = get_sstables_files(cf_dir)
-        debug("sstables after compaction: {}".format(sstables_files2))
+        logger.debug("sstables after compaction: {}".format(sstables_files2))
 
         backups2_files = get_sstables_files("{}/backups".format(cf_dir))
-        debug("backups after compaction: {}".format(backups2_files))
+        logger.debug("backups after compaction: {}".format(backups2_files))
 
         # backup should not contain compacted sstables therefore its contents
         # should not change after a compaction
-        self.assertEqual(backups1_files, backups2_files, "backup contents changed after a compaction")
+        assert backups1_files == backups2_files, "backup contents changed after a compaction"
 
-    @attr('next-gating', 'dtest-debug', 'single_node')
-    def restore_snapshot_from_cassandra_test(self):
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
+    @pytest.mark.single_node
+    def test_restore_snapshot_from_cassandra(self):
         """
         Check that we can restore snapshot files that have been created by cassandra
 
@@ -509,44 +517,44 @@ class TestBackupRestore(Tester):
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfere with the test (this must be after the populate)
         cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
-        debug("Starting a cluster of one node...")
+        logger.debug("Starting a cluster of one node...")
         cluster.populate(1).start()
         node1 = cluster.nodelist()[0]
 
-        debug("Creating a CQL connection...")
+        logger.debug("Creating a CQL connection...")
         session = self.patient_cql_connection(node1)
 
-        debug("Creating a keyspace 'ks'...")
-        self.create_ks(session, 'ks', 1)
+        logger.debug("Creating a keyspace 'ks'...")
+        create_ks(session, 'ks', 1)
 
-        debug("Creating a column family 'cf'...")
-        self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        logger.debug("Creating a column family 'cf'...")
+        create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
-        debug("Flushing a keyspace...")
+        logger.debug("Flushing a keyspace...")
         node1.nodetool("flush -- ks")
 
         cassandra_snapshot_dir = "{}/cassandra-sstables/restore-snapshot-from-cassandra".format(
             os.path.dirname(os.path.realpath(__file__)))
-        debug("cassandra snapshot dir is {}".format(cassandra_snapshot_dir))
+        logger.debug("cassandra snapshot dir is {}".format(cassandra_snapshot_dir))
 
         cf_dir = get_node_cf_dir(node1, 'ks', 'cf')
-        debug("Column family directory is {}".format(cf_dir))
+        logger.debug("Column family directory is {}".format(cf_dir))
 
-        debug("Removing sstables...")
+        logger.debug("Removing sstables...")
         self.delete_cf_sstables(cf_dir)
 
-        debug("Copy sstables from the snapshot...")
+        logger.debug("Copy sstables from the snapshot...")
         for f in os.listdir(cassandra_snapshot_dir):
             shutil.copy2(os.path.join(cassandra_snapshot_dir, f), os.path.join(cf_dir, 'upload', f))
 
-        debug("Running 'nodetool refresh -- ks cf'")
+        logger.debug("Running 'nodetool refresh -- ks cf'")
         node1.nodetool("refresh -- ks cf")
 
-        debug("Checking rows on node1...")
+        logger.debug("Checking rows on node1...")
         self.check_rows_on_node(node1, num_keys, found=keys, c1_values=c1_values, c2_values=c2_values)
 
-    @attr('single_node')
-    def clearsnapshot_options_test(self):
+    @pytest.mark.single_node
+    def test_clearsnapshot_options(self):
         """
         Check different 'nodetool clearsnapshot' options
 
@@ -570,20 +578,20 @@ class TestBackupRestore(Tester):
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfere with the test (this must be after the populate)
         cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
-        debug("Starting a cluster of one node...")
+        logger.debug("Starting a cluster of one node...")
         cluster.populate(1).start()
         node1 = cluster.nodelist()[0]
 
-        debug("Creating a CQL connection...")
+        logger.debug("Creating a CQL connection...")
         session = self.patient_cql_connection(node1)
 
         for i in range(2):
             keyspace_name = 'ks{}'.format(i)
-            debug("Creating a keyspace '{}'...".format(keyspace_name))
-            self.create_ks(session, keyspace_name, 1)
+            logger.debug("Creating a keyspace '{}'...".format(keyspace_name))
+            create_ks(session, keyspace_name, 1)
 
-            debug("Creating a column family 'cf'...")
-            self.create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+            logger.debug("Creating a column family 'cf'...")
+            create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
         num_keys = 1000
         start_key = 0
@@ -594,13 +602,13 @@ class TestBackupRestore(Tester):
             c2_values = list(map(lambda x: '{}'.format(x), range(start_key + num_keys, start_key + 2 * num_keys)))
             keys = range(start_key, start_key + num_keys)
 
-            debug("Inserting concurrently {} keys into 'ks0.cf' and 'ks1.cf'...".format(num_keys))
+            logger.debug("Inserting concurrently {} keys into 'ks0.cf' and 'ks1.cf'...".format(num_keys))
             insert_c1c2(session, ks='ks0', keys=keys, consistency=ConsistencyLevel.ONE,
                         c1_values=c1_values, c2_values=c2_values)
             insert_c1c2(session, ks='ks1', keys=keys, consistency=ConsistencyLevel.ONE,
                         c1_values=c1_values, c2_values=c2_values)
 
-            debug("Creating a snapshot for 'ks0' and 'ks1'...")
+            logger.debug("Creating a snapshot for 'ks0' and 'ks1'...")
             node1.nodetool('snapshot -t {} ks0 ks1'.format(snapshot_name))
 
             start_key = start_key + num_keys
@@ -614,68 +622,67 @@ class TestBackupRestore(Tester):
         for i in range(2):
             for j in [1, 2]:
                 ks_snapshot_dir[i][j] = self.get_snapshot_dir('snapshot{}'.format(j), ks_dir=ks_dir[i])
-                self.assertTrue(ks_snapshot_dir[i][j] is not None,
-                                "Can't find a snapshot directory for 'ks{}.snapshot{}'".format(i, j))
+                assert ks_snapshot_dir[i][j] is not None, "Can't find a snapshot directory for 'ks{}.snapshot{}'".format(
+                    i, j)
 
         ks_snapshot_files = [[None, None, None], [None, None, None]]
         for i in range(2):
             for j in [1, 2]:
                 ks_snapshot_files[i][j] = self.get_all_files_in_dir(ks_snapshot_dir[i][j])
 
-        debug("Call 'nodetool clearsnapshot -t snapshot0'...")
+        logger.debug("Call 'nodetool clearsnapshot -t snapshot0'...")
         node1.nodetool('clearsnapshot -t snapshot0')
 
         # First check that 'snapshot1' has been deleted...
         for i in range(2):
-            debug("Check that snapshot0 for ks{} was deleted...".format(i))
+            logger.debug("Check that snapshot0 for ks{} was deleted...".format(i))
             test_dir = self.get_snapshot_dir('snapshot0', ks_dir=ks_dir[i])
-            self.assertTrue(test_dir is None, "'ks{}' snapshot 'snapshot0' has not been deleted!".format(i))
+            assert test_dir is None, "'ks{}' snapshot 'snapshot0' has not been deleted!".format(i)
 
         # ...then check that other snapshots are untouched
         for i in range(2):
             for j in [1, 2]:
-                debug("Check that snapshot{} for ks{} was not deleted...".format(j, i))
+                logger.debug("Check that snapshot{} for ks{} was not deleted...".format(j, i))
                 test_dir = self.get_snapshot_dir('snapshot{}'.format(j), ks_dir=ks_dir[i])
-                self.assertTrue(test_dir is not None, "'ks{}' snapshot 'snapshot{}' has not been deleted!".format(i, j))
+                assert test_dir is not None, "'ks{}' snapshot 'snapshot{}' has not been deleted!".format(i, j)
                 test_files = self.get_all_files_in_dir(ks_snapshot_dir[i][j])
-                self.assertEqual(
-                    test_files, ks_snapshot_files[i][j], "'ks{}' snapshot 'snapshot{}' direcotry contents has changed!".format(i, j))
+                assert test_files == ks_snapshot_files[i][j], "'ks{}' snapshot 'snapshot{}' direcotry contents has changed!".format(
+                    i, j)
 
         # Call 'nodetool clearsnapshot -t snapshot1 -- ks1'
-        debug("Call 'nodetool clearsnapshot -t snapshot1 -- ks1'")
+        logger.debug("Call 'nodetool clearsnapshot -t snapshot1 -- ks1'")
         node1.nodetool('clearsnapshot -t snapshot1 -- ks1')
 
         # Check that snapshot1 for ks1 has been deleted...
-        debug("Check that snapshot1 for ks1 was deleted...")
+        logger.debug("Check that snapshot1 for ks1 was deleted...")
         test_dir = self.get_snapshot_dir('snapshot1', ks_dir=ks_dir[1])
-        self.assertTrue(test_dir is None, "'ks1' snapshot 'snapshot1' has not been deleted!")
+        assert test_dir is None, "'ks1' snapshot 'snapshot1' has not been deleted!"
 
         # ...but not for ks0!
-        debug("Check that snapshot1 for ks0 was not deleted...")
+        logger.debug("Check that snapshot1 for ks0 was not deleted...")
         test_dir = self.get_snapshot_dir('snapshot1', ks_dir=ks_dir[0])
-        self.assertTrue(test_dir is not None, "'ks0' snapshot 'snapshot1' has been deleted!")
+        assert test_dir is not None, "'ks0' snapshot 'snapshot1' has been deleted!"
         test_files = self.get_all_files_in_dir(ks_snapshot_dir[0][1])
-        self.assertEqual(test_files, ks_snapshot_files[0][1],
-                         "'ks0' snapshot 'snapshot1' direcotry contents has changed!")
+        assert test_files == ks_snapshot_files[0][1], "'ks0' snapshot 'snapshot1' direcotry contents has changed!"
 
         # ...then check that snapshot2 is intact
         for i in range(2):
-            debug("Check that snapshot2 for ks{} was not deleted...".format(i))
+            logger.debug("Check that snapshot2 for ks{} was not deleted...".format(i))
             test_dir = self.get_snapshot_dir('snapshot2', ks_dir=ks_dir[i])
-            self.assertTrue(test_dir is not None, "'ks{}' snapshot 'snapshot2' has not been deleted!".format(i))
+            assert test_dir is not None, "'ks{}' snapshot 'snapshot2' has not been deleted!".format(i)
             test_files = self.get_all_files_in_dir(ks_snapshot_dir[i][2])
-            self.assertEqual(
-                test_files, ks_snapshot_files[i][2], "'ks{}' snapshot 'snapshot2' direcotry contents has changed!".format(i))
+            assert test_files == ks_snapshot_files[i][2], "'ks{}' snapshot 'snapshot2' direcotry contents has changed!".format(
+                i)
 
         # Call 'nodetool clearsnapshot' and check that all snapshots has been cleared
-        debug("Call 'nodetool clearsnapshot'")
+        logger.debug("Call 'nodetool clearsnapshot'")
         node1.nodetool('clearsnapshot')
         for i in range(3):
-            debug("Check that snapshot{} doesn't exist any more...".format(i))
+            logger.debug("Check that snapshot{} doesn't exist any more...".format(i))
             test_dir = self.get_snapshot_dir('snapshot{}'.format(i))
-            self.assertTrue(test_dir is None, "'snapshot{}' has not been deleted!".format(i))
+            assert test_dir is None, "'snapshot{}' has not been deleted!".format(i)
 
-    @skip('#7022')
+    @pytest.mark.skip('#7022')
     # nodetool refresh does not examine the main directory since
     # refresh was changed to use off-strategy compaction
     # in scylla@7351db7cab7bbf907172940d0bbf8b90afde90ba
@@ -690,7 +697,7 @@ class TestBackupRestore(Tester):
         # Prepare test data by cassandra-stress workload
         self.cs_write_and_verify(node1, 1000, seq_start=1, verify_count=1000)
 
-        debug("Creating a snapshot for test table")
+        logger.debug("Creating a snapshot for test table")
         snapshot_name = 'test_snapshot'
         node1.nodetool(f"snapshot -t {snapshot_name} -cf standard1 -- keyspace1")
         snapshot_dir = self.get_snapshot_dir(snapshot_name)
@@ -699,7 +706,7 @@ class TestBackupRestore(Tester):
         # Adding more data to test table
         self.cs_write_and_verify(node1, 1000, seq_start=1001, verify_count=2000)
 
-        # debug("Removing sstables in main SSTable directory")
+        # logger.debug("Removing sstables in main SSTable directory")
         self.remove_sstable_and_verify(node1, cf_dir, restart_node=False, delete_commitlogs=False, verify_count=None)
 
         # Copying snapshot to main SSTable directory
@@ -721,29 +728,29 @@ class TestBackupRestore(Tester):
 
         cluster = self.cluster
         cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
-        debug("Starting a cluster of one node...")
+        logger.debug("Starting a cluster of one node...")
         cluster.populate(1).start()
         node1 = cluster.nodelist()[0]
 
-        debug("Creating a CQL connection...")
+        logger.debug("Creating a CQL connection...")
         return self.patient_cql_connection(node1)
 
     def cs_write_and_verify(self, node, n=1000, seq_start=1, verify_count=None):
         """Add test data by cassandra-stress workload"""
 
-        debug("Adding data by cassandra-stress workload")
+        logger.debug("Adding data by cassandra-stress workload")
         node.stress(['write', f'n={n}', "no-warmup", '-rate', 'threads=2', "-pop",
                      f'seq={seq_start}...{seq_start + n - 1}'])
         node.flush()
         if verify_count is not None:
             # Verify the data is added to cluster
             rows = list(self.cql_session.execute('SELECT * from keyspace1.standard1'))
-            self.assertEqual(verify_count, len(rows))
+            assert verify_count == len(rows)
 
     def copy_snapshot_and_verify(self, node, snapshot_dir, dest_dir, expect_refresh_fail=False, verify_count=None):
         """Copy snapshot files to an assigned directory, then try to refresh the test table"""
 
-        debug(f"Copying the snapshot to {dest_dir}, and restore the data by refreshing")
+        logger.debug(f"Copying the snapshot to {dest_dir}, and restore the data by refreshing")
         for f in os.listdir(snapshot_dir):
             shutil.copy2(os.path.join(snapshot_dir, f), os.path.join(dest_dir, f))
 
@@ -755,7 +762,7 @@ class TestBackupRestore(Tester):
                 raise Exception("Refresh in main directory succeeded unexpectedly! It's no longer supported from 4.1")
         except NodetoolError as error:
             if expect_refresh_fail:
-                debug(f"Refresh failed as expected, error:\n{error}")
+                logger.debug(f"Refresh failed as expected, error:\n{error}")
                 assert re.search(expected_error, str(
                     error)), f"Expected error is not found, expected error:\n{expected_error}"
             else:
@@ -763,31 +770,31 @@ class TestBackupRestore(Tester):
 
         if verify_count is not None:
             rows = list(self.cql_session.execute('SELECT * from keyspace1.standard1'))
-            self.assertEqual(verify_count, len(rows))
+            assert verify_count == len(rows)
 
     def remove_sstable_and_verify(self, node, cf_dir, restart_node=False, delete_commitlogs=False, verify_count=None):
         """The original sstable files should be removed before copying snapshot"""
 
         if restart_node:
-            debug("Kill the node ...")
+            logger.debug("Kill the node ...")
             node.stop(gently=False)
-        debug("Removing sstables in main directory ...")
+        logger.debug("Removing sstables in main directory ...")
         self.delete_cf_sstables(cf_dir)
 
         if delete_commitlogs:
-            debug("Delete commitlogs ...")
+            logger.debug("Delete commitlogs ...")
             commitlog_dir = os.path.join(self.test_path, 'test', 'node1', 'commitlogs')
             for f in os.listdir(commitlog_dir):
                 os.remove(os.path.join(commitlog_dir, f))
         if restart_node:
-            debug("Restart the node ...")
+            logger.debug("Restart the node ...")
             node.start(wait_for_binary_proto=True)
-            debug("Re-Creating a CQL connection after restart...")
+            logger.debug("Re-Creating a CQL connection after restart...")
             self.cql_session = self.patient_cql_connection(node)
 
         if verify_count is not None:
             rows = list(self.cql_session.execute('SELECT * from keyspace1.standard1'))
-            self.assertEqual(verify_count, len(rows))
+            assert verify_count == len(rows)
 
     def get_all_files_in_dir(self, dir_path):
         """
@@ -834,24 +841,24 @@ class TestBackupRestore(Tester):
     def start_nodetool_and_kill_node(self, node, cmd, message=None):
         def run():
             try:
-                debug("Starting nodetool {}...".format(cmd))
+                logger.debug("Starting nodetool {}...".format(cmd))
                 node.nodetool(cmd)
-                debug("nodetool {} done".format(cmd))
+                logger.debug("nodetool {} done".format(cmd))
             except:
-                debug("nodetool {} killed".format(cmd))
+                logger.debug("nodetool {} killed".format(cmd))
 
         executor = ThreadPoolExecutor(max_workers=1)
         nodetool_thread = executor.submit(run)
         if message:
-            debug("Watch log for '{}".format(message))
+            logger.debug("Watch log for '{}".format(message))
             node.watch_log_for(message)
         random.seed()
         wait_time = random.random()
 
-        debug("Wait for {} seconds".format(wait_time))
+        logger.debug("Wait for {} seconds".format(wait_time))
         time.sleep(wait_time)
 
-        debug("Killing a node...")
+        logger.debug("Killing a node...")
         node.stop(gently=False)
 
         nodetool_thread.result()
@@ -861,7 +868,7 @@ class TestBackupRestore(Tester):
         query = "SELECT COUNT(*) FROM cf"
         statement = SimpleStatement(query)
         result = list(s.execute(statement))
-        self.assertEqual(result[0].count, rows, len(result))
+        assert result[0].count == rows
 
         if found is not None:
             if c1_values is None:
