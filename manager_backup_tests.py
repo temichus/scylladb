@@ -1394,6 +1394,67 @@ class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
             raise ScyllaManagerError("No error occurred when a non existent keyspace was used in the keyspace filter "
                                      "flag in a download-files command")
 
+    def _get_table_set(self, node, keyspace_name):
+        session = self.patient_cql_connection(node)
+        result_rows = session.execute(
+            f"select table_name from system_schema.tables where keyspace_name = '{keyspace_name}';")
+        table_names = {f"{keyspace_name}.{str(row.table_name)}" for row in result_rows}
+        return table_names
+
+    def _get_table_set_from_dry_run_output(self, node, location_list, snapshot_tag):
+        output, _ = self.cluster._scylla_manager.agent_download_files(node=node,
+                                                                      location_list=location_list,
+                                                                      snapshot_tag=snapshot_tag,
+                                                                      dry_run=True)
+        table_name_set = set()
+        for row in output.splitlines():
+            if row.startswith("  - "):
+                table_full_name = row[4:row.find(" (")]
+                table_name_set.add(table_full_name)
+        return table_name_set
+
+    def test_execute_download_files_dry_run(self):
+        """
+        The test runs a backup task until completion.
+        Afterwards, using the backup task's snapshot tag, the test runs the download-files command
+        with the --dry-run attribute, which means that the manager will not download the snapshot
+        files to the upload directories of the backed up tables, but instead will print a list of
+        the backed up tables.
+        The test will verify that the agent listed the exact list of tables that were backed up
+        and that no files were downloaded to the tables' upload directories.
+        """
+        keyspace_name, table_name = "keyspace1", "table1"
+        keyspace_table_and_key_range = {keyspace_name: {table_name: [1, 11]}}
+        node1, node2 = self._prepare_cluster_with_data(keyspace_table_and_key_range=keyspace_table_and_key_range)
+        mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
+        backup_task = mgr_cluster.run_backup_command(keyspace_list=[keyspace_name],
+                                                     location_list=[f"s3:{DESTINATION_BUCKET}"])
+        backup_task.wait_and_get_final_status(step=5)
+        assert backup_task.status == TaskStatus.DONE, "Backup task failed due to an unexpected issue"
+
+        backed_up_table_set = self._get_table_set(node=node1, keyspace_name=keyspace_name)
+        # As of manager 2.4, system_schema keyspace is always backed up, even when not specified
+        backed_up_table_set.update(self._get_table_set(node=node1, keyspace_name="system_schema"))
+        output_table_set = self._get_table_set_from_dry_run_output(node=node1,
+                                                                   location_list=[f"s3:{DESTINATION_BUCKET}"],
+                                                                   snapshot_tag=backup_task.get_snapshot_tag())
+
+        basic_error_message = "The output of the agent's 'download-files --dry-run' command "
+        assert not backed_up_table_set.difference(output_table_set),\
+            f'{basic_error_message} did not include the following table/s: ' \
+            f'{backed_up_table_set.difference(output_table_set)}'
+        assert not output_table_set.difference(backed_up_table_set),\
+            f'{basic_error_message} did not include the following table/s: ' \
+            f'{output_table_set.difference(backed_up_table_set)}'
+
+        for table_full_name in backed_up_table_set:
+            keyspace, table = table_full_name.split(".")
+            table_upload_directory = os.path.join(node1.get_path(), f'data/{keyspace}/{table}*/upload/*')
+            downloaded_snapshot_files = glob(table_upload_directory, recursive=True)
+            assert not downloaded_snapshot_files, \
+                f"Even though the download-files command uses the dry-run argument, " \
+                f"the snapshot files were still downloaded to the upload directory of {table_full_name}"
+
     def _delete_file_from_bucket(self, cluster_id):
         file_objects = self.boto_client.list_objects(Bucket=DESTINATION_BUCKET,
                                                      Prefix=f"backup/sst/cluster/{cluster_id}/")["Contents"]
