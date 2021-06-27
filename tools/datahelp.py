@@ -22,6 +22,10 @@ It's meant to be used in tests when comparing expected to actual data, for valid
 For more examples reference paging_test.py
 """
 import re
+import string
+import random
+import time
+from uuid import uuid1, uuid4
 
 from cassandra.concurrent import execute_concurrent_with_args
 
@@ -180,3 +184,81 @@ def flatten(list_of_dicts):
         flattened.append('__'.join(items))
 
     return flattened
+
+
+class ColumnType:
+    def __init__(self, type, limits=None):
+        self.type = type
+        self.limits = limits
+        self.value = self.generate_value(self.type)
+
+    def get_value(self):
+        return self.value
+
+    def gen_random_string(self, length=1, source=string.printable):
+        return ''.join(random.choices(source, k=length))
+
+    def gen_random_number(self, length):
+        return int(self.gen_random_string(length=length, source=string.digits), 10) if length > 0 else 0
+
+    def gen_random_decimal_number(self, length):
+        int_idx = random.randint(0, length - 1)
+        dec_idx = length - int_idx
+        int_num = self.gen_random_number(int_idx)
+        dec_num = self.gen_random_number(dec_idx)
+
+        return float('.'.join([str(int_num), str(dec_num)]) if dec_idx > 0 else int_num)
+
+    def generate_value(self, data_type):
+        '''
+            types are:
+            [ascii, bigint, blob, boolean, date, decimal, double, float, inet, int, list, map, smallint, set, text, time,
+            timestamp, timeuuid, tinyint, tuple, UDT, uuid, varchar, varint]
+            :return: a random value by its type definition
+        '''
+        if data_type.lower() == 'uuid':
+            value = uuid4()
+        elif data_type.lower() in ['ascii', 'text', 'varchar']:
+            value = '\'{}\''.format(self.gen_random_string(length=10).replace('\'', ' '))
+        elif data_type.lower() == 'bigint':
+            value = random.randint(-9223372036854775808, 9223372036854775807)
+        elif data_type.lower() == 'blob':
+            value = hex(random.randint(0, 4294967295))
+            if len(value) % 2 != 0:
+                value = value[:-1]
+        elif data_type.lower() == 'boolean':
+            value = random.choice([True, False])
+        elif data_type.lower() == 'date':
+            value = '\'{}-{}-{}\''.format(random.randint(0, 2999), random.randint(1, 12), random.randint(1, 31))
+        elif data_type.lower() == 'time':
+            value = '\'{}:{}:{}\''.format(random.randint(0, 23), random.randint(0, 59), random.randint(0, 59))
+        elif data_type.lower() == 'timestamp':
+            value = int(time.time())
+        elif data_type.lower() == 'timeuuid':
+            value = uuid1(int(time.time()))
+        elif data_type.lower() in ['decimal', 'double', 'float']:
+            value = self.gen_random_decimal_number(length=random.randint(2, 15))
+        elif data_type.lower() == 'inet':
+            value = '\'{}.{}.{}.{}\''.format(random.randint(1, 255), random.randint(1, 255), random.randint(1, 255),
+                                             random.randint(1, 255))
+        elif data_type.lower() in ['int', 'varint']:
+            value = random.randint(-2147483648, 2147483647)
+        elif data_type.lower() == 'smallint':
+            value = random.randint(-32768, 32767)
+        elif data_type.lower() == 'tinyint':
+            value = random.randint(-128, 127)
+        elif data_type.lower() == 'list':
+            value = [self.generate_value('int') for _ in range(3)]
+        elif data_type.lower() == 'map':
+            value = ''.join(['{\'', self.gen_random_string(5, source=string.ascii_letters), '\': ',
+                             str(self.generate_value('int')) + '}'])
+        elif data_type.lower() == 'udt':
+            value = '{a: \'' + self.gen_random_string(5, source=string.ascii_letters) + '\', b: \'' + \
+                    self.gen_random_string(5, source=string.ascii_letters) + '\'}'
+        elif data_type.lower() == 'set':
+            value = '{ ' + str(self.generate_value('int')) + ', ' + str(self.generate_value('int')) + ' }'
+        elif data_type.lower() == 'tuple':
+            value = '({})'.format(self.generate_value('int'))
+        else:
+            value = None
+        return value

@@ -1,12 +1,18 @@
-from dtest import Tester, debug
-from assertions import assert_one
+import logging
+
+import pytest
 from cassandra import ConsistencyLevel
-from tools import require, rows_to_list, ColumnType
 
-from nose.plugins.attrib import attr
+from dtest_class import Tester, create_ks
+from tools.assertions import assert_one
+from tools.data import rows_to_list
+from tools.datahelp import ColumnType
 
 
-@attr('dtest-full')
+logger = logging.getLogger(__name__)
+
+
+@pytest.mark.dtest_full
 class TestGroupFunctions(Tester):
     types_to_skip = ['ascii', 'blob', 'inet', 'list', 'map', 'set', 'time', 'tuple', 'udt']
 
@@ -26,7 +32,7 @@ class TestGroupFunctions(Tester):
         cluster.populate(nodes).start()
         node1 = cluster.nodelist()[0]
         session = self.patient_cql_connection(node1)
-        self.create_ks(session=session, name=keyspace_name, rf=rf)
+        create_ks(session=session, name=keyspace_name, rf=rf)
 
         return session
 
@@ -36,7 +42,7 @@ class TestGroupFunctions(Tester):
 
     def create_table(self, session, table_name, single_column):
         query = 'CREATE TABLE {} ({});'.format(table_name, single_column)
-        debug(query)
+        logger.debug(query)
         session.execute(query)
 
     def check_results(self, session, table_name, single_type):
