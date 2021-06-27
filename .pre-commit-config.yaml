@@ -139,6 +139,7 @@ repos:
                 rebuild_test.py|
                 offline_tools_test.py|
                 update_cluster_layout_tests.py|
+                pytest_cql_additional_tests.py|
                 rest_api_tests.py|
                 limits_test.py |
                 metadata_tests.py|

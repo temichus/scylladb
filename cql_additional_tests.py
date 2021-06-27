@@ -2,16 +2,17 @@
 import math
 import random
 import re
-import struct
 import time
 import os
 import traceback
+import logging
 from pkg_resources import parse_version
 
 from collections import OrderedDict, defaultdict
 from collections import namedtuple
 from uuid import UUID
 
+import pytest
 from cassandra import AlreadyExists, ConsistencyLevel, InvalidRequest
 from cassandra.concurrent import execute_concurrent_with_args
 from cassandra.protocol import ConfigurationException
@@ -21,13 +22,10 @@ from cassandra.query import UNSET_VALUE
 from cassandra.util import sortedset
 from cassandra.cluster import ResultSet, NoHostAvailable
 
-from assertions import assert_all, assert_invalid, assert_none, assert_one, assert_invalid_case_insensitive_matching, \
+from tools.assertions import assert_all, assert_invalid, assert_none, assert_one, \
     assert_row_count
-
-from dtest import Tester, debug
-
-from scylla_tools import CassandraCluster, get_rows_set_from_res
-
+from dtest_class import Tester, create_ks
+from scylla_tools import CassandraCluster, get_rows_set_from_res, wait_for_view
 from thrift_bindings.thrift010.ttypes import CfDef
 from thrift_bindings.thrift010.ttypes import Column
 from thrift_bindings.thrift010.ttypes import ColumnOrSuperColumn
@@ -36,25 +34,21 @@ from thrift_bindings.thrift010.ttypes import ConsistencyLevel as ThriftConsisten
 
 from thrift_tests import get_thrift_client
 
-from tools import require
-from tools import rows_to_list
-from scylla_tools import wait_for_view
-
-from nose.tools import assert_equal
-from nose.plugins.attrib import attr
-from unittest import skip
-
+from tools.data import rows_to_list
+from tools.misc import require
 MSG_ALLOW_FILTERING = "ALLOW FILTERING"
 
+logger = logging.getLogger(__name__)
 
-@attr('dtest-full')
+
+@pytest.mark.dtest_full
 class TestCQL(Tester):
 
-    def __init__(self, *args, **kwargs):
-        super(TestCQL, self).__init__(*args, **kwargs)
+    @pytest.fixture(scope="class")
+    def setup(self):
         if not hasattr(self, 'compaction_strategy_for_migration'):
             self.compaction_strategy_for_migration = random.choice(
-                ['SizeTieredCompactionStrategy', 'TimeWindowCompactionStrategy', 'LeveledCompactionStrategy'])
+                ['SizeTieredCompactionStrategy', 'TimeWindowCompactionSsstrategy', 'LeveledCompactionStrategy'])
 
     def prepare(self, create_keyspace=True, use_cache=False, nodes=1, rf=1, protocol_version=None, options={}, **kwargs):
         cluster = self.cluster
@@ -76,13 +70,11 @@ class TestCQL(Tester):
 
         session = self.patient_cql_connection(node1, protocol_version=protocol_version)
         if create_keyspace:
-            if self._preserve_cluster:
-                session.execute("DROP KEYSPACE IF EXISTS ks")
-            self.create_ks(session, 'ks', rf)
+            create_ks(session, 'ks', rf)
         return session
 
-    @attr('single_node')
-    def static_cf_test(self):
+    @pytest.mark.single_node
+    def test_static_cf(self):
         """
         Test static CF syntax.
         """
@@ -134,8 +126,8 @@ class TestCQL(Tester):
             [UUID('550e8400-e29b-41d4-a716-446655440000'), 36, None, None],
         ], list(res)
 
-    @attr('single_node')
-    def large_collection_errors(self):
+    @pytest.mark.single_node
+    def test_large_collection_errors(self):
         """
         For large collections, make sure that we are printing warnings.
         """
@@ -165,8 +157,8 @@ class TestCQL(Tester):
                             "first 65535 elements will be returned to the "
                             "client. Please see http://cassandra.apache.org/doc/cql3/CQL.html#collections for more details.")
 
-    @attr('single_node')
-    def noncomposite_static_cf_test(self):
+    @pytest.mark.single_node
+    def test_noncomposite_static_cf(self):
         """
         Test non-composite static CF syntax.
         """
@@ -218,8 +210,8 @@ class TestCQL(Tester):
             [UUID('550e8400-e29b-41d4-a716-446655440000'), 36, None, None],
         ], list(res)
 
-    @attr('single_node')
-    def select_duplicate_column(self):
+    @pytest.mark.single_node
+    def test_select_duplicate_column(self):
         """
         Regression test for https://github.com/scylladb/scylla/issues/1367
 
@@ -245,8 +237,8 @@ class TestCQL(Tester):
         # scylla: cql3/result_set.cc:145: void cql3::result_set::add_row(std::vector<std::experimental::fundamentals_v1::optional<basic_sstring<signed char, unsigned int, 31u> > >): Assertion `row.size() == _metadata->value_count()' failed.
         session.execute("SELECT userid, userid FROM clicks")
 
-    @attr('single_node')
-    def dynamic_cf_test(self):
+    @pytest.mark.single_node
+    def test_dynamic_cf(self):
         """
         Test non-composite dynamic CF syntax.
         """
@@ -291,8 +283,8 @@ class TestCQL(Tester):
         # Check we don't allow empty values for url since this is the full underlying cell name (#6152)
         assert_invalid(session, "INSERT INTO clicks (userid, url, time) VALUES (810e8500-e29b-41d4-a716-446655440000, '', 42)")
 
-    @attr('single_node')
-    def dense_cf_test(self):
+    @pytest.mark.single_node
+    def test_dense_cf(self):
         """
         Test composite 'dense' CF syntax.
         """
@@ -344,11 +336,11 @@ class TestCQL(Tester):
 
         res = session.execute(
             "SELECT ip, port, time FROM connections WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479 AND ip = '192.168.0.3'")
-        self.assertEqual([['192.168.0.3', None, 42]], rows_to_list(res))
+        assert [['192.168.0.3' == None, 42]], rows_to_list(res)
 
         res = session.execute(
             "SELECT ip, port, time FROM connections WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479 AND ip = '192.168.0.4'")
-        self.assertEqual([['192.168.0.4', None, 42]], rows_to_list(res))
+        assert [['192.168.0.4' == None, 42]], rows_to_list(res)
 
         # Deletion
         session.execute(
@@ -363,10 +355,10 @@ class TestCQL(Tester):
         session.execute("DELETE FROM connections WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479 AND ip = '192.168.0.3'")
         res = list(session.execute(
             "SELECT * FROM connections WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479 AND ip = '192.168.0.3'"))
-        self.assertEqual([], res)
+        assert [] == res
 
-    @attr('single_node')
-    def sparse_cf_test(self):
+    @pytest.mark.single_node
+    def test_sparse_cf(self):
         """
         Test composite 'sparse' CF syntax.
         """
@@ -413,8 +405,8 @@ class TestCQL(Tester):
             [30, 'Yet one more message', None]
         ], list(res)
 
-    @attr('single_node')
-    def create_invalid_test(self):
+    @pytest.mark.single_node
+    def test_create_invalid(self):
         """
         Check invalid CREATE TABLE requests.
         """
@@ -435,8 +427,8 @@ class TestCQL(Tester):
         assert_invalid(
             session, "CREATE TABLE test (key text, key2 text, c int, d text, PRIMARY KEY (key, key2)) WITH COMPACT STORAGE")
 
-    @attr('single_node')
-    def limit_ranges_test(self):
+    @pytest.mark.single_node
+    def test_limit_ranges(self):
         """
         Validate LIMIT option for 'range queries' in SELECT statements.
         """
@@ -463,8 +455,8 @@ class TestCQL(Tester):
         res = session.execute("SELECT * FROM clicks WHERE token(userid) > token(2) LIMIT 1")
         assert rows_to_list(res) == [[45, 'http://foo.com', 42]], list(res)
 
-    @attr('single_node')
-    def limit_multiget_test(self):
+    @pytest.mark.single_node
+    def test_limit_multiget(self):
         """
         Validate LIMIT option for 'multiget' in SELECT statements.
         """
@@ -510,8 +502,8 @@ class TestCQL(Tester):
         session.execute("""INSERT INTO foo (a, b, c, d, e) VALUES (0, 0, 2, 0, 3);""")
         session.execute("""INSERT INTO foo (a, b, c, d, e) VALUES (0, -1, 2, 2, 2);""")
 
-    @attr('single_node')
-    def tuple_query_mixed_order_columns_test(self):
+    @pytest.mark.single_node
+    def test_tuple_query_mixed_order_columns(self):
         """
         @jira_ticket CASSANDRA-7281
 
@@ -526,7 +518,7 @@ class TestCQL(Tester):
         assert rows_list == [[0, 2, 0, 0, 0], [0, 1, 0, 0, 0], [0, 0, 1, 2, -1],
                              [0, 0, 1, 1, 1], [0, 0, 2, 1, -3], [0, 0, 2, 0, 3]], rows_list
 
-    @attr('single_node')
+    @pytest.mark.single_node
     def tuple_query_mixed_order_columns_test2(self):
         """
         @jira_ticket CASSANDRA-7281
@@ -542,7 +534,7 @@ class TestCQL(Tester):
         assert rows_list == [[0, 2, 0, 0, 0], [0, 1, 0, 0, 0], [0, 0, 2, 1, -3],
                              [0, 0, 2, 0, 3], [0, 0, 1, 2, -1], [0, 0, 1, 1, 1]], rows_list
 
-    @attr('single_node')
+    @pytest.mark.single_node
     def tuple_query_mixed_order_columns_test3(self):
         """
         @jira_ticket CASSANDRA-7281
@@ -558,7 +550,7 @@ class TestCQL(Tester):
         assert rows_list == [[0, 0, 2, 1, -3], [0, 0, 2, 0, 3], [0, 0, 1, 2, -1],
                              [0, 0, 1, 1, 1], [0, 1, 0, 0, 0], [0, 2, 0, 0, 0]], rows_list
 
-    @attr('single_node')
+    @pytest.mark.single_node
     def tuple_query_mixed_order_columns_test4(self):
         """
         @jira_ticket CASSANDRA-7281
@@ -574,7 +566,7 @@ class TestCQL(Tester):
         assert rows_list == [[0, 2, 0, 0, 0], [0, 1, 0, 0, 0], [0, 0, 1, 1, 1],
                              [0, 0, 1, 2, -1], [0, 0, 2, 0, 3], [0, 0, 2, 1, -3]], rows_list
 
-    @attr('single_node')
+    @pytest.mark.single_node
     def tuple_query_mixed_order_columns_test5(self):
         """
         @jira_ticket CASSANDRA-7281
@@ -589,7 +581,7 @@ class TestCQL(Tester):
         assert rows_list == [[0, 2, 0, 0, 0], [0, 1, 0, 0, 0], [0, 0, 2, 1, -3],
                              [0, 0, 2, 0, 3], [0, 0, 1, 2, -1], [0, 0, 1, 1, 1]], rows_list
 
-    @attr('single_node')
+    @pytest.mark.single_node
     def tuple_query_mixed_order_columns_test6(self):
         """CASSANDRA-7281: SELECT on tuple relations are broken for mixed ASC/DESC clustering order
             Test that non mixed columns are still working.
@@ -602,7 +594,7 @@ class TestCQL(Tester):
         assert rows_list == [[0, 0, 1, 1, 1], [0, 0, 1, 2, -1], [0, 0, 2, 0, 3],
                              [0, 0, 2, 1, -3], [0, 1, 0, 0, 0], [0, 2, 0, 0, 0]], rows_list
 
-    @attr('single_node')
+    @pytest.mark.single_node
     def tuple_query_mixed_order_columns_test7(self):
         """
         @jira_ticket CASSANDRA-7281
@@ -617,7 +609,7 @@ class TestCQL(Tester):
         assert rows_list == [[0, 0, 0, 0, 0], [0, 0, 1, 1, -1], [0, 0, 1, 1, 0],
                              [0, 0, 1, 0, 2], [0, -1, 2, 2, 2]], rows_list
 
-    @attr('single_node')
+    @pytest.mark.single_node
     def tuple_query_mixed_order_columns_test8(self):
         """
         @jira_ticket CASSANDRA-7281
@@ -632,7 +624,7 @@ class TestCQL(Tester):
         assert rows_list == [[0, -1, 2, 2, 2], [0, 0, 1, 1, -1], [0, 0, 1, 1, 0],
                              [0, 0, 1, 0, 2], [0, 0, 0, 0, 0]], rows_list
 
-    @attr('single_node')
+    @pytest.mark.single_node
     def tuple_query_mixed_order_columns_test9(self):
         """
         @jira_ticket CASSANDRA-7281
@@ -647,9 +639,8 @@ class TestCQL(Tester):
         assert rows_list == [[0, 0, 0, 0, 0], [0, 0, 1, 1, 0], [0, 0, 1, 1, -1],
                              [0, 0, 1, 0, 2], [0, -1, 2, 2, 2]], rows_list
 
-    @require("64")
-    @attr('single_node')
-    def simple_tuple_query_test(self):
+    @pytest.mark.single_node
+    def test_simple_tuple_query(self):
         """
         @jira_ticket CASSANDRA-8613
         [Invalid query] message="Clustering columns may not be skipped in multi-column relations.
@@ -689,8 +680,7 @@ class TestCQL(Tester):
                     "INSERT INTO clicks (userid, url, day, month, year) VALUES (%i, 'http://foo.%s', 1, 'jan', 2012)" % (
                         id, tld))
 
-    @attr('dtest-full')
-    def writetime_functions_query_test(self):
+    def test_writetime_functions_query(self):
         """Test time functions combination and invalid time values issue #5552"""
         nodes_count = 3
         rf = 3
@@ -712,15 +702,13 @@ class TestCQL(Tester):
                                expected=NoHostAvailable
                                )
 
-    @attr('dtest-full')
-    def query_coloumn_timeuuid_with_invalid_values_test(self):
+    def test_query_coloumn_timeuuid_with_invalid_values(self):
         """Test time functions combination and invalid time values issue #5552"""
         invalid_values = (160616626311127, 16061662631112228,)
         self.query_coloumn_timeuuid(invalid_values)
 
     @require('#7691')
-    @attr('dtest-full')
-    def query_coloumn_timeuuid_with_invalid_values_issue7691_test(self):
+    def test_query_coloumn_timeuuid_with_invalid_values_issue7691(self):
         """Test time functions combination and invalid time values issue #7691"""
         invalid_values = (16061662631112223339,)
         self.query_coloumn_timeuuid(invalid_values)
@@ -752,8 +740,8 @@ class TestCQL(Tester):
                                expected=NoHostAvailable
                                )
 
-    @attr('single_node')
-    def limit_sparse_test(self):
+    @pytest.mark.single_node
+    def test_limit_sparse(self):
         """
         Validate LIMIT option for sparse table in SELECT statements.
         """
@@ -765,8 +753,8 @@ class TestCQL(Tester):
         res = list(session.execute("SELECT * FROM clicks LIMIT 4"))
         assert len(res) == 4, list(res)
 
-    @attr('single_node')
-    def filter_by_counter_test(self):
+    @pytest.mark.single_node
+    def test_filter_by_counter(self, subtests):
         session = self.prepare()
 
         session.execute("""
@@ -787,39 +775,39 @@ class TestCQL(Tester):
 
         assert_row_count(session=session, table_name='clicks', expected=10)
 
-        with self.subTest("Filter by counter column with equal condition", i=1):
+        with subtests.test("Filter by counter column with equal condition", i=1):
             assert_all(session=session,
                        query=f"select * from clicks where c1 = 2 {MSG_ALLOW_FILTERING}",
                        expected=[[1, 2, 2, 2], [0, 2, 2, None]])
 
-        with self.subTest("Filter by counter column with more condition", i=2):
+        with subtests.test("Filter by counter column with more condition", i=2):
             assert_all(session=session,
                        query=f"select * from clicks where c1 > 2 {MSG_ALLOW_FILTERING}",
                        expected=[[1, 3, 3, 3], [1, 4, 4, 4], [0, 3, 3, None], [0, 4, 4, None]])
 
-        with self.subTest("Filter by counter column with more and equal condition", i=3):
+        with subtests.test("Filter by counter column with more and equal condition", i=3):
             assert_all(session=session,
                        query=f"select * from clicks where c1 > 3 and c2 = 4 {MSG_ALLOW_FILTERING}",
                        expected=[[1, 4, 4, 4]])
 
-        with self.subTest("Filter by counter column with \"in\" and >= condition"):
+        with subtests.test("Filter by counter column with \"in\" and >= condition"):
             assert_all(session=session,
                        query=f"select * from clicks where c1 in (0, 2) and c2 >= 2 {MSG_ALLOW_FILTERING}",
                        expected=[[1, 2, 2, 2]])
 
-        with self.subTest("Filter by all columns including counter column"):
+        with subtests.test("Filter by all columns including counter column"):
             assert_all(session=session,
                        query=f"select * from clicks where pk = 1 and ck = 4 and c1 < 3 and c2 = 0 {MSG_ALLOW_FILTERING}",
                        expected=[])
 
-        with self.subTest("Verify ALLOW FILTERING error message"):
+        with subtests.test("Verify ALLOW FILTERING error message"):
             assert_invalid(session=session,
                            query=f"select * from clicks where pk = 1 and ck = 4 and c1 > 3 and c2 = 0",
                            matching="Cannot execute this query as it might involve data filtering and thus may have "
                                     "unpredictable performance. If you want to execute this query despite the performance "
                                     "unpredictability, use ALLOW FILTERING")
 
-        with self.subTest("Add new counter column"):
+        with subtests.test("Add new counter column"):
             session.execute("ALTER TABLE clicks ADD c3 counter")
             assert_all(session=session,
                        query=f"select * from clicks where pk=1 and ck=1",
@@ -833,7 +821,7 @@ class TestCQL(Tester):
                        query=f"select * from clicks where c3 = -1 {MSG_ALLOW_FILTERING}",
                        expected=[[0, 1, 1, None, -1]])
 
-        with self.subTest("Delete counter column"):
+        with subtests.test("Delete counter column"):
             session.execute("DELETE c1 FROM clicks WHERE pk = 1 and ck = 1")
             assert_all(session=session,
                        query=f"select * from clicks where c1 = 1 {MSG_ALLOW_FILTERING}",
@@ -843,8 +831,8 @@ class TestCQL(Tester):
                        query=f"select * from clicks where c1 = 0 {MSG_ALLOW_FILTERING}",
                        expected=[[1, 0, 0, 0, None], [0, 0, 0, None, None]])
 
-    @attr('single_node')
-    def counters_test(self):
+    @pytest.mark.single_node
+    def test_counters(self):
         """
         Validate counter support.
         """
@@ -875,9 +863,9 @@ class TestCQL(Tester):
         res = session.execute("SELECT total FROM clicks WHERE userid = 1 AND url = 'http://foo.com'")
         assert rows_to_list(res) == [[-4]], list(res)
 
-    @skip('indexes')
-    @attr('single_node')
-    def indexed_with_eq_test(self):
+    @pytest.mark.skip('indexes')
+    @pytest.mark.single_node
+    def test_indexed_with_eq(self):
         """ Check that you can query for an indexed column even with a key EQ clause """
         session = self.prepare()
 
@@ -908,8 +896,8 @@ class TestCQL(Tester):
             "SELECT firstname FROM users WHERE userid = f47ac10b-58cc-4372-a567-0e02b2c3d479 AND age = 33")
         assert rows_to_list(res) == [['Samwise']], list(res)
 
-    @attr('single_node')
-    def select_key_in_test(self):
+    @pytest.mark.single_node
+    def test_select_key_in(self):
         """
         Query for KEY IN (...).
         """
@@ -943,8 +931,8 @@ class TestCQL(Tester):
 
         assert len(res) == 2, res
 
-    @attr('single_node')
-    def exclusive_slice_test(self):
+    @pytest.mark.single_node
+    def test_exclusive_slice(self):
         """
         Test SELECT respects inclusive and exclusive bounds.
         """
@@ -986,8 +974,8 @@ class TestCQL(Tester):
         res = list(session.execute("SELECT v FROM test WHERE k = 0 AND c >= 2 AND c < 6 ORDER BY c DESC LIMIT 2"))
         assert len(res) == 2 and res[0][0] == 5 and res[len(res) - 1][0] == 4, list(res)
 
-    @attr('single_node')
-    def in_clause_wide_rows_test(self):
+    @pytest.mark.single_node
+    def test_in_clause_wide_rows(self):
         """ Check IN support for 'wide rows' in SELECT statement """
         session = self.prepare()
 
@@ -1034,8 +1022,8 @@ class TestCQL(Tester):
         res = session.execute("SELECT v FROM test2 WHERE k = 0 AND c1 = 0 AND c2 IN (5, 2, 8)")
         assert rows_to_list(res) == [[2], [5], [8]], list(res)
 
-    @attr('single_node')
-    def order_by_test(self):
+    @pytest.mark.single_node
+    def test_order_by(self):
         """ Check ORDER BY support in SELECT statement """
         session = self.prepare()
 
@@ -1082,8 +1070,8 @@ class TestCQL(Tester):
         res = session.execute("SELECT v FROM test2 WHERE k = 0 ORDER BY c1")
         assert rows_to_list(res) == [[x] for x in range(0, 8)], list(res)
 
-    @attr('single_node')
-    def more_order_by_test(self):
+    @pytest.mark.single_node
+    def test_more_order_by(self):
         """ More ORDER BY checks (#4160) """
         session = self.prepare()
 
@@ -1119,8 +1107,8 @@ class TestCQL(Tester):
         res = session.execute("SELECT number FROM Test WHERE row='row' AND number <= 3 ORDER BY number DESC;")
         assert rows_to_list(res) == [[3], [2], [1]], list(res)
 
-    @attr('single_node')
-    def order_by_validation_test(self):
+    @pytest.mark.single_node
+    def test_order_by_validation(self):
         """ Check we don't allow order by on row key (#4246) """
         session = self.prepare()
 
@@ -1140,8 +1128,8 @@ class TestCQL(Tester):
 
         assert_invalid(session, "SELECT * FROM test ORDER BY k2")
 
-    @attr('single_node')
-    def order_by_with_in_test(self):
+    @pytest.mark.single_node
+    def test_order_by_with_in(self):
         """ Check that order-by works with IN (#4327) """
         session = self.prepare()
         session.default_fetch_size = None
@@ -1170,8 +1158,8 @@ class TestCQL(Tester):
         res = session.execute(query)
         assert rows_to_list(res) == [['key1', 1], ['key3', 2], ['key2', 3]], list(res)
 
-    @attr('single_node')
-    def reversed_comparator_test(self):
+    @pytest.mark.single_node
+    def test_reversed_comparator(self):
         session = self.prepare()
 
         session.execute("""
@@ -1222,8 +1210,8 @@ class TestCQL(Tester):
 
         assert_invalid(session, "SELECT c1, c2, v FROM test2 WHERE k = 0 ORDER BY c2 DESC, c1 ASC")
 
-    @attr('single_node')
-    def invalid_old_property_test(self):
+    @pytest.mark.single_node
+    def test_invalid_old_property(self):
         """ Check obsolete properties from CQL2 are rejected """
         session = self.prepare()
 
@@ -1233,13 +1221,13 @@ class TestCQL(Tester):
         session.execute("CREATE TABLE test (foo text PRIMARY KEY, c int)")
         assert_invalid(session, "ALTER TABLE test WITH default_validation=int;", expected=SyntaxException)
 
-    @attr('single_node')
-    def null_support_index_test(self):
+    @pytest.mark.single_node
+    def test_null_support_index(self):
         """ Test support for nulls, INDEX is created """
-        self.null_support_test(create_index=True)
+        self.test_null_support(create_index=True)
 
-    @attr('single_node')
-    def null_support_test(self, create_index=False):
+    @pytest.mark.single_node
+    def test_null_support(self, create_index=False):
         """ Test support for nulls """
         session = self.prepare()
 
@@ -1271,7 +1259,7 @@ class TestCQL(Tester):
 
         res = session.execute("SELECT * FROM test")
         assert rows_to_list(res) == [[0, 0, None, None], [0, 1, None, None]], list(res)
-        debug(list(res))
+        logger.debug(list(res))
 
         res = session.execute("SELECT * FROM test WHERE k = 0")
         assert rows_to_list(res) == [[0, 0, None, None], [0, 1, None, None]], list(res)
@@ -1302,8 +1290,8 @@ class TestCQL(Tester):
         assert_invalid(session, "INSERT INTO test (k, c, v2) VALUES (0, 2, {1, null})")
         assert_invalid(session, "INSERT INTO test (k, c, v2) VALUES (0, 0, { 'foo', 'bar', null })")
 
-    @attr('single_node')
-    def unset_value_support_test(self):
+    @pytest.mark.single_node
+    def test_unset_value_support(self):
         """ Test support for unset value """
         session = self.prepare(protocol_version=4)
 
@@ -1332,23 +1320,23 @@ class TestCQL(Tester):
         session.execute(
             "INSERT INTO test (key, i, l, s, m, t, u) VALUES (0, 1, [1, 2, 3], {1, 2, 3}, {1: 2}, (1, 2), {number: 1})")
         res = session.execute("SELECT key, i, l, s, m, t, u FROM test")
-        assert_equal(rows_to_list(res), [[0, 1, list([1, 2, 3]), set([1, 2, 3]), dict({1: 2}), (1, 2), simple_type(1)]])
+        assert rows_to_list(res) == [[0, 1, list([1, 2, 3]), set([1, 2, 3]), dict({1: 2}), (1, 2), simple_type(1)]]
 
         # Make sure unset works with all the types:
         stmt = session.prepare("UPDATE test SET i = ?, l = ?, s = ?, m = ?, t = ?, u = ? WHERE key = ?")
         session.execute(stmt.bind((UNSET_VALUE, UNSET_VALUE, UNSET_VALUE, UNSET_VALUE, UNSET_VALUE, UNSET_VALUE, 0)))
         res = session.execute("SELECT key, i, l, s, m, t, u FROM test")
-        assert_equal(rows_to_list(res), [[0, 1, list([1, 2, 3]), set([1, 2, 3]), dict({1: 2}), (1, 2), simple_type(1)]])
+        assert rows_to_list(res) == [[0, 1, list([1, 2, 3]), set([1, 2, 3]), dict({1: 2}), (1, 2), simple_type(1)]]
 
         # Mix values and unset values together:
         stmt = session.prepare("UPDATE test SET i = ?, l = ?, s = ?, m = ?, t = ?, u = ? WHERE key = ?")
         session.execute(stmt.bind((2, UNSET_VALUE, UNSET_VALUE, UNSET_VALUE, UNSET_VALUE, UNSET_VALUE, 0)))
         res = session.execute("SELECT key, i, l, s, m, t, u FROM test")
-        assert_equal(rows_to_list(res), [[0, 2, list([1, 2, 3]), set([1, 2, 3]), dict({1: 2}), (1, 2), simple_type(1)]])
+        assert rows_to_list(res) == [[0, 2, list([1, 2, 3]), set([1, 2, 3]), dict({1: 2}), (1, 2), simple_type(1)]]
 
-    @skip('indexes')
-    @attr('single_node')
-    def nameless_index_test(self):
+    @pytest.mark.skip('indexes')
+    @pytest.mark.single_node
+    def test_nameless_index(self):
         """ Test CREATE INDEX without name and validate the index can be dropped """
         session = self.prepare()
 
@@ -1372,8 +1360,8 @@ class TestCQL(Tester):
 
         assert_invalid(session, "SELECT id FROM users WHERE birth_year = 42")
 
-    @attr('single_node')
-    def deletion_test(self):
+    @pytest.mark.single_node
+    def test_deletion(self):
         """ Test simple deletion and in particular check for #4193 bug """
 
         session = self.prepare()
@@ -1426,8 +1414,8 @@ class TestCQL(Tester):
         if parse_version(self.cluster.version()) < parse_version("1.2"):
             assert_invalid(session, "DELETE FROM testcf2 WHERE username='abc' AND id=2")
 
-    @attr('single_node')
-    def count_test(self):
+    @pytest.mark.single_node
+    def test_count(self):
         session = self.prepare()
 
         session.execute("""
@@ -1456,8 +1444,8 @@ class TestCQL(Tester):
         res = session.execute("SELECT COUNT(1) FROM events WHERE kind IN ('ev1', 'ev2') AND time=0")
         assert rows_to_list(res) == [[2]], list(res)
 
-    @attr('single_node')
-    def reserved_keyword_test(self):
+    @pytest.mark.single_node
+    def test_reserved_keyword(self):
         session = self.prepare()
 
         session.execute("""
@@ -1469,8 +1457,8 @@ class TestCQL(Tester):
 
         assert_invalid(session, "CREATE TABLE test2 ( select text PRIMARY KEY, x int)", expected=SyntaxException)
 
-    @attr('single_node')
-    def identifier_test(self):
+    @pytest.mark.single_node
+    def test_identifier(self):
         session = self.prepare()
 
         # Test case insensitivity
@@ -1489,8 +1477,8 @@ class TestCQL(Tester):
         # Reserved keywords
         assert_invalid(session, "CREATE TABLE test1 (select int PRIMARY KEY, column int)", expected=SyntaxException)
 
-    @attr('single_node')
-    def keyspace_test(self):
+    @pytest.mark.single_node
+    def test_keyspace(self):
         session = self.prepare()
 
         assert_invalid(session, "CREATE KEYSPACE test1",
@@ -1508,8 +1496,8 @@ class TestCQL(Tester):
         session.execute(
             "CREATE KEYSPACE test2 WITH replication = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 }")
 
-    @attr('single_node')
-    def table_test(self):
+    @pytest.mark.single_node
+    def test_table(self):
         session = self.prepare()
 
         session.execute("""
@@ -1559,8 +1547,8 @@ class TestCQL(Tester):
             )
         """)
 
-    @attr('single_node')
-    def batch_test(self):
+    @pytest.mark.single_node
+    def test_batch(self):
         session = self.prepare()
 
         session.execute("""
@@ -1581,8 +1569,8 @@ class TestCQL(Tester):
         """, consistency_level=ConsistencyLevel.QUORUM)
         session.execute(query)
 
-    @attr('single_node')
-    def token_range_test(self):
+    @pytest.mark.single_node
+    def test_token_range(self):
         session = self.prepare()
 
         session.execute("""
@@ -1615,8 +1603,8 @@ class TestCQL(Tester):
                               (inOrder[32], inOrder[65]))
         assert rows_to_list(res) == [[inOrder[x]] for x in range(32, 65)], "%s [all: %s]" % (str(res), str(inOrder))
 
-    @attr('single_node')
-    def table_options_test(self):
+    @pytest.mark.single_node
+    def test_table_options(self):
         session = self.prepare()
 
         session.execute("""
@@ -1647,8 +1635,8 @@ class TestCQL(Tester):
              AND caching = '{"keys":"NONE","rows_per_partition":"ALL"}'
         """)
 
-    @attr('single_node')
-    def timestamp_and_ttl_test(self):
+    @pytest.mark.single_node
+    def test_timestamp_and_ttl(self):
         session = self.prepare()
 
         session.execute("""
@@ -1695,8 +1683,8 @@ class TestCQL(Tester):
         res = list(session.execute("SELECT k, d, writetime(d) FROM test WHERE k = 1"))
         assert rows_to_list(res) == [[1, None, None]]
 
-    @attr('single_node')
-    def no_range_ghost_test(self):
+    @pytest.mark.single_node
+    def test_no_range_ghost(self):
         session = self.prepare()
 
         session.execute("""
@@ -1744,8 +1732,8 @@ class TestCQL(Tester):
         res = session.execute("SELECT * FROM users WHERE KEY='user1'")
         assert rows_to_list(res) == [], list(res)
 
-    @attr('single_node')
-    def undefined_column_handling_test(self):
+    @pytest.mark.single_node
+    def test_undefined_column_handling(self):
         session = self.prepare()
 
         session.execute("""
@@ -1766,7 +1754,7 @@ class TestCQL(Tester):
         res = session.execute("SELECT v2 FROM test WHERE k = 1")
         assert rows_to_list(res) == [[None]], list(res)
 
-    def range_tombstones_test(self):
+    def test_range_tombstones(self):
         """ Test deletion by 'composite prefix' (range tombstones) """
         cluster = self.cluster
 
@@ -1776,7 +1764,7 @@ class TestCQL(Tester):
         time.sleep(0.2)
 
         session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'ks', 1)
+        create_ks(session, 'ks', 1)
 
         session.execute("""
             CREATE TABLE test1 (
@@ -1819,8 +1807,8 @@ class TestCQL(Tester):
             res = session.execute("SELECT v1, v2 FROM test1 WHERE k = %d" % i)
             assert rows_to_list(res) == [[x, x] for x in range(i * cpr + col1, (i + 1) * cpr)], list(res)
 
-    @attr('single_node')
-    def range_tombstones_compaction_test(self):
+    @pytest.mark.single_node
+    def test_range_tombstones_compaction(self):
         """ Test deletion by 'composite prefix' (range tombstones) with compaction """
         session = self.prepare()
 
@@ -1850,8 +1838,8 @@ class TestCQL(Tester):
         assert rows_to_list(res) == [['%i%i' % (c1, c2)] for c1 in range(0, 4)
                                      for c2 in range(0, 2) if c1 != 1], list(res)
 
-    @attr('single_node')
-    def delete_row_test(self):
+    @pytest.mark.single_node
+    def test_delete_row(self):
         """ Test deletion of rows """
         session = self.prepare()
 
@@ -1876,9 +1864,9 @@ class TestCQL(Tester):
         res = list(session.execute("SELECT * FROM test"))
         assert len(res) == 3, res
 
-    @skip('indexes')
-    @attr('single_node')
-    def range_query_2ndary_test(self):
+    @pytest.mark.skip('indexes')
+    @pytest.mark.single_node
+    def test_range_query_2ndary(self):
         """ Test range queries with 2ndary indexes (#4257) """
         session = self.prepare()
 
@@ -1895,8 +1883,8 @@ class TestCQL(Tester):
         res = session.execute("SELECT * FROM indextest WHERE setid = 0 AND row < 1 ALLOW FILTERING;")
         assert rows_to_list(res) == [[0, 0, 0]], list(res)
 
-    @attr('single_node')
-    def compression_option_validation_test(self):
+    @pytest.mark.single_node
+    def test_compression_option_validation(self):
         """ Check for unknown compression parameters options (#4266) """
         session = self.prepare()
 
@@ -1911,8 +1899,8 @@ class TestCQL(Tester):
               WITH compression = { 'sstable_compressor' : 'DeflateCompressor' };
             """, expected=ConfigurationException)
 
-    @attr('single_node')
-    def keyspace_creation_options_test(self):
+    @pytest.mark.single_node
+    def test_keyspace_creation_options(self):
         """ Check one can use arbitrary name for datacenter when creating keyspace (#4278) """
         session = self.prepare()
 
@@ -1932,8 +1920,8 @@ class TestCQL(Tester):
                      AND strategy_options:"us-west"=1;
             """)
 
-    @attr('single_node')
-    def set_test(self):
+    @pytest.mark.single_node
+    def test_set(self):
         session = self.prepare()
 
         session.execute("""
@@ -1977,8 +1965,8 @@ class TestCQL(Tester):
         else:
             assert rows_to_list(res) == [], list(res)
 
-    @attr('single_node')
-    def map_test(self):
+    @pytest.mark.single_node
+    def test_map(self):
         session = self.prepare()
 
         session.execute("""
@@ -2019,8 +2007,8 @@ class TestCQL(Tester):
         else:
             assert rows_to_list(res) == [], list(res)
 
-    @attr('single_node')
-    def list_test(self):
+    @pytest.mark.single_node
+    def test_list(self):
         session = self.prepare()
 
         session.execute("""
@@ -2039,31 +2027,31 @@ class TestCQL(Tester):
         session.execute(q % "tags = tags + [ 'foobar' ]")
 
         res = session.execute("SELECT tags FROM user")
-        self.assertCountEqual(rows_to_list(res), [[['foo', 'bar', 'foo', 'foobar']]])
+        assert rows_to_list(res) == [[['foo', 'bar', 'foo', 'foobar']]]
 
         q = "UPDATE user SET %s WHERE fn='Bilbo' AND ln='Baggins'"
         session.execute(q % "tags = [ 'a', 'c', 'b', 'c' ]")
         res = session.execute("SELECT tags FROM user WHERE fn='Bilbo' AND ln='Baggins'")
-        self.assertCountEqual(rows_to_list(res), [[['a', 'c', 'b', 'c']]])
+        assert rows_to_list(res) == [[['a', 'c', 'b', 'c']]]
 
         session.execute(q % "tags = [ 'm', 'n' ] + tags")
         res = session.execute("SELECT tags FROM user WHERE fn='Bilbo' AND ln='Baggins'")
-        self.assertCountEqual(rows_to_list(res), [[['m', 'n', 'a', 'c', 'b', 'c']]])
+        assert rows_to_list(res) == [[['m', 'n', 'a', 'c', 'b', 'c']]]
 
         session.execute(q % "tags[2] = 'foo', tags[4] = 'bar'")
         res = session.execute("SELECT tags FROM user WHERE fn='Bilbo' AND ln='Baggins'")
-        self.assertCountEqual(rows_to_list(res), [[['m', 'n', 'foo', 'c', 'bar', 'c']]])
+        assert rows_to_list(res) == [[['m', 'n', 'foo', 'c', 'bar', 'c']]]
 
         session.execute("DELETE tags[2] FROM user WHERE fn='Bilbo' AND ln='Baggins'")
         res = session.execute("SELECT tags FROM user WHERE fn='Bilbo' AND ln='Baggins'")
-        self.assertCountEqual(rows_to_list(res), [[['m', 'n', 'c', 'bar', 'c']]])
+        assert rows_to_list(res) == [[['m', 'n', 'c', 'bar', 'c']]]
 
         session.execute(q % "tags = tags - [ 'bar' ]")
         res = session.execute("SELECT tags FROM user WHERE fn='Bilbo' AND ln='Baggins'")
-        self.assertCountEqual(rows_to_list(res), [[['m', 'n', 'c', 'c']]])
+        assert rows_to_list(res) == [[['m', 'n', 'c', 'c']]]
 
-    @attr('single_node')
-    def list_prefetch_with_static_column_test(self):
+    @pytest.mark.single_node
+    def test_list_prefetch_with_static_column(self):
         # Explits https://github.com/scylladb/scylla/issues/903
         session = self.prepare()
 
@@ -2084,20 +2072,20 @@ class TestCQL(Tester):
 
         session.execute(update_q % "tags = tags - [ 'b' ]")
         res = session.execute(select_q % 'tags')
-        self.assertCountEqual(rows_to_list(res), [[['a', 'c']]])
+        assert rows_to_list(res) == [[['a', 'c']]]
         res = session.execute("select static_tags from user where fn='Tom'")
-        self.assertCountEqual(rows_to_list(res), [[['a', 'b', 'c', 'b']]])
+        assert rows_to_list(res) == [[['a', 'b', 'c', 'b']]]
 
         session.execute("update user set static_tags = static_tags - [ 'b' ] where fn='Tom'")
         res = session.execute("select static_tags from user where fn='Tom'")
-        self.assertCountEqual(rows_to_list(res), [[['a', 'c']]])
+        assert rows_to_list(res) == [[['a', 'c']]]
 
         session.execute("update user set static_tags[1] = 'b' where fn='Tom'")
         res = session.execute("select static_tags from user where fn='Tom'")
-        self.assertCountEqual(rows_to_list(res), [[['a', 'b']]])
+        assert rows_to_list(res) == [[['a', 'b']]]
 
-    @attr('single_node')
-    def collection_serialization_with_protocol_v2_test(self):
+    @pytest.mark.single_node
+    def test_collection_serialization_with_protocol_v2(self):
         session = self.prepare(protocol_version=2)
 
         session.execute("""
@@ -2113,10 +2101,10 @@ class TestCQL(Tester):
         select_q = "SELECT %s FROM user WHERE fn='Tom' AND ln='Bombadil'"
         session.execute(update_q % "tags = tags + [ 'a', 'b', 'c' ]")
         res = session.execute(select_q % 'tags')
-        self.assertCountEqual(rows_to_list(res), [[['a', 'b', 'c']]])
+        assert rows_to_list(res) == [[['a', 'b', 'c']]]
 
-    @attr('single_node')
-    def multi_collection_test(self):
+    @pytest.mark.single_node
+    def test_multi_collection(self):
         session = self.prepare()
 
         session.execute("""
@@ -2136,14 +2124,14 @@ class TestCQL(Tester):
         session.execute("UPDATE ks.foo SET M = M + {'foobar' : 4} WHERE k = b017f48f-ae67-11e1-9096-005056c00008;")
 
         res = session.execute("SELECT L, M, S FROM foo WHERE k = b017f48f-ae67-11e1-9096-005056c00008")
-        self.assertCountEqual(rows_to_list(res), [[
+        assert rows_to_list(res) == [[
             [1, 3, 5, 7, 11, 13],
             OrderedDict([('bar', 3), ('foo', 1), ('foobar', 4)]),
             sortedset([1, 3, 5, 7, 11, 13])
-        ]])
+        ]]
 
-    @attr('single_node')
-    def range_query_test(self):
+    @pytest.mark.single_node
+    def test_range_query(self):
         """ Range test query from #4372 """
         session = self.prepare()
 
@@ -2159,8 +2147,8 @@ class TestCQL(Tester):
         assert rows_to_list(res) == [[1, 1, 1, 1, 2, '2'], [1, 1, 1, 1, 3, '3'], [1, 1, 1, 1, 5, '5']], list(res)
 
     @require('#5424')
-    @attr('single_node')
-    def update_type_test(self):
+    @pytest.mark.single_node
+    def test_update_type(self):
         """ Test altering the type of a column, including the one in the primary key (#4041) """
         session = self.prepare()
 
@@ -2202,8 +2190,8 @@ class TestCQL(Tester):
             res = session.execute("SELECT * FROM test")
             assert rows_to_list(res) == [['ɸ', 'ɸ', set(['ɸ']), 'ɸ']], list(res)
 
-    @attr('single_node')
-    def composite_row_key_test(self):
+    @pytest.mark.single_node
+    def test_composite_row_key(self):
         session = self.prepare()
 
         session.execute("""
@@ -2239,8 +2227,8 @@ class TestCQL(Tester):
         res = session.execute("SELECT * FROM test WHERE token(k1, k2) > " + str(-((2 ** 63) - 1)))
         assert rows_to_list(res) == [[0, 2, 2, 2], [0, 3, 3, 3], [0, 0, 0, 0], [0, 1, 1, 1]], list(res)
 
-    @attr('single_node')
-    def row_existence_test(self):
+    @pytest.mark.single_node
+    def test_row_existence(self):
         """ Check the semantic of CQL row existence (part of #4361) """
         session = self.prepare()
 
@@ -2277,8 +2265,8 @@ class TestCQL(Tester):
         res = session.execute("SELECT * FROM test")
         assert rows_to_list(res) == [[2, 2, None, None]], list(res)
 
-    @attr('single_node')
-    def only_pk_test(self):
+    @pytest.mark.single_node
+    def test_only_pk(self):
         """ Check table with only a PK (#4361) """
         session = self.prepare()
 
@@ -2315,8 +2303,8 @@ class TestCQL(Tester):
         res = session.execute("SELECT * FROM test2")
         assert rows_to_list(res) == [[x, y] for x in range(1, -1, -1) for y in range(0, 2)], list(res)
 
-    @attr('single_node')
-    def date_test(self):
+    @pytest.mark.single_node
+    def test_date(self):
         """ Check dates are correctly recognized and validated """
         session = self.prepare()
 
@@ -2330,7 +2318,7 @@ class TestCQL(Tester):
         session.execute("INSERT INTO test (k, t) VALUES (0, '2011-02-03')")
         assert_invalid(session, "INSERT INTO test (k, t) VALUES (0, '2011-42-42')")
 
-    def range_slice_test(self):
+    def test_range_slice(self):
         """ Test a regression from #1337 """
 
         cluster = self.cluster
@@ -2340,7 +2328,7 @@ class TestCQL(Tester):
         time.sleep(0.2)
 
         session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'ks', 1)
+        create_ks(session, 'ks', 1)
 
         session.execute("""
             CREATE TABLE test (
@@ -2356,7 +2344,7 @@ class TestCQL(Tester):
         res = list(session.execute("SELECT * FROM test"))
         assert len(res) == 2, res
 
-    def min_and_max_on_sets_and_udt_test(self):
+    def test_min_and_max_on_sets_and_udt(self):
         """
         Test min() max() on collections with various element types.
         Covers testing of PR: https://github.com/scylladb/scylla/pull/6801/
@@ -2403,10 +2391,10 @@ class TestCQL(Tester):
         # test min and max on int and blob sets
         res = session.execute("select max(s1), max(s2) FROM sets")
         res_rows = rows_to_list(res)
-        debug(f"res_rows: {res_rows}")
+        logger.debug(f"res_rows: {res_rows}")
         assert res_rows == [[{-1, 1}, {b'\x02', b'\xfe'}]], res_rows
 
-    def aggregate_and_simple_selection_together_test(self):
+    def test_aggregate_and_simple_selection_together(self):
 
         session = self.prepare(ordered=True)
         session.execute("""
@@ -2427,7 +2415,7 @@ class TestCQL(Tester):
         assert rows_to_list(res) == [[2, 8]], list(res)
 
     @require("#5823")
-    def partition_key_as_secondary_index_test(self):
+    def test_partition_key_as_secondary_index(self):
 
         session = self.prepare(ordered=True)
         session.execute("""
@@ -2450,7 +2438,7 @@ class TestCQL(Tester):
         rows_set = get_rows_set_from_res(res)
         assert rows_set == {(2, 4)}, rows_set
 
-    def restricted_column_not_in_select_clause_test(self):
+    def test_restricted_column_not_in_select_clause(self):
         session = self.prepare(ordered=True)
         session.execute("""
                     CREATE TABLE test_index (
@@ -2473,8 +2461,8 @@ class TestCQL(Tester):
         rows_list = rows_to_list(res)
         assert rows_list == [[11]], rows_list
 
-    @attr('single_node')
-    def composite_index_with_pk_test(self):
+    @pytest.mark.single_node
+    def test_composite_index_with_pk(self):
 
         session = self.prepare()
         session.execute("""
@@ -2535,8 +2523,10 @@ class TestCQL(Tester):
             assert_invalid(session, "SELECT content FROM blogs WHERE time1 = 1 AND time2 = 1 AND author='foo'")
             assert_invalid(session, "SELECT content FROM blogs WHERE time1 = 1 AND time2 > 0 AND author='foo'")
 
-    @attr('next-gating', 'dtest-debug', 'single_node')
-    def limit_bugs_test(self):
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
+    @pytest.mark.single_node
+    def test_limit_bugs(self):
         """ Test for LIMIT bugs from 4579 """
 
         session = self.prepare()
@@ -2596,8 +2586,8 @@ class TestCQL(Tester):
         res = session.execute("SELECT * FROM testcf2 LIMIT 5;")  # gives 3 rows
         assert rows_to_list(res) == [[1, 1, 1], [2, 2, 2], [4, 4, 4], [3, 3, 3]], list(res)
 
-    @attr('single_node')
-    def bug_4532_test(self):
+    @pytest.mark.single_node
+    def test_bug_4532(self):
 
         session = self.prepare()
         session.execute("""
@@ -2620,8 +2610,8 @@ class TestCQL(Tester):
         assert_invalid(session, "SELECT * FROM compositetest WHERE ctime>=12345679 AND key='key3' AND ctime<=12345680 LIMIT 3;")
         assert_invalid(session, "SELECT * FROM compositetest WHERE ctime=12345679  AND key='key3' AND ctime<=12345680 LIMIT 3")
 
-    @attr('single_node')
-    def order_by_multikey_test(self):
+    @pytest.mark.single_node
+    def test_order_by_multikey(self):
         """ Test for #4612 bug and more generaly order by when multiple C* rows are queried """
 
         session = self.prepare()
@@ -2651,9 +2641,9 @@ class TestCQL(Tester):
         assert_invalid(session, "SELECT col1 FROM test ORDER BY col1;")
         assert_invalid(session, "SELECT col1 FROM test WHERE my_id > 'key1' ORDER BY col1;")
 
-    @skip("unconfigured table schema_keyspaces")
-    @attr('single_node')
-    def create_alter_options_test(self):
+    @pytest.mark.skip("unconfigured table schema_keyspaces")
+    @pytest.mark.single_node
+    def test_create_alter_options(self):
         session = self.prepare(create_keyspace=False)
 
         assert_invalid(session, "CREATE KEYSPACE ks1", expected=SyntaxException)
@@ -2699,8 +2689,8 @@ class TestCQL(Tester):
         assert_one(
             session, "SELECT columnfamily_name, min_compaction_threshold FROM system.schema_columnfamilies WHERE keyspace_name='ks1'", ['cf1', 7])
 
-    @attr('single_node')
-    def remove_range_slice_test(self):
+    @pytest.mark.single_node
+    def test_remove_range_slice(self):
         session = self.prepare()
 
         session.execute("""
@@ -2717,9 +2707,9 @@ class TestCQL(Tester):
         res = session.execute("SELECT * FROM test")
         assert rows_to_list(res) == [[0, 0], [2, 2]], list(res)
 
-    @skip('indexes')
-    @attr('single_node')
-    def indexes_composite_test(self):
+    @pytest.mark.skip('indexes')
+    @pytest.mark.single_node
+    def test_indexes_composite(self):
         session = self.prepare()
 
         session.execute("""
@@ -2757,9 +2747,9 @@ class TestCQL(Tester):
         res = session.execute("SELECT blog_id, timestamp FROM test WHERE author = 'bob'")
         assert rows_to_list(res) == [[1, 0], [1, 3], [0, 0]], list(res)
 
-    @skip('indexes')
-    @attr('single_node')
-    def refuse_in_with_indexes_test(self):
+    @pytest.mark.skip('indexes')
+    @pytest.mark.single_node
+    def test_refuse_in_with_indexes(self):
         """ Test for the validation bug of #4709 """
 
         session = self.prepare()
@@ -2774,8 +2764,8 @@ class TestCQL(Tester):
         session.execute("insert into t1  (pk, col1, col2) values ('pk3','foo3','bar3');")
         assert_invalid(session, "select * from t1 where col2 in ('bar1', 'bar2');")
 
-    @attr('single_node')
-    def validate_counter_regular_test(self):
+    @pytest.mark.single_node
+    def test_validate_counter_regular(self):
         """
         @jira_ticket CASSANDRA-4706
 
@@ -2786,8 +2776,8 @@ class TestCQL(Tester):
         assert_invalid(session, "CREATE TABLE test (id bigint PRIMARY KEY, count counter, things set<text>)",
                        matching=r"Cannot add a( non)? counter column", expected=ConfigurationException)
 
-    @attr('single_node')
-    def reversed_compact_test(self):
+    @pytest.mark.single_node
+    def test_reversed_compact(self):
         """
         @jira_ticket CASSANDRA-4716
 
@@ -2856,8 +2846,8 @@ class TestCQL(Tester):
         res = session.execute("SELECT c FROM test2 WHERE c >= 2 AND c <= 6 AND k = 'foo' ORDER BY c DESC")
         assert rows_to_list(res) == [[6], [5], [4], [3], [2]], list(res)
 
-    @attr('single_node')
-    def unescaped_string_test(self):
+    @pytest.mark.single_node
+    def test_unescaped_string(self):
         """
         Test that unescaped strings in CQL statements raise syntax exceptions.
         """
@@ -2876,8 +2866,8 @@ class TestCQL(Tester):
         assert_invalid(session, "INSERT INTO test (k, c) VALUES ('foo', 'CQL is cassandra\'s best friend')",
                        expected=SyntaxException)
 
-    @attr('single_node')
-    def reversed_compact_multikey_test(self):
+    @pytest.mark.single_node
+    def test_reversed_compact_multikey(self):
         """
         @jira_ticket CASSANDRA-4760
         @jira_ticket CASSANDRA-4759
@@ -2958,8 +2948,8 @@ class TestCQL(Tester):
         res = session.execute("SELECT c1, c2 FROM test WHERE key='foo' AND c1 <= 1 ORDER BY c1 DESC, c2 DESC")
         assert rows_to_list(res) == [[1, 2], [1, 1], [1, 0], [0, 2], [0, 1], [0, 0]], list(res)
 
-    @attr('single_node')
-    def collection_and_regular_test(self):
+    @pytest.mark.single_node
+    def test_collection_and_regular(self):
 
         session = self.prepare()
 
@@ -2974,10 +2964,10 @@ class TestCQL(Tester):
         session.execute("INSERT INTO test(k, l, c) VALUES(3, [0, 1, 2], 4)")
         session.execute("UPDATE test SET l[0] = 1, c = 42 WHERE k = 3")
         res = session.execute("SELECT l, c FROM test WHERE k = 3")
-        self.assertCountEqual(rows_to_list(res), [[[1, 1, 2], 42]])
+        assert rows_to_list(res) == [[[1, 1, 2], 42]]
 
-    @attr('single_node')
-    def batch_and_list_test(self):
+    @pytest.mark.single_node
+    def test_batch_and_list(self):
         session = self.prepare()
 
         session.execute("""
@@ -2996,7 +2986,7 @@ class TestCQL(Tester):
         """)
 
         res = session.execute("SELECT l FROM test WHERE k = 0")
-        self.assertCountEqual(rows_to_list(res[0]), [[1, 2, 3]])
+        assert rows_to_list(res[0]) == [[1, 2, 3]]
 
         session.execute("""
           BEGIN BATCH
@@ -3007,10 +2997,10 @@ class TestCQL(Tester):
         """)
 
         res = session.execute("SELECT l FROM test WHERE k = 1")
-        self.assertCountEqual(rows_to_list(res[0]), [[3, 2, 1]])
+        assert rows_to_list(res[0]) == [[3, 2, 1]]
 
-    @attr('single_node')
-    def boolean_test(self):
+    @pytest.mark.single_node
+    def test_boolean(self):
         session = self.prepare()
 
         session.execute("""
@@ -3024,8 +3014,10 @@ class TestCQL(Tester):
         res = session.execute("SELECT * FROM test WHERE k = true")
         assert rows_to_list(res) == [[True, False]], list(res)
 
-    @attr('next-gating', 'dtest-debug', 'single_node')
-    def multiordering_test(self):
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
+    @pytest.mark.single_node
+    def test_multiordering(self):
         session = self.prepare()
         session.execute("""
             CREATE TABLE test (
@@ -3053,8 +3045,8 @@ class TestCQL(Tester):
         assert_invalid(session, "SELECT c1, c2 FROM test WHERE k = 'foo' ORDER BY c2 ASC")
         assert_invalid(session, "SELECT c1, c2 FROM test WHERE k = 'foo' ORDER BY c1 ASC, c2 ASC")
 
-    @attr('single_node')
-    def multiordering_validation_test(self):
+    @pytest.mark.single_node
+    def test_multiordering_validation(self):
         session = self.prepare()
 
         assert_invalid(
@@ -3069,8 +3061,8 @@ class TestCQL(Tester):
         session.execute(
             "CREATE TABLE test2 (k int, c1 int, c2 int, PRIMARY KEY (k, c1, c2)) WITH CLUSTERING ORDER BY (c1 ASC, c2 DESC)")
 
-    @attr('single_node')
-    def bug_4882_test(self):
+    @pytest.mark.single_node
+    def test_bug_4882(self):
         session = self.prepare()
 
         session.execute("""
@@ -3091,8 +3083,8 @@ class TestCQL(Tester):
         res = session.execute("select * from test where k = 0 limit 1;")
         assert rows_to_list(res) == [[0, 0, 2, 2]], list(res)
 
-    @attr('single_node')
-    def multi_list_set_test(self):
+    @pytest.mark.single_node
+    def test_multi_list_set(self):
         session = self.prepare()
 
         session.execute("""
@@ -3107,11 +3099,11 @@ class TestCQL(Tester):
         session.execute("UPDATE test SET l2[1] = 42, l1[1] = 24  WHERE k = 0")
 
         res = session.execute("SELECT l1, l2 FROM test WHERE k = 0")
-        self.assertCountEqual(rows_to_list(res), [[[1, 24, 3], [4, 42, 6]]])
+        assert rows_to_list(res) == [[[1, 24, 3], [4, 42, 6]]]
 
-    @skip('indexes')
-    @attr('single_node')
-    def composite_index_collections_test(self):
+    @pytest.mark.skip('indexes')
+    @pytest.mark.single_node
+    def test_composite_index_collections(self):
         session = self.prepare()
         session.execute("""
             CREATE TABLE blogs (
@@ -3136,8 +3128,8 @@ class TestCQL(Tester):
         assert rows_to_list(res) == [[1, set(['bar1', 'bar2'])], [
             1, set(['bar2', 'bar3'])], [2, set(['baz'])]], list(res)
 
-    @attr('single_node')
-    def truncate_clean_cache_test(self):
+    @pytest.mark.single_node
+    def test_truncate_clean_cache(self):
         session = self.prepare(use_cache=True)
 
         session.execute("""
@@ -3159,8 +3151,10 @@ class TestCQL(Tester):
         res = session.execute("SELECT v1, v2 FROM test WHERE k IN (0, 1, 2)")
         assert rows_to_list(res) == [], list(res)
 
-    @attr('next-gating', 'dtest-debug', 'single_node')
-    def allow_filtering_test(self):
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
+    @pytest.mark.single_node
+    def test_allow_filtering(self):
         """
         test queries with multiple restrictions.
         see where 'allow_filtering' is optional and when it is required.
@@ -3196,8 +3190,8 @@ class TestCQL(Tester):
             self._assert_valid_query(session=session, query=q + " ALLOW FILTERING")
             self._assert_invalid_filtering(session=session, query=q)
 
-    @attr('single_node')
-    def allow_filtering_secondary_indexes_test(self):
+    @pytest.mark.single_node
+    def test_allow_filtering_secondary_indexes(self):
         """
                 test queries with multiple restrictions + secondary indexes.
                 see where 'allow_filtering' is optional and when it is required.
@@ -3230,8 +3224,10 @@ class TestCQL(Tester):
             self._assert_invalid_filtering(session=session, query=q)
             self._assert_valid_query(session=session, query=q + " ALLOW FILTERING")
 
-    @attr('next-gating', 'dtest-debug', 'single_node')
-    def range_with_deletes_test(self):
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
+    @pytest.mark.single_node
+    def test_range_with_deletes(self):
         session = self.prepare()
 
         session.execute("""
@@ -3253,8 +3249,8 @@ class TestCQL(Tester):
         res = list(session.execute("SELECT * FROM test LIMIT %d" % (nb_keys / 2)))
         assert len(res) == nb_keys / 2, "Expected %d but got %d" % (nb_keys / 2, len(res))
 
-    @attr('single_node')
-    def alter_with_collections_test(self):
+    @pytest.mark.single_node
+    def test_alter_with_collections(self):
         """
         @jira_ticket CASSANDRA-4982
 
@@ -3267,8 +3263,8 @@ class TestCQL(Tester):
         session.execute("ALTER TABLE collections ADD c text")
         session.execute("ALTER TABLE collections ADD alist list<text>")
 
-    @attr('single_node')
-    def collection_compact_test(self):
+    @pytest.mark.single_node
+    def test_collection_compact(self):
         session = self.prepare()
 
         assert_invalid(session, """
@@ -3278,8 +3274,8 @@ class TestCQL(Tester):
             ) WITH COMPACT STORAGE;
         """)
 
-    @attr('single_node')
-    def collection_function_test(self):
+    @pytest.mark.single_node
+    def test_collection_function(self):
         session = self.prepare()
 
         session.execute("""
@@ -3292,8 +3288,8 @@ class TestCQL(Tester):
         assert_invalid(session, "SELECT ttl(l) FROM test WHERE k = 0")
         assert_invalid(session, "SELECT writetime(l) FROM test WHERE k = 0")
 
-    @attr('single_node')
-    def collection_counter_test(self):
+    @pytest.mark.single_node
+    def test_collection_counter(self):
         session = self.prepare()
 
         assert_invalid(session, """
@@ -3317,8 +3313,8 @@ class TestCQL(Tester):
             )
         """, expected=(InvalidRequest, SyntaxException))
 
-    @attr('single_node')
-    def composite_partition_key_validation_test(self):
+    @pytest.mark.single_node
+    def test_composite_partition_key_validation(self):
         """
         @jira_ticket CASSANDRA-5122
 
@@ -3337,8 +3333,8 @@ class TestCQL(Tester):
 
         assert_invalid(session, "SELECT * FROM foo WHERE a=1")
 
-    @attr('single_node')
-    def large_clustering_in_test(self):
+    @pytest.mark.single_node
+    def test_large_clustering_in(self):
         """
         @jira_ticket CASSANDRA-8410
         """
@@ -3361,8 +3357,8 @@ class TestCQL(Tester):
 
         # try to fetch one existing row and 9999 non-existing rows
         rows = list(session.execute(select_statement, [0, in_values]))
-        self.assertEqual(1, len(rows))
-        self.assertEqual((0, 0, 0), rows[0])
+        assert 1 == len(rows)
+        assert (0, 0, 0) == rows[0]
 
         # insert approximately 1000 random rows between 0 and 10k
         clustering_values = set([random.randint(0, 9999) for _ in range(1000)])
@@ -3372,11 +3368,10 @@ class TestCQL(Tester):
 
         rows = list(session.execute(select_statement, [0, in_values]))
         expected_rows = [v for v in clustering_values if v in in_values]
-        self.assertEqual(len(expected_rows), len(rows),
-                         msg="expected_rows={} rows={}".format(expected_rows, rows))
+        assert len(expected_rows) == len(rows), "expected_rows={} rows={}".format(expected_rows, rows)
 
-    @attr('single_node')
-    def timeuuid_test(self):
+    @pytest.mark.single_node
+    def test_timeuuid(self):
         session = self.prepare()
 
         session.execute("""
@@ -3416,8 +3411,8 @@ class TestCQL(Tester):
             "SELECT t FROM test WHERE k = 0 AND t > maxTimeuuid(1234567) AND t < minTimeuuid('2012-11-07 18:18:22-0800')")
         # not sure what to check exactly so just checking the query returns
 
-    @attr('single_node')
-    def cql_tinyint_type_test(self):
+    @pytest.mark.single_node
+    def test_cql_tinyint_type(self):
         session = self.prepare()
 
         session.execute("""
@@ -3436,11 +3431,11 @@ class TestCQL(Tester):
         res = list(session.execute("SELECT * FROM test"))
         assert len(res) == 2, res
 
-        self.assertEqual(-128, res[0].t)
-        self.assertEqual(127,  res[1].t)
+        assert -128 == res[0].t
+        assert 127 == res[1].t
 
-    @attr('single_node')
-    def cql_smallint_type_test(self):
+    @pytest.mark.single_node
+    def test_cql_smallint_type(self):
         session = self.prepare()
 
         session.execute("""
@@ -3459,11 +3454,11 @@ class TestCQL(Tester):
         res = list(session.execute("SELECT * FROM test"))
         assert len(res) == 2, res
 
-        self.assertEqual(-32768, res[0].t)
-        self.assertEqual(32767,  res[1].t)
+        assert -32768 == res[0].t
+        assert 32767 == res[1].t
 
-    @attr('single_node')
-    def cql_date_type_test(self):
+    @pytest.mark.single_node
+    def test_cql_date_type(self):
         session = self.prepare()
 
         session.execute("""
@@ -3483,12 +3478,12 @@ class TestCQL(Tester):
         res = list(session.execute("SELECT * FROM test"))
         assert len(res) == 3, res
 
-        self.assertEqual("-2147483648", str(res[0].t))
-        self.assertEqual("1970-01-01",  str(res[1].t))
-        self.assertEqual("2147483647",  str(res[2].t))
+        assert "-2147483648" == str(res[0].t)
+        assert "1970-01-01" == str(res[1].t)
+        assert "2147483647" == str(res[2].t)
 
-    @attr('single_node')
-    def cql_time_type_test(self):
+    @pytest.mark.single_node
+    def test_cql_time_type(self):
         session = self.prepare()
 
         session.execute("""
@@ -3508,12 +3503,12 @@ class TestCQL(Tester):
         res = list(session.execute("SELECT * FROM test"))
         assert len(res) == 3, res
 
-        self.assertEqual("14:53:12.123400000", str(res[0].t))
-        self.assertEqual("14:53:12.000000000", str(res[1].t))
-        self.assertEqual("14:53:12.123456789", str(res[2].t))
+        assert "14:53:12.123400000" == str(res[0].t)
+        assert "14:53:12.000000000" == str(res[1].t)
+        assert "14:53:12.123456789" == str(res[2].t)
 
-    @attr('single_node')
-    def float_with_exponent_test(self):
+    @pytest.mark.single_node
+    def test_float_with_exponent(self):
         session = self.prepare()
 
         session.execute("""
@@ -3528,8 +3523,8 @@ class TestCQL(Tester):
         session.execute("INSERT INTO test(k, d, f) VALUES (1, 3.E10, -23.44E-3)")
         session.execute("INSERT INTO test(k, d, f) VALUES (2, 3, -2)")
 
-    @attr('single_node')
-    def compact_metadata_test(self):
+    @pytest.mark.single_node
+    def test_compact_metadata(self):
         """
         @jira_ticket CASSANDRA-5189
 
@@ -3548,9 +3543,9 @@ class TestCQL(Tester):
         res = session.execute("SELECT * FROM bar")
         assert rows_to_list(res) == [[1, 2]], list(res)
 
-    @skip('indexes')
-    @attr('single_node')
-    def clustering_indexing_test(self):
+    @pytest.mark.skip('indexes')
+    @pytest.mark.single_node
+    def test_clustering_indexing(self):
         session = self.prepare()
 
         session.execute("""
@@ -3592,8 +3587,8 @@ class TestCQL(Tester):
         res = session.execute("SELECT v1 FROM posts WHERE time = 1")
         assert rows_to_list(res) == [['B'], ['E']], list(res)
 
-    @attr('single_node')
-    def invalid_clustering_indexing_test(self):
+    @pytest.mark.single_node
+    def test_invalid_clustering_indexing(self):
         session = self.prepare()
 
         session.execute("CREATE TABLE test1 (a int, b int, c int, d int, PRIMARY KEY ((a, b))) WITH COMPACT STORAGE")
@@ -3608,9 +3603,9 @@ class TestCQL(Tester):
         session.execute("CREATE TABLE test3 (a int, b int, c int static , PRIMARY KEY (a, b))")
         assert_invalid(session, "CREATE INDEX ON test3(c)")
 
-    @skip('indexes')
-    @attr('single_node')
-    def edge_2i_on_complex_pk_test(self):
+    @pytest.mark.skip('indexes')
+    @pytest.mark.single_node
+    def test_edge_2i_on_complex_pk(self):
         session = self.prepare()
 
         session.execute("""
@@ -3638,21 +3633,21 @@ class TestCQL(Tester):
         session.execute("INSERT INTO indexed (pk0, pk1, ck0, ck1, ck2, value) VALUES (5, 0, 1, 2, 3, 4)")
 
         res = session.execute("SELECT value FROM indexed WHERE pk0 = 2")
-        self.assertEqual([[1]], rows_to_list(res))
+        assert [[1]] == rows_to_list(res)
 
         res = session.execute("SELECT value FROM indexed WHERE ck0 = 0")
-        self.assertEqual([[3]], rows_to_list(res))
+        assert [[3]] == rows_to_list(res)
 
         res = session.execute("SELECT value FROM indexed WHERE pk0 = 3 AND pk1 = 4 AND ck1 = 0")
-        self.assertEqual([[2]], rows_to_list(res))
+        assert [[2]] == rows_to_list(res)
 
         res = session.execute(
             "SELECT value FROM indexed WHERE pk0 = 5 AND pk1 = 0 AND ck0 = 1 AND ck2 = 3")
-        self.assertEqual([[4]], rows_to_list(res))
+        assert [[4]] == rows_to_list(res)
 
-    @skip('indexes')
-    @attr('single_node')
-    def bug_5240_test(self):
+    @pytest.mark.skip('indexes')
+    @pytest.mark.single_node
+    def test_bug_5240(self):
         session = self.prepare()
 
         session.execute("""
@@ -3679,8 +3674,8 @@ class TestCQL(Tester):
         res = session.execute("select * from test where severity = 3 and interval = 't' and seq =1;")
         assert rows_to_list(res) == [['t', 1, 4, 3]], list(res)
 
-    @attr('single_node')
-    def ticket_5230_test(self):
+    @pytest.mark.single_node
+    def test_ticket_5230(self):
         session = self.prepare()
 
         session.execute("""
@@ -3699,8 +3694,8 @@ class TestCQL(Tester):
         res = session.execute("SELECT c FROM foo WHERE key = 'foo' AND c IN ('1', '2');")
         assert rows_to_list(res) == [['1'], ['2']], list(res)
 
-    @attr('single_node')
-    def conversion_functions_test(self):
+    @pytest.mark.single_node
+    def test_conversion_functions(self):
         session = self.prepare()
 
         session.execute("""
@@ -3715,8 +3710,8 @@ class TestCQL(Tester):
         res = session.execute("SELECT i, blobAsText(b) FROM test WHERE k = 0")
         assert rows_to_list(res) == [[3, 'foobar']], list(res)
 
-    @attr('single_node')
-    def alter_bug_test(self):
+    @pytest.mark.single_node
+    def test_alter_bug(self):
         """
         @jira_ticket CASSANDRA-5232
         """
@@ -3737,7 +3732,7 @@ class TestCQL(Tester):
         res = session.execute("SELECT * FROM t1;")
         assert rows_to_list(res) == [[1, None, None, '111']], list(res)
 
-    @attr('single_node')
+    @pytest.mark.single_node
     def bug_5376(self):
         session = self.prepare()
 
@@ -3753,8 +3748,8 @@ class TestCQL(Tester):
 
         assert_invalid(session, "select * from test where key = 'foo' and c in (1,3,4);")
 
-    @attr('single_node')
-    def function_and_reverse_type_test(self):
+    @pytest.mark.single_node
+    def test_function_and_reverse_type(self):
         """
         @jira_ticket CASSANDRA-5386
         """
@@ -3771,7 +3766,7 @@ class TestCQL(Tester):
 
         session.execute("INSERT INTO test (k, c, v) VALUES (0, now(), 0);")
 
-    @attr('single_node')
+    @pytest.mark.single_node
     def bug_5404(self):
         session = self.prepare()
 
@@ -3779,8 +3774,8 @@ class TestCQL(Tester):
         # We just want to make sure this doesn't NPE server side
         assert_invalid(session, "select * from test where token(key) > token(int(3030343330393233)) limit 1;")
 
-    @attr('single_node')
-    def empty_blob_test(self):
+    @pytest.mark.single_node
+    def test_empty_blob(self):
         session = self.prepare()
 
         session.execute("CREATE TABLE test (k int PRIMARY KEY, b blob)")
@@ -3788,8 +3783,8 @@ class TestCQL(Tester):
         res = session.execute("SELECT * FROM test")
         assert rows_to_list(res) == [[0, b'']], list(rows_to_list(res))
 
-    @attr('single_node')
-    def rename_test(self):
+    @pytest.mark.single_node
+    def test_rename(self):
         session = self.prepare(start_rpc=True)
 
         node = self.cluster.nodelist()[0]
@@ -3815,8 +3810,8 @@ class TestCQL(Tester):
         session.execute("ALTER TABLE test RENAME column1 TO foo1 AND column2 TO foo2 AND column3 TO foo3")
         assert_one(session, "SELECT foo1, foo2, foo3 FROM test", [4, 3, 2])
 
-    @attr('single_node')
-    def clustering_order_and_functions_test(self):
+    @pytest.mark.single_node
+    def test_clustering_order_and_functions(self):
         session = self.prepare()
 
         session.execute("""
@@ -3832,8 +3827,8 @@ class TestCQL(Tester):
 
         session.execute("SELECT dateOf(t) FROM test")
 
-    @attr('single_node')
-    def conditional_update_test(self):
+    @pytest.mark.single_node
+    def test_conditional_update(self):
         session = self.prepare()
 
         session.execute("""
@@ -3907,8 +3902,8 @@ class TestCQL(Tester):
             # Should apply
             assert_one(session, "DELETE FROM test WHERE k = 0 IF v1 IN (null)", [True, None])
 
-    @attr('single_node')
-    def non_eq_conditional_update_test(self):
+    @pytest.mark.single_node
+    def test_non_eq_conditional_update(self):
         session = self.prepare()
 
         session.execute("""
@@ -3932,8 +3927,8 @@ class TestCQL(Tester):
         assert_one(session, "UPDATE test SET v2 = 'bar' WHERE k = 0 IF v1 IN (142, 276)", [False, 2])
         assert_one(session, "UPDATE test SET v2 = 'bar' WHERE k = 0 IF v1 IN ()", [False, 2])
 
-    @attr('single_node')
-    def conditional_delete_test(self):
+    @pytest.mark.single_node
+    def test_conditional_delete(self):
         session = self.prepare()
 
         session.execute("""
@@ -3991,8 +3986,8 @@ class TestCQL(Tester):
             assert_invalid(session, "DELETE FROM test2 WHERE k = 0 AND i > 0 IF EXISTS")
             assert_invalid(session, "DELETE FROM test2 WHERE k = 0 AND i > 0 IF v = 'foo'")
 
-    @attr('single_node')
-    def range_key_ordered_test(self):
+    @pytest.mark.single_node
+    def test_range_key_ordered(self):
         session = self.prepare()
 
         session.execute("CREATE TABLE test ( k int PRIMARY KEY)")
@@ -4004,8 +3999,8 @@ class TestCQL(Tester):
         assert_all(session, "SELECT * FROM test", [[1], [0], [-1]])
         assert_invalid(session, "SELECT * FROM test WHERE k >= -1 AND k < 1;")
 
-    @attr('single_node')
-    def select_with_alias_test(self):
+    @pytest.mark.single_node
+    def test_select_with_alias(self):
         session = self.prepare()
         session.execute('CREATE TABLE users (id int PRIMARY KEY, name text)')
 
@@ -4014,28 +4009,28 @@ class TestCQL(Tester):
 
         # test aliasing count(*)
         res = list(session.execute('SELECT count(*) AS user_count FROM users'))
-        self.assertEqual('user_count', res[0]._fields[0])
-        self.assertEqual(5, res[0].user_count)
+        assert 'user_count' == res[0]._fields[0]
+        assert 5 == res[0].user_count
 
         # test aliasing regular value
         res = list(session.execute('SELECT name AS user_name FROM users WHERE id = 0'))
-        self.assertEqual('user_name', res[0]._fields[0])
-        self.assertEqual('name0', res[0].user_name)
+        assert 'user_name' == res[0]._fields[0]
+        assert 'name0' == res[0].user_name
 
         # test aliasing writetime
         res = list(session.execute('SELECT writeTime(name) AS name_writetime FROM users WHERE id = 0'))
-        self.assertEqual('name_writetime', res[0]._fields[0])
-        self.assertEqual(0, res[0].name_writetime)
+        assert 'name_writetime' == res[0]._fields[0]
+        assert 0 == res[0].name_writetime
 
         # test aliasing ttl
         res = list(session.execute('SELECT ttl(name) AS name_ttl FROM users WHERE id = 0'))
-        self.assertEqual('name_ttl', res[0]._fields[0])
+        assert 'name_ttl' == res[0]._fields[0]
         assert res[0].name_ttl in (9, 10)
 
         # test aliasing a regular function
         res = list(session.execute('SELECT intAsBlob(id) AS id_blob FROM users WHERE id = 0'))
-        self.assertEqual('id_blob', res[0]._fields[0])
-        self.assertEqual(b'\x00\x00\x00\x00', res[0].id_blob)
+        assert 'id_blob' == res[0]._fields[0]
+        assert b'\x00\x00\x00\x00' == res[0].id_blob
 
         # test that select throws a meaningful exception for aliases in where clause
         assert_invalid(session, 'SELECT id AS user_id, name AS user_name FROM users WHERE user_id = 0',
@@ -4045,8 +4040,8 @@ class TestCQL(Tester):
         assert_invalid(session, 'SELECT id AS user_id, name AS user_name FROM users WHERE id IN (0) ORDER BY user_name',
                        matching="Aliases are not allowed in order by clause")
 
-    @attr('single_node')
-    def nonpure_function_collection_test(self):
+    @pytest.mark.single_node
+    def test_nonpure_function_collection(self):
         """
         @jira_ticket CASSANDRA-5795
         """
@@ -4057,8 +4052,8 @@ class TestCQL(Tester):
         # we just want to make sure this doesn't throw
         session.execute("INSERT INTO test(k, v) VALUES (0, [now()])")
 
-    @attr('single_node')
-    def empty_in_test(self):
+    @pytest.mark.single_node
+    def test_empty_in(self):
         session = self.prepare()
         session.execute("CREATE TABLE test (k1 int, k2 int, v int, PRIMARY KEY (k1, k2))")
 
@@ -4069,7 +4064,7 @@ class TestCQL(Tester):
 
         def assert_nothing_changed(table):
             res = session.execute("SELECT * FROM %s" % table)  # make sure nothing got removed
-            self.assertEqual([[0, 0, 0], [0, 1, 1], [1, 0, 1], [1, 1, 2]], rows_to_list(sorted(res)))
+            assert [[0, 0, 0], [0, 1, 1], [1, 0, 1], [1, 1, 2]] == rows_to_list(sorted(res))
 
         # Inserts a few rows to make sure we don't actually query something
         fill("test")
@@ -4102,8 +4097,8 @@ class TestCQL(Tester):
         session.execute("UPDATE test_compact SET v = 3 WHERE k1 IN () AND k2 = 2")
         assert_nothing_changed("test_compact")
 
-    @attr('single_node')
-    def collection_flush_test(self):
+    @pytest.mark.single_node
+    def test_collection_flush(self):
         """
         @jira_ticket CASSANDRA-5805
         """
@@ -4118,8 +4113,8 @@ class TestCQL(Tester):
 
         assert_one(session, "SELECT * FROM test", [1, set([2])])
 
-    @attr('single_node')
-    def select_distinct_test(self):
+    @pytest.mark.single_node
+    def test_select_distinct(self):
         session = self.prepare()
 
         # Test a regular (CQL3) table.
@@ -4130,10 +4125,10 @@ class TestCQL(Tester):
             session.execute('INSERT INTO regular (pk0, pk1, ck0, val) VALUES (%d, %d, 1, 1)' % (i, i))
 
         res = session.execute('SELECT DISTINCT pk0, pk1 FROM regular LIMIT 1')
-        self.assertEqual([[0, 0]], rows_to_list(res))
+        assert [[0, 0]] == rows_to_list(res)
 
         res = session.execute('SELECT DISTINCT pk0, pk1 FROM regular LIMIT 3')
-        self.assertEqual([[0, 0], [1, 1], [2, 2]], rows_to_list(sorted(res)))
+        assert [[0, 0], [1, 1], [2, 2]] == rows_to_list(sorted(res))
 
         # Test a 'compact storage' table.
         session.execute('CREATE TABLE compact (pk0 int, pk1 int, val int, PRIMARY KEY((pk0, pk1))) WITH COMPACT STORAGE')
@@ -4142,10 +4137,10 @@ class TestCQL(Tester):
             session.execute('INSERT INTO compact (pk0, pk1, val) VALUES (%d, %d, %d)' % (i, i, i))
 
         res = session.execute('SELECT DISTINCT pk0, pk1 FROM compact LIMIT 1')
-        self.assertEqual([[0, 0]], rows_to_list(res))
+        assert [[0, 0]] == rows_to_list(res)
 
         res = list(session.execute('SELECT DISTINCT pk0, pk1 FROM compact LIMIT 3'))
-        self.assertEqual([[0, 0], [1, 1], [2, 2]], rows_to_list(sorted(res)))
+        assert [[0, 0], [1, 1], [2, 2]] == rows_to_list(sorted(res))
 
         # Test a 'wide row' thrift table.
         session.execute('CREATE TABLE wide (pk int, name text, val int, PRIMARY KEY(pk, name)) WITH COMPACT STORAGE')
@@ -4155,10 +4150,10 @@ class TestCQL(Tester):
             session.execute("INSERT INTO wide (pk, name, val) VALUES (%d, 'name1', 1)" % i)
 
         res = session.execute('SELECT DISTINCT pk FROM wide LIMIT 1')
-        self.assertEqual([[1]], rows_to_list(res))
+        assert [[1]] == rows_to_list(res)
 
         res = list(session.execute('SELECT DISTINCT pk FROM wide LIMIT 3'))
-        self.assertEqual([[0], [1], [2]], rows_to_list(sorted(res)))
+        assert [[0], [1], [2]] == rows_to_list(sorted(res))
 
         # Test selection validation.
         assert_invalid(session, 'SELECT DISTINCT pk0 FROM regular',
@@ -4166,30 +4161,30 @@ class TestCQL(Tester):
         assert_invalid(session, 'SELECT DISTINCT pk0, pk1, ck0 FROM regular',
                        matching="queries must only request partition key columns")
 
-    @attr('single_node')
-    def select_distinct_with_deletions_test(self):
+    @pytest.mark.single_node
+    def test_select_distinct_with_deletions(self):
         session = self.prepare()
         session.execute('CREATE TABLE t1 (k int PRIMARY KEY, c int, v int)')
         for i in range(10):
             session.execute('INSERT INTO t1 (k, c, v) VALUES (%d, %d, %d)' % (i, i, i))
 
         rows = list(session.execute('SELECT DISTINCT k FROM t1'))
-        self.assertEqual(10, len(rows))
+        assert 10 == len(rows)
         key_to_delete = rows[3].k
 
         session.execute('DELETE FROM t1 WHERE k=%d' % (key_to_delete,))
         rows = list(session.execute('SELECT DISTINCT k FROM t1'))
-        self.assertEqual(9, len(rows))
+        assert 9 == len(rows)
 
         rows = list(session.execute('SELECT DISTINCT k FROM t1 LIMIT 5'))
-        self.assertEqual(5, len(rows))
+        assert 5 == len(rows)
 
         session.default_fetch_size = 5
         rows = list(session.execute('SELECT DISTINCT k FROM t1'))
-        self.assertEqual(9, len(rows))
+        assert 9 == len(rows)
 
-    @attr('single_node')
-    def function_with_null_test(self):
+    @pytest.mark.single_node
+    def test_function_with_null(self):
         session = self.prepare()
 
         session.execute("""
@@ -4202,7 +4197,7 @@ class TestCQL(Tester):
         session.execute("INSERT INTO test(k) VALUES (0)")
         assert_one(session, "SELECT dateOf(t) FROM test WHERE k=0", [None])
 
-    def cas_simple_test(self):
+    def test_cas_simple(self):
         session = self.prepare(nodes=3, rf=3)
 
         session.execute("CREATE TABLE tkns (tkn int, consumed boolean, PRIMARY KEY (tkn));")
@@ -4216,9 +4211,9 @@ class TestCQL(Tester):
             assert_one(session, "UPDATE tkns SET consumed = TRUE WHERE tkn = %i IF consumed = FALSE;" %
                        i, [False, True], cl=ConsistencyLevel.QUORUM)
 
-    @skip('indexes')
-    @attr('single_node')
-    def bug_6050_test(self):
+    @pytest.mark.skip('indexes')
+    @pytest.mark.single_node
+    def test_bug_6050(self):
         session = self.prepare()
 
         session.execute("""
@@ -4232,8 +4227,8 @@ class TestCQL(Tester):
         session.execute("CREATE INDEX ON test(a)")
         assert_invalid(session, "SELECT * FROM test WHERE a = 3 AND b IN (1, 3)")
 
-    @attr('single_node')
-    def bug_6069_test(self):
+    @pytest.mark.single_node
+    def test_bug_6069(self):
         session = self.prepare()
 
         session.execute("""
@@ -4246,8 +4241,8 @@ class TestCQL(Tester):
         assert_one(session, "INSERT INTO test(k, s) VALUES (0, {1, 2, 3}) IF NOT EXISTS", [True, None, None])
         assert_one(session, "SELECT * FROM test", [0, {1, 2, 3}])
 
-    @attr('single_node')
-    def bug_6115_test(self):
+    @pytest.mark.single_node
+    def test_bug_6115(self):
         session = self.prepare()
 
         session.execute("CREATE TABLE test (k int, v int, PRIMARY KEY (k, v))")
@@ -4257,14 +4252,14 @@ class TestCQL(Tester):
 
         assert_one(session, "SELECT * FROM test", [0, 2])
 
-    @attr('single_node')
+    @pytest.mark.single_node
     def secondary_index_counters(self):
         session = self.prepare()
         session.execute("CREATE TABLE test (k int PRIMARY KEY, c counter)")
         assert_invalid(session, "CREATE INDEX ON test(c)")
 
-    @attr('single_node')
-    def column_name_validation_test(self):
+    @pytest.mark.single_node
+    def test_column_name_validation(self):
         session = self.prepare()
 
         session.execute("""
@@ -4284,8 +4279,8 @@ class TestCQL(Tester):
         # Insert a non-version 1 uuid
         assert_invalid(session, "INSERT INTO test(k, c, v) VALUES (0, 0, 550e8400-e29b-41d4-a716-446655440000)")
 
-    @attr('single_node')
-    def bug_6327_test(self):
+    @pytest.mark.single_node
+    def test_bug_6327(self):
         session = self.prepare()
 
         session.execute("""
@@ -4300,8 +4295,8 @@ class TestCQL(Tester):
         self.cluster.flush()
         assert_one(session, "SELECT v FROM test WHERE k=0 AND v IN (1, 0)", [0])
 
-    @attr('single_node')
-    def large_count_test(self):
+    @pytest.mark.single_node
+    def test_large_count(self):
         session = self.prepare()
 
         session.execute("""
@@ -4333,8 +4328,8 @@ class TestCQL(Tester):
 
         assert_one(session, "SELECT COUNT(*) FROM test", [15000])
 
-    @attr('single_node')
-    def nan_infinity_test(self):
+    @pytest.mark.single_node
+    def test_nan_infinity(self):
         session = self.prepare()
 
         session.execute("CREATE TABLE test (f float PRIMARY KEY)")
@@ -4354,8 +4349,8 @@ class TestCQL(Tester):
         assert selected[1] == [float("inf")]
         assert selected[2] == [float("-inf")]
 
-    @attr('single_node')
-    def static_columns_test(self):
+    @pytest.mark.single_node
+    def test_static_columns(self):
         session = self.prepare()
 
         session.execute("""
@@ -4424,8 +4419,8 @@ class TestCQL(Tester):
         session.execute("ALTER TABLE test DROP s2")
         assert_all(session, "SELECT * FROM test", [[0, 1, None, 1], [0, 2, None, 2]])
 
-    @attr('single_node')
-    def static_columns_cas_test(self):
+    @pytest.mark.single_node
+    def test_static_columns_cas(self):
         session = self.prepare()
 
         session.execute("""
@@ -4559,9 +4554,9 @@ class TestCQL(Tester):
                              APPLY BATCH
                            """)
 
-    @skip('indexes')
-    @attr('single_node')
-    def static_columns_with_2i_test(self):
+    @pytest.mark.skip('indexes')
+    @pytest.mark.single_node
+    def test_static_columns_with_2i(self):
         session = self.prepare()
 
         session.execute("""
@@ -4586,8 +4581,8 @@ class TestCQL(Tester):
         # We don't support that
         assert_invalid(session, "SELECT s FROM test WHERE v = 1")
 
-    @attr('single_node')
-    def static_columns_with_distinct_test(self):
+    @pytest.mark.single_node
+    def test_static_columns_with_distinct(self):
         session = self.prepare()
 
         session.execute("""
@@ -4625,13 +4620,13 @@ class TestCQL(Tester):
 
         session.default_fetch_size = 7
         rows = list(session.execute("SELECT DISTINCT k, s FROM test"))
-        self.assertEqual(list(range(10)), sorted([r[0] for r in rows]))
-        self.assertEqual(list(range(10)), sorted([r[1] for r in rows]))
+        assert list(range(10)) == sorted([r[0] for r in rows])
+        assert list(range(10)) == sorted([r[1] for r in rows])
 
         keys = ",".join(map(str, range(10)))
         rows = list(session.execute("SELECT DISTINCT k, s FROM test WHERE k IN (%s)" % (keys,)))
-        self.assertEqual(list(range(10)), [r[0] for r in rows])
-        self.assertEqual(list(range(10)), [r[1] for r in rows])
+        assert list(range(10)) == [r[0] for r in rows]
+        assert list(range(10)) == [r[1] for r in rows]
 
         # additional testing for CASSANRA-8087
         session.execute("""
@@ -4654,36 +4649,36 @@ class TestCQL(Tester):
         for fetch_size in (None, 2, 5, 7, 10, 24, 25, 26, 1000):
             session.default_fetch_size = fetch_size
             rows = list(session.execute("SELECT DISTINCT k, s1 FROM test2"))
-            self.assertEqual(list(range(10)), sorted([r[0] for r in rows]))
-            self.assertEqual(list(range(10)), sorted([r[1] for r in rows]))
+            assert list(range(10)) == sorted([r[0] for r in rows])
+            assert list(range(10)) == sorted([r[1] for r in rows])
 
             rows = list(session.execute("SELECT DISTINCT k, s2 FROM test2"))
-            self.assertEqual(list(range(10)), sorted([r[0] for r in rows]))
-            self.assertEqual(list(range(1, 11)), sorted([r[1] for r in rows]))
+            assert list(range(10)) == sorted([r[0] for r in rows])
+            assert list(range(1, 11)) == sorted([r[1] for r in rows])
 
             print("page size: ", fetch_size)
             rows = list(session.execute("SELECT DISTINCT k, s1 FROM test2 LIMIT 10"))
-            self.assertEqual(list(range(10)), sorted([r[0] for r in rows]))
-            self.assertEqual(list(range(10)), sorted([r[1] for r in rows]))
+            assert list(range(10)) == sorted([r[0] for r in rows])
+            assert list(range(10)) == sorted([r[1] for r in rows])
 
             keys = ",".join(map(str, range(10)))
             rows = list(session.execute("SELECT DISTINCT k, s1 FROM test2 WHERE k IN (%s)" % (keys,)))
-            self.assertEqual(list(range(10)), [r[0] for r in rows])
-            self.assertEqual(list(range(10)), [r[1] for r in rows])
+            assert list(range(10)) == [r[0] for r in rows]
+            assert list(range(10)) == [r[1] for r in rows]
 
             keys = ",".join(map(str, range(10)))
             rows = list(session.execute("SELECT DISTINCT k, s2 FROM test2 WHERE k IN (%s)" % (keys,)))
-            self.assertEqual(list(range(10)), [r[0] for r in rows])
-            self.assertEqual(list(range(1, 11)), [r[1] for r in rows])
+            assert list(range(10)) == [r[0] for r in rows]
+            assert list(range(1, 11)) == [r[1] for r in rows]
 
             keys = ",".join(map(str, range(10)))
             rows = list(session.execute("SELECT DISTINCT k, s1 FROM test2 WHERE k IN (%s) LIMIT 10" % (keys,)))
-            self.assertEqual(list(range(10)), sorted([r[0] for r in rows]))
-            self.assertEqual(list(range(10)), sorted([r[1] for r in rows]))
+            assert list(range(10)) == sorted([r[0] for r in rows])
+            assert list(range(10)) == sorted([r[1] for r in rows])
 
-    @skip('indexes')
-    @attr('single_node')
-    def select_count_paging_test(self):
+    @pytest.mark.skip('indexes')
+    @pytest.mark.single_node
+    def test_select_count_paging(self):
         """
         @jira_ticket CASSANDRA-6579
         Regression test for 'select count' paging bug.
@@ -4701,8 +4696,8 @@ class TestCQL(Tester):
         else:
             assert_one(session, "select count(*) from test where field3 = false limit 1;", [1])
 
-    @attr('single_node')
-    def cas_and_ttl_test(self):
+    @pytest.mark.single_node
+    def test_cas_and_ttl(self):
         session = self.prepare()
         session.execute("CREATE TABLE test (k int PRIMARY KEY, v int, lock boolean)")
 
@@ -4711,8 +4706,8 @@ class TestCQL(Tester):
         time.sleep(2)
         assert_one(session, "UPDATE test SET v = 1 WHERE k = 0 IF lock = null", [True, None])
 
-    @attr('single_node')
-    def in_order_by_without_selecting_test(self):
+    @pytest.mark.single_node
+    def test_in_order_by_without_selecting(self):
         """ Test that columns don't need to be selected for ORDER BY when there is a IN (#4911) """
 
         cursor = self.prepare()
@@ -4743,10 +4738,10 @@ class TestCQL(Tester):
         # we should also be able to use functions in the select clause (additional test for CASSANDRA-8286)
         results = list(cursor.execute("SELECT writetime(v) FROM test WHERE k IN (1, 0) ORDER BY c1 ASC"))
         # since we don't know the write times, just assert that the order matches the order we expect
-        self.assertEqual(results, list(sorted(results)))
+        assert results == list(sorted(results))
 
-    @attr('single_node')
-    def tuple_notation_test(self):
+    @pytest.mark.single_node
+    def test_tuple_notation(self):
         """
         @jira_ticket CASSANDRA-4851
 
@@ -4777,8 +4772,8 @@ class TestCQL(Tester):
 
         assert_invalid(session, "SELECT v1, v2, v3 FROM test WHERE k = 0 AND (v1, v3) > (1, 0)")
 
-    @attr('single_node')
-    def slicing_test(self):
+    @pytest.mark.single_node
+    def test_slicing(self):
         session = self.prepare()
 
         session.execute("CREATE TABLE test (k int, c1 int, c2 int, v int, PRIMARY KEY (k, c1, c2)) with compact storage")
@@ -4846,8 +4841,8 @@ class TestCQL(Tester):
 
         assert_all(session, "SELECT c1, c2, v FROM test WHERE k = 0 AND c1 < 1 and c1 > 1", [])
 
-    @attr('single_node')
-    def in_with_desc_order_test(self):
+    @pytest.mark.single_node
+    def test_in_with_desc_order(self):
         session = self.prepare()
 
         session.execute("CREATE TABLE test (k int, c1 int, c2 int, PRIMARY KEY (k, c1, c2))")
@@ -4858,8 +4853,8 @@ class TestCQL(Tester):
         assert_all(session, "SELECT * FROM test WHERE k=0 AND c1 = 0 AND c2 IN (2, 0) ORDER BY c1 DESC",
                    [[0, 0, 2], [0, 0, 0]])
 
-    @attr('single_node')
-    def cas_and_compact_test(self):
+    @pytest.mark.single_node
+    def test_cas_and_compact(self):
         """
         @jira_ticket CASSANDRA-6813
 
@@ -4885,8 +4880,8 @@ class TestCQL(Tester):
         assert_one(session, "INSERT INTO lock(partition, key, owner) VALUES ('a', 'c', 'x') IF NOT EXISTS",
                    [True, None, None, None])
 
-    @attr('single_node')
-    def whole_list_conditional_test(self):
+    @pytest.mark.single_node
+    def test_whole_list_conditional(self):
         session = self.prepare()
 
         session.execute("""
@@ -4957,8 +4952,8 @@ class TestCQL(Tester):
             # not supported yet
             check_invalid("m CONTAINS 'bar'", expected=SyntaxException)
 
-    @attr('single_node')
-    def list_item_conditional_test(self):
+    @pytest.mark.single_node
+    def test_list_item_conditional(self):
         # Lists
         session = self.prepare()
 
@@ -4987,8 +4982,8 @@ class TestCQL(Tester):
             assert_one(session, "DELETE FROM tlist WHERE k=0 IF l[1] = 'bar'", [True, ['foo', 'bar', 'foobar']])
             assert_none(session, "SELECT * FROM tlist")
 
-    @attr('single_node')
-    def expanded_list_item_conditional_test(self):
+    @pytest.mark.single_node
+    def test_expanded_list_item_conditional(self):
         """
         expanded functionality from CASSANDRA-6839
         @jira_ticket CASSANDRA-6839
@@ -5061,8 +5056,8 @@ class TestCQL(Tester):
             check_invalid("l[1] CONTAINS KEY 367", expected=SyntaxException)
             check_invalid("l[null] = null")
 
-    @attr('single_node')
-    def whole_set_conditional_test(self):
+    @pytest.mark.single_node
+    def test_whole_set_conditional(self):
         session = self.prepare()
 
         session.execute("""
@@ -5133,8 +5128,8 @@ class TestCQL(Tester):
             # not supported yet
             check_invalid("m CONTAINS 'bar'", expected=SyntaxException)
 
-    @attr('single_node')
-    def whole_map_conditional_test(self):
+    @pytest.mark.single_node
+    def test_whole_map_conditional(self):
         session = self.prepare()
 
         session.execute("""
@@ -5150,7 +5145,7 @@ class TestCQL(Tester):
             )""")
 
         for frozen in (False, True):
-            debug("Testing {} maps".format("frozen" if frozen else "normal"))
+            logger.debug("Testing {} maps".format("frozen" if frozen else "normal"))
             table = "frozentmap" if frozen else "tmap"
             session.execute("INSERT INTO %s(k, m) VALUES (0, {'foo' : 'bar'})" % (table,))
 
@@ -5202,8 +5197,8 @@ class TestCQL(Tester):
             check_invalid("m CONTAINS null", expected=SyntaxException)
             check_invalid("m CONTAINS KEY null", expected=SyntaxException)
 
-    @attr('single_node')
-    def map_item_conditional_test(self):
+    @pytest.mark.single_node
+    def test_map_item_conditional(self):
         session = self.prepare()
 
         frozen_values = (False, True) if parse_version(self.cluster.version()) >= parse_version("2.1.3") else (False,)
@@ -5235,8 +5230,8 @@ class TestCQL(Tester):
                     assert_one(
                         session, "UPDATE tmap set m['foo'] = 'bar', m['bar'] = 'foo' WHERE k = 1 IF m['foo'] IN ('blah', null)", [True, None])
 
-    @attr('single_node')
-    def expanded_map_item_conditional_test(self):
+    @pytest.mark.single_node
+    def test_expanded_map_item_conditional(self):
         """
         Expanded functionality from CASSANDRA-6839
         @jira_ticket CASSANDRA-6839
@@ -5256,7 +5251,7 @@ class TestCQL(Tester):
             )""")
 
         for frozen in (False, True):
-            debug("Testing {} maps".format("frozen" if frozen else "normal"))
+            logger.debug("Testing {} maps".format("frozen" if frozen else "normal"))
             table = "frozentmap" if frozen else "tmap"
             session.execute("INSERT INTO %s (k, m) VALUES (0, {'foo' : 'bar'})" % table)
 
@@ -5308,8 +5303,8 @@ class TestCQL(Tester):
             check_invalid("m['foo'] CONTAINS KEY 367", expected=SyntaxException)
             check_invalid("m[null] = null")
 
-    @attr('single_node')
-    def cas_and_list_index_test(self):
+    @pytest.mark.single_node
+    def test_cas_and_list_index(self):
         """
         @jira_ticket CASSANDRA-7499
         """
@@ -5331,8 +5326,8 @@ class TestCQL(Tester):
         # since we write at all, and LWT update (serial), we need to read back at serial (or higher)
         assert_one(session, "SELECT * FROM test", [0, ['foo', 'bar'], 'foobar'], cl=ConsistencyLevel.QUORUM)
 
-    @attr('single_node')
-    def static_with_limit_test(self):
+    @pytest.mark.single_node
+    def test_static_with_limit(self):
         """
         @jira_ticket CASSANDRA-6956
 
@@ -5357,8 +5352,8 @@ class TestCQL(Tester):
         assert_all(session, "SELECT * FROM test WHERE k = 0 LIMIT 2", [[0, 0, 42], [0, 1, 42]])
         assert_all(session, "SELECT * FROM test WHERE k = 0 LIMIT 3", [[0, 0, 42], [0, 1, 42], [0, 2, 42]])
 
-    @attr('single_node')
-    def static_with_empty_clustering_test(self):
+    @pytest.mark.single_node
+    def test_static_with_empty_clustering(self):
         """
         @jira_ticket CASSANDRA-7455
 
@@ -5381,7 +5376,7 @@ class TestCQL(Tester):
 
         assert_one(session, "SELECT * FROM test", ['partition1', '', 'static value', 'value'])
 
-    @attr('single_node')
+    @pytest.mark.single_node
     def limit_compact_table(self):
         """
         @jira_ticket CASSANDRA-7052
@@ -5414,7 +5409,7 @@ class TestCQL(Tester):
         # Introduced in CASSANDRA-7059
         assert_invalid(session, "SELECT * FROM test WHERE v > 1 AND v <= 3 LIMIT 6")
 
-    @attr('single_node')
+    @pytest.mark.single_node
     def key_index_with_reverse_clustering(self):
         """
         @jira_ticket CASSANDRA-6950
@@ -5446,8 +5441,8 @@ class TestCQL(Tester):
         assert_all(session, "SELECT * FROM test WHERE k2 = 0 AND v >= 2 ALLOW FILTERING",
                    [[2, 0, 7], [0, 0, 3], [1, 0, 4]])
 
-    @attr('single_node')
-    def clustering_order_in_test(self):
+    @pytest.mark.single_node
+    def test_clustering_order_in(self):
         """
         @jira_ticket CASSANDRA-7105
 
@@ -5470,8 +5465,8 @@ class TestCQL(Tester):
         assert_one(session, "SELECT * FROM test WHERE a=1 AND b=2 AND c IN (3)", [1, 2, 3])
         assert_one(session, "SELECT * FROM test WHERE a=1 AND b=2 AND c IN (3, 4)", [1, 2, 3])
 
-    @attr('single_node')
-    def bug7105_test(self):
+    @pytest.mark.single_node
+    def test_bug7105(self):
         """
         @jira_ticket CASSANDRA-7105
 
@@ -5494,9 +5489,9 @@ class TestCQL(Tester):
 
         assert_one(session, "SELECT * FROM test WHERE a=1 AND b=2 ORDER BY b DESC", [1, 2, 3, 3])
 
-    @skip('unconfigured table schema_keyspaces')
-    @attr('single_node')
-    def conditional_ddl_keyspace_test(self):
+    @pytest.mark.skip('unconfigured table schema_keyspaces')
+    @pytest.mark.single_node
+    def test_conditional_ddl_keyspace(self):
         session = self.prepare(create_keyspace=False)
 
         # try dropping when doesn't exist
@@ -5528,12 +5523,12 @@ class TestCQL(Tester):
 
         assert_none(session, "select * from system.schema_keyspaces where keyspace_name = 'my_test_ks'")
 
-    @skip('unconfigured table schema_columnfamilies')
-    @attr('single_node')
-    def conditional_ddl_table_test(self):
+    @pytest.mark.skip('unconfigured table schema_columnfamilies')
+    @pytest.mark.single_node
+    def test_conditional_ddl_table(self):
         session = self.prepare(create_keyspace=False)
 
-        self.create_ks(session, 'my_test_ks', 1)
+        create_ks(session, 'my_test_ks', 1)
 
         # try dropping when doesn't exist
         session.execute("""
@@ -5573,12 +5568,12 @@ class TestCQL(Tester):
                     """select * from system.schema_columnfamilies
                        where keyspace_name = 'my_test_ks' and columnfamily_name = 'my_test_table'""")
 
-    @skip('indexes')
-    @attr('single_node')
-    def conditional_ddl_index_test(self):
+    @pytest.mark.skip('indexes')
+    @pytest.mark.single_node
+    def test_conditional_ddl_index(self):
         session = self.prepare(create_keyspace=False)
 
-        self.create_ks(session, 'my_test_ks', 1)
+        create_ks(session, 'my_test_ks', 1)
 
         session.execute("""
             CREATE TABLE my_test_table (
@@ -5599,7 +5594,7 @@ class TestCQL(Tester):
                 """select index_name from system."IndexInfo" where table_name = 'my_test_ks'""")
 
             if results:
-                self.assertEqual([('my_test_table.myindex',)], results)
+                assert [('my_test_table.myindex',)] == results
                 break
 
             time.sleep(0.5)
@@ -5614,9 +5609,9 @@ class TestCQL(Tester):
         session.execute("DROP INDEX IF EXISTS myindex")
         assert_none(session, """select index_name from system."IndexInfo" where table_name = 'my_test_ks'""")
 
-    @skip('indexes')
-    @attr('single_node')
-    def bug_6612_test(self):
+    @pytest.mark.skip('indexes')
+    @pytest.mark.single_node
+    def test_bug_6612(self):
         session = self.prepare()
 
         session.execute("""
@@ -5644,8 +5639,8 @@ class TestCQL(Tester):
         assert_one(
             session, "select count(*) from session_data where app_name='foo' and account='bar' and last_access > 4 allow filtering", [1])
 
-    @attr('single_node')
-    def blobAs_functions_test(self):
+    @pytest.mark.single_node
+    def test_blobAs_functions(self):
         session = self.prepare()
 
         session.execute("""
@@ -5658,8 +5653,8 @@ class TestCQL(Tester):
         # A blob that is not 4 bytes should be rejected
         assert_invalid(session, "INSERT INTO test(k, v) VALUES (0, blobAsInt(0x01))")
 
-    @attr('single_node')
-    def alter_clustering_and_static_test(self):
+    @pytest.mark.single_node
+    def test_alter_clustering_and_static(self):
         session = self.prepare()
 
         session.execute("CREATE TABLE foo (bar int, PRIMARY KEY (bar))")
@@ -5667,16 +5662,16 @@ class TestCQL(Tester):
         # We shouldn't allow static when there is not clustering columns
         assert_invalid(session, "ALTER TABLE foo ADD bar2 text static")
 
-    @attr('single_node')
-    def alter_with_multiple_columns_test(self):
+    @pytest.mark.single_node
+    def test_alter_with_multiple_columns(self):
         session = self.prepare()
 
         session.execute("CREATE TABLE foo (bar int, PRIMARY KEY (bar))")
         session.execute("ALTER TABLE foo ADD (c text, d int)")
         session.execute("INSERT INTO foo (bar, c, d) VALUES (1, 'hello', 100)")
 
-    @attr('single_node')
-    def drop_and_readd_collection_test(self):
+    @pytest.mark.single_node
+    def test_drop_and_readd_collection(self):
         """
         @jira_ticket CASSANDRA-6276
         """
@@ -5688,8 +5683,8 @@ class TestCQL(Tester):
         session.execute("alter table test drop v")
         assert_invalid(session, "alter table test add v set<int>")
 
-    @attr('single_node')
-    def downgrade_to_compact_bug_test(self):
+    @pytest.mark.single_node
+    def test_downgrade_to_compact_bug(self):
         """
         @jira_ticket CASSANDRA-7744
         """
@@ -5702,8 +5697,8 @@ class TestCQL(Tester):
         session.execute("alter table test add v int")
 
     @require('#5421')
-    @attr('single_node')
-    def invalid_string_literals_test(self):
+    @pytest.mark.single_node
+    def test_invalid_string_literals(self):
         """
          @jira_ticket CASSANDRA-8101
 
@@ -5726,8 +5721,8 @@ class TestCQL(Tester):
         assert_invalid(session, "insert into invalid_string_literals (k, a) VALUES (0, '\xE0\x80\x80')",
                        expected=InvalidRequest, matching='Invalid ASCII character in string literal')
 
-    @attr('single_node')
-    def negative_timestamp_test(self):
+    @pytest.mark.single_node
+    def test_negative_timestamp(self):
         session = self.prepare()
 
         session.execute("CREATE TABLE test (k int PRIMARY KEY, v int)")
@@ -5735,8 +5730,8 @@ class TestCQL(Tester):
 
         assert_one(session, "SELECT writetime(v) FROM TEST WHERE k = 1", [-42])
 
-    @attr('single_node')
-    def bug_8558_test(self):
+    @pytest.mark.single_node
+    def test_bug_8558(self):
         session = self.prepare()
         node1 = self.cluster.nodelist()[0]
 
@@ -5750,9 +5745,9 @@ class TestCQL(Tester):
 
         assert_none(session, "select * from space1.table1 where a=1 and b=1")
 
-    @skip('indexes')
-    @attr('single_node')
-    def bug_5732_test(self):
+    @pytest.mark.skip('indexes')
+    @pytest.mark.single_node
+    def test_bug_5732(self):
         session = self.prepare(use_cache=True)
 
         session.execute("""
@@ -5790,8 +5785,8 @@ class TestCQL(Tester):
         session = self.patient_cql_connection(self.cluster.nodelist()[0])
         assert_all(session, "SELECT k FROM ks.test WHERE v = 0", [[0]])
 
-    @attr('single_node')
-    def double_with_npe_test(self):
+    @pytest.mark.single_node
+    def test_double_with_npe(self):
         """
         @jira_ticket CASSANDRA-9565
 
@@ -5809,11 +5804,11 @@ class TestCQL(Tester):
             try:
                 session.execute(s)
             except Exception as e:
-                self.assertIsInstance(e, SyntaxException)
-                self.assertNotIn('NullPointerException', str(e))
+                assert isinstance(e, SyntaxException)
+                assert 'NullPointerException' not in str(e)
 
-    @attr('single_node')
-    def cql_versions_collections_test(self):
+    @pytest.mark.single_node
+    def test_cql_versions_collections(self):
         for p in range(1, 3):
             session = self.prepare(protocol_version=p)
 
@@ -5840,8 +5835,8 @@ class TestCQL(Tester):
 
             session.execute("DROP KEYSPACE IF EXISTS ks")
 
-    @attr('single_node')
-    def cql_versions_batch_test(self):
+    @pytest.mark.single_node
+    def test_cql_versions_batch(self):
         for p in range(2, 3):
             session = self.prepare(protocol_version=p)
             session.execute("""
@@ -5870,8 +5865,8 @@ class TestCQL(Tester):
             assert_one(session, "SELECT * FROM dogs", [0, 'Pluto'])
             session.execute("DROP KEYSPACE IF EXISTS ks")
 
-    @attr('single_node')
-    def bop_order_test(self):
+    @pytest.mark.single_node
+    def test_bop_order(self):
         session = self.prepare()
 
         session.execute("""
@@ -5893,7 +5888,7 @@ class TestCQL(Tester):
         res = session.execute("SELECT v FROM test")
         assert rows_to_list(res) == [[3], [0], [2], [6], [4], [7], [1], [5]], list(res)
 
-    @attr('single_node')
+    @pytest.mark.single_node
     def collection_column_can_replace_dropped_non_collection_column(self):
         session = self.prepare()
 
@@ -5933,7 +5928,7 @@ class TestCQL(Tester):
                          keys_amount=3, rf=4, compaction_options=None):
         session = self.prepare(create_keyspace=False, nodes=nodes, rf=4)
         session.consistency_level = 'QUORUM'
-        self.create_ks(session=session, name=keyspace_name, rf=rf)
+        create_ks(session=session, name=keyspace_name, rf=rf)
         session.execute('USE {}'.format(keyspace_name))
         columns_desc = ' int, '.join(columns)
         keys_desc = ', '.join(columns[:keys_amount])
@@ -5943,12 +5938,12 @@ class TestCQL(Tester):
                 query += " WITH compaction = {}".format(compaction_options)
             else:
                 query += " WITH compaction = {{'class': '{}'}}".format(compaction_options)
-        debug('Create table: "{}"'.format(query))
+        logger.debug('Create table: "{}"'.format(query))
         session.execute(query=query)
 
         query = session.prepare('INSERT INTO {} ({}) VALUES ({})'.format(
             table_name, ', '.join(columns), ', '.join(['?' for _ in columns])))
-        debug('Insert data into {}.{}'.format(keyspace_name, table_name))
+        logger.debug('Insert data into {}.{}'.format(keyspace_name, table_name))
         execute_concurrent_with_args(session, query, dataset)
 
         self.mc_validate_data(session=session, table_name=table_name, data_amount=data_amount, dataset=dataset,
@@ -5974,10 +5969,10 @@ class TestCQL(Tester):
                 if cc:
                     cc.tearDown()
             except Exception as ex:
-                debug(ex)
+                logger.debug(ex)
                 traceback.print_exc()
 
-    def mc_sstables_case_sensitive_insert_test(self):
+    def test_mc_sstables_case_sensitive_insert(self):
         """
         Test how the mc SSTAbles files format works when the column names are case sensitive
         1. Create the table with case sensitive column names
@@ -5999,7 +5994,7 @@ class TestCQL(Tester):
         self.mc_migrate_scylla_to_cassandra(keyspace_name=keyspace_name, table_name=table_name, dataset=dataset,
                                             data_amount=data_amount)
 
-    def mc_sstables_case_sensitive_update_value_test(self):
+    def test_mc_sstables_case_sensitive_update_value(self):
         """
         Test how the mc SSTAbles files format works when the column names are case sensitive
         1. Create the table with case sensitive column names
@@ -6019,7 +6014,7 @@ class TestCQL(Tester):
                                         dataset=dataset, data_amount=data_amount,
                                         compaction_options=self.compaction_strategy_for_migration)
 
-        debug('Run update')
+        logger.debug('Run update')
         for i, row_data in enumerate(dataset):
             new_value = random.randint(23628361, 456283616)
             dataset[i] = (row_data[0], row_data[1], row_data[2], new_value)
@@ -6041,7 +6036,7 @@ class TestCQL(Tester):
         self.mc_migrate_scylla_to_cassandra(keyspace_name=keyspace_name, table_name=table_name, dataset=dataset,
                                             data_amount=data_amount)
 
-    def mc_sstables_case_sensitive_delete_value_test(self):
+    def test_mc_sstables_case_sensitive_delete_value(self):
         """
         Test how the mc SSTAbles files format works when the column names are case sensitive
         1. Create the table with case sensitive column names
@@ -6061,7 +6056,7 @@ class TestCQL(Tester):
                                         dataset=dataset, data_amount=data_amount,
                                         compaction_options=self.compaction_strategy_for_migration)
 
-        debug('Run delete')
+        logger.debug('Run delete')
         for i in range(2, 5):
             row = dataset[i]
             session.execute(query='DELETE FROM {table_name} WHERE "ID"={row[0]} AND "Ck1"={row[1]} AND'
@@ -6075,7 +6070,7 @@ class TestCQL(Tester):
         self.mc_migrate_scylla_to_cassandra(keyspace_name=keyspace_name, table_name=table_name, dataset=dataset,
                                             data_amount=data_amount)
 
-    def mc_sstables_case_sensitive_add_column_test(self):
+    def test_mc_sstables_case_sensitive_add_column(self):
         """
         Test how the mc SSTAbles files format works when the column names are case sensitive
         1. Create the table with case sensitive column names
@@ -6099,12 +6094,12 @@ class TestCQL(Tester):
         # Add new columns with case sensitive name
         new_column_name = '"Columnfamily_for_mc_sstables_column1"'
         columns.append(new_column_name)
-        debug('Add ''{}'' column'.format(new_column_name))
+        logger.debug('Add ''{}'' column'.format(new_column_name))
         session.execute(query='ALTER TABLE {table_name} ADD {new_column_name} int'.format(**locals()))
 
         for i, _ in enumerate(dataset):
             dataset[i] += (random.randint(10, 50),)
-        debug('Insert data in the new column')
+        logger.debug('Insert data in the new column')
         query = session.prepare('INSERT INTO {} ({}) VALUES (?, ?, ?, ?)'.format(table_name, ', '.join(columns)))
         execute_concurrent_with_args(session, query, dataset)
 
@@ -6120,7 +6115,7 @@ class TestCQL(Tester):
                          columns=['"ID"', '"Ck1"', '"cK2"', '"Columnfamily_for_mc_sstables_column1"'],
                          keys_columns_amount=3):
         res = list(session.execute('select count(*) from {}'.format(table_name)))
-        self.assertEqual(res[0].count, data_amount)
+        assert res[0].count == data_amount
 
         assert_all(session=session, query='select {} from {}'.format(', '.join(columns), table_name),
                    expected=[list(dc) for dc in dataset],
@@ -6133,8 +6128,8 @@ class TestCQL(Tester):
                        query='select {} from {} where {}'.format(columns[-1], table_name, where_clause),
                        expected=[row[-1]])
 
-    @attr('single_node')
-    def filtering_with_mv_test(self):
+    @pytest.mark.single_node
+    def test_filtering_with_mv(self):
         """
                 test queries with multiple restrictions + materialized view.
         """
@@ -6169,8 +6164,8 @@ class TestCQL(Tester):
                    "SELECT count(*) FROM users_by_state WHERE state = 'TX' AND username = 'user1'",
                    [[1]])
 
-    @attr('single_node')
-    def partition_key_allow_filtering_test(self):
+    @pytest.mark.single_node
+    def test_partition_key_allow_filtering(self):
         """
         Filtering with unrestricted parts of partition keys
         @jira_ticket CASSANDRA-11031
@@ -6303,18 +6298,18 @@ class TestCQL(Tester):
         self._assert_invalid_filtering(session, "SELECT * FROM test_filter WHERE k2 > 0")
 
     def _assert_invalid_filtering(self, session, query):
-        assert_invalid_case_insensitive_matching(session=session, query=query, matching=MSG_ALLOW_FILTERING)
+        assert_invalid(session=session, query=query, matching=MSG_ALLOW_FILTERING)
 
     def _assert_valid_query(self, session, query):
         try:
             res = session.execute(query)
-            self.assertTrue(type(res) == ResultSet)
+            assert type(res) == ResultSet
         except AssertionError as e:
-            debug("CQL query validation failed: {} - {}".format(query, e))
+            logger.debug("CQL query validation failed: {} - {}".format(query, e))
             raise e
 
 
-@attr('dtest-full')
+@pytest.mark.dtest_full
 class CQLAdditionalTests(Tester):
 
     def prepare(self, options={}):
@@ -6329,12 +6324,12 @@ class CQLAdditionalTests(Tester):
         cluster.populate(1).start()
         return cluster
 
-    @attr('single_node')
-    def simple_null_value_test(self):
+    @pytest.mark.single_node
+    def test_simple_null_value(self):
         cluster = self.prepare()
         node1 = cluster.nodelist()[0]
         session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'ks', 1)
+        create_ks(session, 'ks', 1)
 
         session.execute("""
              CREATE TABLE foobar ( key text PRIMARY KEY , val1 text , val2 float );
@@ -6352,13 +6347,13 @@ class CQLAdditionalTests(Tester):
         assert len(res) == 3, res
 
     @require('876')
-    @attr('single_node')
-    def create_secondary_indexes_test(self):
+    @pytest.mark.single_node
+    def test_create_secondary_indexes(self):
         cluster = self.prepare()
         node = cluster.nodelist()[0]
 
         session = self.patient_cql_connection(node)
-        self.create_ks(session, 'racing', 1)
+        create_ks(session, 'racing', 1)
 
         c = """CREATE TABLE racing.rank_by_year_and_name (
               race_year int,
@@ -6376,13 +6371,15 @@ class CQLAdditionalTests(Tester):
             assert(str(e) == "Indexes are not supported yet")
             assert(e.code == 0000)
 
-    @attr('next-gating', 'dtest-debug', 'single_node')
-    def lightweight_transaction_test(self):
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
+    @pytest.mark.single_node
+    def test_lightweight_transaction(self):
         cluster = self.prepare()
         node = cluster.nodelist()[0]
 
         session = self.patient_cql_connection(node)
-        self.create_ks(session, 'ks', 1)
+        create_ks(session, 'ks', 1)
 
         c = """CREATE TABLE ks.users (
               login text,
@@ -6399,25 +6396,25 @@ class CQLAdditionalTests(Tester):
             IF NOT EXISTS""".format(row[0], row[1], row[2])
         session.execute(c)
 
-        debug("Make sure the row is not updated if it exists...")
+        logger.debug("Make sure the row is not updated if it exists...")
         c = """INSERT INTO ks.users (login, email, name)
             values ('bcanet', 'disabled@scylladb.com', 'disabled')
             IF NOT EXISTS"""
         session.execute(c)
 
-        debug("Verify content...")
+        logger.debug("Verify content...")
         res = rows_to_list(session.execute("SELECT * FROM ks.users"))
         assert len(res) == 1, res
         assert res[0] == row, res[0]
 
     @require('876')
-    @attr('single_node')
-    def grant_test(self):
+    @pytest.mark.single_node
+    def test_grant(self):
         cluster = self.prepare()
         node = cluster.nodelist()[0]
 
         session = self.patient_cql_connection(node)
-        self.create_ks(session, 'ks', 1)
+        create_ks(session, 'ks', 1)
 
         c = """GRANT SELECT ON ALL KEYSPACES TO benoit"""
         try:
@@ -6427,13 +6424,13 @@ class CQLAdditionalTests(Tester):
             assert(e.code == 0000)
 
     @require('876')
-    @attr('single_node')
-    def revoke_test(self):
+    @pytest.mark.single_node
+    def test_revoke(self):
         cluster = self.prepare()
         node = cluster.nodelist()[0]
 
         session = self.patient_cql_connection(node)
-        self.create_ks(session, 'ks', 1)
+        create_ks(session, 'ks', 1)
 
         c = """REVOKE SELECT ON ks.user FROM blob"""
         try:
@@ -6443,13 +6440,13 @@ class CQLAdditionalTests(Tester):
             assert(e.code == 0000)
 
     @require('876')
-    @attr('single_node')
-    def list_test(self):
+    @pytest.mark.single_node
+    def test_list(self):
         cluster = self.prepare()
         node = cluster.nodelist()[0]
 
         session = self.patient_cql_connection(node)
-        self.create_ks(session, 'ks', 1)
+        create_ks(session, 'ks', 1)
 
         c = """LIST ALL PERMISSIONS ON ks.boo"""
         try:
@@ -6458,8 +6455,10 @@ class CQLAdditionalTests(Tester):
             assert(str(e) == "Not implemented: LIST")
             assert(e.code == 0000)
 
-    @attr('next-gating', 'dtest-debug', 'single_node')
-    def limit_date_value_out_of_range_test(self):
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
+    @pytest.mark.single_node
+    def test_limit_date_value_out_of_range(self):
         # positive case for scylladb/scylla#1694
         cluster = self.prepare()
         node = cluster.nodelist()[0]
@@ -6467,7 +6466,7 @@ class CQLAdditionalTests(Tester):
         regex = r"([0-9]+) (rows)"
 
         session = self.patient_cql_connection(node)
-        self.create_ks(session, 'ks', 1)
+        create_ks(session, 'ks', 1)
         session.execute("""
             CREATE TABLE ks.raw_data (
                               test_id int,
@@ -6491,37 +6490,37 @@ class CQLAdditionalTests(Tester):
                                 AND speculative_retry = '99.0PERCENTILE';""")
 
         res = session.execute(query_template % 'limit 1')
-        self.assertEqual(len(list(res)), 0)
+        assert len(list(res)) == 0
         out, err = node.run_cqlsh('use ks; ' + query_template % 'limit 1', show_output=True, return_output=True)
         num_rows = int(re.search(regex, out).group(1))
-        self.assertEqual(num_rows, 0)
+        assert num_rows == 0
 
         for i in range(100):
             session.execute("insert into ks.raw_data (test_id, partition_key, time, value) "
                             "values (%s, '%s', '%s-02-03 04:05+0000', %s);" % (i, i, 2000-i, i*1.0))
 
         res = session.execute(query_template % 'limit 1')
-        self.assertEqual(len(list(res)), 1)
+        assert len(list(res)) == 1
         out, err = node.run_cqlsh('use ks; ' + query_template % 'limit 1', show_output=True, return_output=True)
         num_rows = int(re.search(regex, out).group(1))
-        self.assertEqual(num_rows, 1)
+        assert num_rows == 1
 
         res = session.execute(query_template % '')
-        self.assertEqual(len(list(res)), 100)
+        assert len(list(res)) == 100
         out, err = node.run_cqlsh('use ks; ' + query_template % '', show_output=True, return_output=True)
         num_rows = int(re.search(regex, out).group(1))
-        self.assertEqual(num_rows, 100)
+        assert num_rows == 100
 
     @require('2251')
-    @attr('single_node')
-    def limit_date_value_out_of_range_lower_limit_test(self):
+    @pytest.mark.single_node
+    def test_limit_date_value_out_of_range_lower_limit(self):
         cluster = self.prepare()
         node = cluster.nodelist()[0]
         query_template = 'select * from raw_data %s;'
         regex = r"([0-9]+) (rows)"
 
         session = self.patient_cql_connection(node)
-        self.create_ks(session, 'ks', 1)
+        create_ks(session, 'ks', 1)
         session.execute("""
             CREATE TABLE ks.raw_data (
                               test_id int,
@@ -6536,26 +6535,26 @@ class CQLAdditionalTests(Tester):
                             "values (%s, '%s', '%s-02-03 04:05+0000', %s);" % (i, i, 2000-i, i*1.0))
 
         res = session.execute(query_template % 'limit 1')
-        self.assertEqual(len(list(res)), 1)
+        assert len(list(res)) == 1
         out, err = node.run_cqlsh('use ks; ' + query_template % 'limit 1', show_output=True, return_output=True)
         num_rows = int(re.search(regex, out).group(1))
-        self.assertEqual(num_rows, 1)
+        assert num_rows == 1
 
         res = session.execute(query_template % '')
-        self.assertEqual(len(list(res)), 2000)
+        assert len(list(res)) == 2000
         out, err = node.run_cqlsh('use ks; ' + query_template % 'limit 10', show_output=True, return_output=True)
         num_rows = int(re.search(regex, out).group(1))
-        self.assertEqual(num_rows, 10)
+        assert num_rows == 10
 
-    @attr('single_node')
-    def limit_date_value_out_of_range_upper_limit_test(self):
+    @pytest.mark.single_node
+    def test_limit_date_value_out_of_range_upper_limit(self):
         cluster = self.prepare()
         node = cluster.nodelist()[0]
         query_template = 'select * from raw_data %s;'
         regex = r"([0-9]+) (rows)"
 
         session = self.patient_cql_connection(node)
-        self.create_ks(session, 'ks', 1)
+        create_ks(session, 'ks', 1)
         session.execute("""
             CREATE TABLE ks.raw_data (
                               test_id int,
@@ -6570,25 +6569,27 @@ class CQLAdditionalTests(Tester):
                             "values (%s, '%s', '%s-02-03 04:05+0000', %s);" % (i, i, 2000+i, i*1.0))
 
         res = session.execute(query_template % 'limit 1')
-        self.assertEqual(len(list(res)), 1)
+        assert len(list(res)) == 1
         out, err = node.run_cqlsh('use ks; ' + query_template % 'limit 1', show_output=True, return_output=True)
         num_rows = int(re.search(regex, out).group(1))
-        self.assertEqual(num_rows, 1)
+        assert num_rows == 1
 
         res = session.execute(query_template % '')
-        self.assertEqual(len(list(res)), 8000)
+        assert len(list(res)) == 8000
         out, err = node.run_cqlsh('use ks; ' + query_template % 'limit 10', show_output=True, return_output=True)
         num_rows = int(re.search(regex, out).group(1))
-        self.assertEqual(num_rows, 10)
+        assert num_rows == 10
 
-    @attr('next-gating', 'dtest-debug', 'single_node')
-    def select_all_data_and_filter_explicitly_test(self):
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
+    @pytest.mark.single_node
+    def test_select_all_data_and_filter_explicitly(self):
         # https://github.com/scylladb/scylla/issues/2272
         cluster = self.prepare()
         node = cluster.nodelist()[0]
 
         session = self.patient_cql_connection(node)
-        self.create_ks(session, 'ks', 1)
+        create_ks(session, 'ks', 1)
         session.execute("""
                   CREATE TABLE ks.hour_data (
                   bucket text,
@@ -6636,7 +6637,7 @@ class CQLAdditionalTests(Tester):
         for (hour, ug), count in sorted(counted.items()):
             r_implicitly[i] = (hour, ug, count)
             i += 1
-            debug("%s %s %s " % (hour, ug, count))
+            logger.debug("%s %s %s " % (hour, ug, count))
 
         # filter explicitly by hour_ts and ug
         sql = """
@@ -6657,11 +6658,11 @@ class CQLAdditionalTests(Tester):
             for (hour, ug), count in sorted(counted.items()):
                 r_explicitly[i] = (hour, ug, count)
                 i += 1
-            debug("%s %s %s " % (hour, ug, count))
+            logger.debug("%s %s %s " % (hour, ug, count))
         # expect the same data
         assert r_explicitly == r_implicitly
 
-    def create_100tables_test(self):
+    def test_create_100tables(self):
         """
         The scenario referenced https://github.com/scylladb/scylla/issues/2923
 
@@ -6672,35 +6673,36 @@ class CQLAdditionalTests(Tester):
         schema_file = "test_data/c-s-profiles/create_100tables.cql"
         assert os.path.exists(schema_file), "schema file doesn't exist"
 
-        debug("Create 100+ tables by simple_test_100tables.cql")
+        logger.debug("Create 100+ tables by simple_test_100tables.cql")
 
         schema_file = self.copy_file_to_tmp(schema_file)
         nodes[0].run_cqlsh(cmds="SOURCE '%s'" % schema_file, show_output=True, return_output=True)
 
-        debug("Check created tables in KEYSPACE `veraminetest`")
+        logger.debug("Check created tables in KEYSPACE `veraminetest`")
         out, err = nodes[0].run_cqlsh(cmds='USE veraminetest; DESCRIBE TABLES', show_output=True, return_output=True)
         assert len(out.split()) == 112, 'created 100+ tables'
 
-        debug("Drain node1")
+        logger.debug("Drain node1")
         resp = nodes[0].drain()
-        debug("Restart node1")
+        logger.debug("Restart node1")
         nodes[0].stop(wait_other_notice=False, gently=False)
         nodes[0].start(wait_other_notice=True)
 
-        debug("Drain node2")
+        logger.debug("Drain node2")
         resp = nodes[1].drain()
-        debug("Restart node2")
+        logger.debug("Restart node2")
         nodes[1].stop(wait_other_notice=False, gently=False)
         nodes[1].start(wait_other_notice=True)
 
         session = self.patient_cql_connection(nodes[0])
 
-        debug("Check created tables in KEYSPACE `veraminetest` after restart")
+        logger.debug("Check created tables in KEYSPACE `veraminetest` after restart")
         out, err = nodes[0].run_cqlsh(cmds='USE veraminetest; DESCRIBE TABLES', show_output=True, return_output=True)
         assert len(out.split()) == 112, 'created 100+ tables'
 
 
-@attr('dtest-full', 'single_node')
+@pytest.mark.dtest_full
+@pytest.mark.single_node
 class MultiColumnRestrictionSimpleTests(Tester):
 
     INSERT_COLUMNS = 'key,clmn_int,clmn_text,clmn_timestamp,clmn_bool,clmn_ascii,clmn_uuid,clmn_blob'
@@ -6743,7 +6745,7 @@ class MultiColumnRestrictionSimpleTests(Tester):
         if create_keyspace:
             if self._preserve_cluster:
                 session.execute("DROP KEYSPACE IF EXISTS ks")
-            self.create_ks(session, 'ks', rf)
+            create_ks(session, 'ks', rf)
         return session
 
     def create_8_columns_table(self, session, table_name=TABLE_NAME, add_ck=False):
@@ -6751,7 +6753,7 @@ class MultiColumnRestrictionSimpleTests(Tester):
                 'clmn_bool boolean, clmn_ascii ascii, clmn_uuid uuid, clmn_blob blob, PRIMARY KEY(key{ck}))'.\
             format(table_name=table_name, ck=', clmn_int' if add_ck else '')
 
-        debug(query)
+        logger.debug(query)
         session.execute(query)
 
     def create_materialized_view(self, session, view_column, view_name=MV_NAME, table_name=TABLE_NAME,
@@ -6762,12 +6764,12 @@ class MultiColumnRestrictionSimpleTests(Tester):
                     ck='AND clmn_int IS NOT NULL ' if table_with_ck else '',
                     ckey=', clmn_int' if table_with_ck else '',
                     view_column=view_column)
-        debug(query)
+        logger.debug(query)
         session.execute(query)
         wait_for_view(cluster=self.cluster, session=session, ks='ks', view=view_name)
 
     def insert_data_in_8_columns_table(self, session, insert_data=TEST_DATA, table_name=TABLE_NAME):
-        debug('Insert data')
+        logger.debug('Insert data')
         for data in insert_data:
             if len(data) == 2:
                 data_str = '{data[0]},{data[1]}'.format(data=data)
@@ -6784,7 +6786,7 @@ class MultiColumnRestrictionSimpleTests(Tester):
                                                                                    data_str=data_str)
             session.execute(stmt)
 
-    def filter_by_one_non_indexed_columns_test(self):
+    def test_filter_by_one_non_indexed_columns(self):
         session = self.prepare()
         self.create_8_columns_table(session=session)
 
@@ -6793,42 +6795,42 @@ class MultiColumnRestrictionSimpleTests(Tester):
         select_stmt = 'select {select_columns} from {table_name} '.format(select_columns=self.SELECT_COLUMNS,
                                                                           table_name=self.TABLE_NAME)
 
-        debug('Filter by integer non-indexed column')
+        logger.debug('Filter by integer non-indexed column')
         assert_all(session=session, query=select_stmt + 'where clmn_int = 0 ALLOW FILTERING',
                    expected=self.EXPECTED_DATA[:2], ignore_order=True)
 
-        debug('Filter by text non-indexed column')
+        logger.debug('Filter by text non-indexed column')
         assert_all(session=session, query=select_stmt + 'where clmn_text = \'text3\' ALLOW FILTERING',
                    expected=[self.EXPECTED_DATA[2]], ignore_order=True)
 
-        debug('Filter by timestamp non-indexed column')
+        logger.debug('Filter by timestamp non-indexed column')
         assert_all(session=session, query=select_stmt + 'where clmn_timestamp = 398793781719 ALLOW FILTERING',
                    expected=self.EXPECTED_DATA[2:4], ignore_order=True)
 
-        debug('Filter by boolean non-indexed column')
+        logger.debug('Filter by boolean non-indexed column')
         assert_all(session=session, query=select_stmt + 'where clmn_bool = True ALLOW FILTERING',
                    expected=[self.EXPECTED_DATA[0], self.EXPECTED_DATA[2]], ignore_order=True,
                    cl=ConsistencyLevel.QUORUM)
 
-        debug('Filter by ascii non-indexed column')
+        logger.debug('Filter by ascii non-indexed column')
         assert_all(session=session, query=select_stmt + 'where clmn_ascii = \'abcdefj\' ALLOW FILTERING',
                    expected=[self.EXPECTED_DATA[1]], ignore_order=True,
                    cl=ConsistencyLevel.QUORUM)
 
-        debug('Filter by uuid non-indexed column')
+        logger.debug('Filter by uuid non-indexed column')
         assert_all(session=session,
                    query=select_stmt + 'where clmn_uuid = de5cba0d-41a2-4f39-8834-35130d8b5d86 '
                                        'ALLOW FILTERING',
                    expected=[self.EXPECTED_DATA[0], self.EXPECTED_DATA[2]], ignore_order=True,
                    cl=ConsistencyLevel.QUORUM)
 
-        debug('Filter by blob non-indexed column')
+        logger.debug('Filter by blob non-indexed column')
         assert_all(session=session,
                    query=select_stmt + ' where clmn_blob = textAsBlob(\'{}\') ALLOW FILTERING'.format('b'*10),
                    expected=self.EXPECTED_DATA[1:3], ignore_order=True,
                    cl=ConsistencyLevel.QUORUM)
 
-    def filter_by_three_non_indexed_columns_test(self):
+    def test_filter_by_three_non_indexed_columns(self):
         session = self.prepare()
         self.create_8_columns_table(session=session)
 
@@ -6837,20 +6839,20 @@ class MultiColumnRestrictionSimpleTests(Tester):
         select_stmt = 'select {select_columns} from {table_name} '.format(select_columns=self.SELECT_COLUMNS,
                                                                           table_name=self.TABLE_NAME)
 
-        debug('Filter by integer & uuid & timestamp non-indexed columns')
+        logger.debug('Filter by integer & uuid & timestamp non-indexed columns')
         assert_all(session=session, query=select_stmt + 'where clmn_int = 2 and '
                                                         'clmn_uuid = de5cba0d-41a2-4f39-8834-35130d8b5d86 '
                                                         'and clmn_timestamp = 398793781719 ALLOW FILTERING',
                    expected=[self.EXPECTED_DATA[2]], ignore_order=True)
 
-        debug('Filter by ascii & text & blob non-indexed columns')
+        logger.debug('Filter by ascii & text & blob non-indexed columns')
         assert_all(session=session, query=select_stmt + 'where clmn_ascii = \'897dfjka9\' and '
                                                         'clmn_text = \'text4\' '
                                                         'and clmn_blob = textAsBlob(\'{}\') ALLOW FILTERING'.format(
                                                             'a'*10),
                    expected=[self.EXPECTED_DATA[3]], ignore_order=True)
 
-    def filter_by_pk_ck_and_non_indexed_columns_test(self):
+    def test_filter_by_pk_ck_and_non_indexed_columns(self):
         session = self.prepare()
         self.create_8_columns_table(session=session, add_ck=True)
 
@@ -6859,26 +6861,26 @@ class MultiColumnRestrictionSimpleTests(Tester):
         select_stmt = 'select {select_columns} from {table_name} '.format(select_columns=self.SELECT_COLUMNS,
                                                                           table_name=self.TABLE_NAME)
 
-        debug('Filter by PK and one non-indexed column')
+        logger.debug('Filter by PK and one non-indexed column')
         assert_all(session=session, query=select_stmt + 'where key = 0 and clmn_timestamp = 12345674987 ALLOW FILTERING',
                    expected=[self.EXPECTED_DATA[0]], ignore_order=True)
 
-        debug('Filter by PK, CK and one non-indexed column')
+        logger.debug('Filter by PK, CK and one non-indexed column')
         assert_all(session=session, query=select_stmt + 'where key = 0 and clmn_int = 0 and clmn_timestamp = 12345674987 '
                                                         'ALLOW FILTERING',
                    expected=[self.EXPECTED_DATA[0]], ignore_order=True)
 
-        debug('Filter by PK and two non-indexed column')
+        logger.debug('Filter by PK and two non-indexed column')
         assert_all(session=session, query=select_stmt + 'where key = 0 and clmn_timestamp = 12345674987 and '
                                                         'clmn_bool = True ALLOW FILTERING',
                    expected=[self.EXPECTED_DATA[0]], ignore_order=True)
 
-        debug('Filter by PK, CK and two non-indexed column')
+        logger.debug('Filter by PK, CK and two non-indexed column')
         assert_all(session=session, query=select_stmt + 'where key = 0 and clmn_int = 0 and clmn_timestamp = 12345674987 '
                    'and clmn_uuid=de5cba0d-41a2-4f39-8834-35130d8b5d86 ALLOW FILTERING',
                    expected=[self.EXPECTED_DATA[0]], ignore_order=True)
 
-    def filter_by_pk_ck_globalSI_and_non_indexed_columns_test(self):
+    def test_filter_by_pk_ck_globalSI_and_non_indexed_columns(self):
         session = self.prepare()
         self.create_8_columns_table(session=session, add_ck=True)
 
@@ -6890,29 +6892,29 @@ class MultiColumnRestrictionSimpleTests(Tester):
         select_stmt = 'select {select_columns} from {table_name} '.format(select_columns=self.SELECT_COLUMNS,
                                                                           table_name=self.TABLE_NAME)
 
-        debug('Filter by PK, SI and one non-indexed column')
+        logger.debug('Filter by PK, SI and one non-indexed column')
         assert_all(session=session, query=select_stmt + 'where key = 1 and clmn_text = \'text2\' and '
                                                         'clmn_timestamp = 63873478378 ALLOW FILTERING',
                    expected=[self.EXPECTED_DATA[1]], ignore_order=True)
 
-        debug('Filter by PK, CK, SI and one non-indexed column')
+        logger.debug('Filter by PK, CK, SI and one non-indexed column')
         assert_all(session=session, query=select_stmt + 'where key = 1 and clmn_int = 0 and clmn_text = \'text2\' and '
                                                         'clmn_timestamp = 63873478378 ALLOW FILTERING',
                    expected=[self.EXPECTED_DATA[1]], ignore_order=True)
 
-        debug('Filter by PK, SI and two non-indexed column')
+        logger.debug('Filter by PK, SI and two non-indexed column')
         assert_all(session=session, query=select_stmt + 'where key = 1 and clmn_text = \'text2\' and '
                                                         'clmn_uuid = fa80080c-a4c5-46d6-afe4-5e184fec35ae and '
                                                         'clmn_timestamp = 63873478378 ALLOW FILTERING',
                    expected=[self.EXPECTED_DATA[1]], ignore_order=True)
 
-        debug('Filter by PK, CK, SI and two non-indexed column')
+        logger.debug('Filter by PK, CK, SI and two non-indexed column')
         assert_all(session=session, query=select_stmt + 'where key = 1 and clmn_int = 0 and clmn_text = \'text2\' and '
                                                         'clmn_bool = False and clmn_timestamp = 63873478378 '
                                                         'ALLOW FILTERING',
                    expected=[self.EXPECTED_DATA[1]], ignore_order=True)
 
-    def filter_by_pk_ck_localSI_and_non_indexed_columns_test(self):
+    def test_filter_by_pk_ck_localSI_and_non_indexed_columns(self):
         session = self.prepare()
         self.create_8_columns_table(session=session, add_ck=True)
 
@@ -6924,29 +6926,29 @@ class MultiColumnRestrictionSimpleTests(Tester):
         select_stmt = 'select {select_columns} from {table_name} '.format(select_columns=self.SELECT_COLUMNS,
                                                                           table_name=self.TABLE_NAME)
 
-        debug('Filter by PK, SI and one non-indexed column')
+        logger.debug('Filter by PK, SI and one non-indexed column')
         assert_all(session=session, query=select_stmt + 'where key = 1 and clmn_text = \'text2\' and '
                                                         'clmn_timestamp = 63873478378 ALLOW FILTERING',
                    expected=[self.EXPECTED_DATA[1]], ignore_order=True)
 
-        debug('Filter by PK, CK, SI and one non-indexed column')
+        logger.debug('Filter by PK, CK, SI and one non-indexed column')
         assert_all(session=session, query=select_stmt + 'where key = 1 and clmn_int = 0 and clmn_text = \'text2\' and '
                                                         'clmn_timestamp = 63873478378 ALLOW FILTERING',
                    expected=[self.EXPECTED_DATA[1]], ignore_order=True)
 
-        debug('Filter by PK, SI and two non-indexed column')
+        logger.debug('Filter by PK, SI and two non-indexed column')
         assert_all(session=session, query=select_stmt + 'where key = 1 and clmn_text = \'text2\' and '
                                                         'clmn_uuid = fa80080c-a4c5-46d6-afe4-5e184fec35ae and '
                                                         'clmn_timestamp = 63873478378 ALLOW FILTERING',
                    expected=[self.EXPECTED_DATA[1]], ignore_order=True)
 
-        debug('Filter by PK, CK, SI and two non-indexed column')
+        logger.debug('Filter by PK, CK, SI and two non-indexed column')
         assert_all(session=session, query=select_stmt + 'where key = 1 and clmn_int = 0 and clmn_text = \'text2\' and '
                                                         'clmn_bool = False and clmn_timestamp = 63873478378 '
                                                         'ALLOW FILTERING',
                    expected=[self.EXPECTED_DATA[1]], ignore_order=True)
 
-    def filter_by_two_non_indexed_columns_with_operator_test(self):
+    def test_filter_by_two_non_indexed_columns_with_operator(self):
         session = self.prepare()
         self.create_8_columns_table(session=session)
 
@@ -6955,13 +6957,13 @@ class MultiColumnRestrictionSimpleTests(Tester):
         select_stmt = 'select {select_columns} from {table_name} '.format(select_columns=self.SELECT_COLUMNS,
                                                                           table_name=self.TABLE_NAME)
 
-        debug('Filter by integer & uuid non-indexed columns with "=<" operator')
+        logger.debug('Filter by integer & uuid non-indexed columns with "=<" operator')
         assert_all(session=session, query=select_stmt + 'where clmn_int < 2 and '
                                                         'clmn_uuid <= fa80080c-a4c5-46d6-afe4-5e184fec35ae '
                                                         'ALLOW FILTERING',
                    expected=self.EXPECTED_DATA[:2], ignore_order=True)
 
-    def filter_by_pk_ck_globalSI_and_non_indexed_columns_with_operator_test(self):
+    def test_filter_by_pk_ck_globalSI_and_non_indexed_columns_with_operator(self):
         session = self.prepare()
         self.create_8_columns_table(session=session, add_ck=True)
 
@@ -6973,12 +6975,12 @@ class MultiColumnRestrictionSimpleTests(Tester):
         select_stmt = 'select {select_columns} from {table_name} '.format(select_columns=self.SELECT_COLUMNS,
                                                                           table_name=self.TABLE_NAME)
 
-        debug('Filter by PK, CK, SI and one non-indexed column')
+        logger.debug('Filter by PK, CK, SI and one non-indexed column')
         assert_all(session=session, query=select_stmt + 'where key > 1 and clmn_int < 5 and clmn_text >= \'text2\' and '
                                                         'clmn_timestamp > 63873478378 ALLOW FILTERING',
                    expected=self.EXPECTED_DATA[2:4], ignore_order=True)
 
-    def filter_by_pk_ck_localSI_and_non_indexed_columns_with_operator_test(self):
+    def test_filter_by_pk_ck_localSI_and_non_indexed_columns_with_operator(self):
         session = self.prepare()
         self.create_8_columns_table(session=session, add_ck=True)
 
@@ -6990,7 +6992,7 @@ class MultiColumnRestrictionSimpleTests(Tester):
         select_stmt = 'select {select_columns} from {table_name} '.format(select_columns=self.SELECT_COLUMNS,
                                                                           table_name=self.TABLE_NAME)
 
-        debug('Filter by PK, CK, SI and one non-indexed column')
+        logger.debug('Filter by PK, CK, SI and one non-indexed column')
         assert_all(session=session, query=select_stmt + 'where key > 1 and clmn_int < 5 and clmn_text >= \'text2\' and '
                                                         'clmn_timestamp > 63873478378 ALLOW FILTERING',
                    expected=self.EXPECTED_DATA[2:4], ignore_order=True)
@@ -6998,7 +7000,7 @@ class MultiColumnRestrictionSimpleTests(Tester):
     # In Cassandra filtering by null still not supported. They mean to do that in 4.x version
     # https://issues.apache.org/jira/browse/CASSANDRA-10715
     @require('#4776')
-    def filter_by_pk_ck_localSI_and_empty_non_indexed_columns_test(self):
+    def test_filter_by_pk_ck_localSI_and_empty_non_indexed_columns(self):
         session = self.prepare()
         self.create_8_columns_table(session=session, add_ck=True)
 
@@ -7010,11 +7012,11 @@ class MultiColumnRestrictionSimpleTests(Tester):
         select_stmt = 'select {select_columns} from {table_name} '.format(select_columns=self.SELECT_COLUMNS,
                                                                           table_name=self.TABLE_NAME)
 
-        debug('Filter by one empty non-indexed column')
+        logger.debug('Filter by one empty non-indexed column')
         assert_all(session=session, query=select_stmt + 'where clmn_text = null ALLOW FILTERING',
                    expected=[self.EXPECTED_DATA[4]], ignore_order=True)
 
-    def filter_by_non_indexed_columns_from_mv_test(self):
+    def test_filter_by_non_indexed_columns_from_mv(self):
         session = self.prepare()
         self.create_8_columns_table(session=session, add_ck=True)
         self.create_materialized_view(session=session, view_column='clmn_text')
@@ -7024,21 +7026,21 @@ class MultiColumnRestrictionSimpleTests(Tester):
                                                                           table_name=self.MV_NAME)
 
         # Issue #4776
-        # debug('Filter by one empty non-indexed column')
+        # logger.debug('Filter by one empty non-indexed column')
         # assert_all(session=session, query=select_stmt + 'where clmn_text = \'\' ALLOW FILTERING',
         #            expected=[self.EXPECTED_DATA[4]], ignore_order=True)
 
-        debug('Filter by one non-indexed column')
+        logger.debug('Filter by one non-indexed column')
         assert_all(session=session, query=select_stmt + 'where clmn_text = \'text1\' ALLOW FILTERING',
                    expected=[self.EXPECTED_DATA[0]], ignore_order=True)
 
-        debug('Filter by PK, CK, SI and two non-indexed column with "less-more" operator')
+        logger.debug('Filter by PK, CK, SI and two non-indexed column with "less-more" operator')
         assert_all(session=session, query=select_stmt + 'where key > 1 and clmn_int < 5 '
                                                         'and clmn_uuid = fa80080c-a4c5-46d6-afe4-5e184fec35ae and '
                                                         'clmn_blob = textAsBlob(\'{}\') ALLOW FILTERING'.format('a'*10),
                    expected=[self.EXPECTED_DATA[3]], ignore_order=True)
 
-    def empty_data_set_result_test(self):
+    def test_empty_data_set_result(self):
         session = self.prepare()
         self.create_8_columns_table(session=session, add_ck=True)
         self.create_materialized_view(session=session, view_column='clmn_text')
@@ -7047,12 +7049,12 @@ class MultiColumnRestrictionSimpleTests(Tester):
         select_stmt = 'select {select_columns} from {table_name} '.format(select_columns=self.SELECT_COLUMNS,
                                                                           table_name=self.TABLE_NAME)
 
-        debug('Filter by PK, CK, SI and one non-indexed column')
+        logger.debug('Filter by PK, CK, SI and one non-indexed column')
         assert_all(session=session, query=select_stmt + 'where key > 1 and clmn_int < 5 and clmn_text <= \'text2\' and '
                                                         'clmn_timestamp < 63873478378 ALLOW FILTERING',
                    expected=[], ignore_order=True)
 
-        debug('Filter by PK, CK, SI and two non-indexed column')
+        logger.debug('Filter by PK, CK, SI and two non-indexed column')
         assert_all(session=session, query=select_stmt + 'where key > 1 and clmn_int < 5 '
                                                         'and clmn_uuid = fa80080c-a4c5-46d6-afe4-5e184fec35ae and '
                                                         'clmn_blob = textAsBlob(\'bbbbbbbbbb\') ALLOW FILTERING',
@@ -7060,13 +7062,14 @@ class MultiColumnRestrictionSimpleTests(Tester):
 
         select_stmt = 'select {select_columns} from {table_name} '.format(select_columns=self.SELECT_COLUMNS,
                                                                           table_name=self.MV_NAME)
-        debug('Filter by PK, CK, SI and one non-indexed column')
+        logger.debug('Filter by PK, CK, SI and one non-indexed column')
         assert_all(session=session, query=select_stmt + 'where key > 1 and clmn_int < 5 and clmn_text <= \'text2\' and '
                                                         'clmn_timestamp < 63873478378 ALLOW FILTERING',
                    expected=[], ignore_order=True)
 
 
-@attr('dtest-full', 'single_node')
+@pytest.mark.dtest_full
+@pytest.mark.single_node
 class MultiColumnRestrictionCollectionTests(Tester):
     TABLE_NAME = 'cf'
     TEST_DATA = [[0, "[0, 1, 2]", "[textAsBlob('t1'), textAsBlob('t2')]",
@@ -7104,7 +7107,7 @@ class MultiColumnRestrictionCollectionTests(Tester):
         if create_keyspace:
             if self._preserve_cluster:
                 session.execute("DROP KEYSPACE IF EXISTS ks")
-            self.create_ks(session, 'ks', rf)
+            create_ks(session, 'ks', rf)
         return session
 
     def create_all_collections_table(self, session):
@@ -7113,11 +7116,11 @@ class MultiColumnRestrictionCollectionTests(Tester):
             'map_uuid map<text, uuid>, f_list_int frozen<list<int>>, f_list_text frozen<list<text>>, ' \
             'f_set_int frozen<set<int>>, f_set_text frozen<set<text>>,f_map_text frozen<map<text, text>>, ' \
             'f_map_int frozen<map<text, int>>)'.format(self.TABLE_NAME)
-        debug(stmt)
+        logger.debug(stmt)
         session.execute(stmt)
 
     def insert_data_in_all_collections_columns_table(self, session, insert_data=TEST_DATA):
-        debug('Insert data')
+        logger.debug('Insert data')
         for data in insert_data:
             data_str = '{data[0]},{data[1]},{data[2]},{data[3]},{data[4]},{data[5]},{data[6]},{data[7]},{data[8]},' \
                 '{data[9]},{data[10]},{data[11]},{data[12]}'.format(data=data)
@@ -7128,7 +7131,7 @@ class MultiColumnRestrictionCollectionTests(Tester):
 
             session.execute(stmt)
 
-    def filter_by_one_non_indexed_collection_column_test(self):
+    def test_filter_by_one_non_indexed_collection_column(self):
         session = self.prepare()
         self.create_all_collections_table(session=session)
 
@@ -7136,80 +7139,80 @@ class MultiColumnRestrictionCollectionTests(Tester):
 
         select_stmt = 'select id from {table_name} '.format(table_name=self.TABLE_NAME)
 
-        debug('Filter by list of integer non-indexed column')
+        logger.debug('Filter by list of integer non-indexed column')
         assert_all(session=session, query=select_stmt + 'where list_int CONTAINS 4 ALLOW FILTERING',
                    expected=[[1]], ignore_order=True)
 
-        debug('Filter by list of blob non-indexed column')
+        logger.debug('Filter by list of blob non-indexed column')
         assert_all(session=session, query=select_stmt + 'where list_blob CONTAINS textAsBlob(\'t1\') ALLOW FILTERING',
                    expected=[[0]], ignore_order=True)
 
-        debug('Filter by set of uuid non-indexed column')
+        logger.debug('Filter by set of uuid non-indexed column')
         assert_all(session=session, query=select_stmt + 'where set_uuid CONTAINS 8e4fe826-b383-11e9-a2a3-2a2ae2dbcce4'
                                                         ' ALLOW FILTERING',
                    expected=[[1]], ignore_order=True)
 
-        debug('Filter by set of text non-indexed column')
+        logger.debug('Filter by set of text non-indexed column')
         assert_all(session=session, query=select_stmt + 'where set_text CONTAINS \'t5\' ALLOW FILTERING',
                    expected=[[0], [1]], ignore_order=True)
 
-        debug('Filter by map <text, boolean> non-indexed column')
+        logger.debug('Filter by map <text, boolean> non-indexed column')
         assert_all(session=session, query=select_stmt + 'where map_bool CONTAINS False '
                                                         'and map_bool CONTAINS KEY \'a1\' ALLOW FILTERING',
                    expected=[[1]], ignore_order=True)
 
-        debug('Filter by map <text, uuid> non-indexed column')
+        logger.debug('Filter by map <text, uuid> non-indexed column')
         assert_all(session=session, query=select_stmt + 'where map_uuid CONTAINS f34f6a76-b383-11e9-a2a3-2a2ae2dbcce4 '
                                                         ' ALLOW FILTERING',
                    expected=[[0]], ignore_order=True)
 
-        debug('Filter by map <text, uuid> non-indexed column')
+        logger.debug('Filter by map <text, uuid> non-indexed column')
         assert_all(session=session, query=select_stmt + 'where map_uuid CONTAINS KEY \'a1\' ALLOW FILTERING',
                    expected=[[1]], ignore_order=True)
 
-        debug('Filter by frozen list of integer non-indexed column')
+        logger.debug('Filter by frozen list of integer non-indexed column')
         assert_all(session=session, query=select_stmt + 'where f_list_int CONTAINS 8 ALLOW FILTERING',
                    expected=[[1]], ignore_order=True)
 
-        debug('Filter by frozen list of text non-indexed column')
+        logger.debug('Filter by frozen list of text non-indexed column')
         assert_all(session=session, query=select_stmt + 'where f_list_text CONTAINS \'f4\' ALLOW FILTERING',
                    expected=[[1]], ignore_order=True)
 
-        debug('Filter by frozen set of int non-indexed column (EQUAL)')
+        logger.debug('Filter by frozen set of int non-indexed column (EQUAL)')
         assert_all(session=session, query=select_stmt + 'where f_set_int = {9, 7} '
                                                         ' ALLOW FILTERING',
                    expected=[[0]], ignore_order=True)
 
-        debug('Filter by frozen set of int non-indexed column (CONTAINS)')
+        logger.debug('Filter by frozen set of int non-indexed column (CONTAINS)')
         assert_all(session=session, query=select_stmt + 'where f_set_int CONTAINS 9 and f_set_int CONTAINS 10 '
                                                         ' ALLOW FILTERING',
                    expected=[[1]], ignore_order=True)
 
-        debug('Filter by frozen set of text non-indexed column')
+        logger.debug('Filter by frozen set of text non-indexed column')
         assert_all(session=session, query=select_stmt + 'where f_set_text CONTAINS \'f6\' ALLOW FILTERING',
                    expected=[[1]], ignore_order=True)
 
-        debug('Filter by frozen map of text non-indexed column (EQUAL)')
+        logger.debug('Filter by frozen map of text non-indexed column (EQUAL)')
         assert_all(session=session, query=select_stmt + 'where f_map_text = {\'f2\': \'e\', \'f1\': \'c\'} '
                                                         'ALLOW FILTERING',
                    expected=[[1]], ignore_order=True)
 
-        debug('Filter by frozen map of text non-indexed column (CONTAINS)')
+        logger.debug('Filter by frozen map of text non-indexed column (CONTAINS)')
         assert_all(session=session, query=select_stmt + 'where f_map_text CONTAINS \'c\' '
                                                         'ALLOW FILTERING',
                    expected=[[1]], ignore_order=True)
 
-        debug('Filter by frozen map of text non-indexed column (CONTAINS KEY)')
+        logger.debug('Filter by frozen map of text non-indexed column (CONTAINS KEY)')
         assert_all(session=session, query=select_stmt + 'where f_map_text CONTAINS KEY \'f2\' '
                                                         'ALLOW FILTERING',
                    expected=[[1]], ignore_order=True)
 
-        debug('Filter by frozen map of int non-indexed column (CONTAINS)')
+        logger.debug('Filter by frozen map of int non-indexed column (CONTAINS)')
         assert_all(session=session, query=select_stmt + 'where f_map_int CONTAINS 2 '
                                                         'ALLOW FILTERING',
                    expected=[[0], [1]], ignore_order=True)
 
-    def filter_by_pk_and_two_non_indexed_collection_column_test(self):
+    def test_filter_by_pk_and_two_non_indexed_collection_column(self):
         session = self.prepare()
         self.create_all_collections_table(session=session)
 
@@ -7217,21 +7220,21 @@ class MultiColumnRestrictionCollectionTests(Tester):
 
         select_stmt = 'select id from {table_name} '.format(table_name=self.TABLE_NAME)
 
-        debug('Filter by PK, map of uusi and frozen set of integer non-indexed column')
+        logger.debug('Filter by PK, map of uusi and frozen set of integer non-indexed column')
         assert_all(session=session, query=select_stmt + 'where id = 0 and '
                                                         'map_uuid CONTAINS f34f6a76-b383-11e9-a2a3-2a2ae2dbcce4 '
                                                         'and f_set_int CONTAINS 9 '
                                                         'ALLOW FILTERING',
                    expected=[[0]], ignore_order=True)
 
-        debug('Filter by PK, map of uuid and frozen set of integer non-indexed column')
+        logger.debug('Filter by PK, map of uuid and frozen set of integer non-indexed column')
         assert_all(session=session, query=select_stmt + 'where id = 1 and '
                                                         'set_uuid CONTAINS 8e4fe826-b383-11e9-a2a3-2a2ae2dbcce4 '
                                                         'and f_map_int = {\'f1\': 1, \'f2\': 2, \'f3\': 3} '
                                                         'ALLOW FILTERING',
                    expected=[[1]], ignore_order=True)
 
-    def empty_data_set_result_test(self):
+    def test_empty_data_set_result(self):
         session = self.prepare()
         self.create_all_collections_table(session=session)
 
@@ -7239,7 +7242,7 @@ class MultiColumnRestrictionCollectionTests(Tester):
 
         select_stmt = 'select id from {table_name} '.format(table_name=self.TABLE_NAME)
 
-        debug('Filter by PK, map of uuid and frozen set of integer non-indexed column')
+        logger.debug('Filter by PK, map of uuid and frozen set of integer non-indexed column')
         assert_all(session=session, query=select_stmt + 'where id = 0 and '
                                                         'map_uuid CONTAINS f54f6a76-b383-11e9-a2a3-2a2ae2dbcce4 '
                                                         'and f_set_int CONTAINS 9 '
@@ -7247,7 +7250,7 @@ class MultiColumnRestrictionCollectionTests(Tester):
                    expected=[], ignore_order=True)
 
 
-@attr('dtest-full')
+@pytest.mark.dtest_full
 class TestLWTWithCQL(Tester):
     """
     Validate CQL queries for LWTs for static columns for null and non-existing rows
