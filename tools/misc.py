@@ -115,8 +115,13 @@ def is_port_used(port: int, service_name: str) -> bool:
         Can't avoid the header by using `-H' option because of ss' core on Ubuntu 18.04.
     """
     try:
+        cmd = f"PATH=/bin:/usr/sbin ss -ln"
+        out = f"{subprocess.run(cmd, shell=True, capture_output=True, text=True).stdout}"
         cmd = f"PATH=/bin:/usr/sbin ss -ln '( sport = :{port} )'"
-        return len(subprocess.run(cmd, shell=True, capture_output=True, text=True).stdout.splitlines()) > 1
+        res = subprocess.run(cmd, shell=True, capture_output=True, text=True).stdout.splitlines()
+        if len(res) <= 1:
+            logger.debug(f"Checking for '{service_name}' on port {port} not found:\n{out}")
+        return len(res) > 1
     except Exception as details:  # pylint: disable=broad-except
         logger.debug(f"Error checking for '{service_name}' on port {port}: {details}")
         return False
