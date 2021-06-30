@@ -2,6 +2,7 @@ import os
 import time
 import logging
 import pytest
+from ccmlib.scylla_cluster import ScyllaCluster
 
 from dtest_class import Tester, create_ks, create_cf, wait_for
 from tools.misc import generate_ssl_stores, is_port_used
@@ -113,7 +114,7 @@ class TestInternodeSSL(Tester):
         putget(cluster, session)
 
     @pytest.mark.single_node
-    def listen_ports_conf_test(self, DISABLE_VALUE=0):
+    def listen_ports_conf_test(self, internode_encryption='all', DISABLE_VALUE=0):
         """
         Test storage ports configuration, and verify the listening storage ports after start
         """
@@ -121,7 +122,7 @@ class TestInternodeSSL(Tester):
         cluster = self.cluster
         cluster.populate(1)
         cluster.set_configuration_options({'internode_compression': 'all'})
-        cluster.enable_internode_ssl(self.test_path, internode_encryption='all')
+        cluster.enable_internode_ssl(self.test_path, internode_encryption=internode_encryption)
 
         storage_port = 7000
         ssl_storage_port = 7001
@@ -157,21 +158,26 @@ class TestInternodeSSL(Tester):
         # Enable both option
         cluster.set_configuration_options({'storage_port': storage_port,
                                            'ssl_storage_port': ssl_storage_port})
-        restart_and_verify_listen_ports(expected_ports=[storage_port, ssl_storage_port])
+        # scylla doesn't listen on the regular port with internode_encryption='all'
+        expected_ports = [ssl_storage_port] if isinstance(cluster, ScyllaCluster) and internode_encryption == 'all' else \
+            [storage_port, ssl_storage_port]
+        restart_and_verify_listen_ports(expected_ports=expected_ports)
 
         # Disable storage_port by setting it to `disable_value'
-        cluster.set_configuration_options({'storage_port': disable_value,
+        cluster.set_configuration_options({'storage_port': DISABLE_VALUE,
                                            'ssl_storage_port': ssl_storage_port})
         restart_and_verify_listen_ports(expected_ports=[ssl_storage_port])
 
         # Disable ssl_storage_port by setting it to `disable_value'
         cluster.set_configuration_options({'storage_port': storage_port,
-                                           'ssl_storage_port': disable_value})
-        restart_and_verify_listen_ports(expected_ports=[storage_port])
+                                           'ssl_storage_port': DISABLE_VALUE})
+        expected_ports = [] if isinstance(cluster, ScyllaCluster) and internode_encryption == 'all' else \
+            [storage_port]
+        restart_and_verify_listen_ports(expected_ports=expected_ports)
 
         # Disable both ports by setting it to `disable_value'
-        cluster.set_configuration_options({'storage_port': disable_value,
-                                           'ssl_storage_port': disable_value})
+        cluster.set_configuration_options({'storage_port': DISABLE_VALUE,
+                                           'ssl_storage_port': DISABLE_VALUE})
         restart_and_verify_listen_ports(expected_ports=[])
 
     @pytest.mark.single_node
