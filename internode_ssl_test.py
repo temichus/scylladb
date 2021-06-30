@@ -112,7 +112,8 @@ class TestInternodeSSL(Tester):
         create_cf(session, 'cf', compression=None)
         putget(cluster, session)
 
-    def _listen_ports_conf_template(self, disable_value=0):
+    @pytest.mark.single_node
+    def listen_ports_conf_test(self, DISABLE_VALUE=0):
         """
         Test storage ports configuration, and verify the listening storage ports after start
         """
@@ -174,7 +175,6 @@ class TestInternodeSSL(Tester):
         restart_and_verify_listen_ports(expected_ports=[])
 
     @pytest.mark.single_node
-    @pytest.mark.require('#7783')
     def test_listen_ports_conf(self):
         self._listen_ports_conf_template(disable_value=0)
 
