@@ -119,7 +119,7 @@ class TestInternodeSSL(Tester):
         """
         generate_ssl_stores(self.test_path)
         cluster = self.cluster
-        cluster.populate(3)
+        cluster.populate(1)
         cluster.set_configuration_options({'internode_compression': 'all'})
         cluster.enable_internode_ssl(self.test_path, internode_encryption='all')
 
