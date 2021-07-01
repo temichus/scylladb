@@ -138,6 +138,7 @@ repos:
                 largecolumn_test.py|
                 cql_tests.py|
                 upgrade_internal_auth_test.py|
+                partitioner_tests.py|
                 rebuild_test.py|
                 offline_tools_test.py|
                 update_cluster_layout_tests.py|
