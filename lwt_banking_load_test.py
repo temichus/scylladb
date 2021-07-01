@@ -234,6 +234,8 @@ DROP_KS = f"""
 DROP KEYSPACE IF EXISTS {KEYSPACE}
 """
 
+class SetupError(Exception):
+    pass
 
 def t4(x):
     """Return trailing 4 chars of string representation"""
@@ -576,6 +578,9 @@ class LWTBankingLoadTest(Tester):
 
         for proc in populate_procs:
             proc.join()
+        for idx, proc in enumerate(populate_procs):
+            if proc.exitcode != 0:
+                raise SetupError(f"Error for populate worker {idx}: \"{proc.exitcode}\"")
 
     def fetch_account_balance(self, session, account):
         try:
