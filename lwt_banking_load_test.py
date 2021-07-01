@@ -234,8 +234,10 @@ DROP_KS = f"""
 DROP KEYSPACE IF EXISTS {KEYSPACE}
 """
 
+
 class SetupError(Exception):
     pass
+
 
 def t4(x):
     """Return trailing 4 chars of string representation"""
