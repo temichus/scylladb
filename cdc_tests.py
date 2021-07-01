@@ -71,12 +71,12 @@ class CDCInitializeHelper:
     # The ID is a (timestamp, uuid) pair.
     def get_local_generation_id(self, session) -> GenerationId:
         rs = list(session.execute("SELECT streams_timestamp, uuid FROM system.cdc_local WHERE key = 'cdc_local'"))
-        self.assertEqual(len(rs), 1)
+        assert len(rs) == 1
         return GenerationId(time=rs[0].streams_timestamp, uuid=rs[0].uuid)
 
     def get_last_generation_timestamp(self, session):
         timestamps = list(self.get_cdc_generation_timestamps(session))
-        self.assertGreater(len(timestamps), 0, "No CDC generations")
+        assert len(timestamps) > 0, "No CDC generations"
         return max(row.time for row in timestamps)
 
     def wait_for_last_generation_to_be_active(self, session):
@@ -395,7 +395,7 @@ class TestCdc(Tester, CDCInitializeHelper):
 
         def new_gen_appeared():
             gen_timestamp = self.get_last_generation_timestamp(session)
-            self.assertGreaterEqual(gen_timestamp, old_gen_timestamp)
+            assert gen_timestamp > old_gen_timestamp
             return gen_timestamp > old_gen_timestamp
         wait_for(new_gen_appeared, 1, "waiting for new generation to appear in client table", 60)
 
