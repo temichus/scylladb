@@ -93,6 +93,7 @@ repos:
                 consistency_test.py|
                 secondary_indexes_test.py|
                 like_operator_test.py|
+                paxos_tests.py|
                 sstableutil_test.py|
                 sstablesplit_test.py|
                 jmx_test.py|

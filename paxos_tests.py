@@ -3,19 +3,18 @@
 import time
 import random
 import itertools
-
+import logging
 from threading import Thread, Event
 
-from nose.plugins.attrib import attr
+import pytest
 from cassandra import ConsistencyLevel, WriteTimeout, WriteFailure
 from cassandra.query import SimpleStatement
 
-from assertions import assert_unavailable, assert_invalid, assert_one
-from dtest import Tester, debug
-from tools import no_vnodes, since
-from nose.plugins.attrib import attr
-from scylla_tools import scylla_mode
-from tools import require
+from tools.assertions import assert_unavailable, assert_one
+from dtest_class import Tester, create_ks
+
+
+logger = logging.getLogger(__name__)
 
 
 class LoadThread(Thread):
@@ -66,8 +65,7 @@ class LoadThread(Thread):
             pass
 
 
-@since('2.0.6')
-@attr('dtest-full')
+@pytest.mark.dtest_full
 class TestPaxos(Tester):
 
     def prepare(self, create_keyspace=True, use_cache=False, nodes=1, rf=1):
@@ -82,7 +80,7 @@ class TestPaxos(Tester):
 
         session = self.patient_cql_connection(node1)
         if create_keyspace:
-            self.create_ks(session, 'ks', rf)
+            create_ks(session, 'ks', rf)
         self._node_num = 6
         return session
 
@@ -110,7 +108,7 @@ class TestPaxos(Tester):
     def node_session(self, node):
         return self.patient_cql_connection(self.nodelist()[node])
 
-    def replica_availability_test(self):
+    def test_replica_availability(self):
         """
         @jira_ticket CASSANDRA-8640
 
@@ -134,8 +132,8 @@ class TestPaxos(Tester):
         self.cluster.nodelist()[2].start(wait_for_binary_proto=True)
         session.execute("INSERT INTO test (k, v) VALUES (4, 4) IF NOT EXISTS")
 
-    @no_vnodes()
-    def cluster_availability_test(self):
+    @pytest.mark.no_vnodes
+    def test_cluster_availability(self):
         # Warning, a change in partitioner or a change in CCM token allocation
         # may require the partition keys of these inserts to be changed.
         # This must not use vnodes as it relies on assumed token values.
@@ -156,12 +154,12 @@ class TestPaxos(Tester):
         self.cluster.nodelist()[2].start(wait_for_binary_proto=True)
         session.execute("INSERT INTO test (k, v) VALUES (6, 6) IF NOT EXISTS")
 
-    def contention_test_multi_iterations(self):
+    def test_contention_test_multi_iterations(self):
         self._contention_test(8, 100)
 
     # Warning, this test will require you to raise the open
     # file limit on OSX. Use 'ulimit -n 1000'
-    def contention_test_many_threads(self):
+    def test_contention_test_many_threads(self):
         self._contention_test(300, 1)
 
     def _contention_test(self, threads, iterations):
@@ -271,11 +269,11 @@ class TestPaxos(Tester):
                                                     0), "value=%d, errors=%d, retries=%d" % (value, errors, retries)
 
     def _add_random_nodes(self, max_limit, upper_node_limit, loaders):
-        debug(f"_add_random_nodes(self, max_limit={max_limit}")
+        logger.debug(f"_add_random_nodes(self, max_limit={max_limit}")
         nodes_to_add = random.randint(0, min(max_limit, upper_node_limit - len(self.cluster.nodelist())))
         if nodes_to_add == 0:
             return
-        debug(f"_remove_random_nodes number_to_add={nodes_to_add}")
+        logger.debug(f"_remove_random_nodes number_to_add={nodes_to_add}")
         nodes_before = len(self.cluster.nodelist())
         added_nodes = self.add_nodes(nodes_to_add)
         for node_n in range(len(added_nodes)):
@@ -288,7 +286,7 @@ class TestPaxos(Tester):
         number_to_remove = random.randint(0, min(max_limit, len(self.cluster.nodelist()) - lower_node_limit))
         if not number_to_remove:
             return
-        debug(f"_remove_random_nodes number_to_remove={number_to_remove}")
+        logger.debug(f"_remove_random_nodes number_to_remove={number_to_remove}")
         for n in range(number_to_remove):
             to_stop.append(nodes[n + lower_node_limit])
         for node in to_stop:
@@ -299,8 +297,7 @@ class TestPaxos(Tester):
             loaders[node].stop()
             del loaders[node]
 
-    @since('3.3')
-    @require('#7087')
+    @pytest.mark.require('#7087')
     def test_topology_change_in_presence_of_down_node(self):
         session = self.prepare(nodes=6, rf=4)
         lower_node_limit = 3
@@ -322,9 +319,9 @@ class TestPaxos(Tester):
             self._add_random_nodes(stop_start_limit, upper_node_limit, loaders)
             time.sleep(random.uniform(5, 15))
 
-    @attr('dtest-debug')
-    @scylla_mode('!release')
-    def cas_statement_timeout_test(self):
+    @pytest.mark.dtest_debug
+    @pytest.mark.scylla_mode('!release')
+    def test_cas_statement_timeout(self):
         '''
         Tests for adequate handling timeouts from replicas in each stage of paxos algorithm.
         I.e. there should be a retry of the paxos round if a timeout is encountered.
@@ -363,11 +360,11 @@ class TestPaxos(Tester):
                 # each shard actually, so we can end up with some injections still
                 # enabled for some shards.
 
-                debug("Reset enabled injections on each node in the test cluster")
+                logger.debug("Reset enabled injections on each node in the test cluster")
                 for node in nodes:
                     self.disable_errors(node)
 
-                debug(f"Testing combination {combination}")
+                logger.debug(f"Testing combination {combination}")
                 for stage in combination:
                     injection_name = paxos_stages_injections[stage]
                     for node in nodes:
@@ -398,23 +395,23 @@ class TestPaxos(Tester):
 
         # Fail at the end of "accept" stage so that we have commited a proposal but not yet completed the round
         errinj_name = "paxos_error_after_save_proposal"
-        debug(f"Enable {errinj_name} injection on the test node")
+        logger.debug(f"Enable {errinj_name} injection on the test node")
         self.enable_error(errinj_name, node1, one_shot=True)
 
         # Execute the LWT query leaving an unfinished paxos round behind
         key = 0
         with self.assertRaises(WriteFailure):
-            debug(f"Execute the first INSERT query on key {key}")
+            logger.debug(f"Execute the first INSERT query on key {key}")
             insert_action(session, key)
 
         # perform DDL action to change test table schema version
         ddl_action(session)
 
-        debug("Disable remaining injections on the node (if any)")
+        logger.debug("Disable remaining injections on the node (if any)")
         self.disable_errors(node1)
 
         if clear_schema_cache:
-            debug(f"Restart the node to clear up schema_registry cache")
+            logger.debug(f"Restart the node to clear up schema_registry cache")
             node1.stop(wait=True)
             node1.start()
             # re-open the session to the node
@@ -423,7 +420,7 @@ class TestPaxos(Tester):
 
         # Initiate a subsequent round on the same key so that it performs
         # repair of the previous round and it is supposed to fail
-        debug(f"Execute the second INSERT on key {key} (supposed to trigger repair of the previous round)")
+        logger.debug(f"Execute the second INSERT on key {key} (supposed to trigger repair of the previous round)")
         second_insert_action(session, key)
         # Execute additional actions to verify that the test executed successfully (check logs and data)
         verify_results_action(session, node1)
@@ -471,14 +468,16 @@ class TestPaxos(Tester):
                                             verify_results_action=check_schema_mismatch_exc
                                             )
 
-    @attr('dtest-debug', 'single_node')
-    @scylla_mode('!release')
-    def schema_mismatch_cache_test(self):
+    @pytest.mark.dtest_debug
+    @pytest.mark.single_node
+    @pytest.mark.scylla_mode('!release')
+    def test_schema_mismatch_cache(self):
         self._schema_mismatch_tpl(clear_schema_cache=False)
 
-    @attr('dtest-debug', 'single_node')
-    @scylla_mode('!release')
-    def schema_mismatch_no_cache_test(self):
+    @pytest.mark.dtest_debug
+    @pytest.mark.single_node
+    @pytest.mark.scylla_mode('!release')
+    def test_schema_mismatch_no_cache(self):
         self._schema_mismatch_tpl(clear_schema_cache=True)
 
     def _schema_mismatch_mv_tpl(self, clear_schema_cache):
@@ -526,14 +525,16 @@ class TestPaxos(Tester):
                                             verify_results_action=check_schema_mismatch_exc
                                             )
 
-    @attr('dtest-debug', 'single_node')
-    @scylla_mode('!release')
-    def schema_mismatch_mv_cache_test(self):
+    @pytest.mark.dtest_debug
+    @pytest.mark.single_node
+    @pytest.mark.scylla_mode('!release')
+    def test_schema_mismatch_mv_cache(self):
         self._schema_mismatch_mv_tpl(clear_schema_cache=False)
 
-    @attr('dtest-debug', 'single_node')
-    @scylla_mode('!release')
-    def schema_mismatch_mv_no_cache_test(self):
+    @pytest.mark.dtest_debug
+    @pytest.mark.single_node
+    @pytest.mark.scylla_mode('!release')
+    def test_schema_mismatch_mv_no_cache(self):
         self._schema_mismatch_mv_tpl(clear_schema_cache=True)
 
     def _schema_mismatch_drop_regular_column_tpl(self, clear_schema_cache):
@@ -575,7 +576,7 @@ class TestPaxos(Tester):
             exc_msg = node.grep_log(exc_msg)
             if exc_msg:
                 raise Exception(f"Unexpected exception during mutation write: {exc_msg}")
-            debug("Selecting table contents to verify that insert was applied successfully")
+            logger.debug("Selecting table contents to verify that insert was applied successfully")
             assert_one(session, "SELECT * from test", [0])
 
         self._base_schema_mismatch_test_tpl(clear_schema_cache=clear_schema_cache,
@@ -586,14 +587,16 @@ class TestPaxos(Tester):
                                             verify_results_action=check_exc_and_table_data
                                             )
 
-    @attr('dtest-debug', 'single_node')
-    @scylla_mode('!release')
-    def schema_mismatch_drop_regular_column_cache_test(self):
+    @pytest.mark.dtest_debug
+    @pytest.mark.single_node
+    @pytest.mark.scylla_mode('!release')
+    def test_schema_mismatch_drop_regular_column_cache(self):
         self._schema_mismatch_drop_regular_column_tpl(clear_schema_cache=False)
 
-    @attr('dtest-debug', 'single_node')
-    @scylla_mode('!release')
-    def schema_mismatch_drop_regular_column_no_cache_test(self):
+    @pytest.mark.dtest_debug
+    @pytest.mark.single_node
+    @pytest.mark.scylla_mode('!release')
+    def test_schema_mismatch_drop_regular_column_no_cache(self):
         self._schema_mismatch_drop_regular_column_tpl(clear_schema_cache=True)
 
     def _schema_mismatch_drop_regular_column_in_the_middle_tpl(self, clear_schema_cache):
@@ -635,7 +638,7 @@ class TestPaxos(Tester):
             exc_msg = node.grep_log(exc_msg)
             if exc_msg:
                 raise Exception(f"Unexpected exception during mutation write: {exc_msg}")
-            debug("Selecting table contents to verify that insert was applied successfully")
+            logger.debug("Selecting table contents to verify that insert was applied successfully")
             assert_one(session, "SELECT * from test", [0, 0])
 
         self._base_schema_mismatch_test_tpl(clear_schema_cache=clear_schema_cache,
@@ -646,12 +649,14 @@ class TestPaxos(Tester):
                                             verify_results_action=check_exc_and_table_data
                                             )
 
-    @attr('dtest-debug', 'single_node')
-    @scylla_mode('!release')
-    def schema_mismatch_drop_regular_column_in_the_middle_cache_test(self):
+    @pytest.mark.dtest_debug
+    @pytest.mark.single_node
+    @pytest.mark.scylla_mode('!release')
+    def test_schema_mismatch_drop_regular_column_in_the_middle_cache(self):
         self._schema_mismatch_drop_regular_column_in_the_middle_tpl(clear_schema_cache=False)
 
-    @attr('dtest-debug', 'single_node')
-    @scylla_mode('!release')
-    def schema_mismatch_drop_regular_column_in_the_middle_no_cache_test(self):
+    @pytest.mark.dtest_debug
+    @pytest.mark.single_node
+    @pytest.mark.scylla_mode('!release')
+    def test_schema_mismatch_drop_regular_column_in_the_middle_no_cache(self):
         self._schema_mismatch_drop_regular_column_in_the_middle_tpl(clear_schema_cache=True)
