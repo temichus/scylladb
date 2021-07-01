@@ -127,7 +127,6 @@ repos:
                 simple_no_driver_test.py|
                 sstabledump_test.py|
                 cqlsh_tests/cqlsh_copy_tests.py|
-                simple_boot_shutdown_test.py|
                 delete_insert_test.py|
                 scyllatop_test.py|
                 counter_tests.py|
@@ -137,6 +136,7 @@ repos:
                 scrub_test.py|
                 largecolumn_test.py|
                 upgrade_internal_auth_test.py|
+                offline_tools_test.py|
                 update_cluster_layout_tests.py|
                 rest_api_tests.py|
                 limits_test.py |

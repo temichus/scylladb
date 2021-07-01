@@ -2,17 +2,18 @@ import os
 import random
 import re
 import subprocess
-
-from nose.plugins.attrib import attr
+import pytest
+import logging
+import random
 
 from ccmlib import common
-from dtest import Tester, debug
-from tools import since
-from nose.tools import nottest
-from unittest import skip
+from dtest_class import Tester, create_ks
 
 
-@attr('dtest-full')
+logger = logging.getLogger(__name__)
+
+
+@pytest.mark.dtest_full
 class TestOfflineTools(Tester):
     """
     Test cassandra offline tools.
@@ -46,11 +47,10 @@ class TestOfflineTools(Tester):
         return not all(results.values())
 
     def verify_nodetool_stderr(self, error):
-        self.assertTrue(not self._nodetool_stderr_has_error(error),
-                        "Unexpected nodetool stderr: %s" % error)
+        assert not self._nodetool_stderr_has_error(error), f"Unexpected nodetool stderr: {error}"
 
-    @attr('single_node')
-    def sstablelevelreset_test(self):
+    @pytest.mark.single_node
+    def test_sstablelevelreset(self):
         """
         Insert data and call sstablelevelreset on a series of
         tables. Confirm level is reset to 0 using its output.
@@ -65,9 +65,9 @@ class TestOfflineTools(Tester):
         # test by trying to run on nonexistent keyspace
         cluster.stop(gently=False)
         (output, error, rc) = node1.run_sstablelevelreset("keyspace1", "standard1", output=True)
-        self.assertIn("ColumnFamily not found: keyspace1/standard1", error)
+        assert "ColumnFamily not found: keyspace1/standard1" in error, "Message was not found in stderr"
         # this should return exit code 1
-        self.assertEqual(rc, 1, msg=str(rc))
+        assert rc == 1, f"Invalid exit code: {str(rc)}"
 
         # now test by generating keyspace but not flushing sstables
         cluster.start(wait_for_binary_proto=True)
@@ -76,8 +76,8 @@ class TestOfflineTools(Tester):
 
         (output, error, rc) = node1.run_sstablelevelreset("keyspace1", "standard1", output=True)
         self.verify_nodetool_stderr(error)
-        self.assertIn("Found no sstables, did you give the correct keyspace", output)
-        self.assertEqual(rc, 0, msg=str(rc))
+        assert "Found no sstables, did you give the correct keyspace" in output, "Message was not found in stdout"
+        assert rc == 0, f"Invalid exit code: {str(rc)}"
 
         # test by writing small amount of data and flushing (all sstables should be level 0)
         cluster.start(wait_for_binary_proto=True)
@@ -90,8 +90,8 @@ class TestOfflineTools(Tester):
 
         (output, error, rc) = node1.run_sstablelevelreset("keyspace1", "standard1", output=True)
         self.verify_nodetool_stderr(error)
-        self.assertIn("since it is already on level 0", output)
-        self.assertEqual(rc, 0, msg=str(rc))
+        assert "since it is already on level 0" in output, "Message was not found in stdout"
+        assert rc == 0, f"Invalid exit code: {str(rc)}"
 
         # test by loading large amount data so we have multiple levels and checking all levels are 0 at end
         cluster.start(wait_for_binary_proto=True)
@@ -104,16 +104,16 @@ class TestOfflineTools(Tester):
         (output, error, rc) = node1.run_sstablelevelreset("keyspace1", "standard1", output=True)
         final_levels = self.get_levels(node1.run_sstablemetadata(keyspace="keyspace1", column_families=["standard1"]))
         self.verify_nodetool_stderr(error)
-        self.assertEqual(rc, 0, msg=str(rc))
+        assert rc == 0, f"Invalid exit code: {str(rc)}"
 
-        debug(initial_levels)
-        debug(final_levels)
+        logger.debug(initial_levels)
+        logger.debug(final_levels)
 
         # let's make sure there was at least L1 beforing resetting levels
-        self.assertTrue(max(initial_levels) > 0)
+        assert max(initial_levels) > 0, "Missing required level before reseting"
 
         # let's check all sstables are on L0 after sstablelevelreset
-        self.assertTrue(max(final_levels) == 0)
+        assert max(final_levels) == 0, f"Wronng level {max(final_levels)}"
 
     def get_levels(self, data):
         levels = []
@@ -130,9 +130,9 @@ class TestOfflineTools(Tester):
             if pattern.search(output):
                 break
 
-    @nottest
-    @attr('single_node')
-    def sstableofflinerelevel_test(self):
+    @pytest.mark.skip("sstableofflinerelevel is not supported by scylla: scylladb/scylla#1151, scylladb/scylla-ccm#87")
+    @pytest.mark.single_node
+    def test_sstableofflinerelevel(self):
         """
         Generate sstables of varying levels.
         Reset sstables to L0 with sstablelevelreset
@@ -151,7 +151,7 @@ class TestOfflineTools(Tester):
         # (output, error, rc) = node1.run_sstableofflinerelevel("keyspace1", "standard1", output=True)
         # self.assertTrue("java.lang.IllegalArgumentException: Unknown keyspace/columnFamily keyspace1.standard1" in error)
         # # this should return exit code 1
-        # self.assertEqual(rc, 1, msg=str(rc))
+        # assert rc == 1, f"Invalid exit code: {str(rc)}"
         # cluster.start()
 
         # now test by generating keyspace but not flushing sstables
@@ -161,8 +161,8 @@ class TestOfflineTools(Tester):
 
         (output, error, rc) = node1.run_sstableofflinerelevel("keyspace1", "standard1", output=True)
 
-        self.assertIn("No sstables to relevel for keyspace1.standard1", output)
-        self.assertEqual(rc, 1, msg=str(rc))
+        assert "No sstables to relevel for keyspace1.standard1" in output, "Message was not found in stdout"
+        assert rc == 1, f"Invalid exit code: {str(rc)}"
 
         # test by flushing (sstable should be level 0)
         cluster.start(wait_for_binary_proto=True)
@@ -176,8 +176,8 @@ class TestOfflineTools(Tester):
         cluster.stop()
 
         (output, error, rc) = node1.run_sstableofflinerelevel("keyspace1", "standard1", output=True)
-        self.assertIn("L0=1", output)
-        self.assertEqual(rc, 0, msg=str(rc))
+        assert "L0=1" in output
+        assert rc == 1, f"Invalid exit code: {str(rc)}"
 
         # test by loading large amount data so we have multiple sstables
         cluster.start(wait_for_binary_proto=True)
@@ -192,24 +192,22 @@ class TestOfflineTools(Tester):
         final_levels = self.get_levels(node1.run_sstablemetadata(keyspace="keyspace1", column_families=["standard1"]))
 
         # let's make sure there was at least 3 levels (L0, L1 and L2)
-        self.assertTrue(max(initial_levels) > 1)
+        assert max(initial_levels) > 1, "Required levels are not reached"
         # let's check all sstables are on L0 after sstablelevelreset
-        self.assertTrue(max(final_levels) == 0)
+        assert max(final_levels) == 0, "Level was not reseted to level 0"
 
         # time to relevel sstables
         initial_levels = self.get_levels(node1.run_sstablemetadata(keyspace="keyspace1", column_families=["standard1"]))
         (output, error, rc) = node1.run_sstableofflinerelevel("keyspace1", "standard1", output=True)
         final_levels = self.get_levels(node1.run_sstablemetadata(keyspace="keyspace1", column_families=["standard1"]))
 
-        debug(initial_levels)
-        debug(final_levels)
+        logger.debug(initial_levels)
+        logger.debug(final_levels)
 
         # let's check sstables were promoted after releveling
-        self.assertTrue(max(final_levels) > 1)
+        assert max(final_levels) > 1, "Level was not reached"
 
-    @since('2.2')
-    @skip('The test fails under Scylla')
-    def sstableverify_test(self):
+    def test_sstableverify(self):
         """
         Generate sstables and test offline verification works correctly
         Test on bad input: nonexistent keyspace and sstables
@@ -218,41 +216,44 @@ class TestOfflineTools(Tester):
 
         cluster = self.cluster
         cluster.populate(3).start(wait_for_binary_proto=True)
-        node1, node2, node3 = cluster.nodelist()
+        node1 = cluster.nodelist()[0]
 
         # test on nonexistent keyspace
         (out, err, rc) = node1.run_sstableverify("keyspace1", "standard1", output=True)
-        self.assertIn("Unknown keyspace/table keyspace1.standard1", err)
-        self.assertEqual(rc, 1, msg=str(rc))
+        assert "Unknown keyspace/table keyspace1.standard1" in err, "Message was not found in stderr"
+        assert rc == 1, f"Invalid exit code: {str(rc)}"
 
         # test on nonexistent sstables:
         node1.stress(['write', 'n=100', '-schema', 'replication(factor=3)'])
         (out, err, rc) = node1.run_sstableverify("keyspace1", "standard1", output=True)
-        self.assertEqual(rc, 0, msg=str(rc))
+        assert rc == 0, f"Invalid exit code: {str(rc)}"
 
         # Generate multiple sstables and test works properly in the simple case
         node1.stress(['write', 'n=100K', '-schema', 'replication(factor=3)'])
         node1.flush()
         node1.stress(['write', 'n=100K', '-schema', 'replication(factor=3)'])
         node1.flush()
+        # wait if any compaction are running
+        node1.wait_for_compactions()
         cluster.stop()
 
         (out, error, rc) = node1.run_sstableverify("keyspace1", "standard1", output=True)
-
-        self.assertEqual(rc, 0, msg=str(rc))
+        logger.info(out)
+        assert rc == 0, f"Invalid exit code: {str(rc)}"
 
         # STDOUT of the sstableverify command consists of multiple lines which may contain
         # Java-normalized paths. To later compare these with Python-normalized paths, we
         # map over each line of out and replace Java-normalized paths with Python equivalents.
-        outlines = map(lambda line: re.sub("(?<=path=').*(?=')",
-                                           lambda match: os.path.normcase(match.group(0)),
-                                           line),
-                       out.splitlines())
+        outlines = list(map(lambda line: re.sub("(?<=path=').*(?=')",
+                                                lambda match: os.path.normcase(match.group(0)),
+                                                line),
+                            out.splitlines()))
 
         # check output is correct for each sstable
         sstables = self._get_final_sstables(node1, "keyspace1", "standard1")
 
         for sstable in sstables:
+            logger.debug(sstable)
             verified = False
             hashcomputed = False
             for line in outlines:
@@ -262,18 +263,19 @@ class TestOfflineTools(Tester):
                     elif "Checking computed hash of BigTableReader" in line:
                         hashcomputed = True
                     else:
-                        debug(line)
+                        logger.debug(line)
 
-            debug(verified)
-            debug(hashcomputed)
-            debug(sstable)
-            self.assertTrue(verified and hashcomputed)
+            logger.debug(verified)
+            logger.debug(hashcomputed)
+            logger.debug(sstable)
+            assert verified and hashcomputed, \
+                f"Verifying {verified} or hashcomputed{hashcomputed} not found in {outlines} for sstable {sstable}"
 
         # now try intentionally corrupting an sstable to see if hash computed is different and error recognized
-        sstable1 = sstables[1]
-        with open(sstable1, 'r') as f:
+        sstable1 = random.choice(sstables)
+        with open(sstable1, 'rb') as f:
             sstabledata = bytearray(f.read())
-        with open(sstable1, 'w') as out:
+        with open(sstable1, 'wb') as out:
             position = random.randrange(0, len(sstabledata))
             sstabledata[position] = (sstabledata[position] + 1) % 256
             out.write(sstabledata)
@@ -284,17 +286,17 @@ class TestOfflineTools(Tester):
         # Process sstableverify output to normalize paths in string to Python casing as above
         error = re.sub("(?<=Corrupted: ).*", lambda match: os.path.normcase(match.group(0)), error)
 
-        self.assertIn("Corrupted: " + sstable1, error)
-        self.assertEqual(rc, 1, msg=str(rc))
+        assert "Corrupted: " + sstable1 in error, "Message was not found in stderr"
+        assert rc == 1, f"Invalid exit code: {str(rc)}"
 
-    @nottest
-    @attr('single_node')
-    def sstableexpiredblockers_test(self):
+    @pytest.mark.skip("Skip test due to issue: scylladb/scylla-tools-java#154")
+    @pytest.mark.single_node
+    def test_sstableexpiredblockers(self):
         cluster = self.cluster
         cluster.populate(1).start(wait_for_binary_proto=True)
         [node1] = cluster.nodelist()
         session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'ks', 1)
+        create_ks(session, 'ks', 1)
         session.execute("create table ks.cf (key int PRIMARY KEY, val int) with gc_grace_seconds=0")
         # create a blocker:
         session.execute("insert into ks.cf (key, val) values (1,1)")
@@ -304,7 +306,7 @@ class TestOfflineTools(Tester):
         session.execute("delete from ks.cf where key = 3")
         node1.flush()
         [(out, error, rc)] = node1.run_sstableexpiredblockers(keyspace="ks", column_family="cf")
-        self.assertIn("blocks 2 expired sstables from getting dropped", out)
+        assert "blocks 2 expired sstables from getting dropped" in out, "Message was not found in stdout"
 
     def _get_final_sstables(self, node, ks, table):
         """
