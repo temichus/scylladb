@@ -41,13 +41,14 @@ def insert_c1c2(session, keys=None, n=None, consistency=ConsistencyLevel.QUORUM,
         execute_concurrent_with_args(session, statement, [['k{}'.format(k)] for k in keys])
 
 
-def query_c1c2(session, key, consistency=ConsistencyLevel.QUORUM, tolerate_missing=False, must_be_missing=False):
-    query = SimpleStatement('SELECT c1, c2 FROM cf WHERE key=\'k%d\'' % key, consistency_level=consistency)
+def query_c1c2(session, key, consistency=ConsistencyLevel.QUORUM, tolerate_missing=False, must_be_missing=False,
+               c1_value='value1', c2_value='value2', ks="ks", cf="cf"):
+    query = SimpleStatement(f'SELECT c1, c2 FROM {ks}.{cf} WHERE key=\'k{key}\'', consistency_level=consistency)
     rows = list(session.execute(query))
     if not tolerate_missing:
         assertions.assert_length_equal(rows, 1)
         res = rows[0]
-        assert len(res) == 2 and res[0] == 'value1' and res[1] == 'value2', res
+        assert len(res) == 2 and res[0] == c1_value and res[1] == c2_value, res
     if must_be_missing:
         assertions.assert_length_equal(rows, 0)
 
