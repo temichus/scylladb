@@ -1,13 +1,14 @@
 import os
 import distutils.dir_util
-import re
 
-from dtest import Tester, debug
-from nose.plugins.attrib import attr
+import pytest
+
+from dtest_class import Tester
 from scylla_tools import get_node_cf_dir
 
 
-@attr('dtest-full', 'single_node')
+@pytest.mark.dtest_full
+@pytest.mark.single_node
 class TestCompactStorage(Tester):
     row_size = 1000
 
@@ -31,19 +32,19 @@ class TestCompactStorage(Tester):
 
         result = list(session.execute("SELECT key2 FROM ks.tb"))
 
-        self.assertEqual(len(result), lines, len(result))
+        assert len(result) == lines
 
-    def read_old_format_wide_row_data_test(self):
+    def test_read_old_format_wide_row_data(self):
         self.load_and_read_from_sstables("scylla_compact_storage_wide_partition_old_format", self.row_size - 200)
 
-    @attr('next-gating')
-    @attr('dtest-debug')
-    def read_cassandra_wide_row_data_test(self):
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
+    def test_read_cassandra_wide_row_data(self):
         self.load_and_read_from_sstables("cassandra_compact_storage_wide_partition", self.row_size - 100)
 
-    @attr('next-gating')
-    @attr('dtest-debug')
-    def wide_row_test(self):
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
+    def test_wide_row(self):
         cluster = self.cluster
         cluster.populate(1).start(wait_for_binary_proto=True)
         node1 = cluster.nodelist()[0]
@@ -63,7 +64,7 @@ class TestCompactStorage(Tester):
             session.execute("delete from ks.tb where key1=1 and key2 = %d" % (key2*10))
 
         result = list(session.execute("SELECT * FROM ks.tb"))
-        self.assertEqual(len(result), self.row_size-100, len(result))
+        assert len(result) == self.row_size-100
 
         node1.flush()
         node1.stop()
@@ -71,4 +72,4 @@ class TestCompactStorage(Tester):
 
         session = self.patient_cql_connection(node1)
         result = list(session.execute("SELECT * FROM ks.tb"))
-        self.assertEqual(len(result), self.row_size-100, len(result))
+        assert len(result) == self.row_size-100
