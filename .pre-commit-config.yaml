@@ -135,6 +135,7 @@ repos:
                 cql_group_functions_tests.py|
                 scrub_test.py|
                 largecolumn_test.py|
+                cql_tests.py|
                 upgrade_internal_auth_test.py|
                 rebuild_test.py|
                 offline_tools_test.py|

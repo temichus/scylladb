@@ -1,20 +1,16 @@
 # coding: utf-8
 import string
-
 import struct
 import time
-from datetime import datetime, timedelta
+import logging
 from unittest import skip
 from random import randint
 from math import ceil
 
+import pytest
 from cassandra import ConsistencyLevel, InvalidRequest
 from cassandra.policies import FallthroughRetryPolicy
-from cassandra.protocol import ProtocolException
 from cassandra.query import SimpleStatement
-
-from assertions import assert_invalid, assert_one, assert_unavailable, assert_all
-from dtest import Tester
 
 from thrift_bindings.thrift010.ttypes import \
     ConsistencyLevel as ThriftConsistencyLevel
@@ -22,12 +18,19 @@ from thrift_bindings.thrift010.ttypes import (CfDef, Column, ColumnOrSuperColumn
                                               Mutation)
 from thrift.Thrift import TApplicationException
 from thrift_tests import get_thrift_client
-from tools import debug, require, rows_to_list, since, new_node
+
+from tools.assertions import assert_invalid, assert_one, assert_unavailable, assert_all
+from dtest_class import Tester, create_ks
+from tools.data import rows_to_list
+from tools.cluster import new_node
+from tools.misc import require
 from scylla_tools import get_entity_id, get_truncated_time_from_system_local, get_truncated_time_from_system_truncated
-from nose.plugins.attrib import attr
 
 
-@attr('dtest-full')
+logger = logging.getLogger(__name__)
+
+
+@pytest.mark.dtest_full
 class CQLTester(Tester):
 
     def prepare(self, create_keyspace=True, use_cache=False, nodes=1, rf=1, protocol_version=None, user=None, password=None, configuration_options=None, **kwargs):
@@ -55,14 +58,13 @@ class CQLTester(Tester):
 
         session = self.patient_cql_connection(node1, protocol_version=protocol_version, user=user, password=password)
         if create_keyspace:
-            if self._preserve_cluster:
-                session.execute("DROP KEYSPACE IF EXISTS ks")
-            self.create_ks(session, 'ks', rf)
+            create_ks(session, 'ks', rf)
         return session
 
 
-@attr('dtest-full', 'single_node')
-class StorageProxyCQLTester(CQLTester):
+@pytest.mark.dtest_full
+@pytest.mark.single_node
+class TestStorageProxyCQL(CQLTester):
     """
     Each CQL statement is exercised at least once in order to
     ensure we execute the code path in StorageProxy.
@@ -70,7 +72,7 @@ class StorageProxyCQLTester(CQLTester):
     see CASSANDRA-9160.
     """
 
-    def keyspace_test(self):
+    def test_keyspace(self):
         """
         CREATE KEYSPACE, USE KEYSPACE, ALTER KEYSPACE, DROP KEYSPACE statements
         """
@@ -87,7 +89,7 @@ class StorageProxyCQLTester(CQLTester):
         session.execute("DROP KEYSPACE ks")
         assert_invalid(session, "USE ks", expected=InvalidRequest)
 
-    def table_test(self):
+    def test_table(self):
         """
         CREATE TABLE, ALTER TABLE, TRUNCATE TABLE, DROP TABLE statements
         """
@@ -124,7 +126,7 @@ class StorageProxyCQLTester(CQLTester):
         assert_invalid(session, "SELECT * FROM test2", expected=InvalidRequest)
 
     @skip('Scylla does not support CREATE INDEX')
-    def index_test(self):
+    def test_index(self):
         """
         CREATE INDEX, DROP INDEX statements
         """
@@ -143,7 +145,7 @@ class StorageProxyCQLTester(CQLTester):
 
         assert_invalid(session, "SELECT * FROM test3 where v1 = 0", expected=InvalidRequest)
 
-    def type_test(self):
+    def test_type(self):
         """
         CREATE TYPE, ALTER TYPE, DROP TYPE statements
         """
@@ -161,7 +163,7 @@ class StorageProxyCQLTester(CQLTester):
         assert_invalid(session, "CREATE TABLE test6 (id int PRIMARY KEY, address frozen<address_t>)",
                        expected=InvalidRequest)
 
-    def user_test(self):
+    def test_user(self):
         """
         CREATE USER, ALTER USER, DROP USER statements
         """
@@ -173,9 +175,9 @@ class StorageProxyCQLTester(CQLTester):
 
         session.execute("DROP USER user1")
 
-    @attr('next-gating')
-    @attr('dtest-debug')
-    def statements_test(self):
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
+    def test_statements(self):
         """
         INSERT, UPDATE, SELECT, SELECT COUNT, DELETE statements
         """
@@ -215,7 +217,7 @@ class StorageProxyCQLTester(CQLTester):
         res = session.execute("SELECT COUNT(*) FROM test7 WHERE kind = 'ev1'")
         assert rows_to_list(res) == [[0]], res
 
-    def batch_test(self):
+    def test_batch(self):
         """
         BATCH statement
         """
@@ -240,7 +242,7 @@ class StorageProxyCQLTester(CQLTester):
         session.execute(query)
 
 
-@attr('dtest-full')
+@pytest.mark.dtest_full
 class MiscellaneousCQLTester(CQLTester):
     """
     CQL tests that cannot be performed as Java unit tests, see CASSANDRA-9160. Please consider
@@ -280,7 +282,7 @@ class MiscellaneousCQLTester(CQLTester):
                             "client. Please see http://cassandra.apache.org/doc/cql3/CQL.html#collections for more details.")
 
     @skip('scylla does not support manipulation of regular tables (See scylladb/scylla#7568)')
-    def cql3_insert_thrift_test(self):
+    def test_cql3_insert_thrift(self):
         """ Check that we can insert from thrift into a CQL3 table (#4377) """
         session = self.prepare(start_rpc=True)
 
@@ -312,7 +314,7 @@ class MiscellaneousCQLTester(CQLTester):
         res = session.execute("SELECT * FROM test")
         assert rows_to_list(res) == [[2, 4, 8]], res
 
-    @attr('single_node')
+    @pytest.mark.single_node
     def cql3_insert_thrift_test_expect_error(self):
         """
         Originally, the test checked that we can insert from thrift into a CQL3 table (#4377).
@@ -351,8 +353,8 @@ class MiscellaneousCQLTester(CQLTester):
             pass
         assert rejected, "mutation expected to be rejected due to bad clustering key"
 
-    @attr('single_node')
-    def rename_test(self):
+    @pytest.mark.single_node
+    def test_rename(self):
         session = self.prepare(start_rpc=True)
 
         node = self.cluster.nodelist()[0]
@@ -378,8 +380,8 @@ class MiscellaneousCQLTester(CQLTester):
         session.execute("ALTER TABLE test RENAME column1 TO foo1 AND column2 TO foo2 AND column3 TO foo3")
         assert_one(session, "SELECT foo1, foo2, foo3 FROM test", [4, 3, 2])
 
-    @attr('single_node')
-    def prepared_statement_invalidation_test(self):
+    @pytest.mark.single_node
+    def test_prepared_statement_invalidation(self):
         """
         @jira_ticket CASSANDRA-7910
         """
@@ -416,7 +418,7 @@ class MiscellaneousCQLTester(CQLTester):
         result = list(session.execute(explicit_prepared.bind(None)))
         self.assertEqual(result, [(0, 0, 0, None)])
 
-    def reverse_query_test(self):
+    def test_reverse_query(self):
         """
          Issue: https://github.com/scylladb/scylla/issues/6171
          Commit: https://github.com/scylladb/scylla/commit/791acc7f3858e5541ee216034f4c7111818510c5
@@ -444,14 +446,14 @@ class MiscellaneousCQLTester(CQLTester):
         read_stmt = f"SELECT v FROM cf WHERE pk = 0 and ck in ({in_str}) and ck1 in ({in_str}) ORDER BY ck DESC, ck1 DESC"
 
         with self.subTest('Read without BYPASS CACHE'):
-            debug(f'Read without BYPASS CACHE with query: {read_stmt}')
+            logger.debug(f'Read without BYPASS CACHE with query: {read_stmt}')
             assert_all(session, read_stmt, expected_results, cl=ConsistencyLevel.QUORUM)
 
         with self.subTest('Read with BYPASS CACHE'):
-            debug(f'Read with BYPASS CACHE with query: {read_stmt} BYPASS CACHE')
+            logger.debug(f'Read with BYPASS CACHE with query: {read_stmt} BYPASS CACHE')
             assert_all(session, f"{read_stmt} BYPASS CACHE", expected_results, cl=ConsistencyLevel.QUORUM)
 
-    def normal_query_test(self):
+    def test_normal_query(self):
         """
          Issue: https://github.com/scylladb/scylla/issues/6171
          Commit: https://github.com/scylladb/scylla/commit/791acc7f3858e5541ee216034f4c7111818510c5
@@ -479,14 +481,14 @@ class MiscellaneousCQLTester(CQLTester):
         read_stmt = f"SELECT v FROM cf WHERE pk = 0 and ck in ({in_str}) and ck1 in ({in_str})"
 
         with self.subTest('Read without BYPASS CACHE'):
-            debug(f'Read without BYPASS CACHE with query: {read_stmt}')
+            logger.debug(f'Read without BYPASS CACHE with query: {read_stmt}')
             assert_all(session, read_stmt, expected_results, cl=ConsistencyLevel.QUORUM)
 
         with self.subTest('Read with BYPASS CACHE'):
-            debug(f'Read with BYPASS CACHE with query: {read_stmt} BYPASS CACHE')
+            logger.debug(f'Read with BYPASS CACHE with query: {read_stmt} BYPASS CACHE')
             assert_all(session, f"{read_stmt} BYPASS CACHE", expected_results, cl=ConsistencyLevel.QUORUM)
 
-    def reverse_query_ck_collect_test(self):
+    def test_reverse_query_ck_collect(self):
         """
          Issue: https://github.com/scylladb/scylla/issues/6171
          Commit: https://github.com/scylladb/scylla/commit/791acc7f3858e5541ee216034f4c7111818510c5
@@ -515,14 +517,14 @@ class MiscellaneousCQLTester(CQLTester):
         read_stmt = f"SELECT v FROM cf WHERE pk = 0 and ck in ({in_str}) ORDER BY ck DESC"
 
         with self.subTest('Read without BYPASS CACHE'):
-            debug(f'Read without BYPASS CACHE with query: {read_stmt}')
+            logger.debug(f'Read without BYPASS CACHE with query: {read_stmt}')
             assert_all(session, read_stmt, expected_results, cl=ConsistencyLevel.QUORUM)
 
         with self.subTest('Read with BYPASS CACHE'):
-            debug(f'Read with BYPASS CACHE with query: {read_stmt} BYPASS CACHE')
+            logger.debug(f'Read with BYPASS CACHE with query: {read_stmt} BYPASS CACHE')
             assert_all(session, f"{read_stmt} BYPASS CACHE", expected_results, cl=ConsistencyLevel.QUORUM)
 
-    def reverse_query_table_desc_test(self):
+    def test_reverse_query_table_desc(self):
         """
          Issue: https://github.com/scylladb/scylla/issues/6171
          Commit: https://github.com/scylladb/scylla/commit/791acc7f3858e5541ee216034f4c7111818510c5
@@ -551,14 +553,14 @@ class MiscellaneousCQLTester(CQLTester):
         read_stmt = f"SELECT v FROM cf WHERE pk = 0 and ck in ({in_str}) and ck1 in ({in_str}) ORDER BY ck DESC, ck1 DESC"
 
         with self.subTest('Read without BYPASS CACHE'):
-            debug(f'Read without BYPASS CACHE with query: {read_stmt}')
+            logger.debug(f'Read without BYPASS CACHE with query: {read_stmt}')
             assert_all(session, read_stmt, expected_results, cl=ConsistencyLevel.QUORUM)
 
         with self.subTest('Read with BYPASS CACHE'):
-            debug(f'Read with BYPASS CACHE with query: {read_stmt} BYPASS CACHE')
+            logger.debug(f'Read with BYPASS CACHE with query: {read_stmt} BYPASS CACHE')
             assert_all(session, f"{read_stmt} BYPASS CACHE", expected_results, cl=ConsistencyLevel.QUORUM)
 
-    def range_slice_test(self):
+    def test_range_slice(self):
         """ Test a regression from #1337 """
 
         cluster = self.cluster
@@ -601,7 +603,7 @@ class MiscellaneousCQLTester(CQLTester):
         session.execute(
             f"CREATE TABLE {cf} (pk int, ck int, v text, PRIMARY KEY (pk, ck))")
 
-        debug("Inserting data...")
+        logger.debug("Inserting data...")
         for pk in range(10):
             for ck in range(100):
                 q = SimpleStatement(f"INSERT INTO {ks}.{cf} (pk, ck, v) VALUES ({pk}, {ck}, 'foo')",
@@ -609,16 +611,16 @@ class MiscellaneousCQLTester(CQLTester):
                 session.execute(q)
         cluster.flush()
 
-        debug(f"Stopping node (gently={stop_gently})")
+        logger.debug(f"Stopping node (gently={stop_gently})")
         node2.stop(gently=stop_gently)
 
         with self.patient_cql_cluster_session(node1, ks, exclusive=True) as session:
-            debug("Selecting with CL=ONE")
+            logger.debug("Selecting with CL=ONE")
             assert_one(session,
                        f"SELECT count(*) from {ks}.{cf} BYPASS CACHE",
                        [1000], cl=ConsistencyLevel.ONE)
 
-            debug("Selecting with CL=QUORUM (expected to fail)")
+            logger.debug("Selecting with CL=QUORUM (expected to fail)")
             t0 = time.time()
             q = SimpleStatement(f"SELECT count(*) from {ks}.{cf} BYPASS CACHE",
                                 consistency_level=ConsistencyLevel.QUORUM)
@@ -642,7 +644,7 @@ class MiscellaneousCQLTester(CQLTester):
         self._test_query_failed_when_node_is_down(stop_gently=False)
 
 
-@attr('dtest-full')
+@pytest.mark.dtest_full
 class TruncateTester(CQLTester):
 
     @staticmethod
@@ -686,7 +688,7 @@ class TruncateTester(CQLTester):
 
         return truncated_time_per_node
 
-    def truncate_before_restart_test(self):
+    def test_truncate_before_restart(self):
         """
         Truncate table and then restart the node. Validate that truncated en
         """
@@ -714,7 +716,7 @@ class TruncateTester(CQLTester):
         self.validate_truncated_entries_for_table(keyspace_name='ks', table_name='test1',
                                                   prev_truncated_time=truncated_time_per_node)
 
-    def truncate_twice_test(self):
+    def test_truncate_twice(self):
         """
         Truncate table and then restart the node. Validate that truncated en
         """
@@ -727,14 +729,14 @@ class TruncateTester(CQLTester):
         select_query = "SELECT * FROM ks.test1"
         assert_all(session=session, query=select_query, expected=data, cl=ConsistencyLevel.QUORUM, ignore_order=True)
 
-        debug('Truncate first time')
+        logger.debug('Truncate first time')
         session.execute("TRUNCATE ks.test1")
         assert_all(session=session, query=select_query, expected=[], cl=ConsistencyLevel.ALL)
 
         truncated_time_per_node = self.validate_truncated_entries_for_table(keyspace_name='ks', table_name='test1')
 
         time.sleep(60)
-        debug('Truncate second time')
+        logger.debug('Truncate second time')
         session.execute("TRUNCATE ks.test1")
         assert_all(session=session, query=select_query, expected=[], cl=ConsistencyLevel.ALL)
 
@@ -742,8 +744,10 @@ class TruncateTester(CQLTester):
 
         self.assertLessEqual(len(truncated_time_per_node), len(sec_truncated_time_per_node))
 
-    @attr('next-gating', 'dtest-debug', 'single_node')
-    def truncate_after_restart_test(self):
+    @pytest.mark.next_gating
+    @pytest.mark.dtest_debug
+    @pytest.mark.single_node
+    def test_truncate_after_restart(self):
         session = self.prepare(nodes=1, create_keyspace=False)
 
         self.create_schema(session=session, rf=1)
@@ -766,7 +770,7 @@ class TruncateTester(CQLTester):
             conn.execute("TRUNCATE ks.test1")
             assert_all(session=conn, query=select_query, expected=[], cl=ConsistencyLevel.ALL)
 
-    def cql_query_filtering_without_indexes_test(self):
+    def test_cql_query_filtering_without_indexes(self):
         """
         https://github.com/scylladb/scylla/issues/2025
         Testing cql query filtering without the use of indexes
@@ -803,7 +807,7 @@ class TruncateTester(CQLTester):
 
         for query in q1_ls:
             result = rows_to_list(session.execute(query))
-            debug(f"Query: {query} Result: {result}")
+            logger.debug(f"Query: {query} Result: {result}")
             assert result == [[rand_num, rand_num, rand_num+1]], f"Query {query}: failed on assertion," \
                 f" Result: {result}"
 
@@ -836,13 +840,13 @@ class TruncateTester(CQLTester):
         q2 = "Select item_id from t2 where insert_time > '{}' allow filtering;"\
             .format(selected_time_str)
         q2_result = rows_to_list(session.execute(q2))
-        debug(f"Query: {q2}, Len_Result: {len(q2_result)}, Result: {q2_result}")
+        logger.debug(f"Query: {q2}, Len_Result: {len(q2_result)}, Result: {q2_result}")
         assert len(q2_result) == count_above_selected_time, f"The returned list count doesnt match the calculated count"
 
         # CQL statement with IN
         q3 = "Select * from t2 where item_name IN ({})  allow filtering;".format(selected_items_q3)
         q3_result = rows_to_list(session.execute(q3))
-        debug(f"Query: {q3}, Len_Result: {len(q3_result)}, Result: {q3_result}")
+        logger.debug(f"Query: {q3}, Len_Result: {len(q3_result)}, Result: {q3_result}")
         assert len(q3_result) == len(selected_items_q3.split(",")), f"The returned list count does not match " \
             f"the calculated count"
 
@@ -851,22 +855,21 @@ class TruncateTester(CQLTester):
         q4 = "Select item_id from t2 where insert_time >'{}' limit {} allow filtering;"\
             .format(selected_time_str, rand_limit)
         q4_result = rows_to_list(session.execute(q4))
-        debug(f"Query: {q4}, Len_Result: {len(q4_result)} Result: {q4_result}")
+        logger.debug(f"Query: {q4}, Len_Result: {len(q4_result)} Result: {q4_result}")
         assert len(q4_result) == min(count_above_selected_time, rand_limit), f"The returned rows count doesnt match " \
             f"min(count_above_selected_time,rand_limit)" \
             f" [{min(count_above_selected_time,rand_limit)}]"
 
 
-@since('3.0')
 @require("7392")
-@attr('dtest-full')
+@pytest.mark.dtest_full
 class AbortedQueriesTester(CQLTester):
     """
     @jira_ticket CASSANDRA-7392
     Test that read-queries that take longer than read_request_timeout_in_ms time out
     """
-    @attr('single_node')
-    def local_query_test(self):
+    @pytest.mark.single_node
+    def test_local_query(self):
         """
         Check that a query running on the local coordinator node times out
         """
@@ -896,10 +899,10 @@ class AbortedQueriesTester(CQLTester):
         mark = node.mark_log()
         statement = SimpleStatement("SELECT * from test1", consistency_level=ConsistencyLevel.ONE,
                                     retry_policy=FallthroughRetryPolicy())
-        assert_unavailable(lambda c: debug(c.execute(statement)), session)
+        assert_unavailable(lambda c: logger.debug(c.execute(statement)), session)
         node.watch_log_for("Some operations timed out", from_mark=mark, timeout=60)
 
-    def remote_query_test(self):
+    def test_remote_query(self):
         """
         Check that a query running on a node other than the coordinator times out
         """
@@ -933,24 +936,24 @@ class AbortedQueriesTester(CQLTester):
 
         statement = SimpleStatement("SELECT * from test2", consistency_level=ConsistencyLevel.ONE,
                                     retry_policy=FallthroughRetryPolicy())
-        assert_unavailable(lambda c: debug(c.execute(statement)), session)
+        assert_unavailable(lambda c: logger.debug(c.execute(statement)), session)
 
         statement = SimpleStatement("SELECT * from test2 where id = 1",
                                     consistency_level=ConsistencyLevel.ONE, retry_policy=FallthroughRetryPolicy())
-        assert_unavailable(lambda c: debug(c.execute(statement)), session)
+        assert_unavailable(lambda c: logger.debug(c.execute(statement)), session)
 
         statement = SimpleStatement("SELECT * from test2 where id IN (1, 10,  20) AND col < 10",
                                     consistency_level=ConsistencyLevel.ONE, retry_policy=FallthroughRetryPolicy())
-        assert_unavailable(lambda c: debug(c.execute(statement)), session)
+        assert_unavailable(lambda c: logger.debug(c.execute(statement)), session)
 
         statement = SimpleStatement("SELECT * from test2 where col > 5 ALLOW FILTERING",
                                     consistency_level=ConsistencyLevel.ONE, retry_policy=FallthroughRetryPolicy())
-        assert_unavailable(lambda c: debug(c.execute(statement)), session)
+        assert_unavailable(lambda c: logger.debug(c.execute(statement)), session)
 
         node2.watch_log_for("Some operations timed out", from_mark=mark, timeout=60)
 
-    @attr('single_node')
-    def index_query_test(self):
+    @pytest.mark.single_node
+    def test_index_query(self):
         """
         Check that a secondary index query times out
         """
@@ -980,10 +983,10 @@ class AbortedQueriesTester(CQLTester):
         statement = session.prepare("SELECT * from test3 WHERE col < ? ALLOW FILTERING")
         statement.consistency_level = ConsistencyLevel.ONE
         statement.retry_policy = FallthroughRetryPolicy()
-        assert_unavailable(lambda c: debug(c.execute(statement, [50])), session)
+        assert_unavailable(lambda c: logger.debug(c.execute(statement, [50])), session)
         node.watch_log_for("Some operations timed out", from_mark=mark, timeout=60)
 
-    def materialized_view_test(self):
+    def test_materialized_view(self):
         """
         Check that a materialized view query times out
         """
@@ -1017,5 +1020,5 @@ class AbortedQueriesTester(CQLTester):
         mark = node2.mark_log()
         statement = SimpleStatement("SELECT * FROM mv WHERE col = 50",
                                     consistency_level=ConsistencyLevel.ONE, retry_policy=FallthroughRetryPolicy())
-        assert_unavailable(lambda c: debug(c.execute(statement)), session)
+        assert_unavailable(lambda c: logger.debug(c.execute(statement)), session)
         node2.watch_log_for("Some operations timed out", from_mark=mark, timeout=60)
