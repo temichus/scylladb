@@ -132,10 +132,101 @@ class TestRebuild(Tester):
                 for i in keys:
                     total += 1
                     try:
-                        query_c1c2(session, i, ks=ks, cf=cf, consistency=cl)
+                        query_c1c2(session, i, ks=ks, cf=cf_name, consistency=cl)
                     except AssertionError:
                         errors += 1
         assert errors == 0, "Found {} errors out of {} keys".format(errors, total)
+
+    def test_rebuild_everywhere(self):
+        """
+        @jira_ticket CASSANDRA-9119
+
+        Test rebuild from other dc works as expected.
+        """
+
+        keys = 25000 if isinstance(self.cluster, ScyllaCluster) and self.cluster.scylla_mode != 'debug' else 10000
+
+        cluster = self.cluster
+        cluster.set_configuration_options(values={'endpoint_snitch': 'GossipingPropertyFileSnitch'})
+        node1 = self.add_node(1, 'dc1')
+
+        # start node in dc1
+        node1.start(wait_for_binary_proto=True)
+
+        # populate data in dc1
+        session = self.patient_exclusive_cql_connection(node1)
+        create_ks(session, 'ks', {'dc1': 1})
+        create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'})
+        logger.debug(f"Inserting {keys} keys")
+        insert_c1c2(session, n=keys, consistency=ConsistencyLevel.ALL)
+
+        # check data
+        for i in range(0, keys):
+            query_c1c2(session, i, ConsistencyLevel.ALL)
+        session.shutdown()
+
+        logger.debug("Bootstraping node2 in dc1 with auto_bootstrap: false")
+        node2 = self.add_node(2, 'dc1')
+        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+
+        logger.debug("Bootstraping node3 in dc2 with auto_bootstrap: false")
+        node3 = self.add_node(3, 'dc2')
+        node3.start(wait_other_notice=True, wait_for_binary_proto=True)
+
+        # wait for snitch to reload
+        time.sleep(60)
+        # alter keyspace to replicate everywhere
+        with self.patient_exclusive_cql_connection(node2, 'ks') as xsession:
+            xsession.execute("ALTER KEYSPACE ks WITH REPLICATION = {'class':'EverywhereStrategy'};")
+
+        self.rebuild_errors = 0
+        self.unexpected_errors = 0
+
+        # rebuild dc2 from dc1
+        def rebuild():
+            try:
+                logger.debug('Running nodetool rebuild dc1 on node2')
+                node2.nodetool('rebuild dc1')
+                logger.debug('Rebuild completed successfully')
+                logger.debug('Running nodetool rebuild dc1 on node3')
+                node3.nodetool('rebuild dc1')
+                logger.debug('Rebuild completed successfully')
+            except NodetoolError as e:
+                if 'rebuild is in progress' in str(e):
+                    logger.debug('Rebuild is in progress')
+                    self.rebuild_errors += 1
+                else:
+                    logger.debug('Unexpected rebuild failure {}'.format(str(e)))
+                    self.unexpected_errors += 1
+
+        rebuild_cmd = Thread(target=rebuild)
+        rebuild_cmd.start()
+
+        # concurrent rebuild should not be allowed (CASSANDRA-9119)
+        # (following sleep is needed to avoid conflict in 'nodetool()' method setting up env.)
+        time.sleep(.1)
+        rebuild()
+
+        rebuild_cmd.join()
+
+        # exactly 1 of the two nodetool calls should fail
+        # usually it will be the one in the main thread,
+        # but occasionally it wins the race with the one in the secondary thread,
+        # so we check that one succeeded and the other failed
+        assert self.unexpected_errors == 0, 'unexpected rebuild errors encountered.'
+        assert self.rebuild_errors == 1, \
+            'concurrent rebuild should not be allowed, but one rebuild command should have succeeded.'
+
+        # check data
+        logger.debug('Verifying data on all nodes')
+        nodes = cluster.nodelist()
+        cluster.stop()
+        for n in nodes:
+            logger.debug(f"Starting {n.name}")
+            n.start(wait_for_binary_proto=True, wait_other_notice=False)
+            with self.patient_exclusive_cql_connection(n, 'ks') as xsession:
+                query_c1c2(xsession, i, ConsistencyLevel.ONE)
+            n.stop(wait_other_notice=False)
 
     def test_rebuild_many_tables(self):
         """
