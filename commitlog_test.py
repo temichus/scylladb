@@ -471,6 +471,9 @@ class TestCommitLog(Tester):
             [2, 2]
         )
 
+    @pytest.mark.require('scylladb/scylla-dtest#2190')
+    # Scylla reports the failed commitlog entries, but they will be ignored, it won't break
+    # the startup like Cassandra. And Scylla doesn't have `commit_failure_policy` option.
     def test_bad_crc(self):
         """
         if the commit log header crc (checksum) doesn't match the actual crc of the header data,
@@ -547,6 +550,8 @@ class TestCommitLog(Tester):
             node.wait_for_binary_interface(from_mark=mark, timeout=20)
         assert not node.is_running(), f"expected node is not running, actual is: {node.is_running()}"
 
+    @pytest.mark.skip('scylladb/scylla#8972')
+    # Scylla doesn't support the commitlog compression, and Scylla doesn't have `commit_failure_policy` option.
     def test_compression_error(self):
         """
         if the commit log header refers to an unknown compression class, and the commit_failure_policy is stop, C* shouldn't startup
