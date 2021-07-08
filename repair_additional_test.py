@@ -13,11 +13,13 @@ import logging
 from cassandra import ConsistencyLevel, InvalidRequest
 from cassandra.query import SimpleStatement
 from ccmlib.node import NodetoolError
+from ccmlib.scylla_node import ScyllaNode
 import pytest
 
-from dtest_class import Tester, create_ks, create_cf, get_ip_from_node
+from dtest_class import Tester, create_ks, create_cf, get_ip_from_node, wait_for
 from tools.data import insert_c1c2, query_c1c2
 from tools.metrics import get_node_metrics
+from tools.cluster import run_rest_api
 
 logger = logging.getLogger(__name__)
 
@@ -2936,3 +2938,113 @@ class TestRepairAdditional(RepairAdditionalBase):
             query = SimpleStatement(f"SELECT * FROM cf LIMIT 3000", consistency_level=ConsistencyLevel.ONE)
             result = list(session.execute(query))
             assert len(result) == 2000, len(result)
+
+    def _run_repair_api(self, run_on_node: ScyllaNode, keyspace: str, ignore_nodes: list = None,
+                        await_completion: bool = True):
+        """
+        :param run_on_node: node to send the REST API command.
+        :param keyspace: mandatory parameter for repair.
+        :param ignore_nodes: list of nodes to be excluded by repair.
+        :param await_completion: wait for repair command to complete or continue immediately.
+        :return:
+        """
+        repair_cmd = f"/storage_service/repair_async/{keyspace}"
+        if ignore_nodes:
+            ignore_nodes_ips = ','.join(node.address() for node in ignore_nodes)
+            repair_cmd += f"?ignore_nodes={ignore_nodes_ips}"
+        result = run_rest_api(run_on_node=run_on_node, cmd=repair_cmd)
+        if await_completion:
+            self.wait_for_repair(run_on_node=run_on_node, repair_id=result.json())
+
+    def _setup_cluster_with_table(self):
+        cluster = self.cluster
+        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.populate(3).start()
+        node1 = cluster.nodelist()[0]
+        keyspace = 'ks'
+        table = 'cf'
+        with self.patient_cql_connection(node1) as session:
+            # Create keyspace and table.
+            create_ks(session, keyspace, 3)
+            create_cf(session, table, read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        return keyspace, table
+
+    @staticmethod
+    def wait_for_repair(run_on_node, repair_id):
+        repair_id = str(repair_id)
+        await_cmd = f"/storage_service/repair_status?id={repair_id}"
+        wait_for(
+            func=lambda: run_rest_api(run_on_node=run_on_node, cmd=await_cmd, api_method='get').json() == 'SUCCESSFUL',
+            timeout=60, text=f"[{run_on_node.name}] Waiting for repair {repair_id} completion..")
+
+    def test_repair_ignore_nodes(self):
+        """
+        Test that a repair succeeds when the ignore_nodes parameter is used for a down node.
+        """
+        keyspace, table = self._setup_cluster_with_table()
+        node1, node2, node3 = self.cluster.nodelist()
+        query_cl1 = SimpleStatement(f"SELECT * FROM {table}", consistency_level=ConsistencyLevel.ONE)
+        query_cl2 = SimpleStatement(f"SELECT * FROM {table}", consistency_level=ConsistencyLevel.TWO)
+
+        logger.debug("Stop node2 to be repaired before writing data.")
+        node2.stop(wait_other_notice=True)
+        with self.patient_cql_connection(node1, keyspace) as session:
+            logger.debug("Writing data to 2 other nodes")
+            insert_c1c2(session, keys=range(1000), consistency=ConsistencyLevel.TWO)
+            result = list(session.execute(query_cl2))
+            assert len(result) == 1000
+
+        logger.debug("Bring up node2 and take down the node to be ignored - node3.")
+        node2.start(wait_for_binary_proto=True, wait_other_notice=True)
+        node3.stop(wait_other_notice=True)
+
+        logger.debug("Repair node2, ignoring node3")
+        self._run_repair_api(run_on_node=node2, keyspace=keyspace, ignore_nodes=[node3])
+        logger.debug("Verify node2 data.")
+        with self.patient_cql_connection(node2, keyspace) as session:
+            result = list(session.execute(query_cl1))
+            assert len(result) == 1000
+
+    def test_repair_ignore_nodes_errors(self):
+        """
+        Test that a repair succeeds when the ignore_nodes parameter is used for cluster nodes.
+        """
+        keyspace, table = self._setup_cluster_with_table()
+        node1, node2, node3 = self.cluster.nodelist()
+        query_cl1 = SimpleStatement(f"SELECT * FROM {table}", consistency_level=ConsistencyLevel.ONE)
+        query_cl2 = SimpleStatement(f"SELECT * FROM {table}", consistency_level=ConsistencyLevel.TWO)
+
+        node2.flush()
+        node2.stop(wait_other_notice=True)
+
+        logger.debug("Writing data to 2 other nodes")
+        with self.patient_cql_connection(node1, keyspace) as session:
+            insert_c1c2(session, keys=range(1000), consistency=ConsistencyLevel.TWO)
+            result = list(session.execute(query_cl2))
+            assert len(result) == 1000
+
+        logger.debug("Bring up node2 and take down the node to be ignored - node3.")
+        node3.flush()
+        node3.stop(wait_other_notice=True)
+        node2.start(wait_for_binary_proto=True, wait_other_notice=True)
+
+        logger.debug("Repair node2 using ignore_nodes of the 2 other replicas to cause a 'short-circuit' repair.")
+        self._run_repair_api(run_on_node=node2, keyspace=keyspace, ignore_nodes=[node1, node3])
+
+        logger.debug("Verify node2 has no data following this repair.")
+        node1.flush()
+        node1.stop(wait_other_notice=True)
+        with self.patient_cql_connection(node2, keyspace) as session:
+            result = list(session.execute(query_cl1))
+            assert len(result) == 0
+
+        logger.debug("Run a second repair on node2 when node1 is back up, ignoring node3 only => expected to get all data.")
+        node1.start(wait_for_binary_proto=True, wait_other_notice=True)
+        self._run_repair_api(run_on_node=node2, keyspace=keyspace, ignore_nodes=[node3])
+        node1.flush()
+        node1.stop(wait_other_notice=True)
+
+        logger.debug("Verify node2 has all data following this repair.")
+        with self.patient_cql_connection(node2, keyspace) as session:
+            result = list(session.execute(query_cl1))
+            assert len(result) == 1000
