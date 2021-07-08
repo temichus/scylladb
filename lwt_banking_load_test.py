@@ -1,4 +1,5 @@
 import multiprocessing as mp
+import traceback
 from time import sleep, time
 from os import getpid
 from collections import defaultdict
@@ -460,6 +461,30 @@ def node_affinity(node_pids):
         logger.info(f"node.pid {node_pids[i]} new affinity {node_proc.cpu_affinity()}")
 
 
+# Send raised exception to parent through a pipe
+# https://www.programmersought.com/article/88231439877/
+class Process(mp.Process):
+    def __init__(self, *args, **kwargs):
+        mp.Process.__init__(self, *args, **kwargs)
+        self._pconn, self._cconn = mp.Pipe()
+        self._exception = None
+
+    def run(self):
+        try:
+            mp.Process.run(self)
+            self._cconn.send(None)
+        except Exception as e:
+            tb = traceback.format_exc()
+            # NOTE: the exception can't be pickled so just send the trace
+            self._cconn.send(tb)
+
+    @property
+    def exception(self):
+        if self._pconn.poll():
+            self._exception = self._pconn.recv()
+        return self._exception
+
+
 @pytest.mark.dtest_full
 @pytest.mark.dtest_heavy
 @pytest.mark.dtest_debug
@@ -574,15 +599,15 @@ class LWTBankingLoadTest(Tester):
         logger.info(f"populate {BICS}*{BANS} = {BICS*BANS}, workers {workers}, {slice_max} max each")
         # NOTE: mp.Pool doesn't like functions in dtest/Tester/etc, but Process works fine.
         for worker_n in range(workers):
-            proc = mp.Process(target=self.populate_worker, args=(worker_n, slice_max))
+            proc = Process(target=self.populate_worker, args=(worker_n, slice_max))
             proc.start()       # Start right away
             populate_procs.append(proc)
 
-        for proc in populate_procs:
-            proc.join()
         for idx, proc in enumerate(populate_procs):
-            if proc.exitcode != 0:
-                raise SetupError(f"Error for populate worker {idx}: \"{proc.exitcode}\"")
+            proc.join()
+            if proc.exception:
+                logger.error(proc.exception)
+                raise SetupError(f"Setup worker {idx} failed")
 
     def fetch_account_balance(self, session, account):
         try:
