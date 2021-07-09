@@ -9,7 +9,7 @@ from enum import Enum
 from cassandra import ReadTimeout, ReadFailure, ConsistencyLevel
 
 from dtest import Tester, debug, warning
-from tools import rows_to_list
+from tools import rows_to_list, get_table_description, require
 from scylla_tools import flush_by_node, insert_c1c2, query_c1c2
 from assertions import assert_one
 
@@ -332,18 +332,27 @@ class EncryptionAtRestBase(Tester):
         kp = self.get_key_provider(key_provider)
         kp.prepare_conf()
         session = self.prepare(restart=key_provider == KeyProviderEnum.kmip)
+        node1 = self.cluster.nodelist()[0]
         options = kp.create_encrypted_cf(session, name='ks.cf')
         query = "ALTER TABLE ks.cf with scylla_encryption_options=%s"
 
         kp.prepare_write_workload(session)
         debug('disable encryption at-rest')
         session.execute(query % "{'key_provider': 'none'}")
+        table_desc = get_table_description(node1, "ks", "cf")
+        assert "key_provider" not in table_desc, f"key_provider isn't disabled, schema:\n {table_desc}"
         self._upgrade_sstables()
         session = self.rolling_restart()
         kp.read_verify_workload(session)
 
         debug('re-enable encryption at-rest: %s' % options)
         session.execute(query % options)
+        table_desc = get_table_description(node1, "ks", "cf")
+        if key_provider == KeyProviderEnum.default:
+            assert "key_provider" not in table_desc, f"key_provider isn't disabled, schema:\n {table_desc}"
+        else:
+            err_msg = f"key_provider isn't changed to {key_provider.value}, schema: \n {table_desc}"
+            assert f"'key_provider': '{key_provider.value}'" in table_desc, err_msg
         self._upgrade_sstables()
         session = self.rolling_restart()
         kp.read_verify_workload(session)
@@ -501,6 +510,7 @@ class EncryptionAtRestTest(EncryptionAtRestBase):
             EncryptionAtRestBase._reboot_test(self, key_provider=value)
             EncryptionAtRestBase.cleanup(self)
 
+    @require('scylladb/scylla-enterprise#1787')
     def alter_test(self):
         for name, value in KeyProviderEnum.__members__.items():
             EncryptionAtRestBase._alter_test(self, key_provider=value)
