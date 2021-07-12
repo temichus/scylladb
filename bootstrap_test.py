@@ -16,6 +16,7 @@ from dtest_class import create_cf, create_ks
 
 from tools.assertions import (assert_almost_equal,
                               assert_one)
+from tools.cluster import new_node
 from tools.data import query_c1c2, insert_c1c2, create_c1c2_table
 from tools.intervention import InterruptBootstrap, KillOnBootstrap
 from dtest_setup_overrides import DTestSetupOverrides
@@ -124,6 +125,48 @@ class TestBootstrap(Tester):
         logger.info("stopping cluster")
         cluster.stop()
         logger.info("done")
+
+    def test_off_strategy_during_bootstrap(self):
+        """
+        Compaction will be disabled during repair-based bootstrap and replace.
+        """
+        cluster = self.cluster
+        cluster.set_configuration_options(values={'enable_repair_based_node_ops': True})
+        keys = 10000
+
+        # Create a single node cluster
+        cluster.populate(1)
+        node1 = cluster.nodelist()[0]
+        cluster.start()
+
+        session = self.patient_cql_connection(node1)
+        self.create_ks(session, 'ks', 1)
+        self.create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'})
+
+        insert_statement = session.prepare("INSERT INTO ks.cf (key, c1, c2) VALUES (?, 'value1', 'value2')")
+        execute_concurrent_with_args(session, insert_statement, [['k%d' % k] for k in range(keys)])
+        node1.flush()
+
+        # Bootstrapping a new node
+        node2 = new_node(cluster)
+        node2.start(wait_for_binary_proto=True)
+
+        matched_logs = node2.grep_log("Compacted .* sstables to |JOINING: Starting to bootstrap|Bootstrap completed!")
+        bootstrap_status = None
+        for item in matched_logs:
+            line = item[0]
+            if 'JOINING: Starting to bootstrap' in line:
+                bootstrap_status = 'START'
+            elif 'Bootstrap completed!' in line:
+                bootstrap_status = 'END'
+                break
+            if bootstrap_status == 'START' and 'Compact ks.cf ' in line and 'Compacted ' in line:
+                raise Exception("Unexpected compaction of test table occurred during bootstrap, off-strategy doesn't"
+                                " work")
+        assert bootstrap_status == 'END'
+
+        session = self.patient_cql_connection(node2)
+        assert_one(session, "SELECT count(*) from ks.cf", [keys], cl=ConsistencyLevel.ONE)
 
     @pytest.mark.dtest_full
     def test_simple_bootstrap(self):
