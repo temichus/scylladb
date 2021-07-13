@@ -553,6 +553,8 @@ class TestBootstrap(Tester):
         self._cleanup(node2)
 
         # Now start it again, it should be allowed to join
+        ip2 = self.get_ip_from_node(node=node2)
+        node1.watch_log_for(f"{ip2} gossip quarantine over")
         mark = node2.mark_log()
         logger.info("Restarting node2")
         node2.start(wait_other_notice=True)
