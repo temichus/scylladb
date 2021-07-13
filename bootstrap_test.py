@@ -510,9 +510,9 @@ class TestBootstrap(Tester):
         node1.watch_log_for(f"{ip4} gossip quarantine over")
         logger.debug("Restarting node4")
         mark = node4.mark_log()
-        node4.start(wait_other_notice=True)
-        logger.info("Waiting for node4 to join")
-        node4.watch_log_for("JOINING:", from_mark=mark)
+        node4.start(wait_for_binary_proto=True, wait_other_notice=True)
+        logger.debug("Waiting for node4 to join")
+        node4.watch_log_for("JOINING: Starting to bootstrap", from_mark=mark, timeout=0)
 
     def test_failed_bootstap_wiped_node_can_join(self):
         """
@@ -556,9 +556,10 @@ class TestBootstrap(Tester):
         ip2 = self.get_ip_from_node(node=node2)
         node1.watch_log_for(f"{ip2} gossip quarantine over")
         mark = node2.mark_log()
-        logger.info("Restarting node2")
-        node2.start(wait_other_notice=True)
-        node2.watch_log_for("JOINING:", from_mark=mark)
+        logger.debug("Restarting node2")
+        node2.start(wait_for_binary_proto=True, wait_other_notice=True)
+        logger.debug("Waiting for node2 to join")
+        node2.watch_log_for("JOINING: Starting to bootstrap", from_mark=mark, timeout=0)
 
     # In Scylla when one node bootstraps, it will check if there is any node in bootstrap status in gossip.
     # If it finds one, it will stop bootstrap (Asias)
