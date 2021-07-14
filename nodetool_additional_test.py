@@ -20,7 +20,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import yaml
 from cassandra.query import SimpleStatement
-from ccmlib.node import NodetoolError
+from ccmlib.node import NodetoolError, TimeoutError
 from ccmlib.scylla_cluster import ScyllaCluster
 
 from dtest_class import Tester, create_ks, create_cf
@@ -68,6 +68,11 @@ class TestNodetool(Tester):
                                     {"func": self.verify_describering, "time": 25}, {"func": self.verify_decribecluster, "time": 25}]
         self.reserved_names = ['view_pending_updates']
         self.cluster_started = False
+        self.validation_expected_errs = [
+            'Skipping invalid clustering row fragment',
+            'Skipping invalid partition',
+            '(Scrub|Validation) compaction.*Invalid',
+        ]
 
     @staticmethod
     def _to_cfstats(out):
@@ -2003,11 +2008,10 @@ class TestNodetool(Tester):
             f.seek(offset)
             f.write(bytearray(randbytes(length)))
 
-        self.ignore_log_patterns += [
+        self.ignore_log_patterns += self.validation_expected_errs + [
             'malformed_sstable_exception',
             'SSTables with Cassandra-style shadowable deletion cannot be read by Scylla',
             'Adding missing partition-end to the end of the stream',
-            'Skipping invalid clustering row',
         ]
 
         self.ignore_cores_log_patterns += [
@@ -2055,11 +2059,10 @@ class TestNodetool(Tester):
             f.seek(offset)
             f.write(bytearray(randbytes(length)))
 
-        self.ignore_log_patterns += [
+        self.ignore_log_patterns += self.validation_expected_errs + [
             'malformed_sstable_exception',
             'SSTables with Cassandra-style shadowable deletion cannot be read by Scylla',
             'Adding missing partition-end to the end of the stream',
-            'Skipping invalid clustering row',
         ]
 
         self.ignore_cores_log_patterns += [
@@ -2107,11 +2110,17 @@ class TestNodetool(Tester):
         logger.debug('Rebuild sstables by `nodetool scrub --skip-corrupted ks cf` ....')
         node.nodetool('scrub --skip-corrupted ks cf')
 
-        expected_errs = ['Skipping invalid clustering row fragment', 'Skipping invalid partition']
-        self.ignore_log_patterns = expected_errs
-        for err in expected_errs:
-            node.watch_log_for(err, timeout=10)
-        node.watch_log_for('Finished scrubbing.*1 sstable', timeout=10)
+        self.ignore_log_patterns = self.validation_expected_errs
+        timeout = 30 if self.cluster.scylla_mode != 'debug' else 90
+        node.watch_log_for('Finished scrubbing.*1 sstable', timeout=timeout)
+        # Scrub messages changed in scylladb/scylla@f0e2f31839
+        expected_errs = ['\[Scrub compaction ks.cf\] Invalid clustering row fragment',
+                         '\[Scrub compaction ks.cf\] Invalid partition']
+        try:
+            node.watch_log_for(expected_errs, timeout=0)
+        except TimeoutError:
+            expected_errs = ['Skipping invalid clustering row fragment', 'Skipping invalid partition']
+            node.watch_log_for(expected_errs, timeout=0)
 
     def test_scrub_ks_sstable_with_invalid_fragment(self):
         """
@@ -2139,11 +2148,17 @@ class TestNodetool(Tester):
         logger.debug('Rebuild sstables by `nodetool scrub --skip-corrupted ks` ....')
         node.nodetool('scrub --skip-corrupted ks')
 
-        expected_errs = ['Skipping invalid clustering row fragment', 'Skipping invalid partition']
-        self.ignore_log_patterns = expected_errs
-        for err in expected_errs:
-            node.watch_log_for(err, timeout=10)
-        node.watch_log_for('Finished scrubbing.*1 sstable', timeout=10)
+        self.ignore_log_patterns = self.validation_expected_errs
+        timeout = 30 if self.cluster.scylla_mode != 'debug' else 90
+        node.watch_log_for('Finished scrubbing.*1 sstable', timeout=timeout)
+        # Scrub messages changed in scylladb/scylla@f0e2f31839
+        expected_errs = ['\[Scrub compaction ks.cf\] Invalid clustering row fragment',
+                         '\[Scrub compaction ks.cf\] Invalid partition']
+        try:
+            node.watch_log_for(expected_errs, timeout=0)
+        except TimeoutError:
+            expected_errs = ['Skipping invalid clustering row fragment', 'Skipping invalid partition']
+            node.watch_log_for(expected_errs, timeout=0)
 
     def test_node_graceful_stop_during_stress_and_decommission(self, starting_size=4, node_count=10, rf=1):
         """
