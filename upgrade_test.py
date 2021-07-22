@@ -17,8 +17,8 @@ from dtest_config import DTestConfig
 
 logger = logging.getLogger(__name__)
 
-upgrade_matrix_1 = ['release:4.0', 'release:4.1', 'release:4.2', 'release:4.3', 'release:4.4', 'release:4.5']
-upgrade_matrix_2 = ['release:4.5']
+upgrade_matrix_full_path = ['release:4.0', 'release:4.1', 'release:4.2', 'release:4.3', 'release:4.4', 'release:4.5']
+upgrade_matrix_from_last_release_version = ['release:4.5']
 
 
 class UpgradeTester(Tester):
@@ -99,7 +99,7 @@ class UpgradeTester(Tester):
                 sleep(3)
 
             for thread in threads:
-                thread.result(timeout=1800)
+                thread.result(timeout=3600)
 
         logger.info("Prepare (download) all versions finished")
 
@@ -226,5 +226,20 @@ class BaseTests(UpgradeTester):
 class TestUpgradeFrom40ToLast(BaseTests):
     __test__ = True
 
-    upgrade_path = upgrade_matrix_1
+    upgrade_path = upgrade_matrix_full_path
     init_version = upgrade_path[0]
+
+    @pytest.mark.skip("skip the test for this matrix")
+    def test_one_node_upgrade(self):
+        pass
+
+
+class TestUpgradeOneNode(BaseTests):
+    __test__ = True
+
+    upgrade_path = upgrade_matrix_from_last_release_version
+    init_version = upgrade_path[0]
+
+    @pytest.mark.skip("skip the test for this matrix")
+    def test_cluster_upgrade(self):
+        pass

@@ -5,7 +5,7 @@ from concurrent.futures.thread import ThreadPoolExecutor
 
 from ccmlib.scylla_node import ScyllaNode
 
-from upgrade_test import UpgradeTester, upgrade_matrix_2
+from upgrade_test import UpgradeTester, upgrade_matrix_from_last_release_version
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +14,7 @@ class TestRollingUpgrade(UpgradeTester):
     __test__ = True
     _multiprocess_can_split_ = False
 
-    upgrade_path = upgrade_matrix_2
+    upgrade_path = upgrade_matrix_from_last_release_version
     init_version = upgrade_path[0]
 
     def test_rolling_upgrade(self, dtest_config):
