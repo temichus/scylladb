@@ -551,11 +551,11 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
             assert res == [{u'a': 1, u'b': 2, u'e': 6, u'system.count(b)': 7, u'system.max(e)': 24}]
 
             res = session.execute("SELECT a, b, e, count(b), max(e) FROM test WHERE b = 2 "
-                                  "GROUP BY a, b")[:]
+                                  "GROUP BY a, b ALLOW FILTERING")[:]
             assert res == [{u'a': 1, u'b': 2, u'e': 6, u'system.count(b)': 2, u'system.max(e)': 12},
                            {u'a': 2, u'b': 2, u'e': 6, u'system.count(b)': 1, u'system.max(e)': 6}]
 
-            res = session.execute("SELECT a, b, e, count(b), max(e) FROM test WHERE b = 2")[:]
+            res = session.execute("SELECT a, b, e, count(b), max(e) FROM test WHERE b = 2 ALLOW FILTERING")[:]
             assert res == [{u'a': 1, u'b': 2, u'e': 6, u'system.count(b)': 3, u'system.max(e)': 12}]
 
             # Range queries without aggregates
@@ -1173,11 +1173,12 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
             res = session.execute("SELECT a, b, s, count(b), count(s) FROM test")[:]
             assert res == [{u'a': 1, u'b': 2, u's': 1, u'system.count(b)': 7, u'system.count(s)': 7}]
 
-            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE b = 2 GROUP BY a, b")
+            res = session.execute(
+                "SELECT a, b, s, count(b), count(s) FROM test WHERE b = 2 GROUP BY a, b ALLOW FILTERING")
             assert res == [{u'a': 1, u'b': 2, u's': 1, u'system.count(b)': 2, u'system.count(s)': 2},
                            {u'a': 2, u'b': 2, u's': 2, u'system.count(b)': 1, u'system.count(s)': 1}]
 
-            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE b = 2")[:]
+            res = session.execute("SELECT a, b, s, count(b), count(s) FROM test WHERE b = 2 ALLOW FILTERING")[:]
             assert res == [{u'a': 1, u'b': 2, u's': 1, u'system.count(b)': 3, u'system.count(s)': 3}]
 
             # Range queries without aggregates

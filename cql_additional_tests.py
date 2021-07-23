@@ -3229,15 +3229,16 @@ class TestCQL(Tester):
         # Don't require filtering, always allowed
         queries = ["SELECT * FROM test WHERE k = 1",
                    "SELECT * FROM test WHERE k = 1 AND c > 2",
-                   "SELECT * FROM test WHERE k = 1 AND c = 2",
-                   "SELECT * FROM test WHERE c > 2"]
+                   "SELECT * FROM test WHERE k = 1 AND c = 2"]
         for q in queries:
             self._assert_valid_query(session=session, query=q)
             self._assert_valid_query(session=session, query=q + " ALLOW FILTERING")
 
         # Require filtering, allowed only with ALLOW FILTERING
         queries = ["SELECT * FROM test WHERE v = 2",
-                   "SELECT * FROM test WHERE v > 2 AND v <= 4"]
+                   "SELECT * FROM test WHERE v > 2 AND v <= 4",
+                   # Uncomment when scylla#7608 is fixed: "SELECT * FROM test WHERE c > 2",
+                   ]
         for q in queries:
             self._assert_valid_query(session=session, query=q + " ALLOW FILTERING")
             self._assert_invalid_filtering(session=session, query=q)
@@ -5459,7 +5460,7 @@ class TestCQL(Tester):
                    [[0, 1], [0, 2], [0, 3], [1, 1], [1, 2], [1, 3]])
 
         # Introduced in CASSANDRA-7059
-        assert_invalid(session, "SELECT * FROM test WHERE v > 1 AND v <= 3 LIMIT 6")
+        assert_invalid(session, "SELECT * FROM test WHERE v > 1 AND v <= 3 LIMIT 6 ALLOW FILTERING")
 
     @pytest.mark.single_node
     def key_index_with_reverse_clustering(self):
@@ -6209,7 +6210,7 @@ class TestCQL(Tester):
                    [[1]])
 
         assert_all(session,
-                   "SELECT count(*) FROM users_by_state WHERE username = 'user1'",
+                   "SELECT count(*) FROM users_by_state WHERE username = 'user1' ALLOW FILTERING",
                    [[1]])
 
         assert_all(session,
