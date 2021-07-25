@@ -40,19 +40,16 @@ class RepairAdditionalBase(Tester):
     def default_config_options():
         return {'hinted_handoff_enabled': False, 'enable_sstable_key_validation': True}
 
-    def check_rows_on_node(self, node_to_check, rows, found=None, missings=None, restart=True, consistency_level=ConsistencyLevel.ONE):
+    def check_rows_on_node(self, node_to_check, rows, found=None, missings=None, consistency_level=ConsistencyLevel.ONE):
         if found is None:
             found = []
         if missings is None:
             missings = []
-        stopped_nodes = []
 
-        for node in self.cluster.nodes.values():
-            if node.is_running() and node is not node_to_check:
-                stopped_nodes.append(node)
-
-        self.cluster.stop_nodes(stopped_nodes, wait_other_notice=True)
-
+        # restarting node_to_check would run
+        # reshape compaction, if needed post repair.
+        self.cluster.stop()
+        node_to_check.start()
         cs = self.patient_cql_cluster_session(node_to_check, 'ks', exclusive=True, consistency_level=consistency_level)
         session = cs.session
         query = SimpleStatement("SELECT * FROM cf LIMIT %d" % (rows * 2), consistency_level=consistency_level)
@@ -66,9 +63,6 @@ class RepairAdditionalBase(Tester):
             query = SimpleStatement("SELECT c1, c2 FROM cf WHERE key='k%d'" % k, consistency_level=consistency_level)
             res = list(session.execute(query))
             assert len(filter(lambda x: len(x) != 0,  res)) == 0, res
-
-        if restart:
-            self.cluster.start_nodes(stopped_nodes, wait_other_notice=True)
 
     def check_repair_tx_rx_rows(self, node_to_check, expected_tx_row_nr, expected_rx_row_nr):
         tx = 0
@@ -114,9 +108,7 @@ class RepairAdditionalBase(Tester):
     def _verify_num_of_rows_on_node(self, node, total_rows):
         # Check for correct number of rows on node
         logger.debug("Check for {} rows on node {}...".format(total_rows, node.name))
-        self._stop_all_nodes_except_for(node)
         self.check_rows_on_node(node, total_rows)
-        self._start_all_nodes_except_for(node)
         logger.debug("Verify rows number is done")
 
     def verify_repair_tx_rx_rows(self, node_idx, expected_tx_row_nr, expected_rx_row_nr, list_metrics):
