@@ -2029,7 +2029,7 @@ class TestNodetool(Tester):
         logger.info('Rebuild sstables by nodetool scrub')
         # Currently, scrub may fail with random corruption, e.g. on OOM
         out = node.nodetool('scrub ks')
-        logger.info("Scrub output: {out}")
+        logger.info(f"Scrub output: {out}")
 
         try:
             list(session.execute('SELECT * FROM ks.cf'))
@@ -2076,7 +2076,7 @@ class TestNodetool(Tester):
         logger.info('Rebuild sstables by nodetool scrub')
         # Currently, scrub may fail with random corruption, e.g. on OOM
         out = node.nodetool('scrub ks')
-        logger.info("Scrub output: {out}")
+        logger.info(f"Scrub output: {out}")
 
         rows = list(session.execute('SELECT * FROM ks.cf'))
         assert len(rows) == 100
