@@ -182,7 +182,7 @@ class TestCompaction(Tester):
                         "compaction= {'class':'" + self.strategy + "'}")
 
         for x in range(0, 100):
-            session.execute('insert into cf (key, val) values (' + str(x) + ',1)')
+            session.execute(f'insert into cf (key, val) values ({x},{x})')
         node1.flush()
         for x in range(0, 100):
             session.execute('delete from cf where key = ' + str(x))
@@ -191,13 +191,25 @@ class TestCompaction(Tester):
         time.sleep(1)
 
         try:
-            cfs = os.listdir(node1.get_path() + "/data/ks")
-            ssdir = os.listdir(node1.get_path() + "/data/ks/" + cfs[0])
-            for afile in ssdir:
-                assert "Data" not in afile
+            path = os.path.join(node1.get_path(), "data", "ks")
+            cfs = os.listdir(path)
+            path = os.path.join(path, cfs[0])
+            ssdir = os.listdir(path)
+            found = [afile for afile in ssdir if "Data" in afile]
+            if found:
+                msg = f"Expected no SSTables in {path}, but found: {found}"
+                logger.error(msg)
+                json_path = tempfile.mkstemp(suffix='.json')
+                jname = json_path[1]
+                with open(jname, 'w') as f:
+                    node1.run_sstable2json(out_file=f, keyspace='ks', column_families=['cf'])
+                with open(jname, 'r') as g:
+                    jsoninfo = g.read()
+                    logger.debug(f"{jsoninfo}")
+                pytest.fail(msg)
 
         except OSError:
-            self.fail("Path to sstables not valid.")
+            pytest.fail("Path to sstables not valid.")
 
     @pytest.mark.skip('sstable is already removed when expecting it to be marked as expired only')
     def test_dtcs_deletion(self):
