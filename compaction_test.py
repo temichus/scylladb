@@ -186,6 +186,7 @@ class TestCompaction(Tester):
         node1.flush()
         for x in range(0, 100):
             session.execute('delete from cf where key = ' + str(x))
+        time.sleep(1)   # to make sure the tombstones will gc-expire
 
         block_on_compaction_log(node1, ks='ks', table='cf')
         time.sleep(1)
