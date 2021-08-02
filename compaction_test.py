@@ -623,6 +623,7 @@ def block_on_compaction_log(node, ks=None, table=None):
     ks = ks or stress_keyspace
     table = table or stress_table
 
+    logger.debug(f"Running major compaction on {node.name} {ks}.{table}")
     node.nodetool('compact {ks} {table}'.format(ks=ks, table=table))
 
     return node.watch_log_for('Compacted', from_mark=mark, filename=log_file)
