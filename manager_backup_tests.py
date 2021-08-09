@@ -1386,7 +1386,7 @@ class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
                                                               extra_config_file_list=[correct_config_file_path,
                                                                                       wrong_config_file_location])
         except Exception as err:
-            assert "send request failed" in err.args[-1], \
+            assert "connection refused" in err.args[-1], \
                 f"using an additional faulty s3 config did cause the check-location command fail, but with an " \
                 f"unexpected error message: {str(err.args)}"
         else:
