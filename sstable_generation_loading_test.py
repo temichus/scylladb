@@ -3,6 +3,8 @@ import os
 import subprocess
 import time
 from distutils import dir_util
+from io import StringIO
+import re
 
 import pytest
 
@@ -266,7 +268,21 @@ class TestSSTableGenerationAndLoading(Tester):
             if os.path.isdir(full_cf_dir):
                 cmd_args = [node1.get_tool('sstableloader'), '--nodes', host, full_cf_dir]
                 p_open = subprocess.Popen(cmd_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                exit_status = p_open.wait()
+                stdout, stderr = p_open.communicate()
+                exit_status = p_open.returncode
+                stderr = stderr.decode()
+                stdout = stdout.decode()
+                if stderr:
+                    buf = StringIO(stderr)
+                    has_errors = False
+                    for line in buf:
+                        if re.search('WARN .* Ignoring codec', line):
+                            logger.debug(f"Ignoring sstableloader warning: {line.strip()}")
+                        else:
+                            has_errors = True
+                    assert not has_errors, f"The stderr of sstableloader has errors: {stderr}"
+                assert 'Error' not in stdout, f'The stdout contains error message: {stdout}'
+                assert 'exception' not in stdout, f'The stdout contains exception message: {stdout}'
                 assert exit_status == 0, f'sstableloader exited with a non-zero status: {exit_status}'
 
         def read_and_validate_data(_session):
