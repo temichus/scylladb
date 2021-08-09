@@ -2396,7 +2396,7 @@ class TestGetTraceProbability(Tester):
     """
     Check gettraceprobablility command returned value after settraceprobablility operations:
        - settraceprobablility change only one node value, use several values
-       - settraceprobablility invalid values does not change value that returnes by gettraceprobablility
+       - settraceprobablility invalid values does not change value that returns by gettraceprobablility
        - gettraceprobablility returns to default value after stop/start node
     """
     invalid_values_map = {
@@ -2405,7 +2405,7 @@ class TestGetTraceProbability(Tester):
         'a': 'can not convert'
     }
 
-    # valid probability values and smaples number
+    # valid probability values and samples number
     valid_values = {0.001: 10000, 0: 500, 0.6: 1000, 1: 500}
     valid_tolerance = {0.001: 0.00075, 0: 0, 0.6: 0.030, 1: 0}
     default_value = 0
@@ -2429,12 +2429,12 @@ class TestGetTraceProbability(Tester):
         logger.info("Check that all tracing session have been flushed...")
         pattern = re.compile("INSERT INTO")
         tracing_query = SimpleStatement('SELECT parameters FROM system_traces.sessions')
-        rows = list(session.execute(tracing_query))
+        rows = rows_to_list(session.execute(tracing_query))
         count = functools.reduce(lambda x, y: x + y, map(lambda row: len(pattern.findall(row[0]['query'])), rows))
-        calculated_probaility = (count - prev_count) / num_keys
-        diff = math.fabs(calculated_probaility - probability)
+        calculated_probability = (count - prev_count) / num_keys
+        diff = math.fabs(calculated_probability - probability)
         allowed_diff = self.valid_tolerance[probability]
-        message = f"Error: probability={probability} actual={calculated_probaility} diff={diff} allowed={allowed_diff}"
+        message = f"Error: probability={probability} actual={calculated_probability} diff={diff} allowed={allowed_diff}"
         assert diff <= allowed_diff, message
         return count
 
