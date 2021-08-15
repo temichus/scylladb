@@ -715,7 +715,7 @@ class DTestSetup:
             logger.debug("Jacoco agent not found or is not file. Execution will not be recorded.")
 
     @staticmethod
-    def create_ccm_cluster(dtest_setup):
+    def create_ccm_cluster(dtest_setup, skip_manager_server=False):
         logger.info("cluster ccm directory: " + dtest_setup.test_path)
         version = dtest_setup.dtest_config.cassandra_version
 
@@ -729,7 +729,8 @@ class DTestSetup:
             cluster = Cluster(dtest_setup.test_path, dtest_setup.cluster_name, cassandra_version=version)
         elif scylla_version:
             cluster = ScyllaCluster(dtest_setup.test_path, dtest_setup.cluster_name,
-                                    cassandra_version=scylla_version, force_wait_for_cluster_start=True)
+                                    cassandra_version=scylla_version, force_wait_for_cluster_start=True,
+                                    skip_manager_server=skip_manager_server)
         else:
             if isScylla(dtest_setup.dtest_config.cassandra_dir):
                 cluster = ScyllaCluster(dtest_setup.test_path, dtest_setup.cluster_name,
@@ -759,7 +760,7 @@ class DTestSetup:
             log_level = logging.root.level
         self.cluster.set_log_level(log_level)
 
-    def initialize_cluster(self, create_cluster_func):
+    def initialize_cluster(self, create_cluster_func, **kwargs):
         """
         This method is responsible for initializing and configuring a ccm
         cluster for the next set of tests.  This can be called for two
@@ -774,7 +775,7 @@ class DTestSetup:
         # cluster_options = []
         self.iterations += 1
         self.create_cluster_func = create_cluster_func
-        self.cluster = self.create_cluster_func(self)
+        self.cluster = self.create_cluster_func(self, **kwargs)
         self.init_default_config()
         self.maybe_setup_jacoco()
         self.set_cluster_log_levels()

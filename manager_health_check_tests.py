@@ -2,6 +2,7 @@ import pytest
 import logging
 from copy import deepcopy
 from datetime import datetime, timedelta
+import os
 
 from dtest_scylla_manager import TaskStatus, ScyllaManagerTool, ScyllaManagerMixin, CqlStatus, HostRestStatus, Memory, \
     Status, AlternatorStatus, NodeStatus, HostHealth, ScyllaManagerError
@@ -9,6 +10,7 @@ from dtest_class import Tester
 from tools.retrying import retrying
 from alternator_utils import ALTERNATOR_PORT, WriteIsolation
 from iptables import IPTable, IPTableRule
+from tools.misc import generate_ssl_stores
 
 CLUSTER_NAME = 'cluster1'
 
@@ -232,3 +234,40 @@ class TestManagerHealthCheck(Tester, ScyllaManagerMixin):
         states.rest = Status(status=HostRestStatus.TIMEOUT, uptime=None, uptime_type='ms')
         _verify_port_is_blocked(rule=IPTableRule(protocol='tcp', destination_port=10000, target='DROP'),
                                 expected_states=states)
+
+    def test_error_cql_status_when_ssl_is_activated(self, secondary_cluster):
+        """
+        The test starts a (second) cluster with ssl disabled, and adds it to the manager.
+
+        Afterwards, the test enables ssl encryption for the cluster, without updating the manager,
+        and because of that the manager cannot communicate with the cluster through cql.
+
+        At the end, the test requests the status of the cluster from the manager,
+        and makes sure that the cql status of all of the nodes is ERROR, and that proper
+        error messages were printed for each of the nodes, since the manager ('s agents)
+        fail to communicate with the cluster due to the missing ssl keys.
+
+        Introduced in manager 2.5
+        """
+        self.config_and_create_cluster(nodes=2)  # cluster to be used as the manager's backend
+
+        generate_ssl_stores(self.test_path)
+        options = {
+            'enabled': True,
+            'certificate': os.path.join(self.test_path, 'ccm_node.pem'),
+            'keyfile': os.path.join(self.test_path, 'ccm_node.key'),
+            'truststore': os.path.join(self.test_path, 'ccm_node.cer'),
+            'require_client_auth': True
+        }
+        secondary_cluster_nodes = self.config_and_create_cluster(
+            nodes=3, cluster=secondary_cluster, extra_config_options={'client_encryption_options': options})
+        secondary_mgr_cluster = self._create_mgr_cluster(node=secondary_cluster_nodes[0],
+                                                         name="second_cluster")
+        cluster_status = secondary_mgr_cluster.get_hosts_health()
+        for host_health in cluster_status.values():
+            assert host_health.cql.status == CqlStatus.ERROR, \
+                f"cql status of {host_health.address} was suppose to be {CqlStatus.ERROR}, but instead the " \
+                f"manager reported it as {host_health.cql.status}"
+            assert "SSL" in host_health.error_messages[0] and "not found" in host_health.error_messages[0], \
+                f"cql status of {host_health.address} is indeed {CqlStatus.ERROR}, but the error message is " \
+                f"unclear:\n{host_health.error_messages[0]}"

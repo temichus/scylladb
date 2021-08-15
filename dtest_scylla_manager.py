@@ -128,6 +128,7 @@ class AlternatorStatus(Enum):
 class CqlStatus(Enum):
     UP = "UP"
     DOWN = "DOWN"
+    ERROR = "ERROR"
     TIMEOUT = "TIMEOUT"
 
 
@@ -1270,6 +1271,7 @@ class HostHealth(ComparableHealthCheckField):
         self.scylla_version = kwargs.pop("scylla_version", None)
         self.agent_version = kwargs.pop("agent_version", None)
         self.host_id = kwargs.pop("host_id")
+        self.error_messages = []
 
         if kwargs:
             raise ValueError(f"The following variables are unused: {pformat(kwargs)}")
@@ -1522,13 +1524,17 @@ class ManagerCluster(ScyllaManagerBase):
 
         $ sctool status -c bla
         Datacenter: dc1
-        +----+------------+----------+----------+-----------+-----------+------+----------+--------+--------+----------+
-        |    | Alternator | CQL      | REST     | Address   | Uptime    | CPUs | Memory   | Scylla | Agent  | Host ID  |
-        +----+------------+----------+----------+-----------+-----------+------+----------+--------+--------+----------+
-        | UN | UP (0ms)   | UP (0ms) | UP (0ms) | 127.0.2.1 | 98h50m49s | 8    | 31.18GiB | 4.1... | 666... | c684b... |
-        | UN | UP (1ms)   | UP (0ms) | UP (1ms) | 127.0.2.2 | 98h50m49s | 8    | 31.18GiB | 4.1... | 666... | 7aa22... |
-        | DN | -          | -        | -        | 127.0.2.3 | -         | -    | -        | -      | -      | 3e748... |
-        +----+------------+----------+----------+-----------+-----------+------+----------+--------+--------+----------+
+        ╭────┬─────────────┬──────────┬────────────┬───────────┬──────┬──────────┬────────┬─────────────────────────────┬──────────────────────────────────────╮
+        │    │ CQL         │ REST     │ Address    │ Uptime    │ CPUs │ Memory   │ Scylla │ Agent                       │ Host ID                              │
+        ├────┼─────────────┼──────────┼────────────┼───────────┼──────┼──────────┼────────┼─────────────────────────────┼──────────────────────────────────────┤
+        │ UN │ UP (0ms)    │ UP (0ms) │ 127.0.95.1 │ 198h18m6s │ 4    │ 15.55GiB │ 4.4.0  │ 2.5.rc1-0.20210811.a12c3aac │ 790eec5b-ed8c-497b-bbf4-1a30cdaba447 │
+        │ UN │ UP (0ms)    │ UP (0ms) │ 127.0.95.2 │ 198h18m6s │ 4    │ 15.55GiB │ 4.4.0  │ 2.5.rc1-0.20210811.a12c3aac │ 7a768df8-c433-4610-ad3f-655ba2003091 │
+        │ UN │ ERROR (0ms) │ UP (0ms) │ 127.0.95.3 │ 198h18m6s │ 4    │ 15.55GiB │ 4.4.0  │ 2.5.rc1-0.20210811.a12c3aac │ 8facb590-0d6c-458c-8862-6e4243b9e8ee │
+        ╰────┴─────────────┴──────────┴────────────┴───────────┴──────┴──────────┴────────┴─────────────────────────────┴──────────────────────────────────────╯
+        Errors:
+        - 127.0.82.1 CQL: fetch TLS config: get SSL user cert from secrets store: not found
+        - 127.0.82.2 CQL: fetch TLS config: get SSL user cert from secrets store: not found
+        - 127.0.82.3 CQL: fetch TLS config: get SSL user cert from secrets store: not found
         """
         dict_hosts_health, health_details = {}, {}
         output = self.status_api.status(cluster_name=self.id)[0]
@@ -1537,12 +1543,22 @@ class ManagerCluster(ScyllaManagerBase):
         datacenter_name = self.status_api.parse_output(
             output=datacenter_value.strip(), regex_name=datacenter_key.strip())
         table_headers = output[1]
-        for line in output[2:]:
+        table_contents = output[2:]
+        error_messages = []
+        if ['Errors:'] in table_contents:
+            error_title_index = table_contents.index(['Errors:'])
+            error_messages = table_contents[error_title_index+1:]
+            table_contents = table_contents[:error_title_index]
+        for line in table_contents:
             [health_details.update(self.status_api.parse_output(output=value, regex_name=name))
              for value, name in zip(line, table_headers) if value != "-"]
             host_health_object = HostHealth(datacenter_name=datacenter_name, **health_details)
             health_details.clear()
             dict_hosts_health[host_health_object.address] = host_health_object
+        for message in error_messages:
+            message_string = message[0]  # The message string is in a 1 length list
+            node_ip = re.search("\d+\.\d+\.\d+\.\d+", message_string)[0]
+            dict_hosts_health[node_ip].error_messages.append(message_string)
 
         return dict_hosts_health
 
@@ -1580,14 +1596,14 @@ class ScyllaManagerMixin:
         return mgr_cluster
 
     @pytest.fixture(scope='function', autouse=False)
-    def secondary_cluster(self, request, fixture_dtest_create_cluster_func):
+    def secondary_cluster(self, request):
         dtest_config = DTestConfig()
         dtest_config.setup(request)
         dtest_setup = DTestSetup(dtest_config=dtest_config,
                                  setup_overrides=DTestSetupOverrides(),
                                  cluster_name="test",
                                  prefix="dtest-secondary-")
-        dtest_setup.initialize_cluster(fixture_dtest_create_cluster_func)
+        dtest_setup.initialize_cluster(DTestSetup.create_ccm_cluster, skip_manager_server=True)
         dtest_setup.cluster.set_configuration_options(values={'ring_delay_ms': 10000})
         if not dtest_config.disable_active_log_watching:
             dtest_setup.begin_active_log_watch()
