@@ -443,8 +443,15 @@ class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
 
     @pytest.mark.skip("will return when minio bandwidth limiting is on")
     def test_multiple_backups_task_then_restore(self):
+        """
+        First, the test creates inserts data into the cluster and backups it over three iterations.
+        Afterwards, the table that contained said data is deleted and the test restores some of the
+        data using the backup that occurred after the second insertion.
+        Finally, the test makes sure that the table contains the data from the first to insertions
+        but does not contain any data from the third one.
+        """
         first_keyspace_table_and_key_range = {"ks": {"cf1": (1, 21)}}
-        second_keyspace_table_and_key_range = {"ks": {"cf1": (31, 56)}}
+        second_keyspace_table_and_key_range = {"ks": {"cf1": (21, 56)}}
         third_keyspace_table_and_key_range = {"ks": {"cf1": (101, 131)}}
         node1, node2 = self._prepare_cluster_with_data(keyspace_table_and_key_range=first_keyspace_table_and_key_range)
         mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
@@ -466,8 +473,8 @@ class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
         self.clean_up_tables(node1, {"ks": ["cf1"]})
         self.restore_backup(node_list=self.cluster.nodelist(), mgr_cluster=mgr_cluster,
                             snapshot_tag=second_run_snapshot_tag, keyspace_and_table_list={"ks": ["cf1"]})
-        self.verify_c1c2(first_keyspace_table_and_key_range, node1)
-        self.verify_c1c2(second_keyspace_table_and_key_range, node1)
+        first_and_second_keyspace_table_and_key_range = {"ks": {"cf1": (1, 56)}}
+        self.verify_c1c2(first_and_second_keyspace_table_and_key_range, node1)
         self.verify_lack_of_keys(third_keyspace_table_and_key_range, node1)
 
     def test_shutting_down_node_during_backup(self):
