@@ -2194,7 +2194,7 @@ class TestNodetool(Tester):
             'SSTables with Cassandra-style shadowable deletion cannot be read by Scylla',
             'Adding missing partition-end to the end of the stream',
             'compaction failed: std::runtime_error',
-            'Validating .* '
+            '[Ss]crubbing in validate mode'
         ]
 
         self.ignore_cores_log_patterns += [
@@ -2207,11 +2207,16 @@ class TestNodetool(Tester):
 
         logger.debug('Validate sstables by nodetool validate')
         # Currently, validate may fail with random corruption, e.g. on OOM
-        out = node.nodetool('validate ks')
+        out = node.nodetool('scrub -m VALIDATE ks')
         logger.debug(f"Validate output: {out}")
 
+        expected_errors = [
+            f"Scrubbing in validate mode {re.escape(sstable)} failed",
+            f"Finished scrubbing in validate mode \[{re.escape(sstable)}\] - sstable(s) are invalid",
+        ]
+        timeout = 30 if self.cluster.scylla_mode != 'debug' else 90
         try:
-            node.watch_log_for(f"Validating {re.escape(sstable)} failed", from_mark=mark)
+            node.watch_log_for("|".join(expected_errors), from_mark=mark, timeout=timeout)
         except UnicodeDecodeError:
             pass
 
@@ -2240,14 +2245,14 @@ class TestNodetool(Tester):
 
         self.ignore_log_patterns = self.validation_expected_errs
 
-        logger.debug('Validate sstables by `nodetool validate ks cf` ....')
-        node.nodetool("validate ks cf")
+        logger.debug('Validate sstables by `nodetool scrub -m VALIDATE ks cf` ....')
+        node.nodetool("scrub -m VALIDATE ks cf")
 
         timeout = 30 if self.cluster.scylla_mode != 'debug' else 90
-        node.watch_log_for('Validating .* failed|Validated .* invalid', timeout=timeout)
+        node.watch_log_for('Finished scrubbing in validate mode', timeout=timeout)
         # Scrub messages changed in scylladb/scylla@f0e2f31839
-        expected_errs = ['\[Validate compaction ks.cf\] Invalid clustering row fragment',
-                         '\[Validate compaction ks.cf\] Invalid partition']
+        expected_errs = ['\[.* compaction ks.cf\] Invalid clustering row fragment',
+                         '\[.* compaction ks.cf\] Invalid partition']
         node.watch_log_for(expected_errs, timeout=0)
 
     def test_validate_ks_sstable_with_invalid_fragment(self):
@@ -2271,13 +2276,13 @@ class TestNodetool(Tester):
         self.ignore_log_patterns = self.validation_expected_errs
 
         logger.debug('Validate sstables by `nodetool validate ks` ....')
-        node.nodetool("validate ks")
+        node.nodetool("scrub -m VALIDATE ks")
 
         timeout = 30 if self.cluster.scylla_mode != 'debug' else 90
-        node.watch_log_for('Validating .* failed|Validated .* invalid', timeout=timeout)
+        node.watch_log_for('Finished scrubbing in validate mode', timeout=timeout)
         # Scrub messages changed in scylladb/scylla@f0e2f31839
-        expected_errs = ['\[Validate compaction ks.cf\] Invalid clustering row fragment',
-                         '\[Validate compaction ks.cf\] Invalid partition']
+        expected_errs = ['\[.* compaction ks.cf\] Invalid clustering row fragment',
+                         '\[.* compaction ks.cf\] Invalid partition']
         node.watch_log_for(expected_errs, timeout=0)
 
     def test_node_graceful_stop_during_stress_and_decommission(self, starting_size=4, node_count=10, rf=1):
