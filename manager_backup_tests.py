@@ -243,6 +243,11 @@ class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
 
     @pytest.mark.skip("will return when minio bandwidth limiting is on")
     def test_backup_start_date(self):
+        """
+        The test starts a backup task with a certain start date,
+        wait until the task has started and then makes sure that it
+        indeed has started on the correct time.
+        """
         keyspace_table_and_key_range = {"ks": {"cf1": (1, 21)}}
         node1, node2 = self._prepare_cluster_with_data(keyspace_table_and_key_range=keyspace_table_and_key_range)
         mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
@@ -255,12 +260,12 @@ class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
         next_run_time = datetime.strptime(next_run_string, "%d %b %y %H:%M:%S %Z")
         assert abs((next_run_time - command_execution_time).seconds) < 50, "The start time is not identical"
 
-        backup_task.wait_for_status(list_status=[TaskStatus.RUNNING], timeout=100, step=2)
-        task_start_time = datetime.now()
-        assert abs((task_start_time - command_execution_time).seconds) < 50, "In practice, the start time of the " \
-                                                                             "backup task did not match the requested" \
-                                                                             "time"
-        backup_task.wait_for_status(list_status=[TaskStatus.DONE], timeout=1000, step=5)
+        backup_task.wait_for_status(list_status=[TaskStatus.RUNNING, TaskStatus.DONE], timeout=100, step=2)
+        start_time_string = backup_task.start_time
+        start_time = datetime.strptime(start_time_string, "%d %b %y %H:%M:%S %Z")
+        assert abs((start_time - command_execution_time).seconds) < 50, "In practice, the start time of the backup " \
+                                                                        "task did not match the requested time"
+        backup_task.wait_for_status(list_status=[TaskStatus.DONE], timeout=100, step=5)
         self.clean_restore_and_verify_backup(backup_task, self.cluster.nodelist(), mgr_cluster, node1,
                                              keyspace_table_and_key_range)
 

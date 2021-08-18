@@ -1066,6 +1066,17 @@ class ManagerTask(ScyllaManagerBase):
                 break
         return progress
 
+    @property
+    def start_time(self):
+        """
+        Gets the repair task's start time
+        """
+        if self.status in [TaskStatus.NEW, TaskStatus.STARTING]:
+            return "01 Jan 70 00:00:00 UTC"
+        for task_property in self.progress_details:
+            if task_property[0].startswith("Start time"):
+                return task_property[0].split(": ")[1].strip()
+
     def has_percentage_reached_minimum(self, min_percentage):
         current_percentage = self.progress.strip()
         current_percentage_num = float(current_percentage[:-1])
