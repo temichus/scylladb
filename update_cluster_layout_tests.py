@@ -6,6 +6,7 @@ import collections
 import random
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
+from pkg_resources import parse_version
 
 import requests
 import pytest
@@ -609,6 +610,16 @@ class TestUpdateClusterLayout(Tester):
     def test_simple_add_new_node_while_adding_info_2(self):
         self._simple_add_new_node_while_adding_info(2)
 
+    def repair_based_node_ops_config_options(self, enable_repair_based_node_ops: bool, ops=["bootstrap", "replace", "removenode", "decommission", "rebuild"]):
+        config_options = self.default_config_options()
+        config_options.update({'enable_repair_based_node_ops': enable_repair_based_node_ops})
+        # Configuring allowed_repair_based_node_ops is required
+        # since scylladb/scylla@97bb2e47ff004b32b2d72f1b1f085710a14cb4e2
+        if enable_repair_based_node_ops and \
+           parse_version(self.cluster.version()) >= parse_version('4.6.dev'):
+            config_options.update({'allowed_repair_based_node_ops': ','.join(ops)})
+        return config_options
+
     def _simple_add_new_node_while_schema_changes(self, enable_repair_based_node_ops=True):
         """
         Test bootstrapped node sync all data
@@ -624,8 +635,7 @@ class TestUpdateClusterLayout(Tester):
 
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfer with the test (this must be after the populate)
-        config_options = self.default_config_options()
-        config_options.update({'enable_repair_based_node_ops': enable_repair_based_node_ops})
+        config_options = self.repair_based_node_ops_config_options(enable_repair_based_node_ops)
         cluster.set_configuration_options(values=config_options,
                                           batch_commitlog=True)
         cluster.populate(3).start()
@@ -1782,7 +1792,7 @@ class TestUpdateClusterLayout(Tester):
         cluster = self.cluster
 
         config_options = self.default_config_options()
-        config_options.update({'enable_repair_based_node_ops': True})
+        config_options.update(self.repair_based_node_ops_config_options(True))
         cluster.set_configuration_options(
             values=config_options, batch_commitlog=True)
         cluster.populate(2).start()
@@ -1836,8 +1846,7 @@ class TestUpdateClusterLayout(Tester):
 
     def test_verify_latest_copy_replace_node(self):
         cluster = self.cluster
-        config_options = self.default_config_options()
-        config_options.update({'enable_repair_based_node_ops': True})
+        config_options = self.repair_based_node_ops_config_options(True)
         cluster.set_configuration_options(
             values=config_options, batch_commitlog=True)
         logger.debug("Starting cluster with 3 nodes.")
@@ -1896,8 +1905,7 @@ class TestUpdateClusterLayout(Tester):
 
     def test_verify_latest_copy_rebuild_node(self):
         cluster = self.cluster
-        config_options = self.default_config_options()
-        config_options.update({'enable_repair_based_node_ops': True})
+        config_options = self.repair_based_node_ops_config_options(True)
         cluster.set_configuration_options(
             values=config_options, batch_commitlog=True)
         logger.debug("Starting cluster with 3 nodes.")
@@ -1956,8 +1964,7 @@ class TestUpdateClusterLayout(Tester):
 
     def test_verify_latest_copy_decommission_node(self):
         cluster = self.cluster
-        config_options = self.default_config_options()
-        config_options.update({'enable_repair_based_node_ops': True})
+        config_options = self.repair_based_node_ops_config_options(True)
         cluster.set_configuration_options(
             values=config_options, batch_commitlog=True)
         logger.debug("Starting cluster with 3 nodes.")
@@ -2012,8 +2019,7 @@ class TestUpdateClusterLayout(Tester):
 
     def test_verify_latest_copy_removenode_node(self):
         cluster = self.cluster
-        config_options = self.default_config_options()
-        config_options.update({'enable_repair_based_node_ops': True})
+        config_options = self.repair_based_node_ops_config_options(True)
         cluster.set_configuration_options(
             values=config_options, batch_commitlog=True)
         logger.debug("Starting cluster with 4 nodes.")
