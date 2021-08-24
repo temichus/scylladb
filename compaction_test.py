@@ -335,7 +335,6 @@ class TestCompaction(Tester):
                 time.sleep(5)
                 cluster.start(wait_for_binary_proto=True)
 
-    @pytest.mark.skip('large row is most likely not being produce, hence test is failing')
     def test_large_compaction_warning(self):
         """
         @jira_ticket CASSANDRA-9643
@@ -343,15 +342,14 @@ class TestCompaction(Tester):
         compaction_large_partition_warning_threshold_mb
         """
         cluster = self.cluster
-        cluster.set_configuration_options({'compaction_large_partition_warning_threshold_mb': 1})
+        cluster.set_configuration_options({'compaction_large_partition_warning_threshold_mb': 10})
         cluster.populate(1).start(wait_for_binary_proto=True)
         [node] = cluster.nodelist()
 
         session = self.patient_cql_connection(node)
         create_ks(session, 'ks', 1)
 
-        mark = node.mark_log()
-        strlen = (1024 * 1024) / 100
+        strlen = (10 * 1024 * 1024) // 100
         session.execute("CREATE TABLE large(userid text PRIMARY KEY, properties map<int, text>) with compression = {}")
         for i in range(200):  # ensures partition size larger than compaction_large_partition_warning_threshold_mb
             session.execute("UPDATE ks.large SET properties[%i] = '%s' "
@@ -362,9 +360,9 @@ class TestCompaction(Tester):
         assert 200 == len(ret[0][0].keys())
 
         node.flush()
-
+        mark = node.mark_log()
         node.nodetool('compact ks large')
-        node.watch_log_for('Writing large row ks/large:.* \(\d+ bytes\)', from_mark=mark, timeout=180)
+        node.watch_log_for(r'Writing large row ks/large:.* \(\d+ bytes\)', from_mark=mark, timeout=180)
 
         ret = list(session.execute("SELECT properties from ks.large where userid = 'user'"))
 
@@ -375,7 +373,7 @@ class TestCompaction(Tester):
         large_partition_ret = list(session.execute("SELECT * from system.large_partitions"))
         assert len(large_partition_ret) == 1
         row = large_partition_ret[0]
-        assert row.partition_size == 2104020
+        assert row.partition_size == 20974000
         assert row.partition_key == 'user'
 
     def test_disable_autocompaction_nodetool(self):
@@ -398,12 +396,11 @@ class TestCompaction(Tester):
         assert len(node.grep_log(f'Compacting.+{self.secondary_table}', from_mark=enable_mark)) > 0, \
             f'{self.secondary_ks}.{self.secondary_table} should have continued with regular compactions'
 
-    @pytest.mark.skip('nodetool enableautocompaction does not work in Scylla if the schema has it disabled')
     def test_disable_autocompaction_schema(self):
         """
         Make sure we can disable compaction via the schema compaction parameter 'enabled' = false
         """
-        node = self.prepate_testbed(with_compaction=f'WITH compaction = {{\'class\':\'{self.strategy}\', '
+        node = self.prepate_testbed(with_compaction=f'{{\'class\':\'{self.strategy}\', '
                                     f'\'enabled\':\'false\'}}')
         disable_mark = self.disable_autocompaction(node=node, ks=self.primary_ks, table=self.primary_table)
         self.fill_table_with_data(node=node, ks=self.primary_ks, table=self.primary_table, keys=1000)
@@ -422,6 +419,12 @@ class TestCompaction(Tester):
         assert len(node.grep_log(f'Compacting.+{self.secondary_table}', from_mark=disable_mark)) > 0, \
             f'{self.secondary_ks}.{self.secondary_table} should have continued with regular compactions'
         # TODO: in Scylla it doesn't work, so i shall run here alter table and update with the `enabled: true`
+        # in Scylla 'nodetool enableautocompaction' doesn't work if compaction disabled in schema,
+        # so here alter table and update with the `enabled: true`
+        session.execute(f"ALTER TABLE {self.primary_table} "
+                        f"with compaction = {{'class': '{self.strategy}', 'enabled': 'true'}}")
+        self.disable_autocompaction(node=node, ks=self.primary_ks, table=self.primary_table)
+
         enable_mark = self.enable_autocompaction(node=node, ks=self.primary_ks, table=self.primary_table)
         self.fill_table_with_data(node=node, ks=self.primary_ks, table=self.primary_table, keys=1000)
         self.fill_table_with_data(node=node, ks=self.secondary_ks, table=self.secondary_table, keys=1000)
@@ -557,7 +560,7 @@ class TestCompaction(Tester):
         return mark
 
     def enable_autocompaction(self, node, ks, table, verify=True):
-        node.nodetool(f'enableautocompaction {ks} {table}')
+        node.nodetool(f'enableautocompaction -- {ks} {table}')
         mark = node.mark_log()
         if verify:
             assert is_autocompaction_enabled(node, ks, table), \
