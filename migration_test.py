@@ -11,23 +11,74 @@ import subprocess
 import datetime
 import logging
 
+import requests
+from cassandra import ConsistencyLevel
 from cassandra.query import SimpleStatement
 import pytest
 from ccmlib.node import NodetoolError
+from ccmlib.scylla_node import ScyllaNode
 
 from dtest_class import Tester, create_ks, create_cf
 from scylla_tools import CassandraCluster, get_sstables_files, get_node_cf_dir
+from tools.tables_view_manager import wait_for_view
 from tools.files import safe_mkdtemp
-from tools.data import drop_table, rows_to_list
+from tools.data import drop_table, rows_to_list, check_c1c2_result_one, create_c1c2_table, query_c1c2, create_index
 from tools.misc import ImmutableMapping
+from tools.assertions import assert_one
+from tools.stress import create_stress_compatible_table
 from dtest_setup_overrides import DTestSetupOverrides
+from tools.files import copy_files_to
 
 logger = logging.getLogger(__name__)
 
 
+class BaseHelpers(Tester):
+    @staticmethod
+    def populate_cluster(cluster, extra_values=None, nodes=1):
+        # Disable hinted handoff and set batch commit log so this doesn't
+        # interfere with the test (this must be after the populate)
+        values = {'hinted_handoff_enabled': False}
+        if extra_values:
+            values.update(extra_values)
+        cluster.set_configuration_options(values, batch_commitlog=True)
+        logger.debug(f"Starting a cluster of {nodes} node(s)...")
+        cluster.populate(nodes)
+
+    @staticmethod
+    def start_cluster(cluster):
+        cluster.start(wait_for_binary_proto=True, wait_other_notice=True)
+
+    @staticmethod
+    def get_node(cluster, node_idx):
+        return cluster.nodelist()[node_idx]
+
+    def start_cluster_and_get_node1(self, nodes=1):
+        cluster = self.cluster
+
+        self.populate_cluster(cluster, nodes=nodes)
+        self.start_cluster(cluster)
+        node1 = self.get_node(cluster, 0)
+        return node1
+
+    @staticmethod
+    def copy_files_to(from_dir, to_dir):
+        copy_files_to(from_dir, to_dir, files_only=True)
+
+    def check_number_of_rows(self, node, expected_number_of_rows, keyspace='ks', table='cf',
+                             consistency_level=ConsistencyLevel.ONE):
+        logger.debug(f"Checking rows on {node.name}, {keyspace}.{table}...")
+        query = f"SELECT COUNT(*) FROM {table}"
+        statement = SimpleStatement(query, consistency_level=consistency_level)
+        s = self.patient_cql_connection(node, keyspace)
+        result = list(s.execute(statement))
+        assert result[0].count == expected_number_of_rows,\
+            f"Expected {expected_number_of_rows} rows in {keyspace}.{table} on {node.name}. " \
+            f"Got {result[0].count}"
+
+
 @pytest.mark.dtest_full
 @pytest.mark.single_node
-class MigrationTestBase(Tester):
+class MigrationTestBase(BaseHelpers):
     __test__ = False
 
     @pytest.mark.dtest_debug
@@ -193,12 +244,14 @@ class MigrationTestBase(Tester):
         # Row(key=u'b', messages=OrderedMapSerializedKey([(u'a', u'value1'), (u'b', u'value2')]))] when
         # querying the whole content of sstable with frozen collection map
         self._run_migration_test_for_collection("with_frozen_collection_map", "frozen<map<varchar, text>>",
-                                                {'a': {'a': 'value1', 'b': 'value2'}, 'b': {'a': 'value1', 'b': 'value2'}})
+                                                {'a': {'a': 'value1', 'b': 'value2'},
+                                                 'b': {'a': 'value1', 'b': 'value2'}})
 
     def test_migrate_sstable_with_static_cell(self):
         node1 = self.start_cluster_and_get_node1()
 
-        query = 'CREATE COLUMNFAMILY ks.cf (key varchar, s text STATIC, i int, PRIMARY KEY (key, i)) WITH comment=\'test cf\' AND read_repair_chance=0.000000'
+        query = 'CREATE COLUMNFAMILY ks.cf (key varchar, s text STATIC, i int, PRIMARY KEY (key, i)) WITH ' \
+                'comment=\'test cf\' AND read_repair_chance=0.000000'
         self.create_ks_and_cf(node1, None, None, False, query=query)
 
         self.load_migrated_tables(node1, 'with_static_cell')
@@ -329,8 +382,8 @@ class MigrationTestBase(Tester):
         logger.info('Run stress test(n={}) on node1'.format(stress_count))
         profile_path = os.path.join(os.path.dirname(__file__),
                                     'test_data/c-s-profiles/cassandra-stress-custom-large-row-num-1.yaml')
-        node1.stress(['user', 'profile={}'.format(profile_path), 'ops(insert=1)', 'n={}'.format(stress_count), '-rate', 'threads=4'],
-                     capture_output=True)
+        node1.stress(['user', 'profile={}'.format(profile_path), 'ops(insert=1)', 'n={}'.format(stress_count), '-rate',
+                      'threads=4'], capture_output=True)
 
         logger.info('Reading initial data')
         session = self.patient_cql_connection(node1)
@@ -385,26 +438,26 @@ class MigrationTestBase(Tester):
 
     def test_migrate_sstable_with_variant_data_types(self):
         node1 = self.start_cluster_and_get_node1()
-        query = "CREATE COLUMNFAMILY ks.cf (aascii ascii,"\
-            "abigint bigint,"\
-            "ablob blob,"\
-            "aboolean boolean,"\
-            "adouble double,"\
-            "adecimal decimal,"\
-            "afloat float,"\
-            "ainet inet,"\
-            "aint int,"\
-            "atext text,"\
-            "atimestamp timestamp,"\
-            "atimeuuid timeuuid,"\
-            "auuid uuid,"\
-            "avarchar varchar,"\
-            "avarint varint,"\
-            "alist list<int>,"\
-            "amap map<int,int>,"\
-            "aset set<int>,"\
-            "PRIMARY KEY (aascii, abigint)) "\
-            "WITH comment=\'test cf\' AND read_repair_chance=0.000000"
+        query = "CREATE COLUMNFAMILY ks.cf (aascii ascii," \
+                "abigint bigint," \
+                "ablob blob," \
+                "aboolean boolean," \
+                "adouble double," \
+                "adecimal decimal," \
+                "afloat float," \
+                "ainet inet," \
+                "aint int," \
+                "atext text," \
+                "atimestamp timestamp," \
+                "atimeuuid timeuuid," \
+                "auuid uuid," \
+                "avarchar varchar," \
+                "avarint varint," \
+                "alist list<int>," \
+                "amap map<int,int>," \
+                "aset set<int>," \
+                "PRIMARY KEY (aascii, abigint)) " \
+                "WITH comment=\'test cf\' AND read_repair_chance=0.000000"
         self.create_ks_and_cf(node1, None, None, False, query=query)
         node1.flush()
         self.load_migrated_tables(node1, 'with_variant_data_types')
@@ -561,7 +614,8 @@ class MigrationTestBase(Tester):
         logger.info(result)
         return result
 
-    def _run_basic_migration_test(self, migrated_files_dir, row_content, compression=None, compact_storage=False, sleep=0, query=None):
+    def _run_basic_migration_test(self, migrated_files_dir, row_content, compression=None, compact_storage=False,
+                                  sleep=0, query=None):
         node1 = self.start_cluster_and_get_node1()
 
         self.create_ks_and_cf(node1, columns={'c1': 'text', 'c2': 'text'}, compression=compression,
@@ -626,38 +680,10 @@ class MigrationTestBase(Tester):
         return "{}/cassandra-sstables/migration/{}/{}".format(os.path.dirname(os.path.realpath(__file__)), version,
                                                               migrated_files_dir)
 
-    def populate_cluster(self, cluster, extra_values=None):
-        # Disable hinted handoff and set batch commit log so this doesn't
-        # interfere with the test (this must be after the populate)
-        values = {'hinted_handoff_enabled': False}
-        if extra_values:
-            values.update(extra_values)
-        cluster.set_configuration_options(values, batch_commitlog=True)
-        logger.info("Starting a cluster of one node...")
-        cluster.populate(1)
-
-    def start_cluster(self, cluster):
-        cluster.start(wait_for_binary_proto=True, wait_other_notice=True)
-
-    def get_node(self, cluster, node_idx):
-        return cluster.nodelist()[node_idx]
-
-    def start_cluster_and_get_node1(self):
-        cluster = self.cluster
-
-        self.populate_cluster(cluster)
-        self.start_cluster(cluster)
-        node1 = self.get_node(cluster, 0)
-        return node1
-
-    def copy_files_to(self, from_dir, to_dir):
-        for f in os.listdir(from_dir):
-            shutil.copy2(os.path.join(from_dir, f), os.path.join(to_dir, f))
-
     def recursive_copy_to(self, from_dir, to_dir):
         shutil.copytree(from_dir, to_dir)
 
-    def get_sstable_version(self,  cf_dir, assert_only_one_version=True):
+    def get_sstable_version(self, cf_dir, assert_only_one_version=True):
         file_list = os.listdir(cf_dir)
         logger.info("{}".format(file_list))
         sstable_version_regex = re.compile(r'(\w+)-\d+-(.+)\.(db|txt|sha1|crc32)')
@@ -671,8 +697,10 @@ class MigrationTestBase(Tester):
             assert len(sstable_versions) == 1, sstable_versions
         if sstable_versions:
             return sstable_versions[0]
-#       else:
+            #       else:
             return None
+
+
 # Dtest created to test migration of data from C* to Scylla
 #
 
@@ -843,7 +871,8 @@ class TestMigrationUpgradeSSTables(TestMigration):
 class TestTTLWithMigrate(Tester):
     """ Test Time To Live Feature with Migration"""
 
-    def prepare(self, default_time_to_live=None, create_table_statement=None, nodes=1, rf=1, configuration_options=None, custom_args=None):
+    def prepare(self, default_time_to_live=None, create_table_statement=None, nodes=1, rf=1, configuration_options=None,
+                custom_args=None):
         if configuration_options:
             logger.info(f"Setting cluster configuration options: {configuration_options}")
             self.cluster.set_configuration_options(values=configuration_options)
@@ -901,17 +930,20 @@ class TestTTLWithMigrate(Tester):
         # Prefill
         partitions = 10
         rows_in_partition = 1000
-        logger.info('Create {} partitions with {} rows'.format(partitions, rows_in_partition))
-        for i in range(1, partitions+1):
-            for k in range(1, rows_in_partition+1):
+        logger.debug('Create {} partitions with {} rows'.format(partitions, rows_in_partition))
+        for i in range(1, partitions + 1):
+            for k in range(1, rows_in_partition + 1):
                 s = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(10))
                 stmt = 'insert into {table_name} (pk, ck, {columns}, clist, cset, cmap) values ({ilist}, {klist}, {int_values}, ' \
                        '[{ilist}, {klist}], ' \
                        '{open}{set_value}{close}, {map_value})'.format(table_name=table_name,
                                                                        columns=', '.join(
                                                                            'c%d' % l for l in range(1, int_columns)),
-                                                                       int_values=', '.join('%d' % l for l in range(1, int_columns)), ilist=i, klist=k, open='{\'',
-                                                                       set_value=s, close='\'}', map_value='{%d: \'%s\'}' % (k, s)
+                                                                       int_values=', '.join(
+                                                                           '%d' % l for l in range(1, int_columns)),
+                                                                       ilist=i, klist=k, open='{\'',
+                                                                       set_value=s, close='\'}',
+                                                                       map_value='{%d: \'%s\'}' % (k, s)
                                                                        )
                 self.session1.execute(stmt)
 
@@ -919,16 +951,19 @@ class TestTTLWithMigrate(Tester):
         big_partition_rows = 100000
         if hasattr(self.cluster, 'scylla_mode') and self.cluster.scylla_mode == 'debug':
             big_partition_rows //= 10
-        logger.info('Create partition where pk = {} with {} rows'.format(big_partition, big_partition_rows))
-        for k in range(1, big_partition_rows+1):
+        logger.debug('Create partition where pk = {} with {} rows'.format(big_partition, big_partition_rows))
+        for k in range(1, big_partition_rows + 1):
             s = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(10))
             stmt = 'insert into {table_name} (pk, ck, {columns}, clist, cset, cmap) values ({ilist}, {klist}, {int_values}, ' \
                    '[{ilist}, {klist}], ' \
                    '{open}{set_value}{close}, {map_value})'.format(table_name=table_name,
                                                                    columns=', '.join('c%d' %
                                                                                      l for l in range(1, int_columns)),
-                                                                   int_values=', '.join('%d' % l for l in range(1, int_columns)), ilist=big_partition, klist=k, open='{\'',
-                                                                   set_value=s, close='\'}', map_value='{%d: \'%s\'}' % (k, s)
+                                                                   int_values=', '.join(
+                                                                       '%d' % l for l in range(1, int_columns)),
+                                                                   ilist=big_partition, klist=k, open='{\'',
+                                                                   set_value=s, close='\'}',
+                                                                   map_value='{%d: \'%s\'}' % (k, s)
                                                                    )
             self.session1.execute(stmt)
 
@@ -944,32 +979,34 @@ class TestTTLWithMigrate(Tester):
         ttl_boundaries = [1800, 3600]
         logger.info('Run updates using TTLs in the {} range'.format(ttl_boundaries))
 
-        for _ in range(1, big_partition+1):
+        for _ in range(1, big_partition + 1):
             # Update int columns
             stmts = [create_update_command(ttl=random.randint(ttl_boundaries[0], ttl_boundaries[1]),
                                            column_expr='c%d = %d' % (random.randint(
-                                               1, int_columns-1), random.randint(0, 500000)),
+                                               1, int_columns - 1), random.randint(0, 500000)),
                                            pk=random.randint(1, partitions), ck=random.randint(1, rows_in_partition))]
             # Update big partition
             stmts.append(create_update_command(ttl=random.randint(ttl_boundaries[0], ttl_boundaries[1]),
                                                column_expr='c%d = %d' % (random.randint(
-                                                   1, int_columns-1), random.randint(0, 500000)),
+                                                   1, int_columns - 1), random.randint(0, 500000)),
                                                pk=big_partition, ck=random.randint(1, big_partition_rows)))
 
             # Delete int value
             stmts.append(create_update_command(ttl=random.randint(ttl_boundaries[0], ttl_boundaries[1]),
                                                column_expr='c%d = NULL' % (random.randint(1, int_columns - 1)),
-                                               pk=random.randint(1, partitions), ck=random.randint(1, rows_in_partition)))
+                                               pk=random.randint(1, partitions),
+                                               ck=random.randint(1, rows_in_partition)))
             # Delete int value in big partition
             stmts.append(create_update_command(ttl=random.randint(ttl_boundaries[0], ttl_boundaries[1]),
-                                               column_expr='c%d = NULL' % (random.randint(1, int_columns-1)),
+                                               column_expr='c%d = NULL' % (random.randint(1, int_columns - 1)),
                                                pk=big_partition, ck=random.randint(1, big_partition_rows)))
             # Update collection columns
             s = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(10))
             # APPEND to set column - small partitions
             stmts.append(create_update_command(ttl=random.randint(ttl_boundaries[0], ttl_boundaries[1]),
                                                column_expr='cset = cset+{\'%s\'}' % (s),
-                                               pk=random.randint(1, partitions), ck=random.randint(1, rows_in_partition)))
+                                               pk=random.randint(1, partitions),
+                                               ck=random.randint(1, rows_in_partition)))
             # APPEND to set column - Big partition
             stmts.append(create_update_command(ttl=random.randint(ttl_boundaries[0], ttl_boundaries[1]),
                                                column_expr='cset = cset+{\'%s\'}' % (s),
@@ -977,7 +1014,8 @@ class TestTTLWithMigrate(Tester):
             # APPEND to list column - small partitions
             stmts.append(create_update_command(ttl=random.randint(ttl_boundaries[0], ttl_boundaries[1]),
                                                column_expr='clist = clist+[%d]' % (random.randint(0, 500000)),
-                                               pk=random.randint(1, partitions), ck=random.randint(1, rows_in_partition)))
+                                               pk=random.randint(1, partitions),
+                                               ck=random.randint(1, rows_in_partition)))
             # APPEND to list column - Big partition
             stmts.append(create_update_command(ttl=random.randint(ttl_boundaries[0], ttl_boundaries[1]),
                                                column_expr='clist = clist+[%d]' % (random.randint(0, 500000)),
@@ -985,7 +1023,8 @@ class TestTTLWithMigrate(Tester):
             # APPEND to map column - small partitions
             stmts.append(create_update_command(ttl=random.randint(ttl_boundaries[0], ttl_boundaries[1]),
                                                column_expr='cmap = cmap+{%d: \'%s\'}' % (random.randint(0, 500000), s),
-                                               pk=random.randint(1, partitions), ck=random.randint(1, rows_in_partition)))
+                                               pk=random.randint(1, partitions),
+                                               ck=random.randint(1, rows_in_partition)))
             # APPEND to map column - Big partition
             stmts.append(create_update_command(ttl=random.randint(ttl_boundaries[0], ttl_boundaries[1]),
                                                column_expr='cmap = cmap+{%d: \'%s\'}' % (random.randint(0, 500000), s),
@@ -993,7 +1032,8 @@ class TestTTLWithMigrate(Tester):
             # OVERWRITE set column - small partitions
             stmts.append(create_update_command(ttl=random.randint(ttl_boundaries[0], ttl_boundaries[1]),
                                                column_expr='cset = {\'%s\'}' % (s),
-                                               pk=random.randint(1, partitions), ck=random.randint(1, rows_in_partition)))
+                                               pk=random.randint(1, partitions),
+                                               ck=random.randint(1, rows_in_partition)))
             # OVERWRITE set column - Big partition
             stmts.append(create_update_command(ttl=random.randint(ttl_boundaries[0], ttl_boundaries[1]),
                                                column_expr='cset = {\'%s\'}' % (s),
@@ -1001,7 +1041,8 @@ class TestTTLWithMigrate(Tester):
             # OVERWRITE list column - small partitions
             stmts.append(create_update_command(ttl=random.randint(ttl_boundaries[0], ttl_boundaries[1]),
                                                column_expr='clist = [%d]' % (random.randint(0, 500000)),
-                                               pk=random.randint(1, partitions), ck=random.randint(1, rows_in_partition)))
+                                               pk=random.randint(1, partitions),
+                                               ck=random.randint(1, rows_in_partition)))
             # OVERWRITE list column - Big partition
             stmts.append(create_update_command(ttl=random.randint(ttl_boundaries[0], ttl_boundaries[1]),
                                                column_expr='clist = [%d]' % (random.randint(0, 500000)),
@@ -1029,7 +1070,8 @@ class TestTTLWithMigrate(Tester):
             f'Expected {big_partition_rows} rows in the big partition, but received {scylla_big_partition_count}'
 
         # Create Cassandra cluster, migrate the data and take the dump
-        cassandra_data_json, cassandra_json_path = self.migrate_to_cassandra(keyspace_name=keyspace_name, table_name=table_name,
+        cassandra_data_json, cassandra_json_path = self.migrate_to_cassandra(keyspace_name=keyspace_name,
+                                                                             table_name=table_name,
                                                                              scylla_big_partition_count=scylla_big_partition_count,
                                                                              count_query=count_query, request=request)
 
@@ -1111,6 +1153,606 @@ class TestTTLWithMigrate(Tester):
         return data_json, data_json_path
 
 
+@pytest.mark.dtest_full
+class TestLoadAndStream(BaseHelpers):
+    __test__ = False
+    KEYSPACE_NAME = 'keyspace1'
+    TABLE_NAME = 'standard1'
+    EXPECTED_ROWS_NUMBER = 1000
+
+    def test_load_and_stream_decrease_cluster(self):
+        """
+        Test for the feature load_and_stream:
+        https://github.com/scylladb/scylla/commit/df3ef800c20c60d7929ffa600649793aa6c73064
+
+        Test data was created on the 4-nodes cluster, RF=3, Scylla was started with SMP 1
+        Load and stream sstables from 4-nodes cluster to 2-nodes cluster and validate the data
+        """
+        node1 = self.start_cluster_and_get_node1(nodes=2)
+        session = self.patient_cql_connection(node1)
+        create_ks(session=session, name=self.KEYSPACE_NAME, rf=2)
+        create_c1c2_table(session, cf=self.TABLE_NAME)
+
+        # Copy sstables from 2 nodes to node1
+        for node_load_from in ['node1', 'node2']:
+            logger.debug(f"Copy sstables of {node_load_from} to node1")
+            self.copy_sstables_to_node(copy_to_node=node1,
+                                       migrated_files_dir=f'from-cluster-4-nodes/{node_load_from}')
+            load_and_stream_result = self.run_load_and_stream(node1)
+            assert load_and_stream_result.status_code == requests.codes.ok, \
+                f"Failed to run load and stream." \
+                f"Response code is {load_and_stream_result.status_code}. " \
+                f"Message: {load_and_stream_result.text}"
+
+        # Copy sstables from 2 nodes to node2
+        for node_load_from in ['node3', 'node4']:
+            logger.debug(f"Copy sstables of {node_load_from} to node2")
+            self.copy_sstables_to_node(copy_to_node=self.cluster.nodelist()[1],
+                                       migrated_files_dir=f'from-cluster-4-nodes/{node_load_from}')
+            load_and_stream_result = self.run_load_and_stream(self.cluster.nodelist()[1])
+            assert load_and_stream_result.status_code == requests.codes.ok, \
+                f"Failed to run load and stream." \
+                f"Response code is {load_and_stream_result.status_code}. " \
+                f"Message: {load_and_stream_result.text}"
+
+        for node in self.cluster.nodelist():
+            self.check_number_of_rows(node, self.EXPECTED_ROWS_NUMBER,
+                                      keyspace=self.KEYSPACE_NAME, table=self.TABLE_NAME)
+
+        for n in range(self.EXPECTED_ROWS_NUMBER):
+            query_c1c2(session, key=n, consistency=ConsistencyLevel.QUORUM,
+                       c1_value=f'customtext1{n}', c2_value=f'customtext2{n}',
+                       ks=self.KEYSPACE_NAME, cf=self.TABLE_NAME)
+
+    @pytest.mark.skip("#9262")
+    def test_load_and_stream_decrease_cluster_with_mv(self):
+        """
+        Test for the feature load_and_stream:
+        https://github.com/scylladb/scylla/commit/df3ef800c20c60d7929ffa600649793aa6c73064
+
+        Test data was created on the 4-nodes cluster, RF=3, Scylla was started with SMP 1
+        Base table has secondary index
+        Load and stream sstables from 4-nodes cluster to 2-nodes cluster and validate the data
+        """
+        mv_name = 'test_mv'
+        node1 = self.start_cluster_and_get_node1(nodes=2)
+        session = self.patient_cql_connection(node1)
+        create_ks(session=session, name=self.KEYSPACE_NAME, rf=2)
+        create_c1c2_table(session, cf=self.TABLE_NAME)
+
+        session.execute(f"CREATE MATERIALIZED VIEW {mv_name} AS SELECT c1 FROM {self.KEYSPACE_NAME}.{self.TABLE_NAME} "
+                        f"where c1 IS NOT NULL and key IS NOT NULL PRIMARY KEY (c1, key)")
+
+        # Copy sstables from 2 nodes to node1
+        for node_load_from in ['node1', 'node2']:
+            logger.debug(f"Copy sstables of {node_load_from} to node1")
+            self.copy_sstables_to_node(copy_to_node=node1,
+                                       migrated_files_dir=f'from-cluster-4-nodes/{node_load_from}')
+            load_and_stream_result = self.run_load_and_stream(node1)
+            assert load_and_stream_result.status_code == requests.codes.ok, \
+                f"Failed to run load and stream." \
+                f"Response code is {load_and_stream_result.status_code}. " \
+                f"Message: {load_and_stream_result.text}"
+
+        # Copy sstables from 2 nodes to node2
+        for node_load_from in ['node3', 'node4']:
+            logger.debug(f"Copy sstables of {node_load_from} to node2")
+            self.copy_sstables_to_node(copy_to_node=self.cluster.nodelist()[1],
+                                       migrated_files_dir=f'from-cluster-4-nodes/{node_load_from}')
+            load_and_stream_result = self.run_load_and_stream(self.cluster.nodelist()[1])
+            assert load_and_stream_result.status_code == requests.codes.ok, \
+                f"Failed to run load and stream." \
+                f"Response code is {load_and_stream_result.status_code}. " \
+                f"Message: {load_and_stream_result.text}"
+
+        wait_for_view(cluster=self.cluster, session=session, ks=self.KEYSPACE_NAME, view=mv_name)
+
+        for node in self.cluster.nodelist():
+            self.check_number_of_rows(node, self.EXPECTED_ROWS_NUMBER,
+                                      keyspace=self.KEYSPACE_NAME, table=self.TABLE_NAME)
+            self.check_number_of_rows(node, self.EXPECTED_ROWS_NUMBER,
+                                      keyspace=self.KEYSPACE_NAME, table=mv_name)
+
+        for n in range(self.EXPECTED_ROWS_NUMBER):
+            query_c1c2(session, key=n, consistency=ConsistencyLevel.QUORUM,
+                       c1_value=f'customtext1{n}', c2_value=f'customtext2{n}',
+                       ks=self.KEYSPACE_NAME, cf=self.TABLE_NAME)
+            assert_one(session,
+                       query=f"select key from {self.KEYSPACE_NAME}.{mv_name} where c1 = 'customtext1{n}' "
+                             f"and key='k{n}'",
+                       expected=[f"k{n}"], cl=ConsistencyLevel.QUORUM)
+
+    @pytest.mark.skip("#9262")
+    def test_load_and_stream_decrease_cluster_with_index_view(self):
+        """
+        Test for the feature load_and_stream:
+        https://github.com/scylladb/scylla/commit/df3ef800c20c60d7929ffa600649793aa6c73064
+
+        Test data was created on the 4-nodes cluster, RF=3, Scylla was started with SMP 1
+        Base table has secondary index
+        Load and stream sstables from 4-nodes cluster to 2-nodes cluster and validate the data
+        """
+        index_name = "c2_ind"
+        node1 = self.start_cluster_and_get_node1(nodes=2)
+        session = self.patient_cql_connection(node1)
+        create_ks(session=session, name=self.KEYSPACE_NAME, rf=2)
+        create_c1c2_table(session, cf=self.TABLE_NAME)
+
+        create_index(session, self.TABLE_NAME, "c2", index_name)
+
+        # Copy sstables from 2 nodes to node1
+        for node_load_from in ['node1', 'node2']:
+            logger.debug(f"Copy sstables of {node_load_from} to node1")
+            self.copy_sstables_to_node(copy_to_node=node1,
+                                       migrated_files_dir=f'from-cluster-4-nodes/{node_load_from}')
+            load_and_stream_result = self.run_load_and_stream(node1)
+            assert load_and_stream_result.status_code == requests.codes.ok, \
+                f"Failed to run load and stream." \
+                f"Response code is {load_and_stream_result.status_code}. " \
+                f"Message: {load_and_stream_result.text}"
+
+        # Copy sstables from 2 nodes to node2
+        for node_load_from in ['node3', 'node4']:
+            logger.debug(f"Copy sstables of {node_load_from} to node2")
+            self.copy_sstables_to_node(copy_to_node=self.cluster.nodelist()[1],
+                                       migrated_files_dir=f'from-cluster-4-nodes/{node_load_from}')
+            load_and_stream_result = self.run_load_and_stream(self.cluster.nodelist()[1])
+            assert load_and_stream_result.status_code == requests.codes.ok, \
+                f"Failed to run load and stream." \
+                f"Response code is {load_and_stream_result.status_code}. " \
+                f"Message: {load_and_stream_result.text}"
+
+        wait_for_view(cluster=self.cluster, session=session, ks=self.KEYSPACE_NAME, view=f'{index_name}_index')
+
+        for node in self.cluster.nodelist():
+            self.check_number_of_rows(node, self.EXPECTED_ROWS_NUMBER,
+                                      keyspace=self.KEYSPACE_NAME, table=self.TABLE_NAME)
+            self.check_number_of_rows(node, self.EXPECTED_ROWS_NUMBER,
+                                      keyspace=self.KEYSPACE_NAME, table=f'{index_name}_index')
+
+        for n in range(self.EXPECTED_ROWS_NUMBER):
+            query_c1c2(session, key=n, consistency=ConsistencyLevel.QUORUM,
+                       c1_value=f'customtext1{n}', c2_value=f'customtext2{n}',
+                       ks=self.KEYSPACE_NAME, cf=self.TABLE_NAME)
+            assert_one(session,
+                       query=f"select key from {self.KEYSPACE_NAME}.{self.TABLE_NAME} where c2 = 'customtext2{n}'",
+                       expected=[f"k{n}"], cl=ConsistencyLevel.QUORUM)
+
+    @pytest.mark.skip("#9262")
+    def test_load_and_stream_increase_cluster_with_index(self):
+        """
+        Test for the feature load_and_stream:
+        https://github.com/scylladb/scylla/commit/df3ef800c20c60d7929ffa600649793aa6c73064
+
+        Test data was created on the 2-nodes cluster, RF=2, Scylla was started with SMP 1
+        Base table with materialized view
+        Load and stream sstables from 2-nodes cluster to 4-nodes cluster and validate the data
+        """
+        index_name = "c2_ind"
+        node1 = self.start_cluster_and_get_node1(nodes=4)
+        node4 = self.cluster.nodelist()[3]
+        session = self.patient_cql_connection(node1)
+        create_ks(session=session, name=self.KEYSPACE_NAME, rf=2)
+        create_c1c2_table(session, cf=self.TABLE_NAME)
+        create_index(session, self.TABLE_NAME, "c2", index_name)
+
+        logger.debug("Copy sstables of node1 to node4")
+        self.copy_sstables_to_node(copy_to_node=node4,
+                                   migrated_files_dir='from-cluster-2-nodes/node1')
+
+        logger.debug("Copy sstables of node2 to node1")
+        self.copy_sstables_to_node(copy_to_node=node1,
+                                   migrated_files_dir='from-cluster-2-nodes/node2')
+
+        for node in [node1, node4]:
+            load_and_stream_result = self.run_load_and_stream(node)
+            assert load_and_stream_result.status_code == requests.codes.ok, \
+                f"Failed to run load and stream. " \
+                f"Response code is {load_and_stream_result.status_code}. " \
+                f"Message: {load_and_stream_result.text}"
+
+        wait_for_view(cluster=self.cluster, session=session, ks=self.KEYSPACE_NAME, view=f'{index_name}_index')
+
+        for node in self.cluster.nodelist():
+            self.check_number_of_rows(node, self.EXPECTED_ROWS_NUMBER,
+                                      keyspace=self.KEYSPACE_NAME, table=self.TABLE_NAME)
+            self.check_number_of_rows(node, self.EXPECTED_ROWS_NUMBER,
+                                      keyspace=self.KEYSPACE_NAME, table=f'{index_name}_index')
+
+        for n in range(self.EXPECTED_ROWS_NUMBER):
+            query_c1c2(session, key=n, consistency=ConsistencyLevel.QUORUM,
+                       c1_value=f'customtext1{n}', c2_value=f'customtext2{n}',
+                       ks=self.KEYSPACE_NAME, cf=self.TABLE_NAME)
+            assert_one(session,
+                       query=f"select key from {self.KEYSPACE_NAME}.{self.TABLE_NAME} where c2 = 'customtext2{n}'",
+                       expected=[f"k{n}"], cl=ConsistencyLevel.QUORUM)
+
+    def test_load_and_stream_increase_cluster_test_data_with_smp2(self):
+        """
+        Test for the feature load_and_stream:
+        https://github.com/scylladb/scylla/commit/df3ef800c20c60d7929ffa600649793aa6c73064
+
+        Test data was created on the 2-nodes cluster, RF=2 (SMP=2)
+        Load and stream sstables from 2-nodes cluster to 4-nodes cluster and validate the data
+        """
+        node1 = self.start_cluster_and_get_node1(nodes=4)
+        node3, node4 = self.cluster.nodelist()[2:]
+        create_stress_compatible_table(self, node1, rf=3)
+
+        logger.debug("Copy sstables of node1 to node4")
+        self.copy_sstables_to_node(copy_to_node=node4,
+                                   migrated_files_dir='from-cluster-2-nodes-c-s-smp2/node1')
+
+        logger.debug("Copy sstables of node2 to node3")
+        self.copy_sstables_to_node(copy_to_node=node3,
+                                   migrated_files_dir='from-cluster-2-nodes-c-s-smp2/node2')
+
+        for node in [node3, node4]:
+            load_and_stream_result = self.run_load_and_stream(node)
+            assert load_and_stream_result.status_code == requests.codes.ok, \
+                f"Failed to run load and stream. " \
+                f"Response code is {load_and_stream_result.status_code}. " \
+                f"Message: {load_and_stream_result.text}"
+
+        for node in self.cluster.nodelist():
+            self.check_number_of_rows(node, self.EXPECTED_ROWS_NUMBER,
+                                      keyspace=self.KEYSPACE_NAME, table=self.TABLE_NAME)
+
+    def test_load_and_stream_increase_cluster(self):
+        """
+        Test for the feature load_and_stream:
+        https://github.com/scylladb/scylla/commit/df3ef800c20c60d7929ffa600649793aa6c73064
+
+        Test data was created on the 2-nodes cluster, RF=2, Scylla was started with SMP 1
+        Load and stream sstables from 2-nodes cluster to 4-nodes cluster and validate the data
+        """
+        node1 = self.start_cluster_and_get_node1(nodes=4)
+        node4 = self.cluster.nodelist()[3]
+        session = self.patient_cql_connection(node1)
+        create_ks(session=session, name=self.KEYSPACE_NAME, rf=2)
+        create_c1c2_table(session, cf=self.TABLE_NAME)
+
+        logger.debug("Copy sstables of node1 to node4")
+        self.copy_sstables_to_node(copy_to_node=node4,
+                                   migrated_files_dir='from-cluster-2-nodes/node1')
+
+        logger.debug("Copy sstables of node2 to node1")
+        self.copy_sstables_to_node(copy_to_node=node1,
+                                   migrated_files_dir='from-cluster-2-nodes/node2')
+
+        for node in [node1, node4]:
+            load_and_stream_result = self.run_load_and_stream(node)
+            assert load_and_stream_result.status_code == requests.codes.ok, \
+                f"Failed to run load and stream. " \
+                f"Response code is {load_and_stream_result.status_code}. " \
+                f"Message: {load_and_stream_result.text}"
+
+        for node in self.cluster.nodelist():
+            self.check_number_of_rows(node, self.EXPECTED_ROWS_NUMBER,
+                                      keyspace=self.KEYSPACE_NAME, table=self.TABLE_NAME)
+
+        for n in range(self.EXPECTED_ROWS_NUMBER):
+            query_c1c2(session, key=n, consistency=ConsistencyLevel.QUORUM,
+                       c1_value=f'customtext1{n}', c2_value=f'customtext2{n}',
+                       ks=self.KEYSPACE_NAME, cf=self.TABLE_NAME)
+
+    def test_load_and_stream_from_one_node_increase_cluster(self):
+        """
+        Test for the feature load_and_stream:
+        https://github.com/scylladb/scylla/commit/df3ef800c20c60d7929ffa600649793aa6c73064
+
+        Test data was created on the 2-nodes cluster, RF=2, Scylla was started with SMP 1
+        Load and stream sstables from 2-nodes cluster to 4-nodes cluster and validate the data
+        """
+        node1 = self.start_cluster_and_get_node1(nodes=4)
+        node3 = self.cluster.nodelist()[2]
+        session = self.patient_cql_connection(node1)
+        create_ks(session=session, name=self.KEYSPACE_NAME, rf=2)
+        create_c1c2_table(session, cf=self.TABLE_NAME)
+
+        logger.debug("Copy all sstables of node1 to node3")
+        for source_files in ['from-cluster-2-nodes/node1', 'from-cluster-2-nodes/node2']:
+            self.copy_sstables_to_node(copy_to_node=node3, migrated_files_dir=source_files)
+            load_and_stream_result = self.run_load_and_stream(node3)
+            assert load_and_stream_result.status_code == requests.codes.ok, \
+                f"Failed to run load and stream. " \
+                f"Response code is {load_and_stream_result.status_code}. " \
+                f"Message: {load_and_stream_result.text}"
+
+        for node in self.cluster.nodelist():
+            self.check_number_of_rows(node, self.EXPECTED_ROWS_NUMBER,
+                                      keyspace=self.KEYSPACE_NAME, table=self.TABLE_NAME)
+
+        for n in range(self.EXPECTED_ROWS_NUMBER):
+            query_c1c2(session, key=n, consistency=ConsistencyLevel.QUORUM,
+                       c1_value=f'customtext1{n}', c2_value=f'customtext2{n}',
+                       ks=self.KEYSPACE_NAME, cf=self.TABLE_NAME)
+
+    @pytest.mark.skip("#9262")
+    def test_load_and_stream_increase_cluster_with_mv(self):
+        """
+        Test for the feature load_and_stream:
+        https://github.com/scylladb/scylla/commit/df3ef800c20c60d7929ffa600649793aa6c73064
+
+        Test data was created on the 2-nodes cluster, RF=2, Scylla was started with SMP 1
+        Base table with materialized view
+        Load and stream sstables from 2-nodes cluster to 4-nodes cluster and validate the data
+        """
+        mv_name = 'test_mv'
+        node1 = self.start_cluster_and_get_node1(nodes=4)
+        node4 = self.cluster.nodelist()[3]
+        session = self.patient_cql_connection(node1)
+        create_ks(session=session, name=self.KEYSPACE_NAME, rf=2)
+        create_c1c2_table(session, cf=self.TABLE_NAME)
+        session.execute(f"CREATE MATERIALIZED VIEW {mv_name} AS SELECT c1 FROM {self.KEYSPACE_NAME}.{self.TABLE_NAME} "
+                        f"where c1 IS NOT NULL and key IS NOT NULL PRIMARY KEY (c1, key)")
+
+        logger.debug("Copy sstables of node1 to node4")
+        self.copy_sstables_to_node(copy_to_node=node4,
+                                   migrated_files_dir='from-cluster-2-nodes/node1')
+
+        logger.debug("Copy sstables of node2 to node1")
+        self.copy_sstables_to_node(copy_to_node=node1,
+                                   migrated_files_dir='from-cluster-2-nodes/node2')
+
+        for node in [node1, node4]:
+            load_and_stream_result = self.run_load_and_stream(node)
+            assert load_and_stream_result.status_code == requests.codes.ok, \
+                f"Failed to run load and stream. " \
+                f"Response code is {load_and_stream_result.status_code}. " \
+                f"Message: {load_and_stream_result.text}"
+
+        wait_for_view(cluster=self.cluster, session=session, ks=self.KEYSPACE_NAME, view=mv_name)
+
+        for node in self.cluster.nodelist():
+            self.check_number_of_rows(node, self.EXPECTED_ROWS_NUMBER,
+                                      keyspace=self.KEYSPACE_NAME, table=self.TABLE_NAME)
+            self.check_number_of_rows(node, self.EXPECTED_ROWS_NUMBER,
+                                      keyspace=self.KEYSPACE_NAME, table=mv_name)
+
+        for n in range(self.EXPECTED_ROWS_NUMBER):
+            query_c1c2(session, key=n, consistency=ConsistencyLevel.QUORUM,
+                       c1_value=f'customtext1{n}', c2_value=f'customtext2{n}',
+                       ks=self.KEYSPACE_NAME, cf=self.TABLE_NAME)
+            assert_one(session,
+                       query=f"select key from {self.KEYSPACE_NAME}.{mv_name} where c1 = 'customtext1{n}' "
+                             f"and key='k{n}'",
+                       expected=[f"k{n}"], cl=ConsistencyLevel.QUORUM)
+
+    def test_load_and_stream_asymmetric_cluster(self):
+        """
+        Test for the feature load_and_stream:
+        https://github.com/scylladb/scylla/commit/df3ef800c20c60d7929ffa600649793aa6c73064
+
+        Asymmetric cluster: Scylla is started with different SMP on the every node.
+                            Test data was created on the cluster where SMP is same (2 nodes, RF=2, SMP 1)
+        Load and stream sstables from 2-nodes cluster to 4-nodes cluster and validate the data
+        """
+        node1 = self.start_cluster_and_get_node1(nodes=4)
+        node3 = self.cluster.nodelist()[2]
+
+        for i, node in enumerate(self.cluster.nodelist()[1:]):
+            node.stop(wait_other_notice=True)
+            node.start(jvm_args=['--smp', str(i + 2)], wait_other_notice=True, wait_for_binary_proto=True)
+
+        session = self.patient_cql_connection(node1)
+        create_ks(session=session, name=self.KEYSPACE_NAME, rf=2)
+        create_c1c2_table(session, cf=self.TABLE_NAME)
+
+        for node_map in zip(['node1', 'node2'], [node1, node3]):
+            logger.debug(f"Copy sstables of {node_map[0]} to {node_map[1].name}")
+            self.copy_sstables_to_node(copy_to_node=node1,
+                                       migrated_files_dir=f'from-cluster-2-nodes/{node_map[0]}')
+            load_and_stream_result = self.run_load_and_stream(node_map[1])
+            assert load_and_stream_result.status_code == requests.codes.ok, \
+                f"Failed to run load and stream on {self.TABLE_NAME}. " \
+                f"Response code is {load_and_stream_result.status_code}. " \
+                f"Message: {load_and_stream_result.text}"
+
+        for node in self.cluster.nodelist():
+            self.check_number_of_rows(node, self.EXPECTED_ROWS_NUMBER,
+                                      keyspace=self.KEYSPACE_NAME, table=self.TABLE_NAME)
+
+        for n in range(self.EXPECTED_ROWS_NUMBER):
+            query_c1c2(session, key=n, consistency=ConsistencyLevel.QUORUM,
+                       c1_value=f'customtext1{n}', c2_value=f'customtext2{n}',
+                       ks=self.KEYSPACE_NAME, cf=self.TABLE_NAME)
+
+    def test_load_and_stream_primary_replica_only(self):
+        """
+        Test for the feature load_and_stream:
+        https://github.com/scylladb/scylla/commit/df3ef800c20c60d7929ffa600649793aa6c73064
+
+        Test data was created on the 2-nodes cluster, RF=2, Scylla was started with SMP 1
+        - Load and stream sstables to primary replica only: primary_replica_only=True
+
+          "primary_replica_only" parameter meaning:
+
+            For a given partition, if we set primary_replica_only to true, the data will be sent to only the
+            primary replica.
+            For example, RF = 3,  with primary_replica_only = true, data will be sent to node1,
+            with primary_replica_only = false, data will be sent to node1,node2,node3
+
+        - Run "nodetool repair" on all nodes to send the data to the all replicas
+        - Validate the data
+        """
+        node1 = self.start_cluster_and_get_node1(nodes=3)
+        node2 = self.cluster.nodelist()[1]
+        session = self.patient_cql_connection(node1)
+        create_ks(session=session, name=self.KEYSPACE_NAME, rf=2)
+        create_c1c2_table(session, cf=self.TABLE_NAME)
+
+        logger.debug("Copy sstables of node1 to node2")
+        self.copy_sstables_to_node(copy_to_node=node2,
+                                   migrated_files_dir='from-cluster-2-nodes/node1')
+
+        load_and_stream_result = self.run_load_and_stream(node2, primary_replica_only=True)
+        assert load_and_stream_result.status_code == requests.codes.ok, \
+            f"Failed to run load and stream on {self.TABLE_NAME}. " \
+            f"Response code is {load_and_stream_result.status_code}. " \
+            f"Message: {load_and_stream_result.text}"
+
+        for node in self.cluster.nodelist():
+            node.nodetool('repair -pr')
+
+        for node in self.cluster.nodelist():
+            self.check_number_of_rows(node, self.EXPECTED_ROWS_NUMBER,
+                                      keyspace=self.KEYSPACE_NAME, table=self.TABLE_NAME)
+
+        for n in range(self.EXPECTED_ROWS_NUMBER):
+            query_c1c2(session, key=n, consistency=ConsistencyLevel.QUORUM,
+                       c1_value=f'customtext1{n}', c2_value=f'customtext2{n}',
+                       ks=self.KEYSPACE_NAME, cf=self.TABLE_NAME)
+
+    def test_load_and_stream_frozen_pk(self):
+        """
+        Test for the feature load_and_stream:
+        https://github.com/scylladb/scylla/commit/df3ef800c20c60d7929ffa600649793aa6c73064
+
+        Test data was created on the 4-nodes cluster, RF=3, Scylla was started with SMP 1
+        - Load and stream sstables of table with frozen(UDT) primary key and validate the data
+        """
+        node1 = self.start_cluster_and_get_node1(nodes=3)
+        node2, node3 = self.cluster.nodelist()[1:]
+        session = self.patient_cql_connection(node1)
+        create_ks(session=session, rf=2, name=self.KEYSPACE_NAME)
+        session.execute(f"CREATE TYPE {self.KEYSPACE_NAME}.frozen_fullname (firstname text,lastname text)")
+        session.execute(f"CREATE TABLE {self.KEYSPACE_NAME}.{self.TABLE_NAME}"
+                        f"(pk frozen<frozen_fullname>, ck int, v1 text, v2 text, PRIMARY KEY(pk, ck))")
+
+        for node in ['node1', 'node2']:
+            logger.debug(f"Copy sstables of {node} to node1")
+            self.copy_sstables_to_node(copy_to_node=node1,
+                                       migrated_files_dir=f'from-cluster-4-nodes-frozen-pk/{node}')
+            load_and_stream_result = self.run_load_and_stream(node1)
+            assert load_and_stream_result.status_code == requests.codes.ok, \
+                f"Failed to run load and stream. " \
+                f"Response code is {load_and_stream_result.status_code}. " \
+                f"Message: {load_and_stream_result.text}"
+
+        logger.debug(f"Copy sstables of node3 to node2")
+        self.copy_sstables_to_node(copy_to_node=node2,
+                                   migrated_files_dir=f'from-cluster-4-nodes-frozen-pk/node3')
+
+        logger.debug(f"Copy sstables of node4 to node3")
+        self.copy_sstables_to_node(copy_to_node=node3,
+                                   migrated_files_dir=f'from-cluster-4-nodes-frozen-pk/node4')
+
+        for node in [node2, node3]:
+            load_and_stream_result = self.run_load_and_stream(node)
+            assert load_and_stream_result.status_code == requests.codes.ok, \
+                f"Failed to run load and stream. " \
+                f"Response code is {load_and_stream_result.status_code}. " \
+                f"Message: {load_and_stream_result.text}"
+
+        for node in self.cluster.nodelist():
+            self.check_number_of_rows(node, self.EXPECTED_ROWS_NUMBER,
+                                      keyspace=self.KEYSPACE_NAME, table=self.TABLE_NAME)
+
+        logger.debug("Validate data")
+        for n in range(self.EXPECTED_ROWS_NUMBER):
+            pk_value = f"('firstname{n}', 'lastname{n}')"
+            self.validate_row_data(session, key=n,
+                                   query=f"SELECT v1, v2 FROM {self.KEYSPACE_NAME}.{self.TABLE_NAME} "
+                                         f"WHERE pk={pk_value} and ck={n}")
+
+    def test_load_and_stream_2_columns_pk(self):
+        """
+        Test for the feature load_and_stream:
+        https://github.com/scylladb/scylla/commit/df3ef800c20c60d7929ffa600649793aa6c73064
+
+        Test data was created on the 4-nodes cluster, RF=3, Scylla was started with SMP 1
+        - Load and stream sstables of table with 2 columns primary key and validate the data
+        """
+        node1 = self.start_cluster_and_get_node1(nodes=3)
+        node2, node3 = self.cluster.nodelist()[1:]
+        session = self.patient_cql_connection(node1)
+        create_ks(session=session, rf=2, name=self.KEYSPACE_NAME)
+        session.execute(f"CREATE TABLE {self.KEYSPACE_NAME}.{self.TABLE_NAME}"
+                        f"(pk1 text, pk2 int, v1 text, v2 text, PRIMARY KEY((pk1, pk2)))")
+
+        for node in ['node3', 'node2']:
+            logger.debug(f"Copy sstables of {node} to node1")
+            self.copy_sstables_to_node(copy_to_node=node1,
+                                       migrated_files_dir=f'from-cluster-4-nodes-2-columns-pk/{node}')
+            load_and_stream_result = self.run_load_and_stream(node1)
+            assert load_and_stream_result.status_code == requests.codes.ok, \
+                f"Failed to run load and stream. " \
+                f"Response code is {load_and_stream_result.status_code}. " \
+                f"Message: {load_and_stream_result.text}"
+
+        logger.debug(f"Copy sstables of node1 to node2")
+        self.copy_sstables_to_node(copy_to_node=node2,
+                                   migrated_files_dir=f'from-cluster-4-nodes-2-columns-pk/node1')
+
+        logger.debug(f"Copy sstables of node4 to node3")
+        self.copy_sstables_to_node(copy_to_node=node3,
+                                   migrated_files_dir=f'from-cluster-4-nodes-2-columns-pk/node4')
+
+        for node in [node2, node3]:
+            load_and_stream_result = self.run_load_and_stream(node)
+            assert load_and_stream_result.status_code == requests.codes.ok, \
+                f"Failed to run load and stream. " \
+                f"Response code is {load_and_stream_result.status_code}. " \
+                f"Message: {load_and_stream_result.text}"
+
+        for node in self.cluster.nodelist():
+            self.check_number_of_rows(node, self.EXPECTED_ROWS_NUMBER,
+                                      keyspace=self.KEYSPACE_NAME, table=self.TABLE_NAME)
+
+        logger.debug("Validate data")
+        for n in range(self.EXPECTED_ROWS_NUMBER):
+            self.validate_row_data(session, key=n,
+                                   query=f"SELECT v1, v2 FROM {self.KEYSPACE_NAME}.{self.TABLE_NAME} "
+                                         f"WHERE pk1='pk{n}' and pk2={n}")
+
+    @staticmethod
+    def validate_row_data(session, key, query):
+        query = SimpleStatement(query, consistency_level=ConsistencyLevel.QUORUM)
+        rows = list(session.execute(query))
+        check_c1c2_result_one(success=True, rows=rows, tolerate_missing=False, must_be_missing=False,
+                              c1_value=f'customtext1{key}', c2_value=f'customtext2{key}')
+
+    def run_load_and_stream(self, node: ScyllaNode, primary_replica_only: bool = False):
+        # TODO: load_and_stream_parameter is not supported by nodetool yet. Run it using api as workaround
+        # node.nodetool(f"refresh --load-and-stream -- {self.KEYSPACE_NAME} {self.TABLE_NAME}")
+
+        logger.debug(f"Running load and stream on the node {node.name} for {self.KEYSPACE_NAME}.{self.TABLE_NAME}'")
+        mark = node.mark_log()
+        try:
+            api_cmd = f"http://{node.address()}:10000/storage_service/sstables/{self.KEYSPACE_NAME}?" \
+                      f"cf={self.TABLE_NAME}&load_and_stream=true&primary_replica_only={primary_replica_only}"
+            logger.debug(f"Send load_and_stream api: {api_cmd}")
+            r = requests.post(api_cmd)
+            logger.debug(f"Request answer: {r.text}")
+
+        except Exception:
+            log_errors = node.grep_log_for_errors(from_mark=mark)
+            logger.error(f"Load and stream API request failed. Errors in the node log: {log_errors}")
+            raise
+
+        return r
+
+    def copy_sstables_to_node(self, copy_to_node: ScyllaNode, migrated_files_dir: str):
+        dtest_path = os.path.dirname(os.path.realpath(__file__))
+
+        cassandra_sstable_dir = f"{dtest_path}/cassandra-sstables/load-and-stream/{self.version}/" \
+                                f"{migrated_files_dir}/{self.TABLE_NAME}"
+        logger.debug(f"cassandra sstables dir is {cassandra_sstable_dir}")
+        assert os.path.isdir(cassandra_sstable_dir), f"Migrated files folder {cassandra_sstable_dir} doesn't exist"
+
+        cf_dir = get_node_cf_dir(copy_to_node, self.KEYSPACE_NAME, self.TABLE_NAME)
+        logger.debug(f"Column family directory is {cf_dir}")
+        assert cf_dir, f"Failed to get column family directory {cf_dir}"
+        assert os.path.isdir(cf_dir), f"Column family directory {cf_dir} doesn't exist"
+
+        upload_dir = os.path.join(cf_dir, "upload")
+        logger.debug(f"Column family upload directory is {upload_dir}")
+
+        logger.debug("Copying sstables created by Cassandra...")
+        self.copy_files_to(cassandra_sstable_dir, upload_dir)
+
+
 versions = ['2_1_x', '2_2_x', '3_0_mc', '3_0_md']
 for version in versions:
     cls_name = ('TestMigration_with_' + version)
@@ -1118,3 +1760,7 @@ for version in versions:
 
     cls_name = ('TestMigrationUpgradeSSTables_with_' + version)
     vars()[cls_name] = type(cls_name, (TestMigrationUpgradeSSTables,), {'version': version, '__test__': True})
+
+for version in ['3_0_md']:
+    cls_name = ('TestLoadAndStream_with_' + version)
+    vars()[cls_name] = type(cls_name, (TestLoadAndStream,), {'version': version, '__test__': True})
