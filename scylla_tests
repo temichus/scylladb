@@ -87,3 +87,4 @@ lwt_random_test.py
 lwt_banking_load_test.py
 database_metrics_test.py
 upgrade_test.py
+scylla_help_command_test.py
