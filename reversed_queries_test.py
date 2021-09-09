@@ -101,16 +101,29 @@ class TestReversedQueriesSelectors(Tester):
             |bucket|id|id2| value          |
             +------+--+---+----------------+
             |1     |1 |  4|testing         |
+            |1     |2 |  1|delete me!      |
             |1     |2 |  5|and more testing|
             |1     |2 |  9|and more testing|
+            |1     |2 | 10|delete me!      |
             |1     |3 |  3|and more testing|
             |1     |4 |  2|and more testing|
             |1     |4 |  5|and more testing|
+            |1     |4 |  6|delete me!      |
+            |1     |5 |  4|delete me!      |
+            |1     |6 |  1|delete me!      |
             |1     |6 |  3|and more testing|
             |1     |7 |  1|and more testing|
+            |1     |8 |  1|delete me!      |
             """
         _expected_data = create_rows(data, session, 'paging_test', cl=CL.ALL, format_funcs={
                                      'bucket': int, 'id': int, 'id2': int, 'value': str})
+
+        # Introduce row tombstones by deleting marked rows
+        self.execute(session, "DELETE FROM paging_test WHERE bucket = 1 AND id < 0")
+        self.execute(session, "DELETE FROM paging_test WHERE bucket = 1 AND id = 2 AND id2 < 4")
+        self.execute(session, "DELETE FROM paging_test WHERE bucket = 1 AND id = 2 AND id2 > 9")
+        self.execute(session, "DELETE FROM paging_test WHERE bucket = 1 AND (id, id2) >= (4, 6) AND (id, id2) <= (6, 2)")
+        self.execute(session, "DELETE FROM paging_test WHERE bucket = 1 AND id >= 8")
 
         # Single column restrictions
 
