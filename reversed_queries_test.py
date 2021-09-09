@@ -144,6 +144,12 @@ class TestReversedQueriesSelectors(Tester):
 
         bypass_cache_str = " BYPASS CACHE" if bypass_cache else ""
 
+        debug('Test: No restrictions')
+        data = self.execute(
+            session, "SELECT id, id2 FROM paging_test WHERE bucket = 1 ORDER BY id DESC" + bypass_cache_str)
+        self.assertSequenceEqual(data, format_expected(
+            [(7, 1), (6, 3), (4, 5), (4, 2), (3, 3), (2, 9), (2, 5), (1, 4)]))
+
         # Single column restrictions
 
         debug('Test: Single column equality restriction')
