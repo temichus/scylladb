@@ -81,6 +81,7 @@ class TestReversedQueriesSelectors(Tester):
         cluster = self.cluster
         cluster.populate(1).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1 = cluster.nodelist()[0]
+        self.node = node1
         session = self.patient_cql_connection(node1, row_factory=row_factory)
         return session
 
@@ -95,8 +96,6 @@ class TestReversedQueriesSelectors(Tester):
 
         session.execute("CREATE TABLE paging_test (bucket int, id int, id2 int, value text, PRIMARY KEY (bucket, id, id2))")
 
-        def format_expected(data):
-            return [{'id': a, 'id2': b} for a, b in data]
         data = """
             |bucket|id|id2| value          |
             +------+--+---+----------------+
@@ -129,57 +128,76 @@ class TestReversedQueriesSelectors(Tester):
         self.execute(session, "DELETE FROM paging_test WHERE bucket = 1 AND (id, id2) >= (4, 6) AND (id, id2) <= (6, 2)")
         self.execute(session, "DELETE FROM paging_test WHERE bucket = 1 AND id >= 8")
 
+        debug('Testing selects from memtable')
+        self.run_selects(session)
+
+        debug('Testing selects from cache')
+        self.node.flush()
+        self.run_selects(session)
+
+        debug('Testing selects from sstable')
+        self.run_selects(session, bypass_cache=True)
+
+    def run_selects(self, session, bypass_cache=False):
+        def format_expected(data):
+            return [{'id': a, 'id2': b} for a, b in data]
+
+        bypass_cache_str = " BYPASS CACHE" if bypass_cache else ""
+
         # Single column restrictions
 
         debug('Test: Single column equality restriction')
-        data = self.execute(session, "SELECT id, id2 FROM paging_test WHERE bucket = 1 AND id = 2 ORDER BY id DESC")
+        data = self.execute(
+            session, "SELECT id, id2 FROM paging_test WHERE bucket = 1 AND id = 2 ORDER BY id DESC" + bypass_cache_str)
         self.assertSequenceEqual(data, format_expected([(2, 9), (2, 5)]))
 
         debug('Test: Single column IN restriction')
         data = self.execute(
-            session, "SELECT id, id2 FROM paging_test WHERE bucket = 1 AND id IN (4, 2, 20) ORDER BY id DESC")
+            session, "SELECT id, id2 FROM paging_test WHERE bucket = 1 AND id IN (4, 2, 20) ORDER BY id DESC" + bypass_cache_str)
         self.assertSequenceEqual(data, format_expected([(4, 5), (4, 2), (2, 9), (2, 5)]))
 
         debug('Test: Single column range restriction (less than)')
-        data = self.execute(session, "SELECT id, id2 FROM paging_test WHERE bucket = 1 AND id < 3 ORDER BY id DESC")
+        data = self.execute(
+            session, "SELECT id, id2 FROM paging_test WHERE bucket = 1 AND id < 3 ORDER BY id DESC" + bypass_cache_str)
         self.assertSequenceEqual(data, format_expected([(2, 9), (2, 5), (1, 4)]))
 
         debug('Test: Single column range restriction (greater than)')
-        data = self.execute(session, "SELECT id, id2 FROM paging_test WHERE bucket = 1 AND id > 4 ORDER BY id DESC")
+        data = self.execute(
+            session, "SELECT id, id2 FROM paging_test WHERE bucket = 1 AND id > 4 ORDER BY id DESC" + bypass_cache_str)
         self.assertSequenceEqual(data, format_expected([(7, 1), (6, 3)]))
 
         debug('Test: Single column range restriction (lt + gt)')
         data = self.execute(
-            session, "SELECT id, id2 FROM paging_test WHERE bucket = 1 AND id > 3 AND id < 7 ORDER BY id DESC")
+            session, "SELECT id, id2 FROM paging_test WHERE bucket = 1 AND id > 3 AND id < 7 ORDER BY id DESC" + bypass_cache_str)
         self.assertSequenceEqual(data, format_expected([(6, 3), (4, 5), (4, 2)]))
 
         # Multi column restrictions
 
         debug('Test: Multi-column IN restriction')
         data = self.execute(
-            session, "SELECT id, id2 FROM paging_test WHERE bucket = 1 AND (id, id2) IN ((2, 9), (7, 1)) ORDER BY id DESC")
+            session, "SELECT id, id2 FROM paging_test WHERE bucket = 1 AND (id, id2) IN ((2, 9), (7, 1)) ORDER BY id DESC" + bypass_cache_str)
         self.assertSequenceEqual(data, format_expected([(7, 1), (2, 9)]))
 
         debug('Test: Multi-column range restriction (less than)')
         data = self.execute(
-            session, "SELECT id, id2 FROM paging_test WHERE bucket = 1 AND (id, id2) < (2, 8) ORDER BY id DESC")
+            session, "SELECT id, id2 FROM paging_test WHERE bucket = 1 AND (id, id2) < (2, 8) ORDER BY id DESC" + bypass_cache_str)
         self.assertSequenceEqual(data, format_expected([(2, 5), (1, 4)]))
 
         debug('Test: Multi-column range restriction (greater than)')
         data = self.execute(
-            session, "SELECT id, id2 FROM paging_test WHERE bucket = 1 AND (id, id2) > (3, 3) ORDER BY id DESC")
+            session, "SELECT id, id2 FROM paging_test WHERE bucket = 1 AND (id, id2) > (3, 3) ORDER BY id DESC" + bypass_cache_str)
         self.assertSequenceEqual(data, format_expected([(7, 1), (6, 3), (4, 5), (4, 2)]))
 
         debug('Test: Multi-column range restriction (lt + gt)')
         data = self.execute(
-            session, "SELECT id, id2 FROM paging_test WHERE bucket = 1 AND (id, id2) < (3, 5) AND (id, id2) > (1, 10) ORDER BY id DESC")
+            session, "SELECT id, id2 FROM paging_test WHERE bucket = 1 AND (id, id2) < (3, 5) AND (id, id2) > (1, 10) ORDER BY id DESC" + bypass_cache_str)
         self.assertSequenceEqual(data, format_expected([(3, 3), (2, 9), (2, 5)]))
 
         # Multiple independent column restrictions
 
         debug('Test: Independent IN restrictions for both clustering columns')
         data = self.execute(
-            session, "SELECT id, id2 FROM paging_test WHERE bucket = 1 AND id IN (3, 6) AND id2 IN (3, 4) ORDER BY id DESC")
+            session, "SELECT id, id2 FROM paging_test WHERE bucket = 1 AND id IN (3, 6) AND id2 IN (3, 4) ORDER BY id DESC" + bypass_cache_str)
         self.assertSequenceEqual(data, format_expected([(6, 3), (3, 3)]))
 
 
