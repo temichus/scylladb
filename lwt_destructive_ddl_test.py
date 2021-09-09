@@ -225,7 +225,8 @@ class TestLwtDestructiveDDL(Tester):
         fixture_dtest_setup.ignore_log_patterns.extend([
             "Can't find a column family",
             "exception during mutation write",
-            "Can't find a keyspace"
+            "Can't find a keyspace",
+            "Column family test exists",
         ])
 
         session = self.prepare()
