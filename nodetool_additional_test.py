@@ -2001,27 +2001,40 @@ class TestNodetool(Tester):
         out = node.nodetool("getsstables ks3 tbl3 keytest1", True)[0]
         assert "" == out, "unexpected sstable return for the key"
 
-    @pytest.mark.single_node
-    def test_scrub_with_one_node_expect_data_loss(self):
+    def _scrub_keyspace(self, node, ks="ks", cf="", mode: str = None):
+        mode_opt = f"-m {mode}" if mode else ""
+        scrub_cmd = f"scrub {mode_opt} {ks} {cf}".strip()
+        logger.debug(f"Scrub sstables by `nodetool {scrub_cmd}`")
+        # Currently, validate may fail with random corruption, e.g. on OOM
+        out = node.nodetool(scrub_cmd)
+        logger.debug(f"Scrub output: {out}")
+
+    def _scrub_with_one_node_expect_data_loss(self, mode: str = None):
         cluster = self.run_cluster(nodes=1)
         node = cluster[0]
         session = self.patient_cql_connection(node)
-        create_ks(session, 'ks', 1)
-        create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'})
-        insert_c1c2(session, keys=range(100))
+        ks = "ks"
+        cf = "cf"
+        create_ks(session, ks, 1)
+        create_cf(session, cf, columns={'c1': 'text', 'c2': 'text'},
+                  compaction={'class': 'NullCompactionStrategy'})
+        num_keys = 10000
+        insert_c1c2(session, keys=range(0, num_keys // 2))
         node.nodetool("flush")
-        out = node.nodetool("getsstables ks cf k1", True)[0].strip()
-        logger.info("Will corrupt sstable {}".format(out))
+        insert_c1c2(session, keys=range(num_keys // 2, num_keys))
+        node.nodetool("flush")
+        sstable = node.nodetool(f"getsstables {ks} {cf} k{random.randrange(num_keys)}", True)[0].strip()
+        logger.debug("Will corrupt sstable {}".format(sstable))
         node.stop()
 
         seed = int(time.time())
         logger.info("Random seed: {}".format(seed))
         random.seed(seed)
-        size = os.stat(out).st_size
+        size = os.stat(sstable).st_size
         offset = random.randint(0, size)
         length = random.randint(1, 102400)
-        logger.info("writing random contents at offset={} length={}".format(offset, length))
-        with io.open(out, 'rb+', buffering=0) as f:
+        logger.debug("writing random contents at offset={} length={}".format(offset, length))
+        with io.open(sstable, 'rb+', buffering=0) as f:
             f.seek(offset)
             f.write(bytearray(randbytes(length)))
 
@@ -2029,29 +2042,39 @@ class TestNodetool(Tester):
             'malformed_sstable_exception',
             'SSTables with Cassandra-style shadowable deletion cannot be read by Scylla',
             'Adding missing partition-end to the end of the stream',
+            'compaction failed: std::runtime_error',
+            '[Ss]crubbing',
         ]
 
         self.ignore_cores_log_patterns += [
             'Failed to allocate',
         ]
 
-        node.start(wait_for_binary_proto=True, wait_other_notice=True)
+        mark = node.mark_log()
+        addr = re.escape(node.address())
+        node.start()
 
-        session = self.patient_cql_connection(node)
+        self._scrub_keyspace(node, ks=ks, cf=cf, mode=mode)
+
+        expected_errors = [
+            f"Scrubbing .* {re.escape(sstable)} failed",
+            f"Finished scrubbing .* \[{re.escape(sstable)}\] - sstable(s) are invalid",
+            f"Compaction for {ks}/{cf} was stopped due to: scrub compaction failed",
+        ]
+        timeout = 30 if self.cluster.scylla_mode != 'debug' else 90
+        try:
+            node.watch_log_for("|".join(expected_errors), from_mark=mark, timeout=timeout)
+        except UnicodeDecodeError:
+            pass
+
         try:
             list(session.execute('SELECT * FROM ks.cf'))
         except:
             pass
 
-        logger.info('Rebuild sstables by nodetool scrub')
-        # Currently, scrub may fail with random corruption, e.g. on OOM
-        out = node.nodetool('scrub ks')
-        logger.info(f"Scrub output: {out}")
-
-        try:
-            list(session.execute('SELECT * FROM ks.cf'))
-        except:
-            pass
+    @pytest.mark.single_node
+    def test_scrub_with_one_node_expect_data_loss(self):
+        self._scrub_with_one_node_expect_data_loss()
 
     def test_scrub_with_multi_nodes_expect_data_rebuild(self):
         cluster = self.run_cluster(nodes=3)
@@ -2059,7 +2082,8 @@ class TestNodetool(Tester):
         session = self.patient_cql_connection(node)
         create_ks(session, 'ks', 3)
         create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'})
-        insert_c1c2(session, keys=range(100))
+        num_keys = 100
+        insert_c1c2(session, keys=range(num_keys))
         node.nodetool("flush")
         out = node.nodetool("getsstables ks cf k1", True)[0].strip()
         logger.info("Will corrupt sstable {}".format(out))
@@ -2080,6 +2104,7 @@ class TestNodetool(Tester):
             'malformed_sstable_exception',
             'SSTables with Cassandra-style shadowable deletion cannot be read by Scylla',
             'Adding missing partition-end to the end of the stream',
+            '[Ss]crubbing',
         ]
 
         self.ignore_cores_log_patterns += [
@@ -2096,7 +2121,49 @@ class TestNodetool(Tester):
         logger.info(f"Scrub output: {out}")
 
         rows = list(session.execute('SELECT * FROM ks.cf'))
-        assert len(rows) == 100
+        logger.debug(f"SELECT returned {len(rows)} rows, expecting {num_keys}")
+        assert len(rows) == num_keys
+
+    def _scrub_sstable_with_invalid_fragment(self, mode: str = None, scrub_keyspace: bool = False):
+        """
+        Load sstables with invalid fragment by refresh and validate them, the sstables were generated by
+        scylla unittest (test/boost/sstable_datafile_test.cc:sstable_validate_test).
+        """
+        cluster = self.run_cluster(nodes=1)
+        node = cluster[0]
+        session = self.patient_cql_connection(node)
+        ks = "ks"
+        cf = "cf"
+        cf2 = "cf2"
+        self.create_table(session, {ks: {"rf": "3", "tables": {
+                          cf: {"pk": "text", "ck": "int", "s": "int", "v": "int", "key": "pk, ck"},
+                          cf2: {"pk": "text", "ck": "int", "s": "int", "v": "int", "key": "pk, ck"}}}})
+        node.nodetool('flush')
+
+        logger.debug('Copying the sstables with invalid fragment to upload directory and Loading by refresh ...')
+        cf_dir = get_cf_dir(os.path.join(self.test_path, 'test', 'node1', 'data', ks), cf_name=cf)
+        copy_files_to(f"test-sstables/sstable_with_invalid_fragment/ks/cf-test/", os.path.join(cf_dir, 'upload'))
+        node.nodetool(f"refresh -- {ks} {cf}")
+
+        self.ignore_log_patterns = self.validation_expected_errs + [
+            '[Ss]crubbing',
+        ]
+
+        self._scrub_keyspace(node, ks=ks, cf=("" if scrub_keyspace else cf), mode=mode)
+
+        timeout = 30 if self.cluster.scylla_mode != 'debug' else 90
+        node.watch_log_for('Finished scrubbing', timeout=timeout)
+        # Scrub messages changed in scylladb/scylla@f0e2f31839
+        expected_errs = ['\[.* compaction ks.cf\] Invalid clustering row fragment',
+                         '\[.* compaction ks.cf\] Invalid partition']
+        try:
+            node.watch_log_for(expected_errs, timeout=0)
+        except TimeoutError:
+            if mode != "SKIP":
+                expected_errs = ['Skipping invalid clustering row fragment', 'Skipping invalid partition']
+                node.watch_log_for(expected_errs, timeout=0)
+            else:
+                raise
 
     def test_scrub_sstable_with_invalid_fragment(self):
         """
@@ -2106,200 +2173,46 @@ class TestNodetool(Tester):
         Scrub will stop if invalid fragment is identified, but it can be skipped by
         `--skip-corrupted` option.
         """
-        cluster = self.run_cluster(nodes=3)
-        node = cluster[0]
-        session = self.patient_cql_connection(node)
-        self.create_table(session, {"ks": {"rf": "3", "tables": {
-                          "cf": {"pk": "text", "ck": "int", "s": "int", "v": "int", "key": "pk, ck"},
-                          "cf2": {"pk": "text", "ck": "int", "s": "int", "v": "int", "key": "pk, ck"}}}})
-        node.nodetool('flush')
-
-        logger.debug('Copying the sstables with invalid fragment to upload directory and Loading by refresh ...')
-        cf_dir = get_cf_dir(os.path.join(self.test_path, 'test', 'node1', 'data', 'ks'), cf_name='cf')
-        copy_files_to("test-sstables/sstable_with_invalid_fragment/ks/cf-test/", os.path.join(cf_dir, 'upload'))
-        node.nodetool("refresh -- ks cf")
-
-        logger.debug('Rebuild sstables by `nodetool scrub ks cf` ....')
-        node.nodetool("scrub ks cf")
-        node.watch_log_for(
-            'Compaction for ks/cf was stopped due to: scrub compaction found invalid data: stopping', timeout=10)
-
-        logger.debug('Rebuild sstables by `nodetool scrub --skip-corrupted ks cf` ....')
-        node.nodetool('scrub --skip-corrupted ks cf')
-
-        self.ignore_log_patterns = self.validation_expected_errs
-        timeout = 30 if self.cluster.scylla_mode != 'debug' else 90
-        node.watch_log_for('Finished scrubbing.*1 sstable', timeout=timeout)
-        # Scrub messages changed in scylladb/scylla@f0e2f31839
-        expected_errs = ['\[Scrub compaction ks.cf\] Invalid clustering row fragment',
-                         '\[Scrub compaction ks.cf\] Invalid partition']
-        try:
-            node.watch_log_for(expected_errs, timeout=0)
-        except TimeoutError:
-            expected_errs = ['Skipping invalid clustering row fragment', 'Skipping invalid partition']
-            node.watch_log_for(expected_errs, timeout=0)
+        self._scrub_sstable_with_invalid_fragment(mode="SKIP")
 
     def test_scrub_ks_sstable_with_invalid_fragment(self):
         """
         Same scenario as scrub_ks_sstable_with_invalid_fragment_test, scrub the whole keyspace.
         """
-        cluster = self.run_cluster(nodes=3)
-        node = cluster[0]
-        session = self.patient_cql_connection(node)
-        self.create_table(session, {"ks": {"rf": "3", "tables": {
-            "cf": {"pk": "text", "ck": "int", "s": "int", "v": "int", "key": "pk, ck"},
-            "cf2": {"pk": "text", "ck": "int", "s": "int", "v": "int", "key": "pk, ck"}
-        }}})
-        node.nodetool('flush')
+        self._scrub_sstable_with_invalid_fragment(mode="SKIP", scrub_keyspace=True)
 
-        logger.debug('Copying the sstables with invalid fragment to upload directory and Loading by refresh ...')
-        cf_dir = get_cf_dir(os.path.join(self.test_path, 'test', 'node1', 'data', 'ks'), cf_name='cf')
-        copy_files_to("test-sstables/sstable_with_invalid_fragment/ks/cf-test/", os.path.join(cf_dir, 'upload'))
-        node.nodetool("refresh -- ks cf")
+    def test_scrub_segregate_sstable_with_invalid_fragment(self):
+        """
+        Load sstables with invalid fragment by refresh, the sstables were generated by
+        scylla unittest (test/boost/sstable_datafile_test.cc:sstable_scrub_test).
 
-        logger.debug('Rebuild sstables by `nodetool scrub ks cf` ....')
-        node.nodetool("scrub ks")
-        node.watch_log_for(
-            'Compaction for ks/cf was stopped due to: scrub compaction found invalid data: stopping', timeout=10)
+        Scrub will stop if invalid fragment is identified, but it can be skipped by
+        `--skip-corrupted` option.
+        """
+        self._scrub_sstable_with_invalid_fragment(mode="SEGREGATE")
 
-        logger.debug('Rebuild sstables by `nodetool scrub --skip-corrupted ks` ....')
-        node.nodetool('scrub --skip-corrupted ks')
-
-        self.ignore_log_patterns = self.validation_expected_errs
-        timeout = 30 if self.cluster.scylla_mode != 'debug' else 90
-        node.watch_log_for('Finished scrubbing.*1 sstable', timeout=timeout)
-        # Scrub messages changed in scylladb/scylla@f0e2f31839
-        expected_errs = ['\[Scrub compaction ks.cf\] Invalid clustering row fragment',
-                         '\[Scrub compaction ks.cf\] Invalid partition']
-        try:
-            node.watch_log_for(expected_errs, timeout=0)
-        except TimeoutError:
-            expected_errs = ['Skipping invalid clustering row fragment', 'Skipping invalid partition']
-            node.watch_log_for(expected_errs, timeout=0)
+    def test_scrub_segregate_ks_sstable_with_invalid_fragment(self):
+        """
+        Same scenario as scrub_ks_sstable_with_invalid_fragment_test, scrub the whole keyspace.
+        """
+        self._scrub_sstable_with_invalid_fragment(mode="SEGREGATE", scrub_keyspace=True)
 
     @pytest.mark.single_node
     def test_validate_with_one_node_expect_data_loss(self):
-        cluster = self.run_cluster(nodes=1)
-        node = cluster[0]
-        session = self.patient_cql_connection(node)
-        create_ks(session, 'ks', 1)
-        create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'},
-                  compaction={'class': 'NullCompactionStrategy'})
-        num_keys = 10000
-        insert_c1c2(session, keys=range(0, num_keys // 2))
-        node.nodetool("flush")
-        insert_c1c2(session, keys=range(num_keys // 2, num_keys))
-        node.nodetool("flush")
-        sstable = node.nodetool(f"getsstables ks cf k{random.randrange(num_keys)}", True)[0].strip()
-        logger.debug(f"Will corrupt sstable {sstable}")
-        node.stop()
-
-        seed = int(time.time())
-        logger.debug(f"Random seed: {seed}")
-        random.seed(seed)
-        size = os.stat(sstable).st_size
-        offset = random.randint(0, size)
-        length = random.randint(1, 102400)
-        logger.debug(f"writing random contents at offset={offset} length={length}")
-        with io.open(sstable, 'rb+', buffering=0) as f:
-            f.seek(offset)
-            f.write(bytearray(randbytes(length)))
-
-        self.ignore_log_patterns += self.validation_expected_errs + [
-            'malformed_sstable_exception',
-            'SSTables with Cassandra-style shadowable deletion cannot be read by Scylla',
-            'Adding missing partition-end to the end of the stream',
-            'compaction failed: std::runtime_error',
-            '[Ss]crubbing in validate mode'
-        ]
-
-        self.ignore_cores_log_patterns += [
-            'Failed to allocate',
-        ]
-
-        mark = node.mark_log()
-        addr = re.escape(node.address())
-        node.start()
-
-        logger.debug('Validate sstables by nodetool validate')
-        # Currently, validate may fail with random corruption, e.g. on OOM
-        out = node.nodetool('scrub -m VALIDATE ks')
-        logger.debug(f"Validate output: {out}")
-
-        expected_errors = [
-            f"Scrubbing in validate mode {re.escape(sstable)} failed",
-            f"Finished scrubbing in validate mode \[{re.escape(sstable)}\] - sstable(s) are invalid",
-        ]
-        timeout = 30 if self.cluster.scylla_mode != 'debug' else 90
-        try:
-            node.watch_log_for("|".join(expected_errors), from_mark=mark, timeout=timeout)
-        except UnicodeDecodeError:
-            pass
-
-        try:
-            list(session.execute('SELECT * FROM ks.cf'))
-        except:
-            pass
+        self._scrub_with_one_node_expect_data_loss(mode="VALIDATE")
 
     def test_validate_sstable_with_invalid_fragment(self):
         """
         Load sstables with invalid fragment by refresh and validate them, the sstables were generated by
         scylla unittest (test/boost/sstable_datafile_test.cc:sstable_validate_test).
         """
-        cluster = self.run_cluster(nodes=3)
-        node = cluster[0]
-        session = self.patient_cql_connection(node)
-        self.create_table(session, {"ks": {"rf": "3", "tables": {
-                          "cf": {"pk": "text", "ck": "int", "s": "int", "v": "int", "key": "pk, ck"},
-                          "cf2": {"pk": "text", "ck": "int", "s": "int", "v": "int", "key": "pk, ck"}}}})
-        node.nodetool('flush')
-
-        logger.debug('Copying the sstables with invalid fragment to upload directory and Loading by refresh ...')
-        cf_dir = get_cf_dir(os.path.join(self.test_path, 'test', 'node1', 'data', 'ks'), cf_name='cf')
-        copy_files_to("test-sstables/sstable_with_invalid_fragment/ks/cf-test/", os.path.join(cf_dir, 'upload'))
-        node.nodetool("refresh -- ks cf")
-
-        self.ignore_log_patterns = self.validation_expected_errs
-
-        logger.debug('Validate sstables by `nodetool scrub -m VALIDATE ks cf` ....')
-        node.nodetool("scrub -m VALIDATE ks cf")
-
-        timeout = 30 if self.cluster.scylla_mode != 'debug' else 90
-        node.watch_log_for('Finished scrubbing in validate mode', timeout=timeout)
-        # Scrub messages changed in scylladb/scylla@f0e2f31839
-        expected_errs = ['\[.* compaction ks.cf\] Invalid clustering row fragment',
-                         '\[.* compaction ks.cf\] Invalid partition']
-        node.watch_log_for(expected_errs, timeout=0)
+        self._scrub_sstable_with_invalid_fragment(mode="VALIDATE")
 
     def test_validate_ks_sstable_with_invalid_fragment(self):
         """
         Same scenario as validate_sstable_with_invalid_fragment_test, validate the whole keyspace.
         """
-        cluster = self.run_cluster(nodes=3)
-        node = cluster[0]
-        session = self.patient_cql_connection(node)
-        self.create_table(session, {"ks": {"rf": "3", "tables": {
-            "cf": {"pk": "text", "ck": "int", "s": "int", "v": "int", "key": "pk, ck"},
-            "cf2": {"pk": "text", "ck": "int", "s": "int", "v": "int", "key": "pk, ck"}
-        }}})
-        node.nodetool('flush')
-
-        logger.debug('Copying the sstables with invalid fragment to upload directory and Loading by refresh ...')
-        cf_dir = get_cf_dir(os.path.join(self.test_path, 'test', 'node1', 'data', 'ks'), cf_name='cf')
-        copy_files_to("test-sstables/sstable_with_invalid_fragment/ks/cf-test/", os.path.join(cf_dir, 'upload'))
-        node.nodetool("refresh -- ks cf")
-
-        self.ignore_log_patterns = self.validation_expected_errs
-
-        logger.debug('Validate sstables by `nodetool validate ks` ....')
-        node.nodetool("scrub -m VALIDATE ks")
-
-        timeout = 30 if self.cluster.scylla_mode != 'debug' else 90
-        node.watch_log_for('Finished scrubbing in validate mode', timeout=timeout)
-        # Scrub messages changed in scylladb/scylla@f0e2f31839
-        expected_errs = ['\[.* compaction ks.cf\] Invalid clustering row fragment',
-                         '\[.* compaction ks.cf\] Invalid partition']
-        node.watch_log_for(expected_errs, timeout=0)
+        self._scrub_sstable_with_invalid_fragment(mode="VALIDATE", scrub_keyspace=True)
 
     def test_node_graceful_stop_during_stress_and_decommission(self, starting_size=4, node_count=10, rf=1):
         """
