@@ -2059,7 +2059,7 @@ class TestNodetool(Tester):
         expected_errors = [
             f"Scrubbing .* {re.escape(sstable)} failed",
             f"Finished scrubbing .* \[{re.escape(sstable)}\] - sstable(s) are invalid",
-            f"Compaction for {ks}/{cf} was stopped due to: scrub compaction failed",
+            f"Compaction for {ks}/{cf} .*: scrub compaction failed",
         ]
         timeout = 30 if self.cluster.scylla_mode != 'debug' else 90
         try:
