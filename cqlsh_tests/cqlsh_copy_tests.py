@@ -18,6 +18,7 @@ from cassandra.concurrent import execute_concurrent_with_args
 from cassandra.util import SortedSet
 from ccmlib.common import is_win
 from tools.assertions import assert_all, assert_row_count, assert_row_count_in_select_less
+from ccmlib.scylla_cluster import ScyllaCluster
 
 from .cqlsh_tools import (DummyColorMap, assert_csvs_items_equal, csv_rows,
                           monkeypatch_driver, random_list,
@@ -1250,10 +1251,10 @@ class TestCqlshCopy(CqlshPrepare):
 
         def create_records():
             if not profile:
-                logger.debug('Running stress without any user profile')
+                logger.debug(f"Running stress without any user profile, num_operations={num_operations}")
                 self.node1.stress(['write', f'n={num_operations} cl=ALL', 'no-warmup', '-rate', 'threads=50'])
             else:
-                logger.debug(f'Running stress with user profile {profile}')
+                logger.debug(f'Running stress with user profile {profile}, num_operations={num_operations}')
                 self.node1.stress(['user', f'profile={profile}', 'ops(insert=1)',
                                    f'n={num_operations} cl=ALL', 'no-warmup', '-rate', 'threads=50'])
 
@@ -1346,6 +1347,7 @@ class TestCqlshCopy(CqlshPrepare):
         @jira_ticket CASSANDRA-9302
         """
 
+        range_request_timeout_in_ms = 240
         write_request_timeout_in_ms = 200
         copy_from_retry = ['copy_from_had_retries']
         copy_from_success = ['copy_from_success']
@@ -1358,9 +1360,14 @@ class TestCqlshCopy(CqlshPrepare):
         chuncksize_increase = 1.5
         chuncksize_decrease = 100 / 102
         max_attempts = 20
+        num_operations = 100000
+        if type(self.cluster) is ScyllaCluster and self.cluster.scylla_mode == "debug":
+            num_operations //= 10
+            range_request_timeout_in_ms *= 10
+            write_request_timeout_in_ms *= 10
 
-        self._test_bulk_round_trip(nodes=1, partitioner="murmur3", num_operations=100000,
-                                   configuration_options={'range_request_timeout_in_ms': '240',
+        self._test_bulk_round_trip(nodes=1, partitioner="murmur3", num_operations=num_operations,
+                                   configuration_options={'range_request_timeout_in_ms': range_request_timeout_in_ms,
                                                           'write_request_timeout_in_ms': write_request_timeout_in_ms,
                                                           },
                                    copy_from_options={'MAXINSERTERRORS': -1, 'MAXATTEMPTS': max_attempts,
