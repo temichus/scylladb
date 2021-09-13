@@ -495,6 +495,26 @@ class EncryptionAtRestTest(EncryptionAtRestBase):
                     finally:
                         EncryptionAtRestBase.cleanup(self)
 
+    def abbreviated_supported_cipher_algorithms_test(self):
+        tested = set()
+        for k, v in supported_cipher_algorithms.items():
+            if not v:
+                continue
+            k = k.split('/')[0]
+            if k in tested or not k:
+                continue
+            tested.add(k)
+            i = v[0]
+            debug('---- Test with %s , length %s ----' % (k, i))
+            for name, value in KeyProviderEnum.__members__.items():
+                try:
+                    EncryptionAtRestBase._smoke_test(self, key_provider=value,
+                                                        cipher_algorithm=k, secret_key_strength=i)
+                except Exception as e:
+                    debug(str(e))
+                finally:
+                    EncryptionAtRestBase.cleanup(self)
+
     def multiple_ks_test(self):
         for name, value in KeyProviderEnum.__members__.items():
             kss = EncryptionAtRestBase._multiple_ks_test(self, key_provider=value)
