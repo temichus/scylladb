@@ -2057,8 +2057,8 @@ class TestNodetool(Tester):
         self._scrub_keyspace(node, ks=ks, cf=cf, mode=mode)
 
         expected_errors = [
-            f"Scrubbing .* {re.escape(sstable)} failed",
-            f"Finished scrubbing .* \[{re.escape(sstable)}\] - sstable(s) are invalid",
+            f"Scrubbing .* failed",
+            f"Finished scrubbing .* invalid",
             f"Compaction for {ks}/{cf} .*: scrub compaction failed",
         ]
         timeout = 30 if self.cluster.scylla_mode != 'debug' else 90
