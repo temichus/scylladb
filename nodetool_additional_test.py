@@ -812,7 +812,7 @@ class TestNodetool(Tester):
         node = self.get_node(node)
         res = self.describering(node, ks)
 
-    def test_describering(self):
+    def test_describering(self, subtests):
         """
         Test the `nodetool describering` command
         Starts a cluster run a load
@@ -825,6 +825,71 @@ class TestNodetool(Tester):
         res = self.describering(node, 'keyspace1')
         assert len(res) > 100, "no describe ring data found"
         self.verify_describering()
+
+        logger.debug("verifying token distribution")
+        ks_name = "range_test"
+        with self.patient_cql_connection(node) as cql_session:
+            create_ks(session=cql_session, name=ks_name, rf=3)
+        token_ranges_distribution = self.get_token_ranges_distribution(ks_name)
+        self.verify_token_ranges_are_distributed_among_all_nodes(nodes_count=3,
+                                                                 token_ranges_distribution=token_ranges_distribution)
+        self.verify_token_ranges_distribution_is_even(token_ranges_distribution)
+
+        with subtests.test("token ranges should distribute automatically when cluster grows"):
+            logger.debug("verifying token distribution after cluster grow")
+            new_node = self.cluster.new_node(4, auto_bootstrap=True, data_center="dc1")
+            new_node.start(wait_for_binary_proto=True, wait_other_notice=True)
+            token_ranges_distribution = self.get_token_ranges_distribution(ks_name)
+            self.verify_token_ranges_are_distributed_among_all_nodes(nodes_count=4,
+                                                                     token_ranges_distribution=token_ranges_distribution)
+            self.verify_token_ranges_distribution_is_even(token_ranges_distribution)
+
+        with subtests.test("token ranges should distribute automatically when cluster shrinks"):
+            logger.debug("verifying token distribution after cluster shrink")
+            node4 = self.cluster.nodelist()[-1]
+            node4.decommission()
+            token_ranges_distribution = self.get_token_ranges_distribution(ks_name)
+            self.verify_token_ranges_are_distributed_among_all_nodes(nodes_count=3,
+                                                                     token_ranges_distribution=token_ranges_distribution)
+            self.verify_token_ranges_distribution_is_even(token_ranges_distribution)
+
+        with subtests.test("Token ranges should distribute automatically when RF changes"):
+            logger.debug("verifying token distribution after RF change")
+            with self.patient_cql_connection(node) as cql_session:
+                cql_session.execute(
+                    f"ALTER KEYSPACE {ks_name} "
+                    f"WITH replication = {{ 'class' : 'SimpleStrategy', 'replication_factor': '2'}};")
+            token_ranges_distribution = self.get_token_ranges_distribution(ks_name)
+            self.verify_token_ranges_are_distributed_among_all_nodes(nodes_count=3,
+                                                                     token_ranges_distribution=token_ranges_distribution)
+            self.verify_token_ranges_distribution_is_even(token_ranges_distribution, rf=2)
+
+    def get_token_ranges_distribution(self, ks_name):
+        token_ranges_info, stderr = self.cluster.nodelist()[0].nodetool(f'describering -- {ks_name}')
+        return self.extract_token_ranges_count_for_each_node(token_ranges_info)
+
+    @staticmethod
+    def extract_token_ranges_count_for_each_node(token_ranges_info):
+        patt = re.compile(r"TokenRange\(.* endpoints:\[([\d.,\s]+)\]")
+        endpoints = []
+        for line in token_ranges_info.splitlines()[2:]:
+            endpoints += re.search(patt, line).groups()[0].split(", ")
+        return {endpoint: int(endpoints.count(endpoint)) for endpoint in set(endpoints)}
+
+    def verify_token_ranges_distribution_is_even(self, token_ranges_distribution, rf=3):
+        """Verifies if vnode count for each node is in 10% range from set vnodes count value in scylla.yaml
+
+        By default, vnodes count is 256"""
+        logger.debug(f"token ranges distribution: {token_ranges_distribution}")
+        values = token_ranges_distribution.values()
+        for v in values:
+            assert v == pytest.approx(256 * rf, (256 * rf)*0.1), \
+                f"token ranges are not evenly distributed in cluster." \
+                f" Ranges counts for each node: {token_ranges_distribution}"
+
+    def verify_token_ranges_are_distributed_among_all_nodes(self, nodes_count, token_ranges_distribution):
+        assert len(token_ranges_distribution.keys()) == nodes_count, \
+            f"not all the nodes have assigned token ranges: {token_ranges_distribution}"
 
     def _verify_ring_token(self, entry, msg):
         self.assertIP(entry["Address"], msg)
