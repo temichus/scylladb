@@ -205,6 +205,8 @@ class DTestSetup:
         self.runners = []
         self.base_cql_timeout = 10  # seconds
         self.cql_request_timeout = None
+        if not hasattr(self, '_preserve_cluster'):
+            self._preserve_cluster = False
 
     def get_test_path(self):
         # we can not work /tmp

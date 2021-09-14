@@ -5,8 +5,11 @@
 import logging
 
 import pytest
+import requests
+from ccmlib.scylla_node import ScyllaNode
 
 from dtest_setup import DTestSetup
+from tools.assertions import assert_none, assert_row_count_not_zero
 from tools.data import insert_c1c2_no_prepared
 from tools.misc import set_trace_probability
 from cassandra.query import SimpleStatement
@@ -23,20 +26,13 @@ from dtest_class import Tester, create_ks, create_cf
 logger = logging.getLogger(__name__)
 
 
-@pytest.mark.next_gating
-@pytest.mark.dtest_debug
-@pytest.mark.dtest_full
-class TestCqlTracing(Tester):
-    """
-    Test that the default implementation for tracing works.
-    """
-
+class PrepareClusterHelper(Tester):
     @pytest.fixture(autouse=True)
     def fixture_add_additional_log_patterns(self, fixture_dtest_setup: DTestSetup):
         fixture_dtest_setup.allow_log_errors = True
         fixture_dtest_setup.ignore_log_patterns = ()
 
-    def prepare(self, create_keyspace=True, nodes=3, rf=3, protocol_version=3, jvm_args=None, **kwargs):
+    def prepare(self, create_keyspace=True, nodes=3, rf=3, protocol_version=3, jvm_args=None):
         if jvm_args is None:
             jvm_args = []
 
@@ -47,9 +43,19 @@ class TestCqlTracing(Tester):
 
         session = self.patient_cql_connection(node1, protocol_version=protocol_version)
         if create_keyspace:
-            session.execute("DROP KEYSPACE IF EXISTS ks")
+            if self._preserve_cluster:
+                session.execute("DROP KEYSPACE IF EXISTS ks")
             create_ks(session, 'ks', rf)
         return session
+
+
+@pytest.mark.next_gating
+@pytest.mark.dtest_debug
+@pytest.mark.dtest_full
+class TestCqlTracing(PrepareClusterHelper):
+    """
+    Test that the default implementation for tracing works.
+    """
 
     def trace(self, session):
         """
@@ -263,6 +269,65 @@ class TestCqlTracing(Tester):
         if pattern.search(line):
             return 1
         return 0
+
+
+class TestSlowQueryTracing(PrepareClusterHelper):
+    """
+    This class represents tests for Slow Query Logging tracing type.
+    Tracing is a ScyllaDB tool meant to help debugging and analyzing internal flows in the server.
+    One of the tracing types is Slow Query Logging - records queries with handling time above the specified threshold
+    """
+
+    @staticmethod
+    def enable_slow_query_tracing(node: ScyllaNode, fast: bool, threshold: int = 500000):
+        api_cmd = f"http://{node.address()}:10000/storage_service/slow_query?fast={str(fast).lower()}&enable=true" \
+                  f"&threshold={threshold}"
+        logger.debug("Enable slow query tracing: %s" % api_cmd)
+        r = requests.post(api_cmd)
+        assert r.status_code == 200, "Status code is %d. Expected 200. API enabling failed" % r.status_code
+
+    @staticmethod
+    def validate_slow_query_tracing_is_enabled(node: ScyllaNode, fast: bool, threshold: int = 500000):
+        api_cmd = f"http://{node.address()}:10000/storage_service/slow_query"
+        logger.debug("Validate that fast slow query tracing is enabled: %s" % api_cmd)
+        response = requests.get(api_cmd)
+        response_json = response.json()
+        assert response_json['fast'] == fast, f"Fast slow query tracing is {not fast}"
+        assert response_json['enable'], f"Slow query tracing is not enabled"
+        assert response_json['threshold'] == threshold, f"Slow query tracing is not enabled"
+
+    @pytest.mark.parametrize("fast", [True, False], ids=["enabled", "disabled"])
+    def test_fast_slow_query_tracing(self, fast):
+        """
+        Feature: https://github.com/scylladb/scylla/pull/8314
+        In fast slow query tracing mode, Scylla tracks only tracing sessions and omits all tracing events if the
+        tracing context does not have a full_tracing state set. This mode tracks only CQL statement and related request
+        parameters.
+        This test validate that when fast slow query tracing mode is enabled, events are not reported. But sessions and
+        node_slow_log are reported.
+        """
+        session = self.prepare(nodes=1)
+        # Slow Query Logging - records queries with handling time above the specified threshold.
+        # Set threshold to 500 (default is 500000) to get queries reported as slow
+        threshold = 500
+        self.enable_slow_query_tracing(node=self.cluster.nodelist()[0], fast=fast, threshold=threshold)
+        self.validate_slow_query_tracing_is_enabled(node=self.cluster.nodelist()[0], fast=fast, threshold=threshold)
+        node1 = self.cluster.nodelist()[0]
+
+        logger.debug("Run cassandra-stress write load")
+        stdout, stderr = node1.stress(stress_options=['write', 'cl=ONE', 'n=10000',
+                                                      "-schema replication(factor=1)", "-mode cql3 native",
+                                                      "-rate threads=10"],
+                                      capture_output=True)
+        assert stdout.strip().endswith("END"), f"Run c-s failed: {stderr}"
+
+        if fast:
+            assert_none(session, query="select * from system_traces.events")
+        else:
+            assert_row_count_not_zero(session, table_name="system_traces.events")
+        assert_row_count_not_zero(session, table_name="system_traces.node_slow_log")
+        assert_row_count_not_zero(session, table_name="system_traces.sessions")
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 #    @known_failure(failure_source='test',

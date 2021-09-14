@@ -5,6 +5,7 @@ from cassandra import (InvalidRequest, ReadFailure, ReadTimeout, Unauthorized,
                        Unavailable, WriteFailure, WriteTimeout)
 from cassandra.query import SimpleStatement, ConsistencyLevel
 
+from tools.data import run_query_with_data_processing
 from tools.retrying import retrying
 
 """
@@ -512,3 +513,17 @@ class PytestRegex:
 
     def __repr__(self):
         return self._regex.pattern
+
+
+@retrying(num_attempts=1, sleep_time=10)
+def assert_row_count_not_zero(session, table_name, consistency_level=ConsistencyLevel.ONE, timeout=None):
+    """
+    Function to validate the row count expected in table_name
+    :param num_attempts: defines how many time try to assert data in case failure. Used in retry_with_func_attempts decorator
+    """
+
+    query = "SELECT count(*) FROM {}".format(table_name)
+    count = run_query_with_data_processing(session, query, consistency_level=consistency_level, session_timeout=timeout)
+    if isinstance(count, list):
+        count = count[0][0]
+    assert count > 0, "Expected that the table is not empty, but it's empty"
