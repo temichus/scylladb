@@ -455,3 +455,42 @@ class TestReversedQueriesOnTableWithReversedOrder(Tester):
 
         expected_rows = [{'ck': i, 'v': -i} for i in range(ROW_COUNT)]
         self.assertSequenceEqual(list(response), expected_rows)
+
+
+@attr('dtest-full', 'single_node')
+class TestReversedQueriesWithOverlappingRangeTombstones(Tester, ConcurrentExecutor):
+    def test_reversed_query_with_overlapping_range_tombstones(self):
+        TOMBSTONE_COUNT = 100 * 1000
+
+        debug('Set up a cluster')
+        cluster = self.cluster
+        cluster.populate(1).start(wait_for_binary_proto=True)
+        [node1] = self.cluster.nodelist()
+
+        debug('Set up schema')
+        session = self.patient_cql_connection(node1, row_factory=dict_factory)
+        self.create_ks(session, 'ks', 1)
+        query = "CREATE TABLE ks.t (pk int, ck int, v int, PRIMARY KEY (pk, ck))"
+        session.execute(query)
+
+        debug('Generate range tombstones')
+        worker_count = 10
+
+        def run_deletes(stop_event, worker_id):
+            stmt = session.prepare("DELETE FROM ks.t WHERE pk = 0 AND ck >= ? AND ck < ?")
+            for i in range(worker_id, TOMBSTONE_COUNT, worker_count):
+                if stop_event.is_set():
+                    return
+                session.execute(stmt, (i, i + TOMBSTONE_COUNT))
+
+        self.run_concurrently(10, run_deletes)
+
+        debug('Insert a row near the end of the range tombstones')
+        ck = 2 * TOMBSTONE_COUNT - 10
+        session.execute("INSERT INTO ks.t (pk, ck, v) VALUES (0, {}, 42)".format(ck))
+
+        debug('Select the row and check result')
+        response = session.execute(
+            "SELECT ck, v FROM ks.t WHERE pk = 0 ORDER BY ck DESC LIMIT 1 BYPASS CACHE", trace=True)
+        # debug(" ||| ".join(str(e) for e in response.get_query_trace().events))
+        self.assertSequenceEqual(list(response), [{'ck': ck, 'v': 42}])
