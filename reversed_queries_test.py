@@ -114,6 +114,10 @@ class TestReversedQueriesSelectors(Tester):
             |1     |6 |  3|and more testing|
             |1     |7 |  1|and more testing|
             |1     |8 |  1|delete me!      |
+            |2     |1 |  1|testing         |
+            |3     |1 |  1|testing         |
+            |4     |1 |  1|testing         |
+            |5     |1 |  1|testing         |
             """
         _expected_data = create_rows(data, session, 'paging_test', cl=CL.ALL, format_funcs={
                                      'bucket': int, 'id': int, 'id2': int, 'value': str})
