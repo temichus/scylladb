@@ -17,6 +17,26 @@ from nose.plugins.attrib import attr
 from paging_test import PageFetcher, BasePagingTester, PageAssertionMixin
 
 
+class ConcurrentExecutor(object):
+    def run_concurrently(self, worker_count, f, stop_event=None):
+        if stop_event is None:
+            stop_event = Event()
+            self.addCleanup(lambda: stop_event.set())
+        worker_executor = ThreadPoolExecutor(max_workers=worker_count)
+
+        def work(worker_id):
+            try:
+                f(stop_event, worker_id)
+            except:
+                stop_event.set()
+                raise
+
+        futs = [worker_executor.submit(work, i) for i in range(worker_count)]
+        worker_executor.shutdown(wait=True)
+        for f in futs:
+            f.result()
+
+
 @attr('dtest-full')
 class TestReversedQueriesPaging(BasePagingTester, PageAssertionMixin):
     def reversed_query_template(self, data, fetch_size, expected_page_count, expected_rows):
@@ -208,7 +228,7 @@ class TestReversedQueriesSelectors(Tester):
 
 
 @attr('dtest-full', 'single_node')
-class TestReversedQueriesMemoryUsage(Tester):
+class TestReversedQueriesMemoryUsage(Tester, ConcurrentExecutor):
     def prepare(self, row_factory=dict_factory):
         cluster = self.cluster
         # Restrict shard memory to 0.5GB
@@ -220,24 +240,6 @@ class TestReversedQueriesMemoryUsage(Tester):
         self.node = node1 = cluster.nodelist()[0]
         session = self.patient_cql_connection(node1, row_factory=row_factory)
         return session
-
-    def run_concurrently(self, worker_count, f, stop_event=None):
-        if stop_event is None:
-            stop_event = Event()
-            self.addCleanup(lambda: stop_event.set())
-        worker_executor = ThreadPoolExecutor(max_workers=worker_count)
-
-        def work(worker_id):
-            try:
-                f(stop_event, worker_id)
-            except:
-                stop_event.set()
-                raise
-
-        futs = [worker_executor.submit(work, i) for i in range(worker_count)]
-        worker_executor.shutdown(wait=True)
-        for f in futs:
-            f.result()
 
     @require('scylladb/scylla#9134')
     def test_memory(self):
