@@ -95,9 +95,8 @@ class TestReversedQueriesPaging(BasePagingTester, PageAssertionMixin):
         self.reversed_query_template(data, fetch_size=5, expected_page_count=3, expected_rows=expected)
 
 
-@attr('dtest-full', 'single_node')
-class TestReversedQueriesSelectors(Tester):
-    def prepare(self, row_factory=dict_factory):
+class BaseReversedQuerySelector(object):
+    def prepare_cluster(self, row_factory=dict_factory):
         cluster = self.cluster
         cluster.populate(1).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1 = cluster.nodelist()[0]
@@ -105,17 +104,14 @@ class TestReversedQueriesSelectors(Tester):
         session = self.patient_cql_connection(node1, row_factory=row_factory)
         return session
 
+    def prepare_schema(self, session, rf=1):
+        self.create_ks(session, 'test_reversed_queries', rf)
+        session.execute("CREATE TABLE paging_test (bucket int, id int, id2 int, value text, PRIMARY KEY (bucket, id, id2))")
+
     def execute(self, session, statement):
         return list(session.execute(SimpleStatement(statement, consistency_level=CL.ALL)))
 
-    def test_reverse_selectors(self):
-        debug('Set up a cluster')
-        session = self.prepare()
-        debug("Set up schema")
-        self.create_ks(session, 'test_reversed_queries', 1)
-
-        session.execute("CREATE TABLE paging_test (bucket int, id int, id2 int, value text, PRIMARY KEY (bucket, id, id2))")
-
+    def populate(self, session):
         data = """
             |bucket|id|id2| value          |
             +------+--+---+----------------+
@@ -147,16 +143,6 @@ class TestReversedQueriesSelectors(Tester):
         self.execute(session, "DELETE FROM paging_test WHERE bucket = 1 AND id = 2 AND id2 > 9")
         self.execute(session, "DELETE FROM paging_test WHERE bucket = 1 AND (id, id2) >= (4, 6) AND (id, id2) <= (6, 2)")
         self.execute(session, "DELETE FROM paging_test WHERE bucket = 1 AND id >= 8")
-
-        debug('Testing selects from memtable')
-        self.run_selects(session)
-
-        debug('Testing selects from cache')
-        self.node.flush()
-        self.run_selects(session)
-
-        debug('Testing selects from sstable')
-        self.run_selects(session, bypass_cache=True)
 
     def run_selects(self, session, bypass_cache=False):
         def format_expected(data):
@@ -225,6 +211,28 @@ class TestReversedQueriesSelectors(Tester):
         data = self.execute(
             session, "SELECT id, id2 FROM paging_test WHERE bucket = 1 AND id IN (3, 6) AND id2 IN (3, 4) ORDER BY id DESC" + bypass_cache_str)
         self.assertSequenceEqual(data, format_expected([(6, 3), (3, 3)]))
+
+
+@attr('dtest-full', 'single_node')
+class TestReversedQueriesSelectors(Tester, BaseReversedQuerySelector):
+    def test_reverse_selectors(self):
+        debug('Set up a cluster')
+        session = self.prepare_cluster()
+        debug('Set up schema')
+        BaseReversedQuerySelector.prepare_schema(self, session, rf=1)
+
+        debug('Populate the table')
+        self.populate(session)
+
+        debug('Testing selects from memtable')
+        self.run_selects(session)
+
+        debug('Testing selects from cache')
+        self.node.flush()
+        self.run_selects(session)
+
+        debug('Testing selects from sstable')
+        self.run_selects(session, bypass_cache=True)
 
 
 @attr('dtest-full', 'single_node')
