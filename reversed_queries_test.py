@@ -15,6 +15,8 @@ from threading import Event
 from nose.plugins.attrib import attr
 
 from paging_test import PageFetcher, BasePagingTester, PageAssertionMixin
+import upgrade_test
+from upgrade_test import UpgradeTester
 
 
 class ConcurrentExecutor(object):
@@ -502,3 +504,45 @@ class TestReversedQueriesWithOverlappingRangeTombstones(Tester, ConcurrentExecut
             "SELECT ck, v FROM ks.t WHERE pk = 0 ORDER BY ck DESC LIMIT 1 BYPASS CACHE", trace=True)
         # debug(" ||| ".join(str(e) for e in response.get_query_trace().events))
         self.assertSequenceEqual(list(response), [{'ck': ck, 'v': 42}])
+
+
+class TestReversedQueriesSelectorsDuringUpgrade(UpgradeTester, BaseReversedQuerySelector):
+    _multiprocess_can_split_ = False
+
+    upgrade_path = upgrade_test.upgrade_matrix_from_last_release_version
+    init_version = upgrade_path[0]
+
+    def test_queries_during_upgrade(self):
+        """
+        Test that reverse queries work on a mixed cluster
+        1. Prepare data for selects
+        2. For each version in the upgrade chain:
+            2.1. For each node in the cluster
+                2.1.1. Upgrade the node
+                2.1.2. Check that selects work
+        """
+
+        self.set_ignore_log_patterns()
+        # Remove first version from the path as it is already used
+        self.current_upgrade_path.pop(0)
+
+        debug('Creating a 2-node cluster')
+        self.init_cluster(nodes=2)
+        session = self.patient_cql_connection(self.cluster.nodelist()[0], row_factory=dict_factory)
+
+        debug('Set up schema')
+        BaseReversedQuerySelector.prepare_schema(self, session, rf=2)
+
+        debug('Populate the table')
+        self.populate(session)
+
+        debug('Testing selects')
+        self.run_selects(session)
+
+        for version in self.current_upgrade_path:
+            for node in self.cluster.nodelist():
+                debug(f"Upgrading node {node.name} from version {node.node_scylla_version} to {version}")
+                node.upgrade(upgrade_to_version=version)
+
+                debug('Testing selects')
+                self.run_selects(session)
