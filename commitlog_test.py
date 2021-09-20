@@ -834,7 +834,8 @@ class TestCommitLog(Tester):
         # to accumulate more commitlogs.
         node1.set_configuration_options(values={'commitlog_segment_size_in_mb': commitlog_segment_size_in_mb,
                                                 'commitlog_total_space_in_mb': commitlog_total_space_in_mb,
-                                                'commitlog_reuse_segments': True})
+                                                'commitlog_reuse_segments': True,
+                                                'commitlog_use_hard_size_limit': True})
 
         logger.debug(f'Commitlog size before start: {self._get_commitlog_size()}M')
         logger.debug("Start cluster with `--smp 1' ...")
@@ -896,7 +897,8 @@ class TestCommitLog(Tester):
         # set commitlog config back to default
         node1.set_configuration_options(values={'commitlog_segment_size_in_mb': 32,
                                                 'commitlog_total_space_in_mb': -1,
-                                                'commitlog_reuse_segments': True})
+                                                'commitlog_reuse_segments': True,
+                                                'commitlog_use_hard_size_limit': True})
         logger.debug('Restart node1 to enable default commitlog configure')
         node1.stop(gently=False)
         node1.start(wait_for_binary_proto=True)
