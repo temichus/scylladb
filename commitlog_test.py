@@ -875,7 +875,7 @@ class TestCommitLog(Tester):
             total_size += unit_size
             dir_size = self._get_commitlog_size()
             # Scylla allows to create one more commitlog file out of the space limit
-            actual_space_limit = total_space_limit + commitlog_segment_size_in_mb - total_space_limit % commitlog_segment_size_in_mb
+            actual_space_limit = (total_space_limit // commitlog_segment_size_in_mb + 1) * commitlog_segment_size_in_mb
             assert self._get_commitlog_size() <= actual_space_limit, 'Out of total space limit'
             if dir_size > commitlog_disk_usage_threshold:
                 reach_threshold_cases.append(dir_size)
