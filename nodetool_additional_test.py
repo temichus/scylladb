@@ -2465,7 +2465,7 @@ class TestGetTraceProbability(Tester):
                 set_node_probability(self.node1, valid_value)
                 probability_node1, probability_node2 = get_nodes_probability((self.node1, self.node2,))
                 assert probability_node1 == valid_value, f'node1 Expected: {valid_value} Actual: {probability_node1}'
-                assert node2_value == node2_value, f'node2 Expected: {node2_value} Actual: {probability_node2}'
+                assert probability_node2 == node2_value, f'node2 Expected: {node2_value} Actual: {probability_node2}'
 
     def test_value_affect_tracing_table(self, subtests):
         create_ks(self.session, 'ks', 2)
