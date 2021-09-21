@@ -2137,6 +2137,7 @@ class TestCQL(Tester):
         assert rows_to_list(res) == [[['a', 'b']]]
 
     @pytest.mark.single_node
+    @pytest.mark.next_gating
     def test_collection_serialization_with_protocol_v2(self):
         session = self.prepare(protocol_version=2)
 
