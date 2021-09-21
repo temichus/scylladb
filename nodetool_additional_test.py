@@ -1250,14 +1250,13 @@ class TestNodetool(Tester):
             assert h in n, "node status missing " + h
         assert n["status"] == PytestRegex("[UD][NLJM]?"), "Node status has wrong format"
         self.assertIP(n["address"], "Node ip address")
-        assert n["load"] == PytestRegex("\d+\.?\d*\s+[KM]B"), "Node load has wrong format"
+        assert n["load"] == PytestRegex("\d+\.?\d*\s+[KMGT]B"), "Node load has wrong format"
         if n["owns"] != "?":
-            assert n["owns"] == PytestRegex("\d+\.?\d*\s+[KM]B"), "Node owns has wrong format"
+            assert n["owns"] == PytestRegex("\d+\.?\d*(%|\s+[KMGT]B)"), "Node owns has wrong format"
         assert n["tokens"] == PytestRegex("\d+"), "Node token has wrong format"
         assert n["host id"] == PytestRegex("[0-9abcdef\-]+"), "Node host id has wrong tokens format"
         assert n["rack"] == PytestRegex("[a-z0-9]+"), "Node rack has wrong tokens format"
 
-    @pytest.mark.skip('#1057')
     def test_status(self):
         """ Test the nodetool status command
         Starts two node cluster
