@@ -7,6 +7,7 @@ import re
 
 from enum import Enum
 from cassandra import ReadTimeout, ReadFailure, ConsistencyLevel
+from cassandra.cluster import NoHostAvailable
 
 from dtest import Tester, debug, warning
 from tools import rows_to_list, get_table_description, require
@@ -69,11 +70,18 @@ class KeyProviderEnum(Enum):
 # default: 'AES/CBC/PKCS5Padding', length 128
 supported_cipher_algorithms = {'': [],
                                'AES/CBC/PKCS5Padding': [128, 192, 256],  # 192 has problem
+                               'AES/CBC': [128, 192, 256],  # 192 has problem
+                               'AES': [128, 192, 256],  # 192 has problem
                                'AES/ECB/PKCS5Padding': [128, 192, 256],
+                               'AES/ECB': [128, 192, 256],
                                'DES/CBC/PKCS5Padding': [56],
+                               'DES/CBC': [56],
+                               'DES': [56],
                                # 'DESede/CBC/PKCS5Padding': [112, 168],    # not support by Scylla, supported by DSE
                                # 'Blowfish/CBC/PKCS5Padding': [32, 448],   # not support by Scylla, supported by DSE
-                               'RC2/CBC/PKCS5Padding':  [80, 128]  # [40, 80, 128]  # 40 to 128
+                               'RC2/CBC/PKCS5Padding':  [80, 128],  # [40, 80, 128]  # 40 to 128
+                               'RC2/CBC':  [80, 128],  # [40, 80, 128]  # 40 to 128
+                               'RC2':  [80, 128]  # [40, 80, 128]  # 40 to 128
                                }
 
 
@@ -321,6 +329,7 @@ class EncryptionAtRestBase(Tester):
         kp.prepare_write_workload(session)
         if key_provider == KeyProviderEnum.local:
             kp.verify_secret_key(cipher_algorithm, secret_key_strength)
+        # restart the cluster
         session = self.rolling_restart()
         kp.read_verify_workload(session)
 
@@ -483,17 +492,46 @@ class EncryptionAtRestTest(EncryptionAtRestBase):
             EncryptionAtRestBase.cleanup(self)
 
     def supported_cipher_algorithms_test(self):
+        errors = []
         for k, v in supported_cipher_algorithms.items():
             for i in v:
                 debug('---- Test with %s , length %s ----' % (k, i))
                 for name, value in KeyProviderEnum.__members__.items():
+                    # negative test with wrong cipher algorithm
+                    for additional_str in ['Abc/', '/Abc', 'Abc']:
+                        cipher = f'{k}{additional_str}'  # suffix
+                        try:
+                            EncryptionAtRestBase._smoke_test(self, key_provider=value,
+                                                             cipher_algorithm=cipher, secret_key_strength=i)
+                        except NoHostAvailable as e:
+                            debug(str(e))
+                            assert f"Invalid algorithm string: {cipher}" in str(
+                                e) or f"Invalid algorithm: {cipher}" in str(
+                                e) or 'Could not write key file' in str(e) or (
+                                '[Server error] message=' in str(e) and 'abc' in str(e))
+
+                        cipher = f'{additional_str}{k}'  # prefix
+                        try:
+                            EncryptionAtRestBase._smoke_test(self, key_provider=value,
+                                                             cipher_algorithm=cipher, secret_key_strength=i)
+                        except NoHostAvailable as e:
+                            debug(str(e))
+                            assert f"Invalid algorithm string: {cipher}" in str(
+                                e) or f"Invalid algorithm: {cipher}" in str(
+                                e) or 'Could not write key file' in str(e) or (
+                                '[Server error] message=' in str(e) and 'abc' in str(e))
+
+                    # positive test with correct cipher algorithm
                     try:
                         EncryptionAtRestBase._smoke_test(self, key_provider=value,
                                                          cipher_algorithm=k, secret_key_strength=i)
                     except Exception as e:
                         debug(str(e))
+                        errors.append(e)
                     finally:
                         EncryptionAtRestBase.cleanup(self)
+        # check if error occured in positive tests
+        assert len(errors) == 0, errors
 
     def abbreviated_supported_cipher_algorithms_test(self):
         tested = set()
