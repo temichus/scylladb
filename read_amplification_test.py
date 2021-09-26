@@ -1,13 +1,20 @@
 import logging
 import math
+import multiprocessing
 import time
+from collections import defaultdict
 from concurrent.futures.thread import ThreadPoolExecutor
+from typing import Tuple, DefaultDict
 
 import pytest
+from cassandra.cluster import Session
+from cassandra.concurrent import execute_concurrent_with_args
 from cassandra.query import SimpleStatement
 from cassandra import ConsistencyLevel
 from ccmlib.node import TimeoutError
+from ccmlib.scylla_node import ScyllaNode
 
+from dtest import retry_with_func_attempts
 from dtest_class import Tester, create_ks, create_cf
 from tools.data import insert_c1c2
 from tools.metrics import get_node_metrics
@@ -226,3 +233,149 @@ class TestReadAmplification(Tester):
     @pytest.mark.single_node
     def test_no_amplification_on_scanning_read_20mb(self):
         self.read_amplification(SCAN_READ, KBYTE * KBYTE * 20)
+
+
+class TestMultiShardReader(Tester):
+    """
+    This class holds the test that covers the issue that cause to read amplification
+
+    Cover issue: https://github.com/scylladb/scylla/issues/8161
+    Commit: https://github.com/scylladb/scylla/commit/bc1fcd3db20eb957524387214617b613f1cab3e7
+
+    The multishard combining reader currently assumes that all shards have
+    data for the read range. This however is not always true and in extreme
+    cases (like reading a single token) it can lead to huge read
+    amplification.
+    After this commit, the multishard reader will only read from shards that
+    have data relevant to the read range, both in the case of normal reads
+    and also for read-ahead.
+    """
+
+    def prepare(self, nodes: int, rf: int, create_keyspace: bool = True,
+                protocol_version: int = 3, jvm_args: list = None) -> Tuple[Session, ScyllaNode]:
+        if jvm_args is None:
+            jvm_args = []
+
+        cluster = self.cluster
+        cluster.set_configuration_options(values={'max_cached_partition_size_in_bytes': 1})
+        cluster.populate(nodes).start(wait_for_binary_proto=True, jvm_args=jvm_args)
+
+        node1 = cluster.nodelist()[0]
+
+        session = self.patient_cql_connection(node1, protocol_version=protocol_version)
+        if create_keyspace:
+            self.create_ks(session, 'ks', rf)
+            session.execute("USE ks")
+        return session, node1
+
+    @staticmethod
+    def insert_rows_with_blob(session, n, table_name='cf'):
+        keys = list(range(n))
+
+        c_value = 'a' * 1000000
+        statement = session.prepare(f"INSERT INTO {table_name} (key, c1, c2, c3, c4) "
+                                    f"VALUES (?, textAsBlob('{c_value}'), textAsBlob('{c_value}'), "
+                                    f"textAsBlob('{c_value}'), textAsBlob('{c_value}'))")
+        statement.consistency_level = ConsistencyLevel.QUORUM
+
+        execute_concurrent_with_args(session, statement, [['k{}'.format(k)] for k in keys])
+
+    @staticmethod
+    @retry_with_func_attempts
+    def run_query_and_get_its_session_id(node: ScyllaNode, session: Session, query: str, num_attempts: int = 5) -> str:
+        logger.debug("Run query: %s", query)
+        node.run_cqlsh(f"TRACING ON; %s", query)
+
+        logger.debug("Get session_id of the query: {query}")
+        sessions = list(session.execute("select session_id, parameters from system_traces.sessions"))
+        # Row(session_id=UUID('d1a0fa80-1c67-11ec-aea3-3a3e0d08d0b2'),
+        # parameters=OrderedMapSerializedKey([('consistency_level', 'ONE'), ('page_size', '5000'),
+        # ('query', 'select token(key) from ks.cf where token(key) = -4307320966523859'),
+        # ('serial_consistency_level', 'SERIAL'), ('user_timestamp', '1632399276584071')]))
+        session_id = [ses.session_id for ses in sessions if ses.parameters['query'] == f"{query};"]
+        assert session_id, "Not found session for tested query"
+        return session_id[0]
+
+    @staticmethod
+    def get_reader_shards(session: Session, session_id: str) -> DefaultDict:
+        logger.debug("Get events for session %s", session_id)
+        events = list(session.execute(f"select source, activity, thread from system_traces.events "
+                                      f"where session_id = {session_id}"))
+
+        # Row(source='127.0.68.1', activity='Creating shard reader on shard: 1', thread='shard 1')
+        # Row(source='127.0.68.1', activity='node1/data/ks/cf-567d60d0242511ec80c5342185a9b495/md-3-big-Index.db:
+        # scheduling bulk DMA read of size 33 at offset 0', thread='shard 1')
+
+        shards_by_source = defaultdict(set)
+        for activity in ['Creating shard reader on shard', 'scheduling bulk DMA read',
+                         'Reading partition range']:
+            for event in events:
+                if activity in event.activity:
+                    shards_by_source[event.source].update(event.thread.replace('shard ', ''))
+
+        assert shards_by_source, f"Failed to find reader shards from tracing events for session {session_id}. " \
+                                 f"Events: {events}"
+        logger.debug("Partition data has been read from shards: %s", shards_by_source)
+        return shards_by_source
+
+    def test_create_reader_on_one_shard_1node_cluster(self):
+        """
+        Test scenario:
+         - start cluster with one node and SMP > 1
+         - create table with 10 partitions
+         - enable slow query tracing
+         - read one token and find using system_traces.events table which shard it was read
+         Expected to read from one shard
+        """
+        self._create_reader_on_one_shard(nodes=1, rf=1)
+
+    def test_create_reader_on_one_shard_3nodes_cluster(self):
+        """
+        Test scenario:
+         - start cluster with 3 nodes and SMP > 1
+         - create keyspace with RF = 2
+         - create table with 10 partitions
+         - enable slow query tracing on all nodes
+         - read one token and find using system_traces.events table which shard it was read
+         Expected to read from one shard on every node
+        """
+        self._create_reader_on_one_shard(nodes=3, rf=2)
+
+    def _create_reader_on_one_shard(self, nodes: int, rf: int):
+        smp = min(multiprocessing.cpu_count() // 2 + 1, 2)
+        assert smp > 1, "The test can't be run with SMP 1. Run the test on the instance with more CPU"
+
+        logger.debug("Start cluster with SMP %d", smp)
+        session1, node1 = self.prepare(nodes=nodes, rf=rf, jvm_args=['--smp', str(smp),
+                                                                     '--memory', '{}M'.format(512 * int(smp))])
+        self.create_cf(session1, name='cf', columns={'c1': 'blob', 'c2': 'blob', 'c3': 'blob', 'c4': 'blob'})
+
+        logger.debug("Insert 10 row")
+        self.insert_rows_with_blob(session1, n=10)
+        self.cluster.flush()
+
+        logger.debug("Get key token")
+        query = "select token(key) from ks.cf where key = 'k9'"
+        out = list(session1.execute(query))
+        assert out, "Row with key 'k9' is not found"
+        token = out[0][0]
+
+        for node in self.cluster.nodelist():
+            logger.debug("Restart %s to empty the cache", node.name)
+            node.stop(wait_other_notice=True)
+            node.start(wait_other_notice=True)
+
+        logger.debug("Find a shard where the single token lives on")
+        query = f"select count(*) from ks.cf where token(key) = {token}"
+
+        session_id = self.run_query_and_get_its_session_id(node=node1, session=session1, query=query)
+        one_token_reader_shards = self.get_reader_shards(session=session1, session_id=session_id)
+
+        many_shards_source = ''
+        for source, shards in one_token_reader_shards.items():
+            if len(shards) > 1:
+                many_shards_source += f"{source}: {shards}. "
+
+        assert not many_shards_source, \
+            f"Reader on the next host(s) was created on more then one shards: {many_shards_source} " \
+            f"Expected reader on the one shard"

@@ -67,6 +67,11 @@ def assert_one(session, query, expected, cl=ConsistencyLevel.ONE, timeout=60, nu
     assert list_res == [expected], "Expected %s from %s, but got %s" % ([expected], query, list_res)
 
 
+def assert_not_empty_result(session, query, cl=ConsistencyLevel.ONE, timeout=60):
+    list_res = _get_list_res(session, query, cl, timeout=timeout)
+    assert list_res, f"Empty result from query: {query}"
+
+
 @retry_with_func_attempts
 def assert_one_prepared(session, stmt, expected, parameters, cl=ConsistencyLevel.ONE, timeout=60, num_attempts=1):
     res = session.execute(stmt, parameters=parameters, timeout=timeout)
