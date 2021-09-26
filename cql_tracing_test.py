@@ -22,6 +22,7 @@ import time
 import re
 
 from dtest_class import Tester, create_ks, create_cf
+from tools.queries import enable_slow_query_tracing, validate_slow_query_tracing_is_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -43,8 +44,7 @@ class PrepareClusterHelper(Tester):
 
         session = self.patient_cql_connection(node1, protocol_version=protocol_version)
         if create_keyspace:
-            if self._preserve_cluster:
-                session.execute("DROP KEYSPACE IF EXISTS ks")
+            session.execute("DROP KEYSPACE IF EXISTS ks")
             create_ks(session, 'ks', rf)
         return session
 
@@ -278,24 +278,6 @@ class TestSlowQueryTracing(PrepareClusterHelper):
     One of the tracing types is Slow Query Logging - records queries with handling time above the specified threshold
     """
 
-    @staticmethod
-    def enable_slow_query_tracing(node: ScyllaNode, fast: bool, threshold: int = 500000):
-        api_cmd = f"http://{node.address()}:10000/storage_service/slow_query?fast={str(fast).lower()}&enable=true" \
-                  f"&threshold={threshold}"
-        logger.debug("Enable slow query tracing: %s" % api_cmd)
-        r = requests.post(api_cmd)
-        assert r.status_code == 200, "Status code is %d. Expected 200. API enabling failed" % r.status_code
-
-    @staticmethod
-    def validate_slow_query_tracing_is_enabled(node: ScyllaNode, fast: bool, threshold: int = 500000):
-        api_cmd = f"http://{node.address()}:10000/storage_service/slow_query"
-        logger.debug("Validate that fast slow query tracing is enabled: %s" % api_cmd)
-        response = requests.get(api_cmd)
-        response_json = response.json()
-        assert response_json['fast'] == fast, f"Fast slow query tracing is {not fast}"
-        assert response_json['enable'], f"Slow query tracing is not enabled"
-        assert response_json['threshold'] == threshold, f"Slow query tracing is not enabled"
-
     @pytest.mark.parametrize("fast", [True, False], ids=["enabled", "disabled"])
     def test_fast_slow_query_tracing(self, fast):
         """
@@ -310,8 +292,8 @@ class TestSlowQueryTracing(PrepareClusterHelper):
         # Slow Query Logging - records queries with handling time above the specified threshold.
         # Set threshold to 500 (default is 500000) to get queries reported as slow
         threshold = 500
-        self.enable_slow_query_tracing(node=self.cluster.nodelist()[0], fast=fast, threshold=threshold)
-        self.validate_slow_query_tracing_is_enabled(node=self.cluster.nodelist()[0], fast=fast, threshold=threshold)
+        enable_slow_query_tracing(node=self.cluster.nodelist()[0], fast=fast, threshold=threshold)
+        validate_slow_query_tracing_is_enabled(node=self.cluster.nodelist()[0], fast=fast, threshold=threshold)
         node1 = self.cluster.nodelist()[0]
 
         logger.debug("Run cassandra-stress write load")
@@ -319,7 +301,9 @@ class TestSlowQueryTracing(PrepareClusterHelper):
                                                       "-schema replication(factor=1)", "-mode cql3 native",
                                                       "-rate threads=10"],
                                       capture_output=True)
-        assert stdout.strip().endswith("END"), f"Run c-s failed: {stderr}"
+        if stderr:
+            # Sometimes the stress is passed, but there are 'Failed to connect over JMX' errors in stderr
+            assert stdout.strip().endswith(("END", "DONE")), f"Run c-s failed: {stderr}"
 
         if fast:
             assert_none(session, query="select * from system_traces.events")
