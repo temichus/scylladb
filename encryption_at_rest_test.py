@@ -109,23 +109,16 @@ class BaseKeyProviderFactory(Tester):
     def prepare(self, node_num=2):
         self.cluster.populate(node_num).start(wait_for_binary_proto=True, wait_other_notice=True)
 
-    def prepare_system_key(self, dirname='./resources/system_keys/', keyfile='system_key', cipher_algorithm='AES/CBC/PKCS5Padding', secret_key_strength=128, reuse_key=True):
+    def prepare_system_key(self, dirname='./resources/system_keys/', keyfile='system_key', cipher_algorithm='AES/CBC/PKCS5Padding', secret_key_strength=128):
         if not os.path.exists(dirname):
             os.mkdir(dirname)
         dirname = os.path.realpath(dirname)
         dest = os.path.join(dirname, keyfile)
-        if reuse_key:
-            # use saved key in dtest repo, generate it in future
-            src = './resources/system_keys/system_key'  # AES/ECB/PKCS5Padding:128
-            if not os.path.exists(dest) or not os.path.samefile(src, dest):
-                shutil.copy(src, dest)
-        else:
-            src = '/etc/dse/conf/system_key_tmp'
-            subprocess.getoutput('sudo rm -f %s' % src)
-            subprocess.getoutput("sudo /home/amos/.ccm/repository/5.1.5/bin/dsetool createsystemkey '%s' %d system_key_tmp" %
-                                 (cipher_algorithm, secret_key_strength))
-            subprocess.getoutput('sudo cp %s %s' % (src, dest))
-            subprocess.getoutput('sudo chown $USER:$USER %s' % dest)
+        # use saved key in dtest repo, generate it in future
+        # the key can also be created by `dsetool createsystemkey $cipher_algorithm $strength`
+        src = './resources/system_keys/system_key'  # AES/ECB/PKCS5Padding:128
+        if not os.path.exists(dest) or not os.path.samefile(src, dest):
+            shutil.copy(src, dest)
 
         self.cluster.set_configuration_options({'system_key_directory': dirname})
         self.system_keyfile = dest
