@@ -2128,7 +2128,7 @@ class TestNodetool(Tester):
         expected_errors = [
             f"Scrubbing .* failed",
             f"Finished scrubbing .* invalid",
-            f"Compaction for {ks}/{cf} .*: scrub compaction failed",
+            f"Compaction for {ks}/{cf} .*: scrub compaction (failed|found invalid data)",
         ]
         timeout = 30 if self.cluster.scylla_mode != 'debug' else 90
         try:
