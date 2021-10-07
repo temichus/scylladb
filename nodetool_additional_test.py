@@ -1462,6 +1462,7 @@ class TestNodetool(Tester):
         path = os.path.join(node.get_path(), folder)
         os.chmod(path, mod)
 
+    @pytest.mark.single_node
     def test_nodetool_refresh_with_data_perms(self):
         """ Test that nodetool refresh return Permission denied
         when data folder is not writable
@@ -1470,28 +1471,32 @@ class TestNodetool(Tester):
         refresh failed with permission denied
         """
         error_to_track = re.compile("Storage I/O error: 13|Permission denied")
-        self.run_cluster()
+        self.run_cluster(nodes=1)
         node = self.cluster.nodelist()[0]
         self.stress_write(node, times=10000)
         node.flush()
         node.compact()
         node.nodetool("refresh keyspace1 standard1")
+
+        def get_errors(node, error_to_track):
+            return [line for line, _ in node.grep_log(error_to_track) if 'perf_event' not in line]
+
         try:
             self._change_data_perms(node, 'data', 644)
             output = node.nodetool("enablebinary", True)
             assert ('', '') == output, 'enablebinary not set'
-            errors = node.grep_log(error_to_track)
-            assert not len(errors), 'Permission denied errors found'
+            errors = get_errors(node, error_to_track)
+            assert not len(errors), f'Permission denied errors found: {errors}'
 
             output = node.nodetool("enablegossip", True)
-            assert ('', '') == output, 'enablebinary not set'
-            errors = node.grep_log(error_to_track)
-            assert not len(errors), 'Permission denied errors found'
+            assert ('', '') == output, 'enablegossip not set'
+            errors = get_errors(node, error_to_track)
+            assert not len(errors), f'Permission denied errors found: {errors}'
 
             with pytest.raises(NodetoolError) as err:
                 node.nodetool("refresh keyspace1 standard1")
-            assert error_to_track.search(str(err)), 'expected error not found in nodetool error message: {}'.format(
-                str(err))
+            assert error_to_track.search(
+                str(err.value)), f'expected error not found in nodetool error message: {err.value}'
         finally:
             self._change_data_perms(node, 'data', stat.S_IWRITE | stat.S_IREAD | stat.S_IEXEC)
             node.mark_log_for_errors()
