@@ -1,5 +1,7 @@
 import os.path
 
+from nose.plugins.attrib import attr
+
 from cassandra import ConsistencyLevel, InvalidRequest
 from cassandra.query import SimpleStatement
 from ccmlib.node import NodeError
@@ -9,6 +11,7 @@ from dtest import Tester, debug
 from tools import rows_to_list
 
 
+@attr('single_node')
 class AuditTester(Tester):
     audit_default_settings = {'audit': 'table',
                               'audit_categories': 'ADMIN,AUTH,QUERY,DML,DDL,DCL',
@@ -16,6 +19,8 @@ class AuditTester(Tester):
 
     def prepare(self, ordered=False, create_keyspace=True, use_cache=False, nodes=1, rf=1, protocol_version=None,
                 user=None, password=None, experimental=False, audit_settings=audit_default_settings, **kwargs):
+        debug(f"Preparing cluster with {nodes} node(s): rf={rf} ordered={ordered} use_cache={use_cache} audit_settings={audit_settings}")
+
         cluster = self.cluster
 
         if ordered:
@@ -40,7 +45,7 @@ class AuditTester(Tester):
             cluster.set_configuration_options(values=config)
 
         if not cluster.nodelist():
-            cluster.populate(nodes).start(wait_for_binary_proto=True)
+            cluster.populate([nodes]).start(wait_for_binary_proto=True)
         node1 = cluster.nodelist()[0]
 
         session = self.patient_cql_connection(node1, protocol_version=protocol_version, user=user, password=password)
