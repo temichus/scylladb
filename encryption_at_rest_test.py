@@ -6,7 +6,7 @@ import shutil
 import re
 
 from enum import Enum
-from cassandra import ReadTimeout, ReadFailure, ConsistencyLevel
+from cassandra import ReadFailure, ConsistencyLevel
 from cassandra.cluster import NoHostAvailable
 
 from dtest import Tester, debug, warning
@@ -269,7 +269,8 @@ class EncryptionAtRestBase(Tester):
         session = self.get_session()
         for ks in kss:
             session.execute(
-                "CREATE KEYSPACE IF NOT EXISTS %s WITH REPLICATION = {'class' : 'SimpleStrategy', 'replication_factor' : %d }" % (ks, n))
+                f"CREATE KEYSPACE IF NOT EXISTS {ks} WITH REPLICATION = {{'class' : 'SimpleStrategy', "
+                f"'replication_factor' : {n} }}")
         return session
 
     def cleanup(self, kss=['ks']):
@@ -310,10 +311,19 @@ class EncryptionAtRestBase(Tester):
             raise Exception('Unknown key_provider: %s' % key_provider)
         return ret
 
-    def _smoke_test(self, key_provider=KeyProviderEnum.local, cipher_algorithm=None, secret_key_strength=None, compression=None):
+    def _smoke_test(self, key_provider=KeyProviderEnum.local, cipher_algorithm=None, secret_key_strength=None,
+                    compression=None):
+        # Our KMIP server is not configured to support this configuration.
+        # Test fails with error: Invalid key data length 80 for RC2/CBC and kmip.
+        # Decided (Roy) don't test it
+        if key_provider == KeyProviderEnum.kmip and 'RC2' in cipher_algorithm and secret_key_strength == 80:
+            debug("Our KMIP server is not configured to support this configuration. "
+                  "The test will not be run with this configuration")
+            return
+
         kp = self.get_key_provider(key_provider)
         kp.prepare_conf()
-        session = self.prepare(restart=key_provider == KeyProviderEnum.kmip)
+        session = self.prepare(restart=key_provider == KeyProviderEnum.kmip, n=self.default_node_num)
         if cipher_algorithm and secret_key_strength:
             kp.create_encrypted_cf(session, name='ks.cf', cipher_algorithm=cipher_algorithm,
                                    secret_key_strength=secret_key_strength, compression=compression)
@@ -477,6 +487,50 @@ class EncryptionAtRestBase(Tester):
 
 class EncryptionAtRestTest(EncryptionAtRestBase):
     __test__ = True
+    default_node_num = 1
+
+    def _test_one_cipher_mode(self, tested_cipher_key_string: str, key_size: int, value: KeyProviderEnum) -> str:
+        debug(f'---- Test with {tested_cipher_key_string} , length {key_size}, key provider {value} ----')
+        try:
+            EncryptionAtRestBase._smoke_test(self, key_provider=value,
+                                             cipher_algorithm=tested_cipher_key_string,
+                                             secret_key_strength=key_size)
+            # Our KMIP server is not configured to support this configuration.
+            # Test fails with error: Invalid key data length 80 for RC2/CBC and kmip.
+            # Decided (Roy) don't test it
+            # TODO: In case of wrong block mode Scylla silently falls back to no block mode if openssl does
+            # TODO: not like the input. Next validation should be uncomment when issue
+            #  https://github.com/scylladb/scylla-enterprise/issues/1973 will be resolve
+            # if not (value == KeyProviderEnum.kmip and 'RC2' in tested_cipher_key_string and key_size == 80):
+            #   unexpected_success.append(f"Encryption option: 'key_provider': '{value}', "
+            #                               f"'cipher_algorithm': '{tested_cipher_key_string}', "
+            #                               f"'secret_key_strength': {key_size}")
+
+        except NoHostAvailable as exc_details:
+            error_message_to_str = str(exc_details)
+            debug(error_message_to_str)
+            assert (f"Invalid algorithm string: {tested_cipher_key_string}" in error_message_to_str
+                    or (f"Invalid algorithm" in error_message_to_str and
+                        tested_cipher_key_string in error_message_to_str)
+                    or 'Could not write key file' in error_message_to_str
+                    or ('[Server error] message=' in error_message_to_str and 'abc' in error_message_to_str)
+                    or 'non-supported padding option' in error_message_to_str
+                    # TODO: There are a few cases when we have nested exceptions that "hide" the original message
+                    # TODO: once it reaches cql layer. So the error message is returned empty
+                    # TODO: Issue: https://github.com/scylladb/scylla/issues/9497
+                    #  TODO: Remove next condition when the issue will be resolved
+                    or error_message_to_str == "('Unable to complete the operation against any hosts', {})"
+                    ), error_message_to_str
+
+        except Exception as exc:
+            return (f"Unexpected exception: {exc}. "
+                    f"Encryption option: 'key_provider': '{value}', "
+                    f"'cipher_algorithm': '{tested_cipher_key_string}', "
+                    f"'secret_key_strength': {key_size}")
+
+        EncryptionAtRestBase.cleanup(self)
+
+        return ''
 
     def encryption_table_compression_test(self):
         for i in [None, 'LZ4', 'Snappy', 'Deflate']:
@@ -484,46 +538,46 @@ class EncryptionAtRestTest(EncryptionAtRestBase):
             EncryptionAtRestBase._smoke_test(self, key_provider=KeyProviderEnum.local, compression=i)
             EncryptionAtRestBase.cleanup(self)
 
+    def test_wrong_cipher_algorithm_test(self):
+        errors = []
+        # TODO: Uncomment next line when issue https://github.com/scylladb/scylla-enterprise/issues/1973 will be resolve
+        # unexpected_success = []
+        for cipher_key_string, key_sizes in supported_cipher_algorithms.items():
+            for key_size in key_sizes:
+                for value in KeyProviderEnum:
+                    for additional_str in ['Abc/', '/Abc', 'Abc']:
+                        tested_cipher_key_string = f'{cipher_key_string}{additional_str}'  # suffix
+                        error = self._test_one_cipher_mode(tested_cipher_key_string, key_size, value)
+                        if error:
+                            errors.append(error)
+
+                        tested_cipher_key_string = f'{additional_str}{cipher_key_string}'  # prefix
+                        error = self._test_one_cipher_mode(tested_cipher_key_string, key_size, value)
+                        if error:
+                            errors.append(error)
+
+        # TODO: Uncomment next line when issue https://github.com/scylladb/scylla-enterprise/issues/1973 will be resolve
+        # assert not unexpected_success, "Negative tests succeeded unexpectedly: %s" % '\n'.join(unexpected_success)
+
+        assert not errors, errors
+
     def supported_cipher_algorithms_test(self):
         errors = []
-        for k, v in supported_cipher_algorithms.items():
-            for i in v:
-                debug('---- Test with %s , length %s ----' % (k, i))
-                for name, value in KeyProviderEnum.__members__.items():
-                    # negative test with wrong cipher algorithm
-                    for additional_str in ['Abc/', '/Abc', 'Abc']:
-                        cipher = f'{k}{additional_str}'  # suffix
-                        try:
-                            EncryptionAtRestBase._smoke_test(self, key_provider=value,
-                                                             cipher_algorithm=cipher, secret_key_strength=i)
-                        except NoHostAvailable as e:
-                            debug(str(e))
-                            assert f"Invalid algorithm string: {cipher}" in str(
-                                e) or f"Invalid algorithm: {cipher}" in str(
-                                e) or 'Could not write key file' in str(e) or (
-                                '[Server error] message=' in str(e) and 'abc' in str(e))
-
-                        cipher = f'{additional_str}{k}'  # prefix
-                        try:
-                            EncryptionAtRestBase._smoke_test(self, key_provider=value,
-                                                             cipher_algorithm=cipher, secret_key_strength=i)
-                        except NoHostAvailable as e:
-                            debug(str(e))
-                            assert f"Invalid algorithm string: {cipher}" in str(
-                                e) or f"Invalid algorithm: {cipher}" in str(
-                                e) or 'Could not write key file' in str(e) or (
-                                '[Server error] message=' in str(e) and 'abc' in str(e))
-
-                    # positive test with correct cipher algorithm
+        for cipher_key_string, key_sizes in supported_cipher_algorithms.items():
+            for key_size in key_sizes:
+                for value in KeyProviderEnum:
+                    debug(f'---- Test with {cipher_key_string} , length {key_size}, key provider {value} ----')
                     try:
                         EncryptionAtRestBase._smoke_test(self, key_provider=value,
-                                                         cipher_algorithm=k, secret_key_strength=i)
+                                                         cipher_algorithm=cipher_key_string,
+                                                         secret_key_strength=key_size)
                     except Exception as e:
                         debug(str(e))
-                        errors.append(e)
-                    finally:
-                        EncryptionAtRestBase.cleanup(self)
-        # check if error occured in positive tests
+                        errors.append(f"Test with configuration '{cipher_key_string}, length {key_size}, "
+                                      f"key provider {value}' failed. Error {e}")
+
+                    EncryptionAtRestBase.cleanup(self)
+
         assert len(errors) == 0, errors
 
     def abbreviated_supported_cipher_algorithms_test(self):
@@ -537,7 +591,7 @@ class EncryptionAtRestTest(EncryptionAtRestBase):
             tested.add(k)
             i = v[0]
             debug('---- Test with %s , length %s ----' % (k, i))
-            for name, value in KeyProviderEnum.__members__.items():
+            for value in KeyProviderEnum:
                 try:
                     EncryptionAtRestBase._smoke_test(self, key_provider=value,
                                                         cipher_algorithm=k, secret_key_strength=i)
@@ -547,23 +601,23 @@ class EncryptionAtRestTest(EncryptionAtRestBase):
                     EncryptionAtRestBase.cleanup(self)
 
     def multiple_ks_test(self):
-        for name, value in KeyProviderEnum.__members__.items():
+        for value in KeyProviderEnum:
             kss = EncryptionAtRestBase._multiple_ks_test(self, key_provider=value)
             EncryptionAtRestBase.cleanup(self, kss=kss)
 
     def multiple_cf_test(self):
-        for name, value in KeyProviderEnum.__members__.items():
+        for value in KeyProviderEnum:
             EncryptionAtRestBase._multiple_cf_test(self, key_provider=value)
             EncryptionAtRestBase.cleanup(self)
 
     def reboot_test(self):
-        for name, value in KeyProviderEnum.__members__.items():
+        for value in KeyProviderEnum:
             EncryptionAtRestBase._reboot_test(self, key_provider=value)
             EncryptionAtRestBase.cleanup(self)
 
     @require('scylladb/scylla-enterprise#1787')
     def alter_test(self):
-        for name, value in KeyProviderEnum.__members__.items():
+        for value in KeyProviderEnum:
             EncryptionAtRestBase._alter_test(self, key_provider=value)
             EncryptionAtRestBase.cleanup(self)
 
