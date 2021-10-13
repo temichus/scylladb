@@ -678,7 +678,61 @@ class TestLwt(Tester):
         # assert_all(session3, f"select key, v1 from lwt.{table_name}", expected=[[0, 202]])
 
 
-#
+@attr('dtest-full')
+class PaxosBugTest(Tester):
+
+    def test_synced_most_recent_commit_in_cas_should_not_cause_timeouts(self):
+        """Test for https://issues.apache.org/jira/browse/CASSANDRA-12043:
+        Syncing most recent commit in CAS across replicas can cause all CAS queries in the CQL partition to fail
+        """
+        self.cluster.populate(3).start(wait_for_binary_proto=True)
+        session_a = self.exclusive_cql_connection(self.cluster.nodelist()[0])
+        self.prepare_a_table_with_paxos_grace_seconds_set_to_120(session_a)
+        self.insert_data_on_nodes_A_and_B(session_a)
+        self.wait_seconds(60)
+        self.query_data_from_nodes_A_and_C_with_consistency_serial(session_a)
+        self.wait_seconds(60)
+        self.query_data_from_nodes_A_and_C_with_consistency_serial(session_a)  # should not timeout
+
+    @staticmethod
+    def wait_seconds(seconds):
+        debug(f"Waiting {seconds} seconds")
+        sleep(seconds)
+
+    def prepare_a_table_with_paxos_grace_seconds_set_to_120(self, session):
+        self.create_ks(session=session, name="paxos_bug", rf=3)
+        debug(f"Create table with paxos_grace_seconds set to 120 sec.")
+        self.create_cf(session=session, name="cassandra_12043", key_type='int', columns={'v1': 'int'},
+                       paxos_grace_seconds=120)
+
+    def insert_data_on_nodes_A_and_B(self, session):
+        debug("stoping node C")
+        node_a, node_b, node_c = self.cluster.nodelist()
+        node_c.stop()
+        debug("inserting data")
+        query = SimpleStatement(
+            f"INSERT INTO cassandra_12043 (key, v1) VALUES (%s, %s) IF NOT EXISTS",
+            consistency_level=ConsistencyLevel.QUORUM)
+        session.execute(query, (1, 1))
+        debug("flush data to disk")
+        node_a.flush()
+        node_b.flush()
+
+    def query_data_from_nodes_A_and_C_with_consistency_serial(self, session):
+        node_a, node_b, node_c = self.cluster.nodelist()
+        if node_b.is_running():
+            debug("Stopping node B")
+            node_b.stop()
+        if not node_c.is_running():
+            debug("Starting node C")
+            node_c.start(wait_for_binary_proto=True, wait_other_notice=True)
+        debug("query nodes A and C with consistency SERIAL")
+        query = SimpleStatement(
+            f"select * from cassandra_12043 where key = 1;",
+            consistency_level=ConsistencyLevel.SERIAL)
+        session.execute(query)
+
+
 # Read Linearizability Test
 #
 NODES = 3
