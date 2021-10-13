@@ -1,21 +1,24 @@
+import pytest
 import time
-
-from dtest import Tester, debug
+import logging
+from dtest_class import Tester, create_ks
 
 from cassandra.concurrent import execute_concurrent_with_args
+logger = logging.getLogger(__name__)
 
 
+@pytest.mark.dtest_full
 class TestGlobalRowKeyCache(Tester):
 
-    def functional_test(self):
+    def test_with_different_cache_sizes(self):
         cluster = self.cluster
         cluster.populate(3)
         node1 = cluster.nodelist()[0]
 
         for keycache_size in (0, 10):
             for rowcache_size in (0, 10):
-                debug("Testing with keycache size of %d MB, rowcache size of %d MB " %
-                      (keycache_size, rowcache_size))
+                logger.info("Testing with keycache size of %d MB, rowcache size of %d MB " %
+                            (keycache_size, rowcache_size))
                 keyspace_name = 'ks_%d_%d' % (keycache_size, rowcache_size)
 
                 # make the caches save every five seconds
@@ -29,7 +32,7 @@ class TestGlobalRowKeyCache(Tester):
                 cluster.start()
                 session = self.patient_cql_connection(node1)
 
-                self.create_ks(session, keyspace_name, rf=3)
+                create_ks(session, keyspace_name, rf=3)
 
                 session.set_keyspace(keyspace_name)
                 session.execute("CREATE TABLE test (k int PRIMARY KEY, v1 int, v2 int)")
@@ -88,12 +91,12 @@ class TestGlobalRowKeyCache(Tester):
                 session.shutdown()
 
                 # let the data be written to the row/key caches.
-                debug("Letting caches be saved to disk")
+                logger.info("Letting caches be saved to disk")
                 time.sleep(10)
-                debug("Stopping cluster")
+                logger.info("Stopping cluster")
                 cluster.stop()
                 time.sleep(1)
-                debug("Starting cluster")
+                logger.info("Starting cluster")
                 cluster.start()
                 time.sleep(5)  # read the data back from row and key caches
 
@@ -103,44 +106,44 @@ class TestGlobalRowKeyCache(Tester):
                 # check all values again
                 self._validate_values(session, num_updates, validation_round=2)
 
-    def _validate_values(self, session, num_updates, validation_round):
+    @staticmethod
+    def _validate_values(session, num_updates, validation_round):
         # check values of non-counter tables
         for cf in ('test', 'test_clustering'):
             rows = list(session.execute("SELECT * FROM %s" % (cf,)))
 
             # one row gets deleted each validation round
-            self.assertEquals(100 - (validation_round + 1), len(rows))
+            assert 100 - (validation_round + 1) == len(rows)
 
             # adjust enumeration start to account for row deletions
             for i, row in enumerate(sorted(rows), start=(validation_round + 1)):
-                self.assertEquals(i, row.k)
-                self.assertEquals(i, row.v1)
-
+                assert i == row.k
+                assert i == row.v1
                 # updated rows will have different values
                 expected_value = validation_round if i < num_updates else i
-                self.assertEquals(expected_value, row.v2)
+                assert expected_value == row.v2
 
         # check values of counter tables
         rows = list(session.execute("SELECT * FROM test_counter"))
-        self.assertEquals(100, len(rows))
+        assert 100, len(rows)
         for i, row in enumerate(sorted(rows)):
-            self.assertEquals(i, row.k)
+            assert i == row.k
 
             # updated rows will get incremented once each round
             expected_value = i
             if i < num_updates:
                 expected_value += validation_round + 1
 
-            self.assertEquals(expected_value, row.v1)
+            assert expected_value == row.v1
 
         rows = list(session.execute("SELECT * FROM test_counter_clustering"))
-        self.assertEquals(100, len(rows))
+        assert 100, len(rows)
         for i, row in enumerate(sorted(rows)):
-            self.assertEquals(i, row.k)
-            self.assertEquals(i, row.v1)
+            assert i == row.k
+            assert i == row.v1
 
             expected_value = i
             if i < num_updates:
                 expected_value += validation_round + 1
 
-            self.assertEquals(expected_value, row.v2)
+            assert expected_value == row.v2

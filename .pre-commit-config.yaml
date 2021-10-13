@@ -148,7 +148,8 @@ repos:
                 limits_test.py |
                 metadata_tests.py|
                 repair_test.py |
-                paging_additional_test.py
+                paging_additional_test.py |
+                global_row_key_cache_test.py
             )$
         language: system
         types: [python]
