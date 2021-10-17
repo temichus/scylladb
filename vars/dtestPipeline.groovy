@@ -6,8 +6,8 @@ def call(Map pipelineParams) {
             booleanParam(name: 'SKIP_DTEST_HEAVY', defaultValue: false, description: 'Check this to skip DtestHeavy, when running in parallel mode only!.')
             booleanParam(name: 'SKIP_DTEST_LONG', defaultValue: false, description: 'Check this to skip DtestLong, when running in parallel mode only!.')
             string(name: 'NODE_PARAM', defaultValue: 'scylla-dtest', description: 'Machine to run on. Useful options for parallel dtest: packager, or for local runs: monster, godzilla.')
-            string(name: 'SPLIT_FLEET_LABEL', defaultValue: '', description: 'On which spot instance fleet to run the parallel jobs. default: dtest-fleet')
-            string(name: 'SPLIT_TIME_TARGET', defaultValue: '45', description: 'Time period (minutes) for a test group to run. Used to calculate the needed number of spot machines')
+            string(name: 'SPLIT_FLEET_LABEL', defaultValue: '', description: 'On which spot instance fleet to run the parallel jobs. default: ec2-fleet-Sdtest2')
+            string(name: 'SPLIT_TIME_TARGET', defaultValue: '240', description: 'Time period (minutes) for a test group to run. Used to calculate the needed number of spot machines')
             string(name: 'SPLIT_MAX_NODES', defaultValue: '100', description: 'Maximum number of nodes to run tests on parallel.')
             string(name: 'BRANCH', defaultValue: "${pipelineParams.get('BRANCH', 'master')}", description: 'Choose: master|branch-4.4')
             string(name: 'PRODUCT_NAME', defaultValue: "${pipelineParams.get('PRODUCT_NAME', 'scylla')}", description: 'Choose: scylla|scylla-enterprise')
@@ -18,8 +18,9 @@ def call(Map pipelineParams) {
             string(name: 'RELOC_WEB_URL', defaultValue: 'latest', description: 'URL to take reloc items from. Use when reloc is not available on jenkins, or when running on AWS, which will download faster from S3.')
             booleanParam(name: 'DTEST_DEBUG_INFO', defaultValue: false, description: 'Check this to set env PRINT_DEBUG=true and DEBUG=true when running dtest')
             booleanParam(name: 'DTEST_KEEP_LOGS', defaultValue: false, description: 'Check this, to keep dtest logs (set KEEP_LOGS=true)')
-            string(name: 'INCLUDE_DTESTS', defaultValue: '' , description: 'Specify which dtests to run. default for release: -a dtest-full,!next-gating,!dtest-long,!dtest-heavy, for debug: -a dtest-debug. bootstrap_test:TestBootstrap.start_stop_test_node - just an example of a specific dtest. Pay attention to syntax. Tests should be separated by spaces, attributes by commas.')
-            string(name: 'EXCLUDE_DTESTS', defaultValue: '', description: 'Specify dtests to exclude.')
+            string(name: 'INCLUDE_DTESTS', defaultValue: '' , description: """Specify which dtests to run. default for release:
+                                                                 -m '"dtest_full and not dtest_heavy and not dtest_long"',
+                                                                 for debug: -m dtest_debug """)
             string(name: 'SCYLLA_EXT_OPTS_EXTRA_SETTINGS', defaultValue: '--abort-on-seastar-bad-alloc --abort-on-lsa-bad-alloc=1', description: 'Anything you put here will be added to any default settings of SCYLLA_EXT_OPTS env var sent to nose.')
             string(name: 'SCYLLA_EXT_ENV_EXTRA_SETTINGS', defaultValue: 'ASAN_OPTIONS=disable_coredump=0:abort_on_error=1;UBSAN_OPTIONS=halt_on_error=1:abort_on_error=1;BOOST_TEST_CATCH_SYSTEM_ERRORS=no', description: 'Anything you put here will be added to any default settings of SCYLLA_EXT_ENV env var sent to nose.')
             string(name: 'SCYLLA_DTEST_REPO', defaultValue: '', description: '')
@@ -31,7 +32,7 @@ def call(Map pipelineParams) {
         }
 
         agent {
-            label "aws-sct-builders-eu-west-1"
+            label "aws-sct-builders-us-east-1"
         }
 
         options {
