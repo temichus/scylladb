@@ -460,6 +460,7 @@ class ScyllaManagerRepairApi(ScyllaManagerApiBase):
             "parallel": "--parallel",
             "is_show_tables": "--show-tables",
             "small_table_threshold": "--small-table-threshold",
+            "ignore_down_hosts": "--ignore-down-hosts",
             "start_date": "--start-date",
             "cluster_name": "--cluster",
         }
@@ -467,7 +468,7 @@ class ScyllaManagerRepairApi(ScyllaManagerApiBase):
         super().__init__(sctool=sctool, cmd_translate_dict=cmd_translate_dict, parsers=parsers)
 
     def repair(self,  # pylint: disable=too-many-arguments
-               dc_names: list or str = None, dry_run: bool = None,
+               dc_names: list or str = None, dry_run: bool = None, ignore_down_hosts: bool = None,
                is_fail_fast: bool = None, intensity: float = None, interval: str = None,
                keyspace_list: list or str = None, num_retries: int = None, parallel: int = None,
                is_show_tables: bool = None, small_table_threshold: str = None, start_date: str = None,
@@ -523,7 +524,7 @@ class ScyllaManagerRepairApi(ScyllaManagerApiBase):
 
     def update(self,  # pylint: disable=too-many-arguments
                repair_id: str, dc_names: list or str = None, dry_run: bool = None, enabled: str = None,
-               is_fail_fast: bool = None, intensity: float = None, interval: str = None,
+               is_fail_fast: bool = None, intensity: float = None, interval: str = None, ignore_down_hosts: bool = None,
                keyspace_list: list or str = None, num_retries: int = None, parallel: int = None,
                is_show_tables: bool = None, small_table_threshold: str = None, start_date: str = None,
                cluster_name: str = None, sctool_kwargs: dict = None):
@@ -1169,12 +1170,12 @@ class RepairTask(ManagerTask):
     def update(self, dc_names: list or str = None, dry_run: bool = None, enabled: str = None, is_fail_fast: bool = None,
                intensity: float = None, interval: str = None, keyspace_list: list or str = None,
                num_retries: int = None, is_show_tables: bool = None, small_table_threshold: str = None,
-               start_date: str = None, sctool_kwargs: dict = None, **kwargs):
+               start_date: str = None, sctool_kwargs: dict = None, ignore_down_hosts: bool = None, **kwargs):
         if kwargs:
             raise ScyllaManagerError(f"The following variables are unused '{pformat(kwargs)}'")
         return self.repair_api.update(
             repair_id=self.id, dc_names=dc_names, dry_run=dry_run, enabled=enabled,
-            is_fail_fast=is_fail_fast, intensity=intensity, interval=interval,
+            is_fail_fast=is_fail_fast, intensity=intensity, interval=interval, ignore_down_hosts=ignore_down_hosts,
             keyspace_list=keyspace_list, num_retries=num_retries,  is_show_tables=is_show_tables,
             small_table_threshold=small_table_threshold, start_date=start_date, cluster_name=self.cluster_id,
             sctool_kwargs=sctool_kwargs)

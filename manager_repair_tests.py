@@ -540,3 +540,52 @@ class TestScyllaMgmtRepair(Tester, ScyllaManagerMixin):
             f"The '{intensity_field}' not found under 'task progress' command"
         assert parallel_field in full_progress_string, \
             f"The '{parallel_field}' not found under 'task progress' command"
+
+    def test_ignore_down_hosts_with_one_down_host(self):
+        """
+        The test starts a cluster and takes down one of the nodes.
+        Afterwards, we start a normal repair, expecting it to fail, and another repair with the ignore-down-hosts
+        parameter, expecting the task to succeed.
+        """
+        node1, node2, node3 = self.config_and_create_cluster(nodes=3)
+        mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
+        keyspace_name = "keyspace1"
+        table_name = "cf1"
+
+        with self.patient_cql_cluster_session(node1) as session:
+            self.create_ks(session=session, name=keyspace_name, rf=3)
+            self.create_cf(session=session, name=table_name)
+
+        node3.stop(wait_other_notice=True)
+
+        regular_repair_task = mgr_cluster.repair_api.repair(cluster_name=mgr_cluster.id, keyspace_list=keyspace_name,
+                                                            num_retries=1)
+        regular_repair_task.wait_and_get_final_status(step=5)
+        assert regular_repair_task.status == TaskStatus.ERROR, \
+            "Without the ignore-down-hosts parameter, the repair task did not fail when one of the nodes was DN"
+
+        ignoring_repair_task = mgr_cluster.repair_api.repair(cluster_name=mgr_cluster.id, keyspace_list=keyspace_name,
+                                                             ignore_down_hosts=True)
+        ignoring_repair_task.wait_and_get_final_status(step=5)
+        assert ignoring_repair_task.status == TaskStatus.DONE, \
+            "Even with ignore-down-hosts parameter, the repair task has failed when one of the nodes was DN"
+
+    def test_ignore_down_hosts_with_fully_functioning_cluster(self):
+        """
+        The test creates a regular cluster, and starts a repair task with the ignore-down-hosts parameter.
+        The repair is expected to be successful, even though all of the nodes were UN.
+        """
+        node1, *_ = self.config_and_create_cluster(nodes=3)
+        mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
+        keyspace_name = "keyspace1"
+        table_name = "cf1"
+
+        with self.patient_cql_cluster_session(node1) as session:
+            self.create_ks(session=session, name=keyspace_name, rf=3)
+            self.create_cf(session=session, name=table_name)
+
+        repair_task = mgr_cluster.repair_api.repair(cluster_name=mgr_cluster.id, keyspace_list=keyspace_name,
+                                                    ignore_down_hosts=True)
+        repair_task.wait_and_get_final_status(step=5)
+        assert repair_task.status == TaskStatus.DONE, \
+            "A repair with ignore-down-hosts parameter has failed, even when the entire cluster was UN"
