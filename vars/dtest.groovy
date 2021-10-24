@@ -303,3 +303,87 @@ def doParallelDtest (Map args) {
     }
     parallel branches
 }
+
+
+def doDtest (Map args) {
+	// Parameters:
+	// boolean (default false): dryRun - Run builds on dry run (that will show commands instead of really run them).
+	// boolean (default false): dtestDebugInfoFlag - Set to run with debug info
+	// boolean (default false): dtestKeepLogsFlag - Set to keep logs
+	// String (default null) excludeTests: List of tests to exclude.
+	// String (default null) includeTests: List of tests to include.
+	// String (default null) extOpts: Any set of external dtest options.
+	// String (default null) extEnv: Any set of env settings
+	// String (default null) randomDtests: Number of tested modes.
+	// String (default null) randomDtestsSeed:
+	// String (default null) dtestRepeats: How many times to repeat the dtests.
+	// String (mandatory) dtestMode release|debug
+	jenkins.traceFunctionParams ("test.doDtest", args)
+
+	boolean dryRun = args.dryRun ?: false
+	boolean dtestDebugInfoFlag = args.dtestDebugInfoFlag ?: false
+	boolean dtestKeepLogsFlag = args.dtestKeepLogsFlag ?: false
+	String excludeTests = args.excludeTests ?: ""
+	String includeTests = args.includeTests ?: ""
+	String extOpts = args.extOpts ?: ""
+	String extEnv = args.extEnv ?: ""
+	String randomDtests = args.randomDtests ?: ""
+	String randomDtestsSeed = args.randomDtestsSeed ?: ""
+	String dtestRepeats = args.dtestRepeats ?: "1"
+	String testRunner = args.testRunner ?: ""
+	String architecture = args.architecture ?: ""
+
+	echo "Calling dtest in docker toolchain"
+	String dtestScript = "$WORKSPACE/scylla-dtest/scripts/pytest_dtest.sh"
+	String dtestParameters = setDtestParams (
+			dryRun: dryRun,
+			dtestMode: args.dtestMode,
+			dtestDebugInfoFlag: dtestDebugInfoFlag,
+			dtestKeepLogsFlag: dtestKeepLogsFlag,
+			excludeTests: excludeTests,
+			includeTests: includeTests,
+			extOpts: extOpts,
+			extEnv: extEnv,
+			randomDtests: randomDtests,
+			randomDtestsSeed: randomDtestsSeed,
+			dtestRepeats: dtestRepeats
+		)
+
+	boolean dtestFailed = false
+	boolean publishFailed = false
+	boolean needToPublish = ( ! dryRun)
+
+	env.NODE_INDEX = generalProperties.smpNumber
+
+	try {
+        sh "set -o pipefail; $dtestScript $dtestParameters 2>&1 | tee output_dtest.txt"
+	} catch (org.jenkinsci.plugins.workflow.steps.FlowInterruptedException interruptEx) {
+		currentBuild.result = 'ABORTED'
+		error("Interrupt exception (abort) while dtest phase, error: |$interruptEx|")
+	} catch (error) {
+		if (currentBuild.currentResult == 'ABORTED') {
+			error("Interrupt exception (abort) while dtest phase, error: |$error|")
+		} else {
+			dtestFailed = true
+			echo "Error: dtest phase failed, going ahead to check tests and dtest status, error: |$error|"
+			currentBuild.result = 'FAILURE'
+		}
+	} finally {
+		if (needToPublish) {
+			publishFailed |= artifact.publishArtifactsStatus("scylla-dtest.${args.dtestMode}.${NODE_INDEX}*.xml", WORKSPACE)
+			publishFailed |= artifact.publishArtifactsStatus("**/logs-${args.dtestMode}.${NODE_INDEX}/**/*", 'scylla-dtest')
+			publishFailed |= publishTestResults("scylla-dtest.${args.dtestMode}.${NODE_INDEX}*.xml", WORKSPACE)
+		}
+	}
+
+	String errorDescription = "dtest phase"
+	if (publishFailed) {
+		errorDescription = "Failed to publish some dtest artifact(s)"
+	}
+	if (dtestFailed) {
+		errorDescription = "dtest failed"
+	}
+	boolean failedStatus = dtestFailed || publishFailed
+
+	jenkins.raiseErrorOnFailureStatus (failedStatus, errorDescription)
+}

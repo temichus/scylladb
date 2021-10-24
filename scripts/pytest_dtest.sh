@@ -38,7 +38,7 @@ function cleanup_workspace {
   sudo rm -Rf logs
   sudo rm -Rf logs-$mode.$NODE_INDEX
   mkdir logs-$mode.$NODE_INDEX
-  rm -Rf ../scylla-dtest.$mode.$NODE_INDEX.xml
+  rm -Rf $WORKSPACE/scylla-dtest.$mode.$NODE_INDEX.xml
   set -e
 }
 
@@ -288,7 +288,7 @@ export HOME=$home_dir
 export mb_per_cpu=512
 export nodes_per_cluster=3
 
-PYTEST_FLAGS="-v --junit-xml=../scylla-dtest.$mode.$NODE_INDEX.xml"
+PYTEST_FLAGS="-v --junit-xml=$WORKSPACE/scylla-dtest.$mode.$NODE_INDEX.xml"
 export XDIST_PROCESSES=$(xdist_processes "$smp" "$nodes_per_cluster" "$mb_per_cpu")
 PYTEST_FLAGS="${PYTEST_FLAGS} -n ${XDIST_PROCESSES}"
 

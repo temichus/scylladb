@@ -61,3 +61,25 @@ def checkAndTagAwsInstance (String runningUserID) {
 		}
 	}
 }
+
+def raiseErrorOnFailureStatus (boolean status, String description) {
+	if (status) {
+		echo "Error: $description"
+		if (currentBuild.currentResult != "ABORTED") {
+			currentBuild.result = 'FAILURE'
+			error("$description")
+		}
+	}
+}
+
+def getChangedFilesList() {
+    changedFiles = []
+    for (changeLogSet in currentBuild.changeSets) {
+        for (entry in changeLogSet.getItems()) { // for each commit in the detected changes
+            for (file in entry.getAffectedFiles()) {
+                changedFiles.add(file.getPath()) // add changed file to list
+            }
+        }
+    }
+    return changedFiles
+}

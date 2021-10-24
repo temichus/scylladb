@@ -1,4 +1,5 @@
 #!groovy
+def lib = library identifier: 'dtest@snapshot', retriever: legacySCM(scm)
 
 def pullRequestSetResult(String status, String context, String description){
 	if (env.CHANGE_ID) {
@@ -13,15 +14,15 @@ def pullRequestSetResult(String status, String context, String description){
 }
 
 def pullRequestContainsLabels(String labels){
-	if (!changeRequest() || !env.CHANGE_ID){
-		return false
-	}
-	def labels_to_look_for = labels.split(',')
-	def result = false
-	pullRequest.labels.each {
-		if (labels_to_look_for.contains(it)){
-			result = true
-		}
+	result = false
+	if (changeRequest() || env.CHANGE_ID){
+        def labels_to_look_for = labels.split(',')
+
+        pullRequest.labels.each {
+            if (labels_to_look_for.contains(it)){
+                result = true
+            }
+        }
 	}
 	return result
 }
@@ -37,6 +38,11 @@ pipeline {
     options {
         timestamps()
         buildDiscarder(logRotator(numToKeepStr: '10'))
+    }
+    parameters {
+        string(name: 'PRODUCT_NAME', defaultValue: "scylla", description: 'Choose: scylla|scylla-enterprise')
+        string(name: 'BRANCH', defaultValue: "master", description: 'Choose: master|branch-4.4')
+        booleanParam(name: 'DRY_RUN', defaultValue: false, description: 'Check this to check pipeline syntax. will not perform anything.')
     }
     stages {
         stage("precommit") {
@@ -65,5 +71,88 @@ pipeline {
                 }
             }
         }
+        stage("test") {
+            when {
+                expression {
+                    return (changeRequest() || env.CHANGE_ID) && pullRequestContainsLabels("test/PR")
+                }
+            }
+            options {
+                timeout(time: 30, unit: 'MINUTES')
+            }
+            steps {
+                script {
+                    try {
+                        def changedFiles = jenkins.getChangedFilesList()
+                        def testFiles = changedFiles.findAll({it =~ /.*test.*py/})
+
+                        RELOC_JOB_NAME = params.RELOC_JOB_NAME ?: "next"
+                        BUILD_MODE = params.BUILD_MODE ?: "release"
+                        SCYLLA_DTEST_REPO = params.SCYLLA_DTEST_REPO ?: "git@github.com:${env.CHANGE_FORK}/scylla-dtest.git"
+                        SCYLLA_DTEST_BRANCH = params.SCYLLA_DTEST_BRANCH ?: env.CHANGE_BRANCH
+
+                        if (testFiles) {
+                            runParallelDtest("20", testFiles.join(' '))
+                        } else {
+                            dtest.prepareDtestLocalTree (
+                                preserveWorkspace: false,
+                                dtestBranch: SCYLLA_DTEST_BRANCH,
+                                dtestRepo: SCYLLA_DTEST_REPO,
+                                ccmBranch: params.SCYLLA_CCM_BRANCH,
+                                ccmRepo: params.SCYLLA_CCM_REPO,
+                                relocWebUrl: params.RELOC_WEB_URL,
+                                baseRelocJob: RELOC_JOB_NAME,
+                                relocBuildID: params.RELOC_BUILD_ID,
+                                buildMode: BUILD_MODE,
+                            )
+                            dtest.doDtest(dryRun: params.DRY_RUN, dtestMode: BUILD_MODE, includeTests: "-m dtest_smoke bootstrap_test.py")
+                        }
+                        pullRequestSetResult('success', 'jenkins/test/PR', 'test passed')
+                    } catch(Exception ex) {
+                        echo ex
+                        pullRequestSetResult('failure', 'jenkins/test/PR', 'test failed')
+                    }
+                }
+            }
+        }
     }
+}
+
+def runParallelDtest(String splitMaxNodes, String includeDtestsTag) {
+	echo "runParallelDtest"
+	dtest.prepareDtestLocalTree (
+		preserveWorkspace: false,
+		dtestBranch: SCYLLA_DTEST_BRANCH,
+		dtestRepo: SCYLLA_DTEST_REPO,
+		ccmBranch: params.SCYLLA_CCM_BRANCH,
+		ccmRepo: params.SCYLLA_CCM_REPO,
+		relocWebUrl: params.RELOC_WEB_URL,
+		baseRelocJob: RELOC_JOB_NAME,
+		relocBuildID: params.RELOC_BUILD_ID,
+		buildMode: BUILD_MODE,
+	)
+	numOfSplitFiles = dtest.splitAndCopyDtestJobs (
+		splitTimeTarget: params.SPLIT_TIME_TARGET,
+		splitMaxNodes: splitMaxNodes,
+		buildMode: BUILD_MODE,
+		includeTests: includeDtestsTag,
+		excludeTests: ''
+	)
+	dtest.doParallelDtest(
+		dryRun: params.DRY_RUN,
+		dtestMode: BUILD_MODE,
+		downloadfromCloud: true,
+		cloudUrl: params.RELOC_WEB_URL,
+		dtestDebugInfoFlag: false,
+		dtestKeepLogsFlag: false,
+		extOpts: params.SCYLLA_EXT_OPTS_EXTRA_SETTINGS,
+		extEnv: params.SCYLLA_EXT_ENV_EXTRA_SETTINGS,
+		numOfSplitFiles: numOfSplitFiles,
+		runningUserID: jenkins.getRunningUserInfo().userId,
+		dtestRepo: SCYLLA_DTEST_REPO,
+		dtestBranch: SCYLLA_DTEST_BRANCH,
+		ccmBranch: params.SCYLLA_CCM_BRANCH,
+		ccmRepo: params.SCYLLA_CCM_REPO,
+		splitFleetLabal: params.SPLIT_FLEET_LABEL,
+	)
 }
