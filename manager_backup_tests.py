@@ -444,10 +444,10 @@ class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
     @pytest.mark.skip("will return when minio bandwidth limiting is on")
     def test_multiple_backups_task_then_restore(self):
         """
-        First, the test creates inserts data into the cluster and backups it over three iterations.
+        First, the test inserts data into the cluster and backs it up over three iterations.
         Afterwards, the table that contained said data is deleted and the test restores some of the
         data using the backup that occurred after the second insertion.
-        Finally, the test makes sure that the table contains the data from the first to insertions
+        Finally, the test makes sure that the table contains the data from the first two insertions
         but does not contain any data from the third one.
         """
         first_keyspace_table_and_key_range = {"ks": {"cf1": (1, 21)}}
