@@ -19,7 +19,8 @@ class AuditTester(Tester):
 
     def prepare(self, ordered=False, create_keyspace=True, use_cache=False, nodes=1, rf=1, protocol_version=None,
                 user=None, password=None, experimental=False, audit_settings=audit_default_settings, **kwargs):
-        debug(f"Preparing cluster with {nodes} node(s): rf={rf} ordered={ordered} use_cache={use_cache} audit_settings={audit_settings}")
+        debug(f"Preparing cluster with {nodes} node(s): rf={rf} ordered={ordered} use_cache={use_cache} "
+              f"audit_settings={audit_settings}")
 
         cluster = self.cluster
 
