@@ -594,7 +594,7 @@ class EncryptionAtRestTest(EncryptionAtRestBase):
             for value in KeyProviderEnum:
                 try:
                     EncryptionAtRestBase._smoke_test(self, key_provider=value,
-                                                        cipher_algorithm=k, secret_key_strength=i)
+                                                     cipher_algorithm=k, secret_key_strength=i)
                 except Exception as e:
                     debug(str(e))
                 finally:
