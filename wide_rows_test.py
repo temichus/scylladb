@@ -114,6 +114,15 @@ class TestWideRows(Tester):
                                                                                              self.compaction_option)
         session.execute(create_table_query)
 
+    def create_too_many_rows_table(self, session, table_name, columns_num):
+        logger.debug('Create table {} with too many rows'.format(table_name))
+        long_text_columns = ', '.join(['value%d blob' % i for i in range(columns_num)])
+        create_table_query = 'CREATE TABLE IF NOT EXISTS %s (userid text, event text, %s, ' \
+                             'PRIMARY KEY (userid, event)) with compression = { } and %s' % (table_name,
+                                                                                             long_text_columns,
+                                                                                             self.compaction_option)
+        session.execute(create_table_query)
+
     @staticmethod
     def create_large_row_static_data(session, table_name, rows_num):
         """
@@ -143,6 +152,24 @@ class TestWideRows(Tester):
             event = (date + datetime.timedelta(k)).strftime("%Y-%m-%d")
             for i in range(columns_num):
                 out = session.execute(
+                    "UPDATE {table_name} SET value{i} = textAsBlob('{value}') WHERE userid='{user}' and event='{event}'"
+                    .format(**locals()))
+            expected_rows['{}.{}'.format(user, event)] = expected_row_size
+
+        return expected_rows
+
+    def create_too_many_rows_data(self, session, table_name, rows_num, columns_num, one_blob_size, partition_index, start_row_index):
+        expected_rows = {}
+        expected_row_size = columns_num * one_blob_size  # approximately row size
+
+        date = datetime.datetime.now()
+        logger.debug(f'Prefill table {table_name} with {rows_num} rows')
+        for k in range(start_row_index, start_row_index + rows_num):
+            user = f"user{partition_index}"
+            value = 'a' * int(one_blob_size)
+            event = (date + datetime.timedelta(k)).strftime("%Y-%m-%d")
+            for i in range(columns_num):
+                session.execute(
                     "UPDATE {table_name} SET value{i} = textAsBlob('{value}') WHERE userid='{user}' and event='{event}'"
                     .format(**locals()))
             expected_rows['{}.{}'.format(user, event)] = expected_row_size
@@ -417,6 +444,71 @@ class TestWideRows(Tester):
         for value in rows:
             logger.debug(value)
             assert len(value[0]) > 0, f"expects >0, len(value[0])={len(value[0])} "
+
+    @pytest.mark.single_node
+    def test_too_many_rows_warning_above_threshold_during_compaction(self):
+        """
+        Create table with too many rows.
+        Validate that there are no warnings in the log before the threshold is crossed
+        and that there are warnings in the log after the threshold is crossed.
+
+        Note that no system.large_too_many_rows table exist yet, see https://github.com/scylladb/scylla/issues/9506
+        """
+        columns_num = 14
+        initial_rows_number = 200
+        additional_rows_number = 1
+
+        session = self.prepare_cluster(nodes=1, rf=1,
+                                       options_dict={'compaction_large_row_warning_threshold_mb': 10,
+                                                     'compaction_rows_count_warning_threshold': initial_rows_number})
+
+        mark_logs = self.mark_log_on_all_nodes()
+        self.create_too_many_rows_table(session=session, table_name=self.TABLE_NAME, columns_num=columns_num)
+        self.create_too_many_rows_data(session=session,
+                                       table_name=self.TABLE_NAME,
+                                       columns_num=columns_num,
+                                       rows_num=initial_rows_number,
+                                       one_blob_size=128,
+                                       partition_index=0,
+                                       start_row_index=0)
+
+        self.cluster.flush()
+        self.cluster.wait_for_compactions()
+
+        warning_text = rf"Writing.*too many rows.*{self.KEYSPACE_NAME}/{self.TABLE_NAME}"
+        # Verify that no warnings are in the log yet
+        for node in self.cluster.nodelist():
+            self.search_warning(node=node,
+                                warning_text=warning_text,
+                                marked_logs_dict=mark_logs,
+                                expect_warning=False)
+
+        mark_logs = self.mark_log_on_all_nodes()
+        self.create_too_many_rows_data(session=session,
+                                       table_name=self.TABLE_NAME,
+                                       columns_num=columns_num,
+                                       rows_num=additional_rows_number,
+                                       one_blob_size=128,
+                                       partition_index=0,
+                                       start_row_index=initial_rows_number)
+        self.cluster.flush()
+        self.cluster.compact()
+
+        """ TODO: uncomment when issue https://github.com/scylladb/scylla/issues/9506 is solved
+        cluster_state = self.validate_system_table(entity_type=entity_type, keyspace_name=self.KEYSPACE_NAME,
+                                                   table_name=self.TABLE_NAME,
+                                                   expected_entity_number=rows_number,
+                                                   expected_entity_data_size=expected_rows_data_size)
+        """
+        # Search warning in the log
+        # Validate that the right number of rows was detected
+        rows_number = initial_rows_number + additional_rows_number
+        warning_text = rf"Writing.*too many rows.*{self.KEYSPACE_NAME}/{self.TABLE_NAME}.*\({rows_number} rows\)"
+        for node in self.cluster.nodelist():
+            self.search_warning(node=node,
+                                warning_text=warning_text,
+                                marked_logs_dict=mark_logs,
+                                expect_warning=True)
 
     @pytest.mark.single_node
     def test_column_index_stress(self):
