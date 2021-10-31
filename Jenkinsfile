@@ -84,7 +84,7 @@ pipeline {
                 script {
                     try {
                         def changedFiles = jenkins.getChangedFilesList()
-                        def testFiles = changedFiles.findAll({it =~ /.*test.*py/})
+                        def testFiles = changedFiles.findAll({it =~ /.*_test.*py/})
 
                         RELOC_JOB_NAME = params.RELOC_JOB_NAME ?: "next"
                         BUILD_MODE = params.BUILD_MODE ?: "release"

@@ -90,7 +90,7 @@ DTEST_CORE_COMPRESS_EXT = os.environ.get('DTEST_CORE_COMPRESS_EXT', 'gz')
 
 def copy_logs(request, dtest_config, directory=None, name=None, cores=None):
     """Copy the current cluster's log files somewhere, by default to LOG_SAVED_DIR with a name of 'last'"""
-    log_saved_dir = "logs"
+    log_saved_dir = os.environ.get('LOG_SAVED_DIR', "logs")
     try:
         os.mkdir(log_saved_dir)
     except OSError:
