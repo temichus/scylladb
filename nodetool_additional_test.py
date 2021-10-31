@@ -73,6 +73,7 @@ class TestNodetool(Tester):
             '[Ii]nvalid partition',
             '(Scrub|Validate) compaction.*Invalid',
             'Validating .* failed',
+            'scrub compaction found invalid data',
         ]
 
     @staticmethod
