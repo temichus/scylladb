@@ -4,7 +4,6 @@ import re
 import subprocess
 import pytest
 import logging
-import random
 
 from ccmlib import common
 from dtest_class import Tester, create_ks
