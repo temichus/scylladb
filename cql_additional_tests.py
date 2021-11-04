@@ -680,7 +680,7 @@ class TestCQL(Tester):
                     "INSERT INTO clicks (userid, url, day, month, year) VALUES (%i, 'http://foo.%s', 1, 'jan', 2012)" % (
                         id, tld))
 
-    def test_writetime_functions_query(self):
+    def test_writetime_functions_query(self, subtests):
         """Test time functions combination and invalid time values issue #5552"""
         nodes_count = 3
         rf = 3
@@ -688,32 +688,32 @@ class TestCQL(Tester):
         self.create_insert_table(session)
         # run multiple times to check node is UP
         for tries in range(nodes_count):
-            with self.subTest("Query qith writetime function non primary key coloumn"):
+            with subtests.test("Query qith writetime function non primary key coloumn", i=tries):
                 assert_invalid(session=session,
                                query=f"select toDate(max(mintimeuuid(writetime(day)))) from clicks ;",
                                matching="timestamp is out of range",
                                expected=NoHostAvailable
                                )
 
-            with self.subTest("Query qith writetime function non primary key text coloumn"):
+            with subtests.test("Query qith writetime function non primary key text coloumn", i=tries):
                 assert_invalid(session=session,
                                query=f"select toDate(max(mintimeuuid(writetime(month)))) from clicks ;",
                                matching="timestamp is out of range",
                                expected=NoHostAvailable
                                )
 
-    def test_query_coloumn_timeuuid_with_invalid_values(self):
+    def test_query_coloumn_timeuuid_with_invalid_values(self, subtests):
         """Test time functions combination and invalid time values issue #5552"""
         invalid_values = (160616626311127, 16061662631112228,)
-        self.query_coloumn_timeuuid(invalid_values)
+        self.query_coloumn_timeuuid(invalid_values, subtests)
 
     @require('#7691')
-    def test_query_coloumn_timeuuid_with_invalid_values_issue7691(self):
+    def test_query_coloumn_timeuuid_with_invalid_values_issue7691(self, subtests):
         """Test time functions combination and invalid time values issue #7691"""
         invalid_values = (16061662631112223339,)
-        self.query_coloumn_timeuuid(invalid_values)
+        self.query_coloumn_timeuuid(invalid_values, subtests)
 
-    def query_coloumn_timeuuid(self, values):
+    def query_coloumn_timeuuid(self, values, subtests):
         def create_insert_table_timeuuid(session):
             session.execute("""
                   CREATE TABLE test (
@@ -732,7 +732,7 @@ class TestCQL(Tester):
         create_insert_table_timeuuid(session)
 
         for value in values:
-            with self.subTest("Query mintimeuuid conversion ", v=value):
+            with subtests.test("Query mintimeuuid conversion ", v=value):
                 query = f"SELECT t FROM test WHERE t > mintimeuuid({value}) ALLOW FILTERING;"
                 assert_invalid(session=session,
                                query=query,
@@ -6310,7 +6310,7 @@ class TestCQL(Tester):
 
 
 @pytest.mark.dtest_full
-class CQLAdditionalTests(Tester):
+class TestsCQLAdditional(Tester):
 
     def prepare(self, options={}):
         """
@@ -6703,7 +6703,7 @@ class CQLAdditionalTests(Tester):
 
 @pytest.mark.dtest_full
 @pytest.mark.single_node
-class MultiColumnRestrictionSimpleTests(Tester):
+class TestsMultiColumnRestrictionSimple(Tester):
 
     INSERT_COLUMNS = 'key,clmn_int,clmn_text,clmn_timestamp,clmn_bool,clmn_ascii,clmn_uuid,clmn_blob'
     INSERT_2COLUMNS = 'key,clmn_int'
@@ -7070,7 +7070,7 @@ class MultiColumnRestrictionSimpleTests(Tester):
 
 @pytest.mark.dtest_full
 @pytest.mark.single_node
-class MultiColumnRestrictionCollectionTests(Tester):
+class TestsMultiColumnRestrictionCollection(Tester):
     TABLE_NAME = 'cf'
     TEST_DATA = [[0, "[0, 1, 2]", "[textAsBlob('t1'), textAsBlob('t2')]",
                   "{de5cba0d-41a2-4f39-8834-35130d8b5d86, fa80080c-a4c5-46d6-afe4-5e184fec35ae}",
