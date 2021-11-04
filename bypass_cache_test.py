@@ -35,7 +35,7 @@ class TestBypassCache(Tester):
 
         if insert_data:
             create_c1c2_table(session)
-            insert_c1c2(session, n=100)
+            insert_c1c2(session, n=100, ks=keyspace_name)
 
         return session
 
@@ -156,7 +156,7 @@ class TestBypassCache(Tester):
         session = self.prepare(insert_data=False)
         node = self.cluster.nodelist()[0]
         create_c1c2_table(session, cf=self.table_name, caching=False)
-        insert_c1c2(session, n=100, cf=self.table_name)
+        insert_c1c2(session, n=100, cf=self.table_name, ks=self.keyspace_name)
         node.flush()
         query = f'select * from {self.table_name}'
         self.verify_read_was_from_disk(node=node, query=query, session=session)
@@ -165,7 +165,7 @@ class TestBypassCache(Tester):
         session = self.prepare(insert_data=False)
         node = self.cluster.nodelist()[0]
         create_c1c2_table(session, cf=self.table_name)
-        insert_c1c2(session, n=100, cf=self.table_name)
+        insert_c1c2(session, n=100, cf=self.table_name, ks=self.keyspace_name)
         node.flush()
         query = f'select * from {self.table_name}'
         self.verify_read_was_from_cache(node=node, query=query, session=session)
@@ -177,7 +177,7 @@ class TestBypassCache(Tester):
         session = self.prepare(insert_data=False)
         node = self.cluster.nodelist()[0]
         create_c1c2_table(session, cf=self.table_name, caching=False)
-        insert_c1c2(session, n=100, cf=self.table_name)
+        insert_c1c2(session, n=100, cf=self.table_name, ks=self.keyspace_name)
         node.flush()
         query = f'select * from {self.table_name}'
         self.verify_read_was_from_disk(node=node, query=query, session=session)
@@ -190,7 +190,7 @@ class TestBypassCache(Tester):
         metric = ['scylla_cache_bytes_used']
         for _ in range(self.NUM_OF_QUERY_EXECUTIONS):
             cache_bytes_used_before_write = self.get_scylla_cache_reads_metrics(node=node, metrics=metric)[metric[0]]
-            insert_c1c2(session, keys=list(range(self.first_key + 10)), cf=self.table_name)
+            insert_c1c2(session, keys=list(range(self.first_key + 10)), cf=self.table_name, ks=self.keyspace_name)
             self.cluster.nodetool(f'flush -- {self.keyspace_name} {self.table_name}')
             cache_bytes_used_after_write = self.get_scylla_cache_reads_metrics(node=node, metrics=metric)[metric[0]]
             if cache_bytes_used_before_write < cache_bytes_used_after_write:
@@ -202,7 +202,7 @@ class TestBypassCache(Tester):
         session = self.prepare(insert_data=False)
         node = self.cluster.nodelist()[0]
         create_c1c2_table(session, cf=self.table_name, caching=False)
-        insert_c1c2(session, n=100, cf=self.table_name)
+        insert_c1c2(session, n=100, cf=self.table_name, ks=self.keyspace_name)
         self.first_key = 0
         assert not self.verify_used_memory_grow(node=node, session=session), 'expected to have writes without cache'
         alter_cmd = f"ALTER TABLE {self.keyspace_name}.{self.table_name} WITH CACHING = {{'enabled': 'true'}}"
@@ -213,7 +213,7 @@ class TestBypassCache(Tester):
         session = self.prepare(insert_data=False)
         node = self.cluster.nodelist()[0]
         create_c1c2_table(session, cf=self.table_name)
-        insert_c1c2(session, n=100, cf=self.table_name)
+        insert_c1c2(session, n=100, cf=self.table_name, ks=self.keyspace_name)
         self.first_key = 0
         assert self.verify_used_memory_grow(node=node, session=session), 'expected to have writes through cache'
         alter_cmd = f"ALTER TABLE {self.keyspace_name}.{self.table_name} WITH CACHING = {{'enabled': 'false'}}"
